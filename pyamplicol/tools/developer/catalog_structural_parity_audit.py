@@ -72,6 +72,7 @@ MAX_RATIO = 1.05
 _DYNAMIC_COLOR_PROJECTION_ABI = (
     "pyamplicol-generic-dag-dynamic-color-projection-v2"
 )
+_PEAK_CONTRIBUTION_COUNT_SEMANTICS = "resident-pending-contributions-v1"
 
 
 @dataclass(frozen=True)
@@ -559,6 +560,14 @@ def _candidate_counts(
             raise CatalogParityError(
                 "recurrence execution summary is incomplete"
             ) from error
+        if (
+            construction.get("peak_contribution_count_semantics")
+            != _PEAK_CONTRIBUTION_COUNT_SEMANTICS
+        ):
+            raise CatalogParityError(
+                "recurrence construction lacks authenticated resident "
+                "peak-contribution semantics"
+            )
         final = WorkCounts(
             _positive(schedule.get("current_count"), "recurrence current count"),
             _positive(

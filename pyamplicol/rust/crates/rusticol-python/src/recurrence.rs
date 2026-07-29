@@ -1043,28 +1043,29 @@ fn lower_recurrence_direct(
             .checked_add(u64::from(current.component_count))
             .ok_or_else(|| invalid("recurrence semantic component count exceeds u64"))
     })?;
-    let selector_work = if strategy == RecurrenceStrategy::TopologyReplay {
-        let mut public_flow_counts = BTreeMap::<u32, u64>::new();
-        for target in plan.replay_targets() {
-            let count = public_flow_counts
-                .entry(target.representative_id)
-                .or_default();
-            *count = count
-                .checked_add(1)
-                .ok_or_else(|| invalid("recurrence public-flow count exceeds u64"))?;
-        }
-        public_flow_counts
-            .into_iter()
-            .map(|(representative_sector_id, public_flow_count)| {
-                Ok((
-                    plan.selector_work_summary(representative_sector_id)?,
-                    public_flow_count,
-                ))
-            })
-            .collect::<RusticolResult<Vec<_>>>()?
-    } else {
-        vec![]
-    };
+    let selector_work =
+        if strategy.uses_topology_replay_targets() && !plan.replay_targets().is_empty() {
+            let mut public_flow_counts = BTreeMap::<u32, u64>::new();
+            for target in plan.replay_targets() {
+                let count = public_flow_counts
+                    .entry(target.representative_id)
+                    .or_default();
+                *count = count
+                    .checked_add(1)
+                    .ok_or_else(|| invalid("recurrence public-flow count exceeds u64"))?;
+            }
+            public_flow_counts
+                .into_iter()
+                .map(|(representative_sector_id, public_flow_count)| {
+                    Ok((
+                        plan.selector_work_summary(representative_sector_id)?,
+                        public_flow_count,
+                    ))
+                })
+                .collect::<RusticolResult<Vec<_>>>()?
+        } else {
+            vec![]
+        };
 
     let serialization_started = Instant::now();
     let metadata = write_recurrence_direct_plan_pacbin_with_projection_certificate(
@@ -2053,6 +2054,10 @@ fn direct_lowering_mapping(
     construction.set_item(
         "peak_contribution_count",
         native.construction.peak_contribution_count,
+    )?;
+    construction.set_item(
+        "peak_contribution_count_semantics",
+        "resident-pending-contributions-v1",
     )?;
     construction.set_item(
         "peak_dynamic_color_state_count",
@@ -3918,6 +3923,26 @@ mod direct_binding_tests {
     use super::*;
     use serde_json::json;
 
+    fn construction_progress(
+        stage_index: usize,
+        candidate_parent_pair_count: usize,
+    ) -> RecurrenceBuildProgress {
+        RecurrenceBuildProgress {
+            phase: "recurrence stage",
+            phase_index: stage_index + 2,
+            phase_total: 33,
+            stage_index: Some(stage_index),
+            stage_total: 30,
+            subset_size: Some(stage_index % 5 + 2),
+            candidate_parent_pair_count,
+            candidate_parent_pair_total: Some(candidate_parent_pair_count),
+            current_count: 0,
+            contribution_count: 0,
+            dynamic_color_state_count: 0,
+            color_target_prune_count: 0,
+        }
+    }
+
     fn digest(seed: u8) -> String {
         format!("{seed:02x}").repeat(32)
     }
@@ -4037,6 +4062,29 @@ mod direct_binding_tests {
             0
         );
         assert_eq!(parsed.prepared_kernel_count, 0);
+    }
+
+    #[test]
+    fn construction_metrics_sum_lane_unique_stage_counts() {
+        let mut metrics = RecurrenceConstructionMetrics::default();
+        for lane_index in 0..6 {
+            for stage_index_within_lane in 0..5 {
+                let stage_index = lane_index * 5 + stage_index_within_lane;
+                let final_count = (lane_index + 1) * (stage_index_within_lane + 2);
+                metrics.include(&construction_progress(stage_index, final_count / 2));
+                metrics.include(&construction_progress(stage_index, final_count));
+            }
+        }
+
+        let expected = (0..6)
+            .flat_map(|lane_index| {
+                (0..5).map(move |stage_index_within_lane| {
+                    (lane_index + 1) * (stage_index_within_lane + 2)
+                })
+            })
+            .sum::<usize>();
+        assert_eq!(metrics.candidate_parent_pair_count_by_stage.len(), 30);
+        assert_eq!(metrics.candidate_parent_pair_count(), expected);
     }
 
     #[test]

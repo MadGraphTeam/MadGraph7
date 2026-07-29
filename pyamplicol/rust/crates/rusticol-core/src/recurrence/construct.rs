@@ -971,7 +971,7 @@ struct StageConstructionDiagnostics {
     color_shape_match_count: usize,
     color_result_count: usize,
     color_target_prune_count: usize,
-    contribution_count: usize,
+    contribution_attempt_count: usize,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1140,6 +1140,20 @@ fn canonical_state_pair([left, right]: [u32; 2]) -> (u32, u32) {
 #[derive(Debug)]
 struct MaterializedColorTargets {
     sectors: Vec<Vec<LCColorComponent>>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PendingConstructionDomain {
+    shared_source_end: usize,
+    lane_internal_start: usize,
+    lane_internal_end: usize,
+}
+
+impl PendingConstructionDomain {
+    fn contains(self, current_id: usize) -> bool {
+        current_id < self.shared_source_end
+            || (self.lane_internal_start..self.lane_internal_end).contains(&current_id)
+    }
 }
 
 impl MaterializedColorTargets {
@@ -1934,8 +1948,6 @@ pub(super) fn build_recurrence_program_with_progress(
     let transition_reflections = TransitionReflectionIndex::new(template_input, &template_catalog)?;
     let replay_targets = build_replay_targets(strategy, process_input, &process_catalog)?;
     let materialized_sectors = materialized_sector_ids(strategy, process_input, &replay_targets);
-    let color_targets =
-        MaterializedColorTargets::new(&materialized_sectors, process_input, &process_catalog)?;
     let mut color_states = DynamicLCColorStateInterner::default();
     let mut currents = Vec::<PendingCurrent>::new();
     let mut current_ids = BTreeMap::<CurrentCoreKey, u32>::new();
@@ -1955,7 +1967,12 @@ pub(super) fn build_recurrence_program_with_progress(
         &mut current_ids,
         &mut currents_by_size,
     )?;
-    let stage_total = process_input.external_legs.len().saturating_sub(2);
+    let stage_count_per_lane = process_input.external_legs.len().saturating_sub(2);
+    let construction_sector_groups =
+        construction_sector_groups(strategy, &materialized_sectors, &replay_targets);
+    let stage_total = stage_count_per_lane
+        .checked_mul(construction_sector_groups.len())
+        .ok_or_else(|| invalid("recurrence construction stage count exceeds usize"))?;
     let phase_total = stage_total.saturating_add(3);
     progress(RecurrenceBuildProgress::snapshot(
         "source construction",
@@ -1971,40 +1988,109 @@ pub(super) fn build_recurrence_program_with_progress(
         color_states.len(),
         0,
     ))?;
-    let structural_demands = StructuralDemandIndex::new(
-        process_input,
-        template_input,
-        &template_catalog,
-        &materialized_sectors,
-        &currents,
-    )?;
-    let stage_diagnostics = build_internal_currents(
-        catalog_digest,
-        process_input,
-        pairing_catalog,
-        template_input,
-        &template_catalog,
-        &transition_reflections,
-        &coupling_limits,
-        &propagators,
-        &color_targets,
-        &structural_demands,
-        &mut color_states,
-        &mut currents,
-        &mut current_ids,
-        &mut currents_by_size,
-        &mut reflection_certificates,
-        phase_total,
-        progress,
-    )?;
-    let contribution_count = stage_diagnostics
-        .iter()
-        .map(|stage| stage.contribution_count)
-        .try_fold(0usize, |total, count| {
-            total
-                .checked_add(count)
-                .ok_or_else(|| invalid("recurrence contribution count exceeds usize"))
-        })?;
+    let source_current_count = currents.len();
+    let source_current_ids = current_ids;
+    let source_bucket = currents_by_size
+        .first()
+        .cloned()
+        .ok_or_else(|| invalid("recurrence construction has no source bucket"))?;
+    let isolate_replay_lanes = construction_sector_groups.len() > 1;
+    let mut resident_contribution_count = 0usize;
+    let mut stage_diagnostics = Vec::new();
+    let mut closures = BTreeMap::new();
+    for (lane_index, construction_sectors) in construction_sector_groups.into_iter().enumerate() {
+        let stage_index_offset = lane_index
+            .checked_mul(stage_count_per_lane)
+            .ok_or_else(|| invalid("recurrence construction stage offset exceeds usize"))?;
+        let color_targets =
+            MaterializedColorTargets::new(&construction_sectors, process_input, &process_catalog)?;
+        let structural_demands = StructuralDemandIndex::new(
+            process_input,
+            template_input,
+            &template_catalog,
+            &construction_sectors,
+            &currents[..source_current_count],
+        )?;
+        let mut lane_current_ids = source_current_ids.clone();
+        let mut lane_currents_by_size = vec![Vec::<u32>::new(); process_input.external_legs.len()];
+        lane_currents_by_size[0] = source_bucket.clone();
+        let lane_internal_start = currents.len();
+        let lane_stage_diagnostics = build_internal_currents(
+            catalog_digest,
+            process_input,
+            pairing_catalog,
+            template_input,
+            &template_catalog,
+            &transition_reflections,
+            &coupling_limits,
+            &propagators,
+            &color_targets,
+            &structural_demands,
+            &mut color_states,
+            &mut currents,
+            &mut lane_current_ids,
+            &mut lane_currents_by_size,
+            &mut reflection_certificates,
+            &mut resident_contribution_count,
+            stage_index_offset,
+            stage_total,
+            phase_total,
+            progress,
+        )?;
+        let lane_internal_end = currents.len();
+        let lane_domain = isolate_replay_lanes.then_some(PendingConstructionDomain {
+            shared_source_end: source_current_count,
+            lane_internal_start,
+            lane_internal_end,
+        });
+        let lane_closures = build_closures(
+            strategy,
+            process_input,
+            &process_catalog,
+            pairing_catalog,
+            template_input,
+            &template_catalog,
+            &color_states,
+            &currents,
+            &construction_sectors,
+            &lane_stage_diagnostics,
+            &reflection_certificates,
+            lane_domain,
+        )?;
+        let lane_closures = if lane_domain.is_some() {
+            retain_supported_pending_closures(
+                strategy,
+                &process_catalog,
+                &replay_targets,
+                lane_closures,
+                helicity_support_rule,
+                global_helicity_flip_rule,
+            )?
+        } else {
+            lane_closures
+        };
+        if let Some(domain) = lane_domain {
+            prune_inactive_lane_contributions(
+                &mut currents,
+                domain,
+                &lane_closures,
+                &mut resident_contribution_count,
+            )?;
+        }
+        for (key, group) in lane_closures {
+            if closures.insert(key, group).is_some() {
+                return Err(invalid(
+                    "isolated recurrence construction produced a duplicate closure",
+                ));
+            }
+        }
+        stage_diagnostics.extend(lane_stage_diagnostics);
+    }
+    if pending_contribution_entry_count(&currents)? != resident_contribution_count {
+        return Err(invalid(
+            "resident recurrence contribution count disagrees with pending storage",
+        ));
+    }
     let color_target_prune_count = stage_diagnostics
         .iter()
         .map(|stage| stage.color_target_prune_count)
@@ -2023,23 +2109,10 @@ pub(super) fn build_recurrence_program_with_progress(
         0,
         None,
         currents.len(),
-        contribution_count,
+        resident_contribution_count,
         color_states.len(),
         color_target_prune_count,
     ))?;
-    let closures = build_closures(
-        strategy,
-        process_input,
-        &process_catalog,
-        pairing_catalog,
-        template_input,
-        &template_catalog,
-        &color_states,
-        &currents,
-        &materialized_sectors,
-        &stage_diagnostics,
-        &reflection_certificates,
-    )?;
     progress(RecurrenceBuildProgress::snapshot(
         "schedule finalization",
         phase_total,
@@ -2050,7 +2123,7 @@ pub(super) fn build_recurrence_program_with_progress(
         0,
         None,
         currents.len(),
-        contribution_count,
+        resident_contribution_count,
         color_states.len(),
         color_target_prune_count,
     ))?;
@@ -2062,8 +2135,16 @@ pub(super) fn build_recurrence_program_with_progress(
         closures,
         replay_targets,
         retained_helicity_count,
-        helicity_support_rule,
-        global_helicity_flip_rule,
+        if isolate_replay_lanes {
+            HelicitySupportRule::None
+        } else {
+            helicity_support_rule
+        },
+        if isolate_replay_lanes {
+            GlobalHelicityFlipRule::None
+        } else {
+            global_helicity_flip_rule
+        },
         reflection_certificates,
     )
 }
@@ -2684,6 +2765,86 @@ fn checked_diagnostic_add(counter: &mut usize, amount: usize, label: &str) -> Ru
     Ok(())
 }
 
+fn pending_contribution_entry_count(currents: &[PendingCurrent]) -> RusticolResult<usize> {
+    currents.iter().try_fold(0usize, |total, current| {
+        total
+            .checked_add(current.contributions.len())
+            .ok_or_else(|| invalid("resident recurrence contribution count exceeds usize"))
+    })
+}
+
+fn prune_inactive_lane_contributions(
+    currents: &mut [PendingCurrent],
+    domain: PendingConstructionDomain,
+    closures: &BTreeMap<PendingClosureKey, PendingClosureGroup>,
+    resident_contribution_count: &mut usize,
+) -> RusticolResult<()> {
+    if domain.shared_source_end > domain.lane_internal_start
+        || domain.lane_internal_start > domain.lane_internal_end
+        || domain.lane_internal_end > currents.len()
+    {
+        return Err(invalid(
+            "recurrence lane contribution compaction has an invalid domain",
+        ));
+    }
+    let mut live = BTreeSet::new();
+    let mut queue = VecDeque::new();
+    for (key, group) in closures {
+        if group.exact_factor.is_zero() {
+            continue;
+        }
+        for parent_id in key.parent_current_ids.iter().copied() {
+            if !domain.contains(parent_id as usize) {
+                return Err(invalid(
+                    "recurrence lane closure references another construction lane",
+                ));
+            }
+            if live.insert(parent_id) {
+                queue.push_back(parent_id);
+            }
+        }
+    }
+    while let Some(current_id) = queue.pop_front() {
+        let current = currents
+            .get(current_id as usize)
+            .ok_or_else(|| invalid("recurrence lane liveness references an absent current"))?;
+        for (contribution, factor) in &current.contributions {
+            if factor.is_zero() {
+                continue;
+            }
+            for parent_id in contribution.parent_current_ids.iter().copied() {
+                if !domain.contains(parent_id as usize) {
+                    return Err(invalid(
+                        "recurrence lane contribution references another construction lane",
+                    ));
+                }
+                if live.insert(parent_id) {
+                    queue.push_back(parent_id);
+                }
+            }
+        }
+    }
+
+    for current_id in domain.lane_internal_start..domain.lane_internal_end {
+        let current_id_u32 = u32::try_from(current_id)
+            .map_err(|_| invalid("recurrence lane current ID exceeds u32"))?;
+        let current = &mut currents[current_id];
+        let before = current.contributions.len();
+        if live.contains(&current_id_u32) {
+            current.contributions.retain(|_, factor| !factor.is_zero());
+        } else {
+            current.contributions.clear();
+        }
+        let removed = before
+            .checked_sub(current.contributions.len())
+            .ok_or_else(|| invalid("recurrence lane contribution compaction underflowed"))?;
+        *resident_contribution_count = resident_contribution_count
+            .checked_sub(removed)
+            .ok_or_else(|| invalid("resident recurrence contribution count underflowed"))?;
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn build_internal_currents(
     catalog_digest: SemanticDigest,
@@ -2701,13 +2862,14 @@ fn build_internal_currents(
     current_ids: &mut BTreeMap<CurrentCoreKey, u32>,
     currents_by_size: &mut [Vec<u32>],
     reflection_certificates: &mut Vec<PendingReflectionCertificate>,
+    resident_contribution_count: &mut usize,
+    stage_index_offset: usize,
+    reported_stage_total: usize,
     phase_total: usize,
     progress: &mut dyn FnMut(RecurrenceBuildProgress) -> RusticolResult<()>,
 ) -> RusticolResult<Vec<StageConstructionDiagnostics>> {
     let transition_index = TransitionStateIndex::new(template, catalog)?;
     let mut diagnostics = Vec::new();
-    let stage_total = process.external_legs.len().saturating_sub(2);
-    let mut completed_contribution_count = 0usize;
     let mut completed_color_target_prune_count = 0usize;
     for target_size in 2..process.external_legs.len() {
         let stage_current_start = currents.len();
@@ -2719,18 +2881,20 @@ fn build_internal_currents(
         debug_assert!(prior_buckets.iter().flatten().copied().is_sorted());
         let target_bucket = &mut target_and_later[0];
         let candidate_parent_pair_total = parent_pair_total_for_target(target_size, prior_buckets)?;
-        let stage_index = target_size - 1;
+        let stage_index = stage_index_offset
+            .checked_add(target_size - 1)
+            .ok_or_else(|| invalid("recurrence construction stage index exceeds usize"))?;
         progress(RecurrenceBuildProgress::snapshot(
             "recurrence stage",
             stage_index.saturating_add(1),
             phase_total,
             Some(stage_index),
-            stage_total,
+            reported_stage_total,
             Some(target_size),
             0,
             Some(candidate_parent_pair_total),
             currents.len(),
-            completed_contribution_count,
+            *resident_contribution_count,
             color_states.len(),
             completed_color_target_prune_count,
         ))?;
@@ -2749,12 +2913,12 @@ fn build_internal_currents(
                     stage_index.saturating_add(1),
                     phase_total,
                     Some(stage_index),
-                    stage_total,
+                    reported_stage_total,
                     Some(target_size),
                     stage.candidate_parent_pair_count,
                     Some(candidate_parent_pair_total),
                     currents.len(),
-                    completed_contribution_count.saturating_add(stage.contribution_count),
+                    *resident_contribution_count,
                     color_states.len(),
                     completed_color_target_prune_count
                         .saturating_add(stage.color_target_prune_count),
@@ -2811,9 +2975,24 @@ fn build_internal_currents(
                     current_ids,
                     target_bucket,
                     &mut stage,
+                    resident_contribution_count,
                 )?;
             }
         }
+        progress(RecurrenceBuildProgress::snapshot(
+            "recurrence stage",
+            stage_index.saturating_add(1),
+            phase_total,
+            Some(stage_index),
+            reported_stage_total,
+            Some(target_size),
+            stage.candidate_parent_pair_count,
+            Some(candidate_parent_pair_total),
+            currents.len(),
+            *resident_contribution_count,
+            color_states.len(),
+            completed_color_target_prune_count.saturating_add(stage.color_target_prune_count),
+        ))?;
         reconcile_stage_reflections(
             stage_current_start,
             color_states,
@@ -2822,12 +3001,10 @@ fn build_internal_currents(
             target_bucket,
             reflection_certificates,
             process.external_legs.len(),
+            resident_contribution_count,
         )?;
         debug_assert_eq!(stage.target_size, target_size);
         debug_assert_eq!(stage.transition_candidate_count, stage.state_order_count);
-        completed_contribution_count = completed_contribution_count
-            .checked_add(stage.contribution_count)
-            .ok_or_else(|| invalid("recurrence contribution count exceeds usize"))?;
         completed_color_target_prune_count = completed_color_target_prune_count
             .checked_add(stage.color_target_prune_count)
             .ok_or_else(|| invalid("recurrence color-target prune count exceeds usize"))?;
@@ -2836,12 +3013,12 @@ fn build_internal_currents(
             stage_index.saturating_add(1),
             phase_total,
             Some(stage_index),
-            stage_total,
+            reported_stage_total,
             Some(target_size),
             stage.candidate_parent_pair_count,
             Some(candidate_parent_pair_total),
             currents.len(),
-            completed_contribution_count,
+            *resident_contribution_count,
             color_states.len(),
             completed_color_target_prune_count,
         ))?;
@@ -2869,6 +3046,7 @@ fn add_transition_contributions(
     current_ids: &mut BTreeMap<CurrentCoreKey, u32>,
     target_bucket: &mut Vec<u32>,
     diagnostics: &mut StageConstructionDiagnostics,
+    resident_contribution_count: &mut usize,
 ) -> RusticolResult<()> {
     let parent_keys = [
         currents[parent_ids[0] as usize].key.clone(),
@@ -3097,15 +3275,23 @@ fn add_transition_contributions(
             let factor = base_factor
                 .checked_mul(witness.exact_factor())?
                 .checked_mul(reversal_factor)?;
-            aggregate_factor(
-                currents[result_id as usize]
-                    .contributions
-                    .entry(pending_key)
-                    .or_insert(ExactComplexRational::ZERO),
-                factor,
-            )?;
+            let pending_factor = match currents[result_id as usize]
+                .contributions
+                .entry(pending_key)
+            {
+                std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+                std::collections::btree_map::Entry::Vacant(entry) => {
+                    checked_diagnostic_add(
+                        resident_contribution_count,
+                        1,
+                        "resident recurrence contribution count",
+                    )?;
+                    entry.insert(ExactComplexRational::ZERO)
+                }
+            };
+            aggregate_factor(pending_factor, factor)?;
             checked_diagnostic_add(
-                &mut diagnostics.contribution_count,
+                &mut diagnostics.contribution_attempt_count,
                 1,
                 "recurrence contribution-attempt count",
             )?;
@@ -3160,6 +3346,7 @@ fn reconcile_stage_reflections(
     target_bucket: &mut Vec<u32>,
     reflection_certificates: &mut Vec<PendingReflectionCertificate>,
     source_count: usize,
+    resident_contribution_count: &mut usize,
 ) -> RusticolResult<()> {
     if stage_start > currents.len() {
         return Err(invalid(
@@ -3277,6 +3464,9 @@ fn reconcile_stage_reflections(
     target_bucket.clear();
     for (local_index, current) in stage_currents.into_iter().enumerate() {
         if prune[local_index] {
+            *resident_contribution_count = resident_contribution_count
+                .checked_sub(current.contributions.len())
+                .ok_or_else(|| invalid("resident recurrence contribution count underflowed"))?;
             continue;
         }
         if current
@@ -3843,6 +4033,7 @@ fn build_closures(
     materialized_sectors: &BTreeSet<u32>,
     stage_diagnostics: &[StageConstructionDiagnostics],
     reflection_certificates: &[PendingReflectionCertificate],
+    construction_domain: Option<PendingConstructionDomain>,
 ) -> RusticolResult<BTreeMap<PendingClosureKey, PendingClosureGroup>> {
     let full_support = (0..process.external_legs.len() as u32).collect::<Vec<_>>();
     let mut result = BTreeMap::new();
@@ -3856,8 +4047,9 @@ fn build_closures(
         let anchor_ids = currents
             .iter()
             .enumerate()
-            .filter(|(_, current)| {
-                current.key.node_kind() == RecurrenceNodeKind::Source
+            .filter(|(id, current)| {
+                construction_domain.is_none_or(|domain| domain.contains(*id))
+                    && current.key.node_kind() == RecurrenceNodeKind::Source
                     && current.key.support_source_slots() == [sector.closure_source_slot]
             })
             .map(|(id, _)| id as u32)
@@ -3865,7 +4057,10 @@ fn build_closures(
         let complement_ids = currents
             .iter()
             .enumerate()
-            .filter(|(_, current)| current.key.support_source_slots() == complement)
+            .filter(|(id, current)| {
+                construction_domain.is_none_or(|domain| domain.contains(*id))
+                    && current.key.support_source_slots() == complement
+            })
             .map(|(id, _)| id as u32)
             .collect::<Vec<_>>();
         let anchor_count = anchor_ids.len();
@@ -3925,7 +4120,10 @@ fn build_closures(
             }
             let mut support_histogram = BTreeMap::<usize, usize>::new();
             let mut support_signatures = BTreeSet::new();
-            for current in currents {
+            for (id, current) in currents.iter().enumerate() {
+                if construction_domain.is_some_and(|domain| !domain.contains(id)) {
+                    continue;
+                }
                 *support_histogram
                     .entry(current.key.support_source_slots().len())
                     .or_default() += 1;
@@ -5125,29 +5323,14 @@ fn finish_program(
 ) -> RusticolResult<RecurrenceProgram> {
     validate_pending_reflection_certificates(&reflection_certificates)?;
 
-    if helicity_support_rule != HelicitySupportRule::None {
-        let mut retained = BTreeMap::new();
-        for (key, group) in pending_closures {
-            if closure_helicity_is_supported(
-                helicity_support_rule,
-                process_catalog,
-                &key.complete_source_states,
-            )? {
-                retained.insert(key, group);
-            }
-        }
-        pending_closures = retained;
-    }
-    if global_helicity_flip_rule == GlobalHelicityFlipRule::Proven
-        && strategy != RecurrenceStrategy::AllFlowUnion
-    {
-        pending_closures = retain_global_helicity_flip_representatives(
-            strategy,
-            process_catalog,
-            &replay_targets,
-            pending_closures,
-        )?;
-    }
+    pending_closures = retain_supported_pending_closures(
+        strategy,
+        process_catalog,
+        &replay_targets,
+        pending_closures,
+        helicity_support_rule,
+        global_helicity_flip_rule,
+    )?;
     let sector_count = match strategy {
         RecurrenceStrategy::TopologyReplay => process_catalog
             .input
@@ -5528,6 +5711,46 @@ fn global_helicity_flip_rule(
         rule = candidate;
     }
     Ok(rule)
+}
+
+fn retain_supported_pending_closures(
+    strategy: RecurrenceStrategy,
+    process_catalog: &ProcessCatalog<'_>,
+    replay_targets: &[RecurrenceReplayTarget],
+    pending_closures: BTreeMap<PendingClosureKey, PendingClosureGroup>,
+    helicity_support_rule: HelicitySupportRule,
+    global_helicity_flip_rule: GlobalHelicityFlipRule,
+) -> RusticolResult<BTreeMap<PendingClosureKey, PendingClosureGroup>> {
+    let pending_closures = if helicity_support_rule == HelicitySupportRule::None {
+        pending_closures
+    } else {
+        pending_closures
+            .into_iter()
+            .filter_map(|(key, group)| {
+                match closure_helicity_is_supported(
+                    helicity_support_rule,
+                    process_catalog,
+                    &key.complete_source_states,
+                ) {
+                    Ok(true) => Some(Ok((key, group))),
+                    Ok(false) => None,
+                    Err(error) => Some(Err(error)),
+                }
+            })
+            .collect::<RusticolResult<BTreeMap<_, _>>>()?
+    };
+    if global_helicity_flip_rule == GlobalHelicityFlipRule::Proven
+        && strategy != RecurrenceStrategy::AllFlowUnion
+    {
+        retain_global_helicity_flip_representatives(
+            strategy,
+            process_catalog,
+            replay_targets,
+            pending_closures,
+        )
+    } else {
+        Ok(pending_closures)
+    }
 }
 
 fn retain_global_helicity_flip_representatives(
@@ -5996,6 +6219,25 @@ fn materialized_sector_ids(
             .iter()
             .map(|sector| sector.sector_id)
             .collect(),
+    }
+}
+
+fn construction_sector_groups(
+    strategy: RecurrenceStrategy,
+    materialized_sectors: &BTreeSet<u32>,
+    replay_targets: &[RecurrenceReplayTarget],
+) -> Vec<BTreeSet<u32>> {
+    if strategy.uses_topology_replay_targets()
+        && !replay_targets.is_empty()
+        && materialized_sectors.len() > 1
+    {
+        materialized_sectors
+            .iter()
+            .copied()
+            .map(|sector_id| BTreeSet::from([sector_id]))
+            .collect()
+    } else {
+        vec![materialized_sectors.clone()]
     }
 }
 
@@ -6883,6 +7125,7 @@ mod tests {
             .collect::<BTreeMap<_, _>>();
         let mut target_bucket = vec![0, 1];
         let mut certificates = Vec::new();
+        let mut resident_contribution_count = 0;
 
         reconcile_stage_reflections(
             0,
@@ -6892,6 +7135,7 @@ mod tests {
             &mut target_bucket,
             &mut certificates,
             4,
+            &mut resident_contribution_count,
         )
         .unwrap();
 
@@ -6931,6 +7175,7 @@ mod tests {
             .collect::<BTreeMap<_, _>>();
         let mut target_bucket = vec![0, 1];
         let mut certificates = Vec::new();
+        let mut resident_contribution_count = 0;
 
         reconcile_stage_reflections(
             0,
@@ -6940,6 +7185,7 @@ mod tests {
             &mut target_bucket,
             &mut certificates,
             4,
+            &mut resident_contribution_count,
         )
         .unwrap();
 
@@ -6980,6 +7226,7 @@ mod tests {
             .collect::<BTreeMap<_, _>>();
         let mut target_bucket = vec![0, 1];
         let mut certificates = Vec::new();
+        let mut resident_contribution_count = 0;
 
         reconcile_stage_reflections(
             0,
@@ -6989,6 +7236,7 @@ mod tests {
             &mut target_bucket,
             &mut certificates,
             4,
+            &mut resident_contribution_count,
         )
         .unwrap();
 
@@ -7024,6 +7272,7 @@ mod tests {
             .collect::<BTreeMap<_, _>>();
         let mut target_bucket = vec![0, 1];
         let mut certificates = Vec::new();
+        let mut resident_contribution_count = 0;
 
         reconcile_stage_reflections(
             0,
@@ -7033,6 +7282,7 @@ mod tests {
             &mut target_bucket,
             &mut certificates,
             4,
+            &mut resident_contribution_count,
         )
         .unwrap();
 
@@ -7542,6 +7792,7 @@ mod tests {
         }
 
         let mut reflection_certificates = Vec::new();
+        let mut resident_contribution_count = 0;
         let structural_demands = StructuralDemandIndex::new(
             &process,
             &template,
@@ -7566,6 +7817,9 @@ mod tests {
             &mut current_ids,
             &mut currents_by_size,
             &mut reflection_certificates,
+            &mut resident_contribution_count,
+            0,
+            external_count.saturating_sub(2),
             external_count.saturating_add(1),
             &mut |_| Ok(()),
         )
@@ -7582,6 +7836,7 @@ mod tests {
             &BTreeSet::from([0]),
             &stage_diagnostics,
             &reflection_certificates,
+            None,
         )
         .unwrap();
         let constructed_counts = (
@@ -7592,6 +7847,7 @@ mod tests {
                 .sum(),
             closures.len(),
         );
+        assert_eq!(resident_contribution_count, constructed_counts.1);
         let program = finish_program(
             RecurrenceStrategy::AllFlowUnion,
             &process_catalog,
@@ -7676,6 +7932,38 @@ mod tests {
     }
 
     #[test]
+    fn replay_construction_isolates_authenticated_representatives() {
+        let replay_targets = [
+            RecurrenceReplayTarget::new(0, 4, 0, vec![0, 1], vec![1, 1], ExactComplexRational::ONE)
+                .unwrap(),
+            RecurrenceReplayTarget::new(1, 9, 1, vec![1, 0], vec![1, 1], ExactComplexRational::ONE)
+                .unwrap(),
+        ];
+        let sectors = BTreeSet::from([4, 9]);
+        assert_eq!(
+            construction_sector_groups(
+                RecurrenceStrategy::ContractedColorUnion,
+                &sectors,
+                &replay_targets,
+            ),
+            [BTreeSet::from([4]), BTreeSet::from([9])]
+        );
+        assert_eq!(
+            construction_sector_groups(RecurrenceStrategy::AllFlowUnion, &sectors, &[]),
+            [sectors.clone()]
+        );
+
+        let first_lane = PendingConstructionDomain {
+            shared_source_end: 4,
+            lane_internal_start: 4,
+            lane_internal_end: 10,
+        };
+        assert!(first_lane.contains(0));
+        assert!(first_lane.contains(9));
+        assert!(!first_lane.contains(10));
+    }
+
+    #[test]
     fn scalar_reference_fixtures_keep_structural_schedule_counts() {
         // Closure-rooted admission materializes no current or contribution
         // outside the final exact schedule for this scalar grammar.
@@ -7713,7 +8001,7 @@ mod tests {
                     stage.parent_pair_count,
                     stage.transition_index_hit_count,
                     stage.transition_candidate_count,
-                    stage.contribution_count,
+                    stage.contribution_attempt_count,
                 ))
                 .collect::<Vec<_>>(),
             [(2, 6, 6, 6, 6, 3), (3, 12, 6, 6, 6, 3)],
@@ -7945,6 +8233,44 @@ mod tests {
             );
         }
         (currents, closures)
+    }
+
+    #[test]
+    fn isolated_lane_compaction_discards_only_unreachable_contributions() {
+        let (mut currents, closures) = projection_test_graph(false, false);
+        currents.push(projection_test_current(
+            RecurrenceNodeKind::Current,
+            3,
+            7,
+            &[0, 2],
+        ));
+        add_projection_test_contribution(&mut currents, 7, 21, [0, 2], 0);
+        let mut resident_contribution_count = pending_contribution_entry_count(&currents).unwrap();
+        assert_eq!(resident_contribution_count, 5);
+
+        prune_inactive_lane_contributions(
+            &mut currents,
+            PendingConstructionDomain {
+                shared_source_end: 3,
+                lane_internal_start: 3,
+                lane_internal_end: 8,
+            },
+            &closures,
+            &mut resident_contribution_count,
+        )
+        .unwrap();
+
+        assert_eq!(resident_contribution_count, 4);
+        assert_eq!(
+            resident_contribution_count,
+            pending_contribution_entry_count(&currents).unwrap(),
+        );
+        assert!(currents[7].contributions.is_empty());
+        assert!(
+            currents[3..7]
+                .iter()
+                .all(|current| !current.contributions.is_empty())
+        );
     }
 
     #[test]

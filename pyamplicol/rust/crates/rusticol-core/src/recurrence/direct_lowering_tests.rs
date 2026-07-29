@@ -1302,6 +1302,66 @@ fn selector_domain_canonicalization_preserves_the_universal_sentinel() {
 }
 
 #[test]
+fn contracted_replay_uses_dependency_closed_selector_work() {
+    let templates = validated_template();
+    let base = count_fixture_program(&templates, 5, 69, 126, 24, 2);
+    let currents = base
+        .currents()
+        .iter()
+        .map(|current| {
+            let key = current.key();
+            let contracted_key = CurrentCoreKey::new(
+                key.catalog_digest(),
+                key.node_kind(),
+                key.current_state_template_id(),
+                key.dynamic_lc_color_state_id(),
+                key.support_source_slots().to_vec(),
+                key.momentum().clone(),
+                CurrentHelicityIdentity::contracted_color_union(
+                    key.spin_state_class(),
+                    key.helicity_identity().local_source_states().to_vec(),
+                )
+                .unwrap(),
+                key.flavour_flow().to_vec(),
+                key.quantum_number_flow_id(),
+                key.coupling_orders().to_vec(),
+                key.source_binding().clone(),
+                key.propagator_template_id(),
+            )
+            .unwrap();
+            RecurrenceCurrent::new(
+                current.id(),
+                contracted_key,
+                current.source_exact_factor(),
+                current.contribution_range(),
+                current.finalization_id(),
+            )
+            .unwrap()
+        })
+        .collect();
+    let program = RecurrenceProgram::new(
+        RecurrenceStrategy::ContractedColorUnion,
+        base.physical_sector_count(),
+        base.retained_helicity_count(),
+        base.dynamic_color_states().to_vec(),
+        currents,
+        base.contributions().to_vec(),
+        base.finalizations().to_vec(),
+        base.replay_targets().to_vec(),
+        base.resolved_helicities().to_vec(),
+        base.amplitude_destinations().to_vec(),
+        base.closure_terms().to_vec(),
+    )
+    .unwrap();
+    let parts = lower(&program, &templates, digest(48)).unwrap();
+    assert!(parts.selector_domains.len() > 1);
+    let plan = DirectRecurrencePlan::new(parts).unwrap();
+    let selected = plan.selector_work_summary(0).unwrap();
+    assert!(selected.current_count < plan.currents().len() as u64);
+    assert!(selected.contribution_count < plan.contributions().len() as u64);
+}
+
+#[test]
 fn zgg_all_flow_union_lowers_runtime_sources_without_replay_expansion() {
     let templates = validated_union_template();
     let program = zgg_union_program(&templates, 0);

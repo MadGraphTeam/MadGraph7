@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from tools.developer.catalog_structural_parity_audit import (
+    CatalogParityError,
     WorkCounts,
     _candidate_counts,
     _legacy_counts,
@@ -170,6 +173,9 @@ def test_recurrence_selector_certificate_separates_active_from_persisted(
                         "construction": {
                             "peak_current_count": 120,
                             "peak_contribution_count": 240,
+                            "peak_contribution_count_semantics": (
+                                "resident-pending-contributions-v1"
+                            ),
                         },
                         "selector_work_certificate": {
                             "representatives": [
@@ -202,6 +208,45 @@ def test_recurrence_selector_certificate_separates_active_from_persisted(
     assert counts.peak_materialized.evaluation_count == 240
     assert counts.peak_materialized.attachment_count == 240
     assert counts.selector_certificate_available is True
+
+
+def test_recurrence_peak_requires_resident_semantics_marker(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact"
+    process = artifact / "processes/p/execution.json"
+    process.parent.mkdir(parents=True)
+    process.write_text(
+        json.dumps(
+            {
+                "kind": "pyamplicol-runtime-recurrence-execution",
+                "plan": {
+                    "inspection_summary": {
+                        "schedule": {
+                            "current_count": 100,
+                            "contribution_count": 200,
+                        },
+                        "construction": {
+                            "peak_current_count": 120,
+                            "peak_contribution_count": 240,
+                        },
+                    }
+                },
+            }
+        )
+    )
+
+    with pytest.raises(
+        CatalogParityError,
+        match="authenticated resident peak-contribution semantics",
+    ):
+        _candidate_counts(
+            {
+                "artifact": {"path": str(artifact)},
+                "provenance": {"report_measured_source_revision": "abc"},
+            },
+            workload=Workload.CONTRACTED,
+        )
 
 
 def test_compiled_all_flow_uses_primary_fixed_helicity_dag(

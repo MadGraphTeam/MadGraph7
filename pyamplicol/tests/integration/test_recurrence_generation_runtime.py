@@ -791,6 +791,9 @@ def _contracted_structure_signature(artifact: Path) -> dict[str, object]:
         "finalizations": schedule["finalization_count"],
         "destinations": schedule["amplitude_destination_count"],
         "resolved_helicities": schedule["resolved_helicity_count"],
+        "peak_contribution_count_semantics": construction[
+            "peak_contribution_count_semantics"
+        ],
         "dynamic_color_states": construction["peak_dynamic_color_state_count"],
         "color_storage": color["storage"],
         "color_sectors": color["sector_count"],
@@ -1533,9 +1536,13 @@ def test_builtin_and_ufo_contracted_recurrence_have_matching_structure(
         )
         artifacts.append(artifact)
 
-    assert _contracted_structure_signature(
-        artifacts[0]
-    ) == _contracted_structure_signature(artifacts[1])
+    builtin_signature = _contracted_structure_signature(artifacts[0])
+    ufo_signature = _contracted_structure_signature(artifacts[1])
+    assert (
+        builtin_signature["peak_contribution_count_semantics"]
+        == "resident-pending-contributions-v1"
+    )
+    assert builtin_signature == ufo_signature
 
 
 def test_builtin_and_ufo_full_neutral_current_defaults_agree(

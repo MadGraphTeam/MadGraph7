@@ -161,6 +161,12 @@ pub(super) enum RecurrenceCacheFootprintPolicy {
     PersistedArenaV1,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum RecurrencePeakContributionCountSemantics {
+    ResidentPendingContributionsV1,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceInspectionSummary {
@@ -246,6 +252,11 @@ pub(super) struct RecurrenceSelectorWorkCertificate {
 pub(super) struct RecurrenceConstructionSummary {
     pub(super) peak_current_count: u64,
     pub(super) peak_contribution_count: u64,
+    // Typed deserialization authenticates the marker; publication audits
+    // decide whether an absent legacy marker is admissible evidence.
+    #[allow(dead_code)]
+    #[serde(default)]
+    pub(super) peak_contribution_count_semantics: Option<RecurrencePeakContributionCountSemantics>,
     pub(super) peak_dynamic_color_state_count: u64,
     pub(super) color_target_prune_count: u64,
     pub(super) candidate_parent_pair_count: u64,
@@ -1127,11 +1138,29 @@ impl RecurrenceSelectorWorkCertificate {
             "recurrence selector-work representatives",
             self.representatives.len(),
         )?;
-        let expected_representatives = layout == RecurrenceLcFlowLayout::TopologyReplay;
-        if self.representatives.is_empty() == expected_representatives {
-            return Err(RusticolError::integrity(
-                "recurrence selector-work representatives disagree with the flow layout",
-            ));
+        let has_representatives = !self.representatives.is_empty();
+        let has_replay_targets = schedule.replay_target_count != 0;
+        match layout {
+            RecurrenceLcFlowLayout::TopologyReplay if !has_representatives => {
+                return Err(RusticolError::integrity(
+                    "recurrence selector-work representatives disagree with the flow layout",
+                ));
+            }
+            RecurrenceLcFlowLayout::AllFlowUnion if has_representatives => {
+                return Err(RusticolError::integrity(
+                    "recurrence selector-work representatives disagree with the flow layout",
+                ));
+            }
+            RecurrenceLcFlowLayout::ContractedColorUnion
+                if has_representatives != has_replay_targets =>
+            {
+                return Err(RusticolError::integrity(
+                    "recurrence selector-work representatives disagree with the flow layout",
+                ));
+            }
+            RecurrenceLcFlowLayout::TopologyReplay
+            | RecurrenceLcFlowLayout::AllFlowUnion
+            | RecurrenceLcFlowLayout::ContractedColorUnion => {}
         }
         let mut sector_ids = BTreeSet::new();
         let mut public_flow_count = 0_u64;
@@ -1154,9 +1183,7 @@ impl RecurrenceSelectorWorkCertificate {
                     )
                 })?;
         }
-        if layout == RecurrenceLcFlowLayout::TopologyReplay
-            && public_flow_count != schedule.replay_target_count
-        {
+        if has_replay_targets && public_flow_count != schedule.replay_target_count {
             return Err(RusticolError::integrity(
                 "recurrence selector-work public-flow count disagrees with replay targets",
             ));
@@ -2928,18 +2955,41 @@ pub(super) mod tests {
         )
     }
 
-    fn full_hzz_fixture_value() -> Value {
+    fn legacy_full_hzz_fixture_value() -> Value {
         serde_json::from_slice(include_bytes!(
             "../../tests/fixtures/recurrence_execution_hzz_full_v2.json"
         ))
         .unwrap()
     }
 
+    fn full_hzz_fixture_value() -> Value {
+        let mut value = legacy_full_hzz_fixture_value();
+        add_hzz_contracted_selector_representative(&mut value);
+        value
+    }
+
+    fn add_hzz_contracted_selector_representative(value: &mut Value) {
+        value["plan"]["inspection_summary"]["selector_work_certificate"]["representatives"] = json!([{
+            "representative_sector_id": 0,
+            "public_flow_count": 1,
+            "current_count": 193,
+            "semantic_component_count": 431,
+            "source_row_count": 13,
+            "contribution_count": 450,
+            "finalization_count": 126,
+            "closure_count": 54,
+            "amplitude_destination_count": 54,
+            "row_count": 643
+        }]);
+    }
+
     fn nlc_hzz_fixture_value() -> Value {
-        serde_json::from_slice(include_bytes!(
+        let mut value = serde_json::from_slice(include_bytes!(
             "../../tests/fixtures/recurrence_execution_hzz_nlc.json"
         ))
-        .unwrap()
+        .unwrap();
+        add_hzz_contracted_selector_representative(&mut value);
+        value
     }
 
     fn lc_hzz_fixture_value() -> Value {
@@ -2969,6 +3019,33 @@ pub(super) mod tests {
     }
 
     #[test]
+    fn accepts_resident_peak_contribution_semantics() {
+        let mut value = manifest();
+        value["plan"]["inspection_summary"]["construction"]["peak_contribution_count_semantics"] =
+            json!("resident-pending-contributions-v1");
+
+        let parsed = parse(&value).unwrap();
+
+        assert_eq!(
+            parsed
+                .plan
+                .inspection_summary
+                .construction
+                .peak_contribution_count_semantics,
+            Some(RecurrencePeakContributionCountSemantics::ResidentPendingContributionsV1)
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_peak_contribution_semantics() {
+        let mut value = manifest();
+        value["plan"]["inspection_summary"]["construction"]["peak_contribution_count_semantics"] =
+            json!("unknown");
+
+        assert!(parse(&value).is_err());
+    }
+
+    #[test]
     fn accepts_python_emitted_selector_work_schema() {
         let mut value = manifest();
         add_python_selector_work_certificate(&mut value);
@@ -2982,6 +3059,50 @@ pub(super) mod tests {
                 .direct_arena
                 .cache_footprint_policy,
             Some(RecurrenceCacheFootprintPolicy::SelectorActiveMaxV1)
+        );
+    }
+
+    #[test]
+    fn accepts_contracted_selector_work_representatives() {
+        let value = full_hzz_fixture_value();
+
+        let parsed = parse_hzz_fixture(&serde_json::to_vec(&value).unwrap(), "full").unwrap();
+
+        assert_eq!(
+            parsed
+                .plan
+                .inspection_summary
+                .selector_work_certificate
+                .as_ref()
+                .unwrap()
+                .representatives
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn rejects_contracted_replay_without_selector_work_representatives() {
+        let value = legacy_full_hzz_fixture_value();
+
+        assert!(
+            parse_hzz_fixture(&serde_json::to_vec(&value).unwrap(), "full")
+                .unwrap_err()
+                .to_string()
+                .contains("representatives disagree with the flow layout")
+        );
+    }
+
+    #[test]
+    fn rejects_contracted_selector_work_representatives_without_replay_targets() {
+        let mut value = full_hzz_fixture_value();
+        value["plan"]["inspection_summary"]["schedule"]["replay_target_count"] = json!(0);
+
+        assert!(
+            parse_hzz_fixture(&serde_json::to_vec(&value).unwrap(), "full")
+                .unwrap_err()
+                .to_string()
+                .contains("representatives disagree with the flow layout")
         );
     }
 
@@ -3137,6 +3258,7 @@ pub(super) mod tests {
         for layout in ["all-flow-union", "contracted-color-union"] {
             let mut value = inspection_summary();
             value["lc_flow_layout"] = json!(layout);
+            value["schedule"]["replay_target_count"] = json!(0);
             value["selector_work_certificate"] = json!({
                 "schema_version": 1,
                 "binding": "runtime_layout_digest",

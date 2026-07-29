@@ -71,6 +71,9 @@ def _candidate(
                         "construction": {
                             "peak_current_count": 372_422,
                             "peak_contribution_count": 4_868_016,
+                            "peak_contribution_count_semantics": (
+                                "resident-pending-contributions-v1"
+                            ),
                         },
                     }
                 },
@@ -134,6 +137,9 @@ def test_certifies_all_generation_modes(
                     "construction": {
                         "peak_current_count": 406 * 720 + 1,
                         "peak_contribution_count": 2440 * 720,
+                        "peak_contribution_count_semantics": (
+                            "resident-pending-contributions-v1"
+                        ),
                     },
                 }
             },
@@ -238,6 +244,9 @@ def test_adjacent_multiplicity_census_normalizes_candidate_growth(
                         "construction": {
                             "peak_current_count": 26_052,
                             "peak_contribution_count": 255_600,
+                            "peak_contribution_count_semantics": (
+                                "resident-pending-contributions-v1"
+                            ),
                         },
                     }
                 },
@@ -260,6 +269,9 @@ def test_adjacent_multiplicity_census_normalizes_candidate_growth(
                         "construction": {
                             "peak_current_count": 372_422,
                             "peak_contribution_count": 4_868_016,
+                            "peak_contribution_count_semantics": (
+                                "resident-pending-contributions-v1"
+                            ),
                         },
                     }
                 },
@@ -294,6 +306,9 @@ def test_n5_static_template_census_exposes_cold_generation_excess(
                         "construction": {
                             "peak_current_count": 372_422,
                             "peak_contribution_count": 4_868_016,
+                            "peak_contribution_count_semantics": (
+                                "resident-pending-contributions-v1"
+                            ),
                         },
                     }
                 },
@@ -323,6 +338,76 @@ def test_n5_static_template_census_exposes_cold_generation_excess(
         require_static_template_materialization_parity(certificate)
 
 
+def test_n5_resident_construction_peak_fits_static_template_budget(
+    tmp_path: Path,
+) -> None:
+    certificate = certify(
+        _legacy(tmp_path / "legacy"),
+        _candidate(
+            tmp_path / "candidate",
+            {
+                "kind": "pyamplicol-runtime-recurrence-execution",
+                "plan": {
+                    "inspection_summary": {
+                        "schedule": {
+                            "current_count": 1_795,
+                            "contribution_count": 9_990,
+                        },
+                        "construction": {
+                            "peak_current_count": 2_430,
+                            "peak_contribution_count": 11_597,
+                            "peak_contribution_count_semantics": (
+                                "resident-pending-contributions-v1"
+                            ),
+                        },
+                    }
+                },
+            },
+        ),
+    )
+    construction = certificate.recurrence_construction
+    assert construction is not None
+    assert construction.peak_contribution_count == 11_597
+    census = require_static_template_materialization_parity(certificate)
+    assert census.status == "ok"
+    assert census.candidate_peak_current_count == 2_430
+    assert census.candidate_peak_interaction_count == 11_597
+
+
+def test_n5_resident_construction_peak_rejects_one_row_above_budget(
+    tmp_path: Path,
+) -> None:
+    certificate = certify(
+        _legacy(tmp_path / "legacy"),
+        _candidate(
+            tmp_path / "candidate",
+            {
+                "kind": "pyamplicol-runtime-recurrence-execution",
+                "plan": {
+                    "inspection_summary": {
+                        "schedule": {
+                            "current_count": 1_795,
+                            "contribution_count": 9_990,
+                        },
+                        "construction": {
+                            "peak_current_count": 2_366,
+                            "peak_contribution_count": 15_373,
+                            "peak_contribution_count_semantics": (
+                                "resident-pending-contributions-v1"
+                            ),
+                        },
+                    }
+                },
+            },
+        ),
+    )
+    census = static_template_materialization_census(certificate)
+    assert census.status == "exceeds-budget"
+    assert census.violations == (
+        "peak interactions exceed legacy static-template budget",
+    )
+
+
 @pytest.mark.parametrize(
     "payload,mode",
     [
@@ -338,6 +423,9 @@ def test_n5_static_template_census_exposes_cold_generation_excess(
                         "construction": {
                             "peak_current_count": 2_436,
                             "peak_contribution_count": 14_640,
+                            "peak_contribution_count_semantics": (
+                                "resident-pending-contributions-v1"
+                            ),
                         },
                     }
                 },
@@ -421,6 +509,35 @@ def test_static_template_census_requires_integral_color_replay(
         static_template_materialization_census(certificate)
 
 
+def test_rejects_ambiguous_legacy_recurrence_construction_peak(
+    tmp_path: Path,
+) -> None:
+    payload = {
+        "kind": "pyamplicol-runtime-recurrence-execution",
+        "plan": {
+            "inspection_summary": {
+                "schedule": {
+                    "current_count": 10,
+                    "contribution_count": 10,
+                },
+                "construction": {
+                    "peak_current_count": 10,
+                    "peak_contribution_count": 10,
+                },
+            }
+        },
+    }
+
+    with pytest.raises(
+        StructuralWorkError,
+        match="authenticated resident peak-contribution semantics",
+    ):
+        certify(
+            _legacy(tmp_path / "legacy"),
+            _candidate(tmp_path / "candidate", payload),
+        )
+
+
 def test_rejects_recurrence_construction_inflation(tmp_path: Path) -> None:
     payload = {
         "kind": "pyamplicol-runtime-recurrence-execution",
@@ -433,6 +550,9 @@ def test_rejects_recurrence_construction_inflation(tmp_path: Path) -> None:
                 "construction": {
                     "peak_current_count": 100,
                     "peak_contribution_count": 100,
+                    "peak_contribution_count_semantics": (
+                        "resident-pending-contributions-v1"
+                    ),
                 },
             }
         },

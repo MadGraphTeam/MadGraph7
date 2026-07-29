@@ -35,6 +35,7 @@ _AFTER_FILTER = re.compile(
 )
 _VAL_C = re.compile(r"dimension\s*\(\s*1\s*:\s*\d+\s*,\s*(\d+)\s*\)\s*::\s*val_c\b")
 _INT_C = re.compile(r"dimension\s*\(\s*1\s*:\s*\d+\s*,\s*(\d+)\s*\)\s*::\s*int_c\b")
+_PEAK_CONTRIBUTION_COUNT_SEMANTICS = "resident-pending-contributions-v1"
 
 
 @dataclass(frozen=True)
@@ -68,7 +69,7 @@ class FinalWorkComparison:
 @dataclass(frozen=True)
 class RecurrenceConstructionWork:
     peak_current_count: int
-    peak_contribution_attempt_count: int
+    peak_contribution_count: int
     peak_to_final_current_ratio: float
     peak_to_final_contribution_ratio: float
     peak_current_ratio_to_legacy_replay: float
@@ -220,6 +221,14 @@ def candidate_final_work(
             raise StructuralWorkError(
                 "recurrence execution lacks construction diagnostics"
             )
+        if (
+            construction_payload.get("peak_contribution_count_semantics")
+            != _PEAK_CONTRIBUTION_COUNT_SEMANTICS
+        ):
+            raise StructuralWorkError(
+                "recurrence construction lacks authenticated resident "
+                "peak-contribution semantics"
+            )
         peak_currents = _positive_integer(
             construction_payload,
             "peak_current_count",
@@ -232,7 +241,7 @@ def candidate_final_work(
         )
         construction = RecurrenceConstructionWork(
             peak_current_count=peak_currents,
-            peak_contribution_attempt_count=peak_contributions,
+            peak_contribution_count=peak_contributions,
             peak_to_final_current_ratio=peak_currents / currents,
             peak_to_final_contribution_ratio=peak_contributions / interactions,
             peak_current_ratio_to_legacy_replay=(
@@ -353,7 +362,7 @@ def certify(
             construction.peak_to_final_contribution_ratio
             > max_peak_to_final_contribution
         ):
-            failures.append("peak/final contribution-attempt ratio exceeds budget")
+            failures.append("peak/final construction contribution ratio exceeds budget")
     if failures:
         raise StructuralWorkError("; ".join(failures))
 
@@ -500,7 +509,7 @@ def static_template_materialization_census(
     construction = certificate.recurrence_construction
     peak_currents = None if construction is None else construction.peak_current_count
     peak_interactions = (
-        None if construction is None else construction.peak_contribution_attempt_count
+        None if construction is None else construction.peak_contribution_count
     )
     peak_current_ratio = (
         None if peak_currents is None else peak_currents / static_currents

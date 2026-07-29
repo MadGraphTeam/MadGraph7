@@ -348,7 +348,7 @@ fn lower_selector_domains(program: &RecurrenceProgram) -> RusticolResult<Lowered
         word_count: 1,
     }];
     let mut words = vec![u64::MAX];
-    if program.strategy() != RecurrenceStrategy::TopologyReplay {
+    if !program.strategy().uses_topology_replay_targets() || program.replay_targets().is_empty() {
         return Ok(LoweredSelectorDomains {
             descriptors,
             words,
