@@ -29,7 +29,6 @@ from .campaign_policy import (
     PolicyMeasurementState,
     validate_policy_measurement,
 )
-from .campaign_reset import load_seed_if_present
 from .catalog import REPORT_CATALOG
 from .measurement_lineage import (
     CLASS_C_HZZ_IMPACT,
@@ -1084,6 +1083,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             expected_revision = source_identity.revision
             if args.fast_lineage and args.report_profile is None:
                 parser.error("--fast-lineage requires --report-profile")
+            original_amplicol_seed = (
+                None
+                if args.report_profile is None
+                else service._original_amplicol_seed()
+            )
             if args.report_profile is None:
                 measurement_lineage = None
             elif args.fast_lineage:
@@ -1093,11 +1097,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     expected_active_revision=expected_revision,
                     expected_active_tree=source_identity.tree,
                 )
-                seed = load_seed_if_present(
-                    profile=args.report_profile,
-                    store=service.store,
-                )
-                if measurement_lineage is None and seed is None:
+                if (
+                    measurement_lineage is None
+                    and original_amplicol_seed is None
+                ):
                     raise MeasurementLineageError(
                         "--fast-lineage requires a finalized measurement lineage "
                         "or authenticated original-AmpliCol campaign seed"
@@ -1150,6 +1153,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             expected_revision=expected_revision,
             expected_tree=source_identity.tree,
             measurement_lineage=measurement_lineage,
+            original_amplicol_seed=original_amplicol_seed,
             excluded_cell_ids=frozenset(args.exclude_cell_id),
         )
         if args.dry_run:

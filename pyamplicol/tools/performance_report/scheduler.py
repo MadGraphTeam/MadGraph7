@@ -33,7 +33,7 @@ from .campaign_policy import (
     validate_policy_measurement,
     validate_policy_profile,
 )
-from .campaign_reset import load_seed_if_present
+from .campaign_reset import OriginalAmplicolSeed, load_seed_if_present
 from .catalog import REPORT_CATALOG, ReportCatalog
 from .measurement import failure_measurement
 from .measurement_lineage import MeasurementLineage
@@ -239,6 +239,7 @@ def _policy_current(
     expected_revision: str | None,
     expected_tree: str | None = None,
     measurement_lineage: MeasurementLineage | None = None,
+    original_amplicol_seed: OriginalAmplicolSeed | None = None,
 ) -> tuple[CurrentRecord, PolicyMeasurementState] | None:
     if settings.campaign_policy is STRICT_POLICY:
         current = _successful_current(
@@ -276,17 +277,12 @@ def _policy_current(
             else None
         )
     )
-    if expected_source is None and settings.report_profile is not None:
-        seed = load_seed_if_present(
-            profile=settings.report_profile,
-            store=store,
+    if expected_source is None and original_amplicol_seed is not None:
+        expected_source = original_amplicol_seed.source_for_current(
+            current,
+            active_revision=expected_revision,
+            active_tree=expected_tree or "",
         )
-        if seed is not None:
-            expected_source = seed.source_for_current(
-                current,
-                active_revision=expected_revision,
-                active_tree=expected_tree or "",
-            )
     if expected_source is None:
         return None
     try:
@@ -330,6 +326,7 @@ def _resource_frontier_source(
     expected_revision: str | None,
     expected_tree: str | None,
     measurement_lineage: MeasurementLineage | None = None,
+    original_amplicol_seed: OriginalAmplicolSeed | None = None,
     lane_cells: Sequence[CellSpec] | None = None,
 ) -> tuple[CellSpec, CurrentRecord, PolicyMeasurementState] | None:
     """Return the first authenticated lower-multiplicity hard resource censor."""
@@ -356,6 +353,7 @@ def _resource_frontier_source(
             expected_revision=expected_revision,
             expected_tree=expected_tree,
             measurement_lineage=measurement_lineage,
+            original_amplicol_seed=original_amplicol_seed,
         )
         if current is None:
             continue
@@ -422,6 +420,7 @@ def plan_campaign(
     expected_revision: str | None = None,
     expected_tree: str | None = None,
     measurement_lineage: MeasurementLineage | None = None,
+    original_amplicol_seed: OriginalAmplicolSeed | None = None,
     excluded_cell_ids: frozenset[str] = frozenset(),
 ) -> tuple[PlannedCell, ...]:
     requested_ids = {cell.cell_id for cell in requested}
@@ -429,6 +428,11 @@ def plan_campaign(
     force_recompare_ids: set[str] = set()
     visiting: set[str] = set()
     resource_lanes: dict[tuple[object, ...], list[CellSpec]] = {}
+    if original_amplicol_seed is None and settings.report_profile is not None:
+        original_amplicol_seed = load_seed_if_present(
+            profile=settings.report_profile,
+            store=store,
+        )
     if settings.campaign_policy.allow_terminal_censors:
         for catalog_cell in catalog.measurement_cells():
             resource_lanes.setdefault(
@@ -478,6 +482,7 @@ def plan_campaign(
                     expected_revision=expected_revision,
                     expected_tree=expected_tree,
                     measurement_lineage=measurement_lineage,
+                    original_amplicol_seed=original_amplicol_seed,
                 )
                 is None
             )
@@ -498,6 +503,7 @@ def plan_campaign(
                 expected_revision=expected_revision,
                 expected_tree=expected_tree,
                 measurement_lineage=measurement_lineage,
+                original_amplicol_seed=original_amplicol_seed,
             )
             for dependency in cell_dependencies
         }
@@ -525,6 +531,7 @@ def plan_campaign(
             expected_revision=expected_revision,
             expected_tree=expected_tree,
             measurement_lineage=measurement_lineage,
+            original_amplicol_seed=original_amplicol_seed,
         )
         frontier_source = _resource_frontier_source(
             store,
@@ -534,6 +541,7 @@ def plan_campaign(
             expected_revision=expected_revision,
             expected_tree=expected_tree,
             measurement_lineage=measurement_lineage,
+            original_amplicol_seed=original_amplicol_seed,
             lane_cells=resource_lanes.get(_resource_lane_key(cell), ()),
         )
         expected_frontier = (
@@ -747,6 +755,12 @@ class CampaignScheduler:
             self.source_tree if settings.report_profile is not None else None
         )
         self.service.bind_measurement_lineage(self.measurement_lineage)
+        self.original_amplicol_seed = (
+            None
+            if settings.report_profile is None
+            else self.service._original_amplicol_seed()
+        )
+        self.service.bind_original_amplicol_seed(self.original_amplicol_seed)
         self._prepared_model_paths: dict[ModelKey, Path] = {}
         self._resource_lanes: dict[tuple[object, ...], tuple[CellSpec, ...]] = {}
         if settings.campaign_policy.allow_terminal_censors:
@@ -769,6 +783,7 @@ class CampaignScheduler:
             expected_revision=self.source_revision,
             expected_tree=self.measurement_source_tree,
             measurement_lineage=self.measurement_lineage,
+            original_amplicol_seed=self.original_amplicol_seed,
         )
 
     def _prepare_legacy_workspace(self, attempt_id: str) -> Path:
@@ -942,6 +957,7 @@ class CampaignScheduler:
                 expected_revision=self.source_revision,
                 expected_tree=self.measurement_source_tree,
                 measurement_lineage=self.measurement_lineage,
+                original_amplicol_seed=self.original_amplicol_seed,
                 lane_cells=self._resource_lanes.get(
                     _resource_lane_key(cell),
                     (),
