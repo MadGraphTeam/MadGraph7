@@ -2316,6 +2316,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             for i, pdg in enumerate(all_pdg):
                 pdg = tuple([x for x in pdg if x != 0])
                 self.pdg2prefix[pdg] = (str(all_prefix[i].decode()).strip(), i)
+            self._build_cross_resolve()
 
             if self.model_init:
                 self.model_init = False
@@ -2608,20 +2609,32 @@ class MadSpinInterface(extended_cmd.Cmd):
 
     def get_density(self, event, position, allow_hel, ncomb, dimension):
         orig_order = getattr(event, '_ms_orig_order_for_density', None)
+        cross_info = getattr(event, '_ms_cross_info', None)
         if orig_order is None:
-            _, orig_order, _, _ = self.get_pdir(event)
+            _, orig_order, prefix, pos = self.get_pdir(event)
             event._ms_orig_order_for_density = orig_order
+            # Crossed subprocess: remember (prefix, FLAV_IDX) so the density is
+            # evaluated through the crossing-aware GET_DENSITY_IDX rather than
+            # the base py_get_density (which dispatches on the base PDGs only).
+            if isinstance(pos, tuple) and pos and pos[0] == 'CROSS':
+                cross_info = (prefix, pos[1])
+            else:
+                cross_info = False
+            event._ms_cross_info = cross_info
 
         # Fast path: single-point momentum extraction without permutation
         # construction. With apply_flavor_grouping, orig_order contains the
         # merged-particle PDGs (e.g. 81) while the event carries the raw
         # PDGs (e.g. 1, 2, 3): get_momenta must be told about the merge so
-        # that final.index(pdg) succeeds.
+        # that final.index(pdg) succeeds.  A crossed orig_order is already in
+        # signed *physical* PDGs (from PY_GET_PDG_FOR_FLAVOR), so it matches the
+        # event PDGs directly and must NOT be merge-reverted.
+        merged_map = None if cross_info else (self._revert_merged or None)
         try:
-            p = event.get_momenta(orig_order, merged_map=self._revert_merged or None)
+            p = event.get_momenta(orig_order, merged_map=merged_map)
         except Exception:
             # Safety fallback for unusual event structures.
-            all_p = event.get_all_momenta(orig_order, merged_map=self._revert_merged or None)
+            all_p = event.get_all_momenta(orig_order, merged_map=merged_map)
             assert len(all_p) == 1, "Error: get_density can only be called for a single phase-space point"
             p = all_p[0]
         P = rwgt_interface.ReweightInterface.invert_momenta(p)
@@ -2643,14 +2656,32 @@ class MadSpinInterface(extended_cmd.Cmd):
             raise ValueError("Error in get_density: 'position' must contain at least one position index")
         if len(allow_hel) % n_changing != 0:
             raise ValueError("Error in get_density: inconsistent 'allow_hel' and 'position' lengths")
-        # PY_GET_DENSITY(PDGS, PROCID, P, POS, ALLOW_HEL, ALPHAS, SCALE2)
-        density_array = self.f2py_module.py_get_density(pdgs=pdgs, 
-                                                        procid=-1, 
-                                                        p=P, 
-                                                        pos=position, 
-                                                        allow_hel=allow_hel, 
-                                                        alphas=event.aqcd,
-                                                        scale2=event.scale**2)
+        if cross_info:
+            # Crossed subprocess: PY_<prefix>GET_DENSITY_IDX(P, POS, N_CHANGING,
+            # ALLOW_HEL, N_COMB, FLAV_IDX, ALPHAS, SCALE2) -> INTER.  Momenta P
+            # are already in the crossed leg order (orig_order == the order
+            # PY_GET_PDG_FOR_FLAVOR reports for this FLAV_IDX); the routine
+            # applies the crossing permutation/conjugation internally.
+            prefix, flav_idx = cross_info
+            density_array = getattr(
+                self.f2py_module, 'py_%sget_density_idx' % prefix.lower())(
+                    p=P,
+                    pos=position,
+                    n_changing=n_changing,
+                    allow_hel=allow_hel,
+                    n_comb=ncomb,
+                    flav_idx=flav_idx,
+                    alphas=event.aqcd,
+                    scale2=event.scale**2)
+        else:
+            # PY_GET_DENSITY(PDGS, PROCID, P, POS, ALLOW_HEL, ALPHAS, SCALE2)
+            density_array = self.f2py_module.py_get_density(pdgs=pdgs,
+                                                            procid=-1,
+                                                            p=P,
+                                                            pos=position,
+                                                            allow_hel=allow_hel,
+                                                            alphas=event.aqcd,
+                                                            scale2=event.scale**2)
         #print(f"density_array = {density_array}") 
         density_matrix = madspin.DensityMatrix(density_array, 
                                                n_changing, 
@@ -2732,7 +2763,15 @@ class MadSpinInterface(extended_cmd.Cmd):
         # END REMOVE
 
         # get_pdir returns (pdir, orig_order, prefix, pos)
-        _, _, _, pos = self.get_pdir(event)
+        _, _, prefix, pos = self.get_pdir(event)
+        if isinstance(pos, tuple) and pos and pos[0] == 'CROSS':
+            # Crossed subprocess: the static IDEN (get_idens) is the averaging
+            # denominator of the uncrossed representative only.  GET_NHEL_IDX
+            # reports the denominator SMATRIX actually applies for this
+            # (crossed) FLAV_IDX -- e.g. colour 1/9 for q q~ vs 1/24 for q g.
+            iden_star, _nhel = getattr(
+                self.f2py_module, 'py_%sget_nhel_idx' % prefix.lower())(pos[1])
+            return int(iden_star)
         idens = self.f2py_module.get_idens()
         #print(f"idens = {idens} , pos = {pos}")
         return idens[pos]
@@ -2745,6 +2784,61 @@ class MadSpinInterface(extended_cmd.Cmd):
         return 
 
 
+
+    def _build_cross_resolve(self):
+        """Physical-PDG resolver for CROSSED subprocesses folded in with crossing
+        symmetry (merge_crossing='record').
+
+        The base combined wrapper (pdg2prefix / py_get_density / get_idens) only
+        enumerates the generated representative processes, so a crossed event
+        (e.g. q q~ > t t~ g, kept only as its partner q g > t t~ q) is not found
+        there.  The per-process crossing-aware f2py entry points
+        PY_<prefix>GET_FLAVOR_LAYOUT / GET_PDG_FOR_FLAVOR / GET_NHEL_IDX let us
+        enumerate every (crossing, flavor) the representative can evaluate; we key
+        them by the sorted signed-physical-PDG multiset so get_pdir can resolve a
+        crossed event to (representative prefix, extended FLAV_IDX) and reach the
+        *_IDX routines (which apply the correct crossed averaging denominator)."""
+        mod = self.f2py_module
+        self.cross_resolve = {}
+        prefixes = set()
+        for b in mod.get_prefix():
+            p = b.decode().strip() if isinstance(b, bytes) else str(b).strip()
+            if p:
+                prefixes.add(p)
+        for pfx in prefixes:
+            lp = pfx.lower()
+            layout = getattr(mod, 'py_%sget_flavor_layout' % lp, None)
+            get_pdg = getattr(mod, 'py_%sget_pdg_for_flavor' % lp, None)
+            if layout is None or get_pdg is None:
+                continue  # non-crossing template: no extended-FLAV_IDX entries
+            nflav, nexternal, ncross = (int(x) for x in layout())
+            for cross in range(ncross):
+                for flav in range(1, nflav + 1):
+                    flav_idx = cross * nflav + flav
+                    pdgs = tuple(int(x) for x in get_pdg(flav_idx))
+                    if not any(pdgs):
+                        continue  # index names no valid flavor/crossing
+                    key = tuple(sorted(pdgs))
+                    self.cross_resolve.setdefault(key, []).append(
+                        (pfx, flav_idx, pdgs))
+
+    def _resolve_crossed(self, event, pdir):
+        """Resolve a crossed production event to
+        (pdir, crossed_order, prefix, ('CROSS', flav_idx)) via cross_resolve, or
+        None when the event is not a recorded crossing.  ``crossed_order`` is the
+        signed-physical leg order the momenta must be supplied in (the order
+        PY_<prefix>GET_PDG_FOR_FLAVOR reports for this flav_idx)."""
+        if not getattr(self, 'cross_resolve', None):
+            return None
+        phys_tag, _ = event.get_tag_and_order(None)
+        ninit = len(phys_tag[0])
+        key = tuple(sorted(list(phys_tag[0]) + list(phys_tag[1])))
+        for (pfx, flav_idx, pdgs) in self.cross_resolve.get(key, []):
+            cand = (tuple(sorted(pdgs[:ninit])), tuple(sorted(pdgs[ninit:])))
+            if cand == phys_tag:
+                crossed_order = (tuple(pdgs[:ninit]), tuple(pdgs[ninit:]))
+                return pdir, crossed_order, pfx, ('CROSS', flav_idx)
+        return None
 
     def get_pdir(self,event):
         # Use the merged-PDG tag (same as calculate_matrix_element). MadSpin's
@@ -2765,7 +2859,17 @@ class MadSpinInterface(extended_cmd.Cmd):
             tag = (init, final)
             orig_order = self.all_me[tag]['order']
         pdir = self.all_me[tag]['pdir']
-        prefix, pos = self.pdg2prefix[tuple(list(orig_order[0]) + list(orig_order[1]))]
+        try:
+            prefix, pos = self.pdg2prefix[tuple(list(orig_order[0]) + list(orig_order[1]))]
+        except KeyError:
+            # The signature is a crossed subprocess that the base pdg2prefix does
+            # not enumerate (crossing symmetry folded it into a representative).
+            # Resolve it to the representative prefix + extended FLAV_IDX so the
+            # crossing-aware *_IDX f2py routines can evaluate it.
+            resolved = self._resolve_crossed(event, pdir)
+            if resolved is None:
+                raise
+            return resolved
         #misc.sprint(f"get_pdir: pdir = {pdir} , orig_order = {orig_order} , prefix = {prefix}")
         return pdir,orig_order, prefix, pos
 
@@ -2843,6 +2947,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 for i, pdg in enumerate(all_pdg):
                     pdg = tuple([x for x in pdg if x != 0])
                     self.pdg2prefix[tuple(pdg)] = (str(all_prefix[i].decode()).strip(), i)
+                self._build_cross_resolve()
 
                 if self.model_init:
                     self.model_init = False

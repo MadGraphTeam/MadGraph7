@@ -5183,9 +5183,30 @@ C       so this also stays correct for split-order processes.
         fsock.close()
         formatting['nhel'] = all_nhel_f2py
         text = template2 % formatting
-        fsock = writers.FortranWriter(pjoin(self.dir_path, 'SubProcesses', 'f2py_wrapper.f'),'w')
+        f2py_wrapper_path = pjoin(self.dir_path, 'SubProcesses', 'f2py_wrapper.f')
+        fsock = writers.FortranWriter(f2py_wrapper_path,'w')
         fsock.writelines(text)
-        fsock.close()    
+        fsock.close()
+
+        # Expose the per-process crossing-aware f2py entry points
+        # (PY_<prefix>GET_PDG_FOR_FLAVOR / GET_FLAVOR_LAYOUT / GET_NHEL_IDX /
+        # GET_DENSITY_IDX, etc.) in the COMBINED all_matrix module.  They live in
+        # each subprocess' self-contained f2py_matrix_wrapper.f and call the
+        # M<n>_* routines already linked into liball...me; the combined wrapper is
+        # otherwise base-only, so a crossing-aware python caller (MadSpin's
+        # density path) could not reach a folded crossed subprocess through it.
+        # Concatenate rather than add the files to the f2py command line: f2py's
+        # multi-file build leaves the extra wrappers' symbols undefined at
+        # dlopen on some platforms, whereas a single scanned source links them.
+        wrappers = sorted(glob.glob(pjoin(self.dir_path, 'SubProcesses',
+                                          '*', 'f2py_matrix_wrapper.f')))
+        if wrappers:
+            with open(f2py_wrapper_path, 'a') as fsock:
+                for wpath in wrappers:
+                    fsock.write('\nC     crossing-aware f2py wrappers from %s\n'
+                                % os.path.relpath(wpath,
+                                    pjoin(self.dir_path, 'SubProcesses')))
+                    fsock.write(open(wpath).read())
 
     def get_model_parameter(self, model):
         """ returns all the model parameter

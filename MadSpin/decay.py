@@ -5135,16 +5135,52 @@ class decay_all_events_onshell(decay_all_events):
         # store information about matrix element
         for matrix_element in mgcmd._curr_matrix_elements.get_matrix_elements():
             me_string = matrix_element.get('processes')[0].shell_string()
-            for me in matrix_element.get('processes'):
-                dirpath = pjoin(path_me, ms_me_subdir, 'SubProcesses', "P%s" % me_string)
-                # get the orignal order:
-                initial = []
-                final = [l.get('id') for l in me.get_legs_with_decays()\
-                          if l.get('state') or initial.append(l.get('id'))]
+
+            def register(leg_ids, _pdir="P%s" % me_string):
+                # ``leg_ids`` is the ordered list of external PDG ids (initial
+                # then final, in leg order).  Build the (sorted) lookup tag and
+                # keep the natural leg order for momentum extraction.  A base
+                # process always wins over a crossed one, so never overwrite.
+                initial = [i for i, l in zip(leg_ids, order_state) if not l]
+                final = [i for i, l in zip(leg_ids, order_state) if l]
                 order = (tuple(initial), tuple(final))
-                initial.sort(), final.sort()
-                tag = (tuple(initial), tuple(final))
-                self.all_me[tag] = {'pdir': "P%s" % me_string, 'order': order}
+                tag = (tuple(sorted(initial)), tuple(sorted(final)))
+                self.all_me.setdefault(tag, {'pdir': _pdir, 'order': order})
+
+            for me in matrix_element.get('processes'):
+                legs = me.get_legs_with_decays()
+                order_state = [l.get('state') for l in legs]
+                register([l.get('id') for l in legs])
+
+            # Crossed subprocesses folded into this matrix element with crossing
+            # symmetry on (merge_crossing='record') were NOT generated as their
+            # own directory: only the representative partner is on disk.  Its
+            # crossing-aware SMATRIX (smatrixhel dispatches on the signed PDGs,
+            # see interface_madspin.calculate_matrix_element) can still compute
+            # them, so register each crossed process against the SAME pdir.
+            # Without this the onshell/density lookup misses e.g. the recorded
+            # q q~ > t t~ g (partner of the kept q g > t t~ q) and raises
+            # KeyError.  The decays never cross (they ride on their production
+            # leg), so re-attach the base decay chains before expanding, exactly
+            # as the exporter does for the check_sa crossing demo.
+            try:
+                crossed_processes = matrix_element.get('crossed_processes')
+            except Exception:
+                crossed_processes = []
+            base_decays = matrix_element.get('processes')[0].get('decay_chains')
+            for cross_entry in crossed_processes:
+                proc = cross_entry[0]
+                if base_decays:
+                    proc = copy.copy(proc)
+                    proc.set('decay_chains', base_decays)
+                    # empty LegList (same class as proc's legs) forces
+                    # get_legs_with_decays to recompute with the re-attached decays
+                    proc.set('legs_with_decays', proc.get('legs').__class__())
+                    legs = proc.get_legs_with_decays()
+                else:
+                    legs = proc.get('legs')
+                order_state = [l.get('state') for l in legs]
+                register([l.get('id') for l in legs])
 
         return self.all_me
 
