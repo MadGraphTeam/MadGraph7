@@ -89,6 +89,7 @@ class ProcessFamily:
     initial_state: tuple[str, ...]
     base_final_state: tuple[str, ...]
     maximum_lc_n: int
+    maximum_contracted_n: int = 5
     include_3qqbar: bool = False
     include_cc: bool = False
     include_resonance: bool = False
@@ -98,7 +99,11 @@ class ProcessFamily:
         return len(self.base_final_state)
 
     def maximum_n(self, accuracy: Accuracy) -> int:
-        return self.maximum_lc_n if accuracy is Accuracy.LC else 5
+        return (
+            self.maximum_lc_n
+            if accuracy is Accuracy.LC
+            else self.maximum_contracted_n
+        )
 
     def process(self, n_final: int) -> str | None:
         extra_gluons = n_final - self.minimum_n

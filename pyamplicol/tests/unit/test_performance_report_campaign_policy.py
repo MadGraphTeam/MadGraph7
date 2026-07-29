@@ -130,8 +130,8 @@ def test_x86_policy_has_the_exact_canonical_n4_split() -> None:
         for cell in exempt
     )
     full = REPORT_CATALOG.measurement_cells()
-    assert len(full) == 1646
-    assert sum(generation_limit_exempt(cell) for cell in full) == 665
+    assert len(full) == 1666
+    assert sum(generation_limit_exempt(cell) for cell in full) == 669
 
 
 def test_x86_settings_are_exact_and_use_decimal_100_gb() -> None:
@@ -431,9 +431,9 @@ def test_full_catalog_resource_lanes_are_unique_and_monotone(
         (tuple(resource_lane_identity(cell).items()), cell.n_final)
         for cell in cells
     )
-    assert len(cells) == 1646
+    assert len(cells) == 1666
     assert len(set(identities)) == len(identities)
-    assert len({lane for lane, _n_final in identities}) == 296
+    assert len({lane for lane, _n_final in identities}) == 306
 
     selected = tuple(
         REPORT_CATALOG.cell(cell_id)

@@ -145,6 +145,7 @@ PROCESS_FAMILIES = (
         ("d", "d~"),
         ("u", "u~", "s", "s~"),
         8,
+        maximum_contracted_n=6,
         include_3qqbar=True,
     ),
     ProcessFamily(
@@ -154,9 +155,21 @@ PROCESS_FAMILIES = (
         ("d", "d~"),
         ("u", "u~", "s", "s~", "c", "c~"),
         8,
+        maximum_contracted_n=6,
         include_3qqbar=True,
     ),
 )
+
+
+def matrix_multiplicities(accuracy: Accuracy) -> tuple[int, ...]:
+    """Return publication multiplicities for one matrix accuracy.
+
+    LC retains the full report ladder.  Contracted NLC/full-colour tables
+    expose ``n=6`` so multi-quark families can declare candidate coverage
+    independently of the historical AmpliCol oracle.
+    """
+
+    return tuple(range(1, 10 if accuracy is Accuracy.LC else 7))
 
 
 def _measurement(
@@ -202,7 +215,7 @@ def _matrix_dataset(
         title=f"{model_label} {mode_label} versus {baseline_label} {accuracy_label}",
         candidate=_measurement(mode, model, accuracy),
         baseline=_measurement(baseline_mode, ModelKey.BUILTIN_SM, accuracy),
-        multiplicities=tuple(range(1, 10 if accuracy is Accuracy.LC else 6)),
+        multiplicities=matrix_multiplicities(accuracy),
     )
 
 
@@ -347,7 +360,7 @@ class ReportCatalog:
     def reference_cells(self) -> tuple[CellSpec, ...]:
         cells: list[CellSpec] = []
         for accuracy in Accuracy:
-            multiplicities = range(1, 10 if accuracy is Accuracy.LC else 6)
+            multiplicities = matrix_multiplicities(accuracy)
             for family in self.process_families:
                 for n_final in multiplicities:
                     process = family.process(n_final)
@@ -555,5 +568,6 @@ __all__ = [
     "UFO_SM",
     "Z_VARIANTS",
     "ReportCatalog",
+    "matrix_multiplicities",
     "z_dataset_id",
 ]

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Reviewed, fail-closed scope for matrix structural-parity coverage gaps.
 
-The 1,136-row restart gate covers every candidate cell that the canonical
+The 1,152-row restart gate covers every candidate cell that the canonical
 matrix catalog defines.  This registry makes the two intentionally absent
 classes explicit so that they cannot be mistaken for silently unproved rows.
 Any catalog change in these classes requires a review and registry update.
@@ -43,7 +43,7 @@ _CANDIDATE_MODES = {
     ExecutionMode.COMPILED,
     ExecutionMode.EAGER,
 }
-_FOUR_QUARK_PLANES = {
+_FOUR_QUARK_LC_PLANES = {
     (ExecutionMode.RECURRENCE, ModelKey.BUILTIN_SM, Workload.SELECTED_FLOW),
     (ExecutionMode.RECURRENCE, ModelKey.BUILTIN_SM, Workload.ALL_FLOW),
     (ExecutionMode.RECURRENCE, ModelKey.UFO_SM, Workload.SELECTED_FLOW),
@@ -52,6 +52,12 @@ _FOUR_QUARK_PLANES = {
     (ExecutionMode.COMPILED, ModelKey.BUILTIN_SM, Workload.ALL_FLOW),
     (ExecutionMode.EAGER, ModelKey.BUILTIN_SM, Workload.SELECTED_FLOW),
     (ExecutionMode.EAGER, ModelKey.BUILTIN_SM, Workload.ALL_FLOW),
+}
+_FOUR_QUARK_CONTRACTED_PLANES = {
+    (ExecutionMode.RECURRENCE, ModelKey.BUILTIN_SM, Workload.CONTRACTED),
+    (ExecutionMode.RECURRENCE, ModelKey.UFO_SM, Workload.CONTRACTED),
+    (ExecutionMode.COMPILED, ModelKey.BUILTIN_SM, Workload.CONTRACTED),
+    (ExecutionMode.EAGER, ModelKey.BUILTIN_SM, Workload.CONTRACTED),
 }
 
 REVIEWED_MATRIX_SCOPE: dict[str, Any] = {
@@ -80,23 +86,6 @@ REVIEWED_MATRIX_SCOPE: dict[str, Any] = {
             ),
             "catalog_cell_count": 0,
         },
-        {
-            "scope_id": "four-open-quark-lines-non-lc",
-            "status": "reviewed-unavailable",
-            "process_keys": ["dd_4q_lines"],
-            "modes": ["recurrence", "compiled", "eager"],
-            "accuracies": ["nlc", "full"],
-            "workloads": ["contracted"],
-            "legacy_comparison": {
-                "status": "unavailable",
-                "reason": "original-amplicol-open-quark-line-limit",
-            },
-            "candidate_catalog": {
-                "status": "unavailable",
-                "reason": "non-lc-matrix-multiplicity-range-ends-before-n6",
-            },
-            "catalog_cell_count": 0,
-        },
     ],
     "candidate_only_requirements": [
         {
@@ -114,7 +103,23 @@ REVIEWED_MATRIX_SCOPE: dict[str, Any] = {
                 "candidate exact structural and precision-50 self-proof remains "
                 "mandatory in catalog_restart_parity_gate"
             ),
-        }
+        },
+        {
+            "scope_id": "four-open-quark-lines-contracted-candidate-proof",
+            "process_key": "dd_4q_lines",
+            "accuracies": ["nlc", "full"],
+            "n_final": [6],
+            "mode_model_workload_plane_count": 4,
+            "catalog_cell_count": 8,
+            "legacy_comparison": {
+                "status": "unavailable",
+                "reason": "original-amplicol-open-quark-line-limit",
+            },
+            "proof_requirement": (
+                "candidate exact structural and precision-50 self-proof remains "
+                "mandatory in catalog_restart_parity_gate"
+            ),
+        },
     ],
 }
 
@@ -158,25 +163,44 @@ def validate_reviewed_matrix_scope() -> dict[str, Any]:
         for cell in four_quark
         if cell.measurement.accuracy in {Accuracy.NLC, Accuracy.FULL}
     ]
-    if non_lc:
-        raise CatalogStructuralScopeError(
-            "four-quark non-LC cells entered the matrix; reviewed scope must be updated"
+    actual_non_lc = {
+        (
+            cell.measurement.accuracy,
+            cell.n_final,
+            cell.measurement.execution_mode,
+            cell.measurement.model,
+            cell.workload,
         )
-    actual = {
+        for cell in non_lc
+    }
+    expected_non_lc = {
+        (accuracy, 6, mode, model, workload)
+        for accuracy in {Accuracy.NLC, Accuracy.FULL}
+        for mode, model, workload in _FOUR_QUARK_CONTRACTED_PLANES
+    }
+    if actual_non_lc != expected_non_lc or len(non_lc) != 8:
+        raise CatalogStructuralScopeError(
+            "four-quark contracted candidate-only structural proof coverage "
+            "is incomplete"
+        )
+    lc = [
+        cell for cell in four_quark if cell.measurement.accuracy is Accuracy.LC
+    ]
+    actual_lc = {
         (
             cell.n_final,
             cell.measurement.execution_mode,
             cell.measurement.model,
             cell.workload,
         )
-        for cell in four_quark
+        for cell in lc
     }
-    expected = {
+    expected_lc = {
         (n_final, mode, model, workload)
         for n_final in (6, 7, 8)
-        for mode, model, workload in _FOUR_QUARK_PLANES
+        for mode, model, workload in _FOUR_QUARK_LC_PLANES
     }
-    if actual != expected or len(four_quark) != 24:
+    if actual_lc != expected_lc or len(lc) != 24:
         raise CatalogStructuralScopeError(
             "four-quark LC candidate-only structural proof coverage is incomplete"
         )

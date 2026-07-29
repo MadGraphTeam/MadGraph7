@@ -1216,6 +1216,43 @@ def test_four_line_recurrence_renders_absolute_values_without_legacy_oracle(
     assert "n.c. (not comparable)" in tex
 
 
+def test_four_line_contracted_n6_renders_without_legacy_dependency(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    baseline = _cache_by_dataset(caches, "reference_amplicol_full")
+    candidate = _cache_by_dataset(
+        caches,
+        "matrix_recurrence_builtin_sm_full",
+    )
+    _set_status(
+        baseline,
+        process_key="dd_4q_lines",
+        n_final=6,
+        workload=Workload.CONTRACTED,
+        status=ResultStatus.UNSUPPORTED,
+    )
+    _set_ok(
+        candidate,
+        process_key="dd_4q_lines",
+        n_final=6,
+        workload=Workload.CONTRACTED,
+        generation=12.0,
+        wall=2.0e-6,
+        execution=1.0e-6,
+    )
+
+    tex = render_matrix_table(
+        REPORT_CATALOG.dataset("matrix_recurrence_builtin_sm_full"),
+        caches,
+    )
+
+    assert r"\textbf{n=6}" in tex
+    assert r"\matrixncabsolute{\texttt{12}}" in tex
+    assert r"\matrixstatus{ReportRed}{unsupported}" in tex
+    assert "n.c. means not comparable" in tex
+
+
 def test_z_all_flow_setup_generation_ratio_is_not_comparable(
     reset_caches,
 ) -> None:
@@ -1466,12 +1503,12 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
         (3, 206),
         (4, 286),
         (5, 285),
-        (6, 165),
+        (6, 185),
         (7, 165),
         (8, 165),
         (9, 124),
     )
-    assert summary.expected_total == 1646
+    assert summary.expected_total == 1666
     assert summary.passed_total == 4
     assert summary.oracle_count == 1
     assert summary.independent_count == 1
@@ -1483,8 +1520,8 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
     assert summary.high_precision_count == 1
     assert summary.high_precision_maximum_relative_difference == 5.0e-14
     assert summary.uniform_source_revision == revision
-    assert "1646 & 4" in tex
-    assert "1646 required measured cells" in tex
-    assert "316 matrix process/multiplicity positions" in tex
+    assert "1666 & 4" in tex
+    assert "1666 required measured cells" in tex
+    assert "412 matrix process/multiplicity positions" in tex
     assert "36 reference execution fields" in tex
     assert rf"\nolinkurl{{{revision}}}" in tex

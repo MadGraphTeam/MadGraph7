@@ -441,9 +441,9 @@ def produce(
                 "legacy": _legacy_record(reference, currents.get(reference.cell_id)),
             }
         )
-    if len(rows) != 1136:
+    if len(rows) != 1152:
         raise FinalSourceProducerError(
-            f"catalog producer expected 1136 rows, generated {len(rows)}"
+            f"catalog producer expected 1152 rows, generated {len(rows)}"
         )
     return {"schema": SCHEMA, "source_revision": source_revision, "cells": rows}
 

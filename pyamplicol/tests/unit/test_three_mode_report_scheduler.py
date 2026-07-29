@@ -261,7 +261,7 @@ def test_four_line_candidates_never_plan_unsupported_legacy_dependencies(
         settings=CampaignSettings(),
     )
 
-    assert len(requested) == 24
+    assert len(requested) == 32
     assert len(planned) == len(requested)
     assert all(
         item.cell.measurement.execution_mode is not ExecutionMode.AMPLICOL
@@ -303,6 +303,51 @@ def test_four_line_candidates_never_plan_unsupported_legacy_dependencies(
     )
     assert len(legacy_plan) == 1
     assert legacy_plan[0].comparison_peer_ids == ()
+
+
+def test_contracted_n6_multi_quark_plans_separate_legacy_capability(
+    tmp_path: Path,
+) -> None:
+    three_line = REPORT_CATALOG.cell(
+        "matrix-recurrence-builtin-sm-full-n6-dd-3q-lines-contracted"
+    )
+    four_line = REPORT_CATALOG.cell(
+        "matrix-recurrence-builtin-sm-full-n6-dd-4q-lines-contracted"
+    )
+    four_line_compiled = REPORT_CATALOG.cell(
+        "matrix-compiled-builtin-sm-full-n6-dd-4q-lines-contracted"
+    )
+
+    three_line_plan = plan_campaign(
+        (three_line,),
+        store=_store(tmp_path / "three-line"),
+        settings=CampaignSettings(),
+    )
+    assert {item.cell.cell_id for item in three_line_plan} == {
+        "reference-amplicol-full-n6-dd-3q-lines-contracted",
+        three_line.cell_id,
+    }
+    assert next(
+        item for item in three_line_plan if item.cell == three_line
+    ).baseline_cell_id == "reference-amplicol-full-n6-dd-3q-lines-contracted"
+
+    four_line_plan = plan_campaign(
+        (four_line,),
+        store=_store(tmp_path / "four-line"),
+        settings=CampaignSettings(),
+    )
+    assert tuple(item.cell for item in four_line_plan) == (four_line,)
+    assert four_line_plan[0].baseline_cell_id is None
+
+    compiled_plan = plan_campaign(
+        (four_line_compiled,),
+        store=_store(tmp_path / "compiled"),
+        settings=CampaignSettings(),
+    )
+    assert four_line in {item.cell for item in compiled_plan}
+    assert next(
+        item for item in compiled_plan if item.cell == four_line_compiled
+    ).baseline_cell_id == four_line.cell_id
 
 
 def test_missing_only_schedules_stale_direct_peer_and_recomparison(

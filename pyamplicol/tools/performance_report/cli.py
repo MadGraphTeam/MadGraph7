@@ -306,7 +306,7 @@ def _parser() -> argparse.ArgumentParser:
         help="require the clean publication checkout to equal this full Git SHA",
     )
     final_audit.add_argument("--max-n-final", type=int, default=9)
-    final_audit.add_argument("--expected-cell-count", type=int, default=1646)
+    final_audit.add_argument("--expected-cell-count", type=int, default=1666)
     final_audit.add_argument(
         "--structural-only",
         action="store_true",

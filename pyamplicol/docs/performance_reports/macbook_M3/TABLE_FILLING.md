@@ -415,11 +415,11 @@ assert manifest["campaign_policy"]["name"] == "macbook-m3-v1"
 entries = []
 for path in (profile / "results").glob("*.json"):
     entries.extend(json.loads(path.read_text()).get("entries", ()))
-assert len(entries) == 1646
+assert len(entries) == 1666
 assert all(
     entry["measurement"]["status"] == "not_available" for entry in entries
 )
-print("verified reset 1646-cell profile")
+print("verified reset 1666-cell profile")
 PY
 MEASURED_SOURCE_REVISION="$(git rev-parse HEAD)"
 test "$(git rev-parse HEAD)" = "$MEASURED_SOURCE_REVISION"
@@ -704,7 +704,7 @@ one new exact-source final epoch instead of relabelling old evidence.
 
 ## 8. Final audit and lightweight publication
 
-The full declared catalog contains 1646 cells and 1556 direct-agreement catalog
+The full declared catalog contains 1666 cells and 1560 direct-agreement catalog
 edges. Successful endpoints must replay; resource/frontier endpoints remain
 honestly unavailable and must not be counted as numerical evidence.
 
@@ -726,7 +726,7 @@ env -u PYTHONPATH -u PYTHONHOME \
     final-audit \
     --expected-source-revision "$MEASURED_SOURCE_REVISION" \
     --publication-revision "$PUBLICATION_REVISION" \
-    --max-n-final 9 --expected-cell-count 1646
+    --max-n-final 9 --expected-cell-count 1666
 git push origin HEAD:codex/macbook-M3-full-report
 
 # Confirm the Mac filler still holds the initial main-push token; reacquire it

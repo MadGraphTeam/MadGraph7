@@ -96,8 +96,8 @@ def test_lc_cells_have_two_runtime_workloads_and_contracted_cells_have_one() -> 
 
     assert counts[(Accuracy.LC, Workload.SELECTED_FLOW)] == 388
     assert counts[(Accuracy.LC, Workload.ALL_FLOW)] == 388
-    assert counts[(Accuracy.NLC, Workload.CONTRACTED)] == 180
-    assert counts[(Accuracy.FULL, Workload.CONTRACTED)] == 180
+    assert counts[(Accuracy.NLC, Workload.CONTRACTED)] == 188
+    assert counts[(Accuracy.FULL, Workload.CONTRACTED)] == 188
     assert all(
         cell.workload is Workload.CONTRACTED
         for cell in REPORT_CATALOG.matrix_cells()
@@ -201,6 +201,84 @@ def test_four_line_report_keeps_legacy_display_without_legacy_dependency() -> No
     compiled_baseline = REPORT_CATALOG.validation_baseline_cell(compiled)
     assert compiled_baseline is not None
     assert compiled_baseline.measurement.execution_mode is ExecutionMode.RECURRENCE
+
+
+def test_contracted_multi_quark_coverage_reaches_n6_in_every_mode() -> None:
+    cells = tuple(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.process_key in {"dd_3q_lines", "dd_4q_lines"}
+        and cell.n_final == 6
+        and cell.measurement.accuracy in {Accuracy.NLC, Accuracy.FULL}
+    )
+
+    assert len(cells) == 20
+    assert {
+        (
+            cell.process_key,
+            cell.measurement.accuracy,
+            cell.measurement.execution_mode,
+            cell.measurement.model,
+        )
+        for cell in cells
+    } == {
+        (process_key, accuracy, mode, model)
+        for process_key in {"dd_3q_lines", "dd_4q_lines"}
+        for accuracy in {Accuracy.NLC, Accuracy.FULL}
+        for mode, model in {
+            (ExecutionMode.AMPLICOL, None),
+            (ExecutionMode.RECURRENCE, ModelKey.BUILTIN_SM),
+            (ExecutionMode.RECURRENCE, ModelKey.UFO_SM),
+            (ExecutionMode.COMPILED, ModelKey.BUILTIN_SM),
+            (ExecutionMode.EAGER, ModelKey.BUILTIN_SM),
+        }
+    }
+    assert (
+        REPORT_CATALOG.cell(
+            "matrix-recurrence-builtin-sm-full-n6-dd-3q-lines-contracted"
+        ).process
+        == "d d~ > u u~ s s~ g g"
+    )
+
+
+def test_contracted_n6_catalog_impact_is_scoped_to_multi_quark_families() -> None:
+    cells = tuple(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.process_key in {"dd_3q_lines", "dd_4q_lines"}
+        and cell.n_final == 6
+        and cell.measurement.accuracy is not Accuracy.LC
+    )
+
+    assert len(REPORT_CATALOG.measurement_cells()) == 1666
+    assert len(REPORT_CATALOG.matrix_cells()) == 1152
+    assert len(REPORT_CATALOG.reference_cells()) == 288
+    assert len(cells) == 20
+    assert {cell.process_key for cell in cells} == {"dd_3q_lines", "dd_4q_lines"}
+
+
+def test_contracted_n6_rows_are_canonical_reset_cache_entries() -> None:
+    caches = build_reset_caches()
+    payload = caches["matrix_recurrence_builtin_sm_full.json"]
+    expected = tuple(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.dataset_id == "matrix_recurrence_builtin_sm_full"
+    )
+
+    validate_cache(payload, expected_cells=expected)
+    entries = {
+        entry["cell_id"]: entry
+        for entry in payload["entries"]
+        if entry["n_final"] == 6
+    }
+    assert set(entries) == {
+        "matrix-recurrence-builtin-sm-full-n6-dd-3q-lines-contracted",
+        "matrix-recurrence-builtin-sm-full-n6-dd-4q-lines-contracted",
+    }
+    assert all(
+        entry["measurement"] == empty_measurement() for entry in entries.values()
+    )
 
 
 def test_three_line_report_retains_the_original_amplicol_oracle() -> None:

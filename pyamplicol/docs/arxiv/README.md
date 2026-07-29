@@ -10,7 +10,7 @@ building and reviewing the canonical report. The architecture-specific
 measurement workspaces and their authoritative campaign procedures live under
 [`../performance_reports/`](../performance_reports/README.md).
 
-The canonical document is intentionally a reset scaffold. Its 1,646 required
+The canonical document is intentionally a reset scaffold. Its 1,666 required
 measurement cells currently have status `not_available`. Structural
 process/multiplicity positions are shown as `not applicable`, and reference
 execution fields without a compatible public timing boundary are shown as

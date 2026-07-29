@@ -360,7 +360,7 @@ def test_source_preflight_requires_exact_all_catalog_coverage() -> None:
         if cell.measurement.execution_mode
         in {ExecutionMode.RECURRENCE, ExecutionMode.COMPILED, ExecutionMode.EAGER}
     )
-    assert len(cells) == 1136
+    assert len(cells) == 1152
     counts = {
         "current_count": 100,
         "evaluation_count": 200,
@@ -407,6 +407,6 @@ def test_source_preflight_requires_exact_all_catalog_coverage() -> None:
         }
     )
 
-    assert payload["summary"]["catalog_candidate_cell_count"] == 1136
+    assert payload["summary"]["catalog_candidate_cell_count"] == 1152
     assert payload["summary"]["complete_catalog_coverage"] is True
     assert payload["summary"]["fully_certified_catalog_parity"] is True

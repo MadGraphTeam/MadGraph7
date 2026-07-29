@@ -131,7 +131,7 @@ def test_full_direct_agreement_graph_excludes_unavailable_four_line_legacy() -> 
     )
 
     assert counts == {
-        BUILTIN_UFO_RECURRENCE: 302,
+        BUILTIN_UFO_RECURRENCE: 306,
         Z_RECURRENCE_CROSS_MODE: 180,
         LC_CROSS_LAYOUT_COMPONENT: 590,
         LC_LEGACY_PYAMPLICOL_COMPONENT: 484,

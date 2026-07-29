@@ -13,7 +13,12 @@ from .campaign_policy import (
     CampaignPolicy,
     policy_status_label,
 )
-from .catalog import REPORT_CATALOG, ReportCatalog, z_dataset_id
+from .catalog import (
+    REPORT_CATALOG,
+    ReportCatalog,
+    matrix_multiplicities,
+    z_dataset_id,
+)
 from .display_contract import report_display_accounting
 from .models import (
     LEGACY_AMPLICOL_MAX_OPEN_QUARK_LINES,
@@ -320,7 +325,7 @@ class BaselineCandidateAdapter:
         """Join AmpliCol to the fastest valid built-in-SM mode per workload."""
 
         process = family.process(n_final)
-        multiplicities = tuple(range(1, 10 if accuracy is Accuracy.LC else 6))
+        multiplicities = matrix_multiplicities(accuracy)
         applicable = (
             process is not None
             and n_final in multiplicities
@@ -1587,7 +1592,7 @@ def render_best_mode_table(
     """Render the fastest valid built-in mode against AmpliCol."""
 
     adapter = BaselineCandidateAdapter(caches, catalog=catalog)
-    multiplicities = tuple(range(1, 10 if accuracy is Accuracy.LC else 6))
+    multiplicities = matrix_multiplicities(accuracy)
     blocks = _chunks(multiplicities, _MATRIX_BLOCK_SIZE)
     accuracy_label = {
         Accuracy.LC: "LC",
@@ -2243,7 +2248,7 @@ def summarize_visible_completeness(
 
     for accuracy in Accuracy:
         table_name = _BEST_MODE_TABLE_NAMES[accuracy]
-        multiplicities = tuple(range(1, 10 if accuracy is Accuracy.LC else 6))
+        multiplicities = matrix_multiplicities(accuracy)
         views_by_n: dict[int, list[BestModeMatrixCell]] = {}
         for family in process_families:
             for n_final in multiplicities:

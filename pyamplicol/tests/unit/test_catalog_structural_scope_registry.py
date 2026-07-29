@@ -14,14 +14,19 @@ def test_reviewed_out_of_catalog_scope_is_exact_and_machine_readable() -> None:
     assert scope["review"]["status"] == "reviewed"
     assert {
         item["scope_id"] for item in scope["intentionally_out_of_catalog"]
-    } == {
-        "ufo-compiled-and-eager",
-        "four-open-quark-lines-non-lc",
+    } == {"ufo-compiled-and-eager"}
+    requirements = {
+        item["scope_id"]: item for item in scope["candidate_only_requirements"]
     }
-    four_quark = scope["candidate_only_requirements"][0]
-    assert four_quark["catalog_cell_count"] == 24
-    assert four_quark["mode_model_workload_plane_count"] == 8
-    assert four_quark["legacy_comparison"] == {
+    assert requirements[
+        "four-open-quark-lines-lc-candidate-proof"
+    ]["catalog_cell_count"] == 24
+    contracted = requirements[
+        "four-open-quark-lines-contracted-candidate-proof"
+    ]
+    assert contracted["catalog_cell_count"] == 8
+    assert contracted["mode_model_workload_plane_count"] == 4
+    assert contracted["legacy_comparison"] == {
         "status": "unavailable",
         "reason": "original-amplicol-open-quark-line-limit",
     }
