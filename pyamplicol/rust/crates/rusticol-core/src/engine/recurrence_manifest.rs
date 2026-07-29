@@ -152,6 +152,13 @@ pub(super) enum RecurrenceLcFlowLayout {
     ContractedColorUnion,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub(super) enum RecurrenceCacheFootprintPolicy {
+    SelectorActiveMaxV1,
+    PersistedArenaV1,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceInspectionSummary {
@@ -169,6 +176,8 @@ pub(super) struct RecurrenceInspectionSummary {
     pub(super) schedule_digest: String,
     pub(super) runtime_layout_digest: String,
     pub(super) schedule: RecurrenceScheduleSummary,
+    #[serde(default)]
+    pub(super) selector_work_certificate: Option<RecurrenceSelectorWorkCertificate>,
     pub(super) construction: RecurrenceConstructionSummary,
     pub(super) direct_arena: RecurrenceDirectArenaSummary,
     pub(super) runtime_container_member: RecurrenceRuntimeContainerMember,
@@ -192,6 +201,42 @@ pub(super) struct RecurrenceScheduleSummary {
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceSelectorPersistedUnion {
+    pub(super) current_count: u64,
+    pub(super) semantic_component_count: u64,
+    pub(super) source_row_count: u64,
+    pub(super) contribution_count: u64,
+    pub(super) finalization_count: u64,
+    pub(super) closure_count: u64,
+    pub(super) row_count: u64,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceSelectorRepresentative {
+    pub(super) representative_sector_id: u64,
+    pub(super) public_flow_count: u64,
+    pub(super) current_count: u64,
+    pub(super) semantic_component_count: u64,
+    pub(super) source_row_count: u64,
+    pub(super) contribution_count: u64,
+    pub(super) finalization_count: u64,
+    pub(super) closure_count: u64,
+    pub(super) amplitude_destination_count: u64,
+    pub(super) row_count: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceSelectorWorkCertificate {
+    pub(super) schema_version: u16,
+    pub(super) binding: String,
+    pub(super) persisted_union: RecurrenceSelectorPersistedUnion,
+    pub(super) representatives: Vec<RecurrenceSelectorRepresentative>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceConstructionSummary {
     pub(super) peak_current_count: u64,
     pub(super) peak_contribution_count: u64,
@@ -210,6 +255,8 @@ pub(super) struct RecurrenceDirectArenaSummary {
     pub(super) arena_component_reuse_count: u64,
     pub(super) momentum_form_count: u64,
     pub(super) selector_domain_count: u64,
+    #[serde(default)]
+    pub(super) cache_footprint_policy: Option<RecurrenceCacheFootprintPolicy>,
     pub(super) row_group_count: u64,
     pub(super) packed_input_bytes: u64,
     pub(super) packed_output_bytes: u64,
@@ -888,7 +935,22 @@ impl RecurrenceInspectionSummary {
         )?;
         self.schedule.validate()?;
         self.construction.validate(self.schedule)?;
-        self.direct_arena.validate()?;
+        self.direct_arena.validate(self.lc_flow_layout)?;
+        if self.selector_work_certificate.is_some()
+            != self.direct_arena.cache_footprint_policy.is_some()
+        {
+            return Err(RusticolError::integrity(
+                "recurrence selector-work certificate and cache-footprint policy must be declared together",
+            ));
+        }
+        if let Some(certificate) = self.selector_work_certificate.as_ref() {
+            certificate.validate(
+                self.lc_flow_layout,
+                self.schedule,
+                self.direct_arena,
+                self.sector_count,
+            )?;
+        }
         self.runtime_container_member.validate()?;
         self.generation_timings_seconds.validate()?;
         if self.schedule.source_row_count > self.schedule.current_count
@@ -896,6 +958,162 @@ impl RecurrenceInspectionSummary {
         {
             return Err(RusticolError::integrity(
                 "recurrence inspection schedule disagrees with its top-level counts",
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn selector_row_count(
+    source_rows: u64,
+    contributions: u64,
+    finalizations: u64,
+    closures: u64,
+) -> RusticolResult<u64> {
+    source_rows
+        .checked_add(contributions)
+        .and_then(|total| total.checked_add(finalizations))
+        .and_then(|total| total.checked_add(closures))
+        .ok_or_else(|| RusticolError::artifact("recurrence selector row count overflows u64"))
+}
+
+impl RecurrenceSelectorWorkCertificate {
+    fn validate(
+        &self,
+        layout: RecurrenceLcFlowLayout,
+        schedule: RecurrenceScheduleSummary,
+        direct_arena: RecurrenceDirectArenaSummary,
+        sector_count: u64,
+    ) -> RusticolResult<()> {
+        if self.schema_version != 1 || self.binding != "runtime_layout_digest" {
+            return Err(RusticolError::compatibility(
+                "recurrence selector-work certificate identity is unsupported",
+            ));
+        }
+        self.persisted_union.validate(schedule, direct_arena)?;
+        bounded_len(
+            "recurrence selector-work representatives",
+            self.representatives.len(),
+        )?;
+        let expected_representatives = layout == RecurrenceLcFlowLayout::TopologyReplay;
+        if self.representatives.is_empty() == expected_representatives {
+            return Err(RusticolError::integrity(
+                "recurrence selector-work representatives disagree with the flow layout",
+            ));
+        }
+        let mut sector_ids = BTreeSet::new();
+        let mut public_flow_count = 0_u64;
+        for representative in &self.representatives {
+            representative.validate(
+                self.persisted_union,
+                schedule.amplitude_destination_count,
+                sector_count,
+            )?;
+            if !sector_ids.insert(representative.representative_sector_id) {
+                return Err(RusticolError::integrity(
+                    "recurrence selector-work representative sector is duplicated",
+                ));
+            }
+            public_flow_count = public_flow_count
+                .checked_add(representative.public_flow_count)
+                .ok_or_else(|| {
+                    RusticolError::artifact(
+                        "recurrence selector-work public-flow count overflows u64",
+                    )
+                })?;
+        }
+        if layout == RecurrenceLcFlowLayout::TopologyReplay
+            && public_flow_count != schedule.replay_target_count
+        {
+            return Err(RusticolError::integrity(
+                "recurrence selector-work public-flow count disagrees with replay targets",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl RecurrenceSelectorPersistedUnion {
+    fn validate(
+        self,
+        schedule: RecurrenceScheduleSummary,
+        direct_arena: RecurrenceDirectArenaSummary,
+    ) -> RusticolResult<()> {
+        validate_counts(
+            "recurrence persisted selector-work summary",
+            &[
+                self.current_count,
+                self.semantic_component_count,
+                self.source_row_count,
+                self.contribution_count,
+                self.finalization_count,
+                self.closure_count,
+                self.row_count,
+            ],
+        )?;
+        if self.current_count != schedule.current_count
+            || self.semantic_component_count != direct_arena.semantic_component_count
+            || self.source_row_count != schedule.source_row_count
+            || self.contribution_count != schedule.contribution_count
+            || self.finalization_count != schedule.finalization_count
+            || self.closure_count != schedule.closure_term_count
+            || self.row_count
+                != selector_row_count(
+                    self.source_row_count,
+                    self.contribution_count,
+                    self.finalization_count,
+                    self.closure_count,
+                )?
+        {
+            return Err(RusticolError::integrity(
+                "recurrence persisted selector-work summary disagrees with the inspection schedule",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl RecurrenceSelectorRepresentative {
+    fn validate(
+        self,
+        persisted: RecurrenceSelectorPersistedUnion,
+        amplitude_destination_count: u64,
+        sector_count: u64,
+    ) -> RusticolResult<()> {
+        validate_counts(
+            "recurrence selector-work representative",
+            &[
+                self.representative_sector_id,
+                self.public_flow_count,
+                self.current_count,
+                self.semantic_component_count,
+                self.source_row_count,
+                self.contribution_count,
+                self.finalization_count,
+                self.closure_count,
+                self.amplitude_destination_count,
+                self.row_count,
+            ],
+        )?;
+        if self.representative_sector_id >= sector_count
+            || self.public_flow_count == 0
+            || self.current_count > persisted.current_count
+            || self.semantic_component_count > persisted.semantic_component_count
+            || self.source_row_count > persisted.source_row_count
+            || self.contribution_count > persisted.contribution_count
+            || self.finalization_count > persisted.finalization_count
+            || self.closure_count > persisted.closure_count
+            || self.amplitude_destination_count > amplitude_destination_count
+            || self.row_count
+                != selector_row_count(
+                    self.source_row_count,
+                    self.contribution_count,
+                    self.finalization_count,
+                    self.closure_count,
+                )?
+        {
+            return Err(RusticolError::integrity(
+                "recurrence selector-work representative is inconsistent",
             ));
         }
         Ok(())
@@ -958,7 +1176,7 @@ impl RecurrenceScheduleSummary {
 }
 
 impl RecurrenceDirectArenaSummary {
-    fn validate(self) -> RusticolResult<()> {
+    fn validate(self, layout: RecurrenceLcFlowLayout) -> RusticolResult<()> {
         validate_counts(
             "recurrence Direct-Arena summary",
             &[
@@ -988,6 +1206,22 @@ impl RecurrenceDirectArenaSummary {
         {
             return Err(RusticolError::compatibility(
                 "Direct-Arena v2 must not declare packed input, packed output, or scatter bytes",
+            ));
+        }
+        let expected_policy = match layout {
+            RecurrenceLcFlowLayout::TopologyReplay => {
+                RecurrenceCacheFootprintPolicy::SelectorActiveMaxV1
+            }
+            RecurrenceLcFlowLayout::AllFlowUnion | RecurrenceLcFlowLayout::ContractedColorUnion => {
+                RecurrenceCacheFootprintPolicy::PersistedArenaV1
+            }
+        };
+        if self
+            .cache_footprint_policy
+            .is_some_and(|policy| policy != expected_policy)
+        {
+            return Err(RusticolError::integrity(
+                "recurrence Direct-Arena cache-footprint policy disagrees with its flow layout",
             ));
         }
         Ok(())
@@ -2177,6 +2411,36 @@ pub(super) mod tests {
         )
     }
 
+    fn add_python_selector_work_certificate(value: &mut Value) {
+        value["plan"]["inspection_summary"]["selector_work_certificate"] = json!({
+            "schema_version": 1,
+            "binding": "runtime_layout_digest",
+            "persisted_union": {
+                "current_count": 1,
+                "semantic_component_count": 1,
+                "source_row_count": 1,
+                "contribution_count": 0,
+                "finalization_count": 1,
+                "closure_count": 0,
+                "row_count": 2
+            },
+            "representatives": [{
+                "representative_sector_id": 0,
+                "public_flow_count": 1,
+                "current_count": 1,
+                "semantic_component_count": 1,
+                "source_row_count": 1,
+                "contribution_count": 0,
+                "finalization_count": 1,
+                "closure_count": 0,
+                "amplitude_destination_count": 1,
+                "row_count": 2
+            }]
+        });
+        value["plan"]["inspection_summary"]["direct_arena"]["cache_footprint_policy"] =
+            json!("selector-active-max-v1");
+    }
+
     fn manifest_bytes_with_size(size: usize) -> Vec<u8> {
         let mut bytes = serde_json::to_vec(&manifest()).unwrap();
         assert!(bytes.len() <= size);
@@ -2193,6 +2457,167 @@ pub(super) mod tests {
         assert_eq!(
             parsed.plan.inspection_summary.direct_arena.row_group_count,
             4
+        );
+    }
+
+    #[test]
+    fn accepts_python_emitted_selector_work_schema() {
+        let mut value = manifest();
+        add_python_selector_work_certificate(&mut value);
+
+        let parsed = parse(&value).unwrap();
+
+        assert_eq!(
+            parsed
+                .plan
+                .inspection_summary
+                .direct_arena
+                .cache_footprint_policy,
+            Some(RecurrenceCacheFootprintPolicy::SelectorActiveMaxV1)
+        );
+    }
+
+    #[test]
+    fn accepts_persisted_selector_work_schema() {
+        for layout in ["all-flow-union", "contracted-color-union"] {
+            let mut value = inspection_summary();
+            value["lc_flow_layout"] = json!(layout);
+            value["selector_work_certificate"] = json!({
+                "schema_version": 1,
+                "binding": "runtime_layout_digest",
+                "persisted_union": {
+                    "current_count": 1,
+                    "semantic_component_count": 1,
+                    "source_row_count": 1,
+                    "contribution_count": 0,
+                    "finalization_count": 1,
+                    "closure_count": 0,
+                    "row_count": 2
+                },
+                "representatives": []
+            });
+            value["direct_arena"]["cache_footprint_policy"] = json!("persisted-arena-v1");
+            let parsed = serde_json::from_value::<RecurrenceInspectionSummary>(value).unwrap();
+
+            parsed.validate("x_to_x").unwrap();
+        }
+    }
+
+    #[test]
+    fn rejects_cache_footprint_policy_for_another_flow_layout() {
+        let mut value = manifest();
+        add_python_selector_work_certificate(&mut value);
+        value["plan"]["inspection_summary"]["direct_arena"]["cache_footprint_policy"] =
+            json!("persisted-arena-v1");
+
+        let error = parse(&value).unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("cache-footprint policy disagrees with its flow layout")
+        );
+    }
+
+    #[test]
+    fn rejects_standalone_selector_work_schema_member() {
+        let mut policy_only = manifest();
+        policy_only["plan"]["inspection_summary"]["direct_arena"]["cache_footprint_policy"] =
+            json!("selector-active-max-v1");
+        assert!(
+            parse(&policy_only)
+                .unwrap_err()
+                .to_string()
+                .contains("must be declared together")
+        );
+
+        let mut certificate_only = manifest();
+        add_python_selector_work_certificate(&mut certificate_only);
+        certificate_only["plan"]["inspection_summary"]["direct_arena"]
+            .as_object_mut()
+            .unwrap()
+            .remove("cache_footprint_policy");
+        assert!(
+            parse(&certificate_only)
+                .unwrap_err()
+                .to_string()
+                .contains("must be declared together")
+        );
+    }
+
+    #[test]
+    fn rejects_inconsistent_selector_work_certificates() {
+        let mut wrong_schema = manifest();
+        add_python_selector_work_certificate(&mut wrong_schema);
+        wrong_schema["plan"]["inspection_summary"]["selector_work_certificate"]["schema_version"] =
+            json!(2);
+        assert!(
+            parse(&wrong_schema)
+                .unwrap_err()
+                .to_string()
+                .contains("certificate identity is unsupported")
+        );
+
+        let mut wrong_binding = manifest();
+        add_python_selector_work_certificate(&mut wrong_binding);
+        wrong_binding["plan"]["inspection_summary"]["selector_work_certificate"]["binding"] =
+            json!("semantic_digest");
+        assert!(
+            parse(&wrong_binding)
+                .unwrap_err()
+                .to_string()
+                .contains("certificate identity is unsupported")
+        );
+
+        let mut wrong_union = manifest();
+        add_python_selector_work_certificate(&mut wrong_union);
+        wrong_union["plan"]["inspection_summary"]["selector_work_certificate"]["persisted_union"]
+            ["row_count"] = json!(3);
+        assert!(
+            parse(&wrong_union)
+                .unwrap_err()
+                .to_string()
+                .contains("persisted selector-work summary disagrees")
+        );
+
+        let mut duplicate = manifest();
+        add_python_selector_work_certificate(&mut duplicate);
+        let representative =
+            duplicate["plan"]["inspection_summary"]["selector_work_certificate"]["representatives"]
+                [0]
+            .clone();
+        duplicate["plan"]["inspection_summary"]["selector_work_certificate"]["representatives"]
+            .as_array_mut()
+            .unwrap()
+            .push(representative);
+        duplicate["plan"]["inspection_summary"]["schedule"]["replay_target_count"] = json!(2);
+        assert!(
+            parse(&duplicate)
+                .unwrap_err()
+                .to_string()
+                .contains("representative sector is duplicated")
+        );
+
+        let mut out_of_range = manifest();
+        add_python_selector_work_certificate(&mut out_of_range);
+        out_of_range["plan"]["inspection_summary"]["selector_work_certificate"]["representatives"]
+            [0]["representative_sector_id"] = json!(1);
+        assert!(
+            parse(&out_of_range)
+                .unwrap_err()
+                .to_string()
+                .contains("representative is inconsistent")
+        );
+
+        let mut wrong_public_flow_count = manifest();
+        add_python_selector_work_certificate(&mut wrong_public_flow_count);
+        wrong_public_flow_count["plan"]["inspection_summary"]["selector_work_certificate"]["representatives"]
+            [0]["public_flow_count"] = json!(2);
+        assert!(
+            parse(&wrong_public_flow_count)
+                .unwrap_err()
+                .to_string()
+                .contains("public-flow count disagrees with replay targets")
         );
     }
 
