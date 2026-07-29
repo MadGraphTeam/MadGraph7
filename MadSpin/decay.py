@@ -66,6 +66,30 @@ import aloha
 logger = logging.getLogger('decay.stdout') # -> stdout
 logger_stderr = logging.getLogger('decay.stderr') # ->stderr
 
+import contextlib
+
+@contextlib.contextmanager
+def _no_merge_crossing():
+    """Temporarily disable crossing-symmetry folding (merge_crossing='record')
+    for the enclosed MG5 generation.
+
+    MadSpin's legacy full_decay_chain (madspin_v1) and onshell_v1 paths evaluate
+    the production matrix element through a PDG-dispatch interface (the
+    standalone_msP fortran driver / smatrixhel) that cannot reach a crossing-
+    folded subprocess, so their generation must keep every subprocess on its own
+    (as before the crossing feature).  The density path is crossing-aware and
+    keeps crossing on.  MG_MERGE_CROSSING=off is the documented escape hatch
+    (see madgraph_interface.do_add)."""
+    saved = os.environ.get('MG_MERGE_CROSSING')
+    os.environ['MG_MERGE_CROSSING'] = 'off'
+    try:
+        yield
+    finally:
+        if saved is None:
+            os.environ.pop('MG_MERGE_CROSSING', None)
+        else:
+            os.environ['MG_MERGE_CROSSING'] = saved
+
 import random 
 import math
 from madgraph import MG5DIR, MadGraph5Error
@@ -3097,11 +3121,12 @@ class decay_all_events(object):
                                
         commandline = commandline.replace('add process', 'generate',1)
         logger.info(commandline)
-        
-        mgcmd.exec_cmd(commandline, precmd=True)
+
+        with _no_merge_crossing():
+            mgcmd.exec_cmd(commandline, precmd=True)
         commandline = 'output standalone_msP %s %s' % \
-        (pjoin(path_me,'production_me'), ' '.join(list(self.list_branches.keys())))        
-        mgcmd.exec_cmd(commandline, precmd=True)        
+        (pjoin(path_me,'production_me'), ' '.join(list(self.list_branches.keys())))
+        mgcmd.exec_cmd(commandline, precmd=True)
         logger.info('Done %.4g' % (time.time()-start))
 
         # 3. Create all_ME + topology objects ----------------------------------
@@ -3181,7 +3206,8 @@ class decay_all_events(object):
                         commandline += self.get_proc_with_decay(proc, one_decay, mgcmd._curr_model, self.options)
                 commandline = commandline.replace('add process', 'generate',1)
             logger.info(commandline)
-            mgcmd.exec_cmd(commandline, precmd=True)
+            with _no_merge_crossing():
+                mgcmd.exec_cmd(commandline, precmd=True)
             # remove decay with 0 branching ratio.
             mgcmd.remove_pointless_decay(self.banner.param_card)
             commandline = 'output standalone_msF %s %s' % (pjoin(path_me,'full_me'),
@@ -5123,7 +5149,17 @@ class decay_all_events_onshell(decay_all_events):
 
         commandline = commandline.replace('add process', 'generate',1)
         mgcmd = self.mgcmd
-        mgcmd.exec_cmd(commandline, precmd=True)
+        # The legacy onshell_v1 path (mode=='onshell') evaluates the production
+        # ME through smatrixhel, which dispatches on concrete PDGs and returns 0
+        # for a crossing-folded subprocess (-> production_me==0 -> ZeroDivision).
+        # Keep every subprocess on its own for it, exactly like full_decay_chain.
+        # The density path (mode=='density') is crossing-aware (GET_DENSITY_IDX
+        # via _resolve_crossed) and keeps crossing on.
+        if self.mode == 'onshell':
+            with _no_merge_crossing():
+                mgcmd.exec_cmd(commandline, precmd=True)
+        else:
+            mgcmd.exec_cmd(commandline, precmd=True)
         # remove decay with 0 branching ratio.
         #mgcmd.remove_pointless_decay(self.banner.param_card)
         #

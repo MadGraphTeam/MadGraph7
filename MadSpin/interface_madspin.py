@@ -2565,12 +2565,12 @@ class MadSpinInterface(extended_cmd.Cmd):
         #print(f"production = {production}")
         #print(f"decays = {decays}")
         if MEdenom_prod is None:
-            prod_diag = density_prod.trace().real 
-        else: 
+            prod_diag = density_prod.trace().real
+        else:
             prod_diag = MEdenom_prod
         prod_diag /= (iden_p * sym_factor_prod_ident)
         if MEdenom_decay is not None:
-            dec_diag *= MEdenom_decay 
+            dec_diag *= MEdenom_decay
         return me, density_prod, prod_diag, dec_diag
 
 
@@ -2682,10 +2682,10 @@ class MadSpinInterface(extended_cmd.Cmd):
                                                             allow_hel=allow_hel,
                                                             alphas=event.aqcd,
                                                             scale2=event.scale**2)
-        #print(f"density_array = {density_array}") 
-        density_matrix = madspin.DensityMatrix(density_array, 
-                                               n_changing, 
-                                               allow_hel, 
+        #print(f"density_array = {density_array}")
+        density_matrix = madspin.DensityMatrix(density_array,
+                                               n_changing,
+                                               allow_hel,
                                                dimension)
         return density_matrix
 
@@ -2890,6 +2890,22 @@ class MadSpinInterface(extended_cmd.Cmd):
             tag = (init, final)
             orig_order = self.all_me[tag]['order']
         pdir = self.all_me[tag]['pdir']
+        # A crossing-folded subprocess (merge_crossing='record') is absent from
+        # the base pdg2prefix, so the combined smatrixhel dispatches on its
+        # concrete PDGs and returns 0.  Resolve it to (representative prefix,
+        # extended FLAV_IDX) plus the physical crossed leg order, so a zero
+        # smatrixhel result can fall back to the crossing-aware
+        # PY_<prefix>SMATRIX_IDX -- the same folded channel the density path
+        # reaches through GET_DENSITY_IDX.  Base events also resolve here but
+        # keep their non-zero smatrixhel value, so the fallback never fires for
+        # them.  Without this, MEdenom_prod (the reshuffle denominator in the
+        # density path) is 0 for a crossed production event -> divide-by-zero.
+        cross_resolved = self._resolve_crossed(event, pdir)
+        cross_info = None
+        if cross_resolved is not None:
+            _, cross_order, cross_prefix, cross_pos = cross_resolved
+            if isinstance(cross_pos, tuple) and cross_pos and cross_pos[0] == 'CROSS':
+                cross_info = (cross_prefix.lower(), cross_pos[1], cross_order)
         if pdir in self.all_f2py:
             all_p = event.get_all_momenta(orig_order, merged_map=self._revert_merged or None)
             if self.options['identical_particle_in_prod_and_decay'] == "crash" and\
@@ -2913,6 +2929,18 @@ class MadSpinInterface(extended_cmd.Cmd):
                     new_value = self.all_f2py[pdir](pdg_for_call, p_inv, 0.113, 0)
                 else:
                     new_value = self.all_f2py[pdir](pdg_for_call, p_inv, event.aqcd, event.scale, -1)
+                if new_value == 0 and cross_info:
+                    # Folded crossed subprocess: evaluate through the
+                    # crossing-aware SMATRIX_IDX.  Momenta go in the physical
+                    # crossed leg order (no merge revert), matching the order
+                    # PY_GET_PDG_FOR_FLAVOR reports for this FLAV_IDX; the
+                    # smatrixhel call above already applied the event's alphas
+                    # (UPDATE_AS_PARAM), which SMATRIX_IDX reuses.
+                    cross_prefix, flav_idx, cross_order = cross_info
+                    cross_p = event.get_momenta(cross_order, merged_map=None)
+                    cross_P = rwgt_interface.ReweightInterface.invert_momenta(cross_p)
+                    new_value = float(getattr(self.f2py_module,
+                        'py_%ssmatrix_idx' % cross_prefix)(p=cross_P, flav_idx=flav_idx))
                 if self.options['identical_particle_in_prod_and_decay'] == "average":
                     out += new_value
                 else:
