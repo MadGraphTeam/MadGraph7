@@ -38,6 +38,7 @@ from pyamplicol.runtime.recurrence_exact._plan import _validate_execution
 _PROCESS = "d d~ > z g g"
 _THREE_LINE_PROCESS = "d d~ > u u~ s s~"
 _PURE_GLUON_PROCESS = "g g > g g"
+_N5_PURE_GLUON_PROCESS = "g g > g g g g g"
 _SAME_FLAVOUR_PROCESS = "d d~ > d d~"
 _NEUTRAL_CURRENT_PROCESS = "d d~ > e+ e-"
 _CHARGED_CURRENT_PROCESS = "u d~ > e+ ve"
@@ -1543,6 +1544,70 @@ def test_builtin_and_ufo_contracted_recurrence_have_matching_structure(
         == "resident-pending-contributions-v1"
     )
     assert builtin_signature == ufo_signature
+
+
+def test_builtin_full_n5_pure_gluon_recurrence_fits_static_template_budget(
+    tmp_path: Path,
+    builtin_sm_recurrence_jit_o2_model: ModelSource,
+) -> None:
+    """Keep generated N5 pure-gluon preprojection within AmpliCol's budget."""
+
+    _require_native_recurrence()
+    artifact = tmp_path / "builtin-full-n5-pure-gluon"
+    Generator(
+        _generation_config(
+            "recurrence",
+            color_accuracy="full",
+        )
+    ).generate(
+        _N5_PURE_GLUON_PROCESS,
+        artifact,
+        model=builtin_sm_recurrence_jit_o2_model,
+    )
+
+    manifest = load_manifest(artifact)
+    assert len(manifest.processes) == 1
+    process_id = str(manifest.processes[0]["id"])
+    execution = json.loads(
+        (
+            artifact / "processes" / process_id / "execution.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert execution["kind"] == _RECURRENCE_KIND
+    summary = execution["recurrence_summary"]
+    inspection = execution["plan"]["inspection_summary"]
+    schedule = inspection["schedule"]
+    construction = inspection["construction"]
+    assert summary["lc_flow_layout"] == "contracted-color-union"
+    assert (
+        summary["current_count"],
+        summary["contribution_count"],
+    ) == (
+        schedule["current_count"],
+        schedule["contribution_count"],
+    ) == (1_795, 9_990)
+    assert (
+        construction["peak_current_count"],
+        construction["peak_contribution_count"],
+    ) == (2_430, 11_597)
+    assert (
+        construction["peak_contribution_count_semantics"]
+        == "resident-pending-contributions-v1"
+    )
+
+    # Integral ceilings for 1.05 × the authenticated AmpliCol static modules.
+    assert construction["peak_current_count"] <= 2_557
+    assert construction["peak_contribution_count"] <= 15_372
+    certificate = inspection["selector_work_certificate"]
+    assert (
+        sum(
+            representative["public_flow_count"]
+            for representative in certificate["representatives"]
+        )
+        == schedule["replay_target_count"]
+        == 720
+    )
+    assert Runtime.load(artifact).physics.color_accuracy == "full"
 
 
 def test_builtin_and_ufo_full_neutral_current_defaults_agree(

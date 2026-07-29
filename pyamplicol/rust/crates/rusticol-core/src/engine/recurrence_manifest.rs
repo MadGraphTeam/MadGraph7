@@ -1151,8 +1151,13 @@ impl RecurrenceSelectorWorkCertificate {
                     "recurrence selector-work representatives disagree with the flow layout",
                 ));
             }
+            // Schema-v1 contracted artifacts predating representative-level
+            // accounting legitimately carry replay targets with an empty
+            // representative list.  New writers emit representatives, but
+            // their absence must remain load-compatible until the certificate
+            // schema itself is versioned.
             RecurrenceLcFlowLayout::ContractedColorUnion
-                if has_representatives != has_replay_targets =>
+                if has_representatives && !has_replay_targets =>
             {
                 return Err(RusticolError::integrity(
                     "recurrence selector-work representatives disagree with the flow layout",
@@ -1183,7 +1188,7 @@ impl RecurrenceSelectorWorkCertificate {
                     )
                 })?;
         }
-        if has_replay_targets && public_flow_count != schedule.replay_target_count {
+        if has_representatives && public_flow_count != schedule.replay_target_count {
             return Err(RusticolError::integrity(
                 "recurrence selector-work public-flow count disagrees with replay targets",
             ));
@@ -2983,11 +2988,15 @@ pub(super) mod tests {
         }]);
     }
 
-    fn nlc_hzz_fixture_value() -> Value {
-        let mut value = serde_json::from_slice(include_bytes!(
+    fn legacy_nlc_hzz_fixture_value() -> Value {
+        serde_json::from_slice(include_bytes!(
             "../../tests/fixtures/recurrence_execution_hzz_nlc.json"
         ))
-        .unwrap();
+        .unwrap()
+    }
+
+    fn nlc_hzz_fixture_value() -> Value {
+        let mut value = legacy_nlc_hzz_fixture_value();
         add_hzz_contracted_selector_representative(&mut value);
         value
     }
@@ -3082,15 +3091,24 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn rejects_contracted_replay_without_selector_work_representatives() {
-        let value = legacy_full_hzz_fixture_value();
-
-        assert!(
-            parse_hzz_fixture(&serde_json::to_vec(&value).unwrap(), "full")
-                .unwrap_err()
-                .to_string()
-                .contains("representatives disagree with the flow layout")
-        );
+    fn accepts_legacy_contracted_replay_without_selector_work_representatives() {
+        for (value, accuracy) in [
+            (legacy_full_hzz_fixture_value(), "full"),
+            (legacy_nlc_hzz_fixture_value(), "nlc"),
+        ] {
+            let parsed =
+                parse_hzz_fixture(&serde_json::to_vec(&value).unwrap(), accuracy).unwrap();
+            assert!(
+                parsed
+                    .plan
+                    .inspection_summary
+                    .selector_work_certificate
+                    .as_ref()
+                    .unwrap()
+                    .representatives
+                    .is_empty()
+            );
+        }
     }
 
     #[test]
