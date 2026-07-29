@@ -197,9 +197,19 @@ class TestMECmdRWGT(unittest.TestCase):
         # tot_mom rest frame before running the chi-finder, which fixes the
         # bug. The reweighted cross-section (235.28 pb) is unchanged; only
         # the per-event redistribution moves.
-        solutions = [216.3128, 237.66434, 344.95146, 293.51502, 229.39839, 295.96741, 336.38095, 434.56802, 182.61499, 404.7172, 488.22656, 154.80405, 264.45706, 373.69582, 229.70129, 474.87946, 322.87016, 394.84998, 84.186446, 118.32093]
+        #
+        # Reference refreshed again on branch claude/fortran-cross-symmetry:
+        # this tree-level p p > t t~ reweight now keeps crossing enabled
+        # (merge_crossing='record' with flavor grouping on), so the production
+        # |M|^2 is evaluated against the crossing-aware/folded SMATRIX instead
+        # of the pre-crossing separate-dir ME. That reorders the helicity sum,
+        # shifting each per-event weight by O(1e-3) absolute (~1e-5 relative) --
+        # above misc.equal's ~1e-3 window, hence the update. The values are
+        # deterministic run-to-run and the reweighted cross-section is still
+        # 235.28 pb; keeping crossing is correct here because this is tree level.
+        solutions = [216.31277, 237.66447, 344.95053, 293.51516, 229.39706, 295.96583, 336.3812, 434.56831, 182.61181, 404.7172, 488.22684, 154.80089, 264.4548, 373.69601, 229.69985, 474.87946, 322.86878, 394.84998, 84.18549, 118.31887]
         for i,event in enumerate(lhe):
-            
+
             rwgt_data = event.parse_reweight()
             #solutions.append(event.wgt)
             self.assertTrue(misc.equal(event.scale, event.get_ht_scale(0.5)))
