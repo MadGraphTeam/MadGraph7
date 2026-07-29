@@ -6004,7 +6004,14 @@ fn build_replay_targets(
     process: &OwnedRecurrenceProcessInput,
     catalog: &ProcessCatalog<'_>,
 ) -> RusticolResult<Vec<RecurrenceReplayTarget>> {
-    if !strategy.uses_topology_replay_targets() {
+    if !strategy.uses_topology_replay_targets()
+        || (strategy == RecurrenceStrategy::ContractedColorUnion
+            && process.replay_partitions.is_empty())
+    {
+        // Contracted color is replay-capable, but only an authenticated
+        // partition certificate activates replay.  Synthesizing identity
+        // targets here would incorrectly materialize ordering aliases that
+        // contracted construction coherently accumulates in an owner sector.
         return Ok(Vec::new());
     }
     let source_momentum_signs = external_source_momentum_signs(process)?;
@@ -6492,7 +6499,10 @@ fn decode_process_factors(
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use super::super::process::{ProcessExternalLegRow, ProcessPhysicalLCSectorRow};
+    use super::super::process::{
+        ProcessExternalLegRow, ProcessHeaderRow, ProcessPhysicalLCSectorRow,
+        ProcessPublicLCFlowRow, ProcessSourceStateRow,
+    };
     use super::super::template::{
         ColorContractionRow, DigestCatalogRow, ExactFactorRow, IndexedRangeRow,
         LCColorTransitionWitnessRow, PropagatorRow, QuantumFlowRow,
@@ -7411,6 +7421,70 @@ mod tests {
             u32_sequence_ranges: vec![CheckedTableRange::new(0, 0)],
             u32_sequence_values: vec![],
         }
+    }
+
+    #[test]
+    fn contracted_color_without_replay_proof_keeps_the_direct_destination_domain() {
+        let mut process = scalar_reference_process(2);
+        process.header = vec![ProcessHeaderRow {
+            schema_version: 1,
+            abi_string_id: 0,
+            process_id_string_id: 0,
+            layout: u8::try_from(RecurrenceStrategy::ContractedColorUnion.as_u32())
+                .expect("strategy discriminant fits u8"),
+            selected_flow_mode: 0,
+            selected_source_mode: 0,
+            external_leg_count: 2,
+            physical_sector_count: 1,
+            public_flow_count: 1,
+            replay_partition_count: 0,
+            coupling_limit_count: 0,
+            parameter_projection_count: 0,
+            process_support_mask_id: 0,
+        }];
+        process.external_legs[0].source_state_range = CheckedTableRange::new(0, 1);
+        process.external_legs[1].source_state_range = CheckedTableRange::new(1, 1);
+        process.source_states = vec![
+            ProcessSourceStateRow {
+                source_slot: 0,
+                state_index: 0,
+                public_helicity: -1,
+                chirality: -1,
+                spin_state: -1,
+                current_state_template_id: 0,
+                source_template_id: 0,
+                momentum_sign: 1,
+                crossing_phase_factor_id: 0,
+            },
+            ProcessSourceStateRow {
+                source_slot: 1,
+                state_index: 0,
+                public_helicity: 1,
+                chirality: 1,
+                spin_state: 1,
+                current_state_template_id: 0,
+                source_template_id: 0,
+                momentum_sign: 1,
+                crossing_phase_factor_id: 0,
+            },
+        ];
+        process.public_lc_flows = vec![ProcessPublicLCFlowRow {
+            flow_id: 0,
+            public_id_string_id: 0,
+            construction_sector_id: 0,
+            word_sequence_id: 0,
+            source_slot_permutation_sequence_id: 0,
+            reduction_weight_factor_id: 0,
+        }];
+        process.u32_sequence_ranges = vec![CheckedTableRange::new(0, 2)];
+        process.u32_sequence_values = vec![0, 1];
+        let catalog = ProcessCatalog::new(&process).unwrap();
+
+        assert!(
+            build_replay_targets(RecurrenceStrategy::ContractedColorUnion, &process, &catalog,)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     fn scalar_reference_program(
