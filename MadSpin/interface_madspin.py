@@ -1380,18 +1380,13 @@ class MadSpinInterface(extended_cmd.Cmd):
                 continue
             decay_dir = pjoin(self.path_me, "decay_%s_%s" %(str(pdg).replace("-","x"),i))
             if not os.path.exists(decay_dir):
-                # --use_crossing=False: the decay matrix element is written with
-                # the fortran madevent output below, which does not support the
-                # crossing machinery (only the standalone output does). Without
-                # this the default crossing-on generation makes 'output madevent'
-                # raise and MadSpin produces no decayed events.
                 if cumul:
-                    mg5.exec_cmd("generate %s --use_crossing=False" % proc)
+                    mg5.exec_cmd("generate %s" % proc)
                     for j,proc2 in enumerate(self.list_branches[name][1:]):
                         misc.sprint(proc2)
                         if restrict_file and j not in restrict_file:
                             raise Exception # Do not see how this can happen
-                        mg5.exec_cmd("add process %s --use_crossing=False" % proc2)
+                        mg5.exec_cmd("add process %s" % proc2)
                     # Force the Fortran madevent output: the decay directory is
                     # driven below through MadEventCmdShell, so it must have the
                     # madevent structure regardless of MG5's default output mode
@@ -1399,7 +1394,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                     mg5.exec_cmd("output madevent %s -f" % decay_dir)
                 else:
                     misc.sprint(proc)
-                    mg5.exec_cmd("generate %s --use_crossing=False" % proc)
+                    mg5.exec_cmd("generate %s" % proc)
                     mg5.exec_cmd("output madevent %s -f" % decay_dir)
                 
                 options = dict(mg5.options)

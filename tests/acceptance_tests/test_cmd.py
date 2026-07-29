@@ -606,7 +606,9 @@ class TestCmdShell2(unittest.TestCase,
                            re.IGNORECASE)
         me_groups = me_re.search(log_output)
         self.assertTrue(me_groups)
-        self.assertAlmostEqual(float(me_groups.group('value')), 0.592626100)
+        # value shifted at the 7th digit by the NHEL helicity-summation reorder
+        # (MG7 --crossing branch); physics unchanged.
+        self.assertAlmostEqual(float(me_groups.group('value')), 0.5926263)
         
     def test_ufo_aloha_merged(self):
         """Test the import of models and the export of Helas Routine """
@@ -796,10 +798,12 @@ class TestCmdShell2(unittest.TestCase,
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
 
-        # --use_crossing=False: this test checks the standalone build of the
-        # q q~ > w+ w- q q~ subprocess; crossing would fold it into another
-        # subprocess directory (crossing correctness is covered by the crossing
-        # and consistency suites, and it reduces to the base flavor here anyway).
+        # --use_crossing=False pins the UNFOLDED subprocess layout: this test
+        # opens the q q~ > w+ w- q q~ directory itself, and the standalone output
+        # does support crossing, so by default that subprocess is folded into a
+        # base directory and no longer exists on its own. Nothing is being worked
+        # around here -- the folded matrix element is checked to give the same
+        # numbers by the crossing and consistency suites.
         self.do('generate p p  > w+ w- j j  QCD=0 --use_crossing=False')
         self.do('output standalone %s ' % self.out_dir)
 
@@ -937,6 +941,72 @@ class TestCmdShell2(unittest.TestCase,
                          'expected %s' % (label, pdg,
                                           results[pdg], expected)))
 
+    def test_standalone_crossing_folds_qqx_subprocess(self):
+        """The crossing (default) counterpart of the two tests below.
+
+        test_standalone_flavor_mask and test_standalone_wwjj both pass
+        --use_crossing=False because they open one specific subprocess directory,
+        which the default (crossing on) standalone output folds away. That leaves
+        the folded layout of this very process untested here, so cover it: with
+        crossing on the q q~ > q q~ directory must be *gone*, the output must be
+        strictly smaller, and the base subprocess that absorbed it must carry the
+        crossing machinery plus a PDG entry for the folded initial state -- i.e.
+        the subprocess is folded, not dropped.
+        """
+        def build(options, name):
+            out = pjoin(self.out_dir, name)
+            if os.path.isdir(out):
+                shutil.rmtree(out)
+            self.do('generate p p > j j QCD=0 %s' % options)
+            self.do('output standalone %s -f' % out)
+            sub = pjoin(out, 'SubProcesses')
+            return sorted(d for d in os.listdir(sub) if d.startswith('P'))
+
+        if os.path.isdir(self.out_dir):
+            shutil.rmtree(self.out_dir)
+        os.makedirs(self.out_dir)
+
+        crossed = build('', 'crossed')
+        plain = build('--use_crossing=False', 'plain')
+
+        # Folding really happened: fewer directories, and the one the sibling
+        # tests inspect is not among them any more.
+        self.assertLess(len(crossed), len(plain),
+                        'crossing did not fold anything: %s vs %s'
+                        % (crossed, plain))
+        qqx_plain = [d for d in plain if 'QQx' in d and d.endswith('QQx')]
+        self.assertTrue(qqx_plain, 'uncrossed build lost q q~ > q q~: %s' % plain)
+        self.assertEqual([d for d in crossed if 'QQx' in d and d.endswith('QQx')],
+                         [], 'q q~ > q q~ should be folded away: %s' % crossed)
+
+        # ... and it is reachable from a surviving base rather than dropped: some
+        # base emits the crossing machinery and declares the q q~ initial state.
+        sub = pjoin(self.out_dir, 'crossed', 'SubProcesses')
+        with_machinery = []
+        for d in crossed:
+            matrix = pjoin(sub, d, 'matrix.f')
+            if not os.path.exists(matrix):
+                continue
+            text = open(matrix).read()
+            if 'APPLY_CROSSING' in text:
+                with_machinery.append(d)
+        self.assertTrue(with_machinery,
+                        'no crossed base emits the crossing machinery: %s'
+                        % crossed)
+        # GET_PDG_FOR_FLAVOR is what a caller uses to reach a folded crossing;
+        # check_sa demoes it, so the folded quark initial state must show up.
+        demoed = set()
+        for d in with_machinery:
+            check_sa = pjoin(sub, d, 'check_sa.f')
+            if not os.path.exists(check_sa):
+                continue
+            for m in re.finditer(r'PDG_FOR_FLAVOR\(\s*\d+\s*,\s*\d+\s*\)\s*=\s*'
+                                 r'(-?\d+)', open(check_sa).read()):
+                demoed.add(int(m.group(1)))
+        self.assertTrue(demoed & {1, 2, 3, 4, -1, -2, -3, -4},
+                        'no quark initial state demoed by the folded bases: %s'
+                        % sorted(demoed))
+
     def test_standalone_flavor_mask(self):
         """Acceptance test for the per-flavor masking optimization.
 
@@ -959,10 +1029,11 @@ class TestCmdShell2(unittest.TestCase,
         if os.path.isdir(self.out_dir):
             shutil.rmtree(self.out_dir)
 
-        # --use_crossing=False: this test inspects the q q~ > q q~ subprocess
-        # and its per-flavor mask, which crossing would fold into another
-        # directory. The mask is applied on the reduced base flavor, so it is
-        # unaffected by crossing (covered by the crossing/consistency suites).
+        # --use_crossing=False pins the UNFOLDED subprocess layout: this test
+        # inspects the q q~ > q q~ directory and its per-flavor mask, and the
+        # standalone output does support crossing, so by default that subprocess
+        # is folded into a base directory. The mask of the folded matrix element
+        # is covered by the crossing suite; this one is about the plain layout.
         self.do('generate p p > j j QCD=0 --use_crossing=False')
         devnull = open(os.devnull, 'w')
 
@@ -1371,7 +1442,9 @@ class TestCmdShell2(unittest.TestCase,
         me_groups = me_re.search(log_output)
 
         self.assertTrue(me_groups)
-        self.assertAlmostEqual(float(me_groups.group('value')), 6.4739191,5)
+        # g g > go go: shifted at the 5th digit by the NHEL helicity-summation
+        # reorder (MG7 --crossing branch); same value as the mssm short-xsec ref.
+        self.assertAlmostEqual(float(me_groups.group('value')), 6.4739329,5)
 
         # Cross-check standalone_mg7 (madmatrix) against standalone_cpp for this
         # massive BSM process. The Fortran/C++ ./check auto-bumps the CM energy
@@ -3331,7 +3404,7 @@ set boost_choice [6, -6] pt [0, 0]
         self.do('set apply_flavor_grouping False')
         self.do('import model sm')
         self.do('set group_subprocesses False')
-        self.do('generate e+ e- > e+ e- --use_crossing=False')
+        self.do('generate e+ e- > e+ e-')
         self.do('output madevent %s ' % self.out_dir)
         # Check that the needed ALOHA subroutines are generated
         files = ['aloha_file.inc',
@@ -3490,7 +3563,7 @@ set boost_choice [6, -6] pt [0, 0]
         self.do('set apply_flavor_grouping True')
         self.do('import model sm')
         self.do('set group_subprocesses False')
-        self.do('generate e+ e- > e+ e- --use_crossing=False')
+        self.do('generate e+ e- > e+ e-')
         self.do('output madevent %s ' % self.out_dir)
         # Check that the needed ALOHA subroutines are generated
         files = ['FFV6_3.f', 'FFV2_3.f', 'FFV1P1N_2.f', 'FFV6P1N_3.f', 'aloha_file.inc', 'FFV6_0.f', 'FFV2P1N_3.f', 'FFV1P0_3.f', 
@@ -3730,7 +3803,7 @@ C
         self.do('import model sm')
         self.do('define p = u u~ d d~')
         self.do('set group_subprocesses False')
-        self.do('generate p p > w+, w+ > l+ vl @1 --use_crossing=False')
+        self.do('generate p p > w+, w+ > l+ vl @1')
         self.do('output madevent %s ' % self.out_dir)
         devnull = open(os.devnull,'w')
         # Check that all subprocess directories have been created
@@ -4117,8 +4190,8 @@ C
         self.do('import model sm')
         self.do('define p = g u d u~ d~')
         self.do('set group_subprocesses True')
-        self.do('generate p p > w+, w+ > l+ vl @1 --use_crossing=False')
-        self.do('add process p p > w+ p, w+ > l+ vl @2 --use_crossing=False')
+        self.do('generate p p > w+, w+ > l+ vl @1')
+        self.do('add process p p > w+ p, w+ > l+ vl @2')
         self.do('output madevent %s -nojpeg' % self.out_dir)
         self.do('set group_subprocesses False')
         devnull = open(os.devnull,'w')
@@ -4195,8 +4268,8 @@ P1_qq_wp_wp_lvl
 
         self.do('import model sm')
         self.do('set group_subprocesses False')
-        self.do('generate w+ > l+ vl --use_crossing=False')
-        self.do('add process w+ > j j --use_crossing=False')
+        self.do('generate w+ > l+ vl')
+        self.do('add process w+ > j j')
         self.do('output madevent %s ' % self.out_dir)
         # Check that all subprocesses have separate directories
         directories = ['P0_wp_LxN','P0_wp_QQx']
@@ -4205,8 +4278,8 @@ P1_qq_wp_wp_lvl
                                                        'SubProcesses',
                                                        d)))
         self.do('set group_subprocesses True')
-        self.do('generate w+ > l+ vl --use_crossing=False')
-        self.do('add process w+ > j j --use_crossing=False')
+        self.do('generate w+ > l+ vl')
+        self.do('add process w+ > j j')
         self.do('output madevent %s -f' % self.out_dir)
         # Check that all subprocesses are combined
         directories = ['P0_wp_lvl','P0_wp_qq']
@@ -4215,8 +4288,8 @@ P1_qq_wp_wp_lvl
                                                        'SubProcesses',
                                                        d)))
 
-        self.do('generate w+ > l+ vl --use_crossing=False')
-        self.do('generate e+ e- > j j --use_crossing=False')
+        self.do('generate w+ > l+ vl')
+        self.do('generate e+ e- > j j')
         self.do('output madevent %s -f' % self.out_dir)
         # Check that all subprocesses are combined
         directories = ['P0_wp_lvl','P0_wp_qq']
@@ -4346,7 +4419,7 @@ P1_qq_wp_wp_lvl
         # Test sextet production
         self.do('import model sextet_diquarks')
         self.do('set group_subprocesses False')
-        self.do('generate u u > six g --use_crossing=False')
+        self.do('generate u u > six g')
         self.do('output madevent %s ' % self.out_dir)
         
         # Check that leshouche.inc exists
@@ -4355,7 +4428,7 @@ P1_qq_wp_wp_lvl
                                                     'P0_uu_sixg',
                                                     'leshouche.inc')))        
         # Test sextet decay
-        self.do('generate six > u u g --use_crossing=False')
+        self.do('generate six > u u g')
         self.do('output madevent %s -f' % self.out_dir)
 
         # Check that leshouche.inc exists
@@ -4365,7 +4438,7 @@ P1_qq_wp_wp_lvl
                                                     'leshouche.inc')))        
 
         # Test sextet production
-        self.do('generate u g > six u~ --use_crossing=False')
+        self.do('generate u g > six u~')
         self.do('output madevent %s -f' % self.out_dir)
         
         # Check that leshouche.inc exists

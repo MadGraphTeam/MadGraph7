@@ -260,7 +260,7 @@ class DecayComparator(object):
         start1= time.time()
         self.cmd.run_cmd("set automatic_html_opening False --no-save")
         try:
-            self.cmd.exec_cmd('generate %s > all all --optimize --use_crossing=False' % particle)
+            self.cmd.exec_cmd('generate %s > all all --optimize' % particle)
         except InvalidCmd:
             return 'True'
         if self.cmd._curr_amps:
@@ -349,7 +349,7 @@ class DecayComparator(object):
         os.system('rm -rf %s >/dev/null' % dir_name)
         os.system('rm -rf %s_dec >/dev/null' % dir_name)
         self.cmd.run_cmd('set automatic_html_opening False --no-save')
-        self.cmd.exec_cmd('generate %s > %s %s %s $ all $$ %s --optimize --use_crossing=False' %
+        self.cmd.exec_cmd('generate %s > %s %s %s $ all $$ %s --optimize' %
                           (part, multi1, multi2, multi3, ' '.join(to_avoid)))
         print('generate %s > %s %s %s $ all $$ %s --optimize' % \
                           (part, multi1, multi2, multi3, ' '.join(to_avoid)))
@@ -394,7 +394,7 @@ class DecayComparator(object):
         pid = self.particles_id[particle] 
         #make a fake output
         self.cmd._curr_model.write_param_card()
-        self.cmd.exec_cmd('generate z > e+ e- --use_crossing=False')
+        self.cmd.exec_cmd('generate z > e+ e-')
         self.cmd.exec_cmd('output madevent %s -f' % dir_name)
         me_cmd = me_interface.MadEventCmd(dir_name)
         self.cmd.define_child_cmd_interface(me_cmd, False)

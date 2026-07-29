@@ -1136,29 +1136,33 @@ C
         pass
 
     def _check_crossing_support(self):
-        """Refuse to export when a crossing was asked for and cannot be given.
+        """Note that this output cannot read folded crossings.
 
         `--use_crossing` (on by default) tells the generation not to write out
         the crossed subprocesses separately, because the matrix element is
         expected to reach them through an extended FLAV_IDX instead. Only the
-        fortran standalone implements that decoding: any other exporter would
-        write a matrix element that silently misses those subprocesses, so it
-        has to error out and name the way to get a valid output back.
+        folding-capable standalone backends implement that decoding.
+
+        This used to refuse the export and ask the user to regenerate with
+        --use_crossing=False. It no longer does: the crossed subprocesses are
+        recorded as metadata at generation, so an output that cannot read them
+        gets them expanded back into explicit subprocesses automatically (see
+        MadGraphCmd._expand_recorded_crossings, applied on both the grouped and
+        the ungrouped path). Erroring out here would additionally be wrong for
+        the many processes that fold NO crossing at all -- nothing would be
+        missing from their output -- and it fired on the flag rather than on the
+        data. --use_crossing=False stays available, but is no longer needed just
+        to reach a non-folding output.
         """
 
         if self.supports_crossing:
             return
         if not self.opt.get('use_crossing', False):
             return
-
-        raise InvalidCmd(
-            "The '%s' output does not support crossing symmetry, which the "
-            "process was generated with. Crossing symmetry is only implemented "
-            "for the fortran standalone output; every other output needs the "
-            "crossed subprocesses to be generated explicitly.\n"
-            "Regenerate the process with --use_crossing=False (e.g. "
-            "'generate <process> --use_crossing=False') and run the output "
-            "again." % self.opt.get('export_format', 'unknown'))
+        logger.debug("The '%s' output does not read folded crossings; any "
+                     "recorded crossed subprocess will be expanded back into "
+                     "an explicit subprocess.",
+                     self.opt.get('export_format', 'unknown'))
 
     def _configure_flavor_mask_from_cmd_options(self):
         """Honor `--mask=True|False` from the output command line."""

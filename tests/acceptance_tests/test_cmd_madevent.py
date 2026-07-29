@@ -905,11 +905,7 @@ class TestMECmdShell(unittest.TestCase):
         mg_cmd.exec_cmd('set group_subprocesses False')
         mg_cmd.exec_cmd('import model sm')
         mg_cmd.exec_cmd('define q = u d')
-        # --use_crossing=False: ungrouped madevent does not support crossing,
-        # and this test's subject (flavor xsec with grouping off) is orthogonal
-        # to it (crossing correctness is covered by the crossing/consistency
-        # suites; it reduces to the base flavor before the flavor logic runs).
-        mg_cmd.exec_cmd('generate u q > z u q QCD=0 --use_crossing=False')
+        mg_cmd.exec_cmd('generate u q > z u q QCD=0')
         mg_cmd.exec_cmd('output madevent %s' % self.run_dir)
 
         self.cmd_line = MECmd.MadEventCmdShell(me_dir=self.run_dir)
@@ -1279,11 +1275,7 @@ class TestMECmdShell(unittest.TestCase):
             mg_cmd.exec_cmd('set apply_flavor_grouping %s' % afg)
             mg_cmd.exec_cmd('import model sm')
             mg_cmd.exec_cmd('set group_subprocesses %s' % gsp)
-            # --use_crossing=False: this checks cross-section consistency
-            # across the grouping settings, which is orthogonal to crossing
-            # (crossing does not change the xsec and is unsupported by the
-            # ungrouped settings). Keeps all four settings directly comparable.
-            mg_cmd.exec_cmd('generate p p > l+ l- --use_crossing=False')
+            mg_cmd.exec_cmd('generate p p > l+ l-')
             mg_cmd.exec_cmd('output madevent %s' % run_dir)
 
             self.cmd_line = MECmd.MadEventCmdShell(me_dir=run_dir)
@@ -1404,9 +1396,7 @@ class TestMECmdShell(unittest.TestCase):
             mg_cmd.exec_cmd('set apply_flavor_grouping %s' % afg)
             mg_cmd.exec_cmd('import model sm')
             mg_cmd.exec_cmd('set group_subprocesses %s' % gsp)
-            # --use_crossing=False: grouping-consistency check, orthogonal to
-            # crossing (see test_flavor_grouping_consistency).
-            mg_cmd.exec_cmd('generate z > l+ l- --use_crossing=False')
+            mg_cmd.exec_cmd('generate z > l+ l-')
             mg_cmd.exec_cmd('output madevent %s' % run_dir)
 
             self.cmd_line = MECmd.MadEventCmdShell(me_dir=run_dir)
@@ -1492,9 +1482,7 @@ class TestMECmdShell(unittest.TestCase):
             mg_cmd.exec_cmd('define q~ = u~ d~ s~ c~')
 
             # Generate process with flavor-grouped particles
-            # --use_crossing=False: grouping-consistency check, orthogonal to
-            # crossing (see test_flavor_grouping_consistency).
-            mg_cmd.exec_cmd('generate q q~ > q q~ --use_crossing=False')
+            mg_cmd.exec_cmd('generate q q~ > q q~')
             mg_cmd.exec_cmd('output madevent %s' % run_dir)
 
             self.cmd_line = MECmd.MadEventCmdShell(me_dir=run_dir)
@@ -2856,16 +2844,16 @@ class TestMEfromfile(unittest.TestCase):
         import model loop_sm
         set automatic_html_opening False --no_save
         set notification_center False --no_save
-        generate    t{L} > w+{0} b{R}, w+ > ta+ vt --use_crossing=False
-        add process t{L} > w+{T} b{L}, w+ > ta+ vt --use_crossing=False
-        add process t{L} > w+{A} b{R}, w+ > ta+ vt --use_crossing=False
-        add process t{R} > w+{S} b{L}, w+ > ta+ vt --use_crossing=False
-        add process t{R} > w+{0S} b{R}, w+ > ta+ vt --use_crossing=False
-        add process t{L} > w+{S0} b{L}, w+ > ta+ vt --use_crossing=False
-        add process t{L} > w+{G} b{R}, w+ > ta+ vt --use_crossing=False
-        add process t{L} > w+{H} b{L}, w+ > ta+ vt --use_crossing=False
-        add process t{R} > w+{Q} b{R}, w+ > ta+ vt --use_crossing=False
-        add process t{R} > w+{W} b{L}, w+ > ta+ vt --use_crossing=False
+        generate    t{L} > w+{0} b{R}, w+ > ta+ vt
+        add process t{L} > w+{T} b{L}, w+ > ta+ vt
+        add process t{L} > w+{A} b{R}, w+ > ta+ vt
+        add process t{R} > w+{S} b{L}, w+ > ta+ vt
+        add process t{R} > w+{0S} b{R}, w+ > ta+ vt
+        add process t{L} > w+{S0} b{L}, w+ > ta+ vt
+        add process t{L} > w+{G} b{R}, w+ > ta+ vt
+        add process t{L} > w+{H} b{L}, w+ > ta+ vt
+        add process t{R} > w+{Q} b{R}, w+ > ta+ vt
+        add process t{R} > w+{W} b{L}, w+ > ta+ vt
         output madevent %(path)s
         launch
         analysis=off
@@ -2894,8 +2882,8 @@ class TestMEfromfile(unittest.TestCase):
         import model loop_sm
         set automatic_html_opening False --no_save
         set notification_center False --no_save
-        generate    t > w+{A} b, w+ > ta+ vt --use_crossing=False
-        add process t > w+{S} b, w+ > ta+ vt --use_crossing=False
+        generate    t > w+{A} b, w+ > ta+ vt
+        add process t > w+{S} b, w+ > ta+ vt
         output madevent %(path)s
         launch
         analysis=off
@@ -2923,8 +2911,8 @@ class TestMEfromfile(unittest.TestCase):
         import model loop_sm
         set automatic_html_opening False --no_save
         set notification_center False --no_save
-        generate    t > w+{A} b, w+ > ta+ vt --use_crossing=False
-        add process t > w+{S} b, w+ > ta+ vt --use_crossing=False
+        generate    t > w+{A} b, w+ > ta+ vt
+        add process t > w+{S} b, w+ > ta+ vt
         output madevent %(path)s
         launch
         analysis=off

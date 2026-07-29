@@ -1580,9 +1580,10 @@ class TestCrossingUnsupportedOutput(unittest.TestCase):
     --use_crossing is on by default and tells the generation *not* to write the
     crossed subprocesses out separately, because the matrix element is supposed
     to reach them through an extended FLAV_IDX. The fortran standalone and the
-    (grouped) madevent output decode one; an output that cannot would quietly
-    produce a matrix element missing those subprocesses, so it has to raise
-    instead.
+    (grouped) madevent output decode one; an output that cannot must not quietly
+    produce a matrix element missing those subprocesses -- it gets the recorded
+    crossings expanded back into explicit subprocesses instead, so the result is
+    the complete uncrossed output and no user flag is required.
     """
 
     # Outputs reached through ExportV4Factory that have no crossing machinery
@@ -1597,27 +1598,64 @@ class TestCrossingUnsupportedOutput(unittest.TestCase):
         if os.path.isdir(self.tmpdir):
             shutil.rmtree(self.tmpdir)
 
-    def _output(self, fmt, name, options=''):
-        """Run generate+output for `fmt`, returning nothing or raising."""
+    def _output(self, fmt, name, options='', process=PROC_QG_QG, setup=()):
+        """Run generate+output for `fmt`; returns the output directory."""
+        out = pjoin(self.tmpdir, name)
         cmd = cmd_interface.MasterCmd()
         cmd.no_notification()
         cmd.exec_cmd('set automatic_html_opening False')
+        for line in setup:
+            cmd.exec_cmd(line)
         cmd.exec_cmd('import model sm')
-        cmd.exec_cmd(('generate %s %s' % (PROC_QG_QG, options)).strip())
-        cmd.exec_cmd('output %s %s -f' % (fmt, pjoin(self.tmpdir, name)))
+        cmd.exec_cmd(('generate %s %s' % (process, options)).strip())
+        cmd.exec_cmd('output %s %s -f' % (fmt, out))
+        return out
 
-    def test_unsupported_output_raises_with_crossing(self):
-        """The default (crossing on) must be refused, and say how to fix it."""
+    @staticmethod
+    def _subprocesses(out_dir):
+        path = pjoin(out_dir, 'SubProcesses')
+        return sorted(name for name in os.listdir(path)
+                      if name.startswith('P'))
+
+    def test_unsupported_output_accepts_crossing(self):
+        """Crossing on must NOT be refused by an output that cannot read it.
+
+        The crossed subprocesses are recorded as metadata at generation, so an
+        output with no crossing machinery gets them expanded back into explicit
+        subprocesses instead of erroring out. Refusing here used to force the
+        user to pass --use_crossing=False even for a process that folds no
+        crossing at all (u g > u g folds none), which is why the gate moved from
+        the flag to the data.
+        """
         for fmt in self.UNSUPPORTED_FORMATS:
             with self.subTest(format=fmt):
-                with self.assertRaises(madgraph.InvalidCmd) as ctx:
-                    self._output(fmt, 'raise_%s' % fmt)
-                message = str(ctx.exception)
-                # An error that does not name the way out would just leave the
-                # user stuck, so the remedy is part of the requirement.
-                self.assertIn('--use_crossing=False', message,
-                              'The %s error does not name the fix: %s'
-                              % (fmt, message))
+                with_crossing = self._output(fmt, 'on_%s' % fmt)
+                without = self._output(fmt, 'off_%s' % fmt,
+                                       options='--use_crossing=False')
+                self.assertEqual(self._subprocesses(with_crossing),
+                                 self._subprocesses(without),
+                                 '%s output differs with crossing on' % fmt)
+
+    def test_ungrouped_madevent_expands_folded_crossings(self):
+        """A folding process must lose nothing on an output without crossing.
+
+        p p > j j QCD=0 really does fold crossings, so this is the case where a
+        silently-missing subprocess would change the cross-section: the
+        ungrouped madevent output (no crossing machinery) must come out with the
+        very same subprocesses as an explicitly uncrossed generation.
+        """
+        ungrouped = ('set group_subprocesses False',)
+        on = self._output('madevent', 'me_on', process='p p > j j QCD=0',
+                          setup=ungrouped)
+        off = self._output('madevent', 'me_off', process='p p > j j QCD=0',
+                           options='--use_crossing=False', setup=ungrouped)
+        subs_on = self._subprocesses(on)
+        self.assertEqual(subs_on, self._subprocesses(off))
+        # Guard the guard: a build that collapsed everything into one directory
+        # would satisfy the equality above only if both sides were broken.
+        self.assertGreater(len(subs_on), 1,
+                           'expected several crossed subprocesses, got %s'
+                           % subs_on)
 
     def test_unsupported_output_accepted_without_crossing(self):
         """--use_crossing=False must let the very same output through.

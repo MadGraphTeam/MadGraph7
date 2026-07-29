@@ -1894,16 +1894,17 @@ class ReweightInterface(extended_cmd.Cmd):
             logger.info('generating the square matrix element for reweighting (second model and/or processes)')
         start = time.time()
         # The reweight matches each event's flavor to a subprocess matrix
-        # element (id_to_path). With flavor grouping off / keep_ordering the
-        # crossed subprocesses must exist as separate entries, but crossing now
-        # FOLDS them by default (merge_crossing='record'). Append
-        # --use_crossing=False to each TREE process definition to restore the
-        # pre-crossing (main) subprocess layout. Perturbative (NLO / ewsudakov
-        # [...]) definitions are left untouched: they already skip crossing at
-        # generation, and the flag must not land inside their option-laden line.
-        xflag = ' --use_crossing=False' \
-            if (self.keep_ordering or not self._reweight_use_flavor_grouping()) \
-            else ''
+        # element (id_to_path). Crossing now FOLDS the crossed subprocesses by
+        # default (merge_crossing='record'), so a crossed flavor has no separate
+        # dir/entry to match against and its weight is silently dropped -- this
+        # happens with flavor grouping ON too (the merged ME does not expose the
+        # folded crossings to id_to_path). Always append --use_crossing=False to
+        # each TREE process definition to reproduce the pre-crossing (main)
+        # subprocess layout, which the reweight matching was built for.
+        # Perturbative (NLO / ewsudakov [...]) definitions are left untouched:
+        # they already skip crossing at generation, and the flag must not land
+        # inside their option-laden line.
+        xflag = ' --use_crossing=False'
         commandline=''
         for i,proc in enumerate(data['processes']):
             if '[' not in proc:
