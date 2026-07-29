@@ -209,6 +209,214 @@ def _commit_all(repo: Path, message: str) -> str:
     ).stdout.strip()
 
 
+def _test_environment(
+    *,
+    platform_summary: str = "Darwin 24.0.0; arm64; Apple M3 Pro",
+    machine: str = "arm64",
+    processor: str = "Apple M3 Pro",
+) -> dict[str, str]:
+    return {
+        "schema": ENVIRONMENT_SCHEMA,
+        "profile": "macbook_M3",
+        "platform": platform_summary,
+        "machine": machine,
+        "processor": processor,
+        "python": "3.12.6",
+        "python_implementation": "CPython",
+        "status": "authenticated",
+        "source_revision": "a" * 40,
+        "pyamplicol": "0.1.0",
+        "numpy": "2.1.0",
+        "native_target": "aarch64-apple-darwin",
+        "native_cpu_features": "neon",
+        "native_build_inputs_sha256": "b" * 64,
+        "native_extension_sha256": "c" * 64,
+        "python_package_tree_sha256": "d" * 64,
+        "candidate_fingerprint": "candidate-aarch64",
+    }
+
+
+def _test_runtime() -> dict[str, object]:
+    return {
+        "package_version": "0.1.0",
+        "native_build_inputs_sha256": "a" * 64,
+        "native_extension": {"sha256": "b" * 64},
+        "python_package_tree": {"sha256": "c" * 64},
+        "candidate_build_identity": {
+            "candidate_fingerprint": "candidate-aarch64"
+        },
+        "native_target": {
+            "triple": "aarch64-apple-darwin",
+            "cpu_features": ["neon", "fp-armv8"],
+        },
+    }
+
+
+def test_processor_description_uses_sysctl_and_falls_back_when_denied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Completed:
+        def __init__(self, returncode: int, stdout: str) -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+
+    with monkeypatch.context() as context:
+        context.setattr(workspace_module.platform, "system", lambda: "Darwin")
+        context.setattr(workspace_module.platform, "processor", lambda: "arm")
+        context.setattr(
+            workspace_module.subprocess,
+            "run",
+            lambda *_args, **_kwargs: Completed(0, "Apple M3 Pro\n"),
+        )
+        assert workspace_module._processor_description() == "Apple M3 Pro"
+
+    attempted: list[tuple[str, ...]] = []
+
+    def denied(command, **_kwargs):
+        attempted.append(command)
+        return Completed(1, "")
+
+    with monkeypatch.context() as context:
+        context.setattr(workspace_module.platform, "system", lambda: "Darwin")
+        context.setattr(workspace_module.platform, "processor", lambda: "arm")
+        context.setattr(workspace_module.subprocess, "run", denied)
+        assert workspace_module._processor_description() == "arm"
+
+    assert attempted == [
+        ("sysctl", "-n", "machdep.cpu.brand_string"),
+        ("sysctl", "-n", "hw.model"),
+    ]
+
+
+def test_active_runtime_accepts_only_processor_display_label_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    _seed_template(repo)
+    subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
+    subprocess.run(
+        ("git", "config", "user.email", "report-tests@example.invalid"),
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ("git", "config", "user.name", "Report Tests"),
+        cwd=repo,
+        check=True,
+    )
+    initialize_profile(repo, "macbook_M3")
+    measured = _commit_all(repo, "Initialize measured-source scaffold")
+    hosts = iter(
+        (
+            {
+                "schema": ENVIRONMENT_SCHEMA,
+                "profile": "macbook_M3",
+                "platform": "Darwin 24.0.0; arm64; Apple M3 Pro",
+                "machine": "arm64",
+                "processor": "Apple M3 Pro",
+                "python": "3.12.6",
+                "python_implementation": "CPython",
+            },
+            {
+                "schema": ENVIRONMENT_SCHEMA,
+                "profile": "macbook_M3",
+                "platform": "Darwin 24.0.0; arm64; arm",
+                "machine": "arm64",
+                "processor": "arm",
+                "python": "3.12.6",
+                "python_implementation": "CPython",
+            },
+        )
+    )
+    monkeypatch.setattr(
+        workspace_module,
+        "_host_environment_payload",
+        lambda _profile: next(hosts),
+    )
+
+    recorded = refresh_profile_environment(
+        repo,
+        "macbook_M3",
+        expected_source_revision=measured,
+        runtime_auditor=lambda _revision, _root: _test_runtime(),
+    )
+
+    assert recorded["processor"] == "Apple M3 Pro"
+    assert require_active_profile_environment(
+        repo,
+        "macbook_M3",
+        expected_source_revision=measured,
+        runtime_auditor=lambda _revision, _root: _test_runtime(),
+    ) == recorded
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    (
+        {"platform": "Darwin 25.0.0; arm64; arm"},
+        {
+            "platform": "Linux 6.8.0; arm64; arm",
+        },
+        {
+            "platform": "Darwin 24.0.0; x86_64; arm",
+            "machine": "x86_64",
+        },
+        {"python": "3.13.1"},
+        {"source_revision": "e" * 40},
+        {"candidate_fingerprint": "candidate-other"},
+        {"native_build_inputs_sha256": "e" * 64},
+        {"native_extension_sha256": "e" * 64},
+        {"python_package_tree_sha256": "e" * 64},
+        {"native_target": "x86_64-apple-darwin"},
+    ),
+)
+def test_stable_environment_identity_retains_strict_runtime_fields(
+    overrides: dict[str, str],
+) -> None:
+    recorded = _test_environment()
+    active = {
+        **recorded,
+        "platform": "Darwin 24.0.0; arm64; arm",
+        "processor": "arm",
+        **overrides,
+    }
+
+    assert workspace_module._stable_environment_identity(
+        active
+    ) != workspace_module._stable_environment_identity(recorded)
+
+
+def test_stable_environment_identity_rejects_noncanonical_processor_suffix() -> None:
+    environment = _test_environment(
+        platform_summary="Darwin 24.0.0; arm64; Apple M3 Pro",
+        processor="arm",
+    )
+
+    with pytest.raises(
+        ReportWorkspaceError,
+        match="does not match its processor label",
+    ):
+        workspace_module._stable_environment_identity(environment)
+
+
+def test_stable_environment_identity_retains_linux_processor_model() -> None:
+    recorded = _test_environment(
+        platform_summary="Linux 6.8.0; x86_64; AMD EPYC 7551",
+        machine="x86_64",
+        processor="AMD EPYC 7551",
+    )
+    active = _test_environment(
+        platform_summary="Linux 6.8.0; x86_64; AMD EPYC 7763",
+        machine="x86_64",
+        processor="AMD EPYC 7763",
+    )
+
+    assert workspace_module._stable_environment_identity(
+        active
+    ) != workspace_module._stable_environment_identity(recorded)
+
+
 def test_environment_refresh_authenticates_runtime_without_dirtying_source(
     tmp_path: Path,
 ) -> None:

@@ -490,6 +490,66 @@ def _environment_tex(environment: Mapping[str, str]) -> str:
     )
 
 
+def _stable_environment_identity(
+    environment: Mapping[str, str],
+) -> dict[str, str]:
+    """Project an environment onto measurement-relevant identity fields.
+
+    ``processor`` is a display-only label.  On macOS it normally comes from
+    ``sysctl`` but falls back to :func:`platform.processor` when sandbox policy
+    denies that query.  Validate and remove only that canonical Darwin display
+    suffix; non-Darwin processor labels and every system/release, machine,
+    Python, source, candidate, native, and package identity remain exact.
+    """
+
+    platform_summary = _required_text(
+        environment.get("platform"),
+        "profile environment platform summary",
+    )
+    machine = _required_text(
+        environment.get("machine"),
+        "profile environment machine",
+    )
+    processor = environment.get("processor")
+    if not isinstance(processor, str):
+        raise ReportWorkspaceError(
+            "profile environment processor label must be a string"
+        )
+
+    canonical_platform = platform_summary
+    if processor and processor.casefold() != machine.casefold():
+        processor_suffix = f"; {processor}"
+        if not canonical_platform.endswith(processor_suffix):
+            raise ReportWorkspaceError(
+                "profile environment platform summary does not match its "
+                "processor label"
+            )
+        canonical_platform = canonical_platform[: -len(processor_suffix)]
+
+    machine_suffix = f"; {machine}"
+    if (
+        not canonical_platform.endswith(machine_suffix)
+        or not canonical_platform[: -len(machine_suffix)].strip()
+    ):
+        raise ReportWorkspaceError(
+            "profile environment platform summary does not identify its "
+            "system, release, and machine"
+        )
+
+    identity = dict(environment)
+    system_release = canonical_platform[: -len(machine_suffix)].strip()
+    system, separator, release = system_release.partition(" ")
+    if not separator or not system or not release.strip():
+        raise ReportWorkspaceError(
+            "profile environment platform summary does not identify separate "
+            "system and release values"
+        )
+    if system == "Darwin":
+        identity["platform"] = canonical_platform
+        identity.pop("processor", None)
+    return identity
+
+
 def _workspace_manifest(
     repo_root: Path,
     *,
@@ -848,7 +908,9 @@ def require_active_profile_environment(
         expected_source_revision=expected_source_revision,
         active_runtime=active_runtime,
     )
-    if active != recorded:
+    if _stable_environment_identity(active) != _stable_environment_identity(
+        recorded
+    ):
         raise ReportWorkspaceError(
             "active measurement runtime differs from the authenticated profile "
             "environment; rerun refresh-profile-environment"
