@@ -15,6 +15,7 @@ from tools.performance_report.campaign_reset import (
     CampaignResetError,
     OriginalAmplicolSeed,
     ResetTransactionPaths,
+    _lc_seed_family_rejections,
     _legacy_contract,
     assert_campaign_marker,
     build_seed_manifest,
@@ -26,7 +27,12 @@ from tools.performance_report.campaign_reset import (
     write_prepared_journal,
 )
 from tools.performance_report.catalog import REPORT_CATALOG
-from tools.performance_report.models import ArtifactPolicy, ExecutionMode
+from tools.performance_report.models import (
+    Accuracy,
+    ArtifactPolicy,
+    ExecutionMode,
+    Workload,
+)
 from tools.performance_report.scheduler import CampaignSettings, plan_campaign
 from tools.performance_report.service import ReportPaths, ReportService
 from tools.performance_report.source_identity import ReportSourceIdentity
@@ -48,6 +54,10 @@ def _cell(mode: ExecutionMode):
         cell
         for cell in REPORT_CATALOG.measurement_cells()
         if cell.measurement.execution_mode is mode
+        and (
+            mode is not ExecutionMode.AMPLICOL
+            or cell.measurement.accuracy is not Accuracy.LC
+        )
     )
 
 
@@ -161,6 +171,150 @@ def test_contracted_amplicol_contract_accepts_no_selector() -> None:
     )
 
     assert contract["selector_contract_sha256"] is None
+
+
+def _lc_record(
+    cell_id: str,
+    *,
+    point: str = "a" * 64,
+    common_value: float = 1.0,
+) -> SimpleNamespace:
+    selector = {
+        "selected_color_flow_ids": ["flow:2,1"],
+        "selected_color_words": [[2, 1]],
+        "all_flow_helicity_ids": ["h:-1,+1"],
+        "all_flow_source_helicities": {"1": -1, "2": 1},
+        "point_digest": point,
+    }
+    return SimpleNamespace(
+        cell_id=cell_id,
+        result={
+            "selector_contract": selector,
+            "resources": {"monitor": "test", "peak_rss_bytes": 1},
+            "validation": {
+                "status": "ok",
+                "method": "independent-original-amplicol-oracle",
+                "point_digest": point,
+                "lc_common_component": {
+                    "abi": "pyamplicol-report-lc-common-component-v1",
+                    "cell_id": cell_id,
+                    "value": common_value,
+                    "point_digest": point,
+                    "helicity_ids": ["h:-1,+1"],
+                    "color_flow_ids": ["flow:2,1"],
+                },
+            },
+            "provenance": {
+                "method": "original-amplicol-generated-library",
+                "revision": _REVISION,
+                "report_source_revision": _REVISION,
+                "report_source_tree": _TREE,
+                "report_measured_source_revision": _REVISION,
+                "report_measured_source_tree": _TREE,
+                "report_source_clean": True,
+                "compiler": {
+                    "identity": "gfortran",
+                    "version": "GNU Fortran",
+                    "flags": ["-O3"],
+                    "target": "test-target",
+                    "executable_sha256": _SHA,
+                },
+                "target_runtime_seconds": 5.0,
+                "runtime_profile": {
+                    "measurement": {"target_runtime_achieved": True}
+                },
+                "generation_timing_is_workload_specific": True,
+                "row_selection_policy": "row-v1",
+                "selector_color_word_policy": "selector-v1",
+            },
+        },
+    )
+
+
+def test_lc_seed_rejects_stale_point_and_structural_zero() -> None:
+    record = _lc_record("reference-amplicol-lc-example-selected-flow")
+
+    contract = _legacy_contract(
+        record,
+        requires_selector=True,
+        expected_legacy_revision=_REVISION,
+        expected_point_digest="a" * 64,
+    )
+    assert contract["selector_contract_sha256"] is not None
+
+    with pytest.raises(CampaignResetError, match="predates"):
+        _legacy_contract(
+            record,
+            requires_selector=True,
+            expected_legacy_revision=_REVISION,
+            expected_point_digest="b" * 64,
+        )
+    with pytest.raises(CampaignResetError, match="structural zero"):
+        _legacy_contract(
+            _lc_record(record.cell_id, common_value=0.0),
+            requires_selector=True,
+            expected_legacy_revision=_REVISION,
+            expected_point_digest="a" * 64,
+        )
+
+
+def test_lc_seed_family_requires_matching_selected_and_all_flow() -> None:
+    selected = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+        and cell.measurement.accuracy is Accuracy.LC
+        and cell.workload is Workload.SELECTED_FLOW
+    )
+    all_flow = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.dataset_id == selected.dataset_id
+        and cell.process == selected.process
+        and cell.n_final == selected.n_final
+        and cell.measurement == selected.measurement
+        and cell.workload is Workload.ALL_FLOW
+    )
+    cells = {
+        selected.cell_id: selected,
+        all_flow.cell_id: all_flow,
+    }
+    records = {
+        selected.cell_id: _lc_record(selected.cell_id),
+        all_flow.cell_id: _lc_record(all_flow.cell_id),
+    }
+
+    assert (
+        _lc_seed_family_rejections(
+            cells=cells,
+            records_by_cell=records,
+            admitted_cell_ids=set(cells),
+        )
+        == {}
+    )
+
+    records[all_flow.cell_id].result["selector_contract"][
+        "selected_color_flow_ids"
+    ] = ["flow:1,2"]
+    rejected = _lc_seed_family_rejections(
+        cells=cells,
+        records_by_cell=records,
+        admitted_cell_ids=set(cells),
+    )
+    assert set(rejected) == set(cells)
+    assert all("contracts differ" in reason for reason in rejected.values())
+
+    incomplete = _lc_seed_family_rejections(
+        cells=cells,
+        records_by_cell=records,
+        admitted_cell_ids={selected.cell_id},
+    )
+    assert incomplete == {
+        selected.cell_id: (
+            "LC seed family is incomplete; selected/all-flow rows must be "
+            "remeasured under one selector authority"
+        )
+    }
 
 
 def test_seed_selects_only_ok_original_amplicol_and_preserves_bytes(

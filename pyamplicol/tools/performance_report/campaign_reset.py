@@ -27,7 +27,7 @@ from .artifacts import ArtifactStore, CurrentRecord
 from .cache import validate_measurement
 from .campaign_policy import CampaignPolicy, validate_policy_measurement
 from .catalog import REPORT_CATALOG, ReportCatalog
-from .models import ExecutionMode, ResultStatus
+from .models import Accuracy, CellSpec, ExecutionMode, ResultStatus, Workload
 
 SEED_FILENAME = "original_amplicol_seed.json"
 CAMPAIGN_MARKER_FILENAME = "campaign-epoch.json"
@@ -145,6 +145,7 @@ def _legacy_contract(
     *,
     requires_selector: bool,
     expected_legacy_revision: str | None = None,
+    expected_point_digest: str | None = None,
 ) -> dict[str, object]:
     provenance = record.result.get("provenance")
     validation = record.result.get("validation")
@@ -212,7 +213,7 @@ def _legacy_contract(
         raise CampaignResetError(
             f"{record.cell_id}: numerical validation is not successful"
         )
-    _require_sha256(
+    validation_point_digest = _require_sha256(
         validation.get("point_digest"),
         label=f"{record.cell_id}.validation.point_digest",
     )
@@ -220,6 +221,41 @@ def _legacy_contract(
         if not isinstance(selector, Mapping):
             raise CampaignResetError(
                 f"{record.cell_id}: LC selector contract is missing"
+            )
+        from .agreements import (
+            LC_COMMON_COMPONENT_FIELD,
+            validate_lc_common_component,
+        )
+        from .runner import SelectorContract
+
+        try:
+            typed_selector = SelectorContract.from_mapping(selector)
+            validate_lc_common_component(
+                validation.get(LC_COMMON_COMPONENT_FIELD),
+                expected_cell_id=record.cell_id,
+                selector_contract=selector,
+            )
+        except (TypeError, ValueError, RuntimeError) as error:
+            raise CampaignResetError(
+                f"{record.cell_id}: LC selector evidence is invalid"
+            ) from error
+        if typed_selector.point_digest != validation_point_digest:
+            raise CampaignResetError(
+                f"{record.cell_id}: LC selector and validation points differ"
+            )
+        if (
+            expected_point_digest is not None
+            and typed_selector.point_digest != expected_point_digest
+        ):
+            raise CampaignResetError(
+                f"{record.cell_id}: LC selector point predates the active "
+                "deterministic point corpus"
+            )
+        common_component = validation[LC_COMMON_COMPONENT_FIELD]
+        assert isinstance(common_component, Mapping)
+        if float(common_component["value"]) <= 0.0:
+            raise CampaignResetError(
+                f"{record.cell_id}: LC selector common component is structural zero"
             )
         selector_digest: str | None = sha256_payload(dict(selector))
     elif selector is not None:
@@ -285,12 +321,19 @@ def _pin_for_record(
     if record.result.get("status") != ResultStatus.OK.value:
         raise CampaignResetError(f"{record.cell_id}: seed result is not ok")
     validate_measurement(record.result, expected_cell=cell)
+    expected_point_digest: str | None = None
+    if cell.measurement.accuracy is Accuracy.LC:
+        from .measurement import shared_validation_points
+        from .runner import point_digest
+
+        expected_point_digest = point_digest(shared_validation_points(cell.process))
     contract = _legacy_contract(
         record,
         requires_selector=(
-            cell.measurement.accuracy.value == "lc"
+            cell.measurement.accuracy is Accuracy.LC
         ),
         expected_legacy_revision=expected_legacy_revision,
+        expected_point_digest=expected_point_digest,
     )
     validate_policy_measurement(
         policy,
@@ -322,6 +365,71 @@ def _pin_for_record(
     }
 
 
+def _lc_seed_family_rejections(
+    *,
+    cells: Mapping[str, CellSpec],
+    records_by_cell: Mapping[str, CurrentRecord],
+    admitted_cell_ids: set[str],
+) -> dict[str, str]:
+    """Reject LC seeds unless both layouts authenticate one exact selector.
+
+    A selected-flow seed is the selector authority for a subsequently measured
+    all-flow row.  Reusing only one historical layout, or two layouts carrying
+    different contracts, can therefore make a fresh dependent compare values
+    evaluated at different physical components.  Reject the complete pair so
+    the current adapter derives both rows from the same deterministic point and
+    selector; never rewrite historical numerical evidence.
+    """
+
+    families: dict[tuple[object, ...], dict[Workload, str]] = {}
+    for cell_id, cell in cells.items():
+        if (
+            cell.measurement.execution_mode is not ExecutionMode.AMPLICOL
+            or cell.measurement.accuracy is not Accuracy.LC
+        ):
+            continue
+        key = (
+            cell.dataset_id,
+            cell.process,
+            cell.process_key,
+            cell.n_final,
+            cell.measurement,
+            cell.variant,
+        )
+        families.setdefault(key, {})[cell.workload] = cell_id
+
+    rejected: dict[str, str] = {}
+    for family in families.values():
+        selected_id = family.get(Workload.SELECTED_FLOW)
+        all_flow_id = family.get(Workload.ALL_FLOW)
+        if selected_id is None or all_flow_id is None:
+            continue
+        admitted = {
+            cell_id
+            for cell_id in (selected_id, all_flow_id)
+            if cell_id in admitted_cell_ids
+        }
+        if not admitted:
+            continue
+        if admitted != {selected_id, all_flow_id}:
+            reason = (
+                "LC seed family is incomplete; selected/all-flow rows must be "
+                "remeasured under one selector authority"
+            )
+            rejected.update((cell_id, reason) for cell_id in admitted)
+            continue
+        selected = records_by_cell[selected_id].result.get("selector_contract")
+        all_flow = records_by_cell[all_flow_id].result.get("selector_contract")
+        if selected != all_flow:
+            reason = (
+                "LC selected/all-flow seed contracts differ; both layouts must "
+                "be remeasured under one selector authority"
+            )
+            rejected[selected_id] = reason
+            rejected[all_flow_id] = reason
+    return rejected
+
+
 def build_seed_manifest(
     *,
     profile: str,
@@ -342,8 +450,9 @@ def build_seed_manifest(
         expected_legacy_revision,
         label="expected_legacy_revision",
     )
-    pins: list[dict[str, object]] = []
-    rejected: list[dict[str, str]] = []
+    pins_by_cell: dict[str, dict[str, object]] = {}
+    records_by_cell: dict[str, CurrentRecord] = {}
+    rejected_by_cell: dict[str, str] = {}
     cells = {cell.cell_id: cell for cell in catalog.measurement_cells()}
     for record in store.recover_current_records():
         cell = cells.get(record.cell_id)
@@ -352,20 +461,30 @@ def build_seed_manifest(
             or cell.measurement.execution_mode is not ExecutionMode.AMPLICOL
         ):
             continue
+        records_by_cell[record.cell_id] = record
         try:
-            pins.append(
-                _pin_for_record(
-                    record,
-                    profile=profile,
-                    catalog=catalog,
-                    policy=policy,
-                    expected_legacy_revision=expected_legacy_revision,
-                )
+            pins_by_cell[record.cell_id] = _pin_for_record(
+                record,
+                profile=profile,
+                catalog=catalog,
+                policy=policy,
+                expected_legacy_revision=expected_legacy_revision,
             )
         except (CampaignResetError, KeyError, ValueError) as error:
-            rejected.append({"cell_id": record.cell_id, "reason": str(error)})
-    pins.sort(key=lambda item: str(item["cell_id"]))
-    rejected.sort(key=lambda item: item["cell_id"])
+            rejected_by_cell[record.cell_id] = str(error)
+    family_rejections = _lc_seed_family_rejections(
+        cells=cells,
+        records_by_cell=records_by_cell,
+        admitted_cell_ids=set(pins_by_cell),
+    )
+    for cell_id, reason in family_rejections.items():
+        pins_by_cell.pop(cell_id, None)
+        rejected_by_cell[cell_id] = reason
+    pins = sorted(pins_by_cell.values(), key=lambda item: str(item["cell_id"]))
+    rejected = [
+        {"cell_id": cell_id, "reason": reason}
+        for cell_id, reason in sorted(rejected_by_cell.items())
+    ]
     amplicol_count = sum(
         cell.measurement.execution_mode is ExecutionMode.AMPLICOL
         for cell in cells.values()
