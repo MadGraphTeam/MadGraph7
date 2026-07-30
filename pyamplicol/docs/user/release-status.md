@@ -144,10 +144,11 @@ Strict release builds fail closed on these conditions. The authoritative
 machine-readable state is `dependencies/release-lock.toml`; contributor-only
 state is not a release fallback.
 
-The defined publishing workflow is manual and accepts only a successful
-default-branch **Validated release artifacts** run. It downloads the already
-validated three wheels and one source distribution and does not rebuild or
-modify them. Before its first use, maintainers must confirm that the existing
+The defined publishing workflow is manual and downloads the package files from
+the explicitly selected **Validated release artifacts** run. It checks the
+actual three-wheel/one-source-distribution inventory but does not re-parse or
+authenticate GitHub workflow/job metadata, and it does not rebuild or modify
+the files. Before its first use, maintainers must confirm that the existing
 `testpypi` and `pypi` GitHub environments have the intended approval policy and
 register matching Trusted Publishers with TestPyPI and PyPI so those OIDC
 claims are accepted.

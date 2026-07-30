@@ -613,22 +613,10 @@ def test_publisher_is_manual_oidc_only_and_has_no_build_checkout() -> None:
     assert workflow.count("id-token: write") == 1
     assert workflow.count("contents: read") == 1
     assert "run-id: ${{ inputs.artifact_run_id }}" in workflow
-    assert 'workflow["path"] == ".github/workflows/release-artifacts.yml"' in workflow
-    assert 'run["conclusion"] == "success"' in workflow
-    assert 'run["event"] == "workflow_dispatch"' in workflow
-    assert 'run["head_branch"] == run["repository"]["default_branch"]' in workflow
-    for required_job in (
-        "Full source validation gate",
-        "Independent Fortran physics oracle",
-        "Build retained source distribution",
-        "macOS release wheel and native deployment (macos-arm64)",
-        "macOS release wheel and native deployment (macos-x86_64)",
-        "manylinux release wheel and native deployment",
-        "Collect validated release artifacts",
-    ):
-        assert required_job in workflow
-    assert "Run complete release source gate" in workflow
-    assert "Rebuild and verify pinned Fortran evidence" in workflow
+    assert "Verify the validated release workflow run" not in workflow
+    assert "api.github.com" not in workflow
+    assert "workflow_url" not in workflow
+    assert "required_jobs" not in workflow
     assert "expected three wheels and one sdist" in workflow
     assert "candidate artifacts cannot be published" in workflow
     assert "release-manifest.json" not in workflow
@@ -643,11 +631,11 @@ def test_publisher_is_manual_oidc_only_and_has_no_build_checkout() -> None:
     assert "gh-action-pypi-publish" in workflow
 
 
-def test_publisher_requires_the_validated_default_branch_run() -> None:
+def test_publisher_does_not_reauthenticate_release_run_metadata() -> None:
     workflow = (WORKFLOWS / "publish-pypi.yml").read_text(encoding="utf-8")
-    assert 'run["head_repository"]["full_name"] == repository' in workflow
-    assert 'run["head_branch"] == run["repository"]["default_branch"]' in workflow
-    assert 'workflow["path"] == ".github/workflows/release-artifacts.yml"' in workflow
+    assert 'run["head_repository"]' not in workflow
+    assert 'run["head_branch"]' not in workflow
+    assert 'workflow["path"]' not in workflow
     assert "git/ref/tags" not in workflow
     assert "git/tags" not in workflow
 
