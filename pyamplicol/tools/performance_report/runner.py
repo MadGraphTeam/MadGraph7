@@ -593,8 +593,7 @@ def runtime_identity_payload(
         field: build_info.get(field) for field in build_identity_fields
     }
     if (
-        candidate_build_identity["source_revision"] != expected_source_revision
-        or candidate_build_identity["native_build_inputs_sha256"] != native_digest
+        candidate_build_identity["native_build_inputs_sha256"] != native_digest
         or candidate_build_identity["publishable"] is not False
         or not all(
             candidate_build_identity[field] is not None
@@ -602,7 +601,8 @@ def runtime_identity_payload(
         )
     ):
         raise RunnerError(
-            "report runtime candidate build does not match the final source revision"
+            "report runtime is not a complete compatible non-publishable "
+            "candidate build"
         )
     if not isinstance(native_digest, str) or len(native_digest) != 64:
         raise RunnerError("native runtime build-input identity is invalid")

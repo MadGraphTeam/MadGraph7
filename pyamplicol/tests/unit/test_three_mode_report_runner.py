@@ -1518,7 +1518,8 @@ def test_runtime_identity_binds_native_artifact_and_arena(
         ),
         runtime={"engine_version": "0.1.0.test"},
     )
-    source_revision = "d" * 40
+    candidate_source_revision = "d" * 40
+    measurement_source_revision = "e" * 40
     package_root = tmp_path / "pyamplicol"
     package_root.mkdir()
     package_init = package_root / "__init__.py"
@@ -1615,7 +1616,7 @@ def test_runtime_identity_binds_native_artifact_and_arena(
             "schema_version": 1,
             "version": pyamplicol.__version__,
             "candidate_fingerprint": "candidate",
-            "source_revision": source_revision,
+            "source_revision": candidate_source_revision,
             "source_checkout": "/repo",
             "native_build_inputs_sha256": "b" * 64,
             "publishable": False,
@@ -1706,7 +1707,7 @@ def test_runtime_identity_binds_native_artifact_and_arena(
         ),
         Path("/artifact"),
         "process-1",
-        expected_source_revision=source_revision,
+        expected_source_revision=measurement_source_revision,
     )
 
     assert identity["artifact_id"] == artifact_id
@@ -1736,6 +1737,11 @@ def test_runtime_identity_binds_native_artifact_and_arena(
         }[cell.measurement.backend]
     )
     assert identity["native_build_inputs_sha256"] == "b" * 64
+    assert identity["source_revision"] == measurement_source_revision
+    assert (
+        identity["candidate_build_identity"]["source_revision"]
+        == candidate_source_revision
+    )
     package_tree = identity["python_package_tree"]
     assert package_tree == package_tree_identity
     assert identity["loaded_module_origin_policy"] == loaded_origin_policy
@@ -1774,7 +1780,7 @@ def test_runtime_identity_binds_native_artifact_and_arena(
             ),
             Path("/artifact"),
             "process-1",
-            expected_source_revision=source_revision,
+            expected_source_revision=measurement_source_revision,
         )
 
     mismatched_mode = (
@@ -1791,7 +1797,7 @@ def test_runtime_identity_binds_native_artifact_and_arena(
             ),
             Path("/artifact"),
             "process-1",
-            expected_source_revision=source_revision,
+            expected_source_revision=measurement_source_revision,
         )
 
     with pytest.raises(RunnerError, match=r"does not expose.*execution mode"):
@@ -1800,7 +1806,7 @@ def test_runtime_identity_binds_native_artifact_and_arena(
             SimpleNamespace(artifact_id=artifact_id),
             Path("/artifact"),
             "process-1",
-            expected_source_revision=source_revision,
+            expected_source_revision=measurement_source_revision,
         )
 
 
