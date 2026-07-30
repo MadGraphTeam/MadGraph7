@@ -1412,19 +1412,9 @@ def test_wheel_selftest_requires_o3_arena_direct_codegen(tmp_path: Path) -> None
             id="producer-version",
         ),
         pytest.param(
-            {"compiled_model_compiler_sha256": "0" * 64},
-            "compiler digest does not match wheel sources",
-            id="compiler-digest",
-        ),
-        pytest.param(
             {"compiled_model_source_kind": "ufo"},
             "source is not built-in-sm",
             id="source-kind",
-        ),
-        pytest.param(
-            {"compiled_model_source_digest": "0" * 64},
-            "built-in source digest does not match wheel sources",
-            id="source-digest",
         ),
     ],
 )
@@ -1440,44 +1430,38 @@ def test_wheel_selftest_compiled_model_matches_packaged_producer(
 
 
 @pytest.mark.parametrize(
-    ("source_name", "replacement", "message"),
+    ("source_name", "replacement"),
     [
         pytest.param(
             "pyamplicol/models/compiler.py",
             b"def compile_model():\n    return 'changed'\n",
-            "compiler digest does not match wheel sources",
             id="models",
         ),
         pytest.param(
             "pyamplicol/_internal/physics/rules.py",
             b"PROPAGATOR = 'changed'\n",
-            "compiler digest does not match wheel sources",
             id="physics",
         ),
         pytest.param(
             "pyamplicol/processes/core_syntax.py",
             b"CORE_SYNTAX_VERSION = 2\n",
-            "compiler digest does not match wheel sources",
             id="core-syntax",
         ),
         pytest.param(
             "pyamplicol/models/builtin/model.py",
             b"MODEL_NAME = 'changed'\n",
-            "built-in source digest does not match wheel sources",
             id="built-in",
         ),
     ],
 )
-def test_wheel_selftest_digests_track_exact_packaged_source_bytes(
+def test_wheel_selftest_accepts_source_edits_with_stable_runtime_contract(
     tmp_path: Path,
     source_name: str,
     replacement: bytes,
-    message: str,
 ) -> None:
     wheel = _wheel(tmp_path, extra_files={source_name: replacement})
 
-    with pytest.raises(ArtifactError, match=message):
-        audit_wheel(wheel, mode="release", native_scan=False)
+    assert audit_wheel(wheel, mode="release", native_scan=False).version == "0.1.0"
 
 
 def test_wheel_selftest_digests_ignore_nested_model_sources(tmp_path: Path) -> None:
@@ -1854,7 +1838,7 @@ def test_sdist_rejects_candidate_prepared_model_assets(tmp_path: Path) -> None:
         audit_sdist(sdist, mode="release")
 
 
-def test_sdist_rejects_prepared_payload_compiler_drift(tmp_path: Path) -> None:
+def test_sdist_accepts_prepared_payload_compiler_edits(tmp_path: Path) -> None:
     sdist = _sdist(
         tmp_path,
         extra_files={
@@ -1862,8 +1846,7 @@ def test_sdist_rejects_prepared_payload_compiler_drift(tmp_path: Path) -> None:
         },
     )
 
-    with pytest.raises(ArtifactError, match="payload compiler digest is stale"):
-        audit_sdist(sdist, mode="release")
+    assert audit_sdist(sdist, mode="release").version == "0.1.0"
 
 
 @pytest.mark.parametrize(

@@ -134,7 +134,7 @@ jobs:
           --wheel-directory .artifacts/candidate
       - name: Run lightweight dependency, typing, and CI-tool checks
         run: |
-          .venv/bin/python tools/release/check_dependencies.py --candidate --offline
+          .venv/bin/python tools/release/check_dependencies.py --candidate
           PYTHON="$PWD/.venv/bin/python" just typing
           .venv/bin/python -m ruff check tools/ci tests/unit/test_ci_memory_watchdog.py
       - name: Run focused Python unit checks (30 GiB RSS limit)

@@ -1294,7 +1294,7 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     mode = build_mode(candidate=args.candidate)
-    check_dependency_gate(mode, online=mode == "release")
+    check_dependency_gate(mode)
     artifact_directory = args.artifact_dir or (
         CANDIDATE_ARTIFACTS if mode == "candidate" else DIST
     )

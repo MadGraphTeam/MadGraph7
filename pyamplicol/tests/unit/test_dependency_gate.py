@@ -24,9 +24,9 @@ def _module():
     return module
 
 
-def test_release_gate_is_ready_offline() -> None:
+def test_release_gate_is_ready_without_network_preflights() -> None:
     module = _module()
-    codes = [issue.code for issue in module.check(candidate=False, online=False)]
+    codes = [issue.code for issue in module.check(candidate=False)]
     assert codes == []
 
 
@@ -45,22 +45,16 @@ def test_release_contract_is_lean_exact_and_schema_8() -> None:
         "rust_crate",
         "rust_version",
         "serialization_abi",
-        "release_status",
     }
     assert set(lock["symjit"]) == {
         "version",
         "repository",
-        "branch",
         "revision",
-        "upstream_pr",
-        "release_status",
     }
     assert len(lock["symjit"]["revision"]) == 40
     assert set(lock["ufo_model_loader"]) == {
         "python_distribution",
         "required_version",
-        "latest_verified_published_version",
-        "release_status",
     }
 
 
@@ -103,7 +97,7 @@ def test_candidate_gate_fails_closed_before_contributor_install(
     monkeypatch.setattr(module, "STATE_PATH", tmp_path / "install-state.json")
     monkeypatch.setattr(module, "CANDIDATE_LOCK_PATH", tmp_path / "Cargo.lock")
     monkeypatch.setattr(module, "CARGO_CONFIG_PATH", tmp_path / "config.toml")
-    codes = {issue.code for issue in module.check(candidate=True, online=False)}
+    codes = {issue.code for issue in module.check(candidate=True)}
     assert "candidate-input-missing" in codes
     assert "symbolica-unverified" not in codes
 
@@ -223,18 +217,10 @@ def test_candidate_contributor_contract_pins_arena_abis_and_both_tree_states() -
     } == {"candidate-source-tree"}
 
 
-def test_online_gate_checks_each_exact_published_dependency(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_release_gate_has_no_live_package_or_repository_preflight() -> None:
     module = _module()
-    requested: list[str] = []
-
-    def published(url: str) -> bool:
-        requested.append(url)
-        return True
-
-    monkeypatch.setattr(module, "_published", published)
-    issues = module._published_dependency_issues(module._load_lock())
-    assert issues == []
-    assert len(requested) == len(module._project_python_dependencies()) + 2
-    assert all("/json" in url for url in requested if "pypi.org" in url)
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert not hasattr(module, "_published_dependency_issues")
+    assert "urllib.request" not in source
+    assert "pypi.org/pypi/" not in source
+    assert "crates.io/api/" not in source

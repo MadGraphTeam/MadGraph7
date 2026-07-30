@@ -345,15 +345,12 @@ def _write_packaged_prepared_model_asset(
     expected_compiled = {
         "compiled_model_schema_version": compiled_schema,
         "model_compiler_version": model_compiler_version,
-        "model_compiler_sha256": model_compiler_digest,
     }
     for key, expected in expected_compiled.items():
         if compiled_producer.get(key) != expected:
             raise RuntimeError(f"prepared compiled-model producer {key} is stale")
     if compiled_source.get("kind") != "built-in-sm":
         raise RuntimeError("prepared bundle does not contain the built-in SM")
-    if compiled_source.get("digest") != source_digest:
-        raise RuntimeError("prepared built-in model source digest is stale")
 
     if mode == "candidate":
         assert contributor is not None
@@ -546,16 +543,10 @@ def _validate_bundle(
     compiler_version = _literal_assignment(
         package_root / "models" / "loading.py", "MODEL_COMPILER_VERSION"
     )
-    compiler_digest = _model_compiler_digest(package_root)
-    prepared_pack_compiler_digest = _prepared_pack_compiler_digest(package_root)
-    source_digest = _built_in_source_digest(package_root)
     packaged_producer = _mapping(metadata.get("producer"), "metadata.producer")
     expected_producer = {
         "compiled_model_schema": compiled_schema,
         "model_compiler_version": compiler_version,
-        "model_compiler_sha256": compiler_digest,
-        "prepared_pack_compiler_sha256": prepared_pack_compiler_digest,
-        "model_source_digest": source_digest,
         "package_version": _expected_package_version(overlay, mode),
     }
     for key, expected in expected_producer.items():
@@ -568,10 +559,6 @@ def _validate_bundle(
         raise RuntimeError("prepared compiled-model schema is stale")
     if producer.get("model_compiler_version") != compiler_version:
         raise RuntimeError("prepared model compiler version is stale")
-    if producer.get("model_compiler_sha256") != compiler_digest:
-        raise RuntimeError("prepared model compiler digest is stale")
-    if source.get("digest") != source_digest:
-        raise RuntimeError("prepared built-in model source digest is stale")
     if producer.get("pyamplicol") != expected_producer["package_version"]:
         raise RuntimeError("prepared compiled-model package version is stale")
     if pack.producer.get("version") != expected_producer["package_version"]:
@@ -582,8 +569,6 @@ def _validate_bundle(
         raise RuntimeError("prepared kernel-pack model compiler version is stale")
     if pack.provenance.get("model_name") != "built-in-sm":
         raise RuntimeError("prepared kernel-pack model provenance is invalid")
-    if pack.provenance.get("compiled_model_digest") != source_digest:
-        raise RuntimeError("prepared kernel-pack source provenance is stale")
 
     dependencies = _mapping(metadata.get("dependencies"), "metadata.dependencies")
     _validate_dependency_contract(

@@ -26,9 +26,9 @@ typing:
 
 dependency-gate:
     @if [ "{{build_mode}}" = candidate ]; then \
-        {{python}} tools/release/check_dependencies.py --candidate --offline; \
+        {{python}} tools/release/check_dependencies.py --candidate; \
     else \
-        {{python}} tools/release/check_dependencies.py --offline; \
+        {{python}} tools/release/check_dependencies.py; \
     fi
 
 python-unit:

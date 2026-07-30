@@ -12,8 +12,6 @@ import re
 import subprocess
 import sys
 import tomllib
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -177,9 +175,7 @@ def _project_python_dependencies() -> dict[str, str]:
     return dependencies
 
 
-def _release_contract_issues(
-    lock: dict[str, Any], *, candidate: bool
-) -> list[GateIssue]:
+def _release_contract_issues(lock: dict[str, Any]) -> list[GateIssue]:
     issues: list[GateIssue] = []
     forbidden_tables = {"legal_status", "python_runtime_lock"}.intersection(lock)
     if forbidden_tables:
@@ -226,21 +222,15 @@ def _release_contract_issues(
         "rust_crate",
         "rust_version",
         "serialization_abi",
-        "release_status",
     }
     allowed_symjit = {
         "version",
         "repository",
-        "branch",
         "revision",
-        "upstream_pr",
-        "release_status",
     }
     allowed_loader = {
         "python_distribution",
         "required_version",
-        "latest_verified_published_version",
-        "release_status",
     }
     if (
         set(symbolica) != allowed_symbolica
@@ -258,19 +248,13 @@ def _release_contract_issues(
         or not isinstance(symjit.get("repository"), str)
         or not str(symjit["repository"]).startswith("https://github.com/")
         or not str(symjit["repository"]).endswith(".git")
-        or not isinstance(symjit.get("branch"), str)
-        or not symjit["branch"]
         or not isinstance(symjit.get("revision"), str)
         or _GIT_REVISION.fullmatch(str(symjit["revision"])) is None
-        or not isinstance(symjit.get("upstream_pr"), str)
-        or not str(symjit["upstream_pr"]).startswith("https://github.com/")
-        or symjit.get("release_status") != "verified-git-revision"
     ):
         issues.append(
             GateIssue(
                 "symjit-source-contract",
-                "SymJIT must use one verified HTTPS Git repository, named branch, "
-                "and immutable full revision",
+                "SymJIT must use one HTTPS Git repository and immutable full revision",
             )
         )
     symbolica_name = canonicalize_name(str(symbolica.get("python_distribution", "")))
@@ -287,30 +271,6 @@ def _release_contract_issues(
             GateIssue(
                 "ufo-loader-pin",
                 "ufo-model-loader compatibility data disagrees with the exact pin",
-            )
-        )
-    if loader.get("latest_verified_published_version") != loader.get(
-        "required_version"
-    ):
-        issues.append(
-            GateIssue(
-                "ufo-loader-unverified",
-                "the required ufo-model-loader version is not the verified release",
-            )
-        )
-    if not candidate and symbolica.get("release_status") != "verified":
-        issues.append(
-            GateIssue(
-                "symbolica-unverified",
-                "the exact published Symbolica/SymJIT pair is not yet verified to "
-                "contain the fixes used by contributor builds",
-            )
-        )
-    if not candidate and loader.get("release_status") != "verified":
-        issues.append(
-            GateIssue(
-                "ufo-loader-unverified",
-                "the exact published ufo-model-loader release is not verified",
             )
         )
     return issues
@@ -873,72 +833,18 @@ def _candidate_issues(_release_lock: dict[str, Any]) -> list[GateIssue]:
     return [*issues, *_candidate_config_issues()]
 
 
-def _published(url: str) -> bool:
-    request = urllib.request.Request(
-        url,
-        headers={"Accept": "application/json", "User-Agent": "pyamplicol-release-gate"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            return response.status == 200
-    except (OSError, urllib.error.URLError):
-        return False
-
-
-def _published_dependency_issues(lock: dict[str, Any]) -> list[GateIssue]:
-    try:
-        dependencies = _locked_python_dependencies(lock)
-    except ValueError as error:
-        return [GateIssue("python-dependency-contract", str(error))]
-    issues: list[GateIssue] = []
-    for name, version in dependencies.items():
-        if not _published(f"https://pypi.org/pypi/{name}/{version}/json"):
-            issues.append(
-                GateIssue(
-                    "python-release-unavailable",
-                    f"{name}=={version} is unavailable from PyPI",
-                )
-            )
-    symbolica = lock["symbolica"]
-    for crate, version in ((symbolica["rust_crate"], symbolica["rust_version"]),):
-        if not _published(f"https://crates.io/api/v1/crates/{crate}/{version}"):
-            issues.append(
-                GateIssue(
-                    "rust-release-unavailable",
-                    f"{crate}=={version} is unavailable from crates.io",
-                )
-            )
-    symjit = lock["symjit"]
-    commit_url = (
-        str(symjit["repository"]).removesuffix(".git")
-        + "/commit/"
-        + str(symjit["revision"])
-    )
-    if not _published(commit_url):
-        issues.append(
-            GateIssue(
-                "rust-git-revision-unavailable",
-                "the exact SymJIT Git revision is unavailable from its locked "
-                "repository",
-            )
-        )
-    return issues
-
-
-def check(*, candidate: bool, online: bool) -> list[GateIssue]:
+def check(*, candidate: bool) -> list[GateIssue]:
     try:
         lock = _load_lock()
     except (OSError, ValueError, tomllib.TOMLDecodeError) as error:
         return [GateIssue("release-lock-invalid", str(error))]
     issues = [
-        *_release_contract_issues(lock, candidate=candidate),
+        *_release_contract_issues(lock),
         *_release_cargo_lock_issues(lock),
         *_toolchain_issues(lock),
     ]
     if candidate:
         issues.extend(_candidate_issues(lock))
-    elif online:
-        issues.extend(_published_dependency_issues(lock))
     return issues
 
 
@@ -949,18 +855,13 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="validate source-checkout candidate inputs as non-publishable",
     )
-    parser.add_argument(
-        "--offline",
-        action="store_true",
-        help="skip package-index availability checks",
-    )
     parser.add_argument("--json", action="store_true", help="emit JSON")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    issues = check(candidate=args.candidate, online=not args.offline)
+    issues = check(candidate=args.candidate)
     payload = {
         "mode": "candidate" if args.candidate else "release",
         "ready": not issues,

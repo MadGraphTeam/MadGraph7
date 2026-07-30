@@ -7,13 +7,14 @@ pyAmpliCol has two deliberately separate dependency modes.
 Release-equivalent builds use exact versions published on PyPI and crates.io,
 except for SymJIT, which is redirected from crates.io to one immutable commit
 of `ValentinHirschi/symjit_changes_for_pyamplicol`. The exact Git repository,
-branch, revision, upstream PR, versions, and compatibility state are recorded
-in `release-lock.toml`. Release builds never apply source patches or reference
-a local checkout.
+revision, and build-relevant versions are recorded in `release-lock.toml`.
+Release builds never apply source patches or reference a local checkout.
 
 `tools/release/check_dependencies.py` is a hard release gate. It verifies the
 workspace-level SymJIT source override and fully resolved Cargo lock, including
-the full Git revision, before release artifacts are built.
+the full Git revision, before release artifacts are built. It is local and
+deterministic; the real package and Cargo builds prove that those inputs remain
+downloadable.
 
 The package-owned prepared models under
 `src/pyamplicol/assets/prepared_models` remain candidate inputs in a source
@@ -27,7 +28,11 @@ A release overlay projects the complete release pair set over the canonical
 package paths, deletes the auxiliary store, and validates the result. The
 retained sdist therefore contains only canonical release payloads; contributor
 and bootstrap builds continue to use or omit the candidate payloads exactly as
-before.
+before. Compiler and model-source byte fingerprints in existing pack metadata
+are diagnostic only: unrelated first-party source edits do not invalidate a
+pack. Packaging and runtime validation still require the exact schema, ABI,
+dependency, target, bundle hash, and payload inventory contracts and actually
+load the prepared bundle.
 
 ## Candidate Development Mode
 

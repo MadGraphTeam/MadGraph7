@@ -180,7 +180,16 @@ def test_source_ready_asset_metadata_is_derived_from_bundle_and_source(
         actual_metadata["dependencies"]["symbolica_version"]
         == contributor["symbolica"]["candidate_version"]
     )
-    assert actual_metadata == expected_metadata
+    assert actual_metadata["producer"].keys() == expected_metadata["producer"].keys()
+    for key in actual_metadata["producer"]:
+        if key.endswith("_sha256") or key == "model_source_digest":
+            continue
+        assert actual_metadata["producer"][key] == expected_metadata["producer"][key]
+    assert {
+        key: value for key, value in actual_metadata.items() if key != "producer"
+    } == {
+        key: value for key, value in expected_metadata.items() if key != "producer"
+    }
     assert bundle_path.read_bytes() == source_bundle.read_bytes()
 
 
@@ -398,18 +407,17 @@ def test_candidate_wheel_staging_rejects_candidate_fingerprint_drift(
         stage_packaged_prepared_models(overlay, "candidate")
 
 
-def test_wheel_staging_rejects_built_in_source_drift(tmp_path: Path) -> None:
+def test_wheel_staging_accepts_built_in_source_edits(tmp_path: Path) -> None:
     overlay = _overlay(tmp_path)
     source = overlay / "src" / "pyamplicol" / "models" / "builtin" / "model.py"
     source.write_text(
         source.read_text(encoding="utf-8") + "\n# drift\n",
         encoding="utf-8",
     )
-    with pytest.raises(RuntimeError, match="model_source_digest is stale"):
-        stage_packaged_prepared_models(overlay, "candidate")
+    stage_packaged_prepared_models(overlay, "candidate")
 
 
-def test_wheel_staging_rejects_prepared_payload_compiler_drift(
+def test_wheel_staging_accepts_prepared_payload_compiler_edits(
     tmp_path: Path,
 ) -> None:
     overlay = _overlay(tmp_path)
@@ -424,11 +432,7 @@ def test_wheel_staging_rejects_prepared_payload_compiler_drift(
         source.read_text(encoding="utf-8") + "\n# drift\n",
         encoding="utf-8",
     )
-    with pytest.raises(
-        RuntimeError,
-        match="prepared_pack_compiler_sha256 is stale",
-    ):
-        stage_packaged_prepared_models(overlay, "candidate")
+    stage_packaged_prepared_models(overlay, "candidate")
 
 
 def test_wheel_staging_rejects_bundle_hash_drift(tmp_path: Path) -> None:

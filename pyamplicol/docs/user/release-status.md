@@ -119,12 +119,14 @@ final artifact validation gate.
 ## Publication Gates
 
 - The exact Symbolica 2.2.0 Python/Rust combination and immutable SymJIT fork
-  revision are verified in the release dependency contract, with no local
+  revision are pinned in the release dependency contract, with no local
   patches or installer source rewrites.
 - The checked-in built-in-SM release packs carry the exact release dependency
-  identity and pass the fail-closed package audit when projected from
-  `release_assets/prepared_models`.
-- `ufo-model-loader==0.1.7` is the verified published loader input.
+  identity and pass the schema, ABI, target, content-integrity, and load checks
+  when projected from `release_assets/prepared_models`. Producer source-byte
+  fingerprints are informational and do not make otherwise compatible packs
+  stale after unrelated implementation edits.
+- `ufo-model-loader==0.1.7` is the pinned published loader input.
 - Every supported wheel target must complete clean installation, Python
   self-test, generated Python/Rust/C++/Fortran driver tests, and native SDK
   audits.

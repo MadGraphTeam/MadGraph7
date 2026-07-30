@@ -75,10 +75,9 @@ def test_dependency_gate_uses_candidate_and_release_contracts(
 
     monkeypatch.setattr(_common, "run", fake_run)
     _common.check_dependency_gate("candidate")
-    _common.check_dependency_gate("release", online=True)
-    assert commands[0][-2:] == ["--candidate", "--offline"]
+    _common.check_dependency_gate("release")
+    assert commands[0][-1:] == ["--candidate"]
     assert "--candidate" not in commands[1]
-    assert "--offline" not in commands[1]
 
 
 def test_build_mode_rejects_conflicting_candidate_request(

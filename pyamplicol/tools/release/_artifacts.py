@@ -787,14 +787,9 @@ def _validate_prepared_model_assets(
                 f"prepared-model build mode is invalid: {metadata_name}"
             )
         producer = metadata.get("producer")
-        package_root = PurePosixPath(prefix).parents[1]
-        if (
-            not isinstance(producer, dict)
-            or producer.get("prepared_pack_compiler_sha256")
-            != _prepared_pack_compiler_digest(entries, package_root=package_root)
-        ):
+        if not isinstance(producer, dict):
             raise ArtifactError(
-                f"prepared-model payload compiler digest is stale: {metadata_name}"
+                f"prepared-model producer metadata is invalid: {metadata_name}"
             )
 
         expected_target = {
@@ -823,113 +818,6 @@ def _validate_prepared_model_assets(
             raise ArtifactError(
                 f"prepared-model bundle hash/size is invalid: {bundle_name}"
             )
-
-
-def _prepared_pack_compiler_digest(
-    entries: dict[str, bytes],
-    *,
-    package_root: PurePosixPath,
-) -> str:
-    model_root = package_root / "models"
-    evaluator_root = package_root / "evaluators"
-    config_root = package_root / "config"
-    exact = {
-        package_root / "_internal" / "physics" / "symbols.py",
-        package_root / "_internal" / "versions.py",
-    }
-    required = {
-        model_root / "prepared.py",
-        model_root / "prepared_compile.py",
-        evaluator_root / "symbolica_compile.py",
-        config_root / "models.py",
-        *exact,
-    }
-    source_names = []
-    for name in entries:
-        path = PurePosixPath(name)
-        if path in exact or (
-            path.suffix == ".py"
-            and (
-                (path.parent == model_root and path.name.startswith("prepared"))
-                or (
-                    path.parent == evaluator_root
-                    and path.name.startswith("symbolica")
-                )
-                or path.parent == config_root
-            )
-        ):
-            source_names.append(name)
-    missing = sorted(
-        path.as_posix() for path in required if path.as_posix() not in entries
-    )
-    if missing:
-        raise ArtifactError(
-            "artifact is missing prepared-pack compiler fingerprint sources: "
-            + ", ".join(missing)
-        )
-    digest = hashlib.sha256()
-    for name in sorted(source_names):
-        relative = PurePosixPath(name).relative_to(package_root).as_posix()
-        digest.update(relative.encode("utf-8") + b"\0")
-        digest.update(entries[name])
-        digest.update(b"\0")
-    return digest.hexdigest()
-
-
-def _wheel_model_compiler_digest(entries: dict[str, bytes]) -> str:
-    package_root = PurePosixPath("pyamplicol")
-    model_root = package_root / "models"
-    physics_root = package_root / "_internal" / "physics"
-    core_syntax = package_root / "processes" / "core_syntax.py"
-    required = {model_root / "loading.py", core_syntax}
-    missing = sorted(
-        path.as_posix() for path in required if path.as_posix() not in entries
-    )
-    if missing:
-        raise ArtifactError(
-            "wheel is missing model compiler fingerprint sources: " + ", ".join(missing)
-        )
-
-    source_names = []
-    for name in entries:
-        path = PurePosixPath(name)
-        if path == core_syntax or (
-            path.suffix == ".py" and path.parent in {model_root, physics_root}
-        ):
-            source_names.append(name)
-
-    digest = hashlib.sha256()
-    for name in sorted(source_names):
-        relative = PurePosixPath(name).relative_to(package_root).as_posix()
-        digest.update(relative.encode("utf-8") + b"\0")
-        digest.update(entries[name])
-        digest.update(b"\0")
-    return digest.hexdigest()
-
-
-def _wheel_builtin_model_source_digest(entries: dict[str, bytes]) -> str:
-    builtin_root = PurePosixPath("pyamplicol/models/builtin")
-    adapters = builtin_root / "adapters.py"
-    if adapters.as_posix() not in entries:
-        raise ArtifactError(
-            f"wheel is missing built-in model fingerprint source: {adapters.as_posix()}"
-        )
-    source_names = sorted(
-        name
-        for name in entries
-        if (path := PurePosixPath(name)).parent == builtin_root and path.suffix == ".py"
-    )
-    inner = hashlib.sha256()
-    for name in source_names:
-        path = PurePosixPath(name)
-        inner.update(path.name.encode("utf-8") + b"\0")
-        inner.update(entries[name])
-        inner.update(b"\0")
-
-    outer = hashlib.sha256()
-    outer.update(_BUILTIN_MODEL_SOURCE_KIND.encode("utf-8") + b"\0")
-    outer.update(inner.hexdigest().encode("ascii"))
-    return outer.hexdigest()
 
 
 def _sanitized_native_bytes(data: bytes, *, allow_local_rustup: bool) -> bytes:
@@ -1204,18 +1092,8 @@ def _validate_selftest_fixture(
         raise ArtifactError(
             "wheel self-test compiled model producer does not match wheel version"
         )
-    if compiled_producer.get("model_compiler_sha256") != _wheel_model_compiler_digest(
-        entries
-    ):
-        raise ArtifactError(
-            "wheel self-test model compiler digest does not match wheel sources"
-        )
     if compiled_source.get("kind") != _BUILTIN_MODEL_SOURCE_KIND:
         raise ArtifactError("wheel self-test compiled model source is not built-in-sm")
-    if compiled_source.get("digest") != _wheel_builtin_model_source_digest(entries):
-        raise ArtifactError(
-            "wheel self-test built-in source digest does not match wheel sources"
-        )
     tagged_payloads = [
         payload
         for payload in payloads

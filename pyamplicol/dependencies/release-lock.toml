@@ -87,18 +87,12 @@ python_version = "2.2.0"
 rust_crate = "symbolica"
 rust_version = "2.2.0"
 serialization_abi = "symbolica-bincode2-v1"
-release_status = "verified"
 
 [symjit]
 version = "2.21.1"
 repository = "https://github.com/ValentinHirschi/symjit_changes_for_pyamplicol.git"
-branch = "pyamplicol-generic-direct-apis"
 revision = "60a9d66fbfb2181d36a5747c389714eccc187244"
-upstream_pr = "https://github.com/siravan/symjit/pull/12"
-release_status = "verified-git-revision"
 
 [ufo_model_loader]
 python_distribution = "ufo-model-loader"
 required_version = "0.1.7"
-latest_verified_published_version = "0.1.7"
-release_status = "verified"

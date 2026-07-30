@@ -196,7 +196,6 @@ def _validate_bundle(
         SYMJIT_APPLICATION_ABI,
         package_version,
     )
-    from pyamplicol.models.builtin.adapters import source_digest
     from pyamplicol.models.loading import MODEL_COMPILER_VERSION, compiler_fingerprint
     from pyamplicol.models.prepared import (
         EAGER_KERNEL_ABI,
@@ -225,9 +224,6 @@ def _validate_bundle(
         "package_version": package_version(),
         "compiled_model_schema": COMPILED_MODEL_SCHEMA_VERSION,
         "model_compiler_version": MODEL_COMPILER_VERSION,
-        "model_compiler_sha256": fingerprint["model_compiler_sha256"],
-        "prepared_pack_compiler_sha256": _prepared_pack_compiler_digest(),
-        "model_source_digest": _compiled_source_digest(source_digest()),
     }
     for key, value in expected.items():
         if producer.get(key) != value:
@@ -249,13 +245,8 @@ def _validate_bundle(
         != expected["model_compiler_version"]
     ):
         raise PackagedPreparedModelError("prepared model compiler version is stale")
-    if (
-        compiled_producer.get("model_compiler_sha256")
-        != expected["model_compiler_sha256"]
-    ):
-        raise PackagedPreparedModelError("prepared model compiler digest is stale")
-    if compiled_source.get("digest") != expected["model_source_digest"]:
-        raise PackagedPreparedModelError("prepared built-in model source is stale")
+    if compiled_source.get("kind") != "built-in-sm":
+        raise PackagedPreparedModelError("prepared model source is not built-in-sm")
     if pack.producer.get("version") != expected["package_version"]:
         raise PackagedPreparedModelError("prepared kernel-pack version is stale")
     dependency_expected = {
@@ -331,39 +322,6 @@ def _metadata(value: object, *, bundle_name: str) -> Mapping[str, object]:
 def _asset_names(identifier: str, architecture: str) -> tuple[str, str]:
     stem = f"{identifier}-{architecture}"
     return f"{stem}.metadata.json", f"{stem}.pyamplicol-model"
-
-
-def _compiled_source_digest(implementation_digest: str) -> str:
-    digest = hashlib.sha256()
-    digest.update(b"built-in-sm\0")
-    digest.update(implementation_digest.encode("ascii"))
-    return digest.hexdigest()
-
-
-def _prepared_pack_compiler_digest() -> str:
-    """Fingerprint first-party code that emits prepared evaluator payloads."""
-
-    package_root = Path(__file__).resolve().parents[2]
-    paths = {
-        *(package_root / "models").glob("prepared*.py"),
-        *(package_root / "evaluators").glob("symbolica*.py"),
-        *(package_root / "config").glob("*.py"),
-        package_root / "_internal" / "physics" / "symbols.py",
-        package_root / "_internal" / "versions.py",
-    }
-    missing = sorted(path for path in paths if not path.is_file())
-    if missing:
-        raise PackagedPreparedModelError(
-            "prepared-pack compiler fingerprint sources are missing: "
-            + ", ".join(str(path) for path in missing)
-        )
-    digest = hashlib.sha256()
-    for path in sorted(paths):
-        relative = path.relative_to(package_root).as_posix()
-        digest.update(relative.encode("utf-8") + b"\0")
-        digest.update(path.read_bytes())
-        digest.update(b"\0")
-    return digest.hexdigest()
 
 
 def _mapping(value: object, context: str) -> Mapping[str, object]:

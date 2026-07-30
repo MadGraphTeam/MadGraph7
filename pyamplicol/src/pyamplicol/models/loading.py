@@ -419,7 +419,10 @@ def compile_model_source(
             from .prepared import load_prepared_model_bundle
 
             bundle = load_prepared_model_bundle(Path(resolved))
-            compiled = CompiledModel.from_dict(bundle.compiled_model_payload())
+            compiled = CompiledModel.from_dict(
+                bundle.compiled_model_payload(),
+                validate_fingerprint=False,
+            )
             compiled = replace(compiled, _prepared_bundle=bundle)
             _raise_for_unsupported(compiled, require_supported=require_supported)
             return compiled
@@ -575,7 +578,10 @@ def load_cached_model_source(
             from .prepared import load_prepared_model_bundle
 
             bundle = load_prepared_model_bundle(Path(resolved))
-            compiled = CompiledModel.from_dict(bundle.compiled_model_payload())
+            compiled = CompiledModel.from_dict(
+                bundle.compiled_model_payload(),
+                validate_fingerprint=False,
+            )
             compiled = replace(compiled, _prepared_bundle=bundle)
             _raise_for_unsupported(compiled, require_supported=require_supported)
             return compiled
@@ -609,7 +615,10 @@ def load_compiled_model(path: Path) -> CompiledModel:
     if Path(path).name.lower().endswith(PREPARED_MODEL_BUNDLE_SUFFIX):
         bundle = load_prepared_model_bundle(Path(path))
         return replace(
-            CompiledModel.from_dict(bundle.compiled_model_payload()),
+            CompiledModel.from_dict(
+                bundle.compiled_model_payload(),
+                validate_fingerprint=False,
+            ),
             _prepared_bundle=bundle,
         )
     try:

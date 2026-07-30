@@ -172,16 +172,14 @@ def run(
     return completed
 
 
-def check_dependency_gate(mode: str, *, online: bool | None = None) -> None:
+def check_dependency_gate(mode: str) -> None:
     """Call the normative dependency gate in the requested mode."""
 
     if mode not in {"candidate", "release"}:
         raise ReleaseError(f"unsupported dependency-gate mode: {mode}")
     command: list[str | os.PathLike[str]] = [sys.executable, DEPENDENCY_GATE]
     if mode == "candidate":
-        command.extend(("--candidate", "--offline"))
-    elif online is False:
-        command.append("--offline")
+        command.append("--candidate")
     run(command, cwd=ROOT, env=clean_environment(mode=mode))
 
 

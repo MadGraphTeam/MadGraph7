@@ -176,32 +176,38 @@ def test_packaged_prepared_model_rejects_package_version_drift(
         pass
 
 
-def test_packaged_prepared_model_runtime_rejects_producer_digest_drift(
+def test_packaged_prepared_model_runtime_ignores_producer_source_fingerprints(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     import pyamplicol._internal.versions as versions
+    import pyamplicol.models.loading as loading
 
+    copied = tmp_path / "prepared_models"
+    shutil.copytree(ASSET_ROOT, copied)
     metadata = _metadata()
     producer = metadata["producer"]
     assert isinstance(producer, dict)
+    for key in (
+        "model_compiler_sha256",
+        "model_source_digest",
+        "prepared_pack_compiler_sha256",
+    ):
+        producer[key] = "0" * 64
+    (copied / f"{ASSET_STEM}.metadata.json").write_text(
+        json.dumps(metadata),
+        encoding="utf-8",
+    )
+    package_version = producer["package_version"]
     monkeypatch.setattr(
         versions,
         "package_version",
-        lambda: producer["package_version"],
+        lambda: package_version,
     )
-    monkeypatch.setattr(
-        prepared_models,
-        "_prepared_pack_compiler_digest",
-        lambda: "0" * 64,
-    )
+    monkeypatch.setattr(loading, "package_version", lambda: package_version)
+    monkeypatch.setattr(prepared_models.resources, "files", lambda _package: copied)
 
-    with (
-        pytest.raises(
-            prepared_models.PackagedPreparedModelError,
-            match="prepared_pack_compiler_sha256 is stale",
-        ),
-        prepared_models.packaged_prepared_model_path(
-            prepared_models.BUILTIN_SM_JIT_O2
-        ),
-    ):
-        pass
+    with prepared_models.packaged_prepared_model_path(
+        prepared_models.BUILTIN_SM_JIT_O2
+    ) as path:
+        assert path.is_file()

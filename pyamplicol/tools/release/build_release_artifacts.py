@@ -82,7 +82,7 @@ def build_release_artifacts(
         raise ReleaseError(
             "candidate sdists are non-publishable and are not release parity inputs"
         )
-    check_dependency_gate(mode, online=mode == "release")
+    check_dependency_gate(mode)
     require_clean_checkout(
         allow_dirty_candidate=allow_dirty_candidate,
         mode=mode,

@@ -100,7 +100,7 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     mode = build_mode(candidate=args.candidate)
-    check_dependency_gate(mode, online=mode == "release")
+    check_dependency_gate(mode)
     artifact_directory = CANDIDATE_ARTIFACTS if mode == "candidate" else DIST
     sdist = args.sdist or exactly_one(
         list(artifact_directory.glob("pyamplicol-*.tar.gz")), "pyamplicol sdist"
