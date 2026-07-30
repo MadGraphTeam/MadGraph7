@@ -151,16 +151,44 @@ certification.
 
 ## (c) LC `d d~ -> u u~ s s~ + (n-4)g`
 
-Queued.
+Closed after fresh selected-flow, helicity-sum reproduction. The old 6.2x and
+9.6x recurrence ratios were stale. Times below are microseconds per point;
+“execution” is the recurrence schedule attribution, while “evaluator total” is
+the warmed accumulated evaluator wall envelope.
 
-Historical committed measurements (untrusted; pyAmpliCol source `9b7357f`):
+| n | Implementation / mode | Generation [s] | Wall [µs/pt] | Execution [µs/pt] | Evaluator total [µs/pt] | Wall / AmpliCol |
+|---:|---|---:|---:|---:|---:|---:|
+| 4 | Original AmpliCol, selected flow | 4.749 | 0.227298 | 0.227298 | not separately exposed | 1.000 |
+| 4 | recurrence JIT O2, complete artifact + runtime selector | 5.324 | 0.683683 | 0.405073 | 0.683683 | 3.008 |
+| 4 | compiled JIT O3, complete artifact + runtime selector | 3.950 | 0.500570 | not separately exposed | 0.500570 | 2.202 |
+| 6 | Original AmpliCol, selected flow | 14.438 | 1.106783 | 1.106783 | not separately exposed | 1.000 |
+| 6 | recurrence JIT O2 before fix, complete artifact + runtime selector | 30.646 | 3.613397 | 2.141222 | 3.613397 | 3.265 |
+| 6 | compiled JIT O3, complete artifact + runtime selector | 59.094 | 1.517343 | not separately exposed | 1.517343 | 1.371 |
+| 6 | recurrence JIT O2 after fix, generation-specialized sector | 4.954 | 2.747183 | 2.362211 | 2.747183 | 2.482 |
 
-| n | Implementation | Generation [s] | Wall [µs/pt] | Evaluator total [µs/pt] | pyAmpliCol/AmpliCol wall |
-|---:|---|---:|---:|---:|---:|
-| 4 | Original AmpliCol | 17.220 | 0.161 | not exposed | 1.00 |
-| 4 | pyAmpliCol recurrence JIT O2 | 3.680 | 1.000 | not exposed | 6.20 |
-| 6 | Original AmpliCol | 27.096 | 1.058 | not exposed | 1.00 |
-| 6 | pyAmpliCol recurrence JIT O2 | 5.860 | 10.137 | not exposed | 9.58 |
+The structural comparison is:
+
+| n / mode | Sources | Currents | Interactions / contributions | Destinations | Difference from AmpliCol |
+|---|---:|---:|---:|---:|---|
+| 4 AmpliCol | 9 | 32 | 37 | 4 | reference |
+| 4 recurrence selected target | 10 | 33 | 37 | 4 | one reachable source-representation current; produced work and destinations match |
+| 6 AmpliCol | 13 | 136 | 283 | 16 | reference |
+| 6 recurrence before fix, representative shared by two public flows | 14 | 140 | 262 | 16 requested (32 closure rows across both flows) | +4 currents, but 21 fewer contributions |
+| 6 recurrence after fix, generation-specialized sector | 14 | 116 | 246 | 16 | 20 fewer currents and 37 fewer contributions |
+
+The generic cause was that recurrence generation with an explicit selected
+colour sector still projected the complete 72-sector colour plan and only
+masked the requested public flow afterward. This retained an unrequested
+representative alias/closure domain and made a genuinely specialized artifact
+fail with `replay covers 1 of 72 physical sectors`. The fix projects the
+already-restricted colour plan and remaps its artifact-local sector IDs densely
+before lowering. It contains no process, multiplicity, particle, or sector-ID
+special case.
+
+The fixed n=6 artifact agrees exactly with the corresponding flow of the
+complete artifact across all 256 helicities at precision 32. Its default
+numerical-current pass certifies and applies no additional relation, so the
+improvement is entirely structural rather than a tolerance-based reuse.
 
 ## (d) LC `d d~ -> Z Z Z + 6g`
 
