@@ -519,6 +519,7 @@ def test_release_workflow_uses_one_retained_sdist_and_all_targets() -> None:
     assert "needs: [full-source-validation, independent-physics-oracle]" in workflow
     assert "Independent Fortran physics oracle" in workflow
     assert "Run independent Fortran physics comparison" in workflow
+    assert 'python -m pip install "jsonschema>=4.22,<5"' in workflow
     assert "ulimit -v" not in workflow
     assert "tests/fixtures/reference/physics-v2.json" in workflow
     assert "tests/fixtures/reference/legacy-fortran-v2.json" not in workflow
