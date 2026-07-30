@@ -6,7 +6,9 @@ import json
 from dataclasses import replace
 from decimal import Decimal
 
-from pyamplicol.api.errors import ArtifactError
+import pytest
+
+from pyamplicol.api.errors import ArtifactError, GenerationError
 from pyamplicol.generation.recurrence_numerical_current_warmup import (
     capture_recurrence_current_observations,
     recurrence_numerical_current_opt_out_report,
@@ -300,10 +302,34 @@ def test_recurrence_aggregate_reports_applied_warning_and_explicit_opt_out() -> 
         relative_tolerance=1.0e-60,
         absolute_tolerance=1.0e-70,
     )
+    lane = result.to_json_dict()
+    discovery = lane["discovery"]
+    application = lane["application"]
+    assert isinstance(discovery, dict)
+    assert isinstance(application, dict)
+    native = {
+        "requested_mode": "certified-reuse",
+        "state": "native-applied",
+        "exact_certified_relation_count": 1,
+        "applied_relation_count": 1,
+        "certificate_count": 1,
+        "numerical_candidate_count": discovery["numerical_candidate_count"],
+        "certificate_replay": application["certificate_replay"],
+        "probe": {
+            "probe_count": lane["candidate_capture"]["point_count"],
+            "verification_probe_count": (
+                lane["verification_capture"]["point_count"]
+            ),
+            "verification_rejected_count": discovery[
+                "verification_rejected_count"
+            ],
+            "tested_hypothesis_count": discovery["tested_hypothesis_count"],
+        },
+    }
     runtime_inspection, aggregate = _recurrence_relation_reporting(
-        {"relation_discovery": {"state": "native-applied"}},
+        {"relation_discovery": native},
         mode="certified-reuse",
-        lane_report=result.to_json_dict(),
+        lane_report=lane,
     )
     assert "relation_discovery" not in runtime_inspection
     assert aggregate["execution_mode"] == "recurrence"
@@ -312,9 +338,33 @@ def test_recurrence_aggregate_reports_applied_warning_and_explicit_opt_out() -> 
     assert aggregate["applied_relation_count"] == 1
     assert aggregate["warning"]["required"] is True
     assert aggregate["warning"]["emit"] == "once-per-generated-artifact"
-    assert aggregate["native_relation_application"] == {
-        "state": "native-applied"
-    }
+    assert aggregate["native_relation_application"] == native
+
+    for mutation in (
+        {"requested_mode": "diagnostic"},
+        {"exact_certified_relation_count": 0},
+        {"applied_relation_count": 0},
+        {"certificate_count": 0},
+        {
+            "certificate_replay": {
+                **native["certificate_replay"],
+                "certificate_set_sha256": "0" * 64,
+            }
+        },
+        {
+            "probe": {
+                **native["probe"],
+                "verification_probe_count": 3,
+            }
+        },
+    ):
+        drifted = {**native, **mutation}
+        with pytest.raises(GenerationError):
+            _recurrence_relation_reporting(
+                {"relation_discovery": drifted},
+                mode="certified-reuse",
+                lane_report=lane,
+            )
 
     off_lane = recurrence_numerical_current_opt_out_report(
         _topology_replay_plan().sections,

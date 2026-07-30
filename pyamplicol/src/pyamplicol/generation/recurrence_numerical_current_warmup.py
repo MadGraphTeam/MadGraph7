@@ -44,8 +44,8 @@ if TYPE_CHECKING:
     from pyamplicol.processes.ir import CanonicalProcessIR
 
 _CAPTURE_ABI = "pyamplicol-recurrence-current-observation-capture-v1"
-_EVIDENCE_ABI = "pyamplicol-recurrence-numerical-current-evidence-v1"
-_SOURCE_ABI = "pyamplicol-recurrence-numerical-current-source-v1"
+_EVIDENCE_ABI = "pyamplicol-recurrence-numerical-current-evidence-v2"
+_SOURCE_ABI = "pyamplicol-recurrence-numerical-current-source-v2"
 _WARMUP_ABI = "pyamplicol-recurrence-numerical-current-warmup-v1"
 _RELATION_SET_ABI = "pyamplicol-authenticated-numerical-current-relation-set-v1"
 _MAX_REJECTED_DIAGNOSTICS = 32
@@ -325,6 +325,12 @@ def run_recurrence_numerical_current_warmup(
         source_semantics_sha256=source_digest,
         certificates=certificates,
         discovery=discovery,
+        precision_digits=precision_digits,
+        seed=seed,
+        relative_tolerance=relative_tolerance,
+        absolute_tolerance=absolute_tolerance,
+        probe_count=candidate.point_count,
+        verification_probe_count=verification.point_count,
     )
     encoded = _canonical_json_bytes(evidence)
     return RecurrenceNumericalCurrentWarmupResult(
@@ -1070,6 +1076,12 @@ def _evidence_payload(
     source_semantics_sha256: str,
     certificates: tuple[RecurrenceNumericalCurrentCertificate, ...],
     discovery: Mapping[str, object],
+    precision_digits: int,
+    seed: int,
+    relative_tolerance: float,
+    absolute_tolerance: float,
+    probe_count: int,
+    verification_probe_count: int,
 ) -> dict[str, object]:
     numerical_candidate_count = _required_report_integer(
         discovery,
@@ -1091,9 +1103,20 @@ def _evidence_payload(
         "source_semantics_sha256": source_semantics_sha256,
         "certificate_algorithm": (NUMERICAL_CURRENT_RELATION_CERTIFICATE_ALGORITHM),
         "certificate_set_sha256": _certificate_set_sha256(certificates),
+        "precision_digits": precision_digits,
+        "probe_count": probe_count,
+        "verification_probe_count": verification_probe_count,
+        "relative_tolerance": relative_tolerance,
+        "absolute_tolerance": absolute_tolerance,
+        "relative_tolerance_binary64": relative_tolerance.hex(),
+        "absolute_tolerance_binary64": absolute_tolerance.hex(),
+        "seed": seed,
         "numerical_candidate_count": numerical_candidate_count,
         "verification_rejected_count": verification_rejected_count,
         "tested_hypothesis_count": tested_hypothesis_count,
+        "certificates": [
+            certificate.to_json_dict() for certificate in certificates
+        ],
         "mappings": [_mapping_payload(certificate) for certificate in certificates],
     }
 
@@ -1140,10 +1163,10 @@ def _current_contracts(
                 finalization_executors[row_id] = group.executor_id
     factors = tuple(
         (
-            factor.real_numerator,
-            factor.real_denominator,
-            factor.imaginary_numerator,
-            factor.imaginary_denominator,
+            str(factor.real_numerator),
+            str(factor.real_denominator),
+            str(factor.imaginary_numerator),
+            str(factor.imaginary_denominator),
         )
         for factor in sections.exact_factors
     )
@@ -1153,7 +1176,7 @@ def _current_contracts(
             finalization = (
                 DIRECT_NONE_U32,
                 DIRECT_NONE_U32,
-                (1, 1, 0, 1),
+                ("1", "1", "0", "1"),
             )
         else:
             try:

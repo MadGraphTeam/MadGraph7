@@ -1504,6 +1504,24 @@ fn apply_recurrence_relation_discovery(
                     "numerical evidence selects a different semantic schedule",
                 ));
             }
+            let expected_candidate_count = evidence
+                .mappings
+                .len()
+                .checked_add(evidence.verification_rejected_count)
+                .ok_or_else(|| invalid("numerical evidence candidate count overflows usize"))?;
+            if evidence.numerical_candidate_count != expected_candidate_count
+                || evidence.tested_hypothesis_count < evidence.numerical_candidate_count
+                || evidence.precision_digits != options.precision_digits
+                || evidence.probe_count != options.probe_count
+                || evidence.verification_probe_count != options.verification_probe_count
+                || evidence.relative_tolerance.to_bits() != options.relative_tolerance.to_bits()
+                || evidence.absolute_tolerance.to_bits() != options.absolute_tolerance.to_bits()
+                || evidence.seed != options.seed
+            {
+                return Err(invalid(
+                    "numerical evidence probe contract or counters are inconsistent",
+                ));
+            }
             for (label, value) in [
                 (
                     "baseline runtime-layout digest",
@@ -1546,6 +1564,7 @@ fn apply_recurrence_relation_discovery(
                 if current.current_id != mapping.current_id
                     || current.is_source
                     || representative.current_id != mapping.execution_representative_id
+                    || representative.is_source
                     || current.contract != representative.contract
                     || mapping.current_dimension != current.contract.component_count
                     || !is_sha256(&mapping.certificate_proof_sha256)
@@ -1715,8 +1734,13 @@ fn apply_recurrence_relation_discovery(
         color_accuracy: options.color_accuracy.clone(),
         precision_digits: options.precision_digits,
         probe_count: options.probe_count,
+        verification_probe_count: options.verification_probe_count,
         seed: options.seed,
         certificate_algorithm,
+        authenticated_certificate_set_sha256: options
+            .numerical_evidence
+            .as_ref()
+            .map(|evidence| evidence.certificate_set_sha256.clone()),
         tested_hypothesis_count,
         verification_rejected_count,
         effective_projection_count: outcome.effective_projection_count,

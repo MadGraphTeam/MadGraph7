@@ -9,15 +9,21 @@
 
 use std::collections::BTreeMap;
 
+use serde_json::{Value as JsonValue, json};
 use sha2::{Digest, Sha256};
 
-use super::{ExactComplexRational, RecurrenceStrategy};
+use super::{
+    DIRECT_NONE_U32, DirectExecutorRole, DirectNodeKind, DirectRecurrencePlan,
+    ExactComplexRational, RecurrenceStrategy,
+};
 use crate::{RusticolError, RusticolResult};
 
 const PROJECTION_PRIME: u64 = (1_u64 << 61) - 1;
 const RELATION_CERTIFICATE_ALGORITHM: &str = "recurrence-exact-rational-row-vector-replay-v1";
 pub const NUMERICAL_RELATION_CERTIFICATE_ALGORITHM: &str =
     "authenticated-independent-recursive-decimal-probes-v1";
+pub const RECURRENCE_NUMERICAL_SOURCE_ABI: &str =
+    "pyamplicol-recurrence-numerical-current-source-v2";
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(format!("recurrence relation discovery: {}", message.into()))
@@ -92,9 +98,10 @@ impl RecurrenceRelationDiscoveryOptions {
             || relative_tolerance < 0.0
             || !absolute_tolerance.is_finite()
             || absolute_tolerance < 0.0
+            || (relative_tolerance == 0.0 && absolute_tolerance == 0.0)
         {
             return Err(invalid(
-                "relative and absolute tolerances must be finite and nonnegative",
+                "relative and absolute tolerances must be finite and nonnegative, and at least one must be positive",
             ));
         }
         let color_accuracy = color_accuracy.into();
@@ -133,6 +140,29 @@ impl RecurrenceRelationDiscoveryOptions {
                 "numerical evidence uses an unsupported certificate algorithm",
             ));
         }
+        if evidence.precision_digits != self.precision_digits
+            || evidence.probe_count != self.probe_count
+            || evidence.verification_probe_count != self.verification_probe_count
+            || evidence.relative_tolerance.to_bits() != self.relative_tolerance.to_bits()
+            || evidence.absolute_tolerance.to_bits() != self.absolute_tolerance.to_bits()
+            || evidence.seed != self.seed
+        {
+            return Err(invalid(
+                "numerical evidence probe contract disagrees with lowering options",
+            ));
+        }
+        let expected_candidate_count = evidence
+            .mappings
+            .len()
+            .checked_add(evidence.verification_rejected_count)
+            .ok_or_else(|| invalid("numerical evidence candidate count overflows usize"))?;
+        if evidence.numerical_candidate_count != expected_candidate_count
+            || evidence.tested_hypothesis_count < evidence.numerical_candidate_count
+        {
+            return Err(invalid(
+                "numerical evidence candidate counters are inconsistent",
+            ));
+        }
         self.numerical_evidence = Some(evidence);
         Ok(self)
     }
@@ -167,7 +197,7 @@ pub struct RecurrenceNumericalCurrentMapping {
 }
 
 /// Canonical evidence supplied only after an unpublished exact baseline pass.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RecurrenceNumericalRelationEvidence {
     pub requested_mode: RecurrenceRelationDiscoveryMode,
     pub schedule_semantic_digest: String,
@@ -175,10 +205,138 @@ pub struct RecurrenceNumericalRelationEvidence {
     pub source_semantics_sha256: String,
     pub certificate_algorithm: String,
     pub certificate_set_sha256: String,
+    pub precision_digits: u32,
+    pub probe_count: u32,
+    pub verification_probe_count: u32,
+    pub relative_tolerance: f64,
+    pub absolute_tolerance: f64,
+    pub seed: u64,
     pub numerical_candidate_count: usize,
     pub verification_rejected_count: usize,
     pub tested_hypothesis_count: usize,
     pub mappings: Vec<RecurrenceNumericalCurrentMapping>,
+}
+
+/// Recompute the source contract consumed by the exact Python probe pass.
+///
+/// This deliberately binds the baseline physical layout as well as every
+/// current comparison contract. The numerical evidence is rejected unless
+/// its claimed digest is byte-for-byte identical to this native result.
+pub fn recurrence_numerical_source_semantics_sha256(
+    plan: &DirectRecurrencePlan,
+    process_id: &str,
+) -> RusticolResult<String> {
+    let mut finalization_executors = BTreeMap::<u32, u32>::new();
+    for group in plan
+        .row_groups()
+        .iter()
+        .filter(|group| group.role == DirectExecutorRole::Finalization)
+    {
+        let start = u32::try_from(group.row_start)
+            .map_err(|_| invalid("finalization row-group start exceeds u32"))?;
+        let stop = start
+            .checked_add(group.row_count)
+            .ok_or_else(|| invalid("finalization row-group range overflows u32"))?;
+        for row_id in start..stop {
+            if finalization_executors
+                .insert(row_id, group.direct_executor_id)
+                .is_some()
+            {
+                return Err(invalid(
+                    "baseline finalization row belongs to multiple executor groups",
+                ));
+            }
+        }
+    }
+
+    let currents = plan
+        .currents()
+        .iter()
+        .map(|current| {
+            let (executor_id, momentum_form_id, factor) = if current.finalization_row_or_sentinel
+                == DIRECT_NONE_U32
+            {
+                (
+                    DIRECT_NONE_U32,
+                    DIRECT_NONE_U32,
+                    [
+                        "1".to_owned(),
+                        "1".to_owned(),
+                        "0".to_owned(),
+                        "1".to_owned(),
+                    ],
+                )
+            } else {
+                let row = plan
+                    .finalizations()
+                    .get(current.finalization_row_or_sentinel as usize)
+                    .ok_or_else(|| invalid("baseline current finalization row is absent"))?;
+                let executor_id = *finalization_executors
+                    .get(&current.finalization_row_or_sentinel)
+                    .ok_or_else(|| invalid("baseline current finalization executor is absent"))?;
+                let factor = plan
+                    .exact_factors()
+                    .get(row.exact_factor_id as usize)
+                    .ok_or_else(|| invalid("baseline finalization factor is absent"))?;
+                (
+                    executor_id,
+                    row.momentum_form_id,
+                    [
+                        factor.real().numerator().to_string(),
+                        factor.real().denominator().to_string(),
+                        factor.imag().numerator().to_string(),
+                        factor.imag().denominator().to_string(),
+                    ],
+                )
+            };
+            Ok(json!({
+                "current_id": current.semantic_current_id,
+                "is_source": current.node_kind == DirectNodeKind::Source,
+                "contract": [
+                    current.node_kind as u16,
+                    current.stage,
+                    current.state_template_id,
+                    current.component_count,
+                    current.momentum_form_id,
+                    current.selector_domain_id,
+                    executor_id,
+                    momentum_form_id,
+                    factor,
+                ],
+            }))
+        })
+        .collect::<RusticolResult<Vec<JsonValue>>>()?;
+    let payload = json!({
+        "abi": RECURRENCE_NUMERICAL_SOURCE_ABI,
+        "process_id": process_id,
+        "strategy": plan.strategy().as_str(),
+        "schedule_semantic_digest": plan.semantic_digest().to_string(),
+        "baseline_runtime_layout_digest": plan.runtime_layout_digest().to_string(),
+        "currents": currents,
+    });
+    let bytes = serde_json::to_vec(&payload)
+        .map_err(|error| invalid(format!("could not canonicalize source semantics: {error}")))?;
+    Ok(format!("{:x}", Sha256::digest(bytes)))
+}
+
+pub fn authenticate_recurrence_numerical_relation_provenance(
+    evidence: &RecurrenceNumericalRelationEvidence,
+    baseline_plan: &DirectRecurrencePlan,
+    process_id: &str,
+) -> RusticolResult<()> {
+    if evidence.baseline_runtime_layout_digest != baseline_plan.runtime_layout_digest().to_string() {
+        return Err(RusticolError::integrity(
+            "numerical relation evidence baseline runtime-layout digest does not match the native baseline",
+        ));
+    }
+    let expected_source_semantics =
+        recurrence_numerical_source_semantics_sha256(baseline_plan, process_id)?;
+    if evidence.source_semantics_sha256 != expected_source_semantics {
+        return Err(RusticolError::integrity(
+            "numerical relation evidence source-semantics digest does not match the native baseline",
+        ));
+    }
+    Ok(())
 }
 
 /// Runtime contract which must agree before two current values are comparable.
@@ -241,8 +399,10 @@ pub struct RecurrenceRelationDiscoveryReport {
     pub color_accuracy: String,
     pub precision_digits: u32,
     pub probe_count: u32,
+    pub verification_probe_count: u32,
     pub seed: u64,
     pub certificate_algorithm: String,
+    pub authenticated_certificate_set_sha256: Option<String>,
     pub tested_hypothesis_count: usize,
     pub verification_rejected_count: usize,
     pub effective_projection_count: u32,
@@ -753,6 +913,22 @@ mod tests {
             parent_momentum_form_ids: vec![3].into_boxed_slice(),
             exact_factor,
         }
+    }
+
+    #[test]
+    fn relation_options_reject_a_zero_width_tolerance_contract() {
+        let error = RecurrenceRelationDiscoveryOptions::new(
+            RecurrenceRelationDiscoveryMode::CertifiedReuse,
+            96,
+            4,
+            4,
+            0.0,
+            0.0,
+            0x5059_414d,
+            "lc",
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("at least one must be positive"));
     }
 
     #[test]

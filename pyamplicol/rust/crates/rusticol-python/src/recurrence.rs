@@ -23,8 +23,9 @@ use rusticol_core::recurrence::{
     RECURRENCE_LC_COLOR_CAPABILITY, RecurrenceBuildProgress, RecurrenceNumericalCurrentMapping,
     RecurrenceNumericalRelationEvidence, RecurrenceRelationDiscoveryMode,
     RecurrenceRelationDiscoveryOptions, RecurrenceRelationDiscoveryReport, RecurrenceStrategy,
-    SemanticDigest, bind_recurrence_color_projection_certificate, checked_usize,
-    lower_recurrence_direct_plan_v2_with_relation_discovery,
+    SemanticDigest, authenticate_recurrence_numerical_relation_provenance,
+    bind_recurrence_color_projection_certificate, checked_usize,
+    lower_recurrence_direct_plan_v2, lower_recurrence_direct_plan_v2_with_relation_discovery,
     write_recurrence_direct_plan_pacbin_with_projection_certificate,
 };
 use rusticol_core::{
@@ -1028,6 +1029,22 @@ fn lower_recurrence_direct(
 
     let direct_lowering_started = Instant::now();
     let runtime_options = DirectRecurrenceRuntimeOptions::new(point_tile_size, workspace_mib)?;
+    if let Some(evidence) = relation_discovery.numerical_evidence.as_ref() {
+        let baseline_plan = lower_recurrence_direct_plan_v2(
+            &program,
+            authenticated.template(),
+            &direct_catalog.catalog,
+            semantic_digest,
+            expected_pack_digest,
+            direct_catalog.catalog_digest,
+            runtime_options,
+        )?;
+        authenticate_recurrence_numerical_relation_provenance(
+            evidence,
+            &baseline_plan,
+            &process_id,
+        )?;
+    }
     let (plan, relation_discovery_report) =
         lower_recurrence_direct_plan_v2_with_relation_discovery(
             &program,
@@ -1181,7 +1198,8 @@ fn resolved_helicities_from_direct_plan(
 fn parse_numerical_relation_evidence(
     bytes: &[u8],
 ) -> RusticolResult<RecurrenceNumericalRelationEvidence> {
-    const ABI: &str = "pyamplicol-recurrence-numerical-current-evidence-v1";
+    const ABI: &str = "pyamplicol-recurrence-numerical-current-evidence-v2";
+    const RELATION_SET_ABI: &str = "pyamplicol-authenticated-numerical-current-relation-set-v1";
     if bytes.is_empty() {
         return Err(invalid("numerical relation evidence must not be empty"));
     }
@@ -1203,9 +1221,18 @@ fn parse_numerical_relation_evidence(
             "source_semantics_sha256",
             "certificate_algorithm",
             "certificate_set_sha256",
+            "precision_digits",
+            "probe_count",
+            "verification_probe_count",
+            "relative_tolerance",
+            "absolute_tolerance",
+            "relative_tolerance_binary64",
+            "absolute_tolerance_binary64",
+            "seed",
             "numerical_candidate_count",
             "verification_rejected_count",
             "tested_hypothesis_count",
+            "certificates",
             "mappings",
         ],
         "numerical relation evidence",
@@ -1245,7 +1272,84 @@ fn parse_numerical_relation_evidence(
         "numerical relation certificate algorithm",
     )?
     .to_owned();
-    let mappings = json_array(object, "mappings", "numerical relation mappings")?
+    let precision_digits = json_u32(object, "precision_digits", "numerical relation precision")?;
+    let probe_count = json_u32(
+        object,
+        "probe_count",
+        "numerical relation candidate probe count",
+    )?;
+    let verification_probe_count = json_u32(
+        object,
+        "verification_probe_count",
+        "numerical relation verification probe count",
+    )?;
+    let relative_tolerance = json_f64(
+        object,
+        "relative_tolerance",
+        "numerical relation relative tolerance",
+    )?;
+    let absolute_tolerance = json_f64(
+        object,
+        "absolute_tolerance",
+        "numerical relation absolute tolerance",
+    )?;
+    if json_string(
+        object,
+        "relative_tolerance_binary64",
+        "numerical relation relative tolerance encoding",
+    )? != python_f64_hex(relative_tolerance)
+        || json_string(
+            object,
+            "absolute_tolerance_binary64",
+            "numerical relation absolute tolerance encoding",
+        )? != python_f64_hex(absolute_tolerance)
+    {
+        return Err(RusticolError::integrity(
+            "numerical relation tolerance encoding disagrees with its binary64 value",
+        ));
+    }
+    let seed = json_u64(object, "seed", "numerical relation seed")?;
+    let certificates = json_array(object, "certificates", "numerical relation certificates")?;
+    let mapping_values = json_array(object, "mappings", "numerical relation mappings")?;
+    if certificates.len() != mapping_values.len() {
+        return Err(invalid(
+            "numerical relation certificate and mapping counts disagree",
+        ));
+    }
+    let mut relation_set = JsonMap::new();
+    relation_set.insert(
+        "abi".to_owned(),
+        JsonValue::String(RELATION_SET_ABI.to_owned()),
+    );
+    relation_set.insert(
+        "certificates".to_owned(),
+        JsonValue::Array(certificates.to_vec()),
+    );
+    relation_set.insert(
+        "mappings".to_owned(),
+        JsonValue::Array(mapping_values.to_vec()),
+    );
+    let actual_certificate_set_sha256 = hex_digest(Sha256::digest(canonical_json_bytes(
+        &JsonValue::Object(relation_set),
+        "numerical relation certificate set",
+    )?));
+    if certificate_set_sha256 != actual_certificate_set_sha256 {
+        return Err(RusticolError::integrity(
+            "numerical relation certificate-set digest does not match its canonical payload",
+        ));
+    }
+    validate_numerical_relation_certificates(
+        object,
+        certificates,
+        mapping_values,
+        &source_semantics_sha256,
+        &certificate_algorithm,
+        precision_digits,
+        probe_count,
+        verification_probe_count,
+        seed,
+    )?;
+    let mappings = mapping_values
         .iter()
         .enumerate()
         .map(|(index, value)| {
@@ -1328,6 +1432,12 @@ fn parse_numerical_relation_evidence(
         source_semantics_sha256,
         certificate_algorithm,
         certificate_set_sha256,
+        precision_digits,
+        probe_count,
+        verification_probe_count,
+        relative_tolerance,
+        absolute_tolerance,
+        seed,
         numerical_candidate_count: evidence_usize(
             object,
             "numerical_candidate_count",
@@ -1345,6 +1455,205 @@ fn parse_numerical_relation_evidence(
         )?,
         mappings,
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_numerical_relation_certificates(
+    evidence: &JsonMap<String, JsonValue>,
+    certificates: &[JsonValue],
+    mappings: &[JsonValue],
+    source_semantics_sha256: &str,
+    certificate_algorithm: &str,
+    precision_digits: u32,
+    probe_count: u32,
+    verification_probe_count: u32,
+    seed: u64,
+) -> RusticolResult<()> {
+    const CERTIFICATE_FIELDS: &[&str] = &[
+        "algorithm",
+        "proof_kind",
+        "relation_kind",
+        "current_id",
+        "representative_id",
+        "execution_representative_id",
+        "factor_integer",
+        "source_semantics_sha256",
+        "precision_digits",
+        "seed",
+        "relative_tolerance_binary64",
+        "absolute_tolerance_binary64",
+        "candidate_probe_count",
+        "verification_probe_count",
+        "current_dimension",
+        "candidate_maximum_absolute_residual",
+        "candidate_maximum_relative_residual",
+        "candidate_maximum_tolerance_ratio",
+        "verification_maximum_absolute_residual",
+        "verification_maximum_relative_residual",
+        "verification_maximum_tolerance_ratio",
+        "candidate_observations_sha256",
+        "verification_observations_sha256",
+        "probe_contract_sha256",
+        "proof_sha256",
+    ];
+    let relative_tolerance_hex = json_string(
+        evidence,
+        "relative_tolerance_binary64",
+        "numerical relation relative tolerance encoding",
+    )?;
+    let absolute_tolerance_hex = json_string(
+        evidence,
+        "absolute_tolerance_binary64",
+        "numerical relation absolute tolerance encoding",
+    )?;
+    for (index, (certificate_value, mapping_value)) in certificates.iter().zip(mappings).enumerate()
+    {
+        let context = format!("numerical relation certificate {index}");
+        let certificate = json_object(certificate_value, &context)?;
+        let mapping = json_object(
+            mapping_value,
+            &format!("numerical relation mapping {index}"),
+        )?;
+        require_json_fields(certificate, CERTIFICATE_FIELDS, &context)?;
+        require_json_string_value(certificate, "algorithm", certificate_algorithm, &context)?;
+        require_json_string_value(
+            certificate,
+            "proof_kind",
+            "authenticated-numerical",
+            &context,
+        )?;
+        require_json_string_value(
+            certificate,
+            "source_semantics_sha256",
+            source_semantics_sha256,
+            &context,
+        )?;
+        require_json_string_value(
+            certificate,
+            "relative_tolerance_binary64",
+            relative_tolerance_hex,
+            &context,
+        )?;
+        require_json_string_value(
+            certificate,
+            "absolute_tolerance_binary64",
+            absolute_tolerance_hex,
+            &context,
+        )?;
+        for (field, expected) in [
+            ("precision_digits", u64::from(precision_digits)),
+            ("candidate_probe_count", u64::from(probe_count)),
+            (
+                "verification_probe_count",
+                u64::from(verification_probe_count),
+            ),
+            ("seed", seed),
+        ] {
+            if json_field(certificate, field, &context)?.as_u64() != Some(expected) {
+                return Err(invalid(format!(
+                    "{context} {field:?} disagrees with the evidence probe contract"
+                )));
+            }
+        }
+        for (certificate_field, mapping_field) in [
+            ("current_id", "current_id"),
+            ("representative_id", "representative_id"),
+            ("execution_representative_id", "execution_representative_id"),
+            ("relation_kind", "relation_kind"),
+            ("factor_integer", "factor_integer"),
+            ("current_dimension", "current_dimension"),
+            ("proof_sha256", "certificate_proof_sha256"),
+            (
+                "candidate_observations_sha256",
+                "candidate_observations_sha256",
+            ),
+            (
+                "verification_observations_sha256",
+                "verification_observations_sha256",
+            ),
+        ] {
+            if json_field(certificate, certificate_field, &context)?
+                != json_field(mapping, mapping_field, &context)?
+            {
+                return Err(invalid(format!(
+                    "{context} {certificate_field:?} disagrees with its native mapping"
+                )));
+            }
+        }
+
+        let mut probe_contract = JsonMap::new();
+        for field in [
+            "algorithm",
+            "source_semantics_sha256",
+            "current_id",
+            "representative_id",
+            "execution_representative_id",
+            "relation_kind",
+            "precision_digits",
+            "seed",
+            "relative_tolerance_binary64",
+            "absolute_tolerance_binary64",
+            "candidate_probe_count",
+            "verification_probe_count",
+            "current_dimension",
+            "candidate_observations_sha256",
+            "verification_observations_sha256",
+        ] {
+            probe_contract.insert(
+                field.to_owned(),
+                json_field(certificate, field, &context)?.clone(),
+            );
+        }
+        probe_contract.insert(
+            "candidate_domain".to_owned(),
+            JsonValue::String("candidate-current-probes-v1".to_owned()),
+        );
+        probe_contract.insert(
+            "verification_domain".to_owned(),
+            JsonValue::String("independent-verification-current-probes-v1".to_owned()),
+        );
+        let actual_probe_digest = canonical_json_sha256(
+            &JsonValue::Object(probe_contract.clone()),
+            "numerical relation probe contract",
+        )?;
+        if json_string(certificate, "probe_contract_sha256", &context)? != actual_probe_digest {
+            return Err(RusticolError::integrity(format!(
+                "{context} probe-contract digest does not match its canonical payload"
+            )));
+        }
+
+        let mut proof = probe_contract;
+        for field in [
+            "proof_kind",
+            "factor_integer",
+            "candidate_maximum_absolute_residual",
+            "candidate_maximum_relative_residual",
+            "candidate_maximum_tolerance_ratio",
+            "verification_maximum_absolute_residual",
+            "verification_maximum_relative_residual",
+            "verification_maximum_tolerance_ratio",
+            "probe_contract_sha256",
+        ] {
+            proof.insert(
+                field.to_owned(),
+                json_field(certificate, field, &context)?.clone(),
+            );
+        }
+        let actual_proof_digest =
+            canonical_json_sha256(&JsonValue::Object(proof), "numerical relation proof")?;
+        if json_string(certificate, "proof_sha256", &context)? != actual_proof_digest {
+            return Err(RusticolError::integrity(format!(
+                "{context} proof digest does not match its canonical payload"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn canonical_json_sha256(value: &JsonValue, context: &str) -> RusticolResult<String> {
+    Ok(hex_digest(Sha256::digest(canonical_json_bytes(
+        value, context,
+    )?)))
 }
 
 fn evidence_sha256(
@@ -1366,6 +1675,45 @@ fn evidence_usize(
         .as_u64()
         .and_then(|value| usize::try_from(value).ok())
         .ok_or_else(|| invalid(format!("{context} must be a nonnegative usize")))
+}
+
+fn json_u64(
+    object: &JsonMap<String, JsonValue>,
+    field: &str,
+    context: &str,
+) -> RusticolResult<u64> {
+    json_field(object, field, context)?
+        .as_u64()
+        .ok_or_else(|| invalid(format!("{context} must be a nonnegative u64")))
+}
+
+fn json_f64(
+    object: &JsonMap<String, JsonValue>,
+    field: &str,
+    context: &str,
+) -> RusticolResult<f64> {
+    let value = json_field(object, field, context)?
+        .as_f64()
+        .ok_or_else(|| invalid(format!("{context} must be a binary64 number")))?;
+    if !value.is_finite() || value < 0.0 {
+        return Err(invalid(format!("{context} must be finite and nonnegative")));
+    }
+    Ok(value)
+}
+
+fn python_f64_hex(value: f64) -> String {
+    let bits = value.to_bits();
+    if bits & 0x7fff_ffff_ffff_ffff == 0 {
+        return "0x0.0p+0".to_owned();
+    }
+    let exponent_bits = ((bits >> 52) & 0x7ff) as i32;
+    let fraction = bits & ((1_u64 << 52) - 1);
+    let (leading, exponent) = if exponent_bits == 0 {
+        (0, -1022)
+    } else {
+        (1, exponent_bits - 1023)
+    };
+    format!("0x{leading}.{fraction:013x}p{exponent:+}")
 }
 
 fn parse_direct_template_catalog(
@@ -2489,6 +2837,7 @@ fn relation_discovery_mapping<'py>(
     probe.set_item("status", "completed")?;
     probe.set_item("precision_digits", report.precision_digits)?;
     probe.set_item("probe_count", report.probe_count)?;
+    probe.set_item("verification_probe_count", report.verification_probe_count)?;
     probe.set_item(
         "effective_projection_count",
         report.effective_projection_count,
@@ -2619,6 +2968,9 @@ fn relation_discovery_mapping<'py>(
 }
 
 fn relation_certificate_set_sha256(report: &RecurrenceRelationDiscoveryReport) -> String {
+    if let Some(digest) = report.authenticated_certificate_set_sha256.as_ref() {
+        return digest.clone();
+    }
     let mut hash = Sha256::new();
     hash.update(b"pyamplicol-recurrence-relation-certificate-set-v1");
     hash.update((report.certificates.len() as u64).to_le_bytes());
@@ -4265,6 +4617,128 @@ mod direct_binding_tests {
         format!("{seed:02x}").repeat(32)
     }
 
+    fn refresh_numerical_certificate_set_digest(value: &mut JsonValue) {
+        let object = value.as_object().unwrap();
+        let relation_set = json!({
+            "abi": "pyamplicol-authenticated-numerical-current-relation-set-v1",
+            "certificates": object["certificates"].clone(),
+            "mappings": object["mappings"].clone(),
+        });
+        let digest =
+            canonical_json_sha256(&relation_set, "test numerical relation certificate set")
+                .unwrap();
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("certificate_set_sha256".to_owned(), json!(digest));
+    }
+
+    fn canonical_numerical_relation_evidence() -> JsonValue {
+        let source_semantics = digest(42);
+        let relative_tolerance = 1.0e-70_f64;
+        let absolute_tolerance = 1.0e-80_f64;
+        let mut probe_contract = json!({
+            "algorithm": rusticol_core::recurrence::NUMERICAL_RELATION_CERTIFICATE_ALGORITHM,
+            "source_semantics_sha256": source_semantics,
+            "current_id": 3,
+            "representative_id": 2,
+            "execution_representative_id": 2,
+            "relation_kind": "equal",
+            "precision_digits": 96,
+            "seed": 0x5059_414d_u64,
+            "candidate_domain": "candidate-current-probes-v1",
+            "verification_domain": "independent-verification-current-probes-v1",
+            "relative_tolerance_binary64": python_f64_hex(relative_tolerance),
+            "absolute_tolerance_binary64": python_f64_hex(absolute_tolerance),
+            "candidate_probe_count": 4,
+            "verification_probe_count": 4,
+            "current_dimension": 2,
+            "candidate_observations_sha256": digest(43),
+            "verification_observations_sha256": digest(44),
+        });
+        let probe_digest =
+            canonical_json_sha256(&probe_contract, "test numerical probe contract").unwrap();
+        let proof = probe_contract.as_object_mut().unwrap();
+        proof.insert("proof_kind".to_owned(), json!("authenticated-numerical"));
+        proof.insert("factor_integer".to_owned(), json!([1, 0]));
+        for field in [
+            "candidate_maximum_absolute_residual",
+            "candidate_maximum_relative_residual",
+            "candidate_maximum_tolerance_ratio",
+            "verification_maximum_absolute_residual",
+            "verification_maximum_relative_residual",
+            "verification_maximum_tolerance_ratio",
+        ] {
+            proof.insert(field.to_owned(), json!("0"));
+        }
+        proof.insert("probe_contract_sha256".to_owned(), json!(probe_digest));
+        let proof_digest = canonical_json_sha256(&probe_contract, "test numerical proof").unwrap();
+        let proof = probe_contract.as_object().unwrap();
+        let certificate = json!({
+            "algorithm": proof["algorithm"],
+            "proof_kind": proof["proof_kind"],
+            "relation_kind": proof["relation_kind"],
+            "current_id": proof["current_id"],
+            "representative_id": proof["representative_id"],
+            "execution_representative_id": proof["execution_representative_id"],
+            "factor_integer": proof["factor_integer"],
+            "source_semantics_sha256": proof["source_semantics_sha256"],
+            "precision_digits": proof["precision_digits"],
+            "seed": proof["seed"],
+            "relative_tolerance_binary64": proof["relative_tolerance_binary64"],
+            "absolute_tolerance_binary64": proof["absolute_tolerance_binary64"],
+            "candidate_probe_count": proof["candidate_probe_count"],
+            "verification_probe_count": proof["verification_probe_count"],
+            "current_dimension": proof["current_dimension"],
+            "candidate_maximum_absolute_residual": proof["candidate_maximum_absolute_residual"],
+            "candidate_maximum_relative_residual": proof["candidate_maximum_relative_residual"],
+            "candidate_maximum_tolerance_ratio": proof["candidate_maximum_tolerance_ratio"],
+            "verification_maximum_absolute_residual": proof["verification_maximum_absolute_residual"],
+            "verification_maximum_relative_residual": proof["verification_maximum_relative_residual"],
+            "verification_maximum_tolerance_ratio": proof["verification_maximum_tolerance_ratio"],
+            "candidate_observations_sha256": proof["candidate_observations_sha256"],
+            "verification_observations_sha256": proof["verification_observations_sha256"],
+            "probe_contract_sha256": proof["probe_contract_sha256"],
+            "proof_sha256": proof_digest,
+        });
+        let mapping = json!({
+            "current_id": 3,
+            "representative_id": 2,
+            "execution_representative_id": 2,
+            "relation_kind": "equal",
+            "factor_integer": [1, 0],
+            "current_dimension": 2,
+            "certificate_proof_sha256": proof_digest,
+            "candidate_observations_sha256": digest(43),
+            "verification_observations_sha256": digest(44),
+        });
+        let mut evidence = json!({
+            "abi": "pyamplicol-recurrence-numerical-current-evidence-v2",
+            "requested_mode": "certified-reuse",
+            "schedule_semantic_digest": digest(40),
+            "baseline_runtime_layout_digest": digest(41),
+            "source_semantics_sha256": source_semantics,
+            "certificate_algorithm":
+                rusticol_core::recurrence::NUMERICAL_RELATION_CERTIFICATE_ALGORITHM,
+            "certificate_set_sha256": digest(0),
+            "precision_digits": 96,
+            "probe_count": 4,
+            "verification_probe_count": 4,
+            "relative_tolerance": relative_tolerance,
+            "absolute_tolerance": absolute_tolerance,
+            "relative_tolerance_binary64": python_f64_hex(relative_tolerance),
+            "absolute_tolerance_binary64": python_f64_hex(absolute_tolerance),
+            "seed": 0x5059_414d_u64,
+            "numerical_candidate_count": 1,
+            "verification_rejected_count": 0,
+            "tested_hypothesis_count": 3,
+            "certificates": [certificate],
+            "mappings": [mapping],
+        });
+        refresh_numerical_certificate_set_digest(&mut evidence);
+        evidence
+    }
+
     fn refresh_digest(value: &mut JsonValue, field: &str, context: &str) {
         value.as_object_mut().unwrap().remove(field);
         let digest: [u8; 32] = Sha256::digest(canonical_json_bytes(value, context).unwrap()).into();
@@ -4272,6 +4746,101 @@ mod direct_binding_tests {
             .as_object_mut()
             .unwrap()
             .insert(field.to_owned(), json!(hex_digest(digest)));
+    }
+
+    #[test]
+    fn numerical_relation_evidence_recomputes_every_digest_layer() {
+        let evidence = canonical_numerical_relation_evidence();
+        let encoded = canonical_json_bytes(&evidence, "test numerical evidence").unwrap();
+        let parsed = parse_numerical_relation_evidence(&encoded).unwrap();
+        assert_eq!(parsed.mappings.len(), 1);
+
+        let mut stale_set = evidence.clone();
+        stale_set["certificates"][0]["current_dimension"] = json!(3);
+        let stale_bytes =
+            canonical_json_bytes(&stale_set, "stale numerical certificate set").unwrap();
+        assert!(
+            parse_numerical_relation_evidence(&stale_bytes)
+                .unwrap_err()
+                .to_string()
+                .contains("certificate-set digest")
+        );
+
+        let mut stale_proof = evidence.clone();
+        stale_proof["certificates"][0]["candidate_maximum_absolute_residual"] = json!("1e-90");
+        refresh_numerical_certificate_set_digest(&mut stale_proof);
+        let stale_bytes = canonical_json_bytes(&stale_proof, "stale numerical proof").unwrap();
+        assert!(
+            parse_numerical_relation_evidence(&stale_bytes)
+                .unwrap_err()
+                .to_string()
+                .contains("proof digest")
+        );
+
+        let mut stale_mapping = evidence.clone();
+        stale_mapping["mappings"][0]["current_dimension"] = json!(3);
+        refresh_numerical_certificate_set_digest(&mut stale_mapping);
+        let stale_bytes = canonical_json_bytes(&stale_mapping, "stale numerical mapping").unwrap();
+        assert!(
+            parse_numerical_relation_evidence(&stale_bytes)
+                .unwrap_err()
+                .to_string()
+                .contains("disagrees with its native mapping")
+        );
+
+        let mut stale_tolerance = evidence;
+        stale_tolerance["relative_tolerance_binary64"] = json!("0x1.0p+0");
+        let stale_bytes =
+            canonical_json_bytes(&stale_tolerance, "stale numerical tolerance").unwrap();
+        assert!(
+            parse_numerical_relation_evidence(&stale_bytes)
+                .unwrap_err()
+                .to_string()
+                .contains("tolerance encoding")
+        );
+    }
+
+    #[test]
+    fn numerical_relation_options_reject_stale_probe_and_counter_contracts() {
+        let evidence = canonical_numerical_relation_evidence();
+        let encoded = canonical_json_bytes(&evidence, "test numerical evidence").unwrap();
+        let parsed = parse_numerical_relation_evidence(&encoded).unwrap();
+        let options = RecurrenceRelationDiscoveryOptions::new(
+            RecurrenceRelationDiscoveryMode::CertifiedReuse,
+            96,
+            4,
+            4,
+            1.0e-70,
+            1.0e-80,
+            0x5059_414d,
+            "lc",
+        )
+        .unwrap();
+        options
+            .clone()
+            .with_numerical_evidence(parsed.clone())
+            .unwrap();
+
+        let mut stale_probe = parsed.clone();
+        stale_probe.probe_count = 5;
+        assert!(
+            options
+                .clone()
+                .with_numerical_evidence(stale_probe)
+                .unwrap_err()
+                .to_string()
+                .contains("probe contract")
+        );
+
+        let mut stale_counters = parsed;
+        stale_counters.verification_rejected_count = 1;
+        assert!(
+            options
+                .with_numerical_evidence(stale_counters)
+                .unwrap_err()
+                .to_string()
+                .contains("candidate counters")
+        );
     }
 
     fn canonical_direct_catalog() -> (Vec<u8>, SemanticDigest, SemanticDigest, SemanticDigest) {

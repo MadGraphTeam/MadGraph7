@@ -92,7 +92,8 @@ pub use relation::{
     NUMERICAL_RELATION_CERTIFICATE_ALGORITHM, RecurrenceCurrentRelationCertificate,
     RecurrenceNumericalCurrentMapping, RecurrenceNumericalRelationEvidence,
     RecurrenceRelationDiscoveryMode, RecurrenceRelationDiscoveryOptions,
-    RecurrenceRelationDiscoveryReport, relation_certificate_algorithm,
+    RecurrenceRelationDiscoveryReport, authenticate_recurrence_numerical_relation_provenance,
+    recurrence_numerical_source_semantics_sha256, relation_certificate_algorithm,
 };
 /// Semantic prepared-model companion ABI.
 pub const RECURRENCE_TEMPLATE_ABI: &str = "pyamplicol-recurrence-template-v1";

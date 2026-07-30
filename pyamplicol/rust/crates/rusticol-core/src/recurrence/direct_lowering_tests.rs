@@ -1973,11 +1973,21 @@ fn authenticated_numerical_evidence_applies_only_its_verified_mapping() {
     let evidence = RecurrenceNumericalRelationEvidence {
         requested_mode: RecurrenceRelationDiscoveryMode::CertifiedReuse,
         schedule_semantic_digest: semantic_digest.to_string(),
-        baseline_runtime_layout_digest: digest(61).to_string(),
-        source_semantics_sha256: digest(62).to_string(),
+        baseline_runtime_layout_digest: diagnostic_plan.runtime_layout_digest().to_string(),
+        source_semantics_sha256: crate::recurrence::recurrence_numerical_source_semantics_sha256(
+            &diagnostic_plan,
+            "authenticated-numerical-test",
+        )
+        .unwrap(),
         certificate_algorithm: NUMERICAL_RELATION_CERTIFICATE_ALGORITHM.to_owned(),
         certificate_set_sha256: digest(63).to_string(),
-        numerical_candidate_count: 1,
+        precision_digits: 96,
+        probe_count: 4,
+        verification_probe_count: 4,
+        relative_tolerance: 1.0e-70,
+        absolute_tolerance: 1.0e-80,
+        seed: 0x5059_414d,
+        numerical_candidate_count: 4,
         verification_rejected_count: 3,
         tested_hypothesis_count: 47,
         mappings: vec![RecurrenceNumericalCurrentMapping {
@@ -1997,6 +2007,36 @@ fn authenticated_numerical_evidence_applies_only_its_verified_mapping() {
                 .representative_expression_sha256,
         }],
     };
+    crate::recurrence::authenticate_recurrence_numerical_relation_provenance(
+        &evidence,
+        &diagnostic_plan,
+        "authenticated-numerical-test",
+    )
+    .unwrap();
+    let mut stale_layout = evidence.clone();
+    stale_layout.baseline_runtime_layout_digest = digest(61).to_string();
+    assert!(
+        crate::recurrence::authenticate_recurrence_numerical_relation_provenance(
+            &stale_layout,
+            &diagnostic_plan,
+            "authenticated-numerical-test",
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("runtime-layout digest")
+    );
+    let mut stale_source = evidence.clone();
+    stale_source.source_semantics_sha256 = digest(62).to_string();
+    assert!(
+        crate::recurrence::authenticate_recurrence_numerical_relation_provenance(
+            &stale_source,
+            &diagnostic_plan,
+            "authenticated-numerical-test",
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("source-semantics digest")
+    );
     let options = RecurrenceRelationDiscoveryOptions::new(
         RecurrenceRelationDiscoveryMode::CertifiedReuse,
         96,
@@ -2028,7 +2068,7 @@ fn authenticated_numerical_evidence_applies_only_its_verified_mapping() {
     );
     assert_eq!(report.tested_hypothesis_count, 47);
     assert_eq!(report.verification_rejected_count, 3);
-    assert_eq!(report.numerical_candidate_count, 1);
+    assert_eq!(report.numerical_candidate_count, 4);
     assert_eq!(report.exact_certified_relation_count, 1);
     assert_eq!(report.applied_relation_count, 1);
     assert_eq!(report.scale_copy_row_count, 1);
@@ -2060,5 +2100,79 @@ fn authenticated_numerical_evidence_applies_only_its_verified_mapping() {
         .unwrap_err()
         .to_string()
         .contains("different semantic schedule")
+    );
+
+    let mut inconsistent_counters = options.clone();
+    inconsistent_counters
+        .numerical_evidence
+        .as_mut()
+        .unwrap()
+        .verification_rejected_count = 0;
+    assert!(
+        lower_recurrence_direct_plan_v2_with_relation_discovery(
+            &program,
+            &templates,
+            &catalog,
+            semantic_digest,
+            digest(2),
+            catalog_digest,
+            runtime_options(),
+            &inconsistent_counters,
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("counters are inconsistent")
+    );
+
+    let mut source_representative = options.clone();
+    let mapping = &mut source_representative
+        .numerical_evidence
+        .as_mut()
+        .unwrap()
+        .mappings[0];
+    mapping.representative_id = Some(0);
+    mapping.execution_representative_id = 0;
+    assert!(
+        lower_recurrence_direct_plan_v2_with_relation_discovery(
+            &program,
+            &templates,
+            &catalog,
+            semantic_digest,
+            digest(2),
+            catalog_digest,
+            runtime_options(),
+            &source_representative,
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("exact current contract")
+    );
+
+    let mut source_target = options;
+    let mapping = &mut source_target
+        .numerical_evidence
+        .as_mut()
+        .unwrap()
+        .mappings[0];
+    mapping.current_id = 0;
+    mapping.representative_id = None;
+    mapping.execution_representative_id = 0;
+    mapping.relation_kind = "zero".to_owned();
+    mapping.factor = ExactComplexRational::ZERO;
+    mapping.current_dimension = diagnostic_plan.currents()[0].component_count;
+    assert!(
+        lower_recurrence_direct_plan_v2_with_relation_discovery(
+            &program,
+            &templates,
+            &catalog,
+            semantic_digest,
+            digest(2),
+            catalog_digest,
+            runtime_options(),
+            &source_target,
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("exact current contract")
     );
 }

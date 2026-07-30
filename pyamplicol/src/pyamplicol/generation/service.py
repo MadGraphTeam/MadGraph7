@@ -409,6 +409,10 @@ def _recurrence_relation_reporting(
         "recurrence applied relation count",
         minimum=0,
     )
+    if lane_report.get("requested_mode") != mode:
+        raise GenerationError(
+            "recurrence numerical current lane mode disagrees with generation"
+        )
     warning = lane_report.get("warning")
     if not isinstance(warning, Mapping):
         raise GenerationError(
@@ -443,6 +447,102 @@ def _recurrence_relation_reporting(
         raise GenerationError(
             "native recurrence relation application report is not a mapping"
         )
+    if mode == "off":
+        if native is not None or certified != 0 or applied != 0 or warning_required:
+            raise GenerationError(
+                "disabled recurrence numerical current lane published application state"
+            )
+    else:
+        if not isinstance(native, Mapping):
+            raise GenerationError(
+                "recurrence numerical current lane has no native application report"
+            )
+        native_certified = _result_integer(
+            native.get("exact_certified_relation_count"),
+            "native recurrence certified relation count",
+            minimum=0,
+        )
+        native_applied = _result_integer(
+            native.get("applied_relation_count"),
+            "native recurrence applied relation count",
+            minimum=0,
+        )
+        native_certificate_count = _result_integer(
+            native.get("certificate_count"),
+            "native recurrence certificate count",
+            minimum=0,
+        )
+        if (
+            native.get("requested_mode") != mode
+            or native_certified != certified
+            or native_applied != applied
+            or native_certificate_count != certified
+        ):
+            raise GenerationError(
+                "native recurrence relation counts disagree with the "
+                "authenticated warm-up"
+            )
+        expected_applied = certified if mode == "certified-reuse" else 0
+        if (
+            applied != expected_applied
+            or warning_required != (applied > 0)
+        ):
+            raise GenerationError(
+                "recurrence numerical current application or warning state "
+                "is inconsistent"
+            )
+        application = lane_report.get("application")
+        native_replay = native.get("certificate_replay")
+        if not isinstance(application, Mapping) or not isinstance(
+            native_replay, Mapping
+        ):
+            raise GenerationError(
+                "recurrence numerical current certificate replay metadata is absent"
+            )
+        lane_replay = application.get("certificate_replay")
+        if not isinstance(lane_replay, Mapping) or any(
+            native_replay.get(key) != lane_replay.get(key)
+            for key in ("algorithm", "certificate_set_sha256")
+        ):
+            raise GenerationError(
+                "native recurrence certificate replay disagrees with the warm-up"
+            )
+        candidate_capture = lane_report.get("candidate_capture")
+        verification_capture = lane_report.get("verification_capture")
+        native_probe = native.get("probe")
+        if (
+            not isinstance(candidate_capture, Mapping)
+            or not isinstance(verification_capture, Mapping)
+            or not isinstance(native_probe, Mapping)
+            or native_probe.get("probe_count")
+            != candidate_capture.get("point_count")
+            or native_probe.get("verification_probe_count")
+            != verification_capture.get("point_count")
+        ):
+            raise GenerationError(
+                "native recurrence probe counts disagree with the warm-up"
+            )
+        discovery = lane_report.get("discovery")
+        if not isinstance(discovery, Mapping) or any(
+            native_value != discovery.get(discovery_key)
+            for native_value, discovery_key in (
+                (
+                    native.get("numerical_candidate_count"),
+                    "numerical_candidate_count",
+                ),
+                (
+                    native_probe.get("verification_rejected_count"),
+                    "verification_rejected_count",
+                ),
+                (
+                    native_probe.get("tested_hypothesis_count"),
+                    "tested_hypothesis_count",
+                ),
+            )
+        ):
+            raise GenerationError(
+                "native recurrence candidate counters disagree with the warm-up"
+            )
     aggregate = {
         "schema_version": 1,
         "abi": "pyamplicol-artifact-numerical-current-reuse-v1",
