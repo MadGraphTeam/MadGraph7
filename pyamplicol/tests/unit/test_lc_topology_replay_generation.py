@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -55,6 +56,15 @@ _UFO_SM_ROOT = (
     / "json"
     / "sm"
 )
+
+
+@dataclass(frozen=True)
+class _ProjectedLogicalStub:
+    external_legs: tuple[object, ...]
+    physical_sectors: tuple[object, ...]
+    public_flows: tuple[object, ...]
+    replay_partitions: tuple[object, ...]
+    selected_public_flow_ids: tuple[int, ...] | None
 
 
 def test_complete_lc_generation_materializes_replay_representative() -> None:
@@ -267,6 +277,7 @@ def test_recurrence_all_flow_union_forwards_generation_selected_coverage(
     expression = "d d~ > z g g"
     process = build_process_ir(expression)
     slices: list[object] = []
+
     def fake_project(
         _process: object,
         color_plan: GenericColorPlan,
@@ -276,7 +287,7 @@ def test_recurrence_all_flow_union_forwards_generation_selected_coverage(
     ):
         slices.append(generation_slice)
         sectors = tuple(color_plan.sectors)
-        return SimpleNamespace(
+        return _ProjectedLogicalStub(
             external_legs=(1, 2, 3, 4, 5),
             physical_sectors=tuple(range(len(sectors))),
             public_flows=tuple(
@@ -284,9 +295,13 @@ def test_recurrence_all_flow_union_forwards_generation_selected_coverage(
                 for index, _sector in enumerate(sectors)
             ),
             replay_partitions=(),
+            selected_public_flow_ids=generation_slice.selected_public_flow_ids,
         )
 
-    def stop_before_native_lowering(_logical: object) -> None:
+    projected_logicals: list[_ProjectedLogicalStub] = []
+
+    def stop_before_native_lowering(logical: _ProjectedLogicalStub) -> None:
+        projected_logicals.append(logical)
         raise _StopBeforeNativeLowering
 
     monkeypatch.setattr(
@@ -324,9 +339,11 @@ def test_recurrence_all_flow_union_forwards_generation_selected_coverage(
             lowering_cache=RecurrenceScheduleLoweringCache(),
         )
 
-    generation_slice = slices[-1]
-    assert generation_slice.selected_public_flow_ids == expected_flows
+    assert len(slices) == 1
+    generation_slice = slices[0]
+    assert generation_slice.selected_public_flow_ids is None
     assert generation_slice.selected_source_helicities == expected_helicities
+    assert projected_logicals[-1].selected_public_flow_ids == expected_flows
 
 
 def test_recurrence_selected_n6_flow_projects_one_dense_sector(
@@ -352,7 +369,7 @@ def test_recurrence_selected_n6_flow_projects_one_dense_sector(
         projected_plans.append(color_plan)
         slices.append(generation_slice)
         sectors = tuple(color_plan.sectors)
-        return SimpleNamespace(
+        return _ProjectedLogicalStub(
             external_legs=tuple(range(len(process.legs))),
             physical_sectors=tuple(range(len(sectors))),
             public_flows=tuple(
@@ -360,9 +377,13 @@ def test_recurrence_selected_n6_flow_projects_one_dense_sector(
                 for index, _sector in enumerate(sectors)
             ),
             replay_partitions=(),
+            selected_public_flow_ids=generation_slice.selected_public_flow_ids,
         )
 
-    def stop_before_native_lowering(_logical: object) -> None:
+    projected_logicals: list[_ProjectedLogicalStub] = []
+
+    def stop_before_native_lowering(logical: _ProjectedLogicalStub) -> None:
+        projected_logicals.append(logical)
         raise _StopBeforeNativeLowering
 
     monkeypatch.setattr(
@@ -398,16 +419,11 @@ def test_recurrence_selected_n6_flow_projects_one_dense_sector(
             lowering_cache=RecurrenceScheduleLoweringCache(),
         )
 
-    assert len(projected_plans) == 2
-    assert all(
-        tuple(sector.id for sector in plan.sectors) == (0,)
-        for plan in projected_plans
-    )
-    assert all(
-        plan.sectors[0].word_labels == expected_sector.word_labels
-        for plan in projected_plans
-    )
-    assert slices[-1].selected_public_flow_ids == (0,)
+    assert len(projected_plans) == 1
+    assert tuple(sector.id for sector in projected_plans[0].sectors) == (0,)
+    assert projected_plans[0].sectors[0].word_labels == expected_sector.word_labels
+    assert slices[0].selected_public_flow_ids is None
+    assert projected_logicals[-1].selected_public_flow_ids == (0,)
 
 
 def test_recurrence_all_flow_union_rejects_truncated_color_coverage() -> None:

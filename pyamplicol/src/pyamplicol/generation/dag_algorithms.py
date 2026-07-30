@@ -716,7 +716,6 @@ def infer_minimal_coupling_order_limits(
     limit means unrestricted to the DAG compiler.
     """
 
-    active_model = model
     if not isinstance(process, CanonicalProcessIR):
         raise TypeError(
             "coupling-order inference requires a model-resolved CanonicalProcessIR"
@@ -727,9 +726,45 @@ def infer_minimal_coupling_order_limits(
         color_accuracy=process_ir.color_accuracy,
         max_sectors=max_color_sectors,
         fold_trace_reflections=(
-            active_model.lc_trace_reflection_equivalence_is_proven(process_ir)
+            model.lc_trace_reflection_equivalence_is_proven(process_ir)
         ),
     )
+    return _infer_minimal_coupling_order_limits_from_color_plan(
+        process_ir,
+        model=model,
+        color_plan=color_plan,
+        selected_color_sector_ids=selected_color_sector_ids,
+        max_coupling_orders=max_coupling_orders,
+        closure_side_mask_pruning=closure_side_mask_pruning,
+        color_order_mask_pruning=color_order_mask_pruning,
+        ignored_particle_ids=ignored_particle_ids,
+        ignored_vertex_kinds=ignored_vertex_kinds,
+    )
+
+
+def _infer_minimal_coupling_order_limits_from_color_plan(
+    process: CanonicalProcessIR,
+    *,
+    model: Model,
+    color_plan: GenericColorPlan,
+    selected_color_sector_ids: Iterable[int] | None = None,
+    max_coupling_orders: Mapping[str, int] | None = None,
+    closure_side_mask_pruning: bool = True,
+    color_order_mask_pruning: bool = True,
+    ignored_particle_ids: Iterable[int] | None = None,
+    ignored_vertex_kinds: Iterable[int] | None = None,
+) -> dict[str, int]:
+    """Infer the minimal coupling envelope from an already complete color plan."""
+
+    if not isinstance(process, CanonicalProcessIR):
+        raise TypeError(
+            "coupling-order inference requires a model-resolved CanonicalProcessIR"
+        )
+    process_ir = process
+    if color_plan.process is not process_ir and color_plan.process != process_ir:
+        raise ValueError(
+            "coupling-order inference color plan belongs to another process"
+        )
     explicit_sector_ids = (
         None
         if selected_color_sector_ids is None
@@ -748,11 +783,11 @@ def infer_minimal_coupling_order_limits(
             truncated=color_plan.truncated,
             trace_reflections_folded=color_plan.trace_reflections_folded,
         )
-    color_engine = ColorEngine(color_plan, active_model)
+    color_engine = ColorEngine(color_plan, model)
     full_mask = _labels_mask(leg.label for leg in process_ir.legs)
     closure_candidate_splits = _closure_candidate_splits(
         process_ir,
-        active_model,
+        model,
         color_engine,
     )
     closure_reachable_masks = (
@@ -761,13 +796,13 @@ def infer_minimal_coupling_order_limits(
         else None
     )
     color_order_reachable_masks = (
-        _lc_color_order_reachable_masks(process_ir, color_plan, active_model)
+        _lc_color_order_reachable_masks(process_ir, color_plan, model)
         if color_order_mask_pruning
         else None
     )
     totals = _closure_total_coupling_orders(
         process_ir,
-        active_model,
+        model,
         color_engine,
         closure_candidate_splits,
         closure_reachable_masks,
@@ -784,7 +819,7 @@ def infer_minimal_coupling_order_limits(
         return {}
     hierarchies = {
         str(name).upper(): max(1, int(value))
-        for name, value in active_model.coupling_order_hierarchies().items()
+        for name, value in model.coupling_order_hierarchies().items()
     }
     minimum_total_order = min(
         _coupling_order_degree(total, hierarchies=hierarchies) for total in totals

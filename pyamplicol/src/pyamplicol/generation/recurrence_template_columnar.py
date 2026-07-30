@@ -243,6 +243,7 @@ def build_recurrence_template_input_v1(
     )
     i32_sequences = _SequenceCatalog(_all_i32_sequences(catalog))
     coupling_orders = _CouplingOrderCatalog(_all_coupling_orders(catalog))
+    string_ranges, string_bytes = _string_tables(strings)
 
     tables = [
         _header_table(catalog, strings, digests, sections),
@@ -280,8 +281,8 @@ def build_recurrence_template_input_v1(
             quantum_number_flows,
             u32_sequences,
         ),
-        _string_tables(strings)[0],
-        _string_tables(strings)[1],
+        string_ranges,
+        string_bytes,
         _symmetry_proofs_table(catalog, strings, digests, factors, u32_sequences),
         _transitions_table(
             catalog,
@@ -1555,7 +1556,11 @@ def _table(
 ) -> RecurrenceColumnarTable:
     frozen = []
     for column_name, values in columns.items():
-        owned = np.ascontiguousarray(values).copy()
+        owned = (
+            values
+            if values.flags.owndata and values.flags.c_contiguous
+            else np.ascontiguousarray(values).copy()
+        )
         owned.flags.writeable = False
         frozen.append(RecurrenceColumn(column_name, owned))
     row_count = 0 if not frozen else len(frozen[0].values)

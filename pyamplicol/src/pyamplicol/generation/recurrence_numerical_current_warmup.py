@@ -14,13 +14,15 @@ import json
 import pickle
 import struct
 import tempfile
+import time
 import zlib
 from collections import defaultdict
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from fractions import Fraction
 from math import copysign, isfinite
+from types import MappingProxyType
 from typing import TYPE_CHECKING, BinaryIO, Literal, cast
 
 from pyamplicol.api.errors import ArtifactError
@@ -118,6 +120,16 @@ class _RawEvidenceStorageGeometry:
     canonical_byte_limit: int
     encoding: _EvidenceEncoding
     producer_resident_upper_bound: int
+
+
+@dataclass(frozen=True, slots=True)
+class _WarmupStaticContext:
+    current_dimensions: Mapping[int, int]
+    current_contracts: tuple[_CurrentContract, ...]
+    runtime_defaults: tuple[Decimal, ...]
+    runtime_parameter_schema: Mapping[str, object]
+    runtime_parameter_schema_sha256: str
+    source_semantics_sha256: str
 
 
 class _SpooledObservationMapping(Mapping[int, tuple[_ComplexDecimal, ...]]):
@@ -578,6 +590,11 @@ class RecurrenceNumericalCurrentWarmupResult:
     evidence_canonical_bytes: int
     discovery_report: Mapping[str, object]
     application_validation: Mapping[str, object]
+    generation_profile_timings: Mapping[str, float] = field(
+        default_factory=dict,
+        compare=False,
+        repr=False,
+    )
 
     @property
     def applied_relation_count(self) -> int:
@@ -774,16 +791,26 @@ def run_recurrence_numerical_current_warmup(
     _validated_tolerances(relative_tolerance, absolute_tolerance)
     relative_tolerance = float(relative_tolerance)
     absolute_tolerance = float(absolute_tolerance)
+    generation_profile_timings: dict[str, float] = {}
+    geometry_started = time.perf_counter()
     geometry = _select_raw_evidence_storage_geometry(
         plan.sections,
         candidate_probe_count=len(candidate_points),
         verification_probe_count=len(verification_points),
         runtime_parameter_count=len(plan.runtime_parameter_schema),
     )
-    source_digest = recurrence_numerical_source_semantics_sha256(plan.sections)
-    runtime_parameter_schema = _runtime_parameter_schema_payload(plan)
-    runtime_parameter_schema_sha256 = _canonical_sha256(runtime_parameter_schema)
-    runtime_defaults = _runtime_parameter_defaults(plan)
+    generation_profile_timings["warmup_geometry"] = (
+        time.perf_counter() - geometry_started
+    )
+    static_context_started = time.perf_counter()
+    static_context = _build_warmup_static_context(plan)
+    generation_profile_timings["warmup_static_context"] = (
+        time.perf_counter() - static_context_started
+    )
+    source_digest = static_context.source_semantics_sha256
+    runtime_parameter_schema = static_context.runtime_parameter_schema
+    runtime_parameter_schema_sha256 = static_context.runtime_parameter_schema_sha256
+    runtime_defaults = static_context.runtime_defaults
     probe_policies = tuple(row.probe_policy for row in plan.runtime_parameter_schema)
     candidate_parameter_contexts = _build_parameter_probe_contexts(
         runtime_defaults,
@@ -807,7 +834,9 @@ def run_recurrence_numerical_current_warmup(
     verification_spool: _SpooledObservationMapping | None = None
     evidence_spool: BinaryIO | None = None
     try:
-        candidate = capture_recurrence_current_observations(
+        candidate_probe_timings: list[float] = []
+        candidate_capture_started = time.perf_counter()
+        candidate = _capture_recurrence_current_observations(
             plan,
             candidate_points,
             precision_digits=precision_digits,
@@ -816,17 +845,50 @@ def run_recurrence_numerical_current_warmup(
             domain="candidate-current-probes-v1",
             parameter_contexts=candidate_parameter_contexts,
             runtime_parameter_schema_sha256=runtime_parameter_schema_sha256,
+            static_context=static_context,
+            probe_timings=candidate_probe_timings,
+        )
+        generation_profile_timings["warmup_candidate_capture"] = (
+            time.perf_counter() - candidate_capture_started
+        )
+        generation_profile_timings.update(
+            {
+                f"warmup_candidate_probe_{index}": seconds
+                for index, seconds in enumerate(candidate_probe_timings)
+            }
+        )
+        candidate_index_started = time.perf_counter()
+        candidate_indexes: (
+            Mapping[
+                _CurrentContract,
+                NumericalObservationCandidateIndex[Fraction],
+            ]
+            | None
+        ) = _build_candidate_indexes(
+            plan.sections,
+            candidate.observations,
+            contracts=static_context.current_contracts,
+        )
+        generation_profile_timings["warmup_candidate_index"] = (
+            time.perf_counter() - candidate_index_started
         )
         if geometry.encoding == _COMPRESSED_EVIDENCE_ENCODING:
+            candidate_spool_started = time.perf_counter()
             candidate_spool = _SpooledObservationMapping(
                 candidate.observations,
-                candidate_indexes=_build_candidate_indexes(
-                    plan.sections,
-                    candidate.observations,
-                ),
+                candidate_indexes=candidate_indexes,
             )
             candidate = replace(candidate, observations=candidate_spool)
-        verification = capture_recurrence_current_observations(
+            # The verification capture can itself be large.  Keep the exact
+            # reusable index on disk until relation discovery instead of
+            # retaining both resident captures and the index simultaneously.
+            candidate_indexes = None
+            generation_profile_timings["warmup_candidate_spool"] = (
+                time.perf_counter() - candidate_spool_started
+            )
+        verification_probe_timings: list[float] = []
+        verification_capture_started = time.perf_counter()
+        verification = _capture_recurrence_current_observations(
             plan,
             verification_points,
             precision_digits=precision_digits,
@@ -835,14 +897,30 @@ def run_recurrence_numerical_current_warmup(
             domain="independent-verification-current-probes-v1",
             parameter_contexts=verification_parameter_contexts,
             runtime_parameter_schema_sha256=runtime_parameter_schema_sha256,
+            static_context=static_context,
+            probe_timings=verification_probe_timings,
+        )
+        generation_profile_timings["warmup_verification_capture"] = (
+            time.perf_counter() - verification_capture_started
+        )
+        generation_profile_timings.update(
+            {
+                f"warmup_verification_probe_{index}": seconds
+                for index, seconds in enumerate(verification_probe_timings)
+            }
         )
         if geometry.encoding == _COMPRESSED_EVIDENCE_ENCODING:
+            verification_spool_started = time.perf_counter()
             verification_spool = _SpooledObservationMapping(verification.observations)
             verification = replace(
                 verification,
                 observations=verification_spool,
             )
+            generation_profile_timings["warmup_verification_spool"] = (
+                time.perf_counter() - verification_spool_started
+            )
         _validate_independent_captures(candidate, verification)
+        discovery_started = time.perf_counter()
         certificates, discovery = _discover_relations(
             plan.sections,
             candidate,
@@ -853,7 +931,13 @@ def run_recurrence_numerical_current_warmup(
             relative_tolerance=relative_tolerance,
             absolute_tolerance=absolute_tolerance,
             color_accuracy=color_accuracy,
+            contracts=static_context.current_contracts,
+            candidate_indexes=candidate_indexes,
         )
+        generation_profile_timings["warmup_relation_discovery"] = (
+            time.perf_counter() - discovery_started
+        )
+        evidence_payload_started = time.perf_counter()
         evidence = _evidence_payload(
             plan.sections,
             mode=mode,
@@ -870,7 +954,11 @@ def run_recurrence_numerical_current_warmup(
             candidate=candidate,
             verification=verification,
         )
+        generation_profile_timings["warmup_evidence_payload"] = (
+            time.perf_counter() - evidence_payload_started
+        )
         _validate_raw_evidence_scalar_widths(candidate, verification)
+        evidence_serialization_started = time.perf_counter()
         if geometry.encoding == _RAW_EVIDENCE_ENCODING:
             encoded = _bounded_canonical_json_bytes(
                 evidence,
@@ -894,6 +982,9 @@ def run_recurrence_numerical_current_warmup(
                 canonical_byte_limit=geometry.canonical_byte_limit,
             )
             encoded = b""
+        generation_profile_timings["warmup_evidence_serialization"] = (
+            time.perf_counter() - evidence_serialization_started
+        )
         replay_current_ids = (
             tuple(
                 current_id
@@ -920,9 +1011,13 @@ def run_recurrence_numerical_current_warmup(
         # captures. Drop it before reading the compressed transport bytes.
         del evidence
         if evidence_spool is not None:
+            evidence_transport_started = time.perf_counter()
             encoded = _read_compressed_evidence_spool(evidence_spool)
             evidence_spool.close()
             evidence_spool = None
+            generation_profile_timings["warmup_evidence_transport_read"] = (
+                time.perf_counter() - evidence_transport_started
+            )
         return RecurrenceNumericalCurrentWarmupResult(
             requested_mode=mode,
             color_accuracy=color_accuracy,
@@ -949,6 +1044,9 @@ def run_recurrence_numerical_current_warmup(
                 "maximum_tolerance_ratio": None,
                 "application_capture": None,
             },
+            generation_profile_timings=MappingProxyType(
+                dict(generation_profile_timings)
+            ),
         )
     finally:
         if candidate_spool is not None:
@@ -1157,6 +1255,33 @@ def capture_recurrence_current_observations(
 ) -> RecurrenceCurrentObservationCapture:
     """Evaluate every current before Direct-Arena stage recycling."""
 
+    return _capture_recurrence_current_observations(
+        plan,
+        points,
+        precision_digits=precision_digits,
+        source_semantics_sha256=source_semantics_sha256,
+        seed=seed,
+        domain=domain,
+        parameter_contexts=parameter_contexts,
+        runtime_parameter_schema_sha256=runtime_parameter_schema_sha256,
+        static_context=None,
+        probe_timings=None,
+    )
+
+
+def _capture_recurrence_current_observations(
+    plan: _RecurrenceExactPlan,
+    points: Sequence[ValidationPointRecord],
+    *,
+    precision_digits: int,
+    source_semantics_sha256: str,
+    seed: int,
+    domain: str,
+    parameter_contexts: Sequence[Sequence[Decimal]] | None,
+    runtime_parameter_schema_sha256: str | None,
+    static_context: _WarmupStaticContext | None,
+    probe_timings: list[float] | None,
+) -> RecurrenceCurrentObservationCapture:
     records = tuple(points)
     if (
         type(precision_digits) is not int
@@ -1168,9 +1293,11 @@ def capture_recurrence_current_observations(
     ):
         raise ValueError("recurrence current capture point contract is invalid")
     sections = plan.sections
-    dimensions = {
-        current.semantic_id: current.component_count for current in sections.currents
-    }
+    dimensions = (
+        {current.semantic_id: current.component_count for current in sections.currents}
+        if static_context is None
+        else static_context.current_dimensions
+    )
     observations: dict[int, list[_ComplexDecimal]] = {
         current_id: [] for current_id in dimensions
     }
@@ -1181,9 +1308,16 @@ def capture_recurrence_current_observations(
         records
     ):
         raise ValueError("recurrence current capture requires distinct physical points")
-    runtime_defaults = _runtime_parameter_defaults(plan)
-    schema_payload = _runtime_parameter_schema_payload(plan)
-    actual_schema_sha256 = _canonical_sha256(schema_payload)
+    if static_context is None:
+        runtime_defaults = _runtime_parameter_defaults(plan)
+        schema_payload = _runtime_parameter_schema_payload(
+            plan,
+            defaults=runtime_defaults,
+        )
+        actual_schema_sha256 = _canonical_sha256(schema_payload)
+    else:
+        runtime_defaults = static_context.runtime_defaults
+        actual_schema_sha256 = static_context.runtime_parameter_schema_sha256
     if (
         runtime_parameter_schema_sha256 is not None
         and runtime_parameter_schema_sha256 != actual_schema_sha256
@@ -1239,6 +1373,7 @@ def capture_recurrence_current_observations(
         for point_index, (record, parameter_context) in enumerate(
             zip(records, resolved_parameter_contexts, strict=True)
         ):
+            probe_started = time.perf_counter()
             parameters = plan.resolve_model_parameters(
                 parameter_context,
                 working_precision,
@@ -1261,6 +1396,8 @@ def capture_recurrence_current_observations(
                     index=point_index,
                 ),
             )
+            if probe_timings is not None:
+                probe_timings.append(time.perf_counter() - probe_started)
             context_payloads.append(context_payload)
             if set(captured) != set(dimensions):
                 raise ValueError("recurrence exact current capture is incomplete")
@@ -1309,6 +1446,7 @@ def capture_recurrence_current_observations(
             "context_policy": context_policy,
         }
     )
+    capture_dimensions = dimensions if static_context is None else dict(dimensions)
     return RecurrenceCurrentObservationCapture(
         precision_digits=precision_digits,
         points=records,
@@ -1320,7 +1458,7 @@ def capture_recurrence_current_observations(
         parameter_contexts=resolved_parameter_contexts,
         parameter_context_sha256s=parameter_context_sha256s,
         observations=frozen,
-        current_dimensions=dimensions,
+        current_dimensions=capture_dimensions,
         runtime_parameter_schema_sha256=actual_schema_sha256,
         source_semantics_sha256=source_semantics_sha256,
         observation_batch_sha256=batch_digest,
@@ -1339,8 +1477,11 @@ def recurrence_numerical_source_semantics_sha256(
 
 def _source_semantics_payload(
     sections: _RecurrenceExactSectionsV1,
+    *,
+    contracts: tuple[_CurrentContract, ...] | None = None,
 ) -> dict[str, object]:
-    contracts = _current_contracts(sections)
+    if contracts is None:
+        contracts = _current_contracts(sections)
     if sections.strategy == "topology-replay":
         selector_schedule: object = {
             "policy": _context_policy(sections.strategy),
@@ -1541,11 +1682,14 @@ def _raw_numerical_tolerance_window_ids(
 def _build_candidate_indexes(
     sections: _RecurrenceExactSectionsV1,
     observations: Mapping[int, Sequence[_ComplexDecimal]],
+    *,
+    contracts: tuple[_CurrentContract, ...] | None = None,
 ) -> dict[
     _CurrentContract,
     NumericalObservationCandidateIndex[Fraction],
 ]:
-    contracts = _current_contracts(sections)
+    if contracts is None:
+        contracts = _current_contracts(sections)
     members_by_contract: dict[_CurrentContract, list[int]] = defaultdict(list)
     for current in sections.currents:
         members_by_contract[contracts[current.semantic_id]].append(current.semantic_id)
@@ -1569,6 +1713,12 @@ def _discover_relations(
     relative_tolerance: float,
     absolute_tolerance: float,
     color_accuracy: str,
+    contracts: tuple[_CurrentContract, ...] | None = None,
+    candidate_indexes: Mapping[
+        _CurrentContract,
+        NumericalObservationCandidateIndex[Fraction],
+    ]
+    | None = None,
 ) -> tuple[
     tuple[RecurrenceNumericalCurrentCertificate, ...],
     dict[str, object],
@@ -1579,18 +1729,20 @@ def _discover_relations(
     )
     relative_fraction = Fraction(relative)
     absolute_fraction = Fraction(absolute)
-    contracts = _current_contracts(sections)
-    spooled_indexes = (
-        candidate.observations.candidate_indexes
-        if isinstance(candidate.observations, _SpooledObservationMapping)
-        else None
-    )
-    if spooled_indexes is not None:
+    if contracts is None:
+        contracts = _current_contracts(sections)
+    if candidate_indexes is None:
+        spooled_indexes = (
+            candidate.observations.candidate_indexes
+            if isinstance(candidate.observations, _SpooledObservationMapping)
+            else None
+        )
         candidate_indexes = spooled_indexes
-    else:
+    if candidate_indexes is None:
         candidate_indexes = _build_candidate_indexes(
             sections,
             candidate.observations,
+            contracts=contracts,
         )
     prior_by_contract: dict[_CurrentContract, list[int]] = defaultdict(list)
     certificates: list[RecurrenceNumericalCurrentCertificate] = []
@@ -2552,8 +2704,11 @@ def _runtime_parameter_defaults(
 
 def _runtime_parameter_schema_payload(
     plan: _RecurrenceExactPlan,
+    *,
+    defaults: tuple[Decimal, ...] | None = None,
 ) -> dict[str, object]:
-    defaults = _runtime_parameter_defaults(plan)
+    if defaults is None:
+        defaults = _runtime_parameter_defaults(plan)
     return {
         "abi": _PARAMETER_SCHEMA_ABI,
         "parameters": [
@@ -2571,6 +2726,37 @@ def _runtime_parameter_schema_payload(
             )
         ],
     }
+
+
+def _build_warmup_static_context(
+    plan: _RecurrenceExactPlan,
+) -> _WarmupStaticContext:
+    """Build immutable generation-scoped data shared by every warm-up pass."""
+
+    current_dimensions = {
+        current.semantic_id: current.component_count
+        for current in plan.sections.currents
+    }
+    current_contracts = _current_contracts(plan.sections)
+    source_semantics_sha256 = _canonical_sha256(
+        _source_semantics_payload(
+            plan.sections,
+            contracts=current_contracts,
+        )
+    )
+    runtime_defaults = _runtime_parameter_defaults(plan)
+    runtime_parameter_schema = _runtime_parameter_schema_payload(
+        plan,
+        defaults=runtime_defaults,
+    )
+    return _WarmupStaticContext(
+        current_dimensions=current_dimensions,
+        current_contracts=current_contracts,
+        runtime_defaults=runtime_defaults,
+        runtime_parameter_schema=runtime_parameter_schema,
+        runtime_parameter_schema_sha256=_canonical_sha256(runtime_parameter_schema),
+        source_semantics_sha256=source_semantics_sha256,
+    )
 
 
 def _build_parameter_probe_contexts(

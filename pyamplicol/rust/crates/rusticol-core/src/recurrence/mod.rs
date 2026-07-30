@@ -41,6 +41,8 @@ pub use color_contraction::{
     decode_recurrence_color_contraction_v3, recurrence_color_contraction_digest,
 };
 pub use construct::RecurrenceBuildProgress;
+#[doc(hidden)]
+pub use construct::RecurrenceGenerationTelemetry;
 pub use direct_codec::{decode_recurrence_direct_plan_v2, encode_recurrence_direct_plan_v2};
 pub use direct_lowering::{
     DirectRecurrenceRuntimeOptions, PreparedDirectExecutorBinding, PreparedDirectExecutorCatalog,

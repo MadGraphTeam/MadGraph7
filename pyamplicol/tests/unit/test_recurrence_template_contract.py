@@ -8,6 +8,7 @@ from fractions import Fraction
 import numpy as np
 import pytest
 
+import pyamplicol.generation.recurrence_template_columnar as template_columnar
 from pyamplicol import _rusticol
 from pyamplicol.generation.recurrence_columnar import (
     RecurrenceColumn,
@@ -432,6 +433,25 @@ def _mutated_projected_input(
         prepared_kernel_pack_digest=projected.prepared_kernel_pack_digest,
         tables=tuple(tables),
     )
+
+
+def test_private_table_adopts_owned_columns_and_copies_views() -> None:
+    owned = np.arange(4, dtype=np.dtype("<u4"))
+    adopted = template_columnar._table("owned", {"value": owned})
+
+    assert adopted.column("value") is owned
+    assert not owned.flags.writeable
+
+    backing = np.arange(8, dtype=np.dtype("<u4"))
+    view = backing[::2]
+    copied = template_columnar._table("view", {"value": view})
+    frozen = copied.column("value")
+
+    assert frozen is not view
+    assert frozen.flags.owndata
+    assert frozen.flags.c_contiguous
+    assert not frozen.flags.writeable
+    assert np.array_equal(frozen, view)
 
 
 def test_binary64_conversion_is_exact_and_distinguishes_sub_ulp_terms() -> None:

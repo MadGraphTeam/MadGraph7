@@ -347,6 +347,112 @@ def test_python_parameter_default_hex_matches_native_signed_binary64_contract() 
     ]
 
 
+def test_warmup_builds_static_semantics_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contract_calls = 0
+    default_calls = 0
+    original_contracts = recurrence_warmup._current_contracts
+    original_defaults = recurrence_warmup._runtime_parameter_defaults
+
+    def counted_contracts(
+        sections: _RecurrenceExactSectionsV1,
+    ) -> tuple[tuple[object, ...], ...]:
+        nonlocal contract_calls
+        contract_calls += 1
+        return original_contracts(sections)
+
+    def counted_defaults(plan: _RecurrenceExactPlan) -> tuple[Decimal, ...]:
+        nonlocal default_calls
+        default_calls += 1
+        return original_defaults(plan)
+
+    monkeypatch.setattr(recurrence_warmup, "_current_contracts", counted_contracts)
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_runtime_parameter_defaults",
+        counted_defaults,
+    )
+    result = run_recurrence_numerical_current_warmup(
+        _topology_replay_plan(),
+        candidate_points=_points(1),
+        verification_points=_points(101),
+        mode="certified-reuse",
+        color_accuracy="lc",
+        precision_digits=80,
+        seed=53,
+        relative_tolerance=1.0e-60,
+        absolute_tolerance=1.0e-70,
+    )
+    try:
+        assert contract_calls == 1
+        assert default_calls == 1
+        candidate_dimensions = result.candidate_capture.current_dimensions
+        verification_dimensions = result.verification_capture.current_dimensions
+        assert candidate_dimensions == verification_dimensions
+        assert candidate_dimensions is not verification_dimensions
+        assert isinstance(candidate_dimensions, dict)
+        assert isinstance(verification_dimensions, dict)
+        current_id = next(iter(candidate_dimensions))
+        verification_dimension = verification_dimensions[current_id]
+        candidate_dimensions[current_id] = verification_dimension + 1
+        assert verification_dimensions[current_id] == verification_dimension
+    finally:
+        result.close()
+
+
+def test_warmup_phase_timings_are_diagnostic_only() -> None:
+    arguments = {
+        "candidate_points": _points(1),
+        "verification_points": _points(101),
+        "mode": "certified-reuse",
+        "color_accuracy": "lc",
+        "precision_digits": 80,
+        "seed": 53,
+        "relative_tolerance": 1.0e-60,
+        "absolute_tolerance": 1.0e-70,
+    }
+    result = run_recurrence_numerical_current_warmup(
+        _topology_replay_plan(),
+        **arguments,
+    )
+    repeated = run_recurrence_numerical_current_warmup(
+        _topology_replay_plan(),
+        **arguments,
+    )
+    try:
+        assert result.generation_profile_timings
+        assert all(
+            isinstance(seconds, float) and seconds >= 0.0
+            for seconds in result.generation_profile_timings.values()
+        )
+        assert {
+            key
+            for key in result.generation_profile_timings
+            if key.startswith("warmup_candidate_probe_")
+        } == {"warmup_candidate_probe_0", "warmup_candidate_probe_1"}
+        assert {
+            key
+            for key in result.generation_profile_timings
+            if key.startswith("warmup_verification_probe_")
+        } == {"warmup_verification_probe_0", "warmup_verification_probe_1"}
+        assert "generation_profile_timings" not in json.dumps(
+            result.to_json_dict(),
+            sort_keys=True,
+        )
+        assert result.evidence_json == repeated.evidence_json
+        assert result == repeated
+        assert result == replace(
+            result,
+            generation_profile_timings={"diagnostic-only": 1.0},
+        )
+        with pytest.raises(TypeError):
+            result.generation_profile_timings["not-mutable"] = 1.0  # type: ignore[index]
+    finally:
+        result.close()
+        repeated.close()
+
+
 def test_recurrence_certified_reuse_uses_two_independent_probe_sets() -> None:
     result = run_recurrence_numerical_current_warmup(
         _topology_replay_plan(),
@@ -705,14 +811,12 @@ def test_compressed_warmup_keeps_relation_rows_spooled_through_validation(
     monkeypatch.setattr(
         recurrence_warmup,
         "_select_raw_evidence_storage_geometry",
-        lambda *_args, **_kwargs: (
-            recurrence_warmup._RawEvidenceStorageGeometry(
-                scalar_count=128,
-                row_count=16,
-                canonical_byte_limit=1 << 20,
-                encoding="zlib-canonical-json-v1",
-                producer_resident_upper_bound=1 << 20,
-            )
+        lambda *_args, **_kwargs: recurrence_warmup._RawEvidenceStorageGeometry(
+            scalar_count=128,
+            row_count=16,
+            canonical_byte_limit=1 << 20,
+            encoding="zlib-canonical-json-v1",
+            producer_resident_upper_bound=1 << 20,
         ),
     )
     plan = _topology_replay_plan()
@@ -1112,6 +1216,7 @@ def test_recurrence_service_forwards_complete_numerical_contract_to_pyo3(
             "resolved_helicities": (),
             "amplitude_destinations": (),
             "exact_sections": {},
+            "generation_profile": {"serialized_bytes": {"container": len(b"pacbin")}},
             "member_count": 1,
             "unpacked_size_bytes": 6,
             "index_sha256": "b" * 64,
@@ -1150,9 +1255,39 @@ def test_recurrence_service_forwards_complete_numerical_contract_to_pyo3(
         relation_discovery_evidence_json=evidence,
         progress_callback=progress,
     )
+    cached_destination = tmp_path / "recurrence-runtime-cached.pacbin"
+    cached_catalog = SimpleNamespace(
+        catalog_digest="e" * 64,
+        to_dict=lambda: pytest.fail("cached direct-template JSON was rebuilt"),
+    )
+    cached_output = generation_service._invoke_rust_recurrence_lowering_v2(
+        builder,
+        template,
+        cached_catalog,
+        "f" * 64,
+        "1" * 64,
+        cached_destination,
+        point_tile_size=17,
+        workspace_mib=23,
+        relation_discovery_mode="certified-reuse",
+        relation_discovery_precision_digits=101,
+        relation_discovery_probe_count=3,
+        relation_discovery_verification_probe_count=5,
+        relation_discovery_relative_tolerance=1.25e-70,
+        relation_discovery_absolute_tolerance=2.5e-80,
+        relation_discovery_seed=123456789,
+        color_accuracy="nlc",
+        relation_discovery_evidence_json=evidence,
+        progress_callback=progress,
+        direct_template_catalog_json=b'{"a":2,"z":1}',
+    )
 
     assert output.payload_path == destination
-    assert len(calls) == 1
+    assert output.generation_profile == {
+        "serialized_bytes": {"container": len(b"pacbin")}
+    }
+    assert cached_output.payload_path == cached_destination
+    assert len(calls) == 2
     args, kwargs = calls[0]
     assert args[:2] == (builder, template)
     assert args[2] == b'{"a":2,"z":1}'
@@ -1174,3 +1309,6 @@ def test_recurrence_service_forwards_complete_numerical_contract_to_pyo3(
         "relation_discovery_evidence_json": evidence,
         "progress_callback": progress,
     }
+    cached_args, cached_kwargs = calls[1]
+    assert cached_args[2] == args[2]
+    assert cached_kwargs == kwargs

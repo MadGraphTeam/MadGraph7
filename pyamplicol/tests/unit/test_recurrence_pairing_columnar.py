@@ -286,6 +286,22 @@ def test_encoding_is_deterministic_and_model_equivalent_topology_is_stable() -> 
             assert np.array_equal(left_column.values, right_column.values)
 
 
+def test_private_freeze_adopts_schema_exact_owned_columns() -> None:
+    columns = pairing_columnar._allocate("rule_endpoint_pairings", 2)
+    columns["rule_id"][:] = (0, 1)
+    columns["fundamental_source_slot"][:] = (2, 3)
+    columns["antifundamental_source_slot"][:] = (4, 5)
+    original = dict(columns)
+
+    table = pairing_columnar._freeze_table("rule_endpoint_pairings", columns)
+
+    for column in table.columns:
+        assert column.values is original[column.name]
+        assert column.values.flags.owndata
+        assert column.values.flags.c_contiguous
+        assert not column.values.flags.writeable
+
+
 def test_malformed_catalog_and_integer_bounds_fail_closed() -> None:
     catalog = _identical_catalog()
     with pytest.raises(RecurrenceColumnarInputError, match="topology digest"):

@@ -385,6 +385,32 @@ def _recurrence_schedule_identity_payload(
     }
 
 
+def _recurrence_schedule_semantic_digests(
+    logical: RecurrenceBuilderLogicalInputV1,
+    *,
+    prepared_kernel_pack_digest: str,
+    direct_template_catalog_digest: str,
+    point_tile_size: int,
+    workspace_mib: int,
+    relation_discovery: Mapping[str, object] | None = None,
+) -> tuple[str, str]:
+    """Return native and request identities after one logical-input traversal."""
+
+    payload = _recurrence_schedule_identity_payload(
+        logical,
+        prepared_kernel_pack_digest=prepared_kernel_pack_digest,
+        direct_template_catalog_digest=direct_template_catalog_digest,
+        point_tile_size=point_tile_size,
+        workspace_mib=workspace_mib,
+    )
+    native_digest = _canonical_digest(payload)
+    if relation_discovery is None:
+        return native_digest, native_digest
+    request_payload = dict(payload)
+    request_payload["relation_discovery"] = _schedule_plain(relation_discovery)
+    return native_digest, _canonical_digest(request_payload)
+
+
 def recurrence_native_schedule_semantic_digest(
     logical: RecurrenceBuilderLogicalInputV1,
     *,

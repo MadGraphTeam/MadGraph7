@@ -888,19 +888,76 @@ impl LCColorTransitionWitness {
     }
 }
 
-fn canonical_trace_rotation(source_slots: Vec<u32>) -> Vec<u32> {
-    let Some((best, _)) = (0..source_slots.len())
-        .map(|offset| {
-            let rotated = source_slots[offset..]
-                .iter()
-                .chain(&source_slots[..offset])
-                .copied()
-                .collect::<Vec<_>>();
-            (rotated, offset)
-        })
-        .min()
-    else {
+fn canonical_trace_rotation(mut source_slots: Vec<u32>) -> Vec<u32> {
+    let length = source_slots.len();
+    if length < 2 {
         return source_slots;
-    };
-    best
+    }
+
+    // Booth's least-rotation scan compares every cyclic suffix at most a
+    // constant number of times. This preserves the exact lexicographic
+    // canonical form without materializing all O(n) rotations.
+    let mut left = 0usize;
+    let mut right = 1usize;
+    let mut matched = 0usize;
+    while left < length && right < length && matched < length {
+        let left_value = source_slots[(left + matched) % length];
+        let right_value = source_slots[(right + matched) % length];
+        match left_value.cmp(&right_value) {
+            std::cmp::Ordering::Equal => matched += 1,
+            std::cmp::Ordering::Greater => {
+                left += matched + 1;
+                if left == right {
+                    left += 1;
+                }
+                matched = 0;
+            }
+            std::cmp::Ordering::Less => {
+                right += matched + 1;
+                if left == right {
+                    right += 1;
+                }
+                matched = 0;
+            }
+        }
+    }
+    source_slots.rotate_left(left.min(right) % length);
+    source_slots
+}
+
+#[cfg(test)]
+mod tests {
+    use super::canonical_trace_rotation;
+
+    fn reference_trace_rotation(source_slots: &[u32]) -> Vec<u32> {
+        (0..source_slots.len())
+            .map(|offset| {
+                source_slots[offset..]
+                    .iter()
+                    .chain(&source_slots[..offset])
+                    .copied()
+                    .collect::<Vec<_>>()
+            })
+            .min()
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn linear_trace_rotation_matches_exhaustive_reference() {
+        for length in 0..=8 {
+            let case_count = 3_usize.pow(length as u32);
+            for mut encoded in 0..case_count {
+                let mut source_slots = Vec::with_capacity(length);
+                for _ in 0..length {
+                    source_slots.push((encoded % 3) as u32);
+                    encoded /= 3;
+                }
+                assert_eq!(
+                    canonical_trace_rotation(source_slots.clone()),
+                    reference_trace_rotation(&source_slots),
+                    "source slots {source_slots:?}",
+                );
+            }
+        }
+    }
 }

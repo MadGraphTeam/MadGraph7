@@ -264,6 +264,7 @@ class RecurrenceProcessArtifact:
     recurrence_summary: Mapping[str, object]
     validation_point: ValidationPointRecord
     generation_filters: Mapping[str, object]
+    generation_profile: Mapping[str, object]
     recurrence_process_remap: RecurrenceProcessRemap
     process_support_mask: int = 1
 
@@ -3701,6 +3702,22 @@ def _extensions(
                     )
                 ]
         process_records.append(record)
+    recurrence_schedule_profiles: dict[str, object] = {}
+    for process in processes:
+        if not isinstance(process, RecurrenceProcessArtifact):
+            continue
+        schedule_digest = _canonical_sha256(
+            process.recurrence_schedule_digest,
+            f"recurrence schedule {process.process_id!r} generation-profile digest",
+        )
+        profile = _deep_plain(process.generation_profile)
+        previous_profile = recurrence_schedule_profiles.get(schedule_digest)
+        if previous_profile is not None and previous_profile != profile:
+            raise ValueError(
+                "shared recurrence schedule has inconsistent generation telemetry: "
+                f"{schedule_digest}"
+            )
+        recurrence_schedule_profiles[schedule_digest] = profile
     generation.update(
         {
             "schema_version": 1,
@@ -3716,6 +3733,8 @@ def _extensions(
             },
         }
     )
+    if recurrence_schedule_profiles:
+        generation["recurrence_schedule_profiles"] = recurrence_schedule_profiles
     result["generation"] = generation
     if eager_pack_identity is not None:
         result[_EAGER_PACK_IDENTITY_EXTENSION] = _plain_mapping(eager_pack_identity)
@@ -3988,10 +4007,7 @@ def _recurrence_binding_native_schedule_semantic_digest(
     )
     return _canonical_sha256(
         value,
-        (
-            f"recurrence process binding {process_id!r} "
-            "native schedule semantic digest"
-        ),
+        (f"recurrence process binding {process_id!r} native schedule semantic digest"),
     )
 
 

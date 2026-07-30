@@ -49,22 +49,21 @@ def build_numerical_observation_candidate_index(
         raise ValueError("numerical candidate index has no members")
     observation_count = len(observations[members[0]])
     if observation_count == 0 or any(
-        len(observations[current_id]) != observation_count
-        for current_id in members
+        len(observations[current_id]) != observation_count for current_id in members
     ):
-        raise ValueError(
-            "numerical candidate index members have inconsistent widths"
-        )
+        raise ValueError("numerical candidate index members have inconsistent widths")
 
     def discrimination(choice: tuple[int, int]) -> tuple[int, int, int, int]:
         observation_index, scalar_component = choice
-        values = tuple(
-            observations[current_id][observation_index][scalar_component]
-            for current_id in members
-        )
+        distinct_values: set[_RawScalar] = set()
+        nonzero_count = 0
+        for current_id in members:
+            value = observations[current_id][observation_index][scalar_component]
+            distinct_values.add(value)
+            nonzero_count += value != 0
         return (
-            len(set(values)),
-            sum(value != 0 for value in values),
+            len(distinct_values),
+            nonzero_count,
             -observation_index,
             -scalar_component,
         )
@@ -81,9 +80,7 @@ def build_numerical_observation_candidate_index(
         sorted(
             (
                 normalize(
-                    observations[current_id][observation_index][
-                        scalar_component
-                    ]
+                    observations[current_id][observation_index][scalar_component]
                 ),
                 current_id,
             )
