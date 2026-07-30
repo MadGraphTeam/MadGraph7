@@ -3,8 +3,9 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import replace
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from math import isclose
 from typing import Any
 
@@ -14,6 +15,7 @@ from pyamplicol.generation import numerical_current_warmup
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.dag_types import GenericDAG
 from pyamplicol.generation.numerical_current_warmup import (
+    GenericDAGCurrentObservationCapture,
     build_numerical_current_probe_points,
     capture_generic_dag_current_observations,
     generic_dag_numerical_current_opt_out_report,
@@ -53,6 +55,79 @@ def _points(
         candidate_count=4,
         verification_count=4,
     )
+
+
+def _synthetic_capture(
+    value: Decimal,
+) -> GenericDAGCurrentObservationCapture:
+    point_sha256s = (hashlib.sha256(b"application-validation-point").hexdigest(),)
+    observations = {0: ((value, Decimal(0)),)}
+    return GenericDAGCurrentObservationCapture(
+        precision_digits=_PRECISION_DIGITS,
+        points=(),
+        point_sha256s=point_sha256s,
+        kinematic_sha256s=(
+            hashlib.sha256(b"application-validation-kinematics").hexdigest(),
+        ),
+        parameter_contexts=((),),
+        parameter_context_sha256s=(
+            hashlib.sha256(b"application-validation-parameters").hexdigest(),
+        ),
+        observations=observations,
+        runtime_schema_sha256=hashlib.sha256(b"runtime-schema").hexdigest(),
+        source_dag_sha256=hashlib.sha256(b"source-dag").hexdigest(),
+        observation_batch_sha256=(
+            numerical_current_warmup._current_observation_batch_sha256(
+                observations,
+                point_sha256s=point_sha256s,
+            )
+        ),
+        capture_contract_sha256=hashlib.sha256(
+            b"application-validation-capture"
+        ).hexdigest(),
+    )
+
+
+@pytest.mark.parametrize("ambient_precision", (28, 50, 96))
+@pytest.mark.parametrize(
+    ("optimized", "accepted"),
+    (
+        (Decimal("1.125"), True),
+        (Decimal("1.125000000000000000000000000001"), False),
+    ),
+)
+def test_application_validation_uses_configured_precision_at_tolerance_boundary(
+    ambient_precision: int,
+    optimized: Decimal,
+    accepted: bool,
+) -> None:
+    reference = _synthetic_capture(Decimal(1))
+    applied = _synthetic_capture(optimized)
+
+    with localcontext() as context:
+        context.prec = ambient_precision
+        if accepted:
+            result = (
+                numerical_current_warmup._validate_applied_current_observations(
+                    reference,
+                    applied,
+                    relative_tolerance=0.0,
+                    absolute_tolerance=0.125,
+                )
+            )
+            assert result["status"] == "verified"
+            assert Decimal(result["maximum_tolerance_ratio"]) <= 1
+        else:
+            with pytest.raises(
+                ValueError,
+                match="beyond its authenticated tolerance",
+            ):
+                numerical_current_warmup._validate_applied_current_observations(
+                    reference,
+                    applied,
+                    relative_tolerance=0.0,
+                    absolute_tolerance=0.125,
+                )
 
 
 def test_probe_points_are_deterministic_physically_distinct_domains(

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import replace
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from itertools import product
 
 import pytest
@@ -935,41 +935,50 @@ def test_complete_warmup_negative_audit_is_first_class_and_warning_free() -> Non
 
 @pytest.mark.parametrize(
     ("difference", "expected_relation_count"),
-    ((Decimal("0.125"), 1), (Decimal("0.1250001"), 0)),
+    (
+        (Decimal("0.125"), 1),
+        (Decimal("0.125000000000000000000000000001"), 0),
+    ),
 )
+@pytest.mark.parametrize("ambient_precision", (28, 50, 96))
 def test_candidate_index_is_complete_at_absolute_tolerance_boundary(
     difference: Decimal,
     expected_relation_count: int,
+    ambient_precision: int,
 ) -> None:
     dag, model = _ambiguous_projective_dag()
     candidate = _complete_current_observations(dag, domain=100_000)
     verification = _complete_current_observations(dag, domain=900_000)
-    candidate[5] = tuple(
-        (real + difference, imaginary)
-        for real, imaginary in candidate[3]
-    )
-    verification[5] = tuple(
-        (real + difference, imaginary)
-        for real, imaginary in verification[3]
-    )
+    with localcontext() as construction_context:
+        construction_context.prec = 128
+        candidate[5] = tuple(
+            (real + difference, imaginary)
+            for real, imaginary in candidate[3]
+        )
+        verification[5] = tuple(
+            (real + difference, imaginary)
+            for real, imaginary in verification[3]
+        )
 
-    discovery = discover_generic_dag_numerical_current_relations(
-        dag,
-        model,
-        candidate_observations=candidate,
-        verification_observations=verification,
-        **_complete_observation_evidence(
+    with localcontext() as context:
+        context.prec = ambient_precision
+        discovery = discover_generic_dag_numerical_current_relations(
             dag,
             model,
-            candidate,
-            verification,
-        ),
-        execution_mode="compiled",
-        precision_digits=96,
-        seed=0x5059414D,
-        relative_tolerance=0.0,
-        absolute_tolerance=0.125,
-    )
+            candidate_observations=candidate,
+            verification_observations=verification,
+            **_complete_observation_evidence(
+                dag,
+                model,
+                candidate,
+                verification,
+            ),
+            execution_mode="compiled",
+            precision_digits=96,
+            seed=0x5059414D,
+            relative_tolerance=0.0,
+            absolute_tolerance=0.125,
+        )
 
     assert len(discovery.certificates) == expected_relation_count
 
@@ -991,6 +1000,7 @@ def test_candidate_index_relative_window_uses_complete_complex_pair_scale() -> N
         current_id=1,
         relative_tolerance=Decimal("1e-70"),
         absolute_tolerance=Decimal(0),
+        precision_digits=96,
     ) == (0,)
 
 
@@ -1041,6 +1051,7 @@ def test_candidate_index_window_contains_every_small_exhaustive_match(
             current_id=1,
             relative_tolerance=relative,
             absolute_tolerance=absolute,
+            precision_digits=96,
         )
 
 

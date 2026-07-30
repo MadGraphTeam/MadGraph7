@@ -37,6 +37,7 @@ from .validation import ValidationPointRecord, build_validation_point
 _ComplexDecimal = tuple[Decimal, Decimal]
 _CAPTURE_ABI = NUMERICAL_CURRENT_CAPTURE_ABI
 _WARMUP_ABI = "pyamplicol-generic-dag-numerical-current-warmup-v1"
+_NUMERICAL_DECIMAL_GUARD_DIGITS = 16
 
 
 @dataclass(frozen=True, slots=True)
@@ -570,7 +571,7 @@ def capture_generic_dag_current_observations(
     captured_by_current: dict[int, list[_ComplexDecimal]] = {
         current.id: [] for current in dag.currents
     }
-    working_precision = precision_digits + 16
+    working_precision = precision_digits + _NUMERICAL_DECIMAL_GUARD_DIGITS
     with localcontext() as context:
         context.prec = working_precision
         context.rounding = ROUND_HALF_EVEN
@@ -613,20 +614,9 @@ def capture_generic_dag_current_observations(
         raise ValueError(
             "numerical current capture produced a non-finite component"
         )
-    observation_digest = _canonical_sha256(
-        {
-            "point_sha256s": list(point_hashes),
-            "currents": [
-                {
-                    "current_id": current_id,
-                    "values": [
-                        [_decimal_string(real), _decimal_string(imaginary)]
-                        for real, imaginary in observations[current_id]
-                    ],
-                }
-                for current_id in sorted(observations)
-            ],
-        }
+    observation_digest = _current_observation_batch_sha256(
+        observations,
+        point_sha256s=point_hashes,
     )
     capture_contract_digest = _canonical_sha256(
         {
@@ -654,6 +644,28 @@ def capture_generic_dag_current_observations(
         source_dag_sha256=session.source_dag_sha256,
         observation_batch_sha256=observation_digest,
         capture_contract_sha256=capture_contract_digest,
+    )
+
+
+def _current_observation_batch_sha256(
+    observations: Mapping[int, tuple[_ComplexDecimal, ...]],
+    *,
+    point_sha256s: tuple[str, ...],
+) -> str:
+    return _canonical_sha256(
+        {
+            "point_sha256s": list(point_sha256s),
+            "currents": [
+                {
+                    "current_id": current_id,
+                    "values": [
+                        [_decimal_string(real), _decimal_string(imaginary)]
+                        for real, imaginary in observations[current_id]
+                    ],
+                }
+                for current_id in sorted(observations)
+            ],
+        }
     )
 
 
@@ -778,87 +790,95 @@ def _validate_applied_current_observations(
         raise ValueError(
             "numerical current application validation provenance drifted"
         )
-    relative = Decimal.from_float(float(relative_tolerance))
-    absolute = Decimal.from_float(float(absolute_tolerance))
-    if (
-        not relative.is_finite()
-        or not absolute.is_finite()
-        or relative < 0
-        or absolute < 0
-        or (relative == 0 and absolute == 0)
-    ):
-        raise ValueError(
-            "numerical current application validation tolerances are invalid"
+    with localcontext() as context:
+        context.prec = (
+            reference.precision_digits + _NUMERICAL_DECIMAL_GUARD_DIGITS
         )
-    maximum_absolute = Decimal(0)
-    maximum_relative = Decimal(0)
-    maximum_tolerance_ratio = Decimal(0)
-    checked_components = 0
-    for current_id in sorted(reference.observations):
-        before = reference.observations[current_id]
-        after = applied.observations[current_id]
-        if len(before) != len(after):
-            raise ValueError(
-                f"numerical current {current_id} application width drifted"
-            )
-        for observation_index, (baseline, optimized) in enumerate(
-            zip(before, after, strict=True)
+        context.rounding = ROUND_HALF_EVEN
+        relative = Decimal.from_float(float(relative_tolerance))
+        absolute = Decimal.from_float(float(absolute_tolerance))
+        if (
+            not relative.is_finite()
+            or not absolute.is_finite()
+            or relative < 0
+            or absolute < 0
+            or (relative == 0 and absolute == 0)
         ):
-            difference = max(
-                abs(baseline[0] - optimized[0]),
-                abs(baseline[1] - optimized[1]),
+            raise ValueError(
+                "numerical current application validation tolerances are "
+                "invalid"
             )
-            scale = max(
-                abs(baseline[0]),
-                abs(baseline[1]),
-                abs(optimized[0]),
-                abs(optimized[1]),
-            )
-            allowed = absolute + relative * scale
-            relative_residual = (
-                Decimal(0)
-                if difference == 0
-                else difference / max(scale, absolute)
-            )
-            tolerance_ratio = (
-                Decimal(0) if difference == 0 else difference / allowed
-            )
-            maximum_absolute = max(maximum_absolute, difference)
-            maximum_relative = max(
-                maximum_relative,
-                relative_residual,
-            )
-            maximum_tolerance_ratio = max(
-                maximum_tolerance_ratio,
-                tolerance_ratio,
-            )
-            checked_components += 1
-            if difference > allowed:
+        maximum_absolute = Decimal(0)
+        maximum_relative = Decimal(0)
+        maximum_tolerance_ratio = Decimal(0)
+        checked_components = 0
+        for current_id in sorted(reference.observations):
+            before = reference.observations[current_id]
+            after = applied.observations[current_id]
+            if len(before) != len(after):
                 raise ValueError(
-                    "numerical current application changed current "
-                    f"{current_id} observation {observation_index} beyond "
-                    "its authenticated tolerance: "
-                    f"difference={_decimal_string(difference)}, "
-                    f"allowed={_decimal_string(allowed)}, "
-                    "tolerance_ratio="
-                    f"{_decimal_string(tolerance_ratio)}"
+                    f"numerical current {current_id} application width drifted"
                 )
-    return {
-        "status": "verified",
-        "checked_current_count": len(reference.observations),
-        "checked_component_count": checked_components,
-        "maximum_absolute_residual": _decimal_string(maximum_absolute),
-        "maximum_relative_residual": _decimal_string(maximum_relative),
-        "maximum_tolerance_ratio": _decimal_string(
-            maximum_tolerance_ratio
-        ),
-        "reference_observation_batch_sha256": (
-            reference.observation_batch_sha256
-        ),
-        "applied_observation_batch_sha256": (
-            applied.observation_batch_sha256
-        ),
-    }
+            for observation_index, (baseline, optimized) in enumerate(
+                zip(before, after, strict=True)
+            ):
+                difference = max(
+                    abs(baseline[0] - optimized[0]),
+                    abs(baseline[1] - optimized[1]),
+                )
+                scale = max(
+                    abs(baseline[0]),
+                    abs(baseline[1]),
+                    abs(optimized[0]),
+                    abs(optimized[1]),
+                )
+                allowed = absolute + relative * scale
+                relative_residual = (
+                    Decimal(0)
+                    if difference == 0
+                    else difference / max(scale, absolute)
+                )
+                tolerance_ratio = (
+                    Decimal(0)
+                    if difference == 0
+                    else difference / allowed
+                )
+                maximum_absolute = max(maximum_absolute, difference)
+                maximum_relative = max(
+                    maximum_relative,
+                    relative_residual,
+                )
+                maximum_tolerance_ratio = max(
+                    maximum_tolerance_ratio,
+                    tolerance_ratio,
+                )
+                checked_components += 1
+                if not difference <= allowed:
+                    raise ValueError(
+                        "numerical current application changed current "
+                        f"{current_id} observation {observation_index} beyond "
+                        "its authenticated tolerance: "
+                        f"difference={_decimal_string(difference)}, "
+                        f"allowed={_decimal_string(allowed)}, "
+                        "tolerance_ratio="
+                        f"{_decimal_string(tolerance_ratio)}"
+                    )
+        return {
+            "status": "verified",
+            "checked_current_count": len(reference.observations),
+            "checked_component_count": checked_components,
+            "maximum_absolute_residual": _decimal_string(maximum_absolute),
+            "maximum_relative_residual": _decimal_string(maximum_relative),
+            "maximum_tolerance_ratio": _decimal_string(
+                maximum_tolerance_ratio
+            ),
+            "reference_observation_batch_sha256": (
+                reference.observation_batch_sha256
+            ),
+            "applied_observation_batch_sha256": (
+                applied.observation_batch_sha256
+            ),
+        }
 
 
 def _build_interpreted_stage_evaluator(
@@ -1182,7 +1202,15 @@ def _canonical_sha256(value: object) -> str:
 
 
 def _decimal_string(value: Decimal) -> str:
-    return "0" if value == 0 else str(value.normalize())
+    if not value.is_finite():
+        raise ValueError("canonical Decimal serialization requires finiteness")
+    sign, digits, exponent = value.as_tuple()
+    if not any(digits):
+        return "0"
+    if not isinstance(exponent, int):
+        raise ValueError("canonical Decimal serialization requires an exponent")
+    coefficient = "".join(str(digit) for digit in digits)
+    return f"{'-' if sign else ''}{coefficient}e{exponent}"
 
 
 def _mapping(value: object, label: str) -> Mapping[str, object]:

@@ -15,7 +15,7 @@ from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from decimal import Decimal, localcontext
+from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from fractions import Fraction
 from math import fsum, isfinite
 from typing import Literal, TypeAlias
@@ -53,6 +53,7 @@ NUMERICAL_CURRENT_RELATION_WARNING = (
     "--no-numerical-current-reuse"
 )
 _MAX_REJECTED_DIAGNOSTICS = 16
+_NUMERICAL_DECIMAL_GUARD_DIGITS = 16
 
 
 @dataclass(frozen=True, slots=True)
@@ -979,6 +980,7 @@ def _numerical_observation_tolerance_window_ids(
     current_id: int,
     relative_tolerance: Decimal,
     absolute_tolerance: Decimal,
+    precision_digits: int,
 ) -> tuple[int, ...]:
     """Return every earlier representative that can pass the full test.
 
@@ -995,33 +997,38 @@ def _numerical_observation_tolerance_window_ids(
         raise ValueError("numerical candidate index relation is unsupported")
     if not 0 <= index.observation_index < len(current_values):
         raise ValueError("numerical candidate index observation is invalid")
-    if relative_tolerance >= 1:
+    if type(precision_digits) is not int or precision_digits < 80:
+        raise ValueError("numerical candidate index precision is invalid")
+    with localcontext() as context:
+        context.prec = precision_digits + _NUMERICAL_DECIMAL_GUARD_DIGITS
+        context.rounding = ROUND_HALF_EVEN
+        if relative_tolerance >= 1:
+            return tuple(
+                representative_id
+                for _value, representative_id in index.entries
+                if representative_id < current_id
+            )
+        selected = current_values[index.observation_index]
+        selected_scalar = selected[index.scalar_component]
+        target = (
+            selected_scalar
+            if relation_kind == "equal"
+            else -selected_scalar
+        )
+        current_scale = max(abs(selected[0]), abs(selected[1]))
+        radius = (
+            absolute_tolerance + relative_tolerance * current_scale
+        ) / (Decimal(1) - relative_tolerance)
+        lower = bisect_left(index.entries, (target - radius, -1))
+        upper = bisect_right(
+            index.entries,
+            (target + radius, current_id - 1),
+        )
         return tuple(
             representative_id
-            for _value, representative_id in index.entries
+            for _value, representative_id in index.entries[lower:upper]
             if representative_id < current_id
         )
-    selected = current_values[index.observation_index]
-    selected_scalar = selected[index.scalar_component]
-    target = (
-        selected_scalar
-        if relation_kind == "equal"
-        else -selected_scalar
-    )
-    current_scale = max(abs(selected[0]), abs(selected[1]))
-    radius = (
-        absolute_tolerance + relative_tolerance * current_scale
-    ) / (Decimal(1) - relative_tolerance)
-    lower = bisect_left(index.entries, (target - radius, -1))
-    upper = bisect_right(
-        index.entries,
-        (target + radius, current_id - 1),
-    )
-    return tuple(
-        representative_id
-        for _value, representative_id in index.entries[lower:upper]
-        if representative_id < current_id
-    )
 
 
 def certify_numerical_current_observations(
@@ -1181,6 +1188,7 @@ def certify_numerical_current_observations(
         candidate_representative,
         relative_tolerance=relative_decimal,
         absolute_tolerance=absolute_decimal,
+        precision_digits=precision_digits,
     )
     verification_residuals = _numerical_relation_residuals(
         relation_kind,
@@ -1188,17 +1196,16 @@ def certify_numerical_current_observations(
         verification_representative,
         relative_tolerance=relative_decimal,
         absolute_tolerance=absolute_decimal,
+        precision_digits=precision_digits,
     )
     if candidate_residuals is None or verification_residuals is None:
         return None
     if not _numerical_relation_residuals_pass(
         candidate_residuals,
-        relative_tolerance=relative_decimal,
-        absolute_tolerance=absolute_decimal,
+        precision_digits=precision_digits,
     ) or not _numerical_relation_residuals_pass(
         verification_residuals,
-        relative_tolerance=relative_decimal,
-        absolute_tolerance=absolute_decimal,
+        precision_digits=precision_digits,
     ):
         return None
     candidate_digest = _numerical_observations_sha256(
@@ -1839,6 +1846,7 @@ def discover_generic_dag_numerical_current_relations(
                 current_id=current.id,
                 relative_tolerance=relative_decimal,
                 absolute_tolerance=absolute_decimal,
+                precision_digits=precision_digits,
             )
         )
         opposite_representatives = set(
@@ -1849,6 +1857,7 @@ def discover_generic_dag_numerical_current_relations(
                 current_id=current.id,
                 relative_tolerance=relative_decimal,
                 absolute_tolerance=absolute_decimal,
+                precision_digits=precision_digits,
             )
         )
         theoretical_pair_hypothesis_count += 2 * len(prior_ids)
@@ -1902,6 +1911,7 @@ def discover_generic_dag_numerical_current_relations(
                 candidate_representative,
                 relative_tolerance=relative_decimal,
                 absolute_tolerance=absolute_decimal,
+                precision_digits=precision_digits,
             )
             if candidate_residuals is None:
                 raise ValueError(
@@ -1909,8 +1919,7 @@ def discover_generic_dag_numerical_current_relations(
                 )
             if not _numerical_relation_residuals_pass(
                 candidate_residuals,
-                relative_tolerance=relative_decimal,
-                absolute_tolerance=absolute_decimal,
+                precision_digits=precision_digits,
             ):
                 record_rejected(
                     current_id=current.id,
@@ -1961,6 +1970,7 @@ def discover_generic_dag_numerical_current_relations(
                 verification_representative,
                 relative_tolerance=relative_decimal,
                 absolute_tolerance=absolute_decimal,
+                precision_digits=precision_digits,
             )
             if verification_residuals is None:
                 raise ValueError(
@@ -2893,59 +2903,73 @@ def _numerical_relation_residuals(
     *,
     relative_tolerance: Decimal,
     absolute_tolerance: Decimal,
+    precision_digits: int,
 ) -> tuple[
     Decimal,
     Decimal,
     Decimal,
     tuple[tuple[Decimal, Decimal], ...],
 ] | None:
-    if relation_kind == "zero":
-        expected = tuple((Decimal(0), Decimal(0)) for _ in current_values)
-    else:
-        if representative_values is None or len(representative_values) != len(
-            current_values
+    if type(precision_digits) is not int or precision_digits < 80:
+        raise ValueError("numerical residual precision is invalid")
+    with localcontext() as context:
+        context.prec = precision_digits + _NUMERICAL_DECIMAL_GUARD_DIGITS
+        context.rounding = ROUND_HALF_EVEN
+        if relation_kind == "zero":
+            expected = tuple(
+                (Decimal(0), Decimal(0)) for _ in current_values
+            )
+        else:
+            if representative_values is None or len(
+                representative_values
+            ) != len(current_values):
+                return None
+            sign = Decimal(1) if relation_kind == "equal" else Decimal(-1)
+            expected = tuple(
+                (sign * real, sign * imaginary)
+                for real, imaginary in representative_values
+            )
+        maximum_absolute = Decimal(0)
+        maximum_relative = Decimal(0)
+        maximum_tolerance_ratio = Decimal(0)
+        component_checks: list[tuple[Decimal, Decimal]] = []
+        for current, reference in zip(
+            current_values,
+            expected,
+            strict=True,
         ):
-            return None
-        sign = Decimal(1) if relation_kind == "equal" else Decimal(-1)
-        expected = tuple(
-            (sign * real, sign * imaginary)
-            for real, imaginary in representative_values
-        )
-    maximum_absolute = Decimal(0)
-    maximum_relative = Decimal(0)
-    maximum_tolerance_ratio = Decimal(0)
-    component_checks: list[tuple[Decimal, Decimal]] = []
-    for current, reference in zip(current_values, expected, strict=True):
-        difference = max(
-            abs(current[0] - reference[0]),
-            abs(current[1] - reference[1]),
-        )
-        scale = max(
-            abs(current[0]),
-            abs(current[1]),
-            abs(reference[0]),
-            abs(reference[1]),
-        )
-        relative = (
-            Decimal(0)
-            if difference == 0
-            else difference / max(scale, absolute_tolerance)
-        )
-        maximum_absolute = max(maximum_absolute, difference)
-        maximum_relative = max(maximum_relative, relative)
-        allowed = absolute_tolerance + relative_tolerance * scale
-        tolerance_ratio = Decimal(0) if difference == 0 else difference / allowed
-        maximum_tolerance_ratio = max(
+            difference = max(
+                abs(current[0] - reference[0]),
+                abs(current[1] - reference[1]),
+            )
+            scale = max(
+                abs(current[0]),
+                abs(current[1]),
+                abs(reference[0]),
+                abs(reference[1]),
+            )
+            relative = (
+                Decimal(0)
+                if difference == 0
+                else difference / max(scale, absolute_tolerance)
+            )
+            maximum_absolute = max(maximum_absolute, difference)
+            maximum_relative = max(maximum_relative, relative)
+            allowed = absolute_tolerance + relative_tolerance * scale
+            tolerance_ratio = (
+                Decimal(0) if difference == 0 else difference / allowed
+            )
+            maximum_tolerance_ratio = max(
+                maximum_tolerance_ratio,
+                tolerance_ratio,
+            )
+            component_checks.append((difference, allowed))
+        return (
+            maximum_absolute,
+            maximum_relative,
             maximum_tolerance_ratio,
-            tolerance_ratio,
+            tuple(component_checks),
         )
-        component_checks.append((difference, scale))
-    return (
-        maximum_absolute,
-        maximum_relative,
-        maximum_tolerance_ratio,
-        tuple(component_checks),
-    )
 
 
 def _numerical_relation_residuals_pass(
@@ -2956,14 +2980,17 @@ def _numerical_relation_residuals_pass(
         tuple[tuple[Decimal, Decimal], ...],
     ],
     *,
-    relative_tolerance: Decimal,
-    absolute_tolerance: Decimal,
+    precision_digits: int,
 ) -> bool:
-    return all(
-        difference
-        <= absolute_tolerance + relative_tolerance * scale
-        for difference, scale in residuals[3]
-    )
+    if type(precision_digits) is not int or precision_digits < 80:
+        raise ValueError("numerical residual precision is invalid")
+    with localcontext() as context:
+        context.prec = precision_digits + _NUMERICAL_DECIMAL_GUARD_DIGITS
+        context.rounding = ROUND_HALF_EVEN
+        return all(
+            difference <= allowed
+            for difference, allowed in residuals[3]
+        )
 
 
 def _numerical_observations_sha256(
@@ -2998,9 +3025,15 @@ def _numerical_observations_sha256(
 
 
 def _canonical_decimal_string(value: Decimal) -> str:
-    if value == 0:
+    if not value.is_finite():
+        raise ValueError("canonical Decimal serialization requires finiteness")
+    sign, digits, exponent = value.as_tuple()
+    if not any(digits):
         return "0"
-    return str(value.normalize())
+    if not isinstance(exponent, int):
+        raise ValueError("canonical Decimal serialization requires an exponent")
+    coefficient = "".join(str(digit) for digit in digits)
+    return f"{'-' if sign else ''}{coefficient}e{exponent}"
 
 
 def _is_sha256(value: object) -> bool:

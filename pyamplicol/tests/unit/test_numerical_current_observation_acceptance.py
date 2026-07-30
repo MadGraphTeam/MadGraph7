@@ -5,12 +5,16 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Sequence
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 import pytest
 
+from pyamplicol.generation import numerical_current_warmup
 from pyamplicol.generation.dag_equivalence import (
     NumericalCurrentRelationCertificate,
+    _canonical_decimal_string,
+    _numerical_current_observation_batch_sha256,
+    _numerical_observations_sha256,
     certify_numerical_current_observations,
     verify_numerical_current_relation_certificate,
 )
@@ -131,6 +135,7 @@ def _certify(
         ),
     ),
 )
+@pytest.mark.parametrize("ambient_precision", (28, 50, 96))
 def test_equal_opposite_and_zero_relations_certify_and_replay(
     relation_kind: str,
     candidate_current: Sequence[tuple[Decimal, Decimal]],
@@ -139,15 +144,18 @@ def test_equal_opposite_and_zero_relations_certify_and_replay(
     verification_representative: Sequence[tuple[Decimal, Decimal]] | None,
     representative_id: int | None,
     expected_factor: list[str] | None,
+    ambient_precision: int,
 ) -> None:
-    certificate = _certify(
-        relation_kind,
-        candidate_current_values=candidate_current,
-        verification_current_values=verification_current,
-        candidate_representative_values=candidate_representative,
-        verification_representative_values=verification_representative,
-        representative_id=representative_id,
-    )
+    with localcontext() as context:
+        context.prec = ambient_precision
+        certificate = _certify(
+            relation_kind,
+            candidate_current_values=candidate_current,
+            verification_current_values=verification_current,
+            candidate_representative_values=candidate_representative,
+            verification_representative_values=verification_representative,
+            representative_id=representative_id,
+        )
 
     assert certificate is not None
     payload = certificate.to_json_dict()
@@ -229,39 +237,114 @@ def test_nearest_false_relation_with_documented_residual_is_rejected(
     )
 
 
-def test_tolerance_boundary_is_inclusive_but_nearest_outside_value_fails() -> None:
+@pytest.mark.parametrize("ambient_precision", (28, 50, 96))
+def test_tolerance_boundary_is_inclusive_but_nearest_outside_value_fails(
+    ambient_precision: int,
+) -> None:
     representative = tuple((Decimal(index), _ZERO) for index in range(1, 5))
     at_boundary = tuple(
-        (real + Decimal("0.125"), imag) for real, imag in representative
+        (Decimal(f"{index}.125"), _ZERO) for index in range(1, 5)
     )
     outside = tuple(
-        (real + Decimal("0.1250001"), imag) for real, imag in representative
+        (
+            Decimal(f"{index}.125000000000000000000000000001"),
+            _ZERO,
+        )
+        for index in range(1, 5)
     )
 
-    assert (
-        _certify(
-            "equal",
-            candidate_current_values=at_boundary,
-            verification_current_values=at_boundary,
-            candidate_representative_values=representative,
-            verification_representative_values=representative,
-            relative_tolerance=0.0,
-            absolute_tolerance=0.125,
+    with localcontext() as context:
+        context.prec = ambient_precision
+        assert (
+            _certify(
+                "equal",
+                candidate_current_values=at_boundary,
+                verification_current_values=at_boundary,
+                candidate_representative_values=representative,
+                verification_representative_values=representative,
+                relative_tolerance=0.0,
+                absolute_tolerance=0.125,
+            )
+            is not None
         )
-        is not None
-    )
-    assert (
-        _certify(
-            "equal",
-            candidate_current_values=outside,
-            verification_current_values=outside,
-            candidate_representative_values=representative,
-            verification_representative_values=representative,
-            relative_tolerance=0.0,
-            absolute_tolerance=0.125,
+        assert (
+            _certify(
+                "equal",
+                candidate_current_values=outside,
+                verification_current_values=outside,
+                candidate_representative_values=representative,
+                verification_representative_values=representative,
+                relative_tolerance=0.0,
+                absolute_tolerance=0.125,
+            )
+            is None
         )
-        is None
+
+
+@pytest.mark.parametrize("ambient_precision", (28, 50, 96))
+def test_distinct_40_digit_observations_and_batch_hashes_do_not_collide(
+    ambient_precision: int,
+) -> None:
+    first = Decimal("1.123456789012345678901234567890123456789")
+    second = Decimal("1.123456789012345678901234567890123456788")
+    signed_zero = Decimal("-0.000")
+    point_sha256s = (hashlib.sha256(b"decimal-hash-point").hexdigest(),)
+    first_observations = {0: ((first, signed_zero),)}
+    second_observations = {0: ((second, signed_zero),)}
+    assert len(first.as_tuple().digits) == 40
+    assert len(second.as_tuple().digits) == 40
+
+    with localcontext() as context:
+        context.prec = ambient_precision
+        first_relation_digest = _numerical_observations_sha256(
+            relation_kind="zero",
+            current_values=first_observations[0],
+            representative_values=None,
+        )
+        second_relation_digest = _numerical_observations_sha256(
+            relation_kind="zero",
+            current_values=second_observations[0],
+            representative_values=None,
+        )
+        first_discovery_batch = (
+            _numerical_current_observation_batch_sha256(
+                first_observations,
+                point_sha256s=point_sha256s,
+            )
+        )
+        second_discovery_batch = (
+            _numerical_current_observation_batch_sha256(
+                second_observations,
+                point_sha256s=point_sha256s,
+            )
+        )
+        first_capture_batch = (
+            numerical_current_warmup._current_observation_batch_sha256(
+                first_observations,
+                point_sha256s=point_sha256s,
+            )
+        )
+        second_capture_batch = (
+            numerical_current_warmup._current_observation_batch_sha256(
+                second_observations,
+                point_sha256s=point_sha256s,
+            )
+        )
+
+    assert _canonical_decimal_string(first) != _canonical_decimal_string(second)
+    assert _canonical_decimal_string(signed_zero) == "0"
+    assert numerical_current_warmup._decimal_string(signed_zero) == "0"
+    assert _canonical_decimal_string(Decimal("1.0")) != (
+        _canonical_decimal_string(Decimal("1.00"))
     )
+    assert numerical_current_warmup._decimal_string(Decimal("1.0")) != (
+        numerical_current_warmup._decimal_string(Decimal("1.00"))
+    )
+    assert first_relation_digest != second_relation_digest
+    assert first_discovery_batch != second_discovery_batch
+    assert first_capture_batch != second_capture_batch
+    assert first_discovery_batch == first_capture_batch
+    assert second_discovery_batch == second_capture_batch
 
 
 def test_candidate_match_with_independent_verification_mismatch_fails_closed() -> None:
