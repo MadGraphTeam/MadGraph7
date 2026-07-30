@@ -192,6 +192,7 @@ class ColorEngine:
                     for word in _sector_intermediate_order_words(
                         sector,
                         include_compatible_traversals=self._shared_lc_orderings,
+                        process=color_plan.process,
                     )
                 ),
             )
@@ -206,7 +207,10 @@ class ColorEngine:
             sector_ids_by_segment: dict[tuple[int, ...], set[int]] = {}
             segments: set[tuple[int, ...]] = set()
             for sector in color_plan.sectors:
-                for word in _sector_intermediate_order_words(sector):
+                for word in _sector_intermediate_order_words(
+                    sector,
+                    process=color_plan.process,
+                ):
                     normalized_word = _lc_word_with_sink_last(
                         word,
                         self._shared_lc_fixed_sink_label,
@@ -214,7 +218,10 @@ class ColorEngine:
                     sector_ids_by_word.setdefault(normalized_word, []).append(
                         int(sector.id)
                     )
-                for word in _sector_intermediate_order_words(sector):
+                for word in _sector_intermediate_order_words(
+                    sector,
+                    process=color_plan.process,
+                ):
                     normalized_word = _lc_word_with_sink_last(
                         word,
                         self._shared_lc_fixed_sink_label,
@@ -798,6 +805,7 @@ class ColorEngine:
             for word in _sector_intermediate_order_words(
                 sector,
                 include_compatible_traversals=False,
+                process=self.color_plan.process,
             )
         )
 
@@ -850,6 +858,7 @@ class ColorEngine:
         for word in _sector_intermediate_order_words(
             sector,
             include_compatible_traversals=False,
+            process=self.color_plan.process,
         ):
             segment = _ordered_combination_segment(
                 left_index.ordered_external_labels,

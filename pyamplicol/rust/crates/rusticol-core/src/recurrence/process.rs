@@ -12,6 +12,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use serde_json::json;
+use sha2::{Digest, Sha256};
+
 use super::{
     CheckedTableRange, ExactComplexRational, MultiwordMaskCatalogView,
     RECURRENCE_BUILDER_INPUT_ABI, RecurrenceStrategy, SemanticDigest, checked_u32_len,
@@ -2296,13 +2299,20 @@ impl<'a> RecurrenceProcessInputView<'a> {
                 self.external_legs.len(),
                 "physical LC closure source slot",
             )?;
-            require_string_value(
+            let closure_algorithm = required_string(
                 &catalogs.strings,
                 sector.closure_proof_algorithm_string_id,
-                "canonical-lc-closure-anchor-v2",
                 "physical LC closure-anchor proof algorithm",
             )?;
-            required_digest(
+            if !matches!(
+                closure_algorithm,
+                "canonical-lc-closure-anchor-v2" | "canonical-lc-closure-anchor-v3"
+            ) {
+                return Err(invalid(format!(
+                    "physical LC sector {sector_index} uses unsupported closure-anchor proof algorithm {closure_algorithm:?}"
+                )));
+            }
+            let closure_proof_digest = required_digest(
                 &catalogs.digests,
                 sector.closure_proof_digest_id,
                 "physical LC closure-anchor proof digest",
@@ -2335,9 +2345,20 @@ impl<'a> RecurrenceProcessInputView<'a> {
                 &format!("physical LC sector {sector_index} word"),
             )?;
             if let Some(expected_anchor) = word.last().copied() {
-                if sector.closure_source_slot != expected_anchor {
+                if closure_algorithm == "canonical-lc-closure-anchor-v2"
+                    && sector.closure_source_slot != expected_anchor
+                {
                     return Err(invalid(format!(
-                        "physical LC sector {sector_index} closure source slot {} does not match terminal color-word endpoint {expected_anchor}",
+                        "physical LC sector {sector_index} v2 closure source slot {} does not match terminal color-word endpoint {expected_anchor}",
+                        sector.closure_source_slot
+                    )));
+                }
+                if closure_algorithm == "canonical-lc-closure-anchor-v3"
+                    && kind != ProcessLCSectorKind::OpenLines
+                    && sector.closure_source_slot != expected_anchor
+                {
+                    return Err(invalid(format!(
+                        "physical LC sector {sector_index} v3 non-open-line closure source slot {} does not match terminal color-word endpoint {expected_anchor}",
                         sector.closure_source_slot
                     )));
                 }
@@ -2382,6 +2403,7 @@ impl<'a> RecurrenceProcessInputView<'a> {
                 self.lc_open_strings.len(),
                 &format!("physical LC sector {sector_index} open strings"),
             )?;
+            let mut open_blocks = Vec::new();
             for (ordinal, row_index) in rows.enumerate() {
                 let line = self.lc_open_strings[row_index];
                 let expected_sector = u32::try_from(sector_index)
@@ -2422,6 +2444,148 @@ impl<'a> RecurrenceProcessInputView<'a> {
                     self.external_legs.len(),
                     &format!("LC open-string row {row_index} singlets"),
                 )?;
+                let mut block = Vec::with_capacity(adjoints.len() + 2);
+                block.push(line.fundamental_source_slot);
+                block.extend_from_slice(adjoints);
+                block.push(line.antifundamental_source_slot);
+                open_blocks.push(block);
+            }
+            if closure_algorithm == "canonical-lc-closure-anchor-v3" {
+                if kind != ProcessLCSectorKind::OpenLines {
+                    return Err(invalid(format!(
+                        "physical LC sector {sector_index} uses v3 closure anchoring outside an open-line sector"
+                    )));
+                }
+                let mut physical_blocks = Vec::with_capacity(open_blocks.len());
+                let mut used = vec![false; open_blocks.len()];
+                let mut cursor = 0usize;
+                while cursor < word.len() {
+                    let matches = open_blocks
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(index, block)| {
+                            (!used[index]
+                                && word.get(cursor..cursor.saturating_add(block.len()))
+                                    == Some(block.as_slice()))
+                            .then_some(index)
+                        })
+                        .collect::<Vec<_>>();
+                    if matches.len() != 1 {
+                        return Err(invalid(format!(
+                            "physical LC sector {sector_index} v3 public word has {} open-line block matches at source position {cursor}",
+                            matches.len()
+                        )));
+                    }
+                    let block_index = matches[0];
+                    used[block_index] = true;
+                    cursor = cursor.saturating_add(open_blocks[block_index].len());
+                    physical_blocks.push(open_blocks[block_index].clone());
+                }
+                if cursor != word.len()
+                    || physical_blocks.len() != open_blocks.len()
+                    || used.iter().any(|value| !value)
+                {
+                    return Err(invalid(format!(
+                        "physical LC sector {sector_index} v3 public word is not an exact complete-open-line block traversal"
+                    )));
+                }
+                let distinguished_source_slot = word.iter().copied().min().ok_or_else(|| {
+                    invalid(format!(
+                        "physical LC sector {sector_index} v3 colour word is empty"
+                    ))
+                })?;
+                let distinguished_positions = physical_blocks
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, block)| {
+                        block.contains(&distinguished_source_slot).then_some(index)
+                    })
+                    .collect::<Vec<_>>();
+                if distinguished_positions.len() != 1 {
+                    return Err(invalid(format!(
+                        "physical LC sector {sector_index} v3 minimum coloured source slot belongs to {} open-line blocks",
+                        distinguished_positions.len()
+                    )));
+                }
+                let first = distinguished_positions[0];
+                let closure_blocks = physical_blocks[first..]
+                    .iter()
+                    .chain(physical_blocks[..first].iter())
+                    .cloned()
+                    .collect::<Vec<_>>();
+                let closure_traversal = closure_blocks
+                    .iter()
+                    .flat_map(|block| block.iter().copied())
+                    .collect::<Vec<_>>();
+                let expected_anchor = closure_traversal.last().copied().ok_or_else(|| {
+                    invalid(format!(
+                        "physical LC sector {sector_index} v3 closure traversal is empty"
+                    ))
+                })?;
+                if sector.closure_source_slot != expected_anchor {
+                    return Err(invalid(format!(
+                        "physical LC sector {sector_index} v3 closure source slot {} does not match independently reconstructed minimum-coloured-source block rotation endpoint {expected_anchor}",
+                        sector.closure_source_slot
+                    )));
+                }
+                let process_source_label_order = self
+                    .external_legs
+                    .iter()
+                    .map(|leg| leg.public_label)
+                    .collect::<Vec<_>>();
+                let fermionic_source_slots = self
+                    .external_legs
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, leg)| leg.is_fermionic == 1)
+                    .map(|(slot, _)| {
+                        u32::try_from(slot).map_err(|_| invalid("external source slot exceeds u32"))
+                    })
+                    .collect::<RusticolResult<Vec<_>>>()?;
+                let sector_kind = match kind {
+                    ProcessLCSectorKind::OpenLines => "open-lines",
+                    ProcessLCSectorKind::SingleTrace => "single-trace",
+                    ProcessLCSectorKind::Singlet => "singlet",
+                };
+                let payload = json!({
+                    "algorithm": "canonical-lc-closure-anchor-v3",
+                    "closure_block_source_slots": closure_blocks,
+                    "closure_source_slot": sector.closure_source_slot,
+                    "closure_traversal_source_slots": closure_traversal,
+                    "component_order_policy": if open_blocks.len() > 1 {
+                        "independent-open-string-block-permutation"
+                    } else {
+                        "exact-ordered-components"
+                    },
+                    "distinguished_source_block": closure_blocks[0],
+                    "distinguished_source_slot": distinguished_source_slot,
+                    "external_source_count": self.external_legs.len(),
+                    "fermionic_source_slots": fermionic_source_slots,
+                    "open_string_count": open_blocks.len(),
+                    "physical_block_source_slots": physical_blocks,
+                    "policy": "minimum-coloured-source-slot-open-line-block-rotation",
+                    "process_source_label_order": process_source_label_order,
+                    "sector_id": sector.sector_id,
+                    "sector_kind": sector_kind,
+                    "selected_closure_block": closure_blocks.last().ok_or_else(|| {
+                        invalid(format!(
+                            "physical LC sector {sector_index} v3 has no selected closure block"
+                        ))
+                    })?,
+                    "singlet_source_slots": singlets,
+                    "word_source_slots": word,
+                });
+                let canonical = serde_json::to_vec(&payload).map_err(|error| {
+                    invalid(format!(
+                        "physical LC sector {sector_index} v3 closure proof cannot be canonicalized: {error}"
+                    ))
+                })?;
+                let expected_digest: [u8; 32] = Sha256::digest(canonical).into();
+                if closure_proof_digest.as_bytes() != &expected_digest {
+                    return Err(invalid(format!(
+                        "physical LC sector {sector_index} v3 closure proof digest does not match the independently reconstructed minimum-coloured-source block rotation"
+                    )));
+                }
             }
         }
         Ok(())
@@ -3231,6 +3395,170 @@ mod tests {
             u64::try_from(start).expect("test table start fits u64"),
             u64::try_from(count).expect("test table count fits u64"),
         )
+    }
+
+    fn v3_no_rotation_digest() -> [u8; 32] {
+        let payload = json!({
+            "algorithm": "canonical-lc-closure-anchor-v3",
+            "closure_block_source_slots": [[1, 0], [2, 3]],
+            "closure_source_slot": 3,
+            "closure_traversal_source_slots": [1, 0, 2, 3],
+            "component_order_policy": "independent-open-string-block-permutation",
+            "distinguished_source_block": [1, 0],
+            "distinguished_source_slot": 0,
+            "external_source_count": 4,
+            "fermionic_source_slots": [0, 1, 2, 3],
+            "open_string_count": 2,
+            "physical_block_source_slots": [[1, 0], [2, 3]],
+            "policy": "minimum-coloured-source-slot-open-line-block-rotation",
+            "process_source_label_order": [1, 2, 3, 4],
+            "sector_id": 0,
+            "sector_kind": "open-lines",
+            "selected_closure_block": [2, 3],
+            "singlet_source_slots": [],
+            "word_source_slots": [1, 0, 2, 3],
+        });
+        Sha256::digest(serde_json::to_vec(&payload).expect("test v3 payload must canonicalize"))
+            .into()
+    }
+
+    fn validate_v3_color_fixture(
+        word: &[u32],
+        public_labels: [u32; 4],
+        open_strings: &[ProcessLCOpenStringRow],
+        closure_source_slot: u32,
+        closure_digest: [u8; 32],
+    ) -> RusticolResult<()> {
+        let external_legs = public_labels
+            .into_iter()
+            .enumerate()
+            .map(|(source_slot, public_label)| ProcessExternalLegRow {
+                source_slot: u32::try_from(source_slot).expect("test source slot fits u32"),
+                public_label,
+                physical_pdg: 1,
+                outgoing_pdg: 1,
+                is_initial: u8::from(source_slot < 2),
+                is_fermionic: 1,
+                source_state_range: test_range(0, 0),
+                momentum_mask_id: 0,
+                support_mask_id: 0,
+            })
+            .collect::<Vec<_>>();
+        let physical_sectors = [ProcessPhysicalLCSectorRow {
+            sector_id: 0,
+            public_id_string_id: 0,
+            kind: ProcessLCSectorKind::OpenLines as u8,
+            closure_source_slot,
+            closure_proof_algorithm_string_id: 1,
+            closure_proof_digest_id: 0,
+            open_string_range: test_range(0, open_strings.len()),
+            trace_sequence_id: 0,
+            singlet_sequence_id: 0,
+            word_sequence_id: 1,
+            support_mask_id: 0,
+        }];
+        let mut sequence_values = word.to_vec();
+        sequence_values.push(2);
+        let sequence_ranges = [
+            test_range(0, 0),
+            test_range(0, word.len()),
+            test_range(word.len(), 1),
+        ];
+        let strings = vec!["flow:2,1,3,4", "canonical-lc-closure-anchor-v3"];
+        let catalogs = ProcessCatalogs {
+            strings,
+            digests: vec![
+                SemanticDigest::new(closure_digest).expect("test closure digest must be nonzero"),
+            ],
+            factors: Vec::new(),
+        };
+        let input = RecurrenceProcessInputView {
+            input_abi: RECURRENCE_BUILDER_INPUT_ABI,
+            declared_input_digest: SemanticDigest::new(test_digest(31))
+                .expect("test process digest is nonzero"),
+            fermion_pairing: None,
+            bitset_ranges: &[],
+            bitset_words: &[],
+            coupling_limits: &[],
+            digest_catalog: &[],
+            exact_factors: &[],
+            external_legs: &external_legs,
+            header: &[],
+            header_digests: &[],
+            lc_open_strings: open_strings,
+            normalization: &[],
+            parameter_projection: &[],
+            physical_lc_sectors: &physical_sectors,
+            public_lc_flows: &[],
+            replay_partitions: &[],
+            replay_targets: &[],
+            selected_public_flow_coverage: &[],
+            selected_source_coverage: &[],
+            semantic_template_references: &[],
+            source_states: &[],
+            string_ranges: &[],
+            string_bytes: &[],
+            u32_sequence_ranges: &sequence_ranges,
+            u32_sequence_values: &sequence_values,
+        };
+        input.validate_color_sectors(&catalogs)
+    }
+
+    #[test]
+    fn v3_closure_recomputes_no_rotation_mapping_and_rejects_stale_inputs() {
+        let open_strings = [
+            ProcessLCOpenStringRow {
+                sector_id: 0,
+                ordinal: 0,
+                fundamental_source_slot: 1,
+                antifundamental_source_slot: 0,
+                adjoint_sequence_id: 0,
+                singlet_sequence_id: 0,
+            },
+            ProcessLCOpenStringRow {
+                sector_id: 0,
+                ordinal: 1,
+                fundamental_source_slot: 2,
+                antifundamental_source_slot: 3,
+                adjoint_sequence_id: 0,
+                singlet_sequence_id: 0,
+            },
+        ];
+        let digest = v3_no_rotation_digest();
+        validate_v3_color_fixture(&[1, 0, 2, 3], [1, 2, 3, 4], &open_strings, 3, digest)
+            .expect("valid no-rotation v3 fixture must pass");
+
+        for error in [
+            validate_v3_color_fixture(&[2, 3, 1, 0], [1, 2, 3, 4], &open_strings, 3, digest)
+                .expect_err("stale public block order must fail"),
+            validate_v3_color_fixture(&[1, 0, 2, 3], [99, 2, 3, 4], &open_strings, 3, digest)
+                .expect_err("stale public-label/source map must fail"),
+            validate_v3_color_fixture(&[1, 0, 2, 3], [1, 2, 3, 4], &open_strings, 0, digest)
+                .expect_err("stale closure source slot must fail"),
+        ] {
+            assert!(
+                error.to_string().contains("v3 closure"),
+                "unexpected v3 tamper error: {error}"
+            );
+        }
+
+        let mut endpoint_tamper = open_strings;
+        endpoint_tamper[0].fundamental_source_slot = 2;
+        assert!(
+            validate_v3_color_fixture(&[1, 0, 2, 3], [1, 2, 3, 4], &endpoint_tamper, 3, digest,)
+                .expect_err("stale endpoint map must fail")
+                .to_string()
+                .contains("v3 public word")
+        );
+
+        let mut adjoint_tamper = open_strings;
+        adjoint_tamper[0].adjoint_sequence_id = 2;
+        assert!(
+            validate_v3_color_fixture(&[1, 0, 2, 3], [1, 2, 3, 4], &adjoint_tamper, 3, digest,)
+                .expect_err("stale adjoint map must fail")
+                .to_string()
+                .contains("v3 public word")
+        );
     }
 
     fn encode_test_strings(

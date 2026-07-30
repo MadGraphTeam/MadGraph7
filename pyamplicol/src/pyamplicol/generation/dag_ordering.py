@@ -262,14 +262,16 @@ def _sector_intermediate_order_words(
     sector: LCColorSector,
     *,
     include_compatible_traversals: bool = True,
+    process: CanonicalProcessIR | None = None,
 ) -> tuple[tuple[int, ...], ...]:
     """Return LC words used for intermediate current construction.
 
     A physical multi-line sector admits several block traversals.  Cyclically
     equivalent traversals describe the same closure, so normalize every word
-    to the physical sector's sink and deduplicate it.  This retains the
-    genuinely distinct permutations needed by three or more open lines without
-    creating duplicate physical sectors.
+    to the physical sector's authenticated closure sink and deduplicate it.
+    These are private compatibility words, not public legacy amplitude-order
+    representatives.  This retains the distinct cyclic classes needed by
+    three or more open lines without creating duplicate physical sectors.
 
     Non-LC recursion keeps the physical words because its canonical closure
     sink is selected independently of the LC fixed-sink traversal convention.
@@ -284,7 +286,13 @@ def _sector_intermediate_order_words(
     ):
         return physical_words or sector.admissible_traversal_words
 
-    sink_label = int(physical_words[0][-1])
+    sink_label = (
+        int(physical_words[0][-1])
+        if process is None
+        else sector.canonical_closure_sink_label(process)
+    )
+    if sink_label is None:
+        return physical_words
     words: list[tuple[int, ...]] = []
     seen: set[tuple[int, ...]] = set()
     for raw_word in sector.admissible_traversal_words:
@@ -374,6 +382,26 @@ def _closure_candidate_splits(
     sink_labels: list[int] = []
     if color_engine.shared_lc_fixed_sink_label is not None:
         sink_labels.append(color_engine.shared_lc_fixed_sink_label)
+    if not sink_labels and (
+        color_engine.color_plan.color_accuracy == "lc"
+        or color_engine.shared_single_trace
+    ):
+        sectors = color_engine.color_plan.sectors
+        if reference_color_order is not None:
+            selected_sectors = tuple(
+                sector
+                for sector in sectors
+                if reference_color_order in sector.admissible_traversal_words
+            )
+            if selected_sectors:
+                sectors = selected_sectors
+        for sector in sectors:
+            # A public reference word selects a physical sector, but its
+            # terminal label is not a private recursion sink.  Final closure
+            # always uses that sector's authenticated canonical traversal.
+            sink_label = sector.canonical_closure_sink_label(process_ir)
+            if sink_label is not None:
+                sink_labels.append(sink_label)
     if not sink_labels and reference_color_order:
         leg_by_label = {leg.label: leg for leg in process_ir.legs}
         colored_reference_labels: list[int] = []
@@ -396,20 +424,6 @@ def _closure_candidate_splits(
             sink_labels.append(colored_reference_labels[-1])
         elif ordered_reference_labels:
             sink_labels.append(ordered_reference_labels[-1])
-    if not sink_labels and (
-        color_engine.color_plan.color_accuracy == "lc"
-        or color_engine.shared_single_trace
-    ):
-        for sector in color_engine.color_plan.sectors:
-            # Compatibility words are used while building intermediate currents:
-            # complete open-line blocks may be traversed in several orders
-            # without changing the physical LC sector.  Final amplitude
-            # closure, however, must choose one physical sink per sector;
-            # otherwise multi-open-line sectors are counted once per
-            # compatible block ordering.
-            for word in sector.color_words:
-                if word:
-                    sink_labels.append(int(word[-1]))
     if not sink_labels:
         fallback_sink_mask = _canonical_sink_mask(process_ir, model)
         fallback_sink_labels = _mask_labels(fallback_sink_mask)

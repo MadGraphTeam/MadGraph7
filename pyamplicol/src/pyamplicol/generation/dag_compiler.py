@@ -2050,23 +2050,25 @@ class GenericDAGCompiler:
                         sector = color_engine.color_plan.sector(
                             left.index.color_state.sector_id
                         )
-                        if (
-                            sector is not None
-                            and self.reference_color_order
+                        if sector is not None and (
+                            self.reference_color_order
                             in sector.admissible_traversal_words
-                            and not _closure_combination_matches_word(
+                        ):
+                            closure_word = sector.canonical_closure_traversal_word(
+                                process_ir
+                            )
+                            if not _closure_combination_matches_word(
                                 _labels_projected_to_word(
                                     left.index.ordered_external_labels,
-                                    self.reference_color_order,
+                                    closure_word,
                                 ),
                                 _labels_projected_to_word(
                                     right.index.ordered_external_labels,
-                                    self.reference_color_order,
+                                    closure_word,
                                 ),
-                                self.reference_color_order,
-                            )
-                        ):
-                            continue
+                                closure_word,
+                            ):
+                                continue
                     direct_contraction_ir = direct_contraction(left, right)
                     for color_flow in color_flows:
                         if direct_contraction_ir is not None:

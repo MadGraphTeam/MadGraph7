@@ -147,11 +147,12 @@ def test_color_plan_json_exposes_structural_open_line_roles() -> None:
 
 
 def test_three_open_lines_keep_distinct_fixed_sink_traversals() -> None:
-    plan = build_color_plan(build_process_ir("d d~ > u u~ s s~"))
+    process = build_process_ir("d d~ > u u~ s s~")
+    plan = build_color_plan(process)
     sector = plan.sectors[0]
 
     assert sector.color_words == ((2, 1, 3, 4, 5, 6),)
-    assert _sector_intermediate_order_words(sector) == (
+    assert _sector_intermediate_order_words(sector, process=process) == (
         (2, 1, 3, 4, 5, 6),
         (3, 4, 2, 1, 5, 6),
     )

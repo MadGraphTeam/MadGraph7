@@ -122,6 +122,83 @@ class LCColorSector:
             words.append(word)
         return tuple(words)
 
+    def canonical_closure_traversal_word(
+        self,
+        process: CanonicalProcessIR,
+    ) -> tuple[int, ...]:
+        """Return one deterministic block-equivalent traversal for closure.
+
+        Intermediate currents may use every admissible complete-open-line
+        block permutation, but the final amplitude must close on one cyclic
+        traversal.  AmpliCol's representation convention starts with the
+        complete open-line block containing the minimum canonical coloured
+        source slot, preserves the public cyclic block order, and closes on the
+        terminal endpoint of the preceding block.  Colour-singlet sources are
+        skipped when selecting that slot.  This uses only source ordering, the
+        physical colour word, and declared open-line blocks; particle flavour,
+        mass, process identity, and multiplicity do not enter.
+        """
+
+        blocks = self._canonical_closure_blocks(process)
+        return tuple(label for block in blocks for label in block)
+
+    def _canonical_closure_blocks(
+        self,
+        process: CanonicalProcessIR,
+    ) -> tuple[tuple[int, ...], ...]:
+        """Reconstruct open-line blocks with the canonical source block first."""
+
+        primary = self.color_words[0]
+        if self.kind != "open-lines" or not self.open_color_lines:
+            return (primary,)
+        from .plan_build import _ordered_open_line_blocks
+
+        blocks = _ordered_open_line_blocks(primary, self.open_color_lines)
+        if blocks is None or len(blocks) != len(self.open_color_lines):
+            raise ValueError(
+                f"LC sector {self.id} colour word is not a complete open-line "
+                "block traversal"
+            )
+        known_labels = {int(leg.label) for leg in process.legs}
+        coloured_labels = tuple(label for block in blocks for label in block)
+        unknown_labels = sorted(set(coloured_labels) - known_labels)
+        if unknown_labels:
+            raise ValueError(
+                f"LC sector {self.id} closure line references unknown external "
+                f"labels {unknown_labels}"
+            )
+        if not coloured_labels or not process.legs:
+            return blocks
+        coloured_label_set = set(coloured_labels)
+        distinguished_label = next(
+            (
+                int(leg.label)
+                for leg in process.legs
+                if int(leg.label) in coloured_label_set
+            ),
+            None,
+        )
+        if distinguished_label is None:
+            return blocks
+        positions = tuple(
+            index for index, block in enumerate(blocks) if distinguished_label in block
+        )
+        if not positions:
+            return blocks
+        if len(positions) != 1:
+            raise ValueError(
+                f"LC sector {self.id} distinguished source label "
+                f"{distinguished_label} belongs to {len(positions)} open-line blocks"
+            )
+        first_position = positions[0]
+        return (*blocks[first_position:], *blocks[:first_position])
+
+    def canonical_closure_sink_label(self, process: CanonicalProcessIR) -> int | None:
+        """Return the terminal label of the canonical closure traversal."""
+
+        word = self.canonical_closure_traversal_word(process)
+        return None if not word else int(word[-1])
+
     def to_json_dict(self) -> dict[str, object]:
         return {
             "id": self.id,

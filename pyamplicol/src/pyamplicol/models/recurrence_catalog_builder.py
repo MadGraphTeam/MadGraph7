@@ -2310,12 +2310,20 @@ def _recurrence_quantum_flow_contract(
     allowed_owner = next(
         owner for owner in mro if "allowed_quantum_flows" in owner.__dict__
     )
+    combine_owner = next(
+        owner for owner in mro if "combine_flavour_flow" in owner.__dict__
+    )
     contract_owner = next(
         owner for owner in mro if "recurrence_quantum_flow_contract" in owner.__dict__
     )
     if mro.index(contract_owner) > mro.index(allowed_owner):
         raise RecurrenceTemplateError(
             f"{model_type.__name__}.allowed_quantum_flows overrides the callback "
+            "without declaring a matching recurrence quantum-flow contract"
+        )
+    if mro.index(contract_owner) > mro.index(combine_owner):
+        raise RecurrenceTemplateError(
+            f"{model_type.__name__}.combine_flavour_flow overrides the callback "
             "without declaring a matching recurrence quantum-flow contract"
         )
     try:

@@ -1022,8 +1022,6 @@ class Model:
                 operation = "append-right-result"
             else:
                 operation = "constant-result"
-        elif self.is_fermion(left_particle) and self.is_fermion(right_particle):
-            operation = "concat-left-right-result"
         else:
             operation = "constant-result"
         return RecurrenceQuantumFlowContract(
@@ -1230,9 +1228,6 @@ class Model:
                 return _append_flavour_transition(left_flow, result_particle)
             if self.is_fermion(right_pdg):
                 return _append_flavour_transition(right_flow, result_particle)
-
-        if self.is_fermion(left_pdg) and self.is_fermion(right_pdg):
-            return (*left_flow, *right_flow, result_particle)
 
         return (result_particle,)
 

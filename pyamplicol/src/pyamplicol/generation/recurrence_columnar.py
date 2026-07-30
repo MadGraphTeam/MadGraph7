@@ -11,6 +11,7 @@ imports nor constructs the process ``GenericDAG`` representation.
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -1786,9 +1787,130 @@ def _validate_logical_relations(
             "LC closure source slot",
         )
         if sector.word_source_slots:
-            if sector.closure_source_slot != sector.word_source_slots[-1]:
+            if sector.closure_proof_algorithm == "canonical-lc-closure-anchor-v2":
+                if sector.closure_source_slot != sector.word_source_slots[-1]:
+                    raise RecurrenceColumnarInputError(
+                        "v2 LC closure source slot must be the terminal "
+                        "colour-word endpoint"
+                    )
+            elif sector.closure_proof_algorithm == "canonical-lc-closure-anchor-v3":
+                if sector.kind != "open-lines":
+                    raise RecurrenceColumnarInputError(
+                        "v3 LC closure anchoring is available only for "
+                        "open-line sectors"
+                    )
+                open_blocks = tuple(
+                    (
+                        line.fundamental_source_slot,
+                        *line.adjoint_source_slots,
+                        line.antifundamental_source_slot,
+                    )
+                    for line in sector.open_strings
+                )
+                physical_blocks: list[tuple[int, ...]] = []
+                unused = set(range(len(open_blocks)))
+                cursor = 0
+                while cursor < len(sector.word_source_slots):
+                    matches = tuple(
+                        index
+                        for index in sorted(unused)
+                        if sector.word_source_slots[
+                            cursor : cursor + len(open_blocks[index])
+                        ]
+                        == open_blocks[index]
+                    )
+                    if len(matches) != 1:
+                        raise RecurrenceColumnarInputError(
+                            "v3 LC public word does not have one exact open-line "
+                            f"block at source position {cursor}"
+                        )
+                    block_index = matches[0]
+                    unused.remove(block_index)
+                    block = open_blocks[block_index]
+                    physical_blocks.append(block)
+                    cursor += len(block)
+                if unused or cursor != len(sector.word_source_slots):
+                    raise RecurrenceColumnarInputError(
+                        "v3 LC public word is not an exact complete-open-line "
+                        "block traversal"
+                    )
+                distinguished_source_slot = min(sector.word_source_slots)
+                distinguished_positions = tuple(
+                    index
+                    for index, block in enumerate(physical_blocks)
+                    if distinguished_source_slot in block
+                )
+                if len(distinguished_positions) != 1:
+                    raise RecurrenceColumnarInputError(
+                        "v3 LC minimum coloured source slot must belong to "
+                        "exactly one open-line block"
+                    )
+                first = distinguished_positions[0]
+                closure_blocks = (
+                    *physical_blocks[first:],
+                    *physical_blocks[:first],
+                )
+                closure_traversal = tuple(
+                    slot for block in closure_blocks for slot in block
+                )
+                if (
+                    not closure_traversal
+                    or sector.closure_source_slot != closure_traversal[-1]
+                ):
+                    raise RecurrenceColumnarInputError(
+                        "v3 LC closure source slot does not match the independently "
+                        "reconstructed minimum-coloured-source block rotation"
+                    )
+                payload = {
+                    "algorithm": "canonical-lc-closure-anchor-v3",
+                    "closure_block_source_slots": closure_blocks,
+                    "closure_source_slot": sector.closure_source_slot,
+                    "closure_traversal_source_slots": closure_traversal,
+                    "component_order_policy": (
+                        "independent-open-string-block-permutation"
+                        if len(open_blocks) > 1
+                        else "exact-ordered-components"
+                    ),
+                    "distinguished_source_block": closure_blocks[0],
+                    "distinguished_source_slot": distinguished_source_slot,
+                    "external_source_count": len(external_legs),
+                    "fermionic_source_slots": tuple(
+                        leg.source_slot
+                        for leg in external_legs
+                        if leg.is_fermionic
+                    ),
+                    "open_string_count": len(open_blocks),
+                    "physical_block_source_slots": physical_blocks,
+                    "policy": (
+                        "minimum-coloured-source-slot-open-line-block-rotation"
+                    ),
+                    "process_source_label_order": tuple(
+                        leg.public_label for leg in external_legs
+                    ),
+                    "sector_id": sector.sector_id,
+                    "sector_kind": sector.kind,
+                    "selected_closure_block": closure_blocks[-1],
+                    "singlet_source_slots": sector.singlet_source_slots,
+                    "word_source_slots": sector.word_source_slots,
+                }
+                expected_digest = hashlib.sha256(
+                    json.dumps(
+                        payload,
+                        allow_nan=False,
+                        ensure_ascii=True,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ).encode("ascii")
+                ).hexdigest()
+                if sector.closure_proof_digest != expected_digest:
+                    raise RecurrenceColumnarInputError(
+                        "v3 LC closure proof digest does not match the independently "
+                        "reconstructed minimum-coloured-source block rotation"
+                    )
+            else:
                 raise RecurrenceColumnarInputError(
-                    "LC closure source slot must be the terminal colour-word endpoint"
+                    "unsupported LC closure-anchor proof algorithm "
+                    f"{sector.closure_proof_algorithm!r}"
                 )
         elif sector.kind != "singlet":
             raise RecurrenceColumnarInputError(

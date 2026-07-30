@@ -457,7 +457,7 @@ def test_topology_replay_projects_exact_axes_and_generation_coverage() -> None:
         0,
     )
     assert {sector.closure_proof_algorithm for sector in logical.physical_sectors} == {
-        "canonical-lc-closure-anchor-v2"
+        "canonical-lc-closure-anchor-v3"
     }
     assert all(
         len(sector.closure_proof_digest) == 64 for sector in logical.physical_sectors
@@ -725,7 +725,10 @@ def test_all_singlet_sector_uses_smallest_fermionic_source_as_closure_anchor() -
     assert sector.word_source_slots == ()
     assert sector.closure_source_slot == 0
     assert sector.closure_proof_algorithm == "canonical-lc-closure-anchor-v2"
-    assert len(sector.closure_proof_digest) == 64
+    assert (
+        sector.closure_proof_digest
+        == "ce2ac679bcb9dba2688fe07d4a0c6382b28a76e4a91ac24026041782623b07ef"
+    )
 
 
 def test_all_singlet_boson_sector_uses_smallest_source_as_closure_anchor() -> None:
@@ -749,7 +752,13 @@ def test_all_singlet_boson_sector_uses_smallest_source_as_closure_anchor() -> No
         normalization=_normalization(),
     )
 
-    assert logical.physical_sectors[0].closure_source_slot == 0
+    sector = logical.physical_sectors[0]
+    assert sector.closure_source_slot == 0
+    assert sector.closure_proof_algorithm == "canonical-lc-closure-anchor-v2"
+    assert (
+        sector.closure_proof_digest
+        == "225a0e4e145b1c0e28719d4670b4379bb602fbbe59fe6c6804ae5694f7b754f2"
+    )
 
 
 @pytest.mark.parametrize(

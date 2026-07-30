@@ -21,6 +21,7 @@ from ..color.plan import (
     GenericColorPlan,
     LCColorTopologyReplayPlan,
 )
+from ..color.plan_build import _ordered_open_line_blocks
 from ..models.base import Model, Vertex
 from ..models.recurrence_template import (
     CurrentStateTemplateV1,
@@ -66,7 +67,8 @@ _TEMPLATE_SECTIONS: Final = (
     ("color-contraction", "color_contractions"),
     ("symmetry-proof", "symmetry_proofs"),
 )
-_CLOSURE_ANCHOR_PROOF_ALGORITHM: Final = "canonical-lc-closure-anchor-v2"
+_CLOSURE_ANCHOR_PROOF_ALGORITHM_V2: Final = "canonical-lc-closure-anchor-v2"
+_CLOSURE_ANCHOR_PROOF_ALGORITHM_V3: Final = "canonical-lc-closure-anchor-v3"
 _PURE_MASSLESS_ADJOINT_HELICITY_SUPPORT_ROLE: Final = (
     "helicity-support:pure-massless-adjoint-tree-v1"
 )
@@ -934,11 +936,44 @@ def _project_physical_sectors(
         trace_source_slots = slots(sector.trace_labels, "LC trace")
         singlet_source_slots = slots(sector.singlet_labels, "LC singlets")
         word_source_slots = slots(word, "LC color word")
-        closure_source_slot, closure_proof_digest = _closure_anchor_contract(
+        closure_word = sector.canonical_closure_traversal_word(process)
+        closure_word_source_slots = slots(
+            closure_word,
+            "LC closure traversal",
+        )
+        physical_blocks = (
+            _ordered_open_line_blocks(tuple(word), sector.open_color_lines)
+            if sector.kind == "open-lines"
+            else ()
+        )
+        closure_blocks = (
+            _ordered_open_line_blocks(closure_word, sector.open_color_lines)
+            if sector.kind == "open-lines"
+            else ()
+        )
+        if physical_blocks is None or closure_blocks is None:
+            raise RecurrenceProjectionError(
+                f"LC sector {sector.id} open-line blocks cannot be reconstructed"
+            )
+        (
+            closure_source_slot,
+            closure_proof_algorithm,
+            closure_proof_digest,
+        ) = _closure_anchor_contract(
             sector_id=int(sector.id),
             sector_kind=sector.kind,
             open_string_count=len(open_strings),
             word_source_slots=word_source_slots,
+            closure_word_source_slots=closure_word_source_slots,
+            physical_block_source_slots=tuple(
+                slots(block, "LC physical open-line block")
+                for block in physical_blocks
+            ),
+            closure_block_source_slots=tuple(
+                slots(block, "LC closure open-line block")
+                for block in closure_blocks
+            ),
+            process_source_label_order=tuple(int(leg.label) for leg in process.legs),
             singlet_source_slots=singlet_source_slots,
             external_legs=external_legs,
         )
@@ -948,7 +983,7 @@ def _project_physical_sectors(
                 public_id=public_id,
                 kind=sector.kind,
                 closure_source_slot=closure_source_slot,
-                closure_proof_algorithm=_CLOSURE_ANCHOR_PROOF_ALGORITHM,
+                closure_proof_algorithm=closure_proof_algorithm,
                 closure_proof_digest=closure_proof_digest,
                 open_strings=open_strings,
                 trace_source_slots=trace_source_slots,
@@ -996,17 +1031,41 @@ def _closure_anchor_contract(
     sector_kind: str,
     open_string_count: int,
     word_source_slots: tuple[int, ...],
+    closure_word_source_slots: tuple[int, ...],
+    physical_block_source_slots: tuple[tuple[int, ...], ...],
+    closure_block_source_slots: tuple[tuple[int, ...], ...],
+    process_source_label_order: tuple[int, ...],
     singlet_source_slots: tuple[int, ...],
     external_legs: tuple[RecurrenceExternalLegV1, ...],
-) -> tuple[int, str]:
+) -> tuple[int, str, str]:
     external_source_count = len(external_legs)
     if external_source_count <= 0:
         raise RecurrenceProjectionError(
             "a physical LC sector requires at least one external source"
         )
     if word_source_slots:
-        policy = "terminal-colour-word-endpoint"
-        closure_source_slot = word_source_slots[-1]
+        if not closure_word_source_slots:
+            raise RecurrenceProjectionError(
+                "a coloured LC sector has an empty closure traversal"
+            )
+        if set(closure_word_source_slots) != set(word_source_slots):
+            raise RecurrenceProjectionError(
+                "LC closure traversal does not preserve the physical colour word"
+            )
+        closure_source_slot = closure_word_source_slots[-1]
+        # Newly projected open-line sectors always carry the v3 structural
+        # proof, including the no-rotation case.  The decoder retains v2 for
+        # already encoded terminal-word contracts.
+        proof_algorithm = (
+            _CLOSURE_ANCHOR_PROOF_ALGORITHM_V3
+            if sector_kind == "open-lines"
+            else _CLOSURE_ANCHOR_PROOF_ALGORITHM_V2
+        )
+        policy = (
+            "terminal-colour-word-endpoint"
+            if proof_algorithm == _CLOSURE_ANCHOR_PROOF_ALGORITHM_V2
+            else "minimum-coloured-source-slot-open-line-block-rotation"
+        )
     else:
         if sector_kind != "singlet" or tuple(sorted(singlet_source_slots)) != tuple(
             range(external_source_count)
@@ -1023,28 +1082,50 @@ def _closure_anchor_contract(
         else:
             policy = "minimum-source-slot"
             closure_source_slot = min(leg.source_slot for leg in external_legs)
-    proof_digest = _digest(
-        {
-            "algorithm": _CLOSURE_ANCHOR_PROOF_ALGORITHM,
-            "closure_source_slot": closure_source_slot,
-            "component_order_policy": (
-                "independent-open-string-block-permutation"
-                if sector_kind == "open-lines" and open_string_count > 1
-                else "exact-ordered-components"
-            ),
-            "external_source_count": external_source_count,
-            "fermionic_source_slots": tuple(
-                leg.source_slot for leg in external_legs if leg.is_fermionic
-            ),
-            "open_string_count": open_string_count,
-            "policy": policy,
-            "sector_id": sector_id,
-            "sector_kind": sector_kind,
-            "singlet_source_slots": singlet_source_slots,
-            "word_source_slots": word_source_slots,
-        }
-    )
-    return closure_source_slot, proof_digest
+        proof_algorithm = _CLOSURE_ANCHOR_PROOF_ALGORITHM_V2
+    proof_payload: dict[str, object] = {
+        "algorithm": proof_algorithm,
+        "closure_source_slot": closure_source_slot,
+        "component_order_policy": (
+            "independent-open-string-block-permutation"
+            if sector_kind == "open-lines" and open_string_count > 1
+            else "exact-ordered-components"
+        ),
+        "external_source_count": external_source_count,
+        "fermionic_source_slots": tuple(
+            leg.source_slot for leg in external_legs if leg.is_fermionic
+        ),
+        "open_string_count": open_string_count,
+        "policy": policy,
+        "sector_id": sector_id,
+        "sector_kind": sector_kind,
+        "singlet_source_slots": singlet_source_slots,
+        "word_source_slots": word_source_slots,
+    }
+    if proof_algorithm == _CLOSURE_ANCHOR_PROOF_ALGORITHM_V3:
+        if not physical_block_source_slots or not closure_block_source_slots:
+            raise RecurrenceProjectionError(
+                "v3 LC closure anchor requires reconstructed open-line blocks"
+            )
+        distinguished_source_slot = min(word_source_slots)
+        if distinguished_source_slot not in closure_block_source_slots[0]:
+            raise RecurrenceProjectionError(
+                "v3 LC closure traversal does not start with the block containing "
+                "the minimum coloured source slot"
+            )
+        proof_payload.update(
+            {
+                "closure_block_source_slots": closure_block_source_slots,
+                "closure_traversal_source_slots": closure_word_source_slots,
+                "distinguished_source_slot": distinguished_source_slot,
+                "distinguished_source_block": closure_block_source_slots[0],
+                "physical_block_source_slots": physical_block_source_slots,
+                "process_source_label_order": process_source_label_order,
+                "selected_closure_block": closure_block_source_slots[-1],
+            }
+        )
+    proof_digest = _digest(proof_payload)
+    return closure_source_slot, proof_algorithm, proof_digest
 
 
 def _project_replay_partitions(

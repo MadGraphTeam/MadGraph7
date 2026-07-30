@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
+
+import pytest
 
 from pyamplicol.color.plan import (
     build_color_plan,
@@ -213,7 +216,159 @@ def test_builtin_ddbar_to_ttbar_exposes_canonical_crossed_lc_flow() -> None:
             )
             for sector in logical.physical_sectors
         ) == ((2, 1, 3, 4), (2, 4, 3, 1))
+        assert tuple(
+            sector.closure_source_slot for sector in logical.physical_sectors
+        ) == (3, 3)
+        assert tuple(
+            sector.closure_proof_algorithm for sector in logical.physical_sectors
+        ) == (
+            "canonical-lc-closure-anchor-v3",
+            "canonical-lc-closure-anchor-v3",
+        )
         build_recurrence_builder_input_v1(logical)
+        if layout == "all-flow-union":
+            first_sector = logical.physical_sectors[0]
+            v3_sector = logical.physical_sectors[1]
+            reordered = replace(
+                logical,
+                physical_sectors=(
+                    first_sector,
+                    replace(
+                        v3_sector,
+                        open_strings=tuple(reversed(v3_sector.open_strings)),
+                    ),
+                ),
+            )
+            build_recurrence_builder_input_v1(reordered)
+
+            stale_first_word = (
+                *first_sector.word_source_slots[2:],
+                *first_sector.word_source_slots[:2],
+            )
+            tampered_inputs = (
+                replace(
+                    logical,
+                    physical_sectors=(
+                        first_sector,
+                        replace(v3_sector, closure_source_slot=0),
+                    ),
+                ),
+                replace(
+                    logical,
+                    physical_sectors=(
+                        first_sector,
+                        replace(v3_sector, closure_proof_digest="1" * 64),
+                    ),
+                ),
+                # The no-rotation sector still authenticates its public blocks.
+                replace(
+                    logical,
+                    physical_sectors=(
+                        replace(
+                            first_sector,
+                            word_source_slots=stale_first_word,
+                        ),
+                        v3_sector,
+                    ),
+                    public_flows=(
+                        replace(
+                            logical.public_flows[0],
+                            word_source_slots=stale_first_word,
+                        ),
+                        *logical.public_flows[1:],
+                    ),
+                ),
+                # Open-string endpoint and adjoint membership are authenticated.
+                replace(
+                    logical,
+                    physical_sectors=(
+                        replace(
+                            first_sector,
+                            open_strings=(
+                                replace(
+                                    first_sector.open_strings[0],
+                                    fundamental_source_slot=2,
+                                ),
+                                *first_sector.open_strings[1:],
+                            ),
+                        ),
+                        v3_sector,
+                    ),
+                ),
+                replace(
+                    logical,
+                    physical_sectors=(
+                        replace(
+                            first_sector,
+                            open_strings=(
+                                replace(
+                                    first_sector.open_strings[0],
+                                    adjoint_source_slots=(2,),
+                                ),
+                                *first_sector.open_strings[1:],
+                            ),
+                        ),
+                        v3_sector,
+                    ),
+                ),
+                # Public-label/source ordering is part of the v3 digest.
+                replace(
+                    logical,
+                    external_legs=(
+                        replace(logical.external_legs[0], public_label=99),
+                        *logical.external_legs[1:],
+                    ),
+                ),
+            )
+            for tampered in tampered_inputs:
+                with pytest.raises(
+                    ValueError,
+                    match=r"v3 LC|open-line block",
+                ):
+                    build_recurrence_builder_input_v1(tampered)
+
+
+def test_open_line_projection_skips_singlet_slot_zero_and_emits_v3() -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir("e- d > e- d t t~", color_accuracy="lc")
+    recurrence_catalog = build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest=_COMPILED_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PREPARED_PACK_DIGEST,
+    )
+    color_plan = build_color_plan(
+        process,
+        color_accuracy="lc",
+        fold_trace_reflections=model.lc_trace_reflection_equivalence_is_proven(process),
+    )
+    logical = project_recurrence_process_v1(
+        process,
+        color_plan,
+        recurrence_catalog,
+        layout="all-flow-union",
+        normalization=RecurrenceNormalizationV1(
+            ExactComplexRationalV1(1),
+            "minimum-coloured-source-slot-canary-v1",
+            "3" * 64,
+        ),
+        coupling_order_limits=infer_minimal_coupling_order_limits(
+            process,
+            model=model,
+        ),
+        model=model,
+    )
+    sector = next(
+        sector
+        for sector in logical.physical_sectors
+        if sector.public_id == "flow:4,6,5,2"
+    )
+
+    assert logical.external_legs[0].public_label == 1
+    assert sector.word_source_slots == (3, 5, 4, 1)
+    assert sector.closure_source_slot == 5
+    assert sector.closure_proof_algorithm == "canonical-lc-closure-anchor-v3"
+    build_recurrence_builder_input_v1(logical)
 
 
 def test_builtin_two_line_contracted_color_keeps_unique_construction_flows() -> None:

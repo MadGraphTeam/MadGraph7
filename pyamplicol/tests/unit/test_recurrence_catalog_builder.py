@@ -16,6 +16,7 @@ from pyamplicol.models.base import (
     QuantumFlow,
     RecurrenceLCColorTransitionContract,
     RecurrenceLCColorWitnessContract,
+    RecurrenceQuantumFlowContract,
     Vertex,
     VertexEvaluationEquivalence,
 )
@@ -1011,6 +1012,104 @@ def test_quantum_flow_override_requires_an_explicit_matching_contract() -> None:
             compiled_model_digest=_MODEL_DIGEST,
             prepared_kernel_pack_digest=_PACK_DIGEST,
         )
+
+
+class _UndeclaredFlavourCombinationModel(_ScalarModel):
+    def combine_flavour_flow(self, result_particle, left_index, right_index):
+        return (
+            *left_index.flavour_flow,
+            *right_index.flavour_flow,
+            result_particle,
+        )
+
+
+def test_flavour_combination_override_requires_an_explicit_matching_contract() -> None:
+    model = _UndeclaredFlavourCombinationModel()
+    with pytest.raises(
+        RecurrenceTemplateError,
+        match="combine_flavour_flow overrides the callback without declaring "
+        "a matching recurrence",
+    ):
+        build_recurrence_template_catalog(
+            model,
+            _scalar_catalog(model),  # type: ignore[arg-type]
+            compiled_model_digest=_MODEL_DIGEST,
+            prepared_kernel_pack_digest=_PACK_DIGEST,
+        )
+
+
+def test_standard_flavour_flow_drops_closed_boson_ancestry_only() -> None:
+    model = BuiltinSMModel()
+    fermion_left = SimpleNamespace(particle_id=1, flavour_flow=(11,))
+    fermion_right = SimpleNamespace(particle_id=-1, flavour_flow=(13,))
+    boson = SimpleNamespace(particle_id=21, flavour_flow=(21,))
+
+    assert model.combine_flavour_flow(21, fermion_left, fermion_right) == (21,)
+    assert model.combine_flavour_flow(1, fermion_left, boson) == (11, 1)
+    assert model.combine_flavour_flow(1, boson, fermion_right) == (13, 1)
+    assert (
+        model._standard_recurrence_quantum_flow_contract(
+            Vertex(kind=0, particles=(1, -1, 21)),
+            1,
+            -1,
+        ).flavour_flow_operation
+        == "constant-result"
+    )
+    assert (
+        model._standard_recurrence_quantum_flow_contract(
+            Vertex(kind=0, particles=(1, 21, 1)),
+            1,
+            21,
+        ).flavour_flow_operation
+        == "append-left-result"
+    )
+    assert (
+        model._standard_recurrence_quantum_flow_contract(
+            Vertex(kind=0, particles=(21, -1, 1)),
+            21,
+            -1,
+        ).flavour_flow_operation
+        == "append-right-result"
+    )
+
+
+class _DeclaredFlavourCombinationModel(_UndeclaredFlavourCombinationModel):
+    def recurrence_quantum_flow_contract(
+        self,
+        vertex,
+        left_particle_id,
+        right_particle_id,
+    ):
+        del vertex, left_particle_id, right_particle_id
+        return RecurrenceQuantumFlowContract(
+            flavour_flow_operation="concat-left-right-result",
+            quantum_number_flow_operation="particle-static-result",
+        )
+
+
+def test_explicit_flavour_combination_contract_preserves_ancestry() -> None:
+    model = _DeclaredFlavourCombinationModel()
+    catalog = build_recurrence_template_catalog(
+        model,
+        _scalar_catalog(model),  # type: ignore[arg-type]
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
+    )
+
+    assert {
+        (
+            flow.flavour_flow_operation,
+            flow.input_flavour_flows,
+            flow.result_flavour_flow,
+        )
+        for flow in catalog.quantum_flows
+    } == {
+        (
+            "concat-left-right-result",
+            ((101,), (101,)),
+            (101, 101, 101),
+        )
+    }
 
 
 class _DynamicQuantumNumberFlowModel(_ScalarModel):
