@@ -17,6 +17,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
+from tools.ci.memory_watchdog import (
+    DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON,
+    DARWIN_PHYSICAL_FOOTPRINT_PROBE_REASON,
+    MEMORY_PROBE_REASON,
+    RSS_LIMIT_REASON,
+    DarwinPhysicalFootprintProbe,
+)
+from tools.ci.memory_watchdog import (
+    ProbeError as WatchdogProbeError,
+)
+
 from .phase_state import (
     WORKER_PHASE_STATE_ABI,
     WorkerPhaseChannel,
@@ -29,6 +40,8 @@ DEFAULT_SAMPLE_INTERVAL_SECONDS = 1.0
 DEFAULT_TERMINATION_GRACE_SECONDS = 5.0
 DEFAULT_PHASE_STATE_STARTUP_GRACE_SECONDS = 30.0
 GENERATION_PHASE_EVIDENCE_ABI = "pyamplicol-report-generation-phase-evidence-v1"
+PROCESS_TREE_MEMORY_METRIC_ABI = "pyamplicol-process-tree-memory-metric-v1"
+MAX_CONSECUTIVE_MEMORY_PROBE_FAILURES = 3
 
 
 class ResourceProbeError(RuntimeError):
@@ -53,6 +66,8 @@ class ProcessTreeSample:
     child_count: int
     cpu_seconds: float | None
     member_pids: tuple[int, ...]
+    physical_footprint_bytes: int | None = None
+    guard_bytes: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +81,12 @@ class ResourceUsage:
     cpu_seconds: float | None
     wall_seconds: float
     error: str | None = None
+    current_physical_footprint_bytes: int | None = None
+    peak_physical_footprint_bytes: int | None = None
+    current_guard_bytes: int | None = None
+    peak_guard_bytes: int | None = None
+    memory_metric_abi: str | None = None
+    memory_probe_reason: str | None = None
 
 
 TerminationReason = Literal[
@@ -73,6 +94,7 @@ TerminationReason = Literal[
     "timeout",
     "generation_timeout",
     "memory_limit",
+    "memory_probe_error",
     "phase_state_error",
 ]
 
@@ -121,6 +143,8 @@ class SupervisedResult:
     reason: TerminationReason
     usage: ResourceUsage
     generation_phase: GenerationPhaseEvidence | None = None
+    memory_limit_bytes: int | None = None
+    memory_limit_reason: str | None = None
 
 
 class CompletedProcessLike(Protocol):
@@ -139,6 +163,7 @@ class WorkerProcess(Protocol):
 
 
 Snapshotter = Callable[[], Mapping[int, ProcessRecord]]
+PhysicalFootprintProbe = Callable[[Collection[int]], Mapping[int, int]]
 PsRunner = Callable[[Sequence[str]], CompletedProcessLike]
 PopenFactory = Callable[..., WorkerProcess]
 Clock = Callable[[], float]
@@ -305,7 +330,11 @@ class ProcessTreeSampler:
         self.root_pid = root_pid
         self._known_pids = {root_pid}
 
-    def sample(self, records: Mapping[int, ProcessRecord]) -> ProcessTreeSample:
+    def sample(
+        self,
+        records: Mapping[int, ProcessRecord],
+        physical_footprint_probe: PhysicalFootprintProbe | None = None,
+    ) -> ProcessTreeSample:
         children: dict[int, list[int]] = defaultdict(list)
         for record in records.values():
             children[record.ppid].append(record.pid)
@@ -328,11 +357,28 @@ class ProcessTreeSampler:
             for pid in members
             if records[pid].cpu_seconds is not None
         ]
+        rss_bytes = sum(records[pid].rss_bytes for pid in members)
+        physical_footprint_bytes: int | None = None
+        if physical_footprint_probe is not None:
+            try:
+                footprints = physical_footprint_probe(members)
+            except WatchdogProbeError as error:
+                raise ResourceProbeError(str(error)) from error
+            physical_footprint_bytes = sum(
+                footprints.get(pid, records[pid].rss_bytes) for pid in members
+            )
         return ProcessTreeSample(
-            rss_bytes=sum(records[pid].rss_bytes for pid in members),
+            rss_bytes=rss_bytes,
             child_count=max(len(members) - (self.root_pid in selected), 0),
             cpu_seconds=sum(cpu_values) if cpu_values else None,
             member_pids=members,
+            physical_footprint_bytes=physical_footprint_bytes,
+            guard_bytes=max(
+                rss_bytes,
+                physical_footprint_bytes
+                if physical_footprint_bytes is not None
+                else rss_bytes,
+            ),
         )
 
 
@@ -345,6 +391,7 @@ class ResourceMonitor:
         *,
         interval_seconds: float = DEFAULT_SAMPLE_INTERVAL_SECONDS,
         snapshotter: Snapshotter = process_snapshot,
+        physical_footprint_probe: PhysicalFootprintProbe | None = None,
         clock: Clock = time.monotonic,
     ) -> None:
         if interval_seconds <= 0:
@@ -352,6 +399,7 @@ class ResourceMonitor:
         self._sampler = ProcessTreeSampler(root_pid)
         self._interval_seconds = float(interval_seconds)
         self._snapshotter = snapshotter
+        self._physical_footprint_probe = physical_footprint_probe
         self._clock = clock
         self._started_at = clock()
         self._usage = ResourceUsage(
@@ -361,6 +409,9 @@ class ResourceMonitor:
             child_count=None,
             cpu_seconds=None,
             wall_seconds=0.0,
+            current_guard_bytes=None,
+            peak_guard_bytes=None,
+            memory_metric_abi=PROCESS_TREE_MEMORY_METRIC_ABI,
         )
         self._last_members: tuple[int, ...] = ()
         self._lock = threading.Lock()
@@ -378,31 +429,56 @@ class ResourceMonitor:
             return self._last_members
 
     def sample_once(self) -> ResourceUsage:
-        """Take one sample and fail open when the host probe is unavailable."""
+        """Take one sample and record unavailable host metrics."""
 
         wall_seconds = max(self._clock() - self._started_at, 0.0)
         try:
-            sample = self._sampler.sample(self._snapshotter())
+            records = self._snapshotter()
         except (
             OSError,
             ResourceProbeError,
             subprocess.SubprocessError,
             ValueError,
         ) as error:
-            with self._lock:
-                self._usage = ResourceUsage(
-                    available=False,
-                    current_rss_bytes=None,
-                    peak_rss_bytes=self._usage.peak_rss_bytes,
-                    child_count=None,
-                    cpu_seconds=self._usage.cpu_seconds,
-                    wall_seconds=wall_seconds,
-                    error=str(error),
-                )
-                return self._usage
+            return self._record_probe_failure(
+                wall_seconds,
+                error,
+                MEMORY_PROBE_REASON,
+            )
+        try:
+            sample = self._sampler.sample(
+                records,
+                physical_footprint_probe=self._physical_footprint_probe,
+            )
+        except (
+            OSError,
+            ResourceProbeError,
+            subprocess.SubprocessError,
+            ValueError,
+        ) as error:
+            return self._record_probe_failure(
+                wall_seconds,
+                error,
+                (
+                    DARWIN_PHYSICAL_FOOTPRINT_PROBE_REASON
+                    if self._physical_footprint_probe is not None
+                    else MEMORY_PROBE_REASON
+                ),
+            )
 
         with self._lock:
             peak_rss = max(self._usage.peak_rss_bytes or 0, sample.rss_bytes)
+            peak_physical_footprint = self._usage.peak_physical_footprint_bytes
+            if sample.physical_footprint_bytes is not None:
+                peak_physical_footprint = max(
+                    peak_physical_footprint or 0,
+                    sample.physical_footprint_bytes,
+                )
+            assert sample.guard_bytes is not None
+            peak_guard = max(
+                self._usage.peak_guard_bytes or 0,
+                sample.guard_bytes,
+            )
             self._last_members = sample.member_pids
             self._usage = ResourceUsage(
                 available=True,
@@ -411,6 +487,37 @@ class ResourceMonitor:
                 child_count=sample.child_count,
                 cpu_seconds=sample.cpu_seconds,
                 wall_seconds=wall_seconds,
+                current_physical_footprint_bytes=(sample.physical_footprint_bytes),
+                peak_physical_footprint_bytes=peak_physical_footprint,
+                current_guard_bytes=sample.guard_bytes,
+                peak_guard_bytes=peak_guard,
+                memory_metric_abi=PROCESS_TREE_MEMORY_METRIC_ABI,
+            )
+            return self._usage
+
+    def _record_probe_failure(
+        self,
+        wall_seconds: float,
+        error: BaseException,
+        reason: str,
+    ) -> ResourceUsage:
+        with self._lock:
+            self._usage = ResourceUsage(
+                available=False,
+                current_rss_bytes=None,
+                peak_rss_bytes=self._usage.peak_rss_bytes,
+                child_count=None,
+                cpu_seconds=self._usage.cpu_seconds,
+                wall_seconds=wall_seconds,
+                error=str(error),
+                current_physical_footprint_bytes=None,
+                peak_physical_footprint_bytes=(
+                    self._usage.peak_physical_footprint_bytes
+                ),
+                current_guard_bytes=None,
+                peak_guard_bytes=self._usage.peak_guard_bytes,
+                memory_metric_abi=PROCESS_TREE_MEMORY_METRIC_ABI,
+                memory_probe_reason=reason,
             )
             return self._usage
 
@@ -513,12 +620,13 @@ def supervise_worker(
     ),
     environment_overrides: Mapping[str, str] | None = None,
     snapshotter: Snapshotter = process_snapshot,
+    physical_footprint_probe: PhysicalFootprintProbe | None = None,
     popen_factory: PopenFactory = _default_popen,
     clock: Clock = time.monotonic,
     sleeper: Sleeper = time.sleep,
     signaler: TreeSignaler = _signal_process_tree,
 ) -> SupervisedResult:
-    """Run a worker and enforce wall, generation-only, and RSS limits.
+    """Run a worker and enforce wall, generation-only, and memory limits.
 
     ``generation_timeout_seconds`` requires an authenticated phase channel.
     Missing, malformed, replayed, or incomplete phase evidence terminates the
@@ -546,6 +654,24 @@ def supervise_worker(
     if phase_state_startup_grace_seconds < 0:
         raise ValueError("phase_state_startup_grace_seconds must be non-negative")
 
+    if (
+        max_rss_bytes is not None
+        and physical_footprint_probe is None
+        and platform.system() == "Darwin"
+        and snapshotter is process_snapshot
+    ):
+        try:
+            darwin_probe = DarwinPhysicalFootprintProbe()
+        except WatchdogProbeError as error:
+            raise ResourceProbeError(
+                f"Darwin physical-footprint probe is unavailable: {error}"
+            ) from error
+
+        def physical_footprint_probe(
+            pids: Collection[int],
+        ) -> Mapping[int, int]:
+            return darwin_probe(pids)
+
     phase_monitor_started = clock()
     process = popen_factory(
         tuple(command),
@@ -556,12 +682,16 @@ def supervise_worker(
         process.pid,
         interval_seconds=interval_seconds,
         snapshotter=snapshotter,
+        physical_footprint_probe=physical_footprint_probe,
         clock=clock,
     )
     reason: TerminationReason = "completed"
     returncode: int | None = None
     phase_state: WorkerPhaseState | None = None
     phase_error: str | None = None
+    memory_limit_reason: str | None = None
+    consecutive_memory_probe_failures = 0
+    pending_memory_probe_reason: str | None = None
 
     def terminate(selected_reason: TerminationReason) -> None:
         nonlocal reason, returncode
@@ -631,13 +761,48 @@ def supervise_worker(
 
     try:
         while True:
+            if pending_memory_probe_reason is not None:
+                returncode = process.poll()
+                if returncode is not None:
+                    reason = "memory_probe_error"
+                    break
+
             usage = monitor.sample_once()
             now_seconds = clock()
+            if max_rss_bytes is not None and usage.memory_probe_reason is not None:
+                consecutive_memory_probe_failures += 1
+                pending_memory_probe_reason = usage.memory_probe_reason
+                returncode = process.poll()
+                if returncode is not None:
+                    reason = "memory_probe_error"
+                    break
+                if (
+                    consecutive_memory_probe_failures
+                    >= MAX_CONSECUTIVE_MEMORY_PROBE_FAILURES
+                ):
+                    terminate("memory_probe_error")
+                    break
+                sleeper(interval_seconds)
+                continue
+            if pending_memory_probe_reason is not None:
+                returncode = process.poll()
+                if returncode is not None:
+                    reason = "memory_probe_error"
+                    break
+                pending_memory_probe_reason = None
+                consecutive_memory_probe_failures = 0
             if (
                 max_rss_bytes is not None
-                and usage.current_rss_bytes is not None
-                and usage.current_rss_bytes > max_rss_bytes
+                and usage.current_guard_bytes is not None
+                and usage.current_guard_bytes > max_rss_bytes
             ):
+                physical = usage.current_physical_footprint_bytes
+                rss = usage.current_rss_bytes
+                memory_limit_reason = (
+                    DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON
+                    if physical is not None and rss is not None and physical >= rss
+                    else RSS_LIMIT_REASON
+                )
                 terminate("memory_limit")
                 break
             if phase_channel is not None:
@@ -722,6 +887,8 @@ def supervise_worker(
         reason=reason,
         usage=monitor.usage,
         generation_phase=generation_phase,
+        memory_limit_bytes=max_rss_bytes,
+        memory_limit_reason=memory_limit_reason,
     )
 
 
@@ -730,6 +897,8 @@ __all__ = [
     "DEFAULT_SAMPLE_INTERVAL_SECONDS",
     "DEFAULT_TERMINATION_GRACE_SECONDS",
     "GENERATION_PHASE_EVIDENCE_ABI",
+    "MAX_CONSECUTIVE_MEMORY_PROBE_FAILURES",
+    "PROCESS_TREE_MEMORY_METRIC_ABI",
     "GenerationPhaseEvidence",
     "ProcessRecord",
     "ProcessTreeSample",

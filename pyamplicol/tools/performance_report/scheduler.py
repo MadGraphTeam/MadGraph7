@@ -20,12 +20,12 @@ from .artifacts import ArtifactAction, ArtifactStore, CurrentRecord
 from .cache import validate_measurement
 from .campaign_policy import (
     STRICT_POLICY,
+    X86_EPYC_NATIVE_COMPILER_SLOTS,
+    X86_EPYC_PROFILE,
     CampaignPolicy,
     CampaignPolicyError,
     PolicyCensorKind,
     PolicyMeasurementState,
-    X86_EPYC_NATIVE_COMPILER_SLOTS,
-    X86_EPYC_PROFILE,
     dependency_reference,
     generation_limit_for_cell,
     policy_censor_measurement,
@@ -162,9 +162,7 @@ def _worker_environment_overrides(
         _NATIVE_COMPILER_GATE_DIR_ENV: os.fspath(
             coordination_root.resolve() / "native-compiler-slots"
         ),
-        _NATIVE_COMPILER_GATE_SLOT_COUNT_ENV: str(
-            X86_EPYC_NATIVE_COMPILER_SLOTS
-        ),
+        _NATIVE_COMPILER_GATE_SLOT_COUNT_ENV: str(X86_EPYC_NATIVE_COMPILER_SLOTS),
     }
 
 
@@ -273,11 +271,7 @@ def _policy_current(
             expected_cell=cell,
             measurement_lineage=measurement_lineage,
         )
-        return (
-            None
-            if current is None
-            else (current, PolicyMeasurementState.SUCCESS)
-        )
+        return None if current is None else (current, PolicyMeasurementState.SUCCESS)
     current = store.load_current(cell.cell_id, missing_ok=True)
     if current is None or expected_revision is None:
         return None
@@ -358,16 +352,9 @@ def _resource_frontier_source(
         return None
     lane = _resource_lane_key(cell)
     sources: list[tuple[CellSpec, CurrentRecord, PolicyMeasurementState]] = []
-    candidates = (
-        catalog.measurement_cells()
-        if lane_cells is None
-        else lane_cells
-    )
+    candidates = catalog.measurement_cells() if lane_cells is None else lane_cells
     for candidate in candidates:
-        if (
-            candidate.n_final >= cell.n_final
-            or _resource_lane_key(candidate) != lane
-        ):
+        if candidate.n_final >= cell.n_final or _resource_lane_key(candidate) != lane:
             continue
         current = _policy_current(
             store,
@@ -402,9 +389,7 @@ def _measurement_frontier(
 ) -> object:
     provenance = measurement.get("provenance")
     censor = (
-        provenance.get("policy_censor")
-        if isinstance(provenance, Mapping)
-        else None
+        provenance.get("policy_censor") if isinstance(provenance, Mapping) else None
     )
     return censor.get("frontier") if isinstance(censor, Mapping) else None
 
@@ -468,8 +453,7 @@ def plan_campaign(
     def dependencies(cell: CellSpec) -> tuple[CellSpec, ...]:
         baseline = catalog.validation_baseline_cell(cell)
         peers = tuple(
-            edge.baseline
-            for edge in incoming_agreement_edges(cell, catalog=catalog)
+            edge.baseline for edge in incoming_agreement_edges(cell, catalog=catalog)
         )
         return tuple(
             {
@@ -582,13 +566,10 @@ def plan_campaign(
             if frontier_source is not None:
                 fresh_requested = (
                     state is PolicyMeasurementState.RESOURCE_FRONTIER
-                    and _measurement_frontier(_record.result)
-                    == expected_frontier
+                    and _measurement_frontier(_record.result) == expected_frontier
                 )
             elif state is PolicyMeasurementState.SUCCESS:
-                fresh_requested = (
-                    not missing_dependencies and not terminal_dependencies
-                )
+                fresh_requested = not missing_dependencies and not terminal_dependencies
             elif state is PolicyMeasurementState.DEPENDENCY:
                 provenance = _record.result.get("provenance")
                 censor = (
@@ -597,9 +578,7 @@ def plan_campaign(
                     else None
                 )
                 observed = (
-                    censor.get("dependencies")
-                    if isinstance(censor, Mapping)
-                    else None
+                    censor.get("dependencies") if isinstance(censor, Mapping) else None
                 )
                 fresh_requested = (
                     not missing_dependencies
@@ -618,11 +597,7 @@ def plan_campaign(
                 fresh_requested = True
         if fresh_requested:
             return
-        if (
-            settings.missing_only
-            and explicitly_requested
-            and current is not None
-        ):
+        if settings.missing_only and explicitly_requested and current is not None:
             force_recompare_ids.add(cell.cell_id)
         if cell.cell_id in needed:
             return
@@ -651,8 +626,7 @@ def plan_campaign(
                 continue
             if any(
                 predecessor.n_final < cell.n_final
-                and _resource_lane_key(predecessor)
-                == _resource_lane_key(cell)
+                and _resource_lane_key(predecessor) == _resource_lane_key(cell)
                 for predecessor in scheduled
             ):
                 # The lower cell will run in this campaign. Retain the higher
@@ -712,6 +686,9 @@ def plan_campaign(
 def _resource_payload(
     usage: ResourceUsage,
     generation_phase: GenerationPhaseEvidence | None = None,
+    *,
+    memory_limit_bytes: int | None = None,
+    memory_limit_reason: str | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "available": usage.available,
@@ -722,6 +699,21 @@ def _resource_payload(
         "wall_seconds": usage.wall_seconds,
         "probe_error": usage.error,
     }
+    if usage.memory_metric_abi is not None:
+        payload.update(
+            {
+                "memory_metric_abi": usage.memory_metric_abi,
+                "current_physical_footprint_bytes": (
+                    usage.current_physical_footprint_bytes
+                ),
+                "peak_physical_footprint_bytes": (usage.peak_physical_footprint_bytes),
+                "current_guard_bytes": usage.current_guard_bytes,
+                "peak_guard_bytes": usage.peak_guard_bytes,
+                "memory_limit_bytes": memory_limit_bytes,
+                "memory_limit_reason": memory_limit_reason,
+                "memory_probe_reason": usage.memory_probe_reason,
+            }
+        )
     if generation_phase is not None:
         payload["generation_phase"] = generation_phase.as_dict()
     return payload
@@ -766,9 +758,7 @@ class CampaignScheduler:
         self.service = service
         self.settings = settings
         self.catalog = catalog
-        self.source_identity = require_eligible_report_source(
-            service.paths.repo_root
-        )
+        self.source_identity = require_eligible_report_source(service.paths.repo_root)
         self.source_revision = self.source_identity.revision
         self.source_tree = self.source_identity.tree
         self.measurement_lineage = (
@@ -826,15 +816,11 @@ class CampaignScheduler:
         source = api.default_repository.expanduser().resolve(strict=True)
         api.validate_checkout(source)
         destination = (
-            self.service.paths.artifact_root
-            / "legacy-workspaces"
-            / attempt_id
+            self.service.paths.artifact_root / "legacy-workspaces" / attempt_id
         )
         destination.parent.mkdir(parents=True, exist_ok=True)
         if destination.exists():
-            raise RuntimeError(
-                f"legacy worker workspace already exists: {destination}"
-            )
+            raise RuntimeError(f"legacy worker workspace already exists: {destination}")
         commands = (
             (
                 "git",
@@ -902,9 +888,7 @@ class CampaignScheduler:
                 "-I",
                 "-S",
                 "-B",
-                os.fspath(
-                    self.service.paths.repo_root / CANONICAL_REPORT_ENTRYPOINT
-                ),
+                os.fspath(self.service.paths.repo_root / CANONICAL_REPORT_ENTRYPOINT),
                 "--repo-root",
                 os.fspath(self.service.paths.repo_root),
                 *self._service_path_arguments(),
@@ -963,8 +947,7 @@ class CampaignScheduler:
         if static_na:
             cell_id, reason = static_na[0]
             raise ValueError(
-                f"campaign plan contains catalog static N/A cell "
-                f"{cell_id!r}: {reason}"
+                f"campaign plan contains catalog static N/A cell {cell_id!r}: {reason}"
             )
         self._ensure_prepared_model(ordered)
         outcomes: list[CellOutcome] = []
@@ -989,9 +972,7 @@ class CampaignScheduler:
     def _run_cell(self, planned: PlannedCell) -> CellOutcome:
         if not self.settings.campaign_policy.allow_terminal_censors:
             return self._run_cell_in_lane(planned)
-        with self.service.store.named_lock(
-            _resource_lane_lock_name(planned.cell)
-        ):
+        with self.service.store.named_lock(_resource_lane_lock_name(planned.cell)):
             return self._run_cell_in_lane(planned)
 
     def _run_cell_in_lane(self, planned: PlannedCell) -> CellOutcome:
@@ -1024,8 +1005,7 @@ class CampaignScheduler:
                 if (
                     fresh is not None
                     and fresh[1] is PolicyMeasurementState.RESOURCE_FRONTIER
-                    and _measurement_frontier(fresh[0].result)
-                    == expected_frontier
+                    and _measurement_frontier(fresh[0].result) == expected_frontier
                 ):
                     return CellOutcome(
                         cell.cell_id,
@@ -1110,9 +1090,7 @@ class CampaignScheduler:
                     current=decision.current,
                 )
             baseline_record = (
-                None
-                if baseline is None
-                else dependency_records[baseline.cell_id]
+                None if baseline is None else dependency_records[baseline.cell_id]
             )
             peer_records: dict[str, CurrentRecord] = {}
             for peer_cell_id in planned.comparison_peer_ids:
@@ -1146,8 +1124,7 @@ class CampaignScheduler:
                     "-S",
                     "-B",
                     os.fspath(
-                        self.service.paths.repo_root
-                        / CANONICAL_REPORT_ENTRYPOINT
+                        self.service.paths.repo_root / CANONICAL_REPORT_ENTRYPOINT
                     ),
                     "--repo-root",
                     os.fspath(self.service.paths.repo_root),
@@ -1238,6 +1215,8 @@ class CampaignScheduler:
                 resources = _resource_payload(
                     supervised.usage,
                     generation_phase,
+                    memory_limit_bytes=supervised.memory_limit_bytes,
+                    memory_limit_reason=supervised.memory_limit_reason,
                 )
                 policy_state: PolicyMeasurementState | None = None
                 if (
@@ -1246,9 +1225,7 @@ class CampaignScheduler:
                     and self.settings.campaign_policy.allow_terminal_censors
                 ):
                     phase_evidence = (
-                        None
-                        if generation_phase is None
-                        else generation_phase.as_dict()
+                        None if generation_phase is None else generation_phase.as_dict()
                     )
                     observed_generation = (
                         phase_evidence.get("generation_elapsed_seconds")
@@ -1267,9 +1244,7 @@ class CampaignScheduler:
                             kind=PolicyCensorKind.GENERATION_LIMIT,
                             source_identity=self.source_identity,
                             resources=resources,
-                            observed_generation_seconds=float(
-                                observed_generation
-                            ),
+                            observed_generation_seconds=float(observed_generation),
                             phase_evidence=phase_evidence,
                         )
                         policy_state = PolicyMeasurementState.GENERATION_LIMIT
@@ -1283,8 +1258,18 @@ class CampaignScheduler:
                     supervised.reason == "memory_limit"
                     and self.settings.campaign_policy.allow_terminal_censors
                 ):
-                    peak = resources.get("peak_rss_bytes")
-                    if isinstance(peak, int) and not isinstance(peak, bool):
+                    peak_rss = resources.get("peak_rss_bytes")
+                    peak_guard = resources.get("peak_guard_bytes")
+                    metric_abi = resources.get("memory_metric_abi")
+                    limit_reason = resources.get("memory_limit_reason")
+                    if (
+                        isinstance(peak_rss, int)
+                        and not isinstance(peak_rss, bool)
+                        and isinstance(peak_guard, int)
+                        and not isinstance(peak_guard, bool)
+                        and isinstance(metric_abi, str)
+                        and isinstance(limit_reason, str)
+                    ):
                         result = policy_censor_measurement(
                             self.settings.campaign_policy,
                             self.settings.report_profile or "",
@@ -1292,7 +1277,25 @@ class CampaignScheduler:
                             kind=PolicyCensorKind.MEMORY_LIMIT,
                             source_identity=self.source_identity,
                             resources=resources,
-                            observed_rss_bytes=peak,
+                            observed_rss_bytes=peak_rss,
+                            observed_guard_bytes=peak_guard,
+                            memory_metric_abi=metric_abi,
+                            memory_limit_reason=limit_reason,
+                        )
+                        policy_state = PolicyMeasurementState.MEMORY_LIMIT
+                    elif (
+                        isinstance(peak_rss, int)
+                        and not isinstance(peak_rss, bool)
+                        and metric_abi is None
+                    ):
+                        result = policy_censor_measurement(
+                            self.settings.campaign_policy,
+                            self.settings.report_profile or "",
+                            cell,
+                            kind=PolicyCensorKind.MEMORY_LIMIT,
+                            source_identity=self.source_identity,
+                            resources=resources,
+                            observed_rss_bytes=peak_rss,
                         )
                         policy_state = PolicyMeasurementState.MEMORY_LIMIT
                     else:
@@ -1306,6 +1309,7 @@ class CampaignScheduler:
                         "timeout": ResultStatus.TIMEOUT,
                         "generation_timeout": ResultStatus.TIMEOUT,
                         "memory_limit": ResultStatus.MEMORY_LIMIT,
+                        "memory_probe_error": ResultStatus.ERROR,
                         "phase_state_error": ResultStatus.ERROR,
                     }[supervised.reason]
                     result = failure_measurement(

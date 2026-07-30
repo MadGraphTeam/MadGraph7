@@ -242,15 +242,22 @@ def _table_filling_runbook(profile: str, policy: CampaignPolicy) -> str:
     if policy is X86_EPYC_POLICY:
         resources = (
             f"Run up to {X86_EPYC_WORKERS} independent workers, with one core "
-            "and a decimal "
-            "80 GB hard RSS ceiling per worker. The authenticated generation "
+            "and a decimal 80 GB authenticated process-tree memory guard per "
+            "worker (RSS on Linux; max(process-tree RSS, Darwin physical "
+            "footprint) if enforced on macOS). The authenticated generation "
             "phase is capped at two hours except for original AmpliCol and "
-            "compiled/recurrence LC selected-flow cells, which must finish."
+            "compiled/recurrence LC selected-flow cells, which must finish. "
+            "Legacy v2 RSS-only censor evidence remains readable, but every "
+            "new run records the guard metric ABI and exact reason."
         )
     elif policy is MACBOOK_M3_POLICY:
         resources = (
-            "Run exactly one worker on one core with a decimal 30 GB hard RSS "
-            "ceiling. No generation timeout is authorized for this profile."
+            "Run exactly one worker on one core with a decimal 30 GB "
+            "authenticated memory guard defined as max(process-tree RSS, "
+            "Darwin physical footprint). Legacy v2 RSS-only censor evidence "
+            "remains readable, but every new run records the guard metric ABI "
+            "and exact reason. No generation timeout is authorized for this "
+            "profile."
         )
     else:
         resources = "Run one worker on one core without policy censors."

@@ -15,6 +15,7 @@ from tools.performance_report.phase_state import (
 )
 from tools.performance_report.resources import (
     DEFAULT_SAMPLE_INTERVAL_SECONDS,
+    PROCESS_TREE_MEMORY_METRIC_ABI,
     ProcessRecord,
     ProcessTreeSampler,
     ResourceMonitor,
@@ -95,6 +96,8 @@ def test_process_tree_aggregates_descendants_and_tracks_reparenting() -> None:
     assert first.child_count == 2
     assert first.cpu_seconds == 6.0
     assert first.member_pids == (10, 11, 12)
+    assert first.physical_footprint_bytes is None
+    assert first.guard_bytes == 600
 
     second = sampler.sample(
         {
@@ -106,6 +109,25 @@ def test_process_tree_aggregates_descendants_and_tracks_reparenting() -> None:
     assert second.rss_bytes == 420
     assert second.child_count == 1
     assert second.member_pids == (10, 12)
+    assert second.guard_bytes == 420
+
+
+def test_process_tree_sums_physical_footprint_with_race_fallback() -> None:
+    sampler = ProcessTreeSampler(10)
+    records = {
+        10: ProcessRecord(10, 1, 100, 1.0),
+        11: ProcessRecord(11, 10, 200, 2.0),
+        12: ProcessRecord(12, 11, 300, 3.0),
+    }
+
+    sample = sampler.sample(
+        records,
+        physical_footprint_probe=lambda _pids: {10: 80, 11: 400},
+    )
+
+    assert sample.rss_bytes == 600
+    assert sample.physical_footprint_bytes == 780
+    assert sample.guard_bytes == 780
 
 
 def test_monitor_tracks_current_peak_cpu_wall_and_probe_failure() -> None:
@@ -150,6 +172,36 @@ def test_monitor_tracks_current_peak_cpu_wall_and_probe_failure() -> None:
     assert not failed.available
     assert failed.current_rss_bytes is None
     assert failed.error == "offline"
+    assert failed.memory_probe_reason == "process-tree-memory-probe-unavailable"
+
+
+def test_monitor_tracks_physical_footprint_and_conservative_guard() -> None:
+    snapshots = iter(
+        (
+            {10: ProcessRecord(10, 1, 100)},
+            {10: ProcessRecord(10, 1, 140)},
+        )
+    )
+    footprints = iter(({10: 180}, {10: 120}))
+    monitor = ResourceMonitor(
+        10,
+        snapshotter=lambda: next(snapshots),
+        physical_footprint_probe=lambda _pids: next(footprints),
+        clock=lambda: 0.0,
+    )
+
+    first = monitor.sample_once()
+    second = monitor.sample_once()
+
+    assert first.current_physical_footprint_bytes == 180
+    assert first.current_guard_bytes == 180
+    assert second.current_rss_bytes == 140
+    assert second.current_physical_footprint_bytes == 120
+    assert second.current_guard_bytes == 140
+    assert second.peak_rss_bytes == 140
+    assert second.peak_physical_footprint_bytes == 180
+    assert second.peak_guard_bytes == 180
+    assert second.memory_metric_abi == PROCESS_TREE_MEMORY_METRIC_ABI
 
 
 class FakeClock:
@@ -291,7 +343,7 @@ def test_supervisor_merges_explicit_worker_environment_overrides(
     assert result.returncode == 0
 
 
-def test_supervisor_enforces_memory_limit_and_fails_open_on_probe_error() -> None:
+def test_supervisor_enforces_memory_limit_and_fails_closed_on_probe_error() -> None:
     process = FakeProcess()
 
     def terminate(_pgid: int, _members: object, selected_signal: int) -> None:
@@ -310,6 +362,7 @@ def test_supervisor_enforces_memory_limit_and_fails_open_on_probe_error() -> Non
     assert limited.reason == "memory_limit"
     assert limited.usage.current_rss_bytes == 110
     assert limited.usage.peak_rss_bytes == 110
+    assert limited.memory_limit_reason == "process-tree-rss-limit"
 
     completed = FakeProcess()
     completed.returncode = 7
@@ -319,10 +372,173 @@ def test_supervisor_enforces_memory_limit_and_fails_open_on_probe_error() -> Non
         snapshotter=lambda: (_ for _ in ()).throw(OSError("unavailable")),
         popen_factory=lambda *_args, **_kwargs: completed,
     )
-    assert unavailable.reason == "completed"
+    assert unavailable.reason == "memory_probe_error"
     assert unavailable.returncode == 7
     assert not unavailable.usage.available
     assert unavailable.usage.error == "unavailable"
+    assert (
+        unavailable.usage.memory_probe_reason == "process-tree-memory-probe-unavailable"
+    )
+
+
+def test_supervisor_enforces_physical_footprint_over_rss() -> None:
+    process = FakeProcess()
+
+    def terminate(_pgid: int, _members: object, selected_signal: int) -> None:
+        process.returncode = -selected_signal
+
+    limited = supervise_worker(
+        ("worker",),
+        max_rss_bytes=100,
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 80)},
+        physical_footprint_probe=lambda _pids: {100: 150},
+        popen_factory=lambda *_args, **_kwargs: process,
+        signaler=terminate,
+    )
+
+    assert limited.reason == "memory_limit"
+    assert limited.memory_limit_bytes == 100
+    assert limited.memory_limit_reason == "darwin-process-tree-physical-footprint-limit"
+    assert limited.usage.peak_rss_bytes == 80
+    assert limited.usage.peak_physical_footprint_bytes == 150
+    assert limited.usage.peak_guard_bytes == 150
+
+
+def test_supervisor_fails_closed_when_worker_exits_during_probe_retry() -> None:
+    process = FakeProcess()
+    footprint_calls = 0
+
+    def footprint(_pids: object) -> dict[int, int]:
+        nonlocal footprint_calls
+        footprint_calls += 1
+        raise ResourceProbeError("synthetic footprint probe failure")
+
+    def exit_during_retry(_duration: float) -> None:
+        process.returncode = 0
+
+    result = supervise_worker(
+        ("worker",),
+        max_rss_bytes=100,
+        interval_seconds=0.01,
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 80)},
+        physical_footprint_probe=footprint,
+        popen_factory=lambda *_args, **_kwargs: process,
+        sleeper=exit_during_retry,
+    )
+
+    assert result.reason == "memory_probe_error"
+    assert result.returncode == 0
+    assert footprint_calls == 1
+    assert not result.usage.available
+    assert (
+        result.usage.memory_probe_reason
+        == "darwin-process-tree-physical-footprint-probe-unavailable"
+    )
+
+
+def test_supervisor_terminates_after_third_required_probe_failure() -> None:
+    process = FakeProcess()
+    footprint_calls = 0
+    signals: list[int] = []
+
+    def footprint(_pids: object) -> dict[int, int]:
+        nonlocal footprint_calls
+        footprint_calls += 1
+        raise ResourceProbeError("synthetic footprint probe failure")
+
+    def terminate(_pgid: int, _members: object, selected_signal: int) -> None:
+        signals.append(selected_signal)
+        process.returncode = -selected_signal
+
+    result = supervise_worker(
+        ("worker",),
+        max_rss_bytes=100,
+        interval_seconds=0.01,
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 80)},
+        physical_footprint_probe=footprint,
+        popen_factory=lambda *_args, **_kwargs: process,
+        sleeper=lambda _duration: None,
+        signaler=terminate,
+    )
+
+    assert result.reason == "memory_probe_error"
+    assert result.returncode == -signal.SIGTERM
+    assert footprint_calls == 3
+    assert signals == [signal.SIGTERM]
+    assert (
+        result.usage.memory_probe_reason
+        == "darwin-process-tree-physical-footprint-probe-unavailable"
+    )
+
+
+def test_supervisor_clears_recovered_probe_failure_while_worker_is_alive() -> None:
+    process = FakeProcess()
+    footprint_calls = 0
+    sleep_calls = 0
+
+    def footprint(_pids: object) -> dict[int, int]:
+        nonlocal footprint_calls
+        footprint_calls += 1
+        if footprint_calls == 1:
+            raise ResourceProbeError("synthetic footprint probe failure")
+        return {100: 90}
+
+    def complete_after_recovery(_duration: float) -> None:
+        nonlocal sleep_calls
+        sleep_calls += 1
+        if sleep_calls == 2:
+            process.returncode = 0
+
+    result = supervise_worker(
+        ("worker",),
+        max_rss_bytes=100,
+        interval_seconds=0.01,
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 80)},
+        physical_footprint_probe=footprint,
+        popen_factory=lambda *_args, **_kwargs: process,
+        sleeper=complete_after_recovery,
+    )
+
+    assert result.reason == "completed"
+    assert result.returncode == 0
+    assert footprint_calls >= 2
+    assert result.usage.available
+    assert result.usage.memory_probe_reason is None
+    assert result.usage.peak_guard_bytes == 90
+
+
+def test_supervisor_enforces_cap_on_first_recovered_probe_sample() -> None:
+    process = FakeProcess()
+    footprint_calls = 0
+
+    def footprint(_pids: object) -> dict[int, int]:
+        nonlocal footprint_calls
+        footprint_calls += 1
+        if footprint_calls == 1:
+            raise ResourceProbeError("synthetic footprint probe failure")
+        return {100: 150}
+
+    def terminate(_pgid: int, _members: object, selected_signal: int) -> None:
+        process.returncode = -selected_signal
+
+    result = supervise_worker(
+        ("worker",),
+        max_rss_bytes=100,
+        interval_seconds=0.01,
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 80)},
+        physical_footprint_probe=footprint,
+        popen_factory=lambda *_args, **_kwargs: process,
+        sleeper=lambda _duration: None,
+        signaler=terminate,
+    )
+
+    assert result.reason == "memory_limit"
+    assert result.memory_limit_reason == (
+        "darwin-process-tree-physical-footprint-limit"
+    )
+    assert footprint_calls == 2
+    assert result.usage.memory_probe_reason is None
+    assert result.usage.peak_guard_bytes == 150
 
 
 def test_defaults_and_invalid_limits() -> None:

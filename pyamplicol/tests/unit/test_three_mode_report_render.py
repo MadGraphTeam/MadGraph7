@@ -567,7 +567,7 @@ def test_best_mode_renders_mixed_policy_censors_without_a_winner_code(
     tex = render_best_mode_table(Accuracy.NLC, caches)
     row = next(line for line in tex.splitlines() if line.startswith(r"\texttt{1}"))
 
-    marker = r"\matrixstatus{ReportOrange}{>2h/>100GB/dependency}"
+    marker = r"\matrixstatus{ReportOrange}{>2h/>80GB/dependency}"
     assert row.count(marker) == 2
     assert r"\bestmodecode{" not in row
     assert r"\matrixna{ReportMuted}" not in row
@@ -637,7 +637,7 @@ def test_best_mode_mixed_terminal_summaries_are_visibly_complete(
     wall_summary = next(
         line for line in tex.splitlines() if r"\textbf{summary: wall}" in line
     )
-    marker = r"\matrixstatus{ReportOrange}{>2h/>100GB/dependency}"
+    marker = r"\matrixstatus{ReportOrange}{>2h/>80GB/dependency}"
     assert generation_summary.count(marker) == 1
     assert wall_summary.count(marker) == 1
 
@@ -666,7 +666,7 @@ def test_best_mode_terminal_baselines_are_visibly_complete(
 
     tex = render_best_mode_table(Accuracy.NLC, caches)
     row = next(line for line in tex.splitlines() if line.startswith(r"\texttt{1}"))
-    marker = r"\matrixstatus{ReportOrange}{>100GB}"
+    marker = r"\matrixstatus{ReportOrange}{>80GB}"
     assert row.count(marker) >= 2
     generation_summary = next(
         line

@@ -44,6 +44,7 @@ from tools.performance_report.models import ArtifactPolicy, Workload
 from tools.performance_report.publication import portable_publication_value
 from tools.performance_report.render import _status
 from tools.performance_report.resources import (
+    PROCESS_TREE_MEMORY_METRIC_ABI,
     GenerationPhaseEvidence,
     ResourceUsage,
     SupervisedResult,
@@ -52,6 +53,7 @@ from tools.performance_report.scheduler import (
     CampaignScheduler,
     CampaignSettings,
     PlannedCell,
+    _resource_payload,
     plan_campaign,
 )
 from tools.performance_report.service import ReportPaths, ReportService
@@ -77,6 +79,27 @@ def _resources(peak: int) -> dict[str, object]:
         "cpu_seconds": 1.0,
         "wall_seconds": 2.0,
         "probe_error": None,
+    }
+
+
+def _guard_resources(
+    *,
+    limit: int,
+    rss: int,
+    physical: int | None,
+    reason: str | None,
+) -> dict[str, object]:
+    guard = max(rss, physical if physical is not None else rss)
+    return {
+        **_resources(rss),
+        "memory_metric_abi": PROCESS_TREE_MEMORY_METRIC_ABI,
+        "current_physical_footprint_bytes": physical,
+        "peak_physical_footprint_bytes": physical,
+        "current_guard_bytes": guard,
+        "peak_guard_bytes": guard,
+        "memory_limit_bytes": limit,
+        "memory_limit_reason": reason,
+        "memory_probe_reason": None,
     }
 
 
@@ -204,9 +227,7 @@ def test_macbook_policy_is_exact_memory_only_decimal_30_gb() -> None:
     with pytest.raises(CampaignPolicyError, match="generation_time_limit"):
         _mac_settings(generation_time_limit_seconds=7200.0)
 
-    cell = REPORT_CATALOG.cell(
-        "scalar-contact-n2-scalar-contact-contracted"
-    )
+    cell = REPORT_CATALOG.cell("scalar-contact-n2-scalar-contact-contracted")
     peak = MACBOOK_M3_MEMORY_LIMIT_BYTES + 1
     result = policy_censor_measurement(
         MACBOOK_M3_POLICY,
@@ -229,6 +250,95 @@ def test_macbook_policy_is_exact_memory_only_decimal_30_gb() -> None:
         )
         is PolicyMeasurementState.MEMORY_LIMIT
     )
+
+
+def test_physical_footprint_censor_is_authenticated_and_tamper_evident() -> None:
+    cell = REPORT_CATALOG.cell("scalar-contact-n2-scalar-contact-contracted")
+    rss = MACBOOK_M3_MEMORY_LIMIT_BYTES - 1
+    physical = MACBOOK_M3_MEMORY_LIMIT_BYTES + 1
+    reason = "darwin-process-tree-physical-footprint-limit"
+    resources = _guard_resources(
+        limit=MACBOOK_M3_MEMORY_LIMIT_BYTES,
+        rss=rss,
+        physical=physical,
+        reason=reason,
+    )
+    result = policy_censor_measurement(
+        MACBOOK_M3_POLICY,
+        "macbook_M3",
+        cell,
+        kind=PolicyCensorKind.MEMORY_LIMIT,
+        source_identity=_IDENTITY,
+        resources=resources,
+        observed_rss_bytes=rss,
+        observed_guard_bytes=physical,
+        memory_metric_abi=PROCESS_TREE_MEMORY_METRIC_ABI,
+        memory_limit_reason=reason,
+    )
+
+    assert policy_status_label(result) == ">30GB"
+    assert ">30GB" in _status(result)
+    assert (
+        validate_policy_measurement(
+            MACBOOK_M3_POLICY,
+            "macbook_M3",
+            cell,
+            result,
+            expected_source_revision=_REVISION,
+            expected_source_tree=_TREE,
+        )
+        is PolicyMeasurementState.MEMORY_LIMIT
+    )
+
+    tampered = json.loads(json.dumps(result))
+    tampered["resources"]["peak_guard_bytes"] = physical - 2
+    with pytest.raises(CampaignPolicyError, match="memory guard"):
+        validate_policy_measurement(
+            MACBOOK_M3_POLICY,
+            "macbook_M3",
+            cell,
+            tampered,
+            expected_source_revision=_REVISION,
+            expected_source_tree=_TREE,
+        )
+
+    unsupported = json.loads(json.dumps(result))
+    unsupported["resources"]["memory_metric_abi"] = "unsupported"
+    with pytest.raises(CampaignPolicyError, match="metric ABI"):
+        validate_policy_measurement(
+            MACBOOK_M3_POLICY,
+            "macbook_M3",
+            cell,
+            unsupported,
+            expected_source_revision=_REVISION,
+            expected_source_tree=_TREE,
+        )
+
+    incomplete = json.loads(json.dumps(result))
+    incomplete["resources"]["memory_probe_reason"] = (
+        "darwin-process-tree-physical-footprint-probe-unavailable"
+    )
+    with pytest.raises(CampaignPolicyError, match="incomplete memory"):
+        validate_policy_measurement(
+            MACBOOK_M3_POLICY,
+            "macbook_M3",
+            cell,
+            incomplete,
+            expected_source_revision=_REVISION,
+            expected_source_tree=_TREE,
+        )
+
+    missing_field = json.loads(json.dumps(result))
+    del missing_field["resources"]["memory_probe_reason"]
+    with pytest.raises(CampaignPolicyError, match="metric ABI"):
+        validate_policy_measurement(
+            MACBOOK_M3_POLICY,
+            "macbook_M3",
+            cell,
+            missing_field,
+            expected_source_revision=_REVISION,
+            expected_source_tree=_TREE,
+        )
 
 
 def test_policy_censors_are_canonical_and_tamper_evident() -> None:
@@ -362,13 +472,16 @@ def test_missing_only_reuses_exact_dependency_censor_and_rebinds_changes(
     ).publish(dependency)
     settings = _x86_settings(missing_only=True)
 
-    assert plan_campaign(
-        (candidate,),
-        store=store,
-        settings=settings,
-        expected_revision=_REVISION,
-        expected_tree=_TREE,
-    ) == ()
+    assert (
+        plan_campaign(
+            (candidate,),
+            store=store,
+            settings=settings,
+            expected_revision=_REVISION,
+            expected_tree=_TREE,
+        )
+        == ()
+    )
 
     second = _memory_censor(
         baseline,
@@ -392,9 +505,7 @@ def test_missing_only_reuses_exact_dependency_censor_and_rebinds_changes(
 
 def test_rendered_policy_markers_are_explicit() -> None:
     cell = next(
-        cell
-        for cell in REPORT_CATALOG.measurement_cells()
-        if cell.n_final <= 4
+        cell for cell in REPORT_CATALOG.measurement_cells() if cell.n_final <= 4
     )
     result = _memory_censor(
         cell,
@@ -406,12 +517,8 @@ def test_rendered_policy_markers_are_explicit() -> None:
 
 
 def test_resource_frontier_is_lane_bound_and_tamper_evident() -> None:
-    source = REPORT_CATALOG.cell(
-        "scalar-contact-n2-scalar-contact-contracted"
-    )
-    target = REPORT_CATALOG.cell(
-        "scalar-contact-n3-scalar-contact-contracted"
-    )
+    source = REPORT_CATALOG.cell("scalar-contact-n2-scalar-contact-contracted")
+    target = REPORT_CATALOG.cell("scalar-contact-n3-scalar-contact-contracted")
     root = _memory_censor(
         source,
         peak=X86_EPYC_MEMORY_LIMIT_BYTES + 1,
@@ -448,9 +555,7 @@ def test_resource_frontier_is_lane_bound_and_tamper_evident() -> None:
         "censor_sha256": root["provenance"]["policy_censor_sha256"],
     }
 
-    other_lane = REPORT_CATALOG.cell(
-        "scalar-gravity-n3-scalar-gravity-contracted"
-    )
+    other_lane = REPORT_CATALOG.cell("scalar-gravity-n3-scalar-gravity-contracted")
     with pytest.raises(CampaignPolicyError, match="same lane"):
         resource_frontier_reference(other_lane, source, root)
 
@@ -460,8 +565,7 @@ def test_full_catalog_resource_lanes_are_unique_and_monotone(
 ) -> None:
     cells = REPORT_CATALOG.measurement_cells()
     identities = tuple(
-        (tuple(resource_lane_identity(cell).items()), cell.n_final)
-        for cell in cells
+        (tuple(resource_lane_identity(cell).items()), cell.n_final) for cell in cells
     )
     assert len(cells) == 1666
     assert len(set(identities)) == len(identities)
@@ -508,12 +612,8 @@ def test_missing_only_reuses_and_rebinds_resource_frontier(
         artifact_root=tmp_path / "artifacts",
         lock_root=tmp_path / "locks",
     )
-    source = REPORT_CATALOG.cell(
-        "scalar-contact-n2-scalar-contact-contracted"
-    )
-    target = REPORT_CATALOG.cell(
-        "scalar-contact-n3-scalar-contact-contracted"
-    )
+    source = REPORT_CATALOG.cell("scalar-contact-n2-scalar-contact-contracted")
+    target = REPORT_CATALOG.cell("scalar-contact-n3-scalar-contact-contracted")
     first = _memory_censor(
         source,
         peak=X86_EPYC_MEMORY_LIMIT_BYTES + 1,
@@ -537,13 +637,16 @@ def test_missing_only_reuses_and_rebinds_resource_frontier(
     ).publish(frontier)
     settings = _x86_settings(missing_only=True)
 
-    assert plan_campaign(
-        (target,),
-        store=store,
-        settings=settings,
-        expected_revision=_REVISION,
-        expected_tree=_TREE,
-    ) == ()
+    assert (
+        plan_campaign(
+            (target,),
+            store=store,
+            settings=settings,
+            expected_revision=_REVISION,
+            expected_tree=_TREE,
+        )
+        == ()
+    )
 
     second = _memory_censor(
         source,
@@ -742,9 +845,7 @@ def test_scheduler_publishes_authenticated_generation_censor(
             coordination_root=tmp_path / "locks",
         )
     )
-    cell = REPORT_CATALOG.cell(
-        "scalar-contact-n2-scalar-contact-contracted"
-    )
+    cell = REPORT_CATALOG.cell("scalar-contact-n2-scalar-contact-contracted")
 
     def fake_supervise(command, **arguments):
         channel = arguments["phase_channel"]
@@ -830,19 +931,32 @@ def test_scheduler_uses_mac_memory_limit_without_generation_channel(
             coordination_root=tmp_path / "locks",
         )
     )
-    cell = REPORT_CATALOG.cell(
-        "scalar-contact-n2-scalar-contact-contracted"
-    )
+    cell = REPORT_CATALOG.cell("scalar-contact-n2-scalar-contact-contracted")
 
     def fake_supervise(_command, **arguments):
         assert arguments["generation_timeout_seconds"] is None
         assert arguments["phase_channel"] is None
         assert arguments["max_rss_bytes"] == MACBOOK_M3_MEMORY_LIMIT_BYTES
-        peak = MACBOOK_M3_MEMORY_LIMIT_BYTES + 1
+        rss = MACBOOK_M3_MEMORY_LIMIT_BYTES - 1
+        physical = MACBOOK_M3_MEMORY_LIMIT_BYTES + 1
         return SupervisedResult(
             returncode=-15,
             reason="memory_limit",
-            usage=ResourceUsage(True, peak, peak, 0, 1.0, 2.0),
+            usage=ResourceUsage(
+                available=True,
+                current_rss_bytes=rss,
+                peak_rss_bytes=rss,
+                child_count=0,
+                cpu_seconds=1.0,
+                wall_seconds=2.0,
+                current_physical_footprint_bytes=physical,
+                peak_physical_footprint_bytes=physical,
+                current_guard_bytes=physical,
+                peak_guard_bytes=physical,
+                memory_metric_abi=PROCESS_TREE_MEMORY_METRIC_ABI,
+            ),
+            memory_limit_bytes=MACBOOK_M3_MEMORY_LIMIT_BYTES,
+            memory_limit_reason=("darwin-process-tree-physical-footprint-limit"),
         )
 
     monkeypatch.setattr(
@@ -863,6 +977,85 @@ def test_scheduler_uses_mac_memory_limit_without_generation_channel(
     current = service.store.load_current(cell.cell_id)
     assert current is not None
     assert policy_status_label(current.result) == ">30GB"
+    assert _status(current.result) == r"\matrixstatus{ReportOrange}{>30GB}"
+    assert (
+        current.result["resources"]["peak_physical_footprint_bytes"]
+        == MACBOOK_M3_MEMORY_LIMIT_BYTES + 1
+    )
+
+
+def test_scheduler_never_promotes_incomplete_memory_observation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "docs/arxiv").mkdir(parents=True)
+    subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
+    subprocess.run(
+        ("git", "config", "user.email", "test@example.invalid"),
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ("git", "config", "user.name", "Test"),
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("fixture\n", encoding="ascii")
+    subprocess.run(("git", "add", "."), cwd=repo, check=True)
+    subprocess.run(("git", "commit", "-qm", "fixture"), cwd=repo, check=True)
+    service = ReportService(
+        ReportPaths.from_repo(
+            repo,
+            artifact_root=tmp_path / "artifacts",
+            coordination_root=tmp_path / "locks",
+        )
+    )
+    cell = REPORT_CATALOG.cell("scalar-contact-n2-scalar-contact-contracted")
+    probe_reason = "darwin-process-tree-physical-footprint-probe-unavailable"
+    usage = ResourceUsage(
+        available=False,
+        current_rss_bytes=None,
+        peak_rss_bytes=None,
+        child_count=None,
+        cpu_seconds=None,
+        wall_seconds=2.0,
+        error="synthetic footprint probe failure",
+        memory_metric_abi=PROCESS_TREE_MEMORY_METRIC_ABI,
+        memory_probe_reason=probe_reason,
+    )
+
+    def fake_supervise(_command, **_arguments):
+        return SupervisedResult(
+            returncode=-15,
+            reason="memory_probe_error",
+            usage=usage,
+            memory_limit_bytes=MACBOOK_M3_MEMORY_LIMIT_BYTES,
+        )
+
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        fake_supervise,
+    )
+    scheduler = CampaignScheduler(service, settings=_mac_settings())
+    outcome = scheduler._run_cell(
+        PlannedCell(
+            cell=cell,
+            dependency=False,
+            baseline_cell_id=None,
+            rank=0,
+        )
+    )
+
+    assert outcome.status == "error"
+    assert service.store.load_current(cell.cell_id, missing_ok=True) is None
+    assert (
+        _resource_payload(
+            usage,
+            memory_limit_bytes=MACBOOK_M3_MEMORY_LIMIT_BYTES,
+        )["memory_probe_reason"]
+        == probe_reason
+    )
 
 
 def test_scheduler_never_launches_above_authenticated_resource_frontier(
@@ -893,12 +1086,8 @@ def test_scheduler_never_launches_above_authenticated_resource_frontier(
         )
     )
     scheduler = CampaignScheduler(service, settings=_x86_settings())
-    source = REPORT_CATALOG.cell(
-        "scalar-contact-n2-scalar-contact-contracted"
-    )
-    target = REPORT_CATALOG.cell(
-        "scalar-contact-n3-scalar-contact-contracted"
-    )
+    source = REPORT_CATALOG.cell("scalar-contact-n2-scalar-contact-contracted")
+    target = REPORT_CATALOG.cell("scalar-contact-n3-scalar-contact-contracted")
     peak = X86_EPYC_MEMORY_LIMIT_BYTES + 1
     root = policy_censor_measurement(
         X86_EPYC_POLICY,
@@ -952,9 +1141,7 @@ def test_final_audit_counts_policy_terminal_cells_without_claiming_numerics(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cell = next(
-        cell
-        for cell in REPORT_CATALOG.measurement_cells()
-        if cell.n_final == 1
+        cell for cell in REPORT_CATALOG.measurement_cells() if cell.n_final == 1
     )
     static_cell = REPORT_CATALOG.cell(
         "reference-amplicol-full-n6-dd-4q-lines-contracted"
@@ -1072,12 +1259,8 @@ def test_final_audit_requires_exact_monotone_resource_frontier(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = REPORT_CATALOG.cell(
-        "scalar-contact-n2-scalar-contact-contracted"
-    )
-    target = REPORT_CATALOG.cell(
-        "scalar-contact-n3-scalar-contact-contracted"
-    )
+    source = REPORT_CATALOG.cell("scalar-contact-n2-scalar-contact-contracted")
+    target = REPORT_CATALOG.cell("scalar-contact-n3-scalar-contact-contracted")
 
     class TwoCellCatalog:
         matrix_datasets = ()
@@ -1135,9 +1318,7 @@ def test_final_audit_requires_exact_monotone_resource_frontier(
             assert isinstance(entries, list)
             for entry in entries:
                 cell_id = str(entry["cell_id"])
-                measurement = measurements[
-                    0 if cell_id == source.cell_id else 1
-                ]
+                measurement = measurements[0 if cell_id == source.cell_id else 1]
                 entry["measurement"] = portable_publication_value(
                     measurement,
                     paths,

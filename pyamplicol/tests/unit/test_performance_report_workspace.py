@@ -140,6 +140,13 @@ def test_initialize_profile_copies_publication_data_but_not_local_state(
     assert manifest["artifact_root"] == (
         ".artifacts/performance-report/macbook_M3"
     )
+    runbook = (profile / TABLE_FILLING_RUNBOOK).read_text(encoding="utf-8")
+    assert (
+        "30 GB authenticated memory guard defined as max(process-tree RSS, "
+        "Darwin physical footprint)"
+    ) in runbook
+    assert "Legacy v2 RSS-only censor evidence remains readable" in runbook
+    assert "30 GB hard RSS" not in runbook
     assert ReportService(
         ReportPaths.from_repo(repo, profile="macbook_M3")
     ).audit()["cache_render_match"]
@@ -165,7 +172,9 @@ def test_initialize_x86_epyc_profile_binds_parallel_resource_policy(
     assert "--workers 25 --cell-cores 1" in runbook
     assert "--max-ram-gb 80" in runbook
     assert "25 independent workers" in runbook
-    assert "80 GB hard RSS ceiling per worker" in runbook
+    assert "80 GB authenticated process-tree memory guard per worker" in runbook
+    assert "Legacy v2 RSS-only censor evidence remains readable" in runbook
+    assert "80 GB hard RSS" not in runbook
     assert "`TABLE_FILLING.md` is the sole authoritative campaign procedure" in (
         readme
     )
