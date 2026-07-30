@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import ctypes
+import errno
 import io
 import os
 import struct
@@ -188,6 +190,177 @@ def test_footprint_over_rss_terminates_with_stable_reason(
     assert "physical_footprint=0.020 GiB" in stderr.getvalue()
 
 
+def test_short_child_cannot_succeed_during_required_footprint_probe_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FinishedProcess:
+        pid = 43211
+        returncode = 0
+
+        def poll(self) -> int:
+            return self.returncode
+
+        def wait(self, timeout: float) -> int:
+            del timeout
+            return self.returncode
+
+    process = FinishedProcess()
+    monkeypatch.setattr(
+        watchdog.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: process,
+    )
+
+    def snapshotter() -> dict[int, watchdog.ProcessInfo]:
+        return {
+            process.pid: watchdog.ProcessInfo(
+                process.pid,
+                1,
+                process.pid,
+                8 * watchdog.MIB,
+            )
+        }
+
+    def unavailable_footprint(_pids: object) -> dict[int, int]:
+        raise watchdog.ProbeError("synthetic footprint probe failure")
+
+    stderr = io.StringIO()
+    returncode = watchdog.run_guarded(
+        ("short-child",),
+        limit_bytes=16 * watchdog.MIB,
+        poll_interval=0.001,
+        snapshotter=snapshotter,
+        physical_footprint_probe=unavailable_footprint,
+        stderr=stderr,
+    )
+
+    assert returncode == watchdog.WATCHDOG_ERROR_EXIT_CODE
+    assert (
+        "command exited while memory enforcement was unavailable"
+        in stderr.getvalue()
+    )
+    assert (
+        f"reason={watchdog.DARWIN_PHYSICAL_FOOTPRINT_PROBE_REASON}"
+        in stderr.getvalue()
+    )
+    assert "child_exit=0" in stderr.getvalue()
+
+
+def test_repeated_required_footprint_probe_failure_is_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class RunningProcess:
+        pid = 43212
+
+        def __init__(self) -> None:
+            self.returncode: int | None = None
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def wait(self, timeout: float) -> int:
+            del timeout
+            self.returncode = self.returncode or -9
+            return self.returncode
+
+    process = RunningProcess()
+    monkeypatch.setattr(
+        watchdog.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: process,
+    )
+
+    def record_signal(_pgid: int, selected_signal: int) -> None:
+        process.returncode = -selected_signal
+
+    monkeypatch.setattr(watchdog.os, "killpg", record_signal)
+    monkeypatch.setattr(watchdog.os, "kill", lambda *_args: None)
+    probe_count = 0
+
+    def snapshotter() -> dict[int, watchdog.ProcessInfo]:
+        return {
+            process.pid: watchdog.ProcessInfo(
+                process.pid,
+                1,
+                process.pid,
+                8 * watchdog.MIB,
+            )
+        }
+
+    def unavailable_footprint(_pids: object) -> dict[int, int]:
+        nonlocal probe_count
+        probe_count += 1
+        raise watchdog.ProbeError("synthetic footprint probe failure")
+
+    stderr = io.StringIO()
+    returncode = watchdog.run_guarded(
+        ("long-child",),
+        limit_bytes=16 * watchdog.MIB,
+        poll_interval=0.001,
+        terminate_grace=0,
+        snapshotter=snapshotter,
+        physical_footprint_probe=unavailable_footprint,
+        stderr=stderr,
+    )
+
+    assert returncode == watchdog.WATCHDOG_ERROR_EXIT_CODE
+    assert probe_count >= 3
+    assert "terminating after repeated memory probe failures" in stderr.getvalue()
+    assert (
+        f"reason={watchdog.DARWIN_PHYSICAL_FOOTPRINT_PROBE_REASON}"
+        in stderr.getvalue()
+    )
+
+
+def test_main_injects_darwin_footprint_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def probe(_pids: object) -> dict[int, int]:
+        return {}
+
+    def fake_run_guarded(
+        command: tuple[str, ...] | list[str],
+        **kwargs: object,
+    ) -> int:
+        captured["command"] = tuple(command)
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(watchdog.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(
+        watchdog,
+        "DarwinPhysicalFootprintProbe",
+        lambda: probe,
+    )
+    monkeypatch.setattr(watchdog, "run_guarded", fake_run_guarded)
+
+    assert watchdog.main(("--limit-mib", "32", "--", "synthetic-child")) == 0
+    assert captured["physical_footprint_probe"] is probe
+
+
+def test_main_fails_closed_when_darwin_probe_construction_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fail_probe() -> object:
+        raise watchdog.ProbeError("synthetic constructor failure")
+
+    monkeypatch.setattr(watchdog.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(watchdog, "DarwinPhysicalFootprintProbe", fail_probe)
+
+    returncode = watchdog.main(
+        ("--limit-mib", "32", "--", "synthetic-child")
+    )
+
+    assert returncode == watchdog.WATCHDOG_ERROR_EXIT_CODE
+    assert (
+        f"reason={watchdog.DARWIN_PHYSICAL_FOOTPRINT_PROBE_REASON}"
+        in capsys.readouterr().err
+    )
+
+
 def test_main_uses_rss_only_on_non_darwin(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -231,6 +404,43 @@ def test_darwin_libproc_parsers_extract_identity_and_rss() -> None:
         watchdog._parse_darwin_taskinfo_rss(b"short")
     with pytest.raises(ValueError, match="incomplete Darwin rusage_info_v0"):
         watchdog._parse_darwin_rusage_phys_footprint(b"short")
+
+
+def test_fake_darwin_libproc_handles_success_race_and_unexpected_error() -> None:
+    class FakeProcPidRusage:
+        argtypes: object = None
+        restype: object = None
+
+        def __call__(
+            self,
+            pid: int,
+            _flavor: int,
+            buffer: object,
+        ) -> int:
+            if pid == 1:
+                payload = struct.pack("=Q", 987_654_321)
+                ctypes.memmove(
+                    ctypes.addressof(buffer) + 72,
+                    payload,
+                    len(payload),
+                )
+                return 0
+            ctypes.set_errno(errno.ESRCH if pid == 2 else errno.EACCES)
+            return -1
+
+    class FakeLibrary:
+        proc_pid_rusage = FakeProcPidRusage()
+
+    probe = watchdog.DarwinPhysicalFootprintProbe(FakeLibrary())
+
+    assert probe((1, 2)) == {1: 987_654_321}
+    with pytest.raises(watchdog.ProbeError, match="Permission denied"):
+        probe((3,))
+
+
+def test_darwin_probe_constructor_rejects_missing_symbol() -> None:
+    with pytest.raises(watchdog.ProbeError, match="proc_pid_rusage"):
+        watchdog.DarwinPhysicalFootprintProbe(object())
 
 
 def test_platform_probe_rejects_unsupported_hosts() -> None:
