@@ -41,6 +41,9 @@ const RAW_PRE_DOM_WIRE_COPIES: usize = 2;
 const RAW_PRE_DOM_BYTES_PER_TOKEN: usize = 80;
 const RAW_CAPTURE_BYTES_PER_SCALAR: usize = 320;
 const RAW_CAPTURE_BYTES_PER_ROW: usize = 512;
+const RAW_PRODUCER_BYTES_PER_SCALAR: usize = 640;
+const RAW_PRODUCER_BYTES_PER_ROW: usize = 512;
+const MIN_RAW_EVIDENCE_WIRE_BYTES: usize = 1 << 20;
 
 struct CanonicalJsonMatcher<'a> {
     expected: &'a [u8],
@@ -206,6 +209,32 @@ fn validate_combined_raw_resident_budget(
         ));
     }
     Ok(())
+}
+
+fn raw_evidence_shape_wire_limit(scalar_count: usize, row_count: usize) -> RusticolResult<usize> {
+    // Authenticate the producer-side shape budget independently.  Python
+    // reserves all capture/DOM/exact scalar residents conservatively here;
+    // the native lexical and combined-DOM checks remain separate bounds.
+    let resident_without_wire = scalar_count
+        .checked_mul(RAW_PRODUCER_BYTES_PER_SCALAR)
+        .and_then(|scalars| {
+            row_count
+                .checked_mul(RAW_PRODUCER_BYTES_PER_ROW)
+                .and_then(|rows| scalars.checked_add(rows))
+        })
+        .and_then(|dynamic| dynamic.checked_add(RAW_PRE_DOM_FIXED_BYTES))
+        .ok_or_else(|| invalid("raw numerical producer resident bound overflows usize"))?;
+    let minimum_resident = MIN_RAW_EVIDENCE_WIRE_BYTES
+        .checked_mul(RAW_PRE_DOM_WIRE_COPIES)
+        .and_then(|wire| resident_without_wire.checked_add(wire))
+        .ok_or_else(|| invalid("raw numerical producer wire reserve overflows usize"))?;
+    if minimum_resident > MAX_RAW_RESIDENT_BYTES {
+        return Err(invalid(
+            "raw numerical capture geometry leaves no minimum canonical wire reserve inside the 1 GiB resident memory envelope",
+        ));
+    }
+    Ok(MAX_RAW_EVIDENCE_BYTES
+        .min((MAX_RAW_RESIDENT_BYTES - resident_without_wire) / RAW_PRE_DOM_WIRE_COPIES))
 }
 
 #[derive(Clone, Debug)]
@@ -399,9 +428,9 @@ pub(super) fn parse_numerical_relation_evidence(
     bytes: &[u8],
     runtime_parameters: &AuthenticatedRuntimeParameterContract,
 ) -> RusticolResult<RecurrenceNumericalRelationEvidence> {
-    // Shared with the Python preflight model: 1.1M exact scalar values and
-    // 40k rows reserve their Python/serde/BigRational residents first.  The
-    // remaining 157,853,696 bytes cover the bytearray-to-bytes transition.
+    // The global byte ceiling protects serde before the source shape is
+    // available.  Once parsed, the authenticated scalar/row geometry derives
+    // a possibly smaller wire allowance inside the same 1 GiB envelope.
     const ABI: &str = "pyamplicol-recurrence-numerical-current-evidence-v3";
     const RELATION_SET_ABI: &str = "pyamplicol-authenticated-numerical-current-relation-set-v2";
     if bytes.is_empty() {
@@ -519,12 +548,17 @@ pub(super) fn parse_numerical_relation_evidence(
         "verification_probe_count",
         "numerical relation verification probe count",
     )?;
-    let (scalar_count, row_count) = validate_raw_evidence_geometry(
+    let (scalar_count, row_count, shape_wire_limit) = validate_raw_evidence_geometry(
         &source,
         probe_count,
         verification_probe_count,
         runtime_parameter_count,
     )?;
+    if bytes.len() > shape_wire_limit {
+        return Err(invalid(format!(
+            "numerical relation evidence exceeds its authenticated {shape_wire_limit}-byte shape-dependent wire boundary"
+        )));
+    }
     validate_combined_raw_resident_budget(
         bytes.len(),
         structural_token_count,
@@ -926,9 +960,7 @@ fn validate_raw_evidence_geometry(
     probe_count: u32,
     verification_probe_count: u32,
     runtime_parameter_count: usize,
-) -> RusticolResult<(usize, usize)> {
-    const MAX_SCALARS: usize = 1_100_000;
-    const MAX_ROWS: usize = 40_000;
+) -> RusticolResult<(usize, usize, usize)> {
     let row_count = source
         .currents
         .len()
@@ -958,12 +990,8 @@ fn validate_raw_evidence_geometry(
     let scalar_count = observation_scalar_count
         .checked_add(parameter_scalar_count)
         .ok_or_else(|| invalid("raw total scalar count overflows usize"))?;
-    if row_count > MAX_ROWS || scalar_count > MAX_SCALARS {
-        return Err(invalid(
-            "raw numerical capture geometry exceeds the explicit 1 GiB resident memory envelope",
-        ));
-    }
-    Ok((scalar_count, row_count))
+    let wire_limit = raw_evidence_shape_wire_limit(scalar_count, row_count)?;
+    Ok((scalar_count, row_count, wire_limit))
 }
 
 fn validate_raw_runtime_parameter_schema(
@@ -3575,7 +3603,7 @@ mod tests {
             currents: Vec::new(),
         };
         assert!(
-            validate_raw_evidence_geometry(&source, 2, 2, 40_001)
+            validate_raw_evidence_geometry(&source, 2, 2, 400_000)
                 .unwrap_err()
                 .to_string()
                 .contains("resident memory envelope")
@@ -3611,8 +3639,6 @@ mod tests {
 
         assert!(raw_byte_count < MAX_RAW_EVIDENCE_BYTES);
         assert!(structural_token_count < MAX_RAW_JSON_STRUCTURAL_TOKENS);
-        assert!(scalar_count < 1_100_000);
-        assert!(row_count < 40_000);
         validate_pre_dom_resident_budget(raw_byte_count, structural_token_count).unwrap();
         assert!(
             validate_combined_raw_resident_budget(
@@ -3667,6 +3693,52 @@ mod tests {
                 row_count,
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn real_a_shape_has_the_same_dynamic_wire_boundary_as_python() {
+        let current_count = 15_834_usize + 1_240;
+        let component_count = 15_834_usize * 4 + 1_240 * 6;
+        let point_count = 4_usize + 4;
+        let runtime_parameter_count = 10_usize;
+        let scalar_count =
+            component_count * point_count * 2 + runtime_parameter_count * point_count;
+        let row_count = current_count * 2 + runtime_parameter_count;
+
+        assert_eq!((current_count, component_count), (17_074, 70_776));
+        assert_eq!((scalar_count, row_count), (1_132_496, 34_158));
+        let wire_limit = raw_evidence_shape_wire_limit(scalar_count, row_count).unwrap();
+        assert_eq!(wire_limit, 148_950_528);
+        assert!(115_356_478 < wire_limit, "configured 96-digit estimate");
+        assert!(133_475_134 < wire_limit, "conservative 112-char estimate");
+        assert!(151_593_790 > wire_limit, "128-char estimate must fail");
+
+        let without_parameter_metadata =
+            raw_evidence_shape_wire_limit(scalar_count - 80, row_count - 10).unwrap();
+        assert_eq!(without_parameter_metadata, 148_978_688);
+        assert_eq!(without_parameter_metadata - wire_limit, 28_160);
+    }
+
+    #[test]
+    fn shape_wire_budget_rejects_overflow_and_missing_wire_reserve() {
+        assert!(
+            raw_evidence_shape_wire_limit(usize::MAX, usize::MAX)
+                .unwrap_err()
+                .to_string()
+                .contains("overflows usize")
+        );
+        let consumes_envelope =
+            (MAX_RAW_RESIDENT_BYTES - RAW_PRE_DOM_FIXED_BYTES) / RAW_PRODUCER_BYTES_PER_SCALAR;
+        assert!(
+            raw_evidence_shape_wire_limit(consumes_envelope, 0)
+                .unwrap_err()
+                .to_string()
+                .contains("wire reserve")
+        );
+        assert_eq!(
+            raw_evidence_shape_wire_limit(0, 0).unwrap(),
+            MAX_RAW_EVIDENCE_BYTES
         );
     }
 

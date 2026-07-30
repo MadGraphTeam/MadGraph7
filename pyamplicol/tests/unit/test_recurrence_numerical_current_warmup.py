@@ -25,12 +25,14 @@ from pyamplicol.generation.recurrence_numerical_current_warmup import (
     _MAX_PERSISTED_EVIDENCE_BYTES,
     _MAX_RAW_EVIDENCE_BYTES,
     _MAX_RAW_EVIDENCE_MEMORY_BYTES,
-    _MAX_RAW_EVIDENCE_ROWS,
+    _MIN_RAW_EVIDENCE_WIRE_BYTES,
     _decimal_string,
     _pair_residuals,
     _raw_evidence_memory_upper_bound,
+    _raw_evidence_wire_byte_limit,
     _runtime_parameter_schema_payload,
     _synthetic_raw_evidence_bytes,
+    _synthetic_raw_evidence_bytes_by_dimension_counts,
     _validate_raw_evidence_canonical_size,
     _validate_raw_evidence_geometry,
     capture_recurrence_current_observations,
@@ -428,18 +430,95 @@ def test_raw_evidence_scaling_is_quantified_and_bounded() -> None:
         _validate_raw_evidence_canonical_size(just_over)
 
 
+def test_real_a_mixed_dimension_shape_uses_dynamic_wire_budget() -> None:
+    dimension_counts = {4: 15_834, 6: 1_240}
+    current_count = sum(dimension_counts.values())
+    component_count = sum(
+        dimension * count for dimension, count in dimension_counts.items()
+    )
+    point_count = 4 + 4
+    runtime_parameter_count = 10
+    scalar_count = (
+        2 * component_count * point_count
+        + runtime_parameter_count * point_count
+    )
+    row_count = current_count * 2 + runtime_parameter_count
+    byte_limit = _raw_evidence_wire_byte_limit(
+        scalar_count=scalar_count,
+        row_count=row_count,
+    )
+
+    assert (current_count, component_count) == (17_074, 70_776)
+    assert (scalar_count, row_count) == (1_132_496, 34_158)
+    assert byte_limit == 148_950_528
+    wire_sizes = {
+        characters: _synthetic_raw_evidence_bytes_by_dimension_counts(
+            dimension_counts,
+            candidate_probe_count=4,
+            verification_probe_count=4,
+            decimal_characters=characters,
+        )
+        for characters in (96, 112, 128)
+    }
+    assert wire_sizes == {
+        96: 115_356_478,
+        112: 133_475_134,
+        128: 151_593_790,
+    }
+    _validate_raw_evidence_canonical_size(
+        wire_sizes[96],
+        byte_limit=byte_limit,
+    )
+    _validate_raw_evidence_canonical_size(
+        wire_sizes[112],
+        byte_limit=byte_limit,
+    )
+    with pytest.raises(ValueError, match="memory envelope"):
+        _validate_raw_evidence_canonical_size(
+            wire_sizes[128],
+            byte_limit=byte_limit,
+        )
+
+
+def test_runtime_parameter_metadata_reduces_dynamic_wire_budget() -> None:
+    without_parameters = _raw_evidence_wire_byte_limit(
+        scalar_count=1_132_416,
+        row_count=34_148,
+    )
+    with_ten_parameters = _raw_evidence_wire_byte_limit(
+        scalar_count=1_132_496,
+        row_count=34_158,
+    )
+
+    assert without_parameters == 148_978_688
+    assert with_ten_parameters == 148_950_528
+    assert without_parameters - with_ten_parameters == 28_160
+
+
 def test_parameter_context_geometry_is_preflighted_without_allocation() -> None:
     sections = _topology_replay_plan().sections
-    current_rows = 2 * len(sections.currents)
     with pytest.raises(ValueError, match="memory envelope"):
         _validate_raw_evidence_geometry(
             sections,
             candidate_probe_count=2,
             verification_probe_count=2,
-            runtime_parameter_count=(
-                _MAX_RAW_EVIDENCE_ROWS - current_rows + 1
-            ),
+            runtime_parameter_count=400_000,
         )
+
+
+def test_dynamic_raw_geometry_rejects_adversarial_sizes_and_reserves_wire() -> None:
+    with pytest.raises(ValueError, match="memory envelope"):
+        _raw_evidence_wire_byte_limit(
+            scalar_count=1 << 63,
+            row_count=1 << 63,
+        )
+
+    maximum = _raw_evidence_wire_byte_limit(
+        scalar_count=0,
+        row_count=0,
+    )
+    assert maximum == _MAX_RAW_EVIDENCE_BYTES
+    assert maximum >= _MIN_RAW_EVIDENCE_WIRE_BYTES
 
 
 @pytest.mark.parametrize("text", ("1e+1000000000", "1e-1000000000"))

@@ -72,18 +72,16 @@ _MAX_RAW_EVIDENCE_MEMORY_BYTES = 1 << 30
 # independently parsed exact rationals.  The per-scalar allowance covers all
 # of those language-runtime objects, including half of each complex-pair
 # container; the row allowance covers both capture and native row metadata.
-_MAX_RAW_EVIDENCE_SCALARS = 1_100_000
-_MAX_RAW_EVIDENCE_ROWS = 40_000
+# The wire allowance is derived from the concrete shape instead of imposing
+# independent scalar/row ceilings.
 _RAW_EVIDENCE_SCALAR_RESIDENT_BYTES = 640
 _RAW_EVIDENCE_ROW_RESIDENT_BYTES = 512
 _RAW_EVIDENCE_FIXED_RESERVE_BYTES = 32 << 20
 _RAW_EVIDENCE_WIRE_PEAK_COPIES = 2
-_MAX_RAW_EVIDENCE_BYTES = (
-    _MAX_RAW_EVIDENCE_MEMORY_BYTES
-    - _RAW_EVIDENCE_FIXED_RESERVE_BYTES
-    - _MAX_RAW_EVIDENCE_SCALARS * _RAW_EVIDENCE_SCALAR_RESIDENT_BYTES
-    - _MAX_RAW_EVIDENCE_ROWS * _RAW_EVIDENCE_ROW_RESIDENT_BYTES
-) // _RAW_EVIDENCE_WIRE_PEAK_COPIES
+_MIN_RAW_EVIDENCE_WIRE_BYTES = 1 << 20
+# This global ceiling is shared with the native pre-DOM lexical budget.  A
+# concrete capture may receive a smaller limit from its scalar/row geometry.
+_MAX_RAW_EVIDENCE_BYTES = 157_853_696
 _MAX_RAW_EVIDENCE_DECIMAL_BYTES = 16_384
 _MAX_PERSISTED_EVIDENCE_BYTES = 64 << 20
 _RECURRENCE_CERTIFICATE_ALGORITHM = (
@@ -695,13 +693,14 @@ def run_recurrence_numerical_current_warmup(
     _validate_raw_evidence_scalar_widths(candidate, verification)
     encoded = _bounded_canonical_json_bytes(
         evidence,
-        byte_limit=_MAX_RAW_EVIDENCE_BYTES,
+        byte_limit=geometry[2],
         label="recurrence numerical raw evidence",
     )
     _validate_raw_evidence_memory_upper_bound(
         len(encoded),
         scalar_count=geometry[0],
         row_count=geometry[1],
+        byte_limit=geometry[2],
     )
     return RecurrenceNumericalCurrentWarmupResult(
         requested_mode=mode,
@@ -2596,12 +2595,56 @@ def _bounded_canonical_json_bytes(
     return bytes(encoded)
 
 
-def _validate_raw_evidence_canonical_size(size: int) -> None:
-    if size < 0 or size > _MAX_RAW_EVIDENCE_BYTES:
+def _validate_raw_evidence_canonical_size(
+    size: int,
+    *,
+    byte_limit: int = _MAX_RAW_EVIDENCE_BYTES,
+) -> None:
+    if (
+        size < 0
+        or byte_limit <= 0
+        or byte_limit > _MAX_RAW_EVIDENCE_BYTES
+        or size > byte_limit
+    ):
         raise ValueError(
             "recurrence numerical raw evidence exceeds the canonical share "
-            f"of its {_MAX_RAW_EVIDENCE_MEMORY_BYTES}-byte memory envelope"
+            f"of its {_MAX_RAW_EVIDENCE_MEMORY_BYTES}-byte memory envelope "
+            f"(size={size}, byte_limit={byte_limit})"
         )
+
+
+def _raw_evidence_wire_byte_limit(
+    *,
+    scalar_count: int,
+    row_count: int,
+) -> int:
+    """Return the per-shape wire ceiling inside the combined 1 GiB envelope."""
+
+    if scalar_count < 0 or row_count < 0:
+        raise ValueError("recurrence raw-evidence memory geometry is invalid")
+    resident_without_wire = _raw_evidence_memory_upper_bound(
+        0,
+        scalar_count=scalar_count,
+        row_count=row_count,
+    )
+    minimum_resident = resident_without_wire + (
+        _MIN_RAW_EVIDENCE_WIRE_BYTES * _RAW_EVIDENCE_WIRE_PEAK_COPIES
+    )
+    if minimum_resident > _MAX_RAW_EVIDENCE_MEMORY_BYTES:
+        raise ValueError(
+            "recurrence raw-evidence capture geometry leaves less than the "
+            f"required {_MIN_RAW_EVIDENCE_WIRE_BYTES}-byte canonical wire "
+            f"reserve inside its {_MAX_RAW_EVIDENCE_MEMORY_BYTES}-byte memory "
+            f"envelope (scalars={scalar_count}, rows={row_count}, "
+            f"resident_without_wire={resident_without_wire})"
+        )
+    return min(
+        _MAX_RAW_EVIDENCE_BYTES,
+        (
+            _MAX_RAW_EVIDENCE_MEMORY_BYTES - resident_without_wire
+        )
+        // _RAW_EVIDENCE_WIRE_PEAK_COPIES,
+    )
 
 
 def _validate_raw_evidence_geometry(
@@ -2610,7 +2653,7 @@ def _validate_raw_evidence_geometry(
     candidate_probe_count: int,
     verification_probe_count: int,
     runtime_parameter_count: int,
-) -> tuple[int, int]:
+) -> tuple[int, int, int]:
     """Reject unsafe capture geometry before allocating Decimal observations."""
 
     if (
@@ -2620,23 +2663,34 @@ def _validate_raw_evidence_geometry(
     ):
         raise ValueError("recurrence raw-evidence probe geometry is invalid")
     current_count = len(sections.currents)
+    component_count = sum(
+        current.component_count for current in sections.currents
+    )
     point_count = candidate_probe_count + verification_probe_count
     row_count = current_count * 2 + runtime_parameter_count
     scalar_count = (
         2
-        * sum(current.component_count for current in sections.currents)
+        * component_count
         * point_count
         + runtime_parameter_count * point_count
     )
-    if (
-        row_count > _MAX_RAW_EVIDENCE_ROWS
-        or scalar_count > _MAX_RAW_EVIDENCE_SCALARS
-    ):
+    try:
+        byte_limit = _raw_evidence_wire_byte_limit(
+            scalar_count=scalar_count,
+            row_count=row_count,
+        )
+    except ValueError as error:
         raise ValueError(
             "recurrence raw-evidence capture geometry exceeds the explicit "
-            f"{_MAX_RAW_EVIDENCE_MEMORY_BYTES}-byte memory envelope"
-        )
-    return scalar_count, row_count
+            f"{_MAX_RAW_EVIDENCE_MEMORY_BYTES}-byte memory envelope "
+            f"(currents={current_count}, components={component_count}, "
+            f"candidate_points={candidate_probe_count}, "
+            f"verification_points={verification_probe_count}, "
+            f"runtime_parameters={runtime_parameter_count}, "
+            f"scalars={scalar_count}, rows={row_count}, "
+            f"reason={error})"
+        ) from error
+    return scalar_count, row_count, byte_limit
 
 
 def _validate_raw_evidence_scalar_widths(
@@ -2681,8 +2735,9 @@ def _validate_raw_evidence_memory_upper_bound(
     *,
     scalar_count: int,
     row_count: int,
+    byte_limit: int = _MAX_RAW_EVIDENCE_BYTES,
 ) -> None:
-    _validate_raw_evidence_canonical_size(size)
+    _validate_raw_evidence_canonical_size(size, byte_limit=byte_limit)
     if (
         _raw_evidence_memory_upper_bound(
             size,
@@ -2715,19 +2770,51 @@ def _synthetic_raw_evidence_bytes(
         or decimal_characters <= 0
     ):
         raise ValueError("synthetic raw-evidence geometry is invalid")
+    return _synthetic_raw_evidence_bytes_by_dimension_counts(
+        {component_count: current_count},
+        candidate_probe_count=candidate_probe_count,
+        verification_probe_count=verification_probe_count,
+        decimal_characters=decimal_characters,
+    )
+
+
+def _synthetic_raw_evidence_bytes_by_dimension_counts(
+    dimension_counts: Mapping[int, int],
+    *,
+    candidate_probe_count: int,
+    verification_probe_count: int,
+    decimal_characters: int,
+) -> int:
+    """Measure a mixed-dimension canonical raw-observation footprint."""
+
+    if (
+        not dimension_counts
+        or candidate_probe_count <= 0
+        or verification_probe_count <= 0
+        or decimal_characters <= 0
+        or any(
+            dimension <= 0 or count < 0
+            for dimension, count in dimension_counts.items()
+        )
+    ):
+        raise ValueError("synthetic raw-evidence geometry is invalid")
+    dimensions = tuple(
+        dimension
+        for dimension, count in sorted(dimension_counts.items())
+        for _ in range(count)
+    )
+    current_count = len(dimensions)
     scalar = "1" + "2" * (decimal_characters - 1)
 
     def array_size(point_count: int) -> int:
         total = 2 + max(0, current_count - 1)
-        values = [[scalar, f"-{scalar}"]] * (
-            component_count * point_count
-        )
-        for current_id in range(current_count):
+        for current_id, dimension in enumerate(dimensions):
+            values = [[scalar, f"-{scalar}"]] * (dimension * point_count)
             total += len(
                 _canonical_json_bytes(
                     {
                         "current_id": current_id,
-                        "dimension": component_count,
+                        "dimension": dimension,
                         "values": values,
                     }
                 )
