@@ -462,6 +462,64 @@ def test_selected_flow_uses_generated_mode_one_and_compact_contract(
     assert len(momenta_file.read_text(encoding="utf-8").splitlines()) == 4
 
 
+def test_selected_flow_excludes_cold_generator_bootstrap_from_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter, api, executor = _adapter()
+    original_run = executor.run
+    generator_builds = 0
+
+    def run_with_cold_bootstrap(
+        args: object,
+        *,
+        cwd: Path,
+        environment: object = None,
+    ) -> CommandResult:
+        nonlocal generator_builds
+        result = original_run(args, cwd=cwd, environment=environment)
+        rendered = tuple(str(item) for item in args)
+        if (
+            rendered
+            and rendered[0] == "make"
+            and "amplicol_generate" in rendered
+        ):
+            generator_builds += 1
+            if generator_builds == 1:
+                return CommandResult(
+                    args=result.args,
+                    cwd=result.cwd,
+                    elapsed_seconds=17.0,
+                    returncode=result.returncode,
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                    environment=result.environment,
+                )
+        return result
+
+    monkeypatch.setattr(executor, "run", run_with_cold_bootstrap)
+    monkeypatch.setattr(
+        "tools.performance_report.legacy._shared_point",
+        lambda _process: (
+            api.pdgs,
+            tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),
+            (tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),),
+        ),
+    )
+
+    measurement = adapter.measure(
+        _cell(Accuracy.LC, Workload.SELECTED_FLOW),
+        artifact_path=tmp_path / "selected",
+        settings=_settings(tmp_path / "repository"),
+    )
+
+    assert generator_builds == 2
+    assert measurement["generation_seconds"] == pytest.approx(0.55)
+    commands = measurement["provenance"]["commands"]
+    assert commands[1]["args"] == ["make", "-j1", "amplicol_generate"]
+    assert commands[1]["elapsed_seconds"] == 17.0
+
+
 @pytest.mark.parametrize(
     ("final_pdgs", "n_final", "expected_id"),
     (

@@ -1262,6 +1262,16 @@ class LegacyMeasurementAdapter:
         commands: list[dict[str, object]],
         log_path: Path,
     ) -> float:
+        # Building the reusable generator and its object graph is campaign
+        # bootstrap, not per-process generation.  Resolve that one-time cost
+        # before opening the generation timing boundary.  ``cleanlib`` updates
+        # dummy.o, so the ordinary per-process relink below remains measured.
+        self._run(
+            ("make", f"-j{settings.jobs}", "amplicol_generate"),
+            cwd=repository,
+            commands=commands,
+            log_path=log_path,
+        )
         started_index = len(commands)
         momenta_directory = repository / "Utilities" / "ME_checks"
         momenta_directory.mkdir(parents=True, exist_ok=True)
