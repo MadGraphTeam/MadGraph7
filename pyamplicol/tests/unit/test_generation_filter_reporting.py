@@ -91,6 +91,7 @@ def test_opt_in_relation_discovery_is_scoped_in_generation_filters() -> None:
                 mode="diagnostic",
                 precision_digits=80,
                 probe_count=2,
+                verification_probe_count=2,
                 seed=31,
             )
         ),
@@ -98,22 +99,7 @@ def test_opt_in_relation_discovery_is_scoped_in_generation_filters() -> None:
     )
     process_ir = build_process_ir("d d~ > z", color_accuracy="lc")
     dag, coverage = backend._compile_concrete_process(process_ir, model)
-    discovery = coverage["relation_discovery"]
-    assert isinstance(discovery, dict)
-    assert discovery["state"] == "diagnostic-only"
-    assert discovery["scope"] == {
-        "execution_mode": "compiled",
-        "color_accuracy": "lc",
-        "representation": "generic-dag",
-    }
-    assert discovery["probe"] == {
-        "status": "completed",
-        "precision_digits": 80,
-        "probe_count": 2,
-        "seed": 31,
-        "deterministic": True,
-        "candidate_only": True,
-    }
+    assert "relation_discovery" not in coverage
 
     expanded = service_module._ExpandedProcess(
         request=ProcessRequest.parse("d d~ > z", name="ddbar_z"),
@@ -126,7 +112,135 @@ def test_opt_in_relation_discovery_is_scoped_in_generation_filters() -> None:
         index=0,
         phase=PhaseHandle("test-discovery", None, 1),
     )
-    assert prepared.filters["relation_discovery"] == discovery
+    discovery = prepared.filters["relation_discovery"]
+    assert isinstance(discovery, dict)
+    assert discovery["abi"] == "pyamplicol-artifact-numerical-current-reuse-v1"
+    assert discovery["requested_mode"] == "diagnostic"
+    assert discovery["execution_mode"] == "compiled"
+    assert discovery["applied_relation_count"] == 0
+    assert discovery["warning"]["required"] is False
+    assert discovery == prepared.coverage["relation_discovery"]
+
+    lanes = discovery["lanes"]
+    assert isinstance(lanes, dict)
+    assert discovery["lane_count"] == len(lanes)
+    assert "primary" in lanes
+    primary = lanes["primary"]
+    assert primary["state"] == "no_certified_numerical_relation"
+    assert primary["scope"] == {
+        "execution_mode": "compiled",
+        "color_accuracy": "lc",
+        "representation": "generic-dag",
+    }
+    candidate = primary["candidate_capture"]
+    verification = primary["verification_capture"]
+    assert candidate["precision_digits"] == 80
+    assert candidate["point_count"] == 2
+    assert verification["point_count"] == 2
+    assert set(candidate["kinematic_sha256s"]).isdisjoint(
+        verification["kinematic_sha256s"]
+    )
+
+
+def test_numerical_current_reuse_opt_out_skips_every_warmup_capture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = BuiltinSMModel()
+    backend = service_module.GenerationBackend(
+        GenerationConfig(
+            relation_discovery=GenerationRelationDiscoveryConfig(mode="off")
+        ),
+        None,
+    )
+
+    def forbidden_capture(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError("opt-out must not run numerical current capture")
+
+    monkeypatch.setattr(
+        service_module,
+        "run_generic_dag_numerical_current_warmup",
+        forbidden_capture,
+    )
+    process_ir = build_process_ir("d d~ > z", color_accuracy="lc")
+    dag, coverage = backend._compile_concrete_process(process_ir, model)
+    expanded = service_module._ExpandedProcess(
+        request=ProcessRequest.parse("d d~ > z", name="ddbar_z"),
+        process_ir=process_ir,
+        aliases=(),
+    )
+    prepared = backend._prepare_warmup_process(
+        service_module._DagProcess(expanded, dag, coverage),
+        model,
+        index=0,
+        phase=PhaseHandle("test-opt-out", None, 1),
+    )
+
+    discovery = prepared.filters["relation_discovery"]
+    assert discovery["requested_mode"] == "off"
+    assert discovery["applied_relation_count"] == 0
+    assert discovery["warning"]["required"] is False
+    assert discovery["lanes"]
+    for report in discovery["lanes"].values():
+        assert report["state"] == "disabled-by-user"
+        assert report["candidate_capture"] is None
+        assert report["verification_capture"] is None
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    (
+        (None, False),
+        ({}, False),
+        ({"warning": {"required": False}}, False),
+        ({"warning": {"required": True}}, True),
+    ),
+)
+def test_numerical_current_warning_aggregation(value, expected) -> None:
+    assert service_module._numerical_current_warning_required(value) is expected
+
+
+def test_default_numerical_current_reuse_applies_on_final_materialized_dag() -> None:
+    model = BuiltinSMModel()
+    config = RunConfig(
+        action="generate",
+        color=ColorConfig(accuracy="full"),
+        generation=GenerationConfig(
+            relation_discovery=GenerationRelationDiscoveryConfig(
+                mode="certified-reuse",
+                precision_digits=80,
+                probe_count=2,
+                verification_probe_count=2,
+            )
+        ),
+        evaluator=EvaluatorConfig(execution_mode="compiled"),
+    )
+    backend = service_module.GenerationBackend(config, None)
+    process_ir = build_process_ir("g g > g g", color_accuracy="full")
+    dag, coverage = backend._compile_concrete_process(process_ir, model)
+    expanded = service_module._ExpandedProcess(
+        request=ProcessRequest.parse("g g > g g", name="gg_gg"),
+        process_ir=process_ir,
+        aliases=(),
+    )
+
+    prepared = backend._prepare_warmup_process(
+        service_module._DagProcess(expanded, dag, coverage),
+        model,
+        index=0,
+        phase=PhaseHandle("test-applied", None, 1),
+    )
+
+    discovery = prepared.filters["relation_discovery"]
+    assert discovery["requested_mode"] == "certified-reuse"
+    assert discovery["certified_relation_count"] > 0
+    assert discovery["applied_relation_count"] > 0
+    assert discovery["warning"]["required"] is True
+    assert prepared.dag.helicity_materialization is not None
+    assert any(
+        report["application_validation"]["status"] == "verified"
+        for report in discovery["lanes"].values()
+    )
 
 
 @pytest.mark.parametrize("execution_mode", ("compiled", "eager"))
@@ -143,6 +257,7 @@ def test_relation_discovery_scope_covers_every_dag_mode_and_color(
                 mode="diagnostic",
                 precision_digits=80,
                 probe_count=2,
+                verification_probe_count=2,
             )
         ),
         evaluator=EvaluatorConfig(execution_mode=execution_mode),
@@ -152,12 +267,26 @@ def test_relation_discovery_scope_covers_every_dag_mode_and_color(
         "d d~ > z",
         color_accuracy=color_accuracy,
     )
-    _dag, coverage = backend._compile_concrete_process(
+    model = BuiltinSMModel()
+    dag, coverage = backend._compile_concrete_process(
         process_ir,
-        BuiltinSMModel(),
+        model,
+    )
+    expanded = service_module._ExpandedProcess(
+        request=ProcessRequest.parse("d d~ > z", name="ddbar_z"),
+        process_ir=process_ir,
+        aliases=(),
+    )
+    prepared = backend._prepare_warmup_process(
+        service_module._DagProcess(expanded, dag, coverage),
+        model,
+        index=0,
+        phase=PhaseHandle("test-scope", None, 1),
     )
 
-    discovery = coverage["relation_discovery"]
+    aggregate = prepared.filters["relation_discovery"]
+    assert aggregate["execution_mode"] == execution_mode
+    discovery = aggregate["lanes"]["primary"]
     assert isinstance(discovery, dict)
     assert discovery["scope"] == {
         "execution_mode": execution_mode,

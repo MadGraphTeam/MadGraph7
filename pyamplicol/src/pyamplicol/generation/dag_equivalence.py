@@ -1127,9 +1127,9 @@ def generic_dag_numerical_source_semantics_sha256(
         raise ValueError(
             "generic-DAG numerical relations require compiled or eager mode"
         )
-    source_dag = replace(
+    source_dag = _replace_dag_interactions_preserving_materialization(
         dag,
-        interactions=tuple(
+        tuple(
             replace(
                 interaction,
                 evaluation_group_id=None,
@@ -2482,7 +2482,28 @@ def _rewrite_interaction_evaluation_reuse(
     rewritten = tuple(interactions)
     if rewritten == dag.interactions:
         return dag
-    return replace(dag, interactions=rewritten)
+    return _replace_dag_interactions_preserving_materialization(dag, rewritten)
+
+
+def _replace_dag_interactions_preserving_materialization(
+    dag: GenericDAG,
+    interactions: tuple[InteractionNode, ...],
+) -> GenericDAG:
+    """Replace evaluation metadata without invalidating a quotient witness."""
+
+    materialization = dag.helicity_materialization
+    if materialization is None:
+        return replace(dag, interactions=interactions)
+    rebound_dag = replace(
+        dag,
+        interactions=interactions,
+        helicity_materialization=None,
+    )
+    rebound_materialization = replace(materialization, dag=rebound_dag)
+    return replace(
+        rebound_dag,
+        helicity_materialization=rebound_materialization,
+    )
 
 
 def _canonical_sha256(value: object) -> str:

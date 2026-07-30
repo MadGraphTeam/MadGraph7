@@ -98,7 +98,8 @@ from .dag_algorithms import (
 )
 from .dag_compiler import _restrict_color_plan, compile_generic_dag
 from .dag_equivalence import (
-    discover_recursive_evaluation_relations,
+    NUMERICAL_CURRENT_RELATION_WARNING,
+    NUMERICAL_CURRENT_RELATION_WARNING_CODE,
     project_rectangular_dynamic_color_classes,
 )
 from .dag_types import GenericDAG
@@ -117,6 +118,10 @@ from .helicity_materialization import materialize_helicity_recurrence
 from .helicity_replay import (
     HELICITY_RECURRENCE_CONTRACT_VERSION,
     build_helicity_recurrence_plan,
+)
+from .numerical_current_warmup import (
+    generic_dag_numerical_current_opt_out_report,
+    run_generic_dag_numerical_current_warmup,
 )
 from .physics_metadata import build_resolved_physics_from_dag
 from .progress import GenerationPhaseReporter, PhaseHandle
@@ -1316,6 +1321,13 @@ def _validate_matching_helicity_selector_domains(
         )
 
 
+def _numerical_current_warning_required(value: object) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    warning = value.get("warning")
+    return isinstance(warning, Mapping) and warning.get("required") is True
+
+
 def _map_process_phase(
     items: Sequence[_ProcessInput],
     operation: Callable[[_ProcessInput], _ProcessOutput],
@@ -1491,6 +1503,7 @@ class GenerationBackend:
             if run_config is None
             else str(run_config.evaluator.execution_mode)
         )
+        numerical_current_warning_required = False
         backend = "jit" if run_config is None else str(run_config.evaluator.backend)
         if run_config is None:
             optimization = "O3"
@@ -1609,6 +1622,12 @@ class GenerationBackend:
                             phase_name="warmup and validation-point preparation",
                             item_name=lambda indexed: indexed[1].expanded.request.name,
                         )
+                    numerical_current_warning_required = any(
+                        _numerical_current_warning_required(
+                            entry.filters.get("relation_discovery")
+                        )
+                        for entry in prepared
+                    )
 
                     if self._eager_execution_enabled:
                         with reporter.phase(
@@ -1742,6 +1761,12 @@ class GenerationBackend:
                             "step": "artifact ready",
                             "file_count": len(write_result.files),
                         },
+                    )
+                if numerical_current_warning_required:
+                    _LOGGER.warning(
+                        "%s [%s]",
+                        NUMERICAL_CURRENT_RELATION_WARNING,
+                        NUMERICAL_CURRENT_RELATION_WARNING_CODE,
                     )
 
                 concrete_requests = tuple(entry.expanded.request for entry in prepared)
@@ -1904,7 +1929,6 @@ class GenerationBackend:
                         "file_count": len(write_result.files),
                     },
                 )
-
             validation_points_by_process = {
                 item.expanded.request.name: item.validation_points for item in generated
             }
@@ -2185,6 +2209,132 @@ class GenerationBackend:
                         reduced,
                         helicity_selector_union_dag,
                     )
+        relation_config = self._generation_config.relation_discovery
+        relation_mode = str(relation_config.mode)
+        relation_execution_mode = cast(
+            Literal["compiled", "eager"],
+            "eager" if self._eager_execution_enabled else "compiled",
+        )
+        relation_lanes: dict[str, object] = {}
+        certified_relation_count = 0
+        applied_relation_count = 0
+        relation_warning_required = False
+
+        def apply_numerical_relations(
+            lane: str,
+            lane_dag: GenericDAG,
+        ) -> GenericDAG:
+            nonlocal applied_relation_count
+            nonlocal certified_relation_count
+            nonlocal relation_warning_required
+            if relation_mode == "off":
+                relation_lanes[lane] = (
+                    generic_dag_numerical_current_opt_out_report(
+                        lane_dag,
+                        execution_mode=relation_execution_mode,
+                    )
+                )
+                return lane_dag
+            try:
+                # Symbolica evaluator construction is process-global. Keep
+                # bounded high-precision captures serial even when independent
+                # process DAGs are prepared by worker threads.
+                with _SYMBOLICA_MATERIALIZATION_LOCK:
+                    result = run_generic_dag_numerical_current_warmup(
+                        lane_dag,
+                        model,
+                        process_id=process_name,
+                        mode=cast(
+                            Literal["diagnostic", "certified-reuse"],
+                            relation_mode,
+                        ),
+                        execution_mode=relation_execution_mode,
+                        precision_digits=relation_config.precision_digits,
+                        probe_count=relation_config.probe_count,
+                        verification_probe_count=(
+                            relation_config.verification_probe_count
+                        ),
+                        relative_tolerance=relation_config.relative_tolerance,
+                        absolute_tolerance=relation_config.absolute_tolerance,
+                        seed=relation_config.seed,
+                    )
+            except ValueError as exc:
+                raise GenerationError(
+                    f"process {process_name!r} numerical current warm-up "
+                    f"failed closed in lane {lane!r}: {exc}"
+                ) from exc
+            certified_relation_count += len(
+                result.discovery.certificates
+            )
+            applied_relation_count += (
+                result.application.report.applied_relation_count
+            )
+            payload = result.to_json_dict()
+            if result.warning_required:
+                warning = payload.get("warning")
+                if (
+                    not isinstance(warning, Mapping)
+                    or warning.get("code")
+                    != NUMERICAL_CURRENT_RELATION_WARNING_CODE
+                    or warning.get("message")
+                    != NUMERICAL_CURRENT_RELATION_WARNING
+                ):
+                    raise GenerationError(
+                        "numerical current warm-up requested a warning "
+                        "without its stable warning contract"
+                    )
+                relation_warning_required = True
+            relation_lanes[lane] = payload
+            return result.dag
+
+        progress.update(
+            1,
+            message="authenticated numerical current warm-up",
+            details={
+                "process": process_name,
+                "step": "authenticated numerical current warm-up",
+                "mode": relation_mode,
+            },
+        )
+        reduced = apply_numerical_relations("primary", reduced)
+        if helicity_sum_dag is not None:
+            helicity_sum_dag = apply_numerical_relations(
+                "helicity-sum",
+                helicity_sum_dag,
+            )
+        if helicity_selector_union_dag is not None:
+            helicity_selector_union_dag = apply_numerical_relations(
+                "helicity-selector-union",
+                helicity_selector_union_dag,
+            )
+        warning_required = relation_warning_required
+        relation_discovery_payload: dict[str, object] = {
+            "schema_version": 1,
+            "abi": "pyamplicol-artifact-numerical-current-reuse-v1",
+            "requested_mode": relation_mode,
+            "execution_mode": relation_execution_mode,
+            "lane_count": len(relation_lanes),
+            "lanes": relation_lanes,
+            "certified_relation_count": certified_relation_count,
+            "applied_relation_count": applied_relation_count,
+            "structural_exact_discovery": None,
+            "opt_out_flag": "--no-numerical-current-reuse",
+            "warning": (
+                {
+                    "required": True,
+                    "emit": "once-per-generated-artifact",
+                    "code": NUMERICAL_CURRENT_RELATION_WARNING_CODE,
+                    "message": NUMERICAL_CURRENT_RELATION_WARNING,
+                }
+                if warning_required
+                else {
+                    "required": False,
+                    "emit": "never",
+                    "code": None,
+                    "message": None,
+                }
+            ),
+        }
         before_amplitude_roots = (
             round(
                 sum(float(root.helicity_weight) for root in process.dag.amplitude_roots)
@@ -2193,7 +2343,6 @@ class GenerationBackend:
             else len(process.dag.amplitude_roots)
         )
         validation = self._generation_config.validation
-        relation_discovery = process.coverage.get("relation_discovery")
         filters: dict[str, object] = {
             **(
                 {}
@@ -2211,11 +2360,7 @@ class GenerationBackend:
                 "mode": "proven global-helicity-flip equivalence",
             },
             "dynamic_color_projection": dynamic_color_projection.to_json_dict(),
-            **(
-                {}
-                if not isinstance(relation_discovery, Mapping)
-                else {"relation_discovery": dict(relation_discovery)}
-            ),
+            "relation_discovery": relation_discovery_payload,
             **(
                 {}
                 if reduced.helicity_recurrence is None
@@ -2288,6 +2433,7 @@ class GenerationBackend:
             "interaction_evaluation_count": reduced.interaction_evaluation_count,
             "amplitude_root_count": len(reduced.amplitude_roots),
             "dynamic_color_projection": dynamic_color_projection.to_json_dict(),
+            "relation_discovery": relation_discovery_payload,
             **(
                 {}
                 if reduced.helicity_recurrence is None
@@ -4270,26 +4416,6 @@ class GenerationBackend:
                     else None
                 ),
             )
-        relation_discovery_payload: dict[str, object] | None = None
-        relation_discovery = self._generation_config.relation_discovery
-        relation_discovery_mode = str(relation_discovery.mode)
-        if relation_discovery_mode != "off":
-            discovery_result = discover_recursive_evaluation_relations(
-                dag,
-                model,
-                mode=cast(
-                    Literal["diagnostic", "certified-reuse"],
-                    relation_discovery_mode,
-                ),
-                execution_mode=(
-                    "eager" if self._eager_execution_enabled else "compiled"
-                ),
-                precision_digits=relation_discovery.precision_digits,
-                probe_count=relation_discovery.probe_count,
-                seed=relation_discovery.seed,
-            )
-            dag = discovery_result.dag
-            relation_discovery_payload = discovery_result.report.to_json_dict()
         if dag.truncated:
             raise GenerationError(
                 f"process {process.process!r} DAG was unexpectedly truncated"
@@ -4347,11 +4473,6 @@ class GenerationBackend:
                 "interaction_evaluation_count": dag.interaction_evaluation_count,
                 "amplitude_root_count": len(dag.amplitude_roots),
                 "coupling_order_limits": limits,
-                **(
-                    {}
-                    if relation_discovery_payload is None
-                    else {"relation_discovery": relation_discovery_payload}
-                ),
             },
         )
 
