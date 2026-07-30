@@ -29,7 +29,8 @@ import time
 import uuid
 import zlib
 from collections import Counter
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -3151,6 +3152,48 @@ def _handle_dashboard_key(
     return False
 
 
+@contextmanager
+def _ratatui_terminal_session() -> Iterator[Any]:
+    """Open Ratatui without calling the package's unsafe mode wrappers.
+
+    ``ratatui_py.terminal_session`` currently calls several native functions
+    without the terminal handle required by the bundled FFI.  The native
+    terminal constructor and destructor already own raw-mode and alternate-
+    screen setup/cleanup, selected through environment variables, so use that
+    supported lifecycle directly.
+    """
+
+    try:
+        from ratatui_py import Terminal
+    except ImportError as error:
+        raise ManualCampaignError(
+            "Ratatui is unavailable; run `just dev-install`"
+        ) from error
+
+    alt_was_set = "RATATUI_FFI_ALTSCR" in os.environ
+    previous_alt = os.environ.get("RATATUI_FFI_ALTSCR")
+    no_raw_was_set = "RATATUI_FFI_NO_RAW" in os.environ
+    previous_no_raw = os.environ.get("RATATUI_FFI_NO_RAW")
+    os.environ["RATATUI_FFI_ALTSCR"] = "1"
+    os.environ.pop("RATATUI_FFI_NO_RAW", None)
+    try:
+        terminal = Terminal()
+    finally:
+        if alt_was_set:
+            os.environ["RATATUI_FFI_ALTSCR"] = previous_alt or ""
+        else:
+            os.environ.pop("RATATUI_FFI_ALTSCR", None)
+        if no_raw_was_set:
+            os.environ["RATATUI_FFI_NO_RAW"] = previous_no_raw or ""
+        else:
+            os.environ.pop("RATATUI_FFI_NO_RAW", None)
+
+    try:
+        yield terminal
+    finally:
+        terminal.close()
+
+
 def _run_live_dashboard(
     lease: LeaseManager,
     state: DashboardState,
@@ -3159,13 +3202,7 @@ def _run_live_dashboard(
     *,
     color: bool = True,
 ) -> None:
-    try:
-        from ratatui_py import terminal_session
-    except ImportError as error:
-        raise ManualCampaignError(
-            "Ratatui is unavailable; run `just dev-install`"
-        ) from error
-    with terminal_session(raw=True, alt=True, clear=True) as terminal:
+    with _ratatui_terminal_session() as terminal:
         while not finished.is_set():
             display_state = lease.dashboard_snapshot()
             width, height = terminal.size()

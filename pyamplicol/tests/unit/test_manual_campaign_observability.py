@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -278,3 +279,53 @@ def test_dashboard_preserves_and_displays_three_independent_recurrence_clocks() 
     )
     compiled_frame = render_dashboard_frame(state, width=120, height=36)
     assert "Recurrence core not applicable" in compiled_frame
+
+
+def test_ratatui_terminal_session_uses_native_lifecycle_and_restores_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ratatui_py
+
+    events: list[tuple[str, str | None, str | None]] = []
+
+    class FakeTerminal:
+        def __init__(self) -> None:
+            events.append(
+                (
+                    "init",
+                    os.environ.get("RATATUI_FFI_ALTSCR"),
+                    os.environ.get("RATATUI_FFI_NO_RAW"),
+                )
+            )
+
+        def close(self) -> None:
+            events.append(("close", None, None))
+
+    def unsafe_session(**_options: object) -> object:
+        raise AssertionError("the unsafe ratatui_py.terminal_session was called")
+
+    monkeypatch.setattr(ratatui_py, "Terminal", FakeTerminal)
+    monkeypatch.setattr(ratatui_py, "terminal_session", unsafe_session)
+    monkeypatch.setenv("RATATUI_FFI_ALTSCR", "existing-alt")
+    monkeypatch.setenv("RATATUI_FFI_NO_RAW", "existing-no-raw")
+
+    with (
+        pytest.raises(KeyboardInterrupt),
+        manual_campaign._ratatui_terminal_session(),
+    ):
+        events.append(
+            (
+                "body",
+                os.environ.get("RATATUI_FFI_ALTSCR"),
+                os.environ.get("RATATUI_FFI_NO_RAW"),
+            )
+        )
+        raise KeyboardInterrupt
+
+    assert events == [
+        ("init", "1", None),
+        ("body", "existing-alt", "existing-no-raw"),
+        ("close", None, None),
+    ]
+    assert os.environ["RATATUI_FFI_ALTSCR"] == "existing-alt"
+    assert os.environ["RATATUI_FFI_NO_RAW"] == "existing-no-raw"
