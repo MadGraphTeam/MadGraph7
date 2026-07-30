@@ -124,7 +124,8 @@ def test_capture_uses_only_interpreted_high_precision_stage_replay(
             for component in value
         )
     provenance = capture.to_provenance_dict()
-    assert provenance["complete_current_components"] is True
+    assert provenance["complete_current_component_digest"] is True
+    assert provenance["components_embedded"] is False
     assert provenance["point_major"] is True
     assert provenance["points"] == [
         point.to_mapping() for point in candidate

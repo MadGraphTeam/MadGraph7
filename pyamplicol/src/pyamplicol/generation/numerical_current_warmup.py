@@ -21,6 +21,7 @@ from ..runtime.symbolica_exact import (
 )
 from .contracts import RuntimeExpressionSchema, StageCompilationInput
 from .dag_equivalence import (
+    NUMERICAL_CURRENT_CAPTURE_ABI,
     NumericalCurrentObservationDiscoveryResult,
     NumericalCurrentRelationApplicationResult,
     apply_numerical_current_relation_certificates,
@@ -34,7 +35,7 @@ from .stage_types import GenericCompiledStageBlueprint
 from .validation import ValidationPointRecord, build_validation_point
 
 _ComplexDecimal = tuple[Decimal, Decimal]
-_CAPTURE_ABI = "pyamplicol-generic-dag-current-observation-capture-v1"
+_CAPTURE_ABI = NUMERICAL_CURRENT_CAPTURE_ABI
 _WARMUP_ABI = "pyamplicol-generic-dag-numerical-current-warmup-v1"
 
 
@@ -46,10 +47,13 @@ class GenericDAGCurrentObservationCapture:
     points: tuple[ValidationPointRecord, ...]
     point_sha256s: tuple[str, ...]
     kinematic_sha256s: tuple[str, ...]
+    parameter_contexts: tuple[tuple[Decimal, ...], ...]
+    parameter_context_sha256s: tuple[str, ...]
     observations: Mapping[int, tuple[_ComplexDecimal, ...]]
     runtime_schema_sha256: str
     source_dag_sha256: str
     observation_batch_sha256: str
+    capture_contract_sha256: str
 
     @property
     def point_count(self) -> int:
@@ -67,11 +71,20 @@ class GenericDAGCurrentObservationCapture:
             "point_sha256s": list(self.point_sha256s),
             "kinematic_sha256s": list(self.kinematic_sha256s),
             "points": [point.to_mapping() for point in self.points],
+            "parameter_contexts": [
+                [_decimal_string(value) for value in context]
+                for context in self.parameter_contexts
+            ],
+            "parameter_context_sha256s": list(
+                self.parameter_context_sha256s
+            ),
             "current_count": self.current_count,
             "runtime_schema_sha256": self.runtime_schema_sha256,
             "source_dag_sha256": self.source_dag_sha256,
             "observation_batch_sha256": self.observation_batch_sha256,
-            "complete_current_components": True,
+            "capture_contract_sha256": self.capture_contract_sha256,
+            "complete_current_component_digest": True,
+            "components_embedded": False,
             "point_major": True,
             "evaluator": "symbolica-interpreted-high-precision-stage-replay",
         }
@@ -120,6 +133,11 @@ class GenericDAGNumericalCurrentWarmupResult:
                 "color_accuracy": str(self.dag.process.color_accuracy),
                 "representation": "generic-dag",
             },
+            "source_semantics": {
+                "sha256": (
+                    self.application.report.source_semantics_sha256
+                ),
+            },
             "candidate_capture": (
                 self.candidate_capture.to_provenance_dict()
             ),
@@ -134,6 +152,12 @@ class GenericDAGNumericalCurrentWarmupResult:
             "application_validation": dict(self.application_validation),
             "discovery": self.discovery.report.to_json_dict(),
             "application": self.application.report.to_json_dict(),
+            "certified_relation_count": len(
+                self.discovery.certificates
+            ),
+            "applied_relation_count": (
+                self.application.report.applied_relation_count
+            ),
             "warning": (
                 self.application.report.to_json_dict()["warning"]
             ),
@@ -176,11 +200,28 @@ def run_generic_dag_numerical_current_warmup(
         model,
         process_id=process_id,
     )
+    candidate_parameter_contexts = _build_parameter_probe_contexts(
+        baseline_session.model_parameters,
+        precision_digits=precision_digits,
+        seed=seed,
+        domain="candidate-current-parameter-probes-v1",
+        count=len(candidate_points),
+        include_defaults=True,
+    )
+    verification_parameter_contexts = _build_parameter_probe_contexts(
+        baseline_session.model_parameters,
+        precision_digits=precision_digits,
+        seed=seed,
+        domain="independent-verification-current-parameter-probes-v1",
+        count=len(verification_points),
+        include_defaults=False,
+    )
     candidate = capture_generic_dag_current_observations(
         dag,
         model,
         candidate_points,
         precision_digits=precision_digits,
+        parameter_contexts=candidate_parameter_contexts,
         _session=baseline_session,
     )
     verification = capture_generic_dag_current_observations(
@@ -188,6 +229,7 @@ def run_generic_dag_numerical_current_warmup(
         model,
         verification_points,
         precision_digits=precision_digits,
+        parameter_contexts=verification_parameter_contexts,
         _session=baseline_session,
     )
     validate_independent_current_observation_captures(
@@ -201,6 +243,21 @@ def run_generic_dag_numerical_current_warmup(
         verification_observations=verification.observations,
         candidate_point_sha256s=candidate.point_sha256s,
         verification_point_sha256s=verification.point_sha256s,
+        candidate_kinematic_sha256s=candidate.kinematic_sha256s,
+        verification_kinematic_sha256s=verification.kinematic_sha256s,
+        candidate_parameter_context_sha256s=(
+            candidate.parameter_context_sha256s
+        ),
+        verification_parameter_context_sha256s=(
+            verification.parameter_context_sha256s
+        ),
+        runtime_schema_sha256=candidate.runtime_schema_sha256,
+        source_dag_sha256=candidate.source_dag_sha256,
+        candidate_capture_sha256=candidate.capture_contract_sha256,
+        verification_capture_sha256=(
+            verification.capture_contract_sha256
+        ),
+        process_id=process_id,
         execution_mode=execution_mode,
         precision_digits=precision_digits,
         seed=seed,
@@ -223,6 +280,13 @@ def run_generic_dag_numerical_current_warmup(
         discovery.certificates,
         mode=mode,
         execution_mode=execution_mode,
+        process_id=process_id,
+        runtime_schema_sha256=candidate.runtime_schema_sha256,
+        source_dag_sha256=candidate.source_dag_sha256,
+        candidate_capture_sha256=candidate.capture_contract_sha256,
+        verification_capture_sha256=(
+            verification.capture_contract_sha256
+        ),
         _structural_equivalences=discovery.structural_equivalences,
     )
     if (
@@ -240,6 +304,7 @@ def run_generic_dag_numerical_current_warmup(
             model,
             verification_points,
             precision_digits=precision_digits,
+            parameter_contexts=verification_parameter_contexts,
         )
         application_validation = _validate_applied_current_observations(
             verification,
@@ -398,6 +463,7 @@ def capture_generic_dag_current_observations(
     points: Sequence[ValidationPointRecord],
     *,
     precision_digits: int,
+    parameter_contexts: Sequence[Sequence[Decimal]] | None = None,
     _session: _GenericDAGCurrentCaptureSession | None = None,
 ) -> GenericDAGCurrentObservationCapture:
     """Evaluate and snapshot every current at every supplied physical point.
@@ -452,8 +518,47 @@ def capture_generic_dag_current_observations(
     blueprint_stages = session.stages
     stage_evaluators = session.stage_evaluators
     model_parameters = session.model_parameters
+    resolved_parameter_contexts = (
+        tuple(model_parameters for _point in point_records)
+        if parameter_contexts is None
+        else tuple(tuple(context) for context in parameter_contexts)
+    )
+    if (
+        len(resolved_parameter_contexts) != len(point_records)
+        or any(
+            len(context) != len(model_parameters)
+            or any(
+                not isinstance(value, Decimal) or not value.is_finite()
+                for value in context
+            )
+            for context in resolved_parameter_contexts
+        )
+    ):
+        raise ValueError(
+            "numerical current parameter-probe contexts do not match the "
+            "runtime schema"
+        )
     point_hashes = tuple(
         _validation_point_sha256(point) for point in point_records
+    )
+    parameter_context_hashes = tuple(
+        _canonical_sha256(
+            {
+                "abi": "pyamplicol-numerical-current-parameter-context-v1",
+                "point_index": point_index,
+                "point_sha256": point_hash,
+                "values": [
+                    _decimal_string(value) for value in context
+                ],
+            }
+        )
+        for point_index, (point_hash, context) in enumerate(
+            zip(
+                point_hashes,
+                resolved_parameter_contexts,
+                strict=True,
+            )
+        )
     )
     kinematic_hashes = tuple(
         _kinematic_sha256(point) for point in point_records
@@ -469,7 +574,11 @@ def capture_generic_dag_current_observations(
     with localcontext() as context:
         context.prec = working_precision
         context.rounding = ROUND_HALF_EVEN
-        for point in point_records:
+        for point, parameter_context in zip(
+            point_records,
+            resolved_parameter_contexts,
+            strict=True,
+        ):
             point_values = tuple(
                 tuple(Decimal.from_float(float(value)) for value in momentum)
                 for momentum in point.four_vectors
@@ -480,7 +589,7 @@ def capture_generic_dag_current_observations(
                 blueprint_stages,
                 stage_evaluators,
                 point_values,
-                model_parameters,
+                parameter_context,
                 precision=working_precision,
             )
             for current in dag.currents:
@@ -519,15 +628,32 @@ def capture_generic_dag_current_observations(
             ],
         }
     )
+    capture_contract_digest = _canonical_sha256(
+        {
+            "abi": _CAPTURE_ABI,
+            "precision_digits": precision_digits,
+            "point_sha256s": list(point_hashes),
+            "kinematic_sha256s": list(kinematic_hashes),
+            "parameter_context_sha256s": list(
+                parameter_context_hashes
+            ),
+            "runtime_schema_sha256": session.runtime_schema.sha256,
+            "source_dag_sha256": session.source_dag_sha256,
+            "observation_batch_sha256": observation_digest,
+        }
+    )
     return GenericDAGCurrentObservationCapture(
         precision_digits=precision_digits,
         points=point_records,
         point_sha256s=point_hashes,
         kinematic_sha256s=kinematic_hashes,
+        parameter_contexts=resolved_parameter_contexts,
+        parameter_context_sha256s=parameter_context_hashes,
         observations=observations,
         runtime_schema_sha256=session.runtime_schema.sha256,
         source_dag_sha256=session.source_dag_sha256,
         observation_batch_sha256=observation_digest,
+        capture_contract_sha256=capture_contract_digest,
     )
 
 
@@ -604,6 +730,13 @@ def validate_independent_current_observation_captures(
         or not set(candidate.kinematic_sha256s).isdisjoint(
             verification.kinematic_sha256s
         )
+        or len(candidate.parameter_context_sha256s)
+        != candidate.point_count
+        or len(verification.parameter_context_sha256s)
+        != verification.point_count
+        or not set(candidate.parameter_context_sha256s).isdisjoint(
+            verification.parameter_context_sha256s
+        )
     ):
         raise ValueError(
             "numerical current candidate and verification captures do not "
@@ -637,6 +770,9 @@ def _validate_applied_current_observations(
         reference.precision_digits != applied.precision_digits
         or reference.point_sha256s != applied.point_sha256s
         or reference.kinematic_sha256s != applied.kinematic_sha256s
+        or reference.parameter_contexts != applied.parameter_contexts
+        or reference.parameter_context_sha256s
+        != applied.parameter_context_sha256s
         or set(reference.observations) != set(applied.observations)
     ):
         raise ValueError(
@@ -891,6 +1027,64 @@ def _runtime_model_parameter_values(
             "numerical current model-parameter layout is incomplete"
         )
     return tuple(value for value in ordered if value is not None)
+
+
+def _build_parameter_probe_contexts(
+    defaults: tuple[Decimal, ...],
+    *,
+    precision_digits: int,
+    seed: int,
+    domain: str,
+    count: int,
+    include_defaults: bool,
+) -> tuple[tuple[Decimal, ...], ...]:
+    """Build independent deterministic probes over every runtime slot.
+
+    Runtime APIs can override external and derived flattened parameter slots.
+    Sampling every slot independently is therefore a conservative check: a
+    relation that exists only at the model defaults is not eligible for
+    permanent evaluator reuse.
+    """
+
+    if (
+        type(precision_digits) is not int
+        or precision_digits < 80
+        or type(seed) is not int
+        or seed < 0
+        or not isinstance(domain, str)
+        or not domain
+        or type(count) is not int
+        or count < 2
+    ):
+        raise ValueError(
+            "numerical current parameter-probe contract is invalid"
+        )
+    working_precision = precision_digits + 16
+    contexts: list[tuple[Decimal, ...]] = []
+    with localcontext() as context:
+        context.prec = working_precision
+        context.rounding = ROUND_HALF_EVEN
+        for probe_index in range(count):
+            if include_defaults and probe_index == 0:
+                contexts.append(defaults)
+                continue
+            values: list[Decimal] = []
+            for parameter_index, default in enumerate(defaults):
+                digest = hashlib.sha256(
+                    (
+                        f"{seed}:{domain}:{probe_index}:"
+                        f"{parameter_index}"
+                    ).encode("ascii")
+                ).digest()
+                signed = int.from_bytes(digest[:8], "big") - (1 << 63)
+                if signed == 0:
+                    signed = 1
+                # At most a 1/16 perturbation of max(|default|, 1).
+                relative_offset = Decimal(signed) / Decimal(1 << 67)
+                scale = max(abs(default), Decimal(1))
+                values.append(default + scale * relative_offset)
+            contexts.append(tuple(values))
+    return tuple(contexts)
 
 
 def _validation_point_sha256(point: ValidationPointRecord) -> str:

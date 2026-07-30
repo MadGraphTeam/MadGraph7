@@ -17,6 +17,14 @@ from pyamplicol.generation.dag_equivalence import (
 
 _SOURCE_SEMANTICS = hashlib.sha256(b"acceptance-source-semantics").hexdigest()
 _OTHER_SOURCE_SEMANTICS = hashlib.sha256(b"drifted-source-semantics").hexdigest()
+_RUNTIME_SCHEMA = hashlib.sha256(b"acceptance-runtime-schema").hexdigest()
+_SOURCE_DAG = hashlib.sha256(b"acceptance-source-dag").hexdigest()
+_CANDIDATE_CAPTURE = hashlib.sha256(b"candidate-capture").hexdigest()
+_VERIFICATION_CAPTURE = hashlib.sha256(
+    b"verification-capture"
+).hexdigest()
+_CANDIDATE_BATCH = hashlib.sha256(b"candidate-batch").hexdigest()
+_VERIFICATION_BATCH = hashlib.sha256(b"verification-batch").hexdigest()
 _ZERO = Decimal(0)
 
 _CANDIDATE_REPRESENTATIVE = (
@@ -66,6 +74,12 @@ def _certify(
         representative_id=representative_id,
         relation_kind=relation_kind,  # type: ignore[arg-type]
         source_semantics_sha256=_SOURCE_SEMANTICS,
+        runtime_schema_sha256=_RUNTIME_SCHEMA,
+        source_dag_sha256=_SOURCE_DAG,
+        candidate_capture_sha256=_CANDIDATE_CAPTURE,
+        verification_capture_sha256=_VERIFICATION_CAPTURE,
+        candidate_observation_batch_sha256=_CANDIDATE_BATCH,
+        verification_observation_batch_sha256=_VERIFICATION_BATCH,
         candidate_current_values=candidate_current_values,
         candidate_representative_values=candidate_representative_values,
         verification_current_values=verification_current_values,
@@ -152,6 +166,12 @@ def test_equal_opposite_and_zero_relations_certify_and_replay(
     for digest_field in (
         "candidate_observations_sha256",
         "verification_observations_sha256",
+        "runtime_schema_sha256",
+        "source_dag_sha256",
+        "candidate_capture_sha256",
+        "verification_capture_sha256",
+        "candidate_observation_batch_sha256",
+        "verification_observation_batch_sha256",
         "probe_contract_sha256",
         "proof_sha256",
     ):

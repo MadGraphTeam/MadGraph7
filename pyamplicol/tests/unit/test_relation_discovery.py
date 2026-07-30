@@ -12,15 +12,20 @@ import pytest
 
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.dag_equivalence import (
+    NUMERICAL_CURRENT_CAPTURE_ABI,
     ExactCurrentRelationCertificate,
     _build_numerical_observation_candidate_index,
+    _canonical_payload_sha256,
     _current_evaluation_contract,
+    _numerical_current_observation_batch_sha256,
     _numerical_observation_tolerance_window_ids,
     apply_numerical_current_relation_certificates,
     assign_recursive_current_evaluation_reuse,
     certify_numerical_current_observations,
     discover_generic_dag_numerical_current_relations,
     discover_recursive_evaluation_relations,
+    generic_dag_numerical_runtime_schema_sha256,
+    generic_dag_numerical_source_dag_sha256,
     generic_dag_numerical_source_semantics_sha256,
     verify_dag_relation_certificates,
 )
@@ -203,6 +208,7 @@ def _authenticated_relation_certificate(
     dag,
     relation_kind: str,
 ):
+    model = BuiltinSMModel()
     source_digest = generic_dag_numerical_source_semantics_sha256(
         dag,
         execution_mode="compiled",
@@ -243,6 +249,22 @@ def _authenticated_relation_certificate(
         representative_id=representative_id,
         relation_kind=relation_kind,  # type: ignore[arg-type]
         source_semantics_sha256=source_digest,
+        runtime_schema_sha256=(
+            generic_dag_numerical_runtime_schema_sha256(dag, model)
+        ),
+        source_dag_sha256=generic_dag_numerical_source_dag_sha256(dag),
+        candidate_capture_sha256=hashlib.sha256(
+            b"candidate-capture"
+        ).hexdigest(),
+        verification_capture_sha256=hashlib.sha256(
+            b"verification-capture"
+        ).hexdigest(),
+        candidate_observation_batch_sha256=hashlib.sha256(
+            b"candidate-batch"
+        ).hexdigest(),
+        verification_observation_batch_sha256=hashlib.sha256(
+            b"verification-batch"
+        ).hexdigest(),
         candidate_current_values=candidate,
         candidate_representative_values=candidate_representative,
         verification_current_values=verification,
@@ -532,7 +554,7 @@ def test_authenticated_zero_does_not_cross_runtime_routing_contracts(
     ] == [5]
 
 
-def test_authenticated_merge_composes_kernel_and_existing_group_factors() -> None:
+def test_authenticated_merge_rejects_unauthenticated_existing_group_factors() -> None:
     dag, model = _ambiguous_projective_dag()
     antisymmetric = replace(
         dag,
@@ -565,23 +587,14 @@ def test_authenticated_merge_composes_kernel_and_existing_group_factors() -> Non
     )
     certificate = _authenticated_relation_certificate(grouped, "equal")
 
-    result = apply_numerical_current_relation_certificates(
-        grouped,
-        model,
-        (certificate,),
-        mode="certified-reuse",
-        execution_mode="compiled",
-    )
-
-    assert result.dag.interactions[6] == target
-    assert result.dag.interactions[7].evaluation_group_id == (
-        target.evaluation_group_id
-    )
-    assert result.dag.interactions[7].evaluation_factor == (-2.0, 0.0)
-    assert (
-        result.report.interaction_evaluation_count_projected
-        == result.report.interaction_evaluation_count_before - 1
-    )
+    with pytest.raises(ValueError, match="unauthenticated"):
+        apply_numerical_current_relation_certificates(
+            grouped,
+            model,
+            (certificate,),
+            mode="certified-reuse",
+            execution_mode="compiled",
+        )
 
 
 def test_authenticated_relation_without_a_safe_target_remains_unapplied() -> None:
@@ -731,6 +744,87 @@ def _complete_current_observations(
     }
 
 
+def _complete_observation_evidence(
+    dag,
+    model,
+    candidate,
+    verification,
+    *,
+    candidate_points: tuple[str, ...] | None = None,
+    verification_points: tuple[str, ...] | None = None,
+) -> dict[str, object]:
+    candidate_point_hashes = candidate_points or _observation_points(
+        "candidate"
+    )
+    verification_point_hashes = verification_points or _observation_points(
+        "verification"
+    )
+    candidate_kinematics = _observation_points("candidate-kinematics")
+    verification_kinematics = _observation_points(
+        "verification-kinematics"
+    )
+    candidate_parameters = _observation_points("candidate-parameters")
+    verification_parameters = _observation_points(
+        "verification-parameters"
+    )
+    runtime_schema_digest = generic_dag_numerical_runtime_schema_sha256(
+        dag,
+        model,
+    )
+    source_dag_digest = generic_dag_numerical_source_dag_sha256(dag)
+    candidate_batch_digest = _numerical_current_observation_batch_sha256(
+        candidate,
+        point_sha256s=candidate_point_hashes,
+    )
+    verification_batch_digest = _numerical_current_observation_batch_sha256(
+        verification,
+        point_sha256s=verification_point_hashes,
+    )
+
+    def capture_digest(
+        point_hashes: tuple[str, ...],
+        kinematic_hashes: tuple[str, ...],
+        parameter_hashes: tuple[str, ...],
+        batch_digest: str,
+    ) -> str:
+        return _canonical_payload_sha256(
+            {
+                "abi": NUMERICAL_CURRENT_CAPTURE_ABI,
+                "precision_digits": 96,
+                "point_sha256s": list(point_hashes),
+                "kinematic_sha256s": list(kinematic_hashes),
+                "parameter_context_sha256s": list(parameter_hashes),
+                "runtime_schema_sha256": runtime_schema_digest,
+                "source_dag_sha256": source_dag_digest,
+                "observation_batch_sha256": batch_digest,
+            }
+        )
+
+    return {
+        "candidate_point_sha256s": candidate_point_hashes,
+        "verification_point_sha256s": verification_point_hashes,
+        "candidate_kinematic_sha256s": candidate_kinematics,
+        "verification_kinematic_sha256s": verification_kinematics,
+        "candidate_parameter_context_sha256s": candidate_parameters,
+        "verification_parameter_context_sha256s": verification_parameters,
+        "runtime_schema_sha256": runtime_schema_digest,
+        "source_dag_sha256": source_dag_digest,
+        "candidate_capture_sha256": capture_digest(
+            candidate_point_hashes,
+            candidate_kinematics,
+            candidate_parameters,
+            candidate_batch_digest,
+        ),
+        "verification_capture_sha256": capture_digest(
+            verification_point_hashes,
+            verification_kinematics,
+            verification_parameters,
+            verification_batch_digest,
+        ),
+        "process_id": dag.process.key,
+    }
+
+
 @pytest.mark.parametrize("relation_kind", ("equal", "opposite", "zero"))
 def test_complete_warmup_discovers_and_applies_each_relation_kind(
     relation_kind: str,
@@ -761,8 +855,12 @@ def test_complete_warmup_discovers_and_applies_each_relation_kind(
         model,
         candidate_observations=candidate,
         verification_observations=verification,
-        candidate_point_sha256s=_observation_points("candidate"),
-        verification_point_sha256s=_observation_points("verification"),
+        **_complete_observation_evidence(
+            dag,
+            model,
+            candidate,
+            verification,
+        ),
         execution_mode="compiled",
         precision_digits=96,
         seed=0x5059414D,
@@ -788,19 +886,25 @@ def test_complete_warmup_discovers_and_applies_each_relation_kind(
 
 def test_complete_warmup_negative_audit_is_first_class_and_warning_free() -> None:
     dag, model = _ambiguous_projective_dag()
+    candidate = _complete_current_observations(
+        dag,
+        domain=100_000,
+    )
+    verification = _complete_current_observations(
+        dag,
+        domain=900_000,
+    )
     discovery = discover_generic_dag_numerical_current_relations(
         dag,
         model,
-        candidate_observations=_complete_current_observations(
+        candidate_observations=candidate,
+        verification_observations=verification,
+        **_complete_observation_evidence(
             dag,
-            domain=100_000,
+            model,
+            candidate,
+            verification,
         ),
-        verification_observations=_complete_current_observations(
-            dag,
-            domain=900_000,
-        ),
-        candidate_point_sha256s=_observation_points("candidate"),
-        verification_point_sha256s=_observation_points("verification"),
         execution_mode="compiled",
         precision_digits=96,
         seed=0x5059414D,
@@ -854,8 +958,12 @@ def test_candidate_index_is_complete_at_absolute_tolerance_boundary(
         model,
         candidate_observations=candidate,
         verification_observations=verification,
-        candidate_point_sha256s=_observation_points("candidate"),
-        verification_point_sha256s=_observation_points("verification"),
+        **_complete_observation_evidence(
+            dag,
+            model,
+            candidate,
+            verification,
+        ),
         execution_mode="compiled",
         precision_digits=96,
         seed=0x5059414D,
@@ -947,8 +1055,12 @@ def test_candidate_only_relation_is_rejected_by_independent_points() -> None:
         model,
         candidate_observations=candidate,
         verification_observations=verification,
-        candidate_point_sha256s=_observation_points("candidate"),
-        verification_point_sha256s=_observation_points("verification"),
+        **_complete_observation_evidence(
+            dag,
+            model,
+            candidate,
+            verification,
+        ),
         execution_mode="compiled",
         precision_digits=96,
         seed=0x5059414D,
@@ -977,8 +1089,14 @@ def test_warmup_requires_disjoint_candidate_and_verification_points() -> None:
             model,
             candidate_observations=observations,
             verification_observations=observations,
-            candidate_point_sha256s=points,
-            verification_point_sha256s=points,
+            **_complete_observation_evidence(
+                dag,
+                model,
+                observations,
+                observations,
+                candidate_points=points,
+                verification_points=points,
+            ),
             execution_mode="compiled",
             precision_digits=96,
             seed=0x5059414D,

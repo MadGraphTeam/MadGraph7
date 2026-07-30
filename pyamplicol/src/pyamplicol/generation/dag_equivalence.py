@@ -41,6 +41,9 @@ GENERIC_DAG_NUMERICAL_SOURCE_SEMANTICS_ABI = (
 NUMERICAL_CURRENT_RELATION_SET_ABI = (
     "pyamplicol-authenticated-numerical-current-relation-set-v1"
 )
+NUMERICAL_CURRENT_CAPTURE_ABI = (
+    "pyamplicol-generic-dag-current-observation-capture-v1"
+)
 NUMERICAL_CURRENT_RELATION_WARNING_CODE = (
     "proofless-numerical-current-relations-applied-v1"
 )
@@ -289,6 +292,12 @@ class NumericalCurrentRelationCertificate:
     relation_kind: Literal["equal", "opposite", "zero"]
     factor: _ComplexWeight | None
     source_semantics_sha256: str
+    runtime_schema_sha256: str
+    source_dag_sha256: str
+    candidate_capture_sha256: str
+    verification_capture_sha256: str
+    candidate_observation_batch_sha256: str
+    verification_observation_batch_sha256: str
     precision_digits: int
     seed: int
     relative_tolerance: float
@@ -322,6 +331,18 @@ class NumericalCurrentRelationCertificate:
                 else [self.factor[0].hex(), self.factor[1].hex()]
             ),
             "source_semantics_sha256": self.source_semantics_sha256,
+            "runtime_schema_sha256": self.runtime_schema_sha256,
+            "source_dag_sha256": self.source_dag_sha256,
+            "candidate_capture_sha256": self.candidate_capture_sha256,
+            "verification_capture_sha256": (
+                self.verification_capture_sha256
+            ),
+            "candidate_observation_batch_sha256": (
+                self.candidate_observation_batch_sha256
+            ),
+            "verification_observation_batch_sha256": (
+                self.verification_observation_batch_sha256
+            ),
             "precision_digits": self.precision_digits,
             "seed": self.seed,
             "relative_tolerance_binary64": self.relative_tolerance.hex(),
@@ -382,6 +403,12 @@ class NumericalCurrentRelationCertificate:
             "representative_id",
             "factor_binary64",
             "source_semantics_sha256",
+            "runtime_schema_sha256",
+            "source_dag_sha256",
+            "candidate_capture_sha256",
+            "verification_capture_sha256",
+            "candidate_observation_batch_sha256",
+            "verification_observation_batch_sha256",
             "precision_digits",
             "seed",
             "relative_tolerance_binary64",
@@ -411,6 +438,18 @@ class NumericalCurrentRelationCertificate:
         representative_id = payload["representative_id"]
         factor_payload = payload["factor_binary64"]
         source_digest = payload["source_semantics_sha256"]
+        runtime_schema_digest = payload["runtime_schema_sha256"]
+        source_dag_digest = payload["source_dag_sha256"]
+        candidate_capture_digest = payload["candidate_capture_sha256"]
+        verification_capture_digest = payload[
+            "verification_capture_sha256"
+        ]
+        candidate_batch_digest = payload[
+            "candidate_observation_batch_sha256"
+        ]
+        verification_batch_digest = payload[
+            "verification_observation_batch_sha256"
+        ]
         precision_digits = payload["precision_digits"]
         seed = payload["seed"]
         relative_payload = payload["relative_tolerance_binary64"]
@@ -484,6 +523,12 @@ class NumericalCurrentRelationCertificate:
         )
         digest_fields = (
             source_digest,
+            runtime_schema_digest,
+            source_dag_digest,
+            candidate_capture_digest,
+            verification_capture_digest,
+            candidate_batch_digest,
+            verification_batch_digest,
             payload["candidate_observations_sha256"],
             payload["verification_observations_sha256"],
             payload["probe_contract_sha256"],
@@ -526,6 +571,18 @@ class NumericalCurrentRelationCertificate:
             relation_kind=relation_kind,
             factor=factor,
             source_semantics_sha256=source_digest,
+            runtime_schema_sha256=str(runtime_schema_digest),
+            source_dag_sha256=str(source_dag_digest),
+            candidate_capture_sha256=str(candidate_capture_digest),
+            verification_capture_sha256=str(
+                verification_capture_digest
+            ),
+            candidate_observation_batch_sha256=str(
+                candidate_batch_digest
+            ),
+            verification_observation_batch_sha256=str(
+                verification_batch_digest
+            ),
             precision_digits=precision_digits,
             seed=seed,
             relative_tolerance=relative_tolerance,
@@ -596,6 +653,10 @@ class NumericalCurrentRelationApplicationReport:
     execution_mode: Literal["compiled", "eager"]
     color_accuracy: str
     source_semantics_sha256: str
+    runtime_schema_sha256: str | None
+    source_dag_sha256: str | None
+    candidate_capture_sha256: str | None
+    verification_capture_sha256: str | None
     state: str
     certificate_replay_status: str
     certificate_set_sha256: str
@@ -631,6 +692,12 @@ class NumericalCurrentRelationApplicationReport:
                 "abi": GENERIC_DAG_NUMERICAL_SOURCE_SEMANTICS_ABI,
                 "sha256": self.source_semantics_sha256,
             },
+            "runtime_schema_sha256": self.runtime_schema_sha256,
+            "source_dag_sha256": self.source_dag_sha256,
+            "candidate_capture_sha256": self.candidate_capture_sha256,
+            "verification_capture_sha256": (
+                self.verification_capture_sha256
+            ),
             "certificate_replay": {
                 "algorithm": (
                     NUMERICAL_CURRENT_RELATION_CERTIFICATE_ALGORITHM
@@ -688,12 +755,20 @@ class NumericalCurrentObservationDiscoveryReport:
     execution_mode: Literal["compiled", "eager"]
     color_accuracy: str
     source_semantics_sha256: str
+    runtime_schema_sha256: str
+    source_dag_sha256: str
     precision_digits: int
     seed: int
     relative_tolerance: float
     absolute_tolerance: float
     candidate_point_sha256s: tuple[str, ...]
     verification_point_sha256s: tuple[str, ...]
+    candidate_kinematic_sha256s: tuple[str, ...]
+    verification_kinematic_sha256s: tuple[str, ...]
+    candidate_parameter_context_sha256s: tuple[str, ...]
+    verification_parameter_context_sha256s: tuple[str, ...]
+    candidate_capture_sha256: str
+    verification_capture_sha256: str
     candidate_observation_batch_sha256: str
     verification_observation_batch_sha256: str
     state: str
@@ -723,6 +798,8 @@ class NumericalCurrentObservationDiscoveryReport:
                 "abi": GENERIC_DAG_NUMERICAL_SOURCE_SEMANTICS_ABI,
                 "sha256": self.source_semantics_sha256,
             },
+            "runtime_schema_sha256": self.runtime_schema_sha256,
+            "source_dag_sha256": self.source_dag_sha256,
             "probe_contract": {
                 "algorithm": (
                     NUMERICAL_CURRENT_RELATION_CERTIFICATE_ALGORITHM
@@ -740,6 +817,24 @@ class NumericalCurrentObservationDiscoveryReport:
                 ),
                 "verification_point_sha256s": list(
                     self.verification_point_sha256s
+                ),
+                "candidate_kinematic_sha256s": list(
+                    self.candidate_kinematic_sha256s
+                ),
+                "verification_kinematic_sha256s": list(
+                    self.verification_kinematic_sha256s
+                ),
+                "candidate_parameter_context_sha256s": list(
+                    self.candidate_parameter_context_sha256s
+                ),
+                "verification_parameter_context_sha256s": list(
+                    self.verification_parameter_context_sha256s
+                ),
+                "candidate_capture_sha256": (
+                    self.candidate_capture_sha256
+                ),
+                "verification_capture_sha256": (
+                    self.verification_capture_sha256
                 ),
                 "candidate_observation_batch_sha256": (
                     self.candidate_observation_batch_sha256
@@ -935,6 +1030,12 @@ def certify_numerical_current_observations(
     representative_id: int | None,
     relation_kind: Literal["equal", "opposite", "zero"],
     source_semantics_sha256: str,
+    runtime_schema_sha256: str,
+    source_dag_sha256: str,
+    candidate_capture_sha256: str,
+    verification_capture_sha256: str,
+    candidate_observation_batch_sha256: str,
+    verification_observation_batch_sha256: str,
     candidate_current_values: Sequence[tuple[Decimal, Decimal]],
     candidate_representative_values: (
         Sequence[tuple[Decimal, Decimal]] | None
@@ -961,6 +1062,20 @@ def certify_numerical_current_observations(
         or type(current_id) is not int
         or current_id < 0
         or not _is_sha256(source_semantics_sha256)
+        or any(
+            not _is_sha256(value)
+            for value in (
+                runtime_schema_sha256,
+                source_dag_sha256,
+                candidate_capture_sha256,
+                verification_capture_sha256,
+                candidate_observation_batch_sha256,
+                verification_observation_batch_sha256,
+            )
+        )
+        or candidate_capture_sha256 == verification_capture_sha256
+        or candidate_observation_batch_sha256
+        == verification_observation_batch_sha256
         or type(precision_digits) is not int
         or precision_digits < 80
         or type(seed) is not int
@@ -1099,6 +1214,16 @@ def certify_numerical_current_observations(
     probe_contract = {
         "algorithm": NUMERICAL_CURRENT_RELATION_CERTIFICATE_ALGORITHM,
         "source_semantics_sha256": source_semantics_sha256,
+        "runtime_schema_sha256": runtime_schema_sha256,
+        "source_dag_sha256": source_dag_sha256,
+        "candidate_capture_sha256": candidate_capture_sha256,
+        "verification_capture_sha256": verification_capture_sha256,
+        "candidate_observation_batch_sha256": (
+            candidate_observation_batch_sha256
+        ),
+        "verification_observation_batch_sha256": (
+            verification_observation_batch_sha256
+        ),
         "current_id": current_id,
         "representative_id": representative_id,
         "relation_kind": relation_kind,
@@ -1149,6 +1274,16 @@ def certify_numerical_current_observations(
         relation_kind=relation_kind,
         factor=factor,
         source_semantics_sha256=source_semantics_sha256,
+        runtime_schema_sha256=runtime_schema_sha256,
+        source_dag_sha256=source_dag_sha256,
+        candidate_capture_sha256=candidate_capture_sha256,
+        verification_capture_sha256=verification_capture_sha256,
+        candidate_observation_batch_sha256=(
+            candidate_observation_batch_sha256
+        ),
+        verification_observation_batch_sha256=(
+            verification_observation_batch_sha256
+        ),
         precision_digits=precision_digits,
         seed=seed,
         relative_tolerance=relative,
@@ -1226,6 +1361,12 @@ def verify_numerical_current_relation_certificate(
         or any(
             not _is_sha256(value)
             for value in (
+                certificate.runtime_schema_sha256,
+                certificate.source_dag_sha256,
+                certificate.candidate_capture_sha256,
+                certificate.verification_capture_sha256,
+                certificate.candidate_observation_batch_sha256,
+                certificate.verification_observation_batch_sha256,
                 certificate.candidate_observations_sha256,
                 certificate.verification_observations_sha256,
                 certificate.probe_contract_sha256,
@@ -1245,11 +1386,27 @@ def verify_numerical_current_relation_certificate(
         )
         or certificate.candidate_maximum_tolerance_ratio > 1
         or certificate.verification_maximum_tolerance_ratio > 1
+        or certificate.candidate_capture_sha256
+        == certificate.verification_capture_sha256
+        or certificate.candidate_observation_batch_sha256
+        == certificate.verification_observation_batch_sha256
     ):
         return False
     probe_contract = {
         "algorithm": certificate.algorithm,
         "source_semantics_sha256": certificate.source_semantics_sha256,
+        "runtime_schema_sha256": certificate.runtime_schema_sha256,
+        "source_dag_sha256": certificate.source_dag_sha256,
+        "candidate_capture_sha256": certificate.candidate_capture_sha256,
+        "verification_capture_sha256": (
+            certificate.verification_capture_sha256
+        ),
+        "candidate_observation_batch_sha256": (
+            certificate.candidate_observation_batch_sha256
+        ),
+        "verification_observation_batch_sha256": (
+            certificate.verification_observation_batch_sha256
+        ),
         "current_id": certificate.current_id,
         "representative_id": certificate.representative_id,
         "relation_kind": certificate.relation_kind,
@@ -1350,6 +1507,29 @@ def generic_dag_numerical_source_semantics_sha256(
     )
 
 
+def generic_dag_numerical_source_dag_sha256(dag: GenericDAG) -> str:
+    """Return the exact pre-application DAG digest bound into evidence."""
+
+    return _canonical_payload_sha256(dag.to_json_dict())
+
+
+def generic_dag_numerical_runtime_schema_sha256(
+    dag: GenericDAG,
+    model: Model,
+    *,
+    process_id: str | None = None,
+) -> str:
+    """Return the model- and process-bound runtime schema digest."""
+
+    from .runtime_schema import build_runtime_expression_schema
+
+    return build_runtime_expression_schema(
+        dag,
+        model,
+        process_id=process_id or dag.process.key,
+    ).sha256
+
+
 def discover_generic_dag_numerical_current_relations(
     dag: GenericDAG,
     model: Model,
@@ -1364,6 +1544,15 @@ def discover_generic_dag_numerical_current_relations(
     ],
     candidate_point_sha256s: Sequence[str],
     verification_point_sha256s: Sequence[str],
+    candidate_kinematic_sha256s: Sequence[str],
+    verification_kinematic_sha256s: Sequence[str],
+    candidate_parameter_context_sha256s: Sequence[str],
+    verification_parameter_context_sha256s: Sequence[str],
+    runtime_schema_sha256: str,
+    source_dag_sha256: str,
+    candidate_capture_sha256: str,
+    verification_capture_sha256: str,
+    process_id: str | None = None,
     execution_mode: Literal["compiled", "eager"],
     precision_digits: int,
     seed: int,
@@ -1382,8 +1571,22 @@ def discover_generic_dag_numerical_current_relations(
         dag,
         execution_mode=execution_mode,
     )
+    actual_runtime_schema_digest = generic_dag_numerical_runtime_schema_sha256(
+        dag,
+        model,
+        process_id=process_id or dag.process.key,
+    )
+    actual_source_dag_digest = generic_dag_numerical_source_dag_sha256(dag)
     candidate_points = tuple(candidate_point_sha256s)
     verification_points = tuple(verification_point_sha256s)
+    candidate_kinematics = tuple(candidate_kinematic_sha256s)
+    verification_kinematics = tuple(verification_kinematic_sha256s)
+    candidate_parameters = tuple(
+        candidate_parameter_context_sha256s
+    )
+    verification_parameters = tuple(
+        verification_parameter_context_sha256s
+    )
     if (
         type(precision_digits) is not int
         or precision_digits < 80
@@ -1396,6 +1599,35 @@ def discover_generic_dag_numerical_current_relations(
         or len(set(candidate_points)) != len(candidate_points)
         or len(set(verification_points)) != len(verification_points)
         or not set(candidate_points).isdisjoint(verification_points)
+        or len(candidate_kinematics) != len(candidate_points)
+        or len(verification_kinematics) != len(verification_points)
+        or len(candidate_parameters) != len(candidate_points)
+        or len(verification_parameters) != len(verification_points)
+        or any(not _is_sha256(value) for value in candidate_kinematics)
+        or any(not _is_sha256(value) for value in verification_kinematics)
+        or any(not _is_sha256(value) for value in candidate_parameters)
+        or any(not _is_sha256(value) for value in verification_parameters)
+        or len(set(candidate_kinematics)) != len(candidate_kinematics)
+        or len(set(verification_kinematics))
+        != len(verification_kinematics)
+        or not set(candidate_kinematics).isdisjoint(
+            verification_kinematics
+        )
+        or not set(candidate_parameters).isdisjoint(
+            verification_parameters
+        )
+        or any(
+            not _is_sha256(value)
+            for value in (
+                runtime_schema_sha256,
+                source_dag_sha256,
+                candidate_capture_sha256,
+                verification_capture_sha256,
+            )
+        )
+        or candidate_capture_sha256 == verification_capture_sha256
+        or runtime_schema_sha256 != actual_runtime_schema_digest
+        or source_dag_sha256 != actual_source_dag_digest
     ):
         raise ValueError(
             "numerical current discovery point contract is invalid"
@@ -1473,6 +1705,39 @@ def discover_generic_dag_numerical_current_relations(
         verification_values,
         point_sha256s=verification_points,
     )
+    expected_candidate_capture_digest = _canonical_payload_sha256(
+        {
+            "abi": NUMERICAL_CURRENT_CAPTURE_ABI,
+            "precision_digits": precision_digits,
+            "point_sha256s": list(candidate_points),
+            "kinematic_sha256s": list(candidate_kinematics),
+            "parameter_context_sha256s": list(candidate_parameters),
+            "runtime_schema_sha256": runtime_schema_sha256,
+            "source_dag_sha256": source_dag_sha256,
+            "observation_batch_sha256": candidate_batch_digest,
+        }
+    )
+    expected_verification_capture_digest = _canonical_payload_sha256(
+        {
+            "abi": NUMERICAL_CURRENT_CAPTURE_ABI,
+            "precision_digits": precision_digits,
+            "point_sha256s": list(verification_points),
+            "kinematic_sha256s": list(verification_kinematics),
+            "parameter_context_sha256s": list(verification_parameters),
+            "runtime_schema_sha256": runtime_schema_sha256,
+            "source_dag_sha256": source_dag_sha256,
+            "observation_batch_sha256": verification_batch_digest,
+        }
+    )
+    if (
+        candidate_capture_sha256 != expected_candidate_capture_digest
+        or verification_capture_sha256
+        != expected_verification_capture_digest
+    ):
+        raise ValueError(
+            "numerical current capture provenance does not authenticate its "
+            "complete observation batches"
+        )
     structural = _derive_current_value_equivalences(dag, model)
     contracts = tuple(
         _current_evaluation_contract(current) for current in dag.currents
@@ -1661,6 +1926,18 @@ def discover_generic_dag_numerical_current_relations(
                 representative_id=representative_id,
                 relation_kind=relation_kind,
                 source_semantics_sha256=source_digest,
+                runtime_schema_sha256=runtime_schema_sha256,
+                source_dag_sha256=source_dag_sha256,
+                candidate_capture_sha256=candidate_capture_sha256,
+                verification_capture_sha256=(
+                    verification_capture_sha256
+                ),
+                candidate_observation_batch_sha256=(
+                    candidate_batch_digest
+                ),
+                verification_observation_batch_sha256=(
+                    verification_batch_digest
+                ),
                 candidate_current_values=candidate_values[current.id],
                 candidate_representative_values=candidate_representative,
                 verification_current_values=verification_values[current.id],
@@ -1735,12 +2012,20 @@ def discover_generic_dag_numerical_current_relations(
         execution_mode=execution_mode,
         color_accuracy=str(dag.process.color_accuracy),
         source_semantics_sha256=source_digest,
+        runtime_schema_sha256=runtime_schema_sha256,
+        source_dag_sha256=source_dag_sha256,
         precision_digits=precision_digits,
         seed=seed,
         relative_tolerance=relative,
         absolute_tolerance=absolute,
         candidate_point_sha256s=candidate_points,
         verification_point_sha256s=verification_points,
+        candidate_kinematic_sha256s=candidate_kinematics,
+        verification_kinematic_sha256s=verification_kinematics,
+        candidate_parameter_context_sha256s=candidate_parameters,
+        verification_parameter_context_sha256s=verification_parameters,
+        candidate_capture_sha256=candidate_capture_sha256,
+        verification_capture_sha256=verification_capture_sha256,
         candidate_observation_batch_sha256=candidate_batch_digest,
         verification_observation_batch_sha256=verification_batch_digest,
         state=state,
@@ -1803,6 +2088,11 @@ def apply_numerical_current_relation_certificates(
     *,
     mode: _DiscoveryMode,
     execution_mode: Literal["compiled", "eager"],
+    process_id: str | None = None,
+    runtime_schema_sha256: str | None = None,
+    source_dag_sha256: str | None = None,
+    candidate_capture_sha256: str | None = None,
+    verification_capture_sha256: str | None = None,
     _structural_equivalences: (
         tuple[_CurrentValueEquivalence, ...] | None
     ) = None,
@@ -1828,6 +2118,64 @@ def apply_numerical_current_relation_certificates(
         execution_mode=execution_mode,
     )
     ordered = tuple(certificates)
+    if ordered:
+        resolved_process_id = process_id or dag.process.key
+        actual_runtime_schema_digest = (
+            generic_dag_numerical_runtime_schema_sha256(
+                dag,
+                model,
+                process_id=resolved_process_id,
+            )
+        )
+        actual_source_dag_digest = generic_dag_numerical_source_dag_sha256(
+            dag
+        )
+        expected_runtime_schema_digest = (
+            actual_runtime_schema_digest
+            if runtime_schema_sha256 is None
+            else runtime_schema_sha256
+        )
+        expected_source_dag_digest = (
+            actual_source_dag_digest
+            if source_dag_sha256 is None
+            else source_dag_sha256
+        )
+        if (
+            expected_runtime_schema_digest != actual_runtime_schema_digest
+            or expected_source_dag_digest != actual_source_dag_digest
+            or not _is_sha256(expected_runtime_schema_digest)
+            or not _is_sha256(expected_source_dag_digest)
+        ):
+            raise ValueError(
+                "numerical current application model/schema provenance "
+                "drifted from discovery"
+            )
+        expected_candidate_capture_digest = (
+            ordered[0].candidate_capture_sha256
+            if candidate_capture_sha256 is None
+            else candidate_capture_sha256
+        )
+        expected_verification_capture_digest = (
+            ordered[0].verification_capture_sha256
+            if verification_capture_sha256 is None
+            else verification_capture_sha256
+        )
+        if (
+            not _is_sha256(expected_candidate_capture_digest)
+            or not _is_sha256(expected_verification_capture_digest)
+            or expected_candidate_capture_digest
+            == expected_verification_capture_digest
+        ):
+            raise ValueError(
+                "numerical current application capture provenance is invalid"
+            )
+    else:
+        expected_runtime_schema_digest = runtime_schema_sha256
+        expected_source_dag_digest = source_dag_sha256
+        expected_candidate_capture_digest = candidate_capture_sha256
+        expected_verification_capture_digest = (
+            verification_capture_sha256
+        )
     if tuple(sorted(ordered, key=lambda item: item.current_id)) != ordered:
         raise ValueError(
             "numerical current certificates must use increasing current IDs"
@@ -1852,6 +2200,20 @@ def apply_numerical_current_relation_certificates(
                 f"numerical current certificate {certificate.current_id} "
                 "does not replay against the source DAG"
             )
+        if (
+            certificate.runtime_schema_sha256
+            != expected_runtime_schema_digest
+            or certificate.source_dag_sha256
+            != expected_source_dag_digest
+            or certificate.candidate_capture_sha256
+            != expected_candidate_capture_digest
+            or certificate.verification_capture_sha256
+            != expected_verification_capture_digest
+        ):
+            raise ValueError(
+                "numerical current certificate evidence provenance drifted "
+                "from its application contract"
+            )
         current_id = certificate.current_id
         if (
             current_id >= len(dag.currents)
@@ -1871,6 +2233,12 @@ def apply_numerical_current_relation_certificates(
             certificate.absolute_tolerance.hex(),
             certificate.candidate_probe_count,
             certificate.verification_probe_count,
+            certificate.runtime_schema_sha256,
+            certificate.source_dag_sha256,
+            certificate.candidate_capture_sha256,
+            certificate.verification_capture_sha256,
+            certificate.candidate_observation_batch_sha256,
+            certificate.verification_observation_batch_sha256,
         )
         if common_probe_contract is None:
             common_probe_contract = probe_contract
@@ -2011,6 +2379,12 @@ def apply_numerical_current_relation_certificates(
         execution_mode=execution_mode,
         color_accuracy=str(dag.process.color_accuracy),
         source_semantics_sha256=source_digest,
+        runtime_schema_sha256=expected_runtime_schema_digest,
+        source_dag_sha256=expected_source_dag_digest,
+        candidate_capture_sha256=expected_candidate_capture_digest,
+        verification_capture_sha256=(
+            expected_verification_capture_digest
+        ),
         state=state,
         certificate_replay_status=replay_status,
         certificate_set_sha256=certificate_set_digest,
@@ -2049,11 +2423,71 @@ def _numerical_current_application_baseline(
         or interaction.evaluation_factor != (1.0, 0.0)
         for interaction in dag.interactions
     )
-    return (
+    baseline = (
         dag
         if has_evaluation_metadata
         else assign_recursive_current_evaluation_reuse(dag, model)
     )
+    _validate_numerical_current_application_baseline(baseline, model)
+    return baseline
+
+
+def _validate_numerical_current_application_baseline(
+    dag: GenericDAG,
+    model: Model,
+) -> None:
+    """Authenticate every live member of the existing evaluator partition."""
+
+    structural = _derive_current_value_equivalences(dag, model)
+    equivalence_by_kind: dict[int, VertexEvaluationEquivalence] = {}
+    key_by_group: dict[int, _EvaluationKey] = {}
+    for interaction in dag.interactions:
+        if not _complex_weight_is_finite(interaction.evaluation_factor):
+            raise ValueError(
+                "numerical current application baseline has a non-finite "
+                "evaluation factor"
+            )
+        if interaction.evaluation_factor == (0.0, 0.0):
+            continue
+        left = structural[interaction.left_id]
+        right = structural[interaction.right_id]
+        parent_factor = _exact_representable_complex_product(
+            left.factor,
+            right.factor,
+        )
+        key, kernel_factor = _numerical_interaction_evaluation_key(
+            dag,
+            model,
+            interaction,
+            left_id=left.representative_id,
+            right_id=right.representative_id,
+            equivalence_by_kind=equivalence_by_kind,
+        )
+        expected_factor = (
+            None
+            if parent_factor is None
+            else _exact_representable_complex_product(
+                kernel_factor,
+                parent_factor,
+            )
+        )
+        if expected_factor is None or not _complex_weight_bits_equal(
+            expected_factor,
+            interaction.evaluation_factor,
+        ):
+            raise ValueError(
+                "numerical current application baseline evaluation metadata "
+                f"is unauthenticated for interaction {interaction.id}"
+            )
+        group_id = interaction.evaluation_group_id
+        if group_id is None:
+            continue
+        prior = key_by_group.setdefault(group_id, key)
+        if prior != key:
+            raise ValueError(
+                "numerical current application baseline aliases distinct "
+                f"evaluation contracts in group {group_id}"
+            )
 
 
 def _resolve_authenticated_numerical_current_relations(
@@ -2342,6 +2776,56 @@ def _project_authenticated_numerical_interaction_reuse(
         for certificate_id in set((*left_chain, *right_chain)):
             projected_interaction_ids[certificate_id].append(interaction.id)
 
+    # A numerical projection may coarsen an existing evaluator partition, but
+    # it must never split one old live group.  If only part of a cached group
+    # found a new target, retain that whole group unchanged and record no
+    # application for those members.
+    members_by_old_group: dict[tuple[str, int], list[int]] = defaultdict(list)
+    for interaction in dag.interactions:
+        if interaction.evaluation_factor == (0.0, 0.0):
+            continue
+        token = (
+            ("group", interaction.evaluation_group_id)
+            if interaction.evaluation_group_id is not None
+            else ("interaction", interaction.id)
+        )
+        members_by_old_group[token].append(interaction.id)
+    reverted_ids: set[int] = set()
+    for member_ids in members_by_old_group.values():
+        projected_live_groups = {
+            (
+                ("group", projected_member.evaluation_group_id)
+                if projected_member.evaluation_group_id is not None
+                else ("interaction", projected_member.id)
+            )
+            for interaction_id in member_ids
+            if (
+                projected_member := interactions[interaction_id]
+            ).evaluation_factor
+            != (0.0, 0.0)
+        }
+        if len(projected_live_groups) <= 1:
+            continue
+        for interaction_id in member_ids:
+            if interactions[interaction_id] != dag.interactions[interaction_id]:
+                interactions[interaction_id] = dag.interactions[
+                    interaction_id
+                ]
+                reverted_ids.add(interaction_id)
+    if reverted_ids:
+        for certificate_id in tuple(projected_interaction_ids):
+            retained = [
+                interaction_id
+                for interaction_id in projected_interaction_ids[
+                    certificate_id
+                ]
+                if interaction_id not in reverted_ids
+            ]
+            if retained:
+                projected_interaction_ids[certificate_id] = retained
+            else:
+                del projected_interaction_ids[certificate_id]
+
     rewritten = tuple(interactions)
     projected = (
         dag
@@ -2356,6 +2840,24 @@ def _project_authenticated_numerical_interaction_reuse(
             "authenticated numerical current application would increase "
             "the interaction evaluator count"
         )
+    for member_ids in members_by_old_group.values():
+        projected_live_groups = {
+            (
+                ("group", interaction.evaluation_group_id)
+                if interaction.evaluation_group_id is not None
+                else ("interaction", interaction.id)
+            )
+            for interaction_id in member_ids
+            if (
+                interaction := projected.interactions[interaction_id]
+            ).evaluation_factor
+            != (0.0, 0.0)
+        }
+        if len(projected_live_groups) > 1:
+            raise ValueError(
+                "authenticated numerical current application would split "
+                "an existing evaluator group"
+            )
     canonical_projected_ids = {
         certificate_id: tuple(interaction_ids)
         for certificate_id, interaction_ids in projected_interaction_ids.items()
@@ -4785,6 +5287,8 @@ __all__ = [
     "certify_numerical_current_observations",
     "discover_generic_dag_numerical_current_relations",
     "discover_recursive_evaluation_relations",
+    "generic_dag_numerical_runtime_schema_sha256",
+    "generic_dag_numerical_source_dag_sha256",
     "generic_dag_numerical_source_semantics_sha256",
     "project_rectangular_dynamic_color_classes",
     "verify_dag_relation_certificates",
