@@ -44,6 +44,7 @@
 #include <memory>
 
 #ifdef MGONGPU_INVP2_DUMP
+#include <cstdlib>
 #include <fstream>
 #include <mutex>
 #endif

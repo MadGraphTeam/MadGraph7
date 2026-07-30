@@ -682,7 +682,13 @@ class MadgraphProcess:
 
     def generate_events(self) -> None:
         start_time = get_start_time()
-        self.event_generator.generate()
+        #dumping only in the generation phase - flag file
+        open("invp2_dump.go", "w").close()
+        try:
+            self.event_generator.generate()
+        finally:
+            if os.path.exists("invp2_dump.go"):
+                os.remove("invp2_dump.go")
         output_format = self.run_card["run"]["output_format"]
         if output_format == "compact_npy":
             self.lhe_completer = None

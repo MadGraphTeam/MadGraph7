@@ -312,6 +312,13 @@
     // momenta, invariants and |M|^2
     // guard value max ev to write - intend for cppnone only
 #ifdef MGONGPU_INVP2_DUMP
+    // Only dump during the generation phase, not the survey/integration phase: madevent.py
+    // creates the sentinel file "invp2_dump.go" (in the run cwd) around event generation only.
+    // A file is used rather than an env var because the ME runs in worker processes forked
+    // before generation starts, which a late env change cannot reach. The static ofstream is
+    // declared inside this gate, so invp2_dump.dat is created (and truncated) on the first
+    // generation call, not during the survey.
+    if( std::ifstream( "invp2_dump.go" ).good() )
     {
       static std::mutex invp2_dump_mtx;
       static long invp2_dump_count = 0;
