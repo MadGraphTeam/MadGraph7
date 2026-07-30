@@ -1,0 +1,370 @@
+# SPDX-License-Identifier: 0BSD
+"""Adversarial acceptance tests for proof-less numerical current relations."""
+
+from __future__ import annotations
+
+import hashlib
+from collections.abc import Sequence
+from decimal import Decimal
+
+import pytest
+
+from pyamplicol.generation.dag_equivalence import (
+    NumericalCurrentRelationCertificate,
+    certify_numerical_current_observations,
+    verify_numerical_current_relation_certificate,
+)
+
+_SOURCE_SEMANTICS = hashlib.sha256(b"acceptance-source-semantics").hexdigest()
+_OTHER_SOURCE_SEMANTICS = hashlib.sha256(b"drifted-source-semantics").hexdigest()
+_ZERO = Decimal(0)
+
+_CANDIDATE_REPRESENTATIVE = (
+    (Decimal("1.25"), Decimal("0.5")),
+    (Decimal("-2.0"), Decimal("3.5")),
+    (Decimal("4.125"), Decimal("-0.75")),
+    (Decimal("-8.0"), Decimal("-1.5")),
+)
+_VERIFICATION_REPRESENTATIVE = (
+    (Decimal("0.375"), Decimal("-2.25")),
+    (Decimal("6.5"), Decimal("1.0")),
+    (Decimal("-3.125"), Decimal("4.75")),
+    (Decimal("9.0"), Decimal("-0.625")),
+)
+
+
+def _scaled(
+    values: Sequence[tuple[Decimal, Decimal]],
+    factor: Decimal,
+) -> tuple[tuple[Decimal, Decimal], ...]:
+    return tuple((factor * real, factor * imag) for real, imag in values)
+
+
+def _zero_values(count: int = 4) -> tuple[tuple[Decimal, Decimal], ...]:
+    return tuple((_ZERO, _ZERO) for _ in range(count))
+
+
+def _certify(
+    relation_kind: str,
+    *,
+    candidate_current_values: Sequence[tuple[Decimal, Decimal]],
+    verification_current_values: Sequence[tuple[Decimal, Decimal]],
+    candidate_representative_values: (
+        Sequence[tuple[Decimal, Decimal]] | None
+    ) = _CANDIDATE_REPRESENTATIVE,
+    verification_representative_values: (
+        Sequence[tuple[Decimal, Decimal]] | None
+    ) = _VERIFICATION_REPRESENTATIVE,
+    current_id: int = 11,
+    representative_id: int | None = 3,
+    seed: int = 0x5059414D,
+    relative_tolerance: float = 1.0e-70,
+    absolute_tolerance: float = 1.0e-80,
+) -> NumericalCurrentRelationCertificate | None:
+    return certify_numerical_current_observations(
+        current_id=current_id,
+        representative_id=representative_id,
+        relation_kind=relation_kind,  # type: ignore[arg-type]
+        source_semantics_sha256=_SOURCE_SEMANTICS,
+        candidate_current_values=candidate_current_values,
+        candidate_representative_values=candidate_representative_values,
+        verification_current_values=verification_current_values,
+        verification_representative_values=verification_representative_values,
+        precision_digits=96,
+        seed=seed,
+        relative_tolerance=relative_tolerance,
+        absolute_tolerance=absolute_tolerance,
+    )
+
+
+@pytest.mark.parametrize(
+    (
+        "relation_kind",
+        "candidate_current",
+        "verification_current",
+        "candidate_representative",
+        "verification_representative",
+        "representative_id",
+        "expected_factor",
+    ),
+    (
+        (
+            "equal",
+            _CANDIDATE_REPRESENTATIVE,
+            _VERIFICATION_REPRESENTATIVE,
+            _CANDIDATE_REPRESENTATIVE,
+            _VERIFICATION_REPRESENTATIVE,
+            3,
+            ["0x1.0000000000000p+0", "0x0.0p+0"],
+        ),
+        (
+            "opposite",
+            _scaled(_CANDIDATE_REPRESENTATIVE, Decimal(-1)),
+            _scaled(_VERIFICATION_REPRESENTATIVE, Decimal(-1)),
+            _CANDIDATE_REPRESENTATIVE,
+            _VERIFICATION_REPRESENTATIVE,
+            3,
+            ["-0x1.0000000000000p+0", "0x0.0p+0"],
+        ),
+        (
+            "zero",
+            _zero_values(),
+            _zero_values(),
+            None,
+            None,
+            None,
+            None,
+        ),
+    ),
+)
+def test_equal_opposite_and_zero_relations_certify_and_replay(
+    relation_kind: str,
+    candidate_current: Sequence[tuple[Decimal, Decimal]],
+    verification_current: Sequence[tuple[Decimal, Decimal]],
+    candidate_representative: Sequence[tuple[Decimal, Decimal]] | None,
+    verification_representative: Sequence[tuple[Decimal, Decimal]] | None,
+    representative_id: int | None,
+    expected_factor: list[str] | None,
+) -> None:
+    certificate = _certify(
+        relation_kind,
+        candidate_current_values=candidate_current,
+        verification_current_values=verification_current,
+        candidate_representative_values=candidate_representative,
+        verification_representative_values=verification_representative,
+        representative_id=representative_id,
+    )
+
+    assert certificate is not None
+    payload = certificate.to_json_dict()
+    assert payload["algorithm"] == (
+        "authenticated-independent-recursive-decimal-probes-v1"
+    )
+    assert payload["proof_kind"] == "authenticated-numerical"
+    assert payload["relation_kind"] == relation_kind
+    assert payload["current_id"] == 11
+    assert payload["representative_id"] == representative_id
+    assert payload["factor_binary64"] == expected_factor
+    assert payload["source_semantics_sha256"] == _SOURCE_SEMANTICS
+    for digest_field in (
+        "candidate_observations_sha256",
+        "verification_observations_sha256",
+        "probe_contract_sha256",
+        "proof_sha256",
+    ):
+        assert len(payload[digest_field]) == 64
+
+    restored = NumericalCurrentRelationCertificate.from_json_dict(payload)
+    assert restored == certificate
+    assert verify_numerical_current_relation_certificate(
+        restored,
+        source_semantics_sha256=_SOURCE_SEMANTICS,
+    )
+    assert not verify_numerical_current_relation_certificate(
+        restored,
+        source_semantics_sha256=_OTHER_SOURCE_SEMANTICS,
+    )
+
+
+@pytest.mark.parametrize("relation_kind", ("equal", "opposite", "zero"))
+def test_nearest_false_relation_with_documented_residual_is_rejected(
+    relation_kind: str,
+) -> None:
+    residual = Decimal("2.7396e-2")
+    if relation_kind == "zero":
+        candidate_current = ((residual, _ZERO), *_zero_values(3))
+        verification_current = ((_ZERO, residual), *_zero_values(3))
+        candidate_representative = None
+        verification_representative = None
+        representative_id = None
+    else:
+        factor = Decimal(1) if relation_kind == "equal" else Decimal(-1)
+        candidate_current = list(_scaled(_CANDIDATE_REPRESENTATIVE, factor))
+        verification_current = list(_scaled(_VERIFICATION_REPRESENTATIVE, factor))
+        candidate_current[2] = (
+            candidate_current[2][0] + residual,
+            candidate_current[2][1],
+        )
+        verification_current[1] = (
+            verification_current[1][0],
+            verification_current[1][1] - residual,
+        )
+        candidate_representative = _CANDIDATE_REPRESENTATIVE
+        verification_representative = _VERIFICATION_REPRESENTATIVE
+        representative_id = 3
+
+    assert (
+        _certify(
+            relation_kind,
+            candidate_current_values=candidate_current,
+            verification_current_values=verification_current,
+            candidate_representative_values=candidate_representative,
+            verification_representative_values=verification_representative,
+            representative_id=representative_id,
+        )
+        is None
+    )
+
+
+def test_tolerance_boundary_is_inclusive_but_nearest_outside_value_fails() -> None:
+    representative = tuple((Decimal(index), _ZERO) for index in range(1, 5))
+    at_boundary = tuple(
+        (real + Decimal("0.125"), imag) for real, imag in representative
+    )
+    outside = tuple(
+        (real + Decimal("0.1250001"), imag) for real, imag in representative
+    )
+
+    assert (
+        _certify(
+            "equal",
+            candidate_current_values=at_boundary,
+            verification_current_values=at_boundary,
+            candidate_representative_values=representative,
+            verification_representative_values=representative,
+            relative_tolerance=0.0,
+            absolute_tolerance=0.125,
+        )
+        is not None
+    )
+    assert (
+        _certify(
+            "equal",
+            candidate_current_values=outside,
+            verification_current_values=outside,
+            candidate_representative_values=representative,
+            verification_representative_values=representative,
+            relative_tolerance=0.0,
+            absolute_tolerance=0.125,
+        )
+        is None
+    )
+
+
+def test_candidate_match_with_independent_verification_mismatch_fails_closed() -> None:
+    assert (
+        _certify(
+            "equal",
+            candidate_current_values=_CANDIDATE_REPRESENTATIVE,
+            verification_current_values=_scaled(
+                _VERIFICATION_REPRESENTATIVE,
+                Decimal(-1),
+            ),
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "nonfinite",
+    (Decimal("NaN"), Decimal("Infinity"), Decimal("-Infinity")),
+)
+def test_nonfinite_observations_fail_closed(nonfinite: Decimal) -> None:
+    current = list(_CANDIDATE_REPRESENTATIVE)
+    current[1] = (nonfinite, current[1][1])
+    assert (
+        _certify(
+            "equal",
+            candidate_current_values=current,
+            verification_current_values=_VERIFICATION_REPRESENTATIVE,
+        )
+        is None
+    )
+
+
+def test_malformed_relation_shapes_and_forward_representatives_fail_closed() -> None:
+    assert (
+        _certify(
+            "equal",
+            candidate_current_values=_CANDIDATE_REPRESENTATIVE[:-1],
+            verification_current_values=_VERIFICATION_REPRESENTATIVE,
+        )
+        is None
+    )
+    assert (
+        _certify(
+            "equal",
+            candidate_current_values=_CANDIDATE_REPRESENTATIVE,
+            verification_current_values=_VERIFICATION_REPRESENTATIVE,
+            candidate_representative_values=None,
+            verification_representative_values=None,
+        )
+        is None
+    )
+    assert (
+        _certify(
+            "zero",
+            candidate_current_values=_zero_values(),
+            verification_current_values=_zero_values(),
+            candidate_representative_values=_CANDIDATE_REPRESENTATIVE,
+            verification_representative_values=_VERIFICATION_REPRESENTATIVE,
+            representative_id=None,
+        )
+        is None
+    )
+    assert (
+        _certify(
+            "equal",
+            candidate_current_values=_CANDIDATE_REPRESENTATIVE,
+            verification_current_values=_VERIFICATION_REPRESENTATIVE,
+            current_id=11,
+            representative_id=11,
+        )
+        is None
+    )
+
+
+def test_certificate_is_deterministic_and_seed_bound() -> None:
+    first = _certify(
+        "equal",
+        candidate_current_values=_CANDIDATE_REPRESENTATIVE,
+        verification_current_values=_VERIFICATION_REPRESENTATIVE,
+        seed=101,
+    )
+    repeated = _certify(
+        "equal",
+        candidate_current_values=_CANDIDATE_REPRESENTATIVE,
+        verification_current_values=_VERIFICATION_REPRESENTATIVE,
+        seed=101,
+    )
+    changed_seed = _certify(
+        "equal",
+        candidate_current_values=_CANDIDATE_REPRESENTATIVE,
+        verification_current_values=_VERIFICATION_REPRESENTATIVE,
+        seed=102,
+    )
+    assert first is not None
+    assert repeated is not None
+    assert changed_seed is not None
+    assert first.to_json_dict() == repeated.to_json_dict()
+    assert (
+        first.to_json_dict()["proof_sha256"]
+        != changed_seed.to_json_dict()["proof_sha256"]
+    )
+
+
+def test_selector_permutation_is_not_silently_inferred_by_relation_certifier() -> None:
+    permutation = (2, 0, 3, 1)
+    permuted = tuple(_CANDIDATE_REPRESENTATIVE[index] for index in permutation)
+
+    assert (
+        _certify(
+            "equal",
+            candidate_current_values=permuted,
+            verification_current_values=_VERIFICATION_REPRESENTATIVE,
+        )
+        is None
+    )
+
+    canonicalized = _certify(
+        "equal",
+        candidate_current_values=permuted,
+        verification_current_values=tuple(
+            _VERIFICATION_REPRESENTATIVE[index] for index in permutation
+        ),
+        candidate_representative_values=permuted,
+        verification_representative_values=tuple(
+            _VERIFICATION_REPRESENTATIVE[index] for index in permutation
+        ),
+    )
+    assert canonicalized is not None
