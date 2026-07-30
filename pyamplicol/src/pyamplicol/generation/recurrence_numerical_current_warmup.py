@@ -11,13 +11,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import pickle
+import struct
+import tempfile
+import zlib
 from collections import defaultdict
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from fractions import Fraction
 from math import copysign, isfinite
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, BinaryIO, Literal, cast
 
 from pyamplicol.api.errors import ArtifactError
 from pyamplicol.models.base import Model
@@ -58,13 +62,18 @@ _PARAMETER_CONTEXT_ABI = "pyamplicol-recurrence-parameter-context-v1"
 _PARAMETER_SCHEMA_ABI = "pyamplicol-recurrence-runtime-parameter-schema-v2"
 _RELATION_OBSERVATION_ABI = "pyamplicol-recurrence-relation-observation-v2"
 _DECISION_CHAIN_ABI = "pyamplicol-recurrence-numerical-decision-chain-v1"
-_REJECTION_CHAIN_ABI = (
-    "pyamplicol-recurrence-rejected-numerical-decision-chain-v1"
-)
-_PERSISTED_EVIDENCE_ABI = (
-    "pyamplicol-recurrence-numerical-persisted-evidence-v1"
-)
+_REJECTION_CHAIN_ABI = "pyamplicol-recurrence-rejected-numerical-decision-chain-v1"
+_PERSISTED_EVIDENCE_ABI = "pyamplicol-recurrence-numerical-persisted-evidence-v1"
 _MAX_RAW_EVIDENCE_MEMORY_BYTES = 1 << 30
+_COMPRESSED_EVIDENCE_MAGIC = b"PACNCEZ1"
+_COMPRESSED_EVIDENCE_HEADER = struct.Struct(">8sQ32s")
+_COMPRESSED_EVIDENCE_ENCODING = "zlib-canonical-json-v1"
+_RAW_EVIDENCE_ENCODING = "canonical-json-v3"
+_MAX_COMPRESSED_EVIDENCE_BYTES = 256 << 20
+_MAX_DECOMPRESSED_EVIDENCE_BYTES = 512 << 20
+_SPOOLED_CAPTURE_COMPRESSION_RESERVE_BYTES = 8 << 20
+_SPOOLED_CANDIDATE_INDEX_BYTES_PER_CURRENT = 1_024
+_COMPRESSED_NATIVE_NON_WIRE_RESERVE_BYTES = 192 << 20
 # The producer-side peak ends when the canonical bytes have been encoded and
 # the complete Decimal graphs are detached.  The per-scalar allowance covers
 # the Python Decimal/tuple capture graph and encoder temporaries; the row
@@ -99,6 +108,119 @@ _RelationKind = Literal["equal", "opposite", "zero"]
 _Mode = Literal["diagnostic", "certified-reuse"]
 _Point = tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...]
 _CurrentContract = tuple[object, ...]
+_EvidenceEncoding = Literal["canonical-json-v3", "zlib-canonical-json-v1"]
+
+
+@dataclass(frozen=True, slots=True)
+class _RawEvidenceStorageGeometry:
+    scalar_count: int
+    row_count: int
+    canonical_byte_limit: int
+    encoding: _EvidenceEncoding
+    producer_resident_upper_bound: int
+
+
+class _SpooledObservationMapping(Mapping[int, tuple[_ComplexDecimal, ...]]):
+    """Trusted temporary row store with bounded one-row materialization."""
+
+    def __init__(
+        self,
+        observations: Mapping[int, Sequence[_ComplexDecimal]],
+        *,
+        candidate_indexes: Mapping[
+            _CurrentContract,
+            NumericalObservationCandidateIndex[Fraction],
+        ]
+        | None = None,
+    ) -> None:
+        self._stream: BinaryIO = tempfile.TemporaryFile(  # noqa: SIM115
+            prefix="pyamplicol-recurrence-current-observations-",
+        )
+        self._rows: dict[int, tuple[int, int]] = {}
+        self._candidate_indexes_row: tuple[int, int] | None = None
+        self._closed = False
+        try:
+            for current_id in sorted(observations):
+                offset = self._stream.tell()
+                pickle.dump(
+                    tuple(observations[current_id]),
+                    self._stream,
+                    protocol=pickle.HIGHEST_PROTOCOL,
+                )
+                self._rows[current_id] = (
+                    offset,
+                    self._stream.tell() - offset,
+                )
+            if candidate_indexes is not None:
+                offset = self._stream.tell()
+                pickle.dump(
+                    dict(candidate_indexes),
+                    self._stream,
+                    protocol=pickle.HIGHEST_PROTOCOL,
+                )
+                self._candidate_indexes_row = (
+                    offset,
+                    self._stream.tell() - offset,
+                )
+            self._stream.flush()
+        except BaseException:
+            self.close()
+            raise
+
+    @property
+    def candidate_indexes(
+        self,
+    ) -> (
+        Mapping[
+            _CurrentContract,
+            NumericalObservationCandidateIndex[Fraction],
+        ]
+        | None
+    ):
+        if self._candidate_indexes_row is None:
+            return None
+        if self._closed:
+            raise RuntimeError("recurrence observation spool is closed")
+        offset, length = self._candidate_indexes_row
+        self._stream.seek(offset)
+        payload = self._stream.read(length)
+        if len(payload) != length:
+            raise ValueError("recurrence candidate-index spool row is truncated")
+        return cast(
+            dict[
+                _CurrentContract,
+                NumericalObservationCandidateIndex[Fraction],
+            ],
+            pickle.loads(payload),
+        )
+
+    def __getitem__(self, current_id: int) -> tuple[_ComplexDecimal, ...]:
+        if self._closed:
+            raise RuntimeError("recurrence observation spool is closed")
+        try:
+            offset, length = self._rows[current_id]
+        except KeyError:
+            raise KeyError(current_id) from None
+        self._stream.seek(offset)
+        payload = self._stream.read(length)
+        if len(payload) != length:
+            raise ValueError("recurrence observation spool row is truncated")
+        values = pickle.loads(payload)
+        if not isinstance(values, tuple):
+            raise ValueError("recurrence observation spool row is malformed")
+        return cast(tuple[_ComplexDecimal, ...], values)
+
+    def __iter__(self) -> Iterator[int]:
+        return iter(self._rows)
+
+    def __len__(self) -> int:
+        return len(self._rows)
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._stream.close()
 
 
 class _CanonicalJsonStreamValue:
@@ -139,9 +261,7 @@ class _ObservationRowsStream(_CanonicalJsonStreamValue):
                 {
                     "current_id": current_id,
                     "dimension": self.dimensions[current_id],
-                    "values": _ObservationValuesStream(
-                        self.observations[current_id]
-                    ),
+                    "values": _ObservationValuesStream(self.observations[current_id]),
                 }
             )
         yield b"]"
@@ -239,8 +359,7 @@ class RecurrenceCurrentObservationCapture:
         return replace(
             self,
             observations={
-                current_id: self.observations[current_id]
-                for current_id in selected
+                current_id: self.observations[current_id] for current_id in selected
             },
             full_current_count=self.current_count,
             complete_observations_retained=False,
@@ -261,9 +380,7 @@ class RecurrenceCurrentObservationCapture:
             "context_sha256s": list(self.context_sha256s),
             "points": [point.to_mapping() for point in self.points],
             "current_count": self.current_count,
-            "runtime_parameter_schema_sha256": (
-                self.runtime_parameter_schema_sha256
-            ),
+            "runtime_parameter_schema_sha256": (self.runtime_parameter_schema_sha256),
             "source_semantics_sha256": self.source_semantics_sha256,
             "observation_batch_sha256": self.observation_batch_sha256,
             "capture_contract_sha256": self.capture_contract_sha256,
@@ -347,12 +464,8 @@ class RecurrenceCurrentObservationCapture:
             "point_sha256s": list(self.point_sha256s),
             "kinematic_sha256s": list(self.kinematic_sha256s),
             "selector_context_sha256s": list(self.context_sha256s),
-            "parameter_context_sha256s": list(
-                self.parameter_context_sha256s
-            ),
-            "runtime_parameter_schema_sha256": (
-                self.runtime_parameter_schema_sha256
-            ),
+            "parameter_context_sha256s": list(self.parameter_context_sha256s),
+            "runtime_parameter_schema_sha256": (self.runtime_parameter_schema_sha256),
             "source_semantics_sha256": self.source_semantics_sha256,
             "certificate_current_ids": list(selected),
             "observations": observation_rows,
@@ -420,9 +533,7 @@ class RecurrenceNumericalCurrentCertificate:
             "candidate_probe_count": self.candidate_probe_count,
             "verification_probe_count": self.verification_probe_count,
             "current_dimension": self.current_dimension,
-            "runtime_parameter_schema_sha256": (
-                self.runtime_parameter_schema_sha256
-            ),
+            "runtime_parameter_schema_sha256": (self.runtime_parameter_schema_sha256),
             "candidate_capture_sha256": self.candidate_capture_sha256,
             "verification_capture_sha256": self.verification_capture_sha256,
             "candidate_maximum_absolute_residual": _fraction_string(
@@ -462,6 +573,9 @@ class RecurrenceNumericalCurrentWarmupResult:
     verification_capture: RecurrenceCurrentObservationCapture
     certificates: tuple[RecurrenceNumericalCurrentCertificate, ...]
     evidence_json: bytes
+    evidence_transport_bytes: int
+    evidence_encoding: _EvidenceEncoding
+    evidence_canonical_bytes: int
     discovery_report: Mapping[str, object]
     application_validation: Mapping[str, object]
 
@@ -478,6 +592,20 @@ class RecurrenceNumericalCurrentWarmupResult:
         payload: Mapping[str, object],
     ) -> RecurrenceNumericalCurrentWarmupResult:
         return replace(self, application_validation=dict(payload))
+
+    def without_evidence_transport(
+        self,
+    ) -> RecurrenceNumericalCurrentWarmupResult:
+        """Release the native-only transport after second-pass lowering."""
+
+        return replace(self, evidence_json=b"")
+
+    def close(self) -> None:
+        """Close any trusted temporary observation stores owned by the result."""
+
+        for capture in (self.candidate_capture, self.verification_capture):
+            if isinstance(capture.observations, _SpooledObservationMapping):
+                capture.observations.close()
 
     def to_json_dict(self) -> dict[str, object]:
         if not self.certificates:
@@ -502,7 +630,9 @@ class RecurrenceNumericalCurrentWarmupResult:
         )
         persisted_evidence = {
             "abi": _PERSISTED_EVIDENCE_ABI,
-            "generation_raw_evidence_bytes": len(self.evidence_json),
+            "generation_raw_evidence_bytes": self.evidence_canonical_bytes,
+            "generation_evidence_transport_bytes": self.evidence_transport_bytes,
+            "generation_evidence_encoding": self.evidence_encoding,
             "raw_evidence_retained": False,
             "runtime_parameter_schema": dict(self.runtime_parameter_schema),
             "runtime_parameter_schema_sha256": (
@@ -546,9 +676,7 @@ class RecurrenceNumericalCurrentWarmupResult:
                 "rejection_decision_sha256": self.discovery_report[
                     "rejection_decision_sha256"
                 ],
-                "certificate_set_sha256": _certificate_set_sha256(
-                    self.certificates
-                ),
+                "certificate_set_sha256": _certificate_set_sha256(self.certificates),
             },
         }
         persisted_encoded = _bounded_canonical_json_bytes(
@@ -646,7 +774,7 @@ def run_recurrence_numerical_current_warmup(
     _validated_tolerances(relative_tolerance, absolute_tolerance)
     relative_tolerance = float(relative_tolerance)
     absolute_tolerance = float(absolute_tolerance)
-    geometry = _validate_raw_evidence_geometry(
+    geometry = _select_raw_evidence_storage_geometry(
         plan.sections,
         candidate_probe_count=len(candidate_points),
         verification_probe_count=len(verification_points),
@@ -656,9 +784,7 @@ def run_recurrence_numerical_current_warmup(
     runtime_parameter_schema = _runtime_parameter_schema_payload(plan)
     runtime_parameter_schema_sha256 = _canonical_sha256(runtime_parameter_schema)
     runtime_defaults = _runtime_parameter_defaults(plan)
-    probe_policies = tuple(
-        row.probe_policy for row in plan.runtime_parameter_schema
-    )
+    probe_policies = tuple(row.probe_policy for row in plan.runtime_parameter_schema)
     candidate_parameter_contexts = _build_parameter_probe_contexts(
         runtime_defaults,
         probe_policies=probe_policies,
@@ -677,109 +803,160 @@ def run_recurrence_numerical_current_warmup(
         count=len(verification_points),
         include_defaults=False,
     )
-    candidate = capture_recurrence_current_observations(
-        plan,
-        candidate_points,
-        precision_digits=precision_digits,
-        source_semantics_sha256=source_digest,
-        seed=seed,
-        domain="candidate-current-probes-v1",
-        parameter_contexts=candidate_parameter_contexts,
-        runtime_parameter_schema_sha256=runtime_parameter_schema_sha256,
-    )
-    verification = capture_recurrence_current_observations(
-        plan,
-        verification_points,
-        precision_digits=precision_digits,
-        source_semantics_sha256=source_digest,
-        seed=seed,
-        domain="independent-verification-current-probes-v1",
-        parameter_contexts=verification_parameter_contexts,
-        runtime_parameter_schema_sha256=runtime_parameter_schema_sha256,
-    )
-    _validate_independent_captures(candidate, verification)
-    certificates, discovery = _discover_relations(
-        plan.sections,
-        candidate,
-        verification,
-        source_semantics_sha256=source_digest,
-        precision_digits=precision_digits,
-        seed=seed,
-        relative_tolerance=relative_tolerance,
-        absolute_tolerance=absolute_tolerance,
-        color_accuracy=color_accuracy,
-    )
-    evidence = _evidence_payload(
-        plan.sections,
-        mode=mode,
-        source_semantics_sha256=source_digest,
-        certificates=certificates,
-        discovery=discovery,
-        precision_digits=precision_digits,
-        seed=seed,
-        relative_tolerance=relative_tolerance,
-        absolute_tolerance=absolute_tolerance,
-        probe_count=candidate.point_count,
-        verification_probe_count=verification.point_count,
-        runtime_parameter_schema=runtime_parameter_schema,
-        candidate=candidate,
-        verification=verification,
-    )
-    _validate_raw_evidence_scalar_widths(candidate, verification)
-    encoded = _bounded_canonical_json_bytes(
-        evidence,
-        byte_limit=geometry[2],
-        label="recurrence numerical raw evidence",
-    )
-    _validate_raw_evidence_memory_upper_bound(
-        len(encoded),
-        scalar_count=geometry[0],
-        row_count=geometry[1],
-        byte_limit=geometry[2],
-    )
-    replay_current_ids = (
-        tuple(
-            current_id
-            for certificate in certificates
-            for current_id in (
-                certificate.current_id,
-                certificate.representative_id,
-            )
-            if current_id is not None
+    candidate_spool: _SpooledObservationMapping | None = None
+    verification_spool: _SpooledObservationMapping | None = None
+    evidence_spool: BinaryIO | None = None
+    try:
+        candidate = capture_recurrence_current_observations(
+            plan,
+            candidate_points,
+            precision_digits=precision_digits,
+            source_semantics_sha256=source_digest,
+            seed=seed,
+            domain="candidate-current-probes-v1",
+            parameter_contexts=candidate_parameter_contexts,
+            runtime_parameter_schema_sha256=runtime_parameter_schema_sha256,
         )
-        if mode == "certified-reuse"
-        else ()
-    )
-    candidate = candidate.detached_for_replay(replay_current_ids)
-    verification = verification.detached_for_replay(replay_current_ids)
-    # The streamed evidence mapping owns observation stream wrappers pointing
-    # at the complete captures.  Drop it before returning so CPython can
-    # release every non-replay Decimal and tuple before native lowering.
-    del evidence
-    return RecurrenceNumericalCurrentWarmupResult(
-        requested_mode=mode,
-        color_accuracy=color_accuracy,
-        source_semantics_sha256=source_digest,
-        runtime_parameter_schema=runtime_parameter_schema,
-        candidate_capture=candidate,
-        verification_capture=verification,
-        certificates=certificates,
-        evidence_json=encoded,
-        discovery_report=discovery,
-        application_validation={
-            "status": (
-                "pending-second-pass-validation"
-                if mode == "certified-reuse" and certificates
-                else "not-required-no-applied-relations"
-            ),
-            "checked_current_count": 0,
-            "checked_component_count": 0,
-            "maximum_absolute_residual": None,
-            "maximum_relative_residual": None,
-            "maximum_tolerance_ratio": None,
-            "application_capture": None,
-        },
-    )
+        if geometry.encoding == _COMPRESSED_EVIDENCE_ENCODING:
+            candidate_spool = _SpooledObservationMapping(
+                candidate.observations,
+                candidate_indexes=_build_candidate_indexes(
+                    plan.sections,
+                    candidate.observations,
+                ),
+            )
+            candidate = replace(candidate, observations=candidate_spool)
+        verification = capture_recurrence_current_observations(
+            plan,
+            verification_points,
+            precision_digits=precision_digits,
+            source_semantics_sha256=source_digest,
+            seed=seed,
+            domain="independent-verification-current-probes-v1",
+            parameter_contexts=verification_parameter_contexts,
+            runtime_parameter_schema_sha256=runtime_parameter_schema_sha256,
+        )
+        if geometry.encoding == _COMPRESSED_EVIDENCE_ENCODING:
+            verification_spool = _SpooledObservationMapping(verification.observations)
+            verification = replace(
+                verification,
+                observations=verification_spool,
+            )
+        _validate_independent_captures(candidate, verification)
+        certificates, discovery = _discover_relations(
+            plan.sections,
+            candidate,
+            verification,
+            source_semantics_sha256=source_digest,
+            precision_digits=precision_digits,
+            seed=seed,
+            relative_tolerance=relative_tolerance,
+            absolute_tolerance=absolute_tolerance,
+            color_accuracy=color_accuracy,
+        )
+        evidence = _evidence_payload(
+            plan.sections,
+            mode=mode,
+            source_semantics_sha256=source_digest,
+            certificates=certificates,
+            discovery=discovery,
+            precision_digits=precision_digits,
+            seed=seed,
+            relative_tolerance=relative_tolerance,
+            absolute_tolerance=absolute_tolerance,
+            probe_count=candidate.point_count,
+            verification_probe_count=verification.point_count,
+            runtime_parameter_schema=runtime_parameter_schema,
+            candidate=candidate,
+            verification=verification,
+        )
+        _validate_raw_evidence_scalar_widths(candidate, verification)
+        if geometry.encoding == _RAW_EVIDENCE_ENCODING:
+            encoded = _bounded_canonical_json_bytes(
+                evidence,
+                byte_limit=geometry.canonical_byte_limit,
+                label="recurrence numerical raw evidence",
+            )
+            canonical_byte_count = len(encoded)
+            _validate_raw_evidence_memory_upper_bound(
+                canonical_byte_count,
+                scalar_count=geometry.scalar_count,
+                row_count=geometry.row_count,
+                byte_limit=geometry.canonical_byte_limit,
+            )
+        else:
+            evidence_spool = tempfile.TemporaryFile(  # noqa: SIM115
+                prefix="pyamplicol-recurrence-evidence-",
+            )
+            canonical_byte_count = _write_compressed_canonical_evidence(
+                evidence,
+                evidence_spool,
+                canonical_byte_limit=geometry.canonical_byte_limit,
+            )
+            encoded = b""
+        replay_current_ids = (
+            tuple(
+                current_id
+                for certificate in certificates
+                for current_id in (
+                    certificate.current_id,
+                    certificate.representative_id,
+                )
+                if current_id is not None
+            )
+            if mode == "certified-reuse"
+            else ()
+        )
+        if geometry.encoding == _RAW_EVIDENCE_ENCODING:
+            candidate = candidate.detached_for_replay(replay_current_ids)
+            verification = verification.detached_for_replay(replay_current_ids)
+        else:
+            # Transfer both trusted row stores to the result. Certificate
+            # replay and application validation consume rows lazily, so the
+            # resident graph never grows with the number of relations.
+            candidate_spool = None
+            verification_spool = None
+        # The streamed evidence mapping owns wrappers pointing at the complete
+        # captures. Drop it before reading the compressed transport bytes.
+        del evidence
+        if evidence_spool is not None:
+            encoded = _read_compressed_evidence_spool(evidence_spool)
+            evidence_spool.close()
+            evidence_spool = None
+        return RecurrenceNumericalCurrentWarmupResult(
+            requested_mode=mode,
+            color_accuracy=color_accuracy,
+            source_semantics_sha256=source_digest,
+            runtime_parameter_schema=runtime_parameter_schema,
+            candidate_capture=candidate,
+            verification_capture=verification,
+            certificates=certificates,
+            evidence_json=encoded,
+            evidence_transport_bytes=len(encoded),
+            evidence_encoding=geometry.encoding,
+            evidence_canonical_bytes=canonical_byte_count,
+            discovery_report=discovery,
+            application_validation={
+                "status": (
+                    "pending-second-pass-validation"
+                    if mode == "certified-reuse" and certificates
+                    else "not-required-no-applied-relations"
+                ),
+                "checked_current_count": 0,
+                "checked_component_count": 0,
+                "maximum_absolute_residual": None,
+                "maximum_relative_residual": None,
+                "maximum_tolerance_ratio": None,
+                "application_capture": None,
+            },
+        )
+    finally:
+        if candidate_spool is not None:
+            candidate_spool.close()
+        if verification_spool is not None:
+            verification_spool.close()
+        if evidence_spool is not None:
+            evidence_spool.close()
 
 
 def build_recurrence_numerical_current_probe_points(
@@ -865,42 +1042,65 @@ def validate_recurrence_numerical_current_application(
                 "application_capture": None,
             }
         )
-    reference = capture_recurrence_current_observations(
-        baseline_plan,
-        baseline.verification_capture.points,
-        precision_digits=precision_digits,
-        source_semantics_sha256=baseline.source_semantics_sha256,
-        seed=seed,
-        domain="independent-verification-current-probes-v1",
-        parameter_contexts=baseline.verification_capture.parameter_contexts,
-        runtime_parameter_schema_sha256=(
-            baseline.verification_capture.runtime_parameter_schema_sha256
+    application_capture_bound = _spooled_capture_memory_upper_bound(
+        current_count=len(baseline_plan.sections.currents),
+        component_count=sum(
+            current.component_count for current in baseline_plan.sections.currents
         ),
+        maximum_probe_count=len(baseline.verification_capture.points),
+        runtime_parameter_count=len(baseline_plan.runtime_parameter_schema),
+        include_candidate_index=False,
     )
-    _validate_recaptured_reference(
-        baseline.verification_capture,
-        reference,
-    )
-    applied = capture_recurrence_current_observations(
-        applied_plan,
-        baseline.verification_capture.points,
-        precision_digits=precision_digits,
-        source_semantics_sha256=baseline.source_semantics_sha256,
-        seed=seed,
-        domain="independent-verification-current-probes-v1",
-        parameter_contexts=baseline.verification_capture.parameter_contexts,
-        runtime_parameter_schema_sha256=(
-            baseline.verification_capture.runtime_parameter_schema_sha256
-        ),
-    )
-    validation = _validate_applied_observations(
-        reference,
-        applied,
-        relative_tolerance=relative_tolerance,
-        absolute_tolerance=absolute_tolerance,
-    )
-    validation["application_capture"] = applied.to_provenance_dict()
-    return baseline.with_application_validation(validation)
+    application_resident_bound = application_capture_bound + len(baseline.evidence_json)
+    if application_resident_bound > _MAX_RAW_EVIDENCE_MEMORY_BYTES:
+        raise ValueError(
+            "recurrence numerical application validation exceeds its "
+            "explicit 1 GiB resident memory envelope; the native evidence "
+            "transport must be released after lowering"
+        )
+    reference_spool: _SpooledObservationMapping | None = None
+    try:
+        reference = capture_recurrence_current_observations(
+            baseline_plan,
+            baseline.verification_capture.points,
+            precision_digits=precision_digits,
+            source_semantics_sha256=baseline.source_semantics_sha256,
+            seed=seed,
+            domain="independent-verification-current-probes-v1",
+            parameter_contexts=baseline.verification_capture.parameter_contexts,
+            runtime_parameter_schema_sha256=(
+                baseline.verification_capture.runtime_parameter_schema_sha256
+            ),
+        )
+        _validate_recaptured_reference(
+            baseline.verification_capture,
+            reference,
+        )
+        reference_spool = _SpooledObservationMapping(reference.observations)
+        reference = replace(reference, observations=reference_spool)
+        applied = capture_recurrence_current_observations(
+            applied_plan,
+            baseline.verification_capture.points,
+            precision_digits=precision_digits,
+            source_semantics_sha256=baseline.source_semantics_sha256,
+            seed=seed,
+            domain="independent-verification-current-probes-v1",
+            parameter_contexts=(baseline.verification_capture.parameter_contexts),
+            runtime_parameter_schema_sha256=(
+                baseline.verification_capture.runtime_parameter_schema_sha256
+            ),
+        )
+        validation = _validate_applied_observations(
+            reference,
+            applied,
+            relative_tolerance=relative_tolerance,
+            absolute_tolerance=absolute_tolerance,
+        )
+        validation["application_capture"] = applied.to_provenance_dict()
+        return baseline.with_application_validation(validation)
+    finally:
+        if reference_spool is not None:
+            reference_spool.close()
 
 
 def recurrence_numerical_current_opt_out_report(
@@ -1163,9 +1363,7 @@ def _source_semantics_payload(
                     "helicity_id": helicity.helicity_id,
                     "selector_domain_id": helicity.selector_domain_id,
                 }
-                for helicity_index, helicity in enumerate(
-                    sections.resolved_helicities
-                )
+                for helicity_index, helicity in enumerate(sections.resolved_helicities)
             ],
         }
     else:
@@ -1340,6 +1538,26 @@ def _raw_numerical_tolerance_window_ids(
     )
 
 
+def _build_candidate_indexes(
+    sections: _RecurrenceExactSectionsV1,
+    observations: Mapping[int, Sequence[_ComplexDecimal]],
+) -> dict[
+    _CurrentContract,
+    NumericalObservationCandidateIndex[Fraction],
+]:
+    contracts = _current_contracts(sections)
+    members_by_contract: dict[_CurrentContract, list[int]] = defaultdict(list)
+    for current in sections.currents:
+        members_by_contract[contracts[current.semantic_id]].append(current.semantic_id)
+    return {
+        contract: _build_raw_numerical_candidate_index(
+            member_ids,
+            observations,
+        )
+        for contract, member_ids in members_by_contract.items()
+    }
+
+
 def _discover_relations(
     sections: _RecurrenceExactSectionsV1,
     candidate: RecurrenceCurrentObservationCapture,
@@ -1362,18 +1580,18 @@ def _discover_relations(
     relative_fraction = Fraction(relative)
     absolute_fraction = Fraction(absolute)
     contracts = _current_contracts(sections)
-    members_by_contract: dict[_CurrentContract, list[int]] = defaultdict(list)
-    for current in sections.currents:
-        members_by_contract[contracts[current.semantic_id]].append(
-            current.semantic_id
-        )
-    candidate_indexes = {
-        contract: _build_raw_numerical_candidate_index(
-            member_ids,
+    spooled_indexes = (
+        candidate.observations.candidate_indexes
+        if isinstance(candidate.observations, _SpooledObservationMapping)
+        else None
+    )
+    if spooled_indexes is not None:
+        candidate_indexes = spooled_indexes
+    else:
+        candidate_indexes = _build_candidate_indexes(
+            sections,
             candidate.observations,
         )
-        for contract, member_ids in members_by_contract.items()
-    }
     prior_by_contract: dict[_CurrentContract, list[int]] = defaultdict(list)
     certificates: list[RecurrenceNumericalCurrentCertificate] = []
     rejected: list[dict[str, object]] = []
@@ -1474,8 +1692,7 @@ def _discover_relations(
             "maximum_tolerance_ratio": _fraction_string(residuals[2]),
         }
         rejection_chain = hashlib.sha256(
-            bytes.fromhex(rejection_chain)
-            + _canonical_json_bytes(rejected_row)
+            bytes.fromhex(rejection_chain) + _canonical_json_bytes(rejected_row)
         ).hexdigest()
         item = (
             residuals[2],
@@ -1521,10 +1738,7 @@ def _discover_relations(
             opposite_representatives
         )
         zero_hypotheses += 1
-        if (
-            screened_pair_hypotheses + zero_hypotheses
-            > _MAX_RAW_NUMERICAL_HYPOTHESES
-        ):
+        if screened_pair_hypotheses + zero_hypotheses > _MAX_RAW_NUMERICAL_HYPOTHESES:
             raise ValueError(
                 "recurrence numerical candidate index exceeds the explicit "
                 "authenticated screened-hypothesis budget"
@@ -1608,9 +1822,7 @@ def _discover_relations(
                 )
                 continue
             if relation_kind == "zero":
-                execution_representative_id = (
-                    prior[0] if prior else current.semantic_id
-                )
+                execution_representative_id = prior[0] if prior else current.semantic_id
             else:
                 if representative_id is None:
                     raise AssertionError(
@@ -1665,9 +1877,7 @@ def _discover_relations(
             "abi": _DECISION_CHAIN_ABI,
             "chain_tail_sha256": decision_chain,
             "tested_hypothesis_count": tested,
-            "theoretical_pair_hypothesis_count": (
-                theoretical_pair_hypotheses
-            ),
+            "theoretical_pair_hypothesis_count": (theoretical_pair_hypotheses),
             "screened_pair_hypothesis_count": screened_pair_hypotheses,
             "zero_hypothesis_count": zero_hypotheses,
             "numerical_candidate_count": candidates,
@@ -1686,9 +1896,7 @@ def _discover_relations(
         ),
         "retained_sha256": _canonical_sha256(
             {
-                "abi": (
-                    "pyamplicol-recurrence-rejected-numerical-diagnostics-v1"
-                ),
+                "abi": ("pyamplicol-recurrence-rejected-numerical-diagnostics-v1"),
                 "rows": rejected,
             }
         ),
@@ -1751,16 +1959,12 @@ def _discover_relations(
             "exhaustive_fallback_contract_count": (
                 len(candidate_indexes) if relative_fraction >= 1 else 0
             ),
-            "theoretical_pair_hypothesis_count": (
-                theoretical_pair_hypotheses
-            ),
+            "theoretical_pair_hypothesis_count": (theoretical_pair_hypotheses),
             "screened_pair_hypothesis_count": screened_pair_hypotheses,
             "zero_hypothesis_count": zero_hypotheses,
             "screened_hypothesis_budget": _MAX_RAW_NUMERICAL_HYPOTHESES,
             "budget_classification": "within-authenticated-budget",
-            "nearest_rejected_scope": (
-                "zero-and-tolerance-window-screened-hypotheses"
-            ),
+            "nearest_rejected_scope": ("zero-and-tolerance-window-screened-hypotheses"),
         },
         "numerical_candidate_count": candidates,
         "verification_rejected_count": verification_rejected,
@@ -1828,9 +2032,7 @@ def _build_certificate(
         "candidate_probe_count": candidate.point_count,
         "verification_probe_count": verification.point_count,
         "current_dimension": current.component_count,
-        "runtime_parameter_schema_sha256": (
-            candidate.runtime_parameter_schema_sha256
-        ),
+        "runtime_parameter_schema_sha256": (candidate.runtime_parameter_schema_sha256),
         "candidate_capture_sha256": candidate.capture_contract_sha256,
         "verification_capture_sha256": verification.capture_contract_sha256,
         "candidate_observations_sha256": candidate_digest,
@@ -1841,15 +2043,9 @@ def _build_certificate(
         **probe_contract,
         "proof_kind": "authenticated-numerical",
         "factor_integer": list(factor),
-        "candidate_maximum_absolute_residual": _fraction_string(
-            candidate_residuals[0]
-        ),
-        "candidate_maximum_relative_residual": _fraction_string(
-            candidate_residuals[1]
-        ),
-        "candidate_maximum_tolerance_ratio": _fraction_string(
-            candidate_residuals[2]
-        ),
+        "candidate_maximum_absolute_residual": _fraction_string(candidate_residuals[0]),
+        "candidate_maximum_relative_residual": _fraction_string(candidate_residuals[1]),
+        "candidate_maximum_tolerance_ratio": _fraction_string(candidate_residuals[2]),
         "verification_maximum_absolute_residual": _fraction_string(
             verification_residuals[0]
         ),
@@ -1875,9 +2071,7 @@ def _build_certificate(
         candidate_probe_count=candidate.point_count,
         verification_probe_count=verification.point_count,
         current_dimension=current.component_count,
-        runtime_parameter_schema_sha256=(
-            candidate.runtime_parameter_schema_sha256
-        ),
+        runtime_parameter_schema_sha256=(candidate.runtime_parameter_schema_sha256),
         candidate_capture_sha256=candidate.capture_contract_sha256,
         verification_capture_sha256=verification.capture_contract_sha256,
         candidate_maximum_absolute_residual=candidate_residuals[0],
@@ -1934,9 +2128,7 @@ def _evidence_payload(
         "source_semantics": _source_semantics_payload(sections),
         "source_semantics_sha256": source_semantics_sha256,
         "runtime_parameter_schema": dict(runtime_parameter_schema),
-        "runtime_parameter_schema_sha256": (
-            candidate.runtime_parameter_schema_sha256
-        ),
+        "runtime_parameter_schema_sha256": (candidate.runtime_parameter_schema_sha256),
         "candidate_capture": _capture_evidence_payload(candidate),
         "verification_capture": _capture_evidence_payload(verification),
         "certificate_algorithm": _RECURRENCE_CERTIFICATE_ALGORITHM,
@@ -1955,9 +2147,7 @@ def _evidence_payload(
         "rejected_hypothesis_count": rejected_hypothesis_count,
         "tested_hypothesis_count": tested_hypothesis_count,
         "decision_sha256": str(discovery["decision_sha256"]),
-        "rejection_decision_sha256": str(
-            discovery["rejection_decision_sha256"]
-        ),
+        "rejection_decision_sha256": str(discovery["rejection_decision_sha256"]),
         "certificates": _CertificateRowsStream(certificates),
         "mappings": _MappingRowsStream(certificates),
     }
@@ -1982,9 +2172,7 @@ def _capture_evidence_payload(
         "context_sha256s": capture.context_sha256s,
         "points": tuple(point.to_mapping() for point in capture.points),
         "current_count": capture.current_count,
-        "runtime_parameter_schema_sha256": (
-            capture.runtime_parameter_schema_sha256
-        ),
+        "runtime_parameter_schema_sha256": (capture.runtime_parameter_schema_sha256),
         "source_semantics_sha256": capture.source_semantics_sha256,
         "observation_batch_sha256": capture.observation_batch_sha256,
         "capture_contract_sha256": capture.capture_contract_sha256,
@@ -1994,9 +2182,7 @@ def _capture_evidence_payload(
         "current_dimensions_sha256": _canonical_sha256(
             {
                 str(current_id): dimension
-                for current_id, dimension in sorted(
-                    capture.current_dimensions.items()
-                )
+                for current_id, dimension in sorted(capture.current_dimensions.items())
             }
         ),
         "evaluator": "recurrence-direct-plan-decimal-symbolica-exact",
@@ -2110,8 +2296,7 @@ def _validate_independent_captures(
             verification.kinematic_sha256s
         )
         or len(candidate.parameter_context_sha256s) != candidate.point_count
-        or len(verification.parameter_context_sha256s)
-        != verification.point_count
+        or len(verification.parameter_context_sha256s) != verification.point_count
         or not set(candidate.parameter_context_sha256s).isdisjoint(
             verification.parameter_context_sha256s
         )
@@ -2143,8 +2328,7 @@ def _validate_applied_observations(
         or reference.selector_contexts != applied.selector_contexts
         or reference.context_sha256s != applied.context_sha256s
         or reference.parameter_contexts != applied.parameter_contexts
-        or reference.parameter_context_sha256s
-        != applied.parameter_context_sha256s
+        or reference.parameter_context_sha256s != applied.parameter_context_sha256s
         or reference.runtime_parameter_schema_sha256
         != applied.runtime_parameter_schema_sha256
         or reference.current_dimensions != applied.current_dimensions
@@ -2213,14 +2397,11 @@ def _validate_recaptured_reference(
         != recaptured.parameter_context_sha256s
         or authenticated.runtime_parameter_schema_sha256
         != recaptured.runtime_parameter_schema_sha256
-        or authenticated.source_semantics_sha256
-        != recaptured.source_semantics_sha256
+        or authenticated.source_semantics_sha256 != recaptured.source_semantics_sha256
         or authenticated.current_dimensions != recaptured.current_dimensions
         or authenticated.current_count != recaptured.current_count
-        or authenticated.observation_batch_sha256
-        != recaptured.observation_batch_sha256
-        or authenticated.capture_contract_sha256
-        != recaptured.capture_contract_sha256
+        or authenticated.observation_batch_sha256 != recaptured.observation_batch_sha256
+        or authenticated.capture_contract_sha256 != recaptured.capture_contract_sha256
         or authenticated.context_policy != recaptured.context_policy
     ):
         raise ValueError(
@@ -2422,9 +2603,7 @@ def _build_parameter_probe_contexts(
         )
         or any(not value.is_finite() for value in defaults)
     ):
-        raise ValueError(
-            "recurrence numerical parameter-probe contract is invalid"
-        )
+        raise ValueError("recurrence numerical parameter-probe contract is invalid")
     contexts: list[tuple[Decimal, ...]] = []
     for probe_index in range(count):
         if include_defaults and probe_index == 0:
@@ -2438,10 +2617,7 @@ def _build_parameter_probe_contexts(
                 values.append(default)
                 continue
             digest = hashlib.sha256(
-                (
-                    f"{seed}:{domain}:{probe_index}:"
-                    f"{parameter_index}"
-                ).encode("ascii")
+                (f"{seed}:{domain}:{probe_index}:{parameter_index}").encode("ascii")
             ).digest()
             signed = int.from_bytes(digest[:8], "big") - (1 << 63)
             if signed == 0:
@@ -2694,11 +2870,115 @@ def _bounded_canonical_json_bytes(
         next_size = len(encoded) + len(chunk)
         if next_size > byte_limit:
             raise ValueError(
-                f"{label} exceeds the explicit {byte_limit}-byte canonical "
-                "boundary"
+                f"{label} exceeds the explicit {byte_limit}-byte canonical boundary"
             )
         encoded.extend(chunk)
     return bytes(encoded)
+
+
+def _compressed_transport_byte_limit(canonical_byte_count: int) -> int:
+    if not 0 <= canonical_byte_count <= _MAX_DECOMPRESSED_EVIDENCE_BYTES:
+        raise ValueError(
+            "recurrence compressed evidence canonical size is outside its "
+            "explicit decompression boundary"
+        )
+    available = (
+        _MAX_RAW_EVIDENCE_MEMORY_BYTES
+        - _COMPRESSED_NATIVE_NON_WIRE_RESERVE_BYTES
+        - canonical_byte_count
+    )
+    if available <= 2 * _COMPRESSED_EVIDENCE_HEADER.size:
+        raise ValueError(
+            "recurrence compressed evidence leaves no bounded transport "
+            "resident inside its native memory envelope"
+        )
+    return min(
+        _MAX_COMPRESSED_EVIDENCE_BYTES,
+        available // 2,
+    )
+
+
+def _write_compressed_canonical_evidence(
+    value: object,
+    stream: BinaryIO,
+    *,
+    canonical_byte_limit: int,
+) -> int:
+    """Stream canonical JSON into one bounded zlib transport envelope."""
+
+    if (
+        canonical_byte_limit <= 0
+        or canonical_byte_limit > _MAX_DECOMPRESSED_EVIDENCE_BYTES
+    ):
+        raise ValueError("recurrence compressed evidence canonical boundary is invalid")
+    stream.seek(0)
+    stream.truncate(0)
+    stream.write(b"\0" * _COMPRESSED_EVIDENCE_HEADER.size)
+    compressor = zlib.compressobj(level=1, wbits=zlib.MAX_WBITS)
+    digest = hashlib.sha256()
+    canonical_byte_count = 0
+    transport_byte_count = _COMPRESSED_EVIDENCE_HEADER.size
+
+    def write_compressed(chunk: bytes) -> None:
+        nonlocal transport_byte_count
+        if not chunk:
+            return
+        transport_byte_count += len(chunk)
+        if transport_byte_count > _MAX_COMPRESSED_EVIDENCE_BYTES:
+            raise ValueError(
+                "recurrence compressed evidence exceeds its explicit "
+                f"{_MAX_COMPRESSED_EVIDENCE_BYTES}-byte transport boundary"
+            )
+        stream.write(chunk)
+
+    for chunk in _iter_canonical_json_chunks(value):
+        canonical_byte_count += len(chunk)
+        if canonical_byte_count > canonical_byte_limit:
+            raise ValueError(
+                "recurrence numerical raw evidence exceeds the explicit "
+                f"{canonical_byte_limit}-byte decompression boundary"
+            )
+        digest.update(chunk)
+        write_compressed(compressor.compress(chunk))
+    write_compressed(compressor.flush())
+    dynamic_transport_limit = _compressed_transport_byte_limit(canonical_byte_count)
+    if transport_byte_count > dynamic_transport_limit:
+        raise ValueError(
+            "recurrence compressed evidence exceeds the shape-dependent "
+            f"{dynamic_transport_limit}-byte native transport boundary"
+        )
+    stream.seek(0)
+    stream.write(
+        _COMPRESSED_EVIDENCE_HEADER.pack(
+            _COMPRESSED_EVIDENCE_MAGIC,
+            canonical_byte_count,
+            digest.digest(),
+        )
+    )
+    stream.flush()
+    stream.seek(0, 2)
+    if stream.tell() != transport_byte_count:
+        raise ValueError("recurrence compressed evidence spool length drifted")
+    return canonical_byte_count
+
+
+def _read_compressed_evidence_spool(stream: BinaryIO) -> bytes:
+    stream.seek(0)
+    encoded = stream.read(_MAX_COMPRESSED_EVIDENCE_BYTES + 1)
+    if len(encoded) > _MAX_COMPRESSED_EVIDENCE_BYTES:
+        raise ValueError(
+            "recurrence compressed evidence spool exceeds its transport boundary"
+        )
+    if len(encoded) < _COMPRESSED_EVIDENCE_HEADER.size:
+        raise ValueError("recurrence compressed evidence spool is truncated")
+    magic, canonical_byte_count, _digest = _COMPRESSED_EVIDENCE_HEADER.unpack_from(
+        encoded
+    )
+    if magic != _COMPRESSED_EVIDENCE_MAGIC:
+        raise ValueError("recurrence compressed evidence spool has invalid magic")
+    if canonical_byte_count > _MAX_DECOMPRESSED_EVIDENCE_BYTES:
+        raise ValueError("recurrence compressed evidence declares an oversized payload")
+    return encoded
 
 
 def _validate_raw_evidence_canonical_size(
@@ -2746,10 +3026,129 @@ def _raw_evidence_wire_byte_limit(
         )
     return min(
         _MAX_RAW_EVIDENCE_BYTES,
-        (
-            _MAX_RAW_EVIDENCE_MEMORY_BYTES - resident_without_wire
-        )
+        (_MAX_RAW_EVIDENCE_MEMORY_BYTES - resident_without_wire)
         // _RAW_EVIDENCE_WIRE_PEAK_COPIES,
+    )
+
+
+def _raw_evidence_geometry_counts(
+    sections: _RecurrenceExactSectionsV1,
+    *,
+    candidate_probe_count: int,
+    verification_probe_count: int,
+    runtime_parameter_count: int,
+) -> tuple[int, int, int, int]:
+    if (
+        candidate_probe_count <= 0
+        or verification_probe_count <= 0
+        or runtime_parameter_count < 0
+    ):
+        raise ValueError("recurrence raw-evidence probe geometry is invalid")
+    current_count = len(sections.currents)
+    component_count = sum(current.component_count for current in sections.currents)
+    point_count = candidate_probe_count + verification_probe_count
+    row_count = current_count * 2 + runtime_parameter_count
+    scalar_count = (
+        2 * component_count * point_count + runtime_parameter_count * point_count
+    )
+    return current_count, component_count, scalar_count, row_count
+
+
+def _spooled_capture_memory_upper_bound(
+    *,
+    current_count: int,
+    component_count: int,
+    maximum_probe_count: int,
+    runtime_parameter_count: int,
+    include_candidate_index: bool = True,
+) -> int:
+    """Bound one capture graph plus the global index before both are spooled."""
+
+    values = (
+        current_count,
+        component_count,
+        maximum_probe_count,
+        runtime_parameter_count,
+    )
+    if any(value < 0 for value in values) or maximum_probe_count == 0:
+        raise ValueError("recurrence spooled capture geometry is invalid")
+    scalar_count = (
+        2 * component_count * maximum_probe_count
+        + runtime_parameter_count * maximum_probe_count
+    )
+    row_count = current_count + runtime_parameter_count
+    return (
+        _RAW_EVIDENCE_FIXED_RESERVE_BYTES
+        + scalar_count * _RAW_EVIDENCE_SCALAR_RESIDENT_BYTES
+        + row_count * _RAW_EVIDENCE_ROW_RESIDENT_BYTES
+        + _SPOOLED_CAPTURE_COMPRESSION_RESERVE_BYTES
+        + (
+            current_count * _SPOOLED_CANDIDATE_INDEX_BYTES_PER_CURRENT
+            if include_candidate_index
+            else 0
+        )
+    )
+
+
+def _select_raw_evidence_storage_geometry(
+    sections: _RecurrenceExactSectionsV1,
+    *,
+    candidate_probe_count: int,
+    verification_probe_count: int,
+    runtime_parameter_count: int,
+) -> _RawEvidenceStorageGeometry:
+    current_count, component_count, scalar_count, row_count = (
+        _raw_evidence_geometry_counts(
+            sections,
+            candidate_probe_count=candidate_probe_count,
+            verification_probe_count=verification_probe_count,
+            runtime_parameter_count=runtime_parameter_count,
+        )
+    )
+    try:
+        byte_limit = _raw_evidence_wire_byte_limit(
+            scalar_count=scalar_count,
+            row_count=row_count,
+        )
+    except ValueError as raw_error:
+        producer_bound = _spooled_capture_memory_upper_bound(
+            current_count=current_count,
+            component_count=component_count,
+            maximum_probe_count=max(
+                candidate_probe_count,
+                verification_probe_count,
+            ),
+            runtime_parameter_count=runtime_parameter_count,
+        )
+        if producer_bound > _MAX_RAW_EVIDENCE_MEMORY_BYTES:
+            raise ValueError(
+                "recurrence raw-evidence capture geometry exceeds both the "
+                "resident raw-wire and sequential-spool memory envelopes "
+                f"(currents={current_count}, components={component_count}, "
+                f"candidate_points={candidate_probe_count}, "
+                f"verification_points={verification_probe_count}, "
+                f"runtime_parameters={runtime_parameter_count}, "
+                f"scalars={scalar_count}, rows={row_count}, "
+                f"spooled_producer_resident={producer_bound}, "
+                f"raw_reason={raw_error})"
+            ) from raw_error
+        return _RawEvidenceStorageGeometry(
+            scalar_count=scalar_count,
+            row_count=row_count,
+            canonical_byte_limit=_MAX_DECOMPRESSED_EVIDENCE_BYTES,
+            encoding=_COMPRESSED_EVIDENCE_ENCODING,
+            producer_resident_upper_bound=producer_bound,
+        )
+    return _RawEvidenceStorageGeometry(
+        scalar_count=scalar_count,
+        row_count=row_count,
+        canonical_byte_limit=byte_limit,
+        encoding=_RAW_EVIDENCE_ENCODING,
+        producer_resident_upper_bound=_raw_evidence_memory_upper_bound(
+            _MIN_RAW_EVIDENCE_WIRE_BYTES,
+            scalar_count=scalar_count,
+            row_count=row_count,
+        ),
     )
 
 
@@ -2762,23 +3161,13 @@ def _validate_raw_evidence_geometry(
 ) -> tuple[int, int, int]:
     """Reject unsafe capture geometry before allocating Decimal observations."""
 
-    if (
-        candidate_probe_count <= 0
-        or verification_probe_count <= 0
-        or runtime_parameter_count < 0
-    ):
-        raise ValueError("recurrence raw-evidence probe geometry is invalid")
-    current_count = len(sections.currents)
-    component_count = sum(
-        current.component_count for current in sections.currents
-    )
-    point_count = candidate_probe_count + verification_probe_count
-    row_count = current_count * 2 + runtime_parameter_count
-    scalar_count = (
-        2
-        * component_count
-        * point_count
-        + runtime_parameter_count * point_count
+    current_count, component_count, scalar_count, row_count = (
+        _raw_evidence_geometry_counts(
+            sections,
+            candidate_probe_count=candidate_probe_count,
+            verification_probe_count=verification_probe_count,
+            runtime_parameter_count=runtime_parameter_count,
+        )
     )
     try:
         byte_limit = _raw_evidence_wire_byte_limit(
@@ -2864,13 +3253,9 @@ def _raw_streaming_consumer_memory_upper_bound(
     if any(value < 0 for value in values):
         raise ValueError("recurrence raw streaming geometry is invalid")
     observation_row_count = current_count * 2
-    candidate_scalar_references = (
-        component_count * candidate_probe_count * 2
-    )
+    candidate_scalar_references = component_count * candidate_probe_count * 2
     transient_rational_count = (
-        maximum_dimension
-        * max(candidate_probe_count, verification_probe_count)
-        * 4
+        maximum_dimension * max(candidate_probe_count, verification_probe_count) * 4
     )
     parameter_rational_count = (
         runtime_parameter_count
@@ -2880,11 +3265,9 @@ def _raw_streaming_consumer_memory_upper_bound(
     return (
         raw_byte_count * _RAW_EVIDENCE_WIRE_PEAK_COPIES
         + metadata_byte_count * _RAW_STREAM_METADATA_COPIES
-        + metadata_structural_token_count
-        * _RAW_STREAM_BYTES_PER_METADATA_TOKEN
+        + metadata_structural_token_count * _RAW_STREAM_BYTES_PER_METADATA_TOKEN
         + observation_row_count * _RAW_STREAM_BYTES_PER_ROW_OFFSETS
-        + candidate_scalar_references
-        * _RAW_STREAM_BYTES_PER_TEXT_REFERENCE
+        + candidate_scalar_references * _RAW_STREAM_BYTES_PER_TEXT_REFERENCE
         + current_count * _RAW_STREAM_BYTES_PER_CURRENT_INDEX
         + transient_rational_count * _RAW_STREAM_BYTES_PER_RATIONAL
         + parameter_rational_count * _RAW_STREAM_BYTES_PER_RATIONAL
@@ -2955,8 +3338,7 @@ def _synthetic_raw_evidence_bytes_by_dimension_counts(
         or verification_probe_count <= 0
         or decimal_characters <= 0
         or any(
-            dimension <= 0 or count < 0
-            for dimension, count in dimension_counts.items()
+            dimension <= 0 or count < 0 for dimension, count in dimension_counts.items()
         )
     ):
         raise ValueError("synthetic raw-evidence geometry is invalid")

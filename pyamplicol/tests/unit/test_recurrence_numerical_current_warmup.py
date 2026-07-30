@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import tempfile
+import zlib
 from dataclasses import replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
@@ -11,6 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import pyamplicol.generation.recurrence_numerical_current_warmup as recurrence_warmup
 import pyamplicol.generation.service as generation_service
 from pyamplicol.api.errors import ArtifactError, GenerationError
 from pyamplicol.generation.dag_equivalence import (
@@ -22,20 +26,27 @@ from pyamplicol.generation.numerical_candidate_index import (
     numerical_observation_tolerance_window_ids,
 )
 from pyamplicol.generation.recurrence_numerical_current_warmup import (
+    _COMPRESSED_EVIDENCE_HEADER,
     _MAX_PERSISTED_EVIDENCE_BYTES,
     _MAX_RAW_EVIDENCE_BYTES,
     _MAX_RAW_EVIDENCE_MEMORY_BYTES,
     _MIN_RAW_EVIDENCE_WIRE_BYTES,
+    _build_candidate_indexes,
     _decimal_string,
+    _discover_relations,
     _pair_residuals,
     _raw_evidence_memory_upper_bound,
     _raw_evidence_wire_byte_limit,
     _raw_streaming_consumer_memory_upper_bound,
+    _read_compressed_evidence_spool,
     _runtime_parameter_schema_payload,
+    _spooled_capture_memory_upper_bound,
+    _SpooledObservationMapping,
     _synthetic_raw_evidence_bytes,
     _synthetic_raw_evidence_bytes_by_dimension_counts,
     _validate_raw_evidence_canonical_size,
     _validate_raw_evidence_geometry,
+    _write_compressed_canonical_evidence,
     capture_recurrence_current_observations,
     recurrence_numerical_current_opt_out_report,
     recurrence_numerical_source_semantics_sha256,
@@ -71,9 +82,7 @@ def _factor(value: int) -> _ExactFactor:
 
 
 def test_opposite_residual_is_independent_of_ambient_decimal_context() -> None:
-    exact = Decimal(
-        "0.123456789012345678901234567890123456789012345678901234567890"
-    )
+    exact = Decimal("0.123456789012345678901234567890123456789012345678901234567890")
     with localcontext() as context:
         context.prec = 7
         residuals = _pair_residuals(
@@ -239,6 +248,56 @@ def _no_relation_plan() -> _RecurrenceExactPlan:
     return plan
 
 
+def _signed_relation_plan() -> _RecurrenceExactPlan:
+    plan = _topology_replay_plan()
+    prototype = plan.sections.currents[3]
+    contribution = plan.sections.contributions[0]
+    plan.sections = replace(
+        plan.sections,
+        current_arena_components=6,
+        currents=(
+            *plan.sections.currents,
+            replace(
+                prototype,
+                semantic_id=4,
+                component_base=4,
+                first_use=4,
+                last_use=4,
+            ),
+            replace(
+                prototype,
+                semantic_id=5,
+                component_base=5,
+                first_use=5,
+                last_use=5,
+            ),
+        ),
+        contributions=(
+            *plan.sections.contributions,
+            replace(
+                contribution,
+                destination_base=4,
+                exact_factor_id=1,
+            ),
+            replace(
+                contribution,
+                destination_base=5,
+                exact_factor_id=2,
+            ),
+        ),
+        row_groups=(
+            plan.sections.row_groups[0],
+            replace(plan.sections.row_groups[1], row_count=4),
+        ),
+        exact_factors=(
+            *plan.sections.exact_factors,
+            _factor(-1),
+            _factor(0),
+        ),
+    )
+    return plan
+
+
 def _points(seed_start: int) -> tuple[ValidationPointRecord, ...]:
     return tuple(
         ValidationPointRecord(
@@ -282,9 +341,7 @@ def test_python_parameter_default_hex_matches_native_signed_binary64_contract() 
 
     payload = _runtime_parameter_schema_payload(plan)
 
-    assert [
-        row["default_binary64"] for row in payload["parameters"]
-    ] == [
+    assert [row["default_binary64"] for row in payload["parameters"]] == [
         "-0x1.8000000000000p+0",
         "-0x0.0000000000001p-1022",
     ]
@@ -327,57 +384,41 @@ def test_recurrence_certified_reuse_uses_two_independent_probe_sets() -> None:
     assert evidence["requested_mode"] == "certified-reuse"
     assert "relative_tolerance" not in evidence
     assert "absolute_tolerance" not in evidence
-    assert evidence["relative_tolerance_binary64"] == 1.0e-60.hex()
-    assert evidence["absolute_tolerance_binary64"] == 1.0e-70.hex()
+    assert evidence["relative_tolerance_binary64"] == (1.0e-60).hex()
+    assert evidence["absolute_tolerance_binary64"] == (1.0e-70).hex()
     assert evidence["mappings"][0]["factor_integer"] == [1, 0]
     assert len(evidence["candidate_capture"]["observations"]) == 4
     assert len(evidence["verification_capture"]["observations"]) == 4
     report = result.to_json_dict()
     assert report["warning"]["required"] is True
     rejected = report["discovery"]["rejected_candidate_diagnostics"]
-    assert rejected["retained_count"] == len(
-        report["discovery"]["rejected_candidates"]
-    )
-    assert rejected["total_rejected_hypothesis_count"] >= rejected[
-        "retained_count"
-    ]
-    assert rejected["full_decision_sha256"] == report["discovery"][
-        "decision_sha256"
-    ]
+    assert rejected["retained_count"] == len(report["discovery"]["rejected_candidates"])
+    assert rejected["total_rejected_hypothesis_count"] >= rejected["retained_count"]
+    assert rejected["full_decision_sha256"] == report["discovery"]["decision_sha256"]
     persisted = report["persisted_numerical_evidence"]
     assert persisted["raw_evidence_retained"] is False
     census = persisted["full_census"]
-    assert census["uncertified_candidate_count"] == census[
-        "verification_rejected_count"
-    ]
+    assert (
+        census["uncertified_candidate_count"] == census["verification_rejected_count"]
+    )
     assert census["numerical_candidate_count"] == (
-        census["certified_relation_count"]
-        + census["uncertified_candidate_count"]
+        census["certified_relation_count"] + census["uncertified_candidate_count"]
     )
     assert census["rejected_hypothesis_count"] == (
-        census["tested_hypothesis_count"]
-        - census["certified_relation_count"]
+        census["tested_hypothesis_count"] - census["certified_relation_count"]
     )
-    assert census["rejection_decision_sha256"] == report["discovery"][
-        "rejection_decision_sha256"
-    ]
     assert (
-        persisted["measured_payload_bytes"]
-        < _MAX_PERSISTED_EVIDENCE_BYTES
+        census["rejection_decision_sha256"]
+        == report["discovery"]["rejection_decision_sha256"]
     )
+    assert persisted["measured_payload_bytes"] < _MAX_PERSISTED_EVIDENCE_BYTES
     assert {
-        row["current_id"]
-        for row in persisted["candidate_capture"]["observations"]
+        row["current_id"] for row in persisted["candidate_capture"]["observations"]
     } == {2, 3}
-    assert (
-        persisted["candidate_capture"]["full_batch_commitment"][
-            "current_count"
-        ]
-        == 4
+    assert persisted["candidate_capture"]["full_batch_commitment"]["current_count"] == 4
+    assert len(json.dumps(persisted, separators=(",", ":"), sort_keys=True)) < len(
+        result.evidence_json
     )
-    assert len(
-        json.dumps(persisted, separators=(",", ":"), sort_keys=True)
-    ) < len(result.evidence_json)
 
     validated = validate_recurrence_numerical_current_application(
         result,
@@ -537,8 +578,7 @@ def test_real_a_mixed_dimension_shape_uses_dynamic_wire_budget() -> None:
     point_count = 4 + 4
     runtime_parameter_count = 10
     scalar_count = (
-        2 * component_count * point_count
-        + runtime_parameter_count * point_count
+        2 * component_count * point_count + runtime_parameter_count * point_count
     )
     row_count = current_count * 2 + runtime_parameter_count
     byte_limit = _raw_evidence_wire_byte_limit(
@@ -619,6 +659,164 @@ def test_parameter_context_geometry_is_preflighted_without_allocation() -> None:
             verification_probe_count=2,
             runtime_parameter_count=400_000,
         )
+
+
+def test_exact_z_n8_sequential_spool_bound_includes_the_global_index() -> None:
+    resident = _spooled_capture_memory_upper_bound(
+        current_count=38_581,
+        component_count=162_976,
+        maximum_probe_count=4,
+        runtime_parameter_count=10,
+    )
+
+    assert resident == 935_671_296
+    assert resident < _MAX_RAW_EVIDENCE_MEMORY_BYTES
+    assert _MAX_RAW_EVIDENCE_MEMORY_BYTES - resident == 138_070_528
+
+
+def test_compressed_canonical_transport_round_trips_with_length_and_digest() -> None:
+    value = {
+        "candidate_capture": {"observations": []},
+        "verification_capture": {"observations": []},
+    }
+    expected = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+    with tempfile.TemporaryFile() as stream:
+        canonical_bytes = _write_compressed_canonical_evidence(
+            value,
+            stream,
+            canonical_byte_limit=1 << 20,
+        )
+        encoded = _read_compressed_evidence_spool(stream)
+
+    magic, declared_bytes, digest = _COMPRESSED_EVIDENCE_HEADER.unpack_from(encoded)
+    assert magic == b"PACNCEZ1"
+    assert canonical_bytes == declared_bytes == len(expected)
+    assert zlib.decompress(encoded[_COMPRESSED_EVIDENCE_HEADER.size :]) == expected
+    assert digest.hex() == hashlib.sha256(expected).hexdigest()
+
+
+def test_compressed_warmup_keeps_relation_rows_spooled_through_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_select_raw_evidence_storage_geometry",
+        lambda *_args, **_kwargs: (
+            recurrence_warmup._RawEvidenceStorageGeometry(
+                scalar_count=128,
+                row_count=16,
+                canonical_byte_limit=1 << 20,
+                encoding="zlib-canonical-json-v1",
+                producer_resident_upper_bound=1 << 20,
+            )
+        ),
+    )
+    plan = _topology_replay_plan()
+    result = run_recurrence_numerical_current_warmup(
+        plan,
+        candidate_points=_points(1),
+        verification_points=_points(101),
+        mode="certified-reuse",
+        color_accuracy="lc",
+        precision_digits=80,
+        seed=53,
+        relative_tolerance=1.0e-60,
+        absolute_tolerance=1.0e-70,
+    )
+    candidate_spool = result.candidate_capture.observations
+    verification_spool = result.verification_capture.observations
+    assert isinstance(candidate_spool, _SpooledObservationMapping)
+    assert isinstance(verification_spool, _SpooledObservationMapping)
+    assert result.evidence_transport_bytes == len(result.evidence_json)
+    consumed = result.without_evidence_transport()
+    assert consumed.evidence_json == b""
+    assert consumed.evidence_transport_bytes == result.evidence_transport_bytes
+    try:
+        validated = validate_recurrence_numerical_current_application(
+            consumed,
+            plan,
+            baseline_plan=plan,
+            precision_digits=80,
+            seed=53,
+            relative_tolerance=1.0e-60,
+            absolute_tolerance=1.0e-70,
+        )
+        persisted = validated.to_json_dict()["persisted_numerical_evidence"]
+        assert persisted["generation_evidence_encoding"] == ("zlib-canonical-json-v1")
+        assert validated.application_validation["status"] == "verified"
+    finally:
+        result.close()
+        result.close()
+    with pytest.raises(RuntimeError, match="spool is closed"):
+        candidate_spool[0]
+    with pytest.raises(RuntimeError, match="spool is closed"):
+        verification_spool[0]
+
+
+def test_spooled_discovery_preserves_global_equal_opposite_and_zero_relations() -> None:
+    plan = _signed_relation_plan()
+    source_digest = recurrence_numerical_source_semantics_sha256(plan.sections)
+    candidate = capture_recurrence_current_observations(
+        plan,
+        _points(1),
+        precision_digits=80,
+        source_semantics_sha256=source_digest,
+        seed=67,
+        domain="candidate-current-probes-v1",
+    )
+    verification = capture_recurrence_current_observations(
+        plan,
+        _points(101),
+        precision_digits=80,
+        source_semantics_sha256=source_digest,
+        seed=67,
+        domain="independent-verification-current-probes-v1",
+    )
+    expected, _expected_report = _discover_relations(
+        plan.sections,
+        candidate,
+        verification,
+        source_semantics_sha256=source_digest,
+        precision_digits=80,
+        seed=67,
+        relative_tolerance=1.0e-60,
+        absolute_tolerance=1.0e-70,
+        color_accuracy="lc",
+    )
+    candidate_spool = _SpooledObservationMapping(
+        candidate.observations,
+        candidate_indexes=_build_candidate_indexes(
+            plan.sections,
+            candidate.observations,
+        ),
+    )
+    verification_spool = _SpooledObservationMapping(
+        verification.observations,
+    )
+    try:
+        actual, _actual_report = _discover_relations(
+            plan.sections,
+            replace(candidate, observations=candidate_spool),
+            replace(verification, observations=verification_spool),
+            source_semantics_sha256=source_digest,
+            precision_digits=80,
+            seed=67,
+            relative_tolerance=1.0e-60,
+            absolute_tolerance=1.0e-70,
+            color_accuracy="lc",
+        )
+    finally:
+        candidate_spool.close()
+        verification_spool.close()
+
+    assert actual == expected
+    assert {
+        (certificate.current_id, certificate.relation_kind) for certificate in actual
+    } >= {(3, "equal"), (4, "opposite"), (5, "zero")}
 
 
 def test_dynamic_raw_geometry_rejects_adversarial_sizes_and_reserves_wire() -> None:
@@ -761,21 +959,13 @@ def test_recurrence_aggregate_reports_applied_warning_and_explicit_opt_out() -> 
         "applied_relation_count": 1,
         "certificate_count": 1,
         "numerical_candidate_count": discovery["numerical_candidate_count"],
-        "uncertified_candidate_count": discovery[
-            "verification_rejected_count"
-        ],
-        "rejected_hypothesis_count": discovery[
-            "rejected_hypothesis_count"
-        ],
+        "uncertified_candidate_count": discovery["verification_rejected_count"],
+        "rejected_hypothesis_count": discovery["rejected_hypothesis_count"],
         "certificate_replay": application["certificate_replay"],
         "probe": {
             "probe_count": lane["candidate_capture"]["point_count"],
-            "verification_probe_count": (
-                lane["verification_capture"]["point_count"]
-            ),
-            "verification_rejected_count": discovery[
-                "verification_rejected_count"
-            ],
+            "verification_probe_count": (lane["verification_capture"]["point_count"]),
+            "verification_rejected_count": discovery["verification_rejected_count"],
             "tested_hypothesis_count": discovery["tested_hypothesis_count"],
             "runtime_parameter_schema_sha256": lane["candidate_capture"][
                 "runtime_parameter_schema_sha256"
@@ -783,21 +973,15 @@ def test_recurrence_aggregate_reports_applied_warning_and_explicit_opt_out() -> 
             "candidate_observation_batch_sha256": lane["candidate_capture"][
                 "observation_batch_sha256"
             ],
-            "verification_observation_batch_sha256": lane[
-                "verification_capture"
-            ]["observation_batch_sha256"],
-            "decision_sha256": discovery["decision_sha256"],
-            "rejection_decision_sha256": discovery[
-                "rejection_decision_sha256"
+            "verification_observation_batch_sha256": lane["verification_capture"][
+                "observation_batch_sha256"
             ],
+            "decision_sha256": discovery["decision_sha256"],
+            "rejection_decision_sha256": discovery["rejection_decision_sha256"],
         },
         "rejected_candidate_diagnostics": {
-            "total_rejected_hypothesis_count": discovery[
-                "rejected_hypothesis_count"
-            ],
-            "full_rejection_sha256": discovery[
-                "rejection_decision_sha256"
-            ],
+            "total_rejected_hypothesis_count": discovery["rejected_hypothesis_count"],
+            "full_rejection_sha256": discovery["rejection_decision_sha256"],
         },
     }
     runtime_inspection, aggregate = _recurrence_relation_reporting(
@@ -939,6 +1123,7 @@ def test_recurrence_service_forwards_complete_numerical_contract_to_pyo3(
         catalog_digest="e" * 64,
         to_dict=lambda: {"z": 1, "a": 2},
     )
+
     def progress(_payload: object) -> None:
         pass
 

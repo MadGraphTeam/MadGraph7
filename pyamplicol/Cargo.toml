@@ -22,6 +22,7 @@ repository = "https://github.com/mg5amcnlo/pyamplicol"
 
 [workspace.dependencies]
 bincode = { version = "2.0", features = ["serde"] }
+flate2 = "1.1"
 libc = "0.2"
 numpy = "0.28"
 num-bigint = "0.4"

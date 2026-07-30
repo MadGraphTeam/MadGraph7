@@ -3169,6 +3169,7 @@ class GenerationBackend:
                         evidence=warmup.evidence_json,
                         report_progress=False,
                     )
+                    warmup = warmup.without_evidence_transport()
                     try:
                         with _SYMBOLICA_MATERIALIZATION_LOCK:
                             applied_plan = _RecurrenceExactPlan.from_generation(
@@ -3199,13 +3200,16 @@ class GenerationBackend:
                             f"process {process_name!r} optimized recurrence "
                             f"current replay failed closed: {exc}"
                         ) from exc
-                    runtime_inspection, aggregate_report = (
-                        _recurrence_relation_reporting(
-                            output.inspection_summary,
-                            mode=relation_discovery_mode,
-                            lane_report=warmup.to_json_dict(),
+                    try:
+                        runtime_inspection, aggregate_report = (
+                            _recurrence_relation_reporting(
+                                output.inspection_summary,
+                                mode=relation_discovery_mode,
+                                lane_report=warmup.to_json_dict(),
+                            )
                         )
-                    )
+                    finally:
+                        warmup.close()
                     return replace(
                         output,
                         inspection_summary=runtime_inspection,

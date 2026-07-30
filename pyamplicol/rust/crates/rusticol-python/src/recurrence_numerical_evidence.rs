@@ -7,6 +7,7 @@
 //! rational residuals, decision census, certificates, and current mappings
 //! before the native Direct-Arena lowering is allowed to apply any reuse.
 
+use flate2::read::ZlibDecoder;
 use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
@@ -20,7 +21,7 @@ use rusticol_core::{RusticolError, RusticolResult};
 use serde_json::{Map as JsonMap, Value as JsonValue, value::RawValue as JsonRawValue};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::ops::Range;
 use std::str::FromStr;
 
@@ -33,6 +34,14 @@ use crate::recurrence::{
 type ExactProbeComplex = (BigRational, BigRational);
 
 const MAX_RAW_EVIDENCE_BYTES: usize = 157_853_696;
+const COMPRESSED_EVIDENCE_MAGIC: &[u8; 8] = b"PACNCEZ1";
+const COMPRESSED_EVIDENCE_HEADER_BYTES: usize = 8 + 8 + 32;
+const MAX_COMPRESSED_EVIDENCE_BYTES: usize = 256 << 20;
+const MAX_DECOMPRESSED_EVIDENCE_BYTES: usize = 512 << 20;
+const COMPRESSED_RAW_JSON_STRUCTURAL_TOKENS: usize = 32_000_000;
+const SPOOLED_CAPTURE_COMPRESSION_RESERVE_BYTES: usize = 8 << 20;
+const SPOOLED_CANDIDATE_INDEX_BYTES_PER_CURRENT: usize = 1_024;
+const COMPRESSED_NATIVE_NON_WIRE_RESERVE_BYTES: usize = 192 << 20;
 const MAX_RAW_JSON_DEPTH: usize = 32;
 const MAX_RAW_JSON_STRING_BYTES: usize = 65_536;
 const MAX_RAW_JSON_STRUCTURAL_TOKENS: usize = 8_000_000;
@@ -48,6 +57,12 @@ const RAW_STREAM_PARAMETER_RATIONAL_COPIES: usize = 4;
 const RAW_PRODUCER_BYTES_PER_SCALAR: usize = 640;
 const RAW_PRODUCER_BYTES_PER_ROW: usize = 512;
 const MIN_RAW_EVIDENCE_WIRE_BYTES: usize = 1 << 20;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RawEvidenceStorage {
+    ResidentJson,
+    CompressedEnvelope { transport_bytes: usize },
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct RawByteRange {
@@ -89,6 +104,12 @@ struct LocatedObservationArrays {
     verification: RawByteRange,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct LocatedObservationRanges {
+    candidate: RawByteRange,
+    verification: RawByteRange,
+}
+
 fn borrowed_raw_value_range(
     bytes: &[u8],
     value: &JsonRawValue,
@@ -106,7 +127,7 @@ fn borrowed_raw_value_range(
     RawByteRange::from_usize(start, end, bytes.len(), context)
 }
 
-fn locate_raw_observation_arrays(bytes: &[u8]) -> RusticolResult<LocatedObservationArrays> {
+fn locate_raw_observation_ranges(bytes: &[u8]) -> RusticolResult<LocatedObservationRanges> {
     let root = serde_json::from_slice::<BTreeMap<String, &JsonRawValue>>(bytes)
         .map_err(|error| invalid(format!("numerical relation evidence is not JSON: {error}")))?;
     let locate = |field: &str| -> RusticolResult<RawByteRange> {
@@ -134,25 +155,66 @@ fn locate_raw_observation_arrays(bytes: &[u8]) -> RusticolResult<LocatedObservat
             "raw numerical observation arrays overlap or are not canonical",
         ));
     }
+    Ok(LocatedObservationRanges {
+        candidate,
+        verification,
+    })
+}
+
+fn raw_observation_metadata_byte_count(
+    bytes: &[u8],
+    ranges: LocatedObservationRanges,
+) -> RusticolResult<usize> {
+    let candidate_range = ranges
+        .candidate
+        .as_usize(bytes.len(), "candidate observation-array range")?;
+    let verification_range = ranges
+        .verification
+        .as_usize(bytes.len(), "verification observation-array range")?;
     let removed = candidate_range
         .len()
         .checked_add(verification_range.len())
         .ok_or_else(|| invalid("raw observation-array byte count overflows usize"))?;
-    let capacity = bytes
+    bytes
         .len()
         .checked_sub(removed)
         .and_then(|size| size.checked_add(4))
-        .ok_or_else(|| invalid("raw numerical metadata size overflows usize"))?;
+        .ok_or_else(|| invalid("raw numerical metadata size overflows usize"))
+}
+
+fn materialize_raw_observation_metadata(
+    bytes: &[u8],
+    ranges: LocatedObservationRanges,
+) -> RusticolResult<Vec<u8>> {
+    let candidate_range = ranges
+        .candidate
+        .as_usize(bytes.len(), "candidate observation-array range")?;
+    let verification_range = ranges
+        .verification
+        .as_usize(bytes.len(), "verification observation-array range")?;
+    let capacity = raw_observation_metadata_byte_count(bytes, ranges)?;
     let mut metadata_bytes = Vec::with_capacity(capacity);
     metadata_bytes.extend_from_slice(&bytes[..candidate_range.start]);
     metadata_bytes.extend_from_slice(b"[]");
     metadata_bytes.extend_from_slice(&bytes[candidate_range.end..verification_range.start]);
     metadata_bytes.extend_from_slice(b"[]");
     metadata_bytes.extend_from_slice(&bytes[verification_range.end..]);
+    if metadata_bytes.len() != capacity {
+        return Err(invalid(
+            "raw numerical metadata materialization length drifted",
+        ));
+    }
+    Ok(metadata_bytes)
+}
+
+#[cfg(test)]
+fn locate_raw_observation_arrays(bytes: &[u8]) -> RusticolResult<LocatedObservationArrays> {
+    let ranges = locate_raw_observation_ranges(bytes)?;
+    let metadata_bytes = materialize_raw_observation_metadata(bytes, ranges)?;
     Ok(LocatedObservationArrays {
         metadata_bytes,
-        candidate,
-        verification,
+        candidate: ranges.candidate,
+        verification: ranges.verification,
     })
 }
 
@@ -337,7 +399,10 @@ fn validate_canonical_json_bytes(
     Ok(())
 }
 
-fn validate_raw_json_lexical_budget(bytes: &[u8]) -> RusticolResult<usize> {
+fn validate_raw_json_lexical_budget(
+    bytes: &[u8],
+    maximum_structural_tokens: usize,
+) -> RusticolResult<usize> {
     let mut in_string = false;
     let mut escaped = false;
     let mut string_bytes = 0_usize;
@@ -389,7 +454,7 @@ fn validate_raw_json_lexical_budget(bytes: &[u8]) -> RusticolResult<usize> {
             b',' | b':' => structural_tokens += 1,
             _ => {}
         }
-        if structural_tokens > MAX_RAW_JSON_STRUCTURAL_TOKENS {
+        if structural_tokens > maximum_structural_tokens {
             return Err(invalid(
                 "numerical relation evidence JSON token count exceeds its boundary",
             ));
@@ -429,7 +494,133 @@ fn validate_pre_metadata_resident_budget(
     Ok(())
 }
 
+fn validate_compressed_pre_shape_resident_budget(
+    raw_byte_count: usize,
+    transport_byte_count: usize,
+    metadata_byte_count: usize,
+    metadata_structural_token_count: usize,
+) -> RusticolResult<()> {
+    // This check runs first with zero tokens before the metadata copy, then
+    // with its exact lexical census before serde builds the metadata DOM.
+    // Observation arrays remain borrowed from the one decompressed view.
+    let resident_bytes = transport_byte_count
+        .checked_mul(RAW_PRE_DOM_WIRE_COPIES)
+        .and_then(|transport| raw_byte_count.checked_add(transport))
+        .and_then(|wire| {
+            metadata_byte_count
+                .checked_mul(RAW_STREAM_METADATA_COPIES)
+                .and_then(|metadata| wire.checked_add(metadata))
+        })
+        .and_then(|total| {
+            metadata_structural_token_count
+                .checked_mul(RAW_PRE_DOM_BYTES_PER_TOKEN)
+                .and_then(|dom| total.checked_add(dom))
+        })
+        .and_then(|dynamic| dynamic.checked_add(RAW_PRE_DOM_FIXED_BYTES))
+        .ok_or_else(|| invalid("compressed numerical pre-shape resident bound overflows usize"))?;
+    if resident_bytes > MAX_RAW_RESIDENT_BYTES {
+        return Err(invalid(
+            "compressed numerical evidence exceeds the explicit pre-shape 1 GiB resident memory envelope",
+        ));
+    }
+    Ok(())
+}
+
+fn decode_compressed_evidence(bytes: &[u8]) -> RusticolResult<Vec<u8>> {
+    if bytes.len() < COMPRESSED_EVIDENCE_HEADER_BYTES {
+        return Err(invalid(
+            "compressed numerical relation evidence header is truncated",
+        ));
+    }
+    if bytes.len() > MAX_COMPRESSED_EVIDENCE_BYTES {
+        return Err(invalid(format!(
+            "compressed numerical relation evidence exceeds the explicit {MAX_COMPRESSED_EVIDENCE_BYTES}-byte transport boundary"
+        )));
+    }
+    if bytes.get(..COMPRESSED_EVIDENCE_MAGIC.len()) != Some(COMPRESSED_EVIDENCE_MAGIC) {
+        return Err(invalid(
+            "compressed numerical relation evidence has invalid magic",
+        ));
+    }
+    let declared_bytes = u64::from_be_bytes(
+        bytes[8..16]
+            .try_into()
+            .map_err(|_| invalid("compressed numerical evidence length header is malformed"))?,
+    );
+    let declared_bytes = usize::try_from(declared_bytes)
+        .map_err(|_| invalid("compressed numerical evidence length exceeds usize"))?;
+    if declared_bytes == 0 || declared_bytes > MAX_DECOMPRESSED_EVIDENCE_BYTES {
+        return Err(invalid(format!(
+            "compressed numerical relation evidence declares a payload outside the explicit {MAX_DECOMPRESSED_EVIDENCE_BYTES}-byte decompression boundary"
+        )));
+    }
+    let resident_upper_bound = declared_bytes
+        .checked_add(
+            bytes
+                .len()
+                .checked_mul(RAW_PRE_DOM_WIRE_COPIES)
+                .ok_or_else(|| {
+                    invalid("compressed numerical transport resident bound overflows usize")
+                })?,
+        )
+        .and_then(|wire| wire.checked_add(COMPRESSED_NATIVE_NON_WIRE_RESERVE_BYTES))
+        .ok_or_else(|| invalid("compressed numerical resident bound overflows usize"))?;
+    if resident_upper_bound > MAX_RAW_RESIDENT_BYTES {
+        return Err(invalid(
+            "compressed numerical relation evidence exceeds the explicit native 1 GiB resident memory envelope",
+        ));
+    }
+
+    let expected_digest = bytes
+        .get(16..COMPRESSED_EVIDENCE_HEADER_BYTES)
+        .ok_or_else(|| invalid("compressed numerical evidence digest header is malformed"))?;
+    let compressed = bytes
+        .get(COMPRESSED_EVIDENCE_HEADER_BYTES..)
+        .ok_or_else(|| invalid("compressed numerical evidence payload is truncated"))?;
+    if compressed.is_empty() {
+        return Err(invalid(
+            "compressed numerical relation evidence payload is empty",
+        ));
+    }
+
+    let mut decoded = Vec::new();
+    decoded
+        .try_reserve_exact(declared_bytes)
+        .map_err(|_| invalid("could not reserve bounded decompressed numerical evidence"))?;
+    let mut decoder = ZlibDecoder::new(compressed);
+    {
+        let maximum_read = u64::try_from(declared_bytes)
+            .ok()
+            .and_then(|count| count.checked_add(1))
+            .ok_or_else(|| invalid("compressed numerical decompression limit overflows u64"))?;
+        let mut limited = decoder.by_ref().take(maximum_read);
+        limited.read_to_end(&mut decoded).map_err(|error| {
+            invalid(format!(
+                "compressed numerical relation evidence could not be decompressed: {error}"
+            ))
+        })?;
+    }
+    if decoded.len() != declared_bytes {
+        return Err(invalid(format!(
+            "compressed numerical relation evidence decompressed length disagrees with its declaration (declared={declared_bytes}, actual={})",
+            decoded.len()
+        )));
+    }
+    if usize::try_from(decoder.total_in()).ok() != Some(compressed.len()) {
+        return Err(invalid(
+            "compressed numerical relation evidence has trailing or unconsumed transport bytes",
+        ));
+    }
+    if Sha256::digest(&decoded).as_slice() != expected_digest {
+        return Err(RusticolError::integrity(
+            "compressed numerical relation evidence digest mismatch",
+        ));
+    }
+    Ok(decoded)
+}
+
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 fn streaming_raw_resident_upper_bound(
     raw_byte_count: usize,
     metadata_byte_count: usize,
@@ -447,6 +638,33 @@ fn streaming_raw_resident_upper_bound(
     // ranges, one borrowed-text candidate-index pass, one exact index scalar
     // per current, transient current/representative rationals, and the small
     // authenticated runtime-parameter contexts.
+    let non_wire_bytes = streaming_raw_non_wire_upper_bound(
+        metadata_byte_count,
+        metadata_structural_token_count,
+        current_count,
+        component_count,
+        maximum_dimension,
+        candidate_probe_count,
+        verification_probe_count,
+        runtime_parameter_count,
+    )?;
+    raw_byte_count
+        .checked_mul(RAW_PRE_DOM_WIRE_COPIES)
+        .and_then(|wire| wire.checked_add(non_wire_bytes))
+        .ok_or_else(|| invalid("raw numerical streaming resident bound overflows usize"))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn streaming_raw_non_wire_upper_bound(
+    metadata_byte_count: usize,
+    metadata_structural_token_count: usize,
+    current_count: usize,
+    component_count: usize,
+    maximum_dimension: usize,
+    candidate_probe_count: usize,
+    verification_probe_count: usize,
+    runtime_parameter_count: usize,
+) -> RusticolResult<usize> {
     let observation_row_count = current_count
         .checked_mul(2)
         .ok_or_else(|| invalid("raw streaming observation row count overflows usize"))?;
@@ -467,13 +685,8 @@ fn streaming_raw_resident_upper_bound(
         )
         .and_then(|count| count.checked_mul(RAW_STREAM_PARAMETER_RATIONAL_COPIES))
         .ok_or_else(|| invalid("raw streaming parameter scalar count overflows usize"))?;
-    raw_byte_count
-        .checked_mul(RAW_PRE_DOM_WIRE_COPIES)
-        .and_then(|wire| {
-            metadata_byte_count
-                .checked_mul(RAW_STREAM_METADATA_COPIES)
-                .and_then(|metadata| wire.checked_add(metadata))
-        })
+    metadata_byte_count
+        .checked_mul(RAW_STREAM_METADATA_COPIES)
         .and_then(|total| {
             metadata_structural_token_count
                 .checked_mul(RAW_PRE_DOM_BYTES_PER_TOKEN)
@@ -511,6 +724,7 @@ fn streaming_raw_resident_upper_bound(
 #[allow(clippy::too_many_arguments)]
 fn validate_streaming_raw_resident_budget(
     raw_byte_count: usize,
+    storage: RawEvidenceStorage,
     metadata_byte_count: usize,
     metadata_structural_token_count: usize,
     source: &RawSourceSemantics,
@@ -529,8 +743,7 @@ fn validate_streaming_raw_resident_budget(
         .map(|current| usize::from(current.dimension))
         .max()
         .unwrap_or(0);
-    let resident_bytes = streaming_raw_resident_upper_bound(
-        raw_byte_count,
+    let non_wire_bytes = streaming_raw_non_wire_upper_bound(
         metadata_byte_count,
         metadata_structural_token_count,
         source.currents.len(),
@@ -540,6 +753,23 @@ fn validate_streaming_raw_resident_budget(
         verification_probe_count,
         runtime_parameter_count,
     )?;
+    let resident_bytes = match storage {
+        RawEvidenceStorage::ResidentJson => raw_byte_count
+            .checked_mul(RAW_PRE_DOM_WIRE_COPIES)
+            .and_then(|wire| wire.checked_add(non_wire_bytes)),
+        RawEvidenceStorage::CompressedEnvelope { transport_bytes } => {
+            if non_wire_bytes > COMPRESSED_NATIVE_NON_WIRE_RESERVE_BYTES {
+                return Err(invalid(
+                    "compressed numerical evidence exceeds its explicit native non-wire memory reserve",
+                ));
+            }
+            transport_bytes
+                .checked_mul(RAW_PRE_DOM_WIRE_COPIES)
+                .and_then(|transport| raw_byte_count.checked_add(transport))
+                .and_then(|wire| wire.checked_add(non_wire_bytes))
+        }
+    }
+    .ok_or_else(|| invalid("raw numerical streaming resident bound overflows usize"))?;
     if resident_bytes > MAX_RAW_RESIDENT_BYTES {
         return Err(invalid(
             "raw numerical evidence exceeds the streaming 1 GiB resident memory envelope",
@@ -760,24 +990,84 @@ pub(super) fn parse_numerical_relation_evidence(
     bytes: &[u8],
     runtime_parameters: &AuthenticatedRuntimeParameterContract,
 ) -> RusticolResult<RecurrenceNumericalRelationEvidence> {
+    if bytes.is_empty() {
+        return Err(invalid("numerical relation evidence must not be empty"));
+    }
+    if bytes.starts_with(COMPRESSED_EVIDENCE_MAGIC) {
+        let decoded = decode_compressed_evidence(bytes)?;
+        return parse_numerical_relation_evidence_v3(
+            &decoded,
+            RawEvidenceStorage::CompressedEnvelope {
+                transport_bytes: bytes.len(),
+            },
+            runtime_parameters,
+        );
+    }
+    parse_numerical_relation_evidence_v3(
+        bytes,
+        RawEvidenceStorage::ResidentJson,
+        runtime_parameters,
+    )
+}
+
+fn parse_numerical_relation_evidence_v3(
+    bytes: &[u8],
+    storage: RawEvidenceStorage,
+    runtime_parameters: &AuthenticatedRuntimeParameterContract,
+) -> RusticolResult<RecurrenceNumericalRelationEvidence> {
     // The global byte ceiling protects serde before the source shape is
     // available.  Once parsed, the authenticated scalar/row geometry derives
     // a possibly smaller wire allowance inside the same 1 GiB envelope.
     const ABI: &str = "pyamplicol-recurrence-numerical-current-evidence-v3";
     const RELATION_SET_ABI: &str = "pyamplicol-authenticated-numerical-current-relation-set-v2";
-    if bytes.is_empty() {
-        return Err(invalid("numerical relation evidence must not be empty"));
-    }
-    if bytes.len() > MAX_RAW_EVIDENCE_BYTES {
+    let (maximum_bytes, maximum_structural_tokens) = match storage {
+        RawEvidenceStorage::ResidentJson => {
+            (MAX_RAW_EVIDENCE_BYTES, MAX_RAW_JSON_STRUCTURAL_TOKENS)
+        }
+        RawEvidenceStorage::CompressedEnvelope { .. } => (
+            MAX_DECOMPRESSED_EVIDENCE_BYTES,
+            COMPRESSED_RAW_JSON_STRUCTURAL_TOKENS,
+        ),
+    };
+    if bytes.is_empty() || bytes.len() > maximum_bytes {
         return Err(invalid(format!(
-            "numerical relation evidence exceeds the explicit {MAX_RAW_EVIDENCE_BYTES}-byte generation boundary"
+            "numerical relation evidence is outside its explicit {maximum_bytes}-byte generation boundary"
         )));
     }
-    let structural_token_count = validate_raw_json_lexical_budget(bytes)?;
-    validate_pre_metadata_resident_budget(bytes.len(), structural_token_count)?;
-    let located_observations = locate_raw_observation_arrays(bytes)?;
+    let structural_token_count =
+        validate_raw_json_lexical_budget(bytes, maximum_structural_tokens)?;
+    match storage {
+        RawEvidenceStorage::ResidentJson => {
+            validate_pre_metadata_resident_budget(bytes.len(), structural_token_count)?;
+        }
+        RawEvidenceStorage::CompressedEnvelope { .. } => {}
+    }
+    let observation_ranges = locate_raw_observation_ranges(bytes)?;
+    let metadata_byte_count = raw_observation_metadata_byte_count(bytes, observation_ranges)?;
+    if let RawEvidenceStorage::CompressedEnvelope { transport_bytes } = storage {
+        validate_compressed_pre_shape_resident_budget(
+            bytes.len(),
+            transport_bytes,
+            metadata_byte_count,
+            0,
+        )?;
+    }
+    let metadata_bytes = materialize_raw_observation_metadata(bytes, observation_ranges)?;
     let metadata_structural_token_count =
-        validate_raw_json_lexical_budget(&located_observations.metadata_bytes)?;
+        validate_raw_json_lexical_budget(&metadata_bytes, MAX_RAW_JSON_STRUCTURAL_TOKENS)?;
+    if let RawEvidenceStorage::CompressedEnvelope { transport_bytes } = storage {
+        validate_compressed_pre_shape_resident_budget(
+            bytes.len(),
+            transport_bytes,
+            metadata_byte_count,
+            metadata_structural_token_count,
+        )?;
+    }
+    let located_observations = LocatedObservationArrays {
+        metadata_bytes,
+        candidate: observation_ranges.candidate,
+        verification: observation_ranges.verification,
+    };
     let value: JsonValue = serde_json::from_slice(&located_observations.metadata_bytes)
         .map_err(|error| invalid(format!("numerical relation evidence is not JSON: {error}")))?;
     validate_canonical_json_bytes(
@@ -887,19 +1177,32 @@ pub(super) fn parse_numerical_relation_evidence(
         "verification_probe_count",
         "numerical relation verification probe count",
     )?;
-    let (_scalar_count, _row_count, shape_wire_limit) = validate_raw_evidence_geometry(
-        &source,
-        probe_count,
-        verification_probe_count,
-        runtime_parameter_count,
-    )?;
-    if bytes.len() > shape_wire_limit {
-        return Err(invalid(format!(
-            "numerical relation evidence exceeds its authenticated {shape_wire_limit}-byte shape-dependent wire boundary"
-        )));
+    match storage {
+        RawEvidenceStorage::ResidentJson => {
+            let (_scalar_count, _row_count, shape_wire_limit) = validate_raw_evidence_geometry(
+                &source,
+                probe_count,
+                verification_probe_count,
+                runtime_parameter_count,
+            )?;
+            if bytes.len() > shape_wire_limit {
+                return Err(invalid(format!(
+                    "numerical relation evidence exceeds its authenticated {shape_wire_limit}-byte shape-dependent wire boundary"
+                )));
+            }
+        }
+        RawEvidenceStorage::CompressedEnvelope { .. } => {
+            validate_spooled_raw_evidence_geometry(
+                &source,
+                probe_count,
+                verification_probe_count,
+                runtime_parameter_count,
+            )?;
+        }
     }
     validate_streaming_raw_resident_budget(
         bytes.len(),
+        storage,
         located_observations.metadata_bytes.len(),
         metadata_structural_token_count,
         &source,
@@ -1301,12 +1604,13 @@ fn validate_candidate_index_claim(
     Ok(())
 }
 
-fn validate_raw_evidence_geometry(
+fn raw_evidence_geometry_counts(
     source: &RawSourceSemantics,
     probe_count: u32,
     verification_probe_count: u32,
     runtime_parameter_count: usize,
-) -> RusticolResult<(usize, usize, usize)> {
+) -> RusticolResult<(usize, usize, usize, usize)> {
+    let current_count = source.currents.len();
     let row_count = source
         .currents
         .len()
@@ -1336,8 +1640,94 @@ fn validate_raw_evidence_geometry(
     let scalar_count = observation_scalar_count
         .checked_add(parameter_scalar_count)
         .ok_or_else(|| invalid("raw total scalar count overflows usize"))?;
+    Ok((current_count, component_count, scalar_count, row_count))
+}
+
+fn validate_raw_evidence_geometry(
+    source: &RawSourceSemantics,
+    probe_count: u32,
+    verification_probe_count: u32,
+    runtime_parameter_count: usize,
+) -> RusticolResult<(usize, usize, usize)> {
+    let (_current_count, _component_count, scalar_count, row_count) = raw_evidence_geometry_counts(
+        source,
+        probe_count,
+        verification_probe_count,
+        runtime_parameter_count,
+    )?;
     let wire_limit = raw_evidence_shape_wire_limit(scalar_count, row_count)?;
     Ok((scalar_count, row_count, wire_limit))
+}
+
+fn spooled_capture_memory_upper_bound(
+    current_count: usize,
+    component_count: usize,
+    maximum_probe_count: usize,
+    runtime_parameter_count: usize,
+) -> RusticolResult<usize> {
+    if maximum_probe_count == 0 {
+        return Err(invalid(
+            "raw numerical sequential-spool probe count must be positive",
+        ));
+    }
+    let scalar_count = component_count
+        .checked_mul(maximum_probe_count)
+        .and_then(|count| count.checked_mul(2))
+        .and_then(|count| {
+            runtime_parameter_count
+                .checked_mul(maximum_probe_count)
+                .and_then(|parameters| count.checked_add(parameters))
+        })
+        .ok_or_else(|| invalid("raw numerical sequential-spool scalar count overflows usize"))?;
+    let row_count = current_count
+        .checked_add(runtime_parameter_count)
+        .ok_or_else(|| invalid("raw numerical sequential-spool row count overflows usize"))?;
+    scalar_count
+        .checked_mul(RAW_PRODUCER_BYTES_PER_SCALAR)
+        .and_then(|scalars| {
+            row_count
+                .checked_mul(RAW_PRODUCER_BYTES_PER_ROW)
+                .and_then(|rows| scalars.checked_add(rows))
+        })
+        .and_then(|dynamic| dynamic.checked_add(RAW_PRE_DOM_FIXED_BYTES))
+        .and_then(|dynamic| dynamic.checked_add(SPOOLED_CAPTURE_COMPRESSION_RESERVE_BYTES))
+        .and_then(|dynamic| {
+            current_count
+                .checked_mul(SPOOLED_CANDIDATE_INDEX_BYTES_PER_CURRENT)
+                .and_then(|index| dynamic.checked_add(index))
+        })
+        .ok_or_else(|| invalid("raw numerical sequential-spool resident bound overflows usize"))
+}
+
+fn validate_spooled_raw_evidence_geometry(
+    source: &RawSourceSemantics,
+    probe_count: u32,
+    verification_probe_count: u32,
+    runtime_parameter_count: usize,
+) -> RusticolResult<(usize, usize, usize)> {
+    let (current_count, component_count, scalar_count, row_count) = raw_evidence_geometry_counts(
+        source,
+        probe_count,
+        verification_probe_count,
+        runtime_parameter_count,
+    )?;
+    let maximum_probe_count = usize::try_from(probe_count)
+        .ok()
+        .zip(usize::try_from(verification_probe_count).ok())
+        .map(|(candidate, verification)| candidate.max(verification))
+        .ok_or_else(|| invalid("raw numerical sequential-spool probe count overflows usize"))?;
+    let resident_upper_bound = spooled_capture_memory_upper_bound(
+        current_count,
+        component_count,
+        maximum_probe_count,
+        runtime_parameter_count,
+    )?;
+    if resident_upper_bound > MAX_RAW_RESIDENT_BYTES {
+        return Err(invalid(
+            "raw numerical sequential-spool capture geometry exceeds the explicit 1 GiB resident memory envelope",
+        ));
+    }
+    Ok((scalar_count, row_count, resident_upper_bound))
 }
 
 fn validate_raw_runtime_parameter_schema(
@@ -3221,6 +3611,7 @@ fn python_f64_hex(value: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use flate2::{Compression, write::ZlibEncoder};
     use rusticol_core::recurrence::RecurrenceRelationDiscoveryOptions;
     use serde_json::json;
 
@@ -4290,6 +4681,118 @@ mod tests {
         );
     }
 
+    fn compressed_envelope(raw: &[u8]) -> Vec<u8> {
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
+        encoder.write_all(raw).unwrap();
+        let compressed = encoder.finish().unwrap();
+        let mut envelope = Vec::with_capacity(COMPRESSED_EVIDENCE_HEADER_BYTES + compressed.len());
+        envelope.extend_from_slice(COMPRESSED_EVIDENCE_MAGIC);
+        envelope.extend_from_slice(&(raw.len() as u64).to_be_bytes());
+        envelope.extend_from_slice(&Sha256::digest(raw));
+        envelope.extend_from_slice(&compressed);
+        envelope
+    }
+
+    #[test]
+    fn compressed_transport_is_bounded_and_authenticated_before_json_parsing() {
+        let raw = br#"{"candidate_capture":{"observations":[]},"verification_capture":{"observations":[]}}"#;
+        let encoded = compressed_envelope(raw);
+        assert_eq!(decode_compressed_evidence(&encoded).unwrap(), raw);
+
+        let mut digest_tamper = encoded.clone();
+        digest_tamper[16] ^= 1;
+        assert!(
+            decode_compressed_evidence(&digest_tamper)
+                .unwrap_err()
+                .to_string()
+                .contains("digest mismatch")
+        );
+
+        let mut length_tamper = encoded.clone();
+        length_tamper[8..16].copy_from_slice(&((raw.len() - 1) as u64).to_be_bytes());
+        assert!(
+            decode_compressed_evidence(&length_tamper)
+                .unwrap_err()
+                .to_string()
+                .contains("decompressed length")
+        );
+
+        let mut trailing = encoded;
+        trailing.push(0);
+        assert!(
+            decode_compressed_evidence(&trailing)
+                .unwrap_err()
+                .to_string()
+                .contains("trailing or unconsumed")
+        );
+
+        let mut oversized = vec![0_u8; COMPRESSED_EVIDENCE_HEADER_BYTES + 1];
+        oversized[..8].copy_from_slice(COMPRESSED_EVIDENCE_MAGIC);
+        oversized[8..16]
+            .copy_from_slice(&((MAX_DECOMPRESSED_EVIDENCE_BYTES as u64) + 1).to_be_bytes());
+        assert!(
+            decode_compressed_evidence(&oversized)
+                .unwrap_err()
+                .to_string()
+                .contains("decompression boundary")
+        );
+    }
+
+    #[test]
+    fn compressed_metadata_copy_and_dom_are_bounded_before_allocation() {
+        assert!(
+            validate_compressed_pre_shape_resident_budget(400 << 20, 100 << 20, 200 << 20, 0,)
+                .unwrap_err()
+                .to_string()
+                .contains("pre-shape 1 GiB")
+        );
+        assert!(
+            validate_compressed_pre_shape_resident_budget(
+                200 << 20,
+                50 << 20,
+                50 << 20,
+                8_000_000,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("pre-shape 1 GiB")
+        );
+        validate_compressed_pre_shape_resident_budget(300 << 20, 50 << 20, 20 << 20, 1_000_000)
+            .unwrap();
+    }
+
+    #[test]
+    fn exact_z_n8_geometry_selects_the_bounded_sequential_spool_contract() {
+        let currents = (0..38_581)
+            .map(|current_id| RawSourceCurrent {
+                current_id,
+                is_source: false,
+                contract_key: vec![0],
+                dimension: if current_id < 8_652 { 5 } else { 4 },
+            })
+            .collect();
+        let source = RawSourceSemantics {
+            value: json!({}),
+            process_id: "generic-large-geometry".to_owned(),
+            physical_pdgs: Vec::new(),
+            strategy: "contracted-color-union".to_owned(),
+            selector_schedule: json!({}),
+            currents,
+        };
+
+        assert!(
+            validate_raw_evidence_geometry(&source, 4, 4, 10)
+                .unwrap_err()
+                .to_string()
+                .contains("resident memory envelope")
+        );
+        let (scalar_count, row_count, resident) =
+            validate_spooled_raw_evidence_geometry(&source, 4, 4, 10).unwrap();
+        assert_eq!((scalar_count, row_count), (2_607_696, 77_172));
+        assert_eq!(resident, 935_671_296);
+        assert!(resident < MAX_RAW_RESIDENT_BYTES);
+    }
+
     #[test]
     fn lexical_caps_bound_raw_locator_before_metadata_materialization() {
         let maximum_pre_metadata_resident = RAW_PRE_DOM_FIXED_BYTES
@@ -4407,7 +4910,7 @@ mod tests {
     fn excessive_depth_and_string_width_are_rejected_lexically() {
         let excessive_depth = vec![b'['; MAX_RAW_JSON_DEPTH + 1];
         assert!(
-            validate_raw_json_lexical_budget(&excessive_depth)
+            validate_raw_json_lexical_budget(&excessive_depth, MAX_RAW_JSON_STRUCTURAL_TOKENS)
                 .unwrap_err()
                 .to_string()
                 .contains("nesting")
@@ -4418,7 +4921,7 @@ mod tests {
         excessive_string.extend(std::iter::repeat_n(b'a', MAX_RAW_JSON_STRING_BYTES + 1));
         excessive_string.push(b'"');
         assert!(
-            validate_raw_json_lexical_budget(&excessive_string)
+            validate_raw_json_lexical_budget(&excessive_string, MAX_RAW_JSON_STRUCTURAL_TOKENS)
                 .unwrap_err()
                 .to_string()
                 .contains("string exceeds")
