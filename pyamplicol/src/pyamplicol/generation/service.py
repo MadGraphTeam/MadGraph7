@@ -2761,6 +2761,15 @@ class GenerationBackend:
                     "mode": relation_discovery_mode,
                     "precision_digits": relation_discovery.precision_digits,
                     "probe_count": relation_discovery.probe_count,
+                    "verification_probe_count": (
+                        relation_discovery.verification_probe_count
+                    ),
+                    "relative_tolerance": (
+                        relation_discovery.relative_tolerance
+                    ),
+                    "absolute_tolerance": (
+                        relation_discovery.absolute_tolerance
+                    ),
                     "seed": relation_discovery.seed,
                     "color_accuracy": str(expanded.process_ir.color_accuracy),
                 }

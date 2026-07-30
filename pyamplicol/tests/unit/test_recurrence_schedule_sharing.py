@@ -134,26 +134,32 @@ def test_opt_in_relation_discovery_is_part_of_schedule_identity() -> None:
 
     baseline = schedule_digest()
     assert schedule_digest(None) == baseline
-    diagnostic = schedule_digest(
-        {
-            "mode": "diagnostic",
-            "precision_digits": 96,
-            "probe_count": 4,
-            "seed": 7,
-            "color_accuracy": "lc",
-        },
-    )
+    contract = {
+        "mode": "diagnostic",
+        "precision_digits": 96,
+        "probe_count": 4,
+        "verification_probe_count": 4,
+        "relative_tolerance": 1.0e-70,
+        "absolute_tolerance": 1.0e-80,
+        "seed": 7,
+        "color_accuracy": "lc",
+    }
+    diagnostic = schedule_digest(contract)
     certified = schedule_digest(
-        {
-            "mode": "certified-reuse",
-            "precision_digits": 96,
-            "probe_count": 4,
-            "seed": 7,
-            "color_accuracy": "lc",
-        },
+        {**contract, "mode": "certified-reuse"},
     )
     assert diagnostic != baseline
     assert certified != diagnostic
+    for field, replacement in (
+        ("precision_digits", 112),
+        ("probe_count", 5),
+        ("verification_probe_count", 5),
+        ("relative_tolerance", 1.0e-60),
+        ("absolute_tolerance", 1.0e-75),
+        ("seed", 8),
+        ("color_accuracy", "nlc"),
+    ):
+        assert schedule_digest({**contract, field: replacement}) != diagnostic
 
 
 def test_identical_process_schedules_are_lowered_once() -> None:
