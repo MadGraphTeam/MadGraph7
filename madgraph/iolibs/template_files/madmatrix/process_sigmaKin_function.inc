@@ -328,9 +328,10 @@
       for( int ievt = 0; ievt < nevt && invp2_dump_count < MGONGPU_INVP2_DUMP; ++ievt )
       {
         ++invp2_dump_count;
-        // EVENT <npar> <ninvar> <|M|^2>
+        // EVENT <npar> <ninvar> <channel> <|M|^2>
+        const unsigned int invp2_channel = ( allDiagramIdsOut != nullptr ) ? allDiagramIdsOut[ievt] : 0u;
         invp2_dump_file << "EVENT " << CPPProcess::npar << " " << ninvar << " "
-                        << (double)( allMEs[ievt] ) << "\n";
+                        << invp2_channel << " " << (double)( allMEs[ievt] ) << "\n";
         // one line per particle: P <E> <px> <py> <pz>
         for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
           invp2_dump_file << "P "

@@ -160,9 +160,10 @@ namespace
     std::vector<double> p2;
   };
 
-  // Read an invp2_dump.dat text file: per event a header "EVENT <npar> <ninvar> <|M|^2>",
+  // Read an invp2_dump.dat text file: per event a header "EVENT <npar> <ninvar> <channel> <|M|^2>",
   // then npar "P <E> <px> <py> <pz>" lines and ninvar "I <mask> <pid> <p2>" lines. Fills the
-  // momenta and the per-event invariants; ninvar (constant across events) is returned (0 => none).
+  // momenta and the per-event invariants; ninvar (per-event count varies with the channel) is
+  // returned as the max over events - the SoA stride (0 => none).
   bool read_dump_events( const std::string& path,
                          std::vector<LheEvent>& events,
                          std::vector<DumpInvariants>& invariants,
@@ -185,17 +186,12 @@ namespace
         return false;
       }
       int fnpar = 0, fninvar = 0;
-      double me = 0;
-      in >> fnpar >> fninvar >> me;
+      unsigned int fchannel = 0; // selected channel/diagram (informational; ME uses masks, not channel)
+      std::string metok;         // informational |M|^2 (read as text: may be "nan" for padding events)
+      in >> fnpar >> fninvar >> fchannel >> metok;
       if( fnpar != npar )
       {
         std::cerr << "ERROR! dump event has npar=" << fnpar << ", expected " << npar << std::endl;
-        return false;
-      }
-      if( ninvar < 0 ) ninvar = fninvar;
-      else if( ninvar != fninvar )
-      {
-        std::cerr << "ERROR! inconsistent ninvar in dump (" << fninvar << " vs " << ninvar << ")" << std::endl;
         return false;
       }
       LheEvent ev;
@@ -222,6 +218,9 @@ namespace
         inv.word.push_back( ( pid << 16 ) | ( mask & 0xFFFF ) );
         inv.p2.push_back( p2 );
       }
+      double me = 0;
+      if( !( std::istringstream( metok ) >> me ) || !std::isfinite( me ) ) continue;
+      if( fninvar > ninvar ) ninvar = fninvar;
       events.push_back( ev );
       invariants.push_back( inv );
     }
@@ -261,6 +260,9 @@ namespace
       << "                    sampled invariants to the matrix element. The events are\n"
       << "                    processed in batches of #blocks*#threads; #iterations is\n"
       << "                    ignored (derived from the number of events in the file).\n"
+      << "  --no-invs         (perf only) Ignore any sampled invariants from a dump file and\n"
+      << "                    pass a nullptr to the ME, so the propagator p^2 is recomputed\n"
+      << "                    from the momenta (control run: as if invp2 were not supplied).\n"
       << "\n"
       << "perf-mode defaults if positional args are omitted:\n"
       << "  #blocksPerGrid = 64, #threadsPerBlock = 256, #iterations = 1.\n";
@@ -858,7 +860,8 @@ namespace
                      unsigned int niter,
                      unsigned int flavorID,
                      RamboType ramboType,
-                     const std::string& lheFile = "" )
+                     const std::string& lheFile = "",
+                     bool noInvariants = false )
   {
     const unsigned int nevt = gpublocks * gputhreads;
 
@@ -875,6 +878,12 @@ namespace
       bool ok = isDump ? read_dump_events( lheFile, lheEvents, dumpInv, ninvar )
                        : read_lhe_events( lheFile, lheEvents );
       if( !ok ) return 2;
+      if( noInvariants && ninvar > 0 )
+      {
+        std::cout << "--no-invs: ignoring " << ninvar
+                  << " sampled invariants (passing nullptr; ME recomputes p^2 from momenta)" << std::endl;
+        ninvar = 0;
+      }
       niter = (unsigned int)( ( lheEvents.size() + nevt - 1 ) / nevt );
       std::cout << "Reading events from " << ( isDump ? "dump" : "LHE" ) << " file = " << lheFile
                 << " (" << lheEvents.size() << " events, ninvar=" << ninvar << ", " << niter
@@ -1026,16 +1035,18 @@ namespace
               MemoryAccessMomenta::ieventAccessIp4Ipar( hstMomenta.data(), ievt, ip4, ipar ) = (fptype)ev[ipar][ip4];
         }
 #ifndef MGONGPUCPP_GPUIMPL
-        // repack the per-event sampled invariants into the SoA layout the ME expects
+        // repack the per-event sampled invariants into the SoA layout the ME expects.
         if( ninvar > 0 )
           for( unsigned int ievt = 0; ievt < nevt; ++ievt )
           {
             const std::size_t src = base + std::min<std::size_t>( ievt, (std::size_t)nreal - 1 );
             const DumpInvariants& di = dumpInv[src];
+            const int nk = (int)di.word.size();
+            invCountSoa[ievt] = (unsigned int)nk;
             for( int k = 0; k < ninvar; ++k )
             {
-              invWordSoa[(std::size_t)k * nevt + ievt] = di.word[k];
-              invMassSoa[(std::size_t)k * nevt + ievt] = di.p2[k];
+              invWordSoa[(std::size_t)k * nevt + ievt] = ( k < nk ) ? di.word[k] : 0;
+              invMassSoa[(std::size_t)k * nevt + ievt] = ( k < nk ) ? di.p2[k] : 0.;
             }
           }
 #endif
@@ -1186,6 +1197,7 @@ int main( int argc, char** argv )
   unsigned int numvec[3] = { 0, 0, 0 };
   int nnum = 0;
   std::string lheFile; // -e/--events: read momenta from this LHE file (perf mode only)
+  bool noInvariants = false; // --no-invs: ignore dump invariants, pass nullptr to the ME
 
   // Optional leading subcommand (no leading dash).
   int firstArg = 1;
@@ -1218,6 +1230,8 @@ int main( int argc, char** argv )
       lheFile = argv[++argn];
       mode = MODE_PERF; // reading events from file only makes sense in perf mode
     }
+    else if( arg == "--no-invs" )
+      noInvariants = true;
     else if( is_number( argv[argn] ) && nnum < 3 )
     {
       numvec[nnum++] = strtoul( argv[argn], nullptr, 0 );
@@ -1276,5 +1290,5 @@ int main( int argc, char** argv )
     return 1;
   }
 
-  return run_perf_mode( verbose, gpublocks, gputhreads, niter, flavorID, ramboType, lheFile );
+  return run_perf_mode( verbose, gpublocks, gputhreads, niter, flavorID, ramboType, lheFile, noInvariants );
 }
