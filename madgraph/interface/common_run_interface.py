@@ -2403,6 +2403,14 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     for key, value in cross_sections.items():
                         cross_sections[key] = value / (nb_event+1)
                 lhe.remove()
+                if reweight_mode == 'density':
+                    # each job has written the average density matrix of its own
+                    # chunk of events (and named the file after that chunk). Now
+                    # that the chunks are recombined, re-compute the average over
+                    # the full file --each event carries its own <density> tag--
+                    # and clean up the per chunk files.
+                    reweight_interface.combine_density_matrix(new_args[0], all_lhe,
+                        reweight_card=pjoin(self.me_dir, 'Cards', 'reweight_card.dat'))
                 for key in cross_sections:
                     if key == 'orig' or (key.isdigit() and not (key[0] == '2')):
                         continue

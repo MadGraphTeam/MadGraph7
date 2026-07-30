@@ -2973,7 +2973,153 @@ class ReweightInterface(extended_cmd.Cmd):
 
 
 
-        
+
+#===============================================================================
+# Helper functions for the average density matrix (density mode)
+#
+# Those are module level functions since the average density matrix is written
+# either by DensityInterface itself (single core) or by the mother interface
+# recombining the output of the various multicore jobs
+# (common_run_interface.do_reweight).
+#===============================================================================
+def parse_matrix_normalisation(value):
+    """interpret the argument of 'change matrix_normalisation'.
+    return (value, understood) where understood is False if the argument is
+    neither 'True' nor 'False' (in which case the normalisation is disabled)"""
+
+    value = value.strip("[],()")
+    if value == 'True':
+        return True, True
+    elif value == 'False':
+        return False, True
+    return False, False
+
+def get_matrix_normalisation(card_path):
+    """return the matrix_normalisation option of a density mode reweight card.
+    The default (option absent from the card) is the one of DensityInterface."""
+
+    matrix_normalisation = True # default value of DensityInterface
+    if not card_path or not os.path.exists(card_path):
+        return matrix_normalisation
+
+    with open(card_path) as card:
+        for line in card:
+            line = line.strip()
+            if not line or line[0] in ('#', '!'):
+                continue
+            split_line = line.split()
+            if len(split_line) < 3 or split_line[0] != 'change' or \
+                                        split_line[1] != 'matrix_normalisation':
+                continue
+            # last occurence wins, as when the card is executed line by line
+            matrix_normalisation, _ = parse_matrix_normalisation(split_line[2])
+    return matrix_normalisation
+
+def average_density_matrix_label(lhe_path):
+    """the label identifying an event file in the average density matrix output"""
+
+    if lhe_path.endswith('.gz'):
+        lhe_path = lhe_path[:-3]
+    return os.path.basename(lhe_path)[:-4]
+
+def average_density_matrix_path(lhe_path, output_dir=None):
+    """the canonical path of the average density matrix associated to an event file"""
+
+    if output_dir is None:
+        output_dir = os.path.dirname(lhe_path)
+    return pjoin(output_dir,
+                 "Average_density_matrix_%s.txt" % average_density_matrix_label(lhe_path))
+
+def write_average_density_matrix(rho_avg, lhe_path, output_dir=None):
+    """log the average density matrix rho_avg (line form) and write it in square
+    form next to the event file it has been computed from. return the path used."""
+
+    import madgraph.various.Density_functions as dens
+
+    rho_avg_square = dens.DensityMatrixObservables(rho_avg).square_matrix()
+
+    logger.info("Average density matrix:")
+    for i in range(len(rho_avg_square)):
+        print("\t",list(rho_avg_square[i]))
+
+    path = average_density_matrix_path(lhe_path, output_dir)
+    file_density = open(path, 'w')
+    file_density.write(f'Average density matrix of LHE file {average_density_matrix_label(lhe_path)}:\n')
+    # Cast each entry to a plain Python ``complex`` so that the file is
+    # written in the legacy ``(re+imj)`` repr regardless of the underlying
+    # numpy dtype (newer numpy prints np.complex64 values with a
+    # ``np.complex64(...)`` wrapper which the consumer parser cannot read).
+    for i in range(len(rho_avg_square)):
+            row = [complex(v) for v in rho_avg_square[i]]
+            file_density.write('\t' + str(row) + '\n')
+    file_density.close()
+    return path
+
+def average_density_matrix_from_lhe(lhe_path, matrix_normalisation=True):
+    """re-compute the average density matrix from the <density> tag of every
+    event of an already reweighted event file. This reproduces exactly what
+    DensityInterface.launch_actual_reweighting accumulates on the fly:
+     - matrix_normalisation True: the per event matrices stored in the file are
+       already normalised by their trace, the average is weighted by the weight
+       of the events.
+     - matrix_normalisation False: the per event matrices are the raw ones, the
+       average is a plain average over the events.
+    return the average density matrix in line form (None if no event of the file
+    carries a density matrix)."""
+
+    average_rho = None
+    total_wgt = 0.
+    nb_event = 0
+
+    lhe = lhe_parser.EventFile(lhe_path)
+    lhe.parsing = "wgt_only" # we only need the weight and the <density> tag
+    for event in lhe:
+        if not event.density:
+            continue
+        if matrix_normalisation:
+            contrib = [value * event.wgt for value in event.density]
+            total_wgt += event.wgt
+        else:
+            contrib = event.density
+        nb_event += 1
+        if average_rho is None:
+            average_rho = list(contrib)
+        elif len(contrib) != len(average_rho):
+            raise Exception("Inconsistent size of the density matrices within %s" % lhe_path)
+        else:
+            for i in range(len(average_rho)):
+                average_rho[i] += contrib[i]
+    lhe.close()
+
+    if average_rho is None:
+        return None
+
+    norm = total_wgt if matrix_normalisation else nb_event
+    return [value / norm for value in average_rho]
+
+def combine_density_matrix(lhe_path, chunk_paths=(), reweight_card=None):
+    """write the canonical average density matrix of lhe_path after a multicore
+    reweighting: each job has written the average of its own chunk of events, so
+    the average of the full (recombined) file is re-computed here and the per
+    chunk files are removed. return the path of the file written (None if the
+    average could not be computed)."""
+
+    matrix_normalisation = get_matrix_normalisation(reweight_card)
+    rho_avg = average_density_matrix_from_lhe(lhe_path, matrix_normalisation)
+
+    if rho_avg is None:
+        # keep the per chunk files: they are the only output left in that case
+        logger.warning("No density matrix found in %s: the average density matrix is not written." % lhe_path)
+        return None
+
+    path = write_average_density_matrix(rho_avg, lhe_path)
+    for chunk in chunk_paths:
+        chunk_path = average_density_matrix_path(chunk)
+        if chunk_path != path and os.path.exists(chunk_path):
+            os.remove(chunk_path)
+    return path
+
+
 class DensityInterface(ReweightInterface):
     """Basic interface for computing density matrix"""
 
@@ -3197,15 +3343,9 @@ class DensityInterface(ReweightInterface):
         Choses if the production matrix should be normalised by its trace or not.
         Default = True
         """
-        for i in range(len(line)): 
-            line[i] = line[i].strip("[],()") 
-        if line[0] == 'True':
-            self.matrix_normalisation = True
-        elif line[0] == 'False':
-            self.matrix_normalisation = False
-        else:
+        self.matrix_normalisation, understood = parse_matrix_normalisation(line[0])
+        if not understood:
             logger.warning('Option matrix_normalisation not understood, set it to True. Please use the syntax: change matrix_normalisation True if you want to enable it.')
-            self.matrix_normalisation = False
 
 
     def do_change_particle_in_density_matrix(self, line):
@@ -3385,22 +3525,8 @@ class DensityInterface(ReweightInterface):
             for i in range(len(rho_avg)):
                 rho_avg[i] = self.average_rho[i] / self.nevents
 
-        rho_avg_instance = dens.DensityMatrixObservables(rho_avg)
-        rho_avg_square = rho_avg_instance.square_matrix()
-
-        logger.info("Average density matrix:")
-        for i in range(len(rho_avg_square)):
-            print("\t",list(rho_avg_square[i]))
-        file_density = open(pjoin(os.path.dirname(self.event_path), f"Average_density_matrix_{os.path.basename(self.lhe_input.name)[:-4]}.txt"), 'w')
-        file_density.write(f'Average density matrix of LHE file {os.path.basename(self.lhe_input.name)[:-4]}:\n')
-        # Cast each entry to a plain Python ``complex`` so that the file is
-        # written in the legacy ``(re+imj)`` repr regardless of the underlying
-        # numpy dtype (newer numpy prints np.complex64 values with a
-        # ``np.complex64(...)`` wrapper which the consumer parser cannot read).
-        for i in range(len(rho_avg_square)):
-                row = [complex(v) for v in rho_avg_square[i]]
-                file_density.write('\t' + str(row) + '\n')
-        file_density.close()
+        write_average_density_matrix(rho_avg, self.lhe_input.name,
+                                    output_dir=os.path.dirname(self.event_path))
 
 
         if self.output_type == "default":

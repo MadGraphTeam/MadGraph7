@@ -2802,6 +2802,122 @@ set boost_choice [6, -6]
                 self.assertAlmostEqual(rho_avg[i][j].imag, rho_avg_ref[i][j].imag, places=3)
 
 
+    @staticmethod
+    def read_average_density_matrix(path):
+        """read a Average_density_matrix_*.txt file and return the square matrix"""
+
+        rho_avg = []
+        with open(path, 'r') as f:
+            for line in f.readlines()[1:]: #the first line is a title
+                aux = line.strip("\t\n[]").split(",")
+                rho_avg.append([complex(elem.strip(" ()")) for elem in aux])
+        return rho_avg
+
+    def test_density_mode_multicore(self):
+        ############################################################################
+        # When the reweighting is not run in process (force_run False, i.e. from
+        # ./bin/madevent), CommonRunCmd.do_reweight either starts a single job on the
+        # full event file or splits the file and starts one job per chunk of events.
+        # In the second case each job writes the average density matrix of its own
+        # chunk, so the mother interface has to recombine them into the canonical
+        # Average_density_matrix_<event file>.txt. This test checks that this file is
+        # created, that it agrees with the single core one and that the per chunk
+        # files are cleaned up.
+        ############################################################################
+
+        nevents = 3000 # more than nevt_job (2500) so that the file is really split
+
+        text = f"""generate g g > t t~
+output madevent {self.out_dir}_density_mc
+launch
+set run_card nevents {nevents}
+set use_syst False
+"""
+        command_card = open(pjoin(self.tmpdir, 'mg5_cmd.txt'), 'w')
+        command_card.write(text)
+        command_card.close()
+
+        logfile = pjoin(self.tmpdir, 'test_density_mode_multicore_generation.log')
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'),
+                         pjoin(self.tmpdir, 'mg5_cmd.txt')],
+                        stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
+
+        me_dir = self.out_dir + '_density_mc'
+        run_dir = pjoin(me_dir, 'Events', 'run_01')
+        events = pjoin(run_dir, 'unweighted_events.lhe.gz')
+        self.assertTrue(os.path.isfile(events), f"File not found {events}")
+
+        # the reweighting rewrites the event file in place: keep a pristine copy so
+        # that both paths reweight exactly the same events.
+        backup = pjoin(self.tmpdir, 'unweighted_events_orig.lhe.gz')
+        shutil.copyfile(events, backup)
+
+        with open(pjoin(me_dir, 'Cards', 'reweight_card.dat'), 'w') as card:
+            card.write("""change helicity_direction [6]
+change particle_in_density_matrix [6, -6]
+change boost_choice [6, -6]
+change matrix_normalisation True
+""")
+
+        def run_reweight(nb_core):
+            """run 'reweight run_01 --mode=density' the way ./bin/madevent does it
+            (out of process, force_run False) and return the density matrix files
+            present in the run directory afterwards"""
+
+            #restore the original events and drop any previous density output
+            for path in (events, events[:-3]):
+                if os.path.exists(path):
+                    os.remove(path)
+            shutil.copyfile(backup, events)
+            for name in os.listdir(run_dir):
+                if name.startswith('Average_density_matrix_'):
+                    os.remove(pjoin(run_dir, name))
+
+            driver = f"""import sys
+sys.path.insert(0, {MG5DIR!r})
+import madgraph.interface.madevent_interface as me_interface
+cmd = me_interface.MadEventCmd(me_dir={me_dir!r}, force_run=True)
+cmd.use_rawinput = False
+cmd.haspiping = False
+cmd.exec_cmd('set nb_core {nb_core}')
+cmd.exec_cmd('set run_mode 2')
+# force_run True would reweight in process: only with force_run False does
+# do_reweight dispatch the work to single core/multicore child processes.
+cmd.force_run = False
+cmd.exec_cmd('reweight run_01 --mode=density -from_cards')
+"""
+            driver_path = pjoin(self.tmpdir, 'rwgt_driver_%s.py' % nb_core)
+            with open(driver_path, 'w') as fsock:
+                fsock.write(driver)
+            logfile = pjoin(self.tmpdir, 'test_density_mode_multicore_%s.log' % nb_core)
+            subprocess.call([sys.executable, driver_path],
+                            stdout=open(logfile, 'w'), stderr=subprocess.STDOUT)
+
+            return sorted(name for name in os.listdir(run_dir)
+                                     if name.startswith('Average_density_matrix_'))
+
+        #1) reference: one single job on the full event file
+        single = run_reweight(1)
+        self.assertEqual(single, ['Average_density_matrix_unweighted_events.txt'])
+        rho_single = self.read_average_density_matrix(
+                     pjoin(run_dir, 'Average_density_matrix_unweighted_events.txt'))
+        self.assertEqual(len(rho_single), 4)
+
+        #2) one job per chunk of events: same canonical file, no leftover
+        multi = run_reweight(2)
+        self.assertEqual(multi, ['Average_density_matrix_unweighted_events.txt'],
+                         "the multicore density path did not produce the canonical "
+                         "average density matrix (or left per chunk files behind)")
+        rho_multi = self.read_average_density_matrix(
+                    pjoin(run_dir, 'Average_density_matrix_unweighted_events.txt'))
+
+        self.assertEqual(len(rho_multi), len(rho_single))
+        for i in range(len(rho_single)):
+            for j in range(len(rho_single[i])):
+                self.assertAlmostEqual(rho_multi[i][j].real, rho_single[i][j].real, places=10)
+                self.assertAlmostEqual(rho_multi[i][j].imag, rho_single[i][j].imag, places=10)
+
+
     def test_density_mode_ttbar(self):
         ############################################################################
         # Check working condition of the density mode
