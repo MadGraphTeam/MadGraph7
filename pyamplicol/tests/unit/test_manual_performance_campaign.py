@@ -231,17 +231,29 @@ def test_reproduction_recipe_uses_public_generate_and_profile() -> None:
         and cell.measurement.model is ModelKey.BUILTIN_SM
     )
     recipe = reproduction_recipe(candidate, repo_root=ROOT)
-    assert recipe.kind == "public-cli-template"
-    assert recipe.prepare is None
+    assert recipe.kind == "public-cli-template+model-compile-prerequisite"
+    assert recipe.prepare is not None
+    assert recipe.prepare[:5] == (
+        "env",
+        f"PYTHONPATH={os.fspath((ROOT / 'src').resolve())}",
+        os.fspath((ROOT / ".venv/bin/pyamplicol").resolve()),
+        "model",
+        "compile",
+    )
+    assert "built-in-sm" in recipe.prepare
     assert recipe.generate is not None
-    assert recipe.generate[:2] == (
+    assert recipe.generate[:4] == (
+        "env",
+        f"PYTHONPATH={os.fspath((ROOT / 'src').resolve())}",
         os.fspath((ROOT / ".venv/bin/pyamplicol").resolve()),
         "generate",
     )
     assert "--lc-flow-layout" in recipe.generate
     assert "all-flow-union" in recipe.generate
     assert recipe.profile is not None
-    assert recipe.profile[:2] == (
+    assert recipe.profile[:4] == (
+        "env",
+        f"PYTHONPATH={os.fspath((ROOT / 'src').resolve())}",
         os.fspath((ROOT / ".venv/bin/pyamplicol").resolve()),
         "profile",
     )
@@ -258,6 +270,30 @@ def test_reproduction_recipe_uses_public_generate_and_profile() -> None:
     assert legacy_recipe.generate is None
     assert legacy_recipe.profile is None
     assert legacy_recipe.exact is False
+
+
+def test_reproduction_cli_prefix_runs_from_an_unrelated_directory(
+    tmp_path: Path,
+) -> None:
+    candidate = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+        and cell.measurement.model is ModelKey.BUILTIN_SM
+    )
+    recipe = reproduction_recipe(candidate, repo_root=ROOT)
+    assert recipe.generate is not None
+    command_prefix = recipe.generate[:3]
+    completed = subprocess.run(
+        (*command_prefix, "generate", "--help"),
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "usage:" in completed.stdout
 
 
 def test_completed_reproduction_recipe_uses_exact_selectors_and_momenta(
@@ -292,10 +328,15 @@ def test_completed_reproduction_recipe_uses_exact_selectors_and_momenta(
         measurement=measurement,
     )
     assert recipe.exact is True
+    assert recipe.prepare is not None
+    assert "built-in-sm" in recipe.prepare
     assert recipe.generate is not None
-    assert "/tmp/prepared.pyamplicol-model" in recipe.generate
+    assert recipe.generate[recipe.generate.index("--model") + 1].endswith(
+        "/prepared-models/built-in-sm-jit-o2.pyamplicol-model"
+    )
     assert recipe.profile is not None
-    assert recipe.profile[2].endswith(f"/{candidate.cell_id}/artifact")
+    profile_index = recipe.profile.index("profile")
+    assert recipe.profile[profile_index + 1].endswith(f"/{candidate.cell_id}/artifact")
     assert candidate.process in recipe.profile
     assert "--helicity" in recipe.profile
     assert "h:+1,-1" in recipe.profile
@@ -319,16 +360,26 @@ def test_ufo_recurrence_recipe_has_public_model_compile_prerequisite(
     recipe = reproduction_recipe(candidate, repo_root=tmp_path)
 
     assert recipe.prepare is not None
-    assert recipe.prepare[:3] == (
+    assert recipe.prepare[:5] == (
+        "env",
+        f"PYTHONPATH={os.fspath((tmp_path / 'src').resolve())}",
         os.fspath((tmp_path / ".venv/bin/pyamplicol").resolve()),
         "model",
         "compile",
     )
-    assert parse_cli(recipe.prepare[1:]).resolve().effective.action == "model-compile"
+    prepare_index = recipe.prepare.index("model")
+    assert (
+        parse_cli(recipe.prepare[prepare_index:]).resolve().effective.action
+        == "model-compile"
+    )
     assert recipe.generate is not None
     prepared_source = recipe.generate[recipe.generate.index("--model") + 1]
     assert prepared_source.endswith(".pyamplicol-model")
-    assert parse_cli(recipe.generate[1:]).resolve().effective.action == "generate"
+    generate_index = recipe.generate.index("generate")
+    assert (
+        parse_cli(recipe.generate[generate_index:]).resolve().effective.action
+        == "generate"
+    )
     assert "model-compile-prerequisite" in recipe.kind
 
 
@@ -1574,7 +1625,7 @@ def test_executable_reexecutes_from_base_python_into_repository_venv() -> None:
             "--height",
             "24",
         ),
-        cwd=ROOT,
+        cwd=PROFILE,
         check=False,
         capture_output=True,
         text=True,

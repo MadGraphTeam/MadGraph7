@@ -633,9 +633,15 @@ def _reproduction_root(repo_root: Path, cell: CellSpec) -> Path:
     )
 
 
-def _pyamplicol_cli(repo_root: Path) -> str:
-    return os.fspath(
-        (repo_root / ".venv/bin/pyamplicol").expanduser().resolve(strict=False)
+def _pyamplicol_cli(repo_root: Path) -> tuple[str, ...]:
+    """Return a cwd-independent source CLI prefix for contributor installs."""
+
+    return (
+        "env",
+        f"PYTHONPATH={os.fspath((repo_root / 'src').resolve(strict=False))}",
+        os.fspath(
+            (repo_root / ".venv/bin/pyamplicol").expanduser().resolve(strict=False)
+        ),
     )
 
 
@@ -740,18 +746,24 @@ def reproduction_recipe(
         ExecutionMode.EAGER,
         ExecutionMode.RECURRENCE,
     }
-    if prepared_execution and cell.measurement.model is ModelKey.UFO_SM:
-        ufo_source = _model_cli_source(cell, repo_root)
+    if prepared_execution and cell.measurement.model in {
+        ModelKey.BUILTIN_SM,
+        ModelKey.UFO_SM,
+    }:
+        prepared_source = _model_cli_source(cell, repo_root)
+        prepared_stem = (
+            "built-in-sm" if cell.measurement.model is ModelKey.BUILTIN_SM else "ufo-sm"
+        )
         prepared_path = (
             _reproduction_root(repo_root, cell)
             / "prepared-models"
-            / "ufo-sm-jit-o2.pyamplicol-model"
+            / f"{prepared_stem}-jit-o2.pyamplicol-model"
         )
         prepare = (
-            cli,
+            *cli,
             "model",
             "compile",
-            ufo_source,
+            prepared_source,
             os.fspath(prepared_path),
             "--model-cache-dir",
             os.fspath(model_cache),
@@ -776,7 +788,7 @@ def reproduction_recipe(
         "all-flow-union" if cell.workload is Workload.ALL_FLOW else "topology-replay"
     )
     generate = (
-        cli,
+        *cli,
         "generate",
         cell.process,
         artifact_path,
@@ -892,7 +904,7 @@ def reproduction_recipe(
             ),
         )
     profile = (
-        cli,
+        *cli,
         "profile",
         artifact_path,
         "--process",

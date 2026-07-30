@@ -49,6 +49,7 @@ def main() -> int:
     repo_root = _repository_root(entrypoint)
     _reexecute_with_repository_python(repo_root)
     sys.path.insert(0, os.fspath(repo_root))
+    sys.path.insert(0, os.fspath(repo_root / "src"))
     from tools.performance_report.manual_campaign import main as campaign_main
 
     return campaign_main(sys.argv[1:], repo_root=repo_root)
