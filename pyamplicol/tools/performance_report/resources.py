@@ -42,6 +42,19 @@ DEFAULT_PHASE_STATE_STARTUP_GRACE_SECONDS = 30.0
 GENERATION_PHASE_EVIDENCE_ABI = "pyamplicol-report-generation-phase-evidence-v1"
 PROCESS_TREE_MEMORY_METRIC_ABI = "pyamplicol-process-tree-memory-metric-v1"
 MAX_CONSECUTIVE_MEMORY_PROBE_FAILURES = 3
+_WORKER_IMPORT_ENVIRONMENT = frozenset(
+    {
+        "VIRTUAL_ENV",
+        "_OLD_VIRTUAL_PATH",
+        "__PYVENV_LAUNCHER__",
+    }
+)
+_EXPLICIT_PYAMPLICOL_WORKER_CONTROLS = frozenset(
+    {
+        "PYAMPLICOL_NATIVE_COMPILER_GATE_DIR",
+        "PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT",
+    }
+)
 
 
 class ResourceProbeError(RuntimeError):
@@ -556,10 +569,20 @@ def _default_popen(command: Sequence[str], **kwargs: object) -> WorkerProcess:
 
 def _worker_environment(
     overrides: Mapping[str, str] | None = None,
+    *,
+    scrub_import_environment: bool = False,
 ) -> dict[str, str]:
     """Copy the controller environment explicitly for supervised workers."""
 
     environment = os.environ.copy()
+    if scrub_import_environment:
+        for name in tuple(environment):
+            if (
+                name in _WORKER_IMPORT_ENVIRONMENT
+                or name.startswith("PYTHON")
+                or name.startswith("PYAMPLICOL")
+            ):
+                environment.pop(name, None)
     symbolica_license = os.environ.get("SYMBOLICA_LICENSE")
     if symbolica_license is not None:
         environment["SYMBOLICA_LICENSE"] = symbolica_license
@@ -571,6 +594,18 @@ def _worker_environment(
             or "\x00" in name
             or not isinstance(value, str)
             or "\x00" in value
+            or (
+                scrub_import_environment
+                and (
+                    name in _WORKER_IMPORT_ENVIRONMENT
+                    or name.startswith("PYTHON")
+                    or (
+                        name.startswith("PYAMPLICOL")
+                        and name
+                        not in _EXPLICIT_PYAMPLICOL_WORKER_CONTROLS
+                    )
+                )
+            )
         ):
             raise ValueError("worker environment override is invalid")
         environment[name] = value
@@ -619,6 +654,8 @@ def supervise_worker(
         DEFAULT_PHASE_STATE_STARTUP_GRACE_SECONDS
     ),
     environment_overrides: Mapping[str, str] | None = None,
+    scrub_import_environment: bool = False,
+    working_directory: Path | None = None,
     snapshotter: Snapshotter = process_snapshot,
     physical_footprint_probe: PhysicalFootprintProbe | None = None,
     popen_factory: PopenFactory = _default_popen,
@@ -653,6 +690,10 @@ def supervise_worker(
         raise ValueError("termination_grace_seconds must be non-negative")
     if phase_state_startup_grace_seconds < 0:
         raise ValueError("phase_state_startup_grace_seconds must be non-negative")
+    if working_directory is not None:
+        working_directory = working_directory.expanduser().resolve(strict=True)
+        if not working_directory.is_dir():
+            raise ValueError("working_directory must be a directory")
 
     if (
         max_rss_bytes is not None
@@ -673,11 +714,16 @@ def supervise_worker(
             return darwin_probe(pids)
 
     phase_monitor_started = clock()
-    process = popen_factory(
-        tuple(command),
-        start_new_session=True,
-        env=_worker_environment(environment_overrides),
-    )
+    popen_arguments: dict[str, object] = {
+        "start_new_session": True,
+        "env": _worker_environment(
+            environment_overrides,
+            scrub_import_environment=scrub_import_environment,
+        ),
+    }
+    if working_directory is not None:
+        popen_arguments["cwd"] = os.fspath(working_directory)
+    process = popen_factory(tuple(command), **popen_arguments)
     monitor = ResourceMonitor(
         process.pid,
         interval_seconds=interval_seconds,

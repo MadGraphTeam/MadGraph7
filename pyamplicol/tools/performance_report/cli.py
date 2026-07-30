@@ -84,8 +84,14 @@ from .study_contract import (
     audit_z_table_f_policy_projection,
     load_z_table_f_study_contract,
     require_z_table_f_explicit_cell,
+    z_table_f_worker_harness_identity,
 )
 from .worker import write_cell_result
+from .worker_harness import (
+    LEGACY_ADAPTER,
+    POLICY_ENTRYPOINT,
+    worker_harness_identity,
+)
 from .workspace import (
     ReportWorkspaceError,
     export_profile,
@@ -133,6 +139,88 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _authenticated_worker_harness(
+    args: argparse.Namespace,
+    repo_root: Path,
+) -> dict[str, object] | None:
+    """Recheck both checkouts before an internal split worker can run."""
+
+    names = (
+        "measurement_source_root",
+        "expected_measurement_source_revision",
+        "expected_measurement_source_tree",
+        "expected_policy_wrapper_revision",
+        "expected_policy_wrapper_tree",
+        "expected_policy_entrypoint_sha256",
+        "expected_legacy_adapter_sha256",
+        "study_contract_sha256",
+    )
+    values = {name: getattr(args, name) for name in names}
+    if all(value is None for value in values.values()):
+        return None
+    if any(value is None for value in values.values()):
+        raise ValueError(
+            "split worker wrapper/source options must be specified together"
+        )
+    if args.command not in {"_prepare", "_worker"}:
+        raise ValueError(
+            "split worker wrapper/source options are restricted to workers"
+        )
+    measured_root = Path(values["measurement_source_root"]).expanduser().resolve(
+        strict=True
+    )
+    if measured_root != repo_root.resolve(strict=True):
+        raise ValueError(
+            "worker --repo-root must equal --measurement-source-root"
+        )
+    measured = require_eligible_report_source(measured_root)
+    if (
+        measured.revision
+        != values["expected_measurement_source_revision"]
+        or measured.tree != values["expected_measurement_source_tree"]
+    ):
+        raise ValueError(
+            "worker measured-source identity differs from its authorization"
+        )
+    wrapper_root = _repo_root().resolve(strict=True)
+    wrapper = require_eligible_report_source(wrapper_root)
+    if (
+        wrapper.revision != values["expected_policy_wrapper_revision"]
+        or wrapper.tree != values["expected_policy_wrapper_tree"]
+    ):
+        raise ValueError(
+            "worker policy-wrapper identity differs from its authorization"
+        )
+    entrypoint_sha256 = _sha256_file(wrapper_root / POLICY_ENTRYPOINT)
+    legacy_adapter_sha256 = _sha256_file(wrapper_root / LEGACY_ADAPTER)
+    if (
+        entrypoint_sha256
+        != values["expected_policy_entrypoint_sha256"]
+        or legacy_adapter_sha256
+        != values["expected_legacy_adapter_sha256"]
+    ):
+        raise ValueError(
+            "worker policy-wrapper file identity differs from its authorization"
+        )
+    return worker_harness_identity(
+        study_contract_sha256=str(values["study_contract_sha256"]),
+        policy_wrapper_revision=wrapper.revision,
+        policy_wrapper_tree=wrapper.tree,
+        policy_entrypoint_sha256=entrypoint_sha256,
+        legacy_adapter_sha256=legacy_adapter_sha256,
+        measured_source_revision=measured.revision,
+        measured_source_tree=measured.tree,
+    )
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Build and populate the pyAmpliCol performance report.",
@@ -157,6 +245,39 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--class-c-ancestor-runtime-root",
         type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--measurement-source-root",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--expected-measurement-source-revision",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--expected-measurement-source-tree",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--expected-policy-wrapper-revision",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--expected-policy-wrapper-tree",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--expected-policy-entrypoint-sha256",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--expected-legacy-adapter-sha256",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--study-contract-sha256",
         help=argparse.SUPPRESS,
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -712,9 +833,27 @@ def _compile_pdf(service: ReportService) -> Path:
         shutil.rmtree(staging, ignore_errors=True)
 
 
-def _launch_async_publication(service: ReportService) -> Path:
+def _launch_async_publication(
+    service: ReportService,
+    *,
+    entrypoint: Path | None = None,
+) -> Path:
     """Request a one-shot report publication without waiting for it."""
 
+    entrypoint_candidate = (
+        service.paths.repo_root / CANONICAL_REPORT_ENTRYPOINT
+        if entrypoint is None
+        else entrypoint
+    ).expanduser()
+    if entrypoint_candidate.is_symlink():
+        raise RuntimeError(
+            "asynchronous publication entrypoint is unavailable"
+        )
+    selected_entrypoint = entrypoint_candidate.resolve(strict=True)
+    if not selected_entrypoint.is_file():
+        raise RuntimeError(
+            "asynchronous publication entrypoint is unavailable"
+        )
     log_root = service.paths.artifact_root / "publication-logs"
     log_root.mkdir(parents=True, exist_ok=True)
     log_path = log_root / "refresh-pdf-end.log"
@@ -723,9 +862,7 @@ def _launch_async_publication(service: ReportService) -> Path:
         "-I",
         "-S",
         "-B",
-        os.fspath(
-            service.paths.repo_root / CANONICAL_REPORT_ENTRYPOINT
-        ),
+        os.fspath(selected_entrypoint),
         "--repo-root",
         os.fspath(service.paths.repo_root),
         "--docs-dir",
@@ -760,6 +897,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
     repo_root = args.repo_root.expanduser().resolve(strict=False)
+    try:
+        worker_harness = _authenticated_worker_harness(args, repo_root)
+    except (OSError, TypeError, ValueError) as error:
+        parser.error(str(error))
     if (
         args.class_c_ancestor_runtime_root is not None
         and args.command != "prepare-class-c-bridge"
@@ -1252,6 +1393,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             measurement_lineage=measurement_lineage,
             original_amplicol_seed=original_amplicol_seed,
             excluded_cell_ids=frozenset(args.exclude_cell_id),
+            expected_worker_harness=(
+                None
+                if active_study_contract is None
+                else z_table_f_worker_harness_identity(
+                    active_study_contract
+                )
+            ),
         )
         try:
             validate_campaign_plan(planned, settings)
@@ -1314,7 +1462,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         result = scheduler.run(planned)
         if args.refresh_pdf == "end":
-            _launch_async_publication(service)
+            _launch_async_publication(
+                service,
+                entrypoint=scheduler.worker_entrypoint,
+            )
         print(
             json.dumps(
                 {
@@ -1379,6 +1530,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             phase_state_authentication_key=args.phase_state_authentication_key,
             legacy_repository=args.legacy_repository,
             log_path=args.log_path,
+            worker_harness=worker_harness,
         )
         return 0
     if args.command == "_prepare":
@@ -1389,7 +1541,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 worker_cores=args.cell_cores,
                 model=ModelKey(args.model),
             )
-            payload = {"path": os.fspath(path), "reused": reused}
+            payload = {
+                "path": os.fspath(path),
+                "reused": reused,
+                **(
+                    {}
+                    if worker_harness is None
+                    else {"worker_harness": worker_harness}
+                ),
+            }
             returncode = 0
         except Exception as error:
             payload = {

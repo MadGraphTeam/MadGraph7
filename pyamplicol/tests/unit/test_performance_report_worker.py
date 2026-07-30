@@ -17,6 +17,7 @@ from tools.performance_report.worker import (
     measure_cell,
     write_cell_result,
 )
+from tools.performance_report.worker_harness import worker_harness_identity
 
 
 def test_atomic_worker_result_is_canonical_and_complete(tmp_path: Path) -> None:
@@ -96,6 +97,36 @@ def test_worker_failure_is_structured_and_traceback_stays_in_log(
     assert result["failure"]["message"] == "deliberate worker failure"
     assert json.loads(result_path.read_text(encoding="ascii"))["status"] == "error"
     assert "Traceback" in log_path.read_text(encoding="utf-8")
+
+
+def test_worker_success_carries_authenticated_split_harness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = worker_harness_identity(
+        study_contract_sha256="1" * 64,
+        policy_wrapper_revision="2" * 40,
+        policy_wrapper_tree="3" * 40,
+        policy_entrypoint_sha256="4" * 64,
+        legacy_adapter_sha256="5" * 64,
+        measured_source_revision="6" * 40,
+        measured_source_tree="7" * 40,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.worker.measure_cell",
+        lambda *_args, **_kwargs: {"status": "ok", "provenance": {}},
+    )
+
+    result = write_cell_result(
+        "cell",
+        tmp_path / "result.json",
+        worker_harness=harness,
+    )
+
+    assert result["provenance"]["worker_harness"] == harness
+    assert json.loads(
+        (tmp_path / "result.json").read_text(encoding="ascii")
+    )["provenance"]["worker_harness"] == harness
 
 
 def test_worker_constructs_and_threads_parent_phase_reporter(

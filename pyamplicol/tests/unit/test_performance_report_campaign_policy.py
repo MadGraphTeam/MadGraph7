@@ -4,10 +4,15 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 from typing import ClassVar
 
 import pytest
 
+from tools.ci.memory_watchdog import (
+    DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON,
+    RSS_LIMIT_REASON,
+)
 from tools.performance_report.artifacts import ArtifactStore
 from tools.performance_report.cache import build_reset_caches, empty_measurement
 from tools.performance_report.campaign_policy import (
@@ -43,6 +48,10 @@ from tools.performance_report.catalog import (
 )
 from tools.performance_report.cli import _gb_bytes, _parser
 from tools.performance_report.final_audit import FinalAuditError, audit_final_report
+from tools.performance_report.legacy import (
+    LegacyMeasurementAdapter,
+    LegacySettings,
+)
 from tools.performance_report.models import ArtifactPolicy, Workload
 from tools.performance_report.publication import portable_publication_value
 from tools.performance_report.render import _status
@@ -64,7 +73,12 @@ from tools.performance_report.service import ReportPaths, ReportService
 from tools.performance_report.source_identity import ReportSourceIdentity
 from tools.performance_report.study_contract import (
     StudyContractError,
+    bind_z_table_f_attempt,
     create_z_table_f_study_contract,
+)
+from tools.performance_report.worker_harness import (
+    attach_worker_harness_identity,
+    worker_harness_identity,
 )
 from tools.performance_report.workspace import (
     WORKSPACE_MANIFEST,
@@ -76,6 +90,41 @@ from tools.performance_report.workspace import (
 _REVISION = "1" * 40
 _TREE = "2" * 40
 _IDENTITY = ReportSourceIdentity(_REVISION, _TREE, ())
+
+
+def _git_repo(
+    path: Path,
+    marker: str,
+    *,
+    report_wrapper: bool = False,
+) -> Path:
+    path.mkdir()
+    subprocess.run(("git", "init", "-q"), cwd=path, check=True)
+    subprocess.run(
+        ("git", "config", "user.email", "test@example.invalid"),
+        cwd=path,
+        check=True,
+    )
+    subprocess.run(
+        ("git", "config", "user.name", "Test"),
+        cwd=path,
+        check=True,
+    )
+    (path / "README.md").write_text(marker + "\n", encoding="ascii")
+    if report_wrapper:
+        (path / "docs/arxiv").mkdir(parents=True)
+        (path / "tools/performance_report").mkdir(parents=True)
+        (path / "docs/arxiv/result_tables.py").write_text(
+            f"# {marker} policy entrypoint\n",
+            encoding="ascii",
+        )
+        (path / "tools/performance_report/legacy.py").write_text(
+            f"# {marker} legacy adapter\n",
+            encoding="ascii",
+        )
+    subprocess.run(("git", "add", "."), cwd=path, check=True)
+    subprocess.run(("git", "commit", "-qm", "fixture"), cwd=path, check=True)
+    return path
 
 
 def _resources(peak: int) -> dict[str, object]:
@@ -109,6 +158,42 @@ def _guard_resources(
         "memory_limit_reason": reason,
         "memory_probe_reason": None,
     }
+
+
+def _generation_phase(
+    *,
+    reason: str,
+    elapsed: float,
+) -> dict[str, object]:
+    completed = reason == "completed"
+    return {
+        "abi": "pyamplicol-report-generation-phase-evidence-v1",
+        "phase_state_abi": "pyamplicol-report-worker-phase-state-v1",
+        "configured_timeout_seconds": 3600.0,
+        "supervisor_reason": reason,
+        "authenticated": True,
+        "run_id": "f-worker",
+        "worker_pid": 123,
+        "final_sequence": 2 if completed else 1,
+        "final_phase": "post-generation" if completed else "generation",
+        "generation_started_monotonic_ns": 1,
+        "generation_finished_monotonic_ns": 2 if completed else None,
+        "generation_elapsed_seconds": elapsed,
+        "final_state_sha256": "3" * 64,
+        "error": None,
+    }
+
+
+def _test_worker_harness() -> dict[str, object]:
+    return worker_harness_identity(
+        study_contract_sha256="a" * 64,
+        policy_wrapper_revision="3" * 40,
+        policy_wrapper_tree="4" * 40,
+        policy_entrypoint_sha256="5" * 64,
+        legacy_adapter_sha256="6" * 64,
+        measured_source_revision=_REVISION,
+        measured_source_tree=_TREE,
+    )
 
 
 def _x86_settings(**changes: object) -> CampaignSettings:
@@ -460,7 +545,7 @@ def test_z_table_f_rejects_legacy_rss_only_censor_evidence() -> None:
         )
 
     peak = MACBOOK_M3_MEMORY_LIMIT_BYTES + 1
-    reason = "process-tree-rss-limit"
+    reason = DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON
     v3_resources = _guard_resources(
         limit=MACBOOK_M3_MEMORY_LIMIT_BYTES,
         rss=peak,
@@ -489,6 +574,242 @@ def test_z_table_f_rejects_legacy_rss_only_censor_evidence() -> None:
             expected_source_tree=_TREE,
         )
         is PolicyMeasurementState.MEMORY_LIMIT
+    )
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "current_physical_footprint_bytes",
+        "peak_physical_footprint_bytes",
+    ),
+)
+@pytest.mark.parametrize(
+    "state",
+    ("success", "generation_limit", "memory_limit"),
+)
+def test_z_table_f_fails_closed_on_null_darwin_footprint(
+    field: str,
+    state: str,
+) -> None:
+    cell = REPORT_CATALOG.cell(
+        "reference-amplicol-lc-n8-dd-z-jets-selected-flow"
+    )
+    resources = _guard_resources(
+        limit=MACBOOK_M3_MEMORY_LIMIT_BYTES,
+        rss=100,
+        physical=120,
+        reason=None,
+    )
+    if state == "success":
+        phase = _generation_phase(reason="completed", elapsed=1.0)
+        resources["generation_phase"] = phase
+        result = empty_measurement()
+        result.update(
+            {
+                "status": "ok",
+                "generation_seconds": 1.0,
+                "resources": resources,
+                "provenance": _IDENTITY.provenance(),
+            }
+        )
+        attach_worker_harness_identity(result, _test_worker_harness())
+    elif state == "generation_limit":
+        phase = _generation_phase(
+            reason="generation_timeout",
+            elapsed=3600.0,
+        )
+        resources["generation_phase"] = phase
+        result = policy_censor_measurement(
+            MACBOOK_M3_Z_TABLE_F_POLICY,
+            "macbook_M3",
+            cell,
+            kind=PolicyCensorKind.GENERATION_LIMIT,
+            source_identity=_IDENTITY,
+            resources=resources,
+            observed_generation_seconds=3600.0,
+            phase_evidence=phase,
+        )
+    else:
+        peak = MACBOOK_M3_MEMORY_LIMIT_BYTES + 1
+        resources = _guard_resources(
+            limit=MACBOOK_M3_MEMORY_LIMIT_BYTES,
+            rss=peak,
+            physical=peak - 1,
+            reason=RSS_LIMIT_REASON,
+        )
+        result = policy_censor_measurement(
+            MACBOOK_M3_Z_TABLE_F_POLICY,
+            "macbook_M3",
+            cell,
+            kind=PolicyCensorKind.MEMORY_LIMIT,
+            source_identity=_IDENTITY,
+            resources=resources,
+            observed_rss_bytes=peak,
+            observed_guard_bytes=peak,
+            memory_metric_abi=PROCESS_TREE_MEMORY_METRIC_ABI,
+            memory_limit_reason=RSS_LIMIT_REASON,
+        )
+
+    result["resources"][field] = None
+    result["resources"][
+        (
+            "current_guard_bytes"
+            if field.startswith("current_")
+            else "peak_guard_bytes"
+        )
+    ] = result["resources"][
+        (
+            "current_rss_bytes"
+            if field.startswith("current_")
+            else "peak_rss_bytes"
+        )
+    ]
+    with pytest.raises(
+        CampaignPolicyError,
+        match="non-null authenticated current and peak Darwin",
+    ):
+        validate_policy_measurement(
+            MACBOOK_M3_Z_TABLE_F_POLICY,
+            "macbook_M3",
+            cell,
+            result,
+            expected_source_revision=_REVISION,
+            expected_source_tree=_TREE,
+        )
+
+
+def test_ordinary_mac_policy_remains_compatible_with_null_footprint() -> None:
+    cell = REPORT_CATALOG.cell("scalar-contact-n2-scalar-contact-contracted")
+    peak = MACBOOK_M3_MEMORY_LIMIT_BYTES + 1
+    resources = _guard_resources(
+        limit=MACBOOK_M3_MEMORY_LIMIT_BYTES,
+        rss=peak,
+        physical=None,
+        reason=RSS_LIMIT_REASON,
+    )
+    result = policy_censor_measurement(
+        MACBOOK_M3_POLICY,
+        "macbook_M3",
+        cell,
+        kind=PolicyCensorKind.MEMORY_LIMIT,
+        source_identity=_IDENTITY,
+        resources=resources,
+        observed_rss_bytes=peak,
+        observed_guard_bytes=peak,
+        memory_metric_abi=PROCESS_TREE_MEMORY_METRIC_ABI,
+        memory_limit_reason=RSS_LIMIT_REASON,
+    )
+
+    assert (
+        validate_policy_measurement(
+            MACBOOK_M3_POLICY,
+            "macbook_M3",
+            cell,
+            result,
+            expected_source_revision=_REVISION,
+            expected_source_tree=_TREE,
+        )
+        is PolicyMeasurementState.MEMORY_LIMIT
+    )
+
+
+def test_z_table_f_memory_reason_must_match_darwin_guard_tie_break() -> None:
+    cell = REPORT_CATALOG.cell(
+        "reference-amplicol-lc-n8-dd-z-jets-selected-flow"
+    )
+    peak = MACBOOK_M3_MEMORY_LIMIT_BYTES + 1
+    resources = _guard_resources(
+        limit=MACBOOK_M3_MEMORY_LIMIT_BYTES,
+        rss=peak,
+        physical=peak,
+        reason=RSS_LIMIT_REASON,
+    )
+
+    with pytest.raises(
+        CampaignPolicyError,
+        match="reason does not match the authenticated Darwin guard",
+    ):
+        policy_censor_measurement(
+            MACBOOK_M3_Z_TABLE_F_POLICY,
+            "macbook_M3",
+            cell,
+            kind=PolicyCensorKind.MEMORY_LIMIT,
+            source_identity=_IDENTITY,
+            resources=resources,
+            observed_rss_bytes=peak,
+            observed_guard_bytes=peak,
+            memory_metric_abi=PROCESS_TREE_MEMORY_METRIC_ABI,
+            memory_limit_reason=RSS_LIMIT_REASON,
+        )
+
+
+def test_z_table_f_planning_rejects_stale_wrapper_harness_current(
+    tmp_path: Path,
+) -> None:
+    cell = REPORT_CATALOG.cell(
+        "reference-amplicol-lc-n8-dd-z-jets-selected-flow"
+    )
+    phase = _generation_phase(
+        reason="generation_timeout",
+        elapsed=3600.0,
+    )
+    resources = _guard_resources(
+        limit=MACBOOK_M3_MEMORY_LIMIT_BYTES,
+        rss=100,
+        physical=120,
+        reason=None,
+    )
+    resources["generation_phase"] = phase
+    result = policy_censor_measurement(
+        MACBOOK_M3_Z_TABLE_F_POLICY,
+        "macbook_M3",
+        cell,
+        kind=PolicyCensorKind.GENERATION_LIMIT,
+        source_identity=_IDENTITY,
+        resources=resources,
+        observed_generation_seconds=3600.0,
+        phase_evidence=phase,
+    )
+    current_harness = _test_worker_harness()
+    attach_worker_harness_identity(result, current_harness)
+    bind_z_table_f_attempt(result, "a" * 64)
+    store = ArtifactStore(
+        artifact_root=tmp_path / "artifacts",
+        lock_root=tmp_path / "locks",
+    )
+    store.new_attempt(
+        cell.cell_id,
+        ArtifactPolicy.REGENERATE,
+    ).publish(result)
+    settings = _z_table_f_settings(missing_only=True)
+
+    assert (
+        plan_campaign(
+            (cell,),
+            store=store,
+            settings=settings,
+            expected_revision=_REVISION,
+            expected_tree=_TREE,
+            expected_worker_harness=current_harness,
+        )
+        == ()
+    )
+    stale_expected = {
+        **current_harness,
+        "policy_wrapper_revision": "7" * 40,
+    }
+    planned = plan_campaign(
+        (cell,),
+        store=store,
+        settings=settings,
+        expected_revision=_REVISION,
+        expected_tree=_TREE,
+        expected_worker_harness=stale_expected,
+    )
+
+    assert tuple(item.cell_id for item in (entry.cell for entry in planned)) == (
+        cell.cell_id,
     )
 
 
@@ -996,26 +1317,49 @@ def test_legacy_workers_receive_distinct_pinned_shared_object_clones(
     assert (second / "makefile").read_text(encoding="ascii") == "all:\n\t@true\n"
 
 
+def test_legacy_generator_bootstrap_is_outside_generation_timing(
+    tmp_path: Path,
+) -> None:
+    adapter = LegacyMeasurementAdapter(
+        api=SimpleNamespace(),
+        executor=SimpleNamespace(),
+        snapshotter=SimpleNamespace(),
+        structural_proof=False,
+    )
+    commands: list[dict[str, object]] = []
+
+    def fake_run(args, **_kwargs):
+        commands.append(
+            {
+                "args": list(args),
+                "elapsed_seconds": 99.0 if not commands else 1.0,
+            }
+        )
+        return SimpleNamespace()
+
+    adapter._run = fake_run  # type: ignore[method-assign]
+    process_file = tmp_path / "input-processes.txt"
+    process_file.write_text("process fixture\n", encoding="ascii")
+
+    elapsed = adapter._generate_library(
+        context=SimpleNamespace(entries=(), process_file=process_file),
+        repository=tmp_path / "legacy",
+        raw_color=False,
+        settings=LegacySettings(jobs=1),
+        commands=commands,
+        log_path=tmp_path / "legacy.log",
+    )
+
+    assert commands[0]["args"] == ["make", "-j1", "amplicol_generate"]
+    assert len(commands) == 5
+    assert elapsed == 4.0
+
+
 def test_scheduler_publishes_authenticated_generation_censor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    repo = tmp_path / "repo"
-    (repo / "docs/arxiv").mkdir(parents=True)
-    subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
-    subprocess.run(
-        ("git", "config", "user.email", "test@example.invalid"),
-        cwd=repo,
-        check=True,
-    )
-    subprocess.run(
-        ("git", "config", "user.name", "Test"),
-        cwd=repo,
-        check=True,
-    )
-    (repo / "README.md").write_text("fixture\n", encoding="ascii")
-    subprocess.run(("git", "add", "."), cwd=repo, check=True)
-    subprocess.run(("git", "commit", "-qm", "fixture"), cwd=repo, check=True)
+    repo = _git_repo(tmp_path / "repo", "measured")
     service = ReportService(
         ReportPaths.from_repo(
             repo,
@@ -1086,22 +1430,12 @@ def test_z_table_f_scheduler_publishes_authenticated_one_hour_censor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    repo = tmp_path / "repo"
-    (repo / "docs/arxiv").mkdir(parents=True)
-    subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
-    subprocess.run(
-        ("git", "config", "user.email", "test@example.invalid"),
-        cwd=repo,
-        check=True,
+    repo = _git_repo(tmp_path / "repo", "measured")
+    wrapper = _git_repo(
+        tmp_path / "wrapper",
+        "policy",
+        report_wrapper=True,
     )
-    subprocess.run(
-        ("git", "config", "user.name", "Test"),
-        cwd=repo,
-        check=True,
-    )
-    (repo / "README.md").write_text("fixture\n", encoding="ascii")
-    subprocess.run(("git", "add", "."), cwd=repo, check=True)
-    subprocess.run(("git", "commit", "-qm", "fixture"), cwd=repo, check=True)
     service = ReportService(
         ReportPaths.from_repo(
             repo,
@@ -1115,9 +1449,16 @@ def test_z_table_f_scheduler_publishes_authenticated_one_hour_censor(
 
     def fake_supervise(command, **arguments):
         channel = arguments["phase_channel"]
+        assert Path(command[4]) == wrapper / "docs/arxiv/result_tables.py"
+        assert command[command.index("--repo-root") + 1] == str(repo)
+        assert command[command.index("--measurement-source-root") + 1] == str(
+            repo
+        )
         assert arguments["generation_timeout_seconds"] == 3600.0
         assert arguments["timeout_seconds"] is None
         assert arguments["max_rss_bytes"] == 30_000_000_000
+        assert arguments["scrub_import_environment"] is True
+        assert arguments["working_directory"] == repo
         assert channel is not None
         assert "--phase-state-path" in command
         return SupervisedResult(
@@ -1164,7 +1505,7 @@ def test_z_table_f_scheduler_publishes_authenticated_one_hour_censor(
     )
     contract = create_z_table_f_study_contract(
         repo,
-        repo,
+        wrapper,
         prior_store=service.store,
     )
     scheduler = CampaignScheduler(
@@ -1173,7 +1514,7 @@ def test_z_table_f_scheduler_publishes_authenticated_one_hour_censor(
             study_contract_sha256=str(contract["sha256"]),
         ),
         study_contract=contract,
-        study_contract_wrapper_root=repo,
+        study_contract_wrapper_root=wrapper,
     )
     outcome = scheduler._run_cell(
         PlannedCell(
@@ -1195,6 +1536,11 @@ def test_z_table_f_scheduler_publishes_authenticated_one_hour_censor(
         "study_id": "macbook-m3-z-table-f",
         "study_contract_sha256": contract["sha256"],
     }
+    assert provenance["worker_harness"] == scheduler.worker_harness_identity
+    assert all(
+        str(repo) not in str(value) and str(wrapper) not in str(value)
+        for value in provenance["worker_harness"].values()
+    )
     assert _status(current.result) == r"\matrixstatus{ReportOrange}{>1h}"
     assert (
         validate_policy_measurement(
@@ -1209,25 +1555,92 @@ def test_z_table_f_scheduler_publishes_authenticated_one_hour_censor(
     )
 
 
+def test_z_table_f_prepare_runs_authenticated_wrapper_and_returns_harness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    measured = _git_repo(tmp_path / "measured", "measured")
+    wrapper = _git_repo(
+        tmp_path / "wrapper",
+        "policy",
+        report_wrapper=True,
+    )
+    service = ReportService(
+        ReportPaths.from_repo(
+            measured,
+            artifact_root=tmp_path / "artifacts",
+            coordination_root=tmp_path / "locks",
+        )
+    )
+    contract = create_z_table_f_study_contract(
+        measured,
+        wrapper,
+        prior_store=service.store,
+    )
+    scheduler = CampaignScheduler(
+        service,
+        settings=_z_table_f_settings(
+            study_contract_sha256=str(contract["sha256"]),
+        ),
+        study_contract=contract,
+        study_contract_wrapper_root=wrapper,
+    )
+    cell = REPORT_CATALOG.cell(
+        "z-builtin-sm-n8-dd-z-jets-eager-jit-o2-selected-flow"
+    )
+    prepared = tmp_path / "prepared-model"
+    prepared.mkdir()
+
+    def fake_supervise(command, **arguments):
+        assert Path(command[4]) == wrapper / "docs/arxiv/result_tables.py"
+        assert "_prepare" in command
+        assert arguments["scrub_import_environment"] is True
+        assert arguments["working_directory"] == measured
+        result_path = Path(command[command.index("--result-json") + 1])
+        result_path.parent.mkdir(parents=True, exist_ok=True)
+        result_path.write_text(
+            json.dumps(
+                {
+                    "path": str(prepared),
+                    "reused": False,
+                    "worker_harness": scheduler.worker_harness_identity,
+                }
+            ),
+            encoding="ascii",
+        )
+        return SupervisedResult(
+            returncode=0,
+            reason="completed",
+            usage=ResourceUsage(True, 1, 1, 0, 0.1, 0.1),
+        )
+
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        fake_supervise,
+    )
+    scheduler._ensure_prepared_model(
+        (
+            PlannedCell(
+                cell=cell,
+                dependency=False,
+                baseline_cell_id=None,
+                rank=0,
+            ),
+        )
+    )
+
+    assert scheduler._prepared_model_paths[cell.measurement.model] == prepared
+
+
 def test_z_table_f_scheduler_rejects_scope_and_missing_dependencies_before_attempt(
     tmp_path: Path,
 ) -> None:
-    repo = tmp_path / "repo"
-    (repo / "docs/arxiv").mkdir(parents=True)
-    subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
-    subprocess.run(
-        ("git", "config", "user.email", "test@example.invalid"),
-        cwd=repo,
-        check=True,
+    repo = _git_repo(tmp_path / "repo", "measured")
+    wrapper = _git_repo(
+        tmp_path / "wrapper",
+        "policy",
+        report_wrapper=True,
     )
-    subprocess.run(
-        ("git", "config", "user.name", "Test"),
-        cwd=repo,
-        check=True,
-    )
-    (repo / "README.md").write_text("fixture\n", encoding="ascii")
-    subprocess.run(("git", "add", "."), cwd=repo, check=True)
-    subprocess.run(("git", "commit", "-qm", "fixture"), cwd=repo, check=True)
     artifact_root = tmp_path / "artifacts"
     service = ReportService(
         ReportPaths.from_repo(
@@ -1241,7 +1654,7 @@ def test_z_table_f_scheduler_rejects_scope_and_missing_dependencies_before_attem
     )
     contract = create_z_table_f_study_contract(
         repo,
-        repo,
+        wrapper,
         prior_store=service.store,
     )
     scheduler = CampaignScheduler(
@@ -1250,7 +1663,7 @@ def test_z_table_f_scheduler_rejects_scope_and_missing_dependencies_before_attem
             study_contract_sha256=str(contract["sha256"]),
         ),
         study_contract=contract,
-        study_contract_wrapper_root=repo,
+        study_contract_wrapper_root=wrapper,
     )
 
     dependent_cell = REPORT_CATALOG.cell(

@@ -65,6 +65,14 @@ from .study_contract import (
     require_z_table_f_attempt_binding,
     z_table_f_attempt_binding,
     z_table_f_cell_ids,
+    z_table_f_worker_harness_identity,
+)
+from .worker_harness import (
+    POLICY_ENTRYPOINT,
+    WorkerHarnessError,
+    attach_worker_harness_identity,
+    require_worker_harness_identity,
+    validate_worker_harness_identity,
 )
 
 _NATIVE_COMPILER_GATE_DIR_ENV = "PYAMPLICOL_NATIVE_COMPILER_GATE_DIR"
@@ -244,6 +252,7 @@ def _successful_current(
     expected_cell: CellSpec | None = None,
     measurement_lineage: MeasurementLineage | None = None,
     expected_study_contract_sha256: str | None = None,
+    expected_worker_harness: Mapping[str, object] | None = None,
 ) -> CurrentRecord | None:
     current = store.load_current(cell_id, missing_ok=True)
     if current is None or current.result.get("status") != ResultStatus.OK.value:
@@ -254,6 +263,14 @@ def _successful_current(
             require_z_table_f_attempt_binding(
                 current.result,
                 expected_study_contract_sha256,
+            )
+            if expected_worker_harness is None:
+                raise WorkerHarnessError(
+                    "the expected worker harness is unavailable"
+                )
+            require_worker_harness_identity(
+                current.result,
+                expected=expected_worker_harness,
             )
     except (StudyContractError, ValueError):
         return None
@@ -290,6 +307,7 @@ def _policy_current(
     expected_tree: str | None = None,
     measurement_lineage: MeasurementLineage | None = None,
     original_amplicol_seed: OriginalAmplicolSeed | None = None,
+    expected_worker_harness: Mapping[str, object] | None = None,
 ) -> tuple[CurrentRecord, PolicyMeasurementState] | None:
     if settings.campaign_policy is STRICT_POLICY:
         current = _successful_current(
@@ -302,6 +320,7 @@ def _policy_current(
             expected_study_contract_sha256=(
                 settings.study_contract_sha256
             ),
+            expected_worker_harness=expected_worker_harness,
         )
         return None if current is None else (current, PolicyMeasurementState.SUCCESS)
     current = store.load_current(cell.cell_id, missing_ok=True)
@@ -340,6 +359,14 @@ def _policy_current(
             require_z_table_f_attempt_binding(
                 current.result,
                 settings.study_contract_sha256,
+            )
+            if expected_worker_harness is None:
+                raise WorkerHarnessError(
+                    "the expected worker harness is unavailable"
+                )
+            require_worker_harness_identity(
+                current.result,
+                expected=expected_worker_harness,
             )
         state = validate_policy_measurement(
             settings.campaign_policy,
@@ -381,6 +408,7 @@ def _resource_frontier_source(
     expected_tree: str | None,
     measurement_lineage: MeasurementLineage | None = None,
     original_amplicol_seed: OriginalAmplicolSeed | None = None,
+    expected_worker_harness: Mapping[str, object] | None = None,
     lane_cells: Sequence[CellSpec] | None = None,
 ) -> tuple[CellSpec, CurrentRecord, PolicyMeasurementState] | None:
     """Return the first authenticated lower-multiplicity hard resource censor."""
@@ -401,6 +429,7 @@ def _resource_frontier_source(
             expected_tree=expected_tree,
             measurement_lineage=measurement_lineage,
             original_amplicol_seed=original_amplicol_seed,
+            expected_worker_harness=expected_worker_harness,
         )
         if current is None:
             continue
@@ -440,6 +469,7 @@ def _fresh_equivalent_current(
     expected_tree: str | None = None,
     measurement_lineage: MeasurementLineage | None = None,
     expected_study_contract_sha256: str | None = None,
+    expected_worker_harness: Mapping[str, object] | None = None,
 ) -> CurrentRecord | None:
     if cell.measurement.execution_mode is ExecutionMode.AMPLICOL:
         return None
@@ -454,6 +484,7 @@ def _fresh_equivalent_current(
             expected_study_contract_sha256=(
                 expected_study_contract_sha256
             ),
+            expected_worker_harness=expected_worker_harness,
         )
         if current is not None:
             return current
@@ -471,6 +502,7 @@ def plan_campaign(
     measurement_lineage: MeasurementLineage | None = None,
     original_amplicol_seed: OriginalAmplicolSeed | None = None,
     excluded_cell_ids: frozenset[str] = frozenset(),
+    expected_worker_harness: Mapping[str, object] | None = None,
 ) -> tuple[PlannedCell, ...]:
     requested_ids = {cell.cell_id for cell in requested}
     needed: dict[str, CellSpec] = {}
@@ -533,6 +565,7 @@ def plan_campaign(
                     expected_tree=expected_tree,
                     measurement_lineage=measurement_lineage,
                     original_amplicol_seed=original_amplicol_seed,
+                    expected_worker_harness=expected_worker_harness,
                 )
                 is None
             )
@@ -556,6 +589,7 @@ def plan_campaign(
                 expected_tree=expected_tree,
                 measurement_lineage=measurement_lineage,
                 original_amplicol_seed=original_amplicol_seed,
+                expected_worker_harness=expected_worker_harness,
             )
             for dependency in cell_dependencies
         }
@@ -584,6 +618,7 @@ def plan_campaign(
             expected_tree=expected_tree,
             measurement_lineage=measurement_lineage,
             original_amplicol_seed=original_amplicol_seed,
+            expected_worker_harness=expected_worker_harness,
         )
         frontier_source = _resource_frontier_source(
             store,
@@ -594,6 +629,7 @@ def plan_campaign(
             expected_tree=expected_tree,
             measurement_lineage=measurement_lineage,
             original_amplicol_seed=original_amplicol_seed,
+            expected_worker_harness=expected_worker_harness,
             lane_cells=resource_lanes.get(_resource_lane_key(cell), ()),
         )
         expected_frontier = (
@@ -862,12 +898,42 @@ class CampaignScheduler:
                     "campaign settings"
                 )
             self.study_contract = authenticated_contract
+            wrapper_record = authenticated_contract.get("policy_wrapper")
+            source_record = authenticated_contract.get("measured_source")
+            if not isinstance(wrapper_record, Mapping) or not isinstance(
+                source_record,
+                Mapping,
+            ):
+                raise StudyContractError(
+                    "the Z-table F worker identities are missing"
+                )
+            self.worker_wrapper_root = (
+                study_contract_wrapper_root.expanduser().resolve(strict=True)
+            )
+            self.worker_entrypoint = (
+                self.worker_wrapper_root / POLICY_ENTRYPOINT
+            )
+            if (
+                self.worker_entrypoint.is_symlink()
+                or not self.worker_entrypoint.is_file()
+            ):
+                raise StudyContractError(
+                    "the authenticated policy-wrapper entrypoint is unavailable"
+                )
+            self.worker_harness_identity = (
+                z_table_f_worker_harness_identity(authenticated_contract)
+            )
         else:
             if study_contract is not None or study_contract_wrapper_root is not None:
                 raise StudyContractError(
                     "a study contract authorization requires the Z-table F policy"
                 )
             self.study_contract = None
+            self.worker_wrapper_root = service.paths.repo_root
+            self.worker_entrypoint = (
+                service.paths.repo_root / CANONICAL_REPORT_ENTRYPOINT
+            )
+            self.worker_harness_identity = None
         self.measurement_lineage = (
             measurement_lineage
             if measurement_lineage_authenticated
@@ -912,6 +978,7 @@ class CampaignScheduler:
             expected_tree=self.measurement_source_tree,
             measurement_lineage=self.measurement_lineage,
             original_amplicol_seed=self.original_amplicol_seed,
+            expected_worker_harness=self.worker_harness_identity,
         )
 
     def _validate_z_table_f_plan(
@@ -1009,6 +1076,51 @@ class CampaignScheduler:
             os.fspath(paths.coordination_root),
         )
 
+    def _worker_harness_arguments(self) -> tuple[str, ...]:
+        identity = self.worker_harness_identity
+        if identity is None:
+            return ()
+        return (
+            "--measurement-source-root",
+            os.fspath(self.service.paths.repo_root),
+            "--expected-measurement-source-revision",
+            str(identity["measured_source_revision"]),
+            "--expected-measurement-source-tree",
+            str(identity["measured_source_tree"]),
+            "--expected-policy-wrapper-revision",
+            str(identity["policy_wrapper_revision"]),
+            "--expected-policy-wrapper-tree",
+            str(identity["policy_wrapper_tree"]),
+            "--expected-policy-entrypoint-sha256",
+            str(identity["policy_entrypoint_sha256"]),
+            "--expected-legacy-adapter-sha256",
+            str(identity["legacy_adapter_sha256"]),
+            "--study-contract-sha256",
+            str(identity["study_contract_sha256"]),
+        )
+
+    def _bind_study_result(
+        self,
+        result: dict[str, object],
+        *,
+        require_existing_harness: bool = False,
+    ) -> None:
+        if self.settings.study_contract_sha256 is None:
+            return
+        identity = self.worker_harness_identity
+        if identity is None:
+            raise StudyContractError(
+                "the Z-table F worker harness identity is unavailable"
+            )
+        if require_existing_harness:
+            require_worker_harness_identity(result, expected=identity)
+        else:
+            attach_worker_harness_identity(result, identity)
+        bind_z_table_f_attempt(
+            result,
+            self.settings.study_contract_sha256,
+        )
+
     def _ensure_prepared_model(self, planned: Sequence[PlannedCell]) -> None:
         models = {
             item.cell.measurement.model
@@ -1029,10 +1141,11 @@ class CampaignScheduler:
                 "-I",
                 "-S",
                 "-B",
-                os.fspath(self.service.paths.repo_root / CANONICAL_REPORT_ENTRYPOINT),
+                os.fspath(self.worker_entrypoint),
                 "--repo-root",
                 os.fspath(self.service.paths.repo_root),
                 *self._service_path_arguments(),
+                *self._worker_harness_arguments(),
                 "_prepare",
                 "--model",
                 model.value,
@@ -1048,6 +1161,14 @@ class CampaignScheduler:
                 environment_overrides=_worker_environment_overrides(
                     self.settings,
                     self.service.paths.coordination_root,
+                ),
+                scrub_import_environment=(
+                    self.worker_harness_identity is not None
+                ),
+                working_directory=(
+                    self.service.paths.repo_root
+                    if self.worker_harness_identity is not None
+                    else None
                 ),
             )
             try:
@@ -1070,6 +1191,16 @@ class CampaignScheduler:
                         f"exit={supervised.returncode}, detail={detail}"
                     )
                 payload = json.loads(result_path.read_text(encoding="ascii"))
+                if not isinstance(payload, Mapping):
+                    raise RuntimeError(
+                        f"{model.value} prepared-model preflight returned "
+                        "a non-object payload"
+                    )
+                if self.worker_harness_identity is not None:
+                    validate_worker_harness_identity(
+                        payload.get("worker_harness"),
+                        expected=self.worker_harness_identity,
+                    )
                 path = Path(str(payload["path"])).resolve(strict=True)
                 self._prepared_model_paths[model] = path
             finally:
@@ -1132,6 +1263,7 @@ class CampaignScheduler:
                 expected_tree=self.measurement_source_tree,
                 measurement_lineage=self.measurement_lineage,
                 original_amplicol_seed=self.original_amplicol_seed,
+                expected_worker_harness=self.worker_harness_identity,
                 lane_cells=self._resource_lanes.get(
                     _resource_lane_key(cell),
                     (),
@@ -1187,6 +1319,7 @@ class CampaignScheduler:
                     expected_study_contract_sha256=(
                         self.settings.study_contract_sha256
                     ),
+                    expected_worker_harness=self.worker_harness_identity,
                 )
                 if (
                     not self.settings.rerun
@@ -1270,12 +1403,11 @@ class CampaignScheduler:
                     "-I",
                     "-S",
                     "-B",
-                    os.fspath(
-                        self.service.paths.repo_root / CANONICAL_REPORT_ENTRYPOINT
-                    ),
+                    os.fspath(self.worker_entrypoint),
                     "--repo-root",
                     os.fspath(self.service.paths.repo_root),
                     *self._service_path_arguments(),
+                    *self._worker_harness_arguments(),
                     "_worker",
                     "--cell-id",
                     cell.cell_id,
@@ -1356,6 +1488,14 @@ class CampaignScheduler:
                     environment_overrides=_worker_environment_overrides(
                         self.settings,
                         self.service.paths.coordination_root,
+                    ),
+                    scrub_import_environment=(
+                        self.worker_harness_identity is not None
+                    ),
+                    working_directory=(
+                        self.service.paths.repo_root
+                        if self.worker_harness_identity is not None
+                        else None
                     ),
                 )
                 generation_phase = supervised.generation_phase
@@ -1478,11 +1618,14 @@ class CampaignScheduler:
                         raise TypeError("worker result must be a JSON object")
                     result = dict(raw)
                     result["resources"] = resources
-                if self.settings.study_contract_sha256 is not None:
-                    bind_z_table_f_attempt(
+                    self._bind_study_result(
                         result,
-                        self.settings.study_contract_sha256,
+                        require_existing_harness=True,
                     )
+                if supervised.reason != "completed" or (
+                    supervised.returncode != 0 or not worker_result.is_file()
+                ):
+                    self._bind_study_result(result)
                 validate_measurement(result, expected_cell=cell)
                 if result["status"] == ResultStatus.OK.value:
                     policy_state = (
@@ -1563,11 +1706,7 @@ class CampaignScheduler:
                     )
                 ),
             )
-            if self.settings.study_contract_sha256 is not None:
-                bind_z_table_f_attempt(
-                    result,
-                    self.settings.study_contract_sha256,
-                )
+            self._bind_study_result(result)
             validate_measurement(result, expected_cell=cell)
             record = attempt.publish(result)
             return CellOutcome(
@@ -1597,11 +1736,7 @@ class CampaignScheduler:
                 resources=None,
                 frontier=frontier,
             )
-            if self.settings.study_contract_sha256 is not None:
-                bind_z_table_f_attempt(
-                    result,
-                    self.settings.study_contract_sha256,
-                )
+            self._bind_study_result(result)
             validate_measurement(result, expected_cell=cell)
             record = attempt.publish(result)
             return CellOutcome(
@@ -1638,11 +1773,7 @@ class CampaignScheduler:
             based_on=current,
         ) as attempt:
             result = failure_measurement(ResultStatus.SKIP, message)
-            if self.settings.study_contract_sha256 is not None:
-                bind_z_table_f_attempt(
-                    result,
-                    self.settings.study_contract_sha256,
-                )
+            self._bind_study_result(result)
             attempt.write_json("worker-result.json", result)
             attempt.mark_failed(
                 message,

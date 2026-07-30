@@ -30,11 +30,15 @@ from tools.performance_report.study_contract import (
     write_z_table_f_study_contract,
     z_table_f_cell_ids,
     z_table_f_prior_cell_ids,
+    z_table_f_worker_harness_identity,
 )
+from tools.performance_report.worker_harness import attach_worker_harness_identity
 
 
 def _git_repo(path: Path, marker: str) -> Path:
     path.mkdir()
+    (path / "docs/arxiv").mkdir(parents=True)
+    (path / "tools/performance_report").mkdir(parents=True)
     subprocess.run(("git", "init", "-q"), cwd=path, check=True)
     subprocess.run(
         ("git", "config", "user.email", "test@example.invalid"),
@@ -47,7 +51,15 @@ def _git_repo(path: Path, marker: str) -> Path:
         check=True,
     )
     (path / "README.md").write_text(marker + "\n", encoding="ascii")
-    subprocess.run(("git", "add", "README.md"), cwd=path, check=True)
+    (path / "docs/arxiv/result_tables.py").write_text(
+        f"# {marker} policy entrypoint\n",
+        encoding="ascii",
+    )
+    (path / "tools/performance_report/legacy.py").write_text(
+        f"# {marker} legacy adapter\n",
+        encoding="ascii",
+    )
+    subprocess.run(("git", "add", "."), cwd=path, check=True)
     subprocess.run(
         ("git", "commit", "-qm", "fixture"),
         cwd=path,
@@ -80,7 +92,20 @@ def test_study_contract_binds_source_wrapper_policy_and_exact_limits(
     )
     assert loaded["campaign_policy"] != MACBOOK_M3_POLICY.as_manifest()
     assert loaded["policy_profile"] == "macbook_M3"
-    assert set(loaded["policy_wrapper"]) == {"revision", "tree"}
+    assert set(loaded["policy_wrapper"]) == {
+        "revision",
+        "tree",
+        "policy_entrypoint",
+        "policy_entrypoint_sha256",
+        "legacy_adapter",
+        "legacy_adapter_sha256",
+    }
+    assert loaded["policy_wrapper"]["policy_entrypoint"] == (
+        "docs/arxiv/result_tables.py"
+    )
+    assert loaded["policy_wrapper"]["legacy_adapter"] == (
+        "tools/performance_report/legacy.py"
+    )
     assert loaded["memory_guard"] == {
         "metric_abi": "pyamplicol-process-tree-memory-metric-v1",
         "metric": (
@@ -374,6 +399,7 @@ def test_study_audit_replays_f_policy_without_ordinary_mac_policy(
         "memory_probe_reason": None,
         "generation_phase": phase,
     }
+    worker_harness = z_table_f_worker_harness_identity(contract)
     for cell in measured_cells:
         result = policy_censor_measurement(
             MACBOOK_M3_Z_TABLE_F_POLICY,
@@ -385,6 +411,7 @@ def test_study_audit_replays_f_policy_without_ordinary_mac_policy(
             observed_generation_seconds=3600.0,
             phase_evidence=phase,
         )
+        attach_worker_harness_identity(result, worker_harness)
         bind_z_table_f_attempt(result, str(contract["sha256"]))
         service.store.new_attempt(
             cell.cell_id,
@@ -409,6 +436,31 @@ def test_study_audit_replays_f_policy_without_ordinary_mac_policy(
 
     current = service.store.load_current(measured_cells[0].cell_id)
     assert current is not None
+    stale_harness = json.loads(
+        json.dumps(current.result, allow_nan=False, sort_keys=True)
+    )
+    stale_harness["provenance"]["worker_harness"][
+        "policy_wrapper_revision"
+    ] = "f" * 40
+    stale_current = service.store.new_attempt(
+        measured_cells[0].cell_id,
+        ArtifactPolicy.REGENERATE,
+        based_on=current,
+    ).publish(stale_harness)
+    service.publish()
+    with pytest.raises(StudyContractError, match="worker harness differs"):
+        audit_z_table_f_policy_projection(
+            contract,
+            service,
+            maximum_n=8,
+        )
+    current = service.store.new_attempt(
+        measured_cells[0].cell_id,
+        ArtifactPolicy.REGENERATE,
+        based_on=stale_current,
+    ).publish(current.result)
+    service.publish()
+
     transplanted = json.loads(
         json.dumps(current.result, allow_nan=False, sort_keys=True)
     )

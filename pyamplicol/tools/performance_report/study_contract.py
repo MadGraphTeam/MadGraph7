@@ -27,6 +27,13 @@ from .models import Accuracy, ResultStatus, Workload
 from .publication import publication_measurement_matches_current
 from .resources import PROCESS_TREE_MEMORY_METRIC_ABI
 from .source_identity import require_eligible_report_source
+from .worker_harness import (
+    LEGACY_ADAPTER,
+    POLICY_ENTRYPOINT,
+    WorkerHarnessError,
+    require_worker_harness_identity,
+    worker_harness_identity,
+)
 
 if TYPE_CHECKING:
     from .artifacts import ArtifactStore
@@ -129,7 +136,57 @@ def _clean_git_identity(root: Path) -> dict[str, str]:
     return {
         "revision": _git_value(resolved, "HEAD^{commit}"),
         "tree": _git_value(resolved, "HEAD^{tree}"),
+        "policy_entrypoint": POLICY_ENTRYPOINT,
+        "policy_entrypoint_sha256": _tracked_file_sha256(
+            resolved,
+            POLICY_ENTRYPOINT,
+        ),
+        "legacy_adapter": LEGACY_ADAPTER,
+        "legacy_adapter_sha256": _tracked_file_sha256(
+            resolved,
+            LEGACY_ADAPTER,
+        ),
     }
+
+
+def _tracked_file_sha256(root: Path, relative_path: str) -> str:
+    """Hash one regular, tracked wrapper file without retaining its root."""
+
+    candidate = root / relative_path
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(root)
+    except (OSError, ValueError) as error:
+        raise StudyContractError(
+            f"policy-wrapper file is unavailable: {relative_path}"
+        ) from error
+    tracked = subprocess.run(
+        (
+            "git",
+            "-C",
+            os.fspath(root),
+            "ls-files",
+            "--error-unmatch",
+            "--",
+            relative_path,
+        ),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if (
+        tracked.returncode != 0
+        or candidate.is_symlink()
+        or not resolved.is_file()
+    ):
+        raise StudyContractError(
+            f"policy-wrapper file is not a tracked regular file: {relative_path}"
+        )
+    digest = hashlib.sha256()
+    with resolved.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def z_table_f_cell_ids() -> tuple[str, ...]:
@@ -312,6 +369,37 @@ def create_z_table_f_study_contract(
         },
     }
     return {**body, "sha256": _canonical_sha256(body)}
+
+
+def z_table_f_worker_harness_identity(
+    contract: Mapping[str, object],
+) -> dict[str, object]:
+    """Derive the exact relocation-safe worker identity from one contract."""
+
+    wrapper = contract.get("policy_wrapper")
+    source = contract.get("measured_source")
+    if not isinstance(wrapper, Mapping) or not isinstance(source, Mapping):
+        raise StudyContractError(
+            "study contract worker identities are missing"
+        )
+    try:
+        return worker_harness_identity(
+            study_contract_sha256=str(contract["sha256"]),
+            policy_wrapper_revision=str(wrapper["revision"]),
+            policy_wrapper_tree=str(wrapper["tree"]),
+            policy_entrypoint_sha256=str(
+                wrapper["policy_entrypoint_sha256"]
+            ),
+            legacy_adapter_sha256=str(
+                wrapper["legacy_adapter_sha256"]
+            ),
+            measured_source_revision=str(source["revision"]),
+            measured_source_tree=str(source["tree"]),
+        )
+    except (KeyError, WorkerHarnessError) as error:
+        raise StudyContractError(
+            "study contract worker identities are invalid"
+        ) from error
 
 
 def write_z_table_f_study_contract(
@@ -521,6 +609,7 @@ def audit_z_table_f_policy_projection(
     if not isinstance(contract_sha256, str):
         raise StudyContractError("study contract digest is invalid")
     z_table_f_attempt_binding(contract_sha256)
+    expected_worker_harness = z_table_f_worker_harness_identity(contract)
     retained = contract.get("retained_prior_evidence")
     if not isinstance(retained, Mapping) or retained.get(
         "snapshot"
@@ -592,6 +681,14 @@ def audit_z_table_f_policy_projection(
             require_z_table_f_attempt_binding(
                 published,
                 contract_sha256,
+            )
+            require_worker_harness_identity(
+                current.result,
+                expected=expected_worker_harness,
+            )
+            require_worker_harness_identity(
+                published,
+                expected=expected_worker_harness,
             )
             current_state = validate_policy_measurement(
                 MACBOOK_M3_Z_TABLE_F_POLICY,
@@ -679,4 +776,5 @@ __all__ = [
     "z_table_f_attempt_binding",
     "z_table_f_cell_ids",
     "z_table_f_prior_cell_ids",
+    "z_table_f_worker_harness_identity",
 ]

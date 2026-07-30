@@ -21,6 +21,7 @@ from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.cli import (
     _compile_pdf,
     _is_pinned_epyc_orphan_without_rss,
+    _launch_async_publication,
     _parser,
     main,
 )
@@ -116,6 +117,49 @@ def test_table_filler_defaults_to_five_seconds_per_cell() -> None:
     )
     assert study.study_policy == MACBOOK_M3_Z_TABLE_F_POLICY_NAME
     assert study.max_ram_gb == 30.0
+
+
+def test_async_publication_can_run_the_authenticated_wrapper_entrypoint(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    measured = tmp_path / "measured"
+    measured.mkdir()
+    wrapper_entrypoint = tmp_path / "wrapper/docs/arxiv/result_tables.py"
+    wrapper_entrypoint.parent.mkdir(parents=True)
+    wrapper_entrypoint.write_text("# authenticated wrapper\n", encoding="ascii")
+    service = ReportService(
+        ReportPaths.from_repo(
+            measured,
+            artifact_root=tmp_path / "artifacts",
+            coordination_root=tmp_path / "coordination",
+        )
+    )
+    captured: dict[str, object] = {}
+
+    def popen(command, **arguments):
+        captured["command"] = tuple(command)
+        captured.update(arguments)
+        return SimpleNamespace()
+
+    monkeypatch.setattr("tools.performance_report.cli.subprocess.Popen", popen)
+
+    log_path = _launch_async_publication(
+        service,
+        entrypoint=wrapper_entrypoint,
+    )
+
+    command = captured["command"]
+    assert isinstance(command, tuple)
+    assert Path(command[4]) == wrapper_entrypoint.resolve()
+    assert command[command.index("--repo-root") + 1] == str(
+        measured.resolve()
+    )
+    assert command[-1] == "publish-snapshot"
+    assert log_path == (
+        service.paths.artifact_root
+        / "publication-logs/refresh-pdf-end.log"
+    )
 
 
 def test_pinned_epyc_orphan_is_the_only_unavailable_rss_exception() -> None:

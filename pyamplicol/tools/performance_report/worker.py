@@ -23,6 +23,7 @@ from .models import ExecutionMode, ResultStatus
 from .phase_state import WorkerPhaseChannel, WorkerPhaseReporter
 from .runner import RunnerSettings
 from .source_identity import require_eligible_report_source
+from .worker_harness import attach_worker_harness_identity
 
 
 def _atomic_json(path: Path, payload: Mapping[str, object]) -> None:
@@ -145,6 +146,7 @@ def write_cell_result(
     phase_state_path: Path | None = None,
     phase_state_run_id: str | None = None,
     phase_state_authentication_key: str | None = None,
+    worker_harness: Mapping[str, object] | None = None,
     **kwargs: object,
 ) -> dict[str, object]:
     try:
@@ -193,6 +195,8 @@ def write_cell_result(
             with log_path.open("a", encoding="utf-8") as stream:
                 traceback.print_exc(file=stream)
         result = failure_measurement(ResultStatus.ERROR, error)
+    if worker_harness is not None:
+        attach_worker_harness_identity(result, worker_harness)
     provenance = result.get("provenance")
     if isinstance(provenance, Mapping):
         result["provenance"] = {

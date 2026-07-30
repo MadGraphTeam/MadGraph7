@@ -22,6 +22,11 @@ from .cache import empty_measurement
 from .models import Accuracy, CellSpec, ExecutionMode, ResultStatus, Workload
 from .resources import PROCESS_TREE_MEMORY_METRIC_ABI
 from .source_identity import SOURCE_IDENTITY_SCHEMA, ReportSourceIdentity
+from .worker_harness import (
+    WORKER_HARNESS_PROVENANCE_FIELD,
+    WorkerHarnessError,
+    require_worker_harness_identity,
+)
 
 CAMPAIGN_POLICY_SCHEMA = "pyamplicol-report-campaign-policy-v1"
 LEGACY_POLICY_CENSOR_ABI = "pyamplicol-report-policy-censor-v2"
@@ -626,10 +631,14 @@ def _policy_record(
         "policy_censor_sha256",
     }
     provenance_fields = set(provenance)
-    if (
-        provenance_fields == base_fields | {"study_contract"}
-        and policy is MACBOOK_M3_Z_TABLE_F_POLICY
-    ):
+    if policy is MACBOOK_M3_Z_TABLE_F_POLICY and "study_contract" in provenance:
+        if provenance_fields != base_fields | {
+            "study_contract",
+            WORKER_HARNESS_PROVENANCE_FIELD,
+        }:
+            raise CampaignPolicyError(
+                "terminal measurement provenance is not canonical"
+            )
         study_contract = provenance.get("study_contract")
         if (
             not isinstance(study_contract, Mapping)
@@ -649,6 +658,14 @@ def _policy_record(
             raise CampaignPolicyError(
                 "terminal measurement study contract is not canonical"
             )
+        try:
+            require_worker_harness_identity(
+                measurement,
+                expected_measured_revision=expected_source_revision,
+                expected_measured_tree=expected_source_tree,
+            )
+        except WorkerHarnessError as error:
+            raise CampaignPolicyError(str(error)) from error
     elif provenance_fields != base_fields:
         raise CampaignPolicyError("terminal measurement provenance is not canonical")
     if (
@@ -829,15 +846,39 @@ def _validate_resources(
     if policy.memory_limit_bytes is None:
         raise CampaignPolicyError("architecture policy has no memory ceiling")
     _validate_memory_metric(resources, policy)
-    if (
-        policy is MACBOOK_M3_Z_TABLE_F_POLICY
-        and resources.get("memory_metric_abi")
-        != PROCESS_TREE_MEMORY_METRIC_ABI
-    ):
-        raise CampaignPolicyError(
-            "the Z-table F policy requires authenticated process-tree "
-            "RSS/physical-footprint memory evidence"
+    if policy is MACBOOK_M3_Z_TABLE_F_POLICY:
+        current_physical = resources.get(
+            "current_physical_footprint_bytes"
         )
+        peak_physical = resources.get("peak_physical_footprint_bytes")
+        if (
+            resources.get("memory_metric_abi")
+            != PROCESS_TREE_MEMORY_METRIC_ABI
+            or isinstance(current_physical, bool)
+            or not isinstance(current_physical, int)
+            or current_physical < 0
+            or isinstance(peak_physical, bool)
+            or not isinstance(peak_physical, int)
+            or peak_physical < 0
+        ):
+            raise CampaignPolicyError(
+                "the Z-table F policy requires non-null authenticated "
+                "current and peak Darwin physical-footprint evidence"
+            )
+        reason = resources.get("memory_limit_reason")
+        current_rss = resources.get("current_rss_bytes")
+        assert isinstance(current_rss, int) and not isinstance(current_rss, bool)
+        if reason is not None:
+            expected_reason = (
+                DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON
+                if current_physical >= current_rss
+                else RSS_LIMIT_REASON
+            )
+            if reason != expected_reason:
+                raise CampaignPolicyError(
+                    "the Z-table F memory-limit reason does not match the "
+                    "authenticated Darwin guard"
+                )
     return resources
 
 
@@ -948,6 +989,15 @@ def validate_policy_measurement(
             raise CampaignPolicyError(
                 "successful measurement source tree does not match"
             )
+        if policy is MACBOOK_M3_Z_TABLE_F_POLICY:
+            try:
+                require_worker_harness_identity(
+                    measurement,
+                    expected_measured_revision=expected_source_revision,
+                    expected_measured_tree=expected_source_tree,
+                )
+            except WorkerHarnessError as error:
+                raise CampaignPolicyError(str(error)) from error
         if policy.allow_terminal_censors:
             resources = _validate_resources(
                 measurement,

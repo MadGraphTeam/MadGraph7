@@ -343,6 +343,104 @@ def test_supervisor_merges_explicit_worker_environment_overrides(
     assert result.returncode == 0
 
 
+def test_split_worker_scrubs_import_environment_and_sets_measured_cwd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import_environment = {
+        "PYTHONHOME",
+        "PYTHONINSPECT",
+        "PYTHONPATH",
+        "PYTHONPYCACHEPREFIX",
+        "PYTHONSTARTUP",
+        "PYTHONUSERBASE",
+        "PYAMPLICOL_EXACT_IMPORT_PATHS",
+        "PYAMPLICOL_EXACT_PYTHON_REEXEC",
+        "PYAMPLICOL_CACHE_DIR",
+        "PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP",
+        "PYAMPLICOL_NATIVE_COMPILER_GATE_DIR",
+        "PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT",
+        "VIRTUAL_ENV",
+        "_OLD_VIRTUAL_PATH",
+        "__PYVENV_LAUNCHER__",
+    }
+    for name in import_environment:
+        monkeypatch.setenv(name, f"attacker-{name}")
+    process = FakeProcess()
+    process.returncode = 0
+    observed: dict[str, object] = {}
+
+    def popen(
+        command: Sequence[str],
+        *,
+        start_new_session: bool,
+        env: Mapping[str, str],
+        cwd: str,
+    ) -> FakeProcess:
+        observed["command"] = tuple(command)
+        observed["start_new_session"] = start_new_session
+        observed["cwd"] = cwd
+        observed["present"] = import_environment.intersection(env)
+        return process
+
+    result = supervise_worker(
+        ("worker",),
+        scrub_import_environment=True,
+        environment_overrides={
+            "PYAMPLICOL_NATIVE_COMPILER_GATE_DIR": "/authenticated/gate",
+            "PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT": "4",
+        },
+        working_directory=tmp_path,
+        snapshotter=lambda: {},
+        popen_factory=popen,
+    )
+
+    assert result.returncode == 0
+    assert observed == {
+        "command": ("worker",),
+        "start_new_session": True,
+        "cwd": str(tmp_path.resolve()),
+        "present": {
+            "PYAMPLICOL_NATIVE_COMPILER_GATE_DIR",
+            "PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT",
+        },
+    }
+    with pytest.raises(ValueError, match="environment override"):
+        supervise_worker(
+            ("worker",),
+            scrub_import_environment=True,
+            environment_overrides={"PYTHONPATH": "/attacker"},
+        )
+
+
+def test_ordinary_worker_environment_remains_compatible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYTHONPATH", "/ordinary/controller/path")
+    process = FakeProcess()
+    process.returncode = 0
+    observed: dict[str, object] = {}
+
+    def popen(
+        _command: Sequence[str],
+        *,
+        start_new_session: bool,
+        env: Mapping[str, str],
+    ) -> FakeProcess:
+        assert start_new_session
+        observed["pythonpath"] = env.get("PYTHONPATH")
+        return process
+
+    result = supervise_worker(
+        ("worker",),
+        snapshotter=lambda: {},
+        popen_factory=popen,
+    )
+
+    assert result.returncode == 0
+    assert observed["pythonpath"] == "/ordinary/controller/path"
+
+
 def test_supervisor_enforces_memory_limit_and_fails_closed_on_probe_error() -> None:
     process = FakeProcess()
 
