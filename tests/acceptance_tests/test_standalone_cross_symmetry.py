@@ -2667,6 +2667,80 @@ class TestCrossingConfigMap(unittest.TestCase):
                           % (name, said))
 
 
+class TestCrossingFlavorRepresentative(unittest.TestCase):
+    """The PDG signature reported for a flavor index must be the signature of the
+    flavor class that index actually selects.
+
+    compute_crossing_pdg_entries reads the PDG table of _build_flav_pdg_tables,
+    which has ONE ROW PER PHYSICAL FLAVOR COMBINATION, while its flavor index
+    counts the coupling-equivalence classes of get_external_flavors_with_iden()
+    -- the FLAVOR table the backends read is built from each class's
+    representative flav[0]. Row f is the representative of class f only while the
+    leading rows happen to BE the representatives. ``p p > j j`` with the
+    crossings unfolded has ``Q Q~ > Q Q~``, whose three classes sit at rows 0, 1
+    and 4: taking the ordinal names ``q q~ > q'' q~''`` (a member of class 1) for
+    the class that is really ``q q~' > q q~'``. The routing decision, the
+    recorded-crossing intersection behind crossed_flavors.dat and the C++
+    demo_pdg table all match on exactly this signature.
+
+    ``allowed_flavors_with_iden_pdgs`` is the independent oracle here: it carries
+    the class representative's PDGs directly and shares no code with the table
+    indexing under test."""
+
+    def _mes(self, proc):
+        import madgraph.iolibs.group_subprocs as group_subprocs
+        import madgraph.iolibs.export_v4 as export_v4
+        cmd = cmd_interface.MasterCmd()
+        cmd.run_cmd('import model sm')
+        # The default multi-flavor j is the point: with a single quark flavor
+        # every class is a single row and the misalignment cannot appear.
+        # Unfolded (MG_MERGE_CROSSING=off) so the crossed modules still exist,
+        # exactly as TestCrossingPartition does.
+        old = os.environ.get('MG_MERGE_CROSSING')
+        os.environ['MG_MERGE_CROSSING'] = 'off'
+        try:
+            cmd.run_cmd('generate %s --use_crossing=True' % proc)
+        finally:
+            if old is None:
+                os.environ.pop('MG_MERGE_CROSSING', None)
+            else:
+                os.environ['MG_MERGE_CROSSING'] = old
+        groups = group_subprocs.SubProcessGroup.group_amplitudes(
+            cmd._curr_amps, 'madevent')
+        mes = []
+        for g in groups:
+            g.generate_matrix_elements()
+            mes.extend(g.get('matrix_elements'))
+        return mes, export_v4.ProcessExporterFortran()
+
+    def test_identity_signature_is_the_class_representative(self):
+        mes, exp = self._mes('p p > j j')
+        self.assertTrue(mes)
+        for me in mes:
+            _classes, class_pdgs = \
+                me.get_external_flavors_with_iden(return_pdgs=True)
+            expected = [tuple(members[0]) for members in class_pdgs]
+            got = [pdg for (_idx, cross, _flav, pdg) in
+                   exp.compute_crossing_pdg_entries(me) if cross == 0]
+            self.assertEqual(
+                got, expected,
+                'identity signatures of %s do not name its flavor classes'
+                % me.get('processes')[0].shell_string())
+
+    def test_fixture_exercises_a_misaligned_matrix_element(self):
+        """Guard the test above from going toothless: if grouping ever stops
+        producing a matrix element whose classes are NOT the leading rows, the
+        assertion holds trivially and no longer covers the defect."""
+        mes, exp = self._mes('p p > j j')
+        misaligned = [me for me in mes
+                      if exp._flavor_rep_rows(me)
+                      != list(range(len(exp._flavor_rep_rows(me))))]
+        self.assertTrue(
+            misaligned,
+            'no matrix element with a non-ordinal class representative; '
+            'the representative test no longer covers the ordinal bug')
+
+
 class TestMadeventCrossingHelicity(unittest.TestCase):
     """End-to-end regression for the crossed-helicity label written to the LHE.
 

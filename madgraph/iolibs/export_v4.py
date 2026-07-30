@@ -3338,6 +3338,50 @@ C     crossing carried by FLAV_IDX moves across.
                 'countable': countable, 'ident_resonance': ident_resonance,
                 'nexternal': nexternal, 'ninitial': ninitial}
 
+    def _flavor_rep_rows(self, matrix_element):
+        """PDG-table row representing each madevent / C++ / mg7 flavor index.
+
+        The two tables involved are indexed differently and only look alike:
+
+        * ``_build_flav_pdg_tables`` is indexed by ``compute_flavor_masks()`` --
+          ONE ROW PER PHYSICAL FLAVOR COMBINATION (15 rows for ``Q Q~ > t t~
+          Q Q~`` with three quark flavors).
+        * those backends' flavor index counts the COUPLING-EQUIVALENCE CLASSES
+          of ``get_external_flavors_with_iden()`` (3 for the same matrix
+          element), and the FLAVOR table they read is built from each class's
+          representative ``flav[0]`` -- see the ``get_flavor_matrix`` fills.
+
+        Row ``f`` of the first table is the representative of class ``f`` only
+        while the leading masks rows happen to BE the representatives, which
+        stops holding from three merged flavors on: for ``Q Q~ > t t~ Q Q~``
+        class 2 (``q q~' > t t~ q q~'``, the mixed t-channel one) is masks row 3,
+        while row 2 is ``q q~ > t t~ q'' q~''``, a member of class 1. Taking the
+        ordinal therefore names a process the flavor index does not select, and
+        the consumers (partition_crossing_classes' routing, the recorded-crossing
+        intersection behind crossed_flavors.dat, the C++ demo_pdg table) match on
+        exactly that signature.
+
+        So look the representative up instead of assuming it. Returns one
+        0-based row per flavor class. The ordinal is kept as a fall-back for a
+        representative that cannot be located -- not expected, decay chains span
+        the leaves on both sides and do line up, but a wrong row is a better
+        outcome than a traceback in a table this deep in the exporter.
+        """
+        masks = matrix_element.compute_flavor_masks()
+        classes = list(matrix_element.get_external_flavors_with_iden())
+        rowof = {tuple(mask): row for row, mask in enumerate(masks)}
+        rows = []
+        for flav0, members in enumerate(classes):
+            row = rowof.get(tuple(members[0])) if members else None
+            if row is None:
+                logger.debug(
+                    'Crossing: flavor class %d of %s has no row in the flavor '
+                    'mask table; falling back to the ordinal.'
+                    % (flav0, matrix_element.get('processes')[0].shell_string()))
+                row = flav0 if flav0 < len(masks) else 0
+            rows.append(row)
+        return rows
+
     def compute_crossing_pdg_entries(self, matrix_element, zero_based=True):
         """Enumerate the reachable extended flavor indices and their crossed PDG.
 
@@ -3386,15 +3430,17 @@ C     crossing carried by FLAV_IDX moves across.
         n_flav = len(matrix_element.get_external_flavors_with_iden())
         _, pdg_flat, antipdg_flat = \
             ProcessExporterFortran._build_flav_pdg_tables(self, matrix_element)
-        pdg_rows = len(pdg_flat) // nx
+        # The pdg tables are indexed by physical flavor combination, not by
+        # flavor index; _flavor_rep_rows bridges the two.
+        rep_rows = ProcessExporterFortran._flavor_rep_rows(
+            self, matrix_element)
 
         entries = []
         for cross in range(ncross):
             if spincol[cross] == 0:
                 continue
             for flav0 in range(n_flav):
-                # Guard against a pdg table with fewer rows than nflavors.
-                row = flav0 if flav0 < pdg_rows else 0
+                row = rep_rows[flav0]
                 pdg = []
                 for k in range(nx):
                     src = perm[cross * nx + k]

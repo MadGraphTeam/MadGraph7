@@ -3084,15 +3084,18 @@ class ProcessExporterCPP(VirtualExporter):
         # the physical PDG the user expects).
         _, pdg_flat, antipdg_flat = \
             ProcessExporterFortran._build_flav_pdg_tables(self, matrix_element)
-        pdg_rows = len(pdg_flat) // nx
+        # Those tables are indexed by physical flavor combination while flavor_id
+        # counts coupling-equivalence classes; _flavor_rep_rows bridges the two
+        # (the same lookup compute_crossing_pdg_entries does, kept shared so the
+        # demo table and the fortran signatures cannot drift apart).
+        rep_rows = ProcessExporterFortran._flavor_rep_rows(
+            self, matrix_element)
 
         # demo_pdg[flavor_id*nexternal + slot], flavor_id = cross*nflav+flav0.
         demo_pdg = []
         for cross in range(ncross):
             for flav0 in range(n_flav):
-                # Guard in the unlikely case the pdg table has fewer rows than
-                # nflavors: fall back to the first flavor rather than overrun.
-                row = flav0 if flav0 < pdg_rows else 0
+                row = rep_rows[flav0]
                 for k in range(nx):
                     if spincol[cross] == 0:
                         demo_pdg.append(0)
