@@ -6,13 +6,16 @@ from __future__ import annotations
 import hashlib
 from dataclasses import replace
 from decimal import Decimal
+from itertools import product
 
 import pytest
 
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.dag_equivalence import (
     ExactCurrentRelationCertificate,
+    _build_numerical_observation_candidate_index,
     _current_evaluation_contract,
+    _numerical_observation_tolerance_window_ids,
     apply_numerical_current_relation_certificates,
     assign_recursive_current_evaluation_reuse,
     certify_numerical_current_observations,
@@ -192,6 +195,14 @@ def _authenticated_relation_for_ambiguous_dag(
     relation_kind: str,
 ):
     dag, model = _ambiguous_projective_dag()
+    certificate = _authenticated_relation_certificate(dag, relation_kind)
+    return dag, model, certificate
+
+
+def _authenticated_relation_certificate(
+    dag,
+    relation_kind: str,
+):
     source_digest = generic_dag_numerical_source_semantics_sha256(
         dag,
         execution_mode="compiled",
@@ -244,7 +255,7 @@ def _authenticated_relation_for_ambiguous_dag(
         verification_probe_count=2,
     )
     assert certificate is not None
-    return dag, model, certificate
+    return certificate
 
 
 @pytest.mark.parametrize("relation_kind", ("equal", "opposite", "zero"))
@@ -284,10 +295,247 @@ def test_authenticated_numerical_relations_are_applied_by_default(
     mapping = payload["mappings"][0]
     assert mapping["current_id"] == 5
     assert mapping["relation_kind"] == relation_kind
+    assert mapping["resolved_current_ids"] == [5]
+    assert mapping["projected_interaction_count"] == 1
+    assert len(mapping["projected_interaction_ids_sha256"]) == 64
     if relation_kind == "zero":
         assert mapping["representative_id"] is None
         assert mapping["execution_representative_id"] == 3
         assert mapping["factor_binary64"] == ["0x0.0p+0", "0x0.0p+0"]
+
+
+@pytest.mark.parametrize("relation_kind", ("equal", "opposite", "zero"))
+def test_authenticated_application_only_merges_or_suppresses_existing_groups(
+    relation_kind: str,
+) -> None:
+    dag, model = _ambiguous_projective_dag()
+    baseline = assign_recursive_current_evaluation_reuse(dag, model)
+    certificate = _authenticated_relation_certificate(
+        baseline,
+        relation_kind,
+    )
+
+    result = apply_numerical_current_relation_certificates(
+        baseline,
+        model,
+        (certificate,),
+        mode="certified-reuse",
+        execution_mode="compiled",
+    )
+
+    assert result.report.interaction_evaluation_count_before == 4
+    assert result.report.interaction_evaluation_count_projected == 3
+    assert (
+        result.report.interaction_evaluation_count_projected
+        <= result.report.interaction_evaluation_count_before
+    )
+    assert result.dag.interactions[:7] == baseline.interactions[:7]
+    changed = result.dag.interactions[7]
+    if relation_kind == "zero":
+        assert changed.evaluation_group_id == (
+            baseline.interactions[7].evaluation_group_id
+        )
+        assert changed.evaluation_factor == (0.0, 0.0)
+    else:
+        assert changed.evaluation_group_id == (
+            baseline.interactions[6].evaluation_group_id
+        )
+        assert changed.evaluation_factor == (
+            (1.0, 0.0)
+            if relation_kind == "equal"
+            else (-1.0, 0.0)
+        )
+
+
+def test_authenticated_zero_suppresses_only_its_downstream_attachment() -> None:
+    dag, model = _ambiguous_projective_dag()
+    baseline = assign_recursive_current_evaluation_reuse(dag, model)
+    extra_contribution = replace(
+        baseline.interactions[7],
+        id=8,
+        left_id=4,
+        result_id=7,
+        evaluation_group_id=91,
+    )
+    multi_term = replace(
+        baseline,
+        interactions=(*baseline.interactions, extra_contribution),
+    )
+    certificate = _authenticated_relation_certificate(multi_term, "zero")
+
+    result = apply_numerical_current_relation_certificates(
+        multi_term,
+        model,
+        (certificate,),
+        mode="certified-reuse",
+        execution_mode="compiled",
+    )
+
+    assert result.dag.interactions[7].evaluation_factor == (0.0, 0.0)
+    assert result.dag.interactions[8] == extra_contribution
+    assert result.dag.interactions[:7] == multi_term.interactions[:7]
+    assert (
+        result.report.interaction_evaluation_count_projected
+        == result.report.interaction_evaluation_count_before - 1
+    )
+
+
+def test_authenticated_zero_propagates_through_exact_structural_class() -> None:
+    dag, model = _ambiguous_projective_dag()
+    duplicate_first = replace(
+        dag.interactions[4],
+        id=6,
+        result_id=6,
+    )
+    duplicate_second = replace(
+        dag.interactions[5],
+        id=7,
+        result_id=6,
+    )
+    consume_certified = replace(
+        dag.interactions[7],
+        id=8,
+        left_id=5,
+        result_id=7,
+    )
+    consume_structural_member = replace(
+        consume_certified,
+        id=9,
+        left_id=6,
+    )
+    unaffected = replace(
+        consume_certified,
+        id=10,
+        left_id=4,
+    )
+    structural_fanout = replace(
+        dag,
+        interactions=(
+            *dag.interactions[:6],
+            duplicate_first,
+            duplicate_second,
+            consume_certified,
+            consume_structural_member,
+            unaffected,
+        ),
+    )
+    baseline = assign_recursive_current_evaluation_reuse(
+        structural_fanout,
+        model,
+    )
+    assert (
+        baseline.interactions[8].evaluation_group_id
+        == baseline.interactions[9].evaluation_group_id
+    )
+    certificate = _authenticated_relation_certificate(baseline, "zero")
+
+    result = apply_numerical_current_relation_certificates(
+        baseline,
+        model,
+        (certificate,),
+        mode="certified-reuse",
+        execution_mode="compiled",
+    )
+
+    assert result.dag.interactions[:8] == baseline.interactions[:8]
+    assert result.dag.interactions[8].evaluation_factor == (0.0, 0.0)
+    assert result.dag.interactions[9].evaluation_factor == (0.0, 0.0)
+    assert result.dag.interactions[10] == baseline.interactions[10]
+    mapping = result.report.to_json_dict()["mappings"][0]
+    assert mapping["resolved_current_ids"] == [5, 6]
+    assert mapping["projected_interaction_count"] == 2
+    assert (
+        result.report.interaction_evaluation_count_projected
+        <= result.report.interaction_evaluation_count_before
+    )
+
+
+def test_authenticated_merge_composes_kernel_and_existing_group_factors() -> None:
+    dag, model = _ambiguous_projective_dag()
+    antisymmetric = replace(
+        dag,
+        interactions=(
+            *dag.interactions[:6],
+            replace(dag.interactions[6], vertex_kind=0),
+            replace(
+                dag.interactions[7],
+                vertex_kind=0,
+                left_id=1,
+                right_id=5,
+            ),
+        ),
+    )
+    baseline = assign_recursive_current_evaluation_reuse(
+        antisymmetric,
+        model,
+    )
+    target = replace(
+        baseline.interactions[6],
+        evaluation_factor=(2.0, 0.0),
+    )
+    grouped = replace(
+        baseline,
+        interactions=(
+            *baseline.interactions[:6],
+            target,
+            baseline.interactions[7],
+        ),
+    )
+    certificate = _authenticated_relation_certificate(grouped, "equal")
+
+    result = apply_numerical_current_relation_certificates(
+        grouped,
+        model,
+        (certificate,),
+        mode="certified-reuse",
+        execution_mode="compiled",
+    )
+
+    assert result.dag.interactions[6] == target
+    assert result.dag.interactions[7].evaluation_group_id == (
+        target.evaluation_group_id
+    )
+    assert result.dag.interactions[7].evaluation_factor == (-2.0, 0.0)
+    assert (
+        result.report.interaction_evaluation_count_projected
+        == result.report.interaction_evaluation_count_before - 1
+    )
+
+
+def test_authenticated_relation_without_a_safe_target_remains_unapplied() -> None:
+    dag, model = _ambiguous_projective_dag()
+    baseline = assign_recursive_current_evaluation_reuse(dag, model)
+    no_target = replace(
+        baseline,
+        interactions=(
+            *baseline.interactions[:6],
+            replace(
+                baseline.interactions[6],
+                left_id=4,
+                right_id=2,
+            ),
+            baseline.interactions[7],
+        ),
+    )
+    certificate = _authenticated_relation_certificate(no_target, "equal")
+
+    result = apply_numerical_current_relation_certificates(
+        no_target,
+        model,
+        (certificate,),
+        mode="certified-reuse",
+        execution_mode="compiled",
+    )
+
+    assert result.dag is no_target
+    assert result.report.state == (
+        "authenticated-numerical-no-reuse-opportunity"
+    )
+    assert result.report.applied_relation_count == 0
+    assert not result.report.warning_required
+    assert result.report.to_json_dict()["mappings"][0][
+        "projected_interaction_count"
+    ] == 0
 
 
 def test_empty_numerical_audit_is_explicit_and_does_not_warn_or_apply() -> None:
@@ -485,6 +733,125 @@ def test_complete_warmup_negative_audit_is_first_class_and_warning_free() -> Non
     payload = discovery.report.to_json_dict()
     assert payload["warning"]["required"] is False
     assert payload["certified_numerical_relation_count"] == 0
+    candidate_index = payload["candidate_index"]
+    assert candidate_index["completeness"] == (
+        "complete-within-configured-tolerance"
+    )
+    assert (
+        candidate_index["screened_pair_hypothesis_count"]
+        < candidate_index["theoretical_pair_hypothesis_count"]
+    )
+    assert discovery.report.tested_hypothesis_count == (
+        candidate_index["zero_hypothesis_count"]
+        + candidate_index["screened_pair_hypothesis_count"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("difference", "expected_relation_count"),
+    ((Decimal("0.125"), 1), (Decimal("0.1250001"), 0)),
+)
+def test_candidate_index_is_complete_at_absolute_tolerance_boundary(
+    difference: Decimal,
+    expected_relation_count: int,
+) -> None:
+    dag, model = _ambiguous_projective_dag()
+    candidate = _complete_current_observations(dag, domain=100_000)
+    verification = _complete_current_observations(dag, domain=900_000)
+    candidate[5] = tuple(
+        (real + difference, imaginary)
+        for real, imaginary in candidate[3]
+    )
+    verification[5] = tuple(
+        (real + difference, imaginary)
+        for real, imaginary in verification[3]
+    )
+
+    discovery = discover_generic_dag_numerical_current_relations(
+        dag,
+        model,
+        candidate_observations=candidate,
+        verification_observations=verification,
+        candidate_point_sha256s=_observation_points("candidate"),
+        verification_point_sha256s=_observation_points("verification"),
+        execution_mode="compiled",
+        precision_digits=96,
+        seed=0x5059414D,
+        relative_tolerance=0.0,
+        absolute_tolerance=0.125,
+    )
+
+    assert len(discovery.certificates) == expected_relation_count
+
+
+def test_candidate_index_relative_window_uses_complete_complex_pair_scale() -> None:
+    observations = {
+        0: ((Decimal(0), Decimal("1e100")),),
+        1: ((Decimal("1e30"), Decimal("1e100")),),
+    }
+    index = _build_numerical_observation_candidate_index(
+        (0, 1),
+        observations,
+    )
+
+    assert _numerical_observation_tolerance_window_ids(
+        index,
+        observations[1],
+        relation_kind="equal",
+        current_id=1,
+        relative_tolerance=Decimal("1e-70"),
+        absolute_tolerance=Decimal(0),
+    ) == (0,)
+
+
+@pytest.mark.parametrize("relative_tolerance", ("0", "0.1", "0.9"))
+@pytest.mark.parametrize("relation_kind", ("equal", "opposite"))
+def test_candidate_index_window_contains_every_small_exhaustive_match(
+    relative_tolerance: str,
+    relation_kind: str,
+) -> None:
+    values = tuple(map(Decimal, (-10, -1, 0, 1, 10)))
+    relative = Decimal(relative_tolerance)
+    absolute = Decimal("0.25")
+    sign = Decimal(1) if relation_kind == "equal" else Decimal(-1)
+    for components in product(values, repeat=4):
+        (
+            representative_real,
+            representative_imaginary,
+            current_real,
+            current_imaginary,
+        ) = components
+        representative = (representative_real, representative_imaginary)
+        current = (current_real, current_imaginary)
+        reference = (
+            sign * representative_real,
+            sign * representative_imaginary,
+        )
+        difference = max(
+            abs(current_real - reference[0]),
+            abs(current_imaginary - reference[1]),
+        )
+        scale = max(
+            abs(current_real),
+            abs(current_imaginary),
+            abs(reference[0]),
+            abs(reference[1]),
+        )
+        if difference > absolute + relative * scale:
+            continue
+        observations = {0: (representative,), 1: (current,)}
+        index = _build_numerical_observation_candidate_index(
+            (0, 1),
+            observations,
+        )
+        assert 0 in _numerical_observation_tolerance_window_ids(
+            index,
+            observations[1],
+            relation_kind=relation_kind,  # type: ignore[arg-type]
+            current_id=1,
+            relative_tolerance=relative,
+            absolute_tolerance=absolute,
+        )
 
 
 def test_candidate_only_relation_is_rejected_by_independent_points() -> None:

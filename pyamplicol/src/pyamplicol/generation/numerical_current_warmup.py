@@ -19,7 +19,7 @@ from ..runtime.symbolica_exact import (
     _fill_momenta,
     _fill_sources,
 )
-from .contracts import StageCompilationInput
+from .contracts import RuntimeExpressionSchema, StageCompilationInput
 from .dag_equivalence import (
     NumericalCurrentObservationDiscoveryResult,
     NumericalCurrentRelationApplicationResult,
@@ -75,6 +75,20 @@ class GenericDAGCurrentObservationCapture:
             "point_major": True,
             "evaluator": "symbolica-interpreted-high-precision-stage-replay",
         }
+
+
+@dataclass(frozen=True, slots=True)
+class _GenericDAGCurrentCaptureSession:
+    """Reusable interpreted stage evaluators for one immutable source DAG."""
+
+    dag: GenericDAG
+    process_id: str
+    runtime_schema: RuntimeExpressionSchema
+    schema: Mapping[str, object]
+    stages: tuple[GenericCompiledStageBlueprint, ...]
+    stage_evaluators: tuple[Any, ...]
+    model_parameters: tuple[Decimal, ...]
+    source_dag_sha256: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,17 +171,24 @@ def run_generic_dag_numerical_current_warmup(
             verification_count=verification_probe_count,
         )
     )
+    baseline_session = _build_current_capture_session(
+        dag,
+        model,
+        process_id=process_id,
+    )
     candidate = capture_generic_dag_current_observations(
         dag,
         model,
         candidate_points,
         precision_digits=precision_digits,
+        _session=baseline_session,
     )
     verification = capture_generic_dag_current_observations(
         dag,
         model,
         verification_points,
         precision_digits=precision_digits,
+        _session=baseline_session,
     )
     validate_independent_current_observation_captures(
         candidate,
@@ -202,6 +223,7 @@ def run_generic_dag_numerical_current_warmup(
         discovery.certificates,
         mode=mode,
         execution_mode=execution_mode,
+        _structural_equivalences=discovery.structural_equivalences,
     )
     if (
         application.report.certificates != discovery.certificates
@@ -376,6 +398,7 @@ def capture_generic_dag_current_observations(
     points: Sequence[ValidationPointRecord],
     *,
     precision_digits: int,
+    _session: _GenericDAGCurrentCaptureSession | None = None,
 ) -> GenericDAGCurrentObservationCapture:
     """Evaluate and snapshot every current at every supplied physical point.
 
@@ -405,37 +428,30 @@ def capture_generic_dag_current_observations(
         raise ValueError(
             "numerical current capture point process does not match the DAG"
         )
-
-    runtime_schema = build_runtime_expression_schema(
-        dag,
-        model,
-        process_id=point_records[0].process_id,
-    )
-    schema = runtime_schema.to_mapping()
-    blueprint = build_generic_stage_compiler_blueprint(
-        StageCompilationInput(dag, model, runtime_schema)
-    )
-    if not blueprint.expression_ready:
+    process_ids = {point.process_id for point in point_records}
+    if len(process_ids) != 1:
         raise ValueError(
-            "numerical current capture cannot lower stage expressions: "
-            + "; ".join(blueprint.blockers)
+            "numerical current capture points mix process identities"
         )
-    settings = SymbolicaEvaluatorSettings(
-        iterations=1,
-        cpe_iterations=0,
-        n_cores=1,
-        direct_translation=False,
-        jit_direct_translation=False,
-        jit_optimization_level=0,
-        compiled_output_chunk_size=None,
-        output_chunk_strategy="uniform",
-        compiled_chunk_compile_workers=1,
+    process_id = next(iter(process_ids))
+    session = (
+        _build_current_capture_session(
+            dag,
+            model,
+            process_id=process_id,
+        )
+        if _session is None
+        else _session
     )
-    stage_evaluators = tuple(
-        _build_interpreted_stage_evaluator(stage, settings=settings)
-        for stage in blueprint.stages
-    )
-    model_parameters = _runtime_model_parameter_values(schema)
+    if session.dag is not dag or session.process_id != process_id:
+        raise ValueError(
+            "numerical current capture session drifted from its source DAG"
+        )
+
+    schema = session.schema
+    blueprint_stages = session.stages
+    stage_evaluators = session.stage_evaluators
+    model_parameters = session.model_parameters
     point_hashes = tuple(
         _validation_point_sha256(point) for point in point_records
     )
@@ -461,7 +477,7 @@ def capture_generic_dag_current_observations(
             point_capture = _capture_one_point(
                 dag,
                 schema,
-                blueprint.stages,
+                blueprint_stages,
                 stage_evaluators,
                 point_values,
                 model_parameters,
@@ -488,7 +504,6 @@ def capture_generic_dag_current_observations(
         raise ValueError(
             "numerical current capture produced a non-finite component"
         )
-    source_dag_digest = _canonical_sha256(dag.to_json_dict())
     observation_digest = _canonical_sha256(
         {
             "point_sha256s": list(point_hashes),
@@ -510,9 +525,57 @@ def capture_generic_dag_current_observations(
         point_sha256s=point_hashes,
         kinematic_sha256s=kinematic_hashes,
         observations=observations,
-        runtime_schema_sha256=runtime_schema.sha256,
-        source_dag_sha256=source_dag_digest,
+        runtime_schema_sha256=session.runtime_schema.sha256,
+        source_dag_sha256=session.source_dag_sha256,
         observation_batch_sha256=observation_digest,
+    )
+
+
+def _build_current_capture_session(
+    dag: GenericDAG,
+    model: Model,
+    *,
+    process_id: str,
+) -> _GenericDAGCurrentCaptureSession:
+    runtime_schema = build_runtime_expression_schema(
+        dag,
+        model,
+        process_id=process_id,
+    )
+    schema = runtime_schema.to_mapping()
+    blueprint = build_generic_stage_compiler_blueprint(
+        StageCompilationInput(dag, model, runtime_schema)
+    )
+    if not blueprint.expression_ready:
+        raise ValueError(
+            "numerical current capture cannot lower stage expressions: "
+            + "; ".join(blueprint.blockers)
+        )
+    settings = SymbolicaEvaluatorSettings(
+        iterations=1,
+        cpe_iterations=0,
+        n_cores=1,
+        direct_translation=False,
+        jit_direct_translation=False,
+        jit_optimization_level=0,
+        compiled_output_chunk_size=None,
+        output_chunk_strategy="uniform",
+        compiled_chunk_compile_workers=1,
+    )
+    stage_evaluators = tuple(
+        _build_interpreted_stage_evaluator(stage, settings=settings)
+        for stage in blueprint.stages
+    )
+    model_parameters = _runtime_model_parameter_values(schema)
+    return _GenericDAGCurrentCaptureSession(
+        dag=dag,
+        process_id=process_id,
+        runtime_schema=runtime_schema,
+        schema=schema,
+        stages=blueprint.stages,
+        stage_evaluators=stage_evaluators,
+        model_parameters=model_parameters,
+        source_dag_sha256=_canonical_sha256(dag.to_json_dict()),
     )
 
 
@@ -602,7 +665,9 @@ def _validate_applied_current_observations(
             raise ValueError(
                 f"numerical current {current_id} application width drifted"
             )
-        for baseline, optimized in zip(before, after, strict=True):
+        for observation_index, (baseline, optimized) in enumerate(
+            zip(before, after, strict=True)
+        ):
             difference = max(
                 abs(baseline[0] - optimized[0]),
                 abs(baseline[1] - optimized[1]),
@@ -635,7 +700,12 @@ def _validate_applied_current_observations(
             if difference > allowed:
                 raise ValueError(
                     "numerical current application changed current "
-                    f"{current_id} beyond its authenticated tolerance"
+                    f"{current_id} observation {observation_index} beyond "
+                    "its authenticated tolerance: "
+                    f"difference={_decimal_string(difference)}, "
+                    f"allowed={_decimal_string(allowed)}, "
+                    "tolerance_ratio="
+                    f"{_decimal_string(tolerance_ratio)}"
                 )
     return {
         "status": "verified",

@@ -131,6 +131,41 @@ def test_capture_uses_only_interpreted_high_precision_stage_replay(
     ]
 
 
+def test_transaction_reuses_one_baseline_capture_session(
+    z_dag_and_model: tuple[GenericDAG, BuiltinSMModel],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dag, model = z_dag_and_model
+    real_builder = numerical_current_warmup._build_current_capture_session
+    built_dags: list[GenericDAG] = []
+
+    def counted_builder(*args: object, **kwargs: Any) -> Any:
+        built_dags.append(args[0])  # type: ignore[arg-type]
+        return real_builder(*args, **kwargs)
+
+    monkeypatch.setattr(
+        numerical_current_warmup,
+        "_build_current_capture_session",
+        counted_builder,
+    )
+    result = run_generic_dag_numerical_current_warmup(
+        dag,
+        model,
+        process_id="ddbar_z_session_reuse",
+        mode="certified-reuse",
+        execution_mode="compiled",
+        precision_digits=_PRECISION_DIGITS,
+        probe_count=4,
+        verification_probe_count=4,
+        seed=_SEED,
+        relative_tolerance=1.0e-70,
+        absolute_tolerance=1.0e-80,
+    )
+
+    assert result.application.report.applied_relation_count == 0
+    assert built_dags == [dag]
+
+
 @pytest.mark.parametrize("execution_mode", ("compiled", "eager"))
 def test_real_capture_drives_authenticated_discovery_and_application(
     z_dag_and_model: tuple[GenericDAG, BuiltinSMModel],
