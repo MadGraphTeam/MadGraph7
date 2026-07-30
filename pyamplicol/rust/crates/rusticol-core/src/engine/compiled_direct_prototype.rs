@@ -227,6 +227,7 @@ enum CompiledDirectCurrentLayoutPolicy {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct CompiledDirectTileSizing {
     pub(crate) effective_tile_capacity: usize,
+    pub(crate) reduction_tile_capacity: usize,
     pub(crate) physical_scalar_values_per_point: usize,
     pub(crate) hot_scalar_values_per_point: usize,
     pub(crate) source_scalar_values_per_point: usize,
@@ -296,16 +297,18 @@ fn compiled_direct_tile_sizing(
         })?;
     let authenticated_reduction_scalar_values_per_point =
         reduction_footprint.hot_scalar_values_per_point();
-    let hot_scalar_values_per_point = maximum_leaf_scalar_values_per_point
-        .max(source_scalar_values_per_point)
+    let execution_scalar_values_per_point =
+        maximum_leaf_scalar_values_per_point.max(source_scalar_values_per_point);
+    let hot_scalar_values_per_point = execution_scalar_values_per_point
         .max(authenticated_reduction_scalar_values_per_point.unwrap_or(0));
-    let effective_tile_capacity = match layout_policy {
+    let (effective_tile_capacity, reduction_tile_capacity) = match layout_policy {
         // This developer/test contract remains exact: neither the adaptive
         // locality cap nor the production workspace policy changes it.
         CompiledDirectCurrentLayoutPolicy::Identity { tile_capacity } => {
-            usize::try_from(tile_capacity).map_err(|_| {
+            let capacity = usize::try_from(tile_capacity).map_err(|_| {
                 RusticolError::integrity("compiled Direct-Arena identity tile exceeds usize")
-            })?
+            })?;
+            (capacity, capacity)
         }
         CompiledDirectCurrentLayoutPolicy::StageLivenessProduction => {
             if authenticated_reduction_scalar_values_per_point.is_none() {
@@ -314,26 +317,36 @@ fn compiled_direct_tile_sizing(
                 // Still route the one-point fallback through the common
                 // selector so its padded physical allocation cannot bypass
                 // the hard workspace bound.
-                deterministic_point_tile_size_with_cache_footprint(
+                let capacity = deterministic_point_tile_size_with_cache_footprint(
                     1,
                     COMPILED_DIRECT_WORKSPACE_BYTES,
                     usize::MAX,
                     physical_scalar_values_per_point,
                     hot_scalar_values_per_point,
-                )? as usize
+                )? as usize;
+                (capacity, capacity)
             } else {
-                deterministic_point_tile_size_with_cache_footprint(
+                let execution_capacity = deterministic_point_tile_size_with_cache_footprint(
+                    COMPILED_DIRECT_LOCALITY_POINT_CAP,
+                    COMPILED_DIRECT_WORKSPACE_BYTES,
+                    compiled_direct_cache_target_bytes(),
+                    physical_scalar_values_per_point,
+                    execution_scalar_values_per_point,
+                )? as usize;
+                let reduction_capacity = deterministic_point_tile_size_with_cache_footprint(
                     COMPILED_DIRECT_LOCALITY_POINT_CAP,
                     COMPILED_DIRECT_WORKSPACE_BYTES,
                     compiled_direct_cache_target_bytes(),
                     physical_scalar_values_per_point,
                     hot_scalar_values_per_point,
-                )? as usize
+                )? as usize;
+                (execution_capacity, reduction_capacity)
             }
         }
     };
     Ok(CompiledDirectTileSizing {
         effective_tile_capacity,
+        reduction_tile_capacity,
         physical_scalar_values_per_point,
         hot_scalar_values_per_point,
         source_scalar_values_per_point,
@@ -684,6 +697,10 @@ impl CompiledDirectEnginePrototype {
 
     pub(crate) const fn tile_capacity(&self) -> usize {
         self.arena.tile_capacity() as usize
+    }
+
+    pub(crate) const fn reduction_tile_capacity(&self) -> usize {
+        self.tile_sizing.reduction_tile_capacity
     }
 
     pub(crate) const fn tile_sizing(&self) -> CompiledDirectTileSizing {
@@ -3160,21 +3177,24 @@ extern "C" int native_direct_leaf_direct_application_v1(
         let large_reduction = CompiledDirectReductionFootprint::Authenticated {
             hot_scalar_values_per_point: 32_768,
         };
+        let reduction_limited = compiled_direct_tile_sizing(
+            &stages,
+            &amplitude,
+            &layout,
+            &[0],
+            4,
+            1,
+            large_reduction,
+            CompiledDirectCurrentLayoutPolicy::StageLivenessProduction,
+        )
+        .unwrap();
         assert_eq!(
-            compiled_direct_tile_sizing(
-                &stages,
-                &amplitude,
-                &layout,
-                &[0],
-                4,
-                1,
-                large_reduction,
-                CompiledDirectCurrentLayoutPolicy::StageLivenessProduction,
-            )
-            .unwrap()
-            .effective_tile_capacity,
-            16,
-            "a larger reduction phase, rather than cold arena width, limits cache locality"
+            reduction_limited.effective_tile_capacity, 32,
+            "a cold resolved-reduction shape must not fragment total evaluation"
+        );
+        assert_eq!(
+            reduction_limited.reduction_tile_capacity, 16,
+            "resolved and routed reductions retain their smaller cache-local tile"
         );
 
         let hard_limited_layout = CompiledDirectCurrentLayout::identity(1_000_000).unwrap();

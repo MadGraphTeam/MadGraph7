@@ -671,7 +671,7 @@ impl ExecutionRuntime {
             compiled_direct_color_schedules,
             selected_materialized_sector_ids,
         )?;
-        let tile_capacity = direct.tile_capacity();
+        let tile_capacity = direct.reduction_tile_capacity();
         let mut point_start = 0usize;
         while point_start < point_count {
             let point_stop = (point_start + tile_capacity).min(point_count);
@@ -878,7 +878,7 @@ impl ExecutionRuntime {
             compiled_direct_color_schedules,
             Some(selected_materialized_sector_ids),
         )?;
-        let tile_capacity = direct.tile_capacity();
+        let tile_capacity = direct.reduction_tile_capacity();
         let mut point_start = 0usize;
         while point_start < point_count {
             let point_stop = (point_start + tile_capacity).min(point_count);

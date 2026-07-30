@@ -192,17 +192,63 @@ improvement is entirely structural rather than a tolerance-based reuse.
 
 ## (d) LC `d d~ -> Z Z Z + 6g`
 
-Queued.
+Fresh post-merge measurements at source `20130ae` do not reproduce the
+reported `2.3x` recurrence slowdown. The default recurrence path is 1.158x
+slower than original AmpliCol. It found no numerical-current relation, so the
+default-on and explicit opt-out artifacts have identical matrices and
+structures.
 
-Historical committed measurements (untrusted; pyAmpliCol source `9b7357f`):
+| Implementation / mode | Generation [s] | Wall [µs/pt] | Execution [µs/pt] | Evaluator total [µs/pt] | Wall / AmpliCol |
+|---|---:|---:|---:|---:|---:|
+| Original AmpliCol | 299.858 | 467.467 | 467.467 | not exposed | 1.000 |
+| recurrence JIT O2, default certified reuse | 41.514* | 541.474 | 534.614 | 541.474 | 1.158 |
+| compiled JIT O3, before fix | 144.721 | 6,203.550 | not exposed | 6,203.550 | 13.271 |
+| compiled JIT O3, phase-local tile fix | 144.721† | 669.993 | not exposed | 669.993 | 1.433 |
 
-| Implementation | Generation [s] | Wall [µs/pt] | Evaluator total [µs/pt] | pyAmpliCol/AmpliCol wall |
-|---|---:|---:|---:|---:|
-| Original AmpliCol | 289.608 | 430.894 | not exposed | 1.00 |
-| pyAmpliCol recurrence JIT O2 | 39.770 | 536.027 | not exposed | 1.24 |
+`*` The default run's generation timer was lost after generation when an
+unrelated selector-derivation point failed its threshold. The 41.514 s value is
+the comparable opt-out generation, whose artifact has the same matrix and
+structural census. `†` The post-fix runtime reused the already-generated O3
+artifact; generation was deliberately not repeated.
 
-The current committed PDF/raw cache already differs from the reported `2.3x`
-hypothesis, which makes a fresh reproduction especially important.
+All paths perform the same physical work:
+
+| Implementation | Sources | Produced currents | Total currents | Interaction evaluations | Roots |
+|---|---:|---:|---:|---:|---:|
+| Original AmpliCol | 24 | 16,700 | 16,724 | 128,158 | 3,456 |
+| recurrence / compiled generic DAG | 25 | 16,700 | 16,725 | 128,158 | 3,456 |
+
+The one-current difference is the known source-row representation convention,
+not missed or duplicated interaction work. Default recurrence inspected all
+16,725 currents and tested 16,896 equal/opposite/zero hypotheses, but found,
+certified, and applied zero relations. The opt-out result is consequently
+identical.
+
+The fresh matrix elements are `2.950518076490481e-27` for AmpliCol,
+`2.950518076465731e-27` for recurrence, and
+`2.9505180764657654e-27` for compiled O3. The relative differences are
+8.39e-12 between recurrence and AmpliCol, 8.38e-12 between compiled and
+AmpliCol, and 1.17e-14 between compiled and recurrence. The compiled result is
+bit-for-bit unchanged by the fix, and its resolved-sum validation has a maximum
+relative difference of 3.65e-16.
+
+The genuine anomaly was instead compiled Direct-Arena tiling. One cache
+footprint was shared by total evaluation and resolved/routed reduction. The
+cold resolved tensor has 6,912 helicities times 720 colours, and reducer
+overhead raises its authenticated footprint to 4,980,101 scalars per point.
+Applying that footprint to selected-total evaluation forced a one-point tile,
+even though the selected-total path never materializes the resolved tensor.
+Smaller evaluator output chunks could not help because this reduction footprint
+dominated the tile calculation.
+
+The generic fix gives total execution and resolved/routed reduction separate
+cache-local tile capacities while retaining the same hard workspace bound.
+Selected-total evaluation now uses its leaf/source footprint; resolved and
+routed paths continue to use the full authenticated reduction footprint. On
+this artifact the total tile rises from 1 to 32 and Direct-Arena calls fall
+from 79.0 to 2.46875 per point. Compiled O3 improves by 9.259x to 669.993
+µs/point, 1.237x slower than recurrence and 1.433x slower than AmpliCol, with
+no process-specific rule or numerical change.
 
 ## (e) LC `d d~ -> u u~ s s~ c c~ + (n-6)g`
 

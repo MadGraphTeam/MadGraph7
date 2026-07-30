@@ -1120,7 +1120,7 @@ impl ExecutionRuntime {
                 "compiled Direct-Arena resolved execution was selected without a complete runtime",
             ));
         };
-        let tile_capacity = direct.tile_capacity();
+        let tile_capacity = direct.reduction_tile_capacity();
         let mut point_start = 0usize;
         while point_start < point_count {
             let point_stop = (point_start + tile_capacity).min(point_count);
@@ -1209,7 +1209,7 @@ impl ExecutionRuntime {
                 "compiled Direct-Arena routed execution was selected without a complete runtime",
             ));
         };
-        let tile_capacity = direct.tile_capacity();
+        let tile_capacity = direct.reduction_tile_capacity();
         let mut point_start = 0usize;
         while point_start < point_count {
             let point_stop = (point_start + tile_capacity).min(point_count);
@@ -1279,7 +1279,7 @@ impl ExecutionRuntime {
                 "compiled Direct-Arena routed execution was selected without a complete runtime",
             ));
         };
-        let tile_capacity = direct.tile_capacity();
+        let tile_capacity = direct.reduction_tile_capacity();
         let mut point_start = 0usize;
         while point_start < point_count {
             let point_stop = (point_start + tile_capacity).min(point_count);
