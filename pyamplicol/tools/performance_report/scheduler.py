@@ -475,6 +475,40 @@ def _measurement_frontier(
     return censor.get("frontier") if isinstance(censor, Mapping) else None
 
 
+def _partition_dependency_records(
+    *,
+    baseline_cell_id: str | None,
+    comparison_peer_ids: Sequence[str],
+    currents: Mapping[
+        str,
+        tuple[CurrentRecord, PolicyMeasurementState],
+    ],
+) -> tuple[
+    CurrentRecord | None,
+    dict[str, CurrentRecord],
+    tuple[dict[str, object], ...],
+]:
+    """Keep a terminal baseline blocking while omitting terminal peer checks."""
+
+    baseline_record: CurrentRecord | None = None
+    terminal_required: list[dict[str, object]] = []
+    if baseline_cell_id is not None:
+        record, state = currents[baseline_cell_id]
+        if state is PolicyMeasurementState.SUCCESS:
+            baseline_record = record
+        else:
+            terminal_required.append(
+                dependency_reference(baseline_cell_id, record.result)
+            )
+    peer_records = {
+        peer_cell_id: record
+        for peer_cell_id in comparison_peer_ids
+        for record, state in (currents[peer_cell_id],)
+        if state is PolicyMeasurementState.SUCCESS
+    }
+    return baseline_record, peer_records, tuple(terminal_required)
+
+
 def _fresh_equivalent_current(
     store: ArtifactStore,
     cell: CellSpec,
@@ -1274,20 +1308,24 @@ class CampaignScheduler:
         cell = planned.cell
         with self.service.store.named_lock(f"campaign-cell-{cell.cell_id}"):
             fresh = self._current(cell)
-            frontier_source = _resource_frontier_source(
-                self.service.store,
-                cell,
-                settings=self.settings,
-                catalog=self.catalog,
-                expected_revision=self.source_revision,
-                expected_tree=self.measurement_source_tree,
-                measurement_lineage=self.measurement_lineage,
-                original_amplicol_seed=self.original_amplicol_seed,
-                expected_worker_harness=self.worker_harness_identity,
-                lane_cells=self._resource_lanes.get(
-                    _resource_lane_key(cell),
-                    (),
-                ),
+            frontier_source = (
+                _resource_frontier_source(
+                    self.service.store,
+                    cell,
+                    settings=self.settings,
+                    catalog=self.catalog,
+                    expected_revision=self.source_revision,
+                    expected_tree=self.measurement_source_tree,
+                    measurement_lineage=self.measurement_lineage,
+                    original_amplicol_seed=self.original_amplicol_seed,
+                    expected_worker_harness=self.worker_harness_identity,
+                    lane_cells=self._resource_lanes.get(
+                        _resource_lane_key(cell),
+                        (),
+                    ),
+                )
+                if planned.dependency
+                else None
             )
             if (
                 self.settings.missing_only
@@ -1363,8 +1401,10 @@ class CampaignScheduler:
                     ),
                 )
             }
-            dependency_records: dict[str, CurrentRecord] = {}
-            terminal_dependencies: list[dict[str, object]] = []
+            dependency_currents: dict[
+                str,
+                tuple[CurrentRecord, PolicyMeasurementState],
+            ] = {}
             for dependency in dependency_cells.values():
                 current_dependency = self._current(
                     dependency,
@@ -1376,28 +1416,22 @@ class CampaignScheduler:
                         f"required dependency {dependency.cell_id!r} is unavailable",
                         current=decision.current,
                     )
-                dependency_record, dependency_state = current_dependency
-                if dependency_state is PolicyMeasurementState.SUCCESS:
-                    dependency_records[dependency.cell_id] = dependency_record
-                else:
-                    terminal_dependencies.append(
-                        dependency_reference(
-                            dependency.cell_id,
-                            dependency_record.result,
-                        )
-                    )
+                dependency_currents[dependency.cell_id] = current_dependency
+            baseline_record, peer_records, terminal_dependencies = (
+                _partition_dependency_records(
+                    baseline_cell_id=(
+                        None if baseline is None else baseline.cell_id
+                    ),
+                    comparison_peer_ids=planned.comparison_peer_ids,
+                    currents=dependency_currents,
+                )
+            )
             if terminal_dependencies:
                 return self._publish_dependency_censor(
                     cell,
                     terminal_dependencies,
                     current=decision.current,
                 )
-            baseline_record = (
-                None if baseline is None else dependency_records[baseline.cell_id]
-            )
-            peer_records: dict[str, CurrentRecord] = {}
-            for peer_cell_id in planned.comparison_peer_ids:
-                peer_records[peer_cell_id] = dependency_records[peer_cell_id]
 
             with self.service.store.new_attempt(
                 cell.cell_id,

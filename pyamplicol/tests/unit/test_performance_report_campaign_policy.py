@@ -65,6 +65,7 @@ from tools.performance_report.scheduler import (
     CampaignScheduler,
     CampaignSettings,
     PlannedCell,
+    _partition_dependency_records,
     _resource_payload,
     plan_campaign,
     validate_campaign_plan,
@@ -1888,7 +1889,40 @@ def test_scheduler_never_promotes_incomplete_memory_observation(
     )
 
 
-def test_scheduler_never_launches_above_authenticated_resource_frontier(
+def test_terminal_comparison_peer_is_omitted_but_terminal_baseline_blocks() -> None:
+    baseline = SimpleNamespace(result={"status": "ok"})
+    selected_peer = SimpleNamespace(result={"status": "ok"})
+    terminal_peer_result = _memory_censor(
+        REPORT_CATALOG.cell("scalar-contact-n2-scalar-contact-contracted"),
+        peak=X86_EPYC_MEMORY_LIMIT_BYTES + 1,
+    )
+    terminal_peer = SimpleNamespace(result=terminal_peer_result)
+    currents = {
+        "baseline": (baseline, PolicyMeasurementState.SUCCESS),
+        "selected": (selected_peer, PolicyMeasurementState.SUCCESS),
+        "recurrence": (terminal_peer, PolicyMeasurementState.MEMORY_LIMIT),
+    }
+
+    resolved_baseline, peers, blockers = _partition_dependency_records(
+        baseline_cell_id="baseline",
+        comparison_peer_ids=("selected", "recurrence"),
+        currents=currents,  # type: ignore[arg-type]
+    )
+
+    assert resolved_baseline is baseline
+    assert peers == {"selected": selected_peer}
+    assert blockers == ()
+
+    _baseline, _peers, blockers = _partition_dependency_records(
+        baseline_cell_id="recurrence",
+        comparison_peer_ids=("selected",),
+        currents=currents,  # type: ignore[arg-type]
+    )
+    assert len(blockers) == 1
+    assert blockers[0]["cell_id"] == "recurrence"
+
+
+def test_scheduler_frontier_censors_dependencies_but_not_explicit_cells(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1943,7 +1977,7 @@ def test_scheduler_never_launches_above_authenticated_resource_frontier(
     outcome = scheduler._run_cell(
         PlannedCell(
             cell=target,
-            dependency=False,
+            dependency=True,
             baseline_cell_id=None,
             rank=1,
         )
@@ -1964,6 +1998,26 @@ def test_scheduler_never_launches_above_authenticated_resource_frontier(
         )
         is PolicyMeasurementState.RESOURCE_FRONTIER
     )
+
+    class ExplicitCellLaunched(RuntimeError):
+        pass
+
+    def launched_supervisor(*_args, **_kwargs):
+        raise ExplicitCellLaunched
+
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        launched_supervisor,
+    )
+    with pytest.raises(ExplicitCellLaunched):
+        scheduler._run_cell(
+            PlannedCell(
+                cell=target,
+                dependency=False,
+                baseline_cell_id=None,
+                rank=1,
+            )
+        )
 
 
 def test_final_audit_counts_policy_terminal_cells_without_claiming_numerics(
