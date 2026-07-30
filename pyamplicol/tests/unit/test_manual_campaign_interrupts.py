@@ -205,6 +205,84 @@ def test_running_cancellation_is_interrupted_history_and_preserves_current(
     }
 
 
+def test_manual_legacy_cancellation_discards_isolated_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    source = _source()
+    cell = REPORT_CATALOG.cell("reference-amplicol-full-n1-dd-z-jets-contracted")
+    workspaces: list[Path] = []
+
+    def prepare_workspace(
+        _scheduler: CampaignScheduler,
+        attempt_id: str,
+    ) -> Path:
+        workspace = tmp_path / "legacy-workspaces" / attempt_id
+        workspace.mkdir(parents=True)
+        workspaces.append(workspace)
+        return workspace
+
+    def cancelled_worker(
+        command: list[str],
+        **_arguments: object,
+    ) -> SupervisedResult:
+        option = command.index("--legacy-repository")
+        assert Path(command[option + 1]) == workspaces[0]
+        return SupervisedResult(
+            -15,
+            "cancelled",
+            ResourceUsage(True, 0, 0, 0, 0.0, 0.1),
+            GenerationPhaseEvidence(
+                configured_timeout_seconds=3600.0,
+                supervisor_reason="cancelled",
+                authenticated=True,
+                run_id="manual-legacy-run",
+                worker_pid=123,
+                final_sequence=1,
+                final_phase="generation",
+                generation_started_monotonic_ns=1,
+                generation_finished_monotonic_ns=None,
+                generation_elapsed_seconds=0.1,
+                final_state_sha256="d" * 64,
+            ),
+        )
+
+    monkeypatch.setattr(
+        CampaignScheduler,
+        "_prepare_legacy_workspace",
+        prepare_workspace,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        cancelled_worker,
+    )
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(
+            artifact_policy=ArtifactPolicy.REGENERATE,
+            source_identity_override=source,
+            generation_time_limit_seconds=3600.0,
+            manual_terminal_censors=True,
+            discard_cancelled_attempts=True,
+        ),
+    )
+
+    outcome = scheduler._run_cell(
+        PlannedCell(
+            cell,
+            dependency=False,
+            baseline_cell_id=None,
+            rank=0,
+        )
+    )
+
+    assert outcome.status == "cancelled"
+    assert outcome.detail == "incomplete attempt discarded"
+    assert len(workspaces) == 1 and not workspaces[0].exists()
+    assert service.store.cell_attempt_ids(cell.cell_id) == ()
+
+
 def test_closed_lease_cannot_be_recreated_by_late_worker_event(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

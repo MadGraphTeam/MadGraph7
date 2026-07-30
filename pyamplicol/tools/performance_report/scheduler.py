@@ -142,6 +142,7 @@ class CampaignSettings:
     progress_observer: Callable[[Mapping[str, object]], None] | None = None
     cancellation_requested: Callable[[], bool] | None = None
     manual_terminal_censors: bool = False
+    discard_cancelled_attempts: bool = False
     campaign_policy: CampaignPolicy = STRICT_POLICY
     report_profile: str | None = None
     study_contract_sha256: str | None = None
@@ -1258,11 +1259,14 @@ class CampaignScheduler:
             # Contributor installation already pins this managed checkout.
             # Manual campaigns make an isolated filesystem copy and never
             # invoke Git at runtime.
-            shutil.copytree(
-                source,
-                destination,
-                ignore=shutil.ignore_patterns(".git", ".DS_Store"),
-            )
+            from .legacy_structure import legacy_structural_probe_lock
+
+            with legacy_structural_probe_lock(source):
+                shutil.copytree(
+                    source,
+                    destination,
+                    ignore=shutil.ignore_patterns(".git", ".DS_Store"),
+                )
             return destination
         api.validate_checkout(source)
         commands = (
@@ -1817,9 +1821,10 @@ class CampaignScheduler:
                 )
                 if prepared_model is not None:
                     command.extend(("--prepared-model", os.fspath(prepared_model)))
-                if (
+                legacy_repository: Path | None = None
+                if cell.measurement.execution_mode is ExecutionMode.AMPLICOL and (
                     self.settings.campaign_policy.allow_terminal_censors
-                    and cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+                    or self.settings.source_identity_override is not None
                 ):
                     legacy_repository = self._prepare_legacy_workspace(
                         attempt.attempt_id
@@ -1908,18 +1913,40 @@ class CampaignScheduler:
                     memory_limit_reason=supervised.memory_limit_reason,
                 )
                 if supervised.reason == "cancelled":
-                    attempt.mark_interrupted(
-                        "worker terminated by cancellation",
-                        artifact_paths=_attempt_files(attempt.root),
-                    )
-                    return CellOutcome(
-                        cell.cell_id,
-                        "cancelled",
-                        (
+                    if self.settings.discard_cancelled_attempts:
+                        if legacy_repository is not None:
+                            if (
+                                legacy_repository.is_symlink()
+                                or not legacy_repository.is_dir()
+                            ):
+                                raise RuntimeError(
+                                    "legacy worker workspace is not its canonical "
+                                    f"regular directory: {legacy_repository}"
+                                )
+                            shutil.rmtree(legacy_repository)
+                        attempt.discard()
+                        detail = (
+                            "incomplete attempt discarded"
+                            if decision.current is None
+                            else (
+                                "previous valid current preserved; incomplete "
+                                "attempt discarded"
+                            )
+                        )
+                    else:
+                        attempt.mark_interrupted(
+                            "worker terminated by cancellation",
+                            artifact_paths=_attempt_files(attempt.root),
+                        )
+                        detail = (
                             attempt.attempt_id
                             if decision.current is None
                             else "previous valid current preserved"
-                        ),
+                        )
+                    return CellOutcome(
+                        cell.cell_id,
+                        "cancelled",
+                        detail,
                     )
                 policy_state: PolicyMeasurementState | None = None
                 if self.settings.manual_terminal_censors and supervised.reason in {

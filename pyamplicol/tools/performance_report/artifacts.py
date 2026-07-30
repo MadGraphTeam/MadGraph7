@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import threading
 import time
 import uuid
@@ -841,6 +842,17 @@ class ArtifactAttempt:
             error,
             artifact_paths=artifact_paths,
         )
+
+    def discard(self) -> None:
+        """Remove an unpublished attempt instead of retaining partial history."""
+
+        self._require_open()
+        if self.root.is_symlink() or not self.root.is_dir():
+            raise ArtifactStoreError(
+                f"attempt is not its canonical regular directory: {self.root}"
+            )
+        shutil.rmtree(self.root)
+        self._sealed = True
 
     def _seal_unsuccessful(
         self,

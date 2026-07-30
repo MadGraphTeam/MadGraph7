@@ -141,6 +141,29 @@ def test_attempt_context_records_interruption_without_masking_exception(
     assert store.load_current("cell", missing_ok=True) is None
 
 
+def test_unpublished_attempt_can_be_discarded_without_touching_current(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    current = store.new_attempt("cell", ArtifactPolicy.REGENERATE).publish(
+        {"status": "ok"}
+    )
+    partial = store.new_attempt(
+        "cell",
+        ArtifactPolicy.REGENERATE,
+        based_on=current,
+    )
+    partial.path("worker.log").write_text("partial\n", encoding="ascii")
+    partial_root = partial.root
+
+    partial.discard()
+
+    assert not partial_root.exists()
+    assert store.load_current("cell").attempt_id == current.attempt_id
+    with pytest.raises(ArtifactStoreError, match="already sealed"):
+        partial.discard()
+
+
 def test_artifact_policy_decisions_are_explicit(tmp_path: Path) -> None:
     store = _store(tmp_path)
     assert store.decide("cell", ArtifactPolicy.REUSE).action is ArtifactAction.GENERATE

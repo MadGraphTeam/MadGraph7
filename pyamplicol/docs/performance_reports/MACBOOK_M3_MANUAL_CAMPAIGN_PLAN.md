@@ -64,7 +64,7 @@ Build a fresh, manually steerable MacBook M3 performance campaign whose concurre
 - Record the effective resource caps and profiling settings directly in result metadata.
 - Publish generation/RAM cap hits as terminal results (`>1h` or `>30GB`) so they count as addressed. Preserve failed attempts and the preceding usable current.
 - Extend generation and all profiling backends with a small typed progress interface. Process supervision reports phase, step, PID tree, elapsed/CPU time, and current/peak RAM. Workers emit compact atomic state snapshots and append-only progress events for the dashboard.
-- Handle `Ctrl-C` cleanly: stop dispatching new cells, terminate every active worker process tree using the configured grace period, retain incomplete attempts only as interrupted history, preserve prior valid currents, remove this instance's leases, restore the terminal, print a concise interruption summary, and exit with status 130.
+- Handle `Ctrl-C` cleanly: stop dispatching new cells, terminate every active worker process tree using the configured grace period, discard this invocation's cancelled/incomplete attempt directories and private legacy workspaces, preserve prior valid currents and completed attempts, remove this instance's leases, restore the terminal, print a concise interruption summary, and exit with status 130.
 
 ## Ratatui Dashboard and Colored Output
 
@@ -104,7 +104,7 @@ Build a fresh, manually steerable MacBook M3 performance campaign whose concurre
 - Verify progress reporting across generation, recurrence, compiled, and eager profiling.
 - Capture Ratatui frames at 80×24, 120×36, and 160×48; assert styling, gauges, counters, units, arrow navigation, interruption handling, and terminal cleanup.
 - Capture an actual running multicore lease through `dashboard-snapshot --live`, verify exact atomic counters and worker details, peer-row visibility, instance selection, stale/malformed lease rejection, and that the capture path is read-only and lease-only.
-- Exercise keyboard interrupts while workers are queued, generating, and profiling; verify process-tree termination, lease cleanup, terminal restoration, preservation of prior currents, and exit status 130.
+- Exercise keyboard interrupts while workers are queued, generating, and profiling; verify process-tree termination, deletion of cancelled/incomplete attempts, lease cleanup, terminal restoration, preservation of prior currents, and exit status 130.
 - Validate exact inspection statistics, ratio-of-sums weighting, exclusions, default colors, `--no-color`, `NO_COLOR`, and JSON.
 - Test forced PDF rebuilding and atomic installation, including concurrent incomplete attempts and real LaTeX compilation when available.
 - Assert that startup validation remains metadata-only and that no hashing of artifact contents or recursive history verification occurs.

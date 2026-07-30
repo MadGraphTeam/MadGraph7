@@ -3830,6 +3830,7 @@ def _campaign_settings(
         progress_observer=observer,
         cancellation_requested=cancelled,
         manual_terminal_censors=True,
+        discard_cancelled_attempts=True,
         report_profile=None,
     )
 
@@ -4191,7 +4192,8 @@ def _run_campaign(
         print(
             palette.warning(
                 "Interrupted: dispatch stopped, process trees received cancellation, "
-                "completed currents were preserved, and leases were removed."
+                "cancelled partial attempts were discarded, completed currents "
+                "were preserved, and leases were removed."
             ),
             file=sys.stderr,
         )
@@ -4533,7 +4535,7 @@ Common recipes
 Keyboard controls
 -----------------
   ↑/↓ or j/k  select a worker     PgUp/PgDn  scroll
-  ?           show help           Ctrl-C/Esc stop safely
+  ?           show help           Ctrl-C/Esc stop safely and discard partial attempts
 
 The selected-worker panel preserves typed engine details when available,
 including recurrence stages, current/contribution counts, relation counts,
@@ -4715,7 +4717,10 @@ def build_parser() -> argparse.ArgumentParser:
         type=_nonnegative_finite_float,
         default=5.0,
         metavar="SECONDS",
-        help="Grace after SIGTERM before a remaining process tree is killed.",
+        help=(
+            "Grace after SIGTERM before a remaining process tree is killed; "
+            "cancelled partial attempts are then discarded."
+        ),
     )
     resources.add_argument(
         "--allow-oversubscription",
