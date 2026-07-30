@@ -12,6 +12,7 @@ from pyamplicol.config import (
     EvaluatorExecutionMode,
     LCFlowLayout,
     ProcessEntry,
+    RelationDiscoveryMode,
 )
 
 
@@ -47,6 +48,61 @@ def test_generate_accepts_eager_execution_mode_override() -> None:
 def test_generate_defaults_to_recurrence_execution() -> None:
     config = parse_cli(("generate",)).resolve().effective
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
+
+
+def test_generate_defaults_to_certified_numerical_current_reuse() -> None:
+    config = parse_cli(("generate",)).resolve().effective
+    assert (
+        config.generation.relation_discovery.mode
+        is RelationDiscoveryMode.CERTIFIED_REUSE
+    )
+
+
+@pytest.mark.parametrize(
+    ("flag", "expected"),
+    (
+        ("--numerical-current-reuse", RelationDiscoveryMode.CERTIFIED_REUSE),
+        ("--no-numerical-current-reuse", RelationDiscoveryMode.OFF),
+    ),
+)
+def test_generate_accepts_numerical_current_reuse_override(
+    flag: str,
+    expected: RelationDiscoveryMode,
+) -> None:
+    config = parse_cli(("generate", flag)).resolve().effective
+    assert config.generation.relation_discovery.mode is expected
+
+
+def test_direct_numerical_current_reuse_flag_overrides_card(
+    tmp_path: Path,
+) -> None:
+    card = tmp_path / "generate.toml"
+    card.write_text(
+        "\n".join(
+            (
+                'action = "generate"',
+                "[generation.relation_discovery]",
+                'mode = "off"',
+            )
+        ),
+        encoding="utf-8",
+    )
+    config = (
+        parse_cli(
+            (
+                "generate",
+                "--card",
+                str(card),
+                "--numerical-current-reuse",
+            )
+        )
+        .resolve()
+        .effective
+    )
+    assert (
+        config.generation.relation_discovery.mode
+        is RelationDiscoveryMode.CERTIFIED_REUSE
+    )
 
 
 @pytest.mark.parametrize(

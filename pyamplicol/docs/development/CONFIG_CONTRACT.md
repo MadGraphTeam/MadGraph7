@@ -55,23 +55,29 @@ topology, replay, and reference-order IDs are not configurable.
 
 ### Relation Discovery
 
-- `mode: off | diagnostic | certified-reuse = off`
+- `mode: off | diagnostic | certified-reuse = certified-reuse`
 - `precision_digits: int >= 80 = 96`
 - `probe_count: int >= 2 = 4`
+- `verification_probe_count: int >= 2 = 4`
+- `relative_tolerance: float >= 0 = 1e-70`
+- `absolute_tolerance: float >= 0 = 1e-80`
 - `seed: int >= 0 = 1348026701`
 
-Numerical probes only nominate possible relations. Compiled and eager
-generation can promote a nomination only after exact binary64 term-vector
-replay emits a certificate. Recurrence performs its probe after authenticated
-Rust schedule lowering and promotes only after a second replay of the complete
-`ExactComplexRational` contribution vectors and runtime contracts. In
-`certified-reuse`, certified recurrence contribution groups become native
-scale-copy rows; Direct-plan-v2 deliberately retains dense semantic current
-descriptors and closure bindings while removing the redundant interaction
-evaluations. The feature is off by default and is valid for LC, NLC, and full
-colour, for built-in and prepared external/UFO models. Direct vertex-kernel
-equivalence remains model-certificate-owned; this pass audits exact current
-proportionality and the interaction fan-out it induces.
+Candidate and independent verification probes are bounded and deterministic.
+Exact binary64 term-vector or `ExactComplexRational` schedule proofs remain the
+preferred promotion path. When no exact structural proof exists,
+`certified-reuse` may apply equal, opposite, or zero-current reuse only after
+the independent current-value probes pass both configured tolerances and the
+complete certification input and mapping are persisted for replay. One warning
+is emitted per generated artifact when such proof-less mappings are applied.
+Malformed, non-finite, unstable, or stale evidence fails closed.
+
+The feature is enabled by default for LC, NLC, and full colour, for compiled,
+eager, and recurrence generation using built-in or prepared external/UFO
+models. `mode = "off"`—or the public
+`--no-numerical-current-reuse` flag—selects the unoptimized path without
+changing numerical results. Direct vertex-kernel equivalence remains
+model-certificate-owned.
 
 ## Evaluator
 

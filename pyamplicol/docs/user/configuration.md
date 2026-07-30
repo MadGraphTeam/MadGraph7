@@ -106,30 +106,43 @@ The external-model example is explicit because raw model IR is not a prepared
 recurrence bundle. Omitting the execution mode selects recurrence and therefore
 requires `built-in-sm` or a compatible `.pyamplicol-model` source.
 
-## Opt-in relation discovery
+## Default numerical current reuse
 
-Generation can audit missed proportional current relations without trusting
-numerical coincidence:
+Generation audits missed current relations during its bounded warm-up and
+applies certified reuse by default:
 
 ```toml
 [generation.relation_discovery]
-mode = "diagnostic"
+mode = "certified-reuse"
 precision_digits = 96
 probe_count = 4
+verification_probe_count = 4
+relative_tolerance = 1e-70
+absolute_tolerance = 1e-80
 seed = 1348026701
 ```
 
 `diagnostic` records deterministic high-precision candidates and exact replay
-outcomes without changing the generated evaluator. `certified-reuse` may alter
-compiled, eager, or recurrence interaction reuse only when the complete
-coefficient vectors pass an independently replayable exact certificate.
-Recurrence certificates cover the authenticated lowered schedule and its
-selector/finalization runtime contract; certified redundant contributions are
-replaced by native exact scale-copy rows. Direct-plan-v2 keeps dense semantic
-current IDs for closure proof compatibility, so recurrence reports both
-interaction savings and the retained descriptor count. This applies to LC,
-NLC, and full colour and to built-in or prepared external/UFO models. All modes
-are off by default, and probe agreement by itself is never a correctness claim.
+outcomes without changing the generated evaluator. `certified-reuse` first
+prefers independently replayable exact structural certificates. It may also
+apply numerically discovered equal, opposite, or zero-current relations when a
+separate deterministic probe set verifies them within both tolerances. The
+artifact records the probe derivation, tolerances, mappings, proof status, and
+replay identity. Generation emits one warning when an applied relation set
+lacks exact structural proof.
+
+This policy applies to LC, NLC, and full colour and to compiled, eager, and
+recurrence generation with built-in or prepared external/UFO models. Invalid,
+non-finite, unstable, or stale evidence is rejected. To retain the unoptimized
+path, use:
+
+```console
+pyamplicol generate ... --no-numerical-current-reuse
+```
+
+The equivalent card/API setting is
+`generation.relation_discovery.mode = "off"`. Use
+`--numerical-current-reuse` to override an `off` card from the command line.
 
 The command families are:
 

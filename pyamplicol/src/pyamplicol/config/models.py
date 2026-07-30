@@ -485,14 +485,17 @@ class GenerationValidationConfig:
 
 @dataclass(frozen=True, slots=True)
 class GenerationRelationDiscoveryConfig:
-    """Opt-in numerical nomination with exact-certificate promotion."""
+    """Default-on, replayable current-relation discovery policy."""
 
     mode: RelationDiscoveryMode = field(
-        default=RelationDiscoveryMode.OFF,
+        default=RelationDiscoveryMode.CERTIFIED_REUSE,
         metadata=_setting("str", choices=tuple(RelationDiscoveryMode)),
     )
     precision_digits: int = field(default=96, metadata=_setting("int"))
     probe_count: int = field(default=4, metadata=_setting("int"))
+    verification_probe_count: int = field(default=4, metadata=_setting("int"))
+    relative_tolerance: float = field(default=1.0e-70, metadata=_setting("float"))
+    absolute_tolerance: float = field(default=1.0e-80, metadata=_setting("float"))
     seed: int = field(default=0x5059414D, metadata=_setting("int"))
 
     def __post_init__(self) -> None:
@@ -523,6 +526,37 @@ class GenerationRelationDiscoveryConfig:
                 minimum=2,
             ),
         )
+        object.__setattr__(
+            self,
+            "verification_probe_count",
+            _integer(
+                self.verification_probe_count,
+                "generation.relation_discovery.verification_probe_count",
+                minimum=2,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "relative_tolerance",
+            _finite_float(
+                self.relative_tolerance,
+                "generation.relation_discovery.relative_tolerance",
+                minimum=0.0,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "absolute_tolerance",
+            _finite_float(
+                self.absolute_tolerance,
+                "generation.relation_discovery.absolute_tolerance",
+                minimum=0.0,
+            ),
+        )
+        if self.relative_tolerance == 0.0 and self.absolute_tolerance == 0.0:
+            raise ConfigurationError(
+                "generation.relation_discovery tolerances cannot both be zero"
+            )
         object.__setattr__(
             self,
             "seed",

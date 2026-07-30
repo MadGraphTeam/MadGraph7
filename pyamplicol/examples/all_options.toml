@@ -90,15 +90,26 @@ post_build_validation = true
 
 [generation.relation_discovery]
 # generation.relation_discovery.mode: "off", "diagnostic", or
-# "certified-reuse". Compiled/eager use exact DAG replay; recurrence uses exact
-# lowered-schedule replay and native scale-copy rows. Default off.
-mode = "off"
+# "certified-reuse". Exact proofs are preferred. Independently verified
+# equal, opposite, and zero currents may also be applied with persisted
+# numerical evidence and a warning. Default certified-reuse; use "off" or
+# --no-numerical-current-reuse for the unoptimized path.
+mode = "certified-reuse"
 # generation.relation_discovery.precision_digits: Decimal probe precision,
 # at least 80. Default 96.
 precision_digits = 96
-# generation.relation_discovery.probe_count: Deterministic probe points,
+# generation.relation_discovery.probe_count: Deterministic candidate points,
 # at least 2. Default 4.
 probe_count = 4
+# generation.relation_discovery.verification_probe_count: Independent
+# verification points, at least 2. Default 4.
+verification_probe_count = 4
+# generation.relation_discovery.relative_tolerance: Non-negative verification
+# tolerance. Default 1e-70.
+relative_tolerance = 1e-70
+# generation.relation_discovery.absolute_tolerance: Non-negative verification
+# tolerance. Default 1e-80.
+absolute_tolerance = 1e-80
 # generation.relation_discovery.seed: Non-negative deterministic probe seed.
 # Default 1348026701.
 seed = 1348026701

@@ -319,6 +319,26 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         action=argparse.BooleanOptionalAction,
         default=argparse.SUPPRESS,
     )
+    numerical_reuse = parser.add_mutually_exclusive_group()
+    numerical_reuse.add_argument(
+        "--numerical-current-reuse",
+        dest="generation.relation_discovery.mode",
+        action="store_const",
+        const="certified-reuse",
+        default=argparse.SUPPRESS,
+        help=(
+            "apply independently certified numerical current relations "
+            "(the default)"
+        ),
+    )
+    numerical_reuse.add_argument(
+        "--no-numerical-current-reuse",
+        dest="generation.relation_discovery.mode",
+        action="store_const",
+        const="off",
+        default=argparse.SUPPRESS,
+        help="disable numerical current-relation discovery and reuse",
+    )
 
 
 def _add_evaluator_options(

@@ -37,7 +37,7 @@ from pyamplicol.config import (
 
 
 def test_schema_v1_registry_contains_every_contract_leaf() -> None:
-    assert len(FIELD_REGISTRY) == 74
+    assert len(FIELD_REGISTRY) == 77
     assert "evaluator.jit.direct_translation" not in FIELD_REGISTRY
     assert FIELD_REGISTRY["action"].required
     assert FIELD_REGISTRY["generation.workers"].default == "auto"
@@ -72,10 +72,24 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert FIELD_REGISTRY["evaluator.recurrence.workspace_mib"].default == 256
     assert "evaluator.recurrence" in CONFIG_SECTIONS
     assert FIELD_REGISTRY["generation.relation_discovery.mode"].default is (
-        RelationDiscoveryMode.OFF
+        RelationDiscoveryMode.CERTIFIED_REUSE
     )
     assert (
         FIELD_REGISTRY["generation.relation_discovery.precision_digits"].default == 96
+    )
+    assert (
+        FIELD_REGISTRY[
+            "generation.relation_discovery.verification_probe_count"
+        ].default
+        == 4
+    )
+    assert (
+        FIELD_REGISTRY["generation.relation_discovery.relative_tolerance"].default
+        == 1.0e-70
+    )
+    assert (
+        FIELD_REGISTRY["generation.relation_discovery.absolute_tolerance"].default
+        == 1.0e-80
     )
     assert "generation.relation_discovery" in CONFIG_SECTIONS
     assert FIELD_REGISTRY["process.multiparticles"].dynamic_kind == "list_str"
@@ -169,8 +183,15 @@ def test_contract_defaults_are_typed() -> None:
     assert config.evaluator.recurrence == RecurrenceEvaluatorConfig()
     assert config.schema_version == 1
     assert config.generation.validation.samples == 10
-    assert config.generation.relation_discovery.mode is RelationDiscoveryMode.OFF
+    assert (
+        config.generation.relation_discovery.mode
+        is RelationDiscoveryMode.CERTIFIED_REUSE
+    )
     assert config.generation.relation_discovery.precision_digits == 96
+    assert config.generation.relation_discovery.probe_count == 4
+    assert config.generation.relation_discovery.verification_probe_count == 4
+    assert config.generation.relation_discovery.relative_tolerance == 1.0e-70
+    assert config.generation.relation_discovery.absolute_tolerance == 1.0e-80
     assert config.evaluator.output_chunk_size == 512
     assert not config.evaluator.cpp.native_arch
     assert config.evaluator.optimization.max_common_pair_cache_entries == 5_000_000
@@ -179,7 +200,15 @@ def test_contract_defaults_are_typed() -> None:
     assert config.output == OutputConfig()
 
 
-def test_relation_discovery_is_opt_in_and_requires_high_precision() -> None:
+def test_relation_discovery_defaults_on_and_validates_certification_policy() -> None:
+    assert (
+        GenerationRelationDiscoveryConfig().mode
+        is RelationDiscoveryMode.CERTIFIED_REUSE
+    )
+    assert (
+        GenerationRelationDiscoveryConfig(mode="off").mode
+        is RelationDiscoveryMode.OFF
+    )
     assert (
         GenerationRelationDiscoveryConfig(mode="diagnostic").mode
         is RelationDiscoveryMode.DIAGNOSTIC
@@ -192,6 +221,17 @@ def test_relation_discovery_is_opt_in_and_requires_high_precision() -> None:
         GenerationRelationDiscoveryConfig(precision_digits=79)
     with pytest.raises(ConfigurationError, match="probe_count"):
         GenerationRelationDiscoveryConfig(probe_count=1)
+    with pytest.raises(ConfigurationError, match="verification_probe_count"):
+        GenerationRelationDiscoveryConfig(verification_probe_count=1)
+    with pytest.raises(ConfigurationError, match="relative_tolerance"):
+        GenerationRelationDiscoveryConfig(relative_tolerance=-1.0)
+    with pytest.raises(ConfigurationError, match="absolute_tolerance"):
+        GenerationRelationDiscoveryConfig(absolute_tolerance=-1.0)
+    with pytest.raises(ConfigurationError, match="cannot both be zero"):
+        GenerationRelationDiscoveryConfig(
+            relative_tolerance=0.0,
+            absolute_tolerance=0.0,
+        )
 
 
 def test_all_flow_union_layout_requires_lc_accuracy() -> None:
