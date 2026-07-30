@@ -512,6 +512,39 @@ def test_projection_binds_global_helicity_flip_proof_only_for_complete_axes() ->
     assert all(item.role != role for item in specialized.semantic_digests)
 
 
+def test_projection_global_flip_proof_rejects_massive_fundamental_fermions() -> None:
+    """Massive helicity partners are not equal at a fixed phase-space point.
+
+    This is an adversarial boundary regression: parity relates a massive
+    fermion amplitude to parity-transformed kinematics, so the massless
+    fixed-point global-flip reduction must remain disabled even when every
+    reachable interaction is QCD and parity preserving.
+    """
+
+    class MassiveFundamentalModel(BuiltinSMModel):
+        def mass(self, pdg: int) -> float:
+            if abs(int(pdg)) == 1:
+                return 173.0
+            return super().mass(pdg)
+
+    process = _process()
+    logical = project_recurrence_process_v1(
+        process,
+        _color_plan(process),
+        _catalog(),
+        layout="topology-replay",
+        topology_replay=_replay(),
+        normalization=_normalization(),
+        coupling_order_limits={"qcd": 4},
+        model=MassiveFundamentalModel(),
+    )
+
+    assert all(
+        item.role != "helicity-equivalence:global-flip-v1"
+        for item in logical.semantic_digests
+    )
+
+
 def test_projection_attaches_exact_fixed_width_fermion_pairing_tables() -> None:
     process = _process()
     logical = project_recurrence_process_v1(
