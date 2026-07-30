@@ -10679,6 +10679,19 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                     base_xgrow.setdefault(base_index, {})[cross] = (
                         idep + 1, cfg_cache[key])
 
+        def _xgrow_kw(ime):
+            """Crossing kwargs for this subprocess, or nothing at all.
+
+            Only a Track-A base that actually has a crossed subprocess routed to
+            it needs the multi-channel row map. Everything else goes through an
+            exporter whose write_matrix_element_v4 does not take the crossing
+            kwargs -- notably the loop-induced one, and a loop-induced matrix
+            element never crosses anyway (see the perturbative gate in
+            generate_matrix_elements) -- so handing it the kwarg is a TypeError.
+            """
+            xg = base_xgrow.get(ime)
+            return {'xgrow_map': xg} if xg else {}
+
         for ime, matrix_element in \
                 enumerate(matrix_elements):
             crossgroup = self._crossgroup.get((group_number, ime))
@@ -10741,7 +10754,7 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                                 proc_id=str(ime+1),
                                 config_map=subproc_group.get('diagram_maps')[ime],
                                 subproc_number=group_number,
-                                xgrow_map=base_xgrow.get(ime))
+                                **_xgrow_kw(ime))
                 calls,ncolor = replace_dict['return_value']
                 tfile = open(replace_dict['template_file']).read()
                 file = misc.apply_template(tfile, replace_dict)
@@ -10777,7 +10790,7 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                                 proc_id=str(ime+1),
                                 config_map=subproc_group.get('diagram_maps')[ime],
                                 subproc_number=group_number,
-                                xgrow_map=base_xgrow.get(ime))
+                                **_xgrow_kw(ime))
 
             if second_exporter:
                 process_exporter_cpp = second_exporter.oneprocessclass(matrix_element,second_helas, prefix=ime)
