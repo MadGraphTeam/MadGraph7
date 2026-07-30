@@ -52,6 +52,7 @@ class GenericDAGCurrentObservationCapture:
     parameter_context_sha256s: tuple[str, ...]
     observations: Mapping[int, tuple[_ComplexDecimal, ...]]
     runtime_schema_sha256: str
+    model_parameter_schema_sha256: str
     source_dag_sha256: str
     observation_batch_sha256: str
     capture_contract_sha256: str
@@ -81,6 +82,9 @@ class GenericDAGCurrentObservationCapture:
             ),
             "current_count": self.current_count,
             "runtime_schema_sha256": self.runtime_schema_sha256,
+            "model_parameter_schema_sha256": (
+                self.model_parameter_schema_sha256
+            ),
             "source_dag_sha256": self.source_dag_sha256,
             "observation_batch_sha256": self.observation_batch_sha256,
             "capture_contract_sha256": self.capture_contract_sha256,
@@ -626,6 +630,9 @@ def capture_generic_dag_current_observations(
         observations,
         point_sha256s=point_hashes,
     )
+    model_parameter_schema_digest = _canonical_sha256(
+        schema.get("model_parameters", ())
+    )
     capture_contract_digest = _canonical_sha256(
         {
             "abi": _CAPTURE_ABI,
@@ -636,6 +643,9 @@ def capture_generic_dag_current_observations(
                 parameter_context_hashes
             ),
             "runtime_schema_sha256": session.runtime_schema.sha256,
+            "model_parameter_schema_sha256": (
+                model_parameter_schema_digest
+            ),
             "source_dag_sha256": session.source_dag_sha256,
             "observation_batch_sha256": observation_digest,
         }
@@ -649,6 +659,7 @@ def capture_generic_dag_current_observations(
         parameter_context_sha256s=parameter_context_hashes,
         observations=observations,
         runtime_schema_sha256=session.runtime_schema.sha256,
+        model_parameter_schema_sha256=model_parameter_schema_digest,
         source_dag_sha256=session.source_dag_sha256,
         observation_batch_sha256=observation_digest,
         capture_contract_sha256=capture_contract_digest,
@@ -735,6 +746,8 @@ def validate_independent_current_observation_captures(
         candidate.precision_digits != verification.precision_digits
         or candidate.runtime_schema_sha256
         != verification.runtime_schema_sha256
+        or candidate.model_parameter_schema_sha256
+        != verification.model_parameter_schema_sha256
         or candidate.source_dag_sha256 != verification.source_dag_sha256
         or set(candidate.observations) != set(verification.observations)
         or candidate.point_count < 2
@@ -793,6 +806,8 @@ def _validate_applied_current_observations(
         or reference.parameter_contexts != applied.parameter_contexts
         or reference.parameter_context_sha256s
         != applied.parameter_context_sha256s
+        or reference.model_parameter_schema_sha256
+        != applied.model_parameter_schema_sha256
         or set(reference.observations) != set(applied.observations)
     ):
         raise ValueError(

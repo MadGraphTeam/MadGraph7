@@ -1537,6 +1537,26 @@ def generic_dag_numerical_runtime_schema_sha256(
     ).sha256
 
 
+def generic_dag_numerical_model_parameter_schema_sha256(
+    dag: GenericDAG,
+    model: Model,
+    *,
+    process_id: str | None = None,
+) -> str:
+    """Bind numerical probes to the ordered runtime-parameter schema."""
+
+    from .runtime_schema import build_runtime_expression_schema
+
+    runtime_schema = build_runtime_expression_schema(
+        dag,
+        model,
+        process_id=process_id or dag.process.key,
+    ).to_mapping()
+    return _canonical_payload_sha256(
+        runtime_schema.get("model_parameters", ())
+    )
+
+
 def discover_generic_dag_numerical_current_relations(
     dag: GenericDAG,
     model: Model,
@@ -1582,6 +1602,13 @@ def discover_generic_dag_numerical_current_relations(
         dag,
         model,
         process_id=process_id or dag.process.key,
+    )
+    actual_model_parameter_schema_digest = (
+        generic_dag_numerical_model_parameter_schema_sha256(
+            dag,
+            model,
+            process_id=process_id or dag.process.key,
+        )
     )
     actual_source_dag_digest = generic_dag_numerical_source_dag_sha256(dag)
     candidate_points = tuple(candidate_point_sha256s)
@@ -1720,6 +1747,9 @@ def discover_generic_dag_numerical_current_relations(
             "kinematic_sha256s": list(candidate_kinematics),
             "parameter_context_sha256s": list(candidate_parameters),
             "runtime_schema_sha256": runtime_schema_sha256,
+            "model_parameter_schema_sha256": (
+                actual_model_parameter_schema_digest
+            ),
             "source_dag_sha256": source_dag_sha256,
             "observation_batch_sha256": candidate_batch_digest,
         }
@@ -1732,6 +1762,9 @@ def discover_generic_dag_numerical_current_relations(
             "kinematic_sha256s": list(verification_kinematics),
             "parameter_context_sha256s": list(verification_parameters),
             "runtime_schema_sha256": runtime_schema_sha256,
+            "model_parameter_schema_sha256": (
+                actual_model_parameter_schema_digest
+            ),
             "source_dag_sha256": source_dag_sha256,
             "observation_batch_sha256": verification_batch_digest,
         }
@@ -5320,6 +5353,7 @@ __all__ = [
     "certify_numerical_current_observations",
     "discover_generic_dag_numerical_current_relations",
     "discover_recursive_evaluation_relations",
+    "generic_dag_numerical_model_parameter_schema_sha256",
     "generic_dag_numerical_runtime_schema_sha256",
     "generic_dag_numerical_source_dag_sha256",
     "generic_dag_numerical_source_semantics_sha256",

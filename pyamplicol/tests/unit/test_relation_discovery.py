@@ -24,6 +24,7 @@ from pyamplicol.generation.dag_equivalence import (
     certify_numerical_current_observations,
     discover_generic_dag_numerical_current_relations,
     discover_recursive_evaluation_relations,
+    generic_dag_numerical_model_parameter_schema_sha256,
     generic_dag_numerical_runtime_schema_sha256,
     generic_dag_numerical_source_dag_sha256,
     generic_dag_numerical_source_semantics_sha256,
@@ -818,6 +819,12 @@ def _complete_observation_evidence(
         dag,
         model,
     )
+    model_parameter_schema_digest = (
+        generic_dag_numerical_model_parameter_schema_sha256(
+            dag,
+            model,
+        )
+    )
     source_dag_digest = generic_dag_numerical_source_dag_sha256(dag)
     candidate_batch_digest = _numerical_current_observation_batch_sha256(
         candidate,
@@ -842,6 +849,9 @@ def _complete_observation_evidence(
                 "kinematic_sha256s": list(kinematic_hashes),
                 "parameter_context_sha256s": list(parameter_hashes),
                 "runtime_schema_sha256": runtime_schema_digest,
+                "model_parameter_schema_sha256": (
+                    model_parameter_schema_digest
+                ),
                 "source_dag_sha256": source_dag_digest,
                 "observation_batch_sha256": batch_digest,
             }

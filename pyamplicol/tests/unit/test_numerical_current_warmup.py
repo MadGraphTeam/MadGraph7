@@ -75,6 +75,9 @@ def _synthetic_capture(
         ),
         observations=observations,
         runtime_schema_sha256=hashlib.sha256(b"runtime-schema").hexdigest(),
+        model_parameter_schema_sha256=hashlib.sha256(
+            b"model-parameter-schema"
+        ).hexdigest(),
         source_dag_sha256=hashlib.sha256(b"source-dag").hexdigest(),
         observation_batch_sha256=(
             numerical_current_warmup._current_observation_batch_sha256(
@@ -457,6 +460,18 @@ def test_capture_domains_fail_closed_on_replay_drift(
             repeated_kinematics,
         )
 
+    changed_parameter_schema = replace(
+        verification,
+        model_parameter_schema_sha256=hashlib.sha256(
+            b"changed-model-parameter-schema"
+        ).hexdigest(),
+    )
+    with pytest.raises(ValueError, match="independent replay domains"):
+        validate_independent_current_observation_captures(
+            candidate,
+            changed_parameter_schema,
+        )
+
     current_id = min(candidate.observations)
     incomplete = replace(
         verification,
@@ -483,6 +498,14 @@ def test_capture_domains_fail_closed_on_replay_drift(
         numerical_current_warmup._validate_applied_current_observations(
             verification,
             changed_capture,
+            relative_tolerance=1.0e-70,
+            absolute_tolerance=1.0e-80,
+        )
+
+    with pytest.raises(ValueError, match="provenance drifted"):
+        numerical_current_warmup._validate_applied_current_observations(
+            verification,
+            changed_parameter_schema,
             relative_tolerance=1.0e-70,
             absolute_tolerance=1.0e-80,
         )
