@@ -758,11 +758,10 @@ fn validate_streaming_raw_resident_budget(
             .checked_mul(RAW_PRE_DOM_WIRE_COPIES)
             .and_then(|wire| wire.checked_add(non_wire_bytes)),
         RawEvidenceStorage::CompressedEnvelope { transport_bytes } => {
-            if non_wire_bytes > COMPRESSED_NATIVE_NON_WIRE_RESERVE_BYTES {
-                return Err(invalid(
-                    "compressed numerical evidence exceeds its explicit native non-wire memory reserve",
-                ));
-            }
+            // The fixed reserve protects decompression before the source shape
+            // is known.  Once the shape is authenticated, charge the exact
+            // non-wire upper bound against the same 1 GiB total instead of
+            // incorrectly treating that provisional reserve as a second cap.
             transport_bytes
                 .checked_mul(RAW_PRE_DOM_WIRE_COPIES)
                 .and_then(|transport| raw_byte_count.checked_add(transport))
@@ -4759,6 +4758,66 @@ mod tests {
         );
         validate_compressed_pre_shape_resident_budget(300 << 20, 50 << 20, 20 << 20, 1_000_000)
             .unwrap();
+    }
+
+    #[test]
+    fn compressed_streaming_uses_the_exact_post_shape_resident_bound() {
+        let source = RawSourceSemantics {
+            value: json!({}),
+            process_id: "generic-compressed-boundary".to_owned(),
+            physical_pdgs: Vec::new(),
+            strategy: "contracted-color-union".to_owned(),
+            selector_schedule: json!({}),
+            currents: vec![RawSourceCurrent {
+                current_id: 0,
+                is_source: false,
+                contract_key: vec![0],
+                dimension: 1,
+            }],
+        };
+        let metadata_byte_count = 1;
+        let metadata_structural_token_count = 2_200_000;
+        let non_wire_bytes = streaming_raw_non_wire_upper_bound(
+            metadata_byte_count,
+            metadata_structural_token_count,
+            1,
+            1,
+            1,
+            4,
+            4,
+            10,
+        )
+        .unwrap();
+        assert!(non_wire_bytes > COMPRESSED_NATIVE_NON_WIRE_RESERVE_BYTES);
+
+        let transport_bytes = 50 << 20;
+        let maximum_raw_bytes = MAX_RAW_RESIDENT_BYTES - 2 * transport_bytes - non_wire_bytes;
+        validate_streaming_raw_resident_budget(
+            maximum_raw_bytes,
+            RawEvidenceStorage::CompressedEnvelope { transport_bytes },
+            metadata_byte_count,
+            metadata_structural_token_count,
+            &source,
+            4,
+            4,
+            10,
+        )
+        .unwrap();
+        assert!(
+            validate_streaming_raw_resident_budget(
+                maximum_raw_bytes + 1,
+                RawEvidenceStorage::CompressedEnvelope { transport_bytes },
+                metadata_byte_count,
+                metadata_structural_token_count,
+                &source,
+                4,
+                4,
+                10,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("streaming 1 GiB")
+        );
     }
 
     #[test]
