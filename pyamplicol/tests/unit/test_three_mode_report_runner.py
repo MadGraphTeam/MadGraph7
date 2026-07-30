@@ -370,6 +370,7 @@ def test_benchmark_measurement_retains_supported_recurrence_execution_timing() -
 )
 def test_report_arena_benchmark_uses_private_profiler_without_public_fallback(
     execution_mode: ExecutionMode,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class Runtime:
         def __init__(self) -> None:
@@ -406,6 +407,18 @@ def test_report_arena_benchmark_uses_private_profiler_without_public_fallback(
 
     backend = Runtime()
     runtime = SimpleNamespace(_backend=backend)
+    clock_values: list[float] = []
+    clock = 0.0
+    for _ in range(5):
+        clock_values.extend(
+            (clock, clock + 1.2e-3, clock + 1.2e-3, clock + 3.2e-3)
+        )
+        clock += 3.2e-3
+    clock_iterator = iter(clock_values)
+    monkeypatch.setattr(
+        "tools.performance_report.runner.time.perf_counter",
+        lambda: next(clock_iterator),
+    )
     result = _run_report_benchmark(
         runtime,
         (((1.0, 0.0, 0.0, 1.0),),),
@@ -422,8 +435,10 @@ def test_report_arena_benchmark_uses_private_profiler_without_public_fallback(
 
     assert result.sample_count == 5
     assert result.evaluator_time_per_point is None
+    assert result.wall_time_per_point == pytest.approx(6.0e-4)
     assert result.evaluator_total_time_per_point == pytest.approx(5.0e-4)
-    assert result.environment["elapsed_seconds"] == pytest.approx(5.0e-3)
+    assert result.wall_time_per_point != result.evaluator_total_time_per_point
+    assert result.environment["elapsed_seconds"] == pytest.approx(6.0e-3)
     assert result.environment[
         "evaluator_total_accumulated_seconds"
     ] == pytest.approx(5.0e-3)

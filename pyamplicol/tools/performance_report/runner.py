@@ -1863,6 +1863,7 @@ def _run_arena_benchmark(
     evaluated_points = repetitions * len(batch)
     headline_samples: list[float] = []
     headline_durations: list[float] = []
+    evaluator_total_durations: list[float] = []
     raw_profiles: list[Mapping[str, object]] = []
     profile_elapsed = 0.0
     while (
@@ -1874,12 +1875,18 @@ def _run_arena_benchmark(
                 "Arena report benchmark could not reach its target duration "
                 f"within {_ARENA_MAX_SAMPLES} samples"
             )
-        duration = _positive_duration(
+        headline_started = time.perf_counter()
+        evaluator_total_duration = _positive_duration(
             timer(batch, repetitions, **selector_arguments),
+            "Arena evaluator-total duration",
+        )
+        wall_duration = _positive_duration(
+            time.perf_counter() - headline_started,
             "Arena headline wall duration",
         )
-        headline_durations.append(duration)
-        headline_samples.append(duration / evaluated_points)
+        headline_durations.append(wall_duration)
+        evaluator_total_durations.append(evaluator_total_duration)
+        headline_samples.append(wall_duration / evaluated_points)
         profile_started = time.perf_counter()
         raw_profile = profiler(batch, repetitions, **profile_arguments)
         profile_elapsed += time.perf_counter() - profile_started
@@ -1899,9 +1906,12 @@ def _run_arena_benchmark(
     uncertainty = _arena_statistics(headline_samples)
     mean_wall = statistics.fmean(headline_samples)
     achieved_runtime = math.fsum(headline_durations)
+    evaluator_total_accumulated = math.fsum(evaluator_total_durations)
     measured_evaluations = sample_count * repetitions
     measured_points = measured_evaluations * len(batch)
-    evaluator_total_time_per_point = achieved_runtime / measured_points
+    evaluator_total_time_per_point = (
+        evaluator_total_accumulated / measured_points
+    )
     return _ArenaBenchmarkResult(
         effective_config=benchmark_config,
         sample_count=sample_count,
@@ -1925,7 +1935,9 @@ def _run_arena_benchmark(
             "evaluator_total_time_sample_contract": (
                 EVALUATOR_TOTAL_SAMPLE_CONTRACT
             ),
-            "evaluator_total_accumulated_seconds": achieved_runtime,
+            "evaluator_total_accumulated_seconds": (
+                evaluator_total_accumulated
+            ),
             "timing_breakdown_sample_pass": ARENA_PROFILE_SAMPLE_PASS,
             "profile_protocol": ARENA_PROFILE_PROTOCOL,
             "profile_attribution_boundary": ARENA_PROFILE_BOUNDARY,
