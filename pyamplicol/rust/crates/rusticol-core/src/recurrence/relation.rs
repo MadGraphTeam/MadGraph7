@@ -55,11 +55,14 @@ impl RecurrenceRelationDiscoveryMode {
 }
 
 /// Authenticated options passed through the recurrence lowering boundary.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RecurrenceRelationDiscoveryOptions {
     pub mode: RecurrenceRelationDiscoveryMode,
     pub precision_digits: u32,
     pub probe_count: u32,
+    pub verification_probe_count: u32,
+    pub relative_tolerance: f64,
+    pub absolute_tolerance: f64,
     pub seed: u64,
     pub color_accuracy: String,
     pub numerical_evidence: Option<RecurrenceNumericalRelationEvidence>,
@@ -70,6 +73,9 @@ impl RecurrenceRelationDiscoveryOptions {
         mode: RecurrenceRelationDiscoveryMode,
         precision_digits: u32,
         probe_count: u32,
+        verification_probe_count: u32,
+        relative_tolerance: f64,
+        absolute_tolerance: f64,
         seed: u64,
         color_accuracy: impl Into<String>,
     ) -> RusticolResult<Self> {
@@ -78,6 +84,18 @@ impl RecurrenceRelationDiscoveryOptions {
         }
         if probe_count < 2 {
             return Err(invalid("at least two probes are required"));
+        }
+        if verification_probe_count < 2 {
+            return Err(invalid("at least two verification probes are required"));
+        }
+        if !relative_tolerance.is_finite()
+            || relative_tolerance < 0.0
+            || !absolute_tolerance.is_finite()
+            || absolute_tolerance < 0.0
+        {
+            return Err(invalid(
+                "relative and absolute tolerances must be finite and nonnegative",
+            ));
         }
         let color_accuracy = color_accuracy.into();
         if !matches!(color_accuracy.as_str(), "lc" | "nlc" | "full") {
@@ -89,6 +107,9 @@ impl RecurrenceRelationDiscoveryOptions {
             mode,
             precision_digits,
             probe_count,
+            verification_probe_count,
+            relative_tolerance,
+            absolute_tolerance,
             seed,
             color_accuracy,
             numerical_evidence: None,
@@ -121,6 +142,9 @@ impl RecurrenceRelationDiscoveryOptions {
             mode: RecurrenceRelationDiscoveryMode::Off,
             precision_digits: 96,
             probe_count: 4,
+            verification_probe_count: 4,
+            relative_tolerance: 1.0e-70,
+            absolute_tolerance: 1.0e-80,
             seed: 0x5059_414d,
             color_accuracy: "lc".to_owned(),
             numerical_evidence: None,
@@ -765,6 +789,9 @@ mod tests {
             RecurrenceRelationDiscoveryMode::Diagnostic,
             96,
             4,
+            4,
+            1.0e-70,
+            1.0e-80,
             0x5059_414d,
             "full",
         )
@@ -818,6 +845,9 @@ mod tests {
             RecurrenceRelationDiscoveryMode::CertifiedReuse,
             96,
             4,
+            4,
+            1.0e-70,
+            1.0e-80,
             7,
             "nlc",
         )

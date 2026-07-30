@@ -1847,6 +1847,9 @@ fn certified_relation_lowering_produces_a_round_trippable_tiny_artifact() {
         RecurrenceRelationDiscoveryMode::Diagnostic,
         96,
         4,
+        4,
+        1.0e-70,
+        1.0e-80,
         0x5059_414d,
         "lc",
     )
@@ -1874,6 +1877,9 @@ fn certified_relation_lowering_produces_a_round_trippable_tiny_artifact() {
         RecurrenceRelationDiscoveryMode::CertifiedReuse,
         96,
         4,
+        4,
+        1.0e-70,
+        1.0e-80,
         0x5059_414d,
         "lc",
     )
