@@ -2715,6 +2715,21 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             # Slot 0 of every XGCFG column is 0, so a config this subprocess has
             # no diagram for still reads back as 0 and is skipped as before.
             confsub_j = 'XGCFG(CONFSUB(IXROW, I), IXR)'
+        elif id(matrix_element) in getattr(self, '_crossgroup_base_mes', ()):
+            # Cross-group (Track B) base: same defect, but this object is
+            # SYMLINKED into the dependent P directories (write_crossgroup_mk),
+            # so one binary serves them all and the row cannot be baked here --
+            # a dependent's configs live in ITS directory's config_subproc_map,
+            # and GET_CHANNEL_CUT already resolves to the dependent's genps.o.
+            # Take the row from XGROW<pid>, which every directory defines for
+            # itself in its own auto_dsig.f (see write_xgrow_routines): the
+            # identity (our own CONFSUB row) where we are generated, the routed
+            # subprocess's row composed with the crossing map in a dependent's.
+            # LMAXCONFIGS is a single global maximum (Source/maxconfigs.inc,
+            # symlinked), so the loop bound is the same in every directory.
+            xg_decl = '\n      INTEGER XGJROW(LMAXCONFIGS)'
+            xg_decode = '\n      CALL XGROW%s(CROSSUSE, XGJROW)' % pid
+            confsub_j = 'XGJROW(I)'
         else:
             xg_decl, xg_decode = '', ''
             confsub_j = 'CONFSUB(%s, I)' % pid
@@ -10820,7 +10835,7 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
 
         filename = 'auto_dsig.f'
         self.write_super_auto_dsig_file(writers.FortranWriter(filename),
-                                   subproc_group)
+                                   subproc_group, group_number)
 
         filename = 'coloramps.inc'
         self.write_coloramps_file(writers.FortranWriter(filename),
@@ -10972,7 +10987,8 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
     #===========================================================================
     # write_super_auto_dsig_file
     #===========================================================================
-    def write_super_auto_dsig_file(self, writer, subproc_group):
+    def write_super_auto_dsig_file(self, writer, subproc_group,
+                                   group_number=None):
         """Write the auto_dsig.f file selecting between the subprocesses
         in subprocess group mode"""
 
@@ -11067,11 +11083,137 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             file = open(pjoin(_file_path, \
                        'iolibs/template_files/super_auto_dsig_group_v4.inc')).read()
             file = file % replace_dict
+            file += self.write_xgrow_routines(subproc_group, group_number)
 
             # Write the file
             writer.writelines(file)
         else:
             return replace_dict
+
+    def write_xgrow_routines(self, subproc_group, group_number):
+        """Per-directory bodies of the XGROW<b> helpers a cross-group (Track B)
+        base SMATRIX calls for its multi-channel row (see the me_confsub_j fill).
+
+        The base's compiled matrix<b> object is symlinked into every dependent P
+        directory, so it cannot carry the row itself: the row belongs to the
+        subprocess the call is FOR, and that subprocess's CONFSUB lives in ITS
+        directory. Each directory therefore links its own XGROW<b>, resolved by
+        the linker exactly like genps.o (which is why GET_CHANNEL_CUT(P, I) in
+        the shared object already means the *dependent's* config I).
+
+        * where the base is generated -- the identity: our own CONFSUB row. Only
+          cross 0 ever reaches it (a Track-B base group has no within-group
+          router, so its own auto_dsig calls it with a plain FLAV_IDX).
+        * in a dependent's directory -- the routed subprocess's own CONFSUB row,
+          each of its diagrams mapped to the base AMP2 slot the crossed
+          evaluation filled (_crossgroup_configmap, the same map its auto_dsig
+          uses for DSIG_XGCONFIG).
+
+        Emitted here because auto_dsig.f is the one file written exactly once per
+        P directory, so a base serving several dependents in one directory still
+        gets a single definition.
+        """
+        if group_number is None or not getattr(self, '_crossgroup', None):
+            return ''
+        mes = subproc_group.get('matrix_elements')
+        routines, seen = [], {}
+        # Bases generated in this directory: identity row.
+        base_ids = getattr(self, '_crossgroup_base_mes', set())
+        for ime, me in enumerate(mes):
+            if id(me) in base_ids:
+                seen[ime + 1] = 'base'
+                routines.append(
+                    '\n      SUBROUTINE XGROW%(b)d(CROSS, XGJ)\n'
+                    'C     Multi-channel row of SMATRIX%(b)d in the directory it\n'
+                    'C     is generated in: its own. CROSS is always 0 here.\n'
+                    '      IMPLICIT NONE\n'
+                    "      INCLUDE 'maxamps.inc'\n"
+                    "      INCLUDE 'maxconfigs.inc'\n"
+                    '      INTEGER CROSS, XGJ(LMAXCONFIGS), I\n'
+                    '      INTEGER CONFSUB(MAXSPROC,LMAXCONFIGS)\n'
+                    "      INCLUDE 'config_subproc_map.inc'\n"
+                    '      DO I=1,LMAXCONFIGS\n'
+                    '        XGJ(I) = CONFSUB(%(b)d, I)\n'
+                    '      ENDDO\n'
+                    '      RETURN\n'
+                    '      END\n' % {'b': ime + 1})
+        # Dependents routed out of this directory: their own row, remapped.
+        by_base = {}
+        for ime, me in enumerate(mes):
+            cg = self._crossgroup.get((group_number, ime))
+            if cg is None:
+                continue
+            base_me = cg['base_me']
+            nflav_base = len(base_me.get_external_flavors_with_iden())
+            ngraphs_b = len(base_me.get('diagrams'))
+            nxc = (base_me.get_nexternal_ninitial()[0] + 1) ** 2 - 1
+            for iflav in cg['flav_idx']:
+                cross = (iflav - 1) // nflav_base
+                if not 1 <= cross <= nxc:
+                    continue
+                cmap = self._crossgroup_configmap(me, base_me, cross)
+                if sorted(cmap) != list(range(1, ngraphs_b + 1)):
+                    continue          # unusable map: leave the historical row
+                slot = by_base.setdefault(
+                    cg['base_proc_id'],
+                    {'nxc': nxc, 'ng': ngraphs_b, 'cols': [], 'cross': {}})
+                col = (ime + 1, tuple(cmap))
+                if col not in slot['cols']:
+                    slot['cols'].append(col)
+                # Two subprocesses claiming the same crossing would be the same
+                # crossed process; keep the first and leave the rest alone.
+                slot['cross'].setdefault(cross, slot['cols'].index(col) + 2)
+        for b in sorted(by_base):
+            if b in seen:
+                # This directory both generates SMATRIX<b> and routes to another
+                # directory's SMATRIX<b>: one name, two bodies. That collision
+                # already exists for SMATRIX<b> itself, so leave it alone.
+                logger.warning('Cross-group crossing: SMATRIX%d is both local '
+                               'and routed in one directory; keeping the '
+                               'historical multi-channel row.' % b)
+                continue
+            s = by_base[b]
+            # Column 1 is the fallback for a crossing this directory does not
+            # route (unreachable in practice): the first routed subprocess's own
+            # row, unmapped.
+            rows = [s['cols'][0][0]] + [c[0] for c in s['cols']]
+            cfgs = [list(range(0, s['ng'] + 1))]
+            cfgs += [[0] + list(c[1]) for c in s['cols']]
+            lines = [
+                '\n      SUBROUTINE XGROW%d(CROSS, XGJ)' % b,
+                'C     Multi-channel row of the symlinked SMATRIX%d for a call' % b,
+                'C     routed out of THIS directory: the routed subprocess own',
+                'C     CONFSUB row, each diagram mapped to the AMP2 slot the',
+                'C     crossed evaluation filled.',
+                '      IMPLICIT NONE',
+                "      INCLUDE 'maxamps.inc'",
+                "      INCLUDE 'maxconfigs.inc'",
+                '      INTEGER CROSS, XGJ(LMAXCONFIGS), I, IXR',
+                '      INTEGER CONFSUB(MAXSPROC,LMAXCONFIGS)',
+                "      INCLUDE 'config_subproc_map.inc'",
+                '      INTEGER XGCOL(0:%d)' % s['nxc'],
+                self.format_integer_data_lines(
+                    'XGCOL', [s['cross'].get(c, 1)
+                              for c in range(s['nxc'] + 1)]),
+                '      INTEGER XGROWP(%d)' % len(rows),
+                '      DATA XGROWP /%s/' % ','.join(str(x) for x in rows),
+                '      INTEGER XGCFG(0:%d,%d)' % (s['ng'], len(cfgs))]
+            for icol, col in enumerate(cfgs):
+                for st in range(0, len(col), 10):
+                    chunk = col[st:st + 10]
+                    lines.append('      DATA (XGCFG(I,%d),I=%d,%d) /%s/'
+                                 % (icol + 1, st, st + len(chunk) - 1,
+                                    ','.join(str(v) for v in chunk)))
+            lines += ['      IXR = 1',
+                      '      IF (CROSS.GE.0.AND.CROSS.LE.%d) IXR = XGCOL(CROSS)'
+                      % s['nxc'],
+                      '      DO I=1,LMAXCONFIGS',
+                      '        XGJ(I) = XGCFG(CONFSUB(XGROWP(IXR), I), IXR)',
+                      '      ENDDO',
+                      '      RETURN',
+                      '      END']
+            routines.append('\n'.join(lines) + '\n')
+        return ''.join(routines)
         
     #===========================================================================
     # write_mirrorprocs
