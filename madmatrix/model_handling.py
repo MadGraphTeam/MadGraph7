@@ -2611,6 +2611,28 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             "    }\n"
             "    return code + 1;\n"
             "  }\n"
+            "#ifndef MGONGPUCPP_GPUIMPL\n"
+            "  // Reported helicity of ONE lane. The host good-helicity loop runs\n"
+            "  // over cNGoodMaxCross and every lane evaluates its OWN crossing's\n"
+            "  // ighel-th good helicity (cGoodHelOfCross, see calculate_jamps), so\n"
+            "  // the reported row must be read from that same per-crossing list.\n"
+            "  // Reading the union cGoodHel[ighel] instead names a row the lane\n"
+            "  // never evaluated: as soon as the crossings widen the union beyond a\n"
+            "  // single crossing's list the two lists stop agreeing even for the\n"
+            "  // identity crossing, and the event is written out with a helicity\n"
+            "  // whose |M|^2 is zero (breaking helicity-by-helicity reweighting).\n"
+            "  __device__ inline int selected_hel_code_lane( int ighel, unsigned int flavor_id )\n"
+            "  {\n"
+            "    const int lcross = (int)( flavor_id / nmaxflavor );\n"
+            "    const int lngood = cNGoodPerCross[lcross];\n"
+            "    // ighel < lngood always holds when the CDF selected this lane's\n"
+            "    // row (the rows past lngood add nothing to the running sum); the\n"
+            "    // clamp only keeps a degenerate lane inside the table.\n"
+            "    const int lbase = cGoodHelOfCross[lcross][( ighel < lngood ) ? ighel\n"
+            "                                              : ( lngood > 0 ? lngood - 1 : 0 )];\n"
+            "    return selected_hel_code( lbase, flavor_id );\n"
+            "  }\n"
+            "#endif\n"
         ) % {'xnhstate': arr(hnstate),
              'maxhel': maxhel, 'xstates': arr(states_flat)}
 
@@ -2667,12 +2689,14 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 '      if ( spincol_cross( iflav / nmaxflavor ) == 0 ) continue;\n    ',
             'sigmakin_denominator': sigmakin_denominator,
             'flavorpdg_body': flavorpdg_body,
-            # Reported per-event helicity: the crossed code for the event's
-            # crossing (unvalidated at runtime, see selected_hel_code).
+            # Reported per-event helicity: the row this lane actually evaluated
+            # (its crossing's ighel-th good helicity, NOT the union list), mapped
+            # to the crossed code for the event's crossing (the crossed mapping
+            # itself is unvalidated at runtime, see selected_hel_code).
             'selected_hel_code_1':
-                'selected_hel_code( cGoodHel[ighel], iflavorVec[ievt] )',
+                'selected_hel_code_lane( ighel, iflavorVec[ievt] )',
             'selected_hel_code_2':
-                'selected_hel_code( cGoodHel[ighel], iflavorVec[ievt2] )',
+                'selected_hel_code_lane( ighel, iflavorVec[ievt2] )',
             # (A) Per-lane helicity: the C++ good-hel loop runs once over the
             # per-crossing good-hel count; each lane uses its crossing's ighel-th
             # good helicity (the union is never materialised on the hot path).
