@@ -240,6 +240,8 @@ def _authenticated_relation_for_ambiguous_dag(
         seed=0x5059414D,
         relative_tolerance=1.0e-70,
         absolute_tolerance=1.0e-80,
+        candidate_probe_count=2,
+        verification_probe_count=2,
     )
     assert certificate is not None
     return dag, model, certificate

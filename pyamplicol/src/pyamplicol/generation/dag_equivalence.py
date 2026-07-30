@@ -294,6 +294,7 @@ class NumericalCurrentRelationCertificate:
     absolute_tolerance: float
     candidate_probe_count: int
     verification_probe_count: int
+    current_dimension: int
     candidate_maximum_absolute_residual: Decimal
     candidate_maximum_relative_residual: Decimal
     candidate_maximum_tolerance_ratio: Decimal
@@ -326,6 +327,7 @@ class NumericalCurrentRelationCertificate:
             "absolute_tolerance_binary64": self.absolute_tolerance.hex(),
             "candidate_probe_count": self.candidate_probe_count,
             "verification_probe_count": self.verification_probe_count,
+            "current_dimension": self.current_dimension,
             "candidate_maximum_absolute_residual": (
                 _canonical_decimal_string(
                     self.candidate_maximum_absolute_residual
@@ -385,6 +387,7 @@ class NumericalCurrentRelationCertificate:
             "absolute_tolerance_binary64",
             "candidate_probe_count",
             "verification_probe_count",
+            "current_dimension",
             "candidate_maximum_absolute_residual",
             "candidate_maximum_relative_residual",
             "candidate_maximum_tolerance_ratio",
@@ -413,6 +416,7 @@ class NumericalCurrentRelationCertificate:
         absolute_payload = payload["absolute_tolerance_binary64"]
         candidate_probe_count = payload["candidate_probe_count"]
         verification_probe_count = payload["verification_probe_count"]
+        current_dimension = payload["current_dimension"]
         if (
             algorithm != NUMERICAL_CURRENT_RELATION_CERTIFICATE_ALGORITHM
             or proof_kind != "authenticated-numerical"
@@ -442,6 +446,8 @@ class NumericalCurrentRelationCertificate:
             or candidate_probe_count < 2
             or type(verification_probe_count) is not int
             or verification_probe_count < 2
+            or type(current_dimension) is not int
+            or current_dimension < 1
         ):
             raise ValueError(
                 "numerical current relation probe contract is invalid"
@@ -525,6 +531,7 @@ class NumericalCurrentRelationCertificate:
             absolute_tolerance=absolute_tolerance,
             candidate_probe_count=candidate_probe_count,
             verification_probe_count=verification_probe_count,
+            current_dimension=current_dimension,
             candidate_maximum_absolute_residual=residuals[0],
             candidate_maximum_relative_residual=residuals[1],
             candidate_maximum_tolerance_ratio=residuals[2],
@@ -781,6 +788,8 @@ def certify_numerical_current_observations(
     seed: int,
     relative_tolerance: float,
     absolute_tolerance: float,
+    candidate_probe_count: int | None = None,
+    verification_probe_count: int | None = None,
 ) -> NumericalCurrentRelationCertificate | None:
     """Certify one ±1/zero relation over independent Decimal observations.
 
@@ -824,6 +833,35 @@ def certify_numerical_current_observations(
         or verification_current is None
         or len(candidate_current) < 2
         or len(verification_current) < 2
+    ):
+        return None
+    resolved_candidate_probe_count = (
+        len(candidate_current)
+        if candidate_probe_count is None
+        else candidate_probe_count
+    )
+    resolved_verification_probe_count = (
+        len(verification_current)
+        if verification_probe_count is None
+        else verification_probe_count
+    )
+    if (
+        type(resolved_candidate_probe_count) is not int
+        or resolved_candidate_probe_count < 2
+        or type(resolved_verification_probe_count) is not int
+        or resolved_verification_probe_count < 2
+        or len(candidate_current) % resolved_candidate_probe_count != 0
+        or len(verification_current) % resolved_verification_probe_count != 0
+    ):
+        return None
+    current_dimension = (
+        len(candidate_current) // resolved_candidate_probe_count
+    )
+    if (
+        current_dimension < 1
+        or len(verification_current)
+        // resolved_verification_probe_count
+        != current_dimension
     ):
         return None
     if relation_kind == "zero":
@@ -911,8 +949,9 @@ def certify_numerical_current_observations(
         "verification_domain": "independent-verification-current-probes-v1",
         "relative_tolerance_binary64": relative.hex(),
         "absolute_tolerance_binary64": absolute.hex(),
-        "candidate_probe_count": len(candidate_current),
-        "verification_probe_count": len(verification_current),
+        "candidate_probe_count": resolved_candidate_probe_count,
+        "verification_probe_count": resolved_verification_probe_count,
+        "current_dimension": current_dimension,
         "candidate_observations_sha256": candidate_digest,
         "verification_observations_sha256": verification_digest,
     }
@@ -955,8 +994,9 @@ def certify_numerical_current_observations(
         seed=seed,
         relative_tolerance=relative,
         absolute_tolerance=absolute,
-        candidate_probe_count=len(candidate_current),
-        verification_probe_count=len(verification_current),
+        candidate_probe_count=resolved_candidate_probe_count,
+        verification_probe_count=resolved_verification_probe_count,
+        current_dimension=current_dimension,
         candidate_maximum_absolute_residual=candidate_residuals[0],
         candidate_maximum_relative_residual=candidate_residuals[1],
         candidate_maximum_tolerance_ratio=candidate_residuals[2],
@@ -1014,6 +1054,8 @@ def verify_numerical_current_relation_certificate(
         or certificate.candidate_probe_count < 2
         or type(certificate.verification_probe_count) is not int
         or certificate.verification_probe_count < 2
+        or type(certificate.current_dimension) is not int
+        or certificate.current_dimension < 1
         or not isfinite(certificate.relative_tolerance)
         or not isfinite(certificate.absolute_tolerance)
         or certificate.relative_tolerance < 0.0
@@ -1064,6 +1106,7 @@ def verify_numerical_current_relation_certificate(
         ),
         "candidate_probe_count": certificate.candidate_probe_count,
         "verification_probe_count": certificate.verification_probe_count,
+        "current_dimension": certificate.current_dimension,
         "candidate_observations_sha256": (
             certificate.candidate_observations_sha256
         ),
@@ -1420,6 +1463,8 @@ def discover_generic_dag_numerical_current_relations(
                 seed=seed,
                 relative_tolerance=relative,
                 absolute_tolerance=absolute,
+                candidate_probe_count=len(candidate_points),
+                verification_probe_count=len(verification_points),
             )
             if accepted is not None:
                 certificates.append(accepted)
@@ -1589,15 +1634,20 @@ def apply_numerical_current_relation_certificates(
             current_id >= len(dag.currents)
             or current_id in source_ids
             or dag.currents[current_id].is_source
+            or certificate.current_dimension
+            != dag.currents[current_id].dimension
         ):
             raise ValueError(
-                "numerical current relations may target only generated currents"
+                "numerical current relations may target only matching "
+                "generated currents"
             )
         probe_contract = (
             certificate.precision_digits,
             certificate.seed,
             certificate.relative_tolerance.hex(),
             certificate.absolute_tolerance.hex(),
+            certificate.candidate_probe_count,
+            certificate.verification_probe_count,
         )
         if common_probe_contract is None:
             common_probe_contract = probe_contract

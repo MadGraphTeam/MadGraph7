@@ -245,6 +245,12 @@ def test_certified_zero_currents_are_applied_and_revalidated_by_default(
         certificate.relation_kind == "zero"
         for certificate in result.discovery.certificates
     )
+    for certificate in result.discovery.certificates:
+        assert certificate.candidate_probe_count == 4
+        assert certificate.verification_probe_count == 4
+        assert certificate.current_dimension == dag.currents[
+            certificate.current_id
+        ].dimension
     assert result.application.report.applied_relation_count == len(
         result.discovery.certificates
     )

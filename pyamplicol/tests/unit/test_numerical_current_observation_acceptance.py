@@ -146,6 +146,9 @@ def test_equal_opposite_and_zero_relations_certify_and_replay(
     assert payload["representative_id"] == representative_id
     assert payload["factor_binary64"] == expected_factor
     assert payload["source_semantics_sha256"] == _SOURCE_SEMANTICS
+    assert payload["candidate_probe_count"] == 4
+    assert payload["verification_probe_count"] == 4
+    assert payload["current_dimension"] == 1
     for digest_field in (
         "candidate_observations_sha256",
         "verification_observations_sha256",
