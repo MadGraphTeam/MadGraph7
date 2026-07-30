@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Reviewed, fail-closed scope for matrix structural-parity coverage gaps.
 
 The 1,152-row restart gate covers every candidate cell that the canonical

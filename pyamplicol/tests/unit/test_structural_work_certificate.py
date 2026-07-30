@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
 import json

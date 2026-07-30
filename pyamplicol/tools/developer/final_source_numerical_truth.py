@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Produce a source-bound, independent numerical truth witness for one cell.
 
 The producer is deliberately not a benchmark.  It evaluates one retained

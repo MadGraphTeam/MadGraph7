@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Audit report-catalog structural work against original AmpliCol evidence.
 
 The performance report stores immutable per-cell artifacts.  This tool reads

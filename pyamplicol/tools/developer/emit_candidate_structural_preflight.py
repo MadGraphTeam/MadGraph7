@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Atomically attach exact structural restart evidence to one generated artifact."""
 
 from __future__ import annotations

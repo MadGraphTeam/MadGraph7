@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Assemble and authenticate the all-catalog final-source restart manifest.
 
 This producer is intentionally structural-only: it never benchmarks or derives

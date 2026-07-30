@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Fail-closed restart gate for a final-source structural parity preflight.
 
 This validator deliberately does not generate or optimize amplitudes.  It is an

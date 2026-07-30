@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
 """Certify pure-gluon full-color work against an AmpliCol replay.
 
 The legacy generated library materializes one reduced current/interaction
