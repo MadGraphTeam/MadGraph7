@@ -65,21 +65,25 @@ _PERSISTED_EVIDENCE_ABI = (
     "pyamplicol-recurrence-numerical-persisted-evidence-v1"
 )
 _MAX_RAW_EVIDENCE_MEMORY_BYTES = 1 << 30
-# The raw encoder never materializes an observation JSON graph, and native
-# canonical validation compares serializer output directly to the input.  The
-# remaining worst-case residents are bounded before capture: Python Decimals
-# and tuples, the encoded bytearray/bytes transition, serde JSON values, and
-# independently parsed exact rationals.  The per-scalar allowance covers all
-# of those language-runtime objects, including half of each complex-pair
-# container; the row allowance covers both capture and native row metadata.
-# The wire allowance is derived from the concrete shape instead of imposing
-# independent scalar/row ceilings.
+# The producer-side peak ends when the canonical bytes have been encoded and
+# the complete Decimal graphs are detached.  The per-scalar allowance covers
+# the Python Decimal/tuple capture graph and encoder temporaries; the row
+# allowance covers capture dictionaries and rows.  Native independently
+# authenticates this shape limit, then applies its separate streaming-consumer
+# bound without materializing observation JSON or exact-rational graphs.
 _RAW_EVIDENCE_SCALAR_RESIDENT_BYTES = 640
 _RAW_EVIDENCE_ROW_RESIDENT_BYTES = 512
 _RAW_EVIDENCE_FIXED_RESERVE_BYTES = 32 << 20
 _RAW_EVIDENCE_WIRE_PEAK_COPIES = 2
+_RAW_STREAM_METADATA_COPIES = 2
+_RAW_STREAM_BYTES_PER_ROW_OFFSETS = 16
+_RAW_STREAM_BYTES_PER_TEXT_REFERENCE = 16
+_RAW_STREAM_BYTES_PER_CURRENT_INDEX = 512
+_RAW_STREAM_BYTES_PER_RATIONAL = 320
+_RAW_STREAM_BYTES_PER_METADATA_TOKEN = 80
+_RAW_STREAM_PARAMETER_RATIONAL_COPIES = 4
 _MIN_RAW_EVIDENCE_WIRE_BYTES = 1 << 20
-# This global ceiling is shared with the native pre-DOM lexical budget.  A
+# This global ceiling is shared with the native pre-metadata lexical budget.  A
 # concrete capture may receive a smaller limit from its scalar/row geometry.
 _MAX_RAW_EVIDENCE_BYTES = 157_853_696
 _MAX_RAW_EVIDENCE_DECIMAL_BYTES = 16_384
@@ -206,6 +210,8 @@ class RecurrenceCurrentObservationCapture:
     observation_batch_sha256: str
     capture_contract_sha256: str
     context_policy: str
+    full_current_count: int | None = None
+    complete_observations_retained: bool = True
 
     @property
     def point_count(self) -> int:
@@ -213,7 +219,32 @@ class RecurrenceCurrentObservationCapture:
 
     @property
     def current_count(self) -> int:
-        return len(self.observations)
+        return (
+            len(self.observations)
+            if self.full_current_count is None
+            else self.full_current_count
+        )
+
+    def detached_for_replay(
+        self,
+        current_ids: Sequence[int],
+    ) -> RecurrenceCurrentObservationCapture:
+        """Retain only rows needed by the persisted certificate replay."""
+
+        selected = tuple(sorted(set(current_ids)))
+        if any(current_id not in self.observations for current_id in selected):
+            raise ValueError(
+                "certificate replay references an absent recurrence current"
+            )
+        return replace(
+            self,
+            observations={
+                current_id: self.observations[current_id]
+                for current_id in selected
+            },
+            full_current_count=self.current_count,
+            complete_observations_retained=False,
+        )
 
     def to_provenance_dict(self) -> dict[str, object]:
         return {
@@ -249,6 +280,10 @@ class RecurrenceCurrentObservationCapture:
         }
 
     def to_evidence_dict(self) -> dict[str, object]:
+        if not self.complete_observations_retained:
+            raise ValueError(
+                "detached recurrence observations cannot recreate raw evidence"
+            )
         return {
             **self.to_provenance_dict(),
             "kinematic_binary64": [list(row) for row in self.kinematic_binary64],
@@ -702,6 +737,25 @@ def run_recurrence_numerical_current_warmup(
         row_count=geometry[1],
         byte_limit=geometry[2],
     )
+    replay_current_ids = (
+        tuple(
+            current_id
+            for certificate in certificates
+            for current_id in (
+                certificate.current_id,
+                certificate.representative_id,
+            )
+            if current_id is not None
+        )
+        if mode == "certified-reuse"
+        else ()
+    )
+    candidate = candidate.detached_for_replay(replay_current_ids)
+    verification = verification.detached_for_replay(replay_current_ids)
+    # The streamed evidence mapping owns observation stream wrappers pointing
+    # at the complete captures.  Drop it before returning so CPython can
+    # release every non-replay Decimal and tuple before native lowering.
+    del evidence
     return RecurrenceNumericalCurrentWarmupResult(
         requested_mode=mode,
         color_accuracy=color_accuracy,
@@ -791,6 +845,7 @@ def validate_recurrence_numerical_current_application(
     baseline: RecurrenceNumericalCurrentWarmupResult,
     applied_plan: _RecurrenceExactPlan,
     *,
+    baseline_plan: _RecurrenceExactPlan,
     precision_digits: int,
     seed: int,
     relative_tolerance: float,
@@ -810,6 +865,22 @@ def validate_recurrence_numerical_current_application(
                 "application_capture": None,
             }
         )
+    reference = capture_recurrence_current_observations(
+        baseline_plan,
+        baseline.verification_capture.points,
+        precision_digits=precision_digits,
+        source_semantics_sha256=baseline.source_semantics_sha256,
+        seed=seed,
+        domain="independent-verification-current-probes-v1",
+        parameter_contexts=baseline.verification_capture.parameter_contexts,
+        runtime_parameter_schema_sha256=(
+            baseline.verification_capture.runtime_parameter_schema_sha256
+        ),
+    )
+    _validate_recaptured_reference(
+        baseline.verification_capture,
+        reference,
+    )
     applied = capture_recurrence_current_observations(
         applied_plan,
         baseline.verification_capture.points,
@@ -823,7 +894,7 @@ def validate_recurrence_numerical_current_application(
         ),
     )
     validation = _validate_applied_observations(
-        baseline.verification_capture,
+        reference,
         applied,
         relative_tolerance=relative_tolerance,
         absolute_tolerance=absolute_tolerance,
@@ -2123,6 +2194,41 @@ def _validate_applied_observations(
     }
 
 
+def _validate_recaptured_reference(
+    authenticated: RecurrenceCurrentObservationCapture,
+    recaptured: RecurrenceCurrentObservationCapture,
+) -> None:
+    """Bind a post-native baseline recapture to the original full commitment."""
+
+    if (
+        authenticated.precision_digits != recaptured.precision_digits
+        or authenticated.points != recaptured.points
+        or authenticated.point_sha256s != recaptured.point_sha256s
+        or authenticated.kinematic_sha256s != recaptured.kinematic_sha256s
+        or authenticated.kinematic_binary64 != recaptured.kinematic_binary64
+        or authenticated.selector_contexts != recaptured.selector_contexts
+        or authenticated.context_sha256s != recaptured.context_sha256s
+        or authenticated.parameter_contexts != recaptured.parameter_contexts
+        or authenticated.parameter_context_sha256s
+        != recaptured.parameter_context_sha256s
+        or authenticated.runtime_parameter_schema_sha256
+        != recaptured.runtime_parameter_schema_sha256
+        or authenticated.source_semantics_sha256
+        != recaptured.source_semantics_sha256
+        or authenticated.current_dimensions != recaptured.current_dimensions
+        or authenticated.current_count != recaptured.current_count
+        or authenticated.observation_batch_sha256
+        != recaptured.observation_batch_sha256
+        or authenticated.capture_contract_sha256
+        != recaptured.capture_contract_sha256
+        or authenticated.context_policy != recaptured.context_policy
+    ):
+        raise ValueError(
+            "recurrence baseline application reference did not reproduce its "
+            "authenticated capture commitment"
+        )
+
+
 def _relation_residuals(
     relation_kind: _RelationKind,
     current: Sequence[_ComplexDecimal],
@@ -2727,6 +2833,62 @@ def _raw_evidence_memory_upper_bound(
         + scalar_count * _RAW_EVIDENCE_SCALAR_RESIDENT_BYTES
         + row_count * _RAW_EVIDENCE_ROW_RESIDENT_BYTES
         + size * _RAW_EVIDENCE_WIRE_PEAK_COPIES
+    )
+
+
+def _raw_streaming_consumer_memory_upper_bound(
+    *,
+    raw_byte_count: int,
+    metadata_byte_count: int,
+    metadata_structural_token_count: int,
+    current_count: int,
+    component_count: int,
+    maximum_dimension: int,
+    candidate_probe_count: int,
+    verification_probe_count: int,
+    runtime_parameter_count: int,
+) -> int:
+    """Mirror the native streaming-consumer envelope for parity tests."""
+
+    values = (
+        raw_byte_count,
+        metadata_byte_count,
+        metadata_structural_token_count,
+        current_count,
+        component_count,
+        maximum_dimension,
+        candidate_probe_count,
+        verification_probe_count,
+        runtime_parameter_count,
+    )
+    if any(value < 0 for value in values):
+        raise ValueError("recurrence raw streaming geometry is invalid")
+    observation_row_count = current_count * 2
+    candidate_scalar_references = (
+        component_count * candidate_probe_count * 2
+    )
+    transient_rational_count = (
+        maximum_dimension
+        * max(candidate_probe_count, verification_probe_count)
+        * 4
+    )
+    parameter_rational_count = (
+        runtime_parameter_count
+        * (candidate_probe_count + verification_probe_count)
+        * _RAW_STREAM_PARAMETER_RATIONAL_COPIES
+    )
+    return (
+        raw_byte_count * _RAW_EVIDENCE_WIRE_PEAK_COPIES
+        + metadata_byte_count * _RAW_STREAM_METADATA_COPIES
+        + metadata_structural_token_count
+        * _RAW_STREAM_BYTES_PER_METADATA_TOKEN
+        + observation_row_count * _RAW_STREAM_BYTES_PER_ROW_OFFSETS
+        + candidate_scalar_references
+        * _RAW_STREAM_BYTES_PER_TEXT_REFERENCE
+        + current_count * _RAW_STREAM_BYTES_PER_CURRENT_INDEX
+        + transient_rational_count * _RAW_STREAM_BYTES_PER_RATIONAL
+        + parameter_rational_count * _RAW_STREAM_BYTES_PER_RATIONAL
+        + _RAW_EVIDENCE_FIXED_RESERVE_BYTES
     )
 
 

@@ -17,10 +17,11 @@ use rusticol_core::recurrence::{
     RecurrenceRelationDiscoveryMode,
 };
 use rusticol_core::{RusticolError, RusticolResult};
-use serde_json::{Map as JsonMap, Value as JsonValue};
+use serde_json::{Map as JsonMap, Value as JsonValue, value::RawValue as JsonRawValue};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Write};
+use std::ops::Range;
 use std::str::FromStr;
 
 use crate::recurrence::{
@@ -39,11 +40,263 @@ const MAX_RAW_RESIDENT_BYTES: usize = 1 << 30;
 const RAW_PRE_DOM_FIXED_BYTES: usize = 32 * 1024 * 1024;
 const RAW_PRE_DOM_WIRE_COPIES: usize = 2;
 const RAW_PRE_DOM_BYTES_PER_TOKEN: usize = 80;
-const RAW_CAPTURE_BYTES_PER_SCALAR: usize = 320;
-const RAW_CAPTURE_BYTES_PER_ROW: usize = 512;
+const RAW_STREAM_METADATA_COPIES: usize = 2;
+const RAW_STREAM_BYTES_PER_TEXT_REFERENCE: usize = 16;
+const RAW_STREAM_BYTES_PER_CURRENT_INDEX: usize = 512;
+const RAW_STREAM_BYTES_PER_RATIONAL: usize = 320;
+const RAW_STREAM_PARAMETER_RATIONAL_COPIES: usize = 4;
 const RAW_PRODUCER_BYTES_PER_SCALAR: usize = 640;
 const RAW_PRODUCER_BYTES_PER_ROW: usize = 512;
 const MIN_RAW_EVIDENCE_WIRE_BYTES: usize = 1 << 20;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RawByteRange {
+    start: u32,
+    end: u32,
+}
+
+impl RawByteRange {
+    fn from_usize(start: usize, end: usize, limit: usize, context: &str) -> RusticolResult<Self> {
+        if start > end || end > limit {
+            return Err(invalid(format!("{context} is outside the raw evidence")));
+        }
+        Ok(Self {
+            start: u32::try_from(start)
+                .map_err(|_| invalid(format!("{context} start offset exceeds u32")))?,
+            end: u32::try_from(end)
+                .map_err(|_| invalid(format!("{context} end offset exceeds u32")))?,
+        })
+    }
+
+    fn as_usize(self, limit: usize, context: &str) -> RusticolResult<Range<usize>> {
+        let range = self.start as usize..self.end as usize;
+        if range.start > range.end || range.end > limit {
+            return Err(invalid(format!("{context} is outside the raw evidence")));
+        }
+        Ok(range)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct RawObservationRow {
+    row: RawByteRange,
+    values: RawByteRange,
+}
+
+struct LocatedObservationArrays {
+    metadata_bytes: Vec<u8>,
+    candidate: RawByteRange,
+    verification: RawByteRange,
+}
+
+fn borrowed_raw_value_range(
+    bytes: &[u8],
+    value: &JsonRawValue,
+    context: &str,
+) -> RusticolResult<RawByteRange> {
+    let raw = value.get().as_bytes();
+    let bytes_start = bytes.as_ptr() as usize;
+    let raw_start = raw.as_ptr() as usize;
+    let start = raw_start
+        .checked_sub(bytes_start)
+        .ok_or_else(|| invalid(format!("{context} does not borrow the raw evidence")))?;
+    let end = start
+        .checked_add(raw.len())
+        .ok_or_else(|| invalid(format!("{context} byte range overflows usize")))?;
+    RawByteRange::from_usize(start, end, bytes.len(), context)
+}
+
+fn locate_raw_observation_arrays(bytes: &[u8]) -> RusticolResult<LocatedObservationArrays> {
+    let root = serde_json::from_slice::<BTreeMap<String, &JsonRawValue>>(bytes)
+        .map_err(|error| invalid(format!("numerical relation evidence is not JSON: {error}")))?;
+    let locate = |field: &str| -> RusticolResult<RawByteRange> {
+        let capture = root
+            .get(field)
+            .ok_or_else(|| invalid(format!("numerical relation evidence has no {field}")))?;
+        let capture_fields = serde_json::from_str::<BTreeMap<String, &JsonRawValue>>(capture.get())
+            .map_err(|error| {
+                invalid(format!(
+                    "{field} raw numerical capture is not JSON: {error}"
+                ))
+            })?;
+        let observations = capture_fields
+            .get("observations")
+            .ok_or_else(|| invalid(format!("{field} raw numerical capture has no observations")))?;
+        borrowed_raw_value_range(bytes, observations, &format!("{field} observations"))
+    };
+    let candidate = locate("candidate_capture")?;
+    let verification = locate("verification_capture")?;
+    let candidate_range = candidate.as_usize(bytes.len(), "candidate observation-array range")?;
+    let verification_range =
+        verification.as_usize(bytes.len(), "verification observation-array range")?;
+    if candidate_range.end > verification_range.start {
+        return Err(invalid(
+            "raw numerical observation arrays overlap or are not canonical",
+        ));
+    }
+    let removed = candidate_range
+        .len()
+        .checked_add(verification_range.len())
+        .ok_or_else(|| invalid("raw observation-array byte count overflows usize"))?;
+    let capacity = bytes
+        .len()
+        .checked_sub(removed)
+        .and_then(|size| size.checked_add(4))
+        .ok_or_else(|| invalid("raw numerical metadata size overflows usize"))?;
+    let mut metadata_bytes = Vec::with_capacity(capacity);
+    metadata_bytes.extend_from_slice(&bytes[..candidate_range.start]);
+    metadata_bytes.extend_from_slice(b"[]");
+    metadata_bytes.extend_from_slice(&bytes[candidate_range.end..verification_range.start]);
+    metadata_bytes.extend_from_slice(b"[]");
+    metadata_bytes.extend_from_slice(&bytes[verification_range.end..]);
+    Ok(LocatedObservationArrays {
+        metadata_bytes,
+        candidate,
+        verification,
+    })
+}
+
+struct CanonicalObservationCursor<'a> {
+    bytes: &'a [u8],
+    position: usize,
+    absolute_start: usize,
+}
+
+impl<'a> CanonicalObservationCursor<'a> {
+    fn expect(&mut self, expected: &[u8], context: &str) -> RusticolResult<()> {
+        let end = self
+            .position
+            .checked_add(expected.len())
+            .ok_or_else(|| invalid(format!("{context} offset overflows usize")))?;
+        if self.bytes.get(self.position..end) != Some(expected) {
+            return Err(invalid(format!("{context} is malformed or not canonical")));
+        }
+        self.position = end;
+        Ok(())
+    }
+
+    fn absolute_position(&self, context: &str) -> RusticolResult<usize> {
+        self.absolute_start
+            .checked_add(self.position)
+            .ok_or_else(|| invalid(format!("{context} offset overflows usize")))
+    }
+
+    fn decimal_string(&mut self, context: &str) -> RusticolResult<&'a str> {
+        self.expect(b"\"", context)?;
+        let remaining = self
+            .bytes
+            .get(self.position..)
+            .ok_or_else(|| invalid(format!("{context} is truncated")))?;
+        let width = remaining
+            .iter()
+            .position(|byte| *byte == b'"')
+            .ok_or_else(|| invalid(format!("{context} is unterminated")))?;
+        let end = self
+            .position
+            .checked_add(width)
+            .ok_or_else(|| invalid(format!("{context} width overflows usize")))?;
+        let text = std::str::from_utf8(
+            self.bytes
+                .get(self.position..end)
+                .ok_or_else(|| invalid(format!("{context} is truncated")))?,
+        )
+        .map_err(|_| invalid(format!("{context} is not ASCII")))?;
+        validate_canonical_decimal_text(text, context)?;
+        self.position = end;
+        self.expect(b"\"", context)?;
+        Ok(text)
+    }
+}
+
+fn scan_raw_observation_array(
+    bytes: &[u8],
+    array: RawByteRange,
+    source: &RawSourceSemantics,
+    point_count: usize,
+    label: &str,
+) -> RusticolResult<Vec<RawObservationRow>> {
+    let array_range = array.as_usize(bytes.len(), &format!("{label} observation array"))?;
+    let raw_array = bytes
+        .get(array_range.clone())
+        .ok_or_else(|| invalid(format!("{label} observation array is absent")))?;
+    let mut cursor = CanonicalObservationCursor {
+        bytes: raw_array,
+        position: 0,
+        absolute_start: array_range.start,
+    };
+    cursor.expect(b"[", &format!("{label} observation array"))?;
+    let mut rows = Vec::with_capacity(source.currents.len());
+    for (index, current) in source.currents.iter().enumerate() {
+        if index != 0 {
+            cursor.expect(b",", &format!("{label} observation row {index}"))?;
+        }
+        let row_start = cursor.absolute_position(&format!("{label} observation row {index}"))?;
+        cursor.expect(
+            b"{\"current_id\":",
+            &format!("{label} observation row {index}"),
+        )?;
+        cursor.expect(
+            current.current_id.to_string().as_bytes(),
+            &format!("{label} observation row {index} current ID"),
+        )?;
+        cursor.expect(
+            b",\"dimension\":",
+            &format!("{label} observation row {index}"),
+        )?;
+        cursor.expect(
+            current.dimension.to_string().as_bytes(),
+            &format!("{label} observation row {index} dimension"),
+        )?;
+        cursor.expect(b",\"values\":", &format!("{label} observation row {index}"))?;
+        let values_start =
+            cursor.absolute_position(&format!("{label} observation row {index} values"))?;
+        cursor.expect(b"[", &format!("{label} observation row {index} values"))?;
+        let expected_width = point_count
+            .checked_mul(usize::from(current.dimension))
+            .ok_or_else(|| {
+                invalid(format!(
+                    "{label} observation row {index} width overflows usize"
+                ))
+            })?;
+        for component in 0..expected_width {
+            let context = format!("{label} observation row {index} component {component}");
+            if component != 0 {
+                cursor.expect(b",", &context)?;
+            }
+            cursor.expect(b"[", &context)?;
+            cursor.decimal_string(&format!("{context} real part"))?;
+            cursor.expect(b",", &context)?;
+            cursor.decimal_string(&format!("{context} imaginary part"))?;
+            cursor.expect(b"]", &context)?;
+        }
+        cursor.expect(b"]", &format!("{label} observation row {index} values"))?;
+        let values_end =
+            cursor.absolute_position(&format!("{label} observation row {index} values"))?;
+        cursor.expect(b"}", &format!("{label} observation row {index}"))?;
+        let row_end = cursor.absolute_position(&format!("{label} observation row {index}"))?;
+        rows.push(RawObservationRow {
+            row: RawByteRange::from_usize(
+                row_start,
+                row_end,
+                bytes.len(),
+                &format!("{label} observation row {index}"),
+            )?,
+            values: RawByteRange::from_usize(
+                values_start,
+                values_end,
+                bytes.len(),
+                &format!("{label} observation row {index} values"),
+            )?,
+        });
+    }
+    cursor.expect(b"]", &format!("{label} observation array"))?;
+    if cursor.position != cursor.bytes.len() {
+        return Err(invalid(format!(
+            "{label} observation array has trailing or extra rows"
+        )));
+    }
+    Ok(rows)
+}
 
 struct CanonicalJsonMatcher<'a> {
     expected: &'a [u8],
@@ -150,14 +403,15 @@ fn validate_raw_json_lexical_budget(bytes: &[u8]) -> RusticolResult<usize> {
     Ok(structural_tokens)
 }
 
-fn validate_pre_dom_resident_budget(
+fn validate_pre_metadata_resident_budget(
     raw_byte_count: usize,
     structural_token_count: usize,
 ) -> RusticolResult<()> {
-    // serde_json materializes an owned DOM.  Bound that allocation before
-    // from_slice: two wire residents, 80 bytes per lexically counted value /
-    // delimiter token, and 32 MiB of parser/fixed headroom.  The independent
-    // post-DOM geometry check below bounds BigRational capture residents.
+    // Before authenticated geometry is available, conservatively charge every
+    // lexical token as if it were metadata plus two wire residents.  The
+    // borrowed RawValue locator does not materialize observation tokens, and
+    // the precise streaming-consumer check below replaces this coarse bound
+    // once the source shape and metadata-only token count are authenticated.
     let resident_bytes = raw_byte_count
         .checked_mul(RAW_PRE_DOM_WIRE_COPIES)
         .and_then(|wire| {
@@ -166,46 +420,129 @@ fn validate_pre_dom_resident_budget(
                 .and_then(|dom| wire.checked_add(dom))
         })
         .and_then(|dynamic| dynamic.checked_add(RAW_PRE_DOM_FIXED_BYTES))
-        .ok_or_else(|| invalid("raw numerical pre-DOM resident bound overflows usize"))?;
+        .ok_or_else(|| invalid("raw numerical pre-metadata resident bound overflows usize"))?;
     if resident_bytes > MAX_RAW_RESIDENT_BYTES {
         return Err(invalid(
-            "raw numerical evidence exceeds the explicit pre-DOM 1 GiB resident memory envelope",
+            "raw numerical evidence exceeds the explicit pre-metadata 1 GiB resident memory envelope",
         ));
     }
     Ok(())
 }
 
-fn validate_combined_raw_resident_budget(
+#[allow(clippy::too_many_arguments)]
+fn streaming_raw_resident_upper_bound(
     raw_byte_count: usize,
-    structural_token_count: usize,
-    scalar_count: usize,
-    row_count: usize,
-) -> RusticolResult<()> {
-    // At capture parsing time the input Vec and Python bytes, serde DOM, and
-    // independently constructed BigRational/String capture graph coexist.
-    // Keep all of those residents in one checked 1 GiB envelope.
-    let resident_bytes = raw_byte_count
+    metadata_byte_count: usize,
+    metadata_structural_token_count: usize,
+    current_count: usize,
+    component_count: usize,
+    maximum_dimension: usize,
+    candidate_probe_count: usize,
+    verification_probe_count: usize,
+    runtime_parameter_count: usize,
+) -> RusticolResult<usize> {
+    // Observation arrays remain borrowed canonical bytes.  Bound the residents
+    // that can coexist while metadata is parsed and the complete native census
+    // is replayed: wire copies, metadata DOM/buffer, compact u32 row/value
+    // ranges, one borrowed-text candidate-index pass, one exact index scalar
+    // per current, transient current/representative rationals, and the small
+    // authenticated runtime-parameter contexts.
+    let observation_row_count = current_count
+        .checked_mul(2)
+        .ok_or_else(|| invalid("raw streaming observation row count overflows usize"))?;
+    let candidate_scalar_references = component_count
+        .checked_mul(candidate_probe_count)
+        .and_then(|count| count.checked_mul(2))
+        .ok_or_else(|| invalid("raw streaming candidate scalar count overflows usize"))?;
+    let maximum_probe_count = candidate_probe_count.max(verification_probe_count);
+    let transient_rational_count = maximum_dimension
+        .checked_mul(maximum_probe_count)
+        .and_then(|count| count.checked_mul(4))
+        .ok_or_else(|| invalid("raw streaming transient scalar count overflows usize"))?;
+    let parameter_rational_count = runtime_parameter_count
+        .checked_mul(
+            candidate_probe_count
+                .checked_add(verification_probe_count)
+                .ok_or_else(|| invalid("raw streaming probe count overflows usize"))?,
+        )
+        .and_then(|count| count.checked_mul(RAW_STREAM_PARAMETER_RATIONAL_COPIES))
+        .ok_or_else(|| invalid("raw streaming parameter scalar count overflows usize"))?;
+    raw_byte_count
         .checked_mul(RAW_PRE_DOM_WIRE_COPIES)
         .and_then(|wire| {
-            structural_token_count
+            metadata_byte_count
+                .checked_mul(RAW_STREAM_METADATA_COPIES)
+                .and_then(|metadata| wire.checked_add(metadata))
+        })
+        .and_then(|total| {
+            metadata_structural_token_count
                 .checked_mul(RAW_PRE_DOM_BYTES_PER_TOKEN)
-                .and_then(|dom| wire.checked_add(dom))
+                .and_then(|dom| total.checked_add(dom))
         })
         .and_then(|total| {
-            scalar_count
-                .checked_mul(RAW_CAPTURE_BYTES_PER_SCALAR)
-                .and_then(|capture| total.checked_add(capture))
-        })
-        .and_then(|total| {
-            row_count
-                .checked_mul(RAW_CAPTURE_BYTES_PER_ROW)
+            observation_row_count
+                .checked_mul(std::mem::size_of::<RawObservationRow>())
                 .and_then(|rows| total.checked_add(rows))
         })
+        .and_then(|total| {
+            candidate_scalar_references
+                .checked_mul(RAW_STREAM_BYTES_PER_TEXT_REFERENCE)
+                .and_then(|references| total.checked_add(references))
+        })
+        .and_then(|total| {
+            current_count
+                .checked_mul(RAW_STREAM_BYTES_PER_CURRENT_INDEX)
+                .and_then(|index| total.checked_add(index))
+        })
+        .and_then(|total| {
+            transient_rational_count
+                .checked_mul(RAW_STREAM_BYTES_PER_RATIONAL)
+                .and_then(|transient| total.checked_add(transient))
+        })
+        .and_then(|total| {
+            parameter_rational_count
+                .checked_mul(RAW_STREAM_BYTES_PER_RATIONAL)
+                .and_then(|parameters| total.checked_add(parameters))
+        })
         .and_then(|dynamic| dynamic.checked_add(RAW_PRE_DOM_FIXED_BYTES))
-        .ok_or_else(|| invalid("raw numerical combined resident bound overflows usize"))?;
+        .ok_or_else(|| invalid("raw numerical streaming resident bound overflows usize"))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_streaming_raw_resident_budget(
+    raw_byte_count: usize,
+    metadata_byte_count: usize,
+    metadata_structural_token_count: usize,
+    source: &RawSourceSemantics,
+    candidate_probe_count: usize,
+    verification_probe_count: usize,
+    runtime_parameter_count: usize,
+) -> RusticolResult<()> {
+    let component_count = source.currents.iter().try_fold(0_usize, |total, current| {
+        total
+            .checked_add(usize::from(current.dimension))
+            .ok_or_else(|| invalid("raw streaming component count overflows usize"))
+    })?;
+    let maximum_dimension = source
+        .currents
+        .iter()
+        .map(|current| usize::from(current.dimension))
+        .max()
+        .unwrap_or(0);
+    let resident_bytes = streaming_raw_resident_upper_bound(
+        raw_byte_count,
+        metadata_byte_count,
+        metadata_structural_token_count,
+        source.currents.len(),
+        component_count,
+        maximum_dimension,
+        candidate_probe_count,
+        verification_probe_count,
+        runtime_parameter_count,
+    )?;
     if resident_bytes > MAX_RAW_RESIDENT_BYTES {
         return Err(invalid(
-            "raw numerical evidence exceeds the combined 1 GiB resident memory envelope",
+            "raw numerical evidence exceeds the streaming 1 GiB resident memory envelope",
         ));
     }
     Ok(())
@@ -238,20 +575,15 @@ fn raw_evidence_shape_wire_limit(scalar_count: usize, row_count: usize) -> Rusti
 }
 
 #[derive(Clone, Debug)]
-struct RawProbeValue {
-    real_text: String,
-    imaginary_text: String,
-    value: ExactProbeComplex,
-}
-
-#[derive(Clone, Debug)]
-struct RawNumericalCapture {
+struct RawNumericalCapture<'a> {
+    raw_bytes: &'a [u8],
+    observation_rows: Vec<RawObservationRow>,
+    point_count: usize,
     point_sha256s: Vec<String>,
     kinematic_sha256s: Vec<String>,
     parameter_context_sha256s: Vec<String>,
     parameter_contexts: Vec<Vec<BigRational>>,
-    observations: BTreeMap<u32, Vec<RawProbeValue>>,
-    dimensions: BTreeMap<u32, u16>,
+    dimensions: Vec<u16>,
     observation_batch_sha256: String,
     capture_contract_sha256: String,
 }
@@ -442,10 +774,17 @@ pub(super) fn parse_numerical_relation_evidence(
         )));
     }
     let structural_token_count = validate_raw_json_lexical_budget(bytes)?;
-    validate_pre_dom_resident_budget(bytes.len(), structural_token_count)?;
-    let value: JsonValue = serde_json::from_slice(bytes)
+    validate_pre_metadata_resident_budget(bytes.len(), structural_token_count)?;
+    let located_observations = locate_raw_observation_arrays(bytes)?;
+    let metadata_structural_token_count =
+        validate_raw_json_lexical_budget(&located_observations.metadata_bytes)?;
+    let value: JsonValue = serde_json::from_slice(&located_observations.metadata_bytes)
         .map_err(|error| invalid(format!("numerical relation evidence is not JSON: {error}")))?;
-    validate_canonical_json_bytes(&value, bytes, "numerical relation evidence")?;
+    validate_canonical_json_bytes(
+        &value,
+        &located_observations.metadata_bytes,
+        "numerical relation evidence metadata",
+    )?;
     let object = json_object(&value, "numerical relation evidence")?;
     require_json_fields(
         object,
@@ -548,7 +887,7 @@ pub(super) fn parse_numerical_relation_evidence(
         "verification_probe_count",
         "numerical relation verification probe count",
     )?;
-    let (scalar_count, row_count, shape_wire_limit) = validate_raw_evidence_geometry(
+    let (_scalar_count, _row_count, shape_wire_limit) = validate_raw_evidence_geometry(
         &source,
         probe_count,
         verification_probe_count,
@@ -559,11 +898,14 @@ pub(super) fn parse_numerical_relation_evidence(
             "numerical relation evidence exceeds its authenticated {shape_wire_limit}-byte shape-dependent wire boundary"
         )));
     }
-    validate_combined_raw_resident_budget(
+    validate_streaming_raw_resident_budget(
         bytes.len(),
-        structural_token_count,
-        scalar_count,
-        row_count,
+        located_observations.metadata_bytes.len(),
+        metadata_structural_token_count,
+        &source,
+        probe_count as usize,
+        verification_probe_count as usize,
+        runtime_parameter_count,
     )?;
     let relative_tolerance_hex = json_string(
         object,
@@ -605,6 +947,8 @@ pub(super) fn parse_numerical_relation_evidence(
     }
     let seed = json_u64(object, "seed", "numerical relation seed")?;
     let candidate = parse_raw_numerical_capture(
+        bytes,
+        located_observations.candidate,
         json_field(object, "candidate_capture", "numerical relation evidence")?,
         "candidate",
         "candidate-current-probes-v1",
@@ -617,6 +961,8 @@ pub(super) fn parse_numerical_relation_evidence(
         seed,
     )?;
     let verification = parse_raw_numerical_capture(
+        bytes,
+        located_observations.verification,
         json_field(
             object,
             "verification_capture",
@@ -1007,8 +1353,92 @@ fn validate_raw_runtime_parameter_schema(
     Ok(expected.slots.len())
 }
 
+fn canonical_json_sha256_with_raw_arrays(
+    value: &JsonValue,
+    raw_arrays: &[(&str, &[u8])],
+    context: &str,
+) -> RusticolResult<String> {
+    let canonical = canonical_json_bytes(value, context)?;
+    let mut replacements = Vec::with_capacity(raw_arrays.len());
+    let mut names = BTreeSet::new();
+    for (placeholder, raw_array) in raw_arrays {
+        if !names.insert(*placeholder) {
+            return Err(invalid(format!(
+                "{context} raw-array placeholder is duplicated"
+            )));
+        }
+        let encoded_placeholder = canonical_json_bytes(
+            &serde_json::json!([placeholder]),
+            &format!("{context} raw-array placeholder"),
+        )?;
+        let mut matches = canonical
+            .windows(encoded_placeholder.len())
+            .enumerate()
+            .filter_map(|(index, window)| (window == encoded_placeholder).then_some(index));
+        let start = matches
+            .next()
+            .ok_or_else(|| invalid(format!("{context} has no raw-array placeholder")))?;
+        if matches.next().is_some() {
+            return Err(invalid(format!(
+                "{context} raw-array placeholder is ambiguous"
+            )));
+        }
+        let end = start
+            .checked_add(encoded_placeholder.len())
+            .ok_or_else(|| invalid(format!("{context} placeholder range overflows usize")))?;
+        replacements.push((start, end, *raw_array));
+    }
+    replacements.sort_by_key(|replacement| replacement.0);
+    let mut digest = Sha256::new();
+    let mut cursor = 0;
+    for (start, end, raw_array) in replacements {
+        if start < cursor {
+            return Err(invalid(format!("{context} raw-array placeholders overlap")));
+        }
+        digest.update(&canonical[cursor..start]);
+        digest.update(raw_array);
+        cursor = end;
+    }
+    digest.update(&canonical[cursor..]);
+    Ok(hex_digest(digest.finalize()))
+}
+
 #[allow(clippy::too_many_arguments)]
-fn parse_raw_numerical_capture(
+fn observation_batch_sha256_from_raw(
+    raw_bytes: &[u8],
+    observation_array: RawByteRange,
+    source_semantics_sha256: &str,
+    runtime_parameter_schema_sha256: &str,
+    point_sha256s: &[String],
+    selector_context_sha256s: &[String],
+    parameter_context_sha256s: &[String],
+    batch_abi: &str,
+    context: &str,
+) -> RusticolResult<String> {
+    const PLACEHOLDER: &str = "__pyamplicol_authenticated_raw_array_placeholder__";
+    let range = observation_array.as_usize(raw_bytes.len(), context)?;
+    let raw_array = raw_bytes
+        .get(range)
+        .ok_or_else(|| invalid(format!("{context} raw observation array is absent")))?;
+    canonical_json_sha256_with_raw_arrays(
+        &serde_json::json!({
+            "abi": batch_abi,
+            "source_semantics_sha256": source_semantics_sha256,
+            "runtime_parameter_schema_sha256": runtime_parameter_schema_sha256,
+            "point_sha256s": point_sha256s,
+            "selector_context_sha256s": selector_context_sha256s,
+            "parameter_context_sha256s": parameter_context_sha256s,
+            "currents": [PLACEHOLDER],
+        }),
+        &[(PLACEHOLDER, raw_array)],
+        context,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn parse_raw_numerical_capture<'a>(
+    raw_bytes: &'a [u8],
+    observation_array: RawByteRange,
     value: &JsonValue,
     label: &str,
     domain: &str,
@@ -1019,7 +1449,7 @@ fn parse_raw_numerical_capture(
     runtime_parameter_schema_sha256: &str,
     runtime_parameter_count: usize,
     seed: u64,
-) -> RusticolResult<RawNumericalCapture> {
+) -> RusticolResult<RawNumericalCapture<'a>> {
     const ABI: &str = "pyamplicol-recurrence-current-observation-capture-v2";
     const BATCH_ABI: &str = "pyamplicol-recurrence-current-observation-batch-v2";
     const PARAMETER_CONTEXT_ABI: &str = "pyamplicol-recurrence-parameter-context-v1";
@@ -1206,90 +1636,34 @@ fn parse_raw_numerical_capture(
     }
 
     let dimension_values = json_array(object, "current_dimensions", &context)?;
-    let observation_values = json_array(object, "observations", &context)?;
     if dimension_values.len() != source.currents.len()
-        || observation_values.len() != source.currents.len()
         || json_u32(object, "current_count", &context)? as usize != source.currents.len()
     {
         return Err(invalid(format!(
             "{context} current census does not match source semantics"
         )));
     }
-    let mut dimensions = BTreeMap::new();
-    let mut observations = BTreeMap::new();
-    let mut canonical_current_rows = Vec::with_capacity(source.currents.len());
+    let observation_rows =
+        scan_raw_observation_array(raw_bytes, observation_array, source, point_count, label)?;
+    let mut dimensions = Vec::with_capacity(source.currents.len());
     for (index, source_current) in source.currents.iter().enumerate() {
         let row_context = format!("{context} current {index}");
         let dimension_row = json_object(&dimension_values[index], &row_context)?;
         require_json_fields(dimension_row, &["current_id", "dimension"], &row_context)?;
-        let observation_row = json_object(&observation_values[index], &row_context)?;
-        require_json_fields(
-            observation_row,
-            &["current_id", "dimension", "values"],
-            &row_context,
-        )?;
         let current_id = json_u32(dimension_row, "current_id", &row_context)?;
         let dimension = json_u32(dimension_row, "dimension", &row_context)?;
         if current_id != source_current.current_id
-            || json_u32(observation_row, "current_id", &row_context)? != current_id
             || dimension != u32::from(source_current.dimension)
-            || json_u32(observation_row, "dimension", &row_context)? != dimension
         {
             return Err(invalid(format!(
                 "{row_context} dimension or ID disagrees with source semantics"
             )));
         }
-        let raw_values = json_array(observation_row, "values", &row_context)?;
-        let expected_width = point_count
-            .checked_mul(dimension as usize)
-            .ok_or_else(|| invalid(format!("{row_context} width overflows usize")))?;
-        if raw_values.len() != expected_width {
-            return Err(invalid(format!(
-                "{row_context} observation width is {}, expected {expected_width}",
-                raw_values.len()
-            )));
-        }
-        let mut parsed_values = Vec::with_capacity(expected_width);
-        for (component, raw_value) in raw_values.iter().enumerate() {
-            let pair = raw_value
-                .as_array()
-                .filter(|pair| pair.len() == 2)
-                .ok_or_else(|| {
-                    invalid(format!(
-                        "{row_context} observation {component} is not a complex pair"
-                    ))
-                })?;
-            let real_text = pair[0].as_str().ok_or_else(|| {
-                invalid(format!(
-                    "{row_context} observation {component} real part is not a string"
-                ))
-            })?;
-            let imaginary_text = pair[1].as_str().ok_or_else(|| {
-                invalid(format!(
-                    "{row_context} observation {component} imaginary part is not a string"
-                ))
-            })?;
-            parsed_values.push(RawProbeValue {
-                real_text: real_text.to_owned(),
-                imaginary_text: imaginary_text.to_owned(),
-                value: (
-                    parse_canonical_decimal(
-                        real_text,
-                        &format!("{row_context} observation {component} real part"),
-                    )?,
-                    parse_canonical_decimal(
-                        imaginary_text,
-                        &format!("{row_context} observation {component} imaginary part"),
-                    )?,
-                ),
-            });
-        }
-        dimensions.insert(current_id, source_current.dimension);
-        observations.insert(current_id, parsed_values);
-        canonical_current_rows.push(observation_values[index].clone());
+        dimensions.push(source_current.dimension);
     }
     let dimensions_object = dimensions
         .iter()
+        .enumerate()
         .map(|(current_id, dimension)| {
             (
                 current_id.to_string(),
@@ -1308,17 +1682,18 @@ fn parse_raw_numerical_capture(
         )));
     }
     let observation_batch_sha256 = evidence_sha256(object, "observation_batch_sha256", &context)?;
-    let batch_payload = serde_json::json!({
-        "abi": BATCH_ABI,
-        "source_semantics_sha256": source_semantics_sha256,
-        "runtime_parameter_schema_sha256": runtime_parameter_schema_sha256,
-        "point_sha256s": point_sha256s,
-        "selector_context_sha256s": selector_context_sha256s,
-        "parameter_context_sha256s": parameter_context_sha256s,
-        "currents": canonical_current_rows,
-    });
     if observation_batch_sha256
-        != canonical_json_sha256(&batch_payload, &format!("{context} observation batch"))?
+        != observation_batch_sha256_from_raw(
+            raw_bytes,
+            observation_array,
+            source_semantics_sha256,
+            runtime_parameter_schema_sha256,
+            &point_sha256s,
+            &selector_context_sha256s,
+            &parameter_context_sha256s,
+            BATCH_ABI,
+            &format!("{context} observation batch"),
+        )?
     {
         return Err(RusticolError::integrity(format!(
             "{context} observation-batch digest does not match raw observations"
@@ -1346,11 +1721,13 @@ fn parse_raw_numerical_capture(
         )));
     }
     Ok(RawNumericalCapture {
+        raw_bytes,
+        observation_rows,
+        point_count,
         point_sha256s,
         kinematic_sha256s,
         parameter_context_sha256s,
         parameter_contexts,
-        observations,
         dimensions,
         observation_batch_sha256,
         capture_contract_sha256,
@@ -1644,16 +2021,13 @@ fn expected_selector_context(
 }
 
 fn validate_independent_raw_captures(
-    candidate: &RawNumericalCapture,
-    verification: &RawNumericalCapture,
+    candidate: &RawNumericalCapture<'_>,
+    verification: &RawNumericalCapture<'_>,
     runtime_parameters: &AuthenticatedRuntimeParameterContract,
     seed: u64,
 ) -> RusticolResult<()> {
     if candidate.dimensions != verification.dimensions
-        || candidate
-            .observations
-            .keys()
-            .ne(verification.observations.keys())
+        || candidate.observation_rows.len() != verification.observation_rows.len()
         || !sets_are_disjoint(&candidate.point_sha256s, &verification.point_sha256s)
         || !sets_are_disjoint(
             &candidate.kinematic_sha256s,
@@ -1744,7 +2118,10 @@ fn domain_seed(seed: u64, domain: &str, index: usize) -> u64 {
     )
 }
 
-fn parse_canonical_decimal(value: &str, context: &str) -> RusticolResult<BigRational> {
+fn validate_canonical_decimal_text<'a>(
+    value: &'a str,
+    context: &str,
+) -> RusticolResult<(&'a str, &'a str, bool)> {
     const MAX_DECIMAL_BYTES: usize = 16_384;
     if value.is_empty()
         || value.len() > MAX_DECIMAL_BYTES
@@ -1781,6 +2158,11 @@ fn parse_canonical_decimal(value: &str, context: &str) -> RusticolResult<BigRati
     if negative && integer == "0" && fraction.bytes().all(|byte| byte == b'0') {
         return Err(invalid(format!("{context} is negative zero")));
     }
+    Ok((integer, fraction, negative))
+}
+
+fn parse_canonical_decimal(value: &str, context: &str) -> RusticolResult<BigRational> {
+    let (integer, fraction, negative) = validate_canonical_decimal_text(value, context)?;
     let digits = format!("{integer}{fraction}");
     let mut numerator = BigInt::from_str(&digits)
         .map_err(|_| invalid(format!("{context} decimal numerator is invalid")))?;
@@ -1900,17 +2282,139 @@ fn python_f64_hex_signed(value: f64) -> String {
     format!("{sign}{}", python_f64_hex(value.abs()))
 }
 
-fn raw_probe_scalar(value: &RawProbeValue, scalar_component: usize) -> &BigRational {
+fn raw_observation_row<'a>(
+    capture: &'a RawNumericalCapture<'_>,
+    current_id: u32,
+    context: &str,
+) -> RusticolResult<&'a RawObservationRow> {
+    capture
+        .observation_rows
+        .get(current_id as usize)
+        .ok_or_else(|| invalid(format!("{context} row is absent")))
+}
+
+fn visit_raw_observation_text<'a, F>(
+    capture: &RawNumericalCapture<'a>,
+    current_id: u32,
+    context: &str,
+    mut visit: F,
+) -> RusticolResult<()>
+where
+    F: FnMut(usize, &'a str, &'a str) -> RusticolResult<()>,
+{
+    let row = raw_observation_row(capture, current_id, context)?;
+    let values_range = row.values.as_usize(capture.raw_bytes.len(), context)?;
+    let values = capture
+        .raw_bytes
+        .get(values_range.clone())
+        .ok_or_else(|| invalid(format!("{context} values are absent")))?;
+    let dimension = capture
+        .dimensions
+        .get(current_id as usize)
+        .copied()
+        .ok_or_else(|| invalid(format!("{context} dimension is absent")))?;
+    let expected_width = capture
+        .point_count
+        .checked_mul(usize::from(dimension))
+        .ok_or_else(|| invalid(format!("{context} width overflows usize")))?;
+    let mut cursor = CanonicalObservationCursor {
+        bytes: values,
+        position: 0,
+        absolute_start: values_range.start,
+    };
+    cursor.expect(b"[", context)?;
+    for index in 0..expected_width {
+        if index != 0 {
+            cursor.expect(b",", context)?;
+        }
+        cursor.expect(b"[", context)?;
+        let real = cursor.decimal_string(&format!("{context} component {index} real part"))?;
+        cursor.expect(b",", context)?;
+        let imaginary =
+            cursor.decimal_string(&format!("{context} component {index} imaginary part"))?;
+        cursor.expect(b"]", context)?;
+        visit(index, real, imaginary)?;
+    }
+    cursor.expect(b"]", context)?;
+    if cursor.position != cursor.bytes.len() {
+        return Err(invalid(format!(
+            "{context} has trailing or extra observation values"
+        )));
+    }
+    Ok(())
+}
+
+fn parse_raw_observation_values(
+    capture: &RawNumericalCapture<'_>,
+    current_id: u32,
+    context: &str,
+) -> RusticolResult<Vec<ExactProbeComplex>> {
+    let dimension = capture
+        .dimensions
+        .get(current_id as usize)
+        .copied()
+        .ok_or_else(|| invalid(format!("{context} dimension is absent")))?;
+    let width = capture
+        .point_count
+        .checked_mul(usize::from(dimension))
+        .ok_or_else(|| invalid(format!("{context} width overflows usize")))?;
+    let mut values = Vec::with_capacity(width);
+    visit_raw_observation_text(capture, current_id, context, |index, real, imaginary| {
+        values.push((
+            parse_canonical_decimal(real, &format!("{context} component {index} real part"))?,
+            parse_canonical_decimal(
+                imaginary,
+                &format!("{context} component {index} imaginary part"),
+            )?,
+        ));
+        Ok(())
+    })?;
+    Ok(values)
+}
+
+fn raw_observation_value(
+    capture: &RawNumericalCapture<'_>,
+    current_id: u32,
+    observation_index: usize,
+    context: &str,
+) -> RusticolResult<ExactProbeComplex> {
+    let mut selected = None;
+    visit_raw_observation_text(capture, current_id, context, |index, real, imaginary| {
+        if index == observation_index {
+            selected = Some((
+                parse_canonical_decimal(real, &format!("{context} selected real part"))?,
+                parse_canonical_decimal(imaginary, &format!("{context} selected imaginary part"))?,
+            ));
+        }
+        Ok(())
+    })?;
+    selected.ok_or_else(|| invalid(format!("{context} selected observation is absent")))
+}
+
+fn raw_observation_values_bytes<'a>(
+    capture: &RawNumericalCapture<'a>,
+    current_id: u32,
+    context: &str,
+) -> RusticolResult<&'a [u8]> {
+    let row = raw_observation_row(capture, current_id, context)?;
+    let range = row.values.as_usize(capture.raw_bytes.len(), context)?;
+    capture
+        .raw_bytes
+        .get(range)
+        .ok_or_else(|| invalid(format!("{context} values are absent")))
+}
+
+fn exact_probe_scalar(value: &ExactProbeComplex, scalar_component: usize) -> &BigRational {
     if scalar_component == 0 {
-        &value.value.0
+        &value.0
     } else {
-        &value.value.1
+        &value.1
     }
 }
 
 fn build_raw_numerical_candidate_indexes(
     source: &RawSourceSemantics,
-    candidate: &RawNumericalCapture,
+    candidate: &RawNumericalCapture<'_>,
 ) -> RusticolResult<BTreeMap<Vec<u8>, RawNumericalCandidateIndex>> {
     let mut members_by_contract = BTreeMap::<Vec<u8>, Vec<u32>>::new();
     for current in &source.currents {
@@ -1922,41 +2426,52 @@ fn build_raw_numerical_candidate_indexes(
     members_by_contract
         .into_iter()
         .map(|(contract, members)| {
-            let first = members
+            let first_id = members
                 .first()
-                .and_then(|current_id| candidate.observations.get(current_id))
+                .copied()
                 .ok_or_else(|| invalid("raw numerical candidate index has no members"))?;
-            if first.is_empty()
-                || members.iter().any(|current_id| {
-                    candidate
-                        .observations
-                        .get(current_id)
-                        .is_none_or(|values| values.len() != first.len())
-                })
-            {
-                return Err(invalid(
-                    "raw numerical candidate index has inconsistent widths",
-                ));
+            let dimension = candidate
+                .dimensions
+                .get(first_id as usize)
+                .copied()
+                .ok_or_else(|| invalid("raw numerical candidate index dimension is absent"))?;
+            let width = candidate
+                .point_count
+                .checked_mul(usize::from(dimension))
+                .ok_or_else(|| invalid("raw numerical candidate index width overflows usize"))?;
+            let scalar_width = width
+                .checked_mul(2)
+                .ok_or_else(|| invalid("raw numerical candidate scalar width overflows usize"))?;
+            let mut scalar_columns = (0..scalar_width)
+                .map(|_| Vec::<&str>::with_capacity(members.len()))
+                .collect::<Vec<_>>();
+            for current_id in &members {
+                if candidate.dimensions.get(*current_id as usize) != Some(&dimension) {
+                    return Err(invalid(
+                        "raw numerical candidate index has inconsistent widths",
+                    ));
+                }
+                visit_raw_observation_text(
+                    candidate,
+                    *current_id,
+                    "raw numerical candidate index",
+                    |index, real, imaginary| {
+                        scalar_columns[index * 2].push(real);
+                        scalar_columns[index * 2 + 1].push(imaginary);
+                        Ok(())
+                    },
+                )?;
             }
             let mut best_choice = (0_usize, 0_usize);
             let mut best_score = (0_usize, 0_usize);
-            for observation_index in 0..first.len() {
+            for observation_index in 0..width {
                 for scalar_component in 0..2 {
-                    let mut unique = BTreeSet::<BigRational>::new();
-                    let mut nonzero = 0_usize;
-                    for current_id in &members {
-                        let value = candidate
-                            .observations
-                            .get(current_id)
-                            .and_then(|values| values.get(observation_index))
-                            .ok_or_else(|| {
-                                invalid("raw numerical candidate index value is absent")
-                            })?;
-                        let scalar = raw_probe_scalar(value, scalar_component);
-                        unique.insert(scalar.clone());
-                        nonzero += usize::from(!scalar.is_zero());
-                    }
-                    let score = (unique.len(), nonzero);
+                    let column = &mut scalar_columns[observation_index * 2 + scalar_component];
+                    column.sort_unstable();
+                    let unique = usize::from(!column.is_empty())
+                        + column.windows(2).filter(|pair| pair[0] != pair[1]).count();
+                    let nonzero = column.iter().filter(|value| **value != "0").count();
+                    let score = (unique, nonzero);
                     if score > best_score
                         || score == best_score
                             && (observation_index, scalar_component) < best_choice
@@ -1969,12 +2484,16 @@ fn build_raw_numerical_candidate_indexes(
             let mut entries = members
                 .iter()
                 .map(|current_id| {
-                    let value = candidate
-                        .observations
-                        .get(current_id)
-                        .and_then(|values| values.get(best_choice.0))
-                        .ok_or_else(|| invalid("raw numerical candidate index value is absent"))?;
-                    Ok((raw_probe_scalar(value, best_choice.1).clone(), *current_id))
+                    let value = raw_observation_value(
+                        candidate,
+                        *current_id,
+                        best_choice.0,
+                        "raw numerical candidate index",
+                    )?;
+                    Ok((
+                        exact_probe_scalar(&value, best_choice.1).clone(),
+                        *current_id,
+                    ))
                 })
                 .collect::<RusticolResult<Vec<_>>>()?;
             entries.sort();
@@ -1992,7 +2511,7 @@ fn build_raw_numerical_candidate_indexes(
 
 fn raw_numerical_tolerance_window_ids(
     index: &RawNumericalCandidateIndex,
-    current_values: &[RawProbeValue],
+    selected: &ExactProbeComplex,
     current_id: u32,
     relation_kind: &str,
     relative_tolerance: &BigRational,
@@ -2003,9 +2522,6 @@ fn raw_numerical_tolerance_window_ids(
             "raw numerical candidate index relation is unsupported",
         ));
     }
-    let selected = current_values
-        .get(index.observation_index)
-        .ok_or_else(|| invalid("raw numerical candidate index observation is absent"))?;
     if relative_tolerance >= &BigRational::one() {
         return Ok(index
             .entries
@@ -2015,7 +2531,7 @@ fn raw_numerical_tolerance_window_ids(
             })
             .collect());
     }
-    let selected_scalar = raw_probe_scalar(selected, index.scalar_component);
+    let selected_scalar = exact_probe_scalar(selected, index.scalar_component);
     let target = if relation_kind == "equal" {
         selected_scalar.clone()
     } else {
@@ -2025,7 +2541,7 @@ fn raw_numerical_tolerance_window_ids(
     // (residual), passing gives D <= a+r*max(X,Y) and reverse triangle gives
     // Y <= X+D.  Hence r<1 implies D <= (a+rX)/(1-r); the indexed scalar
     // residual is <= D, so this window cannot discard a passing relation.
-    let current_scale = selected.value.0.abs().max(selected.value.1.abs());
+    let current_scale = selected.0.abs().max(selected.1.abs());
     let radius = (absolute_tolerance + relative_tolerance * current_scale)
         / (BigRational::one() - relative_tolerance);
     let lower_value = &target - &radius;
@@ -2047,8 +2563,8 @@ fn raw_numerical_tolerance_window_ids(
 #[allow(clippy::too_many_arguments)]
 fn derive_raw_numerical_relations(
     source: &RawSourceSemantics,
-    candidate: &RawNumericalCapture,
-    verification: &RawNumericalCapture,
+    candidate: &RawNumericalCapture<'_>,
+    verification: &RawNumericalCapture<'_>,
     precision_digits: u32,
     seed: u64,
     relative_tolerance: &BigRational,
@@ -2098,16 +2614,18 @@ fn derive_raw_numerical_relations(
             prior.push(current.current_id);
             continue;
         }
-        let current_values = candidate
-            .observations
-            .get(&current.current_id)
-            .ok_or_else(|| invalid("raw numerical current observations are absent"))?;
         let candidate_index = candidate_indexes
             .get(&current.contract_key)
             .ok_or_else(|| invalid("raw numerical candidate index contract is absent"))?;
+        let selected = raw_observation_value(
+            candidate,
+            current.current_id,
+            candidate_index.observation_index,
+            "raw numerical candidate index current",
+        )?;
         let equal_representatives = raw_numerical_tolerance_window_ids(
             candidate_index,
-            current_values,
+            &selected,
             current.current_id,
             "equal",
             relative_tolerance,
@@ -2115,7 +2633,7 @@ fn derive_raw_numerical_relations(
         )?;
         let opposite_representatives = raw_numerical_tolerance_window_ids(
             candidate_index,
-            current_values,
+            &selected,
             current.current_id,
             "opposite",
             relative_tolerance,
@@ -2358,24 +2876,25 @@ fn relation_residuals(
     relation_kind: &str,
     current_id: u32,
     representative_id: Option<u32>,
-    capture: &RawNumericalCapture,
+    capture: &RawNumericalCapture<'_>,
     relative_tolerance: &BigRational,
     absolute_tolerance: &BigRational,
 ) -> RusticolResult<RelationResiduals> {
-    let current = capture
-        .observations
-        .get(&current_id)
-        .ok_or_else(|| invalid("raw numerical current observations are absent"))?;
+    let current =
+        parse_raw_observation_values(capture, current_id, "raw numerical current observations")?;
     let representative = representative_id
         .map(|representative_id| {
-            capture
-                .observations
-                .get(&representative_id)
-                .ok_or_else(|| invalid("raw representative observations are absent"))
+            parse_raw_observation_values(
+                capture,
+                representative_id,
+                "raw numerical representative observations",
+            )
         })
         .transpose()?;
     if relation_kind != "zero"
-        && representative.is_none_or(|representative| representative.len() != current.len())
+        && representative
+            .as_ref()
+            .is_none_or(|representative| representative.len() != current.len())
     {
         return Err(invalid("raw numerical relation width is invalid"));
     }
@@ -2387,11 +2906,11 @@ fn relation_residuals(
         let representative_value = if relation_kind == "zero" {
             &zero
         } else {
-            &representative
+            representative
+                .as_ref()
                 .expect("checked non-zero representative")
                 .get(index)
                 .ok_or_else(|| invalid("raw representative observation is absent"))?
-                .value
         };
         let (right_real, right_imaginary) = match relation_kind {
             "zero" | "equal" => (
@@ -2404,14 +2923,13 @@ fn relation_residuals(
             ),
             _ => return Err(invalid("raw numerical relation kind is unsupported")),
         };
-        let difference = (&current_value.value.0 - right_real)
+        let difference = (&current_value.0 - right_real)
             .abs()
-            .max((&current_value.value.1 - right_imaginary).abs());
+            .max((&current_value.1 - right_imaginary).abs());
         let scale = current_value
-            .value
             .0
             .abs()
-            .max(current_value.value.1.abs())
+            .max(current_value.1.abs())
             .max(representative_value.0.abs())
             .max(representative_value.1.abs());
         let allowed = absolute_tolerance + relative_tolerance * &scale;
@@ -2444,8 +2962,8 @@ fn build_derived_numerical_relation(
     representative_id: Option<u32>,
     execution_representative_id: u32,
     relation_kind: &str,
-    candidate: &RawNumericalCapture,
-    verification: &RawNumericalCapture,
+    candidate: &RawNumericalCapture<'_>,
+    verification: &RawNumericalCapture<'_>,
     candidate_residuals: &RelationResiduals,
     verification_residuals: &RelationResiduals,
     precision_digits: u32,
@@ -2600,44 +3118,50 @@ fn relation_observation_sha256(
     current_id: u32,
     representative_id: Option<u32>,
     relation_kind: &str,
-    capture: &RawNumericalCapture,
+    capture: &RawNumericalCapture<'_>,
 ) -> RusticolResult<String> {
-    let current_values = raw_probe_values_json(
-        capture
-            .observations
-            .get(&current_id)
-            .ok_or_else(|| invalid("raw relation current observations are absent"))?,
-    );
-    let representative_values = representative_id
-        .map(|representative_id| {
-            capture
-                .observations
-                .get(&representative_id)
-                .map(|values| JsonValue::Array(raw_probe_values_json(values)))
-                .ok_or_else(|| invalid("raw relation representative observations are absent"))
-        })
-        .transpose()?
-        .unwrap_or(JsonValue::Null);
-    canonical_json_sha256(
-        &serde_json::json!({
-            "abi": "pyamplicol-recurrence-relation-observation-v2",
-            "capture_contract_sha256": capture.capture_contract_sha256,
-            "current_id": current_id,
-            "representative_id": representative_id,
-            "relation_kind": relation_kind,
-            "current_dimension": capture.dimensions[&current_id],
-            "current_values": current_values,
-            "representative_values": representative_values,
-        }),
+    const CURRENT_PLACEHOLDER: &str = "__pyamplicol_authenticated_current_values_placeholder__";
+    const REPRESENTATIVE_PLACEHOLDER: &str =
+        "__pyamplicol_authenticated_representative_values_placeholder__";
+    let current_values =
+        raw_observation_values_bytes(capture, current_id, "raw relation current observations")?;
+    let current_dimension = capture
+        .dimensions
+        .get(current_id as usize)
+        .copied()
+        .ok_or_else(|| invalid("raw relation current dimension is absent"))?;
+    let (representative_values, representative_raw) =
+        if let Some(representative_id) = representative_id {
+            (
+                serde_json::json!([REPRESENTATIVE_PLACEHOLDER]),
+                Some(raw_observation_values_bytes(
+                    capture,
+                    representative_id,
+                    "raw relation representative observations",
+                )?),
+            )
+        } else {
+            (JsonValue::Null, None)
+        };
+    let payload = serde_json::json!({
+        "abi": "pyamplicol-recurrence-relation-observation-v2",
+        "capture_contract_sha256": capture.capture_contract_sha256,
+        "current_id": current_id,
+        "representative_id": representative_id,
+        "relation_kind": relation_kind,
+        "current_dimension": current_dimension,
+        "current_values": [CURRENT_PLACEHOLDER],
+        "representative_values": representative_values,
+    });
+    let mut replacements = vec![(CURRENT_PLACEHOLDER, current_values)];
+    if let Some(representative_raw) = representative_raw {
+        replacements.push((REPRESENTATIVE_PLACEHOLDER, representative_raw));
+    }
+    canonical_json_sha256_with_raw_arrays(
+        &payload,
+        &replacements,
         "raw numerical relation observations",
     )
-}
-
-fn raw_probe_values_json(values: &[RawProbeValue]) -> Vec<JsonValue> {
-    values
-        .iter()
-        .map(|value| serde_json::json!([value.real_text.as_str(), value.imaginary_text.as_str()]))
-        .collect()
 }
 
 fn rational_string(value: &BigRational) -> String {
@@ -2723,6 +3247,50 @@ mod tests {
         parse_numerical_relation_evidence(bytes, &empty_runtime_parameter_contract())
     }
 
+    fn scanner_source(metadata_bytes: &[u8]) -> (JsonValue, RawSourceSemantics) {
+        let metadata: JsonValue = serde_json::from_slice(metadata_bytes).unwrap();
+        let object = metadata.as_object().unwrap();
+        let source_semantics_sha256 = object["source_semantics_sha256"].as_str().unwrap();
+        let source = parse_raw_source_semantics(
+            &object["source_semantics"],
+            source_semantics_sha256,
+            object["schedule_semantic_digest"].as_str().unwrap(),
+            object["baseline_runtime_layout_digest"].as_str().unwrap(),
+            &empty_runtime_parameter_contract(),
+        )
+        .unwrap();
+        (metadata, source)
+    }
+
+    fn capture_from_observation_array<'a>(
+        encoded: &'a [u8],
+        source: &RawSourceSemantics,
+        point_count: usize,
+    ) -> RawNumericalCapture<'a> {
+        let observation_array =
+            RawByteRange::from_usize(0, encoded.len(), encoded.len(), "test observation array")
+                .unwrap();
+        let observation_rows =
+            scan_raw_observation_array(encoded, observation_array, source, point_count, "test")
+                .unwrap();
+        RawNumericalCapture {
+            raw_bytes: encoded,
+            observation_rows,
+            point_count,
+            point_sha256s: Vec::new(),
+            kinematic_sha256s: Vec::new(),
+            parameter_context_sha256s: Vec::new(),
+            parameter_contexts: Vec::new(),
+            dimensions: source
+                .currents
+                .iter()
+                .map(|current| current.dimension)
+                .collect(),
+            observation_batch_sha256: digest(80),
+            capture_contract_sha256: digest(81),
+        }
+    }
+
     fn refresh_numerical_certificate_set_digest(value: &mut JsonValue) {
         let object = value.as_object().unwrap();
         let relation_set = json!({
@@ -2740,14 +3308,12 @@ mod tests {
     }
 
     fn raw_capture_fixture(
-        label: &str,
         domain: &str,
         point_base: u32,
-        source: &RawSourceSemantics,
         source_semantics_sha256: &str,
         runtime_parameter_schema_sha256: &str,
         seed: u64,
-    ) -> (JsonValue, RawNumericalCapture) {
+    ) -> JsonValue {
         let points = (0..4_u32)
             .map(|index| {
                 let value = point_base + index;
@@ -2899,20 +3465,7 @@ mod tests {
             "current_dimensions": dimensions,
             "observations": observations,
         });
-        let parsed = parse_raw_numerical_capture(
-            &value,
-            label,
-            domain,
-            96,
-            4,
-            source,
-            source_semantics_sha256,
-            runtime_parameter_schema_sha256,
-            0,
-            seed,
-        )
-        .unwrap();
-        (value, parsed)
+        value
     }
 
     fn canonical_numerical_relation_evidence() -> JsonValue {
@@ -2962,24 +3515,60 @@ mod tests {
             "fixture runtime parameter schema",
         )
         .unwrap();
-        let (candidate_value, candidate) = raw_capture_fixture(
-            "candidate",
+        let candidate_value = raw_capture_fixture(
             "candidate-current-probes-v1",
             1,
-            &source,
             &source_semantics_sha256,
             &runtime_parameter_schema_sha256,
             seed,
         );
-        let (verification_value, verification) = raw_capture_fixture(
-            "verification",
+        let verification_value = raw_capture_fixture(
             "independent-verification-current-probes-v1",
             101,
-            &source,
             &source_semantics_sha256,
             &runtime_parameter_schema_sha256,
             seed,
         );
+        let fixture_wire = canonical_json_bytes(
+            &json!({
+                "candidate_capture": candidate_value.clone(),
+                "verification_capture": verification_value.clone(),
+            }),
+            "raw capture fixture wire",
+        )
+        .unwrap();
+        let located = locate_raw_observation_arrays(&fixture_wire).unwrap();
+        let metadata: JsonValue = serde_json::from_slice(&located.metadata_bytes).unwrap();
+        let candidate = parse_raw_numerical_capture(
+            &fixture_wire,
+            located.candidate,
+            &metadata["candidate_capture"],
+            "candidate",
+            "candidate-current-probes-v1",
+            96,
+            4,
+            &source,
+            &source_semantics_sha256,
+            &runtime_parameter_schema_sha256,
+            0,
+            seed,
+        )
+        .unwrap();
+        let verification = parse_raw_numerical_capture(
+            &fixture_wire,
+            located.verification,
+            &metadata["verification_capture"],
+            "verification",
+            "independent-verification-current-probes-v1",
+            96,
+            4,
+            &source,
+            &source_semantics_sha256,
+            &runtime_parameter_schema_sha256,
+            0,
+            seed,
+        )
+        .unwrap();
         validate_independent_raw_captures(
             &candidate,
             &verification,
@@ -3244,85 +3833,162 @@ mod tests {
     }
 
     #[test]
+    fn observation_locator_builds_canonical_metadata_and_authenticated_offsets() {
+        let evidence = canonical_numerical_relation_evidence();
+        let encoded = canonical_json_bytes(&evidence, "observation locator fixture").unwrap();
+        let located = locate_raw_observation_arrays(&encoded).unwrap();
+        let (metadata, source) = scanner_source(&located.metadata_bytes);
+        validate_canonical_json_bytes(
+            &metadata,
+            &located.metadata_bytes,
+            "observation locator metadata",
+        )
+        .unwrap();
+        assert_eq!(metadata["candidate_capture"]["observations"], json!([]));
+        assert_eq!(metadata["verification_capture"]["observations"], json!([]));
+        let candidate =
+            scan_raw_observation_array(&encoded, located.candidate, &source, 4, "candidate")
+                .unwrap();
+        let verification =
+            scan_raw_observation_array(&encoded, located.verification, &source, 4, "verification")
+                .unwrap();
+        assert_eq!(candidate.len(), source.currents.len());
+        assert_eq!(verification.len(), source.currents.len());
+        assert!(candidate.iter().all(|row| row.row.start < row.row.end));
+        assert!(
+            candidate
+                .iter()
+                .all(|row| row.row.start <= row.values.start && row.values.end <= row.row.end)
+        );
+    }
+
+    #[test]
+    fn observation_scanner_rejects_truncated_reordered_extra_and_wrong_width_rows() {
+        let evidence = canonical_numerical_relation_evidence();
+        let encoded = canonical_json_bytes(&evidence, "observation scanner fixture").unwrap();
+        let located = locate_raw_observation_arrays(&encoded).unwrap();
+        let (_metadata, source) = scanner_source(&located.metadata_bytes);
+        let candidate_range = located
+            .candidate
+            .as_usize(encoded.len(), "candidate fixture")
+            .unwrap();
+        let candidate = &encoded[candidate_range];
+
+        let truncated = &candidate[..candidate.len() - 1];
+        let truncated_range =
+            RawByteRange::from_usize(0, truncated.len(), truncated.len(), "truncated").unwrap();
+        assert!(
+            scan_raw_observation_array(truncated, truncated_range, &source, 4, "truncated",)
+                .unwrap_err()
+                .to_string()
+                .contains("malformed or not canonical")
+        );
+
+        let text = std::str::from_utf8(candidate).unwrap();
+        let reordered = text.replacen(
+            "{\"current_id\":0,\"dimension\":1,",
+            "{\"dimension\":1,\"current_id\":0,",
+            1,
+        );
+        assert_ne!(reordered, text);
+        let reordered_range =
+            RawByteRange::from_usize(0, reordered.len(), reordered.len(), "reordered").unwrap();
+        assert!(
+            scan_raw_observation_array(
+                reordered.as_bytes(),
+                reordered_range,
+                &source,
+                4,
+                "reordered",
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("malformed or not canonical")
+        );
+
+        let mut extra = candidate[..candidate.len() - 1].to_vec();
+        extra.extend_from_slice(b",{}]");
+        let extra_range = RawByteRange::from_usize(0, extra.len(), extra.len(), "extra").unwrap();
+        assert!(
+            scan_raw_observation_array(&extra, extra_range, &source, 4, "extra")
+                .unwrap_err()
+                .to_string()
+                .contains("malformed or not canonical")
+        );
+
+        let mut wrong_width = evidence["candidate_capture"]["observations"].clone();
+        wrong_width[0]["values"].as_array_mut().unwrap().pop();
+        let wrong_width =
+            canonical_json_bytes(&wrong_width, "wrong-width observation fixture").unwrap();
+        let wrong_width_range =
+            RawByteRange::from_usize(0, wrong_width.len(), wrong_width.len(), "wrong width")
+                .unwrap();
+        assert!(
+            scan_raw_observation_array(&wrong_width, wrong_width_range, &source, 4, "wrong width",)
+                .unwrap_err()
+                .to_string()
+                .contains("malformed or not canonical")
+        );
+
+        let mut wide_scalar = evidence["candidate_capture"]["observations"].clone();
+        wide_scalar[0]["values"][0][0] = json!("1".repeat(16_385));
+        let wide_scalar =
+            canonical_json_bytes(&wide_scalar, "wide-scalar observation fixture").unwrap();
+        let wide_scalar_range =
+            RawByteRange::from_usize(0, wide_scalar.len(), wide_scalar.len(), "wide scalar")
+                .unwrap();
+        assert!(
+            scan_raw_observation_array(&wide_scalar, wide_scalar_range, &source, 4, "wide scalar",)
+                .unwrap_err()
+                .to_string()
+                .contains("canonical finite decimal")
+        );
+
+        if usize::BITS > 32 {
+            let overflow = u32::MAX as usize + 1;
+            assert!(
+                RawByteRange::from_usize(overflow, overflow, overflow, "overflow")
+                    .unwrap_err()
+                    .to_string()
+                    .contains("exceeds u32")
+            );
+        }
+    }
+
+    #[test]
     fn raw_candidate_index_is_complete_at_equal_and_opposite_boundaries() {
         fn rational(numerator: i128, denominator: i128) -> BigRational {
             BigRational::new(BigInt::from(numerator), BigInt::from(denominator))
         }
-        fn probe(value: BigRational) -> RawProbeValue {
-            RawProbeValue {
-                real_text: rational_string(&value),
-                imaginary_text: "0".to_owned(),
-                value: (value, BigRational::zero()),
-            }
-        }
-        let large = BigRational::from_integer(BigInt::from(10_u8).pow(100));
-        let values = [
-            (0_u32, rational(100, 9), large.clone()),
-            (1, rational(-100, 9), -large.clone()),
-            (
-                2,
-                BigRational::from_integer(BigInt::from(1_000)),
-                BigRational::zero(),
-            ),
-            (4, BigRational::from_integer(BigInt::from(10)), large),
+        let mut entries = vec![
+            (rational(100, 9), 0),
+            (rational(-100, 9), 1),
+            (BigRational::from_integer(BigInt::from(1_000)), 2),
+            (BigRational::from_integer(BigInt::from(10)), 4),
         ];
-        let observations = values
-            .into_iter()
-            .map(|(current_id, selected, unrelated)| {
-                (current_id, vec![probe(selected), probe(unrelated)])
-            })
-            .collect::<BTreeMap<_, _>>();
-        let source = RawSourceSemantics {
-            value: json!({}),
-            process_id: "candidate-index-test".to_owned(),
-            physical_pdgs: vec![1],
-            strategy: "contracted-color-union".to_owned(),
-            selector_schedule: json!({}),
-            currents: [0_u32, 1, 2, 4]
-                .into_iter()
-                .map(|current_id| RawSourceCurrent {
-                    current_id,
-                    is_source: false,
-                    contract_key: vec![1],
-                    dimension: 2,
-                })
-                .collect(),
+        entries.sort();
+        let index = RawNumericalCandidateIndex {
+            observation_index: 0,
+            scalar_component: 0,
+            entries,
         };
-        let capture = RawNumericalCapture {
-            point_sha256s: Vec::new(),
-            kinematic_sha256s: Vec::new(),
-            parameter_context_sha256s: Vec::new(),
-            parameter_contexts: Vec::new(),
-            observations,
-            dimensions: BTreeMap::new(),
-            observation_batch_sha256: digest(80),
-            capture_contract_sha256: digest(81),
-        };
-        let indexes = build_raw_numerical_candidate_indexes(&source, &capture).unwrap();
-        let index = indexes.get(&vec![1]).unwrap();
-        assert_eq!((index.observation_index, index.scalar_component), (0, 0));
-        let current = capture.observations.get(&4).unwrap();
+        let current = (
+            BigRational::from_integer(BigInt::from(10)),
+            BigRational::zero(),
+        );
         let relative = rational(1, 10);
         let absolute = BigRational::zero();
         let boundary_residual = rational(10, 9);
+        assert_eq!((&current.0 - rational(100, 9)).abs(), boundary_residual,);
+        assert_eq!(&relative * rational(100, 9).abs(), boundary_residual,);
         assert_eq!(
-            (&current[0].value.0 - &capture.observations[&0][0].value.0).abs(),
-            boundary_residual,
-        );
-        assert_eq!(
-            &relative * capture.observations[&0][0].value.0.abs(),
-            boundary_residual,
-        );
-        // The unrelated 10^100 observation is exact under the signed
-        // relations and must not enlarge the selected pair's window.
-        assert_eq!(
-            raw_numerical_tolerance_window_ids(index, current, 4, "equal", &relative, &absolute,)
+            raw_numerical_tolerance_window_ids(&index, &current, 4, "equal", &relative, &absolute,)
                 .unwrap(),
             BTreeSet::from([0]),
         );
         assert_eq!(
             raw_numerical_tolerance_window_ids(
-                index, current, 4, "opposite", &relative, &absolute,
+                &index, &current, 4, "opposite", &relative, &absolute,
             )
             .unwrap(),
             BTreeSet::from([1]),
@@ -3440,42 +4106,54 @@ mod tests {
                 .all(|row| !verification.iter().any(|other| row == other))
         );
 
-        let value = |numerator: i64, denominator: i64| RawProbeValue {
-            real_text: rational_string(&BigRational::new(
-                BigInt::from(numerator),
-                BigInt::from(denominator),
-            )),
-            imaginary_text: "0".to_owned(),
-            value: (
-                BigRational::new(BigInt::from(numerator), BigInt::from(denominator)),
-                BigRational::zero(),
-            ),
+        let source = RawSourceSemantics {
+            value: json!({}),
+            process_id: "residual-test".to_owned(),
+            physical_pdgs: vec![1],
+            strategy: "contracted-color-union".to_owned(),
+            selector_schedule: json!({}),
+            currents: (0..2)
+                .map(|current_id| RawSourceCurrent {
+                    current_id,
+                    is_source: false,
+                    contract_key: vec![1],
+                    dimension: 1,
+                })
+                .collect(),
         };
-        let capture = |current_value: RawProbeValue| RawNumericalCapture {
-            point_sha256s: vec![digest(1)],
-            kinematic_sha256s: vec![digest(2)],
-            parameter_context_sha256s: vec![digest(4)],
-            parameter_contexts: vec![vec![]],
-            observations: BTreeMap::from([(0, vec![value(1, 1)]), (1, vec![current_value])]),
-            dimensions: BTreeMap::from([(0, 1), (1, 1)]),
-            observation_batch_sha256: digest(5),
-            capture_contract_sha256: digest(6),
-        };
+        let boundary_bytes = canonical_json_bytes(
+            &json!([
+                {"current_id": 0, "dimension": 1, "values": [["1", "0"]]},
+                {"current_id": 1, "dimension": 1, "values": [["2", "0"]]},
+            ]),
+            "boundary observation capture",
+        )
+        .unwrap();
+        let boundary_capture = capture_from_observation_array(&boundary_bytes, &source, 1);
         let boundary = relation_residuals(
             "equal",
             1,
             Some(0),
-            &capture(value(2, 1)),
+            &boundary_capture,
             &BigRational::zero(),
             &BigRational::one(),
         )
         .unwrap();
         assert_eq!(boundary.maximum_ratio, BigRational::one());
+        let outside_bytes = canonical_json_bytes(
+            &json!([
+                {"current_id": 0, "dimension": 1, "values": [["1", "0"]]},
+                {"current_id": 1, "dimension": 1, "values": [["2.000001", "0"]]},
+            ]),
+            "outside observation capture",
+        )
+        .unwrap();
+        let outside_capture = capture_from_observation_array(&outside_bytes, &source, 1);
         let outside = relation_residuals(
             "equal",
             1,
             Some(0),
-            &capture(value(2_000_001, 1_000_000)),
+            &outside_capture,
             &BigRational::zero(),
             &BigRational::one(),
         )
@@ -3571,12 +4249,14 @@ mod tests {
                 .all(|row| row == &[BigRational::zero()])
         );
         let capture = |parameter_contexts, base: u8| RawNumericalCapture {
+            raw_bytes: b"[]",
+            observation_rows: Vec::new(),
+            point_count: 4,
             point_sha256s: (0..4).map(|index| digest(base + index)).collect(),
             kinematic_sha256s: (0..4).map(|index| digest(base + 10 + index)).collect(),
             parameter_context_sha256s: (0..4).map(|index| digest(base + 20 + index)).collect(),
             parameter_contexts,
-            observations: BTreeMap::new(),
-            dimensions: BTreeMap::new(),
+            dimensions: Vec::new(),
             observation_batch_sha256: digest(base + 30),
             capture_contract_sha256: digest(base + 31),
         };
@@ -3611,89 +4291,70 @@ mod tests {
     }
 
     #[test]
-    fn lexical_caps_bound_serde_dom_before_materialization() {
-        let maximum_pre_dom_resident = RAW_PRE_DOM_FIXED_BYTES
+    fn lexical_caps_bound_raw_locator_before_metadata_materialization() {
+        let maximum_pre_metadata_resident = RAW_PRE_DOM_FIXED_BYTES
             + MAX_RAW_EVIDENCE_BYTES * RAW_PRE_DOM_WIRE_COPIES
             + MAX_RAW_JSON_STRUCTURAL_TOKENS * RAW_PRE_DOM_BYTES_PER_TOKEN;
-        assert_eq!(maximum_pre_dom_resident, 989_261_824);
-        assert!(maximum_pre_dom_resident < MAX_RAW_RESIDENT_BYTES);
-        validate_pre_dom_resident_budget(MAX_RAW_EVIDENCE_BYTES, MAX_RAW_JSON_STRUCTURAL_TOKENS)
-            .unwrap();
+        assert_eq!(maximum_pre_metadata_resident, 989_261_824);
+        assert!(maximum_pre_metadata_resident < MAX_RAW_RESIDENT_BYTES);
+        validate_pre_metadata_resident_budget(
+            MAX_RAW_EVIDENCE_BYTES,
+            MAX_RAW_JSON_STRUCTURAL_TOKENS,
+        )
+        .unwrap();
 
         let first_token_count_over_envelope =
             (MAX_RAW_RESIDENT_BYTES - RAW_PRE_DOM_FIXED_BYTES) / RAW_PRE_DOM_BYTES_PER_TOKEN + 1;
         assert!(
-            validate_pre_dom_resident_budget(0, first_token_count_over_envelope)
+            validate_pre_metadata_resident_budget(0, first_token_count_over_envelope)
                 .unwrap_err()
                 .to_string()
-                .contains("pre-DOM 1 GiB")
+                .contains("pre-metadata 1 GiB")
         );
     }
 
     #[test]
-    fn combined_dom_and_exact_capture_residents_fail_closed() {
-        let raw_byte_count = 150_000_000;
-        let structural_token_count = 6_000_000;
-        let scalar_count = 800_000;
-        let row_count = 20_000;
-
-        assert!(raw_byte_count < MAX_RAW_EVIDENCE_BYTES);
-        assert!(structural_token_count < MAX_RAW_JSON_STRUCTURAL_TOKENS);
-        validate_pre_dom_resident_budget(raw_byte_count, structural_token_count).unwrap();
-        assert!(
-            validate_combined_raw_resident_budget(
-                raw_byte_count,
-                structural_token_count,
-                scalar_count,
-                row_count,
-            )
-            .unwrap_err()
-            .to_string()
-            .contains("combined 1 GiB"),
-            "separately valid DOM and exact-capture bounds must not be added after allocation"
-        );
-    }
-
-    #[test]
-    fn a_like_raw_capture_passes_the_combined_native_memory_model() {
-        // Cross-model counterpart of Python's canonical synthetic study:
-        // 17,000 four-component currents over 4+4 probes encode to
-        // 128,293,862 bytes.  Each capture row contributes 107 lexical
-        // tokens; the two observation arrays add their separators, yielding
-        // 216 * current_count + 17 total tokens.
-        let raw_byte_count = 128_293_862;
-        let structural_token_count = 216 * 17_000 + 17;
-        let scalar_count = 1_088_000;
-        let row_count = 34_000;
-        assert_eq!(structural_token_count, 3_672_017);
-        validate_pre_dom_resident_budget(raw_byte_count, structural_token_count).unwrap();
-        validate_combined_raw_resident_budget(
-            raw_byte_count,
-            structural_token_count,
-            scalar_count,
-            row_count,
+    fn streaming_consumer_bound_fails_closed_and_checks_overflow() {
+        let resident = streaming_raw_resident_upper_bound(
+            150_000_000,
+            140_000_000,
+            7_500_000,
+            20_000,
+            100_000,
+            6,
+            4,
+            4,
+            10,
         )
         .unwrap();
-
-        let first_token_count_over_combined_envelope = (MAX_RAW_RESIDENT_BYTES
-            - RAW_PRE_DOM_FIXED_BYTES
-            - raw_byte_count * RAW_PRE_DOM_WIRE_COPIES
-            - scalar_count * RAW_CAPTURE_BYTES_PER_SCALAR
-            - row_count * RAW_CAPTURE_BYTES_PER_ROW)
-            / RAW_PRE_DOM_BYTES_PER_TOKEN
-            + 1;
-        assert!(first_token_count_over_combined_envelope < MAX_RAW_JSON_STRUCTURAL_TOKENS);
-        validate_pre_dom_resident_budget(raw_byte_count, first_token_count_over_combined_envelope)
-            .unwrap();
+        assert!(resident > MAX_RAW_RESIDENT_BYTES);
         assert!(
-            validate_combined_raw_resident_budget(
-                raw_byte_count,
-                first_token_count_over_combined_envelope,
-                scalar_count,
-                row_count,
-            )
-            .is_err()
+            streaming_raw_resident_upper_bound(usize::MAX, 1, 1, 1, 1, 1, 1, 1, 1,)
+                .unwrap_err()
+                .to_string()
+                .contains("overflows")
         );
+    }
+
+    #[test]
+    fn actual_real_a_wire_passes_the_streaming_native_memory_model() {
+        // Exact default NLC capture measurements.  Replacing each observation
+        // array by [] adds four structural tokens relative to the measured
+        // null-placeholder metadata census.
+        let resident = streaming_raw_resident_upper_bound(
+            146_798_789,
+            2_874_885,
+            788_978,
+            17_074,
+            70_776,
+            6,
+            4,
+            4,
+            10,
+        )
+        .unwrap();
+        assert_eq!(resident, 414_500_724);
+        assert!(resident < MAX_RAW_RESIDENT_BYTES);
     }
 
     #[test]

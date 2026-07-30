@@ -3169,6 +3169,7 @@ class GenerationBackend:
                                 validate_recurrence_numerical_current_application(
                                     warmup,
                                     applied_plan,
+                                    baseline_plan=baseline_plan,
                                     precision_digits=(
                                         relation_discovery.precision_digits
                                     ),

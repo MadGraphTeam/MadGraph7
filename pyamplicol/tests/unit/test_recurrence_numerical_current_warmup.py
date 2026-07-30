@@ -30,6 +30,7 @@ from pyamplicol.generation.recurrence_numerical_current_warmup import (
     _pair_residuals,
     _raw_evidence_memory_upper_bound,
     _raw_evidence_wire_byte_limit,
+    _raw_streaming_consumer_memory_upper_bound,
     _runtime_parameter_schema_payload,
     _synthetic_raw_evidence_bytes,
     _synthetic_raw_evidence_bytes_by_dimension_counts,
@@ -226,6 +227,18 @@ def _topology_replay_plan() -> _RecurrenceExactPlan:
     )
 
 
+def _no_relation_plan() -> _RecurrenceExactPlan:
+    plan = _topology_replay_plan()
+    contributions = list(plan.sections.contributions)
+    contributions[1] = replace(contributions[1], exact_factor_id=1)
+    plan.sections = replace(
+        plan.sections,
+        contributions=tuple(contributions),
+        exact_factors=(*plan.sections.exact_factors, _factor(2)),
+    )
+    return plan
+
+
 def _points(seed_start: int) -> tuple[ValidationPointRecord, ...]:
     return tuple(
         ValidationPointRecord(
@@ -299,6 +312,14 @@ def test_recurrence_certified_reuse_uses_two_independent_probe_sets() -> None:
     assert certificate.current_dimension == 1
     assert certificate.candidate_probe_count == 2
     assert certificate.verification_probe_count == 2
+    assert result.candidate_capture.current_count == 4
+    assert result.verification_capture.current_count == 4
+    assert set(result.candidate_capture.observations) == {2, 3}
+    assert set(result.verification_capture.observations) == {2, 3}
+    assert result.candidate_capture.complete_observations_retained is False
+    assert result.verification_capture.complete_observations_retained is False
+    with pytest.raises(ValueError, match="cannot recreate raw evidence"):
+        result.candidate_capture.to_evidence_dict()
     assert set(result.candidate_capture.kinematic_sha256s).isdisjoint(
         result.verification_capture.kinematic_sha256s
     )
@@ -309,6 +330,8 @@ def test_recurrence_certified_reuse_uses_two_independent_probe_sets() -> None:
     assert evidence["relative_tolerance_binary64"] == 1.0e-60.hex()
     assert evidence["absolute_tolerance_binary64"] == 1.0e-70.hex()
     assert evidence["mappings"][0]["factor_integer"] == [1, 0]
+    assert len(evidence["candidate_capture"]["observations"]) == 4
+    assert len(evidence["verification_capture"]["observations"]) == 4
     report = result.to_json_dict()
     assert report["warning"]["required"] is True
     rejected = report["discovery"]["rejected_candidate_diagnostics"]
@@ -359,6 +382,7 @@ def test_recurrence_certified_reuse_uses_two_independent_probe_sets() -> None:
     validated = validate_recurrence_numerical_current_application(
         result,
         _topology_replay_plan(),
+        baseline_plan=_topology_replay_plan(),
         precision_digits=80,
         seed=53,
         relative_tolerance=1.0e-60,
@@ -383,10 +407,84 @@ def test_recurrence_diagnostic_certifies_without_applying_or_warning() -> None:
 
     assert len(result.certificates) == 1
     assert result.applied_relation_count == 0
+    assert result.candidate_capture.current_count == 4
+    assert result.verification_capture.current_count == 4
+    assert result.candidate_capture.observations == {}
+    assert result.verification_capture.observations == {}
+    assert result.candidate_capture.complete_observations_retained is False
+    assert result.verification_capture.complete_observations_retained is False
     report = result.to_json_dict()
     assert report["state"] == "authenticated-numerical-diagnostic-only"
     assert report["warning"]["required"] is False
     assert json.loads(result.evidence_json)["requested_mode"] == "diagnostic"
+
+
+def test_recurrence_no_relation_detaches_all_observations_with_full_census() -> None:
+    result = run_recurrence_numerical_current_warmup(
+        _no_relation_plan(),
+        candidate_points=_points(1),
+        verification_points=_points(101),
+        mode="certified-reuse",
+        color_accuracy="lc",
+        precision_digits=80,
+        seed=71,
+        relative_tolerance=1.0e-60,
+        absolute_tolerance=1.0e-70,
+    )
+
+    assert result.certificates == ()
+    assert result.candidate_capture.current_count == 4
+    assert result.verification_capture.current_count == 4
+    assert result.candidate_capture.observations == {}
+    assert result.verification_capture.observations == {}
+    assert result.discovery_report["inspected_current_count"] == 4
+    assert result.discovery_report["tested_hypothesis_count"] > 0
+    evidence = json.loads(result.evidence_json)
+    assert len(evidence["candidate_capture"]["observations"]) == 4
+    assert len(evidence["verification_capture"]["observations"]) == 4
+
+
+def test_application_recapture_rejects_stale_plan_and_capture_commitment() -> None:
+    result = run_recurrence_numerical_current_warmup(
+        _topology_replay_plan(),
+        candidate_points=_points(1),
+        verification_points=_points(101),
+        mode="certified-reuse",
+        color_accuracy="lc",
+        precision_digits=80,
+        seed=73,
+        relative_tolerance=1.0e-60,
+        absolute_tolerance=1.0e-70,
+    )
+
+    with pytest.raises(ValueError, match="did not reproduce"):
+        validate_recurrence_numerical_current_application(
+            result,
+            _topology_replay_plan(),
+            baseline_plan=_no_relation_plan(),
+            precision_digits=80,
+            seed=73,
+            relative_tolerance=1.0e-60,
+            absolute_tolerance=1.0e-70,
+        )
+
+    tampered = replace(
+        result,
+        verification_capture=replace(
+            result.verification_capture,
+            observation_batch_sha256="0" * 64,
+        ),
+    )
+    with pytest.raises(ValueError, match="did not reproduce"):
+        validate_recurrence_numerical_current_application(
+            tampered,
+            _topology_replay_plan(),
+            baseline_plan=_topology_replay_plan(),
+            precision_digits=80,
+            seed=73,
+            relative_tolerance=1.0e-60,
+            absolute_tolerance=1.0e-70,
+        )
 
 
 def test_recurrence_opt_out_has_no_capture_or_warning() -> None:
@@ -478,6 +576,23 @@ def test_real_a_mixed_dimension_shape_uses_dynamic_wire_budget() -> None:
             wire_sizes[128],
             byte_limit=byte_limit,
         )
+
+
+def test_real_a_streaming_consumer_bound_matches_native_model() -> None:
+    resident = _raw_streaming_consumer_memory_upper_bound(
+        raw_byte_count=146_798_789,
+        metadata_byte_count=2_874_885,
+        metadata_structural_token_count=788_978,
+        current_count=17_074,
+        component_count=70_776,
+        maximum_dimension=6,
+        candidate_probe_count=4,
+        verification_probe_count=4,
+        runtime_parameter_count=10,
+    )
+
+    assert resident == 414_500_724
+    assert resident < _MAX_RAW_EVIDENCE_MEMORY_BYTES
 
 
 def test_runtime_parameter_metadata_reduces_dynamic_wire_budget() -> None:
@@ -766,6 +881,7 @@ def test_application_rejects_current_dimension_drift() -> None:
         validate_recurrence_numerical_current_application(
             result,
             drifted,
+            baseline_plan=_topology_replay_plan(),
             precision_digits=80,
             seed=79,
             relative_tolerance=1.0e-60,
