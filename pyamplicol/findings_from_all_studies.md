@@ -99,71 +99,55 @@ altering DAG structure or numerical results.
 
 ## (b) LC selected-flow `d d~ -> t t~ + 4g`
 
-Paused at the requested checkpoint. The structural excess is characterized,
-but no numerically or physically valid generic canonicalization fix was found.
+Closed on post-merge `main`
+(`20130aeebee8f3cff2c1305ca65fc0fbda4110b7`). The earlier conclusion that
+this process required a deeper representation redesign was wrong: its
+structural excess came from using the terminal label of a public LC word as a
+private recursion-closure sink.
 
-Historical committed measurements (untrusted; pyAmpliCol source `9b7357f`):
+Before the fix, the fresh reproduction was:
 
-| Implementation | Generation [s] | Wall [µs/pt] | Evaluator total [µs/pt] | pyAmpliCol/AmpliCol wall |
-|---|---:|---:|---:|---:|
-| Original AmpliCol | 25.477 | 8.947 | not exposed | 1.00 |
-| pyAmpliCol recurrence JIT O2 | 6.966 | 23.671 | not exposed | 2.65 |
+| Implementation / mode | Generation [s] | Wall [µs/pt] | Evaluator total [µs/pt] | Structure: currents / interactions / roots / sources | Wall / AmpliCol | Wall / recurrence |
+|---|---:|---:|---:|---:|---:|---:|
+| Original AmpliCol | 28.452 | 9.418653 | not exposed | 377 / 1,590 / 128 / 15 (superseded active-probe census) | 1.0000 | 0.3895 |
+| recurrence JIT O2 | 6.991655 | 24.180016 | 22.829824 | 652 / 3,532 / 128 / 16 | 2.5672 | 1.0000 |
+| compiled JIT O3 | 52.066506 | 26.527843 | 26.384622 | 652 / 3,532 / 128 / 16 | 2.8165 | 1.0971 |
 
-The first fresh current-main reproduction confirms the runtime anomaly:
+The bounded post-merge rerun used the same selected public flow
+`(2,5,6,7,8,4,3,1)`, helicity sum, batch 128, and a one-second warmed timing
+target. No quiet-CPU condition was imposed.
 
-| Implementation / mode | Generation [s] | Wall [µs/pt] | Evaluator total [µs/pt] | Wall / AmpliCol | Wall / recurrence |
-|---|---:|---:|---:|---:|---:|
-| Original AmpliCol | 28.452 | 9.418653 | not exposed | 1.0000 | 0.3895 |
-| recurrence JIT O2 | 6.991655 | 24.180016 | 22.829824 | 2.5672 | 1.0000 |
-| compiled JIT O3 | 52.066506 | 26.527843 | 26.384622 | 2.8165 | 1.0971 |
+| Implementation / mode | Generation [s] | Wall [µs/pt] | Evaluator total [µs/pt] | Structure: currents / interactions / roots / sources | Wall / AmpliCol | Wall / recurrence |
+|---|---:|---:|---:|---:|---:|---:|
+| Original AmpliCol | 11.660 | 9.221 | not exposed | 378 / 1,590 / 128 / 16 | 1.000 | 0.659 |
+| recurrence JIT O2 | 29.895 | 13.985 | 12.966 | 378 / 1,590 / 128 / 16 | 1.517 | 1.000 |
+| compiled JIT O3 | 30.376 | 11.596 | not separately exposed | 378 / 1,590 / 128 / 16 | 1.258 | 0.829 |
 
-Recurrence and compiled agree numerically to relative differences of 2.51e-9
-against legacy and 1.02e-14 with each other, respectively.
+The structure column is the physical selected-flow closure census before
+backend-specific, structurally proven helicity materialization. Compiled O3
+subsequently materializes an even smaller proven schedule. The corrected raw
+legacy-module audit has 16 source declarations and 16 generated `ext_*`
+slots, exactly matching pyAmpliCol; the earlier apparent fifteenth legacy
+source came from the active-probe accounting boundary. The supposed
+“additional pyAmpliCol source” therefore never existed and was not the cause
+of the mismatch.
 
-The exact selected-flow structural census is 652 currents, 3,532 interaction
-evaluations, and 128 closures in pyAmpliCol versus 377 currents, 1,590
-interactions, and 128 closures in legacy AmpliCol. The excess is concentrated
-in vector (+182) and Weyl (+128) current classes; tensor currents are lower by
-36, Dirac counts are equal, and there is one additional source.
+The generic fix keeps the public flow word unchanged, reconstructs complete
+open-string blocks, cyclically rotates those blocks from the block containing
+the lowest canonical external source slot, and closes on the final block
+endpoint. For this case the private closure traversal is
+`(3,1,2,5,6,7,8,4)`. The rule is validated, invariant under public-label
+relabeling and crossing bijections, and is shared by the generic DAG,
+recurrence projection, and native recurrence lowering; it contains no process
+or multiplicity special case.
 
-The complete 96-digit audit covers 652 currents at eight independent physical
-points, 44 exact runtime contracts, 16,796 current pairs, and 34,244
-equal/opposite/zero hypotheses. It finds no certified numerical relation; the
-nearest false opposite hypothesis has residual 2.73964e-2. This is retained as
-the deterministic `no_certified_numerical_relation` outcome: no mapping is
-applied, no proof-less warning is emitted, and default-on and opt-out results
-are identical. The unresolved excess is instead localized to generic
-colour-word/orientation canonicalization across selector representatives.
-
-A generic experiment that commuted complete open-string blocks and selected a
-final-state antifundamental closure anchor reduced the selected-flow census to
-438 currents and 1,966 contributions, but it was rejected before commit. Across
-eight independent massive points and all 256 helicities it changed the resolved
-amplitude by as much as 6.108e-3 relative. At the identical legacy-oracle point,
-the physical-anchor v2 result agrees with AmpliCol to about 6.2e-15 relative,
-whereas the experimental anchor differs by 5.87e-5. The first minimal failure is
-`d d~ -> t t~ g g`; n=2 and n=3 remain invariant. Vertex-family bisection
-localizes the defect to physical three-gluon transitions: the auxiliary
-antisymmetric-tensor family alone is invariant. The invalid anchor
-canonicalization is therefore excluded from integration. Exact rooted-family
-comparison shows that the physical and alternate anchors are disjoint coherent
-amplitude constructions: adding both double-counts, while replacing one with
-the other changes the three-gluon kinematic component by a
-kinematics-dependent complex ratio. There is consequently no safe local
-sign/weight, sector remap, or missing-transition patch. Removing this remaining
-structural excess would require a deeper generic amplitude-representation
-redesign, not a missing equal/opposite/zero current-reuse rule.
-
-The retained v2 excess is therefore classified, not silently accepted:
-652 versus 377 currents is +275 (+72.9%), and 3,532 versus 1,590 contribution
-rows is +1,942 (+122.1%). Of the measured 21.459 µs recurrence schedule,
-17.524 µs is spent in contribution kernels (81.7%); those kernels account for
-77.1% of the 22.720 µs wall boundary. The extra structural rows are consequently
-the leading explanation for the runtime gap, although their heterogeneous
-per-row costs prevent a simple count ratio from predicting runtime exactly.
-The next safe avenue is generic execution organization on the correct v2
-representation, to be remeasured after the current integration wave is
-assembled.
+At the fresh oracle point, recurrence differs from original AmpliCol by
+`8.82e-15` relative, compiled differs from AmpliCol by `1.71e-15`, and compiled
+differs from recurrence by `1.05e-14`. The default 96-digit numerical-current
+pass again returns `no_certified_numerical_relation` and applies no numerical
+mapping. That negative result is now expected: structural parity comes from
+the canonical closure rule, not from weakening numerical-current
+certification.
 
 ## (c) LC `d d~ -> u u~ s s~ + (n-4)g`
 
