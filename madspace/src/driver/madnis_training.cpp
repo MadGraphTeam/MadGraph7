@@ -76,21 +76,25 @@ void MadnisTraining::train_step(std::size_t batch_index) {
     update_history(results, channel_sizes);
     if (_channels.size() > 0 && _cwnet &&
         (batch_index + 1) % _config.channel_dropping_interval == 0) {
-        std::vector<std::size_t> job_ids;
-        while ((job_ids = gen_thread_pool.wait_multiple()).size() != 0) {
-            process_job_results(job_ids);
-        }
+        process_all_jobs();
         drop_channels();
     }
     if (batch_index ==
         static_cast<std::size_t>(
             (1 - _config.fixed_cwnet_fraction) * _config.batches
         )) {
-        std::vector<std::size_t> job_ids;
-        while ((job_ids = gen_thread_pool.wait_multiple()).size() != 0) {
-            process_job_results(job_ids);
-        }
+        process_all_jobs();
         freeze_cwnet();
+    }
+    if (batch_index + 1 == _config.batches) {
+        process_all_jobs();
+    }
+}
+
+void MadnisTraining::process_all_jobs() {
+    std::vector<std::size_t> job_ids;
+    while ((job_ids = _generator_context->thread_pool().wait_multiple()).size() != 0) {
+        process_job_results(job_ids);
     }
 }
 

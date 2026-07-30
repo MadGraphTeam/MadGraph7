@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -60,7 +61,9 @@ public:
         );
     }
     double generate_double() { return _mixmax.flat(); }
-    std::size_t generate_int(std::size_t max_int) { return _mixmax.flat() * max_int; }
+    std::size_t generate_int(std::size_t max_int) {
+        return std::min<std::size_t>(_mixmax.flat() * max_int, max_int - 1);
+    }
 
 private:
     mixmax_engine _mixmax;

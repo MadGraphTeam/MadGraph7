@@ -272,6 +272,8 @@ add_library(
     include/madspace/phasespace/matrix_element.hpp
     include/madspace/phasespace/cross_section.hpp
     include/madspace/phasespace/scale.hpp
+    include/madspace/mixmax/mixmax.hpp
+    include/madspace/mixmax/mixmax_skip_N17.c
 )
 
 #target_compile_options(madspace PRIVATE -Wall -Wextra -Wpedantic -Werror)

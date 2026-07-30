@@ -116,6 +116,7 @@ private:
     TensorVec build_online_training_batch(const std::vector<size_t>& counts);
     TensorVec build_buffered_training_batch(const std::vector<size_t>& counts);
     void process_job_results(const std::vector<std::size_t>& job_ids);
+    void process_all_jobs();
     void buffer_store(ChannelData& channel, SampleBatch& samples);
     void
     update_history(const TensorVec& results, const std::vector<std::size_t>& counts);
