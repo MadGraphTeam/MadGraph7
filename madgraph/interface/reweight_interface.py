@@ -1786,7 +1786,18 @@ class ReweightInterface(extended_cmd.Cmd):
         """find if using crossing symmetry allow to find the correct tag and return the assoicated tag"""
 
         # get list of possible crossing tag
-        crossing_tag = [tuple([int(x) for x in sorted(list(t[0])+list(t[1]))]) for t in self.id_to_path.keys()]
+        # id_to_path is not uniformly keyed: the NLO path also stores the
+        # virtual matrix element under ((initial, final), 'V'), so t[1] can be a
+        # string rather than a list of PDGs. Only a plain (initial, final) pair
+        # can carry a crossing, so skip anything else instead of trying to sort
+        # a string against a tuple.
+        crossing_tag = []
+        for t in self.id_to_path.keys():
+            try:
+                crossing_tag.append(
+                    tuple([int(x) for x in sorted(list(t[0]) + list(t[1]))]))
+            except (TypeError, ValueError):
+                continue
 
         mytag = list(tag[0])+list(tag[1])
         if self.revert_merged:
