@@ -3190,6 +3190,14 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
     _export_formats = _v4_export_formats + ['standalone_cpp', 'aloha',
                                             'matchbox_cpp', 'matchbox', 'mg7_v5', 'mg7',
                                             'standalone_mg7']
+    # Formats that CONSUME the recorded crossings (merge_crossing='record')
+    # instead of needing them expanded back into separate subprocesses: they fold
+    # each crossed subprocess into its base directory and reach it through the
+    # base's crossing-aware SMATRIX/sigmaKin at an extended flavor index.
+    # 'standalone_rw' is the reweight's own output: its python driver resolves a
+    # crossed event through the generated GET_PDG_FOR_FLAVOR entry points (see
+    # reweight_interface.ReweightInterface.build_cross_resolve).
+    _crossing_folding_formats = ('standalone', 'standalone_mg7', 'standalone_rw')
     _set_options = ['group_subprocesses',
                     'ignore_six_quark_processes',
                     'stdout_level',
@@ -9977,7 +9985,7 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         subprocesses, and expanding is always safe: it just reproduces the
         complete unmerged (--use_crossing=False) output.
         """
-        if self._export_format in ('standalone', 'standalone_mg7'):
+        if self._export_format in self._crossing_folding_formats:
             return False
         return any(amp.get('crossed_processes') for amp in amps
                    if 'crossed_processes' in amp)
@@ -10046,8 +10054,8 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             [amp for amp in self._curr_amps
              if not isinstance(amp, diagram_generation.DecayChainAmplitude)])
 
-        dc_crossed = self._export_format not in ('standalone',
-                                                 'standalone_mg7') and \
+        dc_crossed = self._export_format not in \
+            self._crossing_folding_formats and \
             any(a.get('crossed_processes')
                 for dc in dc_amps for a in dc.get('amplitudes')
                 if 'crossed_processes' in a)
@@ -10189,7 +10197,8 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                     # reconstructing is also the safe default for any format that
                     # does not implement folding (it just reproduces the complete
                     # unmerged output).
-                    if self._export_format not in ('standalone', 'standalone_mg7'):
+                    if self._export_format not in \
+                            self._crossing_folding_formats:
                         # DecayAmplitude / DecayChainAmplitude are Amplitude
                         # subclasses that override default_setup with their own
                         # key set and do NOT carry crossed_processes (e.g. the

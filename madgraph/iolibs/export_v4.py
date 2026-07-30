@@ -3240,22 +3240,35 @@ C     crossing carried by FLAV_IDX moves across.
         i.e. skipping the out-of-range / impossible / overlapping-swap codes) and
         every flavor ``flav0`` in ``0..NFLAV-1``:
 
-        * ``index`` -- the extended flavor index that selects (CROSS, flav0).
-          The C++/mg7 backends decode it 0-based as ``cross*NFLAV + flav0``; the
-          fortran one is 1-based (``index+1``). ``zero_based`` picks which.
+        * ``index`` -- the extended flavor index that selects (CROSS, flav0),
+          decoded 0-based as ``cross*NFLAV + flav0`` (``zero_based=False`` gives
+          the 1-based fortran form). **NFLAV here is the madevent / C++ / mg7
+          one**, ``get_external_flavors_with_iden()`` -- the count those backends
+          size their flavor table by, deliberately not the STANDALONE fortran
+          NFLAV, which comes from _build_flav_table_flat (compute_flavor_masks)
+          and is a different, usually larger number: 1 vs 2 for
+          ``p p > w+ j, w+ > e+ ve``, 2 vs 4 for ``p p > z j``, 1/1/9 vs 1/4/12
+          for ``p p > j j``. See the NFLAV comment in get_crossing_routines.
+          So ``index`` is meaningful to partition_crossing_classes (madevent
+          routing) and to the C++ demo_pdg table, and NOT to the standalone
+          fortran PY_<prefix>GET_PDG_FOR_FLAVOR: a caller holding a standalone
+          module must take NFLAV from PY_<prefix>GET_FLAVOR_LAYOUT and build the
+          index itself (reweight_interface.build_cross_resolve does). ``cross``
+          and ``pdg_tuple`` carry no such convention and are good everywhere.
         * ``cross``  -- the crossing code (0 == identity).
         * ``flav0``  -- the 0-based reduced flavor.
         * ``pdg_tuple`` -- the *signed physical* PDG of each leg, in the leg order
           the momenta must be supplied in for that index (legs permuted and
           conjugated where they swapped between the initial and the final state).
 
-        This is the python twin of the fortran runtime GET_PDG_FOR_FLAVOR: the
-        C++ and mg7 standalones have no runtime PDG accessor, so their crossed
-        PDG signatures are computed here instead (the same logic that fills the
-        check_sa demo table). All three backends therefore agree on the mapping
-        pdg <-> extended index by construction. Both helpers are referenced
-        through the class so a non-Fortran ``self`` (the C++/mg7 exporter, or a
-        throwaway) can reuse them unbound.
+        This is the python twin of the fortran runtime GET_PDG_FOR_FLAVOR *for
+        the signature*: the C++ and mg7 standalones have no runtime PDG
+        accessor, so their crossed PDG signatures are computed here instead (the
+        same logic that fills the check_sa demo table). The backends agree on
+        which PDG tuple a (CROSS, flavor) names; they do NOT share one index
+        convention, see ``index`` above. Both helpers are referenced through the
+        class so a non-Fortran ``self`` (the C++/mg7 exporter, or a throwaway)
+        can reuse them unbound.
         """
         tables = ProcessExporterFortran.compute_crossing_tables(
             self, matrix_element)
@@ -4805,6 +4818,10 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
             self.format = 'standalone'
 
         self.prefix_info = {}
+        # proc_prefix -> (list of recorded CROSS codes, complete flag), filled
+        # per subprocess directory and written out by write_f2py_splitter; see
+        # recorded_crossing_codes.
+        self.crossing_records = {}
         ProcessExporterFortran.__init__(self, *args, **opts)
 
     def copy_template(self, model):
@@ -5086,6 +5103,23 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         flavor_index_decl = '\n'.join('  integer %sget_flavor_index' % prefix
                                       for prefix in sorted(smatrixhel_prefixes))
 
+        # smatrixhel_idx: the same dispatch keyed on the 1-based matrix-element
+        # slot (the get_pdg_order / get_prefix index) instead of on the PDG
+        # codes, taking the extended FLAV_IDX as given. A FOLDED crossed
+        # subprocess has no PDG entry of its own -- that is the whole point of
+        # folding -- so the PDG dispatch cannot reach it; a caller that resolved
+        # the crossing itself (through GET_PDG_FOR_FLAVOR) holds a slot and an
+        # extended index instead. It shares f77_smatrixhel's alphas/scale2
+        # handling so that a crossed and an uncrossed evaluation of the same
+        # event use the exact same running couplings.
+        idxtext = []
+        for i, prefix in enumerate(allprefix, 1):
+            keyword = 'if' if i == 1 else 'else if'
+            idxtext.append(' %s (procindex.eq.%i) then' % (keyword, i))
+            idxtext.append(' call %ssmatrixhel(p, nhel, flav_idx, ans)' % prefix)
+        if idxtext:
+            idxtext.append(' endif')
+
         all_prefix = set([k[0] for k in self.prefix_info.values()])
         setpara_for_each_matrix = ''
         for prefix in all_prefix:
@@ -5158,8 +5192,9 @@ C       so this also stays correct for split-order processes.
             all_iden += ' idens(%s) = %s \n' % (i, iden)
         #misc.sprint(all_iden)
 
-        formatting = {'python_information':'\n'.join(info), 
+        formatting = {'python_information':'\n'.join(info),
                           'smatrixhel': '\n'.join(smtext),
+                          'smatrixhel_idx': '\n'.join(idxtext),
                           'flavor_index_decl': flavor_index_decl,
                           'maxpart': max_nexternal,
                           'nb_me': len(allids),
@@ -5211,6 +5246,35 @@ C       so this also stays correct for split-order processes.
                                 % os.path.relpath(wpath,
                                     pjoin(self.dir_path, 'SubProcesses')))
                     fsock.write(open(wpath).read())
+
+        self.write_crossing_records()
+
+    def write_crossing_records(self):
+        """List the folded crossed subprocesses for the python consumers of the
+        combined f2py module (see recorded_crossing_codes).
+
+        GET_PDG_FOR_FLAVOR tells a caller what process an extended FLAV_IDX
+        evaluates, but not whether that crossing is a subprocess the generation
+        asked for: its CROSS space is dense and also holds crossings that are
+        merely applicable (a Z or a decay product pulled into the initial state).
+        Only generation knows the difference, so it is recorded here, one line
+        per matrix element,
+
+            <proc_prefix> <complete> <cross code> ...
+
+        with <complete> 0 when a recorded crossed process could not be matched
+        to a runtime crossing -- the consumer must then not trust the list to
+        cover every folded subprocess. The file is always written (empty lists
+        included) so that its absence means "produced before this existed", and
+        a consumer can tell that apart from "nothing was folded"."""
+        path = pjoin(self.dir_path, 'SubProcesses', 'crossed_flavors.dat')
+        with open(path, 'w') as fsock:
+            fsock.write('# folded crossed subprocesses, written by MG5aMC\n')
+            fsock.write('# <proc_prefix> <complete> <cross code> ...\n')
+            for prefix in sorted(self.crossing_records):
+                codes, complete = self.crossing_records[prefix]
+                fsock.write('%s %d%s\n' % (prefix, 1 if complete else 0,
+                                           ''.join(' %d' % c for c in codes)))
 
     def get_model_parameter(self, model):
         """ returns all the model parameter
@@ -5376,6 +5440,12 @@ C       so this also stays correct for split-order processes.
                 ids = [l.get('id') for l in proc.get('legs_with_decays')]
                 iden = compute_iden_from_pdgs(ids, ninitial, self.model)
                 self.prefix_info[(tuple(ids), proc.get('id'))] = [proc_prefix, proc.get_tag(), ncomb, iden]
+            # Which CROSS codes of this matrix element name a crossed subprocess
+            # this generation actually requested. Only a python caller holding
+            # them can walk the folded crossings without also evaluating the
+            # merely-applicable ones; write_f2py_splitter exports them.
+            self.crossing_records[proc_prefix] = \
+                self.recorded_crossing_codes(matrix_element)
 
         template = open(pjoin(self.mgme_dir, 'madgraph', 'iolibs', 'template_files', 'makefile_sa_f_sp'),'r')
         text = template.read()
@@ -5942,47 +6012,54 @@ C       so this also stays correct for split-order processes.
     #===========================================================================
     # write_check_sa   
     #===========================================================================
-    def _crossed_signatures(self, matrix_element):
-        """(signatures, complete) for the crossed subprocesses folded into this
-        matrix element (merge_crossing='record'), so check_sa can demo exactly
-        the crossings that are real subprocesses of the generation -- not every
-        mathematically valid crossing of the base.
+    def _recorded_crossing_matches(self, matrix_element):
+        """(matches, complete): the reachable crossing each RECORDED crossed
+        subprocess of this matrix element corresponds to.
 
-        Each signature is a representative signed-PDG tuple in the crossed leg
-        order, matched at RUNTIME against GET_PDG_FOR_FLAVOR (whose python twin
-        is compute_crossing_pdg_entries). Matching on the PDG rather than the
-        extended index avoids the NFLAV-convention gap between the crossing-PDG
-        enumeration and the runtime flavor table.
+        Crossing records (merge_crossing='record') say which crossed processes
+        are real subprocesses of the generation; the runtime crossing space
+        (GET_PDG_FOR_FLAVOR / its python twin compute_crossing_pdg_entries) is a
+        dense enumeration of CROSS codes that also contains mathematically
+        applicable but unrequested crossings -- e.g. a Z pulled into the initial
+        state for p p > z j. Consumers that must not evaluate the latter (the
+        check_sa demo, the reweight's folded-crossing lookup) intersect the two
+        here.
 
-        A recorded crossed process may carry merged multiparticle labels (e.g.
-        _quark = 81). Rather than resolve each such leg independently to one
-        flavor -- which would fabricate an unphysical signature for a
-        flavor-changing vertex, e.g. a W coupling two same-flavor quarks -- each
-        recorded process is matched LABEL-AWARE against the reachable set, which
-        already encodes the correct flavor pairings; the first reachable
-        instantiation is taken as the representative. Mirror pairs are collapsed
-        (the chosen signature's beam swap is also marked seen). 'complete' is
-        False only when a recorded process has NO reachable instantiation, so
-        the caller falls back to the full loop rather than hide a real
+        `matches` is a list of ``(pdg_signature, cross)`` in the recorded order,
+        matched LABEL-AWARE: a recorded process may carry merged multiparticle
+        labels (_quark = 81) and so may the reachable signature (a leg that does
+        not vary with the flavor index keeps its label), so a label matches any
+        member flavor of the same sign, and two labels match when equal. That is
+        also why a recorded process is matched as a whole rather than leg by leg:
+        the reachable set already encodes the correct flavor pairings, which
+        resolving each merged leg on its own would not (it would fabricate e.g. a
+        W coupling two same-flavor quarks). Both beam orientations are tried.
+        `complete` is False when a recorded process has NO reachable
+        instantiation, so a caller can fall back rather than hide a real
         crossing."""
-        crossed = matrix_element.get('crossed_processes')
+        crossed = matrix_element.get('crossed_processes') \
+            if 'crossed_processes' in matrix_element else None
         if not crossed:
             return [], True
         model = matrix_element.get('processes')[0].get('model')
         merged = model.get('merged_particles')
 
         def leg_matches(leg_id, pdg):
-            # Does the reachable PDG instantiate this recorded leg id? A merged
-            # label matches any member flavor of the same sign; a concrete
-            # particle matches only itself.
-            a = abs(leg_id)
-            if a in merged:
-                return (leg_id > 0) == (pdg > 0) and abs(pdg) in merged[a]
-            return pdg == leg_id
+            # Does the reachable PDG instantiate this recorded leg id? Equal ids
+            # (two concrete particles, or two identical merged labels) always
+            # match; otherwise one of the two may be a merged label covering the
+            # other flavor, with the same sign.
+            if leg_id == pdg:
+                return True
+            a, b = abs(leg_id), abs(pdg)
+            if (leg_id > 0) != (pdg > 0):
+                return False
+            return (a in merged and b in merged[a]) or \
+                   (b in merged and a in merged[b])
 
         ninitial = matrix_element.get_nexternal_ninitial()[1]
-        # signatures the runtime can actually reach (physical crossings)
-        reachable = [tuple(pdg) for (_i, _c, _f, pdg) in
+        # signatures the runtime can actually reach (applicable crossings)
+        reachable = [(tuple(pdg), cross) for (_i, cross, _f, pdg) in
                      self.compute_crossing_pdg_entries(matrix_element)]
         # A decay-chain base records its crossings at the PRODUCTION level, but
         # the reachable signatures span the decay leaves (the ME's NEXTERNAL), so
@@ -5999,7 +6076,7 @@ C       so this also stays correct for split-order processes.
             expanded.set('legs_with_decays', base_objects.LegList())
             return [l.get('id') for l in expanded.get_legs_with_decays()]
 
-        sigs, seen, complete = [], set(), True
+        matches, complete = [], True
         for (proc, _bp, _xp) in crossed:
             legs = crossed_leg_ids(proc)
             orients = [legs]
@@ -6007,16 +6084,53 @@ C       so this also stays correct for split-order processes.
                 orients.append([legs[1], legs[0]] + legs[2:])
             hit = None
             for orient in orients:
-                for r in reachable:
+                for (r, cross) in reachable:
                     if len(r) == len(orient) and \
                        all(leg_matches(L, P) for L, P in zip(orient, r)):
-                        hit = r
+                        hit = (r, cross)
                         break
                 if hit is not None:
                     break
             if hit is None:
                 complete = False
                 continue
+            if hit[1] == 0:
+                # The identity: a recorded process that is the base's own beam
+                # swap (mirror), not a crossing. Consumers show/reach the base
+                # through its own PDG entry, so drop it.
+                continue
+            matches.append(hit)
+        return matches, complete
+
+    def recorded_crossing_codes(self, matrix_element):
+        """(cross codes, complete) of the crossed subprocesses folded into this
+        matrix element: the CROSS half of every extended FLAV_IDX that names a
+        crossing this generation actually requested.
+
+        This is what a python consumer needs to walk the folded crossings
+        soundly: it can enumerate GET_PDG_FOR_FLAVOR over
+        ``cross*NFLAV + flav`` (getting the exact per-flavor signature, which
+        the flavor index and not the code determines) while skipping the codes
+        that are merely applicable. See _recorded_crossing_matches."""
+        matches, complete = self._recorded_crossing_matches(matrix_element)
+        return sorted(set(cross for (_sig, cross) in matches)), complete
+
+    def _crossed_signatures(self, matrix_element):
+        """(signatures, complete) for the crossed subprocesses folded into this
+        matrix element (merge_crossing='record'), so check_sa can demo exactly
+        the crossings that are real subprocesses of the generation -- not every
+        mathematically valid crossing of the base.
+
+        Each signature is a representative signed-PDG tuple in the crossed leg
+        order, matched at RUNTIME against GET_PDG_FOR_FLAVOR. Matching on the PDG
+        rather than the extended index avoids the NFLAV-convention gap between
+        the crossing-PDG enumeration and the runtime flavor table. Mirror pairs
+        are collapsed (the chosen signature's beam swap is also marked seen).
+        See _recorded_crossing_matches for the matching itself."""
+        matches, complete = self._recorded_crossing_matches(matrix_element)
+        ninitial = matrix_element.get_nexternal_ninitial()[1]
+        sigs, seen = [], set()
+        for (hit, _cross) in matches:
             mirror = (hit[1], hit[0]) + hit[2:] if ninitial == 2 else hit
             if hit in seen or mirror in seen:
                 continue                      # mirror partner already taken

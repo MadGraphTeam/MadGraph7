@@ -118,7 +118,12 @@ class ReweightInterface(extended_cmd.Cmd):
         self.use_eventid = False
         self.inc_sudakov = False
         self.event_path = event_path
-        self.path2prefix = {} # store the f2pyprefix associated to a library 
+        self.path2prefix = {} # store the f2pyprefix associated to a library
+        # id_to_path-style tag -> folded crossed subprocesses reachable through
+        # a base matrix element (see build_cross_resolve); empty when crossing
+        # folded nothing.
+        self.cross_resolve = {}
+        self.cross_resolve_second = {}
         if event_path:
             logger.info("Extracting the banner ...")
             self.do_import(event_path, allow_madspin=allow_madspin)
@@ -1635,19 +1640,33 @@ class ReweightInterface(extended_cmd.Cmd):
         #else:
         #    base = "rw_me"
 
+        # A crossed subprocess folded in by crossing symmetry has no id_to_path
+        # entry of its own; it is reached through the base's crossing-aware
+        # SMATRIX at an extended flavor index (see build_cross_resolve). Stays
+        # None for every ordinary lookup.
+        flav_idx = procindex = None
         if (not self.second_model and not self.second_process and not self.dedicated_path) or hypp_id==0:
             if tag in self.id_to_path:
                 orig_order, Pdir, hel_dict = self.id_to_path[tag]
             else:
                 cross_tag = self.get_crossing_tag(tag)
-                orig_order, Pdir, hel_dict = self.id_to_path[cross_tag]
+                folded = None if cross_tag else self.resolve_folded_crossing(
+                    tag, tag_orig, self.cross_resolve)
+                if folded:
+                    orig_order, Pdir, hel_dict, procindex, flav_idx = folded
+                else:
+                    orig_order, Pdir, hel_dict = self.id_to_path[cross_tag]
         else:
             try:
                 orig_order, Pdir, hel_dict = self.id_to_path_second[tag]
             except KeyError:
                 cross_tag = self.get_crossing_tag(tag)
+                folded = None if cross_tag else self.resolve_folded_crossing(
+                    tag, tag_orig, self.cross_resolve_second)
                 if cross_tag:
                     orig_order, Pdir, hel_dict = self.id_to_path[cross_tag]
+                elif folded:
+                    orig_order, Pdir, hel_dict, procindex, flav_idx = folded
                 elif self.options['allow_missing_finalstate']:
                     return 0.0
                 else:
@@ -1712,7 +1731,14 @@ class ReweightInterface(extended_cmd.Cmd):
             with misc.chdir(Pdir):
                 with misc.stdchannel_redirected(sys.stdout, os.devnull):
                     #misc.sprint(pdg, pid, p, event.aqcd, scale2, nhel)
-                    new_value = module.smatrixhel(pdg, pid, p, event.aqcd, scale2, nhel)
+                    if flav_idx is None:
+                        new_value = module.smatrixhel(pdg, pid, p, event.aqcd, scale2, nhel)
+                    else:
+                        # folded crossing: name the matrix element by its slot
+                        # and the process by the extended flavor index, the PDG
+                        # dispatch cannot reach it. NPDG is f2py-derived from p.
+                        new_value = module.smatrixhel_idx(procindex, flav_idx, p,
+                                                    event.aqcd, scale2, nhel)
                     #misc.sprint(new_value)
                     if new_value == 0:
                         raise Exception("Invalid matrix element")
@@ -1894,17 +1920,25 @@ class ReweightInterface(extended_cmd.Cmd):
             logger.info('generating the square matrix element for reweighting (second model and/or processes)')
         start = time.time()
         # The reweight matches each event's flavor to a subprocess matrix
-        # element (id_to_path). Crossing now FOLDS the crossed subprocesses by
-        # default (merge_crossing='record'), so a crossed flavor has no separate
-        # dir/entry to match against and its weight is silently dropped -- this
-        # happens with flavor grouping ON too (the merged ME does not expose the
-        # folded crossings to id_to_path). Always append --use_crossing=False to
-        # each TREE process definition to reproduce the pre-crossing (main)
-        # subprocess layout, which the reweight matching was built for.
+        # element (id_to_path), and reaches a FOLDED crossed subprocess through
+        # the base's crossing-aware SMATRIX (see build_cross_resolve), so the
+        # crossings stay folded: the crossed subprocesses cost neither a
+        # generation nor a compilation.
+        #
+        # Two modes still want the crossed subprocesses back as separate entries:
+        #  - 'keep_ordering' promises that the events are written in the matrix
+        #    element's own leg order, which makes the id_to_path key
+        #    order-sensitive; a folded crossing has no directory and hence no
+        #    such order to promise, so a crossed event would miss the lookup.
+        #  - the density mode evaluates GET_DENSITY, not SMATRIX, and only its
+        #    FLAVOR-array entry point is wired up here; the FLAVOR array cannot
+        #    express a crossing (GET_DENSITY_IDX would be needed, as MadSpin's
+        #    density path does it).
         # Perturbative (NLO / ewsudakov [...]) definitions are left untouched:
         # they already skip crossing at generation, and the flag must not land
         # inside their option-laden line.
-        xflag = ' --use_crossing=False'
+        xflag = ' --use_crossing=False' \
+            if (self.keep_ordering or self.flag_density_matrix) else ''
         commandline=''
         for i,proc in enumerate(data['processes']):
             if '[' not in proc:
@@ -2385,6 +2419,8 @@ class ReweightInterface(extended_cmd.Cmd):
 
         self.id_to_path = {}
         self.id_to_path_second = {}
+        self.cross_resolve = {}
+        self.cross_resolve_second = {}
         rwgt_dir_possibility =   ['rw_me','rw_me_%s' % self.nb_library,'rw_mevirt','rw_mevirt_%s' % self.nb_library]
         fprefix = ''
         for onedir in rwgt_dir_possibility:
@@ -2451,8 +2487,10 @@ class ReweightInterface(extended_cmd.Cmd):
 
 
             data = self.id_to_path
+            cross_data = self.cross_resolve
             if onedir not in ["rw_me",  "rw_mevirt"]:
                 data = self.id_to_path_second
+                cross_data = self.cross_resolve_second
 
             # get all the information
 
@@ -2524,8 +2562,218 @@ class ReweightInterface(extended_cmd.Cmd):
                         misc.sprint(order, pdir,)
                         raise Exception( "two different matrix-element have the same initial/final state. Leading to an ambiguity. If your events are ALWAYS written in the correct-order (look at the numbering in the Feynman Diagram). Then you can add inside your reweight_card the line 'change keep_ordering True'." )
                 data[tag] = order, pdir, hel
-             
-             
+
+            # The merged-particle convention of the model that built `data`:
+            # get_pdg_order (hence every id_to_path key) may speak merged codes,
+            # and the crossed subprocesses must be keyed the same way.
+            if onedir in ("rw_me", "rw_mevirt"):
+                cross_model = getattr(self, 'original_model', None) or self.model
+            else:
+                cross_model = self.model
+            if cross_model is not None:
+                merged_map = self._get_revert_merged_for(cross_model)
+            else:
+                # restored from a pickle without a model loaded: the saved map
+                merged_map = getattr(self, 'revert_merged', None)
+            self.build_cross_resolve(mymod, all_prefix, all_pdgs, hel_dict,
+                                     pdir, 'virt' in onedir, cross_data,
+                                     merged_map)
+
+    def build_cross_resolve(self, mymod, all_prefix, all_pdgs, hel_dict, pdir,
+                            is_virt, cross_data, merged_map):
+        """Add to `cross_data` every CROSSED subprocess folded into this
+        module's matrix elements, keyed exactly like id_to_path.
+
+        With crossing on (merge_crossing='record') a crossed subprocess is not
+        generated as a directory of its own: the base's crossing-aware SMATRIX
+        evaluates it at an *extended* flavor index (FLAV_IDX = cross*NFLAV+flav),
+        so it has no get_pdg_order entry and id_to_path cannot see it -- a
+        crossed event would silently lose its weight. The per-process f2py entry
+        points PY_<prefix>GET_FLAVOR_LAYOUT / GET_PDG_FOR_FLAVOR let us walk that
+        index space and ask each entry which process it evaluates, restricted to
+        the crossings the generation actually recorded (crossed_flavors.dat --
+        the runtime space also holds crossings that are merely applicable, e.g. a
+        Z pulled into the initial state, and evaluating one of those for an event
+        would produce a wrong weight rather than no weight).
+
+        A matrix element covers several subprocesses in two independent ways, and
+        the crossing has to be applied to each: as FLAVOR indices inside one
+        get_pdg_order entry (flavor grouping: 81 for jets), and as several
+        get_pdg_order entries sharing one prefix (the exporter combining
+        processes with an identical matrix element, e.g. g u > h u and g s > h s).
+        So each recorded crossing is applied to EVERY base entry of the prefix,
+        by permuting and conjugating its PDGs the way GET_PDG_FOR_FLAVOR did for
+        the representative -- which is what makes the tags come out in the same
+        vocabulary the base entries use.
+
+        Each entry maps an id_to_path-style tag to a LIST of candidates
+        ``(order, pdir, hel, procindex, flav_idx, pdgs)``, one per flavor of the
+        tag's merged matrix element: the matrix element is NOT flavor blind
+        across those -- g d > z d and g u > z u differ by ~25% -- so the flavor is
+        picked per event from the signed PDGs (see resolve_folded_crossing).
+        `procindex` is the 1-based get_prefix slot the crossing-aware
+        SMATRIXHEL_IDX dispatch expects.
+
+        The helicity dictionary is the base one, unchanged: SMATRIX applies the
+        crossing to its whole NHEL table before the helicity loop, which makes
+        the helicity configuration selected by row r the base row r read
+        positionally in the crossed leg order (verified against independently
+        generated crossed subprocesses, per helicity)."""
+        codes = self.get_recorded_crossings(pdir)
+        if not codes:
+            return
+        import madgraph.iolibs.export_v4 as export_v4
+        get_perm = export_v4.ProcessExporterFortran.get_crossing_permutation
+        # merged codes (81, ...) as they appear in a base entry, i.e. the legs
+        # whose flavor a base entry leaves open and the flavor index resolves.
+        labels = set(merged_map.values()) if merged_map else set()
+        slots = {}
+        for i, (prefix, pdgs) in enumerate(zip(all_prefix, all_pdgs), 1):
+            slots.setdefault(prefix, []).append((i, [int(x) for x in pdgs]))
+        for prefix, entries in slots.items():
+            if not codes.get(prefix):
+                continue
+            layout = getattr(mymod, 'py_%sget_flavor_layout' % prefix, None)
+            get_pdg = getattr(mymod, 'py_%sget_pdg_for_flavor' % prefix, None)
+            if layout is None or get_pdg is None:
+                # matrix element written without the crossing machinery
+                continue
+            nflav, nexternal, ncross = (int(x) for x in layout())
+            entries = [e for e in entries if len(e[1]) == nexternal]
+            for cross in codes[prefix]:
+                if not 0 < cross < ncross:
+                    continue           # 0 is the base, already in id_to_path
+                perm, ic, valid = get_perm(cross, nexternal)
+                if not valid:
+                    continue
+                for flav in range(1, nflav+1):
+                    crossed = [int(x) for x in get_pdg(cross*nflav + flav)]
+                    if not any(crossed):
+                        continue       # names no valid flavor/crossing
+                    base = [int(x) for x in get_pdg(flav)]
+                    # Which legs the crossing conjugated: those it moved between
+                    # the initial and the final state, except a self-conjugate
+                    # one (a gluon crossed to the other side is still a gluon).
+                    # Read off the representative rather than from the model, so
+                    # that this needs nothing but the generated entry points.
+                    conj = [ic[k] == -1 and crossed[k] != base[perm[k]]
+                            for k in range(nexternal)]
+                    for (procindex, pdgs) in entries:
+                        xpdgs = [-pdgs[perm[k]] if conj[k] else pdgs[perm[k]]
+                                 for k in range(nexternal)]
+                        # The physical process this candidate evaluates: the
+                        # crossed base entry, with the legs it leaves merged
+                        # resolved by the flavor index.
+                        phys = [crossed[k] if abs(xpdgs[k]) in labels
+                                else xpdgs[k] for k in range(nexternal)]
+                        tag, order = self.tag_from_pdgs(xpdgs)
+                        if is_virt:
+                            tag = (tag, 'V')
+                        cross_data.setdefault(tag, []).append(
+                            (order, pdir, hel_dict.get(prefix, {}),
+                             procindex, cross*nflav + flav, phys))
+
+    def tag_from_pdgs(self, pdgs):
+        """(tag, order) of a subprocess given its per-leg PDG codes, in the same
+        convention load_module uses to key id_to_path."""
+        if self.is_decay:
+            incoming, outgoing = [pdgs[0]], list(pdgs[1:])
+        else:
+            incoming, outgoing = list(pdgs[0:2]), list(pdgs[2:])
+        order = (list(incoming), list(outgoing))
+        incoming.sort()
+        if not self.keep_ordering:
+            outgoing.sort()
+        return (tuple(incoming), tuple(outgoing)), order
+
+    def get_recorded_crossings(self, pdir):
+        """{prefix: [cross codes]} of the crossed subprocesses folded into the
+        matrix elements of `pdir`, from the crossed_flavors.dat written at output
+        time (see export_v4.write_crossing_records).
+
+        An absent file means an output produced before crossings were recorded,
+        hence one with nothing folded; an empty list for a prefix means that
+        matrix element folds no crossing."""
+        path = pjoin(pdir, 'crossed_flavors.dat')
+        if not os.path.exists(path):
+            return {}
+        codes = {}
+        for line in open(path):
+            line = line.split('#', 1)[0].split()
+            if not line:
+                continue
+            prefix, complete = line[0].lower(), line[1] == '1'
+            codes[prefix] = [int(c) for c in line[2:]]
+            if not complete:
+                logger.warning('Crossing symmetry folded a subprocess into the '
+                               'matrix element %s that could not be resolved '
+                               'back to a flavor. An event of that flavor will '
+                               'stop the reweighting rather than be given a '
+                               'wrong weight; if that happens, rerun with '
+                               '"change keep_ordering True" (which keeps the '
+                               'crossed subprocesses separate) and report it.',
+                               prefix)
+        return codes
+
+    def resolve_folded_crossing(self, tag, phys_tag, cross_data):
+        """(order, Pdir, hel, procindex, flav_idx) of the folded crossed
+        subprocess matching an event, or None.
+
+        `tag` is the (merged) id_to_path key the event was looked up with and
+        `phys_tag` its signed *physical* PDG twin. All candidates under one tag
+        share the merged flavor pattern, so the physical PDGs pick which flavor
+        of the merged matrix element the event actually is -- the matrix element
+        is not flavor blind. A candidate leg that the flavor index does not
+        resolve keeps its merged label and matches any member of the group."""
+        candidates = cross_data.get(tag) if cross_data else None
+        if not candidates:
+            return None
+        merged = self.revert_merged_groups()
+        ninitial = 1 if self.is_decay else 2
+        for (order, Pdir, hel, procindex, flav_idx, pdgs) in candidates:
+            if self.pdgs_match_event(pdgs, ninitial, phys_tag, merged):
+                return order, Pdir, hel, procindex, flav_idx
+        return None
+
+    def revert_merged_groups(self):
+        """{merged code: [member pdgs]} of the model the current lookup uses
+        (empty without flavor grouping)."""
+        if not self.revert_merged:
+            return {}
+        groups = {}
+        for pdg, code in self.revert_merged.items():
+            groups.setdefault(code, []).append(pdg)
+        return groups
+
+    @staticmethod
+    def pdgs_match_event(pdgs, ninitial, phys_tag, merged):
+        """Can `pdgs` (a subprocess' per-leg codes, possibly carrying merged
+        labels) be the event whose physical tag is `phys_tag`? Compared as
+        multisets per side, a merged label absorbing any one member flavor of the
+        same sign. Merged groups are disjoint, so the greedy assignment below is
+        exact."""
+        sides = ((pdgs[:ninitial], phys_tag[0]), (pdgs[ninitial:], phys_tag[1]))
+        for legs, want in sides:
+            left = list(want)
+            labels = []
+            for pdg in legs:
+                if abs(pdg) in merged:
+                    labels.append(pdg)
+                elif pdg in left:
+                    left.remove(pdg)
+                else:
+                    return False
+            for pdg in labels:
+                hit = next((q for q in left if (q > 0) == (pdg > 0)
+                            and abs(q) in merged[abs(pdg)]), None)
+                if hit is None:
+                    return False
+                left.remove(hit)
+            if left:
+                return False
+        return True
+
+
     def load_model(self, name, use_mg_default, complex_mass=False, ew_scheme=None):
         """load the model"""
 
