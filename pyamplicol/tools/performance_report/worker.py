@@ -70,9 +70,10 @@ def measure_cell(
     cell = catalog.cell(cell_id)
     static_na_reason = catalog.static_na_reason(cell)
     if static_na_reason is not None:
+        description = catalog.static_na_description(cell)
         raise ValueError(
             f"{cell_id}: catalog static N/A cell cannot be measured "
-            f"({static_na_reason})"
+            f"({static_na_reason}: {description})"
         )
     source_identity = require_eligible_report_source(repo_root)
     baseline = None if baseline_json is None else load_measurement(baseline_json)

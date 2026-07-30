@@ -35,13 +35,26 @@ def test_every_catalog_cell_has_unique_worker_identity() -> None:
     assert len({cell.cell_id for cell in cells}) == len(cells)
 
 
+@pytest.mark.parametrize(
+    ("cell_id", "reason"),
+    (
+        (
+            "reference-amplicol-full-n6-dd-4q-lines-contracted",
+            "original-amplicol-open-quark-line-limit",
+        ),
+        (
+            "z-builtin-sm-n7-dd-z-jets-asm-o3-selected-flow",
+            "user cap: native C\\+\\+/ASM generation is not attempted above n=6",
+        ),
+    ),
+)
 def test_worker_rejects_catalog_static_na_before_measurement(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    cell_id: str,
+    reason: str,
 ) -> None:
-    cell = REPORT_CATALOG.cell(
-        "reference-amplicol-full-n6-dd-4q-lines-contracted"
-    )
+    cell = REPORT_CATALOG.cell(cell_id)
     monkeypatch.setattr(
         "tools.performance_report.worker.require_eligible_report_source",
         lambda _root: pytest.fail(
@@ -49,7 +62,10 @@ def test_worker_rejects_catalog_static_na_before_measurement(
         ),
     )
 
-    with pytest.raises(ValueError, match="catalog static N/A cell"):
+    with pytest.raises(
+        ValueError,
+        match=f"catalog static N/A cell.*{reason}",
+    ):
         measure_cell(
             cell.cell_id,
             repo_root=tmp_path,

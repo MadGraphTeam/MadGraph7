@@ -28,6 +28,8 @@ from tools.performance_report.cache import (
 )
 from tools.performance_report.catalog import (
     REPORT_CATALOG,
+    STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6,
+    STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION,
     STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT,
 )
 from tools.performance_report.models import (
@@ -36,6 +38,7 @@ from tools.performance_report.models import (
     ModelKey,
     ResultStatus,
     Workload,
+    ZVariant,
 )
 
 
@@ -222,7 +225,7 @@ def test_canonical_static_na_census_is_exact() -> None:
         if REPORT_CATALOG.static_na_reason(cell) is not None
     }
 
-    assert static_na == {
+    expected = {
         cell_id: STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT
         for cell_id in {
             "reference-amplicol-lc-n6-dd-4q-lines-selected-flow",
@@ -235,6 +238,55 @@ def test_canonical_static_na_census_is_exact() -> None:
             "reference-amplicol-full-n6-dd-4q-lines-contracted",
         }
     }
+    expected.update(
+        {
+            (
+                f"z-{model}-n{n_final}-dd-z-jets-{variant}-{workload}"
+            ): STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6
+            for model in ("builtin-sm", "external-sm")
+            for n_final in (7, 8, 9)
+            for variant in ("asm-o3", "cpp-o3")
+            for workload in ("selected-flow", "all-flow")
+        }
+    )
+
+    assert static_na == expected
+    for cell_id, reason in expected.items():
+        if reason != STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6:
+            continue
+        cell = REPORT_CATALOG.cell(cell_id)
+        assert (
+            REPORT_CATALOG.static_na_description(cell)
+            == STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION
+        )
+
+
+def test_z_variant_generation_cap_contract_is_paired_and_positive() -> None:
+    with pytest.raises(ValueError, match="positive integer"):
+        ZVariant(
+            "bad",
+            "bad",
+            ExecutionMode.COMPILED,
+            "asm",
+            maximum_generation_n_final=0,
+            static_na_reason_code="reason-v1",
+        )
+    with pytest.raises(ValueError, match="requires a static_na_reason_code"):
+        ZVariant(
+            "bad",
+            "bad",
+            ExecutionMode.COMPILED,
+            "asm",
+            maximum_generation_n_final=6,
+        )
+    with pytest.raises(ValueError, match="requires maximum_generation_n_final"):
+        ZVariant(
+            "bad",
+            "bad",
+            ExecutionMode.COMPILED,
+            "asm",
+            static_na_reason_code="reason-v1",
+        )
 
 
 def test_contracted_multi_quark_coverage_reaches_n6_in_every_mode() -> None:

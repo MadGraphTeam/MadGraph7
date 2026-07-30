@@ -336,8 +336,33 @@ def test_four_line_candidates_never_plan_unsupported_legacy_dependencies(
         store=_store(tmp_path / "legacy"),
         settings=CampaignSettings(),
     )
-    assert len(unavailable_legacy) == 8
+    assert len(unavailable_legacy) == 32
     assert legacy_plan == ()
+
+
+def test_z_native_cap_is_resolved_before_any_attempt_is_planned(
+    tmp_path: Path,
+) -> None:
+    capped = tuple(
+        cell
+        for cell in REPORT_CATALOG.z_cells()
+        if cell.n_final == 7
+        and cell.variant in {"asm_o3", "cpp_o3"}
+    )
+
+    assert len(capped) == 8
+    assert {
+        REPORT_CATALOG.static_na_reason(cell) for cell in capped
+    } == {"native-backend-generation-cap-n6-v1"}
+    store_root = tmp_path / "native-cap"
+    planned = plan_campaign(
+        capped,
+        store=_store(store_root),
+        settings=CampaignSettings(),
+    )
+
+    assert planned == ()
+    assert not tuple(store_root.glob("cells/*/attempts/*"))
 
 
 def test_terminal_censor_rescan_cannot_reinsert_static_na_cell(
@@ -413,7 +438,7 @@ def test_campaign_run_rejects_forged_static_na_plan_before_worker_setup(
     with pytest.raises(
         ValueError,
         match=(
-            "reference-amplicol-full-n6-dd-4q-lines-contracted.*"
+            r"reference-amplicol-full-n6-dd-4q-lines-contracted.*"
             "original-amplicol-open-quark-line-limit"
         ),
     ):

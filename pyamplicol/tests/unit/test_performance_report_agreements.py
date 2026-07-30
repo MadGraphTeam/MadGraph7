@@ -157,7 +157,8 @@ def test_canonical_n4_direct_agreement_graph_has_exact_locked_counts() -> None:
 
 
 def test_full_direct_agreement_graph_excludes_unavailable_four_line_legacy() -> None:
-    counts = Counter(edge.kind for edge in agreement_edges())
+    edges = agreement_edges()
+    counts = Counter(edge.kind for edge in edges)
     candidate = next(
         cell
         for cell in REPORT_CATALOG.measurement_cells()
@@ -185,6 +186,31 @@ def test_full_direct_agreement_graph_excludes_unavailable_four_line_legacy() -> 
         edge.kind for edge in incoming_agreement_edges(candidate)
     } == {LC_CROSS_LAYOUT_COMPONENT}
     assert incoming_agreement_edges(legacy) == ()
+
+    measurable_ids = {
+        cell.cell_id
+        for cell in REPORT_CATALOG.measurement_cells()
+        if REPORT_CATALOG.static_na_reason(cell) is None
+    }
+    measurable_edges = tuple(
+        edge
+        for edge in edges
+        if edge.candidate.cell_id in measurable_ids
+        and edge.baseline.cell_id in measurable_ids
+    )
+    assert Counter(edge.kind for edge in measurable_edges) == {
+        BUILTIN_UFO_RECURRENCE: 306,
+        Z_RECURRENCE_CROSS_MODE: 156,
+        LC_CROSS_LAYOUT_COMPONENT: 578,
+        LC_LEGACY_PYAMPLICOL_COMPONENT: 472,
+    }
+    assert Counter(
+        _direct_replay_category(edge) for edge in measurable_edges
+    ) == {
+        "fully-replayed-pyamplicol": 946,
+        "replayed-pyamplicol-vs-authenticated-legacy": 472,
+        "authenticated-stored-legacy-layout": 94,
+    }
 
 
 def test_three_line_lc_still_requires_legacy_and_layout_agreements() -> None:

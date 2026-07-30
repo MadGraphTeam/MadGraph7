@@ -406,6 +406,21 @@ def test_benchmark_measures_minimum_samples_and_requested_batch() -> None:
     assert result.repetitions_per_sample == 1
     assert result.evaluation_count == 5
     assert result.evaluated_point_count == 20
+    assert result.evaluator_total_time_per_point == pytest.approx(
+        result.environment["elapsed_seconds"]
+        / result.environment["measured_point_count"]
+    )
+    assert result.environment[
+        "evaluator_total_time_raw_seconds_per_point"
+    ] == pytest.approx(result.evaluator_total_time_per_point)
+    assert (
+        result.environment["evaluator_total_time_source"]
+        == "runtime.evaluate.accumulated"
+    )
+    assert (
+        result.environment["evaluator_total_time_sample_contract"]
+        == "accumulated-repeated-warmed-evaluator-total-v1"
+    )
 
 
 def _write_effective_color_config(
@@ -721,6 +736,7 @@ def test_repeated_native_profile_is_paired_with_unprofiled_headline_samples(
     assert result.environment["native_profile_repetitions_per_sample"] == (
         result.repetitions_per_sample
     )
+    assert result.environment["native_profile_batch_size"] == config.batch_size
     assert result.environment["native_profile_points_per_sample"] == (
         result.repetitions_per_sample * config.batch_size
     )
@@ -855,6 +871,10 @@ def test_recurrence_profile_uses_paired_schedule_attribution(
     assert result.environment["timing_sample_contract"] == (
         "paired_unprofiled_headline_profiled_attribution_v1"
     )
+    assert result.environment["native_profile_batch_size"] == config.batch_size
+    assert result.environment[
+        "evaluator_total_time_raw_seconds_per_point"
+    ] == pytest.approx(result.evaluator_total_time_per_point)
     breakdown = result.timing_breakdown
     assert breakdown is not None
     assert breakdown.execution_mode == "recurrence"

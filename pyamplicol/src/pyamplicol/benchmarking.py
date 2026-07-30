@@ -53,6 +53,9 @@ _LC_ALL_FLOW_PROFILE_RECOMMENDATION = (
     "--lc-flow-layout all-flow-union for the optimized "
     "all-flows/single-helicity workload"
 )
+_EVALUATOR_TOTAL_SAMPLE_CONTRACT = (
+    "accumulated-repeated-warmed-evaluator-total-v1"
+)
 _COMPILED_DIRECT_ARENA_COUNTER_KEYS = (
     "compiled_direct_arena_engine_count",
     "compiled_direct_arena_call_count",
@@ -612,6 +615,7 @@ class BenchmarkBackend:
                 "native_profile_sample_count": len(evaluator_samples),
                 "native_profile_sample_limit": native_profile_sample_limit,
                 "native_profile_repetitions_per_sample": (native_profile_repetitions),
+                "native_profile_batch_size": len(batch),
                 "native_profile_points_per_sample": (
                     native_profile_repetitions * len(batch)
                 ),
@@ -668,6 +672,8 @@ class BenchmarkBackend:
         selected_helicity_ids = tuple(helicities or ())
         selected_color_ids = tuple(color_flows or ())
         measured_evaluations = len(samples) * calibration.repetitions_per_sample
+        measured_point_count = measured_evaluations * len(batch)
+        evaluator_total_time_per_point = elapsed / measured_point_count
         layout_environment: dict[str, object] = {}
         if lc_flow_layout is not None:
             layout_environment = {
@@ -712,7 +718,17 @@ class BenchmarkBackend:
                 ),
                 "repetitions_per_sample": calibration.repetitions_per_sample,
                 "measured_evaluation_count": measured_evaluations,
-                "measured_point_count": measured_evaluations * len(batch),
+                "measured_point_count": measured_point_count,
+                "evaluator_total_time_raw_seconds_per_point": (
+                    evaluator_total_time_per_point
+                ),
+                "evaluator_total_time_status": "measured",
+                "evaluator_total_time_ratio_eligible": False,
+                "evaluator_total_time_source": f"{wall_sample_pass}.accumulated",
+                "evaluator_total_time_sample_contract": (
+                    _EVALUATOR_TOTAL_SAMPLE_CONTRACT
+                ),
+                "evaluator_total_accumulated_seconds": elapsed,
                 "target_sample_seconds": calibration.target_sample_seconds,
                 "calibration_probe_seconds": calibration.probe_seconds,
                 "calibration_block_count": calibration.block_count,
@@ -724,6 +740,7 @@ class BenchmarkBackend:
             interrupted=interrupted,
             repetitions_per_sample=calibration.repetitions_per_sample,
             evaluator_uncertainty=evaluator_uncertainty,
+            evaluator_total_time_per_point=evaluator_total_time_per_point,
             process_id=physics.process_id,
             process_expression=physics.process,
             timing_breakdown=timing_breakdown,

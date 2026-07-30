@@ -225,16 +225,18 @@ def _mark_evaluator_total(
     measurement: dict[str, object],
     *,
     execution_mode: str = "compiled",
+    total: float | None = None,
 ) -> None:
     provenance = measurement["provenance"]
     assert isinstance(provenance, dict)
     wall = measurement["wall_seconds_per_point"]
     assert isinstance(wall, float)
+    raw_total = wall if total is None else total
     provenance["evaluator_total_timing"] = {
         "abi": "pyamplicol-report-evaluator-total-timing-v1",
         "status": "measured",
         "ratio_eligible": False,
-        "raw_seconds_per_point": wall,
+        "raw_seconds_per_point": raw_total,
         "source": "runtime._benchmark_f64_wall_time.accumulated",
         "execution_mode": execution_mode,
         "sample_contract": (
@@ -245,7 +247,7 @@ def _mark_evaluator_total(
         "batch_size": 128,
         "points_per_sample": 128,
         "measured_point_count": 640,
-        "accumulated_seconds": wall * 640,
+        "accumulated_seconds": raw_total * 640,
     }
 
 
@@ -769,6 +771,185 @@ def test_z_reference_execution_is_explicitly_not_exposed(reset_caches) -> None:
     assert "not a missing measurement" in tex
 
 
+@pytest.mark.parametrize("model", (ModelKey.BUILTIN_SM, ModelKey.UFO_SM))
+def test_z_native_generation_cap_renders_static_na_in_both_models(
+    reset_caches,
+    model: ModelKey,
+) -> None:
+    tex = render_z_ladder(model, reset_caches)
+    capped_rows = [
+        line
+        for line in tex.splitlines()
+        if line.startswith(("7 & ", "8 & ", "9 & "))
+        and ("compiled ASM O3" in line or "compiled C++ O3" in line)
+    ]
+
+    assert len(capped_rows) == 6
+    assert all(
+        row.count(r"\matrixstaticna{ReportMuted}") == 6
+        for row in capped_rows
+    )
+    assert (
+        "user cap: native C++/ASM generation is not attempted above n=6"
+        in tex
+    )
+    assert "native-backend-generation-cap-n6-v1" in tex
+
+
+def test_z_evaluator_total_is_mode_independent_and_not_execution_attribution(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    baseline = _cache_by_dataset(caches, "reference_amplicol_lc")
+    candidate = _cache_by_dataset(caches, "z_builtin_sm")
+    for workload in (Workload.SELECTED_FLOW, Workload.ALL_FLOW):
+        _set_ok(
+            baseline,
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=workload,
+            generation=1.0,
+            wall=1.0e-6,
+            execution=9.0e-6,
+        )
+    modes = (
+        ("jit_o1", "compiled", "compiled JIT O1", 31.0, 41.0),
+        ("eager_jit_o2", "eager", "eager-DAG JIT O2", 32.0, 42.0),
+        (
+            "recurrence_jit_o2",
+            "recurrence",
+            "recurrence JIT O2",
+            33.0,
+            43.0,
+        ),
+    )
+    entries = candidate["entries"]
+    assert isinstance(entries, list)
+    for variant, execution_mode, _label, selected_total, all_total in modes:
+        for workload, total in (
+            (Workload.SELECTED_FLOW, selected_total),
+            (Workload.ALL_FLOW, all_total),
+        ):
+            _set_ok(
+                candidate,
+                process_key="dd_z_jets",
+                n_final=1,
+                workload=workload,
+                generation=2.0,
+                wall=(10.0 + total) * 1.0e-6,
+                execution=(70.0 + total) * 1.0e-6,
+                variant=variant,
+            )
+            measurement = next(
+                entry["measurement"]
+                for entry in entries
+                if entry["process_key"] == "dd_z_jets"
+                and entry["n_final"] == 1
+                and entry["workload"] == workload.value
+                and entry["variant"] == variant
+            )
+            assert isinstance(measurement, dict)
+            _mark_evaluator_total(
+                measurement,
+                execution_mode=execution_mode,
+                total=total * 1.0e-6,
+            )
+
+    tex = render_z_ladder(ModelKey.BUILTIN_SM, caches)
+    for _variant, _mode, label, selected_total, all_total in modes:
+        row = next(
+            line
+            for line in tex.splitlines()
+            if line.startswith("1 & ") and label in line
+        )
+        assert (
+            rf"\matrixtotalevaluator{{\texttt{{{selected_total:.0f}}}}}"
+            in row
+        )
+        assert (
+            rf"\matrixtotalevaluator{{\texttt{{{all_total:.0f}}}}}"
+            in row
+        )
+        assert r"\matrixtotalevaluator{\texttt{1" not in row
+        assert r"\matrixtotalevaluator{\texttt{10" not in row
+
+
+def test_z_evaluator_total_recovers_authenticated_historical_profile(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    candidate = _cache_by_dataset(caches, "z_builtin_sm")
+    _set_ok(
+        candidate,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.SELECTED_FLOW,
+        generation=2.0,
+        wall=9.0e-6,
+        execution=7.0e-6,
+        variant="recurrence_jit_o2",
+    )
+    entries = candidate["entries"]
+    assert isinstance(entries, list)
+    measurement = next(
+        entry["measurement"]
+        for entry in entries
+        if entry["process_key"] == "dd_z_jets"
+        and entry["n_final"] == 1
+        and entry["workload"] == Workload.SELECTED_FLOW.value
+        and entry["variant"] == "recurrence_jit_o2"
+    )
+    assert isinstance(measurement, dict)
+    provenance = measurement["provenance"]
+    assert isinstance(provenance, dict)
+    provenance["runtime_profile"] = {
+        "achieved_runtime_seconds": 0.003,
+        "completed_sample_count": 5,
+        "interrupted": False,
+        "measured_point_count": 1000,
+        "planned_sample_count": 5,
+        "repetitions_per_sample": 1,
+        "target_runtime_achieved": True,
+        "target_runtime_seconds": 0.002,
+    }
+    provenance["execution_timing"] = {
+        "abi": "pyamplicol-report-execution-timing-v1",
+        "status": "measured",
+        "ratio_eligible": True,
+        "raw_seconds_per_point": 7.0e-6,
+        "source": "runtime_profile_core_recurrence_schedule_time",
+        "compiled_direct_arena_active": False,
+        "sample_count": 5,
+        "native_profile_points_per_sample": 200,
+        "sample_contract": (
+            "paired_unprofiled_headline_profiled_attribution_v1"
+        ),
+    }
+
+    tex = render_z_ladder(ModelKey.BUILTIN_SM, caches)
+    row = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith("1 & ") and "recurrence JIT O2" in line
+    )
+
+    assert r"\matrixtotalevaluator{\texttt{3}}" in row
+    assert r"\matrixtotalevaluator{\texttt{7}}" not in row
+    assert r"\matrixtotalevaluator{\texttt{9}}" not in row
+
+    provenance["execution_timing"]["source"] = (
+        "runtime_profile_core_evaluator_call_time"
+    )
+    tex = render_z_ladder(ModelKey.BUILTIN_SM, caches)
+    row = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith("1 & ") and "recurrence JIT O2" in line
+    )
+    assert r"\matrixstatus{ReportMuted}{N/A}" in row
+    assert r"\matrixtotalevaluator{\texttt{3}}" not in row
+
+
 def test_visible_completeness_accounts_for_every_n4_slot(reset_caches) -> None:
     caches = copy.deepcopy(reset_caches)
     _fill_visible_n4_scope(caches)
@@ -796,9 +977,9 @@ def test_visible_completeness_authenticates_catalog_static_na_slots(
 
     assert summary.complete
     assert evidence["declared_measurement_cell_count"] == 1666
-    assert evidence["required_measurement_count"] == 1658
-    assert evidence["catalog_static_na_cell_count"] == 8
-    assert evidence["rendered_catalog_static_na_cell_count"] == 8
+    assert evidence["required_measurement_count"] == 1634
+    assert evidence["catalog_static_na_cell_count"] == 32
+    assert evidence["rendered_catalog_static_na_cell_count"] == 32
     assert evidence["applicable_na_display_slot_count"] == 0
     assert evidence["missing_rendered_cell_count"] == 0
 
@@ -1165,6 +1346,7 @@ def test_amplicol_all_flow_setup_generation_ratio_is_not_comparable(
     reset_caches,
 ) -> None:
     caches = copy.deepcopy(reset_caches)
+    baseline = _cache_by_dataset(caches, "reference_amplicol_lc")
     candidate = _cache_by_dataset(
         caches,
         "matrix_recurrence_builtin_sm_lc",
@@ -1206,7 +1388,6 @@ def test_four_line_recurrence_renders_absolute_values_without_legacy_oracle(
     reset_caches,
 ) -> None:
     caches = copy.deepcopy(reset_caches)
-    baseline = _cache_by_dataset(caches, "reference_amplicol_lc")
     candidate = _cache_by_dataset(
         caches,
         "matrix_recurrence_builtin_sm_lc",
@@ -1517,9 +1698,9 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
         (4, 286),
         (5, 285),
         (6, 181),
-        (7, 163),
-        (8, 163),
-        (9, 124),
+        (7, 155),
+        (8, 155),
+        (9, 116),
     )
     assert summary.declared_total == 1666
     assert summary.static_na_by_n == (
@@ -1529,12 +1710,12 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
         (4, 0),
         (5, 0),
         (6, 4),
-        (7, 2),
-        (8, 2),
-        (9, 0),
+        (7, 10),
+        (8, 10),
+        (9, 8),
     )
-    assert summary.static_na_total == 8
-    assert summary.expected_total == 1658
+    assert summary.static_na_total == 32
+    assert summary.expected_total == 1634
     assert summary.passed_total == 4
     assert summary.oracle_count == 1
     assert summary.independent_count == 1
@@ -1546,10 +1727,10 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
     assert summary.high_precision_count == 1
     assert summary.high_precision_maximum_relative_difference == 5.0e-14
     assert summary.uniform_source_revision == revision
-    assert "1666 & 8 & 4" in tex
+    assert "1666 & 32 & 4" in tex
     assert "1666 declared cells" in tex
-    assert "1658 measurable cells" in tex
-    assert "8 catalog-authenticated static N/A" in tex
+    assert "1634 measurable cells" in tex
+    assert "32 catalog-authenticated static N/A" in tex
     assert "412 matrix process/multiplicity positions" in tex
     assert "36 reference execution fields" in tex
     assert rf"\nolinkurl{{{revision}}}" in tex

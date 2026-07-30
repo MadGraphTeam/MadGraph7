@@ -307,6 +307,7 @@ def test_benchmark_measurement_rejects_uncertainty_for_unexposed_execution() -> 
 def test_benchmark_measurement_retains_supported_recurrence_execution_timing() -> None:
     benchmark = _benchmark_fixture()
     benchmark.evaluator_time_per_point = 8.0e-7
+    benchmark.evaluator_total_time_per_point = 1.2e-6
     benchmark.environment.update(
         {
             "evaluator_time_status": "measured",
@@ -316,6 +317,16 @@ def test_benchmark_measurement_retains_supported_recurrence_execution_timing() -
             "compiled_direct_arena_active": False,
             "execution_mode": "recurrence",
             "timing_sample_contract": "paired-native-repeated-profile-v1",
+            "evaluator_total_time_raw_seconds_per_point": 1.2e-6,
+            "evaluator_total_time_status": "measured",
+            "evaluator_total_time_ratio_eligible": False,
+            "evaluator_total_time_source": (
+                "runtime._benchmark_f64_wall_time.accumulated"
+            ),
+            "evaluator_total_time_sample_contract": (
+                "accumulated-repeated-warmed-evaluator-total-v1"
+            ),
+            "evaluator_total_accumulated_seconds": 7.68e-4,
         }
     )
 
@@ -323,6 +334,23 @@ def test_benchmark_measurement_retains_supported_recurrence_execution_timing() -
 
     assert measurement["execution_seconds_per_point"] == 8.0e-7
     assert measurement["arena_profile_evidence"] is None
+    assert measurement["evaluator_total_timing"] == {
+        "abi": "pyamplicol-report-evaluator-total-timing-v1",
+        "status": "measured",
+        "ratio_eligible": False,
+        "raw_seconds_per_point": 1.2e-6,
+        "source": "runtime._benchmark_f64_wall_time.accumulated",
+        "execution_mode": "recurrence",
+        "sample_contract": (
+            "accumulated-repeated-warmed-evaluator-total-v1"
+        ),
+        "sample_count": 5,
+        "repetitions_per_sample": 1,
+        "batch_size": 128,
+        "points_per_sample": 128,
+        "measured_point_count": 640,
+        "accumulated_seconds": 7.68e-4,
+    }
     assert measurement["execution_timing"] == {
         "abi": "pyamplicol-report-execution-timing-v1",
         "status": "measured",

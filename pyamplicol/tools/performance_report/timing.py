@@ -27,8 +27,17 @@ EVALUATOR_TOTAL_TIMING_KEY = "evaluator_total_timing"
 EVALUATOR_TOTAL_TIMING_SOURCE = (
     "runtime._benchmark_f64_wall_time.accumulated"
 )
+EVALUATOR_TOTAL_TIMING_SOURCES = frozenset(
+    {
+        EVALUATOR_TOTAL_TIMING_SOURCE,
+        "runtime.evaluate.accumulated",
+    }
+)
 EVALUATOR_TOTAL_SAMPLE_CONTRACT = (
     "accumulated-repeated-warmed-evaluator-total-v1"
+)
+RECURRENCE_EXECUTION_TIMING_SOURCE = (
+    "runtime_profile_core_recurrence_schedule_time"
 )
 UNAVAILABLE_STATUS = "unavailable"
 ARENA_UNAVAILABLE_EXECUTION_TIMING_FIELDS = frozenset(
@@ -74,6 +83,105 @@ EVALUATOR_TOTAL_TIMING_FIELDS = frozenset(
         "accumulated_seconds",
     }
 )
+RUNTIME_PROFILE_TOTAL_FIELDS = frozenset(
+    {
+        "achieved_runtime_seconds",
+        "completed_sample_count",
+        "interrupted",
+        "measured_point_count",
+        "planned_sample_count",
+        "repetitions_per_sample",
+        "target_runtime_achieved",
+        "target_runtime_seconds",
+    }
+)
+_MEASURED_EXECUTION_TIMING_FIELDS = frozenset(
+    {
+        "abi",
+        "status",
+        "ratio_eligible",
+        "raw_seconds_per_point",
+        "source",
+        "compiled_direct_arena_active",
+        "sample_count",
+        "native_profile_points_per_sample",
+        "sample_contract",
+    }
+)
+
+
+def _runtime_profile_evaluator_total(
+    measurement: Mapping[str, object],
+) -> float | None:
+    """Recover the accumulated warmed total from canonical profile evidence."""
+
+    provenance = measurement.get("provenance")
+    if not isinstance(provenance, Mapping):
+        return None
+    profile = provenance.get("runtime_profile")
+    if not isinstance(profile, Mapping) or set(profile) != RUNTIME_PROFILE_TOTAL_FIELDS:
+        return None
+    execution = provenance.get(EXECUTION_TIMING_KEY)
+    raw_execution = (
+        execution.get("raw_seconds_per_point")
+        if isinstance(execution, Mapping)
+        else None
+    )
+    achieved = profile.get("achieved_runtime_seconds")
+    measured_points = profile.get("measured_point_count")
+    completed = profile.get("completed_sample_count")
+    planned = profile.get("planned_sample_count")
+    repetitions = profile.get("repetitions_per_sample")
+    target = profile.get("target_runtime_seconds")
+    if (
+        measurement.get("status") != "ok"
+        or not isinstance(execution, Mapping)
+        or set(execution) != _MEASURED_EXECUTION_TIMING_FIELDS
+        or execution.get("abi") != MEASURED_EXECUTION_TIMING_ABI
+        or execution.get("status") != "measured"
+        or execution.get("ratio_eligible") is not True
+        or execution.get("source") != RECURRENCE_EXECUTION_TIMING_SOURCE
+        or execution.get("compiled_direct_arena_active") is not False
+        or execution.get("sample_contract") != PAIRED_TIMING_SAMPLE_CONTRACT
+        or isinstance(raw_execution, bool)
+        or not isinstance(raw_execution, (int, float))
+        or not math.isfinite(float(raw_execution))
+        or float(raw_execution) <= 0.0
+        or measurement.get("execution_seconds_per_point") != raw_execution
+        or isinstance(achieved, bool)
+        or not isinstance(achieved, (int, float))
+        or not math.isfinite(float(achieved))
+        or float(achieved) <= 0.0
+        or isinstance(measured_points, bool)
+        or not isinstance(measured_points, int)
+        or measured_points < 1
+        or isinstance(completed, bool)
+        or not isinstance(completed, int)
+        or completed < 1
+        or isinstance(planned, bool)
+        or not isinstance(planned, int)
+        or planned != completed
+        or measurement.get("sample_count") != completed
+        or execution.get("sample_count") != completed
+        or isinstance(repetitions, bool)
+        or not isinstance(repetitions, int)
+        or repetitions < 1
+        or measured_points % (completed * repetitions) != 0
+        or execution.get("native_profile_points_per_sample")
+        != measured_points // completed
+        or profile.get("interrupted") is not False
+        or profile.get("target_runtime_achieved") is not True
+        or isinstance(target, bool)
+        or not isinstance(target, (int, float))
+        or not math.isfinite(float(target))
+        or float(target) <= 0.0
+        or float(achieved) < float(target)
+    ):
+        return None
+    result = float(achieved) / measured_points
+    if not math.isfinite(result) or result <= 0.0:
+        return None
+    return result
 
 
 def evaluator_total_timing_record(
@@ -94,15 +202,18 @@ def evaluator_total_timing_record(
     batch_size = record.get("batch_size")
     points_per_sample = record.get("points_per_sample")
     measured_points = record.get("measured_point_count")
-    wall = measurement.get("wall_seconds_per_point")
     if (
         measurement.get("status") != "ok"
         or set(record) != EVALUATOR_TOTAL_TIMING_FIELDS
         or record.get("abi") != EVALUATOR_TOTAL_TIMING_ABI
         or record.get("status") != "measured"
         or record.get("ratio_eligible") is not False
-        or record.get("source") != EVALUATOR_TOTAL_TIMING_SOURCE
-        or record.get("execution_mode") not in {"compiled", "eager"}
+        or record.get("source") not in EVALUATOR_TOTAL_TIMING_SOURCES
+        or record.get("execution_mode") not in {
+            "compiled",
+            "eager",
+            "recurrence",
+        }
         or record.get("sample_contract") != EVALUATOR_TOTAL_SAMPLE_CONTRACT
         or isinstance(sample_count, bool)
         or not isinstance(sample_count, int)
@@ -134,18 +245,25 @@ def evaluator_total_timing_record(
             rel_tol=1.0e-15,
             abs_tol=0.0,
         )
-        or isinstance(wall, bool)
-        or not isinstance(wall, (int, float))
-        or not math.isfinite(float(wall))
-        or not math.isclose(
-            float(raw),
-            float(wall),
-            rel_tol=1.0e-15,
-            abs_tol=0.0,
-        )
     ):
         return None
     return record
+
+
+def evaluator_total_seconds_per_point(
+    measurement: Mapping[str, object],
+) -> float | None:
+    """Return the authenticated accumulated evaluator total for every mode.
+
+    New measurements carry the dedicated ABI record. Historical recurrence
+    measurements can be recovered from the same immutable accumulated runtime
+    and measured-point counters that the worker already authenticated.
+    """
+
+    record = evaluator_total_timing_record(measurement)
+    if record is not None:
+        return float(record["raw_seconds_per_point"])
+    return _runtime_profile_evaluator_total(measurement)
 
 
 def unavailable_execution_timing_record(
@@ -252,10 +370,14 @@ __all__ = [
     "EVALUATOR_TOTAL_TIMING_FIELDS",
     "EVALUATOR_TOTAL_TIMING_KEY",
     "EVALUATOR_TOTAL_TIMING_SOURCE",
+    "EVALUATOR_TOTAL_TIMING_SOURCES",
     "EXECUTION_TIMING_KEY",
     "MEASURED_EXECUTION_TIMING_ABI",
     "PAIRED_TIMING_SAMPLE_CONTRACT",
+    "RECURRENCE_EXECUTION_TIMING_SOURCE",
+    "RUNTIME_PROFILE_TOTAL_FIELDS",
     "UNAVAILABLE_STATUS",
+    "evaluator_total_seconds_per_point",
     "evaluator_total_timing_record",
     "unavailable_execution_timing_record",
 ]

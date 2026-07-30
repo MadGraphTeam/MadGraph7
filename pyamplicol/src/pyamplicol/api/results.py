@@ -847,8 +847,11 @@ class BenchmarkResult:
     For compiled/eager execution, ``evaluator_time_per_point`` is the relevant
     evaluator envelope measured by the bounded native profiler. For recurrence,
     it is the inclusive recurrence schedule measured by the paired profiled
-    pass. ``interrupted`` marks a valid partial result computed only from timing
-    blocks that finished before sampling was interrupted.
+    pass. ``evaluator_total_time_per_point`` is the accumulated warmed headline
+    evaluator duration divided by its authenticated measured-point count; it is
+    distinct from both wall-sample statistics and execution attribution.
+    ``interrupted`` marks a valid partial result computed only from timing blocks
+    that finished before sampling was interrupted.
     """
 
     requested_config: BenchmarkConfig
@@ -864,6 +867,7 @@ class BenchmarkResult:
     process_expression: str | None = None
     timing_breakdown: BenchmarkTimingBreakdown | None = None
     interrupted: bool = False
+    evaluator_total_time_per_point: float | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -881,6 +885,13 @@ class BenchmarkResult:
             or self.evaluator_time_per_point < 0
         ):
             raise ValueError("benchmark evaluator_time_per_point must be non-negative")
+        if self.evaluator_total_time_per_point is not None and (
+            not math.isfinite(self.evaluator_total_time_per_point)
+            or self.evaluator_total_time_per_point <= 0
+        ):
+            raise ValueError(
+                "benchmark evaluator_total_time_per_point must be positive"
+            )
         if (
             isinstance(self.repetitions_per_sample, bool)
             or not isinstance(self.repetitions_per_sample, int)

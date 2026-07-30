@@ -277,13 +277,22 @@ SCALAR_DATASETS = (
 Z_VARIANTS = (
     ZVariant("reference", "Independent reference", ExecutionMode.AMPLICOL, "fortran"),
     ZVariant("jit_o1", "JIT level 1", ExecutionMode.COMPILED, "jit", 1),
-    ZVariant("asm_o3", "ASM O3", ExecutionMode.COMPILED, "asm"),
+    ZVariant(
+        "asm_o3",
+        "ASM O3",
+        ExecutionMode.COMPILED,
+        "asm",
+        maximum_generation_n_final=6,
+        static_na_reason_code="native-backend-generation-cap-n6-v1",
+    ),
     ZVariant(
         "cpp_o3",
         "C++ O3",
         ExecutionMode.COMPILED,
         "cpp",
         cpp_optimization="O3",
+        maximum_generation_n_final=6,
+        static_na_reason_code="native-backend-generation-cap-n6-v1",
     ),
     ZVariant("jit_o3", "JIT level 3", ExecutionMode.COMPILED, "jit", 3),
     ZVariant(
@@ -304,6 +313,12 @@ Z_VARIANTS = (
 
 STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT = (
     "original-amplicol-open-quark-line-limit"
+)
+STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6 = (
+    "native-backend-generation-cap-n6-v1"
+)
+STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION = (
+    "user cap: native C++/ASM generation is not attempted above n=6"
 )
 
 
@@ -543,12 +558,35 @@ class ReportCatalog:
         oracle cannot represent the concrete process at all.
         """
 
+        if cell.dataset_id.startswith("z_") and cell.variant is not None:
+            variant = next(
+                (
+                    candidate
+                    for candidate in self.z_variants
+                    if candidate.key == cell.variant
+                ),
+                None,
+            )
+            if (
+                variant is not None
+                and variant.maximum_generation_n_final is not None
+                and cell.n_final > variant.maximum_generation_n_final
+            ):
+                return variant.static_na_reason_code
         if (
             cell.measurement.execution_mode is ExecutionMode.AMPLICOL
             and not self.legacy_reference_available(cell)
         ):
             return STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT
         return None
+
+    def static_na_description(self, cell: CellSpec) -> str | None:
+        """Return a stable human explanation for a catalog static N/A cell."""
+
+        reason = self.static_na_reason(cell)
+        if reason == STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6:
+            return STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION
+        return reason
 
     def validation_baseline_cell(self, cell: CellSpec) -> CellSpec | None:
         """Return the executable numerical baseline for ``cell``.
@@ -584,8 +622,10 @@ __all__ = [
     "REPORT_CATALOG",
     "SCALAR_CONTACT",
     "SCALAR_DATASETS",
-    "STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT",
     "SCALAR_GRAVITY",
+    "STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6",
+    "STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION",
+    "STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT",
     "UFO_SM",
     "Z_VARIANTS",
     "ReportCatalog",

@@ -58,6 +58,7 @@ from .campaign_policy import (
 )
 from .catalog import (
     REPORT_CATALOG,
+    STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6,
     STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT,
     ReportCatalog,
 )
@@ -116,17 +117,32 @@ _GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _FULL_CATALOG_MAX_N_FINAL = 9
 _EXPECTED_FULL_CATALOG_CELL_COUNT = 1666
+_EXPECTED_FULL_STATIC_NA_REASONS = {
+    **{
+        cell_id: STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT
+        for cell_id in {
+            "reference-amplicol-lc-n6-dd-4q-lines-selected-flow",
+            "reference-amplicol-lc-n6-dd-4q-lines-all-flow",
+            "reference-amplicol-lc-n7-dd-4q-lines-selected-flow",
+            "reference-amplicol-lc-n7-dd-4q-lines-all-flow",
+            "reference-amplicol-lc-n8-dd-4q-lines-selected-flow",
+            "reference-amplicol-lc-n8-dd-4q-lines-all-flow",
+            "reference-amplicol-nlc-n6-dd-4q-lines-contracted",
+            "reference-amplicol-full-n6-dd-4q-lines-contracted",
+        }
+    },
+    **{
+        (
+            f"z-{model}-n{n_final}-dd-z-jets-{variant}-{workload}"
+        ): STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6
+        for model in ("builtin-sm", "external-sm")
+        for n_final in (7, 8, 9)
+        for variant in ("asm-o3", "cpp-o3")
+        for workload in ("selected-flow", "all-flow")
+    },
+}
 _EXPECTED_FULL_STATIC_NA_CELL_IDS = frozenset(
-    {
-        "reference-amplicol-lc-n6-dd-4q-lines-selected-flow",
-        "reference-amplicol-lc-n6-dd-4q-lines-all-flow",
-        "reference-amplicol-lc-n7-dd-4q-lines-selected-flow",
-        "reference-amplicol-lc-n7-dd-4q-lines-all-flow",
-        "reference-amplicol-lc-n8-dd-4q-lines-selected-flow",
-        "reference-amplicol-lc-n8-dd-4q-lines-all-flow",
-        "reference-amplicol-nlc-n6-dd-4q-lines-contracted",
-        "reference-amplicol-full-n6-dd-4q-lines-contracted",
-    }
+    _EXPECTED_FULL_STATIC_NA_REASONS
 )
 _EXPECTED_FULL_DIRECT_AGREEMENT_COUNT = 1560
 _EXPECTED_N4_CELL_COUNT = 742
@@ -138,9 +154,9 @@ _EXPECTED_N4_DIRECT_AGREEMENT_COUNTS = {
 }
 _EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS = {
     BUILTIN_UFO_RECURRENCE: 306,
-    Z_RECURRENCE_CROSS_MODE: 180,
-    LC_CROSS_LAYOUT_COMPONENT: 590,
-    LC_LEGACY_PYAMPLICOL_COMPONENT: 484,
+    Z_RECURRENCE_CROSS_MODE: 156,
+    LC_CROSS_LAYOUT_COMPONENT: 578,
+    LC_LEGACY_PYAMPLICOL_COMPONENT: 472,
 }
 _FULLY_REPLAYED_PYAMPLICOL = "fully-replayed-pyamplicol"
 _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY = (
@@ -158,8 +174,8 @@ _EXPECTED_N4_DIRECT_REPLAY_COUNTS = {
     _AUTHENTICATED_STORED_LEGACY_LAYOUT: 32,
 }
 _EXPECTED_FULL_DIRECT_REPLAY_COUNTS = {
-    _FULLY_REPLAYED_PYAMPLICOL: 982,
-    _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY: 484,
+    _FULLY_REPLAYED_PYAMPLICOL: 946,
+    _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY: 472,
     _AUTHENTICATED_STORED_LEGACY_LAYOUT: 94,
 }
 _LOADED_ORIGIN_OBSERVATION_FIELDS = frozenset(
@@ -4265,16 +4281,14 @@ def _audit_final_report_locked(
                 f"missing={missing_static_na_ids}, "
                 f"extra={extra_static_na_ids}"
             )
-        unexpected_static_na_reasons = {
+        observed_static_na_reasons = {
             cell.cell_id: catalog.static_na_reason(cell)
             for cell in static_na_cells
-            if catalog.static_na_reason(cell)
-            != STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT
         }
-        if unexpected_static_na_reasons:
+        if observed_static_na_reasons != _EXPECTED_FULL_STATIC_NA_REASONS:
             raise FinalAuditError(
                 "canonical catalog static-N/A reasons differ: "
-                f"{dict(sorted(unexpected_static_na_reasons.items()))}"
+                f"{dict(sorted(observed_static_na_reasons.items()))}"
             )
     cells = tuple(
         cell

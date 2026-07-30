@@ -15,6 +15,8 @@ from .campaign_policy import (
 )
 from .catalog import (
     REPORT_CATALOG,
+    STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6,
+    STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION,
     ReportCatalog,
     matrix_multiplicities,
     z_dataset_id,
@@ -33,6 +35,7 @@ from .models import (
     ZVariant,
 )
 from .timing import (
+    evaluator_total_seconds_per_point,
     evaluator_total_timing_record,
     unavailable_execution_timing_record,
 )
@@ -1451,14 +1454,32 @@ def _best_mode_lc_cell(
         rf"\matrixpair{{{selected_baseline_runtime}}}"
         rf"{{{all_flow_baseline_runtime}}}"
     )
+    selected_generation_ratio = _best_mode_ratio(
+        selected,
+        "generation_seconds",
+        baseline_static_na=baseline_static_na,
+    )
+    all_flow_generation_ratio = _best_mode_ratio(
+        all_flow,
+        "generation_seconds",
+        baseline_static_na=baseline_static_na,
+    )
+    selected_runtime_ratio = _best_mode_runtime_ratio(
+        selected,
+        baseline_static_na=baseline_static_na,
+    )
+    all_flow_runtime_ratio = _best_mode_runtime_ratio(
+        all_flow,
+        baseline_static_na=baseline_static_na,
+    )
     return (
         r"\matrixcelllc"
         f"{{{baseline_generation}}}"
-        f"{{{_best_mode_ratio(selected, 'generation_seconds', baseline_static_na=baseline_static_na)}}}"
-        f"{{{_best_mode_ratio(all_flow, 'generation_seconds', baseline_static_na=baseline_static_na)}}}"
+        f"{{{selected_generation_ratio}}}"
+        f"{{{all_flow_generation_ratio}}}"
         f"{{{baseline_runtime}}}"
-        f"{{{_best_mode_runtime_ratio(selected, baseline_static_na=baseline_static_na)}}}"
-        f"{{{_best_mode_runtime_ratio(all_flow, baseline_static_na=baseline_static_na)}}}"
+        f"{{{selected_runtime_ratio}}}"
+        f"{{{all_flow_runtime_ratio}}}"
     )
 
 
@@ -1489,12 +1510,21 @@ def _best_mode_contracted_cell(
             microseconds=True,
         )
     )
+    generation_ratio = _best_mode_ratio(
+        joined,
+        "generation_seconds",
+        baseline_static_na=baseline_static_na,
+    )
+    runtime_ratio = _best_mode_runtime_ratio(
+        joined,
+        baseline_static_na=baseline_static_na,
+    )
     return (
         r"\matrixcellcontracted"
         f"{{{baseline_generation}}}"
-        f"{{{_best_mode_ratio(joined, 'generation_seconds', baseline_static_na=baseline_static_na)}}}"
+        f"{{{generation_ratio}}}"
         f"{{{baseline_runtime}}}"
-        f"{{{_best_mode_runtime_ratio(joined, baseline_static_na=baseline_static_na)}}}"
+        f"{{{runtime_ratio}}}"
     )
 
 
@@ -1863,7 +1893,10 @@ def _z_value(
     reference: bool,
     microseconds: bool = False,
     comparable: bool = True,
+    static_na: bool = False,
 ) -> str:
+    if static_na:
+        return _static_na()
     measurement = joined.baseline if reference else joined.candidate
     absolute = _metric(measurement, field, microseconds=microseconds)
     if reference or not _ok(measurement):
@@ -1880,6 +1913,25 @@ def _z_value(
     return absolute + r"\," + _ratio(measurement, joined.baseline, field)
 
 
+def _z_evaluator_total(
+    joined: JoinedWorkload,
+    *,
+    reference: bool,
+    static_na: bool = False,
+) -> str:
+    if static_na:
+        return _static_na()
+    measurement = joined.baseline if reference else joined.candidate
+    if reference:
+        return _not_exposed()
+    if not _ok(measurement):
+        return _status(measurement)
+    total = evaluator_total_seconds_per_point(measurement)
+    if total is None:
+        return _not_exposed()
+    return r"\matrixtotalevaluator{" + _time(total, microseconds=True) + "}"
+
+
 def _z_block(
     adapter: BaselineCandidateAdapter,
     *,
@@ -1889,6 +1941,11 @@ def _z_block(
     block_count: int,
 ) -> list[str]:
     model_label = "Built-in SM" if model is ModelKey.BUILTIN_SM else "UFO-SM"
+    candidate_cells = {
+        (cell.n_final, cell.variant, cell.workload): cell
+        for cell in adapter.catalog.z_cells()
+        if cell.dataset_id == z_dataset_id(model)
+    }
     lines = [
         r"\clearpage",
         r"\noindent\begin{minipage}{\linewidth}",
@@ -1920,8 +1977,8 @@ def _z_block(
         ),
         (
             r"& & \textbf{gen [s]} & \textbf{wall [us/pt]} & "
-            r"\textbf{exec [us/pt]} & \textbf{gen [s]} & "
-            r"\textbf{wall [us/pt]} & \textbf{exec [us/pt]} \\"
+            r"\textbf{eval total [us/pt]} & \textbf{gen [s]} & "
+            r"\textbf{wall [us/pt]} & \textbf{eval total [us/pt]} \\"
         ),
         r"\midrule",
     ]
@@ -1940,6 +1997,21 @@ def _z_block(
                 workload=Workload.ALL_FLOW,
             )
             reference = variant.execution_mode is ExecutionMode.AMPLICOL
+            selected_static_na = False
+            all_flow_static_na = False
+            if not reference:
+                selected_cell = candidate_cells[
+                    (n_final, variant.key, Workload.SELECTED_FLOW)
+                ]
+                all_flow_cell = candidate_cells[
+                    (n_final, variant.key, Workload.ALL_FLOW)
+                ]
+                selected_static_na = (
+                    adapter.catalog.static_na_reason(selected_cell) is not None
+                )
+                all_flow_static_na = (
+                    adapter.catalog.static_na_reason(all_flow_cell) is not None
+                )
             if reference:
                 lines.append(r"\rowcolor{refblue}")
             elif variant.key in {
@@ -1955,44 +2027,38 @@ def _z_block(
                     selected,
                     "generation_seconds",
                     reference=reference,
+                    static_na=selected_static_na,
                 ),
                 _z_value(
                     selected,
                     "wall_seconds_per_point",
                     reference=reference,
                     microseconds=True,
+                    static_na=selected_static_na,
                 ),
-                (
-                    _not_exposed()
-                    if reference
-                    else _z_value(
-                        selected,
-                        "execution_seconds_per_point",
-                        reference=False,
-                        microseconds=True,
-                    )
+                _z_evaluator_total(
+                    selected,
+                    reference=reference,
+                    static_na=selected_static_na,
                 ),
                 _z_value(
                     all_flow,
                     "generation_seconds",
                     reference=reference,
                     comparable=False,
+                    static_na=all_flow_static_na,
                 ),
                 _z_value(
                     all_flow,
                     "wall_seconds_per_point",
                     reference=reference,
                     microseconds=True,
+                    static_na=all_flow_static_na,
                 ),
-                (
-                    _not_exposed()
-                    if reference
-                    else _z_value(
-                        all_flow,
-                        "execution_seconds_per_point",
-                        reference=False,
-                        microseconds=True,
-                    )
+                _z_evaluator_total(
+                    all_flow,
+                    reference=reference,
+                    static_na=all_flow_static_na,
                 ),
             )
             lines.append(" & ".join(row) + r" \\")
@@ -2013,12 +2079,19 @@ def _z_block(
                 r"boundary differs from the "
                 r"reference. The wall time is the common runtime observable. "
                 r"Not exposed means that a successful wall measurement has no "
-                r"separately reported execution attribution. For compiled and "
-                r"eager rows, wall time still exposes the authenticated warmed "
-                r"total-evaluator boundary. Future compiled and eager entries "
-                r"also show the accumulated absolute evaluator total marked T; "
-                r"T is not an attribution ratio. Older entries remain marked "
-                r"not exposed; it is not a missing measurement.}"
+                r"separately reported evaluator-total timing. Every "
+                r"pyAmpliCol row shows the authenticated accumulated warmed "
+                r"evaluator total marked T; T is not an attribution ratio. "
+                r"Recurrence core/execution attribution remains a separate "
+                r"metric in raw evidence and is not relabeled as evaluator "
+                r"total. Older entries without authenticated total evidence "
+                r"remain marked not exposed; it is not a missing measurement. "
+                + _tex_escape(
+                    STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION
+                )
+                + " ("
+                + _tex_escape(STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6)
+                + r").}"
             ),
             r"\end{minipage}",
         ]
@@ -2603,24 +2676,28 @@ def summarize_visible_completeness(
                             )
                             if cell is None:
                                 continue
+                            static_na = (
+                                catalog.static_na_reason(cell) is not None
+                            )
                             fragments = (
                                 _z_value(
                                     joined,
                                     "generation_seconds",
                                     reference=False,
                                     comparable=workload is not Workload.ALL_FLOW,
+                                    static_na=static_na,
                                 ),
                                 _z_value(
                                     joined,
                                     "wall_seconds_per_point",
                                     reference=False,
                                     microseconds=True,
+                                    static_na=static_na,
                                 ),
-                                _z_value(
+                                _z_evaluator_total(
                                     joined,
-                                    "execution_seconds_per_point",
                                     reference=False,
-                                    microseconds=True,
+                                    static_na=static_na,
                                 ),
                             )
                         record(

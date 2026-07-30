@@ -158,6 +158,28 @@ class ZVariant:
     backend: str
     jit_optimization_level: int | None = None
     cpp_optimization: str | None = None
+    maximum_generation_n_final: int | None = None
+    static_na_reason_code: str | None = None
+
+    def __post_init__(self) -> None:
+        maximum = self.maximum_generation_n_final
+        reason = self.static_na_reason_code
+        if maximum is not None and (
+            isinstance(maximum, bool)
+            or not isinstance(maximum, int)
+            or maximum <= 0
+        ):
+            raise ValueError("maximum_generation_n_final must be a positive integer")
+        if maximum is None and reason is not None:
+            raise ValueError(
+                "static_na_reason_code requires maximum_generation_n_final"
+            )
+        if maximum is not None and (
+            not isinstance(reason, str) or not reason.strip()
+        ):
+            raise ValueError(
+                "maximum_generation_n_final requires a static_na_reason_code"
+            )
 
 
 @dataclass(frozen=True, slots=True)
