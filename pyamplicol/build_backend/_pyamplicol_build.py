@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import importlib.util
 import json
 import os
@@ -1285,6 +1286,14 @@ def _build_tool_path(inherited: str) -> str:
     # A venv Python may resolve into /opt/local or /opt/homebrew, where unrelated
     # compiler wrappers would otherwise leak non-relocatable RPATHs into wheels.
     directories: list[Path] = [interpreter.parent]
+    maturin_script = _maturin_console_script()
+    inherited_directories = {
+        Path(os.path.abspath(directory))
+        for directory in inherited.split(os.pathsep)
+        if directory
+    }
+    if maturin_script is not None and maturin_script.parent in inherited_directories:
+        directories.append(maturin_script.parent)
     for executable in ("cargo", "rustc"):
         located = shutil.which(executable, path=inherited)
         if located is None:
@@ -1319,6 +1328,19 @@ def _build_tool_path(inherited: str) -> str:
         seen.add(rendered)
         unique.append(rendered)
     return os.pathsep.join(unique)
+
+
+def _maturin_console_script() -> Path | None:
+    """Locate the console script belonging to the imported Maturin package."""
+
+    package = importlib.metadata.distribution("maturin")
+    for relative in package.files or ():
+        if relative.name not in {"maturin", "maturin.exe"}:
+            continue
+        candidate = Path(os.path.abspath(package.locate_file(relative)))
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def _pinned_rustup_toolchain() -> str:

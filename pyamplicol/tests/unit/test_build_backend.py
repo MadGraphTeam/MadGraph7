@@ -1172,6 +1172,45 @@ def test_build_tool_path_retains_isolated_interpreter_bin(
     assert str(environment_bin) in result
 
 
+def test_build_tool_path_retains_pip_isolated_maturin_bin(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    base_bin = tmp_path / "base-python" / "bin"
+    base_bin.mkdir(parents=True)
+    interpreter = base_bin / "python"
+    interpreter.touch()
+    isolated_bin = tmp_path / "pip-build-env" / "overlay" / "bin"
+    isolated_bin.mkdir(parents=True)
+    maturin_script = isolated_bin / "maturin"
+    maturin_script.touch()
+    rust_bin = tmp_path / "rust" / "bin"
+    rust_bin.mkdir(parents=True)
+
+    def locate(executable: str, *, path: str) -> str | None:
+        if executable in {"cargo", "rustc"}:
+            return str(rust_bin / executable)
+        assert path.startswith("/usr/bin" + os.pathsep)
+        return f"/usr/bin/{executable}"
+
+    monkeypatch.setattr(backend.sys, "executable", str(interpreter))
+    monkeypatch.setattr(
+        backend,
+        "_maturin_console_script",
+        lambda: maturin_script,
+    )
+    monkeypatch.setattr(backend.shutil, "which", locate)
+
+    result = backend._build_tool_path(
+        os.pathsep.join(("/opt/homebrew/bin", str(isolated_bin)))
+    ).split(os.pathsep)
+
+    assert str(base_bin) in result
+    assert str(isolated_bin) in result
+    assert str(rust_bin) in result
+    assert "/opt/homebrew/bin" not in result
+
+
 def test_build_tool_path_does_not_require_git_for_unpacked_sdist(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
