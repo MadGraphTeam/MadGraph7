@@ -1021,9 +1021,12 @@ jobs:
 
 
   acceptancetest_crossing_madevent_xsec:
-    # p p > w+ j, w+ > j j integrated twice (crossing-routed vs --use_crossing=False,
-    # same seed): the routed cross section must match the independent build. This
-    # is the only cross-section-level guard on the crossing router.
+    # The cross-section-level guards on the crossing router: each process is
+    # integrated twice (crossing-routed vs --use_crossing=False, same seed) and
+    # the two results must agree.
+    #   p p > w+ j, w+ > j j   decay chain riding on a crossed production
+    #   p p > t t~ j j         inclusive, and the only test that integrates the
+    #                          cross-GROUP (Track B) router
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
@@ -1031,10 +1034,10 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
-      - name: decay-chain crossing cross-section regression
+      - name: crossing cross-section regressions (decay chain + inclusive)
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py -pA TestMadeventDecayChainCrossing -t0 -l INFO
+            ./tests/test_manager.py -pA TestMadeventDecayChainCrossing TestMadeventInclusiveCrossingXsec -t0 -l INFO
 
 
   acceptancetest_crossing_reweight:

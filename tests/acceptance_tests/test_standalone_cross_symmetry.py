@@ -2271,6 +2271,112 @@ class TestMadeventDecayChainCrossing(unittest.TestCase):
             % (crossed, err_c, independent, err_i))
 
 
+class TestMadeventInclusiveCrossingXsec(unittest.TestCase):
+    """End-to-end: routing crossed subprocesses through a shared base matrix
+    element must not move the INCLUSIVE cross section.
+
+    The plain (no decay chain) counterpart of TestMadeventDecayChainCrossing,
+    and the configuration where the crossing router has the most to get wrong.
+    With flavor grouping ``p p > t t~ j j`` collapses to five subprocess groups,
+    and two of them -- gq_ttxgq and qq_ttxqq -- are served by a cross-GROUP
+    router: they carry a ``matrix<i>_router.f`` (plus ``crossgroup_helunion.dat``
+    and ``crossgroup.mk``) instead of their own matrix element, i.e. their
+    flavors are evaluated by ANOTHER group's matrix element under a crossing,
+    over the helicity union of the two groups. Nothing else in the suite
+    integrates that path -- Track B is exercised at the matrix-element level
+    only.
+
+    The summed cross section is what catches it. A wrong crossed averaging
+    denominator, multi-channel row or good-helicity union leaves the per-flavor
+    matrix elements agreeing (those are compared in
+    TestStandaloneMadeventMatrixElementConsistency) while moving the integral,
+    which is exactly how the routed groups lost ~29% before the helicity union
+    was fed to the Track-A routers.
+
+    Runs two full madevent integrations, but the flavor grouping keeps them
+    small: ~40s each. Reference numbers at the time of writing --
+    416.6 +- 2.4 pb routed vs 413.7 +- 2.6 pb independent, i.e. 0.8 sigma apart.
+    """
+
+    PROCESS = 'p p > t t~ j j'
+    NEVENTS = 1000
+    SEED = 191919
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='cross_mev_ttjj_')
+
+    def tearDown(self):
+        if os.path.isdir(self.tmpdir):
+            shutil.rmtree(self.tmpdir)
+
+    def _generate_and_integrate(self, options, name):
+        """Generate + integrate the process; return (outdir, xsec, error) in pb."""
+        from madgraph import MG5DIR
+        outdir = pjoin(self.tmpdir, name)
+        card = pjoin(self.tmpdir, 'cmd_%s.txt' % name)
+        with open(card, 'w') as fsock:
+            fsock.write('generate %s %s\n'
+                        'output madevent %s -f\n'
+                        'launch\n'
+                        'set nevents %d\n'
+                        'set iseed %d\n'
+                        % (self.PROCESS, options, outdir,
+                           self.NEVENTS, self.SEED))
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'), card])
+        results = pjoin(outdir, 'SubProcesses', 'results.dat')
+        self.assertTrue(
+            os.path.isfile(results),
+            'madevent produced no results for %s (%s)'
+            % (options or 'the default (crossing on) build', results))
+        with open(results) as fsock:
+            # results.dat: cross-section, abs error, ... (in pb).
+            fields = fsock.readline().split()
+        return outdir, float(fields[0]), float(fields[1])
+
+    @staticmethod
+    def _routed_groups(outdir):
+        """The subprocess groups served by a cross-group crossing router."""
+        subproc = pjoin(outdir, 'SubProcesses')
+        routed = []
+        for name in sorted(os.listdir(subproc)):
+            pdir = pjoin(subproc, name)
+            if not name.startswith('P') or not os.path.isdir(pdir):
+                continue
+            if any(re.match(r'matrix\d+_router\.f$', entry)
+                   for entry in os.listdir(pdir)):
+                routed.append(name)
+        return routed
+
+    def test_inclusive_crossing_xsec_matches(self):
+        crossed_dir, crossed, err_c = self._generate_and_integrate('', 'on')
+        independent_dir, independent, err_i = self._generate_and_integrate(
+            '--use_crossing=False', 'off')
+
+        # Guard the premise: the default build must really evaluate some group
+        # through another group's matrix element, and the reference build must
+        # not -- otherwise this compares two identical builds and can never fail.
+        routed = self._routed_groups(crossed_dir)
+        self.assertTrue(
+            routed, 'no subprocess group is served by a crossing router, so the '
+            'comparison would be between two identical builds')
+        self.assertEqual(
+            self._routed_groups(independent_dir), [],
+            '--use_crossing=False still emitted a crossing router')
+
+        self.assertGreater(independent, 0.0,
+                           'the independent build gives a null cross section')
+        # Same seed and the same channels, so the two runs must agree well
+        # inside their combined statistical error; the 1% floor absorbs the grid
+        # noise the different routing can introduce.
+        tolerance = max(1e-2 * independent, 3.0 * math.hypot(err_c, err_i))
+        self.assertLessEqual(
+            abs(crossed - independent), tolerance,
+            '%s crossing-routed xsec %r +- %r disagrees with the independent '
+            'build %r +- %r (groups routed through a crossing: %s)'
+            % (self.PROCESS, crossed, err_c, independent, err_i,
+               ', '.join(routed)))
+
+
 class TestColorFlowCode(unittest.TestCase):
     """The canonical COLOUR-FLOW code, the colour analogue of the canonical
     helicity code.
