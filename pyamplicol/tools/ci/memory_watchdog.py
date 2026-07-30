@@ -570,6 +570,19 @@ def run_guarded(
                 )
                 return 128 + received_signal
 
+            if pending_probe_reason is not None:
+                returncode = process.poll()
+                if returncode is not None:
+                    print(
+                        "memory-watchdog: command exited while memory"
+                        " enforcement was unavailable"
+                        f" reason={pending_probe_reason}"
+                        f" child_exit={_normalized_exit_code(returncode)}",
+                        file=stderr,
+                        flush=True,
+                    )
+                    return WATCHDOG_ERROR_EXIT_CODE
+
             probe_reason = MEMORY_PROBE_REASON
             try:
                 records = snapshotter()
@@ -616,6 +629,18 @@ def run_guarded(
                     )
                     return WATCHDOG_ERROR_EXIT_CODE
             else:
+                if pending_probe_reason is not None:
+                    returncode = process.poll()
+                    if returncode is not None:
+                        print(
+                            "memory-watchdog: command exited while memory"
+                            " enforcement was unavailable"
+                            f" reason={pending_probe_reason}"
+                            f" child_exit={_normalized_exit_code(returncode)}",
+                            file=stderr,
+                            flush=True,
+                        )
+                        return WATCHDOG_ERROR_EXIT_CODE
                 consecutive_probe_failures = 0
                 pending_probe_reason = None
                 peak_rss = max(peak_rss, sample.rss_bytes)

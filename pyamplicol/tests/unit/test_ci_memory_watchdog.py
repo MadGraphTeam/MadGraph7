@@ -246,6 +246,79 @@ def test_short_child_cannot_succeed_during_required_footprint_probe_failure(
     assert "child_exit=0" in stderr.getvalue()
 
 
+def test_child_exit_before_retry_cannot_be_cleared_by_zombie_sample(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ExitingProcess:
+        pid = 43213
+
+        def __init__(self) -> None:
+            self.returncode: int | None = None
+            self.poll_count = 0
+
+        def poll(self) -> int | None:
+            self.poll_count += 1
+            return self.returncode
+
+        def wait(self, timeout: float) -> int:
+            del timeout
+            assert self.returncode is not None
+            return self.returncode
+
+    process = ExitingProcess()
+    monkeypatch.setattr(
+        watchdog.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: process,
+    )
+    snapshot_count = 0
+
+    def snapshotter() -> dict[int, watchdog.ProcessInfo]:
+        nonlocal snapshot_count
+        snapshot_count += 1
+        return {
+            process.pid: watchdog.ProcessInfo(
+                process.pid,
+                1,
+                process.pid,
+                8 * watchdog.MIB,
+            )
+        }
+
+    footprint_count = 0
+
+    def footprint(_pids: object) -> dict[int, int]:
+        nonlocal footprint_count
+        footprint_count += 1
+        if footprint_count == 1:
+            raise watchdog.ProbeError("synthetic footprint probe failure")
+        return {process.pid: 0}
+
+    def exit_during_retry_sleep(_duration: float) -> None:
+        process.returncode = 0
+
+    monkeypatch.setattr(watchdog.time, "sleep", exit_during_retry_sleep)
+    stderr = io.StringIO()
+    returncode = watchdog.run_guarded(
+        ("zombie-child",),
+        limit_bytes=16 * watchdog.MIB,
+        poll_interval=0.001,
+        snapshotter=snapshotter,
+        physical_footprint_probe=footprint,
+        stderr=stderr,
+    )
+
+    assert returncode == watchdog.WATCHDOG_ERROR_EXIT_CODE
+    assert process.poll_count >= 3
+    assert snapshot_count == 1
+    assert footprint_count == 1
+    assert (
+        f"reason={watchdog.DARWIN_PHYSICAL_FOOTPRINT_PROBE_REASON}"
+        in stderr.getvalue()
+    )
+    assert "child_exit=0" in stderr.getvalue()
+
+
 def test_repeated_required_footprint_probe_failure_is_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
