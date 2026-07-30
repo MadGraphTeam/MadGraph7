@@ -3332,6 +3332,35 @@ impl ExecutionRuntime {
         if let Some(stage_evaluators) = stage_evaluators {
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             if compiled_plane_arena {
+                #[cfg(feature = "symbolica-runtime")]
+                let (stages, amplitude) = {
+                    // Preserve the public exact-precision API without
+                    // instantiating a second f64 evaluator representation.
+                    // These groups own only lazy evaluator-state sources;
+                    // every f64 entry point fails closed on ExactOnly and the
+                    // production hot path remains the Direct application.
+                    (
+                        stage_evaluators
+                            .stages
+                            .iter()
+                            .map(|stage| StageRuntime::load_exact_from_plane(stage, payloads))
+                            .collect::<RusticolResult<Vec<_>>>()?,
+                        AmplitudeRuntime::load_exact_from_plane(
+                            &amplitude_stage_manifest,
+                            &stage_evaluators.amplitude_stage,
+                            payloads,
+                        )?,
+                    )
+                };
+                #[cfg(not(feature = "symbolica-runtime"))]
+                let (stages, amplitude) = (
+                    Vec::new(),
+                    AmplitudeRuntime::load_reducer_only(
+                        &amplitude_stage_manifest,
+                        &stage_evaluators.amplitude_stage,
+                    )?,
+                );
+                let reduction_footprint = amplitude.compiled_direct_reduction_footprint()?;
                 let direct =
                     compiled_direct_prototype::CompiledDirectEnginePrototype::load_production(
                         &stage_evaluators.stages,
@@ -3342,35 +3371,10 @@ impl ExecutionRuntime {
                         runtime.momentum_parameter_count,
                         runtime.model_parameter_values_f64.len(),
                         stage_evaluators.amplitude_stage.output_length,
+                        reduction_footprint,
                     )?;
-                #[cfg(feature = "symbolica-runtime")]
-                {
-                    // Preserve the public exact-precision API without
-                    // instantiating a second f64 evaluator representation.
-                    // These groups own only lazy evaluator-state sources;
-                    // every f64 entry point fails closed on ExactOnly and the
-                    // production hot path remains the Direct application.
-                    runtime.stages = Some(
-                        stage_evaluators
-                            .stages
-                            .iter()
-                            .map(|stage| StageRuntime::load_exact_from_plane(stage, payloads))
-                            .collect::<RusticolResult<Vec<_>>>()?,
-                    );
-                    runtime.amplitude_stage = Some(AmplitudeRuntime::load_exact_from_plane(
-                        &amplitude_stage_manifest,
-                        &stage_evaluators.amplitude_stage,
-                        payloads,
-                    )?);
-                }
-                #[cfg(not(feature = "symbolica-runtime"))]
-                {
-                    runtime.stages = Some(Vec::new());
-                    runtime.amplitude_stage = Some(AmplitudeRuntime::load_reducer_only(
-                        &amplitude_stage_manifest,
-                        &stage_evaluators.amplitude_stage,
-                    )?);
-                }
+                runtime.stages = Some(stages);
+                runtime.amplitude_stage = Some(amplitude);
                 let mut color_schedules = BTreeMap::new();
                 if let Some(color_plan) = runtime.compiled_color_execution_plan.as_ref() {
                     for (sector_id, schedule) in &color_plan.schedules_by_materialized_sector {

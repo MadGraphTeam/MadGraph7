@@ -429,15 +429,45 @@ pub fn deterministic_point_tile_size(
     cache_target_bytes: usize,
     scalar_values_per_point: usize,
 ) -> RusticolResult<u32> {
-    if requested_points == 0 || scalar_values_per_point == 0 {
+    deterministic_point_tile_size_with_cache_footprint(
+        requested_points,
+        workspace_bytes,
+        cache_target_bytes,
+        scalar_values_per_point,
+        scalar_values_per_point,
+    )
+}
+
+/// Select a semantic tile using distinct physical and cache-local footprints.
+///
+/// The hard workspace bound is authenticated against
+/// `physical_scalar_values_per_point`, including the final aligned pitch. The
+/// soft cache target instead uses the maximum phase-local working set. Keeping
+/// the two inputs separate prevents cold persistent planes from shrinking a
+/// tile whose hot kernels touch only a bounded subset, without weakening the
+/// allocation safety check.
+pub fn deterministic_point_tile_size_with_cache_footprint(
+    requested_points: u32,
+    workspace_bytes: usize,
+    cache_target_bytes: usize,
+    physical_scalar_values_per_point: usize,
+    cache_scalar_values_per_point: usize,
+) -> RusticolResult<u32> {
+    if requested_points == 0
+        || physical_scalar_values_per_point == 0
+        || cache_scalar_values_per_point == 0
+    {
         return Err(invalid(
-            "Direct-Arena tiling requires positive points and per-point shape",
+            "Direct-Arena tiling requires positive points and physical/cache per-point shapes",
         ));
     }
-    let bytes_per_point = scalar_values_per_point
+    let physical_bytes_per_point = physical_scalar_values_per_point
         .checked_mul(size_of::<f64>())
         .ok_or_else(|| invalid("Direct-Arena per-point byte count overflows usize"))?;
-    let minimum_physical_bytes = bytes_per_point
+    let cache_bytes_per_point = cache_scalar_values_per_point
+        .checked_mul(size_of::<f64>())
+        .ok_or_else(|| invalid("Direct-Arena cache footprint overflows usize"))?;
+    let minimum_physical_bytes = physical_bytes_per_point
         .checked_mul(DIRECT_ARENA_ALIGNMENT_SCALARS as usize)
         .ok_or_else(|| invalid("minimum aligned Direct-Arena tile byte count overflows usize"))?;
     if minimum_physical_bytes > workspace_bytes {
@@ -447,19 +477,20 @@ pub fn deterministic_point_tile_size(
         )));
     }
     let largest_aligned_u32 = u32::MAX - u32::MAX % DIRECT_ARENA_ALIGNMENT_SCALARS;
-    let workspace_stride = (workspace_bytes / bytes_per_point).min(largest_aligned_u32 as usize)
+    let workspace_stride = (workspace_bytes / physical_bytes_per_point)
+        .min(largest_aligned_u32 as usize)
         / DIRECT_ARENA_ALIGNMENT_SCALARS as usize
         * DIRECT_ARENA_ALIGNMENT_SCALARS as usize;
     let workspace_capacity = u32::try_from(workspace_stride)
         .map_err(|_| invalid("aligned Direct-Arena workspace capacity exceeds u32"))?;
     let cache_points =
-        greatest_power_of_two_not_exceeding((cache_target_bytes / bytes_per_point).max(1));
+        greatest_power_of_two_not_exceeding((cache_target_bytes / cache_bytes_per_point).max(1));
     let tile_capacity = requested_points
         .min(workspace_capacity)
         .min(u32::try_from(cache_points).unwrap_or(u32::MAX).max(1));
     let point_stride = checked_aligned_point_stride(tile_capacity)?;
     let physical_bytes = (point_stride as usize)
-        .checked_mul(bytes_per_point)
+        .checked_mul(physical_bytes_per_point)
         .ok_or_else(|| invalid("padded Direct-Arena tile byte count overflows usize"))?;
     if physical_bytes > workspace_bytes {
         return Err(invalid(format!(
@@ -519,6 +550,32 @@ mod tests {
         assert_eq!(
             deterministic_point_tile_size(1, 128, usize::MAX, 2).unwrap(),
             1
+        );
+    }
+
+    #[test]
+    fn tiling_separates_hard_physical_and_soft_cache_footprints() {
+        assert_eq!(
+            deterministic_point_tile_size_with_cache_footprint(32, 32 * 1024, 4 * 1024, 128, 8,)
+                .unwrap(),
+            32,
+            "cold physical planes must not consume the phase-local cache target"
+        );
+        assert_eq!(
+            deterministic_point_tile_size_with_cache_footprint(64, 16 * 1024, usize::MAX, 128, 1,)
+                .unwrap(),
+            16,
+            "the padded physical allocation remains hard-bounded"
+        );
+        assert_eq!(
+            deterministic_point_tile_size_with_cache_footprint(64, usize::MAX, 4 * 1024, 1, 128,)
+                .unwrap(),
+            4,
+            "the cache bound follows the phase-local footprint"
+        );
+        assert!(
+            deterministic_point_tile_size_with_cache_footprint(1, usize::MAX, usize::MAX, 1, 0,)
+                .is_err()
         );
     }
 

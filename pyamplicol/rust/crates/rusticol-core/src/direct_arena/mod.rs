@@ -25,5 +25,5 @@ pub use storage::{
     AlignedF64Buffer, DIRECT_ARENA_ALIGNMENT, DIRECT_ARENA_LOCALITY_POINT_CAP,
     DirectArenaAllocationCounters, DirectArenaWorkspace, DirectPointTile, DirectPointTiles,
     checked_aligned_point_stride, checked_plane_scalar_len, clear_split_active_range,
-    deterministic_point_tile_size,
+    deterministic_point_tile_size, deterministic_point_tile_size_with_cache_footprint,
 };

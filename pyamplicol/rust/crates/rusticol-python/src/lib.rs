@@ -1275,6 +1275,26 @@ fn runtime_profile_to_python<'py>(
         profile.compiled_direct_arena_call_count,
     )?;
     payload.set_item(
+        "compiled_direct_arena_minimum_effective_tile_capacity",
+        profile.compiled_direct_arena_minimum_effective_tile_capacity,
+    )?;
+    payload.set_item(
+        "compiled_direct_arena_maximum_physical_scalar_values_per_point",
+        profile.compiled_direct_arena_maximum_physical_scalar_values_per_point,
+    )?;
+    payload.set_item(
+        "compiled_direct_arena_maximum_hot_scalar_values_per_point",
+        profile.compiled_direct_arena_maximum_hot_scalar_values_per_point,
+    )?;
+    payload.set_item(
+        "compiled_direct_arena_maximum_source_scalar_values_per_point",
+        profile.compiled_direct_arena_maximum_source_scalar_values_per_point,
+    )?;
+    payload.set_item(
+        "compiled_direct_arena_maximum_reduction_scalar_values_per_point",
+        profile.compiled_direct_arena_maximum_reduction_scalar_values_per_point,
+    )?;
+    payload.set_item(
         "compiled_direct_arena_boundary_input_bytes",
         profile.compiled_direct_arena_boundary_input_bytes,
     )?;

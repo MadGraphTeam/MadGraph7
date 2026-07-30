@@ -2688,6 +2688,11 @@ struct RuntimeProfile {
     evaluator_backend_call_count: u64,
     compiled_direct_arena_engine_count: u64,
     compiled_direct_arena_call_count: u64,
+    compiled_direct_arena_minimum_effective_tile_capacity: u64,
+    compiled_direct_arena_maximum_physical_scalar_values_per_point: u64,
+    compiled_direct_arena_maximum_hot_scalar_values_per_point: u64,
+    compiled_direct_arena_maximum_source_scalar_values_per_point: u64,
+    compiled_direct_arena_maximum_reduction_scalar_values_per_point: u64,
     compiled_direct_arena_boundary_input_bytes: u64,
     compiled_direct_arena_boundary_current_output_bytes: u64,
     compiled_direct_arena_boundary_amplitude_output_bytes: u64,
@@ -2788,6 +2793,25 @@ impl RuntimeProfile {
         self.evaluator_backend_call_count += sector.evaluator_backend_call_count;
         self.compiled_direct_arena_engine_count += sector.compiled_direct_arena_engine_count;
         self.compiled_direct_arena_call_count += sector.compiled_direct_arena_call_count;
+        self.compiled_direct_arena_minimum_effective_tile_capacity = match (
+            self.compiled_direct_arena_minimum_effective_tile_capacity,
+            sector.compiled_direct_arena_minimum_effective_tile_capacity,
+        ) {
+            (0, value) | (value, 0) => value,
+            (left, right) => left.min(right),
+        };
+        self.compiled_direct_arena_maximum_physical_scalar_values_per_point = self
+            .compiled_direct_arena_maximum_physical_scalar_values_per_point
+            .max(sector.compiled_direct_arena_maximum_physical_scalar_values_per_point);
+        self.compiled_direct_arena_maximum_hot_scalar_values_per_point = self
+            .compiled_direct_arena_maximum_hot_scalar_values_per_point
+            .max(sector.compiled_direct_arena_maximum_hot_scalar_values_per_point);
+        self.compiled_direct_arena_maximum_source_scalar_values_per_point = self
+            .compiled_direct_arena_maximum_source_scalar_values_per_point
+            .max(sector.compiled_direct_arena_maximum_source_scalar_values_per_point);
+        self.compiled_direct_arena_maximum_reduction_scalar_values_per_point = self
+            .compiled_direct_arena_maximum_reduction_scalar_values_per_point
+            .max(sector.compiled_direct_arena_maximum_reduction_scalar_values_per_point);
         self.compiled_direct_arena_boundary_input_bytes +=
             sector.compiled_direct_arena_boundary_input_bytes;
         self.compiled_direct_arena_boundary_current_output_bytes +=
@@ -2963,6 +2987,11 @@ pub struct NativeRuntimeMetadata {
     pub prepared_backend: Option<String>,
     pub eager_effective_point_tile_size: Option<usize>,
     pub eager_workspace_bytes: Option<usize>,
+    pub compiled_direct_minimum_effective_tile_capacity: Option<usize>,
+    pub compiled_direct_maximum_physical_scalar_values_per_point: Option<usize>,
+    pub compiled_direct_maximum_hot_scalar_values_per_point: Option<usize>,
+    pub compiled_direct_maximum_source_scalar_values_per_point: Option<usize>,
+    pub compiled_direct_maximum_reduction_scalar_values_per_point: Option<usize>,
     pub process: String,
     pub process_key: String,
     pub representative_process: String,
@@ -3258,6 +3287,14 @@ pub struct NativeRuntimeProfile {
     pub compiled_direct_arena_engine_count: u64,
     /// Calls observed directly on compiled Direct-Arena evaluator leaves.
     pub compiled_direct_arena_call_count: u64,
+    /// Minimum effective tile across the compiled Direct engine fleet.
+    pub compiled_direct_arena_minimum_effective_tile_capacity: u64,
+    /// Maximum authenticated physical scalar-plane footprint per point.
+    pub compiled_direct_arena_maximum_physical_scalar_values_per_point: u64,
+    /// Maximum phase-local cache footprint per point.
+    pub compiled_direct_arena_maximum_hot_scalar_values_per_point: u64,
+    pub compiled_direct_arena_maximum_source_scalar_values_per_point: u64,
+    pub compiled_direct_arena_maximum_reduction_scalar_values_per_point: u64,
     /// Developer-adapter traffic is forbidden in the production Arena lane.
     pub compiled_direct_arena_boundary_input_bytes: u64,
     pub compiled_direct_arena_boundary_current_output_bytes: u64,
@@ -3378,6 +3415,16 @@ impl From<RuntimeProfile> for NativeRuntimeProfile {
             evaluator_backend_call_count: profile.evaluator_backend_call_count,
             compiled_direct_arena_engine_count: profile.compiled_direct_arena_engine_count,
             compiled_direct_arena_call_count: profile.compiled_direct_arena_call_count,
+            compiled_direct_arena_minimum_effective_tile_capacity: profile
+                .compiled_direct_arena_minimum_effective_tile_capacity,
+            compiled_direct_arena_maximum_physical_scalar_values_per_point: profile
+                .compiled_direct_arena_maximum_physical_scalar_values_per_point,
+            compiled_direct_arena_maximum_hot_scalar_values_per_point: profile
+                .compiled_direct_arena_maximum_hot_scalar_values_per_point,
+            compiled_direct_arena_maximum_source_scalar_values_per_point: profile
+                .compiled_direct_arena_maximum_source_scalar_values_per_point,
+            compiled_direct_arena_maximum_reduction_scalar_values_per_point: profile
+                .compiled_direct_arena_maximum_reduction_scalar_values_per_point,
             compiled_direct_arena_boundary_input_bytes: profile
                 .compiled_direct_arena_boundary_input_bytes,
             compiled_direct_arena_boundary_current_output_bytes: profile
@@ -3640,6 +3687,25 @@ impl NativeRuntimeProfile {
         self.evaluator_backend_call_count += other.evaluator_backend_call_count;
         self.compiled_direct_arena_engine_count += other.compiled_direct_arena_engine_count;
         self.compiled_direct_arena_call_count += other.compiled_direct_arena_call_count;
+        self.compiled_direct_arena_minimum_effective_tile_capacity = match (
+            self.compiled_direct_arena_minimum_effective_tile_capacity,
+            other.compiled_direct_arena_minimum_effective_tile_capacity,
+        ) {
+            (0, value) | (value, 0) => value,
+            (left, right) => left.min(right),
+        };
+        self.compiled_direct_arena_maximum_physical_scalar_values_per_point = self
+            .compiled_direct_arena_maximum_physical_scalar_values_per_point
+            .max(other.compiled_direct_arena_maximum_physical_scalar_values_per_point);
+        self.compiled_direct_arena_maximum_hot_scalar_values_per_point = self
+            .compiled_direct_arena_maximum_hot_scalar_values_per_point
+            .max(other.compiled_direct_arena_maximum_hot_scalar_values_per_point);
+        self.compiled_direct_arena_maximum_source_scalar_values_per_point = self
+            .compiled_direct_arena_maximum_source_scalar_values_per_point
+            .max(other.compiled_direct_arena_maximum_source_scalar_values_per_point);
+        self.compiled_direct_arena_maximum_reduction_scalar_values_per_point = self
+            .compiled_direct_arena_maximum_reduction_scalar_values_per_point
+            .max(other.compiled_direct_arena_maximum_reduction_scalar_values_per_point);
         self.compiled_direct_arena_boundary_input_bytes +=
             other.compiled_direct_arena_boundary_input_bytes;
         self.compiled_direct_arena_boundary_current_output_bytes +=
@@ -3930,6 +3996,14 @@ struct MaterializedHelicityDirectTotalPlan {
     roots: Vec<MaterializedHelicityDirectTotalRoot>,
     groups: Vec<MaterializedHelicityDirectTotalGroup>,
     reduction: MaterializedHelicityDirectTotalReduction,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct CompiledDirectReductionFootprint {
+    /// Additional point-scaled reducer storage outside the amplitude arena.
+    workspace_scalar_values_per_point: usize,
+    /// Maximum phase-local amplitude-input, scratch, and output working set.
+    hot_scalar_values_per_point: usize,
 }
 
 struct AmplitudeRuntime {

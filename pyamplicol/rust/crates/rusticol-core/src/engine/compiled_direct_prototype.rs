@@ -37,7 +37,7 @@ use super::*;
 use crate::direct_arena::{
     AlignedF64Buffer, DirectAmplitudePlanes, DirectArenaAllocationCounters,
     DirectArenaTrafficCounters, DirectArenaWorkspace, DirectMomentumView, DirectParameterView,
-    deterministic_point_tile_size,
+    deterministic_point_tile_size_with_cache_footprint,
 };
 
 // Fused applications repeatedly traverse many split-complex parent/output
@@ -90,6 +90,7 @@ struct DirectLeafPlan {
     input_current_components: Box<[usize]>,
     output_current_components: Box<[usize]>,
     output_amplitude_components: Box<[usize]>,
+    scalar_values_per_point: usize,
 }
 
 enum LoadedCompiledDirectLeaf {
@@ -221,6 +222,15 @@ enum CompiledDirectCurrentLayoutPolicy {
     StageLivenessProduction,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct CompiledDirectTileSizing {
+    pub(crate) effective_tile_capacity: usize,
+    pub(crate) physical_scalar_values_per_point: usize,
+    pub(crate) hot_scalar_values_per_point: usize,
+    pub(crate) source_scalar_values_per_point: usize,
+    pub(crate) reduction_scalar_values_per_point: usize,
+}
+
 trait DirectStagePlan {
     fn leaf_plans(&self) -> &[DirectLeafPlan];
 }
@@ -235,6 +245,82 @@ impl DirectStagePlan for BoundStage {
     fn leaf_plans(&self) -> &[DirectLeafPlan] {
         &self.leaf_plans
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compiled_direct_tile_sizing(
+    stages: &[LoadedStage],
+    amplitude: &LoadedStage,
+    current_layout: &CompiledDirectCurrentLayout,
+    source_components: &[usize],
+    momentum_component_count: usize,
+    amplitude_component_count: usize,
+    reduction_footprint: CompiledDirectReductionFootprint,
+    layout_policy: CompiledDirectCurrentLayoutPolicy,
+) -> RusticolResult<CompiledDirectTileSizing> {
+    let physical_scalar_values_per_point = usize::try_from(current_layout.physical_component_count)
+        .ok()
+        .and_then(|value| value.checked_mul(2))
+        .and_then(|value| value.checked_add(momentum_component_count))
+        .and_then(|value| {
+            amplitude_component_count
+                .checked_mul(2)
+                .and_then(|amplitudes| value.checked_add(amplitudes))
+        })
+        // The shared zero plane is point-pitched even though every leaf
+        // aliases the same immutable storage.
+        .and_then(|value| value.checked_add(1))
+        .and_then(|value| value.checked_add(reduction_footprint.workspace_scalar_values_per_point))
+        .ok_or_else(|| {
+            RusticolError::integrity("compiled Direct-Arena physical per-point shape overflows")
+        })?;
+    let source_scalar_values_per_point = source_components
+        .len()
+        .checked_mul(2)
+        .and_then(|value| value.checked_add(momentum_component_count))
+        .and_then(|value| value.checked_add(1))
+        .ok_or_else(|| {
+            RusticolError::integrity("compiled Direct-Arena source working set overflows")
+        })?;
+    let maximum_leaf_scalar_values_per_point = stages
+        .iter()
+        .flat_map(|stage| stage.leaf_plans.iter())
+        .chain(amplitude.leaf_plans.iter())
+        .map(|leaf| leaf.scalar_values_per_point)
+        .max()
+        .ok_or_else(|| {
+            RusticolError::integrity(
+                "compiled Direct-Arena production schedule has no evaluator leaves",
+            )
+        })?;
+    let hot_scalar_values_per_point = maximum_leaf_scalar_values_per_point
+        .max(source_scalar_values_per_point)
+        .max(reduction_footprint.hot_scalar_values_per_point);
+    let effective_tile_capacity = match layout_policy {
+        // This developer/test contract remains exact: neither the adaptive
+        // locality cap nor the production workspace policy changes it.
+        CompiledDirectCurrentLayoutPolicy::Identity { tile_capacity } => {
+            usize::try_from(tile_capacity).map_err(|_| {
+                RusticolError::integrity("compiled Direct-Arena identity tile exceeds usize")
+            })?
+        }
+        CompiledDirectCurrentLayoutPolicy::StageLivenessProduction => {
+            deterministic_point_tile_size_with_cache_footprint(
+                COMPILED_DIRECT_LOCALITY_POINT_CAP,
+                COMPILED_DIRECT_WORKSPACE_BYTES,
+                compiled_direct_cache_target_bytes(),
+                physical_scalar_values_per_point,
+                hot_scalar_values_per_point,
+            )? as usize
+        }
+    };
+    Ok(CompiledDirectTileSizing {
+        effective_tile_capacity,
+        physical_scalar_values_per_point,
+        hot_scalar_values_per_point,
+        source_scalar_values_per_point,
+        reduction_scalar_values_per_point: reduction_footprint.hot_scalar_values_per_point,
+    })
 }
 
 /// Cold-bound canonical preorder leaf schedule.
@@ -266,6 +352,7 @@ pub(crate) struct CompiledDirectEnginePrototype {
     default_source_states: Box<[GenericSourceStateIrManifest]>,
     source_wavefunction_scratch: Vec<Complex<f64>>,
     current_layout: CompiledDirectCurrentLayout,
+    tile_sizing: CompiledDirectTileSizing,
     value_component_count: usize,
     momentum_component_count: usize,
     model_parameter_count: usize,
@@ -298,6 +385,7 @@ impl CompiledDirectEnginePrototype {
             momentum_component_count,
             model_parameter_count,
             amplitude_component_count,
+            CompiledDirectReductionFootprint::default(),
             CompiledDirectCurrentLayoutPolicy::Identity { tile_capacity },
         )
     }
@@ -313,6 +401,7 @@ impl CompiledDirectEnginePrototype {
         momentum_component_count: usize,
         model_parameter_count: usize,
         amplitude_component_count: usize,
+        reduction_footprint: CompiledDirectReductionFootprint,
         layout_policy: CompiledDirectCurrentLayoutPolicy,
     ) -> RusticolResult<Self> {
         if value_component_count == 0 || amplitude_component_count == 0 {
@@ -394,32 +483,19 @@ impl CompiledDirectEnginePrototype {
                 )?
             }
         };
-        let tile_capacity = match layout_policy {
-            CompiledDirectCurrentLayoutPolicy::Identity { tile_capacity } => tile_capacity,
-            CompiledDirectCurrentLayoutPolicy::StageLivenessProduction => {
-                let scalar_values_per_point =
-                    usize::try_from(current_layout.physical_component_count)
-                        .ok()
-                        .and_then(|value| value.checked_mul(2))
-                        .and_then(|value| value.checked_add(momentum_component_count))
-                        .and_then(|value| {
-                            amplitude_component_count
-                                .checked_mul(2)
-                                .and_then(|amplitudes| value.checked_add(amplitudes))
-                        })
-                        .ok_or_else(|| {
-                            RusticolError::integrity(
-                                "compiled Direct-Arena physical per-point shape overflows",
-                            )
-                        })?;
-                deterministic_point_tile_size(
-                    COMPILED_DIRECT_LOCALITY_POINT_CAP,
-                    COMPILED_DIRECT_WORKSPACE_BYTES,
-                    compiled_direct_cache_target_bytes(),
-                    scalar_values_per_point,
-                )?
-            }
-        };
+        let tile_sizing = compiled_direct_tile_sizing(
+            &loaded_stages,
+            &loaded_amplitude,
+            &current_layout,
+            source_components,
+            momentum_component_count,
+            amplitude_component_count,
+            reduction_footprint,
+            layout_policy,
+        )?;
+        let tile_capacity = u32::try_from(tile_sizing.effective_tile_capacity).map_err(|_| {
+            RusticolError::integrity("compiled Direct-Arena tile capacity exceeds u32")
+        })?;
         let mut arena = Box::new(DirectArenaWorkspace::new(
             current_layout.physical_component_count,
             u32::try_from(amplitude_component_count).map_err(|_| {
@@ -534,6 +610,7 @@ impl CompiledDirectEnginePrototype {
             default_source_states: Box::new([]),
             source_wavefunction_scratch: vec![c64(0.0, 0.0); source_scratch_len],
             current_layout,
+            tile_sizing,
             value_component_count,
             momentum_component_count,
             model_parameter_count,
@@ -553,6 +630,7 @@ impl CompiledDirectEnginePrototype {
         momentum_component_count: usize,
         model_parameter_count: usize,
         amplitude_component_count: usize,
+        reduction_footprint: CompiledDirectReductionFootprint,
     ) -> RusticolResult<Self> {
         let (source_components, source_scratch_len) =
             canonical_source_layout(sources, value_component_count)?;
@@ -566,6 +644,7 @@ impl CompiledDirectEnginePrototype {
             momentum_component_count,
             model_parameter_count,
             amplitude_component_count,
+            reduction_footprint,
             CompiledDirectCurrentLayoutPolicy::StageLivenessProduction,
         )?;
         direct.default_source_states = sources
@@ -586,6 +665,10 @@ impl CompiledDirectEnginePrototype {
 
     pub(crate) const fn tile_capacity(&self) -> usize {
         self.arena.tile_capacity() as usize
+    }
+
+    pub(crate) const fn tile_sizing(&self) -> CompiledDirectTileSizing {
+        self.tile_sizing
     }
 
     /// Fill one active tile directly from the public borrowed momentum view
@@ -1760,6 +1843,12 @@ fn load_stage(
             ));
         }
         let output_stop = direct_output_range.end;
+        let scalar_values_per_point = direct_input_len
+            .checked_add(direct_output_len)
+            .and_then(|value| value.checked_mul(2))
+            .ok_or_else(|| {
+                RusticolError::integrity("compiled Direct-Arena leaf-local footprint overflows")
+            })?;
 
         let mut input_currents = BTreeSet::new();
         let mut input_components = Vec::with_capacity(direct_input_len);
@@ -1954,6 +2043,7 @@ fn load_stage(
             } else {
                 Box::new([])
             },
+            scalar_values_per_point,
         });
         output_cursor = output_stop;
     }
@@ -2225,6 +2315,7 @@ mod tests {
             input_current_components: inputs.to_vec().into_boxed_slice(),
             output_current_components: outputs.to_vec().into_boxed_slice(),
             output_amplitude_components: Box::new([]),
+            scalar_values_per_point: 1,
         }
     }
 
@@ -2800,51 +2891,125 @@ extern "C" int native_direct_leaf_direct_application_v1(
     }
 
     #[test]
-    fn compiled_direct_tile_policy_uses_thirty_two_points_for_compact_fused_shapes() {
-        for scalar_values_per_point in [16, 1_024] {
+    fn compiled_direct_tile_policy_uses_authenticated_phase_local_footprints() {
+        let mut leaf = liveness_leaf(&[0], &[1]);
+        leaf.scalar_values_per_point = 4_320;
+        let stages = vec![liveness_stage(vec![leaf])];
+        let amplitude = liveness_stage(vec![liveness_leaf(&[1], &[])]);
+        let layout = CompiledDirectCurrentLayout::identity(100_000).unwrap();
+        let reduction = CompiledDirectReductionFootprint {
+            workspace_scalar_values_per_point: 2_048,
+            hot_scalar_values_per_point: 4_096,
+        };
+        let expected = compiled_direct_tile_sizing(
+            &stages,
+            &amplitude,
+            &layout,
+            &[0, 1, 2, 3],
+            24,
+            8_192,
+            reduction,
+            CompiledDirectCurrentLayoutPolicy::StageLivenessProduction,
+        )
+        .unwrap();
+        assert_eq!(expected.effective_tile_capacity, 32);
+        assert_eq!(expected.hot_scalar_values_per_point, 4_320);
+        assert_eq!(expected.source_scalar_values_per_point, 33);
+        assert_eq!(expected.reduction_scalar_values_per_point, 4_096);
+        assert_eq!(
+            expected.physical_scalar_values_per_point,
+            200_000 + 24 + 16_384 + 1 + 2_048
+        );
+        for _ in 0..32 {
             assert_eq!(
-                deterministic_point_tile_size(
-                    COMPILED_DIRECT_LOCALITY_POINT_CAP,
-                    COMPILED_DIRECT_WORKSPACE_BYTES,
-                    COMPILED_DIRECT_CACHE_TARGET_BYTES,
-                    scalar_values_per_point,
+                compiled_direct_tile_sizing(
+                    &stages,
+                    &amplitude,
+                    &layout,
+                    &[0, 1, 2, 3],
+                    24,
+                    8_192,
+                    reduction,
+                    CompiledDirectCurrentLayoutPolicy::StageLivenessProduction,
                 )
                 .unwrap(),
-                32,
+                expected,
+                "authenticated sizing must be deterministic"
             );
         }
+
+        let many_sources = (0..20_000).collect::<Vec<_>>();
+        let source_limited = compiled_direct_tile_sizing(
+            &stages,
+            &amplitude,
+            &layout,
+            &many_sources,
+            24,
+            1,
+            CompiledDirectReductionFootprint::default(),
+            CompiledDirectCurrentLayoutPolicy::StageLivenessProduction,
+        )
+        .unwrap();
+        assert_eq!(source_limited.source_scalar_values_per_point, 40_025);
+        assert_eq!(source_limited.hot_scalar_values_per_point, 40_025);
         assert_eq!(
-            deterministic_point_tile_size(
-                COMPILED_DIRECT_LOCALITY_POINT_CAP,
-                COMPILED_DIRECT_WORKSPACE_BYTES,
-                COMPILED_DIRECT_CACHE_TARGET_BYTES,
-                32_768,
+            source_limited.effective_tile_capacity, 8,
+            "authenticated source preparation can be the cache-limiting phase"
+        );
+
+        let large_reduction = CompiledDirectReductionFootprint {
+            workspace_scalar_values_per_point: 2,
+            hot_scalar_values_per_point: 32_768,
+        };
+        assert_eq!(
+            compiled_direct_tile_sizing(
+                &stages,
+                &amplitude,
+                &layout,
+                &[0],
+                4,
+                1,
+                large_reduction,
+                CompiledDirectCurrentLayoutPolicy::StageLivenessProduction,
             )
-            .unwrap(),
+            .unwrap()
+            .effective_tile_capacity,
             16,
-            "larger fused shapes remain cache-limited to sixteen points"
+            "a larger reduction phase, rather than cold arena width, limits cache locality"
+        );
+
+        let hard_limited_layout = CompiledDirectCurrentLayout::identity(1_000_000).unwrap();
+        assert_eq!(
+            compiled_direct_tile_sizing(
+                &stages,
+                &amplitude,
+                &hard_limited_layout,
+                &[0],
+                4,
+                1,
+                CompiledDirectReductionFootprint::default(),
+                CompiledDirectCurrentLayoutPolicy::StageLivenessProduction,
+            )
+            .unwrap()
+            .effective_tile_capacity,
+            16,
+            "the 256 MiB padded physical bound remains hard"
         );
         assert_eq!(
-            deterministic_point_tile_size(
-                COMPILED_DIRECT_LOCALITY_POINT_CAP,
-                COMPILED_DIRECT_WORKSPACE_BYTES,
-                COMPILED_DIRECT_CACHE_TARGET_BYTES,
-                65_268,
+            compiled_direct_tile_sizing(
+                &stages,
+                &amplitude,
+                &hard_limited_layout,
+                &[0],
+                4,
+                1,
+                CompiledDirectReductionFootprint::default(),
+                CompiledDirectCurrentLayoutPolicy::Identity { tile_capacity: 129 },
             )
-            .unwrap(),
-            8,
-            "canonical qq_Z6g union-flow shape fits only eight points in the cache target"
-        );
-        assert_eq!(
-            deterministic_point_tile_size(
-                COMPILED_DIRECT_LOCALITY_POINT_CAP,
-                COMPILED_DIRECT_WORKSPACE_BYTES,
-                COMPILED_DIRECT_CACHE_TARGET_BYTES,
-                28_792,
-            )
-            .unwrap(),
-            16,
-            "stage-liveness qq_Z6g union-flow shape remains cache-limited to sixteen points"
+            .unwrap()
+            .effective_tile_capacity,
+            129,
+            "explicit developer/test identity capacity remains exact"
         );
     }
 
@@ -2945,8 +3110,7 @@ extern "C" int native_direct_leaf_direct_application_v1(
             active_amplitude_chunk_indices: vec![0],
         };
         let direct_selector = direct.bind_color_schedule(&existing_selector).unwrap();
-
-        for point_count in [7_usize, 127, 128, 129] {
+        let initial_state = |point_count: usize| {
             let mut initial = vec![Complex::new(0.0, 0.0); point_count * GLOBAL_PARAMETERS];
             for point in 0..point_count {
                 let row = point * GLOBAL_PARAMETERS;
@@ -2955,6 +3119,11 @@ extern "C" int native_direct_leaf_direct_application_v1(
                 initial[row + VALUE_COMPONENTS] = Complex::new(20.0 + point as f64 / 64.0, 0.0);
                 initial[row + VALUE_COMPONENTS + MOMENTUM_COMPONENTS] = Complex::new(1.25, 0.0);
             }
+            initial
+        };
+
+        for point_count in [7_usize, 127, 128, 129] {
+            let initial = initial_state(point_count);
 
             let mut legacy = initial.clone();
             legacy_stage
@@ -3070,6 +3239,63 @@ extern "C" int native_direct_leaf_direct_application_v1(
                      speedup={:.6}",
                     legacy_median as f64 / direct_median as f64
                 );
+            }
+        }
+
+        let mut tiled_direct = CompiledDirectEnginePrototype::load(
+            std::slice::from_ref(&stage),
+            &amplitude,
+            &payloads,
+            &[0],
+            1,
+            VALUE_COMPONENTS,
+            MOMENTUM_COMPONENTS,
+            MODEL_PARAMETERS,
+            1,
+            32,
+        )
+        .unwrap();
+        assert_eq!(tiled_direct.tile_capacity(), 32);
+        let tiled_selector = tiled_direct
+            .bind_color_schedule(&existing_selector)
+            .unwrap();
+        for point_count in [1_usize, 31, 32, 33, 65, 129] {
+            let initial = initial_state(point_count);
+            let mut legacy = initial.clone();
+            legacy_stage
+                .evaluate_f64_into_state(point_count, GLOBAL_PARAMETERS, &mut legacy)
+                .unwrap();
+            legacy_amplitude_stage
+                .evaluate_f64_into_state(point_count, GLOBAL_PARAMETERS, &mut legacy)
+                .unwrap();
+            let mut tiled_amplitudes = vec![Complex::new(f64::NAN, f64::NAN); point_count];
+            let tiles = tiled_direct
+                .arena
+                .point_tiles(point_count as u32, tiled_direct.tile_capacity() as u32)
+                .unwrap();
+            for tile in tiles {
+                let point_start = tile.point_start as usize;
+                let tile_points = tile.point_count as usize;
+                let point_stop = point_start + tile_points;
+                tiled_direct
+                    .begin_tile_from_state(
+                        tile_points,
+                        GLOBAL_PARAMETERS,
+                        &initial[point_start * GLOBAL_PARAMETERS..point_stop * GLOBAL_PARAMETERS],
+                    )
+                    .unwrap();
+                tiled_direct
+                    .evaluate_validated(tile_points, &tiled_selector)
+                    .unwrap();
+                tiled_direct
+                    .extract_amplitudes_row_major(
+                        tile_points,
+                        &mut tiled_amplitudes[point_start..point_stop],
+                    )
+                    .unwrap();
+            }
+            for (point, actual) in tiled_amplitudes.iter().copied().enumerate() {
+                assert_close(actual, legacy[point * GLOBAL_PARAMETERS + 3]);
             }
         }
 
@@ -3333,6 +3559,36 @@ extern "C" int native_direct_leaf_direct_application_v1(
         eprintln!(
             "retained-compiled-direct-production engines={engine_count} \
              requested_bytes={requested_bytes} minimum_tile_capacity={minimum_tile_capacity}"
+        );
+        let metadata = direct.metadata();
+        assert_eq!(
+            metadata.compiled_direct_minimum_effective_tile_capacity,
+            Some(minimum_tile_capacity)
+        );
+        assert!(
+            metadata
+                .compiled_direct_maximum_physical_scalar_values_per_point
+                .is_some_and(|value| value > 0)
+        );
+        assert!(
+            metadata
+                .compiled_direct_maximum_hot_scalar_values_per_point
+                .is_some_and(|value| value > 0)
+        );
+        assert!(
+            metadata
+                .compiled_direct_maximum_source_scalar_values_per_point
+                .is_some_and(|value| value > 0)
+        );
+        assert!(
+            metadata
+                .compiled_direct_maximum_reduction_scalar_values_per_point
+                .is_some_and(|value| value > 0)
+        );
+        assert_eq!(
+            direct.metadata_json().unwrap(),
+            direct.metadata_json().unwrap(),
+            "compiled Direct effective configuration provenance must be deterministic"
         );
 
         let point = retained_validation_point(&direct);
@@ -3893,6 +4149,46 @@ extern "C" int native_direct_leaf_direct_application_v1(
         assert!(
             arena_profile.profile.compiled_direct_arena_call_count > 0,
             "warmed Direct profile observed no evaluator calls"
+        );
+        assert_eq!(
+            arena_profile
+                .profile
+                .compiled_direct_arena_minimum_effective_tile_capacity,
+            metadata
+                .compiled_direct_minimum_effective_tile_capacity
+                .unwrap() as u64
+        );
+        assert_eq!(
+            arena_profile
+                .profile
+                .compiled_direct_arena_maximum_physical_scalar_values_per_point,
+            metadata
+                .compiled_direct_maximum_physical_scalar_values_per_point
+                .unwrap() as u64
+        );
+        assert_eq!(
+            arena_profile
+                .profile
+                .compiled_direct_arena_maximum_hot_scalar_values_per_point,
+            metadata
+                .compiled_direct_maximum_hot_scalar_values_per_point
+                .unwrap() as u64
+        );
+        assert_eq!(
+            arena_profile
+                .profile
+                .compiled_direct_arena_maximum_source_scalar_values_per_point,
+            metadata
+                .compiled_direct_maximum_source_scalar_values_per_point
+                .unwrap() as u64
+        );
+        assert_eq!(
+            arena_profile
+                .profile
+                .compiled_direct_arena_maximum_reduction_scalar_values_per_point,
+            metadata
+                .compiled_direct_maximum_reduction_scalar_values_per_point
+                .unwrap() as u64
         );
 
         let allocation_batch = F64MomentumBatchView::from_contiguous_prevalidated(

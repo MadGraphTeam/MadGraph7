@@ -64,6 +64,11 @@ fn execution_uses_simd_jit(runtime: &ExecutionRuntime) -> bool {
 #[derive(Clone, Copy, Debug, Default)]
 struct CompiledDirectProfileSnapshot {
     engine_count: usize,
+    minimum_effective_tile_capacity: usize,
+    maximum_physical_scalar_values_per_point: usize,
+    maximum_hot_scalar_values_per_point: usize,
+    maximum_source_scalar_values_per_point: usize,
+    maximum_reduction_scalar_values_per_point: usize,
     source_fill_bytes: u64,
     momentum_fill_bytes: u64,
     parameter_fill_bytes: u64,
@@ -72,6 +77,75 @@ struct CompiledDirectProfileSnapshot {
     boundary_input_bytes: u64,
     boundary_current_output_bytes: u64,
     boundary_amplitude_output_bytes: u64,
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+const fn minimum_nonzero(left: usize, right: usize) -> usize {
+    match (left, right) {
+        (0, value) | (value, 0) => value,
+        (left, right) => {
+            if left < right {
+                left
+            } else {
+                right
+            }
+        }
+    }
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[derive(Clone, Copy, Debug, Default)]
+struct CompiledDirectConfigurationSnapshot {
+    engine_count: usize,
+    minimum_effective_tile_capacity: usize,
+    maximum_physical_scalar_values_per_point: usize,
+    maximum_hot_scalar_values_per_point: usize,
+    maximum_source_scalar_values_per_point: usize,
+    maximum_reduction_scalar_values_per_point: usize,
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+fn compiled_direct_configuration_snapshot(
+    runtime: &ExecutionRuntime,
+) -> CompiledDirectConfigurationSnapshot {
+    let mut snapshot = CompiledDirectConfigurationSnapshot::default();
+    if let Some(direct) = runtime.compiled_direct_runtime.as_ref() {
+        let sizing = direct.tile_sizing();
+        snapshot.engine_count = 1;
+        snapshot.minimum_effective_tile_capacity = sizing.effective_tile_capacity;
+        snapshot.maximum_physical_scalar_values_per_point = sizing.physical_scalar_values_per_point;
+        snapshot.maximum_hot_scalar_values_per_point = sizing.hot_scalar_values_per_point;
+        snapshot.maximum_source_scalar_values_per_point = sizing.source_scalar_values_per_point;
+        snapshot.maximum_reduction_scalar_values_per_point =
+            sizing.reduction_scalar_values_per_point;
+    }
+    let children = runtime
+        .helicity_sum_runtime
+        .iter()
+        .map(Box::as_ref)
+        .chain(runtime.helicity_selector_runtimes.iter().map(Box::as_ref))
+        .chain(runtime.color_selector_runtimes.values().map(Box::as_ref));
+    for child in children {
+        let child = compiled_direct_configuration_snapshot(child);
+        snapshot.engine_count += child.engine_count;
+        snapshot.minimum_effective_tile_capacity = minimum_nonzero(
+            snapshot.minimum_effective_tile_capacity,
+            child.minimum_effective_tile_capacity,
+        );
+        snapshot.maximum_physical_scalar_values_per_point = snapshot
+            .maximum_physical_scalar_values_per_point
+            .max(child.maximum_physical_scalar_values_per_point);
+        snapshot.maximum_hot_scalar_values_per_point = snapshot
+            .maximum_hot_scalar_values_per_point
+            .max(child.maximum_hot_scalar_values_per_point);
+        snapshot.maximum_source_scalar_values_per_point = snapshot
+            .maximum_source_scalar_values_per_point
+            .max(child.maximum_source_scalar_values_per_point);
+        snapshot.maximum_reduction_scalar_values_per_point = snapshot
+            .maximum_reduction_scalar_values_per_point
+            .max(child.maximum_reduction_scalar_values_per_point);
+    }
+    snapshot
 }
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
@@ -91,7 +165,14 @@ fn compiled_direct_profile_snapshot(
                 "production compiled Direct-Arena profile observed developer boundary traffic",
             ));
         }
+        let sizing = direct.tile_sizing();
         snapshot.engine_count += 1;
+        snapshot.minimum_effective_tile_capacity = sizing.effective_tile_capacity;
+        snapshot.maximum_physical_scalar_values_per_point = sizing.physical_scalar_values_per_point;
+        snapshot.maximum_hot_scalar_values_per_point = sizing.hot_scalar_values_per_point;
+        snapshot.maximum_source_scalar_values_per_point = sizing.source_scalar_values_per_point;
+        snapshot.maximum_reduction_scalar_values_per_point =
+            sizing.reduction_scalar_values_per_point;
         snapshot.source_fill_bytes = traffic.source_fill_bytes;
         snapshot.momentum_fill_bytes = traffic.momentum_fill_bytes;
         snapshot.parameter_fill_bytes = traffic.parameter_fill_bytes;
@@ -110,6 +191,22 @@ fn compiled_direct_profile_snapshot(
     for child in children {
         let child = compiled_direct_profile_snapshot(child)?;
         snapshot.engine_count += child.engine_count;
+        snapshot.minimum_effective_tile_capacity = minimum_nonzero(
+            snapshot.minimum_effective_tile_capacity,
+            child.minimum_effective_tile_capacity,
+        );
+        snapshot.maximum_physical_scalar_values_per_point = snapshot
+            .maximum_physical_scalar_values_per_point
+            .max(child.maximum_physical_scalar_values_per_point);
+        snapshot.maximum_hot_scalar_values_per_point = snapshot
+            .maximum_hot_scalar_values_per_point
+            .max(child.maximum_hot_scalar_values_per_point);
+        snapshot.maximum_source_scalar_values_per_point = snapshot
+            .maximum_source_scalar_values_per_point
+            .max(child.maximum_source_scalar_values_per_point);
+        snapshot.maximum_reduction_scalar_values_per_point = snapshot
+            .maximum_reduction_scalar_values_per_point
+            .max(child.maximum_reduction_scalar_values_per_point);
         snapshot.source_fill_bytes = snapshot
             .source_fill_bytes
             .saturating_add(child.source_fill_bytes);
@@ -136,6 +233,23 @@ fn compiled_direct_profile_snapshot(
             .saturating_add(child.boundary_amplitude_output_bytes);
     }
     Ok(snapshot)
+}
+
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+fn attach_compiled_direct_configuration(
+    profile: &mut RuntimeProfile,
+    snapshot: CompiledDirectProfileSnapshot,
+) {
+    profile.compiled_direct_arena_minimum_effective_tile_capacity =
+        snapshot.minimum_effective_tile_capacity as u64;
+    profile.compiled_direct_arena_maximum_physical_scalar_values_per_point =
+        snapshot.maximum_physical_scalar_values_per_point as u64;
+    profile.compiled_direct_arena_maximum_hot_scalar_values_per_point =
+        snapshot.maximum_hot_scalar_values_per_point as u64;
+    profile.compiled_direct_arena_maximum_source_scalar_values_per_point =
+        snapshot.maximum_source_scalar_values_per_point as u64;
+    profile.compiled_direct_arena_maximum_reduction_scalar_values_per_point =
+        snapshot.maximum_reduction_scalar_values_per_point as u64;
 }
 
 fn ensure_selected_runtime_capabilities_supported(capabilities: &[String]) -> RusticolResult<()> {
@@ -539,6 +653,34 @@ impl NativeRuntime {
                 None,
             ),
         };
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        let compiled_direct_configuration = compiled_direct_configuration_snapshot(&self.runtime);
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        let (
+            compiled_direct_minimum_effective_tile_capacity,
+            compiled_direct_maximum_physical_scalar_values_per_point,
+            compiled_direct_maximum_hot_scalar_values_per_point,
+            compiled_direct_maximum_source_scalar_values_per_point,
+            compiled_direct_maximum_reduction_scalar_values_per_point,
+        ) = if compiled_direct_configuration.engine_count == 0 {
+            (None, None, None, None, None)
+        } else {
+            (
+                Some(compiled_direct_configuration.minimum_effective_tile_capacity),
+                Some(compiled_direct_configuration.maximum_physical_scalar_values_per_point),
+                Some(compiled_direct_configuration.maximum_hot_scalar_values_per_point),
+                Some(compiled_direct_configuration.maximum_source_scalar_values_per_point),
+                Some(compiled_direct_configuration.maximum_reduction_scalar_values_per_point),
+            )
+        };
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
+        let (
+            compiled_direct_minimum_effective_tile_capacity,
+            compiled_direct_maximum_physical_scalar_values_per_point,
+            compiled_direct_maximum_hot_scalar_values_per_point,
+            compiled_direct_maximum_source_scalar_values_per_point,
+            compiled_direct_maximum_reduction_scalar_values_per_point,
+        ) = (None, None, None, None, None);
         NativeRuntimeMetadata {
             abi_version: Self::ABI_VERSION,
             schema_version: PROCESS_ARTIFACT_SCHEMA_VERSION,
@@ -546,6 +688,11 @@ impl NativeRuntime {
             prepared_backend,
             eager_effective_point_tile_size,
             eager_workspace_bytes,
+            compiled_direct_minimum_effective_tile_capacity,
+            compiled_direct_maximum_physical_scalar_values_per_point,
+            compiled_direct_maximum_hot_scalar_values_per_point,
+            compiled_direct_maximum_source_scalar_values_per_point,
+            compiled_direct_maximum_reduction_scalar_values_per_point,
             process: self.process.clone(),
             process_key: self.process_key.clone(),
             representative_process: self.runtime.process.clone(),
@@ -1125,48 +1272,47 @@ impl NativeRuntime {
                 let after = compiled_direct_profile_snapshot(&self.runtime)?;
                 let f64_bytes = std::mem::size_of::<f64>() as u64;
                 let complex_bytes = 2 * f64_bytes;
-                return Ok((
-                    values,
-                    RuntimeProfile {
-                        // The direct hot path is deliberately uninstrumented.
-                        // Until its three coarse phase clocks are added, keep
-                        // the complete measured envelope in orchestration so
-                        // top-level accounting remains exact rather than
-                        // manufacturing dense-stage timing fields.
-                        orchestration_s: total_s,
-                        total_s,
-                        source_component_count: after
-                            .source_fill_bytes
-                            .saturating_sub(before.source_fill_bytes)
-                            / complex_bytes,
-                        momentum_component_count: after
-                            .momentum_fill_bytes
-                            .saturating_sub(before.momentum_fill_bytes)
-                            / f64_bytes,
-                        model_parameter_component_count: after
-                            .parameter_fill_bytes
-                            .saturating_sub(before.parameter_fill_bytes)
-                            / complex_bytes,
-                        state_clear_component_count: after
-                            .amplitude_clear_bytes
-                            .saturating_sub(before.amplitude_clear_bytes)
-                            / complex_bytes,
-                        evaluator_backend_call_count: after
-                            .backend_call_count
-                            .saturating_sub(before.backend_call_count),
-                        compiled_direct_arena_engine_count: after.engine_count as u64,
-                        compiled_direct_arena_call_count: after
-                            .backend_call_count
-                            .saturating_sub(before.backend_call_count),
-                        compiled_direct_arena_boundary_input_bytes: after.boundary_input_bytes,
-                        compiled_direct_arena_boundary_current_output_bytes: after
-                            .boundary_current_output_bytes,
-                        compiled_direct_arena_boundary_amplitude_output_bytes: after
-                            .boundary_amplitude_output_bytes,
-                        total_materialized_value_count: batch.len() as u64,
-                        ..RuntimeProfile::default()
-                    },
-                ));
+                let mut profile = RuntimeProfile {
+                    // The direct hot path is deliberately uninstrumented.
+                    // Until its three coarse phase clocks are added, keep
+                    // the complete measured envelope in orchestration so
+                    // top-level accounting remains exact rather than
+                    // manufacturing dense-stage timing fields.
+                    orchestration_s: total_s,
+                    total_s,
+                    source_component_count: after
+                        .source_fill_bytes
+                        .saturating_sub(before.source_fill_bytes)
+                        / complex_bytes,
+                    momentum_component_count: after
+                        .momentum_fill_bytes
+                        .saturating_sub(before.momentum_fill_bytes)
+                        / f64_bytes,
+                    model_parameter_component_count: after
+                        .parameter_fill_bytes
+                        .saturating_sub(before.parameter_fill_bytes)
+                        / complex_bytes,
+                    state_clear_component_count: after
+                        .amplitude_clear_bytes
+                        .saturating_sub(before.amplitude_clear_bytes)
+                        / complex_bytes,
+                    evaluator_backend_call_count: after
+                        .backend_call_count
+                        .saturating_sub(before.backend_call_count),
+                    compiled_direct_arena_engine_count: after.engine_count as u64,
+                    compiled_direct_arena_call_count: after
+                        .backend_call_count
+                        .saturating_sub(before.backend_call_count),
+                    compiled_direct_arena_boundary_input_bytes: after.boundary_input_bytes,
+                    compiled_direct_arena_boundary_current_output_bytes: after
+                        .boundary_current_output_bytes,
+                    compiled_direct_arena_boundary_amplitude_output_bytes: after
+                        .boundary_amplitude_output_bytes,
+                    total_materialized_value_count: batch.len() as u64,
+                    ..RuntimeProfile::default()
+                };
+                attach_compiled_direct_configuration(&mut profile, after);
+                return Ok((values, profile));
             }
         }
         match &mut self.execution_lane {
@@ -1406,6 +1552,7 @@ impl NativeRuntime {
             runtime_profile.compiled_direct_arena_boundary_amplitude_output_bytes = after
                 .boundary_amplitude_output_bytes
                 .saturating_sub(before.boundary_amplitude_output_bytes);
+            attach_compiled_direct_configuration(&mut runtime_profile, after);
         }
         let mut profile: NativeRuntimeProfile = runtime_profile.into();
         profile.native_input_component_count = measured_input_components_u64;
