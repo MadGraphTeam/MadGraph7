@@ -130,6 +130,8 @@ fn remap_amplitude_outputs(
 impl AmplitudeRuntime {
     pub(crate) fn compiled_direct_reduction_footprint(
         &self,
+        maximum_resolved_component_count: usize,
+        routed: CompiledDirectRoutedReductionFootprint,
     ) -> RusticolResult<CompiledDirectReductionFootprint> {
         let maximum_group_component_count = self
             .raw_sum_groups
@@ -137,47 +139,25 @@ impl AmplitudeRuntime {
             .map(|group| group.indices.len())
             .max()
             .unwrap_or(1);
-        let maximum_group_plane_scalars =
-            maximum_group_component_count
-                .checked_mul(2)
-                .ok_or_else(|| {
-                    RusticolError::integrity(
-                        "compiled Direct-Arena reduction group footprint overflows",
-                    )
-                })?;
-        let (workspace_scalar_values_per_point, active_amplitude_scalar_values_per_point) =
-            if let Some(replay) = self.color_topology_replay.as_ref() {
-                let workspace = replay.physical_groups.len().checked_mul(2).ok_or_else(|| {
-                    RusticolError::integrity(
-                        "compiled Direct-Arena topology-replay footprint overflows",
-                    )
-                })?;
-                (workspace, maximum_group_plane_scalars)
-            } else if let Some(contraction) = self.color_contraction.as_ref() {
-                let workspace = contraction.group_count.checked_mul(2).ok_or_else(|| {
-                    RusticolError::integrity(
-                        "compiled Direct-Arena color-contraction footprint overflows",
-                    )
-                })?;
-                (workspace, maximum_group_plane_scalars)
-            } else if self.has_coherent_groups {
-                (2, maximum_group_plane_scalars)
-            } else {
-                // One split-complex amplitude plane is consumed at a time.
-                (0, 2)
-            };
-        let hot_scalar_values_per_point = workspace_scalar_values_per_point
-            .checked_add(active_amplitude_scalar_values_per_point)
-            .and_then(|value| value.checked_add(1))
-            .ok_or_else(|| {
-                RusticolError::integrity(
-                    "compiled Direct-Arena reduction working-set footprint overflows",
-                )
-            })?;
-        Ok(CompiledDirectReductionFootprint {
-            workspace_scalar_values_per_point,
-            hot_scalar_values_per_point,
-        })
+        let kind = if let Some(replay) = self.color_topology_replay.as_ref() {
+            CompiledDirectReducerKind::ColorTopologyReplay {
+                physical_group_count: replay.physical_groups.len(),
+            }
+        } else if let Some(contraction) = self.color_contraction.as_ref() {
+            CompiledDirectReducerKind::Contracted {
+                group_count: contraction.group_count,
+            }
+        } else if self.has_coherent_groups {
+            CompiledDirectReducerKind::Coherent
+        } else {
+            CompiledDirectReducerKind::Plain
+        };
+        CompiledDirectReductionFootprint::authenticated(
+            kind,
+            maximum_group_component_count,
+            maximum_resolved_component_count,
+            routed,
+        )
     }
 
     pub(in crate::engine) fn color_topology_replay_reducer(

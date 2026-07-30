@@ -3999,11 +3999,144 @@ struct MaterializedHelicityDirectTotalPlan {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-struct CompiledDirectReductionFootprint {
-    /// Additional point-scaled reducer storage outside the amplitude arena.
-    workspace_scalar_values_per_point: usize,
-    /// Maximum phase-local amplitude-input, scratch, and output working set.
-    hot_scalar_values_per_point: usize,
+struct CompiledDirectRoutedReductionFootprint {
+    maximum_source_component_count: usize,
+    maximum_target_component_count: usize,
+}
+
+impl CompiledDirectRoutedReductionFootprint {
+    fn merge(self, other: Self) -> Self {
+        Self {
+            maximum_source_component_count: self
+                .maximum_source_component_count
+                .max(other.maximum_source_component_count),
+            maximum_target_component_count: self
+                .maximum_target_component_count
+                .max(other.maximum_target_component_count),
+        }
+    }
+
+    const fn is_empty(self) -> bool {
+        self.maximum_source_component_count == 0 && self.maximum_target_component_count == 0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CompiledDirectReducerKind {
+    Plain,
+    Coherent,
+    Contracted { group_count: usize },
+    ColorTopologyReplay { physical_group_count: usize },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CompiledDirectReductionFootprint {
+    /// The maximum reducer working set was derived entirely from authenticated
+    /// amplitude, physics, and replay metadata.
+    Authenticated { hot_scalar_values_per_point: usize },
+    /// A future/legacy execution shape did not expose enough static metadata.
+    /// Production Direct tiling must fail closed to one point.
+    Unauthenticated,
+}
+
+impl Default for CompiledDirectReductionFootprint {
+    fn default() -> Self {
+        Self::Unauthenticated
+    }
+}
+
+impl CompiledDirectReductionFootprint {
+    fn authenticated(
+        kind: CompiledDirectReducerKind,
+        maximum_group_component_count: usize,
+        maximum_resolved_component_count: usize,
+        routed: CompiledDirectRoutedReductionFootprint,
+    ) -> RusticolResult<Self> {
+        let maximum_group_plane_scalars = maximum_group_component_count
+            .max(1)
+            .checked_mul(2)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "compiled Direct-Arena reduction group footprint overflows",
+                )
+            })?;
+        let (amplitude_input_scalars, reducer_workspace_scalars, supports_resolved) = match kind {
+            CompiledDirectReducerKind::Plain => (2, 0, false),
+            CompiledDirectReducerKind::Coherent => (maximum_group_plane_scalars, 2, true),
+            CompiledDirectReducerKind::Contracted { group_count } => (
+                maximum_group_plane_scalars,
+                group_count.checked_mul(2).ok_or_else(|| {
+                    RusticolError::integrity(
+                        "compiled Direct-Arena contracted reduction footprint overflows",
+                    )
+                })?,
+                true,
+            ),
+            CompiledDirectReducerKind::ColorTopologyReplay {
+                physical_group_count,
+            } => (
+                maximum_group_plane_scalars,
+                physical_group_count.checked_mul(2).ok_or_else(|| {
+                    RusticolError::integrity(
+                        "compiled Direct-Arena topology-replay footprint overflows",
+                    )
+                })?,
+                true,
+            ),
+        };
+        // One real total plane is live in every reducer. Reducer storage is a
+        // cache-local working-set estimate only; none of it belongs to the
+        // Direct workspace hard-allocation bound.
+        let total_phase = amplitude_input_scalars
+            .checked_add(reducer_workspace_scalars)
+            .and_then(|value| value.checked_add(1))
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "compiled Direct-Arena total-reduction footprint overflows",
+                )
+            })?;
+        let resolved_phase = if supports_resolved {
+            total_phase
+                .checked_add(maximum_resolved_component_count)
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "compiled Direct-Arena resolved-reduction footprint overflows",
+                    )
+                })?
+        } else {
+            total_phase
+        };
+        let routed_phase = if routed.is_empty() {
+            0
+        } else {
+            // Routed reducers materialize a split-complex group, one real
+            // totals plane, and authenticated source/target component planes.
+            // The target may be owned by an outer public-batch replay, but its
+            // tile slice is still part of the phase-local cache working set.
+            amplitude_input_scalars
+                .checked_add(2)
+                .and_then(|value| value.checked_add(1))
+                .and_then(|value| value.checked_add(routed.maximum_source_component_count))
+                .and_then(|value| value.checked_add(routed.maximum_target_component_count))
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "compiled Direct-Arena routed-reduction footprint overflows",
+                    )
+                })?
+        };
+        Ok(Self::Authenticated {
+            hot_scalar_values_per_point: total_phase.max(resolved_phase).max(routed_phase),
+        })
+    }
+
+    const fn hot_scalar_values_per_point(self) -> Option<usize> {
+        match self {
+            Self::Authenticated {
+                hot_scalar_values_per_point,
+            } => Some(hot_scalar_values_per_point),
+            Self::Unauthenticated => None,
+        }
+    }
 }
 
 struct AmplitudeRuntime {

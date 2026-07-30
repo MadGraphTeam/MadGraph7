@@ -5,9 +5,10 @@ use super::*;
 pub(super) fn load_execution_manifest_with_store(
     manifest: ExecutionManifest,
     payloads: &EvaluatorPayloadStore,
+    sizing_physics: &PhysicsRuntime,
 ) -> RusticolResult<ExecutionRuntime> {
     validate_execution_manifest(&manifest)?;
-    ExecutionRuntime::load_from_manifest_with_store(manifest, payloads)
+    ExecutionRuntime::load_from_manifest_with_store(manifest, payloads, sizing_physics)
 }
 
 fn validate_execution_manifest(manifest: &ExecutionManifest) -> RusticolResult<()> {

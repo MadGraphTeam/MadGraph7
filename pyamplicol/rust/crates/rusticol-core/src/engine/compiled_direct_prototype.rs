@@ -34,6 +34,8 @@ use super::evaluator::symjit_compiled_direct::{
 use super::evaluator::{SymjitApplicationMetadata, validate_manifest_metadata};
 use super::sources::RuntimeSourceState;
 use super::*;
+#[cfg(test)]
+use crate::direct_arena::checked_aligned_point_stride;
 use crate::direct_arena::{
     AlignedF64Buffer, DirectAmplitudePlanes, DirectArenaAllocationCounters,
     DirectArenaTrafficCounters, DirectArenaWorkspace, DirectMomentumView, DirectParameterView,
@@ -270,7 +272,6 @@ fn compiled_direct_tile_sizing(
         // The shared zero plane is point-pitched even though every leaf
         // aliases the same immutable storage.
         .and_then(|value| value.checked_add(1))
-        .and_then(|value| value.checked_add(reduction_footprint.workspace_scalar_values_per_point))
         .ok_or_else(|| {
             RusticolError::integrity("compiled Direct-Arena physical per-point shape overflows")
         })?;
@@ -293,9 +294,11 @@ fn compiled_direct_tile_sizing(
                 "compiled Direct-Arena production schedule has no evaluator leaves",
             )
         })?;
+    let authenticated_reduction_scalar_values_per_point =
+        reduction_footprint.hot_scalar_values_per_point();
     let hot_scalar_values_per_point = maximum_leaf_scalar_values_per_point
         .max(source_scalar_values_per_point)
-        .max(reduction_footprint.hot_scalar_values_per_point);
+        .max(authenticated_reduction_scalar_values_per_point.unwrap_or(0));
     let effective_tile_capacity = match layout_policy {
         // This developer/test contract remains exact: neither the adaptive
         // locality cap nor the production workspace policy changes it.
@@ -305,13 +308,28 @@ fn compiled_direct_tile_sizing(
             })?
         }
         CompiledDirectCurrentLayoutPolicy::StageLivenessProduction => {
-            deterministic_point_tile_size_with_cache_footprint(
-                COMPILED_DIRECT_LOCALITY_POINT_CAP,
-                COMPILED_DIRECT_WORKSPACE_BYTES,
-                compiled_direct_cache_target_bytes(),
-                physical_scalar_values_per_point,
-                hot_scalar_values_per_point,
-            )? as usize
+            if authenticated_reduction_scalar_values_per_point.is_none() {
+                // Adaptive production tiling is only valid when every
+                // reducer reachable from this engine has a static footprint.
+                // Still route the one-point fallback through the common
+                // selector so its padded physical allocation cannot bypass
+                // the hard workspace bound.
+                deterministic_point_tile_size_with_cache_footprint(
+                    1,
+                    COMPILED_DIRECT_WORKSPACE_BYTES,
+                    usize::MAX,
+                    physical_scalar_values_per_point,
+                    hot_scalar_values_per_point,
+                )? as usize
+            } else {
+                deterministic_point_tile_size_with_cache_footprint(
+                    COMPILED_DIRECT_LOCALITY_POINT_CAP,
+                    COMPILED_DIRECT_WORKSPACE_BYTES,
+                    compiled_direct_cache_target_bytes(),
+                    physical_scalar_values_per_point,
+                    hot_scalar_values_per_point,
+                )? as usize
+            }
         }
     };
     Ok(CompiledDirectTileSizing {
@@ -319,7 +337,8 @@ fn compiled_direct_tile_sizing(
         physical_scalar_values_per_point,
         hot_scalar_values_per_point,
         source_scalar_values_per_point,
-        reduction_scalar_values_per_point: reduction_footprint.hot_scalar_values_per_point,
+        reduction_scalar_values_per_point: authenticated_reduction_scalar_values_per_point
+            .unwrap_or(0),
     })
 }
 
@@ -947,6 +966,80 @@ impl CompiledDirectEnginePrototype {
             .traffic
             .boundary_input_bytes
             .saturating_add(input_scalars as u64);
+        Ok(())
+    }
+
+    /// Test-only row-major source boundary for the production liveness layout.
+    ///
+    /// A liveness arena cannot represent arbitrary intermediate values at one
+    /// instant. It can, however, be initialized exactly like production by
+    /// clearing every physical plane and scattering only canonical sources.
+    #[cfg(test)]
+    fn begin_tile_from_state_sources_for_test(
+        &mut self,
+        point_count: usize,
+        global_parameter_count: usize,
+        state: &[Complex<f64>],
+    ) -> RusticolResult<()> {
+        if point_count == 0
+            || point_count > self.arena.tile_capacity() as usize
+            || state.len() != point_count.saturating_mul(global_parameter_count)
+        {
+            return Err(RusticolError::invalid_argument(
+                "compiled Direct-Arena production test state shape is invalid",
+            ));
+        }
+        let required_parameters = self
+            .value_component_count
+            .checked_add(self.momentum_component_count)
+            .and_then(|value| value.checked_add(self.model_parameter_count))
+            .ok_or_else(|| RusticolError::integrity("compiled parameter layout overflows"))?;
+        if global_parameter_count < required_parameters {
+            return Err(RusticolError::invalid_argument(
+                "compiled Direct-Arena production test state omits required parameters",
+            ));
+        }
+        self.arena.begin_tile(point_count as u32)?;
+        self.arena
+            .clear_current_active(0, self.current_layout.physical_component_count)?;
+        self.arena
+            .clear_amplitude_active(0, self.amplitude_component_count as u32)?;
+        let stride = self.arena.point_stride() as usize;
+        {
+            let (current_re, current_im, _, _) = self.arena.split_slices_mut();
+            for canonical_component in self.source_components.iter().copied() {
+                let physical_component =
+                    self.current_layout
+                        .physical_component(canonical_component)? as usize;
+                let plane = physical_component * stride;
+                for point in 0..point_count {
+                    let value = state[point * global_parameter_count + canonical_component];
+                    current_re[plane + point] = value.re;
+                    current_im[plane + point] = value.im;
+                }
+            }
+        }
+        let momentum_start = self.value_component_count;
+        for component in 0..self.momentum_component_count {
+            let plane = component * stride;
+            for point in 0..point_count {
+                self.momenta.as_mut_slice()[plane + point] =
+                    state[point * global_parameter_count + momentum_start + component].re;
+            }
+        }
+        let parameter_start = momentum_start + self.momentum_component_count;
+        for index in 0..self.model_parameter_count {
+            let value = state[parameter_start + index];
+            self.parameter_re.as_mut_slice()[index] = value.re;
+            self.parameter_im.as_mut_slice()[index] = value.im;
+            for point in 1..point_count {
+                if state[point * global_parameter_count + parameter_start + index] != value {
+                    return Err(RusticolError::invalid_argument(
+                        "compiled Direct-Arena model parameters vary across a production test tile",
+                    ));
+                }
+            }
+        }
         Ok(())
     }
 
@@ -2861,6 +2954,36 @@ extern "C" int native_direct_leaf_direct_application_v1(
         )
     }
 
+    fn assert_compiled_direct_workspace_bounds(runtime: &ExecutionRuntime) {
+        if let Some(direct) = runtime.compiled_direct_runtime.as_ref() {
+            let sizing = direct.tile_sizing();
+            let stride = direct.arena.point_stride() as usize;
+            let logical_tile_bytes = stride
+                .checked_mul(sizing.physical_scalar_values_per_point)
+                .and_then(|value| value.checked_mul(std::mem::size_of::<f64>()))
+                .expect("retained Direct logical tile bytes fit usize");
+            assert!(
+                logical_tile_bytes <= COMPILED_DIRECT_WORKSPACE_BYTES,
+                "retained padded Direct tile requires {logical_tile_bytes} bytes"
+            );
+            if sizing.reduction_scalar_values_per_point == 0 {
+                assert_eq!(
+                    sizing.effective_tile_capacity, 1,
+                    "unauthenticated retained reducer did not fail closed"
+                );
+            }
+        }
+        let children = runtime
+            .helicity_sum_runtime
+            .iter()
+            .map(Box::as_ref)
+            .chain(runtime.helicity_selector_runtimes.iter().map(Box::as_ref))
+            .chain(runtime.color_selector_runtimes.values().map(Box::as_ref));
+        for child in children {
+            assert_compiled_direct_workspace_bounds(child);
+        }
+    }
+
     fn retained_validation_point(runtime: &NativeRuntime) -> Vec<f64> {
         let path = runtime
             .root()
@@ -2891,14 +3014,78 @@ extern "C" int native_direct_leaf_direct_application_v1(
     }
 
     #[test]
+    fn compiled_direct_reducer_shapes_are_statically_authenticated() {
+        let routed = CompiledDirectRoutedReductionFootprint::default();
+        let hot =
+            |kind, maximum_group_component_count, maximum_resolved_component_count, routed| {
+                CompiledDirectReductionFootprint::authenticated(
+                    kind,
+                    maximum_group_component_count,
+                    maximum_resolved_component_count,
+                    routed,
+                )
+                .unwrap()
+                .hot_scalar_values_per_point()
+                .unwrap()
+            };
+        assert_eq!(hot(CompiledDirectReducerKind::Plain, 1, 0, routed), 3);
+        assert_eq!(hot(CompiledDirectReducerKind::Coherent, 5, 7, routed), 20);
+        assert_eq!(
+            hot(
+                CompiledDirectReducerKind::Contracted { group_count: 11 },
+                5,
+                7,
+                routed,
+            ),
+            40
+        );
+        assert_eq!(
+            hot(
+                CompiledDirectReducerKind::ColorTopologyReplay {
+                    physical_group_count: 13,
+                },
+                5,
+                7,
+                routed,
+            ),
+            44
+        );
+        assert_eq!(
+            hot(
+                CompiledDirectReducerKind::Coherent,
+                5,
+                7,
+                CompiledDirectRoutedReductionFootprint {
+                    maximum_source_component_count: 512,
+                    maximum_target_component_count: 1,
+                },
+            ),
+            526,
+            "authenticated replay source components can dominate the reducer"
+        );
+        assert_eq!(
+            hot(
+                CompiledDirectReducerKind::Coherent,
+                5,
+                7,
+                CompiledDirectRoutedReductionFootprint {
+                    maximum_source_component_count: 1,
+                    maximum_target_component_count: 1_024,
+                },
+            ),
+            1_038,
+            "authenticated replay target components can dominate the reducer"
+        );
+    }
+
+    #[test]
     fn compiled_direct_tile_policy_uses_authenticated_phase_local_footprints() {
         let mut leaf = liveness_leaf(&[0], &[1]);
         leaf.scalar_values_per_point = 4_320;
         let stages = vec![liveness_stage(vec![leaf])];
         let amplitude = liveness_stage(vec![liveness_leaf(&[1], &[])]);
         let layout = CompiledDirectCurrentLayout::identity(100_000).unwrap();
-        let reduction = CompiledDirectReductionFootprint {
-            workspace_scalar_values_per_point: 2_048,
+        let reduction = CompiledDirectReductionFootprint::Authenticated {
             hot_scalar_values_per_point: 4_096,
         };
         let expected = compiled_direct_tile_sizing(
@@ -2918,8 +3105,15 @@ extern "C" int native_direct_leaf_direct_application_v1(
         assert_eq!(expected.reduction_scalar_values_per_point, 4_096);
         assert_eq!(
             expected.physical_scalar_values_per_point,
-            200_000 + 24 + 16_384 + 1 + 2_048
+            200_000 + 24 + 16_384 + 1,
+            "the hard footprint contains only tile-controlled Direct storage"
         );
+        let expected_stride =
+            checked_aligned_point_stride(expected.effective_tile_capacity as u32).unwrap();
+        let expected_direct_bytes = expected_stride as usize
+            * expected.physical_scalar_values_per_point
+            * std::mem::size_of::<f64>();
+        assert!(expected_direct_bytes <= COMPILED_DIRECT_WORKSPACE_BYTES);
         for _ in 0..32 {
             assert_eq!(
                 compiled_direct_tile_sizing(
@@ -2946,7 +3140,13 @@ extern "C" int native_direct_leaf_direct_application_v1(
             &many_sources,
             24,
             1,
-            CompiledDirectReductionFootprint::default(),
+            CompiledDirectReductionFootprint::authenticated(
+                CompiledDirectReducerKind::Plain,
+                1,
+                0,
+                CompiledDirectRoutedReductionFootprint::default(),
+            )
+            .unwrap(),
             CompiledDirectCurrentLayoutPolicy::StageLivenessProduction,
         )
         .unwrap();
@@ -2957,8 +3157,7 @@ extern "C" int native_direct_leaf_direct_application_v1(
             "authenticated source preparation can be the cache-limiting phase"
         );
 
-        let large_reduction = CompiledDirectReductionFootprint {
-            workspace_scalar_values_per_point: 2,
+        let large_reduction = CompiledDirectReductionFootprint::Authenticated {
             hot_scalar_values_per_point: 32_768,
         };
         assert_eq!(
@@ -2987,13 +3186,80 @@ extern "C" int native_direct_leaf_direct_application_v1(
                 &[0],
                 4,
                 1,
-                CompiledDirectReductionFootprint::default(),
+                CompiledDirectReductionFootprint::authenticated(
+                    CompiledDirectReducerKind::Plain,
+                    1,
+                    0,
+                    CompiledDirectRoutedReductionFootprint::default(),
+                )
+                .unwrap(),
                 CompiledDirectCurrentLayoutPolicy::StageLivenessProduction,
             )
             .unwrap()
             .effective_tile_capacity,
             16,
             "the 256 MiB padded physical bound remains hard"
+        );
+        let hard_limited = compiled_direct_tile_sizing(
+            &stages,
+            &amplitude,
+            &hard_limited_layout,
+            &[0],
+            4,
+            1,
+            CompiledDirectReductionFootprint::authenticated(
+                CompiledDirectReducerKind::Plain,
+                1,
+                0,
+                CompiledDirectRoutedReductionFootprint::default(),
+            )
+            .unwrap(),
+            CompiledDirectCurrentLayoutPolicy::StageLivenessProduction,
+        )
+        .unwrap();
+        let hard_stride =
+            checked_aligned_point_stride(hard_limited.effective_tile_capacity as u32).unwrap();
+        let hard_direct_bytes = hard_stride as usize
+            * hard_limited.physical_scalar_values_per_point
+            * std::mem::size_of::<f64>();
+        assert!(
+            hard_direct_bytes <= COMPILED_DIRECT_WORKSPACE_BYTES,
+            "actual padded tile-controlled Direct bytes exceed the 256 MiB hard bound"
+        );
+        assert_eq!(
+            compiled_direct_tile_sizing(
+                &stages,
+                &amplitude,
+                &layout,
+                &[0],
+                4,
+                1,
+                CompiledDirectReductionFootprint::Unauthenticated,
+                CompiledDirectCurrentLayoutPolicy::StageLivenessProduction,
+            )
+            .unwrap()
+            .effective_tile_capacity,
+            1,
+            "production adaptive tiling fails closed without a static reducer footprint"
+        );
+        let unauthenticated_over_budget_layout = CompiledDirectCurrentLayout {
+            canonical_to_physical: vec![0].into_boxed_slice(),
+            physical_component_count: 2_100_000,
+            live_component_count: 1,
+        };
+        assert!(
+            compiled_direct_tile_sizing(
+                &stages,
+                &amplitude,
+                &unauthenticated_over_budget_layout,
+                &[0],
+                4,
+                1,
+                CompiledDirectReductionFootprint::Unauthenticated,
+                CompiledDirectCurrentLayoutPolicy::StageLivenessProduction,
+            )
+            .is_err(),
+            "the unauthenticated one-point fallback must retain the padded hard bound"
         );
         assert_eq!(
             compiled_direct_tile_sizing(
@@ -3242,7 +3508,7 @@ extern "C" int native_direct_leaf_direct_application_v1(
             }
         }
 
-        let mut tiled_direct = CompiledDirectEnginePrototype::load(
+        let mut tiled_direct = CompiledDirectEnginePrototype::load_with_current_layout_policy(
             std::slice::from_ref(&stage),
             &amplitude,
             &payloads,
@@ -3252,14 +3518,29 @@ extern "C" int native_direct_leaf_direct_application_v1(
             MOMENTUM_COMPONENTS,
             MODEL_PARAMETERS,
             1,
-            32,
+            CompiledDirectReductionFootprint::authenticated(
+                CompiledDirectReducerKind::Plain,
+                1,
+                0,
+                CompiledDirectRoutedReductionFootprint::default(),
+            )
+            .unwrap(),
+            CompiledDirectCurrentLayoutPolicy::StageLivenessProduction,
         )
         .unwrap();
-        assert_eq!(tiled_direct.tile_capacity(), 32);
+        let production_tile = tiled_direct.tile_capacity();
+        assert_eq!(production_tile, 32);
         let tiled_selector = tiled_direct
             .bind_color_schedule(&existing_selector)
             .unwrap();
-        for point_count in [1_usize, 31, 32, 33, 65, 129] {
+        for point_count in [
+            1_usize,
+            production_tile - 1,
+            production_tile,
+            production_tile + 1,
+            production_tile * 2 + 1,
+            production_tile * 4 + 1,
+        ] {
             let initial = initial_state(point_count);
             let mut legacy = initial.clone();
             legacy_stage
@@ -3278,7 +3559,7 @@ extern "C" int native_direct_leaf_direct_application_v1(
                 let tile_points = tile.point_count as usize;
                 let point_stop = point_start + tile_points;
                 tiled_direct
-                    .begin_tile_from_state(
+                    .begin_tile_from_state_sources_for_test(
                         tile_points,
                         GLOBAL_PARAMETERS,
                         &initial[point_start * GLOBAL_PARAMETERS..point_stop * GLOBAL_PARAMETERS],
@@ -3319,6 +3600,43 @@ extern "C" int native_direct_leaf_direct_application_v1(
             active_amplitude_chunk_indices: vec![0],
         };
         assert!(direct.bind_color_schedule(&missing_prerequisite).is_err());
+    }
+
+    #[test]
+    fn retained_compiled_o3_artifact_sizing_is_independently_deterministic() {
+        let Some(root) = std::env::var_os("RUSTICOL_COMPILED_DIRECT_ARTIFACT") else {
+            return;
+        };
+        let root = PathBuf::from(root);
+        let first =
+            NativeRuntime::load(&root, None, None).expect("load first retained Direct runtime");
+        let second =
+            NativeRuntime::load(&root, None, None).expect("load second retained Direct runtime");
+        let first_summary = compiled_direct_runtime_summary(&first.runtime);
+        let second_summary = compiled_direct_runtime_summary(&second.runtime);
+        assert_eq!(
+            first_summary, second_summary,
+            "independent loads derived different nested Direct configurations"
+        );
+        assert!(
+            first_summary.0 > 0,
+            "retained sizing fixture has no Direct engine"
+        );
+        assert_eq!(
+            first.metadata_json().unwrap(),
+            second.metadata_json().unwrap(),
+            "independent loads reported different nested Direct provenance"
+        );
+        assert_compiled_direct_workspace_bounds(&first.runtime);
+        assert_compiled_direct_workspace_bounds(&second.runtime);
+        eprintln!(
+            "retained-compiled-direct-sizing engines={} requested_bytes={} \
+             minimum_tile={} metadata={}",
+            first_summary.0,
+            first_summary.1,
+            first_summary.3,
+            first.metadata_json().unwrap()
+        );
     }
 
     #[test]
@@ -3546,6 +3864,16 @@ extern "C" int native_direct_leaf_direct_application_v1(
             .expect("load retained production Direct runtime");
         let mut legacy =
             NativeRuntime::load(&root, None, None).expect("load retained legacy oracle runtime");
+        assert_eq!(
+            compiled_direct_runtime_summary(&direct.runtime),
+            compiled_direct_runtime_summary(&legacy.runtime),
+            "independent loads must derive the same nested Direct configuration"
+        );
+        assert_eq!(
+            direct.metadata_json().unwrap(),
+            legacy.metadata_json().unwrap(),
+            "independent loads must report deterministic nested Direct provenance"
+        );
         disable_compiled_direct_recursive(&mut legacy.runtime);
 
         let (engine_count, requested_bytes, _, minimum_tile_capacity) =

@@ -483,8 +483,16 @@ impl NativeRuntime {
                     let representative_process = manifest.process.clone();
                     let representative_key = manifest.key.clone();
                     let evaluator_payloads = artifact.evaluator_payload_store(&evaluator_root)?;
-                    let runtime =
-                        load_execution_manifest_with_store(*manifest, &evaluator_payloads)?;
+                    // Tile sizing is bound to the representative physics
+                    // before public alias remapping. Aliases preserve these
+                    // component counts and the execution payload itself is
+                    // authenticated against the representative identifiers.
+                    let sizing_physics = PhysicsRuntime::new(physics_v1.clone())?;
+                    let runtime = load_execution_manifest_with_store(
+                        *manifest,
+                        &evaluator_payloads,
+                        &sizing_physics,
+                    )?;
                     (
                         representative_process,
                         representative_key,

@@ -3260,9 +3260,68 @@ impl ExecutionRuntime {
         })
     }
 
+    fn compiled_direct_routed_reduction_footprint(
+        &self,
+        amplitude: &AmplitudeRuntime,
+        physics: &PhysicsRuntime,
+    ) -> RusticolResult<CompiledDirectRoutedReductionFootprint> {
+        if !self.lc_topology_replay_enabled {
+            return Ok(CompiledDirectRoutedReductionFootprint::default());
+        }
+        let materialized_sector_by_id =
+            self.lc_materialized_sectors_by_id_from_groups(physics, &amplitude.raw_sum_groups)?;
+        let replay_plan = physics.lc_resolved_replay_plan(
+            &self.lc_topology_replay_public_mappings,
+            &self.lc_topology_replay_routes,
+            &materialized_sector_by_id,
+        )?;
+        let selection_key = physics.lc_resolved_replay_selection_key(None, None)?;
+        let selection =
+            physics.select_lc_resolved_replay_plan_for_key(&replay_plan, &selection_key)?;
+        let maximum_source_component_count = selection
+            .source_groups
+            .iter()
+            .map(|group| group.source_component_count)
+            .max()
+            .ok_or_else(|| {
+                RusticolError::artifact(
+                    "enabled LC topology replay has no authenticated source group",
+                )
+            })?;
+        let maximum_target_component_count = selection
+            .helicity_indices
+            .len()
+            .checked_mul(selection.color_indices.len())
+            .filter(|count| *count != 0)
+            .ok_or_else(|| {
+                RusticolError::artifact(
+                    "enabled LC topology replay has no authenticated target components",
+                )
+            })?;
+        Ok(CompiledDirectRoutedReductionFootprint {
+            maximum_source_component_count,
+            maximum_target_component_count,
+        })
+    }
+
     pub(super) fn load_from_manifest_with_store(
+        manifest: ExecutionManifest,
+        payloads: &EvaluatorPayloadStore,
+        sizing_physics: &PhysicsRuntime,
+    ) -> RusticolResult<Self> {
+        Self::load_from_manifest_with_store_and_replay_footprint(
+            manifest,
+            payloads,
+            Some(CompiledDirectRoutedReductionFootprint::default()),
+            sizing_physics,
+        )
+    }
+
+    fn load_from_manifest_with_store_and_replay_footprint(
         mut manifest: ExecutionManifest,
         payloads: &EvaluatorPayloadStore,
+        inherited_routed_footprint: Option<CompiledDirectRoutedReductionFootprint>,
+        inherited_sizing_physics: &PhysicsRuntime,
     ) -> RusticolResult<Self> {
         validate_helicity_sum_execution(&manifest)?;
         validate_helicity_selector_executions(&manifest)?;
@@ -3277,9 +3336,42 @@ impl ExecutionRuntime {
         let model_parameter_evaluator = manifest.compiled.model_parameter_evaluator.clone();
         let amplitude_stage_manifest = manifest.runtime_schema.amplitude_stage.clone();
         let mut runtime = Self::from_manifest(manifest)?;
+        let sizing_physics = if let Some(reduction) = runtime.physics_reduction_override.as_ref() {
+            let mut manifest = inherited_sizing_physics.manifest.clone();
+            manifest.reduction = reduction.clone();
+            PhysicsRuntime::new(manifest)?
+        } else {
+            inherited_sizing_physics.clone()
+        };
+        let routed_footprint = if runtime.lc_topology_replay_enabled {
+            if let Some(stage_evaluators) = stage_evaluators.as_ref() {
+                let sizing_amplitude = AmplitudeRuntime::load_reducer_only(
+                    &amplitude_stage_manifest,
+                    &stage_evaluators.amplitude_stage,
+                )?;
+                let own = runtime.compiled_direct_routed_reduction_footprint(
+                    &sizing_amplitude,
+                    &sizing_physics,
+                )?;
+                inherited_routed_footprint.map(|inherited| inherited.merge(own))
+            } else {
+                // The replay may route into a nested Direct engine, but this
+                // legacy parent exposes no amplitude metadata from which to
+                // authenticate its source/target shape.
+                None
+            }
+        } else {
+            inherited_routed_footprint
+        };
         runtime.helicity_sum_runtime = helicity_sum_manifest
             .map(|sum_manifest| {
-                Self::load_from_manifest_with_store(*sum_manifest, payloads).map(Box::new)
+                Self::load_from_manifest_with_store_and_replay_footprint(
+                    *sum_manifest,
+                    payloads,
+                    routed_footprint,
+                    &sizing_physics,
+                )
+                .map(Box::new)
             })
             .transpose()?;
         runtime.helicity_selector_runtimes = Vec::with_capacity(helicity_selector_manifests.len());
@@ -3296,21 +3388,25 @@ impl ExecutionRuntime {
             runtime
                 .helicity_selector_runtime_schedule_modes
                 .push(record.schedule_mode);
-            runtime
-                .helicity_selector_runtimes
-                .push(Box::new(Self::load_from_manifest_with_store(
+            runtime.helicity_selector_runtimes.push(Box::new(
+                Self::load_from_manifest_with_store_and_replay_footprint(
                     *record.execution,
                     payloads,
-                )?));
+                    routed_footprint,
+                    &sizing_physics,
+                )?,
+            ));
         }
         runtime.color_selector_runtimes = color_selector_manifests
             .into_iter()
             .map(|record| {
                 Ok((
                     record.materialized_sector_id,
-                    Box::new(Self::load_from_manifest_with_store(
+                    Box::new(Self::load_from_manifest_with_store_and_replay_footprint(
                         *record.execution,
                         payloads,
+                        routed_footprint,
+                        &sizing_physics,
                     )?),
                 ))
             })
@@ -3360,7 +3456,24 @@ impl ExecutionRuntime {
                         &stage_evaluators.amplitude_stage,
                     )?,
                 );
-                let reduction_footprint = amplitude.compiled_direct_reduction_footprint()?;
+                let maximum_resolved_component_count = sizing_physics
+                    .manifest
+                    .helicities
+                    .len()
+                    .checked_mul(sizing_physics.manifest.color_components.len())
+                    .ok_or_else(|| {
+                        RusticolError::integrity(
+                            "compiled Direct-Arena resolved footprint overflows",
+                        )
+                    })?;
+                let reduction_footprint = if let Some(routed_footprint) = routed_footprint {
+                    amplitude.compiled_direct_reduction_footprint(
+                        maximum_resolved_component_count,
+                        routed_footprint,
+                    )?
+                } else {
+                    CompiledDirectReductionFootprint::Unauthenticated
+                };
                 let direct =
                     compiled_direct_prototype::CompiledDirectEnginePrototype::load_production(
                         &stage_evaluators.stages,
