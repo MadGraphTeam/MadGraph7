@@ -34,6 +34,20 @@ RELATION_DISCOVERY_CERTIFICATE_ALGORITHM = "exact-binary64-term-vector-replay-v1
 NUMERICAL_CURRENT_RELATION_CERTIFICATE_ALGORITHM = (
     "authenticated-independent-recursive-decimal-probes-v1"
 )
+GENERIC_DAG_NUMERICAL_SOURCE_SEMANTICS_ABI = (
+    "pyamplicol-generic-dag-numerical-current-source-v1"
+)
+NUMERICAL_CURRENT_RELATION_SET_ABI = (
+    "pyamplicol-authenticated-numerical-current-relation-set-v1"
+)
+NUMERICAL_CURRENT_RELATION_WARNING_CODE = (
+    "proofless-numerical-current-relations-applied-v1"
+)
+NUMERICAL_CURRENT_RELATION_WARNING = (
+    "applied authenticated numerical equal/opposite/zero current reuse "
+    "without an exact structural proof; disable with "
+    "--no-numerical-current-reuse"
+)
 _MAX_REJECTED_DIAGNOSTICS = 16
 
 
@@ -536,6 +550,121 @@ class NumericalCurrentRelationCertificate:
         return certificate
 
 
+@dataclass(frozen=True, slots=True)
+class NumericalCurrentAppliedMapping:
+    """Execution mapping derived from one authenticated certificate."""
+
+    current_id: int
+    representative_id: int | None
+    execution_representative_id: int
+    relation_kind: Literal["equal", "opposite", "zero"]
+    factor: _ComplexWeight
+    certificate_proof_sha256: str
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "current_id": self.current_id,
+            "representative_id": self.representative_id,
+            "execution_representative_id": self.execution_representative_id,
+            "relation_kind": self.relation_kind,
+            "factor_binary64": [self.factor[0].hex(), self.factor[1].hex()],
+            "certificate_proof_sha256": self.certificate_proof_sha256,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class NumericalCurrentRelationApplicationReport:
+    """Manifest-ready replay result for one generic-DAG relation set."""
+
+    requested_mode: Literal["diagnostic", "certified-reuse"]
+    execution_mode: Literal["compiled", "eager"]
+    color_accuracy: str
+    source_semantics_sha256: str
+    state: str
+    certificate_replay_status: str
+    certificate_set_sha256: str
+    certificates: tuple[NumericalCurrentRelationCertificate, ...]
+    mappings: tuple[NumericalCurrentAppliedMapping, ...]
+    interaction_evaluation_count_before: int
+    interaction_evaluation_count_projected: int
+    applied_relation_count: int
+
+    @property
+    def warning_required(self) -> bool:
+        return self.applied_relation_count > 0
+
+    def to_json_dict(self) -> dict[str, object]:
+        relation_kind_counts = {
+            relation_kind: sum(
+                certificate.relation_kind == relation_kind
+                for certificate in self.certificates
+            )
+            for relation_kind in ("equal", "opposite", "zero")
+        }
+        return {
+            "schema_version": 1,
+            "abi": NUMERICAL_CURRENT_RELATION_SET_ABI,
+            "requested_mode": self.requested_mode,
+            "state": self.state,
+            "scope": {
+                "execution_mode": self.execution_mode,
+                "color_accuracy": self.color_accuracy,
+                "representation": "generic-dag",
+            },
+            "source_semantics": {
+                "abi": GENERIC_DAG_NUMERICAL_SOURCE_SEMANTICS_ABI,
+                "sha256": self.source_semantics_sha256,
+            },
+            "certificate_replay": {
+                "algorithm": (
+                    NUMERICAL_CURRENT_RELATION_CERTIFICATE_ALGORITHM
+                ),
+                "status": self.certificate_replay_status,
+                "certificate_set_sha256": self.certificate_set_sha256,
+            },
+            "certified_relation_count": len(self.certificates),
+            "applied_relation_count": self.applied_relation_count,
+            "relation_kind_counts": relation_kind_counts,
+            "interaction_evaluation_count_before": (
+                self.interaction_evaluation_count_before
+            ),
+            "interaction_evaluation_count_projected": (
+                self.interaction_evaluation_count_projected
+            ),
+            "interaction_evaluation_savings_projected": max(
+                0,
+                self.interaction_evaluation_count_before
+                - self.interaction_evaluation_count_projected,
+            ),
+            "certificates": [
+                certificate.to_json_dict()
+                for certificate in self.certificates
+            ],
+            "mappings": [mapping.to_json_dict() for mapping in self.mappings],
+            "warning": (
+                {
+                    "required": True,
+                    "emit": "once-per-generated-artifact",
+                    "code": NUMERICAL_CURRENT_RELATION_WARNING_CODE,
+                    "message": NUMERICAL_CURRENT_RELATION_WARNING,
+                }
+                if self.warning_required
+                else {
+                    "required": False,
+                    "emit": "never",
+                    "code": None,
+                    "message": None,
+                }
+            ),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class NumericalCurrentRelationApplicationResult:
+    dag: GenericDAG
+    report: NumericalCurrentRelationApplicationReport
+
+
 def certify_numerical_current_observations(
     *,
     current_id: int,
@@ -881,6 +1010,225 @@ def verify_numerical_current_relation_certificate(
         "probe_contract_sha256": certificate.probe_contract_sha256,
     }
     return _canonical_payload_sha256(proof_payload) == certificate.proof_sha256
+
+
+def generic_dag_numerical_source_semantics_sha256(
+    dag: GenericDAG,
+    *,
+    execution_mode: Literal["compiled", "eager"],
+) -> str:
+    """Bind numerical observations to an execution-scoped source DAG.
+
+    Evaluation-group IDs and factors are derived optimizations rather than
+    source semantics.  Removing them makes the digest stable across baseline
+    exact sharing and authenticated numerical sharing while retaining every
+    current, interaction, selector, colour, helicity, and model-facing field.
+    """
+
+    if execution_mode not in {"compiled", "eager"}:
+        raise ValueError(
+            "generic-DAG numerical relations require compiled or eager mode"
+        )
+    source_dag = replace(
+        dag,
+        interactions=tuple(
+            replace(
+                interaction,
+                evaluation_group_id=None,
+                evaluation_factor=(1.0, 0.0),
+            )
+            for interaction in dag.interactions
+        ),
+    )
+    return _canonical_payload_sha256(
+        {
+            "abi": GENERIC_DAG_NUMERICAL_SOURCE_SEMANTICS_ABI,
+            "execution_mode": execution_mode,
+            "color_accuracy": str(dag.process.color_accuracy),
+            "dag": source_dag.to_json_dict(),
+        }
+    )
+
+
+def apply_numerical_current_relation_certificates(
+    dag: GenericDAG,
+    model: Model,
+    certificates: Iterable[NumericalCurrentRelationCertificate],
+    *,
+    mode: _DiscoveryMode,
+    execution_mode: Literal["compiled", "eager"],
+) -> NumericalCurrentRelationApplicationResult:
+    """Replay and apply one canonical authenticated numerical relation set.
+
+    Equal and opposite mappings use only exact ``+1``/``-1`` factors.  A
+    certified zero maps to a compatible earlier execution representative with
+    factor zero when one exists, otherwise to itself.  This lets recursive
+    multilinearity propagate the zero relation without inventing a physical
+    selector permutation.  Any malformed, stale, inconsistent, or
+    non-topological set fails closed with ``ValueError``.
+    """
+
+    if mode not in {"diagnostic", "certified-reuse"}:
+        raise ValueError(f"unsupported relation discovery mode {mode!r}")
+    source_digest = generic_dag_numerical_source_semantics_sha256(
+        dag,
+        execution_mode=execution_mode,
+    )
+    ordered = tuple(certificates)
+    if tuple(sorted(ordered, key=lambda item: item.current_id)) != ordered:
+        raise ValueError(
+            "numerical current certificates must use increasing current IDs"
+        )
+    if len({certificate.current_id for certificate in ordered}) != len(ordered):
+        raise ValueError(
+            "numerical current certificates contain duplicate current IDs"
+        )
+
+    source_ids = set(dag.sources)
+    current_contracts = tuple(
+        _current_evaluation_contract(current) for current in dag.currents
+    )
+    common_probe_contract: tuple[object, ...] | None = None
+    authenticated_relations: dict[int, _CurrentValueEquivalence] = {}
+    mappings: list[NumericalCurrentAppliedMapping] = []
+    for certificate in ordered:
+        if not verify_numerical_current_relation_certificate(
+            certificate,
+            source_semantics_sha256=source_digest,
+        ):
+            raise ValueError(
+                f"numerical current certificate {certificate.current_id} "
+                "does not replay against the source DAG"
+            )
+        current_id = certificate.current_id
+        if (
+            current_id >= len(dag.currents)
+            or current_id in source_ids
+            or dag.currents[current_id].is_source
+        ):
+            raise ValueError(
+                "numerical current relations may target only generated currents"
+            )
+        probe_contract = (
+            certificate.precision_digits,
+            certificate.seed,
+            certificate.relative_tolerance.hex(),
+            certificate.absolute_tolerance.hex(),
+            certificate.candidate_probe_count,
+            certificate.verification_probe_count,
+        )
+        if common_probe_contract is None:
+            common_probe_contract = probe_contract
+        elif common_probe_contract != probe_contract:
+            raise ValueError(
+                "numerical current relation set mixes probe contracts"
+            )
+
+        if certificate.relation_kind == "zero":
+            compatible_representatives = tuple(
+                candidate_id
+                for candidate_id in range(current_id)
+                if current_contracts[candidate_id]
+                == current_contracts[current_id]
+            )
+            execution_representative_id = (
+                compatible_representatives[0]
+                if compatible_representatives
+                else current_id
+            )
+            factor = (0.0, 0.0)
+        else:
+            representative_id = certificate.representative_id
+            if (
+                representative_id is None
+                or representative_id >= current_id
+                or current_contracts[representative_id]
+                != current_contracts[current_id]
+            ):
+                raise ValueError(
+                    "numerical current representative violates its "
+                    "execution contract"
+                )
+            execution_representative_id = representative_id
+            assert certificate.factor is not None
+            factor = certificate.factor
+        authenticated_relations[current_id] = _CurrentValueEquivalence(
+            representative_id=execution_representative_id,
+            factor=factor,
+        )
+        mappings.append(
+            NumericalCurrentAppliedMapping(
+                current_id=current_id,
+                representative_id=certificate.representative_id,
+                execution_representative_id=execution_representative_id,
+                relation_kind=certificate.relation_kind,
+                factor=factor,
+                certificate_proof_sha256=certificate.proof_sha256,
+            )
+        )
+
+    baseline = assign_recursive_current_evaluation_reuse(dag, model)
+    if ordered:
+        equivalence_by_kind: dict[int, VertexEvaluationEquivalence] = {}
+        current_equivalences = _derive_current_value_equivalences(
+            dag,
+            model,
+            equivalence_by_kind=equivalence_by_kind,
+            authenticated_relations=authenticated_relations,
+        )
+        projected = _rewrite_interaction_evaluation_reuse(
+            dag,
+            model,
+            current_equivalences=current_equivalences,
+            equivalence_by_kind=equivalence_by_kind,
+        )
+    else:
+        projected = baseline
+
+    mapping_payloads = [mapping.to_json_dict() for mapping in mappings]
+    certificate_set_digest = _canonical_payload_sha256(
+        {
+            "abi": NUMERICAL_CURRENT_RELATION_SET_ABI,
+            "source_semantics_sha256": source_digest,
+            "execution_mode": execution_mode,
+            "certificates": [
+                certificate.to_json_dict() for certificate in ordered
+            ],
+            "mappings": mapping_payloads,
+        }
+    )
+    apply_relations = mode == "certified-reuse" and bool(ordered)
+    if not ordered:
+        state = "no_certified_numerical_relation"
+        replay_status = "no_certified_numerical_relation"
+    elif apply_relations:
+        state = "authenticated-numerical-applied"
+        replay_status = "verified"
+    else:
+        state = "authenticated-numerical-diagnostic-only"
+        replay_status = "verified"
+    report = NumericalCurrentRelationApplicationReport(
+        requested_mode=mode,
+        execution_mode=execution_mode,
+        color_accuracy=str(dag.process.color_accuracy),
+        source_semantics_sha256=source_digest,
+        state=state,
+        certificate_replay_status=replay_status,
+        certificate_set_sha256=certificate_set_digest,
+        certificates=ordered,
+        mappings=tuple(mappings),
+        interaction_evaluation_count_before=(
+            baseline.interaction_evaluation_count
+        ),
+        interaction_evaluation_count_projected=(
+            projected.interaction_evaluation_count
+        ),
+        applied_relation_count=(len(ordered) if apply_relations else 0),
+    )
+    return NumericalCurrentRelationApplicationResult(
+        dag=projected if apply_relations else dag,
+        report=report,
+    )
 
 
 def _validated_decimal_observations(
@@ -2313,6 +2661,9 @@ def _derive_current_value_equivalences(
     *,
     equivalence_by_kind: dict[int, VertexEvaluationEquivalence] | None = None,
     discovery: _NumericalRelationDiscovery | None = None,
+    authenticated_relations: (
+        Mapping[int, _CurrentValueEquivalence] | None
+    ) = None,
 ) -> tuple[_CurrentValueEquivalence, ...]:
     """Derive current classes in increasing external-subset order."""
 
@@ -2383,6 +2734,36 @@ def _derive_current_value_equivalences(
                 term_vector=term_vector,
                 baseline=equivalence,
             )
+        if authenticated_relations is not None:
+            authenticated = authenticated_relations.get(current.id)
+            if authenticated is not None:
+                if authenticated.representative_id == current.id:
+                    if authenticated.factor != (0.0, 0.0):
+                        raise ValueError(
+                            "self-represented authenticated relation must be zero"
+                        )
+                    equivalence = authenticated
+                else:
+                    representative = current_equivalences[
+                        authenticated.representative_id
+                    ]
+                    if representative is None:
+                        raise ValueError(
+                            "authenticated relation representative is not "
+                            "topologically complete"
+                        )
+                    factor = _exact_representable_complex_product(
+                        authenticated.factor,
+                        representative.factor,
+                    )
+                    if factor is None:
+                        raise ValueError(
+                            "authenticated relation factor composition is not exact"
+                        )
+                    equivalence = _CurrentValueEquivalence(
+                        representative_id=representative.representative_id,
+                        factor=factor,
+                    )
         current_equivalences[current.id] = equivalence
 
     if any(item is None for item in current_equivalences):
@@ -3224,18 +3605,27 @@ def _canonical_zero(value: float) -> float:
 
 
 __all__ = [
+    "GENERIC_DAG_NUMERICAL_SOURCE_SEMANTICS_ABI",
     "NUMERICAL_CURRENT_RELATION_CERTIFICATE_ALGORITHM",
+    "NUMERICAL_CURRENT_RELATION_SET_ABI",
+    "NUMERICAL_CURRENT_RELATION_WARNING",
+    "NUMERICAL_CURRENT_RELATION_WARNING_CODE",
     "RELATION_DISCOVERY_CERTIFICATE_ALGORITHM",
     "RELATION_DISCOVERY_SCHEMA_VERSION",
     "DynamicColorProjectionCertificate",
     "ExactCurrentRelationCertificate",
+    "NumericalCurrentAppliedMapping",
+    "NumericalCurrentRelationApplicationReport",
+    "NumericalCurrentRelationApplicationResult",
     "NumericalCurrentRelationCertificate",
     "RecursiveEvaluationReuseTracker",
     "RelationDiscoveryReport",
     "RelationDiscoveryResult",
+    "apply_numerical_current_relation_certificates",
     "assign_recursive_current_evaluation_reuse",
     "certify_numerical_current_observations",
     "discover_recursive_evaluation_relations",
+    "generic_dag_numerical_source_semantics_sha256",
     "project_rectangular_dynamic_color_classes",
     "verify_dag_relation_certificates",
     "verify_numerical_current_relation_certificate",
