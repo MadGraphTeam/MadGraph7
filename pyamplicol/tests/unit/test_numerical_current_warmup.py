@@ -12,14 +12,12 @@ import pytest
 
 from pyamplicol.generation import numerical_current_warmup
 from pyamplicol.generation.dag_compiler import compile_generic_dag
-from pyamplicol.generation.dag_equivalence import (
-    apply_numerical_current_relation_certificates,
-    discover_generic_dag_numerical_current_relations,
-)
 from pyamplicol.generation.dag_types import GenericDAG
 from pyamplicol.generation.numerical_current_warmup import (
     build_numerical_current_probe_points,
     capture_generic_dag_current_observations,
+    generic_dag_numerical_current_opt_out_report,
+    run_generic_dag_numerical_current_warmup,
     validate_independent_current_observation_captures,
 )
 from pyamplicol.generation.validation import ValidationPointRecord
@@ -139,37 +137,22 @@ def test_real_capture_drives_authenticated_discovery_and_application(
     execution_mode: str,
 ) -> None:
     dag, model = z_dag_and_model
-    candidate_points, verification_points = _points(dag, model)
-    candidate = capture_generic_dag_current_observations(
+    result = run_generic_dag_numerical_current_warmup(
         dag,
         model,
-        candidate_points,
-        precision_digits=_PRECISION_DIGITS,
-    )
-    verification = capture_generic_dag_current_observations(
-        dag,
-        model,
-        verification_points,
-        precision_digits=_PRECISION_DIGITS,
-    )
-    validate_independent_current_observation_captures(
-        candidate,
-        verification,
-    )
-
-    discovery = discover_generic_dag_numerical_current_relations(
-        dag,
-        model,
-        candidate_observations=candidate.observations,
-        verification_observations=verification.observations,
-        candidate_point_sha256s=candidate.point_sha256s,
-        verification_point_sha256s=verification.point_sha256s,
+        process_id="ddbar_z_numerical_warmup",
+        mode="certified-reuse",
         execution_mode=execution_mode,  # type: ignore[arg-type]
         precision_digits=_PRECISION_DIGITS,
+        probe_count=4,
+        verification_probe_count=4,
         seed=_SEED,
         relative_tolerance=1.0e-70,
         absolute_tolerance=1.0e-80,
     )
+    candidate = result.candidate_capture
+    verification = result.verification_capture
+    discovery = result.discovery
     assert discovery.report.inspected_current_count == len(dag.currents)
     assert (
         discovery.report.candidate_observation_batch_sha256
@@ -180,13 +163,7 @@ def test_real_capture_drives_authenticated_discovery_and_application(
         == verification.observation_batch_sha256
     )
 
-    application = apply_numerical_current_relation_certificates(
-        dag,
-        model,
-        discovery.certificates,
-        mode="certified-reuse",
-        execution_mode=execution_mode,  # type: ignore[arg-type]
-    )
+    application = result.application
     if discovery.certificates:
         assert application.report.state == "authenticated-numerical-applied"
         assert application.report.warning_required
@@ -202,6 +179,35 @@ def test_real_capture_drives_authenticated_discovery_and_application(
         assert not application.report.warning_required
         assert application.report.applied_relation_count == 0
         assert application.dag is dag
+    payload = result.to_json_dict()
+    assert payload["candidate_capture"]["points"]
+    assert payload["verification_capture"]["points"]
+    assert payload["warning"]["required"] is result.warning_required
+
+
+@pytest.mark.parametrize("execution_mode", ("compiled", "eager"))
+def test_public_opt_out_records_disabled_unoptimized_path_without_capture(
+    z_dag_and_model: tuple[GenericDAG, BuiltinSMModel],
+    execution_mode: str,
+) -> None:
+    dag, _model = z_dag_and_model
+    report = generic_dag_numerical_current_opt_out_report(
+        dag,
+        execution_mode=execution_mode,  # type: ignore[arg-type]
+    )
+
+    assert report["requested_mode"] == "off"
+    assert report["state"] == "disabled-by-user"
+    assert report["candidate_capture"] is None
+    assert report["verification_capture"] is None
+    assert report["certified_relation_count"] == 0
+    assert report["applied_relation_count"] == 0
+    assert report["warning"] == {
+        "required": False,
+        "emit": "never",
+        "code": None,
+        "message": None,
+    }
 
 
 def test_capture_domains_fail_closed_on_replay_drift(

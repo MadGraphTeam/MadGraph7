@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from math import cos, isfinite, pi, sin, sqrt
-from typing import Any
+from typing import Any, Literal
 
 from ..evaluators.symbolica_compile import _compile_symbolica_outputs
 from ..evaluators.symbolica_settings import SymbolicaEvaluatorSettings
@@ -20,6 +20,13 @@ from ..runtime.symbolica_exact import (
     _fill_sources,
 )
 from .contracts import StageCompilationInput
+from .dag_equivalence import (
+    NumericalCurrentObservationDiscoveryResult,
+    NumericalCurrentRelationApplicationResult,
+    apply_numerical_current_relation_certificates,
+    discover_generic_dag_numerical_current_relations,
+    generic_dag_numerical_source_semantics_sha256,
+)
 from .dag_types import GenericDAG
 from .runtime_schema import build_runtime_expression_schema
 from .stage_planning import build_generic_stage_compiler_blueprint
@@ -28,6 +35,7 @@ from .validation import ValidationPointRecord, build_validation_point
 
 _ComplexDecimal = tuple[Decimal, Decimal]
 _CAPTURE_ABI = "pyamplicol-generic-dag-current-observation-capture-v1"
+_WARMUP_ABI = "pyamplicol-generic-dag-numerical-current-warmup-v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +75,181 @@ class GenericDAGCurrentObservationCapture:
             "point_major": True,
             "evaluator": "symbolica-interpreted-high-precision-stage-replay",
         }
+
+
+@dataclass(frozen=True, slots=True)
+class GenericDAGNumericalCurrentWarmupResult:
+    """One complete discovery, verification, and application transaction."""
+
+    dag: GenericDAG
+    requested_mode: Literal["diagnostic", "certified-reuse"]
+    execution_mode: Literal["compiled", "eager"]
+    candidate_capture: GenericDAGCurrentObservationCapture
+    verification_capture: GenericDAGCurrentObservationCapture
+    discovery: NumericalCurrentObservationDiscoveryResult
+    application: NumericalCurrentRelationApplicationResult
+
+    @property
+    def warning_required(self) -> bool:
+        return self.application.report.warning_required
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "abi": _WARMUP_ABI,
+            "requested_mode": self.requested_mode,
+            "state": self.application.report.state,
+            "scope": {
+                "execution_mode": self.execution_mode,
+                "color_accuracy": str(self.dag.process.color_accuracy),
+                "representation": "generic-dag",
+            },
+            "candidate_capture": (
+                self.candidate_capture.to_provenance_dict()
+            ),
+            "verification_capture": (
+                self.verification_capture.to_provenance_dict()
+            ),
+            "discovery": self.discovery.report.to_json_dict(),
+            "application": self.application.report.to_json_dict(),
+            "warning": (
+                self.application.report.to_json_dict()["warning"]
+            ),
+        }
+
+
+def run_generic_dag_numerical_current_warmup(
+    dag: GenericDAG,
+    model: Model,
+    *,
+    process_id: str,
+    mode: Literal["diagnostic", "certified-reuse"],
+    execution_mode: Literal["compiled", "eager"],
+    precision_digits: int,
+    probe_count: int,
+    verification_probe_count: int,
+    relative_tolerance: float,
+    absolute_tolerance: float,
+    seed: int,
+) -> GenericDAGNumericalCurrentWarmupResult:
+    """Run the bounded default-on numerical relation transaction."""
+
+    if mode not in {"diagnostic", "certified-reuse"}:
+        raise ValueError(
+            "generic-DAG numerical current warm-up requires diagnostic or "
+            "certified-reuse mode"
+        )
+    candidate_points, verification_points = (
+        build_numerical_current_probe_points(
+            dag,
+            model,
+            process_id=process_id,
+            seed=seed,
+            candidate_count=probe_count,
+            verification_count=verification_probe_count,
+        )
+    )
+    candidate = capture_generic_dag_current_observations(
+        dag,
+        model,
+        candidate_points,
+        precision_digits=precision_digits,
+    )
+    verification = capture_generic_dag_current_observations(
+        dag,
+        model,
+        verification_points,
+        precision_digits=precision_digits,
+    )
+    validate_independent_current_observation_captures(
+        candidate,
+        verification,
+    )
+    discovery = discover_generic_dag_numerical_current_relations(
+        dag,
+        model,
+        candidate_observations=candidate.observations,
+        verification_observations=verification.observations,
+        candidate_point_sha256s=candidate.point_sha256s,
+        verification_point_sha256s=verification.point_sha256s,
+        execution_mode=execution_mode,
+        precision_digits=precision_digits,
+        seed=seed,
+        relative_tolerance=relative_tolerance,
+        absolute_tolerance=absolute_tolerance,
+    )
+    if (
+        discovery.report.candidate_observation_batch_sha256
+        != candidate.observation_batch_sha256
+        or discovery.report.verification_observation_batch_sha256
+        != verification.observation_batch_sha256
+    ):
+        raise ValueError(
+            "numerical current detector did not authenticate the captured "
+            "observation batches"
+        )
+    application = apply_numerical_current_relation_certificates(
+        dag,
+        model,
+        discovery.certificates,
+        mode=mode,
+        execution_mode=execution_mode,
+    )
+    if (
+        application.report.certificates != discovery.certificates
+        or application.report.source_semantics_sha256
+        != discovery.report.source_semantics_sha256
+    ):
+        raise ValueError(
+            "numerical current application replay drifted from discovery"
+        )
+    return GenericDAGNumericalCurrentWarmupResult(
+        dag=application.dag,
+        requested_mode=mode,
+        execution_mode=execution_mode,
+        candidate_capture=candidate,
+        verification_capture=verification,
+        discovery=discovery,
+        application=application,
+    )
+
+
+def generic_dag_numerical_current_opt_out_report(
+    dag: GenericDAG,
+    *,
+    execution_mode: Literal["compiled", "eager"],
+) -> dict[str, object]:
+    """Return stable artifact provenance for the explicit public opt-out."""
+
+    return {
+        "schema_version": 1,
+        "abi": _WARMUP_ABI,
+        "requested_mode": "off",
+        "state": "disabled-by-user",
+        "scope": {
+            "execution_mode": execution_mode,
+            "color_accuracy": str(dag.process.color_accuracy),
+            "representation": "generic-dag",
+        },
+        "source_semantics": {
+            "sha256": generic_dag_numerical_source_semantics_sha256(
+                dag,
+                execution_mode=execution_mode,
+            ),
+        },
+        "candidate_capture": None,
+        "verification_capture": None,
+        "discovery": None,
+        "application": None,
+        "certified_relation_count": 0,
+        "applied_relation_count": 0,
+        "warning": {
+            "required": False,
+            "emit": "never",
+            "code": None,
+            "message": None,
+        },
+    }
 
 
 def build_numerical_current_probe_points(
@@ -622,7 +805,10 @@ def _integer(value: object) -> int:
 
 __all__ = [
     "GenericDAGCurrentObservationCapture",
+    "GenericDAGNumericalCurrentWarmupResult",
     "build_numerical_current_probe_points",
     "capture_generic_dag_current_observations",
+    "generic_dag_numerical_current_opt_out_report",
+    "run_generic_dag_numerical_current_warmup",
     "validate_independent_current_observation_captures",
 ]
