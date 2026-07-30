@@ -3163,44 +3163,44 @@ class GenerationBackend:
                             f"process {process_name!r} recurrence numerical "
                             f"current warm-up failed closed: {exc}"
                         ) from exc
-                    output = lower_once(
-                        final_schedule_path,
-                        mode=relation_discovery_mode,
-                        evidence=warmup.evidence_json,
-                        report_progress=False,
-                    )
-                    warmup = warmup.without_evidence_transport()
                     try:
-                        with _SYMBOLICA_MATERIALIZATION_LOCK:
-                            applied_plan = _RecurrenceExactPlan.from_generation(
-                                raw_sections=output.exact_sections,
-                                process_id=native_process_id,
-                                bundle=model_inputs.bundle,
-                                runtime_metadata=runtime_metadata,
-                            )
-                            warmup = (
-                                validate_recurrence_numerical_current_application(
-                                    warmup,
-                                    applied_plan,
-                                    baseline_plan=baseline_plan,
-                                    precision_digits=(
-                                        relation_discovery.precision_digits
-                                    ),
-                                    seed=relation_discovery.seed,
-                                    relative_tolerance=(
-                                        relation_discovery.relative_tolerance
-                                    ),
-                                    absolute_tolerance=(
-                                        relation_discovery.absolute_tolerance
-                                    ),
+                        output = lower_once(
+                            final_schedule_path,
+                            mode=relation_discovery_mode,
+                            evidence=warmup.evidence_json,
+                            report_progress=False,
+                        )
+                        warmup = warmup.without_evidence_transport()
+                        try:
+                            with _SYMBOLICA_MATERIALIZATION_LOCK:
+                                applied_plan = _RecurrenceExactPlan.from_generation(
+                                    raw_sections=output.exact_sections,
+                                    process_id=native_process_id,
+                                    bundle=model_inputs.bundle,
+                                    runtime_metadata=runtime_metadata,
                                 )
-                            )
-                    except (ArtifactError, ValueError) as exc:
-                        raise GenerationError(
-                            f"process {process_name!r} optimized recurrence "
-                            f"current replay failed closed: {exc}"
-                        ) from exc
-                    try:
+                                warmup = (
+                                    validate_recurrence_numerical_current_application(
+                                        warmup,
+                                        applied_plan,
+                                        baseline_plan=baseline_plan,
+                                        precision_digits=(
+                                            relation_discovery.precision_digits
+                                        ),
+                                        seed=relation_discovery.seed,
+                                        relative_tolerance=(
+                                            relation_discovery.relative_tolerance
+                                        ),
+                                        absolute_tolerance=(
+                                            relation_discovery.absolute_tolerance
+                                        ),
+                                    )
+                                )
+                        except (ArtifactError, ValueError) as exc:
+                            raise GenerationError(
+                                f"process {process_name!r} optimized recurrence "
+                                f"current replay failed closed: {exc}"
+                            ) from exc
                         runtime_inspection, aggregate_report = (
                             _recurrence_relation_reporting(
                                 output.inspection_summary,
@@ -3208,13 +3208,13 @@ class GenerationBackend:
                                 lane_report=warmup.to_json_dict(),
                             )
                         )
+                        return replace(
+                            output,
+                            inspection_summary=runtime_inspection,
+                            numerical_current_reuse_report=aggregate_report,
+                        )
                     finally:
                         warmup.close()
-                    return replace(
-                        output,
-                        inspection_summary=runtime_inspection,
-                        numerical_current_reuse_report=aggregate_report,
-                    )
 
                 shared = lowering_cache.lower_process(
                     logical,
