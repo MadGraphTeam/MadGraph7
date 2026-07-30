@@ -213,6 +213,8 @@ class _TimedRuntimeWithProfile(_TimedRuntime):
 
 class _TimedRuntimeWithNativeWall(_TimedRuntimeWithProfile):
     native_wall_calls = 0
+    outer_seconds_per_repetition = 0.6e-3
+    evaluator_total_seconds_per_repetition = 0.5e-3
 
     def _benchmark_f64_wall_time(
         self,
@@ -228,7 +230,8 @@ class _TimedRuntimeWithNativeWall(_TimedRuntimeWithProfile):
         assert color_flows is None
         assert precision == 16
         self.native_wall_calls += 1
-        return repetitions * 0.5e-3
+        self.clock.value += repetitions * self.outer_seconds_per_repetition
+        return repetitions * self.evaluator_total_seconds_per_repetition
 
 
 class _TimedRuntimeWithCalibrationUndershoot(_TimedRuntimeWithNativeWall):
@@ -250,9 +253,9 @@ class _TimedRuntimeWithCalibrationUndershoot(_TimedRuntimeWithNativeWall):
         assert color_flows is None
         assert precision == 16
         self.native_wall_calls += 1
-        if self.native_wall_calls == 1:
-            return 1.0
-        return repetitions * 0.233
+        duration = 1.0 if self.native_wall_calls == 1 else repetitions * 0.233
+        self.clock.value += duration
+        return duration
 
 
 class _TimedRuntimeWithRepeatedProfile(_TimedRuntimeWithNativeWall):
@@ -400,14 +403,21 @@ def test_benchmark_measures_minimum_samples_and_requested_batch() -> None:
     assert result.sample_count == 5
     assert runtime.calls == 7
     assert result.wall_time_per_point >= 0.0
-    assert result.evaluator_time_per_point == result.wall_time_per_point
+    assert result.evaluator_time_per_point is None
     assert result.environment["batch_size"] == 4
-    assert result.environment["evaluator_time_source"] == "runtime_evaluate_wall_time"
+    assert result.environment["wall_time_source"] == (
+        "python_outer_perf_counter_wall_time"
+    )
+    assert result.environment["wall_time_sample_pass"] == (
+        "time.perf_counter[measure_repetitions]"
+    )
+    assert result.environment["evaluator_time_source"] == "unavailable"
+    assert result.environment["evaluator_time_status"] == "unavailable"
     assert result.repetitions_per_sample == 1
     assert result.evaluation_count == 5
     assert result.evaluated_point_count == 20
     assert result.evaluator_total_time_per_point == pytest.approx(
-        result.environment["elapsed_seconds"]
+        result.environment["evaluator_total_accumulated_seconds"]
         / result.environment["measured_point_count"]
     )
     assert result.environment[
@@ -679,15 +689,24 @@ def test_benchmark_uses_repeated_native_rusticol_wall_timer(
         points=(((1.0, 0.0, 0.0, 1.0),),),
     )
 
-    assert result.wall_time_per_point == pytest.approx(0.25e-3)
-    assert result.environment["wall_time_source"] == ("runtime_core_repeated_wall_time")
-    assert result.environment["elapsed_seconds"] == pytest.approx(0.1)
+    assert result.wall_time_per_point == pytest.approx(0.3e-3)
+    assert result.evaluator_total_time_per_point == pytest.approx(0.25e-3)
+    assert result.environment["wall_time_source"] == (
+        "python_outer_perf_counter_wall_time"
+    )
+    assert result.environment["elapsed_seconds"] == pytest.approx(0.12)
+    assert result.environment["evaluator_total_accumulated_seconds"] == pytest.approx(
+        0.1
+    )
     assert runtime.native_wall_calls >= result.sample_count
     assert result.environment["timing_sample_contract"] == (
         "separate_native_profile_diagnostic_v1"
     )
     assert result.environment["wall_time_sample_pass"] == (
-        "runtime._benchmark_f64_wall_time"
+        "time.perf_counter[measure_repetitions]"
+    )
+    assert result.environment["evaluator_total_time_source"] == (
+        "runtime._benchmark_f64_wall_time.accumulated"
     )
     assert result.environment["evaluator_time_sample_pass"] == "runtime.profile"
     assert result.environment["native_profile_repetitions_per_sample"] == 1
@@ -716,7 +735,8 @@ def test_repeated_native_profile_is_paired_with_unprofiled_headline_samples(
 
     assert runtime.repeated_profile_calls == config.warmup_runs + result.sample_count
     assert runtime.native_wall_calls >= config.warmup_runs + result.sample_count
-    assert result.wall_time_per_point == pytest.approx(0.25e-3)
+    assert result.wall_time_per_point == pytest.approx(0.3e-3)
+    assert result.evaluator_total_time_per_point == pytest.approx(0.25e-3)
     assert result.evaluator_time_per_point == pytest.approx(2.5e-6)
     assert result.timing_breakdown is not None
     assert result.timing_breakdown.wall_time is not None
@@ -741,7 +761,7 @@ def test_repeated_native_profile_is_paired_with_unprofiled_headline_samples(
         result.repetitions_per_sample * config.batch_size
     )
     assert result.environment["wall_time_sample_pass"] == (
-        "runtime._benchmark_f64_wall_time"
+        "time.perf_counter[measure_repetitions]"
     )
     assert result.environment["evaluator_time_sample_pass"] == (
         "runtime.profile_repeated"
@@ -863,8 +883,19 @@ def test_recurrence_profile_uses_paired_schedule_attribution(
         points=(((1.0, 0.0, 0.0, 1.0),),),
     )
 
-    assert result.wall_time_per_point == pytest.approx(0.25e-3)
+    assert result.wall_time_per_point == pytest.approx(0.3e-3)
+    assert result.evaluator_total_time_per_point == pytest.approx(0.25e-3)
     assert result.evaluator_time_per_point == pytest.approx(10.0e-6)
+    assert (
+        len(
+            {
+                result.wall_time_per_point,
+                result.evaluator_total_time_per_point,
+                result.evaluator_time_per_point,
+            }
+        )
+        == 3
+    )
     assert result.environment["evaluator_time_source"] == (
         "runtime_profile_core_recurrence_schedule_time"
     )
@@ -874,7 +905,10 @@ def test_recurrence_profile_uses_paired_schedule_attribution(
     assert result.environment["native_profile_batch_size"] == config.batch_size
     assert result.environment[
         "evaluator_total_time_raw_seconds_per_point"
-    ] == pytest.approx(result.evaluator_total_time_per_point)
+    ] == pytest.approx(0.25e-3)
+    assert result.environment["evaluator_total_accumulated_seconds"] == pytest.approx(
+        0.1
+    )
     breakdown = result.timing_breakdown
     assert breakdown is not None
     assert breakdown.execution_mode == "recurrence"
@@ -995,8 +1029,12 @@ def test_benchmark_uses_native_profile_for_evaluator_time() -> None:
     assert runtime.profile_calls == 4
     assert result.wall_time_per_point >= 0.0
     assert result.evaluator_time_per_point == pytest.approx(2.0e-6)
-    assert result.environment["wall_time_source"] == "runtime_evaluate_wall_time"
-    assert result.environment["wall_time_sample_pass"] == "runtime.evaluate"
+    assert result.environment["wall_time_source"] == (
+        "python_outer_perf_counter_wall_time"
+    )
+    assert result.environment["wall_time_sample_pass"] == (
+        "time.perf_counter[measure_repetitions]"
+    )
     assert (
         result.environment["evaluator_time_source"]
         == "runtime_profile_core_evaluator_call_time"
@@ -1612,7 +1650,8 @@ def test_non_f64_benchmark_forwards_precision_without_native_profile() -> None:
     assert result.environment["native_profile_unavailable_reason"] == (
         "non_f64_precision"
     )
-    assert result.evaluator_time_per_point == result.wall_time_per_point
+    assert result.evaluator_time_per_point is None
+    assert result.environment["evaluator_time_status"] == "unavailable"
 
 
 def test_benchmark_falls_back_when_native_profile_is_unavailable() -> None:
@@ -1630,8 +1669,11 @@ def test_benchmark_falls_back_when_native_profile_is_unavailable() -> None:
     )
 
     assert runtime.calls == 3
-    assert result.environment["wall_time_source"] == "runtime_evaluate_wall_time"
-    assert result.evaluator_time_per_point == result.wall_time_per_point
+    assert result.environment["wall_time_source"] == (
+        "python_outer_perf_counter_wall_time"
+    )
+    assert result.evaluator_time_per_point is None
+    assert result.environment["evaluator_time_status"] == "unavailable"
 
 
 def test_benchmark_uses_runtime_validation_point_when_points_are_omitted() -> None:

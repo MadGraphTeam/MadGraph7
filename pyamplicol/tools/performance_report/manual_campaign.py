@@ -66,6 +66,10 @@ from .scheduler import (
 )
 from .service import ReportPaths, ReportService
 from .source_identity import ReportSourceIdentity, _generated_report_path
+from .timing import (
+    evaluator_total_timing_record,
+    recurrence_core_seconds_per_point,
+)
 
 PROFILE = "macbook_M3_manual"
 DEFAULT_GENERATION_LIMIT_SECONDS = 60.0 * 60.0
@@ -1581,6 +1585,7 @@ class WorkerView:
     cell_id: str
     dependency: bool = False
     peer_instance: str | None = None
+    generation_engine: str | None = None
     status: str = "queued"
     step: str = "waiting"
     phase: str = "preparation"
@@ -1608,6 +1613,7 @@ class WorkerView:
     reproduce_profile: str | None = None
     published_wall_seconds_per_point: float | None = None
     published_evaluator_total_seconds_per_point: float | None = None
+    published_recurrence_core_seconds_per_point: float | None = None
     events: list[str] = field(default_factory=list)
     log_tail: list[str] = field(default_factory=list)
     updated_at: float = field(default_factory=time.time)
@@ -1769,6 +1775,7 @@ class LeaseManager:
                 except KeyError:
                     cell = None
                 if cell is not None:
+                    worker.generation_engine = cell.measurement.execution_mode.value
                     settings = self.state.reproduction_settings
                     recipe = reproduction_recipe(
                         cell,
@@ -1835,6 +1842,7 @@ class LeaseManager:
                 except KeyError:
                     cell = None
                 if cell is not None:
+                    worker.generation_engine = cell.measurement.execution_mode.value
                     current = lightweight_current(
                         self.service.store,
                         cell,
@@ -1847,6 +1855,9 @@ class LeaseManager:
                         )
                         worker.published_evaluator_total_seconds_per_point = (
                             _evaluator_total_number(current.result)
+                        )
+                        worker.published_recurrence_core_seconds_per_point = (
+                            _recurrence_core_number(current.result)
                         )
                         provenance = current.result.get("provenance")
                         manual = (
@@ -2178,6 +2189,7 @@ def _worker_from_lease(
         cell_id=cell_id,
         dependency=raw.get("dependency") is True,
         peer_instance=peer_instance,
+        generation_engine=optional_text("generation_engine"),
         status=text("status", "unknown"),
         step=text("step", "waiting"),
         phase=text("phase", "unknown"),
@@ -2226,6 +2238,9 @@ def _worker_from_lease(
         ),
         published_evaluator_total_seconds_per_point=_optional_finite_float(
             raw.get("published_evaluator_total_seconds_per_point")
+        ),
+        published_recurrence_core_seconds_per_point=_optional_finite_float(
+            raw.get("published_recurrence_core_seconds_per_point")
         ),
         updated_at=max(0.0, _finite_float(raw.get("updated_at"))),
     )
@@ -2541,6 +2556,7 @@ def _snapshot_fixture(
     state.workers = {
         "matrix-compiled-builtin-sm-lc-n9-dd-zzz-jets-selected-flow": WorkerView(
             "matrix-compiled-builtin-sm-lc-n9-dd-zzz-jets-selected-flow",
+            generation_engine=ExecutionMode.COMPILED.value,
             status="running",
             step="native Arena sample 4/8",
             phase="profiling",
@@ -2565,27 +2581,33 @@ def _snapshot_fixture(
         ),
         "matrix-recurrence-ufo-sm-lc-n7-gg-gluons-all-flow": WorkerView(
             "matrix-recurrence-ufo-sm-lc-n7-gg-gluons-all-flow",
-            status="running",
-            step="lowering selected colour-sector plan 37/72",
-            phase="generation",
+            generation_engine=ExecutionMode.RECURRENCE.value,
+            status="ok",
+            step="measurement published",
+            phase="complete",
             attempt_id="dd84040e-demo",
             pid=42191,
             member_pids=(42191,),
-            wall_seconds=192.4,
-            cpu_seconds=185.0,
+            wall_seconds=224.7,
+            cpu_seconds=216.3,
             current_rss_bytes=3_252_000_000,
             peak_rss_bytes=4_018_000_000,
-            progress_completed=37,
+            progress_completed=72,
             progress_total=72,
-            progress_message="lowering selected colour-sector plan 37/72",
+            progress_message="measurement published",
+            published_wall_seconds_per_point=218.105e-6,
+            published_evaluator_total_seconds_per_point=217.812e-6,
+            published_recurrence_core_seconds_per_point=205.431e-6,
             events=[
                 "generation: model loaded",
                 "generation: recurrence plan projected",
+                "profiling: independent clocks published",
             ],
         ),
         "reference-amplicol-full-n6-dd-3q-lines-contracted": WorkerView(
             "reference-amplicol-full-n6-dd-3q-lines-contracted",
             dependency=True,
+            generation_engine=ExecutionMode.AMPLICOL.value,
             status="preparing",
             step="prewarming original AmpliCol generator",
             phase="preparation",
@@ -2596,6 +2618,7 @@ def _snapshot_fixture(
         ),
     }
     worker_ids = tuple(state.workers)
+    state.completed_ids.add("matrix-recurrence-ufo-sm-lc-n7-gg-gluons-all-flow")
     state.selected_ids = (
         *worker_ids,
         *(f"cell-{index:04d}" for index in range(max(0, selected - len(worker_ids)))),
@@ -2740,7 +2763,7 @@ def _ratatui_commands(
             [
                 ("Clocks ", key_style),
                 (
-                    "outer wall and evaluator-total shown independently",
+                    "outer wall, evaluator-total, and recurrence core stay independent",
                     neutral_style,
                 ),
             ],
@@ -2934,12 +2957,28 @@ def _ratatui_commands(
                 ],
             )
         evaluator_total = selected.published_evaluator_total_seconds_per_point
+        recurrence_core = selected.published_recurrence_core_seconds_per_point
+        missing_published = (
+            "pending"
+            if selected.status in {"queued", "preparing", "running"}
+            else (
+                "not exposed"
+                if selected.status in {"ok", "reused", "skipped-current"}
+                else "unavailable"
+            )
+        )
+        missing_recurrence_core = (
+            "not applicable"
+            if selected.generation_engine is not None
+            and selected.generation_engine != ExecutionMode.RECURRENCE.value
+            else missing_published
+        )
         _append_dashboard_line(
             details,
             [
-                ("Published outer wall ", key_style),
+                ("Outer wall ", key_style),
                 (
-                    "pending"
+                    missing_published
                     if selected.published_wall_seconds_per_point is None
                     else (
                         f"{selected.published_wall_seconds_per_point * 1.0e6:.6g} μs/pt"
@@ -2948,11 +2987,24 @@ def _ratatui_commands(
                 ),
                 ("   Evaluator total ", key_style),
                 (
-                    "unavailable/pending"
+                    missing_published
                     if evaluator_total is None
                     else f"{evaluator_total * 1.0e6:.6g} μs/pt",
                     neutral_style,
                 ),
+            ],
+        )
+        _append_dashboard_line(
+            details,
+            [
+                ("Recurrence core ", key_style),
+                (
+                    missing_recurrence_core
+                    if recurrence_core is None
+                    else f"{recurrence_core * 1.0e6:.6g} μs/pt",
+                    neutral_style,
+                ),
+                ("   Independent narrow attribution", neutral_style),
             ],
         )
         if not compact:
@@ -3178,17 +3230,79 @@ def _number(measurement: Mapping[str, object], field: str) -> float | None:
 
 
 def _evaluator_total_number(measurement: Mapping[str, object]) -> float | None:
-    provenance = measurement.get("provenance")
-    record = (
-        provenance.get("evaluator_total_timing")
-        if isinstance(provenance, Mapping)
-        else None
-    )
-    return (
-        None
-        if not isinstance(record, Mapping)
-        else _number(record, "raw_seconds_per_point")
-    )
+    record = evaluator_total_timing_record(measurement)
+    return None if record is None else _number(record, "raw_seconds_per_point")
+
+
+def _recurrence_core_number(measurement: Mapping[str, object]) -> float | None:
+    return recurrence_core_seconds_per_point(measurement)
+
+
+@dataclass(frozen=True, slots=True)
+class AbsoluteMetric:
+    cell: CellSpec
+    value: float
+
+
+def _absolute_metric_identity(item: AbsoluteMetric) -> dict[str, object]:
+    cell = item.cell
+    return {
+        "table": cell.dataset_id,
+        "cell_id": cell.cell_id,
+        "process_id": cell.process_key,
+        "process": cell.process,
+        "multiplicity": cell.n_final,
+        "color_approximation": cell.measurement.accuracy.value,
+        "generation_mode": cell.workload.value,
+        "generation_engine": cell.measurement.execution_mode.value,
+        "backend": cell.measurement.backend,
+        "model": (
+            None if cell.measurement.model is None else cell.measurement.model.value
+        ),
+        "variant": cell.variant,
+        "seconds_per_point": item.value,
+        "microseconds_per_point": item.value * 1.0e6,
+    }
+
+
+def _inspect_recurrence_core(
+    cells: Sequence[CellSpec],
+    currents: Mapping[str, LightweightCurrent],
+) -> tuple[dict[str, object], Counter[str]]:
+    observations: list[AbsoluteMetric] = []
+    exclusions: Counter[str] = Counter()
+    for cell in cells:
+        if cell.measurement.execution_mode is not ExecutionMode.RECURRENCE:
+            exclusions["not_recurrence"] += 1
+            continue
+        current = currents.get(cell.cell_id)
+        if current is None:
+            exclusions["candidate_missing"] += 1
+            continue
+        if not current.reusable:
+            exclusions[f"candidate_{current.reason.replace(' ', '_')}"] += 1
+            continue
+        if current.result.get("status") in {
+            ResultStatus.TIMEOUT.value,
+            ResultStatus.MEMORY_LIMIT.value,
+        }:
+            exclusions["candidate_resource_capped"] += 1
+            continue
+        value = _recurrence_core_number(current.result)
+        if value is None:
+            exclusions["value_unavailable"] += 1
+            continue
+        observations.append(AbsoluteMetric(cell=cell, value=value))
+    ordered = sorted(observations, key=lambda item: item.value)
+    values = [item.value for item in ordered]
+    payload: dict[str, object] = {
+        "count": len(ordered),
+        "fastest": (None if not ordered else _absolute_metric_identity(ordered[0])),
+        "slowest": (None if not ordered else _absolute_metric_identity(ordered[-1])),
+        "median_seconds_per_point": (None if not values else statistics.median(values)),
+        "mean_seconds_per_point": (None if not values else statistics.fmean(values)),
+    }
+    return payload, exclusions
 
 
 def comparison_statistics(comparisons: Sequence[Comparison]) -> dict[str, object]:
@@ -3352,6 +3466,10 @@ def _inspect_payload(
         generation=False,
         evaluator_total=True,
     )
+    recurrence_core, recurrence_core_exclusions = _inspect_recurrence_core(
+        cells,
+        currents,
+    )
     selected_currents = tuple(
         currents[cell.cell_id]
         for cell in cells
@@ -3366,8 +3484,8 @@ def _inspect_payload(
             _evaluator_total_number(current.result) is not None
             for current in selected_currents
         ),
-        "narrow_execution_available": sum(
-            _number(current.result, "execution_seconds_per_point") is not None
+        "recurrence_core_available": sum(
+            _recurrence_core_number(current.result) is not None
             for current in selected_currents
         ),
     }
@@ -3384,15 +3502,17 @@ def _inspect_payload(
         "generation_multiplier_vs_amplicol": generation,
         "runtime_wall_multiplier_vs_amplicol": runtime,
         "runtime_evaluator_total_multiplier_vs_amplicol": evaluator_total,
+        "recurrence_core_absolute": recurrence_core,
         "clock_coverage": clock_coverage,
         "exclusions": {
             "generation": dict(sorted(generation_exclusions.items())),
             "runtime_wall": dict(sorted(runtime_exclusions.items())),
             "runtime_evaluator_total": dict(sorted(evaluator_total_exclusions.items())),
+            "recurrence_core": dict(sorted(recurrence_core_exclusions.items())),
         },
         "clock_note": (
-            "Outer wall and evaluator-total are independent clocks; missing "
-            "narrow attribution remains unavailable and is never fabricated."
+            "Outer wall, evaluator-total, and recurrence core are independent "
+            "raw clocks; unavailable values are never copied or derived."
         ),
     }
 
@@ -3409,6 +3529,10 @@ def _paint_multiplier(palette: Palette, value: object) -> str:
     if math.isclose(multiplier, 1.0, rel_tol=1.0e-12, abs_tol=1.0e-12):
         return palette.neutral(rendered)
     return palette.success(rendered) if multiplier < 1.0 else palette.failure(rendered)
+
+
+def _format_seconds_per_point(value: object) -> str:
+    return "—" if value is None else f"{float(value) * 1.0e6:.6g} μs/pt"
 
 
 def _print_inspect(payload: Mapping[str, object], palette: Palette) -> None:
@@ -3508,6 +3632,39 @@ def _print_inspect(payload: Mapping[str, object], palette: Palette) -> None:
             align={"pairs": "r"},
         )
     )
+    core_summary = payload["recurrence_core_absolute"]
+    assert isinstance(core_summary, Mapping)
+    fastest = core_summary.get("fastest")
+    slowest = core_summary.get("slowest")
+    print()
+    print(
+        _table(
+            ("metric", "samples", "fastest", "median", "average", "slowest"),
+            (
+                (
+                    palette.key("Recurrence core (absolute)"),
+                    core_summary.get("count"),
+                    _format_seconds_per_point(
+                        fastest.get("seconds_per_point")
+                        if isinstance(fastest, Mapping)
+                        else None
+                    ),
+                    _format_seconds_per_point(
+                        core_summary.get("median_seconds_per_point")
+                    ),
+                    _format_seconds_per_point(
+                        core_summary.get("mean_seconds_per_point")
+                    ),
+                    _format_seconds_per_point(
+                        slowest.get("seconds_per_point")
+                        if isinstance(slowest, Mapping)
+                        else None
+                    ),
+                ),
+            ),
+            align={"samples": "r"},
+        )
+    )
     identities: list[tuple[object, ...]] = []
     for title, key in (
         ("generation best", "generation_multiplier_vs_amplicol"),
@@ -3547,6 +3704,30 @@ def _print_inspect(payload: Mapping[str, object], palette: Palette) -> None:
             value = identity.get(identity_field)
             if identity_field == "multiplier":
                 value = _paint_multiplier(palette, value)
+            identities.append((palette.key(title), palette.key(label), value))
+    for title, identity in (
+        ("recurrence-core fastest", fastest),
+        ("recurrence-core slowest", slowest),
+    ):
+        if not isinstance(identity, Mapping):
+            continue
+        for label, identity_field in (
+            ("table", "table"),
+            ("cell", "cell_id"),
+            ("process ID", "process_id"),
+            ("concrete process", "process"),
+            ("multiplicity", "multiplicity"),
+            ("colour", "color_approximation"),
+            ("layout/workload", "generation_mode"),
+            ("engine", "generation_engine"),
+            ("backend", "backend"),
+            ("model", "model"),
+            ("variant", "variant"),
+            ("absolute value", "seconds_per_point"),
+        ):
+            value = identity.get(identity_field)
+            if identity_field == "seconds_per_point":
+                value = _format_seconds_per_point(value)
             identities.append((palette.key(title), palette.key(label), value))
     if identities:
         print()
@@ -4567,13 +4748,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Inspect coverage and AmpliCol-relative summary statistics.",
         description=(
             "Summarize lightweight current metadata and compute candidate / "
-            "AmpliCol generation, outer-wall runtime, and independent "
-            "evaluator-total runtime multipliers."
+            "AmpliCol generation and outer-wall runtime multipliers. Dedicated "
+            "evaluator-total multipliers are emitted only when both sides "
+            "expose that clock; original AmpliCol normally does not. "
+            "Recurrence core is reported separately as an absolute statistic."
         ),
         epilog=(
             "Lower multipliers are better. The weighted average is exactly "
             "sum(candidate) / sum(AmpliCol). Missing, capped, incompatible, "
-            "and baseline-less pairs are excluded and counted.\n\n" + STEERING_GUIDE
+            "baseline-less, and unexposed clocks are excluded and counted. "
+            "Outer wall, evaluator-total, and recurrence core are never copied "
+            "or derived from one another.\n\n"
+            + STEERING_GUIDE
         ),
         formatter_class=HelpFormatter,
     )

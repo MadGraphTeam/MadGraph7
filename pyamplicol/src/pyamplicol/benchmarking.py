@@ -279,6 +279,7 @@ class BenchmarkBackend:
             [] if profiler is not None or repeated_profiler is not None else None
         )
         elapsed = 0.0
+        evaluator_total_elapsed = 0.0
         evaluator_elapsed = 0.0
         interrupted = False
         if self._progress is not None:
@@ -371,8 +372,12 @@ class BenchmarkBackend:
                 while sample_index < planned_sample_count:
                     native_sample: _NativeProfileSample | None = None
                     profile_duration = 0.0
-                    duration = measure_repetitions(repetitions)
-                    sample_seconds_per_point = duration / (repetitions * len(batch))
+                    sample_started = time.perf_counter()
+                    evaluator_total_duration = measure_repetitions(repetitions)
+                    wall_duration = time.perf_counter() - sample_started
+                    sample_seconds_per_point = wall_duration / (
+                        repetitions * len(batch)
+                    )
                     if repeated_profiler is not None:
                         profile_started = time.perf_counter()
                         profile = repeated_profiler(
@@ -411,7 +416,8 @@ class BenchmarkBackend:
                         native_sample = _native_profile_sample(profile, len(batch))
 
                     samples.append(sample_seconds_per_point)
-                    elapsed += duration
+                    elapsed += wall_duration
+                    evaluator_total_elapsed += evaluator_total_duration
                     if native_sample is not None:
                         assert evaluator_samples is not None
                         assert native_profile_samples is not None
@@ -520,12 +526,9 @@ class BenchmarkBackend:
         assert calibration is not None
 
         wall_samples = samples
-        wall_time_source = (
-            "runtime_core_repeated_wall_time"
-            if native_wall_timer is not None
-            else "runtime_evaluate_wall_time"
-        )
-        wall_sample_pass = (
+        wall_time_source = "python_outer_perf_counter_wall_time"
+        wall_sample_pass = "time.perf_counter[measure_repetitions]"
+        evaluator_total_sample_pass = (
             "runtime._benchmark_f64_wall_time"
             if native_wall_timer is not None
             else "runtime.evaluate"
@@ -539,13 +542,14 @@ class BenchmarkBackend:
         uncertainty = BenchmarkStatistics(deviation, error, relative_error)
         compiled_direct_arena_active = False
         if evaluator_samples is None:
-            evaluator_time_per_point = mean
-            evaluator_uncertainty = uncertainty
+            evaluator_time_per_point = None
+            evaluator_uncertainty = None
             timing_breakdown = None
             evaluator_environment: dict[str, object] = {
                 "wall_time_source": wall_time_source,
                 "wall_time_sample_pass": wall_sample_pass,
-                "evaluator_time_source": "runtime_evaluate_wall_time",
+                "evaluator_time_source": "unavailable",
+                "evaluator_time_sample_pass": "unavailable",
                 "timing_sample_contract": "headline_only_no_breakdown_v1",
                 "native_profile_unavailable_reason": (
                     "non_f64_precision" if self._config.precision != 16 else None
@@ -646,7 +650,9 @@ class BenchmarkBackend:
             }
         raw_evaluator_time_per_point = evaluator_time_per_point
         evaluator_below_timer_resolution = (
-            compiled_direct_arena_active and raw_evaluator_time_per_point == 0.0
+            raw_evaluator_time_per_point is not None
+            and compiled_direct_arena_active
+            and raw_evaluator_time_per_point == 0.0
         )
         if evaluator_below_timer_resolution:
             evaluator_time_per_point = None
@@ -655,10 +661,15 @@ class BenchmarkBackend:
                 "evaluator_time_status": (
                     "below_timer_resolution"
                     if evaluator_below_timer_resolution
-                    else "measured"
+                    else (
+                        "measured"
+                        if raw_evaluator_time_per_point is not None
+                        else "unavailable"
+                    )
                 ),
                 "evaluator_time_ratio_eligible": (
-                    not evaluator_below_timer_resolution
+                    raw_evaluator_time_per_point is not None
+                    and not evaluator_below_timer_resolution
                     and raw_evaluator_time_per_point > 0.0
                 ),
                 "evaluator_time_raw_seconds_per_point": (raw_evaluator_time_per_point),
@@ -673,7 +684,7 @@ class BenchmarkBackend:
         selected_color_ids = tuple(color_flows or ())
         measured_evaluations = len(samples) * calibration.repetitions_per_sample
         measured_point_count = measured_evaluations * len(batch)
-        evaluator_total_time_per_point = elapsed / measured_point_count
+        evaluator_total_time_per_point = evaluator_total_elapsed / measured_point_count
         layout_environment: dict[str, object] = {}
         if lc_flow_layout is not None:
             layout_environment = {
@@ -724,11 +735,13 @@ class BenchmarkBackend:
                 ),
                 "evaluator_total_time_status": "measured",
                 "evaluator_total_time_ratio_eligible": False,
-                "evaluator_total_time_source": f"{wall_sample_pass}.accumulated",
+                "evaluator_total_time_source": (
+                    f"{evaluator_total_sample_pass}.accumulated"
+                ),
                 "evaluator_total_time_sample_contract": (
                     _EVALUATOR_TOTAL_SAMPLE_CONTRACT
                 ),
-                "evaluator_total_accumulated_seconds": elapsed,
+                "evaluator_total_accumulated_seconds": evaluator_total_elapsed,
                 "target_sample_seconds": calibration.target_sample_seconds,
                 "calibration_probe_seconds": calibration.probe_seconds,
                 "calibration_block_count": calibration.block_count,

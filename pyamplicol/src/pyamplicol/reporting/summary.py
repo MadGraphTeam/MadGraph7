@@ -510,6 +510,9 @@ def _benchmark_summary(
         else None
     )
     evaluator_source = str(environment.get("evaluator_time_source", "unavailable"))
+    evaluator_total_source = str(
+        environment.get("evaluator_total_time_source", "unavailable")
+    )
     timing_sample_contract = str(
         environment.get("timing_sample_contract", "unavailable")
     )
@@ -541,6 +544,11 @@ def _benchmark_summary(
                 result.evaluator_uncertainty,
                 sample_count=evaluator_sample_count,
             )
+    evaluator_total_text = "N/A"
+    if result.evaluator_total_time_per_point is not None:
+        evaluator_total_text = (
+            f"{_seconds_text(result.evaluator_total_time_per_point)}/point"
+        )
 
     relative_error = result.uncertainty.relative_standard_error
     if relative_error <= 0.01:
@@ -556,30 +564,10 @@ def _benchmark_summary(
     )
     breakdown = result.timing_breakdown
     recurrence_timing = (
-        breakdown is not None and breakdown.execution_mode == "recurrence"
+        (breakdown is not None and breakdown.execution_mode == "recurrence")
+        or environment.get("execution_mode") == "recurrence"
     )
-    if recurrence_timing:
-        profile_metric_label = (
-            "paired recurrence"
-            if paired_timing_samples
-            else (
-                "diagnostic recurrence"
-                if separate_timing_samples
-                else "recurrence schedule"
-            )
-        )
-        profile_quantity = "recurrence schedule"
-    else:
-        profile_metric_label = (
-            "paired evaluator"
-            if paired_timing_samples
-            else (
-                "diagnostic evaluator"
-                if separate_timing_samples
-                else "evaluator time"
-            )
-        )
-        profile_quantity = "evaluator"
+    profile_metric_label = "recurrence core" if recurrence_timing else "evaluator core"
     profile_repetitions_value = environment.get("native_profile_repetitions_per_sample")
     profile_repetitions = (
         int(profile_repetitions_value)
@@ -610,13 +598,18 @@ def _benchmark_summary(
         ),
         ("status", status, "YELLOW" if result.interrupted else "GREEN"),
         (
-            "wall time",
+            "outer wall",
             _benchmark_timing_text(
                 result.wall_time_per_point,
                 result.uncertainty,
                 sample_count=result.sample_count,
             ),
             "GREEN",
+        ),
+        (
+            "evaluator total",
+            evaluator_total_text,
+            "CYAN",
         ),
         (
             profile_metric_label,
@@ -659,9 +652,10 @@ def _benchmark_summary(
         (
             "timing sources",
             (
-                f"wall={environment.get('wall_time_source', 'unavailable')} "
-                f"via {wall_pass}; {profile_quantity}={evaluator_source} "
-                f"via {evaluator_pass}"
+                "outer wall="
+                f"{environment.get('wall_time_source', 'unavailable')} "
+                f"via {wall_pass}; evaluator total={evaluator_total_source}; "
+                f"{profile_metric_label}={evaluator_source} via {evaluator_pass}"
             ),
             None,
         ),
@@ -671,22 +665,26 @@ def _benchmark_summary(
                 (
                     f"one shared native pass: {result.sample_count} blocks x "
                     f"{profile_repetitions} repetitions x "
-                    f"{result.effective_config.batch_size} points; wall, "
-                    f"{profile_quantity}, and breakdown use the same blocks"
+                    f"{result.effective_config.batch_size} points; outer wall, "
+                    f"evaluator total, {profile_metric_label}, and breakdown "
+                    "use the same blocks"
                 )
                 if shared_timing_samples
                 else (
                     f"paired passes: unprofiled headline {result.sample_count} "
                     f"blocks x {result.repetitions_per_sample} repetitions x "
-                    f"{result.effective_config.batch_size} points; profiled "
-                    f"attribution uses {breakdown.sample_count} paired blocks with "
-                    "the identical batch and repetition count"
+                    f"{result.effective_config.batch_size} points provides outer "
+                    "wall and evaluator total; profiled "
+                    f"{profile_metric_label} attribution uses "
+                    f"{breakdown.sample_count} paired blocks with the identical "
+                    "batch and repetition count"
                     if paired_timing_samples and breakdown is not None
                     else (
-                        f"separate passes: headline wall {result.sample_count} "
+                        f"separate passes: headline outer wall and evaluator total "
+                        f"{result.sample_count} "
                         f"blocks x {result.repetitions_per_sample} repetitions x "
                         f"{result.effective_config.batch_size} points; "
-                        f"{profile_quantity} and breakdown "
+                        f"{profile_metric_label} and breakdown "
                         f"{breakdown.sample_count} diagnostic blocks x "
                         f"{profile_repetitions} repetitions "
                         f"({profile_points} points/block)"

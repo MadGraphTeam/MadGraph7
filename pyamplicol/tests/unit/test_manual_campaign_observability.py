@@ -236,3 +236,45 @@ def test_ratatui_style_toggle_removes_all_cell_styles() -> None:
     assert all(cell.get("fg") in (None, 0) for cell in plain)
     assert all(cell.get("bg") in (None, 0) for cell in plain)
     assert all(cell.get("mods") in (None, 0) for cell in plain)
+
+
+def test_dashboard_preserves_and_displays_three_independent_recurrence_clocks() -> None:
+    state = manual_campaign._snapshot_fixture(selected=5, recycled=1, completed=1)
+    workers = tuple(sorted(state.workers.values(), key=lambda item: item.cell_id))
+    state.selected_index = next(
+        index
+        for index, worker in enumerate(workers)
+        if "matrix-recurrence-" in worker.cell_id
+    )
+    selected = state.selected_worker()
+    assert selected is not None
+
+    decoded = manual_campaign._worker_from_lease(
+        selected.cell_id,
+        selected.as_dict(),
+        peer_instance=None,
+    )
+    assert decoded.generation_engine == "recurrence"
+    assert decoded.published_wall_seconds_per_point == pytest.approx(218.105e-6)
+    assert decoded.published_evaluator_total_seconds_per_point == pytest.approx(
+        217.812e-6
+    )
+    assert decoded.published_recurrence_core_seconds_per_point == pytest.approx(
+        205.431e-6
+    )
+
+    frame = render_dashboard_frame(state, width=120, height=36)
+    assert "Outer wall" in frame
+    assert "218.105 μs/pt" in frame
+    assert "Evaluator total" in frame
+    assert "217.812 μs/pt" in frame
+    assert "Recurrence core" in frame
+    assert "205.431 μs/pt" in frame
+
+    state.selected_index = next(
+        index
+        for index, worker in enumerate(workers)
+        if "matrix-compiled-" in worker.cell_id
+    )
+    compiled_frame = render_dashboard_frame(state, width=120, height=36)
+    assert "Recurrence core not applicable" in compiled_frame

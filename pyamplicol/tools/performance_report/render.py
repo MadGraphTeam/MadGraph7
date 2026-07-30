@@ -37,6 +37,7 @@ from .models import (
 from .timing import (
     evaluator_total_seconds_per_point,
     evaluator_total_timing_record,
+    recurrence_core_seconds_per_point,
     unavailable_execution_timing_record,
 )
 from .validation_summary import (
@@ -447,6 +448,10 @@ def _compact(value: float) -> str:
     return f"{value:.3g}"
 
 
+def _timing_value(value: float) -> str:
+    return f"{value:.6g}"
+
+
 def _time(value: object, *, microseconds: bool = False) -> str:
     if value is None:
         return r"\matrixna{ReportMuted}"
@@ -455,7 +460,7 @@ def _time(value: object, *, microseconds: bool = False) -> str:
         return r"\matrixna{ReportMuted}"
     if microseconds:
         number *= 1.0e6
-    return rf"\texttt{{{_compact(number)}}}"
+    return rf"\texttt{{{_timing_value(number)}}}"
 
 
 def _unavailable_time(
@@ -607,55 +612,54 @@ def _ratio_or_absolute(
     return _ratio(candidate, baseline, field)
 
 
-def _ratio_pair(candidate: Measurement, baseline: Measurement) -> str:
+def _evaluator_total_clock(measurement: Measurement) -> str:
+    total = evaluator_total_seconds_per_point(measurement)
+    value = (
+        _not_exposed()
+        if total is None
+        else _time(total, microseconds=True)
+    )
+    return r"\matrixtotalevaluator{" + value + "}"
+
+
+def _recurrence_core_clock(measurement: Measurement) -> str:
+    core = recurrence_core_seconds_per_point(measurement)
+    value = (
+        _not_exposed()
+        if core is None
+        else _time(core, microseconds=True)
+    )
+    return r"\matrixrecurrencecore{" + value + "}"
+
+
+def _ratio_pair(
+    candidate: Measurement,
+    baseline: Measurement,
+    *,
+    candidate_mode: ExecutionMode,
+) -> str:
     wall = _ratio_value(candidate, baseline, "wall_seconds_per_point")
-    execution = _ratio_value(candidate, baseline, "execution_seconds_per_point")
     if not _ok(candidate):
         return _status(candidate)
-    execution_not_exposed = any(
-        unavailable_execution_timing_record(
-            measurement,
-            "execution_seconds_per_point",
-        )
-        is not None
-        for measurement in (candidate, baseline)
-    )
-
-    def field(value: float | None, name: str) -> tuple[str, str]:
-        if value is None:
-            return "ReportMuted", "N/A"
+    if wall is None:
+        wall_clock = r"\matrixna{ReportMuted}"
+    else:
         color = (
             "ReportGreen"
-            if value < 1.0
+            if wall < 1.0
             else "ReportOrange"
-            if value < 2.0
+            if wall < 2.0
             else "ReportRed"
         )
-        return color, f"x{_compact(value)}"
-
-    wall_color, wall_text = field(wall, "wall_seconds_per_point")
-    if execution_not_exposed:
-        total_record = evaluator_total_timing_record(candidate)
-        if total_record is not None:
-            total_time = _time(
-                total_record["raw_seconds_per_point"],
-                microseconds=True,
-            )
-            return (
-                rf"\matrixratiopairtotalevaluator{{{wall_color}}}"
-                f"{{{wall_text}}}{{{total_time}}}"
-            )
-        return (
-            rf"\matrixratiopairnotexposed{{{wall_color}}}"
-            f"{{{wall_text}}}"
+        wall_clock = (
+            rf"\matrixwallclock{{{color}}}{{x{_compact(wall)}}}"
         )
-    execution_color, execution_text = field(
-        execution,
-        "execution_seconds_per_point",
-    )
+    total_clock = _evaluator_total_clock(candidate)
+    if candidate_mode is not ExecutionMode.RECURRENCE:
+        return rf"\matrixruntimepair{{{wall_clock}}}{{{total_clock}}}"
     return (
-        rf"\matrixratiopair{{{wall_color}}}{{{wall_text}}}"
-        rf"{{{execution_color}}}{{{execution_text}}}"
+        rf"\matrixruntimetriple{{{wall_clock}}}{{{total_clock}}}"
+        rf"{{{_recurrence_core_clock(candidate)}}}"
     )
 
 
@@ -663,21 +667,28 @@ def _ratio_pair_or_absolute(
     candidate: Measurement,
     baseline: Measurement,
     *,
+    candidate_mode: ExecutionMode,
     absolute: bool,
 ) -> str:
     if absolute and _ok(candidate):
         wall = _metric(candidate, "wall_seconds_per_point", microseconds=True)
-        execution = _metric(
-            candidate,
-            "execution_seconds_per_point",
-            microseconds=True,
+        wall_clock = (
+            r"\matrixncabsolute{\matrixwallabsolute{"
+            + wall
+            + "}}"
         )
+        total_clock = _evaluator_total_clock(candidate)
+        if candidate_mode is not ExecutionMode.RECURRENCE:
+            return rf"\matrixruntimepair{{{wall_clock}}}{{{total_clock}}}"
         return (
-            r"\matrixncabsolute{"
-            rf"\matrixpair{{{wall}}}{{{execution}}}"
-            "}"
+            rf"\matrixruntimetriple{{{wall_clock}}}{{{total_clock}}}"
+            rf"{{{_recurrence_core_clock(candidate)}}}"
         )
-    return _ratio_pair(candidate, baseline)
+    return _ratio_pair(
+        candidate,
+        baseline,
+        candidate_mode=candidate_mode,
+    )
 
 
 def _matrix_macros() -> list[str]:
@@ -688,21 +699,6 @@ def _matrix_macros() -> list[str]:
         (
             r"\providecommand{\matrixratio}[2]{\matrixpunct{(}"
             r"\textcolor{#1}{\texttt{x#2}}\matrixpunct{)}}"
-        ),
-        (
-            r"\providecommand{\matrixratiopair}[4]{\matrixpunct{(}"
-            r"\textcolor{#1}{\texttt{#2}}\matrixpunct{|}"
-            r"\textcolor{#3}{\texttt{#4}}\matrixpunct{)}}"
-        ),
-        (
-            r"\providecommand{\matrixratiopairnotexposed}[2]{\matrixpunct{(}"
-            r"\textcolor{#1}{\texttt{#2}}\matrixpunct{|}"
-            r"\matrixnotexposed{ReportMuted}\matrixpunct{)}}"
-        ),
-        (
-            r"\providecommand{\matrixratiopairtotalevaluator}[3]{"
-            r"\matrixpunct{(}\textcolor{#1}{\texttt{#2}}"
-            r"\matrixpunct{|}\matrixtotalevaluator{#3}\matrixpunct{)}}"
         ),
         r"\providecommand{\matrixna}[1]{\textcolor{#1}{\texttt{N/A}}}",
         (
@@ -721,6 +717,30 @@ def _matrix_macros() -> list[str]:
             r"\providecommand{\matrixtotalevaluator}[1]{"
             r"\textcolor{ReportBlue}{\texttt{T }}#1}"
         ),
+        (
+            r"\providecommand{\matrixrecurrencecore}[1]{"
+            r"\textcolor{ReportOrange}{\texttt{C }}#1}"
+        ),
+        (
+            r"\providecommand{\matrixzrecurrenceclocks}[2]{"
+            r"\shortstack[r]{#1\\#2}}"
+        ),
+        (
+            r"\providecommand{\matrixwallclock}[2]{"
+            r"\textcolor{#1}{\texttt{W #2}}}"
+        ),
+        (
+            r"\providecommand{\matrixwallabsolute}[1]{"
+            r"\textcolor{ReportBlue}{\texttt{W }}#1}"
+        ),
+        (
+            r"\providecommand{\matrixruntimepair}[2]{"
+            r"\shortstack[l]{#1\\#2}}"
+        ),
+        (
+            r"\providecommand{\matrixruntimetriple}[3]{"
+            r"\shortstack[l]{#1\\#2\matrixpunct{ / }#3}}"
+        ),
         r"\providecommand{\matrixbelow}[1]{\textcolor{ReportMuted}{\texttt{<#1}}}",
         (
             r"\providecommand{\matrixnaratio}[1]{\matrixpunct{(}"
@@ -729,7 +749,7 @@ def _matrix_macros() -> list[str]:
         r"\providecommand{\matrixstatus}[2]{\textcolor{#1}{\textsc{#2}}}",
         (
             r"\providecommand{\matrixncabsolute}[1]{"
-            r"\textcolor{ReportBlue}{\texttt{C }}#1"
+            r"\textcolor{ReportBlue}{\texttt{abs }}#1"
             r"\matrixpunct{; }\matrixstatus{ReportMuted}{n.c.}}"
         ),
         (
@@ -876,11 +896,13 @@ def _lc_cell(
     selected_ratio = _ratio_pair_or_absolute(
         selected.candidate,
         selected.baseline,
+        candidate_mode=view.dataset.candidate.execution_mode,
         absolute=legacy_baseline_unavailable,
     )
     all_flow_ratio = _ratio_pair_or_absolute(
         all_flow.candidate,
         all_flow.baseline,
+        candidate_mode=view.dataset.candidate.execution_mode,
         absolute=legacy_baseline_unavailable,
     )
     return (
@@ -913,6 +935,7 @@ def _contracted_cell(
     candidate_runtime = _ratio_pair_or_absolute(
         joined.candidate,
         joined.baseline,
+        candidate_mode=view.dataset.candidate.execution_mode,
         absolute=legacy_baseline_unavailable,
     )
     baseline_generation = (
@@ -1175,26 +1198,33 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
                 "all-flow direct-setup baseline quantities. The selected-flow "
                 "entry carries a generation ratio; the all-flow entry carries "
                 "the absolute pyAmpliCol process-generation time marked n.c. "
-                "(not comparable); no generation ratio is formed. Runtime "
-                "comparisons use native wall time; "
-                "a separate execution-attribution ratio appears only when both "
-                "measurements expose one."
+                "(not comparable); no generation ratio is formed."
             )
         else:
             detail = (
                 "Each cell shows the topology-replay/all-flow-union baseline "
                 "generation times and wall times, followed by layout-matched "
-                "candidate/baseline generation and wall-time ratios. A separate "
-                "execution-attribution ratio appears only when both "
-                "measurements expose one."
+                "candidate/baseline generation and wall-time ratios."
             )
     else:
         detail = (
             "Each cell shows the baseline generation and wall time, followed by "
-            "candidate/baseline generation and wall-time ratios. A separate "
-            "execution-attribution ratio appears only when both measurements "
-            "expose one."
+            "candidate/baseline generation and wall-time ratios."
         )
+    clock_detail = (
+        " Runtime cells mark the candidate/baseline wall-time multiplier W, "
+        "the independent absolute evaluator total T from its dedicated "
+        "authenticated record, and the narrower authenticated recurrence core "
+        "C. Neither T nor C is derived from wall time or from the other, and C "
+        "is never relabeled as evaluator total."
+        if dataset.candidate.execution_mode is ExecutionMode.RECURRENCE
+        else
+        " Runtime cells mark the candidate/baseline wall-time multiplier W and "
+        "the independent absolute evaluator-total value marked T from its "
+        "dedicated authenticated record. Compiled and eager cells do not "
+        "fabricate a recurrence-core C value, and T is never copied from or "
+        "derived from wall time."
+    )
     legacy_scope_detail = (
         " Original AmpliCol supports at most three open quark lines; beyond "
         "that scope its declared catalog entry is marked static N/A, requires "
@@ -1210,18 +1240,15 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         + _tex_escape(candidate)
         + ". "
         + _tex_escape(detail)
+        + _tex_escape(clock_detail)
         + _tex_escape(legacy_scope_detail)
         + " "
         + _tex_escape(
             "Not applicable marks a process/multiplicity combination outside "
             "the process-family definition. Not exposed means that a successful "
-            "wall-time measurement has no separately reported execution "
-            "attribution; for compiled and eager rows, the wall value remains "
-            "the authenticated warmed total-evaluator boundary. Future compiled "
-            "and eager entries additionally show an accumulated absolute "
-            "evaluator-total value marked T; it is not an execution-attribution "
-            "ratio. Older entries remain marked not exposed; neither label "
-            "denotes an unfilled measurement."
+            "wall-time measurement has no dedicated authenticated evidence for "
+            "the separately labeled T or C clock. Older entries remain marked "
+            "not exposed; neither label denotes an unfilled measurement."
         )
         + "}"
     )
@@ -1376,20 +1403,13 @@ def _best_mode_runtime_ratio(
 ) -> str:
     if joined.mode is None:
         return _best_mode_terminal_status(joined)
-    if baseline_static_na:
-        return _ratio_or_absolute(
-            joined.candidate,
-            joined.baseline,
-            "wall_seconds_per_point",
-            absolute=True,
-            microseconds=True,
-        )
-    if not _ok(joined.baseline):
+    if not _ok(joined.baseline) and not baseline_static_na:
         return _status(joined.baseline)
-    return _ratio(
+    return _ratio_pair_or_absolute(
         joined.candidate,
         joined.baseline,
-        "wall_seconds_per_point",
+        candidate_mode=joined.mode,
+        absolute=baseline_static_na,
     )
 
 
@@ -1784,7 +1804,12 @@ def _best_mode_block(
                 r"Generation multipliers identify that runtime winner: "
                 r"\texttt{(A)} recurrence JIT O2, \texttt{(B)} compiled JIT O3, "
                 r"and \texttt{(C)} eager-DAG JIT O2. Runtime entries are "
-                r"winner/AmpliCol wall-time multipliers. Original-AmpliCol "
+                r"winner/AmpliCol wall-time multipliers marked W plus each "
+                r"winner's independent absolute evaluator total marked T; "
+                r"recurrence winners additionally show their narrower core "
+                r"marked C. T and C are never derived from wall time or from "
+                r"one another, and compiled/eager winners never fabricate C. "
+                r"Original-AmpliCol "
                 r"rows beyond its three-open-quark-line scope are catalog "
                 r"static N/A entries; their candidate values are absolute "
                 r"n.c. quantities and are excluded from ratio summaries."
@@ -1917,6 +1942,7 @@ def _z_evaluator_total(
     joined: JoinedWorkload,
     *,
     reference: bool,
+    recurrence: bool = False,
     static_na: bool = False,
 ) -> str:
     if static_na:
@@ -1926,10 +1952,16 @@ def _z_evaluator_total(
         return _not_exposed()
     if not _ok(measurement):
         return _status(measurement)
-    total = evaluator_total_seconds_per_point(measurement)
-    if total is None:
-        return _not_exposed()
-    return r"\matrixtotalevaluator{" + _time(total, microseconds=True) + "}"
+    total_text = _evaluator_total_clock(measurement)
+    if not recurrence:
+        return total_text
+    return (
+        r"\matrixzrecurrenceclocks{"
+        + total_text
+        + "}{"
+        + _recurrence_core_clock(measurement)
+        + "}"
+    )
 
 
 def _z_block(
@@ -1977,8 +2009,11 @@ def _z_block(
         ),
         (
             r"& & \textbf{gen [s]} & \textbf{wall [us/pt]} & "
-            r"\textbf{eval total [us/pt]} & \textbf{gen [s]} & "
-            r"\textbf{wall [us/pt]} & \textbf{eval total [us/pt]} \\"
+            r"\shortstack{\textbf{eval total T}\\"
+            r"\textbf{rec. core C [us/pt]}} & \textbf{gen [s]} & "
+            r"\textbf{wall [us/pt]} & "
+            r"\shortstack{\textbf{eval total T}\\"
+            r"\textbf{rec. core C [us/pt]}} \\"
         ),
         r"\midrule",
     ]
@@ -2039,6 +2074,9 @@ def _z_block(
                 _z_evaluator_total(
                     selected,
                     reference=reference,
+                    recurrence=(
+                        variant.execution_mode is ExecutionMode.RECURRENCE
+                    ),
                     static_na=selected_static_na,
                 ),
                 _z_value(
@@ -2058,6 +2096,9 @@ def _z_block(
                 _z_evaluator_total(
                     all_flow,
                     reference=reference,
+                    recurrence=(
+                        variant.execution_mode is ExecutionMode.RECURRENCE
+                    ),
                     static_na=all_flow_static_na,
                 ),
             )
@@ -2079,13 +2120,14 @@ def _z_block(
                 r"boundary differs from the "
                 r"reference. The wall time is the common runtime observable. "
                 r"Not exposed means that a successful wall measurement has no "
-                r"separately reported evaluator-total timing. Every "
-                r"pyAmpliCol row shows the authenticated accumulated warmed "
-                r"evaluator total marked T; T is not an attribution ratio. "
-                r"Recurrence core/execution attribution remains a separate "
-                r"metric in raw evidence and is not relabeled as evaluator "
-                r"total. Older entries without authenticated total evidence "
-                r"remain marked not exposed; it is not a missing measurement. "
+                r"dedicated authenticated evaluator-total timing. Authenticated "
+                r"accumulated warmed evaluator totals are marked T; T is not "
+                r"an attribution ratio. Recurrence rows also retain the "
+                r"independently measured narrower recurrence core marked C. "
+                r"Neither T nor C is derived from wall time or from the other, "
+                r"and C is never relabeled as evaluator total. Older entries "
+                r"without authenticated total evidence remain marked not "
+                r"exposed; it is not a missing measurement. "
                 + _tex_escape(
                     STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION
                 )
@@ -2150,6 +2192,13 @@ def render_all_z_ladders(
 
 
 def _scalar_value(measurement: Measurement, field: str) -> str:
+    if field == "evaluator_total_seconds_per_point":
+        if not _ok(measurement):
+            return _status(measurement)
+        total = evaluator_total_seconds_per_point(measurement)
+        if total is None:
+            return _not_exposed()
+        return _time(total, microseconds=True)
     if field == "matrix_element":
         if not _ok(measurement):
             return _status(measurement)
@@ -2202,7 +2251,10 @@ def render_scalar_ladder(
     rows = (
         ("generation [s]", "generation_seconds"),
         (r"wall [$\mu$s/pt]", "wall_seconds_per_point"),
-        (r"execution [$\mu$s/pt]", "execution_seconds_per_point"),
+        (
+            r"evaluator total [$\mu$s/pt]",
+            "evaluator_total_seconds_per_point",
+        ),
         ("matrix element", "matrix_element"),
     )
     lines = [
@@ -2268,13 +2320,12 @@ def render_scalar_ladder(
             r"\endgroup",
             (
                 r"\ReportTableNote{Wall time is the common runtime observable. "
-                r"Execution is a separately measured attribution when exposed; "
-                r"future compiled and eager entries show the accumulated "
-                r"absolute evaluator total marked T when narrower attribution "
-                r"is unavailable. "
+                r"Evaluator total is the independently measured accumulated "
+                r"warmed evaluator clock from its dedicated authenticated "
+                r"record; it is never copied from or derived from wall time. "
                 r"\textsc{not exposed} denotes a successful wall measurement, "
-                r"and older entries without T remain valid; neither denotes a "
-                r"missing result.}"
+                r"and older entries without dedicated evaluator-total evidence "
+                r"remain valid; it does not denote a missing result.}"
             ),
         ]
     )
@@ -2534,6 +2585,9 @@ def summarize_visible_completeness(
                             _ratio_pair_or_absolute(
                                 joined.candidate,
                                 joined.baseline,
+                                candidate_mode=(
+                                    dataset.candidate.execution_mode
+                                ),
                                 absolute=baseline_static_na,
                             ),
                         ),
@@ -2697,6 +2751,10 @@ def summarize_visible_completeness(
                                 _z_evaluator_total(
                                     joined,
                                     reference=False,
+                                    recurrence=(
+                                        variant.execution_mode
+                                        is ExecutionMode.RECURRENCE
+                                    ),
                                     static_na=static_na,
                                 ),
                             )
@@ -2728,7 +2786,10 @@ def summarize_visible_completeness(
                 (
                     _scalar_value(measurement, "generation_seconds"),
                     _scalar_value(measurement, "wall_seconds_per_point"),
-                    _scalar_value(measurement, "execution_seconds_per_point"),
+                    _scalar_value(
+                        measurement,
+                        "evaluator_total_seconds_per_point",
+                    ),
                     _scalar_value(measurement, "matrix_element"),
                     _scalar_relative_difference(measurement),
                 ),

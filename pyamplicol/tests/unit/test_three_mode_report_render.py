@@ -251,6 +251,26 @@ def _mark_evaluator_total(
     }
 
 
+def _mark_recurrence_core(measurement: dict[str, object]) -> None:
+    provenance = measurement["provenance"]
+    assert isinstance(provenance, dict)
+    raw_core = measurement["execution_seconds_per_point"]
+    assert isinstance(raw_core, float)
+    provenance["execution_timing"] = {
+        "abi": "pyamplicol-report-execution-timing-v1",
+        "status": "measured",
+        "ratio_eligible": True,
+        "raw_seconds_per_point": raw_core,
+        "source": "runtime_profile_core_recurrence_schedule_time",
+        "compiled_direct_arena_active": False,
+        "sample_count": 5,
+        "native_profile_points_per_sample": 128,
+        "sample_contract": (
+            "paired_unprofiled_headline_profiled_attribution_v1"
+        ),
+    }
+
+
 def _fill_visible_scope(
     caches: dict[str, dict[str, object]],
     *,
@@ -854,9 +874,11 @@ def test_z_evaluator_total_is_mode_independent_and_not_execution_attribution(
                 execution_mode=execution_mode,
                 total=total * 1.0e-6,
             )
+            if execution_mode == "recurrence":
+                _mark_recurrence_core(measurement)
 
     tex = render_z_ladder(ModelKey.BUILTIN_SM, caches)
-    for _variant, _mode, label, selected_total, all_total in modes:
+    for _variant, mode, label, selected_total, all_total in modes:
         row = next(
             line
             for line in tex.splitlines()
@@ -872,9 +894,80 @@ def test_z_evaluator_total_is_mode_independent_and_not_execution_attribution(
         )
         assert r"\matrixtotalevaluator{\texttt{1" not in row
         assert r"\matrixtotalevaluator{\texttt{10" not in row
+        if mode == "recurrence":
+            assert (
+                r"\matrixzrecurrenceclocks{"
+                rf"\matrixtotalevaluator{{\texttt{{{selected_total:.0f}}}}}"
+                r"}{\matrixrecurrencecore{"
+                rf"\texttt{{{70.0 + selected_total:.0f}}}}}"
+            ) in row
+            assert (
+                r"\matrixzrecurrenceclocks{"
+                rf"\matrixtotalevaluator{{\texttt{{{all_total:.0f}}}}}"
+                r"}{\matrixrecurrencecore{"
+                rf"\texttt{{{70.0 + all_total:.0f}}}}}"
+            ) in row
+    assert r"\textbf{eval total T}" in tex
+    assert r"\textbf{rec. core C [us/pt]}" in tex
+    assert "Neither T nor C is derived from wall time or from the other" in tex
 
 
-def test_z_evaluator_total_recovers_authenticated_historical_profile(
+def test_z_wall_and_evaluator_total_keep_distinct_six_digit_values(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    baseline = _cache_by_dataset(caches, "reference_amplicol_lc")
+    candidate = _cache_by_dataset(caches, "z_builtin_sm")
+    _set_ok(
+        baseline,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.SELECTED_FLOW,
+        generation=1.0,
+        wall=100.0e-6,
+        execution=90.0e-6,
+    )
+    _set_ok(
+        candidate,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.SELECTED_FLOW,
+        generation=2.0,
+        wall=218.105e-6,
+        execution=183.456e-6,
+        variant="recurrence_jit_o2",
+    )
+    entries = candidate["entries"]
+    assert isinstance(entries, list)
+    measurement = next(
+        entry["measurement"]
+        for entry in entries
+        if entry["process_key"] == "dd_z_jets"
+        and entry["n_final"] == 1
+        and entry["workload"] == Workload.SELECTED_FLOW.value
+        and entry["variant"] == "recurrence_jit_o2"
+    )
+    assert isinstance(measurement, dict)
+    _mark_evaluator_total(
+        measurement,
+        execution_mode="recurrence",
+        total=217.812e-6,
+    )
+    _mark_recurrence_core(measurement)
+
+    tex = render_z_ladder(ModelKey.BUILTIN_SM, caches)
+    row = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith("1 & ") and "recurrence JIT O2" in line
+    )
+
+    assert r"\texttt{218.105}" in row
+    assert r"\matrixtotalevaluator{\texttt{217.812}}" in row
+    assert r"\matrixrecurrencecore{\texttt{183.456}}" in row
+
+
+def test_z_historical_recurrence_without_dedicated_total_is_not_exposed(
     reset_caches,
 ) -> None:
     caches = copy.deepcopy(reset_caches)
@@ -933,9 +1026,12 @@ def test_z_evaluator_total_recovers_authenticated_historical_profile(
         if line.startswith("1 & ") and "recurrence JIT O2" in line
     )
 
-    assert r"\matrixtotalevaluator{\texttt{3}}" in row
-    assert r"\matrixtotalevaluator{\texttt{7}}" not in row
-    assert r"\matrixtotalevaluator{\texttt{9}}" not in row
+    assert (
+        r"\matrixzrecurrenceclocks{"
+        r"\matrixtotalevaluator{\matrixnotexposed{ReportMuted}}}"
+        r"{\matrixrecurrencecore{\texttt{7}}}"
+    ) in row
+    assert r"\matrixtotalevaluator{\texttt{3}}" not in row
 
     provenance["execution_timing"]["source"] = (
         "runtime_profile_core_evaluator_call_time"
@@ -946,7 +1042,11 @@ def test_z_evaluator_total_recovers_authenticated_historical_profile(
         for line in tex.splitlines()
         if line.startswith("1 & ") and "recurrence JIT O2" in line
     )
-    assert r"\matrixstatus{ReportMuted}{N/A}" in row
+    assert (
+        r"\matrixzrecurrenceclocks{"
+        r"\matrixtotalevaluator{\matrixnotexposed{ReportMuted}}}"
+        r"{\matrixrecurrencecore{\matrixnotexposed{ReportMuted}}}"
+    ) in row
     assert r"\matrixtotalevaluator{\texttt{3}}" not in row
 
 
@@ -1112,6 +1212,64 @@ def test_adapter_joins_recurrence_baseline_without_copying_timing(
     assert r"\matrixratio{ReportGreen}{0.5}" in tex
 
 
+def test_recurrence_matrix_cell_keeps_wall_total_and_core_distinct(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    baseline = _cache_by_dataset(caches, "reference_amplicol_nlc")
+    candidate = _cache_by_dataset(
+        caches,
+        "matrix_recurrence_builtin_sm_nlc",
+    )
+    _set_ok(
+        baseline,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=4.0,
+        wall=100.0e-6,
+        execution=90.0e-6,
+    )
+    _set_ok(
+        candidate,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=2.0,
+        wall=218.105e-6,
+        execution=183.456e-6,
+    )
+    entries = candidate["entries"]
+    assert isinstance(entries, list)
+    measurement = next(
+        entry["measurement"]
+        for entry in entries
+        if entry["process_key"] == "dd_z_jets"
+        and entry["n_final"] == 1
+        and entry["workload"] == Workload.CONTRACTED.value
+    )
+    assert isinstance(measurement, dict)
+    _mark_evaluator_total(
+        measurement,
+        execution_mode="recurrence",
+        total=217.812e-6,
+    )
+    _mark_recurrence_core(measurement)
+
+    tex = render_matrix_table(
+        REPORT_CATALOG.dataset("matrix_recurrence_builtin_sm_nlc"),
+        caches,
+    )
+
+    assert (
+        r"\matrixruntimetriple{\matrixwallclock{ReportRed}{x2.18}}"
+        r"{\matrixtotalevaluator{\texttt{217.812}}}"
+        r"{\matrixrecurrencecore{\texttt{183.456}}}"
+    ) in tex
+    assert "Neither T nor C is derived from wall time or from the other" in tex
+    assert "C is never relabeled as evaluator total" in tex
+
+
 def test_unavailable_execution_is_not_exposed_and_has_no_zero_ratio(
     reset_caches,
 ) -> None:
@@ -1158,7 +1316,10 @@ def test_unavailable_execution_is_not_exposed_and_has_no_zero_ratio(
         caches,
     )
 
-    assert r"\matrixratiopairnotexposed{ReportGreen}{x0.5}" in tex
+    assert (
+        r"\matrixruntimepair{\matrixwallclock{ReportGreen}{x0.5}}"
+        r"{\matrixtotalevaluator{\matrixnotexposed{ReportMuted}}}"
+    ) in tex
     assert "Not exposed means that a successful wall-time measurement" in tex
     assert r"{x0}" not in tex
 
@@ -1207,16 +1368,23 @@ def test_future_dag_evaluator_total_is_absolute_and_never_ratioed(
         and entry["workload"] == Workload.CONTRACTED.value
     )
     _mark_arena_unavailable(measurement, execution_mode=execution_mode)
-    _mark_evaluator_total(measurement, execution_mode=execution_mode)
+    _mark_evaluator_total(
+        measurement,
+        execution_mode=execution_mode,
+        total=0.9e-6,
+    )
 
     tex = render_matrix_table(REPORT_CATALOG.dataset(dataset_id), caches)
 
     assert (
-        r"\matrixratiopairtotalevaluator{ReportGreen}"
-        r"{x0.5}{\texttt{1}}"
+        r"\matrixruntimepair{\matrixwallclock{ReportGreen}{x0.5}}"
+        r"{\matrixtotalevaluator{\texttt{0.9}}}"
     ) in tex
     assert "absolute evaluator-total value marked T" in tex
-    assert r"\matrixratiopair{ReportGreen}{x0.5}{Report" not in tex
+    assert (
+        r"\matrixruntimetriple{\matrixwallclock{ReportGreen}{x0.5}}"
+        not in tex
+    )
 
 
 def test_z_ladder_prints_not_exposed_instead_of_zero(
@@ -1413,7 +1581,10 @@ def test_four_line_recurrence_renders_absolute_values_without_legacy_oracle(
 
     assert r"\matrixncabsolute{\texttt{4}}" in tex
     assert r"\matrixncabsolute{\texttt{10}}" in tex
-    assert tex.count(r"\matrixncabsolute{\matrixpair{") >= 2
+    assert tex.count(
+        r"\matrixruntimetriple{"
+        r"\matrixncabsolute{\matrixwallabsolute{\texttt{2}}}"
+    ) >= 2
     assert tex.count(r"\matrixstaticna{ReportMuted}") >= 2
     assert "n.c. (not comparable)" in tex
 
@@ -1577,8 +1748,60 @@ def test_scalar_timing_marks_unavailable_arena_attribution_not_exposed(
 
     tex = render_scalar_ladder(dataset, caches)
 
+    assert r"evaluator total [$\mu$s/pt]" in tex
     assert r"\matrixnotexposed{ReportMuted}" in tex
     assert "successful wall measurement" in tex
+
+
+def test_scalar_timing_uses_dedicated_evaluator_total_not_wall(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    dataset = next(
+        item
+        for item in REPORT_CATALOG.scalar_datasets
+        if item.dataset_id == "scalar_contact"
+    )
+    cache = _cache_by_dataset(caches, "scalar_contact")
+    _set_ok(
+        cache,
+        process_key="scalar_contact",
+        n_final=2,
+        workload=Workload.CONTRACTED,
+        generation=1.0,
+        wall=218.105e-6,
+        execution=None,
+    )
+    entries = cache["entries"]
+    assert isinstance(entries, list)
+    measurement = next(
+        entry["measurement"]
+        for entry in entries
+        if entry["n_final"] == 2
+    )
+    assert isinstance(measurement, dict)
+    _mark_arena_unavailable(measurement)
+    _mark_evaluator_total(
+        measurement,
+        execution_mode="compiled",
+        total=217.812e-6,
+    )
+
+    tex = render_scalar_ladder(dataset, caches)
+    wall_row = next(
+        line for line in tex.splitlines() if line.startswith(r"wall [$\mu$s/pt]")
+    )
+    total_row = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith(r"evaluator total [$\mu$s/pt]")
+    )
+
+    assert r"\texttt{218.105}" in wall_row
+    assert r"\texttt{217.812}" in total_row
+    assert r"\texttt{218.105}" not in total_row
+    assert r"execution [$\mu$s/pt]" not in tex
+    assert "never copied from or derived from wall time" in tex
 
 
 def test_all_outputs_include_matrices_z_and_scalar_ladders(

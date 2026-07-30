@@ -8,6 +8,7 @@ from colorama import Fore
 
 import tools.performance_report.manual_campaign as manual_campaign
 from pyamplicol.cli import parse_cli
+from tools.performance_report.arena_profile import PAIRED_TIMING_SAMPLE_CONTRACT
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.manual_campaign import (
     LightweightCurrent,
@@ -18,6 +19,10 @@ from tools.performance_report.manual_campaign import (
     selection_from_arguments,
 )
 from tools.performance_report.models import ExecutionMode, ModelKey, ResultStatus
+from tools.performance_report.timing import (
+    MEASURED_EXECUTION_TIMING_ABI,
+    RECURRENCE_EXECUTION_TIMING_SOURCE,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -145,16 +150,54 @@ def test_evaluator_total_has_independent_statistics_and_semantic_colors() -> Non
     baseline = manual_campaign._manual_baseline(candidate)
     assert baseline is not None
 
-    def current(cell_id: str, wall: float, evaluator_total: float):
+    def current(
+        cell_id: str,
+        wall: float,
+        evaluator_total: float,
+        *,
+        recurrence_core: float | None = None,
+    ) -> LightweightCurrent:
+        sample_count = 5
+        repetitions = 2
+        batch_size = 1
+        measured_points = sample_count * repetitions * batch_size
         result = {
             "status": ResultStatus.OK.value,
             "wall_seconds_per_point": wall,
+            "execution_seconds_per_point": recurrence_core,
+            "sample_count": sample_count,
             "provenance": {
                 "evaluator_total_timing": {
+                    "abi": "pyamplicol-report-evaluator-total-timing-v1",
+                    "status": "measured",
+                    "ratio_eligible": False,
                     "raw_seconds_per_point": evaluator_total,
+                    "source": "runtime.evaluate.accumulated",
+                    "execution_mode": "recurrence",
+                    "sample_contract": (
+                        "accumulated-repeated-warmed-evaluator-total-v1"
+                    ),
+                    "sample_count": sample_count,
+                    "repetitions_per_sample": repetitions,
+                    "batch_size": batch_size,
+                    "points_per_sample": repetitions * batch_size,
+                    "measured_point_count": measured_points,
+                    "accumulated_seconds": evaluator_total * measured_points,
                 }
             },
         }
+        if recurrence_core is not None:
+            result["provenance"]["execution_timing"] = {
+                "abi": MEASURED_EXECUTION_TIMING_ABI,
+                "status": "measured",
+                "ratio_eligible": True,
+                "raw_seconds_per_point": recurrence_core,
+                "source": RECURRENCE_EXECUTION_TIMING_SOURCE,
+                "compiled_direct_arena_active": False,
+                "sample_count": sample_count,
+                "native_profile_points_per_sample": repetitions * batch_size,
+                "sample_contract": PAIRED_TIMING_SAMPLE_CONTRACT,
+            }
         return LightweightCurrent(
             cell_id=cell_id,
             attempt_id=f"attempt-{cell_id}",
@@ -184,3 +227,46 @@ def test_evaluator_total_has_independent_statistics_and_semantic_colors() -> Non
     assert Fore.GREEN in manual_campaign._paint_multiplier(palette, 0.9)
     assert Fore.RED in manual_campaign._paint_multiplier(palette, 1.1)
     assert "\x1b[" not in manual_campaign._paint_multiplier(palette, 1.0)
+
+    malformed = current(candidate.cell_id, 2.0, 4.0)
+    malformed_total = malformed.result["provenance"]["evaluator_total_timing"]
+    assert isinstance(malformed_total, dict)
+    malformed_total["accumulated_seconds"] = 99.0
+    assert manual_campaign._evaluator_total_number(malformed.result) is None
+
+    other = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+        and cell.cell_id != candidate.cell_id
+    )
+    core_summary, core_exclusions = manual_campaign._inspect_recurrence_core(
+        (candidate, other),
+        {
+            candidate.cell_id: current(
+                candidate.cell_id,
+                2.0,
+                4.0,
+                recurrence_core=4.0e-6,
+            ),
+            other.cell_id: current(
+                other.cell_id,
+                3.0,
+                6.0,
+                recurrence_core=2.0e-6,
+            ),
+        },
+    )
+    assert core_exclusions == {}
+    assert core_summary["count"] == 2
+    assert core_summary["median_seconds_per_point"] == pytest.approx(3.0e-6)
+    assert core_summary["mean_seconds_per_point"] == pytest.approx(3.0e-6)
+    fastest = core_summary["fastest"]
+    slowest = core_summary["slowest"]
+    assert isinstance(fastest, dict)
+    assert isinstance(slowest, dict)
+    assert fastest["cell_id"] == other.cell_id
+    assert fastest["seconds_per_point"] == pytest.approx(2.0e-6)
+    assert slowest["cell_id"] == candidate.cell_id
+    assert slowest["seconds_per_point"] == pytest.approx(4.0e-6)
+    assert "multiplier" not in fastest

@@ -178,8 +178,11 @@ def _benchmark_result() -> BenchmarkResult:
             "target": "/tmp/artifact",
             "elapsed_seconds": 1.01,
             "platform": "test-platform",
-            "wall_time_source": "runtime_core_repeated_wall_time",
-            "wall_time_sample_pass": "runtime._benchmark_f64_wall_time",
+            "wall_time_source": "python_outer_perf_counter_wall_time",
+            "wall_time_sample_pass": "time.perf_counter[measure_repetitions]",
+            "evaluator_total_time_source": (
+                "runtime._benchmark_f64_wall_time.accumulated"
+            ),
             "evaluator_time_source": "runtime_profile_core_evaluator_call_time",
             "evaluator_time_sample_pass": "runtime.profile_repeated",
             "execution_mode": "compiled",
@@ -194,6 +197,7 @@ def _benchmark_result() -> BenchmarkResult:
         },
         repetitions_per_sample=50,
         evaluator_uncertainty=evaluator_uncertainty,
+        evaluator_total_time_per_point=2.25e-6,
         process_id="ddbar_zg",
         process_expression="d d~ > z g",
         timing_breakdown=breakdown,
@@ -210,7 +214,11 @@ def test_benchmark_result_uses_clear_runtime_profile_table() -> None:
     assert "compiled" in rendered
     assert "all 1 generated physical LC flows" in rendered
     assert "all 24 generated helicity configurations" in rendered
+    assert "outer wall" in rendered
     assert "2.5 +/- 0.05 us/point (standard error)" in rendered
+    assert "evaluator total" in rendered
+    assert "2.25 us/point" in rendered
+    assert "evaluator core" in rendered
     assert "8 blocks x 50 repetitions x 32 points" in rendered
     assert "timed points" in rendered
     assert "Rusticol Timing Breakdown" in rendered
@@ -236,8 +244,7 @@ def test_benchmark_result_uses_clear_runtime_profile_table() -> None:
     assert "boundary amplitude output" in rendered
     assert "observed scratch reallocations" in rendered
     assert "paired passes: unprofiled headline" in rendered
-    assert "identical batch and repetition count" in rendered
-    assert "paired evaluator" in rendered
+    assert "profiled evaluator core attribution" in rendered
     assert "Profile wall (paired profiled pass)" in rendered
     assert "Rusticol Timing Breakdown (paired profiled attribution)" in rendered
 
@@ -283,8 +290,8 @@ def test_recurrence_profile_reports_paired_schedule_and_nested_attribution() -> 
     )
 
     assert rendered is not None
-    assert "paired recurrence" in rendered
-    assert "paired evaluator" not in rendered
+    assert "recurrence core" in rendered
+    assert "evaluator core" not in rendered
     assert (
         "Rusticol Recurrence Timing Breakdown (paired profiled attribution)"
         in rendered
@@ -297,6 +304,71 @@ def test_recurrence_profile_reports_paired_schedule_and_nested_attribution() -> 
     assert "runtime_profile_core_recurrence_schedule_time" in rendered
 
 
+def test_runtime_profile_renders_three_independent_clocks_with_full_precision() -> None:
+    result = _benchmark_result()
+    breakdown = result.timing_breakdown
+    assert breakdown is not None
+    zero_uncertainty = BenchmarkStatistics(0.0, 0.0, 0.0)
+    rendered = render_summary(
+        replace(
+            result,
+            wall_time_per_point=218.105e-6,
+            evaluator_total_time_per_point=217.812e-6,
+            evaluator_time_per_point=10.1234e-6,
+            uncertainty=zero_uncertainty,
+            evaluator_uncertainty=zero_uncertainty,
+            environment={
+                **result.environment,
+                "execution_mode": "recurrence",
+                "evaluator_time_source": (
+                    "runtime_profile_core_recurrence_schedule_time"
+                ),
+            },
+            timing_breakdown=replace(breakdown, execution_mode="recurrence"),
+        ),
+        color=False,
+    )
+
+    assert rendered is not None
+    lines = rendered.splitlines()
+    assert any(
+        "outer wall" in line and "218.105 +/- 0 us/point" in line for line in lines
+    )
+    assert any(
+        "evaluator total" in line and "217.812 us/point" in line for line in lines
+    )
+    assert any(
+        "recurrence core" in line and "10.1234 +/- 0 us/point" in line for line in lines
+    )
+    assert "evaluator total=runtime._benchmark_f64_wall_time.accumulated" in rendered
+    assert "runtime_profile_core_recurrence_schedule_time" in rendered
+
+
+def test_runtime_profile_marks_missing_total_and_core_unavailable() -> None:
+    result = _benchmark_result()
+    rendered = render_summary(
+        replace(
+            result,
+            evaluator_total_time_per_point=None,
+            evaluator_time_per_point=None,
+            evaluator_uncertainty=None,
+            environment={
+                **result.environment,
+                "execution_mode": "recurrence",
+                "evaluator_time_source": "unavailable",
+                "evaluator_total_time_source": "unavailable",
+            },
+            timing_breakdown=None,
+        ),
+        color=False,
+    )
+
+    assert rendered is not None
+    lines = rendered.splitlines()
+    assert any("evaluator total" in line and "N/A" in line for line in lines)
+    assert any("recurrence core" in line and "N/A" in line for line in lines)
+
+
 def test_separate_breakdown_samples_are_labeled_explicitly() -> None:
     result = _benchmark_result()
     breakdown = result.timing_breakdown
@@ -304,7 +376,7 @@ def test_separate_breakdown_samples_are_labeled_explicitly() -> None:
     environment = {
         **result.environment,
         "timing_sample_contract": "separate_native_profile_diagnostic_v1",
-        "wall_time_sample_pass": "runtime._benchmark_f64_wall_time",
+        "wall_time_sample_pass": "time.perf_counter[measure_repetitions]",
         "evaluator_time_sample_pass": "runtime.profile",
         "evaluator_sample_count": 3,
         "native_profile_repetitions_per_sample": 1,
@@ -322,10 +394,13 @@ def test_separate_breakdown_samples_are_labeled_explicitly() -> None:
 
     assert rendered is not None
     assert "Rusticol Timing Breakdown (separate diagnostic samples)" in rendered
-    assert "diagnostic evaluator" in rendered
+    assert "evaluator core" in rendered
     assert "separate passes" in rendered
-    assert "headline wall 8 blocks x 50 repetitions x 32 points" in rendered
-    assert "evaluator and breakdown 3" in rendered
+    assert (
+        "headline outer wall and evaluator total 8 blocks x 50 repetitions x 32 points"
+        in rendered
+    )
+    assert "evaluator core and breakdown 3" in rendered
     assert "diagnostic blocks x 1 repetitions" in rendered
     assert "Profile wall (diagnostic pass)" in rendered
 
@@ -341,7 +416,7 @@ def test_separate_evaluator_uncertainty_uses_diagnostic_sample_count() -> None:
     rendered = render_summary(replace(result, environment=environment), color=False)
 
     assert rendered is not None
-    assert "diagnostic evaluator" in rendered
+    assert "evaluator core" in rendered
     assert "uncertainty needs at least 2 blocks" in rendered
 
 
