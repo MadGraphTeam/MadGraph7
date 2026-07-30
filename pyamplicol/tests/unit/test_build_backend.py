@@ -1142,6 +1142,7 @@ def test_dependency_gate_subprocess_ignores_inherited_build_injection(
     environment = observed["env"]
     assert isinstance(command, list) and command[1] == "-I"
     assert command[-1] == "--candidate"
+    assert "--offline" not in command
     assert isinstance(environment, dict)
     assert not {"CARGO", "PYTHONPATH", "RUSTFLAGS"} & set(environment)
 

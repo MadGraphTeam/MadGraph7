@@ -349,7 +349,6 @@ def _check_dependencies(mode: str) -> None:
         sys.executable,
         "-I",
         str(ROOT / "tools" / "release" / "check_dependencies.py"),
-        "--offline",
     ]
     if mode == "candidate":
         command.append("--candidate")
