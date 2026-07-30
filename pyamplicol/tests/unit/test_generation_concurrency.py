@@ -298,6 +298,7 @@ def test_licensed_multiparticle_expansion_drives_workers_and_provenance(
         "_prepare_warmup_process",
         lambda process, _model, **_kwargs: SimpleNamespace(
             expanded=process.expanded,
+            filters={},
             validation_points=(),
         ),
     )
@@ -436,6 +437,7 @@ def test_eager_generation_never_enters_compiled_evaluator_lane(
         "_prepare_warmup_process",
         lambda process, _model, **_kwargs: SimpleNamespace(
             expanded=process.expanded,
+            filters={},
             validation_points=(),
         ),
     )
