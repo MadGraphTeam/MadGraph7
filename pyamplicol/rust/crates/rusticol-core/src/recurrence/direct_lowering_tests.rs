@@ -25,9 +25,11 @@ use crate::recurrence::{
     CanonicalMomentumLinearForm, CheckedTableRange, ContributionKey, CurrentCoreKey,
     CurrentHelicityIdentity, CurrentSourceBinding, DynamicLCColorState, DynamicLCColorStateId,
     ExactRational, LCColorComponentOperation, LCColorComponentRole, LCColorSourceSeedOperation,
-    LCColorWitnessTermId, MomentumTerm, RECURRENCE_TEMPLATE_ABI, RecurrenceAmplitudeDestination,
-    RecurrenceClosureTerm, RecurrenceContribution, RecurrenceCurrent, RecurrenceFinalization,
-    RecurrenceReplayTarget, RecurrenceResolvedHelicity, RecurrenceStrategy, SourceStateAssignment,
+    LCColorWitnessTermId, MomentumTerm, NUMERICAL_RELATION_CERTIFICATE_ALGORITHM,
+    RECURRENCE_TEMPLATE_ABI, RecurrenceAmplitudeDestination, RecurrenceClosureTerm,
+    RecurrenceContribution, RecurrenceCurrent, RecurrenceFinalization,
+    RecurrenceNumericalCurrentMapping, RecurrenceNumericalRelationEvidence, RecurrenceReplayTarget,
+    RecurrenceResolvedHelicity, RecurrenceStrategy, SourceStateAssignment,
     load_recurrence_direct_plan_pacbin, write_recurrence_direct_plan_pacbin,
 };
 
@@ -1227,11 +1229,7 @@ fn topology_replay_interns_only_referenced_canonical_selector_domains() {
         1
     );
     assert!(selectors.sector_domain_ids[0].is_some());
-    assert!(
-        selectors.sector_domain_ids[1..]
-            .iter()
-            .all(Option::is_none)
-    );
+    assert!(selectors.sector_domain_ids[1..].iter().all(Option::is_none));
     assert_eq!(selectors.words, [u64::MAX, 1]);
     let encoded_domains = selectors
         .descriptors
@@ -1265,14 +1263,9 @@ fn topology_replay_interns_only_referenced_canonical_selector_domains() {
     );
 
     let singleton_domain_id = selectors.sector_domain_ids[0].unwrap();
-    let plan = DirectRecurrencePlan::new(
-        lower(&program, &templates, digest(48)).unwrap(),
-    )
-    .unwrap();
-    let encoded = crate::recurrence::encode_recurrence_direct_plan_v2(&plan)
-        .unwrap();
-    let decoded =
-        crate::recurrence::decode_recurrence_direct_plan_v2(&encoded).unwrap();
+    let plan = DirectRecurrencePlan::new(lower(&program, &templates, digest(48)).unwrap()).unwrap();
+    let encoded = crate::recurrence::encode_recurrence_direct_plan_v2(&plan).unwrap();
+    let decoded = crate::recurrence::decode_recurrence_direct_plan_v2(&encoded).unwrap();
     assert!(
         decoded
             .selector_domain_contains(singleton_domain_id, 0)
@@ -1298,10 +1291,7 @@ fn selector_domain_canonicalization_preserves_the_universal_sentinel() {
     );
     assert_eq!(canonical_selector_words(&[1, 0, 0]), [1]);
     assert_eq!(canonical_selector_words(&[u64::MAX]), [u64::MAX]);
-    assert_eq!(
-        canonical_selector_words(&[u64::MAX, 0, 0]),
-        [u64::MAX, 0]
-    );
+    assert_eq!(canonical_selector_words(&[u64::MAX, 0, 0]), [u64::MAX, 0]);
 }
 
 #[test]
@@ -1932,4 +1922,137 @@ fn certified_relation_lowering_produces_a_round_trippable_tiny_artifact() {
     write_recurrence_direct_plan_pacbin(&path, &plan).unwrap();
     assert_eq!(load_recurrence_direct_plan_pacbin(&path).unwrap(), plan);
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn authenticated_numerical_evidence_applies_only_its_verified_mapping() {
+    let templates = validated_template();
+    let program = count_fixture_program(&templates, 4, 31, 34, 12, 1);
+    let catalog_digest = digest(40);
+    let catalog = direct_catalog(catalog_digest);
+    let semantic_digest = digest(51);
+    let diagnostic_options = RecurrenceRelationDiscoveryOptions::new(
+        RecurrenceRelationDiscoveryMode::Diagnostic,
+        96,
+        4,
+        4,
+        1.0e-70,
+        1.0e-80,
+        0x5059_414d,
+        "lc",
+    )
+    .unwrap();
+    let (diagnostic_plan, diagnostic_report) =
+        lower_recurrence_direct_plan_v2_with_relation_discovery(
+            &program,
+            &templates,
+            &catalog,
+            semantic_digest,
+            digest(2),
+            catalog_digest,
+            runtime_options(),
+            &diagnostic_options,
+        )
+        .unwrap();
+    let structural_certificate = diagnostic_report
+        .unwrap()
+        .certificates
+        .into_iter()
+        .next()
+        .expect("fixture must expose at least one compatible exact mapping");
+    let current = diagnostic_plan
+        .currents()
+        .get(structural_certificate.current_id as usize)
+        .unwrap();
+    let evidence = RecurrenceNumericalRelationEvidence {
+        requested_mode: RecurrenceRelationDiscoveryMode::CertifiedReuse,
+        schedule_semantic_digest: semantic_digest.to_string(),
+        baseline_runtime_layout_digest: digest(61).to_string(),
+        source_semantics_sha256: digest(62).to_string(),
+        certificate_algorithm: NUMERICAL_RELATION_CERTIFICATE_ALGORITHM.to_owned(),
+        certificate_set_sha256: digest(63).to_string(),
+        numerical_candidate_count: 1,
+        verification_rejected_count: 3,
+        tested_hypothesis_count: 47,
+        mappings: vec![RecurrenceNumericalCurrentMapping {
+            current_id: structural_certificate.current_id,
+            representative_id: Some(structural_certificate.representative_id),
+            execution_representative_id: structural_certificate.representative_id,
+            relation_kind: if structural_certificate.factor == ExactComplexRational::ONE {
+                "equal".to_owned()
+            } else {
+                "opposite".to_owned()
+            },
+            factor: structural_certificate.factor,
+            current_dimension: current.component_count,
+            certificate_proof_sha256: structural_certificate.proof_sha256,
+            candidate_observations_sha256: structural_certificate.current_expression_sha256,
+            verification_observations_sha256: structural_certificate
+                .representative_expression_sha256,
+        }],
+    };
+    let options = RecurrenceRelationDiscoveryOptions::new(
+        RecurrenceRelationDiscoveryMode::CertifiedReuse,
+        96,
+        4,
+        4,
+        1.0e-70,
+        1.0e-80,
+        0x5059_414d,
+        "lc",
+    )
+    .unwrap()
+    .with_numerical_evidence(evidence)
+    .unwrap();
+    let (plan, report) = lower_recurrence_direct_plan_v2_with_relation_discovery(
+        &program,
+        &templates,
+        &catalog,
+        semantic_digest,
+        digest(2),
+        catalog_digest,
+        runtime_options(),
+        &options,
+    )
+    .unwrap();
+    let report = report.unwrap();
+    assert_eq!(
+        report.certificate_algorithm,
+        NUMERICAL_RELATION_CERTIFICATE_ALGORITHM
+    );
+    assert_eq!(report.tested_hypothesis_count, 47);
+    assert_eq!(report.verification_rejected_count, 3);
+    assert_eq!(report.numerical_candidate_count, 1);
+    assert_eq!(report.exact_certified_relation_count, 1);
+    assert_eq!(report.applied_relation_count, 1);
+    assert_eq!(report.scale_copy_row_count, 1);
+    assert_eq!(
+        plan.contributions()
+            .iter()
+            .filter(|row| row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE != 0)
+            .count(),
+        1
+    );
+
+    let mut mismatched = options.clone();
+    mismatched
+        .numerical_evidence
+        .as_mut()
+        .unwrap()
+        .schedule_semantic_digest = digest(64).to_string();
+    assert!(
+        lower_recurrence_direct_plan_v2_with_relation_discovery(
+            &program,
+            &templates,
+            &catalog,
+            semantic_digest,
+            digest(2),
+            catalog_digest,
+            runtime_options(),
+            &mismatched,
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("different semantic schedule")
+    );
 }

@@ -22,7 +22,12 @@ from pyamplicol._internal.versions import (
     active_source_revision,
     verify_native_module,
 )
-from pyamplicol.api.errors import GenerationError, ModelError, PyAmpliColError
+from pyamplicol.api.errors import (
+    ArtifactError,
+    GenerationError,
+    ModelError,
+    PyAmpliColError,
+)
 from pyamplicol.api.models import CompiledModel, _compiled_model_payload
 from pyamplicol.api.requests import (
     ModelSource,
@@ -55,7 +60,7 @@ from ..color.plan import (
 )
 from ..models.base import Model
 from ..models.loading import CompiledModel as _CompiledModelPayload
-from ..models.prepared import PreparedKernelPack
+from ..models.prepared import PreparedKernelPack, PreparedModelBundle
 from ..models.prepared_target import PreparedTargetError, validate_prepared_target
 from ..models.recurrence_direct_template import (
     RECURRENCE_DIRECT_TEMPLATE_ABI,
@@ -63,6 +68,8 @@ from ..models.recurrence_direct_template import (
 )
 from ..models.recurrence_template import RecurrenceTemplateCatalog
 from ..processes.ir import CanonicalProcessIR, ProcessLegIR
+from ..runtime.recurrence_exact._plan import _RecurrenceExactPlan
+from ..runtime.recurrence_exact._plan_v2 import _parse_exact_sections
 from .artifact_writer import (
     EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
     EAGER_PLAN_V3_ABI,
@@ -134,6 +141,12 @@ from .recurrence_columnar import (
     RECURRENCE_BUILDER_INPUT_ABI,
     RecurrenceBuilderInputV1,
     build_recurrence_builder_input_v1,
+)
+from .recurrence_numerical_current_warmup import (
+    build_recurrence_numerical_current_probe_points,
+    recurrence_numerical_current_opt_out_report,
+    run_recurrence_numerical_current_warmup,
+    validate_recurrence_numerical_current_application,
 )
 from .recurrence_physics import (
     build_recurrence_color_contraction,
@@ -338,8 +351,12 @@ class _RustRecurrenceLoweringBinding(Protocol):
         relation_discovery_mode: str,
         relation_discovery_precision_digits: int,
         relation_discovery_probe_count: int,
+        relation_discovery_verification_probe_count: int,
+        relation_discovery_relative_tolerance: float,
+        relation_discovery_absolute_tolerance: float,
         relation_discovery_seed: int,
         color_accuracy: str,
+        relation_discovery_evidence_json: bytes | None,
         progress_callback: Callable[[Mapping[str, object]], None] | None,
     ) -> object: ...
 
@@ -360,12 +377,89 @@ class _RustRecurrenceLoweringOutput:
     inspection_summary: Mapping[str, object]
     resolved_helicities: tuple[tuple[int, ...], ...]
     amplitude_destinations: tuple[tuple[int, int | None], ...]
+    exact_sections: Mapping[str, object]
+    numerical_current_reuse_report: Mapping[str, object] | None
     payload_path: Path
     payload_size_bytes: int
     payload_sha256: str
     member_count: int
     unpacked_size_bytes: int
     index_sha256: str
+
+
+def _recurrence_relation_reporting(
+    inspection: Mapping[str, object],
+    *,
+    mode: str,
+    lane_report: Mapping[str, object],
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Separate strict runtime inspection from artifact-wide provenance."""
+
+    if mode not in {"off", "diagnostic", "certified-reuse"}:
+        raise GenerationError(
+            f"unsupported recurrence numerical current mode {mode!r}"
+        )
+    certified = _result_integer(
+        lane_report.get("certified_relation_count"),
+        "recurrence certified relation count",
+        minimum=0,
+    )
+    applied = _result_integer(
+        lane_report.get("applied_relation_count"),
+        "recurrence applied relation count",
+        minimum=0,
+    )
+    warning = lane_report.get("warning")
+    if not isinstance(warning, Mapping):
+        raise GenerationError(
+            "recurrence numerical current report has no warning contract"
+        )
+    warning_required = warning.get("required") is True
+    if warning_required and (
+        warning.get("code") != NUMERICAL_CURRENT_RELATION_WARNING_CODE
+        or warning.get("message") != NUMERICAL_CURRENT_RELATION_WARNING
+    ):
+        raise GenerationError(
+            "recurrence numerical current report changed its warning contract"
+        )
+    aggregate_warning: dict[str, object] = (
+        {
+            "required": True,
+            "emit": "once-per-generated-artifact",
+            "code": NUMERICAL_CURRENT_RELATION_WARNING_CODE,
+            "message": NUMERICAL_CURRENT_RELATION_WARNING,
+        }
+        if warning_required
+        else {
+            "required": False,
+            "emit": "never",
+            "code": None,
+            "message": None,
+        }
+    )
+    runtime_inspection = dict(inspection)
+    native = runtime_inspection.pop("relation_discovery", None)
+    if native is not None and not isinstance(native, Mapping):
+        raise GenerationError(
+            "native recurrence relation application report is not a mapping"
+        )
+    aggregate = {
+        "schema_version": 1,
+        "abi": "pyamplicol-artifact-numerical-current-reuse-v1",
+        "requested_mode": mode,
+        "execution_mode": "recurrence",
+        "lane_count": 1,
+        "lanes": {"primary": dict(lane_report)},
+        "certified_relation_count": certified,
+        "applied_relation_count": applied,
+        "structural_exact_discovery": None,
+        "opt_out_flag": "--no-numerical-current-reuse",
+        "warning": aggregate_warning,
+        "native_relation_application": (
+            None if native is None else dict(native)
+        ),
+    }
+    return runtime_inspection, aggregate
 
 
 def _invoke_rust_eager_lowering_v1(
@@ -434,8 +528,12 @@ def _invoke_rust_recurrence_lowering_v2(
     relation_discovery_mode: str,
     relation_discovery_precision_digits: int,
     relation_discovery_probe_count: int,
+    relation_discovery_verification_probe_count: int,
+    relation_discovery_relative_tolerance: float,
+    relation_discovery_absolute_tolerance: float,
     relation_discovery_seed: int,
     color_accuracy: str,
+    relation_discovery_evidence_json: bytes | None = None,
     progress_callback: Callable[[Mapping[str, object]], None] | None = None,
 ) -> _RustRecurrenceLoweringOutput:
     try:
@@ -487,8 +585,18 @@ def _invoke_rust_recurrence_lowering_v2(
             relation_discovery_mode=relation_discovery_mode,
             relation_discovery_precision_digits=(relation_discovery_precision_digits),
             relation_discovery_probe_count=relation_discovery_probe_count,
+            relation_discovery_verification_probe_count=(
+                relation_discovery_verification_probe_count
+            ),
+            relation_discovery_relative_tolerance=(
+                relation_discovery_relative_tolerance
+            ),
+            relation_discovery_absolute_tolerance=(
+                relation_discovery_absolute_tolerance
+            ),
             relation_discovery_seed=relation_discovery_seed,
             color_accuracy=color_accuracy,
+            relation_discovery_evidence_json=relation_discovery_evidence_json,
             progress_callback=progress_callback,
         )
         result = _validate_rust_recurrence_lowering_result(
@@ -523,6 +631,8 @@ def _invoke_rust_recurrence_lowering_v2(
             tuple[tuple[int, int | None], ...],
             result["amplitude_destinations"],
         ),
+        exact_sections=cast(Mapping[str, object], result["exact_sections"]),
+        numerical_current_reuse_report=None,
         payload_path=destination,
         payload_size_bytes=payload_size,
         payload_sha256=payload_sha256,
@@ -560,6 +670,7 @@ def _validate_rust_recurrence_lowering_result(
             "inspection_summary",
             "resolved_helicities",
             "amplitude_destinations",
+            "exact_sections",
         },
     )
     expected = {
@@ -647,6 +758,10 @@ def _validate_rust_recurrence_lowering_result(
         result["inspection_summary"],
         "Rust recurrence inspection summary",
     )
+    exact_sections = _canonical_json_mapping(
+        result["exact_sections"],
+        "Rust recurrence exact sections",
+    )
     raw_helicities = result["resolved_helicities"]
     if isinstance(raw_helicities, str | bytes) or not isinstance(
         raw_helicities, Sequence
@@ -705,6 +820,7 @@ def _validate_rust_recurrence_lowering_result(
         "inspection_summary": inspection,
         "resolved_helicities": tuple(resolved_helicities),
         "amplitude_destinations": tuple(amplitude_destinations),
+        "exact_sections": exact_sections,
         "member_count": member_count,
         "unpacked_size_bytes": unpacked_size,
         "index_sha256": index_sha256,
@@ -1060,6 +1176,7 @@ class _GeneratedRecurrenceProcess:
 
 @dataclass(frozen=True, slots=True)
 class _RecurrenceModelInputs:
+    bundle: PreparedModelBundle
     catalog: RecurrenceTemplateCatalog
     template_input: RecurrenceTemplateInputV1
     direct_template_catalog: RecurrenceDirectTemplateCatalogV1
@@ -1887,6 +2004,28 @@ class GenerationBackend:
                     executor.shutdown(wait=True, cancel_futures=True)
 
             artifact_processes = tuple(item.artifact for item in generated)
+            recurrence_warning_required = any(
+                isinstance(
+                    process.generation_filters.get("relation_discovery"),
+                    Mapping,
+                )
+                and isinstance(
+                    cast(
+                        Mapping[str, object],
+                        process.generation_filters["relation_discovery"],
+                    ).get("warning"),
+                    Mapping,
+                )
+                and cast(
+                    Mapping[str, object],
+                    cast(
+                        Mapping[str, object],
+                        process.generation_filters["relation_discovery"],
+                    )["warning"],
+                ).get("required")
+                is True
+                for process in artifact_processes
+            )
             with reporter.phase(
                 "artifact-writing",
                 "Writing schema-v3 artifact",
@@ -1929,6 +2068,13 @@ class GenerationBackend:
                         "file_count": len(write_result.files),
                     },
                 )
+            if recurrence_warning_required:
+                _LOGGER.warning(
+                    "%s [%s]",
+                    NUMERICAL_CURRENT_RELATION_WARNING,
+                    NUMERICAL_CURRENT_RELATION_WARNING_CODE,
+                )
+
             validation_points_by_process = {
                 item.expanded.request.name: item.validation_points for item in generated
             }
@@ -2489,6 +2635,7 @@ class GenerationBackend:
                 "recurrence generation has no recurrence-direct-template-v1 catalog"
             )
         return _RecurrenceModelInputs(
+            bundle=bundle,
             catalog=catalog,
             template_input=build_recurrence_template_input_v1(catalog),
             direct_template_catalog=direct_catalog,
@@ -2593,6 +2740,12 @@ class GenerationBackend:
                 },
             )
             builder_input = build_recurrence_builder_input_v1(logical)
+            runtime_metadata = build_recurrence_runtime_metadata(
+                logical,
+                model_inputs.catalog,
+                model,
+                normalization_payload,
+            )
             run = self._run_config
             if run is None:  # pragma: no cover - recurrence requires RunConfig
                 raise GenerationError(
@@ -2679,6 +2832,194 @@ class GenerationBackend:
                         details=display_details,
                     )
 
+                final_schedule_path = (
+                    temporary_root
+                    / "recurrence-schedules"
+                    / candidate_schedule_digest
+                    / "recurrence-runtime.pacbin"
+                )
+
+                def lower_schedule() -> _RustRecurrenceLoweringOutput:
+                    def lower_once(
+                        destination: Path,
+                        *,
+                        mode: str,
+                        evidence: bytes | None,
+                        report_progress: bool,
+                    ) -> _RustRecurrenceLoweringOutput:
+                        return _invoke_rust_recurrence_lowering_v2(
+                            builder_input,
+                            model_inputs.template_input,
+                            model_inputs.direct_template_catalog,
+                            model_inputs.prepared_kernel_pack_digest,
+                            candidate_schedule_digest,
+                            destination,
+                            point_tile_size=recurrence_evaluator.point_tile_size,
+                            workspace_mib=recurrence_evaluator.workspace_mib,
+                            relation_discovery_mode=mode,
+                            relation_discovery_precision_digits=(
+                                relation_discovery.precision_digits
+                            ),
+                            relation_discovery_probe_count=(
+                                relation_discovery.probe_count
+                            ),
+                            relation_discovery_verification_probe_count=(
+                                relation_discovery.verification_probe_count
+                            ),
+                            relation_discovery_relative_tolerance=(
+                                relation_discovery.relative_tolerance
+                            ),
+                            relation_discovery_absolute_tolerance=(
+                                relation_discovery.absolute_tolerance
+                            ),
+                            relation_discovery_seed=relation_discovery.seed,
+                            color_accuracy=str(
+                                expanded.process_ir.color_accuracy
+                            ),
+                            relation_discovery_evidence_json=evidence,
+                            progress_callback=(
+                                report_native
+                                if report_progress and native_task.sink is not None
+                                else None
+                            ),
+                        )
+
+                    if relation_discovery_mode == "off":
+                        output = lower_once(
+                            final_schedule_path,
+                            mode="off",
+                            evidence=None,
+                            report_progress=True,
+                        )
+                        lane_report = recurrence_numerical_current_opt_out_report(
+                            _parse_exact_sections(
+                                output.exact_sections,
+                                process_name,
+                            ),
+                            color_accuracy=str(
+                                expanded.process_ir.color_accuracy
+                            ),
+                        )
+                        runtime_inspection, aggregate_report = (
+                            _recurrence_relation_reporting(
+                                output.inspection_summary,
+                                mode=relation_discovery_mode,
+                                lane_report=lane_report,
+                            )
+                        )
+                        return replace(
+                            output,
+                            inspection_summary=runtime_inspection,
+                            numerical_current_reuse_report=aggregate_report,
+                        )
+
+                    baseline = lower_once(
+                        temporary_root
+                        / ".numerical-current-baseline"
+                        / candidate_schedule_digest
+                        / "recurrence-runtime.pacbin",
+                        mode="off",
+                        evidence=None,
+                        report_progress=True,
+                    )
+                    candidate_points, verification_points = (
+                        build_recurrence_numerical_current_probe_points(
+                            expanded.process_ir,
+                            model,
+                            process_id=process_name,
+                            seed=relation_discovery.seed,
+                            candidate_count=relation_discovery.probe_count,
+                            verification_count=(
+                                relation_discovery.verification_probe_count
+                            ),
+                        )
+                    )
+                    try:
+                        with _SYMBOLICA_MATERIALIZATION_LOCK:
+                            baseline_plan = _RecurrenceExactPlan.from_generation(
+                                raw_sections=baseline.exact_sections,
+                                process_id=process_name,
+                                bundle=model_inputs.bundle,
+                                runtime_metadata=runtime_metadata,
+                            )
+                            warmup = run_recurrence_numerical_current_warmup(
+                                baseline_plan,
+                                candidate_points=candidate_points,
+                                verification_points=verification_points,
+                                mode=cast(
+                                    Literal[
+                                        "diagnostic",
+                                        "certified-reuse",
+                                    ],
+                                    relation_discovery_mode,
+                                ),
+                                color_accuracy=str(
+                                    expanded.process_ir.color_accuracy
+                                ),
+                                precision_digits=(
+                                    relation_discovery.precision_digits
+                                ),
+                                seed=relation_discovery.seed,
+                                relative_tolerance=(
+                                    relation_discovery.relative_tolerance
+                                ),
+                                absolute_tolerance=(
+                                    relation_discovery.absolute_tolerance
+                                ),
+                            )
+                    except (ArtifactError, ValueError) as exc:
+                        raise GenerationError(
+                            f"process {process_name!r} recurrence numerical "
+                            f"current warm-up failed closed: {exc}"
+                        ) from exc
+                    output = lower_once(
+                        final_schedule_path,
+                        mode=relation_discovery_mode,
+                        evidence=warmup.evidence_json,
+                        report_progress=False,
+                    )
+                    try:
+                        with _SYMBOLICA_MATERIALIZATION_LOCK:
+                            applied_plan = _RecurrenceExactPlan.from_generation(
+                                raw_sections=output.exact_sections,
+                                process_id=process_name,
+                                bundle=model_inputs.bundle,
+                                runtime_metadata=runtime_metadata,
+                            )
+                            warmup = (
+                                validate_recurrence_numerical_current_application(
+                                    warmup,
+                                    applied_plan,
+                                    precision_digits=(
+                                        relation_discovery.precision_digits
+                                    ),
+                                    seed=relation_discovery.seed,
+                                    relative_tolerance=(
+                                        relation_discovery.relative_tolerance
+                                    ),
+                                    absolute_tolerance=(
+                                        relation_discovery.absolute_tolerance
+                                    ),
+                                )
+                            )
+                    except (ArtifactError, ValueError) as exc:
+                        raise GenerationError(
+                            f"process {process_name!r} optimized recurrence "
+                            f"current replay failed closed: {exc}"
+                        ) from exc
+                    runtime_inspection, aggregate_report = (
+                        _recurrence_relation_reporting(
+                            output.inspection_summary,
+                            mode=relation_discovery_mode,
+                            lane_report=warmup.to_json_dict(),
+                        )
+                    )
+                    return replace(
+                        output,
+                        inspection_summary=runtime_inspection,
+                        numerical_current_reuse_report=aggregate_report,
+                    )
+
                 shared = lowering_cache.lower_process(
                     logical,
                     schedule_digest=candidate_schedule_digest,
@@ -2686,29 +3027,7 @@ class GenerationBackend:
                         model_inputs.direct_template_catalog.templates
                     ),
                     parameter_slot_count=len(model_inputs.catalog.parameters),
-                    lower=lambda: _invoke_rust_recurrence_lowering_v2(
-                        builder_input,
-                        model_inputs.template_input,
-                        model_inputs.direct_template_catalog,
-                        model_inputs.prepared_kernel_pack_digest,
-                        candidate_schedule_digest,
-                        temporary_root
-                        / "recurrence-schedules"
-                        / candidate_schedule_digest
-                        / "recurrence-runtime.pacbin",
-                        point_tile_size=recurrence_evaluator.point_tile_size,
-                        workspace_mib=recurrence_evaluator.workspace_mib,
-                        relation_discovery_mode=relation_discovery_mode,
-                        relation_discovery_precision_digits=(
-                            relation_discovery.precision_digits
-                        ),
-                        relation_discovery_probe_count=(relation_discovery.probe_count),
-                        relation_discovery_seed=relation_discovery.seed,
-                        color_accuracy=str(expanded.process_ir.color_accuracy),
-                        progress_callback=(
-                            report_native if native_task.sink is not None else None
-                        ),
-                    ),
+                    lower=lower_schedule,
                 )
                 output = shared.output
                 schedule_digest = shared.schedule_digest
@@ -2901,20 +3220,14 @@ class GenerationBackend:
                     }
                 ),
             }
-        relation_discovery_payload: dict[str, object] | None = None
-        native_relation_discovery = inspection_summary.get("relation_discovery")
-        if relation_discovery_mode != "off":
-            if not isinstance(native_relation_discovery, Mapping):
-                raise GenerationError(
-                    "opt-in recurrence relation discovery did not publish its "
-                    "native exact-replay report"
-                )
-            relation_discovery_payload = dict(native_relation_discovery)
-        elif native_relation_discovery is not None:
+        relation_discovery_payload: dict[str, object]
+        numerical_current_reuse = output.numerical_current_reuse_report
+        if not isinstance(numerical_current_reuse, Mapping):
             raise GenerationError(
-                "off-mode recurrence lowering unexpectedly published relation "
-                "discovery metadata"
+                "recurrence numerical current lowering did not publish its "
+                "aggregate report"
             )
+        relation_discovery_payload = dict(numerical_current_reuse)
         artifact = RecurrenceProcessArtifact(
             process_id=process_name,
             expression=expanded.process_ir.process,
@@ -2939,12 +3252,7 @@ class GenerationBackend:
             ),
             referenced_kernel_ids=recurrence_referenced_kernel_ids(logical),
             inspection_summary=inspection_summary,
-            runtime_metadata=build_recurrence_runtime_metadata(
-                logical,
-                model_inputs.catalog,
-                model,
-                normalization_payload,
-            ),
+            runtime_metadata=runtime_metadata,
             color_contraction_payload=color_contraction_payload,
             color_contraction_summary=color_contraction_summary,
             point_tile_size=run.evaluator.recurrence.point_tile_size,
@@ -2954,11 +3262,7 @@ class GenerationBackend:
             generation_filters={
                 "lc_flow_layout": layout,
                 "recurrence": recurrence_summary,
-                **(
-                    {}
-                    if relation_discovery_payload is None
-                    else {"relation_discovery": relation_discovery_payload}
-                ),
+                "relation_discovery": relation_discovery_payload,
             },
             process_support_mask=1 << index,
             recurrence_process_remap=process_remap,

@@ -22,9 +22,10 @@ use super::direct_plan::{
 };
 use super::layout::RuntimeSourceVariantBinding;
 use super::relation::{
-    RecurrenceRelationDiscoveryMode, RecurrenceRelationDiscoveryOptions,
+    RecurrenceCurrentRelationCertificate, RecurrenceRelationDiscoveryMode,
+    RecurrenceRelationDiscoveryOptions, RecurrenceRelationDiscoveryOutcome,
     RecurrenceRelationDiscoveryReport, RelationCurrentContract, RelationCurrentInput,
-    RelationTermInput, discover_recurrence_current_relations,
+    RelationTermInput, discover_recurrence_current_relations, relation_certificate_algorithm,
 };
 use super::template::{
     EvaluatorContractKind, MISSING_U32, OwnedRecurrenceTemplateInput, RuntimeHelicityVariantRow,
@@ -43,6 +44,13 @@ const DIRECT_ROW_FLAGS_NONE: u32 = 0;
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(format!("recurrence direct lowering: {}", message.into()))
+}
+
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|character| character.is_ascii_digit() || (b'a'..=b'f').contains(&character))
 }
 
 /// Runtime sizing recorded in the immutable direct plan.
@@ -466,8 +474,7 @@ fn lower_selector_domains(program: &RecurrenceProgram) -> RusticolResult<Lowered
             return Err(invalid("referenced selector sector is out of bounds"));
         }
         let mut domain = vec![0_u64; word_count];
-        domain[sector_index / u64::BITS as usize] |=
-            1_u64 << (sector_index % u64::BITS as usize);
+        domain[sector_index / u64::BITS as usize] |= 1_u64 << (sector_index % u64::BITS as usize);
         sector_domain_ids[sector_index] = Some(intern(&domain)?);
     }
     let current_domain_ids = current_words
@@ -1088,6 +1095,7 @@ fn build_direct_parts(
 
     let relation_report = apply_recurrence_relation_discovery(
         program,
+        semantic_digest,
         &arena,
         &momentum_ids,
         &selector_domains.current_domain_ids,
@@ -1390,6 +1398,7 @@ fn build_direct_parts(
 #[allow(clippy::too_many_arguments)]
 fn apply_recurrence_relation_discovery(
     program: &RecurrenceProgram,
+    semantic_digest: SemanticDigest,
     arena: &DirectArenaLayout,
     momentum_ids: &BTreeMap<CanonicalMomentumLinearForm, u32>,
     current_selector_domain_ids: &[u32],
@@ -1488,7 +1497,123 @@ fn apply_recurrence_relation_discovery(
             })
         })
         .collect::<RusticolResult<Vec<_>>>()?;
-    let outcome = discover_recurrence_current_relations(&inputs, options)?;
+    let (outcome, certificate_algorithm, tested_hypothesis_count, verification_rejected_count) =
+        if let Some(evidence) = options.numerical_evidence.as_ref() {
+            if evidence.schedule_semantic_digest != semantic_digest.to_string() {
+                return Err(invalid(
+                    "numerical evidence selects a different semantic schedule",
+                ));
+            }
+            for (label, value) in [
+                (
+                    "baseline runtime-layout digest",
+                    evidence.baseline_runtime_layout_digest.as_str(),
+                ),
+                (
+                    "source-semantics digest",
+                    evidence.source_semantics_sha256.as_str(),
+                ),
+                (
+                    "certificate-set digest",
+                    evidence.certificate_set_sha256.as_str(),
+                ),
+            ] {
+                if !is_sha256(value) {
+                    return Err(invalid(format!(
+                        "numerical evidence {label} is not a lowercase SHA-256"
+                    )));
+                }
+            }
+            if evidence
+                .mappings
+                .windows(2)
+                .any(|pair| pair[0].current_id >= pair[1].current_id)
+            {
+                return Err(invalid(
+                    "numerical evidence mappings are not in increasing current order",
+                ));
+            }
+            let mut relations = Vec::with_capacity(evidence.mappings.len());
+            for mapping in &evidence.mappings {
+                let current = inputs
+                    .get(mapping.current_id as usize)
+                    .ok_or_else(|| invalid("numerical evidence current is absent"))?;
+                let representative = inputs
+                    .get(mapping.execution_representative_id as usize)
+                    .ok_or_else(|| {
+                        invalid("numerical evidence execution representative is absent")
+                    })?;
+                if current.current_id != mapping.current_id
+                    || current.is_source
+                    || representative.current_id != mapping.execution_representative_id
+                    || current.contract != representative.contract
+                    || mapping.current_dimension != current.contract.component_count
+                    || !is_sha256(&mapping.certificate_proof_sha256)
+                    || !is_sha256(&mapping.candidate_observations_sha256)
+                    || !is_sha256(&mapping.verification_observations_sha256)
+                {
+                    return Err(invalid(
+                        "numerical evidence violates its exact current contract",
+                    ));
+                }
+                let expected_factor = match mapping.relation_kind.as_str() {
+                    "equal" => ExactComplexRational::ONE,
+                    "opposite" => ExactComplexRational::ONE.checked_neg()?,
+                    "zero" => ExactComplexRational::ZERO,
+                    _ => {
+                        return Err(invalid("numerical evidence relation kind is unsupported"));
+                    }
+                };
+                if mapping.factor != expected_factor {
+                    return Err(invalid(
+                        "numerical evidence relation factor is not exact ±1/zero",
+                    ));
+                }
+                if mapping.relation_kind == "zero" {
+                    if mapping.representative_id.is_some()
+                        || mapping.execution_representative_id > mapping.current_id
+                    {
+                        return Err(invalid(
+                            "zero-current evidence has an invalid representative",
+                        ));
+                    }
+                } else if mapping.representative_id != Some(mapping.execution_representative_id)
+                    || mapping.execution_representative_id >= mapping.current_id
+                {
+                    return Err(invalid(
+                        "equal/opposite evidence is not topologically ordered",
+                    ));
+                }
+                relations.push(RecurrenceCurrentRelationCertificate {
+                    current_id: mapping.current_id,
+                    representative_id: mapping.execution_representative_id,
+                    factor: mapping.factor,
+                    current_expression_sha256: mapping.candidate_observations_sha256.clone(),
+                    representative_expression_sha256: mapping
+                        .verification_observations_sha256
+                        .clone(),
+                    proof_sha256: mapping.certificate_proof_sha256.clone(),
+                });
+            }
+            (
+                RecurrenceRelationDiscoveryOutcome {
+                    relations,
+                    numerical_candidate_count: evidence.numerical_candidate_count,
+                    uncertified_candidate_count: evidence.verification_rejected_count,
+                    rejected_candidates: Vec::new(),
+                    effective_projection_count: options
+                        .probe_count
+                        .checked_add(options.verification_probe_count)
+                        .ok_or_else(|| invalid("numerical probe count overflows u32"))?,
+                },
+                evidence.certificate_algorithm.clone(),
+                evidence.tested_hypothesis_count,
+                evidence.verification_rejected_count,
+            )
+        } else {
+            let outcome = discover_recurrence_current_relations(&inputs, options)?;
+            (outcome, relation_certificate_algorithm().to_owned(), 0, 0)
+        };
 
     let removed_contribution_count = if options.mode.applies_reuse()
         && !outcome.relations.is_empty()
@@ -1591,6 +1716,9 @@ fn apply_recurrence_relation_discovery(
         precision_digits: options.precision_digits,
         probe_count: options.probe_count,
         seed: options.seed,
+        certificate_algorithm,
+        tested_hypothesis_count,
+        verification_rejected_count,
         effective_projection_count: outcome.effective_projection_count,
         numerical_candidate_count: outcome.numerical_candidate_count,
         uncertified_candidate_count: outcome.uncertified_candidate_count,

@@ -89,9 +89,10 @@ pub use program::{
     closure_selector_domain_digest_v2, three_line_traversal_proof_digest_v1,
 };
 pub use relation::{
-    RecurrenceCurrentRelationCertificate, RecurrenceRelationDiscoveryMode,
-    RecurrenceRelationDiscoveryOptions, RecurrenceRelationDiscoveryReport,
-    relation_certificate_algorithm,
+    NUMERICAL_RELATION_CERTIFICATE_ALGORITHM, RecurrenceCurrentRelationCertificate,
+    RecurrenceNumericalCurrentMapping, RecurrenceNumericalRelationEvidence,
+    RecurrenceRelationDiscoveryMode, RecurrenceRelationDiscoveryOptions,
+    RecurrenceRelationDiscoveryReport, relation_certificate_algorithm,
 };
 /// Semantic prepared-model companion ABI.
 pub const RECURRENCE_TEMPLATE_ABI: &str = "pyamplicol-recurrence-template-v1";

@@ -11,7 +11,11 @@ from pathlib import Path
 from pyamplicol._internal.versions import PROCESS_ARTIFACT_SCHEMA_VERSION
 from pyamplicol.api.errors import ArtifactError, CompatibilityError
 from pyamplicol.artifacts.manifest import ArtifactManifest
-from pyamplicol.models.prepared import PreparedKernelPack, PreparedKernelRecord
+from pyamplicol.models.prepared import (
+    PreparedKernelPack,
+    PreparedKernelRecord,
+    PreparedModelBundle,
+)
 from pyamplicol.models.recurrence_direct_template import (
     RECURRENCE_DIRECT_IDENTITY_FINALIZER,
 )
@@ -27,6 +31,7 @@ from pyamplicol.runtime.eager_exact._plan import (
     _ExactModelParameterState,
     _load_exact_kernel_pack,
 )
+from pyamplicol.runtime.symbolica_exact import _ExactEvaluator
 
 from ._color import (
     RECURRENCE_CONTRACTED_COLOR_CAPABILITY,
@@ -41,6 +46,7 @@ from ._plan_v2 import (
     _Executor,
     _load_recurrence_exact_sections_v1,
     _NativeExactSectionsLoader,
+    _parse_exact_sections,
     _RecurrenceExactSectionsV1,
 )
 
@@ -111,6 +117,7 @@ class _RecurrenceExactPlan:
     prepared_defaults: tuple[tuple[Decimal, Decimal], ...]
     parameter_projection: tuple[_ParameterProjectionRow, ...]
     parameter_derivation: _PreparedParameterDerivation | None
+    runtime_defaults: tuple[Decimal, ...] = ()
     color_contraction: _RecurrenceColorContraction | None = None
 
     @classmethod
@@ -162,6 +169,7 @@ class _RecurrenceExactPlan:
                 _sequence(metadata.get("runtime_parameters"), "runtime parameters")
             )
         )
+        runtime_defaults = _parse_runtime_parameter_defaults(runtime_parameters)
         defaults = tuple(
             _parse_complex_default(value, index)
             for index, value in enumerate(
@@ -217,9 +225,118 @@ class _RecurrenceExactPlan:
             prepared_defaults=defaults,
             parameter_projection=projection_rows,
             parameter_derivation=derivation,
+            runtime_defaults=runtime_defaults,
             color_contraction=color_contraction,
         )
         result._validate(pack)
+        return result
+
+    @classmethod
+    def from_generation(
+        cls,
+        *,
+        raw_sections: object,
+        process_id: str,
+        bundle: PreparedModelBundle,
+        runtime_metadata: Mapping[str, object],
+    ) -> _RecurrenceExactPlan:
+        """Construct an unpublished exact plan for generation-time probes."""
+
+        sections = _parse_exact_sections(raw_sections, process_id)
+        pack = bundle.kernel_pack
+        payload_root = Path()
+
+        def kernel_loader(
+            record: PreparedKernelRecord,
+            root: Path,
+        ) -> _ExactEvaluator:
+            return _ExactEvaluator.load(
+                {
+                    "evaluator_state_path": record.exact_evaluator_state_path,
+                    "input_len": record.input_arity,
+                },
+                root,
+                state_loader=bundle.read_payload,
+            )
+
+        kernels = {
+            record.kernel_id: _LazyExactKernel(
+                record,
+                payload_root,
+                kernel_loader,
+            )
+            for record in pack.kernels
+            if record.contract_kind != "model-parameter"
+        }
+        runtime_parameters = tuple(
+            _mapping(value, f"runtime parameter {index}")
+            for index, value in enumerate(
+                _sequence(
+                    runtime_metadata.get("runtime_parameters"),
+                    "runtime parameters",
+                )
+            )
+        )
+        runtime_defaults = _parse_runtime_parameter_defaults(runtime_parameters)
+        defaults = tuple(
+            _parse_complex_default(value, index)
+            for index, value in enumerate(
+                _sequence(
+                    runtime_metadata.get("prepared_parameter_defaults"),
+                    "prepared parameter defaults",
+                )
+            )
+        )
+        if len(defaults) != sections.parameter_value_count:
+            raise ArtifactError(
+                "prepared parameter defaults do not match the recurrence plan"
+            )
+        projection_rows, external_prepared_by_name = _parameter_projection(
+            runtime_metadata,
+            len(runtime_parameters),
+            len(defaults),
+        )
+        prepared_by_name = dict(
+            _prepared_parameter_indices(pack.kernels, len(defaults))
+        )
+        for name, prepared_index in external_prepared_by_name.items():
+            previous = prepared_by_name.setdefault(name, prepared_index)
+            if previous != prepared_index:
+                raise ArtifactError(
+                    f"prepared parameter {name!r} has conflicting stable indices"
+                )
+        derivation = _prepared_parameter_derivation(
+            pack.kernels,
+            payload_root,
+            kernel_loader,
+            prepared_by_name,
+        )
+        executor_exact_kernel_ids = _executor_exact_kernel_ids(pack)
+        result = cls(
+            sections=sections,
+            kernels=kernels,
+            executors={row.executor_id: row for row in sections.executors},
+            executor_exact_kernel_ids=executor_exact_kernel_ids,
+            executor_parent_permutations=_executor_parent_permutations(pack),
+            source_templates=_source_templates(
+                runtime_metadata,
+                prepared_by_name,
+            ),
+            initial_source_slots=_initial_source_slots(
+                runtime_metadata,
+                sections.external_source_count,
+            ),
+            executor_couplings=_executor_couplings(
+                pack,
+                executor_exact_kernel_ids,
+            ),
+            prepared_defaults=defaults,
+            parameter_projection=projection_rows,
+            parameter_derivation=derivation,
+            runtime_defaults=runtime_defaults,
+            color_contraction=None,
+        )
+        result._validate(pack, allow_missing_color_contraction=True)
         return result
 
     def resolve_model_parameters(
@@ -251,9 +368,19 @@ class _RecurrenceExactPlan:
             ),
         )
 
-    def _validate(self, pack: PreparedKernelPack) -> None:
-        if (self.sections.strategy == "contracted-color-union") != (
-            self.color_contraction is not None
+    def _validate(
+        self,
+        pack: PreparedKernelPack,
+        *,
+        allow_missing_color_contraction: bool = False,
+    ) -> None:
+        if (
+            self.sections.strategy == "contracted-color-union"
+            and self.color_contraction is None
+            and not allow_missing_color_contraction
+        ) or (
+            self.sections.strategy != "contracted-color-union"
+            and self.color_contraction is not None
         ):
             raise ArtifactError(
                 "recurrence exact plan and contracted-color payload disagree"
@@ -560,6 +687,25 @@ def _parse_complex_default(
         values[1],
         f"prepared parameter default {index}",
     )
+
+
+def _parse_runtime_parameter_defaults(
+    runtime_parameters: Sequence[Mapping[str, object]],
+) -> tuple[Decimal, ...]:
+    defaults = []
+    for index, parameter in enumerate(runtime_parameters):
+        if parameter.get("parameter_index") != index:
+            raise ArtifactError(
+                f"runtime parameter {index} has a non-canonical parameter index"
+            )
+        defaults.append(
+            _complex_pair(
+                parameter.get("default"),
+                0,
+                f"runtime parameter {index} default",
+            )[0]
+        )
+    return tuple(defaults)
 
 
 def _parameter_projection(

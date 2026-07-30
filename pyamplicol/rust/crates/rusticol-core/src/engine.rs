@@ -3152,7 +3152,7 @@ pub struct NativeRecurrenceExactFactor {
     pub imaginary_denominator: String,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct NativeRecurrenceExactExecutor {
     pub direct_executor_id: u32,
     pub role: String,

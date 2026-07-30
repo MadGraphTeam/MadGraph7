@@ -128,6 +128,7 @@ def _generation_config(
                 mode=relation_discovery_mode,
                 precision_digits=80,
                 probe_count=2,
+                verification_probe_count=2,
                 seed=17,
             ),
             validation=GenerationValidationConfig(
@@ -402,20 +403,6 @@ def _manifest_relation_discovery(artifact: Path) -> object:
     filters = process["filters"]
     assert isinstance(filters, dict)
     return filters.get("relation_discovery")
-
-
-def _relation_discovery_evidence(payload: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: value
-        for key, value in payload.items()
-        if key
-        not in {
-            "requested_mode",
-            "state",
-            "applied_relation_count",
-            "scale_copy_row_count",
-        }
-    }
 
 
 def _assert_runtime_values_match(
@@ -875,6 +862,7 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
 
     executions: dict[str, dict[str, Any]] = {}
     reports: dict[str, dict[str, Any]] = {}
+    lanes: dict[str, dict[str, Any]] = {}
     runtimes: dict[str, Runtime] = {}
     for mode in ("off", "diagnostic", "certified-reuse"):
         artifact = tmp_path / f"{model_source}-{color_accuracy}-{mode}"
@@ -895,95 +883,92 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
         runtimes[mode] = runtime
         _assert_runtime_values_match(runtime, compiled, points)
 
-        report = execution["plan"]["inspection_summary"].get(
-            "relation_discovery"
-        )
+        report = execution["plan"]["inspection_summary"].get("relation_discovery")
         manifest_report = _manifest_relation_discovery(artifact)
-        if mode == "off":
-            assert report is None
-            assert manifest_report is None
-            continue
-
-        assert isinstance(report, dict)
-        reports[mode] = report
-        assert manifest_report == report
-        assert report["requested_mode"] == mode
-        assert report["scope"] == {
+        assert report is None
+        assert isinstance(manifest_report, dict)
+        reports[mode] = manifest_report
+        assert manifest_report["abi"] == (
+            "pyamplicol-artifact-numerical-current-reuse-v1"
+        )
+        assert manifest_report["requested_mode"] == mode
+        assert manifest_report["execution_mode"] == "recurrence"
+        assert manifest_report["lane_count"] == 1
+        lane = manifest_report["lanes"]["primary"]
+        assert isinstance(lane, dict)
+        lanes[mode] = lane
+        assert lane["requested_mode"] == mode
+        assert lane["scope"] == {
             "execution_mode": "recurrence",
             "color_accuracy": color_accuracy,
             "representation": "recurrence-direct-plan-v2",
-            "lc_flow_layout": (
-                "topology-replay"
-                if color_accuracy == "lc"
-                else "contracted-color-union"
-            ),
         }
-        assert report["probe"] == {
-            "status": "completed",
-            "precision_digits": 80,
-            "probe_count": 2,
-            "effective_projection_count": report["probe"][
-                "effective_projection_count"
-            ],
-            "seed": 17,
-            "deterministic": True,
-            "candidate_only": True,
-        }
-        assert report["probe"]["effective_projection_count"] >= 2
-        assert report["certificate_count"] == report[
-            "exact_certified_relation_count"
+        assert manifest_report["certified_relation_count"] == lane[
+            "certified_relation_count"
         ]
-        assert len(report["certificates"]) == min(
-            report["certificate_count"],
-            16,
-        )
-        assert report["certificates_truncated"] is (
-            report["certificate_count"] > 16
-        )
-        assert report["certificate_replay"]["status"] == (
-            "verified"
-            if report["exact_certified_relation_count"]
-            else "no-certified-relations"
-        )
+        assert manifest_report["applied_relation_count"] == lane[
+            "applied_relation_count"
+        ]
+        if mode == "off":
+            assert lane["state"] == "disabled-by-user"
+            assert lane["candidate_capture"] is None
+            assert lane["verification_capture"] is None
+            assert lane["application_capture"] is None
+            assert lane["warning"]["required"] is False
+            assert manifest_report["warning"]["required"] is False
+            assert manifest_report["native_relation_application"] is None
+            continue
 
-        schedule = execution["plan"]["inspection_summary"]["schedule"]
-        assert report["current_count_before"] == schedule["current_count"]
-        assert report["current_count_after"] == schedule["current_count"]
-        assert (
-            report["interaction_evaluation_count_before"]
-            == report["contribution_count_before"]
+        candidate = lane["candidate_capture"]
+        verification = lane["verification_capture"]
+        assert isinstance(candidate, dict)
+        assert isinstance(verification, dict)
+        assert candidate["precision_digits"] == 80
+        assert candidate["point_count"] == 2
+        assert verification["point_count"] == 2
+        assert set(candidate["kinematic_sha256s"]).isdisjoint(
+            verification["kinematic_sha256s"]
         )
-        assert (
-            report["interaction_evaluation_count_after"]
-            <= report["interaction_evaluation_count_before"]
+        discovery = lane["discovery"]
+        assert isinstance(discovery, dict)
+        probe_contract = discovery["probe_contract"]
+        assert isinstance(probe_contract, dict)
+        assert probe_contract["algorithm"] == (
+            "authenticated-independent-recursive-decimal-probes-v1"
         )
-        assert report["interaction_evaluation_savings"] == (
-            report["interaction_evaluation_count_before"]
-            - report["interaction_evaluation_count_after"]
-        )
-        assert report["contribution_count_after"] == (
-            report["interaction_evaluation_count_after"]
-            + report["exact_certified_relation_count"]
-        )
-
+        assert probe_contract["independent_verification"] is True
+        assert probe_contract["current_dimension_bound"] is True
+        assert discovery["certified_numerical_relation_count"] == lane[
+            "certified_relation_count"
+        ]
+        application = lane["application"]
+        assert isinstance(application, dict)
+        assert application["certified_relation_count"] == lane[
+            "certified_relation_count"
+        ]
+        native = manifest_report["native_relation_application"]
+        assert isinstance(native, dict)
+        assert native["requested_mode"] == mode
+        assert native["exact_certified_relation_count"] == lane[
+            "certified_relation_count"
+        ]
         if mode == "diagnostic":
-            assert report["state"] == "diagnostic-only"
-            assert report["applied_relation_count"] == 0
-            assert report["scale_copy_row_count"] == 0
-            assert (
-                report["contribution_count_before"]
-                == schedule["contribution_count"]
-            )
+            assert lane["applied_relation_count"] == 0
+            assert lane["warning"]["required"] is False
+            assert manifest_report["warning"]["required"] is False
+            assert native["applied_relation_count"] == 0
+            assert native["scale_copy_row_count"] == 0
         else:
-            applied = report["applied_relation_count"]
-            assert applied == report["exact_certified_relation_count"]
-            assert report["scale_copy_row_count"] == applied
-            assert report["state"] == (
-                "exact-certified-applied" if applied else "diagnostic-only"
-            )
-            assert (
-                report["contribution_count_after"]
-                == schedule["contribution_count"]
+            applied = lane["applied_relation_count"]
+            assert applied == lane["certified_relation_count"]
+            assert native["applied_relation_count"] == applied
+            assert native["scale_copy_row_count"] == applied
+            assert lane["warning"]["required"] is (applied > 0)
+            assert manifest_report["warning"]["required"] is (applied > 0)
+            assert lane["application_validation"]["status"] == (
+                "verified"
+                if applied
+                else "not-required-no-applied-relations"
             )
 
     _assert_runtime_values_match(runtimes["diagnostic"], runtimes["off"], points)
@@ -1006,19 +991,61 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
         "direct_arena",
     ):
         assert off_inspection.get(key) == diagnostic_inspection.get(key)
-    assert _relation_discovery_evidence(
-        reports["diagnostic"]
-    ) == _relation_discovery_evidence(reports["certified-reuse"])
+    for capture_name in ("candidate_capture", "verification_capture"):
+        diagnostic_capture = lanes["diagnostic"][capture_name]
+        certified_capture = lanes["certified-reuse"][capture_name]
+        assert isinstance(diagnostic_capture, dict)
+        assert isinstance(certified_capture, dict)
+        for key in (
+            "precision_digits",
+            "point_count",
+            "point_sha256s",
+            "kinematic_sha256s",
+            "context_sha256s",
+            "current_count",
+            "current_dimensions_sha256",
+            "context_policy",
+        ):
+            assert diagnostic_capture[key] == certified_capture[key]
+    diagnostic_discovery = lanes["diagnostic"]["discovery"]
+    certified_discovery = lanes["certified-reuse"]["discovery"]
+    assert isinstance(diagnostic_discovery, dict)
+    assert isinstance(certified_discovery, dict)
+    for key in (
+        "tested_hypothesis_count",
+        "numerical_candidate_count",
+        "verification_rejected_count",
+        "certified_numerical_relation_count",
+    ):
+        assert diagnostic_discovery[key] == certified_discovery[key]
+
+    def relation_identity(certificate: dict[str, Any]) -> tuple[object, ...]:
+        return (
+            certificate["current_id"],
+            certificate["representative_id"],
+            certificate["execution_representative_id"],
+            certificate["relation_kind"],
+            certificate["factor_integer"],
+            certificate["current_dimension"],
+        )
+
+    assert [
+        relation_identity(certificate)
+        for certificate in lanes["diagnostic"]["application"]["certificates"]
+    ] == [
+        relation_identity(certificate)
+        for certificate in lanes["certified-reuse"]["application"]["certificates"]
+    ]
 
 
 @pytest.mark.parametrize("model_source", ("builtin", "ufo"))
-def test_certified_recurrence_relation_reuse_applies_and_matches_exact_runtime(
+def test_recurrence_numerical_audit_rejects_near_relations_and_matches_runtime(
     tmp_path: Path,
     model_source: str,
     builtin_sm_recurrence_jit_o2_model: ModelSource,
     ufo_sm_recurrence_jit_o2_model: CompiledModel,
 ) -> None:
-    """Exercise a real scale-copy schedule for both public SM frontends."""
+    """Reject merely near relations while preserving both public SM frontends."""
 
     _require_native_recurrence()
     model = (
@@ -1042,6 +1069,8 @@ def test_certified_recurrence_relation_reuse_applies_and_matches_exact_runtime(
 
     executions: dict[str, dict[str, Any]] = {}
     reports: dict[str, dict[str, Any]] = {}
+    lanes: dict[str, dict[str, Any]] = {}
+    native_reports: dict[str, dict[str, Any]] = {}
     runtimes: dict[str, Runtime] = {}
     for mode in ("off", "diagnostic", "certified-reuse"):
         artifact = tmp_path / f"{model_source}-{mode}"
@@ -1058,74 +1087,75 @@ def test_certified_recurrence_relation_reuse_applies_and_matches_exact_runtime(
         )
         execution = _single_recurrence_execution(artifact)
         executions[mode] = execution
-        report = execution["plan"]["inspection_summary"].get(
-            "relation_discovery"
+        assert (
+            execution["plan"]["inspection_summary"].get("relation_discovery")
+            is None
         )
+        report = _manifest_relation_discovery(artifact)
+        assert isinstance(report, dict)
+        reports[mode] = report
+        lane = report["lanes"]["primary"]
+        assert isinstance(lane, dict)
+        lanes[mode] = lane
+        native = report["native_relation_application"]
         if mode == "off":
-            assert report is None
-            assert _manifest_relation_discovery(artifact) is None
+            assert native is None
         else:
-            assert isinstance(report, dict)
-            assert _manifest_relation_discovery(artifact) == report
-            reports[mode] = report
+            assert isinstance(native, dict)
+            native_reports[mode] = native
 
         runtime = Runtime.load(artifact)
         runtimes[mode] = runtime
-        _assert_runtime_values_match(runtime, compiled, points)
-
-    diagnostic = reports["diagnostic"]
-    certified = reports["certified-reuse"]
-    assert _relation_discovery_evidence(
-        diagnostic
-    ) == _relation_discovery_evidence(certified)
-    assert diagnostic["state"] == "diagnostic-only"
-    assert diagnostic["exact_certified_relation_count"] == 2
-    assert diagnostic["applied_relation_count"] == 0
-    assert diagnostic["scale_copy_row_count"] == 0
-    assert diagnostic["interaction_evaluation_count_before"] == 138
-    assert diagnostic["interaction_evaluation_count_after"] == 136
-    assert diagnostic["interaction_evaluation_savings"] == 2
-    assert certified["state"] == "exact-certified-applied"
-    assert certified["exact_certified_relation_count"] == 2
-    assert certified["applied_relation_count"] == 2
-    assert certified["scale_copy_row_count"] == 2
-    assert certified["current_count_before"] == 72
-    assert certified["current_count_after"] == 72
-    assert certified["contribution_count_before"] == 138
-    assert certified["contribution_count_after"] == 138
-    assert certified["interaction_evaluation_count_before"] == 138
-    assert certified["interaction_evaluation_count_after"] == 136
-    assert certified["interaction_evaluation_savings"] == 2
-    assert certified["certificate_replay"]["status"] == "verified"
-    assert [
-        (
-            certificate["current_id"],
-            certificate["representative_id"],
-            certificate["factor_exact_rational"],
+        assert runtime.evaluate(points) == pytest.approx(
+            compiled.evaluate(points),
+            rel=1.0e-12,
+            abs=1.0e-15,
         )
-        for certificate in certified["certificates"]
-    ] == [
-        (
-            36,
-            35,
-            {
-                "real_numerator": "-1",
-                "real_denominator": "1",
-                "imag_numerator": "0",
-                "imag_denominator": "1",
-            },
-        ),
-        (
-            39,
-            38,
-            {
-                "real_numerator": "-1",
-                "real_denominator": "1",
-                "imag_numerator": "0",
-                "imag_denominator": "1",
-            },
-        ),
-    ]
+        _assert_decimal_values_match(
+            runtime.evaluate(points, precision=50),
+            compiled.evaluate(points, precision=50),
+            50,
+        )
+
+    diagnostic = lanes["diagnostic"]
+    certified = lanes["certified-reuse"]
+    assert diagnostic["state"] == "no_certified_numerical_relation"
+    assert diagnostic["certified_relation_count"] == 0
+    assert diagnostic["applied_relation_count"] == 0
+    assert diagnostic["warning"]["required"] is False
+    assert certified["state"] == "no_certified_numerical_relation"
+    assert certified["certified_relation_count"] == 0
+    assert certified["applied_relation_count"] == 0
+    assert certified["warning"]["required"] is False
+    assert certified["application_validation"]["status"] == (
+        "not-required-no-applied-relations"
+    )
+    assert certified["application"]["certificate_replay"]["status"] == (
+        "no_certified_numerical_relation"
+    )
+    assert diagnostic["application"]["certificates"] == []
+    assert certified["application"]["certificates"] == []
+    nearest = certified["discovery"]["nearest_rejected_hypothesis"]
+    assert nearest["current_id"] == 36
+    assert nearest["representative_id"] == 35
+    assert nearest["relation_kind"] == "opposite"
+    assert float(nearest["maximum_tolerance_ratio"]) > 1.0
+    diagnostic_native = native_reports["diagnostic"]
+    certified_native = native_reports["certified-reuse"]
+    assert diagnostic_native["exact_certified_relation_count"] == 0
+    assert diagnostic_native["applied_relation_count"] == 0
+    assert diagnostic_native["scale_copy_row_count"] == 0
+    assert certified_native["state"] == "diagnostic-only"
+    assert certified_native["exact_certified_relation_count"] == 0
+    assert certified_native["applied_relation_count"] == 0
+    assert certified_native["scale_copy_row_count"] == 0
+    assert certified_native["current_count_before"] == 72
+    assert certified_native["current_count_after"] == 72
+    assert certified_native["contribution_count_before"] == 138
+    assert certified_native["contribution_count_after"] == 138
+    assert certified_native["interaction_evaluation_count_before"] == 138
+    assert certified_native["interaction_evaluation_count_after"] == 138
+    assert certified_native["interaction_evaluation_savings"] == 0
     _assert_runtime_values_match(
         runtimes["certified-reuse"],
         runtimes["diagnostic"],

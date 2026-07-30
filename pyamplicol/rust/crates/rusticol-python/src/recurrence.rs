@@ -20,13 +20,17 @@ use rusticol_core::recurrence::{
     RECURRENCE_CONTRACTED_COLOR_CAPABILITY, RECURRENCE_DIRECT_PLAN_ABI,
     RECURRENCE_DIRECT_RUNTIME_CAPABILITY, RECURRENCE_DIRECT_RUNTIME_LAYOUT_ABI,
     RECURRENCE_DIRECT_SCHEDULE_MEMBER, RECURRENCE_DIRECT_TEMPLATE_ABI,
-    RECURRENCE_LC_COLOR_CAPABILITY, RecurrenceBuildProgress, RecurrenceRelationDiscoveryMode,
+    RECURRENCE_LC_COLOR_CAPABILITY, RecurrenceBuildProgress, RecurrenceNumericalCurrentMapping,
+    RecurrenceNumericalRelationEvidence, RecurrenceRelationDiscoveryMode,
     RecurrenceRelationDiscoveryOptions, RecurrenceRelationDiscoveryReport, RecurrenceStrategy,
     SemanticDigest, bind_recurrence_color_projection_certificate, checked_usize,
-    lower_recurrence_direct_plan_v2_with_relation_discovery, relation_certificate_algorithm,
+    lower_recurrence_direct_plan_v2_with_relation_discovery,
     write_recurrence_direct_plan_pacbin_with_projection_certificate,
 };
-use rusticol_core::{RusticolError, RusticolResult};
+use rusticol_core::{
+    NativeRecurrenceExactExecutor, NativeRecurrenceExactFactor, NativeRecurrenceExactSections,
+    RusticolError, RusticolResult,
+};
 use serde_json::{Map as JsonMap, Value as JsonValue};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -764,7 +768,7 @@ struct DirectLoweringTimings {
     native_total_seconds: f64,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct NativeDirectLoweringResult {
     builder_input_digest: String,
     template_input_digest: String,
@@ -805,6 +809,7 @@ struct NativeDirectLoweringResult {
     amplitude_destinations: Vec<(u32, Option<u32>)>,
     selector_work: Vec<(DirectSelectorWorkSummary, u64)>,
     relation_discovery: Option<RecurrenceRelationDiscoveryReport>,
+    exact_sections: NativeRecurrenceExactSections,
     construction: RecurrenceConstructionMetrics,
     timings: DirectLoweringTimings,
 }
@@ -853,6 +858,7 @@ struct AuthenticatedDirectTemplateCatalog {
     catalog_digest: SemanticDigest,
     prepared_kernel_pack_digest: SemanticDigest,
     prepared_kernel_count: usize,
+    exact_executors: Vec<NativeRecurrenceExactExecutor>,
 }
 
 #[pyfunction(signature = (
@@ -872,6 +878,7 @@ struct AuthenticatedDirectTemplateCatalog {
     relation_discovery_probe_count,
     relation_discovery_seed,
     color_accuracy,
+    relation_discovery_evidence_json=None,
     progress_callback=None
 ))]
 #[allow(clippy::too_many_arguments)]
@@ -892,6 +899,7 @@ pub(crate) fn _lower_recurrence_direct_v2(
     relation_discovery_probe_count: u32,
     relation_discovery_seed: u64,
     color_accuracy: String,
+    relation_discovery_evidence_json: Option<&Bound<'_, PyBytes>>,
     progress_callback: Option<Py<PyAny>>,
 ) -> PyResult<Py<PyAny>> {
     let extraction_started = Instant::now();
@@ -900,7 +908,7 @@ pub(crate) fn _lower_recurrence_direct_v2(
     let direct_template_catalog_json = direct_template_catalog_json.as_bytes().to_vec();
     validate_sha256_text(&prepared_kernel_pack_digest, "prepared kernel pack digest")?;
     validate_sha256_text(&schedule_semantic_digest, "recurrence schedule digest")?;
-    let relation_discovery = RecurrenceRelationDiscoveryOptions::new(
+    let mut relation_discovery = RecurrenceRelationDiscoveryOptions::new(
         RecurrenceRelationDiscoveryMode::parse(&relation_discovery_mode).map_err(python_error)?,
         relation_discovery_precision_digits,
         relation_discovery_probe_count,
@@ -908,6 +916,13 @@ pub(crate) fn _lower_recurrence_direct_v2(
         color_accuracy,
     )
     .map_err(python_error)?;
+    if let Some(raw_evidence) = relation_discovery_evidence_json {
+        relation_discovery = relation_discovery
+            .with_numerical_evidence(
+                parse_numerical_relation_evidence(raw_evidence.as_bytes()).map_err(python_error)?,
+            )
+            .map_err(python_error)?;
+    }
     let python_extraction_seconds = extraction_started.elapsed().as_secs_f64();
 
     let native = py
@@ -1066,6 +1081,11 @@ fn lower_recurrence_direct(
         } else {
             vec![]
         };
+    let exact_sections = exact_sections_from_direct_plan(
+        &plan,
+        process_id.clone(),
+        direct_catalog.exact_executors.clone(),
+    );
 
     let serialization_started = Instant::now();
     let metadata = write_recurrence_direct_plan_pacbin_with_projection_certificate(
@@ -1116,6 +1136,7 @@ fn lower_recurrence_direct(
         amplitude_destinations,
         selector_work,
         relation_discovery: relation_discovery_report,
+        exact_sections,
         construction,
         timings: DirectLoweringTimings {
             python_extraction_seconds,
@@ -1155,6 +1176,196 @@ fn resolved_helicities_from_direct_plan(
                 .ok_or_else(|| invalid("direct resolved-helicity range is out of bounds"))
         })
         .collect()
+}
+
+fn parse_numerical_relation_evidence(
+    bytes: &[u8],
+) -> RusticolResult<RecurrenceNumericalRelationEvidence> {
+    const ABI: &str = "pyamplicol-recurrence-numerical-current-evidence-v1";
+    if bytes.is_empty() {
+        return Err(invalid("numerical relation evidence must not be empty"));
+    }
+    let value: JsonValue = serde_json::from_slice(bytes)
+        .map_err(|error| invalid(format!("numerical relation evidence is not JSON: {error}")))?;
+    if canonical_json_bytes(&value, "numerical relation evidence")? != bytes {
+        return Err(invalid(
+            "numerical relation evidence is not canonical ASCII JSON",
+        ));
+    }
+    let object = json_object(&value, "numerical relation evidence")?;
+    require_json_fields(
+        object,
+        &[
+            "abi",
+            "requested_mode",
+            "schedule_semantic_digest",
+            "baseline_runtime_layout_digest",
+            "source_semantics_sha256",
+            "certificate_algorithm",
+            "certificate_set_sha256",
+            "numerical_candidate_count",
+            "verification_rejected_count",
+            "tested_hypothesis_count",
+            "mappings",
+        ],
+        "numerical relation evidence",
+    )?;
+    require_json_string_value(object, "abi", ABI, "numerical relation evidence")?;
+    let requested_mode = RecurrenceRelationDiscoveryMode::parse(json_string(
+        object,
+        "requested_mode",
+        "numerical relation evidence mode",
+    )?)?;
+    if requested_mode == RecurrenceRelationDiscoveryMode::Off {
+        return Err(invalid("off mode cannot carry numerical relation evidence"));
+    }
+    let schedule_semantic_digest = evidence_sha256(
+        object,
+        "schedule_semantic_digest",
+        "numerical relation schedule digest",
+    )?;
+    let baseline_runtime_layout_digest = evidence_sha256(
+        object,
+        "baseline_runtime_layout_digest",
+        "numerical relation baseline layout digest",
+    )?;
+    let source_semantics_sha256 = evidence_sha256(
+        object,
+        "source_semantics_sha256",
+        "numerical relation source semantics",
+    )?;
+    let certificate_set_sha256 = evidence_sha256(
+        object,
+        "certificate_set_sha256",
+        "numerical relation certificate set",
+    )?;
+    let certificate_algorithm = json_nonempty_string(
+        object,
+        "certificate_algorithm",
+        "numerical relation certificate algorithm",
+    )?
+    .to_owned();
+    let mappings = json_array(object, "mappings", "numerical relation mappings")?
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            let context = format!("numerical relation mapping {index}");
+            let mapping = json_object(value, &context)?;
+            require_json_fields(
+                mapping,
+                &[
+                    "current_id",
+                    "representative_id",
+                    "execution_representative_id",
+                    "relation_kind",
+                    "factor_integer",
+                    "current_dimension",
+                    "certificate_proof_sha256",
+                    "candidate_observations_sha256",
+                    "verification_observations_sha256",
+                ],
+                &context,
+            )?;
+            let factor_values = json_array(mapping, "factor_integer", &context)?;
+            if factor_values.len() != 2 {
+                return Err(invalid(format!(
+                    "{context} factor must have two integer components"
+                )));
+            }
+            let factor_real = factor_values[0]
+                .as_i64()
+                .ok_or_else(|| invalid(format!("{context} factor real part is not an integer")))?;
+            let factor_imag = factor_values[1].as_i64().ok_or_else(|| {
+                invalid(format!("{context} factor imaginary part is not an integer"))
+            })?;
+            let factor = match (factor_real, factor_imag) {
+                (1, 0) => rusticol_core::recurrence::ExactComplexRational::ONE,
+                (-1, 0) => rusticol_core::recurrence::ExactComplexRational::ONE.checked_neg()?,
+                (0, 0) => rusticol_core::recurrence::ExactComplexRational::ZERO,
+                _ => {
+                    return Err(invalid(format!("{context} factor is not exact ±1/zero")));
+                }
+            };
+            let dimension = json_u32(mapping, "current_dimension", &context)?;
+            let current_dimension = u16::try_from(dimension)
+                .map_err(|_| invalid(format!("{context} dimension exceeds u16")))?;
+            if current_dimension == 0 {
+                return Err(invalid(format!("{context} dimension is zero")));
+            }
+            Ok(RecurrenceNumericalCurrentMapping {
+                current_id: json_u32(mapping, "current_id", &context)?,
+                representative_id: json_optional_u32(mapping, "representative_id", &context)?,
+                execution_representative_id: json_u32(
+                    mapping,
+                    "execution_representative_id",
+                    &context,
+                )?,
+                relation_kind: json_nonempty_string(mapping, "relation_kind", &context)?.to_owned(),
+                factor,
+                current_dimension,
+                certificate_proof_sha256: evidence_sha256(
+                    mapping,
+                    "certificate_proof_sha256",
+                    &context,
+                )?,
+                candidate_observations_sha256: evidence_sha256(
+                    mapping,
+                    "candidate_observations_sha256",
+                    &context,
+                )?,
+                verification_observations_sha256: evidence_sha256(
+                    mapping,
+                    "verification_observations_sha256",
+                    &context,
+                )?,
+            })
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    Ok(RecurrenceNumericalRelationEvidence {
+        requested_mode,
+        schedule_semantic_digest,
+        baseline_runtime_layout_digest,
+        source_semantics_sha256,
+        certificate_algorithm,
+        certificate_set_sha256,
+        numerical_candidate_count: evidence_usize(
+            object,
+            "numerical_candidate_count",
+            "numerical relation candidate count",
+        )?,
+        verification_rejected_count: evidence_usize(
+            object,
+            "verification_rejected_count",
+            "numerical relation verification rejection count",
+        )?,
+        tested_hypothesis_count: evidence_usize(
+            object,
+            "tested_hypothesis_count",
+            "numerical relation tested hypothesis count",
+        )?,
+        mappings,
+    })
+}
+
+fn evidence_sha256(
+    object: &JsonMap<String, JsonValue>,
+    field: &str,
+    context: &str,
+) -> RusticolResult<String> {
+    let value = json_string(object, field, context)?;
+    semantic_digest_from_hex(value, context)?;
+    Ok(value.to_owned())
+}
+
+fn evidence_usize(
+    object: &JsonMap<String, JsonValue>,
+    field: &str,
+    context: &str,
+) -> RusticolResult<usize> {
+    json_field(object, field, context)?
+        .as_u64()
+        .and_then(|value| usize::try_from(value).ok())
+        .ok_or_else(|| invalid(format!("{context} must be a nonnegative usize")))
 }
 
 fn parse_direct_template_catalog(
@@ -1311,6 +1522,7 @@ fn parse_direct_template_catalog(
         ));
     }
     let mut bindings = Vec::with_capacity(templates.len());
+    let mut exact_executors = Vec::with_capacity(templates.len());
     let mut prepared_kernel_ids = BTreeSet::new();
     let mut identity_finalizer_seen = false;
     for (expected_executor_id, template_value) in templates.iter().enumerate() {
@@ -1427,6 +1639,25 @@ fn parse_direct_template_catalog(
             &format!("{context} exact-expression digest"),
         )?;
         validate_direct_template_shapes(template, &context)?;
+        let parent_component_counts = json_array(
+            template,
+            "parent_component_counts",
+            &format!("{context} parent component counts"),
+        )?
+        .iter()
+        .enumerate()
+        .map(|(index, value)| json_value_u32(value, &format!("{context} parent component {index}")))
+        .collect::<RusticolResult<Vec<_>>>()?;
+        let destination_component_count = json_u32(
+            template,
+            "destination_component_count",
+            &format!("{context} destination component count"),
+        )?;
+        let momentum_operand_count = json_u32(
+            template,
+            "momentum_operand_count",
+            &format!("{context} momentum operand count"),
+        )?;
 
         let payload = json_object(
             json_field(template, "payload_binding", &context)?,
@@ -1524,6 +1755,16 @@ fn parse_direct_template_catalog(
             "prepared_kernel_id",
             &format!("{context} prepared-kernel ID"),
         )?;
+        exact_executors.push(NativeRecurrenceExactExecutor {
+            direct_executor_id,
+            role: role_text.to_owned(),
+            destination_operation: expected_operation.to_owned(),
+            parent_component_counts,
+            destination_component_count,
+            momentum_operand_count,
+            prepared_kernel_id,
+            runtime_template: runtime_template.map(str::to_owned),
+        });
         let native_entry_point = match payload.get("native_entry_point") {
             None | Some(JsonValue::Null) => None,
             Some(JsonValue::String(value)) if !value.is_empty() => Some(value.as_str()),
@@ -1626,7 +1867,71 @@ fn parse_direct_template_catalog(
         catalog_digest,
         prepared_kernel_pack_digest,
         prepared_kernel_count: prepared_kernel_ids.len(),
+        exact_executors,
     })
+}
+
+fn exact_sections_from_direct_plan(
+    plan: &DirectRecurrencePlan,
+    process_id: String,
+    executors: Vec<NativeRecurrenceExactExecutor>,
+) -> NativeRecurrenceExactSections {
+    let public_flow_ids = match plan.strategy() {
+        RecurrenceStrategy::TopologyReplay => plan
+            .replay_targets()
+            .iter()
+            .map(|target| target.public_flow_id)
+            .collect(),
+        RecurrenceStrategy::AllFlowUnion => plan
+            .amplitude_destinations()
+            .iter()
+            .map(|destination| destination.target_sector_id)
+            .collect(),
+        RecurrenceStrategy::ContractedColorUnion => Vec::new(),
+    };
+    let exact_factors = plan
+        .exact_factors()
+        .iter()
+        .map(|factor| NativeRecurrenceExactFactor {
+            real_numerator: factor.real().numerator().to_string(),
+            real_denominator: factor.real().denominator().to_string(),
+            imaginary_numerator: factor.imag().numerator().to_string(),
+            imaginary_denominator: factor.imag().denominator().to_string(),
+        })
+        .collect();
+    NativeRecurrenceExactSections {
+        process_id,
+        strategy: plan.strategy().as_str().to_owned(),
+        semantic_digest: plan.semantic_digest().to_string(),
+        runtime_layout_digest: plan.runtime_layout_digest().to_string(),
+        current_arena_components: plan.current_arena_components(),
+        amplitude_destination_count: plan.amplitude_destination_count(),
+        parameter_value_count: plan.parameter_value_count(),
+        external_source_count: plan.external_source_count(),
+        currents: plan.currents().to_vec(),
+        sources: plan.sources().to_vec(),
+        contributions: plan.contributions().to_vec(),
+        finalizations: plan.finalizations().to_vec(),
+        closures: plan.closures().to_vec(),
+        row_groups: plan.row_groups().to_vec(),
+        momentum_forms: plan.momentum_forms().to_vec(),
+        momentum_terms: plan.momentum_terms().to_vec(),
+        replay_targets: plan.replay_targets().to_vec(),
+        source_permutations: plan.source_permutations().to_vec(),
+        replay_momentum_signs: plan.replay_momentum_signs().to_vec(),
+        replay_helicity_map: plan.replay_helicity_map().to_vec(),
+        amplitude_destinations: plan.amplitude_destinations().to_vec(),
+        resolved_helicities: plan.resolved_helicities().to_vec(),
+        public_helicities: plan.public_helicities().to_vec(),
+        source_state_assignments: plan.source_state_assignments().to_vec(),
+        source_dispatch_variants: plan.source_dispatch_variants().to_vec(),
+        source_embeddings: plan.source_embeddings().to_vec(),
+        source_projections: plan.source_projections().to_vec(),
+        resolved_source_selections: plan.resolved_source_selections().to_vec(),
+        exact_factors,
+        public_flow_ids,
+        executors,
+    }
 }
 
 fn validate_direct_template_shapes(
@@ -2157,6 +2462,10 @@ fn direct_lowering_mapping(
     result.set_item("inspection_summary", inspection)?;
     result.set_item("resolved_helicities", native.resolved_helicities)?;
     result.set_item("amplitude_destinations", native.amplitude_destinations)?;
+    result.set_item(
+        "exact_sections",
+        crate::recurrence_exact_sections_to_python(py, native.exact_sections)?,
+    )?;
     Ok(result.into_any().unbind())
 }
 
@@ -2186,11 +2495,20 @@ fn relation_discovery_mapping<'py>(
     )?;
     probe.set_item("seed", report.seed)?;
     probe.set_item("deterministic", true)?;
-    probe.set_item("candidate_only", true)?;
+    probe.set_item(
+        "candidate_only",
+        report.certificate_algorithm
+            != rusticol_core::recurrence::NUMERICAL_RELATION_CERTIFICATE_ALGORITHM,
+    )?;
+    probe.set_item("tested_hypothesis_count", report.tested_hypothesis_count)?;
+    probe.set_item(
+        "verification_rejected_count",
+        report.verification_rejected_count,
+    )?;
     payload.set_item("probe", probe)?;
 
     let replay = PyDict::new(py);
-    replay.set_item("algorithm", relation_certificate_algorithm())?;
+    replay.set_item("algorithm", &report.certificate_algorithm)?;
     replay.set_item(
         "status",
         if report.certificates.is_empty() {
@@ -2247,7 +2565,7 @@ fn relation_discovery_mapping<'py>(
     const CERTIFICATE_SAMPLE_LIMIT: usize = 16;
     for certificate in report.certificates.iter().take(CERTIFICATE_SAMPLE_LIMIT) {
         let entry = PyDict::new(py);
-        entry.set_item("algorithm", relation_certificate_algorithm())?;
+        entry.set_item("algorithm", &report.certificate_algorithm)?;
         entry.set_item("current_id", certificate.current_id)?;
         entry.set_item("representative_id", certificate.representative_id)?;
         let factor = PyDict::new(py);

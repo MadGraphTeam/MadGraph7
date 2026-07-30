@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal
 
 from pyamplicol.api.errors import ArtifactError, CompatibilityError, EvaluationError
@@ -28,6 +28,7 @@ from ._plan_v2 import (
     DIRECT_NONE_U32,
     _Closure,
     _Contribution,
+    _Current,
     _Executor,
     _Finalization,
     _ReplayTarget,
@@ -46,11 +47,11 @@ _NODE_CURRENT = 1
 _CONTRIBUTION_FLAG_INITIALIZE_DESTINATION = 1 << 0
 _CONTRIBUTION_FLAG_CERTIFIED_REUSE = 1 << 1
 _CERTIFIED_REUSE_FLAGS = (
-    _CONTRIBUTION_FLAG_INITIALIZE_DESTINATION
-    | _CONTRIBUTION_FLAG_CERTIFIED_REUSE
+    _CONTRIBUTION_FLAG_INITIALIZE_DESTINATION | _CONTRIBUTION_FLAG_CERTIFIED_REUSE
 )
 
 _Point = Sequence[tuple[Decimal, Decimal, Decimal, Decimal]]
+_CurrentObserver = Callable[[int, tuple[_ComplexDecimal, ...]], None]
 
 
 def _evaluate_replay_point(
@@ -59,6 +60,8 @@ def _evaluate_replay_point(
     target: _ReplayTarget,
     prepared_parameters: Sequence[_ComplexDecimal],
     precision: int,
+    *,
+    current_observer: _CurrentObserver | None = None,
 ) -> tuple[_ComplexDecimal, ...]:
     sections = plan.sections
     permutation = sections.source_permutations[
@@ -81,6 +84,7 @@ def _evaluate_replay_point(
             prepared_parameters,
             precision,
             selected_source_variants=None,
+            current_observer=current_observer,
         )
     )
 
@@ -103,6 +107,8 @@ def _evaluate_union_point(
     helicity: _ResolvedHelicity,
     prepared_parameters: Sequence[_ComplexDecimal],
     precision: int,
+    *,
+    current_observer: _CurrentObserver | None = None,
 ) -> tuple[_ComplexDecimal, ...]:
     """Execute one all-flow union once for one runtime-selected helicity."""
 
@@ -155,6 +161,7 @@ def _evaluate_union_point(
         prepared_parameters,
         precision,
         selected_source_variants=selected_source_variants,
+        current_observer=current_observer,
     )
 
 
@@ -163,6 +170,8 @@ def _evaluate_contracted_point(
     point: _Point,
     prepared_parameters: Sequence[_ComplexDecimal],
     precision: int,
+    *,
+    current_observer: _CurrentObserver | None = None,
 ) -> tuple[_ComplexDecimal, ...]:
     """Execute the fixed-source contracted-color schedule once."""
 
@@ -182,6 +191,7 @@ def _evaluate_contracted_point(
         prepared_parameters,
         precision,
         selected_source_variants=None,
+        current_observer=current_observer,
     )
 
 
@@ -192,13 +202,23 @@ def _execute_schedule(
     precision: int,
     *,
     selected_source_variants: Mapping[int, _SourceDispatchVariant] | None,
+    current_observer: _CurrentObserver | None = None,
 ) -> tuple[_ComplexDecimal, ...]:
     sections = plan.sections
     arena = [_complex_zero() for _ in range(sections.current_arena_components)]
     amplitudes = [_complex_zero() for _ in range(sections.amplitude_destination_count)]
     initialized_contribution_stage: int | None = None
+    active_stage: int | None = None
 
     for group in sections.row_groups:
+        if active_stage is not None and group.stage != active_stage:
+            _observe_stage_currents(
+                current_observer,
+                sections.currents,
+                active_stage,
+                arena,
+            )
+        active_stage = group.stage
         start = group.row_start
         stop = start + group.row_count
         if group.role == _ROLE_SOURCE:
@@ -300,7 +320,31 @@ def _execute_schedule(
                     )
         else:  # pragma: no cover - native plan validation rejects this
             raise ArtifactError(f"unsupported recurrence row role {group.role}")
+    if active_stage is not None:
+        _observe_stage_currents(
+            current_observer,
+            sections.currents,
+            active_stage,
+            arena,
+        )
     return tuple(amplitudes)
+
+
+def _observe_stage_currents(
+    observer: _CurrentObserver | None,
+    currents: Sequence[_Current],
+    stage: int,
+    arena: Sequence[_ComplexDecimal],
+) -> None:
+    if observer is None:
+        return
+    for current in currents:
+        if current.stage == stage:
+            values = tuple(
+                _arena_value(arena, current.component_base, component)
+                for component in range(current.component_count)
+            )
+            observer(current.semantic_id, values)
 
 
 def _execute_certified_reuse_row(

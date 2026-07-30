@@ -16,6 +16,8 @@ use crate::{RusticolError, RusticolResult};
 
 const PROJECTION_PRIME: u64 = (1_u64 << 61) - 1;
 const RELATION_CERTIFICATE_ALGORITHM: &str = "recurrence-exact-rational-row-vector-replay-v1";
+pub const NUMERICAL_RELATION_CERTIFICATE_ALGORITHM: &str =
+    "authenticated-independent-recursive-decimal-probes-v1";
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(format!("recurrence relation discovery: {}", message.into()))
@@ -60,6 +62,7 @@ pub struct RecurrenceRelationDiscoveryOptions {
     pub probe_count: u32,
     pub seed: u64,
     pub color_accuracy: String,
+    pub numerical_evidence: Option<RecurrenceNumericalRelationEvidence>,
 }
 
 impl RecurrenceRelationDiscoveryOptions {
@@ -88,7 +91,29 @@ impl RecurrenceRelationDiscoveryOptions {
             probe_count,
             seed,
             color_accuracy,
+            numerical_evidence: None,
         })
+    }
+
+    pub fn with_numerical_evidence(
+        mut self,
+        evidence: RecurrenceNumericalRelationEvidence,
+    ) -> RusticolResult<Self> {
+        if self.mode == RecurrenceRelationDiscoveryMode::Off {
+            return Err(invalid("off mode cannot carry numerical relation evidence"));
+        }
+        if evidence.requested_mode != self.mode {
+            return Err(invalid(
+                "numerical evidence mode disagrees with lowering options",
+            ));
+        }
+        if evidence.certificate_algorithm != NUMERICAL_RELATION_CERTIFICATE_ALGORITHM {
+            return Err(invalid(
+                "numerical evidence uses an unsupported certificate algorithm",
+            ));
+        }
+        self.numerical_evidence = Some(evidence);
+        Ok(self)
     }
 
     pub fn off() -> Self {
@@ -98,8 +123,38 @@ impl RecurrenceRelationDiscoveryOptions {
             probe_count: 4,
             seed: 0x5059_414d,
             color_accuracy: "lc".to_owned(),
+            numerical_evidence: None,
         }
     }
+}
+
+/// One Python-authenticated exact ±1/zero scale mapping.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecurrenceNumericalCurrentMapping {
+    pub current_id: u32,
+    pub representative_id: Option<u32>,
+    pub execution_representative_id: u32,
+    pub relation_kind: String,
+    pub factor: ExactComplexRational,
+    pub current_dimension: u16,
+    pub certificate_proof_sha256: String,
+    pub candidate_observations_sha256: String,
+    pub verification_observations_sha256: String,
+}
+
+/// Canonical evidence supplied only after an unpublished exact baseline pass.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecurrenceNumericalRelationEvidence {
+    pub requested_mode: RecurrenceRelationDiscoveryMode,
+    pub schedule_semantic_digest: String,
+    pub baseline_runtime_layout_digest: String,
+    pub source_semantics_sha256: String,
+    pub certificate_algorithm: String,
+    pub certificate_set_sha256: String,
+    pub numerical_candidate_count: usize,
+    pub verification_rejected_count: usize,
+    pub tested_hypothesis_count: usize,
+    pub mappings: Vec<RecurrenceNumericalCurrentMapping>,
 }
 
 /// Runtime contract which must agree before two current values are comparable.
@@ -163,6 +218,9 @@ pub struct RecurrenceRelationDiscoveryReport {
     pub precision_digits: u32,
     pub probe_count: u32,
     pub seed: u64,
+    pub certificate_algorithm: String,
+    pub tested_hypothesis_count: usize,
+    pub verification_rejected_count: usize,
     pub effective_projection_count: u32,
     pub numerical_candidate_count: usize,
     pub uncertified_candidate_count: usize,
