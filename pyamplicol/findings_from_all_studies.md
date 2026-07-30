@@ -252,10 +252,66 @@ no process-specific rule or numerical change.
 
 ## (e) LC `d d~ -> u u~ s s~ c c~ + (n-6)g`
 
-Queued.
+Closed on exact runtime `main`
+(`20130aeebee8f3cff2c1305ca65fc0fbda4110b7`). Original AmpliCol is outside
+its supported quark-line scope, so no legacy timing or structural ratio is
+fabricated. Both multiplicities generate and run in recurrence JIT O2 and
+compiled JIT O3.
 
-The historical recurrence and compiled entries for `n=6` and `n=7` are
-`not_available`; original AmpliCol is outside its supported quark-line scope.
+The selected-flow measurements used a one-second warmed target with no
+quiet-CPU condition. The compiled timing rows were refreshed once from the
+already generated artifacts after separating the outer wall clock from the
+native accumulated evaluator clock; generation was not repeated.
+
+| n | Mode | Generation [s] | Wall [µs/pt] | Evaluator total [µs/pt] | Currents / interactions / roots / sources | Wall / recurrence |
+|---:|---|---:|---:|---:|---:|---:|
+| 6 | recurrence JIT O2 | 10.989 | 2.453 | 1.266 | 75 / 129 / 8 / 14 | 1.000 |
+| 6 | compiled JIT O3 | 37.451 | 1.325 | 1.324 | 75 / 129 / 8 / 14 | 0.540 |
+| 7 | recurrence JIT O2 | 70.228 | 6.032 | 3.600 | 165 / 445 / 16 / 16 | 1.000 |
+| 7 | compiled JIT O3 | 262.466 | 6.192 | 6.185 | 165 / 445 / 16 / 16 | 1.027 |
+
+The recurrence evaluator totals are its direct execution attributions.
+Compiled narrow phase attribution remains correctly unavailable; its distinct
+outer wall and native evaluator-total values are the two supported clocks.
+The uncontrolled `n=7` compiled sample has 20.3% relative standard error, but
+its central wall value is still within 2.7% of recurrence.
+
+Recurrence and compiled use exactly the same selected physical flows and have
+exact structural parity at both multiplicities. Their matrix elements are
+`6.85754823014535e-17` versus `6.85754823014541e-17` at `n=6`, and
+`3.442610849692029e-19` versus `3.442610849692051e-19` at `n=7`: relative
+differences of `8.81e-15` and `6.43e-15`.
+
+Default numerical-current discovery ran during generation in every relevant
+lane: recurrence primary plus compiled primary and helicity-sum. Every lane
+returned `no_certified_numerical_relation`, with zero certified and zero
+applied relations. Thus the detector found no missed equal, opposite, or zero
+current reuse for these selected sectors; the unoptimized baseline mapping was
+retained.
+
+The closest fresh supported three-quark-line comparator is process 13 at
+`n=6`, `d d~ -> u u~ s s~ g g`, which also has eight external legs:
+
+| Process | Mode | Generation [s] | Wall [µs/pt] | Evaluator total [µs/pt] | Currents / interactions / roots / sources |
+|---|---|---:|---:|---:|---:|
+| supported three-line comparator | recurrence JIT O2 | 30.646 | 3.613 | 2.141 | 140 / 262 / 32 / 14 |
+| study E four-line process | recurrence JIT O2 | 10.989 | 2.453 | 1.266 | 75 / 129 / 8 / 14 |
+| supported three-line comparator | compiled JIT O3 | 59.094 | not separately measured | 1.517 | 140 / 262 / 32 / 14 |
+| study E four-line process | compiled JIT O3 | 37.451 | 1.325 | 1.324 | 75 / 129 / 8 / 14 |
+
+Study E is therefore structurally smaller and faster than this closest
+same-leg-count supported comparator: recurrence is faster at both boundaries,
+and compiled has the smaller evaluator total, rather than merely succeeding at
+an unreasonable cost.
+
+One generic report bug initially hid this success: selector derivation called
+all physical values below the unrelated absolute `1e-15` validation tolerance
+zero. It now selects the largest finite strictly nonzero resolved component,
+independent of process scale, while still failing closed when all components
+are exactly zero or any value is non-finite. A second generic report fix gives
+compiled/eager measurements separate outer wall and native evaluator-total
+clocks. Neither fix contains a process, multiplicity, model, or backend special
+case.
 
 ## (f) Built-in SM dedicated `d d~ -> Z +` gluon ladder
 
