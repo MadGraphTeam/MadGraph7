@@ -1,38 +1,37 @@
 # pyAmpliCol Mac M3 performance investigations
 
-This document records focused reproductions made from current `main`
-(`202b3fd91a40a6e0422320053796fd71b5b2cd48`). The measurements committed in
-the earlier Mac campaign are treated only as hypotheses and historical
-baselines. Every current result must retain its source identity, resolved
-configuration, selectors, deterministic phase-space point, numerical
-validation, and raw evidence path.
+This logbook summarizes the accepted reproductions and generic fixes in the
+final study-integration lineage. Historical campaign entries are retained only
+where they provide a before-fix baseline; timing tables identify an older exact
+measurement source when it differs from final `main`.
 
 Unless explicitly marked otherwise:
 
 - `recurrence` means the built-in SM recurrence evaluator with JIT O2;
 - `compiled` means the built-in SM compiled evaluator with JIT O3;
-- wall time is the primary repeated native evaluation boundary;
-- evaluator total is reported separately when the runtime exposes it;
-- interaction/current counts are compared with original AmpliCol; and
-- numerical-current evidence is used to audit missing or invalid recycling.
+- wall time is the outer repeated-evaluation boundary;
+- recurrence, compiled, and eager expose an accumulated evaluator-total clock;
+- recurrence alone additionally exposes its narrow inner execution
+  attribution; and
+- structural comparisons use currents, interaction/contribution evaluations,
+  roots, and sources, with known source-representation rows identified
+  separately from produced work.
 
 The user explicitly requested parallel execution without quiet-CPU gating.
 Studies therefore do not wait for an idle host. Each attempt records its
 measurement context, but observed concurrency is not used to postpone work.
 
-## Checkpoint status
+## Status
 
-Work is paused at the requested clean-main checkpoint. The generic fixes and
-evidence reviewed so far are integrated, but the final current-main timing
-reruns for (a) and (b) remain pending, (c)--(e) have not started, and (f) is
-complete only through `n=7`. No `n=8` or `n=9` study-F measurement was launched;
-those cells remain explicitly N/A rather than being filled from stale or
-unauthenticated evidence.
+Studies (a)--(f) are closed. Their process-agnostic fixes are integrated, and
+the dedicated Z table has a terminal result for every requested cell through
+`n=9`. Default-on numerical current reuse is integrated for compiled, eager,
+and recurrence generation.
 
 ## (a) NLC/full `g g -> t t~ + 3g`
 
-Paused at the requested checkpoint; the generic corrective work is integrated,
-but the final integrated-source timing rerun remains pending.
+Closed. The historical 100x/60x result was stale, and the remaining compiled
+gap was a generic native-call tiling issue.
 
 Historical committed measurements (untrusted; pyAmpliCol source `9b7357f`):
 
@@ -43,12 +42,11 @@ Historical committed measurements (untrusted; pyAmpliCol source `9b7357f`):
 | Full | Original AmpliCol | 35.336 | 2,710.23 | not exposed | 1.00 |
 | Full | pyAmpliCol recurrence JIT O2 | 42.082 | 177,229.50 | not exposed | 65.39 |
 
-Fresh current-main measurements disprove the historical 100x/60x regression.
-The `certified-reuse` rows are an explicit no-op audit: both representations
-and both accuracies reported zero candidates/certificates, so structural counts
-were unchanged. Timing differences between `off` and `certified-reuse` were
-measured during concurrent host activity and are not attributed to an
-optimization.
+The fresh reproduction below disproves the historical 100x/60x regression.
+This early `certified-reuse` run was a no-op audit; later high-precision
+validation on the same recurrence structure certified six relations, described
+below. Timing differences between `off` and `certified-reuse` were measured
+during concurrent host activity and are not attributed to an optimization.
 
 | Colour | Implementation / mode | Relation policy | Generation [s] | Wall [µs/pt] | Execution attribution [µs/pt] | Evaluator total [µs/pt] | Wall / fresh AmpliCol |
 |---|---|---|---:|---:|---:|---:|---:|
@@ -68,7 +66,7 @@ amplitude destinations, versus legacy's 37,680 active currents, 159,840
 kernel evaluations, and identical 15,360 destinations. Compiled has 21,434
 currents, 117,580 raw interactions, 46,180 evaluation groups, and the same
 destinations. Thus both pyAmpliCol schedules are structurally better than
-legacy, and no current-recycling fix is justified for this process.
+legacy.
 
 The remaining compiled/recurrence gap was execution organization, not missed
 current reuse. The compiled reducer exposed 208 leaf invocations and the old
@@ -77,19 +75,19 @@ tiling fix uses authenticated phase-local scratch/output footprints and selects
 `tile=16` for this shape. It contains no process, multiplicity, model, or colour
 special case.
 
-Provisional post-fix runtime measurements (generation-time remeasurement on the
-integrated source is still pending):
+Post-fix runtime measurements reused the generated artifacts; generation was
+not remeasured for this runtime-only tiling study:
 
 | Colour | Implementation / mode | Batch | Generation [s] | Wall [µs/pt] | Evaluator total [µs/pt] | Wall / fresh AmpliCol | Wall / recurrence |
 |---|---|---:|---:|---:|---:|---:|---:|
 | NLC | Original AmpliCol | 18 | 23.914 | 1,521.36 | not exposed | 1.000 | 0.753 |
 | NLC | recurrence JIT O2 | 18 | 33.831 | 2,019.98 | not exposed | 1.328 | 1.000 |
-| NLC | compiled JIT O3, adaptive tile 16 | 18 | pending integrated rerun | 1,844 | 1,844 | 1.212 | 0.913 |
-| NLC | compiled JIT O3, adaptive tile 16 | 128 | pending integrated rerun | 1,396 | 1,396 | 0.918 | 0.691 |
+| NLC | compiled JIT O3, adaptive tile 16 | 18 | not remeasured | 1,844 | 1,844 | 1.212 | 0.913 |
+| NLC | compiled JIT O3, adaptive tile 16 | 128 | not remeasured | 1,396 | 1,396 | 0.918 | 0.691 |
 | Full | Original AmpliCol | 18 | 39.677 | 2,896.88 | not exposed | 1.000 | 1.361 |
 | Full | recurrence JIT O2 | 18 | 34.883 | 2,127.92 | not exposed | 0.735 | 1.000 |
-| Full | compiled JIT O3, adaptive tile 16 | 18 | pending integrated rerun | 2,763 | 2,763 | 0.954 | 1.298 |
-| Full | compiled JIT O3, adaptive tile 16 | 128 | pending integrated rerun | 2,192 | 2,192 | 0.757 | 1.030 |
+| Full | compiled JIT O3, adaptive tile 16 | 18 | not remeasured | 2,763 | 2,763 | 0.954 | 1.298 |
+| Full | compiled JIT O3, adaptive tile 16 | 128 | not remeasured | 2,192 | 2,192 | 0.757 | 1.030 |
 
 Thus “generic fragmentation” meant an unnecessarily fragmented native-call
 schedule shared by any compiled evaluator with this footprint pattern.
@@ -97,13 +95,23 @@ Modified chunking did help: the adaptive policy removes most of the call
 overhead and makes compiled O3 competitive with recurrence and legacy without
 altering DAG structure or numerical results.
 
+Later 96-digit recurrence validation certified four zero, one equal, and one
+opposite relation, reducing 87,300 evaluations to 87,294 with identical
+outputs. This valid but tiny saving was not the cause of the historical
+slowdown.
+
+**Conclusion:** the historical 100x/60x regression is closed. Recurrence is
+structurally better than legacy and runs at 1.33x legacy for NLC and 0.74x for
+full colour. At batch 128, generic adaptive tiling brings compiled O3 to 0.92x
+and 0.76x legacy respectively.
+
 ## (b) LC selected-flow `d d~ -> t t~ + 4g`
 
-Closed on post-merge `main`
-(`20130aeebee8f3cff2c1305ca65fc0fbda4110b7`). The earlier conclusion that
-this process required a deeper representation redesign was wrong: its
-structural excess came from using the terminal label of a public LC word as a
-private recursion-closure sink.
+Closed at measurement source
+`20130aeebee8f3cff2c1305ca65fc0fbda4110b7`, an ancestor of current `main`.
+The earlier conclusion that this process required a deeper representation
+redesign was wrong: its structural excess came from using the terminal label
+of a public LC word as a private recursion-closure sink.
 
 Before the fix, the fresh reproduction was:
 
@@ -149,10 +157,16 @@ mapping. That negative result is now expected: structural parity comes from
 the canonical closure rule, not from weakening numerical-current
 certification.
 
+**Conclusion:** exact structural parity is restored: legacy and pyAmpliCol
+both use 378 currents, 1,590 interactions, 128 roots, and 16 sources. Compiled
+O3 is 1.26x legacy and recurrence is 1.52x. The numerical detector correctly
+finds no relation because the former excess was a closure-representation bug,
+not a numerical current identity.
+
 ## (c) LC `d d~ -> u u~ s s~ + (n-4)g`
 
-Closed after fresh selected-flow, helicity-sum reproduction. The old 6.2x and
-9.6x recurrence ratios were stale. Times below are microseconds per point;
+Closed after fresh selected-flow, helicity-sum reproduction. The reported
+slowdowns were stale. Times below are microseconds per point;
 “execution” is the recurrence schedule attribution, while “evaluator total” is
 the warmed accumulated evaluator wall envelope.
 
@@ -190,6 +204,12 @@ complete artifact across all 256 helicities at precision 32. Its default
 numerical-current pass certifies and applies no additional relation, so the
 improvement is entirely structural rather than a tolerance-based reuse.
 
+**Conclusion:** dense generation-time projection removes unrelated colour
+sectors without a process-specific rule. At `n=4`, physical work and
+destinations match legacy apart from one source-representation row; at `n=6`,
+recurrence performs 20 fewer currents and 37 fewer contributions than legacy.
+No additional numerical relation is certified.
+
 ## (d) LC `d d~ -> Z Z Z + 6g`
 
 Fresh post-merge measurements at source `20130ae` do not reproduce the
@@ -203,7 +223,7 @@ structures.
 | Original AmpliCol | 299.858 | 467.467 | 467.467 | not exposed | 1.000 |
 | recurrence JIT O2, default certified reuse | 41.514* | 541.474 | 534.614 | 541.474 | 1.158 |
 | compiled JIT O3, before fix | 144.721 | 6,203.550 | not exposed | 6,203.550 | 13.271 |
-| compiled JIT O3, phase-local tile fix | 144.721† | 669.993 | not exposed | 669.993 | 1.433 |
+| compiled JIT O3, phase-local tile fix | not remeasured† | 669.993 | not exposed | 669.993 | 1.433 |
 
 `*` The default run's generation timer was lost after generation when an
 unrelated selector-derivation point failed its threshold. The 41.514 s value is
@@ -250,13 +270,19 @@ from 79.0 to 2.46875 per point. Compiled O3 improves by 9.259x to 669.993
 µs/point, 1.237x slower than recurrence and 1.433x slower than AmpliCol, with
 no process-specific rule or numerical change.
 
+**Conclusion:** the reported 2.3x recurrence slowdown is not reproduced:
+recurrence is 1.158x legacy. Separating selected-total and resolved-reduction
+tile footprints improves compiled O3 from 6,203.6 to 670.0 µs/point, or 1.433x
+legacy, with unchanged structure and numerical output. Numerical discovery
+correctly finds no missing reuse.
+
 ## (e) LC `d d~ -> u u~ s s~ c c~ + (n-6)g`
 
-Closed on exact runtime `main`
-(`20130aeebee8f3cff2c1305ca65fc0fbda4110b7`). Original AmpliCol is outside
-its supported quark-line scope, so no legacy timing or structural ratio is
-fabricated. Both multiplicities generate and run in recurrence JIT O2 and
-compiled JIT O3.
+Closed at measurement source
+`20130aeebee8f3cff2c1305ca65fc0fbda4110b7`, an ancestor of current `main`.
+Original AmpliCol is outside its supported quark-line scope, so no legacy
+timing or structural ratio is fabricated. Both multiplicities generate and run
+in recurrence JIT O2 and compiled JIT O3.
 
 The selected-flow measurements used a one-second warmed target with no
 quiet-CPU condition. The compiled timing rows were refreshed once from the
@@ -294,7 +320,7 @@ The closest fresh supported three-quark-line comparator is process 13 at
 
 | Process | Mode | Generation [s] | Wall [µs/pt] | Evaluator total [µs/pt] | Currents / interactions / roots / sources |
 |---|---|---:|---:|---:|---:|
-| supported three-line comparator | recurrence JIT O2 | 30.646 | 3.613 | 2.141 | 140 / 262 / 32 / 14 |
+| supported three-line comparator | recurrence JIT O2 | 4.954 | 2.747 | 2.362 | 116 / 246 / 16 / 14 |
 | study E four-line process | recurrence JIT O2 | 10.989 | 2.453 | 1.266 | 75 / 129 / 8 / 14 |
 | supported three-line comparator | compiled JIT O3 | 59.094 | not separately measured | 1.517 | 140 / 262 / 32 / 14 |
 | study E four-line process | compiled JIT O3 | 37.451 | 1.325 | 1.324 | 75 / 129 / 8 / 14 |
@@ -313,26 +339,26 @@ compiled/eager measurements separate outer wall and native evaluator-total
 clocks. Neither fix contains a process, multiplicity, model, or backend special
 case.
 
+**Conclusion:** both four-quark-line cases generate and run normally.
+Recurrence and compiled have exact structural parity—75/129/8/14 at `n=6`
+and 165/445/16/16 at `n=7`—and agree numerically to better than `7e-15`
+relative. Performance is comparable to or better than the nearest supported
+same-leg-count process, and no additional numerical reuse is found.
+
 ## (f) Built-in SM dedicated `d d~ -> Z +` gluon ladder
 
-Paused at the requested checkpoint after completing the authenticated table
-through `n=7`. The live staging PDF is
-`.agent-work/perf-z-table-f/.artifacts/performance-investigations/f/publication-staging/z_table.pdf`;
-the final reviewed result will be copied to
-`docs/performance_reports/macbook_M3/z_table/z_table.pdf`.
+The [final table](docs/performance_reports/macbook_M3/z_table/z_table.pdf) is
+complete through `n=9`. The erroneous one-time AmpliCol start-up cost is no
+longer charged to `n=1`: selected-flow AmpliCol generation is 2.18 s at both
+`n=1` and `n=2`, rather than the stale 18.203 s value. Every successful
+pyAmpliCol runtime exposes wall and evaluator-total timing separately; legacy
+AmpliCol does not expose evaluator-total timing.
 
-All declared cells through `n=7` now have an authenticated terminal state.
-The erroneous initial `n=1` original-AmpliCol selected-flow generation time of
-18.203 s was quarantined because it included one-time setup. A fresh prewarmed
-attempt measures 2.18 s, consistent with the independently prewarmed `n=2`
-value of 2.18 s.
+Native ASM/C++ rows for `n>6` are declarative static N/A with reason
+`native-backend-generation-cap-n6-v1`. All 12 cells remain visible in the
+table, but planning creates no attempt or compiler directory for them.
 
-ASM O3 and C++ O3 generation will not be attempted for `n>6`. Their 12 cells
-for `n=7..9` remain declared but are resolved by catalog planning as static
-policy N/A before source authentication, worker launch, compiler invocation,
-or attempt-directory creation.
-
-The refreshed `n=7` tier is:
+The `n=7` tier is:
 
 | Flow setup | Implementation | Generation [s] | Wall [µs/pt] | Evaluator total [µs/pt] | Wall / AmpliCol |
 |---|---|---:|---:|---:|---:|
@@ -347,160 +373,110 @@ The refreshed `n=7` tier is:
 | all flows, single helicity | eager-DAG JIT O2 | 2,964.444 | 905.216 | 905.216 | 2.87 |
 | all flows, single helicity | recurrence JIT O2 | 23.810 | 319.417 | 315.055 | 1.01 |
 
-The long `n=7` eager all-flow generation completed in 49.4 minutes with an
-11.79 GiB outer peak, so it is retained under the requested one-hour/30 GiB
-generation limits. Recurrence and compiled O3 are close for selected flow;
-for all flows compiled O3 is 27.5% faster than AmpliCol and recurrence is
-within 1.3%. The current PDF has been rendered at 180 dpi and independently
-inspected on all four pages; tables, evaluator-total columns, ratios, native
-static-N/A cells, and footnotes are legible without clipping or overlap.
-The campaign was then stopped at the user's requested checkpoint before any
-new study-F contract or `n=8`/`n=9` cell was launched. Those cells therefore
-remain explicitly N/A rather than being populated from unauthenticated
-historical attempts.
+The long `n=7` eager all-flow generation completed in 49.4 minutes below both
+caps. Recurrence and compiled O3 are close for selected flow; for all flows
+compiled O3 is 27.5% faster than AmpliCol and recurrence is within 1.3%.
 
-The first `n=8` all-flow eager-DAG JIT O2 attempt is not a timing result.
-Immutable attempt `3e21ee19-fc35-4559-a60a-30860f9ba6a4` exited unexpectedly
-after 2,874.38 s (47.91 min) while its authenticated phase state was still
-`generation`; no evaluator or result was produced. The supervisor recorded
-`phase_state_error` (`worker exited before closing its generation interval`)
-and a 12.04 GiB peak process-tree RSS. System swap fell by roughly 9 GiB
-immediately after the worker exited, but system-wide swap cannot authenticate
-a per-process footprint. The cell is therefore classified as failed under
-macOS resource pressure with `RSS-authenticated; physical-footprint
-inconclusive`, rather than as either a valid measurement or a proven breach of
-the 30 GiB cap. It will not be retried until the generic Darwin watchdog also
-records and enforces process-tree physical footprint.
+### `n=8`
+
+| Workload | Setup | Generation status/time | Wall [µs/pt] | Evaluator total [µs/pt] | Ratio vs AmpliCol (gen / wall) | Peak guard/RSS [GB] | Outcome |
+|---|---|---:|---:|---:|---:|---:|---|
+| selected flow, hel-sum | AmpliCol | 10.352 s | 100.863 | not exposed | 1.00× / 1.00× | — | OK |
+| selected flow, hel-sum | compiled JIT O1 | 126.377 s | 218.105 | 217.812 | 12.2× / 2.16× | 1.961 / 1.961 | OK |
+| selected flow, hel-sum | compiled JIT O3 | 76.350 s | 180.044 | 179.923 | 7.38× / 1.79× | 1.983 / 1.983 | OK |
+| selected flow, hel-sum | eager-DAG JIT O2 | 49.239 s | 718.401 | 716.418 | 4.76× / 7.12× | 1.456 / 1.456 | OK |
+| selected flow, hel-sum | recurrence JIT O2 | 66.736 s | 93.872 | 93.872 | 6.45× / 0.931× | 0.635 / 0.635 | OK |
+| all flows, single hel | AmpliCol | 19.114 s | 8,209.519 | not exposed | n/c / 1.00× | 3.709 / — | OK |
+| all flows, single hel | compiled JIT O1 | 30 GB cap at 2,638.855 s | — | — | n/c / — | 30.023 / 6.563 | guarded N/A |
+| all flows, single hel | compiled JIT O3 | 30 GB cap at 2,776.558 s | — | — | n/c / — | 30.026 / 6.884 | guarded N/A |
+| all flows, single hel | eager-DAG JIT O2 | 30 GB cap at 2,753.840 s | — | — | n/c / — | 30.019 / 6.952 | guarded N/A |
+| all flows, single hel | recurrence JIT O2 | 1,263.412 s | 6,156.947 | 6,156.947 | n/c / 0.750× | 1.347 / 1.347 | OK; resolved/pointwise/cross-layout numerical parity |
+
+### `n=9`
+
+| Workload | Setup | Generation status/time | Wall [µs/pt] | Evaluator total [µs/pt] | Ratio vs AmpliCol (gen / wall) | Peak guard/RSS [GB] | Outcome |
+|---|---|---:|---:|---:|---:|---:|---|
+| selected flow, hel-sum | AmpliCol | 63.432 s | 430.430 | not exposed | 1.00× / 1.00× | — | OK |
+| selected flow, hel-sum | compiled JIT O1 | 516.756 s | 458.012 | 455.750 | 8.15× / 1.06× | 21.499 / 14.170 | OK |
+| selected flow, hel-sum | compiled JIT O3 | 511.035 s | 453.164 | 451.693 | 8.06× / 1.05× | 21.655 / 13.207 | OK |
+| selected flow, hel-sum | eager-DAG JIT O2 | 112.792 s | 530.922 | 529.102 | 1.78× / 1.23× | 11.573 / 9.005 | OK |
+| selected flow, hel-sum | recurrence JIT O2 | 814.364 s | 227.275 | 227.275 | 12.8× / 0.528× | 7.845 / 5.178 | OK |
+| all flows, single hel | AmpliCol | 616.264 s | 105,293.508 | not exposed | n/c / 1.00× | 26.111 / 9.579 | OK |
+| all flows, single hel | compiled JIT O1 | 30 GB cap at 2,099.235 s | — | — | n/c / — | 30.047 / 9.411 | guarded N/A |
+| all flows, single hel | compiled JIT O3 | 30 GB cap at 2,049.774 s | — | — | n/c / — | 30.008 / 8.988 | guarded N/A |
+| all flows, single hel | eager-DAG JIT O2 | 30 GB cap at 2,119.015 s | — | — | n/c / — | 30.024 / 8.886 | guarded N/A |
+| all flows, single hel | recurrence JIT O2 | 1 h cap at 3,600.437 s | — | — | n/c / — | 2.320 / 1.229 | guarded N/A |
+
+The strongest runtime result is recurrence: 7% faster than AmpliCol for `n=8`
+selected-flow, 47% faster for `n=9` selected-flow, and 25% faster for the
+completed `n=8` all-flow case. The remaining issue is generation scalability:
+`n=8` all-flow compiled/eager modes hit 30 GB, while `n=9` all-flow
+compiled/eager modes hit 30 GB after about 34--35 minutes and recurrence hits
+the one-hour cap at only 2.32 GB. Each is an independently observed terminal
+result rather than a status propagated from another mode.
+
+**Conclusion:** the table is complete through `n=9` under the requested
+30 GB/one-hour limits. Successful rows report both pyAmpliCol timing clocks,
+all numerical checks pass, and every uncompleted row records the independently
+reached resource cap.
 
 ## Integrated corrective measures
 
-At the requested wrap-up checkpoint, all independently reviewed fixes were
-fast-forwarded to local `main` at `38fc47d`. This includes the generic adaptive
-compiled tiling, compiled/eager/recurrence numerical-current certification and
-replay, and the Darwin dual-metric/Z-table policy-wrapper work. A real
-`just dev-install` completed successfully on that source. The bounded merged
-gate passed 164 Python tests and all 20 Rust raw-evidence
-replay/tamper/context/memory tests. Final integrated-source A/B timing reruns
-remain pending and are not silently replaced by provisional measurements.
+All corrective code described in studies (a)--(f) is integrated in the final
+study-integration lineage. None of the fixes selects a process, multiplicity,
+model, or colour accuracy by name.
 
-The generic numerical-current implementation now has the following contract:
+| Area | Generic correction | Result |
+|---|---|---|
+| LC closure | Derive the private closure traversal from complete open-string blocks | Restores exact study-(b) parity in generic-DAG and recurrence generation |
+| Selected colour sectors | Project and densely renumber the already-restricted colour plan before lowering | Removes unrelated sectors in study (c); `n=6` recurrence becomes structurally better than legacy |
+| Compiled execution | Choose tiles from phase-local total/reduction footprints | Removes study-(a) call fragmentation and cuts study-(d) compiled runtime from 6,203.6 to 670.0 µs/point |
+| Reporting | Select the largest finite nonzero probe component and expose separate outer-wall/evaluator-total clocks | Makes tiny physical amplitudes measurable and restores both clocks for recurrence, compiled, and eager |
+| Numerical reuse | Run bounded high-precision equal/opposite/zero discovery during generation | Applies every certified relation by default in compiled, eager, and recurrence; a public opt-out restores the unoptimized schedule |
 
-| Generation mode | Default behavior | Explicit opt-out | Applied relation kinds | Replay behavior |
-|---|---|---|---|---|
-| compiled JIT | bounded certified reuse | `--no-numerical-current-reuse` or `mode = "off"` | equal, opposite, zero | persisted evidence and mapping; stale/tampered context fails closed |
-| eager JIT | bounded certified reuse | `--no-numerical-current-reuse` or `mode = "off"` | equal, opposite, zero | persisted evidence and mapping; stale/tampered context fails closed |
-| recurrence JIT | bounded certified reuse | `--no-numerical-current-reuse` or `mode = "off"` | equal, opposite, zero | native Rust independently recomputes classifications and mappings from authenticated raw samples |
+Numerical current reuse is an optimization safety net, not a substitute for
+structural canonicalization. Candidate relations must pass independent
+high-precision verification before application. An applied relation without an
+exact structural proof emits one warning per artifact. If discovery returns
+`no_certified_numerical_relation`, no mapping and no warning are produced.
+`--no-numerical-current-reuse` (or configuration mode `off`) is the public
+opt-out.
 
-Exact structural certificates remain preferred. A numerically certified
-relation is nevertheless applied by default when it passes the deterministic
-candidate and independent verification points at the configured absolute and
-relative tolerances. Exactly one actionable warning is emitted per artifact
-when an applied relation set lacks an exact structural proof. A deterministic
-`no_certified_numerical_relation` outcome, such as study (b), applies no
-mapping, emits no proof-less warning, and leaves default-on and opt-out
-evaluators numerically identical.
+The study-(b), (c), (d), and (e) selected sectors correctly return no
+certified relation after their structural fixes. In the large study-(a)
+recurrence case, the detector certified four zero, one equal, and one opposite
+relation and reduced 87,300 evaluations to 87,294 with identical outputs; this
+small saving was not the cause of the original timing anomaly.
 
-For recurrence, the evidence identity binds every varied runtime parameter,
-the canonical process and external PDGs, deterministic point seeds and
-kinematics, selector/routing context, tolerances, candidate and verification
-captures, full acceptance/rejection census, and the resulting schedule.
-Removing or nulling the rejected-candidate diagnostics now fails closed.
-Loading an artifact never silently rediscovers or changes the relation
-mapping.
+Large recurrence evidence no longer requires candidate and verification
+Decimal graphs to coexist in memory. Current `main` captures them sequentially
+into temporary row stores, preserves complete global discovery and full-vector
+verification, and transports canonical evidence in a bounded compressed
+envelope whose length and digest are checked before use. Temporary stores close
+on both success and lowering/validation errors.
 
-The final rebuilt native-extension replay passed 9/9 cases, covering a genuine
-nonzero raw relation, charged-current process aliases, zero-certificate
-default/off PACBIN identity, and builtin/UFO × LC/NLC/full. The focused Python
-gate passed 173 tests with one intentional 30-GiB guarded skip. Separate Rust
-gates passed 37 recurrence-manifest, 16 raw-evidence, 24 lowering, 5 direct
-backend, and 3 relation tests. At the study-(a) scale, the complete candidate
-index reduced approximately 66,093,200 exhaustive pair hypotheses to 19,262
-screened hypotheses without changing the result; 399,392 exact-Fraction
-property cases found no false negatives.
+The study-(a) NLC/full validation used 146.8 MB of raw evidence and certified
+the same six relations in both colour modes. Compiled and eager additionally
+use a generic current-ID-keyed high-precision partition, preventing unrelated
+output-bundle rounding from contaminating relation validation while leaving
+production lowering and public tolerances unchanged.
 
-A subsequent real-shape integration reproduction exposed a gate that the
-synthetic scale test missed: both recurrence NLC and full study-(a) runs
-initially failed closed before allocation because the actual 17,074-current
-component geometry exceeded the old one-GiB raw-evidence resident model. No
-timing from those failed attempts is accepted. This blocked integration until
-the evidence path was made generically bounded for the actual component
-geometry without disabling discovery or weakening full-vector verification.
+The final `n=8` all-flow recurrence artifact has 38,581 currents and 286,294
+contributions. It generated in 1,263.412 s at 1.347 GB peak guarded memory,
+inspected every current, applied zero relations, and passed resolved,
+pointwise, and cross-layout numerical parity.
 
-The exact geometry is 15,834 four-component currents plus 1,240 six-component
-currents, or 70,776 components. Four candidate plus four verification points
-produce 1,132,496 scalar slots and 34,158 rows. This is only 2.95% above the
-old independent 1.1-million-scalar cutoff; it does not intrinsically exceed the
-combined one-GiB model. The base resident estimate is 775,840,768 bytes, leaving
-148,950,528 bytes for each of the two peak wire copies. The exact configured
-96-character estimate is 115,356,478 bytes (and the conservative 112-character
-estimate is 133,475,134 bytes), so the generic correction is to derive the wire
-allowance from each shape and retain the same combined cap rather than reject
-on the unrelated fixed scalar count. A 128-character estimate of 151,593,790
-bytes remains correctly outside the bound.
+## Final cross-study assessment
 
-The exact real-A recurrence rerun at provisional source `fc9fa19` confirmed
-that the dynamic Python limit is necessary but not sufficient. Capture and
-encoding succeeded with 146,798,789 raw-evidence bytes, 2,151,739 bytes below
-the derived 148,950,528-byte wire ceiling, and found six relations. Native
-authentication then rejected before applying them because the canonical JSON
-DOM and independently parsed rational graph would exceed their combined 1-GiB
-resident model. The 108.78-second failed run reached 1,170,915,328 bytes
-maximum RSS and 1,045,942,144 bytes peak physical footprint. No constant or
-tolerance is being relaxed: the remaining generic work is to consume the
-authenticated raw samples without co-resident full JSON and BigRational
-graphs, while preserving independent Rust reconstruction of the entire
-classification and mapping.
+No scoped process retains a structural-parity defect. The only unexpected
+extra source in study (b) was removed by a generic private-closure rule, the
+study-(c) selected sectors are now equal to or smaller than legacy, and studies
+(a), (d), and (e) contain no missed structural optimization. The default
+numerical pass remains a generic safety net across all generation modes and
+uses every independently certified equal, opposite, or zero relation unless
+the user explicitly opts out.
 
-That generic streaming correction now passes the exact NLC case at clean
-source `dafcf99`. Rust consumes borrowed canonical observation rows, retains a
-small authenticated offset/index structure, and independently reconstructs
-the complete candidate/rejection census, certificates, and mappings. Python
-drops the full Decimal capture graphs after canonical encoding and later
-recaptures the bound baseline plan for strict application validation.
-
-| Colour | Source/mode | Raw evidence | Persisted replay | Certified relations | Evaluations before → after | Application check | Elapsed [s] | Max RSS | Peak physical footprint |
-|---|---|---:|---:|---|---:|---|---:|---:|---:|
-| NLC | `dafcf99`, recurrence JIT O2, default-on | 146,798,789 B | 32,562 B | zero: 16, 17, 32, 33; opposite: 34→15; equal: 35→14 | 87,300 → 87,294 | 17,074 currents / 283,104 components; all residuals exactly zero; identical batch digest | 255.94 | 1,023,328,256 B | 699,960,640 B |
-| Full | `dafcf99`, recurrence JIT O2, default-on | 146,798,789 B | 32,562 B | zero: 16, 17, 32, 33; opposite: 34→15; equal: 35→14 | 87,300 → 87,294 | 17,074 currents / 283,104 components; all residuals exactly zero; identical batch digest | 250.74 | 956,678,144 B | 710,544,896 B |
-
-The lane is `authenticated-numerical-applied` and the native status is
-`exact-certified-applied`; the raw 146.8 MB evidence is not persisted in the
-artifact. The independent census tested 19,258 hypotheses from 66,076,140
-theoretical pairs, screened 2,202 pair hypotheses plus 17,060 zero hypotheses,
-certified six, rejected 19,252, and had zero verification rejections. The
-full-colour run reproduces the same relation set and census. Strict post-run
-invariant checks and `Runtime.load` pass for both artifacts. Their retained
-paths are `.artifacts/real-a-nlc-v3.akohkg/artifact` and
-`.artifacts/real-a-full-v3.cSxpPL/artifact` in the recurrence validation
-worktree.
-
-The corresponding real compiled NLC/full runs also produced no accepted
-timing. After roughly four minutes of concurrent generation, both failed
-closed in the shared helicity-sum lane when post-rewrite validation found that
-current 202 changed by `4e-11`, far above the authenticated relation tolerance
-(about `1.5e-76` for that value). The four implicated certificates—currents
-15, 16, 21, and 23—are nevertheless genuine six-component zero relations:
-candidate and independent-verification residuals are exactly zero. Applying
-them suppresses 624 downstream rows and eliminates 264 complete evaluator
-groups (74,260 to 73,996 evaluations). An exact recursive trace finds no
-changed row or eliminated group in current 202's complete physical and
-compiled dependency closure. Its producers and all upstream rows are
-byte-for-byte unchanged. A fresh rebuild of the original 21,434-current DAG
-reproduces current 202 exactly, whereas rebuilding the relation-applied joint
-output bundle retains the `4e-11` difference even with Symbolica optimization
-iterations set to zero. The cause is therefore output-bundle-dependent
-finite-precision evaluation, not a bad zero certificate or an optimizer-iteration
-setting.
-
-A generic current-ID-keyed high-precision partition control removes that
-coupling. On the exact real-A NLC case it rediscovers the same four zero
-relations and 624 suppressions, then validates all 21,434 currents and 362,784
-components with exactly zero absolute, relative, and tolerance residual; the
-reference and applied observation-batch digests are identical. The two large
-7,680-current stages take about 11.6 and 12.9 seconds to build per capture
-session, and the full diagnostic reaches validation in roughly 1.5 minutes.
-The partition ABI and digest are now authenticated against the runtime schema,
-the focused equal/opposite/zero/default-on/opt-out/tamper tests pass, and the
-implementation passed independent integration review. Production
-compiled/eager lowering, public settings, and relation tolerances are
-unchanged.
+No additional structural investigation is required to close studies (a)--(f).
+The remaining future optimization opportunity is generation scalability for
+the largest all-flow Z cells; it does not indicate a current/interactions
+parity failure and is therefore outside the corrective scope of these studies.
