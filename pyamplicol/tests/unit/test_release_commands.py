@@ -347,6 +347,63 @@ def test_release_gate_failure_prevents_artifact_build(
     assert built is False
 
 
+def test_release_build_does_not_inspect_git_cleanliness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scratch = tmp_path / "scratch"
+
+    @contextlib.contextmanager
+    def fake_temporary(_prefix: str):
+        scratch.mkdir()
+        yield scratch
+
+    def unexpected_cleanliness_check(**_kwargs) -> None:
+        raise AssertionError("release builds must validate artifacts, not Git status")
+
+    def fake_build(
+        _python: Path,
+        destination: Path,
+        *,
+        mode: str,
+        wheel: bool,
+        sdist: bool,
+    ) -> None:
+        assert mode == "release"
+        assert wheel is False
+        assert sdist is True
+        (destination / "pyamplicol-0.1.0.tar.gz").write_bytes(b"sdist")
+
+    monkeypatch.setattr(
+        build_release_artifacts,
+        "check_dependency_gate",
+        lambda _mode: None,
+    )
+    monkeypatch.setattr(
+        build_release_artifacts,
+        "require_clean_checkout",
+        unexpected_cleanliness_check,
+    )
+    monkeypatch.setattr(
+        build_release_artifacts,
+        "external_temporary_directory",
+        fake_temporary,
+    )
+    monkeypatch.setattr(build_release_artifacts, "_build", fake_build)
+    monkeypatch.setattr(build_release_artifacts, "audit_sdist", lambda *_a, **_k: None)
+
+    artifacts = build_release_artifacts.build_release_artifacts(
+        tmp_path / "output",
+        mode="release",
+        python=Path(sys.executable),
+        allow_dirty_candidate=False,
+        sdist_only=True,
+        retained_sdist_path=None,
+    )
+
+    assert [path.name for path in artifacts] == ["pyamplicol-0.1.0.tar.gz"]
+
+
 def test_publish_dry_run_prints_but_never_executes_upload(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

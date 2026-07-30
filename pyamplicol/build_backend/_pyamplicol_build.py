@@ -1037,11 +1037,6 @@ def _mark_release_prepared_model_bootstrap(
         raise RuntimeError(
             "release prepared-model bootstrap requires package version '0.1.0'"
         )
-    source_revision = _clean_source_revision()
-    if source_revision is None:
-        raise RuntimeError(
-            "release prepared-model bootstrap requires an exact clean Git revision"
-        )
     package = overlay / "src" / "pyamplicol"
     package.mkdir(parents=True, exist_ok=True)
     (package / "_build_info.json").write_text(
@@ -1054,7 +1049,6 @@ def _mark_release_prepared_model_bootstrap(
                 "release_prepared_model_bootstrap": True,
                 "selftest_fixture_bootstrap": False,
                 "source_checkout": str(ROOT.resolve()),
-                "source_revision": source_revision,
                 "version": base_version,
             },
             indent=2,

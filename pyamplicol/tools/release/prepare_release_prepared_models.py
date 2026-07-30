@@ -47,16 +47,6 @@ def _load_build_backend() -> ModuleType:
             sys.path.remove(build_backend)
 
 
-def _exact_source_revision() -> str:
-    backend = _load_build_backend()
-    revision = backend._clean_source_revision()
-    if not isinstance(revision, str) or re.fullmatch(r"[0-9a-f]{40}", revision) is None:
-        raise ReleasePreparedModelError(
-            "release prepared-model production requires an exact clean Git revision"
-        )
-    return revision
-
-
 def _json_member(archive: zipfile.ZipFile, name: str) -> dict[str, Any]:
     try:
         payload = json.loads(archive.read(name))
@@ -71,12 +61,8 @@ def _json_member(archive: zipfile.ZipFile, name: str) -> dict[str, Any]:
     return payload
 
 
-def audit_bootstrap_wheel(
-    wheel: Path,
-    *,
-    expected_source_revision: str,
-) -> dict[str, object]:
-    """Prove that a bootstrap wheel is useful for production but not publication."""
+def audit_bootstrap_wheel(wheel: Path) -> dict[str, object]:
+    """Check that a bootstrap wheel is useful for production but not publication."""
 
     path = wheel.resolve(strict=True)
     with zipfile.ZipFile(path) as archive:
@@ -111,7 +97,6 @@ def audit_bootstrap_wheel(
             "candidate_fingerprint": None,
             "release_prepared_model_bootstrap": True,
             "selftest_fixture_bootstrap": False,
-            "source_revision": expected_source_revision,
             "version": EXPECTED_VERSION,
         }
         for key, expected in expected_marker.items():
@@ -156,7 +141,6 @@ def audit_bootstrap_wheel(
         "path": str(path),
         "publishable": False,
         "release_prepared_model_bootstrap": True,
-        "source_revision": expected_source_revision,
         "version": EXPECTED_VERSION,
     }
 
@@ -173,7 +157,6 @@ def build_bootstrap_wheel(output_directory: Path) -> dict[str, object]:
         raise ReleasePreparedModelError(
             "release prepared-model production requires PYAMPLICOL_BUILD_MODE=release"
         )
-    source_revision = _exact_source_revision()
     destination = output_directory.expanduser().resolve(strict=False)
     destination.mkdir(parents=True, exist_ok=True)
     if any(destination.iterdir()):
@@ -185,10 +168,7 @@ def build_bootstrap_wheel(output_directory: Path) -> dict[str, object]:
         str(destination),
         bootstrap_context=BOOTSTRAP_CONTEXT,
     )
-    return audit_bootstrap_wheel(
-        destination / filename,
-        expected_source_revision=source_revision,
-    )
+    return audit_bootstrap_wheel(destination / filename)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -203,7 +183,6 @@ def _parser() -> argparse.ArgumentParser:
     build.add_argument("output_directory", type=Path)
     audit = commands.add_parser("audit-bootstrap-wheel")
     audit.add_argument("wheel", type=Path)
-    audit.add_argument("--expected-source-revision", required=True)
     return parser
 
 
@@ -213,10 +192,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if arguments.action == "bootstrap-wheel":
             result = build_bootstrap_wheel(arguments.output_directory)
         else:
-            result = audit_bootstrap_wheel(
-                arguments.wheel,
-                expected_source_revision=arguments.expected_source_revision,
-            )
+            result = audit_bootstrap_wheel(arguments.wheel)
     except (OSError, ReleasePreparedModelError, RuntimeError) as error:
         print(f"release-prepared-models: {error}", file=sys.stderr)
         return 1

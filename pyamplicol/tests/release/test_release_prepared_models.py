@@ -25,7 +25,6 @@ def _bootstrap_wheel(
         "schema_version": 1,
         "selftest_fixture_bootstrap": False,
         "source_checkout": str(producer.ROOT.resolve()),
-        "source_revision": "a" * 40,
         "version": "0.1.0",
     }
     members = {
@@ -54,10 +53,7 @@ def _bootstrap_wheel(
 def test_release_bootstrap_wheel_is_explicitly_non_publishable(tmp_path: Path) -> None:
     wheel = _bootstrap_wheel(tmp_path / "pyamplicol-0.1.0.whl")
 
-    result = producer.audit_bootstrap_wheel(
-        wheel,
-        expected_source_revision="a" * 40,
-    )
+    result = producer.audit_bootstrap_wheel(wheel)
 
     assert result["version"] == "0.1.0"
     assert result["publishable"] is False
@@ -75,10 +71,7 @@ def test_release_bootstrap_wheel_rejects_publishable_marker(tmp_path: Path) -> N
         producer.ReleasePreparedModelError,
         match="marker publishable is invalid",
     ):
-        producer.audit_bootstrap_wheel(
-            wheel,
-            expected_source_revision="a" * 40,
-        )
+        producer.audit_bootstrap_wheel(wheel)
 
 
 def test_release_bootstrap_wheel_rejects_prepared_payloads(tmp_path: Path) -> None:
@@ -91,10 +84,7 @@ def test_release_bootstrap_wheel_rejects_prepared_payloads(tmp_path: Path) -> No
         producer.ReleasePreparedModelError,
         match="stale prepared-model payloads",
     ):
-        producer.audit_bootstrap_wheel(
-            wheel,
-            expected_source_revision="a" * 40,
-        )
+        producer.audit_bootstrap_wheel(wheel)
 
 
 def test_release_bootstrap_wheel_rejects_auxiliary_source_store(
@@ -109,10 +99,7 @@ def test_release_bootstrap_wheel_rejects_auxiliary_source_store(
         producer.ReleasePreparedModelError,
         match="release prepared-model source store",
     ):
-        producer.audit_bootstrap_wheel(
-            wheel,
-            expected_source_revision="a" * 40,
-        )
+        producer.audit_bootstrap_wheel(wheel)
 
 
 def test_release_bootstrap_builder_rejects_candidate_environment(

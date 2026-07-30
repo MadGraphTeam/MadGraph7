@@ -184,9 +184,9 @@ def check_dependency_gate(mode: str) -> None:
 
 
 def require_clean_checkout(*, allow_dirty_candidate: bool, mode: str) -> None:
-    """Require a clean Git checkout for release-equivalent source builds."""
+    """Require a clean checkout for candidate builds unless explicitly allowed."""
 
-    if mode == "candidate" and allow_dirty_candidate:
+    if mode != "candidate" or allow_dirty_candidate:
         return
     completed = run(
         ["git", "status", "--porcelain=v1", "--untracked-files=all"],
@@ -198,7 +198,7 @@ def require_clean_checkout(*, allow_dirty_candidate: bool, mode: str) -> None:
     if dirty:
         preview = "\n".join(dirty.splitlines()[:20])
         raise ReleaseError(
-            "release artifacts require a clean checkout; Git reported:\n" + preview
+            "candidate artifacts require a clean checkout; Git reported:\n" + preview
         )
 
 

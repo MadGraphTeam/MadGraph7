@@ -73,7 +73,7 @@ def build_release_artifacts(
     retained_sdist_path: Path | None,
 ) -> list[Path]:
     if mode == "release" and allow_dirty_candidate:
-        raise ReleaseError("release mode never permits a dirty checkout")
+        raise ReleaseError("--allow-dirty is available only for candidate builds")
     if sdist_only and retained_sdist_path is not None:
         raise ReleaseError("--sdist-only and --retained-sdist are mutually exclusive")
     if mode == "candidate" and sdist_only:
@@ -83,10 +83,11 @@ def build_release_artifacts(
             "candidate sdists are non-publishable and are not release parity inputs"
         )
     check_dependency_gate(mode)
-    require_clean_checkout(
-        allow_dirty_candidate=allow_dirty_candidate,
-        mode=mode,
-    )
+    if mode == "candidate":
+        require_clean_checkout(
+            allow_dirty_candidate=allow_dirty_candidate,
+            mode=mode,
+        )
     output_directory = _prepare_output(output_directory)
 
     with external_temporary_directory("pyamplicol-release-build-") as temporary:
@@ -156,7 +157,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--allow-dirty",
         action="store_true",
-        help="candidate-only convenience; release builds always require clean Git",
+        help="allow a candidate build from a dirty checkout",
     )
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--sdist-only", action="store_true")

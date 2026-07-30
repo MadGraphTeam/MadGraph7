@@ -534,7 +534,6 @@ def test_release_overlay_reuses_canonical_assets_from_source_archive(
 def test_release_prepared_model_bootstrap_overlay_is_non_publishable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(backend, "_clean_source_revision", lambda: "b" * 40)
     monkeypatch.setattr(backend, "_native_build_inputs_digest", lambda _root: "c" * 64)
 
     with backend._overlay(
@@ -553,7 +552,6 @@ def test_release_prepared_model_bootstrap_overlay_is_non_publishable(
             "schema_version": 1,
             "selftest_fixture_bootstrap": False,
             "source_checkout": str(ROOT.resolve()),
-            "source_revision": "b" * 40,
             "version": "0.1.0",
         }
         assert (overlay / "Cargo.lock").read_bytes() == (
@@ -562,20 +560,24 @@ def test_release_prepared_model_bootstrap_overlay_is_non_publishable(
         assert not (overlay / ".cargo/config.toml").exists()
 
 
-def test_release_prepared_model_bootstrap_rejects_dirty_source(
+def test_release_prepared_model_bootstrap_does_not_require_git_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(backend, "_clean_source_revision", lambda: None)
+    def unexpected_revision() -> None:
+        raise AssertionError("release bootstrap must not inspect Git identity")
+
+    monkeypatch.setattr(backend, "_clean_source_revision", unexpected_revision)
     monkeypatch.setattr(backend, "_native_build_inputs_digest", lambda _root: "c" * 64)
 
-    with (
-        pytest.raises(RuntimeError, match="exact clean Git revision"),
-        backend._overlay(
-            "release",
-            release_prepared_model_bootstrap=True,
-        ),
-    ):
-        pass
+    with backend._overlay(
+        "release",
+        release_prepared_model_bootstrap=True,
+    ) as (overlay, _target):
+        build_info = json.loads(
+            (overlay / "src/pyamplicol/_build_info.json").read_text(encoding="utf-8")
+        )
+    assert "source_revision" not in build_info
+    assert build_info["native_build_inputs_sha256"] == "c" * 64
 
 
 def test_selftest_staging_rejects_an_unavailable_target() -> None:
