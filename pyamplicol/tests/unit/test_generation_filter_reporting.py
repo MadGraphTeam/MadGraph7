@@ -51,6 +51,7 @@ def test_generation_reports_structural_reduction_and_helicity_recurrence() -> No
         "structural_helicity_reduction",
         "helicity_recurrence",
         "lc_flow_layout",
+        "relation_discovery",
     }
     dynamic_projection = prepared.filters["dynamic_color_projection"]
     assert isinstance(dynamic_projection, dict)

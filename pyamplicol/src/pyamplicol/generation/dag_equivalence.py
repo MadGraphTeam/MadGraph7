@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
@@ -31,6 +31,9 @@ _DiscoveryMode: TypeAlias = Literal["diagnostic", "certified-reuse"]
 
 RELATION_DISCOVERY_SCHEMA_VERSION = 1
 RELATION_DISCOVERY_CERTIFICATE_ALGORITHM = "exact-binary64-term-vector-replay-v1"
+NUMERICAL_CURRENT_RELATION_CERTIFICATE_ALGORITHM = (
+    "authenticated-independent-recursive-decimal-probes-v1"
+)
 _MAX_REJECTED_DIAGNOSTICS = 16
 
 
@@ -255,6 +258,807 @@ class ExactCurrentRelationCertificate:
         ):
             raise ValueError("relation certificate proof digest does not replay")
         return certificate
+
+
+@dataclass(frozen=True, slots=True)
+class NumericalCurrentRelationCertificate:
+    """Replayable evidence for one numerically certified current relation.
+
+    The certificate commits to two disjoint observation sets.  The raw current
+    values remain generation evidence; artifact loading validates this
+    canonical certificate and never reruns relation discovery.
+    """
+
+    current_id: int
+    representative_id: int | None
+    relation_kind: Literal["equal", "opposite", "zero"]
+    factor: _ComplexWeight | None
+    source_semantics_sha256: str
+    precision_digits: int
+    seed: int
+    relative_tolerance: float
+    absolute_tolerance: float
+    candidate_probe_count: int
+    verification_probe_count: int
+    candidate_maximum_absolute_residual: Decimal
+    candidate_maximum_relative_residual: Decimal
+    candidate_maximum_tolerance_ratio: Decimal
+    verification_maximum_absolute_residual: Decimal
+    verification_maximum_relative_residual: Decimal
+    verification_maximum_tolerance_ratio: Decimal
+    candidate_observations_sha256: str
+    verification_observations_sha256: str
+    probe_contract_sha256: str
+    proof_sha256: str
+    proof_kind: str = "authenticated-numerical"
+    algorithm: str = NUMERICAL_CURRENT_RELATION_CERTIFICATE_ALGORITHM
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "algorithm": self.algorithm,
+            "proof_kind": self.proof_kind,
+            "relation_kind": self.relation_kind,
+            "current_id": self.current_id,
+            "representative_id": self.representative_id,
+            "factor_binary64": (
+                None
+                if self.factor is None
+                else [self.factor[0].hex(), self.factor[1].hex()]
+            ),
+            "source_semantics_sha256": self.source_semantics_sha256,
+            "precision_digits": self.precision_digits,
+            "seed": self.seed,
+            "relative_tolerance_binary64": self.relative_tolerance.hex(),
+            "absolute_tolerance_binary64": self.absolute_tolerance.hex(),
+            "candidate_probe_count": self.candidate_probe_count,
+            "verification_probe_count": self.verification_probe_count,
+            "candidate_maximum_absolute_residual": (
+                _canonical_decimal_string(
+                    self.candidate_maximum_absolute_residual
+                )
+            ),
+            "candidate_maximum_relative_residual": (
+                _canonical_decimal_string(
+                    self.candidate_maximum_relative_residual
+                )
+            ),
+            "candidate_maximum_tolerance_ratio": (
+                _canonical_decimal_string(
+                    self.candidate_maximum_tolerance_ratio
+                )
+            ),
+            "verification_maximum_absolute_residual": (
+                _canonical_decimal_string(
+                    self.verification_maximum_absolute_residual
+                )
+            ),
+            "verification_maximum_relative_residual": (
+                _canonical_decimal_string(
+                    self.verification_maximum_relative_residual
+                )
+            ),
+            "verification_maximum_tolerance_ratio": (
+                _canonical_decimal_string(
+                    self.verification_maximum_tolerance_ratio
+                )
+            ),
+            "candidate_observations_sha256": (
+                self.candidate_observations_sha256
+            ),
+            "verification_observations_sha256": (
+                self.verification_observations_sha256
+            ),
+            "probe_contract_sha256": self.probe_contract_sha256,
+            "proof_sha256": self.proof_sha256,
+        }
+
+    @classmethod
+    def from_json_dict(
+        cls,
+        payload: Mapping[str, object],
+    ) -> NumericalCurrentRelationCertificate:
+        expected_fields = {
+            "algorithm",
+            "proof_kind",
+            "relation_kind",
+            "current_id",
+            "representative_id",
+            "factor_binary64",
+            "source_semantics_sha256",
+            "precision_digits",
+            "seed",
+            "relative_tolerance_binary64",
+            "absolute_tolerance_binary64",
+            "candidate_probe_count",
+            "verification_probe_count",
+            "candidate_maximum_absolute_residual",
+            "candidate_maximum_relative_residual",
+            "candidate_maximum_tolerance_ratio",
+            "verification_maximum_absolute_residual",
+            "verification_maximum_relative_residual",
+            "verification_maximum_tolerance_ratio",
+            "candidate_observations_sha256",
+            "verification_observations_sha256",
+            "probe_contract_sha256",
+            "proof_sha256",
+        }
+        if set(payload) != expected_fields:
+            raise ValueError(
+                "numerical current relation certificate fields are not canonical"
+            )
+        algorithm = payload["algorithm"]
+        proof_kind = payload["proof_kind"]
+        relation_kind = payload["relation_kind"]
+        current_id = payload["current_id"]
+        representative_id = payload["representative_id"]
+        factor_payload = payload["factor_binary64"]
+        source_digest = payload["source_semantics_sha256"]
+        precision_digits = payload["precision_digits"]
+        seed = payload["seed"]
+        relative_payload = payload["relative_tolerance_binary64"]
+        absolute_payload = payload["absolute_tolerance_binary64"]
+        candidate_probe_count = payload["candidate_probe_count"]
+        verification_probe_count = payload["verification_probe_count"]
+        if (
+            algorithm != NUMERICAL_CURRENT_RELATION_CERTIFICATE_ALGORITHM
+            or proof_kind != "authenticated-numerical"
+            or relation_kind not in {"equal", "opposite", "zero"}
+        ):
+            raise ValueError(
+                "numerical current relation certificate has unsupported policy"
+            )
+        if type(current_id) is not int or current_id < 0:
+            raise ValueError(
+                "numerical current relation current ID must be nonnegative"
+            )
+        if representative_id is not None and (
+            type(representative_id) is not int
+            or representative_id < 0
+            or representative_id >= current_id
+        ):
+            raise ValueError(
+                "numerical current relation representative must precede its current"
+            )
+        if (
+            type(precision_digits) is not int
+            or precision_digits < 80
+            or type(seed) is not int
+            or seed < 0
+            or type(candidate_probe_count) is not int
+            or candidate_probe_count < 2
+            or type(verification_probe_count) is not int
+            or verification_probe_count < 2
+        ):
+            raise ValueError(
+                "numerical current relation probe contract is invalid"
+            )
+        if not isinstance(relative_payload, str) or not isinstance(
+            absolute_payload,
+            str,
+        ):
+            raise ValueError(
+                "numerical current relation tolerances must use binary64 hex"
+            )
+        try:
+            relative_tolerance = float.fromhex(relative_payload)
+            absolute_tolerance = float.fromhex(absolute_payload)
+        except ValueError as error:
+            raise ValueError(
+                "numerical current relation tolerance encoding is invalid"
+            ) from error
+        if (
+            not isfinite(relative_tolerance)
+            or not isfinite(absolute_tolerance)
+            or relative_tolerance < 0.0
+            or absolute_tolerance < 0.0
+            or (relative_tolerance == 0.0 and absolute_tolerance == 0.0)
+        ):
+            raise ValueError(
+                "numerical current relation tolerances are invalid"
+            )
+        factor = _decode_numerical_relation_factor(
+            relation_kind,
+            representative_id,
+            factor_payload,
+        )
+        digest_fields = (
+            source_digest,
+            payload["candidate_observations_sha256"],
+            payload["verification_observations_sha256"],
+            payload["probe_contract_sha256"],
+            payload["proof_sha256"],
+        )
+        if any(not _is_sha256(value) for value in digest_fields):
+            raise ValueError(
+                "numerical current relation digests must be lowercase SHA-256"
+            )
+        decimal_field_names = (
+            "candidate_maximum_absolute_residual",
+            "candidate_maximum_relative_residual",
+            "candidate_maximum_tolerance_ratio",
+            "verification_maximum_absolute_residual",
+            "verification_maximum_relative_residual",
+            "verification_maximum_tolerance_ratio",
+        )
+        residuals: list[Decimal] = []
+        for field_name in decimal_field_names:
+            raw = payload[field_name]
+            if not isinstance(raw, str):
+                raise ValueError(
+                    "numerical current relation residuals must be decimal strings"
+                )
+            try:
+                residual = Decimal(raw)
+            except ArithmeticError as error:
+                raise ValueError(
+                    "numerical current relation residual encoding is invalid"
+                ) from error
+            if not residual.is_finite() or residual < 0:
+                raise ValueError(
+                    "numerical current relation residuals must be finite "
+                    "and nonnegative"
+                )
+            residuals.append(residual)
+        certificate = cls(
+            current_id=current_id,
+            representative_id=representative_id,
+            relation_kind=relation_kind,
+            factor=factor,
+            source_semantics_sha256=source_digest,
+            precision_digits=precision_digits,
+            seed=seed,
+            relative_tolerance=relative_tolerance,
+            absolute_tolerance=absolute_tolerance,
+            candidate_probe_count=candidate_probe_count,
+            verification_probe_count=verification_probe_count,
+            candidate_maximum_absolute_residual=residuals[0],
+            candidate_maximum_relative_residual=residuals[1],
+            candidate_maximum_tolerance_ratio=residuals[2],
+            verification_maximum_absolute_residual=residuals[3],
+            verification_maximum_relative_residual=residuals[4],
+            verification_maximum_tolerance_ratio=residuals[5],
+            candidate_observations_sha256=str(
+                payload["candidate_observations_sha256"]
+            ),
+            verification_observations_sha256=str(
+                payload["verification_observations_sha256"]
+            ),
+            probe_contract_sha256=str(payload["probe_contract_sha256"]),
+            proof_sha256=str(payload["proof_sha256"]),
+        )
+        if not verify_numerical_current_relation_certificate(
+            certificate,
+            source_semantics_sha256=source_digest,
+        ):
+            raise ValueError(
+                "numerical current relation certificate proof does not replay"
+            )
+        return certificate
+
+
+def certify_numerical_current_observations(
+    *,
+    current_id: int,
+    representative_id: int | None,
+    relation_kind: Literal["equal", "opposite", "zero"],
+    source_semantics_sha256: str,
+    candidate_current_values: Sequence[tuple[Decimal, Decimal]],
+    candidate_representative_values: (
+        Sequence[tuple[Decimal, Decimal]] | None
+    ),
+    verification_current_values: Sequence[tuple[Decimal, Decimal]],
+    verification_representative_values: (
+        Sequence[tuple[Decimal, Decimal]] | None
+    ),
+    precision_digits: int,
+    seed: int,
+    relative_tolerance: float,
+    absolute_tolerance: float,
+) -> NumericalCurrentRelationCertificate | None:
+    """Certify one ±1/zero relation over independent Decimal observations.
+
+    Invalid, non-finite, forward, shape-inconsistent, or unstable hypotheses
+    fail closed by returning ``None``.
+    """
+
+    if (
+        relation_kind not in {"equal", "opposite", "zero"}
+        or type(current_id) is not int
+        or current_id < 0
+        or not _is_sha256(source_semantics_sha256)
+        or type(precision_digits) is not int
+        or precision_digits < 80
+        or type(seed) is not int
+        or seed < 0
+        or not isinstance(relative_tolerance, int | float)
+        or isinstance(relative_tolerance, bool)
+        or not isinstance(absolute_tolerance, int | float)
+        or isinstance(absolute_tolerance, bool)
+    ):
+        return None
+    relative = float(relative_tolerance)
+    absolute = float(absolute_tolerance)
+    if (
+        not isfinite(relative)
+        or not isfinite(absolute)
+        or relative < 0.0
+        or absolute < 0.0
+        or (relative == 0.0 and absolute == 0.0)
+    ):
+        return None
+    candidate_current = _validated_decimal_observations(
+        candidate_current_values
+    )
+    verification_current = _validated_decimal_observations(
+        verification_current_values
+    )
+    if (
+        candidate_current is None
+        or verification_current is None
+        or len(candidate_current) < 2
+        or len(verification_current) < 2
+    ):
+        return None
+    if relation_kind == "zero":
+        if (
+            representative_id is not None
+            or candidate_representative_values is not None
+            or verification_representative_values is not None
+        ):
+            return None
+        candidate_representative = None
+        verification_representative = None
+        factor = None
+    else:
+        if (
+            type(representative_id) is not int
+            or representative_id < 0
+            or representative_id >= current_id
+        ):
+            return None
+        candidate_representative = _validated_decimal_observations(
+            candidate_representative_values
+        )
+        verification_representative = _validated_decimal_observations(
+            verification_representative_values
+        )
+        if (
+            candidate_representative is None
+            or verification_representative is None
+            or len(candidate_representative) != len(candidate_current)
+            or len(verification_representative) != len(verification_current)
+        ):
+            return None
+        factor = (
+            (1.0, 0.0)
+            if relation_kind == "equal"
+            else (-1.0, 0.0)
+        )
+    absolute_decimal = Decimal.from_float(absolute)
+    relative_decimal = Decimal.from_float(relative)
+    candidate_residuals = _numerical_relation_residuals(
+        relation_kind,
+        candidate_current,
+        candidate_representative,
+        relative_tolerance=relative_decimal,
+        absolute_tolerance=absolute_decimal,
+    )
+    verification_residuals = _numerical_relation_residuals(
+        relation_kind,
+        verification_current,
+        verification_representative,
+        relative_tolerance=relative_decimal,
+        absolute_tolerance=absolute_decimal,
+    )
+    if candidate_residuals is None or verification_residuals is None:
+        return None
+    if not _numerical_relation_residuals_pass(
+        candidate_residuals,
+        relative_tolerance=relative_decimal,
+        absolute_tolerance=absolute_decimal,
+    ) or not _numerical_relation_residuals_pass(
+        verification_residuals,
+        relative_tolerance=relative_decimal,
+        absolute_tolerance=absolute_decimal,
+    ):
+        return None
+    candidate_digest = _numerical_observations_sha256(
+        relation_kind=relation_kind,
+        current_values=candidate_current,
+        representative_values=candidate_representative,
+    )
+    verification_digest = _numerical_observations_sha256(
+        relation_kind=relation_kind,
+        current_values=verification_current,
+        representative_values=verification_representative,
+    )
+    probe_contract = {
+        "algorithm": NUMERICAL_CURRENT_RELATION_CERTIFICATE_ALGORITHM,
+        "source_semantics_sha256": source_semantics_sha256,
+        "current_id": current_id,
+        "representative_id": representative_id,
+        "relation_kind": relation_kind,
+        "precision_digits": precision_digits,
+        "seed": seed,
+        "candidate_domain": "candidate-current-probes-v1",
+        "verification_domain": "independent-verification-current-probes-v1",
+        "relative_tolerance_binary64": relative.hex(),
+        "absolute_tolerance_binary64": absolute.hex(),
+        "candidate_probe_count": len(candidate_current),
+        "verification_probe_count": len(verification_current),
+        "candidate_observations_sha256": candidate_digest,
+        "verification_observations_sha256": verification_digest,
+    }
+    probe_contract_digest = _canonical_payload_sha256(probe_contract)
+    proof_payload = {
+        **probe_contract,
+        "proof_kind": "authenticated-numerical",
+        "factor_binary64": (
+            None
+            if factor is None
+            else [factor[0].hex(), factor[1].hex()]
+        ),
+        "candidate_maximum_absolute_residual": _canonical_decimal_string(
+            candidate_residuals[0]
+        ),
+        "candidate_maximum_relative_residual": _canonical_decimal_string(
+            candidate_residuals[1]
+        ),
+        "candidate_maximum_tolerance_ratio": _canonical_decimal_string(
+            candidate_residuals[2]
+        ),
+        "verification_maximum_absolute_residual": _canonical_decimal_string(
+            verification_residuals[0]
+        ),
+        "verification_maximum_relative_residual": _canonical_decimal_string(
+            verification_residuals[1]
+        ),
+        "verification_maximum_tolerance_ratio": _canonical_decimal_string(
+            verification_residuals[2]
+        ),
+        "probe_contract_sha256": probe_contract_digest,
+    }
+    return NumericalCurrentRelationCertificate(
+        current_id=current_id,
+        representative_id=representative_id,
+        relation_kind=relation_kind,
+        factor=factor,
+        source_semantics_sha256=source_semantics_sha256,
+        precision_digits=precision_digits,
+        seed=seed,
+        relative_tolerance=relative,
+        absolute_tolerance=absolute,
+        candidate_probe_count=len(candidate_current),
+        verification_probe_count=len(verification_current),
+        candidate_maximum_absolute_residual=candidate_residuals[0],
+        candidate_maximum_relative_residual=candidate_residuals[1],
+        candidate_maximum_tolerance_ratio=candidate_residuals[2],
+        verification_maximum_absolute_residual=verification_residuals[0],
+        verification_maximum_relative_residual=verification_residuals[1],
+        verification_maximum_tolerance_ratio=verification_residuals[2],
+        candidate_observations_sha256=candidate_digest,
+        verification_observations_sha256=verification_digest,
+        probe_contract_sha256=probe_contract_digest,
+        proof_sha256=_canonical_payload_sha256(proof_payload),
+    )
+
+
+def verify_numerical_current_relation_certificate(
+    certificate: NumericalCurrentRelationCertificate,
+    *,
+    source_semantics_sha256: str,
+) -> bool:
+    """Validate canonical certificate integrity without rediscovery."""
+
+    if (
+        not isinstance(certificate, NumericalCurrentRelationCertificate)
+        or certificate.algorithm
+        != NUMERICAL_CURRENT_RELATION_CERTIFICATE_ALGORITHM
+        or certificate.proof_kind != "authenticated-numerical"
+        or certificate.source_semantics_sha256 != source_semantics_sha256
+        or not _is_sha256(source_semantics_sha256)
+    ):
+        return False
+    try:
+        factor = _decode_numerical_relation_factor(
+            certificate.relation_kind,
+            certificate.representative_id,
+            (
+                None
+                if certificate.factor is None
+                else [
+                    certificate.factor[0].hex(),
+                    certificate.factor[1].hex(),
+                ]
+            ),
+        )
+    except (TypeError, ValueError):
+        return False
+    if factor != certificate.factor:
+        return False
+    if (
+        type(certificate.current_id) is not int
+        or certificate.current_id < 0
+        or type(certificate.precision_digits) is not int
+        or certificate.precision_digits < 80
+        or type(certificate.seed) is not int
+        or certificate.seed < 0
+        or type(certificate.candidate_probe_count) is not int
+        or certificate.candidate_probe_count < 2
+        or type(certificate.verification_probe_count) is not int
+        or certificate.verification_probe_count < 2
+        or not isfinite(certificate.relative_tolerance)
+        or not isfinite(certificate.absolute_tolerance)
+        or certificate.relative_tolerance < 0.0
+        or certificate.absolute_tolerance < 0.0
+        or (
+            certificate.relative_tolerance == 0.0
+            and certificate.absolute_tolerance == 0.0
+        )
+        or any(
+            not _is_sha256(value)
+            for value in (
+                certificate.candidate_observations_sha256,
+                certificate.verification_observations_sha256,
+                certificate.probe_contract_sha256,
+                certificate.proof_sha256,
+            )
+        )
+        or any(
+            not value.is_finite() or value < 0
+            for value in (
+                certificate.candidate_maximum_absolute_residual,
+                certificate.candidate_maximum_relative_residual,
+                certificate.candidate_maximum_tolerance_ratio,
+                certificate.verification_maximum_absolute_residual,
+                certificate.verification_maximum_relative_residual,
+                certificate.verification_maximum_tolerance_ratio,
+            )
+        )
+        or certificate.candidate_maximum_tolerance_ratio > 1
+        or certificate.verification_maximum_tolerance_ratio > 1
+    ):
+        return False
+    probe_contract = {
+        "algorithm": certificate.algorithm,
+        "source_semantics_sha256": certificate.source_semantics_sha256,
+        "current_id": certificate.current_id,
+        "representative_id": certificate.representative_id,
+        "relation_kind": certificate.relation_kind,
+        "precision_digits": certificate.precision_digits,
+        "seed": certificate.seed,
+        "candidate_domain": "candidate-current-probes-v1",
+        "verification_domain": "independent-verification-current-probes-v1",
+        "relative_tolerance_binary64": (
+            certificate.relative_tolerance.hex()
+        ),
+        "absolute_tolerance_binary64": (
+            certificate.absolute_tolerance.hex()
+        ),
+        "candidate_probe_count": certificate.candidate_probe_count,
+        "verification_probe_count": certificate.verification_probe_count,
+        "candidate_observations_sha256": (
+            certificate.candidate_observations_sha256
+        ),
+        "verification_observations_sha256": (
+            certificate.verification_observations_sha256
+        ),
+    }
+    if (
+        _canonical_payload_sha256(probe_contract)
+        != certificate.probe_contract_sha256
+    ):
+        return False
+    proof_payload = {
+        **probe_contract,
+        "proof_kind": certificate.proof_kind,
+        "factor_binary64": (
+            None
+            if certificate.factor is None
+            else [
+                certificate.factor[0].hex(),
+                certificate.factor[1].hex(),
+            ]
+        ),
+        "candidate_maximum_absolute_residual": _canonical_decimal_string(
+            certificate.candidate_maximum_absolute_residual
+        ),
+        "candidate_maximum_relative_residual": _canonical_decimal_string(
+            certificate.candidate_maximum_relative_residual
+        ),
+        "candidate_maximum_tolerance_ratio": _canonical_decimal_string(
+            certificate.candidate_maximum_tolerance_ratio
+        ),
+        "verification_maximum_absolute_residual": _canonical_decimal_string(
+            certificate.verification_maximum_absolute_residual
+        ),
+        "verification_maximum_relative_residual": _canonical_decimal_string(
+            certificate.verification_maximum_relative_residual
+        ),
+        "verification_maximum_tolerance_ratio": _canonical_decimal_string(
+            certificate.verification_maximum_tolerance_ratio
+        ),
+        "probe_contract_sha256": certificate.probe_contract_sha256,
+    }
+    return _canonical_payload_sha256(proof_payload) == certificate.proof_sha256
+
+
+def _validated_decimal_observations(
+    values: Sequence[tuple[Decimal, Decimal]] | None,
+) -> tuple[tuple[Decimal, Decimal], ...] | None:
+    if values is None or isinstance(values, str | bytes):
+        return None
+    result: list[tuple[Decimal, Decimal]] = []
+    try:
+        for value in values:
+            if (
+                not isinstance(value, tuple)
+                or len(value) != 2
+                or not all(isinstance(component, Decimal) for component in value)
+                or not all(component.is_finite() for component in value)
+            ):
+                return None
+            result.append((value[0], value[1]))
+    except TypeError:
+        return None
+    return tuple(result)
+
+
+def _numerical_relation_residuals(
+    relation_kind: Literal["equal", "opposite", "zero"],
+    current_values: tuple[tuple[Decimal, Decimal], ...],
+    representative_values: tuple[tuple[Decimal, Decimal], ...] | None,
+    *,
+    relative_tolerance: Decimal,
+    absolute_tolerance: Decimal,
+) -> tuple[
+    Decimal,
+    Decimal,
+    Decimal,
+    tuple[tuple[Decimal, Decimal], ...],
+] | None:
+    if relation_kind == "zero":
+        expected = tuple((Decimal(0), Decimal(0)) for _ in current_values)
+    else:
+        if representative_values is None or len(representative_values) != len(
+            current_values
+        ):
+            return None
+        sign = Decimal(1) if relation_kind == "equal" else Decimal(-1)
+        expected = tuple(
+            (sign * real, sign * imaginary)
+            for real, imaginary in representative_values
+        )
+    maximum_absolute = Decimal(0)
+    maximum_relative = Decimal(0)
+    maximum_tolerance_ratio = Decimal(0)
+    component_checks: list[tuple[Decimal, Decimal]] = []
+    for current, reference in zip(current_values, expected, strict=True):
+        difference = max(
+            abs(current[0] - reference[0]),
+            abs(current[1] - reference[1]),
+        )
+        scale = max(
+            abs(current[0]),
+            abs(current[1]),
+            abs(reference[0]),
+            abs(reference[1]),
+        )
+        relative = (
+            Decimal(0)
+            if difference == 0
+            else difference / max(scale, absolute_tolerance)
+        )
+        maximum_absolute = max(maximum_absolute, difference)
+        maximum_relative = max(maximum_relative, relative)
+        allowed = absolute_tolerance + relative_tolerance * scale
+        tolerance_ratio = Decimal(0) if difference == 0 else difference / allowed
+        maximum_tolerance_ratio = max(
+            maximum_tolerance_ratio,
+            tolerance_ratio,
+        )
+        component_checks.append((difference, scale))
+    return (
+        maximum_absolute,
+        maximum_relative,
+        maximum_tolerance_ratio,
+        tuple(component_checks),
+    )
+
+
+def _numerical_relation_residuals_pass(
+    residuals: tuple[
+        Decimal,
+        Decimal,
+        Decimal,
+        tuple[tuple[Decimal, Decimal], ...],
+    ],
+    *,
+    relative_tolerance: Decimal,
+    absolute_tolerance: Decimal,
+) -> bool:
+    return all(
+        difference
+        <= absolute_tolerance + relative_tolerance * scale
+        for difference, scale in residuals[3]
+    )
+
+
+def _numerical_observations_sha256(
+    *,
+    relation_kind: str,
+    current_values: tuple[tuple[Decimal, Decimal], ...],
+    representative_values: tuple[tuple[Decimal, Decimal], ...] | None,
+) -> str:
+    return _canonical_payload_sha256(
+        {
+            "relation_kind": relation_kind,
+            "current": [
+                [
+                    _canonical_decimal_string(real),
+                    _canonical_decimal_string(imaginary),
+                ]
+                for real, imaginary in current_values
+            ],
+            "representative": (
+                None
+                if representative_values is None
+                else [
+                    [
+                        _canonical_decimal_string(real),
+                        _canonical_decimal_string(imaginary),
+                    ]
+                    for real, imaginary in representative_values
+                ]
+            ),
+        }
+    )
+
+
+def _canonical_decimal_string(value: Decimal) -> str:
+    if value == 0:
+        return "0"
+    return str(value.normalize())
+
+
+def _is_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _decode_numerical_relation_factor(
+    relation_kind: object,
+    representative_id: object,
+    payload: object,
+) -> _ComplexWeight | None:
+    expected: _ComplexWeight | None
+    if relation_kind == "zero":
+        if representative_id is not None or payload is not None:
+            raise ValueError("zero-current relation cannot have a representative")
+        return None
+    if relation_kind == "equal":
+        expected = (1.0, 0.0)
+    elif relation_kind == "opposite":
+        expected = (-1.0, 0.0)
+    else:
+        raise ValueError("unsupported numerical current relation kind")
+    if (
+        type(representative_id) is not int
+        or not isinstance(payload, list)
+        or len(payload) != 2
+        or any(not isinstance(component, str) for component in payload)
+    ):
+        raise ValueError("numerical current relation factor is malformed")
+    try:
+        decoded = (float.fromhex(payload[0]), float.fromhex(payload[1]))
+    except ValueError as error:
+        raise ValueError("numerical current relation factor is malformed") from error
+    if not _complex_weight_bits_equal(decoded, expected):
+        raise ValueError("numerical current relation factor disagrees with its kind")
+    return expected
 
 
 @dataclass(frozen=True, slots=True)
@@ -2420,15 +3224,19 @@ def _canonical_zero(value: float) -> float:
 
 
 __all__ = [
+    "NUMERICAL_CURRENT_RELATION_CERTIFICATE_ALGORITHM",
     "RELATION_DISCOVERY_CERTIFICATE_ALGORITHM",
     "RELATION_DISCOVERY_SCHEMA_VERSION",
     "DynamicColorProjectionCertificate",
     "ExactCurrentRelationCertificate",
+    "NumericalCurrentRelationCertificate",
     "RecursiveEvaluationReuseTracker",
     "RelationDiscoveryReport",
     "RelationDiscoveryResult",
     "assign_recursive_current_evaluation_reuse",
+    "certify_numerical_current_observations",
     "discover_recursive_evaluation_relations",
     "project_rectangular_dynamic_color_classes",
     "verify_dag_relation_certificates",
+    "verify_numerical_current_relation_certificate",
 ]
