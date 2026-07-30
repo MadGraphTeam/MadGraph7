@@ -2850,9 +2850,24 @@ class GenerationBackend:
                 if selection.selected_source_helicities is None
                 else tuple(sorted(selection.selected_source_helicities.items()))
             )
+            projection_color_plan = prepared.complete_color_plan
+            if selection.selected_color_sector_ids is not None:
+                # Compact recurrence tables require dense physical-sector IDs.
+                # A generation-specialized artifact owns only its restricted
+                # sector domain, so remap that domain before projection instead
+                # of retaining the unrequested complete-plan aliases.
+                projection_color_plan = replace(
+                    prepared.restricted_color_plan,
+                    sectors=tuple(
+                        replace(sector, id=dense_id)
+                        for dense_id, sector in enumerate(
+                            prepared.restricted_color_plan.sectors
+                        )
+                    ),
+                )
             logical = project_recurrence_process_v1(
                 expanded.process_ir,
-                prepared.complete_color_plan,
+                projection_color_plan,
                 model_inputs.catalog,
                 layout=typed_layout,
                 normalization=normalization_contract,
@@ -2865,14 +2880,11 @@ class GenerationBackend:
             )
             if selection.selected_color_sector_ids is not None:
                 selected_public_flow_ids = tuple(
-                    flow.flow_id
-                    for flow in logical.public_flows
-                    if flow.construction_sector_id
-                    in selection.selected_color_sector_ids
+                    flow.flow_id for flow in logical.public_flows
                 )
                 logical = project_recurrence_process_v1(
                     expanded.process_ir,
-                    prepared.complete_color_plan,
+                    projection_color_plan,
                     model_inputs.catalog,
                     layout=typed_layout,
                     normalization=normalization_contract,

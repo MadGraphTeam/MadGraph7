@@ -10,7 +10,11 @@ import pyamplicol.generation.service as service_module
 from pyamplicol.api import ProcessRequest
 from pyamplicol.api.errors import GenerationError
 from pyamplicol.color import plan_replay as replay_module
-from pyamplicol.color.plan import build_color_plan, build_lc_topology_replay_plan
+from pyamplicol.color.plan import (
+    GenericColorPlan,
+    build_color_plan,
+    build_lc_topology_replay_plan,
+)
 from pyamplicol.config import (
     ColorConfig,
     EvaluatorConfig,
@@ -220,7 +224,7 @@ def test_all_flow_union_rejects_generation_selected_coverage(
     ("process_config", "expected_flows", "expected_helicities"),
     (
         (ProcessConfig(), None, None),
-        (ProcessConfig(selected_color_sector_ids=(1,)), (1,), None),
+        (ProcessConfig(selected_color_sector_ids=(1,)), (0,), None),
         (
             ProcessConfig(
                 selected_source_helicities={
@@ -245,7 +249,7 @@ def test_all_flow_union_rejects_generation_selected_coverage(
                     "5": -1,
                 },
             ),
-            (1,),
+            (0,),
             ((1, -1), (2, 1), (3, -1), (4, 1), (5, -1)),
         ),
     ),
@@ -263,19 +267,24 @@ def test_recurrence_all_flow_union_forwards_generation_selected_coverage(
     expression = "d d~ > z g g"
     process = build_process_ir(expression)
     slices: list[object] = []
-    logical = SimpleNamespace(
-        external_legs=(1, 2, 3, 4, 5),
-        physical_sectors=(0, 1),
-        public_flows=(
-            SimpleNamespace(flow_id=0, construction_sector_id=0),
-            SimpleNamespace(flow_id=1, construction_sector_id=1),
-        ),
-        replay_partitions=(),
-    )
-
-    def fake_project(*_args: object, generation_slice: object, **_kwargs: object):
+    def fake_project(
+        _process: object,
+        color_plan: GenericColorPlan,
+        *_args: object,
+        generation_slice: object,
+        **_kwargs: object,
+    ):
         slices.append(generation_slice)
-        return logical
+        sectors = tuple(color_plan.sectors)
+        return SimpleNamespace(
+            external_legs=(1, 2, 3, 4, 5),
+            physical_sectors=tuple(range(len(sectors))),
+            public_flows=tuple(
+                SimpleNamespace(flow_id=index, construction_sector_id=index)
+                for index, _sector in enumerate(sectors)
+            ),
+            replay_partitions=(),
+        )
 
     def stop_before_native_lowering(_logical: object) -> None:
         raise _StopBeforeNativeLowering
@@ -318,6 +327,87 @@ def test_recurrence_all_flow_union_forwards_generation_selected_coverage(
     generation_slice = slices[-1]
     assert generation_slice.selected_public_flow_ids == expected_flows
     assert generation_slice.selected_source_helicities == expected_helicities
+
+
+def test_recurrence_selected_n6_flow_projects_one_dense_sector(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class _StopBeforeNativeLowering(Exception):
+        pass
+
+    expression = "d d~ > u u~ s s~ g g"
+    process = build_process_ir(expression)
+    expected_sector = build_color_plan(process).sectors[5]
+    projected_plans: list[GenericColorPlan] = []
+    slices: list[object] = []
+
+    def fake_project(
+        _process: object,
+        color_plan: GenericColorPlan,
+        *_args: object,
+        generation_slice: object,
+        **_kwargs: object,
+    ):
+        projected_plans.append(color_plan)
+        slices.append(generation_slice)
+        sectors = tuple(color_plan.sectors)
+        return SimpleNamespace(
+            external_legs=tuple(range(len(process.legs))),
+            physical_sectors=tuple(range(len(sectors))),
+            public_flows=tuple(
+                SimpleNamespace(flow_id=index, construction_sector_id=index)
+                for index, _sector in enumerate(sectors)
+            ),
+            replay_partitions=(),
+        )
+
+    def stop_before_native_lowering(_logical: object) -> None:
+        raise _StopBeforeNativeLowering
+
+    monkeypatch.setattr(
+        service_module,
+        "project_recurrence_process_v1",
+        fake_project,
+    )
+    monkeypatch.setattr(
+        service_module,
+        "build_recurrence_builder_input_v1",
+        stop_before_native_lowering,
+    )
+    backend = GenerationBackend(
+        RunConfig(
+            action="generate",
+            process=ProcessConfig(selected_color_sector_ids=(5,)),
+            evaluator=EvaluatorConfig(execution_mode="recurrence"),
+        ),
+        None,
+    )
+
+    with pytest.raises(_StopBeforeNativeLowering):
+        backend._construct_recurrence_artifact(
+            service_module._ExpandedProcess(
+                request=ProcessRequest.parse(expression, name="recurrence_n6"),
+                process_ir=process,
+            ),
+            BuiltinSMModel(),
+            SimpleNamespace(catalog=object()),
+            tmp_path,
+            index=0,
+            phase=PhaseHandle("test", None, 1),
+            lowering_cache=RecurrenceScheduleLoweringCache(),
+        )
+
+    assert len(projected_plans) == 2
+    assert all(
+        tuple(sector.id for sector in plan.sectors) == (0,)
+        for plan in projected_plans
+    )
+    assert all(
+        plan.sectors[0].word_labels == expected_sector.word_labels
+        for plan in projected_plans
+    )
+    assert slices[-1].selected_public_flow_ids == (0,)
 
 
 def test_recurrence_all_flow_union_rejects_truncated_color_coverage() -> None:
