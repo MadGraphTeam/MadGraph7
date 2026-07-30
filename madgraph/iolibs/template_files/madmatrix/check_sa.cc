@@ -152,6 +152,88 @@ namespace
     return true;
   }
 
+  // One event's sampled invariants read from an invp2_dump.dat file (see MGONGPU_INVP2_DUMP):
+  // one entry per propagator - the packed (pid<<16)|mask word and the invariant p^2.
+  struct DumpInvariants
+  {
+    std::vector<int> word;
+    std::vector<double> p2;
+  };
+
+  // Read an invp2_dump.dat text file: per event a header "EVENT <npar> <ninvar> <|M|^2>",
+  // then npar "P <E> <px> <py> <pz>" lines and ninvar "I <mask> <pid> <p2>" lines. Fills the
+  // momenta and the per-event invariants; ninvar (constant across events) is returned (0 => none).
+  bool read_dump_events( const std::string& path,
+                         std::vector<LheEvent>& events,
+                         std::vector<DumpInvariants>& invariants,
+                         int& ninvar )
+  {
+    constexpr int npar = CPPProcess::npar;
+    std::ifstream in( path );
+    if( !in )
+    {
+      std::cerr << "ERROR! cannot open dump file '" << path << "'" << std::endl;
+      return false;
+    }
+    ninvar = -1;
+    std::string tag;
+    while( in >> tag )
+    {
+      if( tag != "EVENT" )
+      {
+        std::cerr << "ERROR! expected 'EVENT', got '" << tag << "' in dump file" << std::endl;
+        return false;
+      }
+      int fnpar = 0, fninvar = 0;
+      double me = 0;
+      in >> fnpar >> fninvar >> me;
+      if( fnpar != npar )
+      {
+        std::cerr << "ERROR! dump event has npar=" << fnpar << ", expected " << npar << std::endl;
+        return false;
+      }
+      if( ninvar < 0 ) ninvar = fninvar;
+      else if( ninvar != fninvar )
+      {
+        std::cerr << "ERROR! inconsistent ninvar in dump (" << fninvar << " vs " << ninvar << ")" << std::endl;
+        return false;
+      }
+      LheEvent ev;
+      for( int ipar = 0; ipar < npar; ++ipar )
+      {
+        double E, px, py, pz;
+        if( !( in >> tag >> E >> px >> py >> pz ) || tag != "P" )
+        {
+          std::cerr << "ERROR! malformed 'P' line in dump file" << std::endl;
+          return false;
+        }
+        ev[ipar] = { E, px, py, pz };
+      }
+      DumpInvariants inv;
+      for( int k = 0; k < fninvar; ++k )
+      {
+        int mask, pid;
+        double p2;
+        if( !( in >> tag >> mask >> pid >> p2 ) || tag != "I" )
+        {
+          std::cerr << "ERROR! malformed 'I' line in dump file" << std::endl;
+          return false;
+        }
+        inv.word.push_back( ( pid << 16 ) | ( mask & 0xFFFF ) );
+        inv.p2.push_back( p2 );
+      }
+      events.push_back( ev );
+      invariants.push_back( inv );
+    }
+    if( events.empty() )
+    {
+      std::cerr << "ERROR! no events found in dump file '" << path << "'" << std::endl;
+      return false;
+    }
+    if( ninvar < 0 ) ninvar = 0;
+    return true;
+  }
+
   int usage( const char* argv0, int ret = 1 )
   {
     std::cout
@@ -173,8 +255,10 @@ namespace
       << "                    With -v also dumps every event's phase-space point and ME.\n"
       << "\n"
       << "Options:\n"
-      << "  -e|--events <file.lhe>  (perf only) Read the external momenta from an LHE\n"
-      << "                    file instead of generating them with RAMBO. The events are\n"
+      << "  -e|--events <file>  (perf only) Read the external momenta from an LHE file or\n"
+      << "                    an invp2_dump.dat file (format auto-detected) instead of\n"
+      << "                    generating them with RAMBO. A dump file also supplies the\n"
+      << "                    sampled invariants to the matrix element. The events are\n"
       << "                    processed in batches of #blocks*#threads; #iterations is\n"
       << "                    ignored (derived from the number of events in the file).\n"
       << "\n"
@@ -292,23 +376,35 @@ namespace
 #else
     const std::vector<double>& umamiMomenta,
     const std::vector<unsigned int>& flvVec,
-    std::vector<double>& umamiMEs
+    std::vector<double>& umamiMEs,
+    // sampled invariants (SoA [k*nevt + ievt]); ninvar == 0 => not passed (recompute from momenta)
+    const std::vector<int>& invWordSoa,
+    const std::vector<double>& invMassSoa,
+    const std::vector<unsigned int>& invCountSoa,
+    int ninvar
 #endif
   )
   {
-    constexpr unsigned int UmamiInKeyNum = 2;
+    constexpr unsigned int UmamiInKeyMax = 5;
     timermap.start( "3a SigmaKin" );
-    UmamiInputKey in_keys[UmamiInKeyNum] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX };
+    UmamiInputKey in_keys[UmamiInKeyMax] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX };
     UmamiOutputKey out_keys[1] = { UMAMI_OUT_MATRIX_ELEMENT };
+    unsigned int nkeys = 2;
 #ifdef MGONGPUCPP_GPUIMPL
-    const void* inputs[UmamiInKeyNum] = { devUmamiMomenta.data(), devFlv.data() };
+    const void* inputs[UmamiInKeyMax] = { devUmamiMomenta.data(), devFlv.data() };
     void* outputs[1] = { devUmamiMEs.data() };
 #else
-    const void* inputs[UmamiInKeyNum] = { umamiMomenta.data(), flvVec.data() };
+    const void* inputs[UmamiInKeyMax] = { umamiMomenta.data(), flvVec.data() };
     void* outputs[1] = { umamiMEs.data() };
+    if( ninvar > 0 )
+    {
+      in_keys[nkeys] = UMAMI_IN_INVARIANT_COUNT;          inputs[nkeys] = invCountSoa.data(); ++nkeys;
+      in_keys[nkeys] = UMAMI_IN_INVARIANT_PIDS_AND_MASKS; inputs[nkeys] = invWordSoa.data();  ++nkeys;
+      in_keys[nkeys] = UMAMI_IN_INVARIANT_MASSES;         inputs[nkeys] = invMassSoa.data();  ++nkeys;
+    }
 #endif
     UmamiStatus st = umami_matrix_element(
-      handle, nevt, nevt, 0, UmamiInKeyNum, in_keys, inputs, 1, out_keys, outputs );
+      handle, nevt, nevt, 0, nkeys, in_keys, inputs, 1, out_keys, outputs );
     wavetime += timermap.stop();
     if( st != UMAMI_SUCCESS )
     {
@@ -649,7 +745,7 @@ namespace
     const std::vector<fptype> masses( massesD.begin(), massesD.end() );
 
     std::vector<std::vector<double>> point =
-      classic_rambo::get_momenta( CPPProcess::npari, (double)kEnergy, masses, rambowgt );
+      classic_rambo::get_momenta( CPPProcess::npari, (double)kEnergy, massesD, rambowgt );
 
     // alpha_s from the param card so the couplings match the Fortran/C++
     // 'check' drivers (UMAMI otherwise falls back to a hardcoded g_s).
@@ -769,12 +865,19 @@ namespace
     // LHE instead of generating. Processed in batches of nevt and
     // niter is derived from the number of events read.
     std::vector<LheEvent> lheEvents;
+    std::vector<DumpInvariants> dumpInv; // per-event invariants (only for an invp2 dump file)
+    int ninvar = 0;                      // #invariants per event (0 => LHE / none => nullptr to the ME)
     if( !lheFile.empty() )
     {
-      if( !read_lhe_events( lheFile, lheEvents ) ) return 2;
+      // auto-detect the format: an invp2 dump starts with the token "EVENT", otherwise LHE
+      bool isDump = false;
+      { std::ifstream peek( lheFile ); std::string t; if( peek >> t ) isDump = ( t == "EVENT" ); }
+      bool ok = isDump ? read_dump_events( lheFile, lheEvents, dumpInv, ninvar )
+                       : read_lhe_events( lheFile, lheEvents );
+      if( !ok ) return 2;
       niter = (unsigned int)( ( lheEvents.size() + nevt - 1 ) / nevt );
-      std::cout << "Reading events from LHE file = " << lheFile
-                << " (" << lheEvents.size() << " events, " << niter
+      std::cout << "Reading events from " << ( isDump ? "dump" : "LHE" ) << " file = " << lheFile
+                << " (" << lheEvents.size() << " events, ninvar=" << ninvar << ", " << niter
                 << " batches of " << nevt << ")" << std::endl;
     }
 
@@ -804,6 +907,10 @@ namespace
     std::vector<double> umamiMomenta( (std::size_t)4 * CPPProcess::npar * nevt );
     std::vector<double> umamiMEs( nevt );
     std::vector<unsigned int> flvVec( nevt, flavorID );
+    // sampled-invariant buffers in UMAMI SoA layout [k*nevt + ievt] (see run_umami / read_dump_events)
+    std::vector<int> invWordSoa( (std::size_t)std::max( ninvar, 1 ) * nevt );
+    std::vector<double> invMassSoa( (std::size_t)std::max( ninvar, 1 ) * nevt );
+    std::vector<unsigned int> invCountSoa( nevt, (unsigned int)ninvar );
 #endif
 
     std::unique_ptr<RandomNumberKernelBase> prnk(
@@ -918,6 +1025,20 @@ namespace
             for( int ip4 = 0; ip4 < 4; ++ip4 )
               MemoryAccessMomenta::ieventAccessIp4Ipar( hstMomenta.data(), ievt, ip4, ipar ) = (fptype)ev[ipar][ip4];
         }
+#ifndef MGONGPUCPP_GPUIMPL
+        // repack the per-event sampled invariants into the SoA layout the ME expects
+        if( ninvar > 0 )
+          for( unsigned int ievt = 0; ievt < nevt; ++ievt )
+          {
+            const std::size_t src = base + std::min<std::size_t>( ievt, (std::size_t)nreal - 1 );
+            const DumpInvariants& di = dumpInv[src];
+            for( int k = 0; k < ninvar; ++k )
+            {
+              invWordSoa[(std::size_t)k * nevt + ievt] = di.word[k];
+              invMassSoa[(std::size_t)k * nevt + ievt] = di.p2[k];
+            }
+          }
+#endif
         rambtime += timermap.stop();
 #ifdef MGONGPUCPP_GPUIMPL
         timermap.start( "2c CpHTDmom" );
@@ -941,7 +1062,7 @@ namespace
 #ifdef MGONGPUCPP_GPUIMPL
                       devUmamiMomenta, devFlv, devUmamiMEs, hstUmamiMEs
 #else
-                      umamiMomenta, flvVec, umamiMEs
+                      umamiMomenta, flvVec, umamiMEs, invWordSoa, invMassSoa, invCountSoa, ninvar
 #endif
                       ) )
       {
