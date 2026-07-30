@@ -450,6 +450,88 @@ def test_authenticated_zero_propagates_through_exact_structural_class() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("index_change", "expected_value"),
+    (
+        ("ordered_external_labels", (3, 2)),
+        ("helicity_ancestry", 21),
+    ),
+)
+def test_authenticated_zero_does_not_cross_runtime_routing_contracts(
+    index_change: str,
+    expected_value: object,
+) -> None:
+    dag, model = _ambiguous_projective_dag()
+    certified = dag.currents[5]
+    distinct_index = replace(
+        certified.index,
+        **{index_change: expected_value},
+    )
+    assert _current_evaluation_contract(certified) != (
+        _current_evaluation_contract(
+            replace(certified, index=distinct_index)
+        )
+    )
+
+    duplicate_first = replace(
+        dag.interactions[4],
+        id=6,
+        result_id=6,
+    )
+    duplicate_second = replace(
+        dag.interactions[5],
+        id=7,
+        result_id=6,
+    )
+    consume_certified = replace(
+        dag.interactions[7],
+        id=8,
+        left_id=5,
+        result_id=7,
+    )
+    consume_distinct_route = replace(
+        consume_certified,
+        id=9,
+        left_id=6,
+    )
+    routed_currents = (
+        *dag.currents[:6],
+        replace(dag.currents[6], index=distinct_index),
+        *dag.currents[7:],
+    )
+    routed = replace(
+        dag,
+        currents=routed_currents,
+        interactions=(
+            *dag.interactions[:6],
+            duplicate_first,
+            duplicate_second,
+            consume_certified,
+            consume_distinct_route,
+        ),
+    )
+    baseline = assign_recursive_current_evaluation_reuse(routed, model)
+    assert (
+        baseline.interactions[8].evaluation_group_id
+        != baseline.interactions[9].evaluation_group_id
+    )
+    certificate = _authenticated_relation_certificate(baseline, "zero")
+
+    result = apply_numerical_current_relation_certificates(
+        baseline,
+        model,
+        (certificate,),
+        mode="certified-reuse",
+        execution_mode="compiled",
+    )
+
+    assert result.dag.interactions[8].evaluation_factor == (0.0, 0.0)
+    assert result.dag.interactions[9] == baseline.interactions[9]
+    assert result.report.to_json_dict()["mappings"][0][
+        "resolved_current_ids"
+    ] == [5]
+
+
 def test_authenticated_merge_composes_kernel_and_existing_group_factors() -> None:
     dag, model = _ambiguous_projective_dag()
     antisymmetric = replace(

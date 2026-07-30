@@ -2950,10 +2950,12 @@ def assign_recursive_current_evaluation_reuse(
     of bit-identical materialized currents.  Recursive factor products fail
     closed unless they are finite and exactly representable.  The current
     contract keeps every field consumed by source, kernel, and propagator
-    evaluation; colour bookkeeping, ordering metadata, and ancestry bit
-    allocation are deliberately excluded. Ordering may differ only through
-    the exact model-certified input permutation and reflection factors
-    included in the term signature below.
+    evaluation.  In particular, ordered external labels and helicity
+    ancestry remain part of the contract: both encode physical runtime
+    routing and cannot be inferred from the sorted external-label set.
+    Dynamic colour-sector bookkeeping is deliberately excluded.  Input
+    ordering may differ only through the exact model-certified permutation
+    and reflection factors included in the term signature below.
 
     This recovers AmpliCol-style reflection fan-out, but also recognizes exact
     reuse across colour sectors and helicity subgraphs.  No approximate
@@ -4633,6 +4635,8 @@ def _current_evaluation_contract(current: CurrentNode) -> _CurrentContract:
         int(index.particle_id),
         int(index.external_mask),
         index.external_labels,
+        index.ordered_external_labels,
+        int(index.helicity_ancestry),
         int(index.chirality),
         index.spin_state,
         index.flavour_flow,
