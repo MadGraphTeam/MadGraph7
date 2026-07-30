@@ -46,7 +46,10 @@ NUMERICAL_CURRENT_RELATION_SET_ABI = (
     "pyamplicol-authenticated-numerical-current-relation-set-v1"
 )
 NUMERICAL_CURRENT_CAPTURE_ABI = (
-    "pyamplicol-generic-dag-current-observation-capture-v1"
+    "pyamplicol-generic-dag-current-observation-capture-v2"
+)
+NUMERICAL_CURRENT_CAPTURE_OUTPUT_PARTITION_ABI = (
+    "pyamplicol-generic-dag-current-id-output-partitions-v1"
 )
 NUMERICAL_CURRENT_RELATION_WARNING_CODE = (
     "proofless-numerical-current-relations-applied-v1"
@@ -1566,6 +1569,201 @@ def generic_dag_numerical_model_parameter_schema_sha256(
     )
 
 
+def generic_dag_numerical_capture_output_partition_sha256(
+    runtime_schema: Mapping[str, object],
+) -> str:
+    """Authenticate current-ID partitions from source runtime-slot geometry."""
+
+    raw_stages = runtime_schema.get("stages")
+    raw_value_storage = runtime_schema.get("value_storage")
+    if not isinstance(raw_stages, list) or not isinstance(
+        raw_value_storage,
+        Mapping,
+    ):
+        raise ValueError(
+            "numerical current partition runtime schema is invalid"
+        )
+    raw_value_slots = raw_value_storage.get("value_slots")
+    if not isinstance(raw_value_slots, list):
+        raise ValueError(
+            "numerical current partition value slots are invalid"
+        )
+    value_slots: dict[int, Mapping[str, object]] = {}
+    for raw_slot in raw_value_slots:
+        if not isinstance(raw_slot, Mapping):
+            raise ValueError(
+                "numerical current partition value slot is invalid"
+            )
+        value_slot_id = raw_slot.get("value_slot_id")
+        if (
+            type(value_slot_id) is not int
+            or value_slot_id < 0
+            or value_slot_id in value_slots
+        ):
+            raise ValueError(
+                "numerical current partition value-slot identity drifted"
+            )
+        value_slots[value_slot_id] = raw_slot
+
+    stage_contracts: list[dict[str, object]] = []
+    previous_stage_index: int | None = None
+    seen_output_slot_ids: set[int] = set()
+    for raw_stage in raw_stages:
+        if not isinstance(raw_stage, Mapping):
+            raise ValueError(
+                "numerical current partition stage is invalid"
+            )
+        stage_index = raw_stage.get("stage_index")
+        stage_kind = raw_stage.get("stage_kind")
+        subset_size = raw_stage.get("subset_size")
+        raw_output_slot_ids = raw_stage.get("output_value_slot_ids")
+        raw_output_current_ids = raw_stage.get("output_current_ids")
+        if (
+            type(stage_index) is not int
+            or (
+                previous_stage_index is not None
+                and stage_index <= previous_stage_index
+            )
+            or not isinstance(stage_kind, str)
+            or type(subset_size) is not int
+            or not isinstance(raw_output_slot_ids, list)
+            or not raw_output_slot_ids
+            or not isinstance(raw_output_current_ids, list)
+        ):
+            raise ValueError(
+                "numerical current partition stage identity drifted"
+            )
+
+        records: list[dict[str, object]] = []
+        partition_slots: list[dict[str, object]] = []
+        partition_start = 0
+        output_start = 0
+        current_id: int | None = None
+        seen_current_ids: set[int] = set()
+
+        def partition_record(
+            *,
+            bound_current_id: int | None,
+            bound_slots: Sequence[Mapping[str, object]],
+            bound_start: int,
+            stop: int,
+        ) -> dict[str, object]:
+            if (
+                bound_current_id is None
+                or not bound_slots
+                or bound_start >= stop
+            ):
+                raise ValueError(
+                    "numerical current partition contains an empty range"
+                )
+            return {
+                "current_id": bound_current_id,
+                "output_start": bound_start,
+                "output_stop": stop,
+                "slots": list(bound_slots),
+            }
+
+        for raw_value_slot_id in raw_output_slot_ids:
+            if (
+                type(raw_value_slot_id) is not int
+                or raw_value_slot_id in seen_output_slot_ids
+                or raw_value_slot_id not in value_slots
+            ):
+                raise ValueError(
+                    "numerical current partition output-slot identity drifted"
+                )
+            slot = value_slots[raw_value_slot_id]
+            slot_current_id = slot.get("current_id")
+            component_start = slot.get("component_start")
+            component_stop = slot.get("component_stop")
+            variant = slot.get("variant")
+            if (
+                type(slot_current_id) is not int
+                or slot_current_id < 0
+                or type(component_start) is not int
+                or type(component_stop) is not int
+                or component_start < 0
+                or component_stop <= component_start
+                or not isinstance(variant, str)
+                or slot.get("is_source") is not False
+            ):
+                raise ValueError(
+                    "numerical current partition output slot is invalid"
+                )
+            if current_id is None:
+                current_id = slot_current_id
+                seen_current_ids.add(current_id)
+            elif slot_current_id != current_id:
+                records.append(
+                    partition_record(
+                        bound_current_id=current_id,
+                        bound_slots=partition_slots,
+                        bound_start=partition_start,
+                        stop=output_start,
+                    )
+                )
+                if (
+                    slot_current_id in seen_current_ids
+                    or slot_current_id <= current_id
+                ):
+                    raise ValueError(
+                        "numerical current partition output current order "
+                        "drifted"
+                    )
+                current_id = slot_current_id
+                seen_current_ids.add(current_id)
+                partition_start = output_start
+                partition_slots = []
+            output_stop = output_start + component_stop - component_start
+            partition_slots.append(
+                {
+                    "value_slot_id": raw_value_slot_id,
+                    "variant": variant,
+                    "component_start": component_start,
+                    "component_stop": component_stop,
+                    "output_start": output_start,
+                    "output_stop": output_stop,
+                }
+            )
+            output_start = output_stop
+            seen_output_slot_ids.add(raw_value_slot_id)
+        records.append(
+            partition_record(
+                bound_current_id=current_id,
+                bound_slots=partition_slots,
+                bound_start=partition_start,
+                stop=output_start,
+            )
+        )
+        if raw_output_current_ids != [
+            record["current_id"] for record in records
+        ]:
+            raise ValueError(
+                "numerical current partition stage current identity drifted"
+            )
+        stage_contracts.append(
+            {
+                "stage_index": stage_index,
+                "stage_kind": stage_kind,
+                "subset_size": subset_size,
+                "output_length": output_start,
+                "partitions": records,
+            }
+        )
+        previous_stage_index = stage_index
+    if not stage_contracts:
+        raise ValueError(
+            "numerical current partition runtime schema has no stages"
+        )
+    return _canonical_payload_sha256(
+        {
+            "abi": NUMERICAL_CURRENT_CAPTURE_OUTPUT_PARTITION_ABI,
+            "strategy": "one-contiguous-output-partition-per-current-id",
+            "stages": stage_contracts,
+        }
+    )
+
+
 def discover_generic_dag_numerical_current_relations(
     dag: GenericDAG,
     model: Model,
@@ -1586,6 +1784,8 @@ def discover_generic_dag_numerical_current_relations(
     verification_parameter_context_sha256s: Sequence[str],
     runtime_schema_sha256: str,
     source_dag_sha256: str,
+    evaluator_output_partition_abi: str,
+    evaluator_output_partition_sha256: str,
     candidate_capture_sha256: str,
     verification_capture_sha256: str,
     process_id: str | None = None,
@@ -1607,16 +1807,21 @@ def discover_generic_dag_numerical_current_relations(
         dag,
         execution_mode=execution_mode,
     )
-    actual_runtime_schema_digest = generic_dag_numerical_runtime_schema_sha256(
+    from .runtime_schema import build_runtime_expression_schema
+
+    actual_runtime_schema = build_runtime_expression_schema(
         dag,
         model,
         process_id=process_id or dag.process.key,
     )
-    actual_model_parameter_schema_digest = (
-        generic_dag_numerical_model_parameter_schema_sha256(
-            dag,
-            model,
-            process_id=process_id or dag.process.key,
+    actual_runtime_schema_mapping = actual_runtime_schema.to_mapping()
+    actual_runtime_schema_digest = actual_runtime_schema.sha256
+    actual_model_parameter_schema_digest = _canonical_payload_sha256(
+        actual_runtime_schema_mapping.get("model_parameters", ())
+    )
+    actual_output_partition_digest = (
+        generic_dag_numerical_capture_output_partition_sha256(
+            actual_runtime_schema_mapping
         )
     )
     actual_source_dag_digest = generic_dag_numerical_source_dag_sha256(dag)
@@ -1664,10 +1869,15 @@ def discover_generic_dag_numerical_current_relations(
             for value in (
                 runtime_schema_sha256,
                 source_dag_sha256,
+                evaluator_output_partition_sha256,
                 candidate_capture_sha256,
                 verification_capture_sha256,
             )
         )
+        or evaluator_output_partition_abi
+        != NUMERICAL_CURRENT_CAPTURE_OUTPUT_PARTITION_ABI
+        or evaluator_output_partition_sha256
+        != actual_output_partition_digest
         or candidate_capture_sha256 == verification_capture_sha256
         or runtime_schema_sha256 != actual_runtime_schema_digest
         or source_dag_sha256 != actual_source_dag_digest
@@ -1762,6 +1972,12 @@ def discover_generic_dag_numerical_current_relations(
                 actual_model_parameter_schema_digest
             ),
             "source_dag_sha256": source_dag_sha256,
+            "evaluator_output_partition_abi": (
+                evaluator_output_partition_abi
+            ),
+            "evaluator_output_partition_sha256": (
+                evaluator_output_partition_sha256
+            ),
             "observation_batch_sha256": candidate_batch_digest,
         }
     )
@@ -1777,6 +1993,12 @@ def discover_generic_dag_numerical_current_relations(
                 actual_model_parameter_schema_digest
             ),
             "source_dag_sha256": source_dag_sha256,
+            "evaluator_output_partition_abi": (
+                evaluator_output_partition_abi
+            ),
+            "evaluator_output_partition_sha256": (
+                evaluator_output_partition_sha256
+            ),
             "observation_batch_sha256": verification_batch_digest,
         }
     )
@@ -5410,6 +5632,8 @@ def _canonical_zero(value: float) -> float:
 
 __all__ = [
     "GENERIC_DAG_NUMERICAL_SOURCE_SEMANTICS_ABI",
+    "NUMERICAL_CURRENT_CAPTURE_ABI",
+    "NUMERICAL_CURRENT_CAPTURE_OUTPUT_PARTITION_ABI",
     "NUMERICAL_CURRENT_RELATION_CERTIFICATE_ALGORITHM",
     "NUMERICAL_CURRENT_RELATION_SET_ABI",
     "NUMERICAL_CURRENT_RELATION_WARNING",
@@ -5432,6 +5656,7 @@ __all__ = [
     "certify_numerical_current_observations",
     "discover_generic_dag_numerical_current_relations",
     "discover_recursive_evaluation_relations",
+    "generic_dag_numerical_capture_output_partition_sha256",
     "generic_dag_numerical_model_parameter_schema_sha256",
     "generic_dag_numerical_runtime_schema_sha256",
     "generic_dag_numerical_source_dag_sha256",

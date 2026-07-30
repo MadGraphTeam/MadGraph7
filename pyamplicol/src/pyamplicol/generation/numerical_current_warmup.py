@@ -8,6 +8,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
+from itertools import pairwise
 from math import cos, isfinite, pi, sin, sqrt
 from typing import Any, Literal
 
@@ -22,10 +23,12 @@ from ..runtime.symbolica_exact import (
 from .contracts import RuntimeExpressionSchema, StageCompilationInput
 from .dag_equivalence import (
     NUMERICAL_CURRENT_CAPTURE_ABI,
+    NUMERICAL_CURRENT_CAPTURE_OUTPUT_PARTITION_ABI,
     NumericalCurrentObservationDiscoveryResult,
     NumericalCurrentRelationApplicationResult,
     apply_numerical_current_relation_certificates,
     discover_generic_dag_numerical_current_relations,
+    generic_dag_numerical_capture_output_partition_sha256,
     generic_dag_numerical_source_semantics_sha256,
 )
 from .dag_types import GenericDAG
@@ -37,6 +40,9 @@ from .validation import ValidationPointRecord, build_validation_point
 _ComplexDecimal = tuple[Decimal, Decimal]
 _CAPTURE_ABI = NUMERICAL_CURRENT_CAPTURE_ABI
 _WARMUP_ABI = "pyamplicol-generic-dag-numerical-current-warmup-v1"
+_CAPTURE_OUTPUT_PARTITION_ABI = (
+    NUMERICAL_CURRENT_CAPTURE_OUTPUT_PARTITION_ABI
+)
 _NUMERICAL_DECIMAL_GUARD_DIGITS = 16
 
 
@@ -54,6 +60,8 @@ class GenericDAGCurrentObservationCapture:
     runtime_schema_sha256: str
     model_parameter_schema_sha256: str
     source_dag_sha256: str
+    evaluator_output_partition_abi: str
+    evaluator_output_partition_sha256: str
     observation_batch_sha256: str
     capture_contract_sha256: str
 
@@ -86,6 +94,10 @@ class GenericDAGCurrentObservationCapture:
                 self.model_parameter_schema_sha256
             ),
             "source_dag_sha256": self.source_dag_sha256,
+            "evaluator_output_partition": {
+                "abi": self.evaluator_output_partition_abi,
+                "sha256": self.evaluator_output_partition_sha256,
+            },
             "observation_batch_sha256": self.observation_batch_sha256,
             "capture_contract_sha256": self.capture_contract_sha256,
             "complete_current_component_digest": True,
@@ -93,6 +105,106 @@ class GenericDAGCurrentObservationCapture:
             "point_major": True,
             "evaluator": "symbolica-interpreted-high-precision-stage-replay",
         }
+
+
+@dataclass(frozen=True, slots=True)
+class _PartitionedCurrentCaptureStageEvaluator:
+    """Warm-up-only exact replay over current-ID-isolated evaluator leaves."""
+
+    evaluators: tuple[Any, ...]
+    chunk_input_indices: tuple[tuple[int, ...], ...]
+    output_partitions: tuple[tuple[int, int], ...]
+    input_len: int
+    output_len: int
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.input_len) is not int
+            or self.input_len < 0
+            or type(self.output_len) is not int
+            or self.output_len < 1
+            or len(self.evaluators) != len(self.chunk_input_indices)
+            or len(self.evaluators) != len(self.output_partitions)
+            or not self.evaluators
+        ):
+            raise ValueError(
+                "numerical current partitioned evaluator shape is invalid"
+            )
+        expected_output_start = 0
+        for evaluator, indices, partition in zip(
+            self.evaluators,
+            self.chunk_input_indices,
+            self.output_partitions,
+            strict=True,
+        ):
+            start, stop = partition
+            if (
+                start != expected_output_start
+                or stop <= start
+                or stop > self.output_len
+                or any(
+                    type(index) is not int
+                    or index < 0
+                    or index >= self.input_len
+                    for index in indices
+                )
+                or any(
+                    left >= right
+                    for left, right in pairwise(indices)
+                )
+                or getattr(evaluator, "input_len", None) != len(indices)
+            ):
+                raise ValueError(
+                    "numerical current partitioned evaluator mapping drifted"
+                )
+            expected_output_start = stop
+        if expected_output_start != self.output_len:
+            raise ValueError(
+                "numerical current partitioned evaluator outputs are not "
+                "exhaustive"
+            )
+
+    def evaluate_complex_with_prec(
+        self,
+        values: Sequence[_ComplexDecimal],
+        precision: int,
+    ) -> tuple[object, ...]:
+        prepared = tuple(values)
+        if len(prepared) != self.input_len:
+            raise ValueError(
+                "numerical current partitioned evaluator input width drifted"
+            )
+        outputs: list[object] = []
+        for evaluator, indices, (start, stop) in zip(
+            self.evaluators,
+            self.chunk_input_indices,
+            self.output_partitions,
+            strict=True,
+        ):
+            source = getattr(evaluator, "_source_evaluator", None)
+            evaluate = getattr(source, "evaluate_complex_with_prec", None)
+            if not callable(evaluate):
+                raise ValueError(
+                    "numerical current warm-up evaluator leaf lacks "
+                    "high-precision replay"
+                )
+            chunk_outputs = tuple(
+                evaluate(
+                    tuple(prepared[index] for index in indices),
+                    precision,
+                )
+            )
+            if len(chunk_outputs) != stop - start:
+                raise ValueError(
+                    "numerical current warm-up evaluator leaf returned the "
+                    "wrong output width"
+                )
+            outputs.extend(chunk_outputs)
+        if len(outputs) != self.output_len:
+            raise ValueError(
+                "numerical current partitioned evaluator output width drifted"
+            )
+        return tuple(outputs)
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +219,8 @@ class _GenericDAGCurrentCaptureSession:
     stage_evaluators: tuple[Any, ...]
     model_parameters: tuple[Decimal, ...]
     source_dag_sha256: str
+    evaluator_output_partition_abi: str
+    evaluator_output_partition_sha256: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -258,6 +372,12 @@ def run_generic_dag_numerical_current_warmup(
         ),
         runtime_schema_sha256=candidate.runtime_schema_sha256,
         source_dag_sha256=candidate.source_dag_sha256,
+        evaluator_output_partition_abi=(
+            candidate.evaluator_output_partition_abi
+        ),
+        evaluator_output_partition_sha256=(
+            candidate.evaluator_output_partition_sha256
+        ),
         candidate_capture_sha256=candidate.capture_contract_sha256,
         verification_capture_sha256=(
             verification.capture_contract_sha256
@@ -647,6 +767,12 @@ def capture_generic_dag_current_observations(
                 model_parameter_schema_digest
             ),
             "source_dag_sha256": session.source_dag_sha256,
+            "evaluator_output_partition_abi": (
+                session.evaluator_output_partition_abi
+            ),
+            "evaluator_output_partition_sha256": (
+                session.evaluator_output_partition_sha256
+            ),
             "observation_batch_sha256": observation_digest,
         }
     )
@@ -661,6 +787,12 @@ def capture_generic_dag_current_observations(
         runtime_schema_sha256=session.runtime_schema.sha256,
         model_parameter_schema_sha256=model_parameter_schema_digest,
         source_dag_sha256=session.source_dag_sha256,
+        evaluator_output_partition_abi=(
+            session.evaluator_output_partition_abi
+        ),
+        evaluator_output_partition_sha256=(
+            session.evaluator_output_partition_sha256
+        ),
         observation_batch_sha256=observation_digest,
         capture_contract_sha256=capture_contract_digest,
     )
@@ -686,6 +818,147 @@ def _current_observation_batch_sha256(
             ],
         }
     )
+
+
+def _current_capture_output_partitions(
+    stage: GenericCompiledStageBlueprint,
+) -> tuple[tuple[tuple[int, int], ...], dict[str, object]]:
+    """Return exhaustive current-ID output partitions and their identity."""
+
+    if (
+        type(stage.output_length) is not int
+        or stage.output_length < 1
+        or not stage.output_slots
+    ):
+        raise ValueError(
+            "numerical current capture stage has no partitionable outputs"
+        )
+    slot_ids = tuple(slot.value_slot_id for slot in stage.output_slots)
+    if slot_ids != stage.output_value_slot_ids:
+        raise ValueError(
+            "numerical current capture output-slot identity drifted"
+        )
+
+    ranges: list[tuple[int, int]] = []
+    records: list[dict[str, object]] = []
+    current_id: int | None = None
+    partition_start = 0
+    partition_slots: list[dict[str, object]] = []
+    seen_current_ids: set[int] = set()
+    seen_value_slot_ids: set[int] = set()
+    expected_output_start = 0
+
+    def finish_partition(stop: int) -> None:
+        if current_id is None or not partition_slots or partition_start >= stop:
+            raise ValueError(
+                "numerical current capture output partition is empty"
+            )
+        ranges.append((partition_start, stop))
+        records.append(
+            {
+                "current_id": current_id,
+                "output_start": partition_start,
+                "output_stop": stop,
+                "slots": list(partition_slots),
+            }
+        )
+
+    for slot in stage.output_slots:
+        if (
+            type(slot.current_id) is not int
+            or slot.current_id < 0
+            or type(slot.value_slot_id) is not int
+            or slot.value_slot_id < 0
+            or slot.value_slot_id in seen_value_slot_ids
+            or type(slot.output_start) is not int
+            or type(slot.output_stop) is not int
+            or slot.output_start != expected_output_start
+            or slot.output_stop <= slot.output_start
+            or slot.output_stop > stage.output_length
+            or slot.output_stop - slot.output_start
+            != slot.component_stop - slot.component_start
+        ):
+            raise ValueError(
+                "numerical current capture output slots overlap, gap, or "
+                "have an invalid identity"
+            )
+        if current_id is None:
+            current_id = slot.current_id
+            seen_current_ids.add(current_id)
+        elif slot.current_id != current_id:
+            finish_partition(slot.output_start)
+            if (
+                slot.current_id in seen_current_ids
+                or slot.current_id <= current_id
+            ):
+                raise ValueError(
+                    "numerical current capture output-slot current order "
+                    "drifted"
+                )
+            current_id = slot.current_id
+            seen_current_ids.add(current_id)
+            partition_start = slot.output_start
+            partition_slots = []
+        seen_value_slot_ids.add(slot.value_slot_id)
+        partition_slots.append(
+            {
+                "value_slot_id": slot.value_slot_id,
+                "variant": slot.variant,
+                "component_start": slot.component_start,
+                "component_stop": slot.component_stop,
+                "output_start": slot.output_start,
+                "output_stop": slot.output_stop,
+            }
+        )
+        expected_output_start = slot.output_stop
+
+    if expected_output_start != stage.output_length:
+        raise ValueError(
+            "numerical current capture output partitions are not exhaustive"
+        )
+    finish_partition(stage.output_length)
+    return tuple(ranges), {
+        "stage_index": stage.stage_index,
+        "stage_kind": stage.stage_kind,
+        "subset_size": stage.subset_size,
+        "output_length": stage.output_length,
+        "partitions": records,
+    }
+
+
+def _current_capture_partition_plan(
+    stages: Sequence[GenericCompiledStageBlueprint],
+) -> tuple[tuple[tuple[tuple[int, int], ...], ...], str]:
+    """Authenticate one stable current-ID partition plan for all stages."""
+
+    stage_partitions: list[tuple[tuple[int, int], ...]] = []
+    stage_contracts: list[dict[str, object]] = []
+    previous_stage_index: int | None = None
+    for stage in stages:
+        if (
+            type(stage.stage_index) is not int
+            or (
+                previous_stage_index is not None
+                and stage.stage_index <= previous_stage_index
+            )
+        ):
+            raise ValueError(
+                "numerical current capture stage order drifted"
+            )
+        partitions, contract = _current_capture_output_partitions(stage)
+        stage_partitions.append(partitions)
+        stage_contracts.append(contract)
+        previous_stage_index = stage.stage_index
+    if not stage_partitions:
+        raise ValueError(
+            "numerical current capture has no evaluator stages"
+        )
+    payload = {
+        "abi": _CAPTURE_OUTPUT_PARTITION_ABI,
+        "strategy": "one-contiguous-output-partition-per-current-id",
+        "stages": stage_contracts,
+    }
+    return tuple(stage_partitions), _canonical_sha256(payload)
 
 
 def _build_current_capture_session(
@@ -719,9 +992,28 @@ def _build_current_capture_session(
         output_chunk_strategy="uniform",
         compiled_chunk_compile_workers=1,
     )
+    stage_output_partitions, output_partition_digest = (
+        _current_capture_partition_plan(blueprint.stages)
+    )
+    runtime_output_partition_digest = (
+        generic_dag_numerical_capture_output_partition_sha256(schema)
+    )
+    if output_partition_digest != runtime_output_partition_digest:
+        raise ValueError(
+            "numerical current capture evaluator partitions drifted from "
+            "runtime output-slot geometry"
+        )
     stage_evaluators = tuple(
-        _build_interpreted_stage_evaluator(stage, settings=settings)
-        for stage in blueprint.stages
+        _build_interpreted_stage_evaluator(
+            stage,
+            settings=settings,
+            output_partitions=output_partitions,
+        )
+        for stage, output_partitions in zip(
+            blueprint.stages,
+            stage_output_partitions,
+            strict=True,
+        )
     )
     model_parameters = _runtime_model_parameter_values(schema)
     return _GenericDAGCurrentCaptureSession(
@@ -733,6 +1025,8 @@ def _build_current_capture_session(
         stage_evaluators=stage_evaluators,
         model_parameters=model_parameters,
         source_dag_sha256=_canonical_sha256(dag.to_json_dict()),
+        evaluator_output_partition_abi=_CAPTURE_OUTPUT_PARTITION_ABI,
+        evaluator_output_partition_sha256=output_partition_digest,
     )
 
 
@@ -749,6 +1043,10 @@ def validate_independent_current_observation_captures(
         or candidate.model_parameter_schema_sha256
         != verification.model_parameter_schema_sha256
         or candidate.source_dag_sha256 != verification.source_dag_sha256
+        or candidate.evaluator_output_partition_abi
+        != verification.evaluator_output_partition_abi
+        or candidate.evaluator_output_partition_sha256
+        != verification.evaluator_output_partition_sha256
         or set(candidate.observations) != set(verification.observations)
         or candidate.point_count < 2
         or verification.point_count < 2
@@ -808,6 +1106,10 @@ def _validate_applied_current_observations(
         != applied.parameter_context_sha256s
         or reference.model_parameter_schema_sha256
         != applied.model_parameter_schema_sha256
+        or reference.evaluator_output_partition_abi
+        != applied.evaluator_output_partition_abi
+        or reference.evaluator_output_partition_sha256
+        != applied.evaluator_output_partition_sha256
         or set(reference.observations) != set(applied.observations)
     ):
         raise ValueError(
@@ -901,6 +1203,12 @@ def _validate_applied_current_observations(
             "applied_observation_batch_sha256": (
                 applied.observation_batch_sha256
             ),
+            "evaluator_output_partition_abi": (
+                reference.evaluator_output_partition_abi
+            ),
+            "evaluator_output_partition_sha256": (
+                reference.evaluator_output_partition_sha256
+            ),
         }
 
 
@@ -908,8 +1216,9 @@ def _build_interpreted_stage_evaluator(
     stage: GenericCompiledStageBlueprint,
     *,
     settings: SymbolicaEvaluatorSettings,
+    output_partitions: Sequence[tuple[int, int]],
 ) -> Any:
-    return _compile_symbolica_outputs(
+    evaluator = _compile_symbolica_outputs(
         stage.output_expressions,
         list(stage.parameter_symbols),
         merge_evaluators_strategy=False,
@@ -922,7 +1231,33 @@ def _build_interpreted_stage_evaluator(
         symbolica_settings=settings,
         jit_compile=False,
         label=f"numerical_current_warmup_stage_{stage.stage_index}",
-        output_partitions=(),
+        output_partitions=output_partitions,
+    )
+    partitions = tuple(output_partitions)
+    if len(partitions) == 1:
+        evaluators = (evaluator,)
+        chunk_input_indices = (tuple(range(stage.parameter_count)),)
+    else:
+        evaluators = getattr(evaluator, "_evaluators", None)
+        chunk_input_indices = getattr(
+            evaluator,
+            "_chunk_input_indices",
+            None,
+        )
+        if not isinstance(evaluators, tuple) or not isinstance(
+            chunk_input_indices,
+            tuple,
+        ):
+            raise ValueError(
+                "numerical current warm-up partition compilation did not "
+                "retain its evaluator leaves"
+            )
+    return _PartitionedCurrentCaptureStageEvaluator(
+        evaluators=evaluators,
+        chunk_input_indices=chunk_input_indices,
+        output_partitions=partitions,
+        input_len=stage.parameter_count,
+        output_len=stage.output_length,
     )
 
 
@@ -1022,8 +1357,7 @@ def _evaluate_interpreted_stage(
     *,
     precision: int,
 ) -> tuple[_ComplexDecimal, ...]:
-    source = getattr(evaluator, "_source_evaluator", None)
-    evaluate = getattr(source, "evaluate_complex_with_prec", None)
+    evaluate = getattr(evaluator, "evaluate_complex_with_prec", None)
     if not callable(evaluate):
         raise ValueError(
             "numerical current warm-up evaluator lacks high-precision replay"

@@ -6,7 +6,9 @@ from __future__ import annotations
 import hashlib
 from dataclasses import replace
 from decimal import Decimal, localcontext
+from itertools import pairwise
 from math import isclose
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -22,6 +24,7 @@ from pyamplicol.generation.numerical_current_warmup import (
     run_generic_dag_numerical_current_warmup,
     validate_independent_current_observation_captures,
 )
+from pyamplicol.generation.stage_types import GenericStageOutputSlot
 from pyamplicol.generation.validation import ValidationPointRecord
 from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.builtin.process_ir import build_process_ir
@@ -79,6 +82,12 @@ def _synthetic_capture(
             b"model-parameter-schema"
         ).hexdigest(),
         source_dag_sha256=hashlib.sha256(b"source-dag").hexdigest(),
+        evaluator_output_partition_abi=(
+            numerical_current_warmup._CAPTURE_OUTPUT_PARTITION_ABI
+        ),
+        evaluator_output_partition_sha256=hashlib.sha256(
+            b"evaluator-output-partition"
+        ).hexdigest(),
         observation_batch_sha256=(
             numerical_current_warmup._current_observation_batch_sha256(
                 observations,
@@ -89,6 +98,259 @@ def _synthetic_capture(
             b"application-validation-capture"
         ).hexdigest(),
     )
+
+
+def _output_slot(
+    *,
+    current_id: int,
+    value_slot_id: int,
+    output_start: int,
+    output_stop: int,
+) -> GenericStageOutputSlot:
+    return GenericStageOutputSlot(
+        value_slot_id=value_slot_id,
+        current_id=current_id,
+        variant="propagated",
+        component_start=output_start,
+        component_stop=output_stop,
+        output_start=output_start,
+        output_stop=output_stop,
+    )
+
+
+def _partition_stage(
+    *slots: GenericStageOutputSlot,
+    output_length: int | None = None,
+    stage_index: int = 1,
+) -> Any:
+    return SimpleNamespace(
+        stage_index=stage_index,
+        stage_kind="current-combine",
+        subset_size=2,
+        output_length=(
+            slots[-1].output_stop
+            if output_length is None and slots
+            else output_length
+        ),
+        output_slots=slots,
+        output_value_slot_ids=tuple(slot.value_slot_id for slot in slots),
+    )
+
+
+def test_current_output_partition_policy_is_exhaustive_and_identity_bound() -> None:
+    stage = _partition_stage(
+        _output_slot(
+            current_id=2,
+            value_slot_id=20,
+            output_start=0,
+            output_stop=2,
+        ),
+        _output_slot(
+            current_id=3,
+            value_slot_id=30,
+            output_start=2,
+            output_stop=4,
+        ),
+    )
+
+    partitions, contract = (
+        numerical_current_warmup._current_capture_output_partitions(stage)
+    )
+    repeated_partitions, repeated_digest = (
+        numerical_current_warmup._current_capture_partition_plan((stage,))
+    )
+
+    assert partitions == ((0, 2), (2, 4))
+    assert repeated_partitions == (partitions,)
+    assert len(repeated_digest) == 64
+    assert contract["partitions"] == [
+        {
+            "current_id": 2,
+            "output_start": 0,
+            "output_stop": 2,
+            "slots": [
+                {
+                    "value_slot_id": 20,
+                    "variant": "propagated",
+                    "component_start": 0,
+                    "component_stop": 2,
+                    "output_start": 0,
+                    "output_stop": 2,
+                }
+            ],
+        },
+        {
+            "current_id": 3,
+            "output_start": 2,
+            "output_stop": 4,
+            "slots": [
+                {
+                    "value_slot_id": 30,
+                    "variant": "propagated",
+                    "component_start": 2,
+                    "component_stop": 4,
+                    "output_start": 2,
+                    "output_stop": 4,
+                }
+            ],
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    ("slots", "output_length", "message"),
+    (
+        (
+            (
+                _output_slot(
+                    current_id=2,
+                    value_slot_id=20,
+                    output_start=0,
+                    output_stop=2,
+                ),
+                _output_slot(
+                    current_id=3,
+                    value_slot_id=30,
+                    output_start=3,
+                    output_stop=5,
+                ),
+            ),
+            5,
+            "overlap, gap",
+        ),
+        (
+            (
+                _output_slot(
+                    current_id=2,
+                    value_slot_id=20,
+                    output_start=0,
+                    output_stop=2,
+                ),
+                _output_slot(
+                    current_id=3,
+                    value_slot_id=30,
+                    output_start=1,
+                    output_stop=3,
+                ),
+            ),
+            3,
+            "overlap, gap",
+        ),
+        (
+            (
+                _output_slot(
+                    current_id=3,
+                    value_slot_id=30,
+                    output_start=0,
+                    output_stop=2,
+                ),
+                _output_slot(
+                    current_id=2,
+                    value_slot_id=20,
+                    output_start=2,
+                    output_stop=4,
+                ),
+            ),
+            4,
+            "current order",
+        ),
+        (
+            (
+                _output_slot(
+                    current_id=2,
+                    value_slot_id=20,
+                    output_start=0,
+                    output_stop=2,
+                ),
+                _output_slot(
+                    current_id=3,
+                    value_slot_id=30,
+                    output_start=2,
+                    output_stop=4,
+                ),
+                _output_slot(
+                    current_id=2,
+                    value_slot_id=40,
+                    output_start=4,
+                    output_stop=6,
+                ),
+            ),
+            6,
+            "current order",
+        ),
+    ),
+)
+def test_current_output_partition_policy_rejects_gap_overlap_and_order_drift(
+    slots: tuple[GenericStageOutputSlot, ...],
+    output_length: int,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        numerical_current_warmup._current_capture_output_partitions(
+            _partition_stage(*slots, output_length=output_length)
+        )
+
+
+def test_partitioned_high_precision_replay_preserves_order_and_width() -> None:
+    class ExactSource:
+        def __init__(
+            self,
+            outputs: tuple[tuple[Decimal, Decimal], ...],
+        ) -> None:
+            self.outputs = outputs
+            self.calls: list[
+                tuple[tuple[tuple[Decimal, Decimal], ...], int]
+            ] = []
+
+        def evaluate_complex_with_prec(
+            self,
+            values: tuple[tuple[Decimal, Decimal], ...],
+            precision: int,
+        ) -> tuple[tuple[Decimal, Decimal], ...]:
+            self.calls.append((values, precision))
+            return self.outputs
+
+    class ExactLeaf:
+        def __init__(self, input_len: int, source: ExactSource) -> None:
+            self.input_len = input_len
+            self._source_evaluator = source
+
+    first_source = ExactSource(
+        (
+            (Decimal(1), Decimal(0)),
+            (Decimal(2), Decimal(0)),
+        )
+    )
+    second_source = ExactSource(((Decimal(3), Decimal(0)),))
+    evaluator = (
+        numerical_current_warmup._PartitionedCurrentCaptureStageEvaluator(
+            evaluators=(
+                ExactLeaf(2, first_source),
+                ExactLeaf(1, second_source),
+            ),
+            chunk_input_indices=((0, 2), (1,)),
+            output_partitions=((0, 2), (2, 3)),
+            input_len=3,
+            output_len=3,
+        )
+    )
+    values = (
+        (Decimal(10), Decimal(0)),
+        (Decimal(20), Decimal(0)),
+        (Decimal(30), Decimal(0)),
+    )
+
+    assert evaluator.evaluate_complex_with_prec(values, 112) == (
+        (Decimal(1), Decimal(0)),
+        (Decimal(2), Decimal(0)),
+        (Decimal(3), Decimal(0)),
+    )
+    assert first_source.calls == [((values[0], values[2]), 112)]
+    assert second_source.calls == [((values[1],), 112)]
+
+    second_source.outputs = ()
+    with pytest.raises(ValueError, match="wrong output width"):
+        evaluator.evaluate_complex_with_prec(values, 112)
 
 
 @pytest.mark.parametrize("ambient_precision", (28, 50, 96))
@@ -119,7 +381,7 @@ def test_application_validation_uses_configured_precision_at_tolerance_boundary(
                 )
             )
             assert result["status"] == "verified"
-            assert Decimal(result["maximum_tolerance_ratio"]) <= 1
+            assert Decimal(str(result["maximum_tolerance_ratio"])) <= 1
         else:
             with pytest.raises(
                 ValueError,
@@ -164,8 +426,16 @@ def test_capture_uses_only_interpreted_high_precision_stage_replay(
     real_compile = numerical_current_warmup._compile_symbolica_outputs
     compile_contracts: list[dict[str, Any]] = []
 
-    def guarded_compile(*args: object, **kwargs: Any) -> Any:
+    def guarded_compile(*args: Any, **kwargs: Any) -> Any:
         assert kwargs["jit_compile"] is False
+        output_partitions = tuple(kwargs["output_partitions"])
+        assert output_partitions
+        assert output_partitions[0][0] == 0
+        assert all(
+            left[1] == right[0]
+            for left, right in pairwise(output_partitions)
+        )
+        assert output_partitions[-1][1] == len(args[0])
         settings = kwargs["symbolica_settings"]
         assert settings.direct_translation is False
         assert settings.jit_direct_translation is False
@@ -205,6 +475,12 @@ def test_capture_uses_only_interpreted_high_precision_stage_replay(
     assert provenance["complete_current_component_digest"] is True
     assert provenance["components_embedded"] is False
     assert provenance["point_major"] is True
+    assert str(provenance["abi"]).endswith("-v2")
+    assert provenance["evaluator_output_partition"] == {
+        "abi": numerical_current_warmup._CAPTURE_OUTPUT_PARTITION_ABI,
+        "sha256": capture.evaluator_output_partition_sha256,
+    }
+    assert len(capture.evaluator_output_partition_sha256) == 64
     assert provenance["points"] == [
         point.to_mapping() for point in candidate
     ]
@@ -243,6 +519,10 @@ def test_transaction_reuses_one_baseline_capture_session(
 
     assert result.application.report.applied_relation_count == 0
     assert built_dags == [dag]
+    assert (
+        result.candidate_capture.evaluator_output_partition_sha256
+        == result.verification_capture.evaluator_output_partition_sha256
+    )
 
 
 @pytest.mark.parametrize("execution_mode", ("compiled", "eager"))
@@ -411,8 +691,13 @@ def test_certified_zero_currents_are_applied_and_revalidated_by_default(
         dag.currents
     )
     assert Decimal(
-        result.application_validation["maximum_tolerance_ratio"]
+        str(result.application_validation["maximum_tolerance_ratio"])
     ) <= Decimal(1)
+    assert result.application_validation["maximum_absolute_residual"] == "0"
+    assert (
+        result.application_validation["evaluator_output_partition_sha256"]
+        == result.verification_capture.evaluator_output_partition_sha256
+    )
 
 
 def test_capture_domains_fail_closed_on_replay_drift(
@@ -471,6 +756,34 @@ def test_capture_domains_fail_closed_on_replay_drift(
             candidate,
             changed_parameter_schema,
         )
+
+    changed_partitions = (
+        replace(
+            verification,
+            evaluator_output_partition_abi=(
+                "pyamplicol-stale-current-output-partitions-v0"
+            ),
+        ),
+        replace(
+            verification,
+            evaluator_output_partition_sha256=hashlib.sha256(
+                b"stale-output-partitions"
+            ).hexdigest(),
+        ),
+    )
+    for changed_partition in changed_partitions:
+        with pytest.raises(ValueError, match="independent replay domains"):
+            validate_independent_current_observation_captures(
+                candidate,
+                changed_partition,
+            )
+        with pytest.raises(ValueError, match="provenance drifted"):
+            numerical_current_warmup._validate_applied_current_observations(
+                verification,
+                changed_partition,
+                relative_tolerance=1.0e-70,
+                absolute_tolerance=1.0e-80,
+            )
 
     current_id = min(candidate.observations)
     incomplete = replace(

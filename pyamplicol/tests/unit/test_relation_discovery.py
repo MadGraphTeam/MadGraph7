@@ -7,12 +7,14 @@ import hashlib
 from dataclasses import replace
 from decimal import Decimal, localcontext
 from itertools import product
+from typing import Any
 
 import pytest
 
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.dag_equivalence import (
     NUMERICAL_CURRENT_CAPTURE_ABI,
+    NUMERICAL_CURRENT_CAPTURE_OUTPUT_PARTITION_ABI,
     ExactCurrentRelationCertificate,
     _build_numerical_observation_candidate_index,
     _canonical_payload_sha256,
@@ -24,12 +26,14 @@ from pyamplicol.generation.dag_equivalence import (
     certify_numerical_current_observations,
     discover_generic_dag_numerical_current_relations,
     discover_recursive_evaluation_relations,
+    generic_dag_numerical_capture_output_partition_sha256,
     generic_dag_numerical_model_parameter_schema_sha256,
     generic_dag_numerical_runtime_schema_sha256,
     generic_dag_numerical_source_dag_sha256,
     generic_dag_numerical_source_semantics_sha256,
     verify_dag_relation_certificates,
 )
+from pyamplicol.generation.runtime_schema import build_runtime_expression_schema
 from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.builtin.process_ir import build_process_ir
 
@@ -800,7 +804,7 @@ def _complete_observation_evidence(
     *,
     candidate_points: tuple[str, ...] | None = None,
     verification_points: tuple[str, ...] | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     candidate_point_hashes = candidate_points or _observation_points(
         "candidate"
     )
@@ -815,10 +819,11 @@ def _complete_observation_evidence(
     verification_parameters = _observation_points(
         "verification-parameters"
     )
-    runtime_schema_digest = generic_dag_numerical_runtime_schema_sha256(
+    runtime_schema = build_runtime_expression_schema(
         dag,
         model,
     )
+    runtime_schema_digest = runtime_schema.sha256
     model_parameter_schema_digest = (
         generic_dag_numerical_model_parameter_schema_sha256(
             dag,
@@ -833,6 +838,11 @@ def _complete_observation_evidence(
     verification_batch_digest = _numerical_current_observation_batch_sha256(
         verification,
         point_sha256s=verification_point_hashes,
+    )
+    output_partition_digest = (
+        generic_dag_numerical_capture_output_partition_sha256(
+            runtime_schema.to_mapping()
+        )
     )
 
     def capture_digest(
@@ -853,6 +863,12 @@ def _complete_observation_evidence(
                     model_parameter_schema_digest
                 ),
                 "source_dag_sha256": source_dag_digest,
+                "evaluator_output_partition_abi": (
+                    NUMERICAL_CURRENT_CAPTURE_OUTPUT_PARTITION_ABI
+                ),
+                "evaluator_output_partition_sha256": (
+                    output_partition_digest
+                ),
                 "observation_batch_sha256": batch_digest,
             }
         )
@@ -866,6 +882,10 @@ def _complete_observation_evidence(
         "verification_parameter_context_sha256s": verification_parameters,
         "runtime_schema_sha256": runtime_schema_digest,
         "source_dag_sha256": source_dag_digest,
+        "evaluator_output_partition_abi": (
+            NUMERICAL_CURRENT_CAPTURE_OUTPUT_PARTITION_ABI
+        ),
+        "evaluator_output_partition_sha256": output_partition_digest,
         "candidate_capture_sha256": capture_digest(
             candidate_point_hashes,
             candidate_kinematics,
@@ -988,6 +1008,91 @@ def test_complete_warmup_negative_audit_is_first_class_and_warning_free() -> Non
         candidate_index["zero_hypothesis_count"]
         + candidate_index["screened_pair_hypothesis_count"]
     )
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    (
+        (
+            "evaluator_output_partition_abi",
+            "pyamplicol-stale-current-output-partitions-v0",
+        ),
+        (
+            "evaluator_output_partition_sha256",
+            hashlib.sha256(b"stale-current-output-partitions").hexdigest(),
+        ),
+    ),
+)
+def test_discovery_recomputes_and_rejects_stale_output_partition_evidence(
+    field: str,
+    replacement: str,
+) -> None:
+    dag, model = _ambiguous_projective_dag()
+    candidate = _complete_current_observations(dag, domain=100_000)
+    verification = _complete_current_observations(dag, domain=900_000)
+    evidence = _complete_observation_evidence(
+        dag,
+        model,
+        candidate,
+        verification,
+    )
+    evidence[field] = replacement
+    model_parameter_schema_digest = (
+        generic_dag_numerical_model_parameter_schema_sha256(dag, model)
+    )
+
+    for domain, observations in (
+        ("candidate", candidate),
+        ("verification", verification),
+    ):
+        point_hashes = tuple(evidence[f"{domain}_point_sha256s"])
+        batch_digest = _numerical_current_observation_batch_sha256(
+            observations,
+            point_sha256s=point_hashes,
+        )
+        evidence[f"{domain}_capture_sha256"] = _canonical_payload_sha256(
+            {
+                "abi": NUMERICAL_CURRENT_CAPTURE_ABI,
+                "precision_digits": 96,
+                "point_sha256s": list(point_hashes),
+                "kinematic_sha256s": list(
+                    evidence[f"{domain}_kinematic_sha256s"]
+                ),
+                "parameter_context_sha256s": list(
+                    evidence[
+                        f"{domain}_parameter_context_sha256s"
+                    ]
+                ),
+                "runtime_schema_sha256": evidence[
+                    "runtime_schema_sha256"
+                ],
+                "model_parameter_schema_sha256": (
+                    model_parameter_schema_digest
+                ),
+                "source_dag_sha256": evidence["source_dag_sha256"],
+                "evaluator_output_partition_abi": evidence[
+                    "evaluator_output_partition_abi"
+                ],
+                "evaluator_output_partition_sha256": evidence[
+                    "evaluator_output_partition_sha256"
+                ],
+                "observation_batch_sha256": batch_digest,
+            }
+        )
+
+    with pytest.raises(ValueError, match="point contract"):
+        discover_generic_dag_numerical_current_relations(
+            dag,
+            model,
+            candidate_observations=candidate,
+            verification_observations=verification,
+            **evidence,
+            execution_mode="compiled",
+            precision_digits=96,
+            seed=0x5059414D,
+            relative_tolerance=1.0e-70,
+            absolute_tolerance=1.0e-80,
+        )
 
 
 @pytest.mark.parametrize(
