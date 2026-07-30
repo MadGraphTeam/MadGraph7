@@ -11,6 +11,7 @@ import pytest
 from tools.performance_report import final_audit
 from tools.performance_report.campaign_policy import (
     MACBOOK_M3_POLICY,
+    MACBOOK_M3_Z_TABLE_F_POLICY_NAME,
     X86_EPYC_POLICY,
     CampaignPolicyError,
     PolicyMeasurementState,
@@ -103,6 +104,18 @@ def test_table_filler_defaults_to_five_seconds_per_cell() -> None:
     )
     assert decimal_limits.max_ram_gb == 30.0
     assert decimal_limits.campaign_max_ram_gb == 30.0
+
+    study = _parser().parse_args(
+        (
+            "populate",
+            "--study-policy",
+            MACBOOK_M3_Z_TABLE_F_POLICY_NAME,
+            "--max-ram-gb",
+            "30",
+        )
+    )
+    assert study.study_policy == MACBOOK_M3_Z_TABLE_F_POLICY_NAME
+    assert study.max_ram_gb == 30.0
 
 
 def test_pinned_epyc_orphan_is_the_only_unavailable_rss_exception() -> None:

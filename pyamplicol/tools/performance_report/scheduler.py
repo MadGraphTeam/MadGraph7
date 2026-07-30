@@ -19,6 +19,7 @@ from .agreements import incoming_agreement_edges
 from .artifacts import ArtifactAction, ArtifactStore, CurrentRecord
 from .cache import validate_measurement
 from .campaign_policy import (
+    MACBOOK_M3_Z_TABLE_F_POLICY,
     STRICT_POLICY,
     X86_EPYC_NATIVE_COMPILER_SLOTS,
     X86_EPYC_PROFILE,
@@ -57,6 +58,12 @@ from .resources import (
 from .runner import DEFAULT_TARGET_RUNTIME_SECONDS
 from .service import CANONICAL_REPORT_ENTRYPOINT, ReportService
 from .source_identity import require_eligible_report_source
+from .study_contract import (
+    StudyContractError,
+    bind_z_table_f_attempt,
+    require_z_table_f_attempt_binding,
+    z_table_f_attempt_binding,
+)
 
 _NATIVE_COMPILER_GATE_DIR_ENV = "PYAMPLICOL_NATIVE_COMPILER_GATE_DIR"
 _NATIVE_COMPILER_GATE_SLOT_COUNT_ENV = "PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT"
@@ -108,6 +115,7 @@ class CampaignSettings:
     allow_symbolica_parallel: bool = False
     campaign_policy: CampaignPolicy = STRICT_POLICY
     report_profile: str | None = None
+    study_contract_sha256: str | None = None
 
     def __post_init__(self) -> None:
         if self.workers < 1 or self.cell_cores < 1:
@@ -130,6 +138,19 @@ class CampaignSettings:
         profile = self.report_profile or ""
         if self.campaign_policy is not STRICT_POLICY or self.report_profile is not None:
             validate_policy_profile(self.campaign_policy, profile)
+        if self.campaign_policy is MACBOOK_M3_Z_TABLE_F_POLICY:
+            if self.study_contract_sha256 is None:
+                raise ValueError(
+                    "the Z-table F policy requires a study contract SHA-256"
+                )
+            try:
+                z_table_f_attempt_binding(self.study_contract_sha256)
+            except StudyContractError as error:
+                raise ValueError(str(error)) from error
+        elif self.study_contract_sha256 is not None:
+            raise ValueError(
+                "a study contract SHA-256 requires the Z-table F policy"
+            )
         validate_campaign_settings(self.campaign_policy, self)
 
 
@@ -220,13 +241,19 @@ def _successful_current(
     expected_tree: str | None = None,
     expected_cell: CellSpec | None = None,
     measurement_lineage: MeasurementLineage | None = None,
+    expected_study_contract_sha256: str | None = None,
 ) -> CurrentRecord | None:
     current = store.load_current(cell_id, missing_ok=True)
     if current is None or current.result.get("status") != ResultStatus.OK.value:
         return None
     try:
         validate_measurement(current.result, expected_cell=expected_cell)
-    except ValueError:
+        if expected_study_contract_sha256 is not None:
+            require_z_table_f_attempt_binding(
+                current.result,
+                expected_study_contract_sha256,
+            )
+    except (StudyContractError, ValueError):
         return None
     if expected_revision is not None:
         provenance = current.result.get("provenance")
@@ -270,6 +297,9 @@ def _policy_current(
             expected_tree=expected_tree,
             expected_cell=cell,
             measurement_lineage=measurement_lineage,
+            expected_study_contract_sha256=(
+                settings.study_contract_sha256
+            ),
         )
         return None if current is None else (current, PolicyMeasurementState.SUCCESS)
     current = store.load_current(cell.cell_id, missing_ok=True)
@@ -304,6 +334,11 @@ def _policy_current(
         return None
     try:
         validate_measurement(current.result, expected_cell=cell)
+        if settings.study_contract_sha256 is not None:
+            require_z_table_f_attempt_binding(
+                current.result,
+                settings.study_contract_sha256,
+            )
         state = validate_policy_measurement(
             settings.campaign_policy,
             settings.report_profile or "",
@@ -312,7 +347,7 @@ def _policy_current(
             expected_source_revision=expected_source[0],
             expected_source_tree=expected_source[1],
         )
-    except (CampaignPolicyError, ValueError):
+    except (CampaignPolicyError, StudyContractError, ValueError):
         return None
     return current, state
 
@@ -402,6 +437,7 @@ def _fresh_equivalent_current(
     expected_revision: str,
     expected_tree: str | None = None,
     measurement_lineage: MeasurementLineage | None = None,
+    expected_study_contract_sha256: str | None = None,
 ) -> CurrentRecord | None:
     if cell.measurement.execution_mode is ExecutionMode.AMPLICOL:
         return None
@@ -413,6 +449,9 @@ def _fresh_equivalent_current(
             expected_tree=expected_tree,
             expected_cell=equivalent,
             measurement_lineage=measurement_lineage,
+            expected_study_contract_sha256=(
+                expected_study_contract_sha256
+            ),
         )
         if current is not None:
             return current
@@ -1040,6 +1079,9 @@ class CampaignScheduler:
                     expected_revision=self.source_revision,
                     expected_tree=self.measurement_source_tree,
                     measurement_lineage=self.measurement_lineage,
+                    expected_study_contract_sha256=(
+                        self.settings.study_contract_sha256
+                    ),
                 )
                 if (
                     not self.settings.rerun
@@ -1329,6 +1371,11 @@ class CampaignScheduler:
                         raise TypeError("worker result must be a JSON object")
                     result = dict(raw)
                     result["resources"] = resources
+                if self.settings.study_contract_sha256 is not None:
+                    bind_z_table_f_attempt(
+                        result,
+                        self.settings.study_contract_sha256,
+                    )
                 validate_measurement(result, expected_cell=cell)
                 if result["status"] == ResultStatus.OK.value:
                     policy_state = (
@@ -1409,6 +1456,11 @@ class CampaignScheduler:
                     )
                 ),
             )
+            if self.settings.study_contract_sha256 is not None:
+                bind_z_table_f_attempt(
+                    result,
+                    self.settings.study_contract_sha256,
+                )
             validate_measurement(result, expected_cell=cell)
             record = attempt.publish(result)
             return CellOutcome(
@@ -1438,6 +1490,11 @@ class CampaignScheduler:
                 resources=None,
                 frontier=frontier,
             )
+            if self.settings.study_contract_sha256 is not None:
+                bind_z_table_f_attempt(
+                    result,
+                    self.settings.study_contract_sha256,
+                )
             validate_measurement(result, expected_cell=cell)
             record = attempt.publish(result)
             return CellOutcome(
@@ -1474,6 +1531,11 @@ class CampaignScheduler:
             based_on=current,
         ) as attempt:
             result = failure_measurement(ResultStatus.SKIP, message)
+            if self.settings.study_contract_sha256 is not None:
+                bind_z_table_f_attempt(
+                    result,
+                    self.settings.study_contract_sha256,
+                )
             attempt.write_json("worker-result.json", result)
             attempt.mark_failed(
                 message,

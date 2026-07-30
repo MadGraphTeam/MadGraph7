@@ -13,6 +13,8 @@ from tools.performance_report.cache import build_reset_caches, empty_measurement
 from tools.performance_report.campaign_policy import (
     MACBOOK_M3_MEMORY_LIMIT_BYTES,
     MACBOOK_M3_POLICY,
+    MACBOOK_M3_Z_TABLE_F_GENERATION_LIMIT_SECONDS,
+    MACBOOK_M3_Z_TABLE_F_POLICY,
     STRICT_POLICY,
     X86_EPYC_GENERATION_LIMIT_SECONDS,
     X86_EPYC_LEGACY_MEMORY_LIMIT_BYTES,
@@ -27,6 +29,7 @@ from tools.performance_report.campaign_policy import (
     _validate_generation_phase,
     dependency_reference,
     generation_limit_exempt,
+    generation_limit_for_cell,
     policy_censor_measurement,
     policy_from_manifest,
     policy_status_label,
@@ -125,6 +128,20 @@ def _mac_settings(**changes: object) -> CampaignSettings:
         "max_rss_bytes": MACBOOK_M3_MEMORY_LIMIT_BYTES,
         "campaign_policy": MACBOOK_M3_POLICY,
         "report_profile": "macbook_M3",
+    }
+    values.update(changes)
+    return CampaignSettings(**values)  # type: ignore[arg-type]
+
+
+def _z_table_f_settings(**changes: object) -> CampaignSettings:
+    values: dict[str, object] = {
+        "workers": 1,
+        "cell_cores": 1,
+        "target_runtime_seconds": 5.0,
+        "max_rss_bytes": MACBOOK_M3_MEMORY_LIMIT_BYTES,
+        "campaign_policy": MACBOOK_M3_Z_TABLE_F_POLICY,
+        "report_profile": "macbook_M3",
+        "study_contract_sha256": "a" * 64,
     }
     values.update(changes)
     return CampaignSettings(**values)  # type: ignore[arg-type]
@@ -250,6 +267,68 @@ def test_macbook_policy_is_exact_memory_only_decimal_30_gb() -> None:
         )
         is PolicyMeasurementState.MEMORY_LIMIT
     )
+
+
+def test_z_table_f_policy_caps_every_generation_at_one_hour() -> None:
+    settings = _z_table_f_settings()
+    cells = tuple(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.dataset_id in {"z_builtin_sm", "reference_amplicol_lc"}
+        and cell.process_key == "dd_z_jets"
+        and cell.n_final in {8, 9}
+        and cell.workload in {
+            Workload.SELECTED_FLOW,
+            Workload.ALL_FLOW,
+        }
+    )
+
+    assert settings.max_rss_bytes == 30_000_000_000
+    assert settings.generation_time_limit_seconds is None
+    assert settings.timeout_seconds is None
+    assert settings.study_contract_sha256 == "a" * 64
+    assert (
+        MACBOOK_M3_Z_TABLE_F_POLICY.generation_limit_seconds
+        == MACBOOK_M3_Z_TABLE_F_GENERATION_LIMIT_SECONDS
+        == 3600.0
+    )
+    assert (
+        MACBOOK_M3_Z_TABLE_F_POLICY.as_manifest()[
+            "generation_limit_exemptions"
+        ]
+        == "none"
+    )
+    assert cells
+    assert {
+        cell.workload for cell in cells
+    } == {Workload.SELECTED_FLOW, Workload.ALL_FLOW}
+    assert all(
+        generation_limit_for_cell(MACBOOK_M3_Z_TABLE_F_POLICY, cell)
+        == 3600.0
+        for cell in cells
+    )
+    assert any(
+        cell.measurement.execution_mode.value == "amplicol"
+        for cell in cells
+    )
+    assert any(
+        cell.measurement.execution_mode.value == "recurrence"
+        and cell.workload is Workload.SELECTED_FLOW
+        for cell in cells
+    )
+    with pytest.raises(CampaignPolicyError, match="max_rss_bytes"):
+        _z_table_f_settings(max_rss_bytes=30 * 1024**3)
+    with pytest.raises(
+        CampaignPolicyError,
+        match="generation_time_limit_seconds",
+    ):
+        _z_table_f_settings(generation_time_limit_seconds=3600.0)
+    with pytest.raises(ValueError, match="requires a study contract"):
+        _z_table_f_settings(study_contract_sha256=None)
+    with pytest.raises(ValueError, match="SHA-256"):
+        _z_table_f_settings(study_contract_sha256="not-a-digest")
+    with pytest.raises(ValueError, match="requires the Z-table F policy"):
+        CampaignSettings(study_contract_sha256="a" * 64)
 
 
 def test_physical_footprint_censor_is_authenticated_and_tamper_evident() -> None:
@@ -895,6 +974,119 @@ def test_scheduler_publishes_authenticated_generation_censor(
         validate_policy_measurement(
             X86_EPYC_POLICY,
             "x86_EPYC",
+            cell,
+            current.result,
+            expected_source_revision=scheduler.source_revision,
+            expected_source_tree=scheduler.source_tree,
+        )
+        is PolicyMeasurementState.GENERATION_LIMIT
+    )
+
+
+def test_z_table_f_scheduler_publishes_authenticated_one_hour_censor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "docs/arxiv").mkdir(parents=True)
+    subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
+    subprocess.run(
+        ("git", "config", "user.email", "test@example.invalid"),
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ("git", "config", "user.name", "Test"),
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("fixture\n", encoding="ascii")
+    subprocess.run(("git", "add", "."), cwd=repo, check=True)
+    subprocess.run(("git", "commit", "-qm", "fixture"), cwd=repo, check=True)
+    service = ReportService(
+        ReportPaths.from_repo(
+            repo,
+            artifact_root=tmp_path / "artifacts",
+            coordination_root=tmp_path / "locks",
+        )
+    )
+    cell = REPORT_CATALOG.cell(
+        "scalar-contact-n2-scalar-contact-contracted"
+    )
+
+    def fake_supervise(command, **arguments):
+        channel = arguments["phase_channel"]
+        assert arguments["generation_timeout_seconds"] == 3600.0
+        assert arguments["timeout_seconds"] is None
+        assert arguments["max_rss_bytes"] == 30_000_000_000
+        assert channel is not None
+        assert "--phase-state-path" in command
+        return SupervisedResult(
+            returncode=-15,
+            reason="generation_timeout",
+            usage=ResourceUsage(
+                available=True,
+                current_rss_bytes=100,
+                peak_rss_bytes=100,
+                child_count=0,
+                cpu_seconds=1.0,
+                wall_seconds=3600.0,
+                current_physical_footprint_bytes=120,
+                peak_physical_footprint_bytes=120,
+                current_guard_bytes=120,
+                peak_guard_bytes=120,
+                memory_metric_abi=PROCESS_TREE_MEMORY_METRIC_ABI,
+            ),
+            generation_phase=GenerationPhaseEvidence(
+                configured_timeout_seconds=3600.0,
+                supervisor_reason="generation_timeout",
+                authenticated=True,
+                run_id=channel.run_id,
+                worker_pid=123,
+                final_sequence=1,
+                final_phase="generation",
+                generation_started_monotonic_ns=1,
+                generation_finished_monotonic_ns=None,
+                generation_elapsed_seconds=3600.0,
+                final_state_sha256="4" * 64,
+                error=None,
+            ),
+            memory_limit_bytes=30_000_000_000,
+        )
+
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        fake_supervise,
+    )
+    scheduler = CampaignScheduler(
+        service,
+        settings=_z_table_f_settings(),
+    )
+    outcome = scheduler._run_cell(
+        PlannedCell(
+            cell=cell,
+            dependency=False,
+            baseline_cell_id=None,
+            rank=0,
+        )
+    )
+
+    assert outcome.status == PolicyMeasurementState.GENERATION_LIMIT.value
+    current = service.store.load_current(cell.cell_id)
+    assert current is not None
+    assert policy_status_label(current.result) == ">1h"
+    provenance = current.result["provenance"]
+    assert isinstance(provenance, dict)
+    assert provenance["study_contract"] == {
+        "abi": "pyamplicol-z-table-f-attempt-binding-v1",
+        "study_id": "macbook-m3-z-table-f",
+        "study_contract_sha256": "a" * 64,
+    }
+    assert _status(current.result) == r"\matrixstatus{ReportOrange}{>1h}"
+    assert (
+        validate_policy_measurement(
+            MACBOOK_M3_Z_TABLE_F_POLICY,
+            "macbook_M3",
             cell,
             current.result,
             expected_source_revision=scheduler.source_revision,

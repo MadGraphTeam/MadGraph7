@@ -23,11 +23,16 @@ from .boundary import (
 from .cache import validate_measurement
 from .campaign_policy import (
     MACBOOK_M3_POLICY_NAME,
+    MACBOOK_M3_PROFILE,
+    MACBOOK_M3_Z_TABLE_F_POLICY_NAME,
     STRICT_POLICY,
     STRICT_POLICY_NAME,
     X86_EPYC_POLICY_NAME,
     PolicyMeasurementState,
     validate_policy_measurement,
+)
+from .campaign_policy import (
+    campaign_policy as resolve_campaign_policy,
 )
 from .catalog import REPORT_CATALOG
 from .measurement_lineage import (
@@ -73,6 +78,11 @@ from .service import (
 )
 from .source_identity import require_eligible_report_source
 from .standalone_build import StandaloneBuildError, validate_latex_log
+from .study_contract import (
+    audit_z_table_f_policy_projection,
+    load_z_table_f_study_contract,
+    require_z_table_f_explicit_cell,
+)
 from .worker import write_cell_result
 from .workspace import (
     ReportWorkspaceError,
@@ -162,6 +172,13 @@ def _parser() -> argparse.ArgumentParser:
                 action="store_true",
                 help="compile pyAmpliCol.pdf after publishing tables",
             )
+
+    study_audit = subparsers.add_parser(
+        "audit-z-table-study",
+        help=argparse.SUPPRESS,
+    )
+    study_audit.add_argument("--study-contract", type=Path, required=True)
+    study_audit.add_argument("--maximum-n", type=int, required=True)
 
     publish_snapshot = subparsers.add_parser(
         "publish-snapshot",
@@ -443,6 +460,16 @@ def _parser() -> argparse.ArgumentParser:
         "--refresh-pdf",
         choices=("never", "end"),
         default="never",
+    )
+    populate.add_argument(
+        "--study-policy",
+        choices=(MACBOOK_M3_Z_TABLE_F_POLICY_NAME,),
+        help=argparse.SUPPRESS,
+    )
+    populate.add_argument(
+        "--study-contract",
+        type=Path,
+        help=argparse.SUPPRESS,
     )
     return parser
 
@@ -823,6 +850,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "audit":
         print(json.dumps(service.audit(), sort_keys=True))
         return 0
+    if args.command == "audit-z-table-study":
+        try:
+            contract = load_z_table_f_study_contract(
+                args.study_contract,
+                repo_root,
+                Path(__file__).resolve().parents[2],
+            )
+            result = audit_z_table_f_policy_projection(
+                contract,
+                service,
+                maximum_n=args.maximum_n,
+            )
+        except (OSError, TypeError, ValueError) as error:
+            parser.error(str(error))
+        print(json.dumps(result, allow_nan=False, sort_keys=True))
+        return 0
     if args.command == "refresh-profile-environment":
         if args.report_profile is None:
             parser.error("refresh-profile-environment requires --report-profile")
@@ -1049,6 +1092,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(result, allow_nan=False, sort_keys=True))
         return 0 if result["final_gate_complete"] is True else 2
     if args.command == "populate":
+        active_study_contract: Mapping[str, object] | None = None
         try:
             requested = select_cells(_selection(args))
             if not requested:
@@ -1112,7 +1156,51 @@ def main(argv: Sequence[str] | None = None) -> int:
                     service.store,
                     expected_active_source_revision=expected_revision,
                 )
-            if args.report_profile is None:
+            policy_profile = args.report_profile
+            if args.study_policy is not None:
+                if args.report_profile is not None:
+                    raise ValueError(
+                        "--study-policy cannot be combined with "
+                        "--report-profile"
+                    )
+                if args.study_contract is None:
+                    raise ValueError(
+                        "--study-policy requires --study-contract"
+                    )
+                if (
+                    len(args.cell_id) != 1
+                    or args.dataset
+                    or args.mode
+                    or args.model
+                    or args.accuracy
+                    or args.process_key
+                    or args.process
+                    or args.n_final
+                    or args.variant
+                    or args.workload is not None
+                ):
+                    raise ValueError(
+                        "--study-policy requires exactly one explicit "
+                        "--cell-id and no broad cell selectors"
+                    )
+                active_study_contract = load_z_table_f_study_contract(
+                    args.study_contract,
+                    repo_root,
+                    Path(__file__).resolve().parents[2],
+                )
+                require_z_table_f_explicit_cell(
+                    active_study_contract,
+                    args.cell_id[0],
+                )
+                campaign_policy = resolve_campaign_policy(
+                    args.study_policy
+                )
+                policy_profile = MACBOOK_M3_PROFILE
+            elif args.study_contract is not None:
+                raise ValueError(
+                    "--study-contract requires --study-policy"
+                )
+            elif args.report_profile is None:
                 campaign_policy = STRICT_POLICY
             else:
                 campaign_policy = load_profile_campaign_policy(
@@ -1142,7 +1230,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 rerun=args.rerun,
                 allow_symbolica_parallel=args.allow_symbolica_parallel,
                 campaign_policy=campaign_policy,
-                report_profile=args.report_profile,
+                report_profile=policy_profile,
+                study_contract_sha256=(
+                    None
+                    if active_study_contract is None
+                    else str(active_study_contract["sha256"])
+                ),
             )
         except (ValueError, ReportWorkspaceError, MeasurementLineageError) as error:
             parser.error(str(error))
@@ -1162,6 +1255,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                     {
                         "requested": len(requested),
                         "scheduled": len(planned),
+                        "source_revision": expected_revision,
+                        "source_tree": source_identity.tree,
+                        "campaign_policy": (
+                            settings.campaign_policy.as_manifest()
+                        ),
+                        "policy_profile": settings.report_profile,
+                        "study_contract_sha256": (
+                            None
+                            if active_study_contract is None
+                            else active_study_contract["sha256"]
+                        ),
                         "excluded_cell_ids": sorted(
                             set(args.exclude_cell_id)
                         ),
@@ -1198,6 +1302,17 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "planned": len(result.planned),
                     "completed": len(result.outcomes),
                     "failed": len(result.failed),
+                    "source_revision": expected_revision,
+                    "source_tree": source_identity.tree,
+                    "campaign_policy": (
+                        settings.campaign_policy.as_manifest()
+                    ),
+                    "policy_profile": settings.report_profile,
+                    "study_contract_sha256": (
+                        None
+                        if active_study_contract is None
+                        else active_study_contract["sha256"]
+                    ),
                     "outcomes": [
                         {
                             "cell_id": outcome.cell_id,

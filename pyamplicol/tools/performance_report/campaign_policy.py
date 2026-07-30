@@ -31,6 +31,7 @@ GENERATION_PHASE_EVIDENCE_ABI = "pyamplicol-report-generation-phase-evidence-v1"
 WORKER_PHASE_STATE_ABI = "pyamplicol-report-worker-phase-state-v1"
 STRICT_POLICY_NAME = "strict-complete-v1"
 MACBOOK_M3_POLICY_NAME = "macbook-m3-v1"
+MACBOOK_M3_Z_TABLE_F_POLICY_NAME = "macbook-m3-z-table-f-v1"
 X86_EPYC_POLICY_NAME = "x86-epyc-v1"
 MACBOOK_M3_PROFILE = "macbook_M3"
 X86_EPYC_PROFILE = "x86_EPYC"
@@ -38,6 +39,7 @@ MACBOOK_M3_WORKERS = 1
 MACBOOK_M3_CELL_CORES = 1
 MACBOOK_M3_TARGET_RUNTIME_SECONDS = 5.0
 MACBOOK_M3_MEMORY_LIMIT_BYTES = 30_000_000_000
+MACBOOK_M3_Z_TABLE_F_GENERATION_LIMIT_SECONDS = 60.0 * 60.0
 X86_EPYC_LEGACY_WORKERS = 10
 X86_EPYC_WORKERS = 25
 X86_EPYC_CELL_CORES = 1
@@ -56,6 +58,13 @@ _SOURCE_FIELDS = frozenset(
         "report_measured_source_revision",
         "report_measured_source_tree",
         "report_source_clean",
+    }
+)
+_STUDY_CONTRACT_BINDING_FIELDS = frozenset(
+    {
+        "abi",
+        "study_id",
+        "study_contract_sha256",
     }
 )
 _LEGACY_CENSOR_FIELDS = frozenset(
@@ -175,6 +184,7 @@ class CampaignPolicy:
     generation_limit_seconds: float | None = None
     memory_limit_bytes: int | None = None
     require_symbolica_parallel: bool = False
+    generation_limit_all_cells: bool = False
 
     def as_manifest(self) -> dict[str, object]:
         return {
@@ -187,10 +197,13 @@ class CampaignPolicy:
             "generation_limit_seconds": self.generation_limit_seconds,
             "memory_limit_bytes": self.memory_limit_bytes,
             "generation_limit_exemptions": (
-                "all original-AmpliCol cells and pyAmpliCol compiled/recurrence "
-                "LC selected-flow cells"
-                if self.generation_limit_seconds is not None
-                else "none"
+                "none"
+                if self.generation_limit_all_cells
+                or self.generation_limit_seconds is None
+                else (
+                    "all original-AmpliCol cells and pyAmpliCol "
+                    "compiled/recurrence LC selected-flow cells"
+                )
             ),
             "require_symbolica_parallel": self.require_symbolica_parallel,
         }
@@ -207,6 +220,18 @@ MACBOOK_M3_POLICY = CampaignPolicy(
     cell_cores=MACBOOK_M3_CELL_CORES,
     target_runtime_seconds=MACBOOK_M3_TARGET_RUNTIME_SECONDS,
     memory_limit_bytes=MACBOOK_M3_MEMORY_LIMIT_BYTES,
+)
+MACBOOK_M3_Z_TABLE_F_POLICY = CampaignPolicy(
+    name=MACBOOK_M3_Z_TABLE_F_POLICY_NAME,
+    allow_terminal_censors=True,
+    workers=MACBOOK_M3_WORKERS,
+    cell_cores=MACBOOK_M3_CELL_CORES,
+    target_runtime_seconds=MACBOOK_M3_TARGET_RUNTIME_SECONDS,
+    generation_limit_seconds=(
+        MACBOOK_M3_Z_TABLE_F_GENERATION_LIMIT_SECONDS
+    ),
+    memory_limit_bytes=MACBOOK_M3_MEMORY_LIMIT_BYTES,
+    generation_limit_all_cells=True,
 )
 X86_EPYC_POLICY = CampaignPolicy(
     name=X86_EPYC_POLICY_NAME,
@@ -225,6 +250,8 @@ def campaign_policy(name: str) -> CampaignPolicy:
         return STRICT_POLICY
     if name == MACBOOK_M3_POLICY_NAME:
         return MACBOOK_M3_POLICY
+    if name == MACBOOK_M3_Z_TABLE_F_POLICY_NAME:
+        return MACBOOK_M3_Z_TABLE_F_POLICY
     if name == X86_EPYC_POLICY_NAME:
         return X86_EPYC_POLICY
     raise CampaignPolicyError(f"unsupported report campaign policy {name!r}")
@@ -239,9 +266,13 @@ def default_campaign_policy(profile: str) -> CampaignPolicy:
 
 
 def validate_policy_profile(policy: CampaignPolicy, profile: str) -> None:
-    if policy is MACBOOK_M3_POLICY and profile != MACBOOK_M3_PROFILE:
+    macbook_policies = {
+        MACBOOK_M3_POLICY,
+        MACBOOK_M3_Z_TABLE_F_POLICY,
+    }
+    if policy in macbook_policies and profile != MACBOOK_M3_PROFILE:
         raise CampaignPolicyError(
-            f"{MACBOOK_M3_POLICY_NAME} is reserved for profile {MACBOOK_M3_PROFILE!r}"
+            f"{policy.name} is reserved for profile {MACBOOK_M3_PROFILE!r}"
         )
     if policy is X86_EPYC_POLICY and profile != X86_EPYC_PROFILE:
         raise CampaignPolicyError(
@@ -251,9 +282,9 @@ def validate_policy_profile(policy: CampaignPolicy, profile: str) -> None:
         raise CampaignPolicyError(
             f"profile {X86_EPYC_PROFILE!r} requires {X86_EPYC_POLICY_NAME}"
         )
-    if profile == MACBOOK_M3_PROFILE and policy is not MACBOOK_M3_POLICY:
+    if profile == MACBOOK_M3_PROFILE and policy not in macbook_policies:
         raise CampaignPolicyError(
-            f"profile {MACBOOK_M3_PROFILE!r} requires {MACBOOK_M3_POLICY_NAME}"
+            f"profile {MACBOOK_M3_PROFILE!r} requires a MacBook M3 policy"
         )
 
 
@@ -291,7 +322,11 @@ def generation_limit_for_cell(
     policy: CampaignPolicy,
     cell: CellSpec,
 ) -> float | None:
-    if policy.generation_limit_seconds is None or generation_limit_exempt(cell):
+    if policy.generation_limit_seconds is None:
+        return None
+    if policy.generation_limit_all_cells:
+        return policy.generation_limit_seconds
+    if generation_limit_exempt(cell):
         return None
     return policy.generation_limit_seconds
 
@@ -539,7 +574,11 @@ def policy_censor_measurement(
             "failure": {
                 "kind": "ReportPolicyCensor",
                 "message": (
-                    "process generation exceeded two hours"
+                    (
+                        "process generation exceeded its authenticated "
+                        f"{float(policy.generation_limit_seconds or 0):g}-second "
+                        "limit"
+                    )
                     if kind is PolicyCensorKind.GENERATION_LIMIT
                     else (
                         "worker process tree exceeded "
@@ -582,10 +621,35 @@ def _policy_record(
     provenance = measurement.get("provenance")
     if not isinstance(provenance, Mapping):
         raise CampaignPolicyError("terminal measurement has no provenance")
-    if set(provenance) != _SOURCE_FIELDS | {
+    base_fields = _SOURCE_FIELDS | {
         "policy_censor",
         "policy_censor_sha256",
-    }:
+    }
+    provenance_fields = set(provenance)
+    if (
+        provenance_fields == base_fields | {"study_contract"}
+        and policy is MACBOOK_M3_Z_TABLE_F_POLICY
+    ):
+        study_contract = provenance.get("study_contract")
+        if (
+            not isinstance(study_contract, Mapping)
+            or set(study_contract) != _STUDY_CONTRACT_BINDING_FIELDS
+            or study_contract.get("abi")
+            != "pyamplicol-z-table-f-attempt-binding-v1"
+            or study_contract.get("study_id") != "macbook-m3-z-table-f"
+            or not isinstance(
+                study_contract.get("study_contract_sha256"),
+                str,
+            )
+            or _SHA256_RE.fullmatch(
+                str(study_contract["study_contract_sha256"])
+            )
+            is None
+        ):
+            raise CampaignPolicyError(
+                "terminal measurement study contract is not canonical"
+            )
+    elif provenance_fields != base_fields:
         raise CampaignPolicyError("terminal measurement provenance is not canonical")
     if (
         provenance.get("report_source_identity_schema") != SOURCE_IDENTITY_SCHEMA
@@ -948,10 +1012,10 @@ def validate_policy_measurement(
     frontier = record.get("frontier")
 
     if kind is PolicyCensorKind.GENERATION_LIMIT:
+        cell_limit = generation_limit_for_cell(policy, cell)
         if (
-            policy.generation_limit_seconds is None
+            cell_limit is None
             or status != ResultStatus.TIMEOUT.value
-            or generation_limit_exempt(cell)
         ):
             raise CampaignPolicyError(
                 "generation censor status or exemption is invalid"
@@ -960,9 +1024,9 @@ def validate_policy_measurement(
             record.get("observed_generation_seconds"),
             "observed_generation_seconds",
         )
-        if observed < policy.generation_limit_seconds:
+        if observed < cell_limit:
             raise CampaignPolicyError(
-                "generation censor did not reach the two-hour ceiling"
+                "generation censor did not reach its authenticated ceiling"
             )
         phase = record.get("phase_evidence")
         _validate_generation_phase(
@@ -1125,6 +1189,22 @@ def validate_policy_measurement(
     return PolicyMeasurementState.DEPENDENCY
 
 
+def _generation_limit_label(record: Mapping[str, object]) -> str | None:
+    raw_limit = record.get("generation_limit_seconds")
+    if (
+        isinstance(raw_limit, bool)
+        or not isinstance(raw_limit, (int, float))
+        or not math.isfinite(float(raw_limit))
+        or float(raw_limit) <= 0.0
+    ):
+        return None
+    limit = float(raw_limit)
+    hours = limit / 3600.0
+    if hours.is_integer():
+        return f">{int(hours)}h"
+    return f">{limit:g}s"
+
+
 def policy_status_label(measurement: Mapping[str, object]) -> str | None:
     provenance = measurement.get("provenance")
     if not isinstance(provenance, Mapping):
@@ -1134,7 +1214,7 @@ def policy_status_label(measurement: Mapping[str, object]) -> str | None:
         return None
     kind = record.get("kind")
     if kind == PolicyCensorKind.GENERATION_LIMIT.value:
-        return ">2h"
+        return _generation_limit_label(record)
     if kind == PolicyCensorKind.MEMORY_LIMIT.value:
         memory_limit = record.get("memory_limit_bytes")
         if (
@@ -1164,7 +1244,9 @@ def policy_status_label(measurement: Mapping[str, object]) -> str | None:
                     continue
                 status = dependency.get("status")
                 if status == ResultStatus.TIMEOUT.value:
-                    labels.add(">2h")
+                    labels.add(
+                        _generation_limit_label(record) or "timeout"
+                    )
                 elif status == ResultStatus.MEMORY_LIMIT.value:
                     memory_limit = record.get("memory_limit_bytes")
                     if (
@@ -1194,6 +1276,9 @@ __all__ = [
     "MACBOOK_M3_PROFILE",
     "MACBOOK_M3_TARGET_RUNTIME_SECONDS",
     "MACBOOK_M3_WORKERS",
+    "MACBOOK_M3_Z_TABLE_F_GENERATION_LIMIT_SECONDS",
+    "MACBOOK_M3_Z_TABLE_F_POLICY",
+    "MACBOOK_M3_Z_TABLE_F_POLICY_NAME",
     "POLICY_CENSOR_ABI",
     "RESOURCE_FRONTIER_ABI",
     "STRICT_POLICY",

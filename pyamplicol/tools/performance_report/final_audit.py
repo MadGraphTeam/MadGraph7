@@ -45,6 +45,7 @@ from .cache import digest_json, reset_entry
 from .campaign_policy import (
     MACBOOK_M3_POLICY,
     MACBOOK_M3_PROFILE,
+    MACBOOK_M3_Z_TABLE_F_POLICY,
     STRICT_POLICY,
     X86_EPYC_POLICY,
     X86_EPYC_PROFILE,
@@ -4221,7 +4222,10 @@ def _audit_final_report_locked(
         measurement_lineage = None
     policy_profile = report_profile or (
         MACBOOK_M3_PROFILE
-        if active_policy is MACBOOK_M3_POLICY
+        if active_policy in {
+            MACBOOK_M3_POLICY,
+            MACBOOK_M3_Z_TABLE_F_POLICY,
+        }
         else (
             X86_EPYC_PROFILE
             if active_policy is X86_EPYC_POLICY
