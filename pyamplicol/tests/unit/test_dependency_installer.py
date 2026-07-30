@@ -297,6 +297,45 @@ def test_candidate_dependency_only_build_installs_and_verifies_symbolica(
     assert calls[2][2]["SYMBOLICA_HIDE_BANNER"] == "1"
 
 
+def test_candidate_project_wheel_scopes_prepared_model_bootstrap_to_build(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    venv = tmp_path / ".venv"
+    artifacts = tmp_path / "artifacts"
+    calls: list[tuple[list[str], dict[str, str] | None]] = []
+
+    class FakeRunner:
+        dry_run = False
+
+        def run(self, command, *, env=None, **_kwargs):
+            rendered = [str(item) for item in command]
+            calls.append((rendered, env))
+            if rendered[1:4] == ["-m", "build", "--wheel"]:
+                artifacts.mkdir(parents=True, exist_ok=True)
+                (artifacts / "pyamplicol-test.whl").touch()
+            return subprocess.CompletedProcess(rendered, 0, "", "")
+
+    monkeypatch.delenv("PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP", raising=False)
+    monkeypatch.setattr(module, "VENV", venv)
+    monkeypatch.setattr(module, "ARTIFACTS", artifacts)
+
+    module._build_candidate_project_wheel(FakeRunner())
+
+    assert len(calls) == 2
+    build_command, build_environment = calls[0]
+    assert build_command[1:4] == ["-m", "build", "--wheel"]
+    assert build_environment is not None
+    assert build_environment["PYAMPLICOL_BUILD_MODE"] == "candidate"
+    assert build_environment["PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP"] == "1"
+    install_command, install_environment = calls[1]
+    assert install_command[1:4] == ["-m", "pip", "install"]
+    assert install_environment is not None
+    assert "PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP" not in install_environment
+    assert "PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP" not in os.environ
+
+
 def test_dependency_only_and_no_build_are_mutually_exclusive() -> None:
     module = _module()
     with pytest.raises(SystemExit):

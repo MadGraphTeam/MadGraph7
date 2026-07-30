@@ -174,3 +174,34 @@ def test_packaged_prepared_model_rejects_package_version_drift(
         ),
     ):
         pass
+
+
+def test_packaged_prepared_model_runtime_rejects_producer_digest_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pyamplicol._internal.versions as versions
+
+    metadata = _metadata()
+    producer = metadata["producer"]
+    assert isinstance(producer, dict)
+    monkeypatch.setattr(
+        versions,
+        "package_version",
+        lambda: producer["package_version"],
+    )
+    monkeypatch.setattr(
+        prepared_models,
+        "_prepared_pack_compiler_digest",
+        lambda: "0" * 64,
+    )
+
+    with (
+        pytest.raises(
+            prepared_models.PackagedPreparedModelError,
+            match="prepared_pack_compiler_sha256 is stale",
+        ),
+        prepared_models.packaged_prepared_model_path(
+            prepared_models.BUILTIN_SM_JIT_O2
+        ),
+    ):
+        pass

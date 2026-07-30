@@ -1001,6 +1001,12 @@ def _build_candidate_project_wheel(runner: Runner) -> None:
     build_environment = dict(
         environment,
         PYAMPLICOL_BUILD_MODE="candidate",
+        # Contributor installation is also the recovery path after native or
+        # prepared-model producer inputs change.  Its wheel is explicitly
+        # non-publishable, so omit stale prepared payloads while rebuilding
+        # the current native runtime.  Keep this flag local to the one build
+        # subprocess: ordinary wheel builds and runtime loading remain strict.
+        PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP="1",
     )
     if not runner.dry_run:
         _archive_candidate_wheels(project_wheels, "pyamplicol")

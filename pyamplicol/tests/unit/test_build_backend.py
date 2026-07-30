@@ -191,6 +191,110 @@ def test_prepared_model_bootstrap_strips_only_generated_payloads(
     assert not bundle.exists()
 
 
+def test_candidate_bootstrap_wheel_strips_stale_prepared_payloads(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "candidate")
+    monkeypatch.setenv("PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP", "1")
+    overlay = tmp_path / "overlay"
+    assets = overlay / "src/pyamplicol/assets/prepared_models"
+    assets.mkdir(parents=True)
+    (assets / "__init__.py").write_text("# package\n", encoding="utf-8")
+    (assets / "built-in-sm-jit-o2-aarch64.metadata.json").write_text(
+        '{"producer": "stale"}\n',
+        encoding="utf-8",
+    )
+    (assets / "built-in-sm-jit-o2-aarch64.pyamplicol-model").write_bytes(
+        b"stale"
+    )
+    target = tmp_path / "target"
+    target.mkdir()
+
+    @contextlib.contextmanager
+    def fake_overlay(_mode: str):
+        yield overlay, target
+
+    def fake_sdk(_root: Path, _target: Path) -> Path:
+        staging = tmp_path / "sdk"
+        staging.mkdir()
+        (staging / "metadata.json").write_text(
+            json.dumps({"target": "aarch64-apple-darwin"}),
+            encoding="utf-8",
+        )
+        return staging
+
+    def delegated(*_args, **_kwargs) -> str:
+        assert {path.name for path in assets.iterdir()} == {"__init__.py"}
+        return "candidate-bootstrap.whl"
+
+    monkeypatch.setattr(backend, "_overlay", fake_overlay)
+    monkeypatch.setattr(backend, "_check_dependencies", lambda _mode: None)
+    monkeypatch.setattr(backend, "_rust_remap_flags", lambda *_args: "")
+    monkeypatch.setattr(backend, "_stage_packaged_examples", lambda _path: None)
+    monkeypatch.setattr(backend, "_stage_python_stub", lambda _path: None)
+    monkeypatch.setattr(backend, "_stage_runtime_resources", lambda _path: None)
+    monkeypatch.setattr(
+        backend,
+        "stage_packaged_prepared_models",
+        lambda *_args: pytest.fail("bootstrap wheel validated stale payloads"),
+    )
+    monkeypatch.setattr(backend, "build_sdk", fake_sdk)
+    monkeypatch.setattr(backend, "_stage_selftest_fixture", lambda *_args: None)
+    monkeypatch.setattr(backend.maturin, "build_wheel", delegated)
+
+    assert backend.build_wheel(str(tmp_path / "dist")) == (
+        "candidate-bootstrap.whl"
+    )
+
+
+@pytest.mark.parametrize("mode", ["candidate", "release"])
+def test_ordinary_wheel_build_rejects_prepared_model_digest_drift(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    mode: str,
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", mode)
+    monkeypatch.delenv("PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP", raising=False)
+    overlay = tmp_path / "overlay"
+    overlay.mkdir()
+    target = tmp_path / "target"
+    target.mkdir()
+
+    @contextlib.contextmanager
+    def fake_overlay(
+        actual_mode: str,
+        *,
+        project_release_prepared_models: bool = False,
+    ):
+        assert actual_mode == mode
+        assert project_release_prepared_models is (mode == "release")
+        yield overlay, target
+
+    monkeypatch.setattr(backend, "_overlay", fake_overlay)
+    monkeypatch.setattr(backend, "_check_dependencies", lambda _mode: None)
+    monkeypatch.setattr(backend, "_rust_remap_flags", lambda *_args: "")
+    monkeypatch.setattr(backend, "_stage_packaged_examples", lambda _path: None)
+    monkeypatch.setattr(backend, "_stage_python_stub", lambda _path: None)
+    monkeypatch.setattr(backend, "_stage_runtime_resources", lambda _path: None)
+    monkeypatch.setattr(
+        backend,
+        "_strip_prepared_model_payloads",
+        lambda _path: pytest.fail("ordinary wheel stripped stale payloads"),
+    )
+
+    def reject_digest(_path: Path, _mode: str) -> None:
+        raise RuntimeError("prepared_pack_compiler_sha256 is stale")
+
+    monkeypatch.setattr(backend, "stage_packaged_prepared_models", reject_digest)
+
+    with pytest.raises(
+        RuntimeError,
+        match="prepared_pack_compiler_sha256 is stale",
+    ):
+        backend.build_wheel(str(tmp_path / "dist"))
+
+
 def _candidate_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
     candidate_lock = tmp_path / "Cargo.lock"
     candidate_config = tmp_path / "config.toml"
