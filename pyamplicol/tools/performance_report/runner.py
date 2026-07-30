@@ -1522,7 +1522,7 @@ def derive_selector_contract(
     runtime: RuntimeLike,
     points: object,
 ) -> SelectorContract:
-    """Select one deterministic flow and one nonzero fixed helicity."""
+    """Select the deterministic flow/helicity with the largest finite component."""
 
     physics = runtime.physics
     color_flows = tuple(getattr(physics, "color_flows", ()))
@@ -1533,21 +1533,33 @@ def derive_selector_contract(
 
     selected_flow = None
     chosen_index: int | None = None
+    selected_magnitude = 0.0
     for flow in color_flows:
         resolved = runtime.evaluate_resolved(points, color_flows=(str(flow.id),))
         values = getattr(resolved, "values", ())
         for helicity_index, _helicity in enumerate(helicities):
-            magnitude = sum(
-                abs(complex(point[helicity_index][color_index]))
+            components = tuple(
+                complex(point[helicity_index][color_index])
                 for point in values
                 for color_index in range(len(point[helicity_index]))
             )
-            if magnitude > ABSOLUTE_TOLERANCE:
+            if any(
+                not math.isfinite(component.real)
+                or not math.isfinite(component.imag)
+                for component in components
+            ):
+                raise RunnerError(
+                    "fixed-helicity selector contains a non-finite component"
+                )
+            magnitude = max((abs(component) for component in components), default=0.0)
+            if not math.isfinite(magnitude):
+                raise RunnerError(
+                    "fixed-helicity selector contains a non-finite component"
+                )
+            if magnitude > selected_magnitude:
                 selected_flow = flow
                 chosen_index = helicity_index
-                break
-        if chosen_index is not None:
-            break
+                selected_magnitude = magnitude
     if selected_flow is None or chosen_index is None:
         raise RunnerError("no nonzero fixed-helicity selector exists at report point")
     helicity = helicities[chosen_index]

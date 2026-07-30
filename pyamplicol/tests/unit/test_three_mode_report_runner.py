@@ -1257,6 +1257,71 @@ def test_selector_contract_scans_later_flow_when_first_flow_is_zero() -> None:
     validate_selector_contract(runtime, contract, points)
 
 
+def test_selector_contract_selects_largest_tiny_finite_component() -> None:
+    class TinyRuntime(FakeRuntime):
+        def evaluate_resolved(
+            self,
+            _points: object,
+            **selectors: object,
+        ) -> Resolved:
+            selected_flows = selectors.get("color_flows")
+            if selected_flows == ("flow:2,1,3",):
+                return Resolved(
+                    (
+                        (
+                            (1.0e-18 + 0.0j,),
+                            (1.0e-17 + 0.0j,),
+                        ),
+                    ),
+                    self.resolved_total,
+                )
+            assert selected_flows == ("flow:1,2,3",)
+            return Resolved(
+                (
+                    (
+                        (2.0e-17 + 0.0j,),
+                        (0.0 + 0.0j,),
+                    ),
+                ),
+                self.resolved_total,
+            )
+
+    runtime = TinyRuntime()
+    points = (((1.0, 0.0, 0.0, 1.0),),)
+
+    contract = derive_selector_contract(runtime, points)
+
+    assert contract.selected_color_flow_ids == ("flow:1,2,3",)
+    assert contract.all_flow_helicity_ids == ("h:-1,-1,-1",)
+
+
+def test_selector_contract_rejects_all_zero_components() -> None:
+    class ZeroRuntime(FakeRuntime):
+        def evaluate_resolved(
+            self,
+            _points: object,
+            **_selectors: object,
+        ) -> Resolved:
+            return Resolved(
+                (
+                    (
+                        (0.0 + 0.0j,),
+                        (0.0 + 0.0j,),
+                    ),
+                ),
+                self.resolved_total,
+            )
+
+    with pytest.raises(
+        RunnerError,
+        match="no nonzero fixed-helicity selector",
+    ):
+        derive_selector_contract(
+            ZeroRuntime(),
+            (((1.0, 0.0, 0.0, 1.0),),),
+        )
+
+
 def test_selector_contract_rejects_changed_point_or_axis() -> None:
     runtime = FakeRuntime()
     points = (((1.0, 0.0, 0.0, 1.0),),)
