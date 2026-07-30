@@ -1601,6 +1601,28 @@ class ReweightInterface(extended_cmd.Cmd):
                 rm[val] = key
         return rm
 
+    def _pdg_for_me_call(self, event, orig_order, momenta, relevant_model):
+        """Return the PDG list to hand to the fortran for one permutation.
+
+        orig_order holds the leg ids of the generated process, which under
+        flavor grouping are the merged codes (81 for jets, 82 for charged
+        leptons, ...). Those are SIGNED: a subprocess whose grouped legs are
+        anti-particles -- g q~ > w+ q~, whose get_pdg_order is
+        [21,-81,24,-81] -- carries the negative code. model['merged_particles']
+        is keyed by the POSITIVE code only ({81: [1,2,3,4], ...}), hence the
+        abs(): without it the merged labels are handed to the fortran as-is,
+        the flavor mapping there resolves them to "no flavour", and both
+        SMATRIXHEL and GET_DENSITY return an exact zero.
+
+        Kept in one place because both calculate_matrix_element implementations
+        (matrix element and density matrix) need exactly this."""
+        pdg = list(orig_order[0]) + list(orig_order[1])
+        merged = relevant_model.get('merged_particles') if relevant_model \
+                 else self.merged_particles
+        if merged and any(abs(p) in merged for p in pdg):
+            return event.get_pdg(momenta)
+        return pdg
+
     def calculate_matrix_element(self, event, hypp_id, scale2=0):
         """routine to return the matrix element"""
 
@@ -1698,10 +1720,7 @@ class ReweightInterface(extended_cmd.Cmd):
 
         else:
             nhel = -1
-        pdg = list(orig_order[0])+list(orig_order[1])
-        relevant_merged = relevant_model.get('merged_particles') if relevant_model else self.merged_particles
-        if relevant_merged and any(p in relevant_merged for p in pdg):
-            pdg = event.get_pdg(all_p[0])
+        pdg = self._pdg_for_me_call(event, orig_order, all_p[0], relevant_model)
 
         #boosting the event
         all_p = self.method_boost_event(event, all_p, orig_order, hypp_id)
@@ -1774,7 +1793,7 @@ class ReweightInterface(extended_cmd.Cmd):
             for i in range(len(mytag)):
                 if mytag[i] in self.revert_merged:
                     mytag[i] = self.revert_merged[mytag[i]]
-                if -mytag[i] in self.revert_merged:
+                elif -mytag[i] in self.revert_merged:
                     mytag[i] = -self.revert_merged[-mytag[i]]
         mytag.sort()
         mytag=tuple(mytag)
@@ -3489,10 +3508,7 @@ class DensityInterface(ReweightInterface):
         else:
             nhel = -1
 
-        pdg = list(orig_order[0])+list(orig_order[1])
-        relevant_merged = relevant_model.get('merged_particles') if relevant_model else self.merged_particles
-        if relevant_merged and any(p in relevant_merged for p in pdg):
-            pdg = event.get_pdg(all_p[0])
+        pdg = self._pdg_for_me_call(event, orig_order, all_p[0], relevant_model)
 
         #list_properties is the list of properties of the class FourMomentum that we can use to rank particles
         list_properties = [p for p in dir(lhe_parser.FourMomentum) if isinstance(getattr(lhe_parser.FourMomentum,p),property)]
@@ -3584,6 +3600,21 @@ class DensityInterface(ReweightInterface):
             else:
                 rho_instance = dens.DensityMatrixObservables(production_matrix, self.number_combinations * (self.number_combinations + 1) / 2)
                 new_value = rho_instance.density_matrix
+
+        # An identically-zero density matrix is not a physical answer for an
+        # event that is in the event file: either GET_DENSITY could not resolve
+        # the flavour of the legs it was handed (typically merged-particle
+        # labels 81/82/... reaching the fortran instead of the concrete PDGs),
+        # or 'allowed_helicities' selects a helicity configuration that carries
+        # no amplitude. Do not average it in: the trace is zero, so with
+        # matrix_normalisation on the normalisation is 0/0 and the average
+        # density matrix comes back as NaN; with it off the event silently
+        # dilutes the average. Refuse loudly, as the matrix-element path does.
+        if not any(new_value):
+            raise Exception("Invalid density matrix: only zeros returned for "
+                "event %s (pdg %s). Check that the flavour of every leg can be "
+                "resolved and that 'allowed_helicities' selects a contributing "
+                "helicity configuration." % (getattr(event, 'ievent', -1), list(pdg)))
 
         return new_value
 
