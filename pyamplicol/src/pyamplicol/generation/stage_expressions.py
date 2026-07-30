@@ -192,6 +192,7 @@ def _compile_current_stage_blueprint(
                                 )
                             ],
                         )
+                        if interaction.evaluation_factor != (0.0, 0.0)
                     }
                 )
             ),
@@ -471,7 +472,12 @@ def _compact_interaction_contribution(
     )
     evaluation_factor = complex(*interaction.evaluation_factor)
     if evaluation_factor == 0j:
-        raise ValueError("interaction evaluation factor must be nonzero")
+        # Authenticated numerical zero-current relations propagate an exact
+        # zero attachment into downstream interactions.  Do not evaluate a
+        # kernel whose contribution is certified to be zero.
+        return tuple(
+            0j for _component in range(dag.currents[interaction.result_id].dimension)
+        )
     if canonical_components is None:
         left_current = dag.currents[interaction.left_id]
         right_current = dag.currents[interaction.right_id]

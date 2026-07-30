@@ -478,7 +478,10 @@ def _stage_layouts(
                 if interaction.evaluation_group_id is not None
                 else ("interaction", interaction.id)
             )
-            evaluation_groups.setdefault(group_key, []).append(interaction)
+            if interaction.evaluation_factor != (0.0, 0.0):
+                evaluation_groups.setdefault(group_key, []).append(
+                    interaction
+                )
 
         ordered_output_current_ids = tuple(sorted(output_current_ids))
         record: dict[str, object] = {

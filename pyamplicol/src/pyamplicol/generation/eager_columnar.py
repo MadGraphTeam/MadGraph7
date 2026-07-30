@@ -1092,7 +1092,20 @@ class _Builder:
         )
         members = _allocate(len(self.dag.interactions), interaction_id=_U32)
         cursor = 0
-        for group_id, group_members in enumerate(members_by_group):
+        for group_id, raw_group_members in enumerate(members_by_group):
+            # Rust normalizes attachment factors by the representative
+            # evaluation factor.  Keep a live member first for mixed groups;
+            # an all-zero group remains explicit in the retained input and is
+            # elided before runtime-plan invocation emission.
+            group_members = sorted(
+                raw_group_members,
+                key=lambda interaction_id: (
+                    self.dag.interactions[
+                        interaction_id
+                    ].evaluation_factor
+                    == (0.0, 0.0)
+                ),
+            )
             groups["representative_interaction_id"][group_id] = group_members[0]
             groups["member_start"][group_id] = cursor
             groups["member_count"][group_id] = len(group_members)

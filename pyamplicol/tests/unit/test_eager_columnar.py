@@ -457,6 +457,57 @@ def test_recurrence_proofs_and_structural_zeros_are_retained() -> None:
     )
 
 
+def test_mixed_zero_group_selects_a_live_eager_representative() -> None:
+    case = _case("g g > g g", prepared_closure=False)
+    grouped: dict[int, list[object]] = {}
+    for interaction in case.dag.interactions:
+        assert interaction.evaluation_group_id is not None
+        grouped.setdefault(
+            int(interaction.evaluation_group_id),
+            [],
+        ).append(interaction)
+    members = next(value for value in grouped.values() if len(value) > 1)
+    zero_member = members[0]
+    live_member = members[1]
+    dag = replace(
+        case.dag,
+        interactions=tuple(
+            replace(interaction, evaluation_factor=(0.0, 0.0))
+            if interaction.id == zero_member.id
+            else interaction
+            for interaction in case.dag.interactions
+        ),
+    )
+
+    result = build_eager_lowering_input_v1(
+        dag=dag,
+        model=case.model,
+        resolver=_resolver_for(dag, case.model),
+    )
+    interaction_table = result.table("interactions")
+    compact_group_id = int(
+        interaction_table.column("evaluation_group_id")[zero_member.id]
+    )
+    group_table = result.table("interaction_groups")
+    member_table = result.table("interaction_group_members")
+    start = int(group_table.column("member_start")[compact_group_id])
+    count = int(group_table.column("member_count")[compact_group_id])
+    ordered_members = tuple(
+        int(value)
+        for value in member_table.column("interaction_id")[
+            start : start + count
+        ]
+    )
+
+    assert int(
+        group_table.column("representative_interaction_id")[
+            compact_group_id
+        ]
+    ) == live_member.id
+    assert ordered_members[0] == live_member.id
+    assert ordered_members[-1] == zero_member.id
+
+
 @pytest.mark.parametrize("color_accuracy", ("nlc", "full"))
 def test_contracted_color_reductions_are_columnar(color_accuracy: str) -> None:
     model = BuiltinSMModel()

@@ -86,6 +86,8 @@ class GenericDAGNumericalCurrentWarmupResult:
     execution_mode: Literal["compiled", "eager"]
     candidate_capture: GenericDAGCurrentObservationCapture
     verification_capture: GenericDAGCurrentObservationCapture
+    application_capture: GenericDAGCurrentObservationCapture | None
+    application_validation: Mapping[str, object]
     discovery: NumericalCurrentObservationDiscoveryResult
     application: NumericalCurrentRelationApplicationResult
 
@@ -110,6 +112,12 @@ class GenericDAGNumericalCurrentWarmupResult:
             "verification_capture": (
                 self.verification_capture.to_provenance_dict()
             ),
+            "application_capture": (
+                None
+                if self.application_capture is None
+                else self.application_capture.to_provenance_dict()
+            ),
+            "application_validation": dict(self.application_validation),
             "discovery": self.discovery.report.to_json_dict(),
             "application": self.application.report.to_json_dict(),
             "warning": (
@@ -203,12 +211,37 @@ def run_generic_dag_numerical_current_warmup(
         raise ValueError(
             "numerical current application replay drifted from discovery"
         )
+    application_capture: GenericDAGCurrentObservationCapture | None = None
+    if application.report.applied_relation_count:
+        application_capture = capture_generic_dag_current_observations(
+            application.dag,
+            model,
+            verification_points,
+            precision_digits=precision_digits,
+        )
+        application_validation = _validate_applied_current_observations(
+            verification,
+            application_capture,
+            relative_tolerance=relative_tolerance,
+            absolute_tolerance=absolute_tolerance,
+        )
+    else:
+        application_validation = {
+            "status": "not-required-no-applied-relations",
+            "checked_current_count": 0,
+            "checked_component_count": 0,
+            "maximum_absolute_residual": None,
+            "maximum_relative_residual": None,
+            "maximum_tolerance_ratio": None,
+        }
     return GenericDAGNumericalCurrentWarmupResult(
         dag=application.dag,
         requested_mode=mode,
         execution_mode=execution_mode,
         candidate_capture=candidate,
         verification_capture=verification,
+        application_capture=application_capture,
+        application_validation=application_validation,
         discovery=discovery,
         application=application,
     )
@@ -239,6 +272,15 @@ def generic_dag_numerical_current_opt_out_report(
         },
         "candidate_capture": None,
         "verification_capture": None,
+        "application_capture": None,
+        "application_validation": {
+            "status": "disabled-by-user",
+            "checked_current_count": 0,
+            "checked_component_count": 0,
+            "maximum_absolute_residual": None,
+            "maximum_relative_residual": None,
+            "maximum_tolerance_ratio": None,
+        },
         "discovery": None,
         "application": None,
         "certified_relation_count": 0,
@@ -517,6 +559,100 @@ def validate_independent_current_observation_captures(
                 f"numerical current {current_id} capture widths drifted "
                 "between candidate and verification domains"
             )
+
+
+def _validate_applied_current_observations(
+    reference: GenericDAGCurrentObservationCapture,
+    applied: GenericDAGCurrentObservationCapture,
+    *,
+    relative_tolerance: float,
+    absolute_tolerance: float,
+) -> dict[str, object]:
+    """Authenticate that reuse application preserves every observed current."""
+
+    if (
+        reference.precision_digits != applied.precision_digits
+        or reference.point_sha256s != applied.point_sha256s
+        or reference.kinematic_sha256s != applied.kinematic_sha256s
+        or set(reference.observations) != set(applied.observations)
+    ):
+        raise ValueError(
+            "numerical current application validation provenance drifted"
+        )
+    relative = Decimal.from_float(float(relative_tolerance))
+    absolute = Decimal.from_float(float(absolute_tolerance))
+    if (
+        not relative.is_finite()
+        or not absolute.is_finite()
+        or relative < 0
+        or absolute < 0
+        or (relative == 0 and absolute == 0)
+    ):
+        raise ValueError(
+            "numerical current application validation tolerances are invalid"
+        )
+    maximum_absolute = Decimal(0)
+    maximum_relative = Decimal(0)
+    maximum_tolerance_ratio = Decimal(0)
+    checked_components = 0
+    for current_id in sorted(reference.observations):
+        before = reference.observations[current_id]
+        after = applied.observations[current_id]
+        if len(before) != len(after):
+            raise ValueError(
+                f"numerical current {current_id} application width drifted"
+            )
+        for baseline, optimized in zip(before, after, strict=True):
+            difference = max(
+                abs(baseline[0] - optimized[0]),
+                abs(baseline[1] - optimized[1]),
+            )
+            scale = max(
+                abs(baseline[0]),
+                abs(baseline[1]),
+                abs(optimized[0]),
+                abs(optimized[1]),
+            )
+            allowed = absolute + relative * scale
+            relative_residual = (
+                Decimal(0)
+                if difference == 0
+                else difference / max(scale, absolute)
+            )
+            tolerance_ratio = (
+                Decimal(0) if difference == 0 else difference / allowed
+            )
+            maximum_absolute = max(maximum_absolute, difference)
+            maximum_relative = max(
+                maximum_relative,
+                relative_residual,
+            )
+            maximum_tolerance_ratio = max(
+                maximum_tolerance_ratio,
+                tolerance_ratio,
+            )
+            checked_components += 1
+            if difference > allowed:
+                raise ValueError(
+                    "numerical current application changed current "
+                    f"{current_id} beyond its authenticated tolerance"
+                )
+    return {
+        "status": "verified",
+        "checked_current_count": len(reference.observations),
+        "checked_component_count": checked_components,
+        "maximum_absolute_residual": _decimal_string(maximum_absolute),
+        "maximum_relative_residual": _decimal_string(maximum_relative),
+        "maximum_tolerance_ratio": _decimal_string(
+            maximum_tolerance_ratio
+        ),
+        "reference_observation_batch_sha256": (
+            reference.observation_batch_sha256
+        ),
+        "applied_observation_batch_sha256": (
+            applied.observation_batch_sha256
+        ),
+    }
 
 
 def _build_interpreted_stage_evaluator(

@@ -552,6 +552,21 @@ fn lowering_is_byte_order_and_hash_independent_deterministic() {
 }
 
 #[test]
+fn authenticated_zero_evaluation_groups_emit_no_runtime_invocation() {
+    let mut fixture = Fixture::valid();
+    fixture.interaction_evaluation_factor[0] = 2;
+
+    let plan = lower_eager_plan_v3(fixture.input()).unwrap();
+
+    assert_eq!(plan.stages().len(), 2);
+    assert_eq!(plan.invocations().len(), 1);
+    assert_eq!(plan.attachments().len(), 1);
+    assert_eq!(plan.finalizations().len(), 2);
+    assert_eq!(plan.invocations()[0].evaluation_group_id, 1);
+    assert_eq!(plan.attachments()[0].interaction_id, 1);
+}
+
+#[test]
 fn malformed_dense_and_cross_table_ids_fail_closed() {
     let mut dense = Fixture::valid();
     dense.current_id[2] = 99;

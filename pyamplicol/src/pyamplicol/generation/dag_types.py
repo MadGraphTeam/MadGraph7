@@ -519,6 +519,7 @@ class GenericDAG:
                 if interaction.evaluation_group_id is not None
                 else ("interaction", interaction.id)
                 for interaction in self.interactions
+                if interaction.evaluation_factor != (0.0, 0.0)
             }
         )
 
@@ -526,6 +527,8 @@ class GenericDAG:
     def interaction_fanout_histogram(self) -> tuple[tuple[int, int], ...]:
         group_sizes: dict[tuple[str, int], int] = {}
         for interaction in self.interactions:
+            if interaction.evaluation_factor == (0.0, 0.0):
+                continue
             group = (
                 ("group", interaction.evaluation_group_id)
                 if interaction.evaluation_group_id is not None

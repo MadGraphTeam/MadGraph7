@@ -1633,13 +1633,10 @@ impl EagerLoweringInputV1 {
                     "interaction group {group_id} representative has a different group ID"
                 )));
             }
-            if factor_is_complex_zero(
+            let representative_is_zero = factor_is_complex_zero(
                 &self.exact_factors[representative.evaluation_factor_id as usize],
-            ) {
-                return Err(invalid(format!(
-                    "interaction group {group_id} has a zero representative evaluation factor"
-                )));
-            }
+            );
+            let mut group_has_nonzero_member = false;
             for member_id in members {
                 let member_index = index(*member_id, self.interactions.len(), "group member")?;
                 if std::mem::replace(&mut grouped[member_index], true) {
@@ -1648,6 +1645,9 @@ impl EagerLoweringInputV1 {
                     )));
                 }
                 let member = &self.interactions[member_index];
+                group_has_nonzero_member |= !factor_is_complex_zero(
+                    &self.exact_factors[member.evaluation_factor_id as usize],
+                );
                 if member.evaluation_group_id != group_id as u32 {
                     return Err(invalid(format!(
                         "interaction {member_id} has group {}, expected {group_id}",
@@ -1655,6 +1655,12 @@ impl EagerLoweringInputV1 {
                     )));
                 }
                 validate_group_signature(representative, member, group_id)?;
+            }
+            if representative_is_zero && group_has_nonzero_member {
+                return Err(invalid(format!(
+                    "interaction group {group_id} places a zero evaluation factor \
+                     before a live member"
+                )));
             }
         }
         if grouped.iter().any(|seen| !seen) {
@@ -3069,6 +3075,11 @@ fn lower_stages(
         for group_id in &groups_by_stage[stage_position] {
             let group = input.interaction_groups[*group_id];
             let representative = input.interactions[group.representative_interaction_id as usize];
+            if factor_is_complex_zero(
+                &input.exact_factors[representative.evaluation_factor_id as usize],
+            ) {
+                continue;
+            }
             let members = range_slice(
                 &input.interaction_group_members,
                 group.members,
@@ -3085,10 +3096,18 @@ fn lower_stages(
                 ],
                 _ => unreachable!("validated canonical input order"),
             };
-            let invocation_attachment_start =
-                usize_u64(attachments.len(), "invocation attachment start")?;
+            let invocation_attachment_start_index = attachments.len();
+            let invocation_attachment_start = usize_u64(
+                invocation_attachment_start_index,
+                "invocation attachment start",
+            )?;
             for member_id in members {
                 let member = input.interactions[*member_id as usize];
+                if factor_is_complex_zero(
+                    &input.exact_factors[member.evaluation_factor_id as usize],
+                ) {
+                    continue;
+                }
                 attachments.push(EagerPlanAttachmentRow {
                     interaction_id: member.id,
                     result_current_id: member.result_current_id,
@@ -3099,6 +3118,10 @@ fn lower_stages(
                     selector_domain_id: MISSING_U32,
                 });
             }
+            let invocation_attachment_count = usize_u64(
+                attachments.len() - invocation_attachment_start_index,
+                "invocation attachment count",
+            )?;
             invocations.push(EagerPlanInvocationRow {
                 evaluation_group_id: *group_id as u32,
                 kernel_id: representative.kernel_id,
@@ -3115,7 +3138,7 @@ fn lower_stages(
                 coupling_slot_id: representative.coupling_id,
                 output_factor_source: representative.output_factor_source,
                 attachment_start: invocation_attachment_start,
-                attachment_count: usize_u64(members.len(), "invocation attachment count")?,
+                attachment_count: invocation_attachment_count,
                 selector_domain_id: MISSING_U32,
             });
         }

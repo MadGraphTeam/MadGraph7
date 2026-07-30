@@ -179,6 +179,10 @@ def test_real_capture_drives_authenticated_discovery_and_application(
         assert not application.report.warning_required
         assert application.report.applied_relation_count == 0
         assert application.dag is dag
+        assert result.application_capture is None
+        assert result.application_validation["status"] == (
+            "not-required-no-applied-relations"
+        )
     payload = result.to_json_dict()
     assert payload["candidate_capture"]["points"]
     assert payload["verification_capture"]["points"]
@@ -200,6 +204,8 @@ def test_public_opt_out_records_disabled_unoptimized_path_without_capture(
     assert report["state"] == "disabled-by-user"
     assert report["candidate_capture"] is None
     assert report["verification_capture"] is None
+    assert report["application_capture"] is None
+    assert report["application_validation"]["status"] == "disabled-by-user"
     assert report["certified_relation_count"] == 0
     assert report["applied_relation_count"] == 0
     assert report["warning"] == {
@@ -208,6 +214,53 @@ def test_public_opt_out_records_disabled_unoptimized_path_without_capture(
         "code": None,
         "message": None,
     }
+
+
+@pytest.mark.parametrize("execution_mode", ("compiled", "eager"))
+def test_certified_zero_currents_are_applied_and_revalidated_by_default(
+    execution_mode: str,
+) -> None:
+    model = BuiltinSMModel()
+    dag = compile_generic_dag(
+        build_process_ir("g g > g g", color_accuracy="full"),
+        model=model,
+    )
+
+    result = run_generic_dag_numerical_current_warmup(
+        dag,
+        model,
+        process_id="gg_gg_numerical_warmup",
+        mode="certified-reuse",
+        execution_mode=execution_mode,  # type: ignore[arg-type]
+        precision_digits=_PRECISION_DIGITS,
+        probe_count=4,
+        verification_probe_count=4,
+        relative_tolerance=1.0e-70,
+        absolute_tolerance=1.0e-80,
+        seed=_SEED,
+    )
+
+    assert result.discovery.certificates
+    assert any(
+        certificate.relation_kind == "zero"
+        for certificate in result.discovery.certificates
+    )
+    assert result.application.report.applied_relation_count == len(
+        result.discovery.certificates
+    )
+    assert (
+        result.application.report.interaction_evaluation_count_projected
+        < result.application.report.interaction_evaluation_count_before
+    )
+    assert result.warning_required
+    assert result.application_capture is not None
+    assert result.application_validation["status"] == "verified"
+    assert result.application_validation["checked_current_count"] == len(
+        dag.currents
+    )
+    assert Decimal(
+        result.application_validation["maximum_tolerance_ratio"]
+    ) <= Decimal(1)
 
 
 def test_capture_domains_fail_closed_on_replay_drift(
@@ -267,4 +320,20 @@ def test_capture_domains_fail_closed_on_replay_drift(
         validate_independent_current_observation_captures(
             candidate,
             incomplete,
+        )
+
+    changed_values = dict(verification.observations)
+    changed = list(changed_values[current_id])
+    changed[0] = (changed[0][0] + Decimal(1), changed[0][1])
+    changed_values[current_id] = tuple(changed)
+    changed_capture = replace(
+        verification,
+        observations=changed_values,
+    )
+    with pytest.raises(ValueError, match="beyond its authenticated tolerance"):
+        numerical_current_warmup._validate_applied_current_observations(
+            verification,
+            changed_capture,
+            relative_tolerance=1.0e-70,
+            absolute_tolerance=1.0e-80,
         )

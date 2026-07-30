@@ -94,6 +94,66 @@ def test_eager_lowering_preserves_compiled_evaluation_groups_and_fanout() -> Non
     assert eager_fanout[1] == sum(size == 1 for size in dag_fanout.values())
 
 
+def test_eager_lowering_elides_authenticated_zero_attachments() -> None:
+    model, dag, _schema, baseline = _gluon_scattering_tables()
+    group_counts = Counter(
+        (
+            ("group", int(interaction.evaluation_group_id))
+            if interaction.evaluation_group_id is not None
+            else ("interaction", interaction.id)
+        )
+        for interaction in dag.interactions
+    )
+    target = next(
+        interaction
+        for interaction in dag.interactions
+        if group_counts[
+            (
+                ("group", int(interaction.evaluation_group_id))
+                if interaction.evaluation_group_id is not None
+                else ("interaction", interaction.id)
+            )
+        ]
+        == 1
+    )
+    zero_dag = replace(
+        dag,
+        interactions=tuple(
+            replace(interaction, evaluation_factor=(0.0, 0.0))
+            if interaction.id == target.id
+            else interaction
+            for interaction in dag.interactions
+        ),
+    )
+    schema = build_runtime_schema(zero_dag, model, process_id="gg_gg_zero")
+    propagated = {
+        (int(slot["particle_id"]), int(slot["chirality"]))
+        for slot in schema["value_storage"]["value_slots"]
+        if slot["variant"] == "propagated"
+    }
+    resolver = MappingEagerKernelResolver(
+        vertex_kernels={
+            kind: 100 + kind for kind in zero_dag.required_vertex_kinds
+        },
+        propagator_kernels={
+            key: 1000 + index
+            for index, key in enumerate(propagated)
+        },
+        closure_kernels={},
+    )
+
+    tables = lower_eager_execution_tables(
+        zero_dag,
+        model,
+        schema,
+        resolver,
+    )
+
+    assert tables.invocation_count == zero_dag.interaction_evaluation_count
+    assert tables.invocation_count == baseline.invocation_count - 1
+    assert tables.attachment_count == baseline.attachment_count - 1
+
+
 def test_eager_lowering_reports_stage_and_selector_progress() -> None:
     model = BuiltinSMModel()
     dag = compile_generic_dag(build_process_ir("g g > g g"), model=model)

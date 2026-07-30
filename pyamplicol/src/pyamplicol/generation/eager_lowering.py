@@ -872,13 +872,16 @@ def _lower_eager_execution_tables(
         invocations: list[EagerInvocationRow] = []
         attachments: list[EagerAttachmentRow] = []
         for interactions in stage_input.evaluation_groups:
-            representative = interactions[0]
+            live_interactions = tuple(
+                interaction
+                for interaction in interactions
+                if complex(*interaction.evaluation_factor) != 0j
+            )
+            if not live_interactions:
+                continue
+            representative = live_interactions[0]
             resolved_kernel = kernel_for(representative)
             representative_factor = complex(*representative.evaluation_factor)
-            if representative_factor == 0j:
-                raise ValueError(
-                    "eager evaluation representative factor must be nonzero"
-                )
             parameter_names = parameter_names_for(representative)
             coupling_slot_id = coupling_catalog.add(
                 representative.coupling,
@@ -889,7 +892,7 @@ def _lower_eager_execution_tables(
                 complex(*resolved_kernel.normalization_factor)
                 / representative_factor
             )
-            for interaction in interactions:
+            for interaction in live_interactions:
                 # The compiler's evaluation-group key already proves identical
                 # kernel, coupling, and mutable-parameter provenance. Repeating
                 # those resolver lookups for every fan-out attachment is pure
@@ -922,7 +925,7 @@ def _lower_eager_execution_tables(
                     coupling_slot_id,
                     resolved_kernel.output_factor_source,
                     attachment_start,
-                    len(interactions),
+                    len(live_interactions),
                 )
             )
 

@@ -1292,7 +1292,7 @@ fn topology_replay_interns_only_referenced_canonical_selector_domains() {
 
 #[test]
 fn selector_domain_canonicalization_preserves_the_universal_sentinel() {
-    assert_eq!(canonical_selector_words(&[0, 0, 0]), []);
+    assert_eq!(canonical_selector_words(&[0, 0, 0]), [0_u64; 0]);
     assert_eq!(canonical_selector_words(&[1, 0, 0]), [1]);
     assert_eq!(canonical_selector_words(&[u64::MAX]), [u64::MAX]);
     assert_eq!(
