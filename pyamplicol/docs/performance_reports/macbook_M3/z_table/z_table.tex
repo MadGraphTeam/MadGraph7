@@ -1,0 +1,65 @@
+% SPDX-License-Identifier: 0BSD
+\documentclass[10pt,letterpaper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[letterpaper,margin=0.55in]{geometry}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{pdflscape}
+\usepackage[table]{xcolor}
+
+\definecolor{ReportInk}{HTML}{17212B}
+\definecolor{ReportBlue}{HTML}{145A86}
+\definecolor{ReportGreen}{HTML}{287A58}
+\definecolor{ReportOrange}{HTML}{B76E00}
+\definecolor{ReportRed}{HTML}{B33A3A}
+\definecolor{ReportRule}{HTML}{CBD3DA}
+\definecolor{ReportMuted}{HTML}{66717C}
+\definecolor{refblue}{HTML}{DCEBFF}
+\definecolor{speedgreen}{HTML}{1A7F37}
+\definecolor{speedorange}{HTML}{BF8700}
+\definecolor{speedred}{HTML}{CF222E}
+
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash}p{#1}}
+\newcommand{\PAC}{\texttt{pyAmpliCol}}
+\newcommand{\AC}{\texttt{AmpliCol}}
+\newcommand{\ReportTableNote}[1]{\par\smallskip\noindent\footnotesize\textcolor{ReportMuted}{#1}\par}
+
+\hypersetup{}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+
+\title{\vspace{-1.2cm}\textbf{Dedicated built-in-SM \(d\bar d\to Z+\) gluon performance}\\
+  \large Apple M3 Pro investigation}
+\author{pyAmpliCol performance study F}
+\date{Measured source \texttt{202b3fd91a40a6e0422320053796fd71b5b2cd48}}
+
+\begin{document}
+\maketitle
+\small
+This controlled snapshot publishes the authenticated investigation-F table
+state at wrap-up. Rows \(n=1\)--\(7\) retain their immutable pre-study evidence
+and original resource ABI; legacy RSS-only observations are not relabelled as
+Darwin physical-footprint or exact-decimal-30GB evidence. No new F-contract
+\(n=8\) or \(n=9\) measurement was launched in this run, so unrun cells remain
+N/A. Catalog-declared ASM O3 and C++ O3 rows above \(n=6\) remain static N/A
+without an attempt or compiler launch.
+
+Any future new or repeated \(n=8\)--\(9\) attempt accepted under study F must
+be guarded at exactly 30,000,000,000 bytes by the authenticated maximum of
+aggregate process-tree RSS and Darwin physical footprint, with its
+authenticated generation phase capped at 3600 seconds. Selected-flow rows use
+topology-replay with a helicity sum; all-flow rows use all-flow-union with one
+deterministic helicity. Runtime values are validated at the canonical
+deterministic phase-space point before timing. Every displayed pyAmpliCol mode
+reports its authenticated evaluator-total timing where that evidence exists.
+
+\begin{landscape}
+\setcounter{section}{6}
+\setcounter{subsection}{0}
+\input{result_z_builtin_sm_table.tex}
+\end{landscape}
+\end{document}
