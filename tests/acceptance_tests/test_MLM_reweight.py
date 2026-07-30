@@ -326,9 +326,6 @@ def generate_process(run_dir, process, model, defines, apply_fg, group_subproces
     for define_str in defines:
         mg_cmd.exec_cmd('define %s' % define_str)
 
-    # These MLM-reweight cases don't exercise crossing, and the ungrouped
-    # madevent exporter refuses a crossing-tagged process; disable it so the
-    # default-on crossing doesn't trip _check_crossing_support at output.
     mg_cmd.exec_cmd('generate %s' % process)
     mg_cmd.exec_cmd('output madevent %s' % run_dir)
 
