@@ -2553,10 +2553,20 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
              'antipid_base': arr(tables['antipid_base']),
              'ninitial': ninitial}
 
-        # Per-leg helicity states in the cHel (allow_reverse=False) order, used
-        # to re-encode a crossed helicity config into its canonical code.
+        # Per-leg helicity states used to re-encode a crossed helicity config
+        # into its canonical code. allow_reverse=True is NOT optional: it is the
+        # order the cHel/tHel table itself is built in (get_helicity_matrix
+        # above, allow_reverse=True) AND the order the fortran ENCODE_HEL STATES
+        # table uses (get_helicity_encoder_dict), which together define the
+        # canonical code. get_helicity_states reverses the list for an
+        # ANTIparticle leg, so with allow_reverse=False every such leg's digit
+        # lookup is off by one state and the code comes out wrong: for
+        # u u~ > t t~ legs 1 and 4 give (+1,-1) not (-1,+1), and all 16 rows
+        # mis-encode. Like the fortran encoder this deliberately ignores
+        # wf['polarization'] -- the code space is the FULL mixed-radix space, a
+        # polarized leg simply never reaches its filtered-out digits.
         pdict = me.get('processes')[0].get('model').get('particle_dict')
-        hstates = [pdict[wf.get('pdg_code')].get_helicity_states(False)
+        hstates = [pdict[wf.get('pdg_code')].get_helicity_states(True)
                    for wf in me.get_external_wavefunctions()]
         hnstate = [len(s) for s in hstates]
         maxhel = max(hnstate) if hnstate else 1
@@ -2564,8 +2574,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         for k in range(nexternal):
             states_flat.extend(hstates[k][i] if i < hnstate[k] else 0
                                for i in range(maxhel))
-        # Crossed-event selected helicity (allselhel). See the CAUTION below:
-        # this transform is compile-checked only, NOT validated at runtime.
+        # Crossed-event selected helicity (allselhel), validated at runtime
+        # against the fortran backend -- see the generated comment.
         crossing_decl = crossing_decl + (
             "  // ---- Crossed-event selected helicity code (allselhel) ----\n"
             "  // For a crossed event the reported per-event helicity must be the\n"
@@ -2577,14 +2587,33 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             "  // cross 0 is the identity (base row+1), so the non-crossing path is\n"
             "  // unchanged.\n"
             "  //\n"
-            "  // !!! CAUTION: COMPILE-CHECKED ONLY, NOT VALIDATED AT RUNTIME. The\n"
-            "  // |M|^2 path evaluates each row with the helicity read by\n"
-            "  // DESTINATION slot (cHel[ihel][s]) and the permutation absorbed by\n"
-            "  // the good-helicity union sum, so whether the SELECTED row needs\n"
-            "  // this perm digit-permute, an NSF sign flip, both, or nothing must\n"
-            "  // be confirmed by a cudacpp event-level run that checks the reported\n"
-            "  // crossed-event helicity against the fortran backend. Until then do\n"
-            "  // NOT rely on allselhel for crossed events (the |M|^2 is correct).\n"
+            "  // The perm digit-permute with NO NSF sign flip is the right\n"
+            "  // transform, and it is what mg7 needs: the LHE writer indexes the\n"
+            "  // BASE helicity table POSITIONALLY (export_mg7 ships\n"
+            "  // get_helicity_matrix() as `helicities`, lhe_output.cpp reads row\n"
+            "  // `helicity_index` slot by slot), so the reported row must be the\n"
+            "  // base row whose config EQUALS the crossed one -- not the row the\n"
+            "  // lane evaluated. Validated at runtime against the fortran backend\n"
+            "  // (SMATRIXHEL per canonical code at the same momenta and the same\n"
+            "  // extended flavor id): for the recorded crossing of p p > w+ j and\n"
+            "  // for u u~ > g g crossed to u g > u g, every reported code has a\n"
+            "  // non-zero |M|^2 and the reported frequencies follow the fortran\n"
+            "  // per-code |M|^2 weights.\n"
+            "  //\n"
+            "  // xhel_states MUST be the allow_reverse=True per-leg order: it is\n"
+            "  // both the order cHel is built in and the order the fortran\n"
+            "  // ENCODE_HEL STATES table uses. allow_reverse=False reverses every\n"
+            "  // ANTIparticle leg, which silently shifts the code onto a row whose\n"
+            "  // |M|^2 is zero and aborts helicity-by-helicity reweighting.\n"
+            "  //\n"
+            "  // Limitation (shared with the fortran ENCODE_HEL, whose D=1 fallback\n"
+            "  // this mirrors): a crossing that lands a leg in a slot with a\n"
+            "  // DIFFERENT number of helicity states -- e.g. a massive vector moved\n"
+            "  // into a fermion slot -- has no representable base row, and the\n"
+            "  // lookup falls back to digit 0. That can only happen for a crossing\n"
+            "  // that is merely APPLICABLE and never recorded by the generation\n"
+            "  // (a recorded one only ever swaps partons, all 2-state); consumers\n"
+            "  // must intersect with the recorded crossing codes anyway.\n"
             "  __device__ inline int selected_hel_code( int base_ihel, unsigned int flavor_id )\n"
             "  {\n"
             "    const int xcross = (int)( flavor_id / nmaxflavor );\n"
