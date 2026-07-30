@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import struct
-from dataclasses import astuple
+from dataclasses import astuple, replace
 from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
@@ -35,6 +35,7 @@ from pyamplicol.runtime.recurrence_exact._plan_v2 import (
     _AmplitudeDestination,
     _parse_exact_sections,
     _RecurrenceExactSectionsV1,
+    _ReplayTarget,
     _ResolvedHelicity,
     _SourceStateAssignment,
 )
@@ -545,9 +546,25 @@ def _contracted_plan() -> _RecurrenceExactPlan:
     )
 
 
-def test_contracted_native_section_adapter_accepts_fixed_source_grid() -> None:
-    sections = _contracted_plan().sections
-    raw = {
+def _contracted_replay_plan() -> _RecurrenceExactPlan:
+    plan = _contracted_plan()
+    sections = replace(
+        plan.sections,
+        amplitude_destination_count=2,
+        replay_targets=(
+            _ReplayTarget(0, 0, 0, 2, 0, 2, 0, 1, 0),
+            _ReplayTarget(1, 0, 2, 2, 2, 2, 0, 1, 0),
+        ),
+        source_permutations=(0, 1, 1, 0),
+        replay_momentum_signs=(1, 1, 1, 1),
+        replay_helicity_map=(0, 1, 1, 0),
+        amplitude_destinations=plan.sections.amplitude_destinations[:2],
+    )
+    return replace(plan, sections=sections)
+
+
+def _native_sections(sections: _RecurrenceExactSectionsV1) -> dict[str, object]:
+    return {
         "abi": RECURRENCE_EXACT_SECTIONS_ABI,
         "runtime_layout_abi": RECURRENCE_RUNTIME_LAYOUT_V2_ABI,
         "process_id": sections.process_id,
@@ -568,10 +585,10 @@ def test_contracted_native_section_adapter_accepts_fixed_source_grid() -> None:
         "row_groups": [],
         "momentum_forms": [],
         "momentum_terms": [],
-        "replay_targets": [],
-        "source_permutations": [],
-        "replay_momentum_signs": [],
-        "replay_helicity_map": [],
+        "replay_targets": [astuple(row) for row in sections.replay_targets],
+        "source_permutations": list(sections.source_permutations),
+        "replay_momentum_signs": list(sections.replay_momentum_signs),
+        "replay_helicity_map": list(sections.replay_helicity_map),
         "amplitude_destinations": [
             astuple(row) for row in sections.amplitude_destinations
         ],
@@ -585,16 +602,78 @@ def test_contracted_native_section_adapter_accepts_fixed_source_grid() -> None:
         "resolved_source_selections": [],
         "public_helicities": list(sections.public_helicities),
         "exact_factors": [],
-        "public_flow_ids": [],
+        "public_flow_ids": list(sections.public_flow_ids),
         "executors": [],
     }
+
+
+def test_contracted_native_section_adapter_accepts_fixed_source_grid() -> None:
+    sections = _contracted_plan().sections
+    raw = _native_sections(sections)
     parsed = _parse_exact_sections(raw, sections.process_id)
     assert parsed.strategy == "contracted-color-union"
     assert parsed.amplitude_destinations == sections.amplitude_destinations
 
     raw["public_flow_ids"] = [0]
-    with pytest.raises(ArtifactError, match="public flow or replay axis"):
+    with pytest.raises(ArtifactError, match="public color-flow axis"):
         _parse_exact_sections(raw, sections.process_id)
+
+
+def test_contracted_native_section_adapter_accepts_internal_replay() -> None:
+    sections = _contracted_replay_plan().sections
+    parsed = _parse_exact_sections(_native_sections(sections), sections.process_id)
+
+    assert parsed.public_flow_ids == ()
+    assert parsed.replay_targets == sections.replay_targets
+    assert parsed.replay_helicity_map == (0, 1, 1, 0)
+
+    malformed = _native_sections(sections)
+    malformed["source_permutations"] = [0, 0, 1, 0]
+    with pytest.raises(ArtifactError, match="complete source bijection"):
+        _parse_exact_sections(malformed, sections.process_id)
+
+    malformed = _native_sections(sections)
+    malformed["replay_helicity_map"] = [0, 0, 1, 0]
+    with pytest.raises(ArtifactError, match="complete bijection"):
+        _parse_exact_sections(malformed, sections.process_id)
+
+
+def test_contracted_exact_replay_reconstructs_dense_physical_destinations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor = object.__new__(RecurrenceExactExecutor)
+    executor._plan = _contracted_replay_plan()
+    executor._physics = {
+        "helicities": [
+            {"id": "h:0,0", "values": [0, 0]},
+            {"id": "h:1,1", "values": [1, 1]},
+        ]
+    }
+    replayed = {
+        0: ((Decimal(1), Decimal(0)), (Decimal(2), Decimal(0))),
+        1: ((Decimal(3), Decimal(0)), (Decimal(4), Decimal(0))),
+    }
+    monkeypatch.setattr(
+        executor_module,
+        "_evaluate_replay_point",
+        lambda _plan, _point, target, *_args: replayed[target.public_flow_id],
+    )
+
+    amplitudes = executor._contracted_amplitudes(object(), (), 70)
+    destination_helicities = executor._contracted_destination_helicity_map()
+
+    assert amplitudes == (
+        (Decimal(1), Decimal(0)),
+        (Decimal(2), Decimal(0)),
+        (Decimal(4), Decimal(0)),
+        (Decimal(3), Decimal(0)),
+    )
+    assert destination_helicities == (0, 1, 0, 1)
+    assert _contract_color_amplitudes(
+        executor._plan.color_contraction,
+        amplitudes,
+        destination_helicities,
+    ) == {0: Decimal(21), 1: Decimal(19)}
 
 
 def test_contracted_exact_resolved_output_and_selector_contract(

@@ -557,18 +557,29 @@ def _validate_sections(sections: _RecurrenceExactSectionsV1) -> None:
 def _validate_replay_sections(sections: _RecurrenceExactSectionsV1) -> None:
     if len(sections.public_flow_ids) != len(sections.replay_targets):
         raise ArtifactError("recurrence public flow and replay axes differ in size")
+    _validate_replay_tables(sections)
+
+
+def _validate_replay_tables(sections: _RecurrenceExactSectionsV1) -> None:
+    if not sections.replay_targets and (
+        sections.source_permutations
+        or sections.replay_momentum_signs
+        or sections.replay_helicity_map
+    ):
+        raise ArtifactError("recurrence replay tables have no replay targets")
     if any(
-        len(
+        len(permutation) != sections.external_source_count
+        or sorted(permutation) != list(range(sections.external_source_count))
+        for target in sections.replay_targets
+        for permutation in (
             sections.source_permutations[
                 target.source_permutation_start : target.source_permutation_start
                 + target.source_permutation_count
-            ]
+            ],
         )
-        != sections.external_source_count
-        for target in sections.replay_targets
     ):
         raise ArtifactError(
-            "recurrence replay permutation has incomplete source coverage"
+            "recurrence replay permutation is not a complete source bijection"
         )
     if len(sections.replay_momentum_signs) != len(sections.source_permutations) or any(
         sign not in (-1, 1) for sign in sections.replay_momentum_signs
@@ -756,16 +767,11 @@ def _validate_union_sections(sections: _RecurrenceExactSectionsV1) -> None:
 
 
 def _validate_contracted_sections(sections: _RecurrenceExactSectionsV1) -> None:
-    if (
-        sections.replay_targets
-        or sections.source_permutations
-        or sections.replay_momentum_signs
-        or sections.replay_helicity_map
-        or sections.public_flow_ids
-    ):
+    if sections.public_flow_ids:
         raise ArtifactError(
-            "contracted-color recurrence carries a public flow or replay axis"
+            "contracted-color recurrence carries a public color-flow axis"
         )
+    _validate_replay_tables(sections)
     if (
         sections.source_dispatch_variants
         or sections.source_embeddings

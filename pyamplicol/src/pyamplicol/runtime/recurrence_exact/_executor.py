@@ -363,9 +363,8 @@ class RecurrenceExactExecutor:
             raise ArtifactError(
                 "contracted exact execution has no color-contraction payload"
             )
-        amplitudes = _evaluate_contracted_point(
-            self._plan,
-            cast(Any, point),
+        amplitudes = self._contracted_amplitudes(
+            point,
             prepared_parameters,
             working_precision,
         )
@@ -390,6 +389,88 @@ class RecurrenceExactExecutor:
             point_values[helicity_position][0] = (
                 normalization * helicity_weight * contracted.get(representative, _ZERO)
             )
+
+    def _contracted_amplitudes(
+        self,
+        point: object,
+        prepared_parameters: Sequence[tuple[Decimal, Decimal]],
+        working_precision: int,
+    ) -> tuple[tuple[Decimal, Decimal], ...]:
+        sections = self._plan.sections
+        contraction = self._plan.color_contraction
+        if contraction is None:
+            raise ArtifactError(
+                "contracted exact execution has no color-contraction payload"
+            )
+        if not sections.replay_targets:
+            return _evaluate_contracted_point(
+                self._plan,
+                cast(Any, point),
+                prepared_parameters,
+                working_precision,
+            )
+
+        destination_by_coordinate: dict[tuple[int, int], int] = {}
+        for group_id, destination_id in enumerate(contraction.destination_by_group):
+            coordinate = (
+                contraction.group_sector_ids[group_id],
+                contraction.group_component_ids[group_id],
+            )
+            if coordinate in destination_by_coordinate:
+                raise ArtifactError(
+                    "contracted replay color coordinates are not unique"
+                )
+            destination_by_coordinate[coordinate] = destination_id
+
+        amplitudes = [(_ZERO, _ZERO)] * contraction.destination_count
+        covered: set[int] = set()
+        for target in sections.replay_targets:
+            helicity_map = sections.replay_helicity_map[
+                target.helicity_map_start : target.helicity_map_start
+                + target.helicity_map_count
+            ]
+            if len(helicity_map) != len(sections.resolved_helicities):
+                raise ArtifactError(
+                    "contracted replay helicity mapping has incomplete coverage"
+                )
+            replayed = _evaluate_replay_point(
+                self._plan,
+                cast(Any, point),
+                target,
+                prepared_parameters,
+                working_precision,
+            )
+            for destination in sections.amplitude_destinations:
+                if destination.target_sector_id != target.representative_id:
+                    continue
+                direct_helicity = destination.target_helicity_id
+                if direct_helicity >= len(helicity_map):
+                    raise ArtifactError(
+                        "contracted replay destination helicity is not mapped"
+                    )
+                coordinate = (
+                    target.public_flow_id,
+                    helicity_map[direct_helicity],
+                )
+                try:
+                    physical_destination = destination_by_coordinate[coordinate]
+                    amplitude = replayed[destination.destination_id]
+                except (IndexError, KeyError) as exc:
+                    raise ArtifactError(
+                        "contracted replay route is outside the physical "
+                        "color/helicity domain"
+                    ) from exc
+                if physical_destination in covered:
+                    raise ArtifactError(
+                        "contracted replay routes repeat a physical destination"
+                    )
+                covered.add(physical_destination)
+                amplitudes[physical_destination] = amplitude
+        if len(covered) != contraction.destination_count:
+            raise ArtifactError(
+                "contracted replay routes do not cover every physical destination"
+            )
+        return tuple(amplitudes)
 
     def _helicity_reduction_indices(
         self,
@@ -595,11 +676,16 @@ class RecurrenceExactExecutor:
             raise ArtifactError(
                 "contracted exact execution has no color-contraction payload"
             )
+        replayed = bool(sections.replay_targets)
+        expected_destination_count = (
+            contraction.destination_count
+            if replayed
+            else sections.amplitude_destination_count
+        )
         if (
             contraction.component_count != len(sections.resolved_helicities)
-            or contraction.destination_count != sections.amplitude_destination_count
-            or len(contraction.destination_by_group)
-            != sections.amplitude_destination_count
+            or contraction.destination_count != expected_destination_count
+            or len(contraction.destination_by_group) != contraction.group_count
             or len(contraction.group_sector_ids) != contraction.group_count
             or len(contraction.group_component_ids) != contraction.group_count
         ):
@@ -607,7 +693,47 @@ class RecurrenceExactExecutor:
                 "contracted color dimensions disagree with the recurrence plan"
             )
         direct_to_physics = self._direct_helicity_to_physics()
-        result = [DIRECT_NONE_U32] * sections.amplitude_destination_count
+        result = [DIRECT_NONE_U32] * contraction.destination_count
+        if replayed:
+            expected_coordinates = {
+                (target.public_flow_id, direct_helicity)
+                for target in sections.replay_targets
+                for direct_helicity in range(len(sections.resolved_helicities))
+            }
+            actual_coordinates = set(
+                zip(
+                    contraction.group_sector_ids,
+                    contraction.group_component_ids,
+                    strict=True,
+                )
+            )
+            if actual_coordinates != expected_coordinates:
+                raise ArtifactError(
+                    "contracted replay color coordinates disagree with the "
+                    "recurrence plan"
+                )
+            for group_id, destination_id in enumerate(contraction.destination_by_group):
+                try:
+                    physics_helicity = direct_to_physics[
+                        contraction.group_component_ids[group_id]
+                    ]
+                    previous = result[destination_id]
+                except IndexError as exc:
+                    raise ArtifactError(
+                        "contracted replay color mapping references an absent "
+                        "destination"
+                    ) from exc
+                if previous != DIRECT_NONE_U32:
+                    raise ArtifactError(
+                        "contracted replay color mapping repeats a destination"
+                    )
+                result[destination_id] = physics_helicity
+            if any(value == DIRECT_NONE_U32 for value in result):
+                raise ArtifactError(
+                    "contracted replay color mapping does not cover every destination"
+                )
+            return tuple(result)
+
         for group_id, destination_id in enumerate(contraction.destination_by_group):
             expected_sector = contraction.group_sector_ids[group_id]
             direct_helicity = contraction.group_component_ids[group_id]

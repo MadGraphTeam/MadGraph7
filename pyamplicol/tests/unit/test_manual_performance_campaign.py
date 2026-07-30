@@ -523,6 +523,205 @@ def test_dashboard_keys_select_scroll_help_and_interrupt() -> None:
     assert state.interrupted
 
 
+def test_dashboard_filters_order_and_keyboard_toggles() -> None:
+    from ratatui import KeyCode
+
+    workers = {
+        "done-ok": WorkerView("done-ok", status="ok"),
+        "done-reused": WorkerView("done-reused", status="reused"),
+        "attention-error": WorkerView("attention-error", status="error"),
+        "recycled-cap": WorkerView("recycled-cap", status="memory_limit"),
+        "active-queued": WorkerView("active-queued", status="queued"),
+        "active-preparing": WorkerView("active-preparing", status="preparing"),
+        "active-running": WorkerView("active-running", status="running"),
+    }
+    state = DashboardState(
+        instance_id="filters",
+        selected_ids=tuple(workers),
+        recycled_ids={"done-reused", "recycled-cap"},
+        static_na_ids=set(),
+        workers=workers,
+        completed_ids={"done-ok", "done-reused", "recycled-cap"},
+        capped_ids={"recycled-cap"},
+        failed_ids={"attention-error"},
+    )
+    cancellation = threading.Event()
+
+    assert [worker.cell_id for worker in state.visible_workers()] == [
+        "active-running",
+        "active-preparing",
+        "active-queued",
+        "attention-error",
+        "recycled-cap",
+    ]
+
+    assert not _handle_dashboard_key(
+        state,
+        {"kind": "key", "code": KeyCode.Char, "ch": ord("d"), "mods": 0},
+        cancellation,
+    )
+    assert state.show_completed
+    assert [worker.cell_id for worker in state.visible_workers()] == [
+        "active-running",
+        "active-preparing",
+        "active-queued",
+        "attention-error",
+        "recycled-cap",
+        "done-ok",
+        "done-reused",
+    ]
+
+    assert not _handle_dashboard_key(
+        state,
+        {"kind": "key", "code": KeyCode.Char, "ch": ord("e"), "mods": 0},
+        cancellation,
+    )
+    assert not state.show_errors
+    assert [worker.cell_id for worker in state.visible_workers()] == [
+        "active-running",
+        "active-preparing",
+        "active-queued",
+        "done-ok",
+        "done-reused",
+    ]
+
+    assert not _handle_dashboard_key(
+        state,
+        {"kind": "key", "code": KeyCode.Char, "ch": ord("d"), "mods": 0},
+        cancellation,
+    )
+    assert not state.show_completed
+    assert [worker.cell_id for worker in state.visible_workers()] == [
+        "active-running",
+        "active-preparing",
+        "active-queued",
+    ]
+
+    assert not _handle_dashboard_key(
+        state,
+        {"kind": "key", "code": KeyCode.Char, "ch": ord("e"), "mods": 0},
+        cancellation,
+    )
+    assert state.show_errors
+    assert [worker.cell_id for worker in state.visible_workers()] == [
+        "active-running",
+        "active-preparing",
+        "active-queued",
+        "attention-error",
+        "recycled-cap",
+    ]
+
+
+def test_dashboard_error_total_is_in_primary_overview_summary() -> None:
+    workers = {
+        "active": WorkerView("active", status="running"),
+        "error": WorkerView("error", status="error"),
+        "recycled-cap": WorkerView("recycled-cap", status="memory_limit"),
+    }
+    state = DashboardState(
+        instance_id="error-counter",
+        selected_ids=tuple(workers),
+        recycled_ids={"recycled-cap"},
+        static_na_ids=set(),
+        workers=workers,
+        completed_ids={"recycled-cap"},
+        capped_ids={"recycled-cap"},
+        failed_ids={"error"},
+    )
+
+    frame = render_dashboard_frame(state, width=120, height=36)
+    summary = next(line for line in frame.splitlines() if "Selected " in line)
+    assert "Errors 1" in summary
+    assert "Active 1" in summary
+    assert "Capped 1" in frame
+
+
+def test_recycled_resource_cap_is_available_to_error_filter(
+    tmp_path: Path,
+) -> None:
+    cell = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+        and cell.measurement.model is ModelKey.BUILTIN_SM
+    )
+    current = LightweightCurrent(
+        cell_id=cell.cell_id,
+        attempt_id="recycled-cap-attempt",
+        result_path=tmp_path / "worker-result.json",
+        result={
+            "status": ResultStatus.TIMEOUT.value,
+            "resources": {
+                "wall_seconds": 3601.0,
+                "peak_rss_bytes": 2_000_000_000,
+            },
+        },
+        complete=True,
+        reusable=True,
+        reason="resource-capped terminal",
+    )
+
+    workers = manual_campaign._recycled_attention_workers(
+        (cell,),
+        {cell.cell_id: current},
+        {cell.cell_id},
+        repo_root=ROOT,
+        settings=ReproductionSettings(),
+    )
+
+    assert set(workers) == {cell.cell_id}
+    worker = workers[cell.cell_id]
+    assert worker.status == "generation_limit"
+    assert worker.attempt_id == "recycled-cap-attempt"
+    assert worker.wall_seconds == 3601.0
+    assert worker.peak_rss_bytes == 2_000_000_000
+    assert worker.reproduce_generate is not None
+
+
+@pytest.mark.parametrize(
+    ("width", "height", "expected_range"),
+    ((80, 24, "14-18/18"), (120, 36, "10-18/18")),
+)
+def test_dashboard_worker_viewport_pans_with_selection(
+    width: int,
+    height: int,
+    expected_range: str,
+) -> None:
+    from ratatui import KeyCode
+
+    workers = {
+        f"worker-{index:02d}": WorkerView(
+            f"worker-{index:02d}",
+            status="running",
+            step=f"profiling sample {index}",
+        )
+        for index in range(18)
+    }
+    state = DashboardState(
+        instance_id="viewport",
+        selected_ids=tuple(workers),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        workers=workers,
+    )
+    cancellation = threading.Event()
+    for _ in range(17):
+        assert not _handle_dashboard_key(
+            state,
+            {"kind": "key", "code": KeyCode.Down, "ch": 0, "mods": 0},
+            cancellation,
+        )
+
+    frame = render_dashboard_frame(state, width=width, height=height)
+    selected_rows = [line for line in frame.splitlines() if "▶" in line]
+    assert len(selected_rows) == 1
+    assert "worker-17" in selected_rows[0]
+    assert "worker-00" not in frame
+    assert expected_range in frame
+    assert "Cell worker-17" in frame
+    assert "profiling sample 17" in frame
+
+
 def test_dashboard_key_aliases_clamp_scroll_ignore_noise_and_escape() -> None:
     from ratatui import KeyCode
 

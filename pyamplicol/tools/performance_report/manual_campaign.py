@@ -98,6 +98,8 @@ _DASHBOARD_COUNTER_KEYS = (
     "dependency_only",
 )
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_ACTIVE_WORKER_STATUSES = frozenset({"queued", "preparing", "running"})
+_COMPLETED_WORKER_STATUSES = frozenset({"ok", "reused", "skipped-current"})
 
 
 class ManualCampaignError(RuntimeError):
@@ -1654,6 +1656,8 @@ class DashboardState:
     failed_ids: set[str] = field(default_factory=set)
     selected_index: int = 0
     detail_scroll: int = 0
+    show_completed: bool = False
+    show_errors: bool = True
     show_help: bool = False
     started_at: float = field(default_factory=time.time)
     interrupted: bool = False
@@ -1666,7 +1670,40 @@ class DashboardState:
         return tuple(
             worker
             for worker in self.workers.values()
-            if worker.status in {"queued", "preparing", "running"}
+            if worker.status in _ACTIVE_WORKER_STATUSES
+        )
+
+    def visible_workers(self) -> tuple[WorkerView, ...]:
+        """Return the single ordered worker view used by table and details."""
+
+        def rank(worker: WorkerView) -> tuple[int, str, str]:
+            status_rank = {
+                "running": 0,
+                "preparing": 1,
+                "queued": 2,
+            }.get(
+                worker.status,
+                4 if worker.status in _COMPLETED_WORKER_STATUSES else 3,
+            )
+            return status_rank, worker.cell_id, worker.peer_instance or ""
+
+        return tuple(
+            sorted(
+                (
+                    worker
+                    for worker in self.workers.values()
+                    if (
+                        self.show_completed
+                        or worker.status not in _COMPLETED_WORKER_STATUSES
+                    )
+                    and (
+                        self.show_errors
+                        or worker.status in _ACTIVE_WORKER_STATUSES
+                        or worker.status in _COMPLETED_WORKER_STATUSES
+                    )
+                ),
+                key=rank,
+            )
         )
 
     def counters(self) -> dict[str, int]:
@@ -1695,8 +1732,9 @@ class DashboardState:
         }
 
     def selected_worker(self) -> WorkerView | None:
-        rows = tuple(sorted(self.workers.values(), key=lambda item: item.cell_id))
+        rows = self.visible_workers()
         if not rows:
+            self.selected_index = 0
             return None
         self.selected_index %= len(rows)
         return rows[self.selected_index]
@@ -2521,14 +2559,12 @@ def _live_dashboard_snapshot(
                 continue
             state.workers[f"peer:{peer_instance}:{cell_id}"] = worker
 
-    ordered_workers = tuple(
-        sorted(state.workers.values(), key=lambda worker: worker.cell_id)
-    )
+    ordered_workers = state.visible_workers()
     state.selected_index = next(
         (
             index
             for index, worker in enumerate(ordered_workers)
-            if worker.status in {"queued", "preparing", "running"}
+            if worker.status in _ACTIVE_WORKER_STATUSES
         ),
         0,
     )
@@ -2695,21 +2731,37 @@ def _ratatui_commands(
         (str(counters["recycled"]), success_style),
         ("   Active ", key_style),
         (str(counters["active"]), warning_style),
-        ("   Completed ", key_style),
-        (str(counters["completed"]), success_style),
-        ("   Remaining ", key_style),
-        (str(counters["remaining"]), neutral_style),
+        ("   Errors ", key_style),
+        (str(counters["failed"]), failure_style),
     ]
+    if not compact:
+        first.extend(
+            (
+                ("   Completed ", key_style),
+                (str(counters["completed"]), success_style),
+                ("   Remaining ", key_style),
+                (str(counters["remaining"]), neutral_style),
+            )
+        )
     _append_dashboard_line(overview, first)
     _append_dashboard_line(
         overview,
         [
+            *(
+                (
+                    ("Completed ", key_style),
+                    (str(counters["completed"]), success_style),
+                    ("   Remaining ", key_style),
+                    (str(counters["remaining"]), neutral_style),
+                    ("   ", neutral_style),
+                )
+                if compact
+                else ()
+            ),
             ("Static N/A ", key_style),
             (str(counters["static_na"]), warning_style),
             ("   Capped ", key_style),
             (str(counters["capped"]), warning_style),
-            ("   Failed ", key_style),
-            (str(counters["failed"]), failure_style),
             ("   Dependency-only ", key_style),
             (str(counters["dependency_only"]), neutral_style),
         ],
@@ -2770,9 +2822,26 @@ def _ratatui_commands(
             ],
         )
 
-    workers = tuple(sorted(state.workers.values(), key=lambda item: item.cell_id))
+    workers = state.visible_workers()
+    selected_index = 0
+    viewport_start = 0
+    viewport_capacity = max(1, table_height - 3)
+    if workers:
+        selected_index = state.selected_index % len(workers)
+        state.selected_index = selected_index
+        viewport_start = min(
+            max(0, selected_index - viewport_capacity + 1),
+            max(0, len(workers) - viewport_capacity),
+        )
+    viewport = workers[viewport_start : viewport_start + viewport_capacity]
+    viewport_end = viewport_start + len(viewport)
     worker_table = Table()
-    worker_table.set_block_title(" Workers ↑/↓ to select ")
+    worker_table.set_block_title(
+        " Workers ↑/↓"
+        f" · {viewport_start + 1 if viewport else 0}-{viewport_end}/{len(workers)}"
+        f" · d done:{'on' if state.show_completed else 'off'}"
+        f" · e errors:{'on' if state.show_errors else 'off'} "
+    )
     if compact:
         worker_table.set_headers(
             [
@@ -2800,8 +2869,9 @@ def _ratatui_commands(
             ]
         )
         worker_table.set_widths_percentages([3, 23, 9, 22, 13, 8, 12, 10])
-    for index, worker in enumerate(workers):
-        marker = "▶" if index == state.selected_index % max(len(workers), 1) else " "
+    for local_index, worker in enumerate(viewport):
+        index = viewport_start + local_index
+        marker = "▶" if index == selected_index else " "
         row = [
             marker,
             worker.cell_id,
@@ -2818,9 +2888,7 @@ def _ratatui_commands(
                 else f"{worker.pid}+{max(0, len(worker.member_pids) - 1)}"
             )
         worker_table.append_row(row)
-    worker_table.set_selected(
-        None if not workers else state.selected_index % len(workers)
-    )
+    worker_table.set_selected(None if not viewport else selected_index - viewport_start)
     worker_table.set_row_highlight_style(highlight_style)
 
     selected = state.selected_worker()
@@ -2837,6 +2905,20 @@ def _ratatui_commands(
             [("PgUp/PgDn ", key_style), ("scroll worker details", neutral_style)],
         )
         _append_dashboard_line(
+            details,
+            [
+                ("d ", key_style),
+                ("show/hide completed and successful reused workers", neutral_style),
+            ],
+        )
+        _append_dashboard_line(
+            details,
+            [
+                ("e ", key_style),
+                ("show/hide errors, caps, and recycled attention rows", neutral_style),
+            ],
+        )
+        _append_dashboard_line(
             details, [("? ", key_style), ("close this help", neutral_style)]
         )
         _append_dashboard_line(
@@ -2849,9 +2931,14 @@ def _ratatui_commands(
         ratio = 0.0 if selected is None else _worker_progress_ratio(selected)
         gauge_label = "keyboard help"
     elif selected is None:
-        _append_dashboard_line(details, [("No active worker", warning_style)])
+        _append_dashboard_line(
+            details,
+            [
+                ("No workers match the current d/e filters", warning_style),
+            ],
+        )
         ratio = 0.0
-        gauge_label = "waiting"
+        gauge_label = "filtered"
     else:
         _append_dashboard_line(
             details,
@@ -3082,7 +3169,12 @@ def _ratatui_commands(
         gauge_value_style,
     )
     footer = Paragraph.from_text(
-        " ↑/↓ select  PgUp/PgDn scroll  ? help  Ctrl-C stop safely "
+        " ↑/↓ select  d done  e errors  ? help  Ctrl-C stop safely "
+        if compact
+        else (
+            " ↑/↓ select  d completed  e errors  PgUp/PgDn details"
+            "  ? help  Ctrl-C stop safely "
+        )
     )
 
     return [
@@ -3116,6 +3208,29 @@ def render_dashboard_frame(
     return headless_render_frame(width, height, commands)
 
 
+def _toggle_worker_filter(state: DashboardState, attribute: str) -> None:
+    selected = state.selected_worker()
+    selected_identity = (
+        None if selected is None else (selected.cell_id, selected.peer_instance)
+    )
+    setattr(state, attribute, not bool(getattr(state, attribute)))
+    rows = state.visible_workers()
+    if not rows:
+        state.selected_index = 0
+    elif selected_identity is not None:
+        state.selected_index = next(
+            (
+                index
+                for index, worker in enumerate(rows)
+                if (worker.cell_id, worker.peer_instance) == selected_identity
+            ),
+            min(state.selected_index, len(rows) - 1),
+        )
+    else:
+        state.selected_index %= len(rows)
+    state.detail_scroll = 0
+
+
 def _handle_dashboard_key(
     state: DashboardState,
     event: Mapping[str, object],
@@ -3140,6 +3255,10 @@ def _handle_dashboard_key(
         state.detail_scroll = max(0, state.detail_scroll - 3)
     elif code == KeyCode.PageDown:
         state.detail_scroll += 3
+    elif code == KeyCode.Char and ch in {ord("d"), ord("D")}:
+        _toggle_worker_filter(state, "show_completed")
+    elif code == KeyCode.Char and ch in {ord("e"), ord("E")}:
+        _toggle_worker_filter(state, "show_errors")
     elif code == KeyCode.Char and ch == ord("?"):
         state.show_help = not state.show_help
         state.detail_scroll = 0
@@ -3954,6 +4073,98 @@ def _cancel_and_join_campaign_worker(
     return interrupted, worker.is_alive()
 
 
+def _recycled_attention_workers(
+    cells: Sequence[CellSpec],
+    currents: Mapping[str, LightweightCurrent],
+    recycled_ids: set[str],
+    *,
+    repo_root: Path,
+    settings: ReproductionSettings,
+) -> dict[str, WorkerView]:
+    """Expose cheap same-source capped currents without scanning attempt history."""
+
+    workers: dict[str, WorkerView] = {}
+    for cell in cells:
+        if cell.cell_id not in recycled_ids:
+            continue
+        current = currents.get(cell.cell_id)
+        if current is None:
+            continue
+        result_status = str(current.result.get("status") or "")
+        status = {
+            ResultStatus.TIMEOUT.value: "generation_limit",
+            ResultStatus.MEMORY_LIMIT.value: "memory_limit",
+        }.get(result_status)
+        if status is None:
+            continue
+        resources = current.result.get("resources")
+        resource_values = resources if isinstance(resources, Mapping) else {}
+        recipe = reproduction_recipe(
+            cell,
+            repo_root=repo_root,
+            cores=settings.cores,
+            target_runtime=settings.target_runtime,
+            batch_size=settings.batch_size,
+            warmups=settings.warmups,
+            minimum_samples=settings.minimum_samples,
+            measurement=current.result,
+        )
+        worker = WorkerView(
+            cell.cell_id,
+            generation_engine=cell.measurement.execution_mode.value,
+            status=status,
+            step=(
+                "recycled generation-time cap"
+                if status == "generation_limit"
+                else "recycled process-tree RAM cap"
+            ),
+            phase="recycled terminal",
+            attempt_id=current.attempt_id,
+            wall_seconds=_finite_float(resource_values.get("wall_seconds")),
+            cpu_seconds=_optional_finite_float(resource_values.get("cpu_seconds")),
+            current_rss_bytes=_optional_int(resource_values.get("current_rss_bytes"))
+            or 0,
+            peak_rss_bytes=_optional_int(resource_values.get("peak_rss_bytes")) or 0,
+            current_physical_footprint_bytes=_optional_int(
+                resource_values.get("current_physical_footprint_bytes")
+            ),
+            peak_physical_footprint_bytes=_optional_int(
+                resource_values.get("peak_physical_footprint_bytes")
+            ),
+            current_guard_bytes=_optional_int(
+                resource_values.get("current_guard_bytes")
+            )
+            or 0,
+            peak_guard_bytes=_optional_int(resource_values.get("peak_guard_bytes"))
+            or 0,
+            progress_completed=1,
+            progress_total=1,
+            progress_message="recycled capped result",
+            reproduce_prepare=(
+                None if recipe.prepare is None else _shell_join(recipe.prepare)
+            ),
+            reproduce_generate=(
+                None if recipe.generate is None else _shell_join(recipe.generate)
+            ),
+            reproduce_profile=(
+                None if recipe.profile is None else _shell_join(recipe.profile)
+            ),
+            published_wall_seconds_per_point=_number(
+                current.result,
+                "wall_seconds_per_point",
+            ),
+            published_evaluator_total_seconds_per_point=(
+                _evaluator_total_number(current.result)
+            ),
+            published_recurrence_core_seconds_per_point=(
+                _recurrence_core_number(current.result)
+            ),
+            events=[f"recycled: {current.reason}"],
+        )
+        workers[cell.cell_id] = worker
+    return workers
+
+
 def _run_campaign(
     arguments: argparse.Namespace,
     *,
@@ -4124,6 +4335,16 @@ def _run_campaign(
         ),
         dependency_ids={item.cell.cell_id for item in planned if item.dependency},
     )
+    state.workers.update(
+        _recycled_attention_workers(
+            measurable,
+            lightweight,
+            recycled,
+            repo_root=repo_root,
+            settings=state.reproduction_settings,
+        )
+    )
+    state.capped_ids.update(state.workers)
     lease = LeaseManager(service, state)
     lease.publish()
     settings = _campaign_settings(
@@ -4534,7 +4755,9 @@ Common recipes
 
 Keyboard controls
 -----------------
-  ↑/↓ or j/k  select a worker     PgUp/PgDn  scroll
+  ↑/↓ or j/k  select a worker     PgUp/PgDn  scroll worker details
+  d           show/hide completed successful workers (hidden by default)
+  e           show/hide errors, caps, and recycled attention rows
   ?           show help           Ctrl-C/Esc stop safely and discard partial attempts
 
 The selected-worker panel preserves typed engine details when available,
@@ -4800,8 +5023,7 @@ def build_parser() -> argparse.ArgumentParser:
             "sum(candidate) / sum(AmpliCol). Missing, capped, incompatible, "
             "baseline-less, and unexposed clocks are excluded and counted. "
             "Outer wall, evaluator-total, and recurrence core are never copied "
-            "or derived from one another.\n\n"
-            + STEERING_GUIDE
+            "or derived from one another.\n\n" + STEERING_GUIDE
         ),
         formatter_class=HelpFormatter,
     )

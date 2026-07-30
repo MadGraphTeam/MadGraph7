@@ -241,7 +241,8 @@ def test_ratatui_style_toggle_removes_all_cell_styles() -> None:
 
 def test_dashboard_preserves_and_displays_three_independent_recurrence_clocks() -> None:
     state = manual_campaign._snapshot_fixture(selected=5, recycled=1, completed=1)
-    workers = tuple(sorted(state.workers.values(), key=lambda item: item.cell_id))
+    state.show_completed = True
+    workers = state.visible_workers()
     state.selected_index = next(
         index
         for index, worker in enumerate(workers)
