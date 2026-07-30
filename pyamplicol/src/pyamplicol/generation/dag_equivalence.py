@@ -665,6 +665,104 @@ class NumericalCurrentRelationApplicationResult:
     report: NumericalCurrentRelationApplicationReport
 
 
+@dataclass(frozen=True, slots=True)
+class NumericalCurrentObservationDiscoveryReport:
+    """Bounded warm-up evidence before any numerical mapping is applied."""
+
+    execution_mode: Literal["compiled", "eager"]
+    color_accuracy: str
+    source_semantics_sha256: str
+    precision_digits: int
+    seed: int
+    relative_tolerance: float
+    absolute_tolerance: float
+    candidate_point_sha256s: tuple[str, ...]
+    verification_point_sha256s: tuple[str, ...]
+    candidate_observation_batch_sha256: str
+    verification_observation_batch_sha256: str
+    state: str
+    inspected_current_count: int
+    structurally_proven_current_count: int
+    tested_hypothesis_count: int
+    numerical_candidate_count: int
+    verification_rejected_count: int
+    certificates: tuple[NumericalCurrentRelationCertificate, ...]
+    rejected_candidates: tuple[dict[str, object], ...]
+    nearest_rejected_hypothesis: dict[str, object] | None
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "state": self.state,
+            "scope": {
+                "execution_mode": self.execution_mode,
+                "color_accuracy": self.color_accuracy,
+                "representation": "generic-dag",
+            },
+            "source_semantics": {
+                "abi": GENERIC_DAG_NUMERICAL_SOURCE_SEMANTICS_ABI,
+                "sha256": self.source_semantics_sha256,
+            },
+            "probe_contract": {
+                "algorithm": (
+                    NUMERICAL_CURRENT_RELATION_CERTIFICATE_ALGORITHM
+                ),
+                "precision_digits": self.precision_digits,
+                "seed": self.seed,
+                "relative_tolerance_binary64": (
+                    self.relative_tolerance.hex()
+                ),
+                "absolute_tolerance_binary64": (
+                    self.absolute_tolerance.hex()
+                ),
+                "candidate_point_sha256s": list(
+                    self.candidate_point_sha256s
+                ),
+                "verification_point_sha256s": list(
+                    self.verification_point_sha256s
+                ),
+                "candidate_observation_batch_sha256": (
+                    self.candidate_observation_batch_sha256
+                ),
+                "verification_observation_batch_sha256": (
+                    self.verification_observation_batch_sha256
+                ),
+                "deterministic": True,
+                "independent_verification": True,
+            },
+            "inspected_current_count": self.inspected_current_count,
+            "structurally_proven_current_count": (
+                self.structurally_proven_current_count
+            ),
+            "tested_hypothesis_count": self.tested_hypothesis_count,
+            "numerical_candidate_count": self.numerical_candidate_count,
+            "verification_rejected_count": self.verification_rejected_count,
+            "certified_numerical_relation_count": len(self.certificates),
+            "certificates": [
+                certificate.to_json_dict()
+                for certificate in self.certificates
+            ],
+            "rejected_candidates": list(self.rejected_candidates),
+            "nearest_rejected_hypothesis": (
+                self.nearest_rejected_hypothesis
+            ),
+            "warning": {
+                "required": False,
+                "reason": (
+                    "discovery alone never warns; the artifact aggregator "
+                    "warns once only when certified proof-less mappings are "
+                    "actually applied"
+                ),
+            },
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class NumericalCurrentObservationDiscoveryResult:
+    certificates: tuple[NumericalCurrentRelationCertificate, ...]
+    report: NumericalCurrentObservationDiscoveryReport
+
+
 def certify_numerical_current_observations(
     *,
     current_id: int,
@@ -1050,6 +1148,392 @@ def generic_dag_numerical_source_semantics_sha256(
     )
 
 
+def discover_generic_dag_numerical_current_relations(
+    dag: GenericDAG,
+    model: Model,
+    *,
+    candidate_observations: Mapping[
+        int,
+        Sequence[tuple[Decimal, Decimal]],
+    ],
+    verification_observations: Mapping[
+        int,
+        Sequence[tuple[Decimal, Decimal]],
+    ],
+    candidate_point_sha256s: Sequence[str],
+    verification_point_sha256s: Sequence[str],
+    execution_mode: Literal["compiled", "eager"],
+    precision_digits: int,
+    seed: int,
+    relative_tolerance: float,
+    absolute_tolerance: float,
+) -> NumericalCurrentObservationDiscoveryResult:
+    """Discover equal, opposite, and zero currents from complete warm-up data.
+
+    Every generated current is compared exhaustively within its exact runtime
+    contract.  Candidate and verification point domains must be disjoint.
+    Exact structural relations are retained in preference to numerical
+    evidence and are not re-certified as proof-less mappings.
+    """
+
+    source_digest = generic_dag_numerical_source_semantics_sha256(
+        dag,
+        execution_mode=execution_mode,
+    )
+    candidate_points = tuple(candidate_point_sha256s)
+    verification_points = tuple(verification_point_sha256s)
+    if (
+        type(precision_digits) is not int
+        or precision_digits < 80
+        or type(seed) is not int
+        or seed < 0
+        or len(candidate_points) < 2
+        or len(verification_points) < 2
+        or any(not _is_sha256(value) for value in candidate_points)
+        or any(not _is_sha256(value) for value in verification_points)
+        or len(set(candidate_points)) != len(candidate_points)
+        or len(set(verification_points)) != len(verification_points)
+        or not set(candidate_points).isdisjoint(verification_points)
+    ):
+        raise ValueError(
+            "numerical current discovery point contract is invalid"
+        )
+    if (
+        not isinstance(relative_tolerance, int | float)
+        or isinstance(relative_tolerance, bool)
+        or not isinstance(absolute_tolerance, int | float)
+        or isinstance(absolute_tolerance, bool)
+    ):
+        raise ValueError(
+            "numerical current discovery tolerances must be real numbers"
+        )
+    relative = float(relative_tolerance)
+    absolute = float(absolute_tolerance)
+    if (
+        not isfinite(relative)
+        or not isfinite(absolute)
+        or relative < 0.0
+        or absolute < 0.0
+        or (relative == 0.0 and absolute == 0.0)
+    ):
+        raise ValueError("numerical current discovery tolerances are invalid")
+
+    current_ids = tuple(range(len(dag.currents)))
+    if tuple(current.id for current in dag.currents) != current_ids:
+        raise ValueError(
+            "numerical current discovery requires canonical current IDs"
+        )
+    if set(candidate_observations) != set(current_ids) or set(
+        verification_observations
+    ) != set(current_ids):
+        raise ValueError(
+            "numerical current discovery requires observations for every current"
+        )
+    candidate_values: dict[
+        int,
+        tuple[tuple[Decimal, Decimal], ...],
+    ] = {}
+    verification_values: dict[
+        int,
+        tuple[tuple[Decimal, Decimal], ...],
+    ] = {}
+    for current in dag.currents:
+        candidate = _validated_decimal_observations(
+            candidate_observations[current.id]
+        )
+        verification = _validated_decimal_observations(
+            verification_observations[current.id]
+        )
+        expected_candidate_count = (
+            len(candidate_points) * current.dimension
+        )
+        expected_verification_count = (
+            len(verification_points) * current.dimension
+        )
+        if (
+            candidate is None
+            or verification is None
+            or len(candidate) != expected_candidate_count
+            or len(verification) != expected_verification_count
+        ):
+            raise ValueError(
+                f"numerical observations for current {current.id} do not "
+                "cover every point and component"
+            )
+        candidate_values[current.id] = candidate
+        verification_values[current.id] = verification
+
+    candidate_batch_digest = _numerical_current_observation_batch_sha256(
+        candidate_values,
+        point_sha256s=candidate_points,
+    )
+    verification_batch_digest = _numerical_current_observation_batch_sha256(
+        verification_values,
+        point_sha256s=verification_points,
+    )
+    structural = _derive_current_value_equivalences(dag, model)
+    contracts = tuple(
+        _current_evaluation_contract(current) for current in dag.currents
+    )
+    prior_by_contract: dict[_CurrentContract, list[int]] = defaultdict(list)
+    source_ids = set(dag.sources)
+    relative_decimal = Decimal.from_float(relative)
+    absolute_decimal = Decimal.from_float(absolute)
+    certificates: list[NumericalCurrentRelationCertificate] = []
+    rejected_candidates: list[dict[str, object]] = []
+    nearest_rejected: tuple[
+        Decimal,
+        Decimal,
+        Decimal,
+        int,
+        int,
+        str,
+    ] | None = None
+    structurally_proven_count = 0
+    tested_hypothesis_count = 0
+    numerical_candidate_count = 0
+    verification_rejected_count = 0
+
+    def record_rejected(
+        *,
+        current_id: int,
+        representative_id: int | None,
+        relation_kind: str,
+        residuals: tuple[
+            Decimal,
+            Decimal,
+            Decimal,
+            tuple[tuple[Decimal, Decimal], ...],
+        ],
+        reason: str,
+    ) -> None:
+        nonlocal nearest_rejected
+        candidate = (
+            residuals[2],
+            residuals[0],
+            residuals[1],
+            current_id,
+            -1 if representative_id is None else representative_id,
+            relation_kind,
+        )
+        if nearest_rejected is None or candidate < nearest_rejected:
+            nearest_rejected = candidate
+        if len(rejected_candidates) < _MAX_REJECTED_DIAGNOSTICS:
+            rejected_candidates.append(
+                {
+                    "current_id": current_id,
+                    "representative_id": representative_id,
+                    "relation_kind": relation_kind,
+                    "reason": reason,
+                    "maximum_absolute_residual": (
+                        _canonical_decimal_string(residuals[0])
+                    ),
+                    "maximum_relative_residual": (
+                        _canonical_decimal_string(residuals[1])
+                    ),
+                    "maximum_tolerance_ratio": (
+                        _canonical_decimal_string(residuals[2])
+                    ),
+                }
+            )
+
+    for current in dag.currents:
+        contract = contracts[current.id]
+        prior_ids = prior_by_contract.setdefault(contract, [])
+        if current.id in source_ids or current.is_source:
+            prior_ids.append(current.id)
+            continue
+        baseline = structural[current.id]
+        if (
+            baseline.representative_id != current.id
+            or baseline.factor != (1.0, 0.0)
+        ):
+            structurally_proven_count += 1
+            prior_ids.append(current.id)
+            continue
+
+        hypotheses: list[
+            tuple[
+                Literal["equal", "opposite", "zero"],
+                int | None,
+                tuple[tuple[Decimal, Decimal], ...] | None,
+                tuple[tuple[Decimal, Decimal], ...] | None,
+            ]
+        ] = [
+            ("zero", None, None, None),
+            *[
+                (
+                    relation_kind,
+                    representative_id,
+                    candidate_values[representative_id],
+                    verification_values[representative_id],
+                )
+                for representative_id in prior_ids
+                for relation_kind in ("equal", "opposite")
+            ],
+        ]
+        accepted: NumericalCurrentRelationCertificate | None = None
+        for (
+            relation_kind,
+            representative_id,
+            candidate_representative,
+            verification_representative,
+        ) in hypotheses:
+            tested_hypothesis_count += 1
+            candidate_residuals = _numerical_relation_residuals(
+                relation_kind,
+                candidate_values[current.id],
+                candidate_representative,
+                relative_tolerance=relative_decimal,
+                absolute_tolerance=absolute_decimal,
+            )
+            if candidate_residuals is None:
+                raise ValueError(
+                    "numerical current discovery produced a malformed hypothesis"
+                )
+            if not _numerical_relation_residuals_pass(
+                candidate_residuals,
+                relative_tolerance=relative_decimal,
+                absolute_tolerance=absolute_decimal,
+            ):
+                record_rejected(
+                    current_id=current.id,
+                    representative_id=representative_id,
+                    relation_kind=relation_kind,
+                    residuals=candidate_residuals,
+                    reason="candidate-observations-not-equal",
+                )
+                continue
+            numerical_candidate_count += 1
+            accepted = certify_numerical_current_observations(
+                current_id=current.id,
+                representative_id=representative_id,
+                relation_kind=relation_kind,
+                source_semantics_sha256=source_digest,
+                candidate_current_values=candidate_values[current.id],
+                candidate_representative_values=candidate_representative,
+                verification_current_values=verification_values[current.id],
+                verification_representative_values=(
+                    verification_representative
+                ),
+                precision_digits=precision_digits,
+                seed=seed,
+                relative_tolerance=relative,
+                absolute_tolerance=absolute,
+            )
+            if accepted is not None:
+                certificates.append(accepted)
+                break
+            verification_rejected_count += 1
+            verification_residuals = _numerical_relation_residuals(
+                relation_kind,
+                verification_values[current.id],
+                verification_representative,
+                relative_tolerance=relative_decimal,
+                absolute_tolerance=absolute_decimal,
+            )
+            if verification_residuals is None:
+                raise ValueError(
+                    "numerical current verification produced a malformed "
+                    "hypothesis"
+                )
+            record_rejected(
+                current_id=current.id,
+                representative_id=representative_id,
+                relation_kind=relation_kind,
+                residuals=verification_residuals,
+                reason="independent-verification-rejected-candidate",
+            )
+        prior_ids.append(current.id)
+
+    nearest_payload: dict[str, object] | None = None
+    if nearest_rejected is not None:
+        (
+            tolerance_ratio,
+            absolute_residual,
+            relative_residual,
+            current_id,
+            representative_key,
+            relation_kind,
+        ) = nearest_rejected
+        nearest_payload = {
+            "current_id": current_id,
+            "representative_id": (
+                None if representative_key < 0 else representative_key
+            ),
+            "relation_kind": relation_kind,
+            "maximum_absolute_residual": (
+                _canonical_decimal_string(absolute_residual)
+            ),
+            "maximum_relative_residual": (
+                _canonical_decimal_string(relative_residual)
+            ),
+            "maximum_tolerance_ratio": (
+                _canonical_decimal_string(tolerance_ratio)
+            ),
+        }
+    certificate_tuple = tuple(certificates)
+    state = (
+        "certified_numerical_relations"
+        if certificate_tuple
+        else "no_certified_numerical_relation"
+    )
+    report = NumericalCurrentObservationDiscoveryReport(
+        execution_mode=execution_mode,
+        color_accuracy=str(dag.process.color_accuracy),
+        source_semantics_sha256=source_digest,
+        precision_digits=precision_digits,
+        seed=seed,
+        relative_tolerance=relative,
+        absolute_tolerance=absolute,
+        candidate_point_sha256s=candidate_points,
+        verification_point_sha256s=verification_points,
+        candidate_observation_batch_sha256=candidate_batch_digest,
+        verification_observation_batch_sha256=verification_batch_digest,
+        state=state,
+        inspected_current_count=len(dag.currents),
+        structurally_proven_current_count=structurally_proven_count,
+        tested_hypothesis_count=tested_hypothesis_count,
+        numerical_candidate_count=numerical_candidate_count,
+        verification_rejected_count=verification_rejected_count,
+        certificates=certificate_tuple,
+        rejected_candidates=tuple(rejected_candidates),
+        nearest_rejected_hypothesis=nearest_payload,
+    )
+    return NumericalCurrentObservationDiscoveryResult(
+        certificates=certificate_tuple,
+        report=report,
+    )
+
+
+def _numerical_current_observation_batch_sha256(
+    observations: Mapping[
+        int,
+        tuple[tuple[Decimal, Decimal], ...],
+    ],
+    *,
+    point_sha256s: tuple[str, ...],
+) -> str:
+    return _canonical_payload_sha256(
+        {
+            "point_sha256s": list(point_sha256s),
+            "currents": [
+                {
+                    "current_id": current_id,
+                    "values": [
+                        [
+                            _canonical_decimal_string(real),
+                            _canonical_decimal_string(imaginary),
+                        ]
+                        for real, imaginary in observations[current_id]
+                    ],
+                }
+                for current_id in sorted(observations)
+            ],
+        }
+    )
+
+
 def apply_numerical_current_relation_certificates(
     dag: GenericDAG,
     model: Model,
@@ -1114,8 +1598,6 @@ def apply_numerical_current_relation_certificates(
             certificate.seed,
             certificate.relative_tolerance.hex(),
             certificate.absolute_tolerance.hex(),
-            certificate.candidate_probe_count,
-            certificate.verification_probe_count,
         )
         if common_probe_contract is None:
             common_probe_contract = probe_contract
@@ -3615,6 +4097,8 @@ __all__ = [
     "DynamicColorProjectionCertificate",
     "ExactCurrentRelationCertificate",
     "NumericalCurrentAppliedMapping",
+    "NumericalCurrentObservationDiscoveryReport",
+    "NumericalCurrentObservationDiscoveryResult",
     "NumericalCurrentRelationApplicationReport",
     "NumericalCurrentRelationApplicationResult",
     "NumericalCurrentRelationCertificate",
@@ -3624,6 +4108,7 @@ __all__ = [
     "apply_numerical_current_relation_certificates",
     "assign_recursive_current_evaluation_reuse",
     "certify_numerical_current_observations",
+    "discover_generic_dag_numerical_current_relations",
     "discover_recursive_evaluation_relations",
     "generic_dag_numerical_source_semantics_sha256",
     "project_rectangular_dynamic_color_classes",

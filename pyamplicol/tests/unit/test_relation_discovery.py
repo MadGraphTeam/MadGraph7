@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import replace
 from decimal import Decimal
 
@@ -15,6 +16,7 @@ from pyamplicol.generation.dag_equivalence import (
     apply_numerical_current_relation_certificates,
     assign_recursive_current_evaluation_reuse,
     certify_numerical_current_observations,
+    discover_generic_dag_numerical_current_relations,
     discover_recursive_evaluation_relations,
     generic_dag_numerical_source_semantics_sha256,
     verify_dag_relation_certificates,
@@ -357,4 +359,178 @@ def test_numerical_relation_set_fails_closed_on_mode_or_source_drift() -> None:
             (certificate,),
             mode="certified-reuse",
             execution_mode="compiled",
+        )
+
+
+def _observation_points(domain: str) -> tuple[str, ...]:
+    return tuple(
+        hashlib.sha256(f"{domain}:{index}".encode()).hexdigest()
+        for index in range(4)
+    )
+
+
+def _complete_current_observations(
+    dag,
+    *,
+    domain: int,
+) -> dict[int, tuple[tuple[Decimal, Decimal], ...]]:
+    return {
+        current.id: tuple(
+            (
+                Decimal(
+                    domain
+                    + current.id * 10_000
+                    + point_index * 100
+                    + component_index
+                    + 1
+                ),
+                Decimal(
+                    -domain
+                    - current.id * 20_000
+                    - point_index * 200
+                    - component_index
+                    - 1
+                ),
+            )
+            for point_index in range(4)
+            for component_index in range(current.dimension)
+        )
+        for current in dag.currents
+    }
+
+
+@pytest.mark.parametrize("relation_kind", ("equal", "opposite", "zero"))
+def test_complete_warmup_discovers_and_applies_each_relation_kind(
+    relation_kind: str,
+) -> None:
+    dag, model = _ambiguous_projective_dag()
+    candidate = _complete_current_observations(dag, domain=100_000)
+    verification = _complete_current_observations(dag, domain=900_000)
+    if relation_kind == "zero":
+        candidate[5] = tuple(
+            (Decimal(0), Decimal(0)) for _value in candidate[5]
+        )
+        verification[5] = tuple(
+            (Decimal(0), Decimal(0)) for _value in verification[5]
+        )
+    else:
+        sign = Decimal(1) if relation_kind == "equal" else Decimal(-1)
+        candidate[5] = tuple(
+            (sign * real, sign * imaginary)
+            for real, imaginary in candidate[3]
+        )
+        verification[5] = tuple(
+            (sign * real, sign * imaginary)
+            for real, imaginary in verification[3]
+        )
+
+    discovery = discover_generic_dag_numerical_current_relations(
+        dag,
+        model,
+        candidate_observations=candidate,
+        verification_observations=verification,
+        candidate_point_sha256s=_observation_points("candidate"),
+        verification_point_sha256s=_observation_points("verification"),
+        execution_mode="compiled",
+        precision_digits=96,
+        seed=0x5059414D,
+        relative_tolerance=1.0e-70,
+        absolute_tolerance=1.0e-80,
+    )
+
+    assert discovery.report.state == "certified_numerical_relations"
+    assert len(discovery.certificates) == 1
+    certificate = discovery.certificates[0]
+    assert certificate.current_id == 5
+    assert certificate.relation_kind == relation_kind
+    applied = apply_numerical_current_relation_certificates(
+        dag,
+        model,
+        discovery.certificates,
+        mode="certified-reuse",
+        execution_mode="compiled",
+    )
+    assert applied.report.applied_relation_count == 1
+    assert applied.report.interaction_evaluation_count_projected == 3
+
+
+def test_complete_warmup_negative_audit_is_first_class_and_warning_free() -> None:
+    dag, model = _ambiguous_projective_dag()
+    discovery = discover_generic_dag_numerical_current_relations(
+        dag,
+        model,
+        candidate_observations=_complete_current_observations(
+            dag,
+            domain=100_000,
+        ),
+        verification_observations=_complete_current_observations(
+            dag,
+            domain=900_000,
+        ),
+        candidate_point_sha256s=_observation_points("candidate"),
+        verification_point_sha256s=_observation_points("verification"),
+        execution_mode="compiled",
+        precision_digits=96,
+        seed=0x5059414D,
+        relative_tolerance=1.0e-70,
+        absolute_tolerance=1.0e-80,
+    )
+
+    assert discovery.certificates == ()
+    assert discovery.report.state == "no_certified_numerical_relation"
+    assert discovery.report.numerical_candidate_count == 0
+    assert discovery.report.nearest_rejected_hypothesis is not None
+    payload = discovery.report.to_json_dict()
+    assert payload["warning"]["required"] is False
+    assert payload["certified_numerical_relation_count"] == 0
+
+
+def test_candidate_only_relation_is_rejected_by_independent_points() -> None:
+    dag, model = _ambiguous_projective_dag()
+    candidate = _complete_current_observations(dag, domain=100_000)
+    verification = _complete_current_observations(dag, domain=900_000)
+    candidate[5] = candidate[3]
+
+    discovery = discover_generic_dag_numerical_current_relations(
+        dag,
+        model,
+        candidate_observations=candidate,
+        verification_observations=verification,
+        candidate_point_sha256s=_observation_points("candidate"),
+        verification_point_sha256s=_observation_points("verification"),
+        execution_mode="compiled",
+        precision_digits=96,
+        seed=0x5059414D,
+        relative_tolerance=1.0e-70,
+        absolute_tolerance=1.0e-80,
+    )
+
+    assert discovery.certificates == ()
+    assert discovery.report.state == "no_certified_numerical_relation"
+    assert discovery.report.numerical_candidate_count == 1
+    assert discovery.report.verification_rejected_count == 1
+    assert any(
+        item["reason"] == "independent-verification-rejected-candidate"
+        for item in discovery.report.rejected_candidates
+    )
+
+
+def test_warmup_requires_disjoint_candidate_and_verification_points() -> None:
+    dag, model = _ambiguous_projective_dag()
+    observations = _complete_current_observations(dag, domain=100_000)
+    points = _observation_points("shared")
+
+    with pytest.raises(ValueError, match="point contract"):
+        discover_generic_dag_numerical_current_relations(
+            dag,
+            model,
+            candidate_observations=observations,
+            verification_observations=observations,
+            candidate_point_sha256s=points,
+            verification_point_sha256s=points,
+            execution_mode="compiled",
+            precision_digits=96,
+            seed=0x5059414D,
+            relative_tolerance=1.0e-70,
+            absolute_tolerance=1.0e-80,
         )
