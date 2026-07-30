@@ -16,11 +16,14 @@ from tools.performance_report.agreements import (
 from tools.performance_report.artifacts import ArtifactStore, CurrentRecord
 from tools.performance_report.cache import empty_measurement
 from tools.performance_report.campaign_policy import (
+    MACBOOK_M3_MEMORY_LIMIT_BYTES,
+    MACBOOK_M3_Z_TABLE_F_POLICY,
     X86_EPYC_MEMORY_LIMIT_BYTES,
     X86_EPYC_NATIVE_COMPILER_SLOTS,
     X86_EPYC_POLICY,
     X86_EPYC_PROFILE,
     X86_EPYC_WORKERS,
+    PolicyMeasurementState,
 )
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.measurement import failure_measurement
@@ -543,6 +546,61 @@ def test_missing_only_schedules_stale_direct_peer_and_recomparison(
     assert candidate.cell_id in repaired_by_id
     assert repaired_by_id[candidate.cell_id].force_recompare is True
     assert repaired_by_id[stale_peer_id].rank < repaired_by_id[candidate.cell_id].rank
+
+
+def test_z_cell_explicitly_reuses_valid_cross_source_comparisons(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _store(tmp_path)
+    candidate = REPORT_CATALOG.cell(
+        "z-builtin-sm-n8-dd-z-jets-recurrence-jit-o2-all-flow"
+    )
+    initial = plan_campaign(
+        (candidate,),
+        store=store,
+        settings=CampaignSettings(),
+    )
+    dependency_ids = {
+        item.cell.cell_id for item in initial if item.cell != candidate
+    }
+    for item in initial:
+        if item.cell == candidate:
+            continue
+        result = _ok_measurement(item.cell, revision="a" * 40)
+        result["provenance"]["report_source_tree"] = "b" * 40
+        store.new_attempt(
+            item.cell.cell_id,
+            ArtifactPolicy.REGENERATE,
+        ).publish(result)
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.validate_measurement",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.validate_policy_measurement",
+        lambda *_args, **_kwargs: PolicyMeasurementState.SUCCESS,
+    )
+
+    planned = plan_campaign(
+        (candidate,),
+        store=store,
+        settings=CampaignSettings(
+            workers=1,
+            cell_cores=1,
+            target_runtime_seconds=5.0,
+            max_rss_bytes=MACBOOK_M3_MEMORY_LIMIT_BYTES,
+            campaign_policy=MACBOOK_M3_Z_TABLE_F_POLICY,
+            report_profile="macbook_M3",
+            study_contract_sha256="c" * 64,
+            reuse_cross_source_comparison_dependencies=True,
+        ),
+        expected_revision="d" * 40,
+        expected_tree="e" * 40,
+    )
+
+    assert dependency_ids
+    assert tuple(item.cell for item in planned) == (candidate,)
 
 
 def test_missing_only_rejects_stale_report_revision(tmp_path: Path) -> None:

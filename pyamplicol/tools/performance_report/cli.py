@@ -594,6 +594,9 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help=argparse.SUPPRESS,
     )
+    populate.add_argument(
+        "--reuse-cross-source-comparison-dependencies", action="store_true"
+    )
     return parser
 
 
@@ -1381,6 +1384,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     if active_study_contract is None
                     else str(active_study_contract["sha256"])
                 ),
+                reuse_cross_source_comparison_dependencies=args.reuse_cross_source_comparison_dependencies,
             )
         except (ValueError, ReportWorkspaceError, MeasurementLineageError) as error:
             parser.error(str(error))

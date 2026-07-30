@@ -126,6 +126,7 @@ class CampaignSettings:
     campaign_policy: CampaignPolicy = STRICT_POLICY
     report_profile: str | None = None
     study_contract_sha256: str | None = None
+    reuse_cross_source_comparison_dependencies: bool = False
 
     def __post_init__(self) -> None:
         if self.workers < 1 or self.cell_cores < 1:
@@ -308,6 +309,7 @@ def _policy_current(
     measurement_lineage: MeasurementLineage | None = None,
     original_amplicol_seed: OriginalAmplicolSeed | None = None,
     expected_worker_harness: Mapping[str, object] | None = None,
+    comparison_dependency: bool = False,
 ) -> tuple[CurrentRecord, PolicyMeasurementState] | None:
     if settings.campaign_policy is STRICT_POLICY:
         current = _successful_current(
@@ -351,11 +353,24 @@ def _policy_current(
             active_revision=expected_revision,
             active_tree=expected_tree or "",
         )
+    cross_source = (
+        expected_source is None
+        and comparison_dependency
+        and settings.reuse_cross_source_comparison_dependencies
+        and isinstance(provenance, Mapping)
+        and isinstance(provenance.get("report_source_revision"), str)
+        and isinstance(provenance.get("report_source_tree"), str)
+    )
+    if cross_source:
+        expected_source = (
+            str(provenance["report_source_revision"]),
+            str(provenance["report_source_tree"]),
+        )
     if expected_source is None:
         return None
     try:
         validate_measurement(current.result, expected_cell=cell)
-        if settings.study_contract_sha256 is not None:
+        if settings.study_contract_sha256 is not None and not cross_source:
             require_z_table_f_attempt_binding(
                 current.result,
                 settings.study_contract_sha256,
@@ -566,6 +581,7 @@ def plan_campaign(
                     measurement_lineage=measurement_lineage,
                     original_amplicol_seed=original_amplicol_seed,
                     expected_worker_harness=expected_worker_harness,
+                    comparison_dependency=True,
                 )
                 is None
             )
@@ -590,6 +606,7 @@ def plan_campaign(
                 measurement_lineage=measurement_lineage,
                 original_amplicol_seed=original_amplicol_seed,
                 expected_worker_harness=expected_worker_harness,
+                comparison_dependency=True,
             )
             for dependency in cell_dependencies
         }
@@ -969,6 +986,8 @@ class CampaignScheduler:
     def _current(
         self,
         cell: CellSpec,
+        *,
+        comparison_dependency: bool = False,
     ) -> tuple[CurrentRecord, PolicyMeasurementState] | None:
         return _policy_current(
             self.service.store,
@@ -979,6 +998,7 @@ class CampaignScheduler:
             measurement_lineage=self.measurement_lineage,
             original_amplicol_seed=self.original_amplicol_seed,
             expected_worker_harness=self.worker_harness_identity,
+            comparison_dependency=comparison_dependency,
         )
 
     def _validate_z_table_f_plan(
@@ -1007,7 +1027,7 @@ class CampaignScheduler:
         missing = tuple(
             dependency.cell_id
             for dependency in dependencies
-            if self._current(dependency) is None
+            if self._current(dependency, comparison_dependency=True) is None
         )
         if missing:
             raise StudyContractError(
@@ -1346,7 +1366,10 @@ class CampaignScheduler:
             dependency_records: dict[str, CurrentRecord] = {}
             terminal_dependencies: list[dict[str, object]] = []
             for dependency in dependency_cells.values():
-                current_dependency = self._current(dependency)
+                current_dependency = self._current(
+                    dependency,
+                    comparison_dependency=True,
+                )
                 if current_dependency is None:
                     return self._publish_skip(
                         cell,
