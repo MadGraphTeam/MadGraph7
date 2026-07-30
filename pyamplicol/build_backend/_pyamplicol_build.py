@@ -1328,13 +1328,29 @@ def _build_tool_path(inherited: str) -> str:
     return os.pathsep.join(unique)
 
 
+def _pinned_rustup_toolchain() -> str:
+    """Return the repository-owned Rustup toolchain selection."""
+
+    path = ROOT / "rust-toolchain.toml"
+    try:
+        toolchain = tomllib.loads(path.read_text(encoding="utf-8"))["toolchain"]
+        channel = toolchain["channel"]
+    except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
+        raise RuntimeError(
+            f"invalid repository Rust toolchain contract: {path}"
+        ) from error
+    if not isinstance(channel, str) or not channel.strip():
+        raise RuntimeError(f"invalid repository Rust toolchain channel: {path}")
+    return channel
+
+
 def _rust_remap_flags(overlay: Path, target_dir: Path) -> str:
     completed = subprocess.run(
         ["rustc", "--print", "sysroot"],
         check=True,
         capture_output=True,
         text=True,
-        env=_clean_environment(),
+        env=_clean_environment({"RUSTUP_TOOLCHAIN": _pinned_rustup_toolchain()}),
     )
     sysroot = Path(completed.stdout.strip()).resolve()
     mappings = {
@@ -1415,6 +1431,7 @@ def _from_overlay(
                 "CARGO_ENCODED_RUSTFLAGS": _rust_remap_flags(overlay, target_dir),
                 "CARGO_TARGET_DIR": str(target_dir),
                 "PYAMPLICOL_BUILD_OVERLAY": str(overlay),
+                "RUSTUP_TOOLCHAIN": _pinned_rustup_toolchain(),
             }
             build_info_path = overlay / "src" / "pyamplicol" / "_build_info.json"
             if build_info_path.is_file():

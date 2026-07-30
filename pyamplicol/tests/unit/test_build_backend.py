@@ -1015,6 +1015,7 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
             os.environ["PATH"].split(os.pathsep)
         )
         assert "CARGO_ENCODED_RUSTFLAGS" in os.environ
+        assert os.environ["RUSTUP_TOOLCHAIN"] == "1.89.0"
         staging = tmp_path / "sdk"
         staging.mkdir()
         (staging / "metadata.json").write_text(
@@ -1035,6 +1036,7 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
         assert os.environ["CARGO_HOME"] == str(tmp_path / "cargo-home")
         assert os.environ["CARGO_TARGET_DIR"] == str(target)
         assert os.environ["PYAMPLICOL_BUILD_OVERLAY"] == str(overlay)
+        assert os.environ["RUSTUP_TOOLCHAIN"] == "1.89.0"
         if sys.platform == "darwin":
             assert os.environ["MACOSX_DEPLOYMENT_TARGET"] == "11.0"
         if with_sdk:
@@ -1187,6 +1189,47 @@ def test_build_tool_path_does_not_require_git_for_unpacked_sdist(
     result = backend._build_tool_path("").split(os.pathsep)
 
     assert str(tool_bin) in result
+
+
+def test_rust_remap_flags_uses_repository_toolchain_in_clean_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("RUSTUP_TOOLCHAIN", "nightly")
+    monkeypatch.setenv("RUSTFLAGS", "-Clink-arg=/attacker/library")
+    monkeypatch.setenv("RUSTC_WRAPPER", "/attacker/wrapper")
+    sysroot = tmp_path / "rustup" / "toolchains" / "1.89.0"
+    observed: dict[str, object] = {}
+
+    def fake_run(command, *, check, capture_output, text, env):
+        observed.update(
+            command=command,
+            check=check,
+            capture_output=capture_output,
+            text=text,
+            env=env,
+        )
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=f"{sysroot}\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(backend.subprocess, "run", fake_run)
+
+    flags = backend._rust_remap_flags(
+        tmp_path / "overlay",
+        tmp_path / "build" / "cargo-target",
+    )
+
+    environment = observed["env"]
+    assert isinstance(environment, dict)
+    assert observed["command"] == ["rustc", "--print", "sysroot"]
+    assert environment["RUSTUP_TOOLCHAIN"] == "1.89.0"
+    assert "RUSTFLAGS" not in environment
+    assert "RUSTC_WRAPPER" not in environment
+    assert f"{sysroot.resolve()}=/rust/sysroot" in flags
 
 
 def test_build_tool_path_does_not_expose_base_python_package_manager_tools(
