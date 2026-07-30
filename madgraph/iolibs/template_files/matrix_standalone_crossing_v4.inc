@@ -26,10 +26,17 @@ C       PERM(K) : the input slot whose content lands in crossed slot K,
 C       SGN(K)  : the NSF/NSV sign flip applied to crossed slot K,
 C     and the callers reuse it for as many momenta/helicity rows as they like
 C     (see APPLY_CROSSING_TABLE) instead of decoding per matrix element call.
+C     FLAV_IDX comes back 0 for a code that names no crossing at all (see the
+C     two rejections below). PERM/SGN are left a valid permutation whatever
+C     happens, so a caller that gathers momenta with them never reads out of
+C     range; 0 is what GET_PDG_FOR_FLAVOR and GET_AMP already treat as "not a
+C     flavor", so no caller needs a new return convention.
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INTEGER NFLAV
       PARAMETER (NFLAV=%(nflav)d)
+      INTEGER NCROSS
+      PARAMETER (NCROSS=(NEXTERNAL+1)*(NEXTERNAL+1))
 C     ARGUMENTS
       INTEGER FLAV_IDX_IN
       INTEGER PERM(NEXTERNAL), SGN(NEXTERNAL)
@@ -47,6 +54,16 @@ C     LOCAL
         SGN(XK) = 1
       ENDDO
 
+C     Out of range, or an overlapping-swap code: both transpositions {1,XI} and
+C     {2,XJ} active AND sharing a slot compose into a 3-cycle that the consumers
+C     read with opposite orientation, so it is pure redundancy.
+      IF (CROSS .LT. 0 .OR. CROSS .GT. NCROSS-1 .OR.
+     &    (XI.NE.0 .AND. XI.NE.1 .AND. XJ.NE.0 .AND. XJ.NE.2 .AND.
+     &     (XI.EQ.2 .OR. XJ.EQ.1 .OR. XI.EQ.XJ))) THEN
+        FLAV_IDX = 0
+        RETURN
+      ENDIF
+
 C     XI==1 (resp. XJ==2) would swap a particle with itself: degenerate, so
 C     treated as "no crossing" just like 0.
       IF (XI.NE.0 .AND. XI.NE.1) THEN
@@ -55,6 +72,20 @@ C     treated as "no crossing" just like 0.
       IF (XJ.NE.0 .AND. XJ.NE.2) THEN
         CALL %(proc_prefix)sSWAP_LEGS(2, XJ, PERM, SGN)
       ENDIF
+
+C     A crossing may only conjugate a leg that CHANGES SIDE. A transposition
+C     between two legs on the same side of the initial/final line conjugates
+C     both without moving either across, which is no crossing: for a 2 -> N
+C     process that is XI==2 / XJ==1, the beam swap, which must not conjugate
+C     anything (it would give e.g. u~ g > e+ ve d, not even charge conserving);
+C     for a 1 -> N one it is every XJ swap.
+      DO XK = 1, NEXTERNAL
+        IF (SGN(XK).EQ.-1 .AND.
+     &      ((XK.LE.NINCOMING) .EQV. (PERM(XK).LE.NINCOMING))) THEN
+          FLAV_IDX = 0
+          RETURN
+        ENDIF
+      ENDDO
 
       RETURN
       END
@@ -157,17 +188,18 @@ C     flavor group shares its spin and color, and conjugation preserves both.
 C     So this half of the denominator is just the product of the per-particle
 C     spin*color (SPINCOL_PART, one entry per external leg) over the two legs
 C     the crossing puts in the initial state -- no per-crossing table needed.
-C     A crossing that cannot be applied (out of range, or an overlapping swap)
-C     returns 0, which SMATRIX / GET_PDG_FOR_FLAVOR map to a null result. The
-C     flavor-dependent half is GET_IDENT_CROSS.
+C     A crossing that cannot be applied returns 0, which SMATRIX /
+C     GET_PDG_FOR_FLAVOR / GET_ALL_INTER_CROSSED all map to a null result: this
+C     is the single gate that says whether a CROSS code is applicable at all.
+C     The flavor-dependent half is GET_IDENT_CROSS.
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
-      INTEGER NCROSS
-      PARAMETER (NCROSS=(NEXTERNAL+1)*(NEXTERNAL+1))
-      INTEGER CROSS, XI, XJ, XK, XT, FACTOR, I
-      INTEGER PERM(NEXTERNAL)
-C     The DATA tables are emitted together (SPINCOL_PART here, plus the
-C     IDS_BASE/ANTIPID_BASE/COUNTABLE tables GET_IDENT_CROSS reads); each routine
+      INTEGER NFLAV
+      PARAMETER (NFLAV=%(nflav)d)
+      INTEGER CROSS, XK, FACTOR, I, XIDX
+      INTEGER PERM(NEXTERNAL), SGN(NEXTERNAL)
+C     The DATA tables are emitted together (SPINCOL_PART and COUNTABLE here,
+C     plus the IDS_BASE/ANTIPID_BASE tables GET_IDENT_CROSS reads); each routine
 C     keeps its own copy rather than sharing a COMMON, which would need a BLOCK
 C     DATA unit to be DATA-initialised.
       INTEGER SPINCOL_PART(0:NEXTERNAL-1)
@@ -176,34 +208,27 @@ C     DATA unit to be DATA-initialised.
       INTEGER COUNTABLE(0:NEXTERNAL-1)
 %(iden_cross_lines)s
 
-C     CROSS = XI*(NEXTERNAL+1) + XJ, with XI, XJ the crossing partners of
-C     particles 1 and 2 (0 = leave alone; XI==1 / XJ==2 swap a particle with
-C     itself, also a no-op). Reject out-of-range and the overlapping-swap codes
-C     (both transpositions {1,XI} and {2,XJ} active AND sharing a slot -> a
-C     3-cycle the consumers read with opposite orientation: pure redundancy).
-      XI = CROSS / (NEXTERNAL+1)
-      XJ = MOD(CROSS, NEXTERNAL+1)
-      IF (CROSS .LT. 0 .OR. CROSS .GT. NCROSS-1 .OR.
-     &    (XI.NE.0 .AND. XI.NE.1 .AND. XJ.NE.0 .AND. XJ.NE.2 .AND.
-     &     (XI.EQ.2 .OR. XJ.EQ.1 .OR. XI.EQ.XJ))) THEN
+C     Decode through GET_CROSS_PERM rather than rebuilding the slot map here,
+C     so that which codes name a crossing at all is decided in exactly one
+C     place (it rejects out-of-range, overlapping-swap and same-side codes).
+      CALL %(proc_prefix)sGET_CROSS_PERM(CROSS*NFLAV+1, PERM, SGN, XIDX)
+      IF (XIDX .LT. 1) THEN
         %(proc_prefix)sGET_SPINCOL_CROSS = 0
         RETURN
       ENDIF
-C     Build the slot->leg map (identity plus the crossing's two transpositions)
-C     and multiply the per-particle spin*color of the legs in the initial slots.
+C     Fail-safe for a decay chain: COUNTABLE is 0 for a leg that cannot be
+C     crossed (a leaf locked inside a decay block), and carrying one across the
+C     initial/final line would split its resonance. Generation already leaves
+C     such a crossing unrecorded, so nothing should ask for it -- this is the
+C     net under that, not the thing that makes it correct.
       DO XK = 1, NEXTERNAL
-        PERM(XK) = XK
+        IF (SGN(XK).EQ.-1 .AND. COUNTABLE(PERM(XK)-1).EQ.0) THEN
+          %(proc_prefix)sGET_SPINCOL_CROSS = 0
+          RETURN
+        ENDIF
       ENDDO
-      IF (XI.NE.0 .AND. XI.NE.1) THEN
-        XT = PERM(1)
-        PERM(1) = PERM(XI)
-        PERM(XI) = XT
-      ENDIF
-      IF (XJ.NE.0 .AND. XJ.NE.2) THEN
-        XT = PERM(2)
-        PERM(2) = PERM(XJ)
-        PERM(XJ) = XT
-      ENDIF
+C     Multiply the per-particle spin*color of the legs the crossing puts in the
+C     initial slots.
       FACTOR = 1
       DO XK = 1, NINCOMING
         FACTOR = FACTOR * SPINCOL_PART(PERM(XK)-1)

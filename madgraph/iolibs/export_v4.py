@@ -3100,17 +3100,27 @@ C     crossing carried by FLAV_IDX moves across.
                                 else particle(leg_ids[perm[slot]]).get_anti_pdg_code()
                                 for slot in range(nexternal)]
 
-                    # A crossing that carries a decay-block leaf across the
-                    # initial/final line would split the block (pull one decay
-                    # product into the initial state) or make a decaying
-                    # resonance an initial particle -- neither is a physical
-                    # process. Reject it exactly like an impossible crossing: a 0
-                    # spin*color makes SMATRIX and GET_PDG_FOR_FLAVOR both return
-                    # a null result. slot_ids is still the permuted signature so
-                    # the IDS_BASE/BASEPID rebuild sanity below stays consistent.
-                    # For a non-decay process every block_size is 1, so this
-                    # never fires.
-                    if any(ic[slot] == -1 and block_size[perm[slot]] > 1
+                    # Two codes that name no crossing, rejected exactly like an
+                    # impossible one: a 0 spin*color makes SMATRIX and
+                    # GET_PDG_FOR_FLAVOR both return a null result. slot_ids is
+                    # still the permuted signature so the IDS_BASE/BASEPID
+                    # rebuild sanity below stays consistent. GET_CROSS_PERM
+                    # applies the same two rules at runtime.
+                    #
+                    # 1. A leg conjugated without changing side. The two legs of
+                    #    a same-side transposition are both conjugated while
+                    #    neither moves across, which is no crossing at all: for
+                    #    2 -> N that is the beam swap (XI==2 / XJ==1), giving
+                    #    e.g. u~ g > e+ ve d, not even charge conserving; for
+                    #    1 -> N it is every XJ swap.
+                    # 2. A decay-block leaf carried across the initial/final
+                    #    line: it would split the block (pull one decay product
+                    #    into the initial state) or make a decaying resonance an
+                    #    initial particle. For a non-decay process every
+                    #    block_size is 1, so this one never fires.
+                    if any(ic[slot] == -1 and
+                           ((slot < ninitial) == (perm[slot] < ninitial)
+                            or block_size[perm[slot]] > 1)
                            for slot in range(nexternal)):
                         spincol.append(0)
                     else:
