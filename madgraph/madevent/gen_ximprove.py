@@ -285,12 +285,13 @@ class gensym(object):
                 fsock.write(data)        
                 
         
-            # Cross-group crossing (Track B): in a base directory, bake the optim
-            # over the UNION good-hel of the crossing class so a single compiled
-            # optim can be shared by every crossing. crossgroup_helunion.dat gives,
-            # per base matrix index, base->base helicity permutations: the
-            # dependent for that crossing is good at helicity h iff perm[h] is good
-            # for the base.
+            # Crossing bases: bake the optim over the UNION good-hel of the
+            # crossing class so one compiled optim serves every crossing that
+            # enters it -- a cross-group dependent in another P directory (Track
+            # B) or a within-group matrix<i>_router.f in this one (Track A).
+            # crossgroup_helunion.dat gives, per base matrix index, base->base
+            # helicity permutations: the dependent for that crossing is good at
+            # helicity h iff perm[h] is good for the base.
             helunion = collections.defaultdict(list)
             hu_file = pjoin(Pdir, 'crossgroup_helunion.dat')
             if os.path.exists(hu_file):
@@ -329,7 +330,7 @@ class gensym(object):
                 # Convert to sorted list for reproducibility
                 #good_hels = sorted(list(good_hels))
                 good_set = set(all_good_hels[me_index])
-                # Cross-group base: the shared optim is also evaluated with each
+                # Crossing base: the shared optim is also evaluated with each
                 # dependent's CROSSED helicity configs, but the recycled MATRIX
                 # bakes the base's helicity configs (it takes no runtime NHEL).
                 # The full helicity SUM is invariant under the crossing's helicity

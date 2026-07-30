@@ -8357,12 +8357,19 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         open('crossgroup.mk', 'w').write('\n'.join(lines) + '\n')
 
     def write_crossgroup_helunion(self, subproc_path):
-        """Write crossgroup_helunion.dat in each cross-group BASE directory. Each
+        """Write crossgroup_helunion.dat in each crossing BASE directory. Each
         line is `<base_proc_id> p1 p2 ... pNCOMB`, a base->base helicity
         permutation of one dependent crossing: the dependent is good at helicity h
         iff p[h] is good for the base. gen_ximprove reads it and bakes the base
         optim over the UNION good-hel of the class (G_base plus the images under
-        these permutations), so a single compiled optim serves every member."""
+        these permutations), so a single compiled optim serves every member.
+
+        Both crossing flavours feed this: a Track B cross-group dependent (whose
+        base lives in another P directory) and a Track A within-group router
+        (whose base is a matrix element of the same directory). Either way the
+        recycled optim is entered with crossed momenta, and it bakes its helicity
+        configs -- so pruning it to the base's own good-hel biases the crossed
+        caller."""
         for base_dir, per_proc in self._crossgroup_helperms.items():
             lines = []
             for base_proc_id, perms in sorted(per_proc.items()):
@@ -8420,6 +8427,13 @@ class ProcessExporterFortranME(ProcessExporterFortran):
           G_base U sigma(G_base). SGN belongs here because the crossed physical
           config bh[PERM[k]]*SGN[k]*IC_IN[PERM[k]] reduces to the bare table value
           bh[PERM[k]]*SGN[k] once the common IC_IN[PERM[k]] is stripped.
+
+          CAUTION: G_base U sigma(G_base) is the union in the *loop-index* space
+          of matrix<b>_orig.f, which takes NHEL at run time. It is NOT a safe
+          helicity table for the recycled matrix<b>_optim.f, which bakes its
+          configs and can only apply SGN via IC -- never PERM. gen_ximprove
+          therefore keeps EVERY config for a crossing base and only uses these
+          perms for their length; do not "optimise" it back to this union.
 
         * signed=False -- the event helicity LABEL (_crossgroup_helmap):
           crossed[hb][k] = base_row[PERM[k]], exactly what APPLY_CROSSING_TABLE
@@ -10450,6 +10464,46 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             if crossing_applied and \
                'crossing' not in self.proc_characteristic['limitations']:
                 self.proc_characteristic['limitations'].append('crossing')
+            # Record each router's base->base helicity permutation, exactly as a
+            # cross-group dependent does (crossgroup_helunion.dat). A router sends
+            # its call into the base SMATRIX, and with helicity recycling that is
+            # the RECYCLED matrix<b>_optim.f, whose helicity configs are baked
+            # into the HELAS calls -- it takes no runtime NHEL, so it cannot apply
+            # the crossing's helicity permutation the way matrix<b>_orig.f does
+            # (CR<b>_APPLY_CROSSING_TABLE permutes NHEL along with the momenta).
+            # The base's good-hel SUBSET is not closed under that permutation, so
+            # a pruned optim silently drops part of the routed process's helicity
+            # sum -- the whole cross section comes out low. Writing the perms here
+            # makes gen_ximprove bake this base over every config (and skip the
+            # C-parity de-duplication, whose |M|^2 identity is only established
+            # for cross 0), which is what the Track B path already does.
+            for idep, route in enumerate(crossing_routing or []):
+                if route is None or idep in crossing_bases:
+                    continue
+                for (base_index, iflav) in route:
+                    base_me = matrix_elements[base_index]
+                    nflav_base = len(base_me.get_external_flavors_with_iden())
+                    identity = list(range(
+                        1, base_me.get_helicity_combinations() + 1))
+                    pi = self._crossgroup_base_helperm(
+                        base_me, (iflav - 1) // nflav_base)
+                    if pi == identity:
+                        # This crossing leaves the helicity configs where they
+                        # are, so the base's own good-hel set already covers it.
+                        continue
+                    if pi is None:
+                        # Not a clean permutation (the crossing is not helicity
+                        # bijective). matrix<b>_orig.f has a run-time escape for
+                        # that -- GHIDX=0 makes it compute every helicity -- but
+                        # the recycled optim is baked and has none, and we cannot
+                        # say which configs the router needs. Fall back to the
+                        # identity purely as the length-NCOMB marker that makes
+                        # gen_ximprove keep every config.
+                        pi = identity
+                    perms = self._crossgroup_helperms.setdefault(
+                        subprocdir, {}).setdefault(base_index + 1, [])
+                    if pi not in perms:
+                        perms.append(pi)
         else:
             crossing_bases, crossing_routing = None, None
 
