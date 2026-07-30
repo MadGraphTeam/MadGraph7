@@ -37,6 +37,15 @@ relative_tolerance = 1e-12
 absolute_tolerance = 1e-300
 post_build_validation = true
 
+[generation.relation_discovery]
+mode = "certified-reuse"
+precision_digits = 96
+probe_count = 4
+verification_probe_count = 4
+relative_tolerance = 1e-70
+absolute_tolerance = 1e-80
+seed = 1348026701
+
 [evaluator]
 backend = "jit"
 execution_mode = "compiled"
