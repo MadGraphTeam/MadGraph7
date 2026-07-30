@@ -33,6 +33,17 @@ from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.builtin.process_ir import build_process_ir
 
 
+class _RuntimeCouplingBuiltin(BuiltinSMModel):
+    def runtime_parameter_names_for_vertex(
+        self,
+        kind: int,
+    ) -> tuple[str, str]:
+        return (
+            f"runtime.vertex.{kind}.component_0",
+            f"runtime.vertex.{kind}.component_1",
+        )
+
+
 def _ambiguous_projective_dag():
     """Build a tiny DAG whose existing projective index safely fails closed."""
 
@@ -597,6 +608,33 @@ def test_authenticated_merge_rejects_unauthenticated_existing_group_factors() ->
         )
 
 
+def test_authenticated_merge_rejects_spliced_existing_group_membership() -> None:
+    dag, model = _ambiguous_projective_dag()
+    baseline = assign_recursive_current_evaluation_reuse(dag, model)
+    spliced = replace(
+        baseline,
+        interactions=(
+            *baseline.interactions[:7],
+            replace(
+                baseline.interactions[7],
+                evaluation_group_id=(
+                    baseline.interactions[0].evaluation_group_id
+                ),
+            ),
+        ),
+    )
+    certificate = _authenticated_relation_certificate(spliced, "equal")
+
+    with pytest.raises(ValueError, match="aliases distinct"):
+        apply_numerical_current_relation_certificates(
+            spliced,
+            model,
+            (certificate,),
+            mode="certified-reuse",
+            execution_mode="compiled",
+        )
+
+
 def test_authenticated_relation_without_a_safe_target_remains_unapplied() -> None:
     dag, model = _ambiguous_projective_dag()
     baseline = assign_recursive_current_evaluation_reuse(dag, model)
@@ -701,6 +739,15 @@ def test_numerical_relation_set_fails_closed_on_mode_or_source_drift() -> None:
         apply_numerical_current_relation_certificates(
             drifted,
             model,
+            (certificate,),
+            mode="certified-reuse",
+            execution_mode="compiled",
+        )
+
+    with pytest.raises(ValueError, match="provenance"):
+        apply_numerical_current_relation_certificates(
+            dag,
+            _RuntimeCouplingBuiltin(),
             (certificate,),
             mode="certified-reuse",
             execution_mode="compiled",

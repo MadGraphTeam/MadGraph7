@@ -273,6 +273,30 @@ def test_real_capture_drives_authenticated_discovery_and_application(
         discovery.report.verification_observation_batch_sha256
         == verification.observation_batch_sha256
     )
+    assert set(candidate.parameter_context_sha256s).isdisjoint(
+        verification.parameter_context_sha256s
+    )
+    assert candidate.parameter_contexts
+    assert verification.parameter_contexts
+    parameter_count = len(candidate.parameter_contexts[0])
+    assert parameter_count
+    assert all(
+        len(context) == parameter_count
+        for context in (
+            *candidate.parameter_contexts,
+            *verification.parameter_contexts,
+        )
+    )
+    for parameter_index in range(parameter_count):
+        assert len(
+            {
+                context[parameter_index]
+                for context in (
+                    *candidate.parameter_contexts,
+                    *verification.parameter_contexts,
+                )
+            }
+        ) > 1
 
     application = result.application
     if discovery.certificates:
@@ -295,6 +319,11 @@ def test_real_capture_drives_authenticated_discovery_and_application(
             "not-required-no-applied-relations"
         )
     payload = result.to_json_dict()
+    disabled = generic_dag_numerical_current_opt_out_report(
+        dag,
+        execution_mode=execution_mode,  # type: ignore[arg-type]
+    )
+    assert set(payload) == set(disabled)
     assert payload["candidate_capture"]["points"]
     assert payload["verification_capture"]["points"]
     assert payload["warning"]["required"] is result.warning_required
@@ -371,6 +400,9 @@ def test_certified_zero_currents_are_applied_and_revalidated_by_default(
     )
     assert result.warning_required
     assert result.application_capture is not None
+    assert result.application_capture.parameter_contexts == (
+        result.verification_capture.parameter_contexts
+    )
     assert result.application_validation["status"] == "verified"
     assert result.application_validation["checked_current_count"] == len(
         dag.currents

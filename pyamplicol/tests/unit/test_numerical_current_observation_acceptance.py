@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Sequence
+from dataclasses import replace
 from decimal import Decimal, localcontext
 
 import pytest
@@ -447,6 +448,32 @@ def test_certificate_is_deterministic_and_seed_bound() -> None:
         first.to_json_dict()["proof_sha256"]
         != changed_seed.to_json_dict()["proof_sha256"]
     )
+
+
+def test_certificate_fails_closed_on_capture_or_runtime_splicing() -> None:
+    certificate = _certify(
+        "equal",
+        candidate_current_values=_CANDIDATE_REPRESENTATIVE,
+        verification_current_values=_VERIFICATION_REPRESENTATIVE,
+    )
+    assert certificate is not None
+    replacement_digest = hashlib.sha256(b"spliced-evidence").hexdigest()
+    for field_name in (
+        "runtime_schema_sha256",
+        "source_dag_sha256",
+        "candidate_capture_sha256",
+        "verification_capture_sha256",
+        "candidate_observation_batch_sha256",
+        "verification_observation_batch_sha256",
+    ):
+        tampered = replace(
+            certificate,
+            **{field_name: replacement_digest},
+        )
+        assert not verify_numerical_current_relation_certificate(
+            tampered,
+            source_semantics_sha256=_SOURCE_SEMANTICS,
+        )
 
 
 def test_selector_permutation_is_not_silently_inferred_by_relation_certifier() -> None:

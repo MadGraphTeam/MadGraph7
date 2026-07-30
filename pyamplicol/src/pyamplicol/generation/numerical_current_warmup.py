@@ -270,6 +270,14 @@ def run_generic_dag_numerical_current_warmup(
         != candidate.observation_batch_sha256
         or discovery.report.verification_observation_batch_sha256
         != verification.observation_batch_sha256
+        or discovery.report.runtime_schema_sha256
+        != candidate.runtime_schema_sha256
+        or discovery.report.source_dag_sha256
+        != candidate.source_dag_sha256
+        or discovery.report.candidate_capture_sha256
+        != candidate.capture_contract_sha256
+        or discovery.report.verification_capture_sha256
+        != verification.capture_contract_sha256
     ):
         raise ValueError(
             "numerical current detector did not authenticate the captured "
