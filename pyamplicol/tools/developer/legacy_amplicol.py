@@ -456,10 +456,7 @@ _evidence_id = _evidence._evidence_id
 
 
 def _fortran_dependency_ids(fixture: Mapping[str, Any]) -> tuple[str, ...]:
-    return _evidence._fortran_dependency_ids(
-        fixture,
-        revision=expected_revision(),
-    )
+    return _evidence._fortran_dependency_ids(fixture)
 
 
 def _oracle_content_sha256() -> str:

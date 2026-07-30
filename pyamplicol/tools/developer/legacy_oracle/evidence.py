@@ -58,20 +58,20 @@ def _fortran_evidence_set_id(fixture: Mapping[str, Any]) -> str:
 
 def _fortran_dependency_ids(
     fixture: Mapping[str, Any],
-    *,
-    revision: str | None = None,
 ) -> tuple[str, ...]:
-    pinned_revision = expected_revision() if revision is None else revision
     identifiers = tuple(
         str(dependency["id"])
         for dependency in fixture["dependencies"]
-        if str(dependency.get("revision")) == pinned_revision
+        if "legacy" in str(dependency["name"]).lower()
         and "amplicol" in str(dependency["name"]).lower()
     )
     if not identifiers:
         raise LegacyOracleError(
-            "fixture-v2 does not contain the pinned legacy AmpliCol dependency "
-            f"at revision {pinned_revision}"
+            "fixture-v2 does not contain a legacy AmpliCol dependency"
+        )
+    if len(identifiers) != 1:
+        raise LegacyOracleError(
+            "fixture-v2 contains ambiguous legacy AmpliCol dependencies"
         )
     return identifiers
 

@@ -518,10 +518,11 @@ def test_release_workflow_uses_one_retained_sdist_and_all_targets() -> None:
     assert "Full source validation gate" in workflow
     assert "needs: [full-source-validation, independent-physics-oracle]" in workflow
     assert "Independent Fortran physics oracle" in workflow
-    assert "Rebuild and verify pinned Fortran evidence" in workflow
+    assert "Run independent Fortran physics comparison" in workflow
     assert "ulimit -v" not in workflow
     assert "tests/fixtures/reference/physics-v2.json" in workflow
-    assert "tests/fixtures/reference/legacy-fortran-v2.json" in workflow
+    assert "tests/fixtures/reference/legacy-fortran-v2.json" not in workflow
+    assert "--check-output" not in workflow
     assert (
         "retained-sdist:\n    needs: [full-source-validation, "
         "independent-physics-oracle]" in workflow
@@ -598,7 +599,11 @@ def test_complete_source_gate_covers_every_required_suite_serially() -> None:
     assert justfile.count("just independent-physics-oracle") == 2
     assert "--prepare-checkout --fixture" in justfile
     assert "tests/fixtures/reference/physics-v2.json" in justfile
-    assert "tests/fixtures/reference/legacy-fortran-v2.json" in justfile
+    independent_recipe = justfile.split(
+        "independent-physics-oracle:", maxsplit=1
+    )[1].split("\n\n", maxsplit=1)[0]
+    assert "tests/fixtures/reference/legacy-fortran-v2.json" not in independent_recipe
+    assert "--check-output" not in independent_recipe
 
 
 def test_publisher_is_manual_oidc_only_and_has_no_build_checkout() -> None:

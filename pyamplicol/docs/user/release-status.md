@@ -62,12 +62,15 @@ candidates, retained for inspection, and cannot be promoted to release files.
 
 The **Validated release artifacts** workflow is also manually dispatched. Its
 defined release path verifies published dependency inputs, runs the full source
-gate and independent Fortran oracle, retains one source distribution, builds
-the three target wheels from that source distribution, tests installed wheels
-on CPython 3.11 and 3.14, and collects the unchanged package files. The
+gate and a fresh numerical comparison against the pinned independent Fortran
+implementation, retains one source distribution, builds the three target
+wheels from that source distribution, tests installed wheels on CPython 3.11
+and 3.14, and collects the unchanged package files. The
 dependency contract is now patchless and pinned to a verified immutable
-SymJIT fork revision. The workflow still fails closed until release-mode
-prepared-model assets and the remaining platform gates below are complete.
+SymJIT fork revision. Exact release-mode prepared-model packs are checked in
+under `release_assets/prepared_models` and projected into release builds. A
+successful exact-main run of this complete three-platform workflow remains the
+final artifact validation gate.
 
 ## Remaining Integration Gates
 
@@ -118,17 +121,24 @@ prepared-model assets and the remaining platform gates below are complete.
 - The exact Symbolica 2.2.0 Python/Rust combination and immutable SymJIT fork
   revision are verified in the release dependency contract, with no local
   patches or installer source rewrites.
-- The checked-in built-in-SM prepared packs remain candidate-bound and must be
-  regenerated under the release dependency identity before a release sdist or
-  wheel can pass the fail-closed package audit.
+- The checked-in built-in-SM release packs carry the exact release dependency
+  identity and pass the fail-closed package audit when projected from
+  `release_assets/prepared_models`.
 - `ufo-model-loader==0.1.7` is the verified published loader input.
 - Every supported wheel target must complete clean installation, Python
   self-test, generated Python/Rust/C++/Fortran driver tests, and native SDK
   audits.
 - Candidate artifacts are marked non-publishable and are rejected by the
   publication workflow.
-- TestPyPI and PyPI Trusted Publisher registrations and the protected GitHub
-  environments that authorize their OIDC identities are not configured yet.
+- Protected `testpypi` and `pypi` GitHub environments exist. Matching
+  TestPyPI/PyPI Trusted Publisher or pending-publisher registrations must still
+  be confirmed before the first publication.
+
+The SymJIT dependency is an immutable Git source override, not an applied
+source patch. It is valid for Python wheel and source-distribution builds, but
+those source builds require access to the pinned Git revision. Publishing
+pyAmpliCol's internal Rust crates independently through crates.io would still
+require a compatible SymJIT release on crates.io.
 
 Strict release builds fail closed on these conditions. The authoritative
 machine-readable state is `dependencies/release-lock.toml`; contributor-only
@@ -137,7 +147,7 @@ state is not a release fallback.
 The defined publishing workflow is manual and accepts only a successful
 default-branch **Validated release artifacts** run. It downloads the already
 validated three wheels and one source distribution and does not rebuild or
-modify them. Before it is operational, maintainers must create protected
-`testpypi` and `pypi` GitHub environments with the intended approval policy and
+modify them. Before its first use, maintainers must confirm that the existing
+`testpypi` and `pypi` GitHub environments have the intended approval policy and
 register matching Trusted Publishers with TestPyPI and PyPI so those OIDC
 claims are accepted.

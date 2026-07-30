@@ -101,6 +101,23 @@ def test_facade_reexports_extracted_oracle_helpers() -> None:
     assert module._semantic_replay_command is evidence._semantic_replay_command
 
 
+def test_fortran_physics_fixture_is_not_bound_to_checkout_revision() -> None:
+    module = _module()
+    fixture = {
+        "dependencies": [
+            {
+                "id": "dependency:legacy-amplicol",
+                "name": "Pinned legacy Fortran AmpliCol",
+                "revision": "historical-reference-revision",
+            }
+        ]
+    }
+
+    assert module._fortran_dependency_ids(fixture) == (
+        "dependency:legacy-amplicol",
+    )
+
+
 def test_direct_script_cli_preserves_help_and_error_exit_codes(
     tmp_path: Path,
 ) -> None:
