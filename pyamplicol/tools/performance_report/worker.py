@@ -102,6 +102,7 @@ def measure_cell(
                 jobs=worker_cores,
                 repository=legacy_repository,
             ),
+            phase_reporter=phase_reporter,
         )
     else:
         result = measure_pyamplicol_cell(

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -128,9 +129,11 @@ class FakeApi:
 
 
 class FakeExecutor:
-    def __init__(self) -> None:
+    def __init__(self, phase_reporter: FakePhaseReporter | None = None) -> None:
         self.commands: list[tuple[str, ...]] = []
+        self.command_generation_phase: list[bool] = []
         self.profile_calls = 0
+        self.phase_reporter = phase_reporter
 
     def run(
         self,
@@ -141,6 +144,12 @@ class FakeExecutor:
     ) -> CommandResult:
         rendered = tuple(str(item) for item in args)
         self.commands.append(rendered)
+        self.command_generation_phase.append(
+            bool(
+                self.phase_reporter is not None
+                and self.phase_reporter.active
+            )
+        )
         if any(item.endswith("process_list.py") for item in rendered):
             cwd.mkdir(parents=True, exist_ok=True)
             (cwd / "processes.txt").write_text("fake\n", encoding="utf-8")
@@ -166,8 +175,13 @@ class FakeExecutor:
                 1.000005,
                 0.999995,
             )
-            factor = rate_factors[self.profile_calls % len(rate_factors)]
-            self.profile_calls += 1
+            if self.phase_reporter is not None and self.phase_reporter.active:
+                # A dedicated generation-only probe must not consume a sample
+                # from the subsequent adaptive runtime profile.
+                factor = 1.0
+            else:
+                factor = rate_factors[self.profile_calls % len(rate_factors)]
+                self.profile_calls += 1
         else:
             factor = 1.0
         evaluation = points * 0.001 * factor
@@ -202,6 +216,22 @@ class FakeSnapshotter:
         return destination
 
 
+class FakePhaseReporter:
+    def __init__(self) -> None:
+        self.active = False
+        self.interval_count = 0
+
+    @contextmanager
+    def generation(self):
+        assert not self.active
+        self.interval_count += 1
+        self.active = True
+        try:
+            yield
+        finally:
+            self.active = False
+
+
 def _cell(
     accuracy: Accuracy,
     workload: Workload,
@@ -227,9 +257,13 @@ def _cell(
     )
 
 
-def _adapter(api: FakeApi | None = None):
+def _adapter(
+    api: FakeApi | None = None,
+    *,
+    phase_reporter: FakePhaseReporter | None = None,
+):
     fake_api = FakeApi() if api is None else api
-    executor = FakeExecutor()
+    executor = FakeExecutor(phase_reporter)
     return (
         LegacyMeasurementAdapter(
             api=fake_api,
@@ -249,6 +283,75 @@ def _settings(repository: Path) -> LegacySettings:
         maximum_points=10_000,
         repository=repository,
     )
+
+
+@pytest.mark.parametrize(
+    "workload",
+    (Workload.SELECTED_FLOW, Workload.ALL_FLOW),
+)
+def test_legacy_generation_phase_excludes_adaptive_runtime_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    workload: Workload,
+) -> None:
+    repository = tmp_path / "legacy"
+    repository.mkdir()
+    phase_reporter = FakePhaseReporter()
+    adapter, _api, executor = _adapter(
+        phase_reporter=phase_reporter,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.legacy._shared_point",
+        lambda _process: (
+            _api.pdgs,
+            tuple((1.0, 0.0, 0.0, 0.0) for _ in _api.pdgs),
+            (tuple((1.0, 0.0, 0.0, 0.0) for _ in _api.pdgs),),
+        ),
+    )
+
+    result = adapter.measure(
+        _cell(Accuracy.LC, workload, n_final=2),
+        artifact_path=tmp_path / "artifact",
+        settings=_settings(repository),
+        phase_reporter=phase_reporter,  # type: ignore[arg-type]
+    )
+
+    assert result["status"] == "ok"
+    assert phase_reporter.interval_count == 1
+    assert not phase_reporter.active
+    profiled = tuple(
+        in_generation
+        for command, in_generation in zip(
+            executor.commands,
+            executor.command_generation_phase,
+            strict=True,
+        )
+        if command
+        and (
+            command[0] == "./amplicol_library_benchmark"
+            or command[0].endswith("amplicol_color_probe")
+        )
+    )
+    assert profiled
+    if workload is Workload.SELECTED_FLOW:
+        assert not any(profiled)
+        generated = tuple(
+            in_generation
+            for command, in_generation in zip(
+                executor.commands,
+                executor.command_generation_phase,
+                strict=True,
+            )
+            if command and command[0] == "./amplicol_generate"
+        )
+        assert generated == (True,)
+    else:
+        # Direct all-flow generation is authenticated by one dedicated
+        # one-point probe.  Warm-up and every adaptive timing chunk follow it
+        # outside the generation interval.
+        assert profiled[0] is True
+        assert not any(profiled[1:])
+        assert result["generation_seconds"] == pytest.approx(2.5)
 
 
 def test_adaptive_profile_points_are_bounded() -> None:

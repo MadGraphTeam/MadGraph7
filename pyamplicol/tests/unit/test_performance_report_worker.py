@@ -161,3 +161,51 @@ def test_worker_constructs_and_threads_parent_phase_reporter(
 
     assert result["status"] == "ok"
     assert observed == ["pre-generation"]
+
+
+def test_legacy_worker_threads_generation_phase_reporter_to_adapter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cell = REPORT_CATALOG.cell(
+        "reference-amplicol-lc-n1-dd-z-jets-selected-flow"
+    )
+    reporter = object()
+    observed: list[object] = []
+
+    class SourceIdentity:
+        def provenance(self) -> dict[str, object]:
+            return {}
+
+    class Adapter:
+        def measure(self, *_args: object, **kwargs: object) -> dict[str, object]:
+            observed.append(kwargs.get("phase_reporter"))
+            return {
+                "status": "ok",
+                "validation": {"status": "ok"},
+                "provenance": {},
+            }
+
+    identity = SourceIdentity()
+    monkeypatch.setattr(
+        "tools.performance_report.worker.require_eligible_report_source",
+        lambda _root: identity,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.legacy.LegacyMeasurementAdapter",
+        Adapter,
+    )
+
+    result = measure_cell(
+        cell.cell_id,
+        repo_root=tmp_path,
+        attempt_root=tmp_path / "attempt",
+        target_runtime_seconds=1.0,
+        batch_size=1,
+        worker_cores=1,
+        phase_reporter=reporter,  # type: ignore[arg-type]
+        legacy_repository=tmp_path / "legacy",
+    )
+
+    assert result["status"] == "ok"
+    assert observed == [reporter]

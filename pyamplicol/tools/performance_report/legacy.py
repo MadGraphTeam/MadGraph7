@@ -41,6 +41,7 @@ from .models import (
     ResultStatus,
     Workload,
 )
+from .phase_state import WorkerPhaseReporter
 from .runner import (
     DEFAULT_TARGET_RUNTIME_SECONDS,
     SelectorContract,
@@ -783,11 +784,18 @@ class LegacyMeasurementAdapter:
         *,
         artifact_path: Path,
         settings: LegacySettings,
+        phase_reporter: WorkerPhaseReporter | None = None,
     ) -> dict[str, object]:
         if cell.measurement.execution_mode is not ExecutionMode.AMPLICOL:
             raise LegacyAdapterError("legacy adapter requires an AmpliCol cell")
         source_pdgs = self.api.process_pdgs(cell.process)
         if _quark_line_count(source_pdgs) > MAX_OPEN_QUARK_LINES:
+            if phase_reporter is not None:
+                # Unsupported catalog declarations perform no generation, but
+                # a supervised worker must still close its authenticated phase
+                # channel rather than remain indefinitely in pre-generation.
+                with phase_reporter.generation():
+                    pass
             result = self._unsupported_measurement(
                 f"original AmpliCol supports at most {MAX_OPEN_QUARK_LINES} "
                 "open quark lines in this report"
@@ -834,6 +842,7 @@ class LegacyMeasurementAdapter:
                 artifact_path=artifact_path,
                 settings=settings,
                 instrumentation=instrumentation,
+                phase_reporter=phase_reporter,
             )
 
     def _measure_supported(
@@ -844,6 +853,7 @@ class LegacyMeasurementAdapter:
         artifact_path: Path,
         settings: LegacySettings,
         instrumentation: object | None,
+        phase_reporter: WorkerPhaseReporter | None,
     ) -> dict[str, object]:
         log_path = artifact_path / "legacy.log"
         commands: list[dict[str, object]] = []
@@ -864,6 +874,7 @@ class LegacyMeasurementAdapter:
                     settings=settings,
                     commands=commands,
                     log_path=log_path,
+                    phase_reporter=phase_reporter,
                 )
             elif cell.workload is Workload.ALL_FLOW:
                 result = self._measure_all_flow(
@@ -874,6 +885,7 @@ class LegacyMeasurementAdapter:
                     settings=settings,
                     commands=commands,
                     log_path=log_path,
+                    phase_reporter=phase_reporter,
                 )
             else:
                 raise LegacyAdapterError("LC AmpliCol cell requires an LC workload")
@@ -886,6 +898,7 @@ class LegacyMeasurementAdapter:
                 settings=settings,
                 commands=commands,
                 log_path=log_path,
+                phase_reporter=phase_reporter,
             )
         else:
             raise LegacyAdapterError("NLC/full AmpliCol cells must be contracted")
@@ -1261,6 +1274,7 @@ class LegacyMeasurementAdapter:
         settings: LegacySettings,
         commands: list[dict[str, object]],
         log_path: Path,
+        phase_reporter: WorkerPhaseReporter | None = None,
     ) -> float:
         # Building the reusable generator and its object graph is campaign
         # bootstrap, not per-process generation.  Resolve that one-time cost
@@ -1273,46 +1287,55 @@ class LegacyMeasurementAdapter:
             log_path=log_path,
         )
         started_index = len(commands)
-        momenta_directory = repository / "Utilities" / "ME_checks"
-        momenta_directory.mkdir(parents=True, exist_ok=True)
-        for entry in context.entries:
-            ordered = self.api.ordered_momenta(
-                context.source_pdgs,
-                entry.process_pdgs,
-                context.momenta,
-            )
-            momenta_path = (
-                momenta_directory
-                / f"momenta_{entry.group}_{entry.integral}.txt"
-            )
-            momenta_path.write_text(
-                "\n".join(
-                    " ".join(f"{component:.17e}" for component in vector)
-                    for vector in ordered
+        generation_context = (
+            nullcontext()
+            if phase_reporter is None
+            else phase_reporter.generation()
+        )
+        with generation_context:
+            momenta_directory = repository / "Utilities" / "ME_checks"
+            momenta_directory.mkdir(parents=True, exist_ok=True)
+            for entry in context.entries:
+                ordered = self.api.ordered_momenta(
+                    context.source_pdgs,
+                    entry.process_pdgs,
+                    context.momenta,
                 )
-                + "\n",
-                encoding="utf-8",
-            )
-        with _staged_process_file(repository, context.process_file) as process_arg:
-            for args in (
-                ("make", "cleanlib"),
-                ("make", f"-j{settings.jobs}", "amplicol_generate"),
-                (
-                    "./amplicol_generate",
-                    f"--library={'create-raw' if raw_color else 'create'}",
-                    f"--process={process_arg}",
-                    "--amplicol_momenta_probe=10",
-                    "--amplicol_probe_quiet",
-                    "--timing=none",
-                ),
-                ("make", f"-j{settings.jobs}", "amplicol_generate_library"),
-            ):
-                self._run(
-                    args,
-                    cwd=repository,
-                    commands=commands,
-                    log_path=log_path,
+                momenta_path = (
+                    momenta_directory
+                    / f"momenta_{entry.group}_{entry.integral}.txt"
                 )
+                momenta_path.write_text(
+                    "\n".join(
+                        " ".join(f"{component:.17e}" for component in vector)
+                        for vector in ordered
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+            with _staged_process_file(
+                repository,
+                context.process_file,
+            ) as process_arg:
+                for args in (
+                    ("make", "cleanlib"),
+                    ("make", f"-j{settings.jobs}", "amplicol_generate"),
+                    (
+                        "./amplicol_generate",
+                        f"--library={'create-raw' if raw_color else 'create'}",
+                        f"--process={process_arg}",
+                        "--amplicol_momenta_probe=10",
+                        "--amplicol_probe_quiet",
+                        "--timing=none",
+                    ),
+                    ("make", f"-j{settings.jobs}", "amplicol_generate_library"),
+                ):
+                    self._run(
+                        args,
+                        cwd=repository,
+                        commands=commands,
+                        log_path=log_path,
+                    )
         return math.fsum(
             float(record["elapsed_seconds"])
             for record in commands[started_index:]
@@ -1328,6 +1351,7 @@ class LegacyMeasurementAdapter:
         settings: LegacySettings,
         commands: list[dict[str, object]],
         log_path: Path,
+        phase_reporter: WorkerPhaseReporter | None,
     ) -> dict[str, object]:
         generation_seconds = self._generate_library(
             context=context,
@@ -1336,6 +1360,7 @@ class LegacyMeasurementAdapter:
             settings=settings,
             commands=commands,
             log_path=log_path,
+            phase_reporter=phase_reporter,
         )
         self._run(
             ("make", f"-j{settings.jobs}", "amplicol_library_benchmark"),
@@ -1403,6 +1428,7 @@ class LegacyMeasurementAdapter:
         settings: LegacySettings,
         commands: list[dict[str, object]],
         log_path: Path,
+        phase_reporter: WorkerPhaseReporter | None,
     ) -> dict[str, object]:
         self._run(
             ("make", f"-j{settings.jobs}", "amplicol_color_probe"),
@@ -1449,6 +1475,16 @@ class LegacyMeasurementAdapter:
                 momenta_path,
                 *(str(value) for value in ordered_helicities),
             )
+            if phase_reporter is not None:
+                _generation_result, generation_rows, generation_probe = (
+                    self._invoke_generation_probe(
+                        probe_args,
+                        phase_reporter=phase_reporter,
+                        cwd=work,
+                        commands=commands,
+                        log_path=log_path,
+                    )
+                )
             profile = self._profile(
                 lambda count: self._invoke_probe_command(
                     (
@@ -1468,6 +1504,12 @@ class LegacyMeasurementAdapter:
                 settings=settings,
                 timing_labels=("amplitude evaluation", "total"),
             )
+            if phase_reporter is None:
+                # Preserve the unsupervised adapter's historical single-profile
+                # behavior.  Campaign workers always supply a reporter and use
+                # the dedicated authenticated generation probe above.
+                generation_rows = profile.rows
+                generation_probe = profile.probe
             if self.structural_proof:
                 from .legacy_structure import (
                     STRUCTURAL_PROBE_ENVIRONMENT,
@@ -1488,17 +1530,20 @@ class LegacyMeasurementAdapter:
                     stdout=structural.stdout,
                     stderr=structural.stderr,
                 )
-        generation_seconds = _timing_seconds(profile.rows, "generation setup")
+        generation_seconds = _timing_seconds(
+            generation_rows,
+            "generation setup",
+        )
         if generation_seconds is None:
             raise LegacyAdapterError(
                 "direct all-flow probe did not report generation setup"
             )
-        if profile.probe is None:
+        if generation_probe is None:
             raise LegacyAdapterError("direct all-flow probe emitted no value")
         return self._success_measurement(
             generation_seconds=generation_seconds,
             profile=profile,
-            matrix_element=float(profile.probe.value),
+            matrix_element=float(generation_probe.value),
             generation_source="direct-imode2-generation-setup",
         )
 
@@ -1512,6 +1557,7 @@ class LegacyMeasurementAdapter:
         settings: LegacySettings,
         commands: list[dict[str, object]],
         log_path: Path,
+        phase_reporter: WorkerPhaseReporter | None,
     ) -> dict[str, object]:
         if _quark_line_count(context.source_pdgs) == MAX_OPEN_QUARK_LINES:
             return self._measure_direct_contracted(
@@ -1522,6 +1568,7 @@ class LegacyMeasurementAdapter:
                 settings=settings,
                 commands=commands,
                 log_path=log_path,
+                phase_reporter=phase_reporter,
             )
         generation_seconds = self._generate_library(
             context=context,
@@ -1530,6 +1577,7 @@ class LegacyMeasurementAdapter:
             settings=settings,
             commands=commands,
             log_path=log_path,
+            phase_reporter=phase_reporter,
         )
         self._run(
             (
@@ -1650,6 +1698,7 @@ class LegacyMeasurementAdapter:
         settings: LegacySettings,
         commands: list[dict[str, object]],
         log_path: Path,
+        phase_reporter: WorkerPhaseReporter | None,
     ) -> dict[str, object]:
         """Measure the exact direct path for three independent quark lines."""
 
@@ -1677,6 +1726,25 @@ class LegacyMeasurementAdapter:
                 + "\n",
                 encoding="utf-8",
             )
+            generation_args = (
+                repository / "amplicol_color_probe",
+                "1",
+                str(context.entry.group),
+                str(context.entry.integral),
+                cell.measurement.accuracy.value,
+                process_copy,
+                momenta_path,
+            )
+            if phase_reporter is not None:
+                _generation_result, generation_rows, generation_probe = (
+                    self._invoke_generation_probe(
+                        generation_args,
+                        phase_reporter=phase_reporter,
+                        cwd=work,
+                        commands=commands,
+                        log_path=log_path,
+                    )
+                )
             profile = self._profile(
                 lambda count: self._invoke_probe_command(
                     (
@@ -1695,6 +1763,9 @@ class LegacyMeasurementAdapter:
                 settings=settings,
                 timing_labels=("total",),
             )
+            if phase_reporter is None:
+                generation_rows = profile.rows
+                generation_probe = profile.probe
             if self.structural_proof:
                 from .legacy_structure import (
                     STRUCTURAL_PROBE_ENVIRONMENT,
@@ -1723,19 +1794,22 @@ class LegacyMeasurementAdapter:
                     stdout=structural.stdout,
                     stderr=structural.stderr,
                 )
-        generation_seconds = _timing_seconds(profile.rows, "generation setup")
+        generation_seconds = _timing_seconds(
+            generation_rows,
+            "generation setup",
+        )
         if generation_seconds is None:
             raise LegacyAdapterError(
                 "direct three-quark-line probe did not report generation setup"
             )
-        if profile.probe is None:
+        if generation_probe is None:
             raise LegacyAdapterError(
                 "direct three-quark-line probe emitted no value"
             )
         return self._success_measurement(
             generation_seconds=generation_seconds,
             profile=profile,
-            matrix_element=float(profile.probe.value),
+            matrix_element=float(generation_probe.value),
             generation_source="direct-imode2-three-quark-line-setup",
         )
 
@@ -1898,6 +1972,36 @@ class LegacyMeasurementAdapter:
         )
         output = result.stdout + "\n" + result.stderr
         return result, _timing_rows(output), self.api.parse_probe_output(output)
+
+    def _invoke_generation_probe(
+        self,
+        args: Sequence[str | os.PathLike[str]],
+        *,
+        phase_reporter: WorkerPhaseReporter | None,
+        cwd: Path,
+        commands: list[dict[str, object]],
+        log_path: Path,
+    ) -> tuple[CommandResult, tuple[TimingRow, ...], object]:
+        """Run one direct generation setup inside the authenticated phase.
+
+        Direct original-AmpliCol probes combine their setup and a single
+        evaluation in one process.  A dedicated one-point invocation gives the
+        supervisor one bounded generation interval, while the subsequent
+        adaptive runtime profile remains strictly post-generation.
+        """
+
+        generation_context = (
+            nullcontext()
+            if phase_reporter is None
+            else phase_reporter.generation()
+        )
+        with generation_context:
+            return self._invoke_probe_command(
+                args,
+                cwd=cwd,
+                commands=commands,
+                log_path=log_path,
+            )
 
     def _run(
         self,
