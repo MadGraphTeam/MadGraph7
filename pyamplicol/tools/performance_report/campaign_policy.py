@@ -682,6 +682,13 @@ def _policy_record(
     except ValueError as error:
         raise CampaignPolicyError("policy_censor kind is unsupported") from error
     if (
+        policy is MACBOOK_M3_Z_TABLE_F_POLICY
+        and censor_abi != POLICY_CENSOR_ABI
+    ):
+        raise CampaignPolicyError(
+            "the Z-table F policy requires policy-censor v3 evidence"
+        )
+    if (
         censor_abi not in {LEGACY_POLICY_CENSOR_ABI, POLICY_CENSOR_ABI}
         or raw.get("policy") != policy.name
         or raw.get("profile") != profile
@@ -822,6 +829,15 @@ def _validate_resources(
     if policy.memory_limit_bytes is None:
         raise CampaignPolicyError("architecture policy has no memory ceiling")
     _validate_memory_metric(resources, policy)
+    if (
+        policy is MACBOOK_M3_Z_TABLE_F_POLICY
+        and resources.get("memory_metric_abi")
+        != PROCESS_TREE_MEMORY_METRIC_ABI
+    ):
+        raise CampaignPolicyError(
+            "the Z-table F policy requires authenticated process-tree "
+            "RSS/physical-footprint memory evidence"
+        )
     return resources
 
 

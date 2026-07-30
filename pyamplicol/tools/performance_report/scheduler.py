@@ -60,9 +60,11 @@ from .service import CANONICAL_REPORT_ENTRYPOINT, ReportService
 from .source_identity import require_eligible_report_source
 from .study_contract import (
     StudyContractError,
+    authenticate_z_table_f_study_contract,
     bind_z_table_f_attempt,
     require_z_table_f_attempt_binding,
     z_table_f_attempt_binding,
+    z_table_f_cell_ids,
 )
 
 _NATIVE_COMPILER_GATE_DIR_ENV = "PYAMPLICOL_NATIVE_COMPILER_GATE_DIR"
@@ -722,6 +724,43 @@ def plan_campaign(
     )
 
 
+def validate_campaign_plan(
+    planned: Sequence[PlannedCell],
+    settings: CampaignSettings,
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> None:
+    """Enforce study-wide plan constraints before any attempt is created."""
+
+    if settings.campaign_policy is not MACBOOK_M3_Z_TABLE_F_POLICY:
+        return
+    if len(planned) != 1 or planned[0].dependency:
+        raise StudyContractError(
+            "the Z-table F policy requires exactly one runnable requested "
+            "cell; all comparison dependencies must already have "
+            "authenticated currents"
+        )
+    cell_id = planned[0].cell.cell_id
+    if cell_id not in frozenset(z_table_f_cell_ids()):
+        raise StudyContractError(
+            f"cell {cell_id!r} is outside the contracted 28-cell Z-table F scope"
+        )
+    baseline = catalog.validation_baseline_cell(planned[0].cell)
+    expected_baseline_id = None if baseline is None else baseline.cell_id
+    expected_peer_ids = tuple(
+        edge.baseline.cell_id
+        for edge in incoming_agreement_edges(planned[0].cell, catalog=catalog)
+    )
+    if (
+        planned[0].baseline_cell_id != expected_baseline_id
+        or planned[0].comparison_peer_ids != expected_peer_ids
+    ):
+        raise StudyContractError(
+            "the Z-table F runnable cell does not carry its canonical "
+            "comparison dependency plan"
+        )
+
+
 def _resource_payload(
     usage: ResourceUsage,
     generation_phase: GenerationPhaseEvidence | None = None,
@@ -793,6 +832,8 @@ class CampaignScheduler:
         catalog: ReportCatalog = REPORT_CATALOG,
         measurement_lineage: MeasurementLineage | None = None,
         measurement_lineage_authenticated: bool = False,
+        study_contract: Mapping[str, object] | None = None,
+        study_contract_wrapper_root: Path | None = None,
     ) -> None:
         self.service = service
         self.settings = settings
@@ -800,6 +841,33 @@ class CampaignScheduler:
         self.source_identity = require_eligible_report_source(service.paths.repo_root)
         self.source_revision = self.source_identity.revision
         self.source_tree = self.source_identity.tree
+        if settings.campaign_policy is MACBOOK_M3_Z_TABLE_F_POLICY:
+            if study_contract is None or study_contract_wrapper_root is None:
+                raise StudyContractError(
+                    "the Z-table F scheduler requires the authenticated "
+                    "study contract, not only a SHA-256"
+                )
+            authenticated_contract = authenticate_z_table_f_study_contract(
+                study_contract,
+                service.paths.repo_root,
+                study_contract_wrapper_root,
+                prior_store=service.store,
+            )
+            if (
+                authenticated_contract.get("sha256")
+                != settings.study_contract_sha256
+            ):
+                raise StudyContractError(
+                    "the Z-table F scheduler contract SHA-256 differs from "
+                    "campaign settings"
+                )
+            self.study_contract = authenticated_contract
+        else:
+            if study_contract is not None or study_contract_wrapper_root is not None:
+                raise StudyContractError(
+                    "a study contract authorization requires the Z-table F policy"
+                )
+            self.study_contract = None
         self.measurement_lineage = (
             measurement_lineage
             if measurement_lineage_authenticated
@@ -845,6 +913,40 @@ class CampaignScheduler:
             measurement_lineage=self.measurement_lineage,
             original_amplicol_seed=self.original_amplicol_seed,
         )
+
+    def _validate_z_table_f_plan(
+        self,
+        planned: Sequence[PlannedCell],
+    ) -> None:
+        validate_campaign_plan(
+            planned,
+            self.settings,
+            catalog=self.catalog,
+        )
+        if self.settings.campaign_policy is not MACBOOK_M3_Z_TABLE_F_POLICY:
+            return
+        item = planned[0]
+        baseline = self.catalog.validation_baseline_cell(item.cell)
+        dependencies = (
+            *((baseline,) if baseline is not None else ()),
+            *(
+                edge.baseline
+                for edge in incoming_agreement_edges(
+                    item.cell,
+                    catalog=self.catalog,
+                )
+            ),
+        )
+        missing = tuple(
+            dependency.cell_id
+            for dependency in dependencies
+            if self._current(dependency) is None
+        )
+        if missing:
+            raise StudyContractError(
+                "the Z-table F runnable cell has unauthenticated comparison "
+                f"dependencies: {', '.join(sorted(missing))}"
+            )
 
     def _prepare_legacy_workspace(self, attempt_id: str) -> Path:
         """Create one pinned writable legacy checkout for one worker only."""
@@ -975,6 +1077,7 @@ class CampaignScheduler:
 
     def run(self, planned: Sequence[PlannedCell]) -> CampaignResult:
         ordered = tuple(planned)
+        self._validate_z_table_f_plan(ordered)
         static_na = tuple(
             (
                 item.cell.cell_id,
@@ -1015,6 +1118,8 @@ class CampaignScheduler:
             return self._run_cell_in_lane(planned)
 
     def _run_cell_in_lane(self, planned: PlannedCell) -> CellOutcome:
+        if self.settings.campaign_policy is MACBOOK_M3_Z_TABLE_F_POLICY:
+            self._validate_z_table_f_plan((planned,))
         cell = planned.cell
         with self.service.store.named_lock(f"campaign-cell-{cell.cell_id}"):
             fresh = self._current(cell)
@@ -1329,6 +1434,8 @@ class CampaignScheduler:
                         isinstance(peak_rss, int)
                         and not isinstance(peak_rss, bool)
                         and metric_abi is None
+                        and self.settings.campaign_policy
+                        is not MACBOOK_M3_Z_TABLE_F_POLICY
                     ):
                         result = policy_censor_measurement(
                             self.settings.campaign_policy,
@@ -1561,4 +1668,5 @@ __all__ = [
     "PlannedCell",
     "plan_campaign",
     "select_cells",
+    "validate_campaign_plan",
 ]

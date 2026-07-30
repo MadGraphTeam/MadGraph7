@@ -69,6 +69,7 @@ from .scheduler import (
     CellSelection,
     plan_campaign,
     select_cells,
+    validate_campaign_plan,
 )
 from .service import (
     CANONICAL_REPORT_ENTRYPOINT,
@@ -79,6 +80,7 @@ from .service import (
 from .source_identity import require_eligible_report_source
 from .standalone_build import StandaloneBuildError, validate_latex_log
 from .study_contract import (
+    StudyContractError,
     audit_z_table_f_policy_projection,
     load_z_table_f_study_contract,
     require_z_table_f_explicit_cell,
@@ -856,6 +858,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.study_contract,
                 repo_root,
                 Path(__file__).resolve().parents[2],
+                prior_store=service.store,
             )
             result = audit_z_table_f_policy_projection(
                 contract,
@@ -1187,6 +1190,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     args.study_contract,
                     repo_root,
                     Path(__file__).resolve().parents[2],
+                    prior_store=service.store,
                 )
                 require_z_table_f_explicit_cell(
                     active_study_contract,
@@ -1249,6 +1253,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             original_amplicol_seed=original_amplicol_seed,
             excluded_cell_ids=frozenset(args.exclude_cell_id),
         )
+        try:
+            validate_campaign_plan(planned, settings)
+        except StudyContractError as error:
+            parser.error(str(error))
         if args.dry_run:
             print(
                 json.dumps(
@@ -1293,7 +1301,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                 expected_source_revision=expected_revision,
             )
         service.bind_measurement_lineage(measurement_lineage)
-        result = CampaignScheduler(service, settings=settings).run(planned)
+        if active_study_contract is None:
+            scheduler = CampaignScheduler(service, settings=settings)
+        else:
+            scheduler = CampaignScheduler(
+                service,
+                settings=settings,
+                study_contract=active_study_contract,
+                study_contract_wrapper_root=(
+                    Path(__file__).resolve().parents[2]
+                ),
+            )
+        result = scheduler.run(planned)
         if args.refresh_pdf == "end":
             _launch_async_publication(service)
         print(

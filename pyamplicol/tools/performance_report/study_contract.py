@@ -29,11 +29,18 @@ from .resources import PROCESS_TREE_MEMORY_METRIC_ABI
 from .source_identity import require_eligible_report_source
 
 if TYPE_CHECKING:
+    from .artifacts import ArtifactStore
     from .service import ReportService
 
 Z_TABLE_F_STUDY_CONTRACT_SCHEMA = "pyamplicol-z-table-f-study-contract-v1"
 Z_TABLE_F_STUDY_ID = "macbook-m3-z-table-f"
 Z_TABLE_F_CONTRACT_MINIMUM_N = 8
+Z_TABLE_F_CELL_COUNT = 28
+Z_TABLE_F_PRIOR_EVIDENCE_ABI = (
+    "pyamplicol-z-table-f-prior-evidence-snapshot-v1"
+)
+Z_TABLE_F_PRIOR_CELL_COUNT = 98
+Z_TABLE_F_PRIOR_STATIC_NA_CELL_COUNT = 4
 Z_TABLE_F_SELECTION_ABI = "pyamplicol-explicit-single-cell-selection-v1"
 Z_TABLE_F_ATTEMPT_BINDING_ABI = (
     "pyamplicol-z-table-f-attempt-binding-v1"
@@ -128,7 +135,7 @@ def _clean_git_identity(root: Path) -> dict[str, str]:
 def z_table_f_cell_ids() -> tuple[str, ...]:
     """Return the exact newly supervised Z-table declaration scope."""
 
-    return tuple(
+    cell_ids = tuple(
         sorted(
             cell.cell_id
             for cell in REPORT_CATALOG.measurement_cells()
@@ -147,11 +154,118 @@ def z_table_f_cell_ids() -> tuple[str, ...]:
             }
         )
     )
+    if len(cell_ids) != Z_TABLE_F_CELL_COUNT:
+        raise StudyContractError(
+            "contracted Z-table n8-n9 catalog census is not exactly 28 cells"
+        )
+    return cell_ids
+
+
+def z_table_f_prior_cell_ids() -> tuple[str, ...]:
+    """Return the exact retained n1--n7 declaration scope for the Z table."""
+
+    cell_ids = tuple(
+        sorted(
+            cell.cell_id
+            for cell in REPORT_CATALOG.measurement_cells()
+            if cell.dataset_id
+            in {
+                "z_builtin_sm",
+                "reference_amplicol_lc",
+            }
+            and cell.process_key == "dd_z_jets"
+            and 1 <= cell.n_final < Z_TABLE_F_CONTRACT_MINIMUM_N
+            and cell.measurement.accuracy is Accuracy.LC
+            and cell.workload
+            in {
+                Workload.SELECTED_FLOW,
+                Workload.ALL_FLOW,
+            }
+        )
+    )
+    static_na_count = sum(
+        REPORT_CATALOG.static_na_reason(REPORT_CATALOG.cell(cell_id))
+        is not None
+        for cell_id in cell_ids
+    )
+    if (
+        len(cell_ids) != Z_TABLE_F_PRIOR_CELL_COUNT
+        or static_na_count != Z_TABLE_F_PRIOR_STATIC_NA_CELL_COUNT
+    ):
+        raise StudyContractError(
+            "retained Z-table n1-n7 catalog census differs from the "
+            "authenticated contract"
+        )
+    return cell_ids
+
+
+def _prior_evidence_snapshot(
+    store: ArtifactStore | None,
+) -> dict[str, object]:
+    """Digest retained Z-table currents without embedding path-dependent data."""
+
+    entries: list[dict[str, object]] = []
+    current_count = 0
+    cell_ids = z_table_f_prior_cell_ids()
+    static_na_cell_ids = tuple(
+        cell_id
+        for cell_id in cell_ids
+        if REPORT_CATALOG.static_na_reason(REPORT_CATALOG.cell(cell_id))
+        is not None
+    )
+    for cell_id in cell_ids:
+        cell = REPORT_CATALOG.cell(cell_id)
+        current = (
+            None
+            if store is None
+            else store.load_current(cell.cell_id, missing_ok=True)
+        )
+        if current is None:
+            entries.append(
+                {
+                    "cell_id": cell.cell_id,
+                    "attempt_id": None,
+                    "manifest_sha256": None,
+                    "result_sha256": None,
+                    "provenance_sha256": None,
+                }
+            )
+            continue
+        provenance = current.result.get("provenance")
+        if (
+            isinstance(provenance, Mapping)
+            and "study_contract" in provenance
+        ):
+            raise StudyContractError(
+                f"pre-study cell {cell.cell_id!r} already has an F binding"
+            )
+        current_count += 1
+        entries.append(
+            {
+                "cell_id": cell.cell_id,
+                "attempt_id": current.attempt_id,
+                "manifest_sha256": current.manifest_sha256,
+                "result_sha256": _canonical_sha256(current.result),
+                "provenance_sha256": _canonical_sha256(provenance),
+            }
+        )
+    return {
+        "abi": Z_TABLE_F_PRIOR_EVIDENCE_ABI,
+        "maximum_n_final": Z_TABLE_F_CONTRACT_MINIMUM_N - 1,
+        "cell_ids": list(cell_ids),
+        "static_na_cell_ids": list(static_na_cell_ids),
+        "declared_cell_count": len(entries),
+        "static_na_cell_count": len(static_na_cell_ids),
+        "current_cell_count": current_count,
+        "snapshot_sha256": _canonical_sha256(entries),
+    }
 
 
 def create_z_table_f_study_contract(
     measured_root: Path,
     policy_wrapper_root: Path,
+    *,
+    prior_store: ArtifactStore | None = None,
 ) -> dict[str, object]:
     """Create a digest-bound contract from two clean, separate Git identities."""
 
@@ -185,6 +299,7 @@ def create_z_table_f_study_contract(
         },
         "retained_prior_evidence": {
             "n_final": list(range(1, Z_TABLE_F_CONTRACT_MINIMUM_N)),
+            "snapshot": _prior_evidence_snapshot(prior_store),
             "treatment": (
                 "outside this contract; retain each original attempt, "
                 "provenance record, and resource ABI unchanged"
@@ -203,6 +318,8 @@ def write_z_table_f_study_contract(
     path: Path,
     measured_root: Path,
     policy_wrapper_root: Path,
+    *,
+    prior_store: ArtifactStore | None = None,
 ) -> dict[str, object]:
     """Write a new contract without overwriting prior study evidence."""
 
@@ -214,6 +331,7 @@ def write_z_table_f_study_contract(
     payload = create_z_table_f_study_contract(
         measured_root,
         policy_wrapper_root,
+        prior_store=prior_store,
     )
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(f".{destination.name}.new")
@@ -229,6 +347,8 @@ def load_z_table_f_study_contract(
     path: Path,
     measured_root: Path,
     policy_wrapper_root: Path,
+    *,
+    prior_store: ArtifactStore | None = None,
 ) -> dict[str, object]:
     """Load a contract and reauthenticate both source and wrapper identities."""
 
@@ -242,21 +362,53 @@ def load_z_table_f_study_contract(
         raise StudyContractError(
             f"cannot read Z-table study contract: {error}"
         ) from error
-    if not isinstance(raw, dict) or set(raw) != _CONTRACT_FIELDS:
+    if not isinstance(raw, dict):
         raise StudyContractError("Z-table study contract fields are invalid")
-    body = {key: value for key, value in raw.items() if key != "sha256"}
-    if raw.get("sha256") != _canonical_sha256(body):
-        raise StudyContractError("Z-table study contract digest differs")
+    return authenticate_z_table_f_study_contract(
+        raw,
+        measured_root,
+        policy_wrapper_root,
+        prior_store=prior_store,
+    )
 
+
+def authenticate_z_table_f_study_contract(
+    contract: Mapping[str, object],
+    measured_root: Path,
+    policy_wrapper_root: Path,
+    *,
+    prior_store: ArtifactStore | None = None,
+) -> dict[str, object]:
+    """Reauthenticate a loaded contract against both roots and prior currents."""
+
+    if (
+        not isinstance(contract, Mapping)
+        or set(contract) != _CONTRACT_FIELDS
+    ):
+        raise StudyContractError("Z-table study contract fields are invalid")
+    body = {
+        key: value
+        for key, value in contract.items()
+        if key != "sha256"
+    }
+    if contract.get("sha256") != _canonical_sha256(body):
+        raise StudyContractError("Z-table study contract digest differs")
     expected = create_z_table_f_study_contract(
         measured_root,
         policy_wrapper_root,
+        prior_store=prior_store,
     )
-    if raw != expected:
+    if dict(contract) != expected:
+        if contract.get("retained_prior_evidence") != expected.get(
+            "retained_prior_evidence"
+        ):
+            raise StudyContractError(
+                "Z-table study contract retained prior evidence differs"
+            )
         raise StudyContractError(
             "Z-table study contract differs from active source or policy"
         )
-    return raw
+    return expected
 
 
 def require_z_table_f_explicit_cell(
@@ -345,6 +497,15 @@ def audit_z_table_f_policy_projection(
 ) -> dict[str, object]:
     """Audit current-to-publication policy identity for a completed Z tier."""
 
+    if set(contract) != _CONTRACT_FIELDS:
+        raise StudyContractError("study contract fields are invalid")
+    contract_body = {
+        key: value
+        for key, value in contract.items()
+        if key != "sha256"
+    }
+    if contract.get("sha256") != _canonical_sha256(contract_body):
+        raise StudyContractError("study contract digest differs")
     if maximum_n < Z_TABLE_F_CONTRACT_MINIMUM_N or maximum_n > 9:
         raise StudyContractError(
             "maximum_n must be between 8 and 9 for contracted evidence"
@@ -360,10 +521,18 @@ def audit_z_table_f_policy_projection(
     if not isinstance(contract_sha256, str):
         raise StudyContractError("study contract digest is invalid")
     z_table_f_attempt_binding(contract_sha256)
+    retained = contract.get("retained_prior_evidence")
+    if not isinstance(retained, Mapping) or retained.get(
+        "snapshot"
+    ) != _prior_evidence_snapshot(service.store):
+        raise StudyContractError(
+            "pre-study n1-n7 current/provenance snapshot differs"
+        )
 
     allowed = contract.get("allowed_cell_ids")
-    if not isinstance(allowed, list):
+    if allowed != list(z_table_f_cell_ids()):
         raise StudyContractError("study contract cell scope is invalid")
+    assert isinstance(allowed, list)
     allowed_ids = frozenset(str(value) for value in allowed)
     cells = tuple(
         cell
@@ -489,13 +658,18 @@ def audit_z_table_f_policy_projection(
 
 __all__ = [
     "Z_TABLE_F_ATTEMPT_BINDING_ABI",
+    "Z_TABLE_F_CELL_COUNT",
     "Z_TABLE_F_CONTRACT_MINIMUM_N",
     "Z_TABLE_F_MEMORY_GUARD",
+    "Z_TABLE_F_PRIOR_CELL_COUNT",
+    "Z_TABLE_F_PRIOR_EVIDENCE_ABI",
+    "Z_TABLE_F_PRIOR_STATIC_NA_CELL_COUNT",
     "Z_TABLE_F_SELECTION_ABI",
     "Z_TABLE_F_STUDY_CONTRACT_SCHEMA",
     "Z_TABLE_F_STUDY_ID",
     "StudyContractError",
     "audit_z_table_f_policy_projection",
+    "authenticate_z_table_f_study_contract",
     "bind_z_table_f_attempt",
     "create_z_table_f_study_contract",
     "load_z_table_f_study_contract",
@@ -504,4 +678,5 @@ __all__ = [
     "write_z_table_f_study_contract",
     "z_table_f_attempt_binding",
     "z_table_f_cell_ids",
+    "z_table_f_prior_cell_ids",
 ]

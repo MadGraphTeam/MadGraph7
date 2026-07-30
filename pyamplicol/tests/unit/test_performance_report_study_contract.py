@@ -14,10 +14,14 @@ from tools.performance_report.campaign_policy import (
     PolicyCensorKind,
     policy_censor_measurement,
 )
+from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.models import ArtifactPolicy
 from tools.performance_report.service import ReportPaths, ReportService
 from tools.performance_report.source_identity import ReportSourceIdentity
 from tools.performance_report.study_contract import (
+    Z_TABLE_F_PRIOR_CELL_COUNT,
+    Z_TABLE_F_PRIOR_EVIDENCE_ABI,
+    Z_TABLE_F_PRIOR_STATIC_NA_CELL_COUNT,
     StudyContractError,
     audit_z_table_f_policy_projection,
     bind_z_table_f_attempt,
@@ -25,6 +29,7 @@ from tools.performance_report.study_contract import (
     require_z_table_f_explicit_cell,
     write_z_table_f_study_contract,
     z_table_f_cell_ids,
+    z_table_f_prior_cell_ids,
 )
 
 
@@ -95,18 +100,40 @@ def test_study_contract_binds_source_wrapper_policy_and_exact_limits(
     }
     assert loaded["allowed_cell_ids"] == list(z_table_f_cell_ids())
     assert len(loaded["allowed_cell_ids"]) == 28
-    assert loaded["retained_prior_evidence"] == {
-        "n_final": list(range(1, 8)),
-        "treatment": (
-            "outside this contract; retain each original attempt, "
-            "provenance record, and resource ABI unchanged"
-        ),
-        "memory_guard_interpretation": (
-            "legacy RSS-only evidence remains legacy and is not "
-            "relabeled as Darwin physical-footprint or exact-decimal-"
-            "30GB evidence"
-        ),
+    retained = loaded["retained_prior_evidence"]
+    assert isinstance(retained, dict)
+    assert retained["n_final"] == list(range(1, 8))
+    assert retained["treatment"] == (
+        "outside this contract; retain each original attempt, "
+        "provenance record, and resource ABI unchanged"
+    )
+    assert retained["memory_guard_interpretation"] == (
+        "legacy RSS-only evidence remains legacy and is not "
+        "relabeled as Darwin physical-footprint or exact-decimal-"
+        "30GB evidence"
+    )
+    snapshot = retained["snapshot"]
+    assert isinstance(snapshot, dict)
+    prior_cell_ids = z_table_f_prior_cell_ids()
+    static_na_cell_ids = tuple(
+        cell_id
+        for cell_id in prior_cell_ids
+        if REPORT_CATALOG.static_na_reason(
+            REPORT_CATALOG.cell(cell_id)
+        )
+        is not None
+    )
+    assert snapshot == {
+        "abi": Z_TABLE_F_PRIOR_EVIDENCE_ABI,
+        "maximum_n_final": 7,
+        "cell_ids": list(prior_cell_ids),
+        "static_na_cell_ids": list(static_na_cell_ids),
+        "declared_cell_count": Z_TABLE_F_PRIOR_CELL_COUNT,
+        "static_na_cell_count": Z_TABLE_F_PRIOR_STATIC_NA_CELL_COUNT,
+        "current_cell_count": 0,
+        "snapshot_sha256": snapshot["snapshot_sha256"],
     }
+    assert len(str(snapshot["snapshot_sha256"])) == 64
 
 
 def test_study_contract_replays_after_wrapper_path_relocation(
@@ -166,6 +193,107 @@ def test_study_contract_rejects_tamper_wrapper_drift_and_broad_cell(
     (wrapper / "README.md").write_text("changed\n", encoding="ascii")
     with pytest.raises(StudyContractError, match="clean"):
         load_z_table_f_study_contract(contract_path, source, wrapper)
+
+
+def test_study_contract_freezes_only_prior_z_table_current_provenance(
+    tmp_path: Path,
+) -> None:
+    source = _git_repo(tmp_path / "source", "measured")
+    wrapper = _git_repo(tmp_path / "wrapper", "policy")
+    service = ReportService(
+        ReportPaths.from_repo(
+            source,
+            docs_dir=tmp_path / "docs",
+            artifact_root=tmp_path / "artifacts",
+            coordination_root=tmp_path / "coordination",
+        )
+    )
+    prior_cell = REPORT_CATALOG.cell(
+        "reference-amplicol-lc-n1-dd-z-jets-selected-flow"
+    )
+    unrelated_cell = REPORT_CATALOG.cell(
+        "scalar-contact-n2-scalar-contact-contracted"
+    )
+    original = {
+        "status": "ok",
+        "provenance": {"origin": "pre-study"},
+    }
+    current = service.store.new_attempt(
+        prior_cell.cell_id,
+        ArtifactPolicy.REGENERATE,
+    ).publish(original)
+    unrelated_current = service.store.new_attempt(
+        unrelated_cell.cell_id,
+        ArtifactPolicy.REGENERATE,
+    ).publish(
+        {
+            "status": "ok",
+            "provenance": {"origin": "unrelated-pre-study"},
+        }
+    )
+    contract_path = tmp_path / "contract.json"
+    contract = write_z_table_f_study_contract(
+        contract_path,
+        source,
+        wrapper,
+        prior_store=service.store,
+    )
+    assert (
+        load_z_table_f_study_contract(
+            contract_path,
+            source,
+            wrapper,
+            prior_store=service.store,
+        )
+        == contract
+    )
+
+    service.store.new_attempt(
+        unrelated_cell.cell_id,
+        ArtifactPolicy.REGENERATE,
+        based_on=unrelated_current,
+    ).publish(
+        {
+            "status": "ok",
+            "provenance": {"origin": "unrelated-update"},
+        }
+    )
+    assert (
+        load_z_table_f_study_contract(
+            contract_path,
+            source,
+            wrapper,
+            prior_store=service.store,
+        )
+        == contract
+    )
+
+    changed_prior = {
+        "status": "ok",
+        "provenance": {"origin": "rewritten-during-study"},
+    }
+    service.store.new_attempt(
+        prior_cell.cell_id,
+        ArtifactPolicy.REGENERATE,
+        based_on=current,
+    ).publish(changed_prior)
+
+    with pytest.raises(
+        StudyContractError,
+        match="retained prior evidence differs",
+    ):
+        load_z_table_f_study_contract(
+            contract_path,
+            source,
+            wrapper,
+            prior_store=service.store,
+        )
+    with pytest.raises(StudyContractError, match="snapshot differs"):
+        audit_z_table_f_policy_projection(
+            contract,
+            service,
+            maximum_n=8,
+        )
 
 
 def test_study_audit_replays_f_policy_without_ordinary_mac_policy(

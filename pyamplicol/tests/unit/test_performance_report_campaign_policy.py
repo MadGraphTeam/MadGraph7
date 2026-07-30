@@ -58,9 +58,14 @@ from tools.performance_report.scheduler import (
     PlannedCell,
     _resource_payload,
     plan_campaign,
+    validate_campaign_plan,
 )
 from tools.performance_report.service import ReportPaths, ReportService
 from tools.performance_report.source_identity import ReportSourceIdentity
+from tools.performance_report.study_contract import (
+    StudyContractError,
+    create_z_table_f_study_contract,
+)
 from tools.performance_report.workspace import (
     WORKSPACE_MANIFEST,
     WORKSPACE_SCHEMA,
@@ -418,6 +423,100 @@ def test_physical_footprint_censor_is_authenticated_and_tamper_evident() -> None
             expected_source_revision=_REVISION,
             expected_source_tree=_TREE,
         )
+
+
+def test_z_table_f_rejects_legacy_rss_only_censor_evidence() -> None:
+    ordinary_cell = REPORT_CATALOG.cell(
+        "scalar-contact-n2-scalar-contact-contracted"
+    )
+    ordinary = _memory_censor(
+        ordinary_cell,
+        peak=X86_EPYC_MEMORY_LIMIT_BYTES + 1,
+    )
+    assert (
+        validate_policy_measurement(
+            X86_EPYC_POLICY,
+            "x86_EPYC",
+            ordinary_cell,
+            ordinary,
+            expected_source_revision=_REVISION,
+            expected_source_tree=_TREE,
+        )
+        is PolicyMeasurementState.MEMORY_LIMIT
+    )
+
+    study_cell = REPORT_CATALOG.cell(
+        "reference-amplicol-lc-n8-dd-z-jets-selected-flow"
+    )
+    with pytest.raises(CampaignPolicyError, match="policy-censor v3"):
+        policy_censor_measurement(
+            MACBOOK_M3_Z_TABLE_F_POLICY,
+            "macbook_M3",
+            study_cell,
+            kind=PolicyCensorKind.MEMORY_LIMIT,
+            source_identity=_IDENTITY,
+            resources=_resources(MACBOOK_M3_MEMORY_LIMIT_BYTES + 1),
+            observed_rss_bytes=MACBOOK_M3_MEMORY_LIMIT_BYTES + 1,
+        )
+
+    peak = MACBOOK_M3_MEMORY_LIMIT_BYTES + 1
+    reason = "process-tree-rss-limit"
+    v3_resources = _guard_resources(
+        limit=MACBOOK_M3_MEMORY_LIMIT_BYTES,
+        rss=peak,
+        physical=peak,
+        reason=reason,
+    )
+    study_v3 = policy_censor_measurement(
+        MACBOOK_M3_Z_TABLE_F_POLICY,
+        "macbook_M3",
+        study_cell,
+        kind=PolicyCensorKind.MEMORY_LIMIT,
+        source_identity=_IDENTITY,
+        resources=v3_resources,
+        observed_rss_bytes=peak,
+        observed_guard_bytes=peak,
+        memory_metric_abi=PROCESS_TREE_MEMORY_METRIC_ABI,
+        memory_limit_reason=reason,
+    )
+    assert (
+        validate_policy_measurement(
+            MACBOOK_M3_Z_TABLE_F_POLICY,
+            "macbook_M3",
+            study_cell,
+            study_v3,
+            expected_source_revision=_REVISION,
+            expected_source_tree=_TREE,
+        )
+        is PolicyMeasurementState.MEMORY_LIMIT
+    )
+
+
+def test_z_table_f_plan_rejects_dependency_expansion(
+    tmp_path: Path,
+) -> None:
+    cell = REPORT_CATALOG.cell(
+        "z-builtin-sm-n8-dd-z-jets-jit-o3-all-flow"
+    )
+    settings = _z_table_f_settings()
+    planned = plan_campaign(
+        (cell,),
+        store=ArtifactStore(
+            artifact_root=tmp_path / "artifacts",
+            lock_root=tmp_path / "locks",
+        ),
+        settings=settings,
+        expected_revision=_REVISION,
+        expected_tree=_TREE,
+    )
+
+    assert len(planned) > 1
+    assert any(item.dependency for item in planned)
+    with pytest.raises(
+        StudyContractError,
+        match="dependencies must already have authenticated currents",
+    ):
+        validate_campaign_plan(planned, settings)
 
 
 def test_policy_censors_are_canonical_and_tamper_evident() -> None:
@@ -1011,7 +1110,7 @@ def test_z_table_f_scheduler_publishes_authenticated_one_hour_censor(
         )
     )
     cell = REPORT_CATALOG.cell(
-        "scalar-contact-n2-scalar-contact-contracted"
+        "reference-amplicol-lc-n8-dd-z-jets-selected-flow"
     )
 
     def fake_supervise(command, **arguments):
@@ -1058,9 +1157,23 @@ def test_z_table_f_scheduler_publishes_authenticated_one_hour_censor(
         "tools.performance_report.scheduler.supervise_worker",
         fake_supervise,
     )
+    monkeypatch.setattr(
+        CampaignScheduler,
+        "_prepare_legacy_workspace",
+        lambda _self, _attempt_id: repo,
+    )
+    contract = create_z_table_f_study_contract(
+        repo,
+        repo,
+        prior_store=service.store,
+    )
     scheduler = CampaignScheduler(
         service,
-        settings=_z_table_f_settings(),
+        settings=_z_table_f_settings(
+            study_contract_sha256=str(contract["sha256"]),
+        ),
+        study_contract=contract,
+        study_contract_wrapper_root=repo,
     )
     outcome = scheduler._run_cell(
         PlannedCell(
@@ -1080,7 +1193,7 @@ def test_z_table_f_scheduler_publishes_authenticated_one_hour_censor(
     assert provenance["study_contract"] == {
         "abi": "pyamplicol-z-table-f-attempt-binding-v1",
         "study_id": "macbook-m3-z-table-f",
-        "study_contract_sha256": "a" * 64,
+        "study_contract_sha256": contract["sha256"],
     }
     assert _status(current.result) == r"\matrixstatus{ReportOrange}{>1h}"
     assert (
@@ -1094,6 +1207,118 @@ def test_z_table_f_scheduler_publishes_authenticated_one_hour_censor(
         )
         is PolicyMeasurementState.GENERATION_LIMIT
     )
+
+
+def test_z_table_f_scheduler_rejects_scope_and_missing_dependencies_before_attempt(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "docs/arxiv").mkdir(parents=True)
+    subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
+    subprocess.run(
+        ("git", "config", "user.email", "test@example.invalid"),
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ("git", "config", "user.name", "Test"),
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("fixture\n", encoding="ascii")
+    subprocess.run(("git", "add", "."), cwd=repo, check=True)
+    subprocess.run(("git", "commit", "-qm", "fixture"), cwd=repo, check=True)
+    artifact_root = tmp_path / "artifacts"
+    service = ReportService(
+        ReportPaths.from_repo(
+            repo,
+            artifact_root=artifact_root,
+            coordination_root=tmp_path / "locks",
+        )
+    )
+    cell = REPORT_CATALOG.cell(
+        "scalar-contact-n2-scalar-contact-contracted"
+    )
+    contract = create_z_table_f_study_contract(
+        repo,
+        repo,
+        prior_store=service.store,
+    )
+    scheduler = CampaignScheduler(
+        service,
+        settings=_z_table_f_settings(
+            study_contract_sha256=str(contract["sha256"]),
+        ),
+        study_contract=contract,
+        study_contract_wrapper_root=repo,
+    )
+
+    dependent_cell = REPORT_CATALOG.cell(
+        "z-builtin-sm-n8-dd-z-jets-jit-o3-all-flow"
+    )
+    expanded = plan_campaign(
+        (dependent_cell,),
+        store=service.store,
+        settings=scheduler.settings,
+        expected_revision=scheduler.source_revision,
+        expected_tree=scheduler.source_tree,
+    )
+    requested = next(item for item in expanded if not item.dependency)
+    with pytest.raises(
+        StudyContractError,
+        match="unauthenticated comparison dependencies",
+    ):
+        scheduler._run_cell(requested)
+
+    with pytest.raises(StudyContractError, match="outside the contracted"):
+        scheduler._run_cell(
+            PlannedCell(
+                cell=cell,
+                dependency=False,
+                baseline_cell_id=None,
+                rank=0,
+            )
+        )
+
+    assert service.store.load_current(cell.cell_id, missing_ok=True) is None
+    assert not tuple(artifact_root.rglob("manifest.json"))
+
+
+def test_z_table_f_scheduler_rejects_bare_forged_sha_before_attempt(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "docs/arxiv").mkdir(parents=True)
+    subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
+    subprocess.run(
+        ("git", "config", "user.email", "test@example.invalid"),
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ("git", "config", "user.name", "Test"),
+        cwd=repo,
+        check=True,
+    )
+    (repo / "README.md").write_text("fixture\n", encoding="ascii")
+    subprocess.run(("git", "add", "."), cwd=repo, check=True)
+    subprocess.run(("git", "commit", "-qm", "fixture"), cwd=repo, check=True)
+    artifact_root = tmp_path / "artifacts"
+    service = ReportService(
+        ReportPaths.from_repo(
+            repo,
+            artifact_root=artifact_root,
+            coordination_root=tmp_path / "locks",
+        )
+    )
+
+    with pytest.raises(
+        StudyContractError,
+        match="not only a SHA-256",
+    ):
+        CampaignScheduler(service, settings=_z_table_f_settings())
+
+    assert not tuple(artifact_root.rglob("manifest.json"))
 
 
 def test_scheduler_uses_mac_memory_limit_without_generation_channel(
