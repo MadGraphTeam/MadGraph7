@@ -38,6 +38,16 @@ source_url = "https://github.com/alphal00p/gammaloop.git"
 revision = "fff1d66ee7ca039b9e165fe8d29da91f4c27113c"
 release_status = "developer-build-input-only"
 
+[ratatui]
+distribution = "ratatui"
+version = "0.4.2"
+source_url = "https://files.pythonhosted.org/packages/83/ef/61a985816192cd3ee50ad5570a72f1fc6d22b86047771d5b72a05bbdc3eb/ratatui-0.4.2.tar.gz"
+sdist_sha256 = "2778b066378f8e1629b4b5e1076f1957c8c439b45cdeaf51970d1949730bb0d5"
+ffi_repository = "https://github.com/holo-q/ratatui-ffi.git"
+ffi_revision = "7249c0bd1445c0c6ee76f3f24923eb35a1d931e0"
+release_status = "developer-build-input-only"
+license = "MIT"
+
 [ufo_model_loader]
 published_revision = "f3fda32c5e6a673075c345d74a11f12b83c00015"
 wheel_sha256 = "803ae28141ec4be3189cc62469b88da17ca33907791fe99774c2fe756a45edf7"

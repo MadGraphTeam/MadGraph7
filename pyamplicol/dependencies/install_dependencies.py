@@ -175,6 +175,11 @@ def _sources(payload: dict[str, Any], *, with_legacy: bool) -> tuple[Source, ...
             str(gammaloop["source_url"]),
             str(gammaloop["revision"]),
         ),
+        Source(
+            "ratatui-ffi",
+            str(payload["ratatui"]["ffi_repository"]),
+            str(payload["ratatui"]["ffi_revision"]),
+        ),
     ]
     if with_legacy:
         legacy = payload["legacy_amplicol"]
@@ -861,6 +866,7 @@ def _ensure_venv(runner: Runner, payload: dict[str, Any]) -> None:
         "mypy>=1.13,<2",
         "pytest>=8.3,<9",
         "ruff>=0.9,<1",
+        "setuptools>=68,<81",
         "twine>=6,<7",
         "wheel>=0.45,<1",
     ]
@@ -949,6 +955,152 @@ def _verify_candidate_python_dependencies(
     )
 
 
+def _materialize_ratatui_sdist(
+    runner: Runner,
+    payload: dict[str, Any],
+) -> Path:
+    ratatui = payload["ratatui"]
+    version = str(ratatui["version"])
+    source_url = str(ratatui["source_url"])
+    expected_sha256 = str(ratatui["sdist_sha256"])
+    if _SHA256_PATTERN.fullmatch(expected_sha256) is None:
+        raise SetupError("contributor lock has no valid Ratatui sdist SHA-256")
+    destination = WHEELHOUSE / "ratatui" / f"ratatui-{version}.tar.gz"
+    if runner.dry_run:
+        print(
+            f"# download and verify Ratatui {version} from {source_url} "
+            f"at sha256:{expected_sha256}"
+        )
+        return destination
+    if destination.is_file():
+        actual_sha256 = hashlib.sha256(destination.read_bytes()).hexdigest()
+        if actual_sha256 != expected_sha256:
+            raise SetupError(
+                "cached Ratatui sdist digest mismatch: "
+                f"expected {expected_sha256}, got {actual_sha256}; "
+                "rerun with --reset"
+            )
+        return destination
+    if destination.exists():
+        raise SetupError(f"invalid managed Ratatui sdist at {destination}")
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        prefix=f".ratatui-{version}-",
+        suffix=".tar.gz",
+        dir=destination.parent,
+        delete=False,
+    ) as temporary:
+        temporary_path = Path(temporary.name)
+        digest = hashlib.sha256()
+        try:
+            with urllib.request.urlopen(source_url) as response:
+                while block := response.read(1024 * 1024):
+                    digest.update(block)
+                    temporary.write(block)
+        except Exception:
+            temporary_path.unlink(missing_ok=True)
+            raise
+    actual_sha256 = digest.hexdigest()
+    if actual_sha256 != expected_sha256:
+        temporary_path.unlink(missing_ok=True)
+        raise SetupError(
+            "Ratatui sdist digest mismatch: "
+            f"expected {expected_sha256}, got {actual_sha256}"
+        )
+    os.replace(temporary_path, destination)
+    return destination
+
+
+def _build_ratatui_wheel(
+    runner: Runner,
+    payload: dict[str, Any],
+) -> None:
+    """Build the pinned contributor-only Ratatui wheel from pinned FFI source."""
+
+    ratatui = payload["ratatui"]
+    version = str(ratatui["version"])
+    ffi_revision = str(ratatui["ffi_revision"])
+    if re.fullmatch(r"[0-9a-f]{40}", ffi_revision) is None:
+        raise SetupError("contributor lock has no valid Ratatui FFI revision")
+    sdist = _materialize_ratatui_sdist(runner, payload)
+    python = _venv_python()
+    wheel_directory = WHEELHOUSE / "ratatui"
+    ffi_source = CHECKOUTS / "ratatui-ffi"
+    if not runner.dry_run:
+        if not ffi_source.is_dir():
+            raise SetupError(f"missing managed Ratatui FFI source at {ffi_source}")
+        _archive_candidate_wheels(wheel_directory, "ratatui")
+    with tempfile.TemporaryDirectory(
+        prefix="pyamplicol-ratatui-ffi-",
+    ) as temporary_name:
+        external_ffi_source = Path(temporary_name) / "ratatui-ffi"
+        if not runner.dry_run:
+            # A checkout nested below pyAmpliCol is discovered as part of its
+            # parent Cargo workspace.  Build from an exact external copy so
+            # ratatui-ffi remains its own workspace without editing either
+            # pinned source tree.
+            shutil.copytree(
+                ffi_source,
+                external_ffi_source,
+                ignore=shutil.ignore_patterns(".git", "target"),
+            )
+        environment = dict(
+            _venv_environment(),
+            RATATUI_FFI_SRC=str(external_ffi_source.resolve()),
+            # Keep the exact revision visible to the upstream build even though
+            # RATATUI_FFI_SRC takes precedence and prevents its fallback clone.
+            RATATUI_FFI_TAG=ffi_revision,
+        )
+        runner.run(
+            [
+                python,
+                "-m",
+                "pip",
+                "wheel",
+                "--no-deps",
+                "--no-build-isolation",
+                "--wheel-dir",
+                wheel_directory,
+                sdist,
+            ],
+            env=environment,
+        )
+    if runner.dry_run:
+        return
+    wheel = _single_wheel(wheel_directory, "ratatui")
+    runner.run(
+        [
+            python,
+            "-m",
+            "pip",
+            "install",
+            "--force-reinstall",
+            "--no-deps",
+            wheel,
+        ],
+        env=_venv_environment(),
+    )
+    probe = "\n".join(
+        (
+            "from importlib.metadata import version",
+            "import sys",
+            "import ratatui",
+            "import ratatui_py",
+            'actual = version("ratatui")',
+            "if actual != sys.argv[1]:",
+            "    raise SystemExit(",
+            '        "ratatui version mismatch: expected %s, got %s"',
+            "        % (sys.argv[1], actual)",
+            "    )",
+        )
+    )
+    runner.run(
+        [python, "-I", "-c", probe, version],
+        env=_venv_environment(),
+    )
+
+
 def _build_candidate_dependency_wheels(
     runner: Runner,
     payload: dict[str, Any],
@@ -989,6 +1141,7 @@ def _build_candidate_dependency_wheels(
             env=environment,
         )
         _verify_candidate_python_dependencies(runner, payload)
+    _build_ratatui_wheel(runner, payload)
 
 
 def _build_candidate_project_wheel(runner: Runner) -> None:

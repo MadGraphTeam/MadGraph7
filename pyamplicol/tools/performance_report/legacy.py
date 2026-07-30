@@ -70,6 +70,7 @@ class LegacySettings:
     maximum_profile_chunks: int = DEFAULT_MAX_PROFILE_CHUNKS
     jobs: int = 1
     repository: Path | None = None
+    validate_checkout: bool = True
 
     def __post_init__(self) -> None:
         if self.target_runtime_seconds <= 0.0:
@@ -82,13 +83,11 @@ class LegacySettings:
             raise ValueError("maximum_points must not be below minimum_points")
         if self.minimum_profile_chunks < DEFAULT_MIN_PROFILE_CHUNKS:
             raise ValueError(
-                "minimum_profile_chunks must be at least "
-                f"{DEFAULT_MIN_PROFILE_CHUNKS}"
+                f"minimum_profile_chunks must be at least {DEFAULT_MIN_PROFILE_CHUNKS}"
             )
         if self.maximum_profile_chunks < self.minimum_profile_chunks:
             raise ValueError(
-                "maximum_profile_chunks must not be below "
-                "minimum_profile_chunks"
+                "maximum_profile_chunks must not be below minimum_profile_chunks"
             )
         if self.jobs < 1:
             raise ValueError("jobs must be positive")
@@ -139,11 +138,7 @@ class SubprocessExecutor:
         completed = subprocess.run(
             rendered,
             cwd=cwd,
-            env=(
-                None
-                if environment is None
-                else {**os.environ, **dict(environment)}
-            ),
+            env=(None if environment is None else {**os.environ, **dict(environment)}),
             capture_output=True,
             check=False,
             text=True,
@@ -426,9 +421,7 @@ def _profile_rate_uncertainty(
     rates = tuple(chunk.seconds / chunk.points for chunk in chunks)
     mean_rate = statistics.fmean(rates)
     standard_error = statistics.stdev(rates) / math.sqrt(len(rates))
-    relative_standard_error = (
-        standard_error / mean_rate if mean_rate > 0.0 else 0.0
-    )
+    relative_standard_error = standard_error / mean_rate if mean_rate > 0.0 else 0.0
     return standard_error, relative_standard_error
 
 
@@ -475,13 +468,9 @@ def _colored_roles(
         if not 1 <= absolute <= 6:
             continue
         outgoing_pdg = (
-            -int(physical_pdg)
-            if label <= initial_state_count
-            else int(physical_pdg)
+            -int(physical_pdg) if label <= initial_state_count else int(physical_pdg)
         )
-        roles[label] = (
-            "fundamental" if outgoing_pdg > 0 else "antifundamental"
-        )
+        roles[label] = "fundamental" if outgoing_pdg > 0 else "antifundamental"
     return roles
 
 
@@ -597,9 +586,7 @@ def adaptive_profile_points(
         raise ValueError("maximum_points must not be below minimum_points")
     if not math.isfinite(warmup_seconds) or warmup_seconds <= 0.0:
         return minimum_points
-    estimate = math.ceil(
-        float(target_runtime_seconds) * warmup_points / warmup_seconds
-    )
+    estimate = math.ceil(float(target_runtime_seconds) * warmup_points / warmup_seconds)
     return max(minimum_points, min(maximum_points, int(estimate)))
 
 
@@ -673,9 +660,7 @@ def _preferred_helicities(pdg: int) -> tuple[int, ...]:
 
 def _fixed_helicity(pdgs: Sequence[int]) -> tuple[int, ...]:
     result: list[int] = []
-    charged_current_fermions = any(
-        abs(int(pdg)) in {12, 14, 16} for pdg in pdgs
-    )
+    charged_current_fermions = any(abs(int(pdg)) in {12, 14, 16} for pdg in pdgs)
     for index, pdg in enumerate(pdgs, start=1):
         domain = _preferred_helicities(pdg)
         if -1 in domain and 1 in domain:
@@ -825,25 +810,32 @@ class LegacyMeasurementAdapter:
             return result
 
         repository = settings.repository or self.api.default_repository
-        self.api.validate_checkout(repository)
-        artifact_path.mkdir(parents=True, exist_ok=True)
-        instrumentation_context: Any = nullcontext(None)
+        repository_context: Any = nullcontext()
         if self.structural_proof:
-            from .legacy_structure import instrument_legacy_structural_probes
+            from .legacy_structure import legacy_structural_probe_lock
 
-            instrumentation_context = instrument_legacy_structural_probes(
-                repository,
-                artifact_path,
-            )
-        with instrumentation_context as instrumentation:
-            return self._measure_supported(
-                cell,
-                repository=repository,
-                artifact_path=artifact_path,
-                settings=settings,
-                instrumentation=instrumentation,
-                phase_reporter=phase_reporter,
-            )
+            repository_context = legacy_structural_probe_lock(repository)
+        with repository_context:
+            if settings.validate_checkout:
+                self.api.validate_checkout(repository)
+            artifact_path.mkdir(parents=True, exist_ok=True)
+            instrumentation_context: Any = nullcontext(None)
+            if self.structural_proof:
+                from .legacy_structure import instrument_legacy_structural_probes
+
+                instrumentation_context = instrument_legacy_structural_probes(
+                    repository,
+                    artifact_path,
+                )
+            with instrumentation_context as instrumentation:
+                return self._measure_supported(
+                    cell,
+                    repository=repository,
+                    artifact_path=artifact_path,
+                    settings=settings,
+                    instrumentation=instrumentation,
+                    phase_reporter=phase_reporter,
+                )
 
     def _measure_supported(
         self,
@@ -904,8 +896,7 @@ class LegacyMeasurementAdapter:
             raise LegacyAdapterError("NLC/full AmpliCol cells must be contracted")
 
         process_row = (
-            f"group:{int(context.entry.group)}:"
-            f"integral:{int(context.entry.integral)}"
+            f"group:{int(context.entry.group)}:integral:{int(context.entry.integral)}"
         )
         result["artifact"] = {
             "path": os.fspath(artifact_path),
@@ -946,9 +937,7 @@ class LegacyMeasurementAdapter:
             "peak_rss_gib": None,
         }
         try:
-            compiler = _compiler_payload(
-                self.api.compiler_provenance(repository)
-            )
+            compiler = _compiler_payload(self.api.compiler_provenance(repository))
         except Exception as error:
             compiler = {
                 "status": "unavailable",
@@ -1015,9 +1004,7 @@ class LegacyMeasurementAdapter:
             )
         helicities = tuple(
             value
-            for _label, value in (
-                context.selector_contract.all_flow_source_helicities
-            )
+            for _label, value in (context.selector_contract.all_flow_source_helicities)
         )
         started = time.perf_counter()
         probe = self.api.run_color_probe(
@@ -1095,8 +1082,7 @@ class LegacyMeasurementAdapter:
                     "direct LC probe emitted an invalid row permutation"
                 )
             source_word = tuple(
-                source_to_row[position - 1] + 1
-                for position in raw_permutation
+                source_to_row[position - 1] + 1 for position in raw_permutation
             )
             if source_word in seen_words:
                 raise LegacyAdapterError(
@@ -1134,9 +1120,7 @@ class LegacyMeasurementAdapter:
             or not isinstance(raw_aggregate, (int, float))
             or not math.isfinite(float(raw_aggregate))
         ):
-            raise LegacyAdapterError(
-                "direct LC probe aggregate evidence is not finite"
-            )
+            raise LegacyAdapterError("direct LC probe aggregate evidence is not finite")
         resolved_sum = math.fsum(resolved_values)
         if not math.isclose(
             resolved_sum,
@@ -1166,9 +1150,7 @@ class LegacyMeasurementAdapter:
             or not isinstance(raw_value, (int, float))
             or not math.isfinite(float(raw_value))
         ):
-            raise LegacyAdapterError(
-                "direct LC probe selected row has no finite value"
-            )
+            raise LegacyAdapterError("direct LC probe selected row has no finite value")
         return legacy_lc_common_component(
             cell,
             context.selector_contract,
@@ -1248,8 +1230,7 @@ class LegacyMeasurementAdapter:
             selected_color_words=(color_word,),
             all_flow_helicity_ids=(_helicity_id(helicities),),
             all_flow_source_helicities=tuple(
-                (index, value)
-                for index, value in enumerate(helicities, start=1)
+                (index, value) for index, value in enumerate(helicities, start=1)
             ),
             point_digest=point_digest(points),
         )
@@ -1288,9 +1269,7 @@ class LegacyMeasurementAdapter:
         )
         started_index = len(commands)
         generation_context = (
-            nullcontext()
-            if phase_reporter is None
-            else phase_reporter.generation()
+            nullcontext() if phase_reporter is None else phase_reporter.generation()
         )
         with generation_context:
             momenta_directory = repository / "Utilities" / "ME_checks"
@@ -1302,8 +1281,7 @@ class LegacyMeasurementAdapter:
                     context.momenta,
                 )
                 momenta_path = (
-                    momenta_directory
-                    / f"momenta_{entry.group}_{entry.integral}.txt"
+                    momenta_directory / f"momenta_{entry.group}_{entry.integral}.txt"
                 )
                 momenta_path.write_text(
                     "\n".join(
@@ -1337,8 +1315,7 @@ class LegacyMeasurementAdapter:
                         log_path=log_path,
                     )
         return math.fsum(
-            float(record["elapsed_seconds"])
-            for record in commands[started_index:]
+            float(record["elapsed_seconds"]) for record in commands[started_index:]
         )
 
     def _measure_selected_flow(
@@ -1438,9 +1415,7 @@ class LegacyMeasurementAdapter:
         )
         helicities = tuple(
             value
-            for _label, value in (
-                context.selector_contract.all_flow_source_helicities
-            )
+            for _label, value in (context.selector_contract.all_flow_source_helicities)
         )
         with tempfile.TemporaryDirectory(prefix="pac-", dir="/tmp") as raw:
             work = Path(raw)
@@ -1803,9 +1778,7 @@ class LegacyMeasurementAdapter:
                 "direct three-quark-line probe did not report generation setup"
             )
         if generation_probe is None:
-            raise LegacyAdapterError(
-                "direct three-quark-line probe emitted no value"
-            )
+            raise LegacyAdapterError("direct three-quark-line probe emitted no value")
         return self._success_measurement(
             generation_seconds=generation_seconds,
             profile=profile,
@@ -1820,9 +1793,7 @@ class LegacyMeasurementAdapter:
         settings: LegacySettings,
         timing_labels: Sequence[str],
     ) -> ProfileResult:
-        warmup_result, warmup_rows, _warmup_probe = invoke(
-            settings.warmup_points
-        )
+        warmup_result, warmup_rows, _warmup_probe = invoke(settings.warmup_points)
         warmup_seconds = _timing_seconds(warmup_rows, *timing_labels)
         if warmup_seconds is None or warmup_seconds <= 0.0:
             warmup_seconds = warmup_result.elapsed_seconds
@@ -1831,8 +1802,7 @@ class LegacyMeasurementAdapter:
         points = adaptive_profile_points(
             warmup_seconds,
             target_runtime_seconds=(
-                settings.target_runtime_seconds
-                / settings.minimum_profile_chunks
+                settings.target_runtime_seconds / settings.minimum_profile_chunks
             ),
             warmup_points=settings.warmup_points,
             minimum_points=settings.minimum_points,
@@ -1857,18 +1827,10 @@ class LegacyMeasurementAdapter:
                     probe,
                 )
             )
-            measured_seconds = math.fsum(
-                chunk.seconds for chunk in chunks
-            )
-            minimum_complete = (
-                len(chunks) >= settings.minimum_profile_chunks
-            )
-            target_complete = (
-                measured_seconds >= settings.target_runtime_seconds
-            )
-            standard_error, relative_standard_error = (
-                _profile_rate_uncertainty(chunks)
-            )
+            measured_seconds = math.fsum(chunk.seconds for chunk in chunks)
+            minimum_complete = len(chunks) >= settings.minimum_profile_chunks
+            target_complete = measured_seconds >= settings.target_runtime_seconds
+            standard_error, relative_standard_error = _profile_rate_uncertainty(chunks)
             uncertainty_complete = (
                 math.isfinite(standard_error)
                 and standard_error > 0.0
@@ -1904,9 +1866,7 @@ class LegacyMeasurementAdapter:
             raise LegacyAdapterError(
                 "legacy timing completed without reaching its target runtime"
             )
-        standard_error, relative_standard_error = _profile_rate_uncertainty(
-            chunks
-        )
+        standard_error, relative_standard_error = _profile_rate_uncertainty(chunks)
         representative = chunks[0]
         final = chunks[-1]
         return ProfileResult(
@@ -1991,9 +1951,7 @@ class LegacyMeasurementAdapter:
         """
 
         generation_context = (
-            nullcontext()
-            if phase_reporter is None
-            else phase_reporter.generation()
+            nullcontext() if phase_reporter is None else phase_reporter.generation()
         )
         with generation_context:
             return self._invoke_probe_command(

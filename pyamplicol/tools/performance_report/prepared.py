@@ -13,12 +13,16 @@ import uuid
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from pyamplicol.reporting import ProgressSink
 
 from .artifacts import ArtifactStore
 from .models import ModelKey
 
 PREPARED_RECORD_SCHEMA = "pyamplicol-report-prepared-model-v1"
+PUBLIC_MODEL_COMPILE_COMMAND_PATH = "pyamplicol-model-compile-parse-resolve-dispatch-v1"
 
 
 class PreparedModelError(RuntimeError):
@@ -35,6 +39,108 @@ class CompilableModelSource(Protocol):
         prepared_output: os.PathLike[str] | str | None = None,
         evaluator: object | None = None,
     ) -> object: ...
+
+
+class _PublicCliModelCompiler:
+    """Compile a report bundle through the real public model CLI path."""
+
+    command_path = PUBLIC_MODEL_COMPILE_COMMAND_PATH
+
+    def __init__(self, source: str, *, progress: ProgressSink | None = None) -> None:
+        self.source = source
+        self.progress = progress
+
+    def compile(
+        self,
+        *,
+        cache_dir: os.PathLike[str] | str | None = None,
+        use_cache: bool = True,
+        require_supported: bool = True,
+        prepared_output: os.PathLike[str] | str | None = None,
+        evaluator: object | None = None,
+    ) -> object:
+        if not require_supported:
+            raise PreparedModelError(
+                "report prepared-model compilation must require supported models"
+            )
+        if prepared_output is None or evaluator is None:
+            raise PreparedModelError(
+                "public model compilation requires an output and evaluator"
+            )
+
+        from pyamplicol.cli import CliInvocation, parse_cli
+        from pyamplicol.cli.handlers import DefaultCliServices, dispatch
+        from pyamplicol.reporting import NullProgressSink
+
+        output = Path(prepared_output).expanduser().resolve(strict=False)
+        backend = getattr(getattr(evaluator, "backend", None), "value", None)
+        execution_mode = getattr(
+            getattr(evaluator, "execution_mode", None),
+            "value",
+            None,
+        )
+        optimization = getattr(evaluator, "optimization", None)
+        cores = getattr(optimization, "cores", None)
+        jit = getattr(evaluator, "jit", None)
+        optimization_level = getattr(jit, "optimization_level", None)
+        if (
+            backend != "jit"
+            or execution_mode not in {"compiled", "eager", "recurrence"}
+            or isinstance(cores, bool)
+            or not isinstance(cores, int)
+            or cores < 1
+            or isinstance(optimization_level, bool)
+            or not isinstance(optimization_level, int)
+        ):
+            raise PreparedModelError(
+                "report prepared-model CLI requires a concrete JIT evaluator"
+            )
+        arguments = [
+            "model",
+            "compile",
+            self.source,
+            os.fspath(output),
+            "--backend",
+            backend,
+            "--cores",
+            str(cores),
+            "--jit-optimization-level",
+            str(optimization_level),
+            "--set",
+            f"evaluator.execution_mode={execution_mode}",
+            "--model-cache" if use_cache else "--no-model-cache",
+        ]
+        if cache_dir is not None:
+            arguments.extend(("--model-cache-dir", os.fspath(cache_dir)))
+        invocation = parse_cli(tuple(arguments))
+        if not isinstance(invocation, CliInvocation):
+            raise PreparedModelError(
+                "public model compile parser returned a non-command invocation"
+            )
+        resolution = invocation.resolve()
+        if resolution.effective.evaluator != evaluator:
+            raise PreparedModelError(
+                "public model compile arguments changed the report evaluator settings"
+            )
+        result = dispatch(
+            resolution.effective,
+            DefaultCliServices(resolution=resolution),
+            self.progress or NullProgressSink(),
+            dry_run=invocation.dry_run,
+        )
+        if not isinstance(result, Mapping):
+            raise PreparedModelError(
+                "public model compile returned a non-object result"
+            )
+        raw_output = result.get("output")
+        if (
+            not isinstance(raw_output, str)
+            or Path(raw_output).expanduser().resolve(strict=False) != output
+        ):
+            raise PreparedModelError(
+                "public model compile did not publish the requested bundle"
+            )
+        return result
 
 
 def _sha256(path: Path) -> str:
@@ -146,9 +252,9 @@ def ensure_prepared_model(
 ) -> Iterator[tuple[Path, bool]]:
     """Create one prepared bundle atomically or reuse its validated record."""
 
-    lock_name = "prepared-" + hashlib.sha256(
-        _canonical_bytes(dict(identity))
-    ).hexdigest()
+    lock_name = (
+        "prepared-" + hashlib.sha256(_canonical_bytes(dict(identity))).hexdigest()
+    )
     with store.named_lock(lock_name):
         try:
             validate_prepared_record(bundle_path, expected_identity=identity)
@@ -156,8 +262,7 @@ def ensure_prepared_model(
             reused = False
             bundle_path.parent.mkdir(parents=True, exist_ok=True)
             staging = bundle_path.with_name(
-                f".{bundle_path.stem}.{uuid.uuid4().hex}.staging"
-                ".pyamplicol-model"
+                f".{bundle_path.stem}.{uuid.uuid4().hex}.staging.pyamplicol-model"
             )
             try:
                 source.compile(
@@ -181,6 +286,14 @@ def ensure_prepared_model(
                         "identity": dict(identity),
                         "bundle_sha256": digest,
                         "bundle_size": size,
+                        **(
+                            {"command_path": command_path}
+                            if isinstance(
+                                command_path := getattr(source, "command_path", None),
+                                str,
+                            )
+                            else {}
+                        ),
                     },
                 )
                 validate_prepared_record(
@@ -213,10 +326,11 @@ def ensure_report_prepared_model(
     repo_root: Path,
     worker_cores: int,
     model: ModelKey,
+    producer_revision: str | None = None,
+    progress: ProgressSink | None = None,
 ) -> tuple[Path, bool]:
     """Create or reuse one portable report JIT O2 prepared bundle."""
 
-    from pyamplicol.api import ModelSource
     from pyamplicol.config import (
         EvaluatorBackend,
         EvaluatorConfig,
@@ -225,19 +339,21 @@ def ensure_report_prepared_model(
         JITConfig,
     )
 
-    revision = _git_revision(repo_root)
+    revision = (
+        producer_revision if producer_revision is not None else _git_revision(repo_root)
+    )
+    if not revision:
+        raise ValueError("producer_revision must not be empty")
     if model is ModelKey.BUILTIN_SM:
         source_path = None
-        source = ModelSource.built_in_sm()
-        digest = hashlib.sha256(
-            f"built-in-sm:{revision}".encode("ascii")
-        ).hexdigest()
+        source = _PublicCliModelCompiler("built-in-sm", progress=progress)
+        digest = hashlib.sha256(f"built-in-sm:{revision}".encode("ascii")).hexdigest()
         stem = "built-in-sm"
     elif model is ModelKey.UFO_SM:
         source_path = (
             repo_root / "src/pyamplicol/assets/models/json/sm/sm.json"
         ).resolve()
-        source = ModelSource.from_path(source_path)
+        source = _PublicCliModelCompiler(os.fspath(source_path), progress=progress)
         digest = _sha256(source_path)
         stem = "ufo-sm"
     else:
@@ -249,9 +365,7 @@ def ensure_report_prepared_model(
         source_digest=digest,
         producer_revision=revision,
     )
-    identity_digest = hashlib.sha256(
-        _canonical_bytes(identity)
-    ).hexdigest()[:20]
+    identity_digest = hashlib.sha256(_canonical_bytes(identity)).hexdigest()[:20]
     bundle_path = (
         store.artifact_root
         / "prepared-models"
@@ -290,6 +404,7 @@ def ensure_report_ufo_sm_prepared_model(
 
 __all__ = [
     "PREPARED_RECORD_SCHEMA",
+    "PUBLIC_MODEL_COMPILE_COMMAND_PATH",
     "PreparedModelError",
     "ensure_prepared_model",
     "ensure_report_prepared_model",

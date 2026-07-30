@@ -104,12 +104,24 @@ class ResourceUsage:
 
 TerminationReason = Literal[
     "completed",
+    "cancelled",
     "timeout",
     "generation_timeout",
     "memory_limit",
     "memory_probe_error",
     "phase_state_error",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerObservation:
+    """One non-authoritative live sample for dashboards and logs."""
+
+    pid: int
+    usage: ResourceUsage
+    phase: str | None
+    phase_sequence: int | None
+    member_pids: tuple[int, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,6 +194,8 @@ PopenFactory = Callable[..., WorkerProcess]
 Clock = Callable[[], float]
 Sleeper = Callable[[float], None]
 TreeSignaler = Callable[[int, Collection[int], int], None]
+ObservationCallback = Callable[[WorkerObservation], None]
+CancellationCheck = Callable[[], bool]
 
 
 def _parse_proc_stat(text: str, *, clock_ticks_per_second: int) -> tuple[int, float]:
@@ -236,6 +250,60 @@ def _parse_ps_output(text: str) -> dict[int, ProcessRecord]:
             pid=pid,
             ppid=ppid,
             rss_bytes=rss_kib * 1024,
+        )
+    return records
+
+
+def _parse_ps_cpu_time(value: str) -> float:
+    """Parse BSD ``ps time=`` as cumulative CPU seconds."""
+
+    raw = value.strip()
+    if not raw:
+        raise ValueError("empty ps CPU time")
+    days = 0
+    if "-" in raw:
+        raw_days, raw = raw.split("-", 1)
+        days = int(raw_days)
+    fields = raw.split(":")
+    if len(fields) == 2:
+        hours = 0
+        minutes = int(fields[0])
+        seconds = float(fields[1])
+    elif len(fields) == 3:
+        hours = int(fields[0])
+        minutes = int(fields[1])
+        seconds = float(fields[2])
+    else:
+        raise ValueError(f"invalid ps CPU time: {value!r}")
+    if (
+        min(days, hours, minutes) < 0
+        or not math.isfinite(seconds)
+        or seconds < 0.0
+        or seconds >= 60.0
+        or (len(fields) == 3 and minutes >= 60)
+    ):
+        raise ValueError(f"invalid ps CPU time: {value!r}")
+    return days * 86_400.0 + hours * 3_600.0 + minutes * 60.0 + seconds
+
+
+def _parse_darwin_ps_output(text: str) -> dict[int, ProcessRecord]:
+    """Parse Darwin process rows including truthful cumulative CPU time."""
+
+    records: dict[int, ProcessRecord] = {}
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if not line.strip():
+            continue
+        fields = line.split()
+        if len(fields) != 4:
+            raise ValueError(f"invalid Darwin ps row {line_number}: {line!r}")
+        pid, ppid, rss_kib = map(int, fields[:3])
+        if min(pid, ppid, rss_kib) < 0:
+            raise ValueError(f"negative Darwin ps value on row {line_number}")
+        records[pid] = ProcessRecord(
+            pid=pid,
+            ppid=ppid,
+            rss_bytes=rss_kib * 1024,
+            cpu_seconds=_parse_ps_cpu_time(fields[3]),
         )
     return records
 
@@ -315,6 +383,23 @@ def _ps_snapshot(*, runner: PsRunner = _default_ps_runner) -> dict[int, ProcessR
     return records
 
 
+def _darwin_ps_snapshot(
+    *,
+    runner: PsRunner = _default_ps_runner,
+) -> dict[int, ProcessRecord]:
+    completed = runner(("ps", "-axo", "pid=,ppid=,rss=,time="))
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or f"exit code {completed.returncode}"
+        raise ResourceProbeError(f"Darwin ps process probe failed: {detail}")
+    try:
+        records = _parse_darwin_ps_output(completed.stdout)
+    except ValueError as error:
+        raise ResourceProbeError(str(error)) from error
+    if not records:
+        raise ResourceProbeError("Darwin ps process probe yielded no records")
+    return records
+
+
 def process_snapshot(
     system: str | None = None,
     *,
@@ -330,7 +415,7 @@ def process_snapshot(
         except ResourceProbeError:
             return _ps_snapshot(runner=ps_runner)
     if host == "Darwin":
-        return _ps_snapshot(runner=ps_runner)
+        return _darwin_ps_snapshot(runner=ps_runner)
     raise ResourceProbeError(f"unsupported host for resource monitoring: {host!r}")
 
 
@@ -383,7 +468,9 @@ class ProcessTreeSampler:
         return ProcessTreeSample(
             rss_bytes=rss_bytes,
             child_count=max(len(members) - (self.root_pid in selected), 0),
-            cpu_seconds=sum(cpu_values) if cpu_values else None,
+            cpu_seconds=(
+                sum(cpu_values) if members and len(cpu_values) == len(members) else None
+            ),
             member_pids=members,
             physical_footprint_bytes=physical_footprint_bytes,
             guard_bytes=max(
@@ -601,8 +688,7 @@ def _worker_environment(
                     or name.startswith("PYTHON")
                     or (
                         name.startswith("PYAMPLICOL")
-                        and name
-                        not in _EXPLICIT_PYAMPLICOL_WORKER_CONTROLS
+                        and name not in _EXPLICIT_PYAMPLICOL_WORKER_CONTROLS
                     )
                 )
             )
@@ -662,6 +748,8 @@ def supervise_worker(
     clock: Clock = time.monotonic,
     sleeper: Sleeper = time.sleep,
     signaler: TreeSignaler = _signal_process_tree,
+    observation_callback: ObservationCallback | None = None,
+    cancellation_requested: CancellationCheck | None = None,
 ) -> SupervisedResult:
     """Run a worker and enforce wall, generation-only, and memory limits.
 
@@ -807,6 +895,9 @@ def supervise_worker(
 
     try:
         while True:
+            if cancellation_requested is not None and cancellation_requested():
+                terminate("cancelled")
+                break
             if pending_memory_probe_reason is not None:
                 returncode = process.poll()
                 if returncode is not None:
@@ -815,6 +906,21 @@ def supervise_worker(
 
             usage = monitor.sample_once()
             now_seconds = clock()
+            if observation_callback is not None:
+                # Monitoring is deliberately informational. A broken
+                # dashboard must never invalidate a measurement.
+                with suppress(Exception):
+                    observation_callback(
+                        WorkerObservation(
+                            pid=process.pid,
+                            usage=usage,
+                            phase=(None if phase_state is None else phase_state.phase),
+                            phase_sequence=(
+                                None if phase_state is None else phase_state.sequence
+                            ),
+                            member_pids=monitor.member_pids,
+                        )
+                    )
             if max_rss_bytes is not None and usage.memory_probe_reason is not None:
                 consecutive_memory_probe_failures += 1
                 pending_memory_probe_reason = usage.memory_probe_reason
@@ -953,6 +1059,7 @@ __all__ = [
     "ResourceProbeError",
     "ResourceUsage",
     "SupervisedResult",
+    "WorkerObservation",
     "process_snapshot",
     "supervise_worker",
 ]

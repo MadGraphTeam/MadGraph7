@@ -5,11 +5,18 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
+import threading
+import time
 import traceback
 from collections.abc import Mapping, Sequence
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pyamplicol.reporting import ProgressEvent, ProgressSink
 
 from .agreements import attach_direct_agreements
 from .catalog import REPORT_CATALOG, ReportCatalog
@@ -22,8 +29,95 @@ from .measurement import (
 from .models import ExecutionMode, ResultStatus
 from .phase_state import WorkerPhaseChannel, WorkerPhaseReporter
 from .runner import RunnerSettings
-from .source_identity import require_eligible_report_source
+from .source_identity import ReportSourceIdentity, require_eligible_report_source
 from .worker_harness import attach_worker_harness_identity
+
+_GIT_OBJECT_ID = re.compile(r"^[0-9a-fA-F]{40}$")
+
+
+class _JsonlProgressSink:
+    """Thread-safe, append-only typed progress capture for dashboard readers."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path.expanduser().resolve(strict=False)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+
+    def emit(self, event: ProgressEvent) -> None:
+        from pyamplicol.reporting import ProgressEnd, ProgressStart, ProgressUpdate
+
+        payload: dict[str, object] = {
+            "timestamp_unix": time.time(),
+            "pid": os.getpid(),
+            "task_id": event.task_id,
+        }
+        if isinstance(event, ProgressStart):
+            payload.update(
+                {
+                    "event": "start",
+                    "description": event.description,
+                    "total": event.total,
+                    "parent_task_id": event.parent_task_id,
+                    "unit": event.unit,
+                    "details": dict(event.details),
+                }
+            )
+        elif isinstance(event, ProgressUpdate):
+            payload.update(
+                {
+                    "event": "update",
+                    "completed": event.completed,
+                    "total": event.total,
+                    "message": event.message,
+                    "details": dict(event.details),
+                }
+            )
+        elif isinstance(event, ProgressEnd):
+            payload.update(
+                {
+                    "event": "end",
+                    "success": event.success,
+                    "message": event.message,
+                    "elapsed_seconds": event.elapsed_seconds,
+                    "details": dict(event.details),
+                }
+            )
+        else:  # pragma: no cover - ProgressEvent is a closed typed union.
+            raise TypeError(f"unsupported progress event: {type(event).__name__}")
+        encoded = (
+            json.dumps(
+                payload,
+                allow_nan=False,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            + "\n"
+        ).encode("ascii")
+        flags = os.O_APPEND | os.O_CREAT | os.O_WRONLY | getattr(os, "O_CLOEXEC", 0)
+        with self._lock:
+            descriptor = os.open(self.path, flags, 0o600)
+            try:
+                os.write(descriptor, encoded)
+            finally:
+                os.close(descriptor)
+
+
+def _source_identity(
+    repo_root: Path,
+    revision: str | None,
+    tree: str | None,
+) -> ReportSourceIdentity:
+    if (revision is None) != (tree is None):
+        raise ValueError("manual source revision and tree must be specified together")
+    if revision is None:
+        return require_eligible_report_source(repo_root)
+    assert tree is not None
+    if _GIT_OBJECT_ID.fullmatch(revision) is None:
+        raise ValueError("manual source revision must be a 40-digit hexadecimal ID")
+    if _GIT_OBJECT_ID.fullmatch(tree) is None:
+        raise ValueError("manual source tree must be a 40-digit hexadecimal ID")
+    return ReportSourceIdentity(revision.lower(), tree.lower(), ())
 
 
 def _atomic_json(path: Path, payload: Mapping[str, object]) -> None:
@@ -60,6 +154,11 @@ def measure_cell(
     target_runtime_seconds: float,
     batch_size: int,
     worker_cores: int,
+    warmup_runs: int = 2,
+    minimum_samples: int = 5,
+    progress_jsonl: Path | None = None,
+    manual_source_revision: str | None = None,
+    manual_source_tree: str | None = None,
     baseline_json: Path | None = None,
     peer_json: Sequence[tuple[str, Path]] = (),
     prepared_model_path: Path | None = None,
@@ -76,12 +175,16 @@ def measure_cell(
             f"{cell_id}: catalog static N/A cell cannot be measured "
             f"({static_na_reason}: {description})"
         )
-    source_identity = require_eligible_report_source(repo_root)
+    source_identity = _source_identity(
+        repo_root,
+        manual_source_revision,
+        manual_source_tree,
+    )
+    progress: ProgressSink | None = (
+        None if progress_jsonl is None else _JsonlProgressSink(progress_jsonl)
+    )
     baseline = None if baseline_json is None else load_measurement(baseline_json)
-    peers = {
-        peer_cell_id: load_measurement(path)
-        for peer_cell_id, path in peer_json
-    }
+    peers = {peer_cell_id: load_measurement(path) for peer_cell_id, path in peer_json}
     if len(peers) != len(peer_json):
         raise ValueError("direct-agreement peer cell IDs must be unique")
     reused_artifact = (
@@ -101,6 +204,7 @@ def measure_cell(
                 target_runtime_seconds=target_runtime_seconds,
                 jobs=worker_cores,
                 repository=legacy_repository,
+                validate_checkout=manual_source_revision is None,
             ),
             phase_reporter=phase_reporter,
         )
@@ -112,7 +216,13 @@ def measure_cell(
                 target_runtime_seconds=target_runtime_seconds,
                 batch_size=batch_size,
                 worker_cores=worker_cores,
+                warmup_runs=warmup_runs,
+                minimum_samples=minimum_samples,
                 model_cache_dir=attempt_root.parent.parent.parent / "model-cache",
+                progress=progress,
+                source_revision_override=(
+                    None if manual_source_revision is None else source_identity.revision
+                ),
             ),
             repo_root=repo_root,
             baseline=baseline,
@@ -126,11 +236,13 @@ def measure_cell(
         peers,
         catalog=catalog,
     )
-    source_identity_postflight = require_eligible_report_source(repo_root)
+    source_identity_postflight = _source_identity(
+        repo_root,
+        manual_source_revision,
+        manual_source_tree,
+    )
     if source_identity_postflight != source_identity:
-        raise RuntimeError(
-            "report source identity changed during cell measurement"
-        )
+        raise RuntimeError("report source identity changed during cell measurement")
     provenance = result.get("provenance")
     result["provenance"] = {
         **({} if not isinstance(provenance, Mapping) else dict(provenance)),

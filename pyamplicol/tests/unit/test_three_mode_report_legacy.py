@@ -46,7 +46,9 @@ class FakeApi:
         self.entry = FakeEntry(
             process_pdgs=pdgs,
             color_order=(
-                (2, 1, *range(3, len(pdgs) + 1))
+                # Three open strings with any adjoints attached to the final
+                # string: [fundamental, adjoints..., antifundamental].
+                (2, 1, 3, 4, 5, *range(7, len(pdgs) + 1), 6)
                 if len(pdgs) >= 6
                 else (2, 4, 1, 3)
             ),

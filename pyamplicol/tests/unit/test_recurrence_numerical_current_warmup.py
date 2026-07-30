@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import tempfile
 import zlib
 from dataclasses import replace
@@ -57,6 +58,8 @@ from pyamplicol.generation.service import (
     _recurrence_relation_reporting,
 )
 from pyamplicol.generation.validation import ValidationPointRecord
+from pyamplicol.models import BuiltinSMModel
+from pyamplicol.models.builtin.process_ir import build_process_ir
 from pyamplicol.runtime.recurrence_exact._plan import (
     _RecurrenceExactPlan,
     _RuntimeParameterSchemaRow,
@@ -94,6 +97,83 @@ def test_opposite_residual_is_independent_of_ambient_decimal_context() -> None:
         )
 
     assert residuals == (0, 0, 0)
+
+
+@pytest.mark.parametrize(
+    ("process_expression", "process_id"),
+    (
+        ("d d~ > z", "d_dbar_to_z"),
+        ("u d~ > w+", "u_dbar_to_w"),
+    ),
+)
+def test_massive_one_body_recurrence_probe_domains_are_physical_and_distinct(
+    process_expression: str,
+    process_id: str,
+) -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir(process_expression, color_accuracy="full")
+    probes = recurrence_warmup.build_recurrence_numerical_current_probe_points(
+        process,
+        model,
+        process_id=process_id,
+        seed=17,
+        candidate_count=4,
+        verification_count=4,
+    )
+
+    assert probes == (
+        recurrence_warmup.build_recurrence_numerical_current_probe_points(
+            process,
+            model,
+            process_id=process_id,
+            seed=17,
+            candidate_count=4,
+            verification_count=4,
+        )
+    )
+    candidate, verification = probes
+    candidate_hashes = {
+        recurrence_warmup._kinematic_sha256(point) for point in candidate
+    }
+    verification_hashes = {
+        recurrence_warmup._kinematic_sha256(point) for point in verification
+    }
+    assert len(candidate_hashes) == len(candidate)
+    assert len(verification_hashes) == len(verification)
+    assert candidate_hashes.isdisjoint(verification_hashes)
+
+    for point in (*candidate, *verification):
+        assert point.available
+        assert point.process == process_expression
+        assert point.process_id == process_id
+        assert all(
+            math.isfinite(component)
+            for _pdg, momentum in point.particles
+            for component in momentum
+        )
+        incoming = point.four_vectors[:2]
+        outgoing = point.four_vectors[2:]
+        for component in range(4):
+            assert math.isclose(
+                sum(momentum[component] for momentum in incoming),
+                sum(momentum[component] for momentum in outgoing),
+                rel_tol=0.0,
+                abs_tol=1.0e-10,
+            )
+        for pdg, (energy, x_component, y_component, z_component) in point.particles:
+            invariant_mass_squared = (
+                energy * energy
+                - x_component * x_component
+                - y_component * y_component
+                - z_component * z_component
+            )
+            expected_mass_squared = float(model.mass(pdg)) ** 2
+            assert math.isclose(
+                invariant_mass_squared,
+                expected_mass_squared,
+                rel_tol=1.0e-12,
+                abs_tol=1.0e-10,
+            )
 
 
 def _topology_replay_plan() -> _RecurrenceExactPlan:

@@ -7,16 +7,23 @@ import hashlib
 import json
 import math
 import os
+import shutil
 import subprocess
 import sys
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
 from .agreements import incoming_agreement_edges
-from .artifacts import ArtifactAction, ArtifactStore, CurrentRecord
+from .artifacts import (
+    ArtifactAction,
+    ArtifactStore,
+    CurrentRecord,
+    LockCancelledError,
+)
 from .cache import validate_measurement
 from .campaign_policy import (
     MACBOOK_M3_Z_TABLE_F_POLICY,
@@ -30,6 +37,7 @@ from .campaign_policy import (
     dependency_reference,
     generation_limit_for_cell,
     policy_censor_measurement,
+    policy_status_label,
     resource_frontier_reference,
     resource_lane_identity,
     validate_campaign_settings,
@@ -51,13 +59,16 @@ from .models import (
 )
 from .phase_state import WorkerPhaseChannel
 from .resources import (
+    DEFAULT_SAMPLE_INTERVAL_SECONDS,
+    DEFAULT_TERMINATION_GRACE_SECONDS,
     GenerationPhaseEvidence,
     ResourceUsage,
+    WorkerObservation,
     supervise_worker,
 )
 from .runner import DEFAULT_TARGET_RUNTIME_SECONDS
 from .service import CANONICAL_REPORT_ENTRYPOINT, ReportService
-from .source_identity import require_eligible_report_source
+from .source_identity import ReportSourceIdentity, require_eligible_report_source
 from .study_contract import (
     StudyContractError,
     authenticate_z_table_f_study_contract,
@@ -115,6 +126,8 @@ class CampaignSettings:
     cell_cores: int = 1
     target_runtime_seconds: float = DEFAULT_TARGET_RUNTIME_SECONDS
     batch_size: int = 128
+    warmup_runs: int = 2
+    minimum_samples: int = 5
     timeout_seconds: float | None = None
     generation_time_limit_seconds: float | None = None
     max_rss_bytes: int | None = None
@@ -123,6 +136,12 @@ class CampaignSettings:
     missing_only: bool = False
     rerun: bool = False
     allow_symbolica_parallel: bool = False
+    resource_sample_interval_seconds: float = DEFAULT_SAMPLE_INTERVAL_SECONDS
+    termination_grace_seconds: float = DEFAULT_TERMINATION_GRACE_SECONDS
+    source_identity_override: ReportSourceIdentity | None = None
+    progress_observer: Callable[[Mapping[str, object]], None] | None = None
+    cancellation_requested: Callable[[], bool] | None = None
+    manual_terminal_censors: bool = False
     campaign_policy: CampaignPolicy = STRICT_POLICY
     report_profile: str | None = None
     study_contract_sha256: str | None = None
@@ -131,9 +150,29 @@ class CampaignSettings:
     def __post_init__(self) -> None:
         if self.workers < 1 or self.cell_cores < 1:
             raise ValueError("workers and cell_cores must be positive")
-        if self.target_runtime_seconds <= 0.0 or self.batch_size < 1:
+        if (
+            not math.isfinite(self.target_runtime_seconds)
+            or self.target_runtime_seconds <= 0.0
+            or self.batch_size < 1
+        ):
             raise ValueError("target runtime and batch size must be positive")
-        if self.timeout_seconds is not None and self.timeout_seconds <= 0.0:
+        if self.warmup_runs < 0 or self.minimum_samples < 5:
+            raise ValueError("warmups must be non-negative and samples at least five")
+        if (
+            not math.isfinite(self.resource_sample_interval_seconds)
+            or self.resource_sample_interval_seconds <= 0.0
+        ):
+            raise ValueError("resource sample interval must be positive")
+        if (
+            not math.isfinite(self.termination_grace_seconds)
+            or self.termination_grace_seconds < 0.0
+        ):
+            raise ValueError("termination grace must be non-negative")
+        if self.manual_terminal_censors and self.campaign_policy is not STRICT_POLICY:
+            raise ValueError("manual terminal censors require the strict base policy")
+        if self.timeout_seconds is not None and (
+            not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0.0
+        ):
             raise ValueError("timeout_seconds must be positive")
         if self.generation_time_limit_seconds is not None and (
             self.generation_time_limit_seconds <= 0.0
@@ -159,9 +198,7 @@ class CampaignSettings:
             except StudyContractError as error:
                 raise ValueError(str(error)) from error
         elif self.study_contract_sha256 is not None:
-            raise ValueError(
-                "a study contract SHA-256 requires the Z-table F policy"
-            )
+            raise ValueError("a study contract SHA-256 requires the Z-table F policy")
         validate_campaign_settings(self.campaign_policy, self)
 
 
@@ -266,9 +303,7 @@ def _successful_current(
                 expected_study_contract_sha256,
             )
             if expected_worker_harness is None:
-                raise WorkerHarnessError(
-                    "the expected worker harness is unavailable"
-                )
+                raise WorkerHarnessError("the expected worker harness is unavailable")
             require_worker_harness_identity(
                 current.result,
                 expected=expected_worker_harness,
@@ -319,12 +354,34 @@ def _policy_current(
             expected_tree=expected_tree,
             expected_cell=cell,
             measurement_lineage=measurement_lineage,
-            expected_study_contract_sha256=(
-                settings.study_contract_sha256
-            ),
+            expected_study_contract_sha256=(settings.study_contract_sha256),
             expected_worker_harness=expected_worker_harness,
         )
-        return None if current is None else (current, PolicyMeasurementState.SUCCESS)
+        if current is not None:
+            return current, PolicyMeasurementState.SUCCESS
+        if not settings.manual_terminal_censors:
+            return None
+        terminal = store.load_current(cell.cell_id, missing_ok=True)
+        if terminal is None:
+            return None
+        status = terminal.result.get("status")
+        state = {
+            ResultStatus.TIMEOUT.value: PolicyMeasurementState.GENERATION_LIMIT,
+            ResultStatus.MEMORY_LIMIT.value: PolicyMeasurementState.MEMORY_LIMIT,
+        }.get(status)
+        if state is None or policy_status_label(terminal.result) is None:
+            return None
+        provenance = terminal.result.get("provenance")
+        if expected_revision is not None and (
+            not isinstance(provenance, Mapping)
+            or provenance.get("report_source_revision") != expected_revision
+        ):
+            return None
+        try:
+            validate_measurement(terminal.result, expected_cell=cell)
+        except ValueError:
+            return None
+        return terminal, state
     current = store.load_current(cell.cell_id, missing_ok=True)
     if current is None or expected_revision is None:
         return None
@@ -376,9 +433,7 @@ def _policy_current(
                 settings.study_contract_sha256,
             )
             if expected_worker_harness is None:
-                raise WorkerHarnessError(
-                    "the expected worker harness is unavailable"
-                )
+                raise WorkerHarnessError("the expected worker harness is unavailable")
             require_worker_harness_identity(
                 current.result,
                 expected=expected_worker_harness,
@@ -425,6 +480,13 @@ def _resource_frontier_source(
     original_amplicol_seed: OriginalAmplicolSeed | None = None,
     expected_worker_harness: Mapping[str, object] | None = None,
     lane_cells: Sequence[CellSpec] | None = None,
+    current_resolver: (
+        Callable[
+            [CellSpec],
+            tuple[CurrentRecord, PolicyMeasurementState] | None,
+        ]
+        | None
+    ) = None,
 ) -> tuple[CellSpec, CurrentRecord, PolicyMeasurementState] | None:
     """Return the first authenticated lower-multiplicity hard resource censor."""
 
@@ -436,15 +498,19 @@ def _resource_frontier_source(
     for candidate in candidates:
         if candidate.n_final >= cell.n_final or _resource_lane_key(candidate) != lane:
             continue
-        current = _policy_current(
-            store,
-            candidate,
-            settings=settings,
-            expected_revision=expected_revision,
-            expected_tree=expected_tree,
-            measurement_lineage=measurement_lineage,
-            original_amplicol_seed=original_amplicol_seed,
-            expected_worker_harness=expected_worker_harness,
+        current = (
+            current_resolver(candidate)
+            if current_resolver is not None
+            else _policy_current(
+                store,
+                candidate,
+                settings=settings,
+                expected_revision=expected_revision,
+                expected_tree=expected_tree,
+                measurement_lineage=measurement_lineage,
+                original_amplicol_seed=original_amplicol_seed,
+                expected_worker_harness=expected_worker_harness,
+            )
         )
         if current is None:
             continue
@@ -530,9 +596,7 @@ def _fresh_equivalent_current(
             expected_tree=expected_tree,
             expected_cell=equivalent,
             measurement_lineage=measurement_lineage,
-            expected_study_contract_sha256=(
-                expected_study_contract_sha256
-            ),
+            expected_study_contract_sha256=(expected_study_contract_sha256),
             expected_worker_harness=expected_worker_harness,
         )
         if current is not None:
@@ -552,6 +616,13 @@ def plan_campaign(
     original_amplicol_seed: OriginalAmplicolSeed | None = None,
     excluded_cell_ids: frozenset[str] = frozenset(),
     expected_worker_harness: Mapping[str, object] | None = None,
+    current_resolver: (
+        Callable[
+            [CellSpec],
+            tuple[CurrentRecord, PolicyMeasurementState] | None,
+        ]
+        | None
+    ) = None,
 ) -> tuple[PlannedCell, ...]:
     requested_ids = {cell.cell_id for cell in requested}
     needed: dict[str, CellSpec] = {}
@@ -571,6 +642,25 @@ def plan_campaign(
                 _resource_lane_key(catalog_cell),
                 [],
             ).append(catalog_cell)
+
+    def resolve_current(
+        cell: CellSpec,
+        *,
+        comparison_dependency: bool = False,
+    ) -> tuple[CurrentRecord, PolicyMeasurementState] | None:
+        if current_resolver is not None:
+            return current_resolver(cell)
+        return _policy_current(
+            store,
+            cell,
+            settings=settings,
+            expected_revision=expected_revision,
+            expected_tree=expected_tree,
+            measurement_lineage=measurement_lineage,
+            original_amplicol_seed=original_amplicol_seed,
+            expected_worker_harness=expected_worker_harness,
+            comparison_dependency=comparison_dependency,
+        )
 
     def dependencies(cell: CellSpec) -> tuple[CellSpec, ...]:
         baseline = catalog.validation_baseline_cell(cell)
@@ -606,15 +696,8 @@ def plan_campaign(
             blocked = any(
                 blocked_by_exclusion(dependency)
                 for dependency in dependencies(cell)
-                if _policy_current(
-                    store,
+                if resolve_current(
                     dependency,
-                    settings=settings,
-                    expected_revision=expected_revision,
-                    expected_tree=expected_tree,
-                    measurement_lineage=measurement_lineage,
-                    original_amplicol_seed=original_amplicol_seed,
-                    expected_worker_harness=expected_worker_harness,
                     comparison_dependency=True,
                 )
                 is None
@@ -631,15 +714,8 @@ def plan_campaign(
             return
         cell_dependencies = dependencies(cell)
         dependency_currents = {
-            dependency.cell_id: _policy_current(
-                store,
+            dependency.cell_id: resolve_current(
                 dependency,
-                settings=settings,
-                expected_revision=expected_revision,
-                expected_tree=expected_tree,
-                measurement_lineage=measurement_lineage,
-                original_amplicol_seed=original_amplicol_seed,
-                expected_worker_harness=expected_worker_harness,
                 comparison_dependency=True,
             )
             for dependency in cell_dependencies
@@ -661,16 +737,7 @@ def plan_campaign(
                 is not PolicyMeasurementState.SUCCESS
             )
         )
-        current = _policy_current(
-            store,
-            cell,
-            settings=settings,
-            expected_revision=expected_revision,
-            expected_tree=expected_tree,
-            measurement_lineage=measurement_lineage,
-            original_amplicol_seed=original_amplicol_seed,
-            expected_worker_harness=expected_worker_harness,
-        )
+        current = resolve_current(cell)
         frontier_source = _resource_frontier_source(
             store,
             cell,
@@ -682,6 +749,7 @@ def plan_campaign(
             original_amplicol_seed=original_amplicol_seed,
             expected_worker_harness=expected_worker_harness,
             lane_cells=resource_lanes.get(_resource_lane_key(cell), ()),
+            current_resolver=resolve_current,
         )
         expected_frontier = (
             None
@@ -925,7 +993,11 @@ class CampaignScheduler:
         self.service = service
         self.settings = settings
         self.catalog = catalog
-        self.source_identity = require_eligible_report_source(service.paths.repo_root)
+        self.source_identity = (
+            settings.source_identity_override
+            if settings.source_identity_override is not None
+            else require_eligible_report_source(service.paths.repo_root)
+        )
         self.source_revision = self.source_identity.revision
         self.source_tree = self.source_identity.tree
         if settings.campaign_policy is MACBOOK_M3_Z_TABLE_F_POLICY:
@@ -940,10 +1012,7 @@ class CampaignScheduler:
                 study_contract_wrapper_root,
                 prior_store=service.store,
             )
-            if (
-                authenticated_contract.get("sha256")
-                != settings.study_contract_sha256
-            ):
+            if authenticated_contract.get("sha256") != settings.study_contract_sha256:
                 raise StudyContractError(
                     "the Z-table F scheduler contract SHA-256 differs from "
                     "campaign settings"
@@ -955,15 +1024,11 @@ class CampaignScheduler:
                 source_record,
                 Mapping,
             ):
-                raise StudyContractError(
-                    "the Z-table F worker identities are missing"
-                )
-            self.worker_wrapper_root = (
-                study_contract_wrapper_root.expanduser().resolve(strict=True)
+                raise StudyContractError("the Z-table F worker identities are missing")
+            self.worker_wrapper_root = study_contract_wrapper_root.expanduser().resolve(
+                strict=True
             )
-            self.worker_entrypoint = (
-                self.worker_wrapper_root / POLICY_ENTRYPOINT
-            )
+            self.worker_entrypoint = self.worker_wrapper_root / POLICY_ENTRYPOINT
             if (
                 self.worker_entrypoint.is_symlink()
                 or not self.worker_entrypoint.is_file()
@@ -971,8 +1036,8 @@ class CampaignScheduler:
                 raise StudyContractError(
                     "the authenticated policy-wrapper entrypoint is unavailable"
                 )
-            self.worker_harness_identity = (
-                z_table_f_worker_harness_identity(authenticated_contract)
+            self.worker_harness_identity = z_table_f_worker_harness_identity(
+                authenticated_contract
             )
         else:
             if study_contract is not None or study_contract_wrapper_root is not None:
@@ -1016,6 +1081,113 @@ class CampaignScheduler:
                 lane: tuple(sorted(cells, key=lambda item: item.n_final))
                 for lane, cells in grouped.items()
             }
+
+    def _observe(self, event: str, cell: CellSpec, **values: object) -> None:
+        callback = self.settings.progress_observer
+        if callback is None:
+            return
+        # Dashboard/lease updates are informational and must not change a
+        # campaign result.
+        with suppress(Exception):
+            callback({"event": event, "cell_id": cell.cell_id, **values})
+
+    def _cancelled(self) -> bool:
+        callback = self.settings.cancellation_requested
+        return callback is not None and callback()
+
+    def _attach_manual_provenance(
+        self,
+        result: dict[str, object],
+        *,
+        cell: CellSpec,
+        censor: Mapping[str, object] | None = None,
+    ) -> None:
+        if self.settings.source_identity_override is None:
+            return
+        # Imported lazily to keep the ordinary report scheduler independent of
+        # the optional manual UI during module initialization.
+        from .manual_campaign import reproduction_recipe
+
+        recipe = reproduction_recipe(
+            cell,
+            repo_root=self.service.paths.repo_root,
+            cores=self.settings.cell_cores,
+            target_runtime=self.settings.target_runtime_seconds,
+            batch_size=self.settings.batch_size,
+            warmups=self.settings.warmup_runs,
+            minimum_samples=self.settings.minimum_samples,
+            measurement=result,
+        )
+        existing = result.get("provenance")
+        result["provenance"] = {
+            **({} if not isinstance(existing, Mapping) else dict(existing)),
+            **self.source_identity.provenance(),
+            "manual_campaign": {
+                "cell_identity": {
+                    "cell_id": cell.cell_id,
+                    "dataset_id": cell.dataset_id,
+                    "process_key": cell.process_key,
+                    "process": cell.process,
+                    "n_final": cell.n_final,
+                    "workload": cell.workload.value,
+                    "execution_mode": cell.measurement.execution_mode.value,
+                    "model": (
+                        None
+                        if cell.measurement.model is None
+                        else cell.measurement.model.value
+                    ),
+                    "accuracy": cell.measurement.accuracy.value,
+                    "backend": cell.measurement.backend,
+                    "variant": cell.variant,
+                },
+                "generation_limit_seconds": (
+                    self.settings.generation_time_limit_seconds
+                ),
+                "worker_wall_limit_seconds": self.settings.timeout_seconds,
+                "memory_limit_bytes": self._effective_cell_rss_limit(),
+                "workers": self.settings.workers,
+                "cores_per_worker": self.settings.cell_cores,
+                "target_runtime_seconds": self.settings.target_runtime_seconds,
+                "warmup_runs": self.settings.warmup_runs,
+                "minimum_samples": self.settings.minimum_samples,
+                "batch_size": self.settings.batch_size,
+                "public_cli_reproduction": recipe.as_dict(),
+            },
+            **({} if censor is None else {"policy_censor": dict(censor)}),
+        }
+
+    def _manual_terminal_result(
+        self,
+        *,
+        cell: CellSpec,
+        reason: str,
+        resources: Mapping[str, object],
+    ) -> tuple[dict[str, object], PolicyMeasurementState]:
+        if reason == "generation_timeout":
+            status = ResultStatus.TIMEOUT
+            state = PolicyMeasurementState.GENERATION_LIMIT
+            censor = {
+                "kind": PolicyCensorKind.GENERATION_LIMIT.value,
+                "generation_limit_seconds": (
+                    self.settings.generation_time_limit_seconds
+                ),
+            }
+        elif reason == "memory_limit":
+            status = ResultStatus.MEMORY_LIMIT
+            state = PolicyMeasurementState.MEMORY_LIMIT
+            censor = {
+                "kind": PolicyCensorKind.MEMORY_LIMIT.value,
+                "memory_limit_bytes": self._effective_cell_rss_limit(),
+            }
+        else:
+            raise ValueError(f"unsupported manual terminal reason {reason!r}")
+        result = failure_measurement(
+            status,
+            f"worker terminated by {reason}",
+            resources=resources,
+        )
+        self._attach_manual_provenance(result, cell=cell, censor=censor)
+        return result, state
 
     def _current(
         self,
@@ -1076,13 +1248,23 @@ class CampaignScheduler:
 
         api = MaintainedLegacyApi()
         source = api.default_repository.expanduser().resolve(strict=True)
-        api.validate_checkout(source)
         destination = (
             self.service.paths.artifact_root / "legacy-workspaces" / attempt_id
         )
         destination.parent.mkdir(parents=True, exist_ok=True)
         if destination.exists():
             raise RuntimeError(f"legacy worker workspace already exists: {destination}")
+        if self.settings.source_identity_override is not None:
+            # Contributor installation already pins this managed checkout.
+            # Manual campaigns make an isolated filesystem copy and never
+            # invoke Git at runtime.
+            shutil.copytree(
+                source,
+                destination,
+                ignore=shutil.ignore_patterns(".git", ".DS_Store"),
+            )
+            return destination
+        api.validate_checkout(source)
         commands = (
             (
                 "git",
@@ -1185,11 +1367,19 @@ class CampaignScheduler:
         }
         for model in sorted(models, key=lambda item: item.value):  # type: ignore[union-attr]
             assert model is not None
+            representative = next(
+                item
+                for item in planned
+                if item.cell.measurement.model is model
+                and item.cell.measurement.execution_mode
+                in {ExecutionMode.EAGER, ExecutionMode.RECURRENCE}
+            )
             result_path = (
                 self.service.paths.artifact_root
                 / "prepared-models"
                 / f".preflight-{model.value}-{uuid.uuid4().hex}.json"
             )
+            progress_path = result_path.with_suffix(".progress.jsonl")
             command = (
                 sys.executable,
                 "-I",
@@ -1205,20 +1395,81 @@ class CampaignScheduler:
                 model.value,
                 "--result-json",
                 os.fspath(result_path),
+                "--progress-jsonl",
+                os.fspath(progress_path),
                 "--cell-cores",
                 str(self.settings.cell_cores),
+                *(
+                    (
+                        "--producer-revision",
+                        self.source_revision,
+                    )
+                    if self.settings.source_identity_override is not None
+                    else ()
+                ),
             )
+            preflight_timeout = self.settings.generation_time_limit_seconds
+            if self.settings.timeout_seconds is not None:
+                preflight_timeout = (
+                    self.settings.timeout_seconds
+                    if preflight_timeout is None
+                    else min(preflight_timeout, self.settings.timeout_seconds)
+                )
+
+            self._observe(
+                "started",
+                representative.cell,
+                dependency=representative.dependency,
+            )
+            self._observe(
+                "worker",
+                representative.cell,
+                attempt_id=f"prepared-model-{model.value}",
+                progress_path=os.fspath(progress_path),
+            )
+
+            def observe_preflight_resources(
+                observation: WorkerObservation,
+                *,
+                cell: CellSpec = representative.cell,
+                attempt_id: str = f"prepared-model-{model.value}",
+            ) -> None:
+                self._observe(
+                    "resource",
+                    cell,
+                    attempt_id=attempt_id,
+                    pid=observation.pid,
+                    member_pids=list(observation.member_pids),
+                    phase="preparation",
+                    phase_sequence=None,
+                    wall_seconds=observation.usage.wall_seconds,
+                    cpu_seconds=observation.usage.cpu_seconds,
+                    current_rss_bytes=observation.usage.current_rss_bytes,
+                    peak_rss_bytes=observation.usage.peak_rss_bytes,
+                    current_physical_footprint_bytes=(
+                        observation.usage.current_physical_footprint_bytes
+                    ),
+                    peak_physical_footprint_bytes=(
+                        observation.usage.peak_physical_footprint_bytes
+                    ),
+                    current_guard_bytes=observation.usage.current_guard_bytes,
+                    peak_guard_bytes=observation.usage.peak_guard_bytes,
+                    child_count=observation.usage.child_count,
+                )
+
             supervised = supervise_worker(
                 command,
-                timeout_seconds=self.settings.timeout_seconds,
+                timeout_seconds=preflight_timeout,
                 max_rss_bytes=self._effective_cell_rss_limit(),
+                interval_seconds=(self.settings.resource_sample_interval_seconds),
+                termination_grace_seconds=self.settings.termination_grace_seconds,
+                cancellation_requested=self.settings.cancellation_requested,
+                observation_callback=observe_preflight_resources,
                 environment_overrides=_worker_environment_overrides(
                     self.settings,
                     self.service.paths.coordination_root,
                 ),
-                scrub_import_environment=(
-                    self.worker_harness_identity is not None
-                ),
+                scrub_import_environment=(self.worker_harness_identity is not None),
                 working_directory=(
                     self.service.paths.repo_root
                     if self.worker_harness_identity is not None
@@ -1259,6 +1510,7 @@ class CampaignScheduler:
                 self._prepared_model_paths[model] = path
             finally:
                 result_path.unlink(missing_ok=True)
+                progress_path.unlink(missing_ok=True)
 
     def run(self, planned: Sequence[PlannedCell]) -> CampaignResult:
         ordered = tuple(planned)
@@ -1276,6 +1528,8 @@ class CampaignScheduler:
             raise ValueError(
                 f"campaign plan contains catalog static N/A cell {cell_id!r}: {reason}"
             )
+        if self._cancelled():
+            return CampaignResult(planned=ordered, outcomes=())
         self._ensure_prepared_model(ordered)
         outcomes: list[CellOutcome] = []
         effective_workers = self.settings.workers
@@ -1286,6 +1540,8 @@ class CampaignScheduler:
         ):
             effective_workers = 1
         for rank in sorted({item.rank for item in ordered}):
+            if self._cancelled():
+                break
             wave = tuple(item for item in ordered if item.rank == rank)
             with ThreadPoolExecutor(max_workers=effective_workers) as executor:
                 futures = {executor.submit(self._run_cell, item): item for item in wave}
@@ -1297,16 +1553,52 @@ class CampaignScheduler:
         )
 
     def _run_cell(self, planned: PlannedCell) -> CellOutcome:
-        if not self.settings.campaign_policy.allow_terminal_censors:
-            return self._run_cell_in_lane(planned)
-        with self.service.store.named_lock(_resource_lane_lock_name(planned.cell)):
-            return self._run_cell_in_lane(planned)
+        cell = planned.cell
+        if self._cancelled():
+            outcome = CellOutcome(cell.cell_id, "cancelled", "not started")
+            self._observe(
+                "finished",
+                cell,
+                status=outcome.status,
+                detail=outcome.detail,
+            )
+            return outcome
+        self._observe("started", cell, dependency=planned.dependency)
+        try:
+            if not self.settings.campaign_policy.allow_terminal_censors:
+                outcome = self._run_cell_in_lane(planned)
+            else:
+                with self.service.store.named_lock(
+                    _resource_lane_lock_name(cell),
+                    cancellation_requested=self.settings.cancellation_requested,
+                ):
+                    outcome = self._run_cell_in_lane(planned)
+        except LockCancelledError:
+            outcome = CellOutcome(cell.cell_id, "cancelled", "lock wait cancelled")
+        except BaseException as error:
+            self._observe(
+                "finished",
+                cell,
+                status="error",
+                detail=f"{type(error).__name__}: {error}",
+            )
+            raise
+        self._observe(
+            "finished",
+            cell,
+            status=outcome.status,
+            detail=outcome.detail,
+        )
+        return outcome
 
     def _run_cell_in_lane(self, planned: PlannedCell) -> CellOutcome:
         if self.settings.campaign_policy is MACBOOK_M3_Z_TABLE_F_POLICY:
             self._validate_z_table_f_plan((planned,))
         cell = planned.cell
-        with self.service.store.named_lock(f"campaign-cell-{cell.cell_id}"):
+        with self.service.store.named_lock(
+            f"campaign-cell-{cell.cell_id}",
+            cancellation_requested=self.settings.cancellation_requested,
+        ):
             fresh = self._current(cell)
             frontier_source = (
                 _resource_frontier_source(
@@ -1440,6 +1732,7 @@ class CampaignScheduler:
             ) as attempt:
                 worker_result = attempt.path("worker-result.json")
                 worker_log = attempt.path("worker.log")
+                worker_progress = attempt.path("worker-progress.jsonl")
                 generation_timeout = (
                     self.settings.generation_time_limit_seconds
                     if self.settings.campaign_policy is STRICT_POLICY
@@ -1480,7 +1773,22 @@ class CampaignScheduler:
                     str(self.settings.batch_size),
                     "--cell-cores",
                     str(self.settings.cell_cores),
+                    "--warmup-runs",
+                    str(self.settings.warmup_runs),
+                    "--minimum-samples",
+                    str(self.settings.minimum_samples),
+                    "--progress-jsonl",
+                    os.fspath(worker_progress),
                 ]
+                if self.settings.source_identity_override is not None:
+                    command.extend(
+                        (
+                            "--manual-source-revision",
+                            self.source_revision,
+                            "--manual-source-tree",
+                            self.source_tree,
+                        )
+                    )
                 if phase_channel is not None:
                     command.extend(
                         (
@@ -1536,6 +1844,41 @@ class CampaignScheduler:
                             os.fspath(reusable_record.result_path),
                         )
                     )
+                self._observe(
+                    "worker",
+                    cell,
+                    attempt_id=attempt.attempt_id,
+                    log_path=os.fspath(worker_log),
+                    progress_path=os.fspath(worker_progress),
+                    phase_path=(
+                        None if phase_channel is None else os.fspath(phase_channel.path)
+                    ),
+                )
+
+                def observe_resources(observation: WorkerObservation) -> None:
+                    self._observe(
+                        "resource",
+                        cell,
+                        attempt_id=attempt.attempt_id,
+                        pid=observation.pid,
+                        member_pids=list(observation.member_pids),
+                        phase=observation.phase,
+                        phase_sequence=observation.phase_sequence,
+                        wall_seconds=observation.usage.wall_seconds,
+                        cpu_seconds=observation.usage.cpu_seconds,
+                        current_rss_bytes=observation.usage.current_rss_bytes,
+                        peak_rss_bytes=observation.usage.peak_rss_bytes,
+                        current_physical_footprint_bytes=(
+                            observation.usage.current_physical_footprint_bytes
+                        ),
+                        peak_physical_footprint_bytes=(
+                            observation.usage.peak_physical_footprint_bytes
+                        ),
+                        current_guard_bytes=observation.usage.current_guard_bytes,
+                        peak_guard_bytes=observation.usage.peak_guard_bytes,
+                        child_count=observation.usage.child_count,
+                    )
+
                 supervised = supervise_worker(
                     command,
                     timeout_seconds=self.settings.timeout_seconds,
@@ -1546,14 +1889,16 @@ class CampaignScheduler:
                         self.settings,
                         self.service.paths.coordination_root,
                     ),
-                    scrub_import_environment=(
-                        self.worker_harness_identity is not None
-                    ),
+                    scrub_import_environment=(self.worker_harness_identity is not None),
                     working_directory=(
                         self.service.paths.repo_root
                         if self.worker_harness_identity is not None
                         else None
                     ),
+                    interval_seconds=self.settings.resource_sample_interval_seconds,
+                    termination_grace_seconds=self.settings.termination_grace_seconds,
+                    observation_callback=observe_resources,
+                    cancellation_requested=self.settings.cancellation_requested,
                 )
                 generation_phase = supervised.generation_phase
                 resources = _resource_payload(
@@ -1562,8 +1907,31 @@ class CampaignScheduler:
                     memory_limit_bytes=supervised.memory_limit_bytes,
                     memory_limit_reason=supervised.memory_limit_reason,
                 )
+                if supervised.reason == "cancelled":
+                    attempt.mark_interrupted(
+                        "worker terminated by cancellation",
+                        artifact_paths=_attempt_files(attempt.root),
+                    )
+                    return CellOutcome(
+                        cell.cell_id,
+                        "cancelled",
+                        (
+                            attempt.attempt_id
+                            if decision.current is None
+                            else "previous valid current preserved"
+                        ),
+                    )
                 policy_state: PolicyMeasurementState | None = None
-                if (
+                if self.settings.manual_terminal_censors and supervised.reason in {
+                    "generation_timeout",
+                    "memory_limit",
+                }:
+                    result, policy_state = self._manual_terminal_result(
+                        cell=cell,
+                        reason=supervised.reason,
+                        resources=resources,
+                    )
+                elif (
                     supervised.reason == "generation_timeout"
                     and generation_timeout is not None
                     and self.settings.campaign_policy.allow_terminal_censors
@@ -1675,6 +2043,7 @@ class CampaignScheduler:
                         raise TypeError("worker result must be a JSON object")
                     result = dict(raw)
                     result["resources"] = resources
+                    self._attach_manual_provenance(result, cell=cell)
                     self._bind_study_result(
                         result,
                         require_existing_harness=True,
@@ -1697,7 +2066,10 @@ class CampaignScheduler:
                             expected_source_tree=self.source_tree,
                         )
                     )
-                elif policy_state is not None:
+                elif (
+                    policy_state is not None
+                    and not self.settings.manual_terminal_censors
+                ):
                     validated_state = validate_policy_measurement(
                         self.settings.campaign_policy,
                         self.settings.report_profile or "",

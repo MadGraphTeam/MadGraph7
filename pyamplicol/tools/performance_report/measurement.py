@@ -59,6 +59,25 @@ def shared_validation_points(process: str) -> object:
     )
 
 
+def _reproduction_momenta(points: object) -> object:
+    """Return the exact measured points in portable public-CLI JSON form."""
+
+    to_list = getattr(points, "tolist", None)
+    payload = to_list() if callable(to_list) else points
+    try:
+        encoded = json.dumps(
+            payload,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+        )
+    except (TypeError, ValueError) as error:
+        raise RunnerError(
+            "report profiling points cannot be materialized for reproduction"
+        ) from error
+    return json.loads(encoded)
+
+
 def source_revision(repo_root: Path, *, require_clean: bool = False) -> str:
     try:
         identity = (
@@ -163,6 +182,7 @@ def generated_artifact_from_measurement(
     effective = provenance.get("effective_config")
     preparation_seconds = provenance.get("model_preparation_seconds", 0.0)
     preparation_reused = provenance.get("model_preparation_reused", True)
+    generation_command_path = provenance.get("generation_command_path")
     if (
         not isinstance(path, str)
         or not isinstance(process_id, str)
@@ -171,6 +191,10 @@ def generated_artifact_from_measurement(
         or isinstance(preparation_seconds, bool)
         or not isinstance(preparation_seconds, (int, float))
         or not isinstance(preparation_reused, bool)
+        or (
+            generation_command_path is not None
+            and not isinstance(generation_command_path, str)
+        )
     ):
         raise RunnerError("measurement reusable artifact metadata is malformed")
     artifact_path = Path(path).expanduser().resolve(strict=False)
@@ -184,6 +208,7 @@ def generated_artifact_from_measurement(
         model_preparation_reused=preparation_reused,
         requested_config=dict(requested),
         effective_config=dict(effective),
+        generation_command_path=generation_command_path,
     )
 
 
@@ -336,7 +361,10 @@ def measure_pyamplicol_cell(
     )
     validate_artifact_contract(cell, generated.path)
     runtime = _load_runtime(generated.path, generated.process_id)
-    revision = source_revision(repo_root, require_clean=True)
+    revision = settings.source_revision_override or source_revision(
+        repo_root,
+        require_clean=True,
+    )
     runtime_identity = runtime_identity_payload(
         cell,
         runtime,
@@ -365,6 +393,7 @@ def measure_pyamplicol_cell(
         cell=cell,
         benchmark_config=_resolution_benchmark_config(generated.effective_config),
         selector_contract=contract,
+        progress=settings.progress,
     )
     execution_timing = profile.pop("execution_timing")
     evaluator_total_timing = profile.pop("evaluator_total_timing", None)
@@ -387,8 +416,7 @@ def measure_pyamplicol_cell(
         ModelKey.SCALAR_GRAVITY,
     }
     requires_high_precision = scalar or (
-        baseline is None
-        and cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+        baseline is None and cell.measurement.execution_mode is ExecutionMode.RECURRENCE
     )
     if requires_high_precision:
         high_precision = runtime.evaluate(
@@ -479,6 +507,8 @@ def measure_pyamplicol_cell(
                 "model_preparation_seconds": generated.model_preparation_seconds,
                 "model_preparation_reused": generated.model_preparation_reused,
                 "generation_timer_excludes_model_preparation": True,
+                "generation_command_path": generated.generation_command_path,
+                "report_momenta": _reproduction_momenta(points),
                 "runtime_profile": benchmark_evidence,
                 "execution_timing": execution_timing,
                 **(

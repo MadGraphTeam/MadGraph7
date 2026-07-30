@@ -31,6 +31,10 @@ from tools.performance_report.models import (
     Workload,
 )
 from tools.performance_report.runner import (
+    LOADED_RUNTIME_PROFILE_COMMAND_PATH,
+    PAIRED_ARENA_PROFILE_COMMAND_PATH,
+    PRECOMPILED_GENERATION_COMMAND_PATH,
+    PUBLIC_CLI_COMMAND_PATH,
     RunnerError,
     RunnerSettings,
     SelectorContract,
@@ -126,14 +130,14 @@ def _benchmark_fixture(
             "evaluator_time_sample_pass": "runtime._profile_arena_repeated",
             "timing_breakdown_sample_pass": "runtime._profile_arena_repeated",
             "profile_protocol": "arena",
+            "report_command_path": PAIRED_ARENA_PROFILE_COMMAND_PATH,
+            "report_public_cli_path": None,
             "profile_attribution_boundary": (
                 "warmed-direct-arena-borrowed-input-preallocated-output-v1"
             ),
             "profile_attribution_borrowed_flat_input": arena_authenticated,
             "profile_attribution_preallocated_output": True,
-            "profile_attribution_phase_timing_scope": (
-                "coarse-arena-boundary-only-v1"
-            ),
+            "profile_attribution_phase_timing_scope": ("coarse-arena-boundary-only-v1"),
             "profile_attribution_evaluator_timing_available": False,
             "profile_attribution_paired_with_headline": True,
             "profile_attribution_identical_batch": True,
@@ -193,6 +197,8 @@ def test_benchmark_measurement_records_authenticated_arena_unavailable_timing() 
         ),
     }
     assert measurement["benchmark_evidence"] == {
+        "report_command_path": PAIRED_ARENA_PROFILE_COMMAND_PATH,
+        "report_public_cli_path": None,
         "target_runtime_seconds": 5.0,
         "achieved_runtime_seconds": 5.0,
         "target_runtime_achieved": True,
@@ -244,9 +250,7 @@ def test_benchmark_measurement_authenticates_accumulated_evaluator_total(
         "raw_seconds_per_point": 1.0e-6,
         "source": "runtime._benchmark_f64_wall_time.accumulated",
         "execution_mode": execution_mode,
-        "sample_contract": (
-            "accumulated-repeated-warmed-evaluator-total-v1"
-        ),
+        "sample_contract": ("accumulated-repeated-warmed-evaluator-total-v1"),
         "sample_count": 5,
         "repetitions_per_sample": 1,
         "batch_size": 128,
@@ -256,8 +260,9 @@ def test_benchmark_measurement_authenticates_accumulated_evaluator_total(
     }
 
 
-def test_benchmark_measurement_rejects_inconsistent_accumulated_evaluator_total(
-) -> None:
+def test_benchmark_measurement_rejects_inconsistent_accumulated_evaluator_total() -> (
+    None
+):
     benchmark = _benchmark_fixture()
     benchmark.evaluator_total_time_per_point = 1.0e-6
     benchmark.environment.update(
@@ -341,9 +346,7 @@ def test_benchmark_measurement_retains_supported_recurrence_execution_timing() -
         "raw_seconds_per_point": 1.2e-6,
         "source": "runtime._benchmark_f64_wall_time.accumulated",
         "execution_mode": "recurrence",
-        "sample_contract": (
-            "accumulated-repeated-warmed-evaluator-total-v1"
-        ),
+        "sample_contract": ("accumulated-repeated-warmed-evaluator-total-v1"),
         "sample_count": 5,
         "repetitions_per_sample": 1,
         "batch_size": 128,
@@ -410,9 +413,7 @@ def test_report_arena_benchmark_uses_private_profiler_without_public_fallback(
     clock_values: list[float] = []
     clock = 0.0
     for _ in range(5):
-        clock_values.extend(
-            (clock, clock + 1.2e-3, clock + 1.2e-3, clock + 3.2e-3)
-        )
+        clock_values.extend((clock, clock + 1.2e-3, clock + 1.2e-3, clock + 3.2e-3))
         clock += 3.2e-3
     clock_iterator = iter(clock_values)
     monkeypatch.setattr(
@@ -439,9 +440,9 @@ def test_report_arena_benchmark_uses_private_profiler_without_public_fallback(
     assert result.evaluator_total_time_per_point == pytest.approx(5.0e-4)
     assert result.wall_time_per_point != result.evaluator_total_time_per_point
     assert result.environment["elapsed_seconds"] == pytest.approx(6.0e-3)
-    assert result.environment[
-        "evaluator_total_accumulated_seconds"
-    ] == pytest.approx(5.0e-3)
+    assert result.environment["evaluator_total_accumulated_seconds"] == pytest.approx(
+        5.0e-3
+    )
     assert result.environment["measured_point_count"] == 10
     measurement = _benchmark_measurement(result, matrix_element=2.0)
     total_timing = measurement["evaluator_total_timing"]
@@ -487,33 +488,140 @@ def test_report_arena_benchmark_requires_private_profiler() -> None:
         )
 
 
+def test_report_arena_benchmark_reports_typed_profile_stages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pyamplicol.reporting import (
+        CallbackProgressSink,
+        ProgressEnd,
+        ProgressStart,
+        ProgressUpdate,
+    )
+
+    class Runtime:
+        def _benchmark_f64_wall_time(
+            self,
+            batch: object,
+            repetitions: int,
+            **_kwargs: object,
+        ) -> float:
+            del batch, repetitions
+            return 1.0e-3
+
+        def _profile_arena_repeated(
+            self,
+            batch: object,
+            repetitions: int,
+            **_kwargs: object,
+        ) -> dict[str, object]:
+            assert isinstance(batch, tuple)
+            return _raw_arena_profile(
+                points=len(batch) * repetitions,
+                wall_time=2.0e-3,
+            )
+
+    clock = -1.0e-3
+
+    def tick() -> float:
+        nonlocal clock
+        clock += 1.0e-3
+        return clock
+
+    monkeypatch.setattr(
+        "tools.performance_report.runner.time.perf_counter",
+        tick,
+    )
+    events: list[ProgressStart | ProgressUpdate | ProgressEnd] = []
+    _run_arena_benchmark(
+        Runtime(),
+        (((1.0, 0.0, 0.0, 1.0),),),
+        execution_mode="compiled",
+        benchmark_config=SimpleNamespace(
+            target_runtime=4.0e-3,
+            batch_size=2,
+            warmup_runs=1,
+            minimum_samples=5,
+            precision=16,
+        ),
+        selectors={"helicities": None, "color_flows": None},
+        progress=CallbackProgressSink(events.append),
+    )
+
+    starts = {event.task_id for event in events if isinstance(event, ProgressStart)}
+    updates = {event.task_id for event in events if isinstance(event, ProgressUpdate)}
+    assert starts == {
+        "report-profile",
+        "report-profile:warmup",
+        "report-profile:calibration",
+        "report-profile:samples",
+    }
+    assert updates == {
+        "report-profile:warmup",
+        "report-profile:calibration",
+        "report-profile:samples",
+    }
+    assert isinstance(events[-1], ProgressEnd)
+    assert events[-1].task_id == "report-profile"
+    assert events[-1].success is True
+
+
 def test_report_benchmark_keeps_recurrence_on_supported_public_runner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import pyamplicol.cli
+
     calls: list[tuple[object, object]] = []
-    expected = object()
+    parsed_argv: list[tuple[str, ...]] = []
+    real_parse_cli = pyamplicol.cli.parse_cli
+
+    def parse_cli(argv: tuple[str, ...]):
+        parsed_argv.append(tuple(argv))
+        return real_parse_cli(argv)
+
+    @dataclass(frozen=True)
+    class Result:
+        environment: dict[str, object]
+
+    expected = Result(environment={"existing": "evidence"})
 
     class BenchmarkRunner:
-        def __init__(self, config: object) -> None:
+        def __init__(
+            self,
+            config: object,
+            *,
+            progress: object | None = None,
+        ) -> None:
             self.config = config
+            assert progress is not None
 
         def run(self, runtime: object, *, points: object) -> object:
             calls.append((runtime, points))
             return expected
 
     monkeypatch.setattr("pyamplicol.api.BenchmarkRunner", BenchmarkRunner)
+    monkeypatch.setattr(pyamplicol.cli, "parse_cli", parse_cli)
     runtime = SimpleNamespace(_backend=SimpleNamespace())
     points = (((1.0, 0.0, 0.0, 1.0),),)
+    from pyamplicol.config import BenchmarkConfig
+
     result = _run_report_benchmark(
         runtime,
         points,
         execution_mode=ExecutionMode.RECURRENCE,
-        benchmark_config=SimpleNamespace(),
+        benchmark_config=BenchmarkConfig(),
         selectors={"helicities": None, "color_flows": None},
     )
 
-    assert result is expected
+    assert result is not expected
+    assert result.environment == {
+        "existing": "evidence",
+        "report_command_path": LOADED_RUNTIME_PROFILE_COMMAND_PATH,
+        "report_public_cli_path": PUBLIC_CLI_COMMAND_PATH,
+    }
     assert calls == [(runtime, points)]
+    assert len(parsed_argv) == 1
+    assert parsed_argv[0][0] == "profile"
+    assert "--target-runtime" in parsed_argv[0]
 
 
 @pytest.mark.parametrize(
@@ -1068,15 +1176,21 @@ def _cell(
     )
 
 
-def test_generation_phase_wraps_only_generator_call(
+def test_generation_phase_watchdog_covers_preparation_and_generator_call(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import pyamplicol.api
-    import pyamplicol.config.resolver
+    import pyamplicol.cli
     import tools.performance_report.runner as report_runner
 
     events: list[str] = []
+    parsed_argv: list[tuple[str, ...]] = []
+    real_parse_cli = pyamplicol.cli.parse_cli
+
+    def parse_cli(argv: tuple[str, ...]):
+        parsed_argv.append(tuple(argv))
+        return real_parse_cli(argv)
 
     class FakeSource:
         def compile(self, **_kwargs: object) -> object:
@@ -1093,8 +1207,13 @@ def test_generation_phase_wraps_only_generator_call(
             return FakeSource()
 
     class FakeGenerator:
-        def __init__(self, _resolution: object) -> None:
-            pass
+        def __init__(
+            self,
+            _resolution: object,
+            *,
+            progress: object | None = None,
+        ) -> None:
+            assert progress is not None
 
         def generate(self, *_args: object, **_kwargs: object) -> None:
             events.append("Generator.generate")
@@ -1110,17 +1229,7 @@ def test_generation_phase_wraps_only_generator_call(
 
     monkeypatch.setattr(pyamplicol.api, "Generator", FakeGenerator)
     monkeypatch.setattr(pyamplicol.api, "ModelSource", FakeModelSource)
-    monkeypatch.setattr(
-        pyamplicol.config.resolver,
-        "resolve_config",
-        lambda *_args, **_kwargs: SimpleNamespace(requested={}),
-    )
-    monkeypatch.setattr(
-        pyamplicol.config.resolver,
-        "config_to_dict",
-        lambda _value: {},
-    )
-    monkeypatch.setattr(report_runner, "config_values", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(pyamplicol.cli, "parse_cli", parse_cli)
     monkeypatch.setattr(
         report_runner,
         "_authenticated_effective_config",
@@ -1132,7 +1241,7 @@ def test_generation_phase_wraps_only_generator_call(
         lambda _path, fallback: fallback,
     )
 
-    generate_artifact(
+    generated = generate_artifact(
         _cell(ExecutionMode.COMPILED, Accuracy.LC, Workload.SELECTED_FLOW),
         tmp_path / "artifact",
         settings=RunnerSettings(),
@@ -1141,12 +1250,116 @@ def test_generation_phase_wraps_only_generator_call(
     )
 
     assert events == [
-        "model-preparation",
         "phase-enter",
+        "model-preparation",
         "Generator.generate",
         "phase-exit",
         "post-generation-validation",
     ]
+    assert len(parsed_argv) == 1
+    assert parsed_argv[0][0] == "generate"
+    assert generated.generation_command_path == PRECOMPILED_GENERATION_COMMAND_PATH
+
+
+@pytest.mark.parametrize(
+    "mode",
+    (ExecutionMode.EAGER, ExecutionMode.RECURRENCE),
+)
+def test_prepared_generation_uses_public_cli_parser_and_default_handler(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: ExecutionMode,
+) -> None:
+    import pyamplicol.api
+    import pyamplicol.cli
+    import pyamplicol.cli.handlers
+    import tools.performance_report.runner as report_runner
+
+    parsed_argv: list[tuple[str, ...]] = []
+    handler_configs: list[object] = []
+    generated_models: list[object] = []
+    real_parse_cli = pyamplicol.cli.parse_cli
+    real_generate = pyamplicol.cli.handlers.DefaultCliServices.generate
+
+    def parse_cli(argv: tuple[str, ...]):
+        parsed_argv.append(tuple(argv))
+        return real_parse_cli(argv)
+
+    def public_generate(
+        self: object,
+        config: object,
+        progress: object,
+    ) -> object:
+        handler_configs.append(config)
+        return real_generate(self, config, progress)  # type: ignore[arg-type]
+
+    class FakeSource:
+        pass
+
+    class FakeModelSource:
+        @staticmethod
+        def built_in_sm() -> FakeSource:
+            return FakeSource()
+
+        @staticmethod
+        def from_config(_config: object) -> FakeSource:
+            return FakeSource()
+
+    class FakeGenerator:
+        def __init__(
+            self,
+            *,
+            config: object,
+            progress: object | None = None,
+        ) -> None:
+            assert progress is not None
+            self.config = config
+
+        def generate(
+            self,
+            _processes: object,
+            _output: Path,
+            *,
+            model: object,
+            mode: str,
+        ) -> None:
+            assert mode == "replace"
+            generated_models.append(model)
+
+    monkeypatch.setattr(pyamplicol.api, "Generator", FakeGenerator)
+    monkeypatch.setattr(pyamplicol.api, "ModelSource", FakeModelSource)
+    monkeypatch.setattr(pyamplicol.cli, "parse_cli", parse_cli)
+    monkeypatch.setattr(
+        pyamplicol.cli.handlers.DefaultCliServices,
+        "generate",
+        public_generate,
+    )
+    monkeypatch.setattr(
+        report_runner,
+        "_authenticated_effective_config",
+        lambda _path: {},
+    )
+    monkeypatch.setattr(
+        report_runner,
+        "_single_process_id",
+        lambda _path, fallback: fallback,
+    )
+    cell = REPORT_CATALOG.cell(
+        f"matrix-{mode.value}-builtin-sm-lc-n1-dd-z-jets-selected-flow"
+    )
+
+    generated = generate_artifact(
+        cell,
+        tmp_path / "artifact",
+        settings=RunnerSettings(),
+        repo_root=tmp_path,
+    )
+
+    assert len(parsed_argv) == 1
+    assert parsed_argv[0][:2] == ("generate", cell.process)
+    assert len(handler_configs) == 1
+    assert len(generated_models) == 1
+    assert generated.generation_command_path == PUBLIC_CLI_COMMAND_PATH
 
 
 @pytest.mark.parametrize(
@@ -1201,6 +1414,21 @@ def test_config_steers_complete_coverage_and_layout_only(
     assert "selected_color_sector_ids" not in serialized
     assert "selected_source_helicities" not in serialized
     assert "reference_color_order" not in serialized
+
+
+def test_config_threads_manual_profile_sampling_settings() -> None:
+    values = config_values(
+        _cell(
+            ExecutionMode.RECURRENCE,
+            Accuracy.LC,
+            Workload.SELECTED_FLOW,
+        ),
+        RunnerSettings(warmup_runs=7, minimum_samples=11),
+        repo_root=Path("/repo"),
+    )
+
+    assert values["benchmark"]["warmup_runs"] == 7  # type: ignore[index]
+    assert values["benchmark"]["minimum_samples"] == 11  # type: ignore[index]
 
 
 def test_nlc_and_full_use_contracted_topology_replay_configuration() -> None:
@@ -1357,9 +1585,7 @@ def test_selector_contract_rejects_changed_point_or_axis() -> None:
 def test_selector_contract_maps_only_exact_signed_zero_runtime_alias() -> None:
     runtime = FakeRuntime()
     points = (((1.0, 0.0, 0.0, 1.0),),)
-    runtime.physics.external_particles = tuple(
-        Particle(label) for label in range(1, 7)
-    )
+    runtime.physics.external_particles = tuple(Particle(label) for label in range(1, 7))
     runtime.physics.helicities = (
         Helicity(
             "h:-1,+1,-1,+1,-1,+0",
@@ -1381,9 +1607,7 @@ def test_selector_contract_maps_only_exact_signed_zero_runtime_alias() -> None:
         point_digest=point_digest(points),
     )
 
-    assert contract.runtime_all_flow_helicity_ids == (
-        "h:-1,+1,-1,+1,-1,+0",
-    )
+    assert contract.runtime_all_flow_helicity_ids == ("h:-1,+1,-1,+1,-1,+0",)
     validate_selector_contract(runtime, contract, points)
     assert _selector_kwargs(
         _cell(ExecutionMode.RECURRENCE, Accuracy.LC, Workload.ALL_FLOW),

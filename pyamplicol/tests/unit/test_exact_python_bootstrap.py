@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import runpy
 import shutil
 import subprocess
 import sys
@@ -11,6 +12,63 @@ from importlib.machinery import EXTENSION_SUFFIXES
 from pathlib import Path
 
 import pytest
+
+
+def test_report_worker_bootstrap_recovers_repository_venv_under_no_site(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = Path(__file__).resolve().parents[2]
+    script = repository / "docs/arxiv/result_tables.py"
+    namespace = runpy.run_path(
+        str(script),
+        run_name="result_tables_worker_bootstrap_test",
+    )
+    bootstrap = namespace["_bootstrap_exact_python"]
+    globals_ = bootstrap.__globals__
+    globals_["COMMAND"] = "_prepare"
+    globals_["MEASUREMENT_SOURCE_ROOT"] = None
+    globals_["REPOSITORY_ROOT"] = repository
+    globals_["ENTRYPOINT"] = script
+    for name in (
+        "PYAMPLICOL_EXACT_PYTHON_REEXEC",
+        "PYAMPLICOL_EXACT_IMPORT_PATHS",
+        "PYTHONPYCACHEPREFIX",
+        "PYTHONDONTWRITEBYTECODE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    observed: dict[str, object] = {}
+
+    def capture_execve(
+        executable: str,
+        arguments: tuple[str, ...],
+        environment: dict[str, str],
+    ) -> None:
+        observed.update(
+            {
+                "executable": executable,
+                "arguments": arguments,
+                "environment": environment,
+            }
+        )
+        raise RuntimeError("captured exact worker re-exec")
+
+    monkeypatch.setattr(os, "execve", capture_execve)
+    with pytest.raises(RuntimeError, match="captured exact worker re-exec"):
+        bootstrap(["_prepare"])
+
+    environment = observed["environment"]
+    assert isinstance(environment, dict)
+    import_paths = json.loads(environment["PYAMPLICOL_EXACT_IMPORT_PATHS"])
+    assert import_paths
+    assert all(Path(path).is_relative_to(repository / ".venv") for path in import_paths)
+    assert any((Path(path) / "symbolica").is_dir() for path in import_paths)
+    assert observed["arguments"][:4] == (
+        sys.executable,
+        "-I",
+        "-S",
+        "-B",
+    )
 
 
 @pytest.mark.parametrize(

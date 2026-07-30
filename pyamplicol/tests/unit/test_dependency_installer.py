@@ -35,6 +35,7 @@ def test_source_inventory_is_exact_and_legacy_is_optional() -> None:
         "symbolica",
         "symbolica-community",
         "gammaloop",
+        "ratatui-ffi",
     }
     assert {item.key for item in with_legacy} == {
         *(item.key for item in without_legacy),
@@ -44,6 +45,25 @@ def test_source_inventory_is_exact_and_legacy_is_optional() -> None:
     legacy = next(item for item in with_legacy if item.key == "legacy-amplicol")
     assert legacy.branch == payload["legacy_amplicol"]["branch"]
     assert legacy.revision == payload["legacy_amplicol"]["revision"]
+
+
+def test_ratatui_distribution_and_ffi_source_are_exactly_pinned() -> None:
+    module = _module()
+    ratatui = module._lock()["ratatui"]
+
+    assert ratatui["distribution"] == "ratatui"
+    assert ratatui["version"] == "0.4.2"
+    assert ratatui["sdist_sha256"] == (
+        "2778b066378f8e1629b4b5e1076f1957c8c439b45cdeaf51970d1949730bb0d5"
+    )
+    assert ratatui["ffi_revision"] == ("7249c0bd1445c0c6ee76f3f24923eb35a1d931e0")
+    ffi_source = next(
+        source
+        for source in module._sources(module._lock(), with_legacy=False)
+        if source.key == "ratatui-ffi"
+    )
+    assert ffi_source.url == ratatui["ffi_repository"]
+    assert ffi_source.revision == ratatui["ffi_revision"]
 
 
 def test_ufo_loader_uses_the_verified_published_wheel_without_local_patch() -> None:
@@ -271,10 +291,17 @@ def test_candidate_dependency_only_build_installs_and_verifies_symbolica(
     monkeypatch.setattr(module, "VENV", venv)
     monkeypatch.setattr(module, "CHECKOUTS", checkouts)
     monkeypatch.setattr(module, "WHEELHOUSE", wheelhouse)
+    ratatui_payloads: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        module,
+        "_build_ratatui_wheel",
+        lambda _runner, payload: ratatui_payloads.append(payload),
+    )
 
+    payload: dict[str, object] = {"symbolica": {"candidate_version": "2.2.0"}}
     module._build_candidate_dependency_wheels(
         FakeRunner(),
-        {"symbolica": {"candidate_version": "2.2.0"}},
+        payload,
     )
 
     python = str(venv / "bin" / "python")
@@ -295,6 +322,99 @@ def test_candidate_dependency_only_build_installs_and_verifies_symbolica(
     assert "from symbolica.community.idenso import simplify_color" in calls[2][0][3]
     assert "from symbolica.community.spenso import TensorNetwork" in calls[2][0][3]
     assert calls[2][2]["SYMBOLICA_HIDE_BANNER"] == "1"
+    assert ratatui_payloads == [payload]
+
+
+def test_ratatui_build_uses_verified_sdist_and_pinned_local_ffi(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    venv = tmp_path / ".venv"
+    checkouts = tmp_path / "checkouts"
+    wheelhouse = tmp_path / "wheelhouse"
+    ffi_source = checkouts / "ratatui-ffi"
+    ffi_source.mkdir(parents=True)
+    sdist = wheelhouse / "ratatui" / "ratatui-0.4.2.tar.gz"
+    sdist.parent.mkdir(parents=True)
+    sdist.touch()
+    calls: list[tuple[list[str], dict[str, str] | None]] = []
+
+    class FakeRunner:
+        dry_run = False
+
+        def run(self, command, *, env=None, **_kwargs):
+            rendered = [str(item) for item in command]
+            calls.append((rendered, env))
+            if rendered[1:4] == ["-m", "pip", "wheel"]:
+                (wheelhouse / "ratatui" / "ratatui-0.4.2-test.whl").touch()
+            return subprocess.CompletedProcess(rendered, 0, "", "")
+
+    payload = {
+        "ratatui": {
+            "version": "0.4.2",
+            "ffi_revision": "7249c0bd1445c0c6ee76f3f24923eb35a1d931e0",
+        }
+    }
+    monkeypatch.setattr(module, "VENV", venv)
+    monkeypatch.setattr(module, "CHECKOUTS", checkouts)
+    monkeypatch.setattr(module, "WHEELHOUSE", wheelhouse)
+    monkeypatch.setattr(
+        module,
+        "_materialize_ratatui_sdist",
+        lambda _runner, _payload: sdist,
+    )
+    monkeypatch.setattr(module, "_archive_candidate_wheels", lambda *_args: None)
+
+    module._build_ratatui_wheel(FakeRunner(), payload)
+
+    build, build_environment = calls[0]
+    assert build == [
+        str(venv / "bin" / "python"),
+        "-m",
+        "pip",
+        "wheel",
+        "--no-deps",
+        "--no-build-isolation",
+        "--wheel-dir",
+        str(wheelhouse / "ratatui"),
+        str(sdist),
+    ]
+    assert build_environment is not None
+    assert Path(build_environment["RATATUI_FFI_SRC"]).name == "ratatui-ffi"
+    assert Path(build_environment["RATATUI_FFI_SRC"]) != ffi_source.resolve()
+    assert build_environment["RATATUI_FFI_TAG"] == payload["ratatui"]["ffi_revision"]
+    assert calls[1][0][1:4] == ["-m", "pip", "install"]
+    assert calls[2][0][:3] == [str(venv / "bin" / "python"), "-I", "-c"]
+    assert "import ratatui" in calls[2][0][3]
+    assert "import ratatui_py" in calls[2][0][3]
+
+
+def test_ratatui_sdist_materialization_rejects_unpinned_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    wheelhouse = tmp_path / "wheelhouse"
+    archive = b"not the pinned distribution"
+    payload = {
+        "ratatui": {
+            "version": "0.4.2",
+            "source_url": "https://example.invalid/ratatui-0.4.2.tar.gz",
+            "sdist_sha256": hashlib.sha256(b"expected distribution").hexdigest(),
+        }
+    }
+    monkeypatch.setattr(module, "WHEELHOUSE", wheelhouse)
+    monkeypatch.setattr(
+        module.urllib.request,
+        "urlopen",
+        lambda _url: io.BytesIO(archive),
+    )
+
+    with pytest.raises(module.SetupError, match="sdist digest mismatch"):
+        module._materialize_ratatui_sdist(module.Runner(dry_run=False), payload)
+
+    assert not (wheelhouse / "ratatui" / "ratatui-0.4.2.tar.gz").exists()
 
 
 def test_candidate_project_wheel_scopes_prepared_model_bootstrap_to_build(

@@ -8,11 +8,12 @@ evidence is collected separately:
 * direct imode-2 and contracted-library probes execute one additional point
   with diagnostic-only Fortran output enabled.
 
-The pinned legacy checkout is isolated per attempt.  This module temporarily
-adds diagnostics to the two probe sources, snapshots the exact instrumented
-sources, and restores the checkout byte-for-byte after the attempt.  The
-diagnostics do not alter generation, evaluation, filtering, or contraction.
-No structural count is inferred from timing or filled with a fallback value.
+The pinned legacy checkout may be shared by manually steered cells.  This
+module serializes its temporary instrumentation per checkout, adds diagnostics
+to the two probe sources, snapshots the exact instrumented sources, and
+restores the checkout byte-for-byte after the attempt.  The diagnostics do not
+alter generation, evaluation, filtering, or contraction.  No structural count
+is inferred from timing or filled with a fallback value.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from .artifacts import _filesystem_lock
 from .models import CellSpec, Workload
 
 LEGACY_PROOF_SCHEMA = "pyamplicol-legacy-final-structural-proof-v1"
@@ -38,6 +40,7 @@ _INDEX_SCHEMA = "pyamplicol-legacy-structural-index-v1"
 _SOURCE_CONTRACT_SCHEMA = "pyamplicol-legacy-structural-source-contract-v1"
 _INSTRUMENTATION_ABI = "pyamplicol-legacy-probe-structural-diagnostics-v1"
 _MAPPING_ABI = "pyamplicol-legacy-structural-object-mapping-v1"
+_LOCK_DIRECTORY = "pyamplicol-performance-report-locks"
 
 _MODULE_NAME = re.compile(r"amp(\d+)_(\d+)_lib\.f03$")
 _MODULE_CURRENT = re.compile(
@@ -405,6 +408,28 @@ def _instrument_library_source(text: str) -> str:
     )
 
 
+def _legacy_structural_probe_lock_path(repository: Path) -> Path:
+    resolved = repository.expanduser().resolve(strict=False)
+    repository_id = hashlib.sha256(os.fsencode(resolved)).hexdigest()
+    return (
+        Path(tempfile.gettempdir())
+        / f"{_LOCK_DIRECTORY}-{os.getuid()}"
+        / f"{repository_id}.lock"
+    )
+
+
+@contextmanager
+def legacy_structural_probe_lock(repository: Path) -> Iterator[None]:
+    """Serialize temporary probe-source edits for one shared legacy checkout."""
+
+    with _filesystem_lock(
+        _legacy_structural_probe_lock_path(repository),
+        timeout=None,
+        poll_interval=0.05,
+    ):
+        yield
+
+
 @contextmanager
 def instrument_legacy_structural_probes(
     repository: Path,
@@ -412,6 +437,21 @@ def instrument_legacy_structural_probes(
 ) -> Iterator[InstrumentationRecord]:
     """Install diagnostic-only probe output and restore exact source bytes."""
 
+    with (
+        legacy_structural_probe_lock(repository),
+        _instrument_legacy_structural_probes(
+            repository,
+            artifact_path,
+        ) as instrumentation,
+    ):
+        yield instrumentation
+
+
+@contextmanager
+def _instrument_legacy_structural_probes(
+    repository: Path,
+    artifact_path: Path,
+) -> Iterator[InstrumentationRecord]:
     evidence_root = artifact_path / _EVIDENCE_DIRECTORY
     transformers = {
         "amplicol_color_probe.f03": _instrument_direct_source,
@@ -1061,5 +1101,6 @@ __all__ = [
     "emit_legacy_scope_unavailable_proof",
     "emit_legacy_structural_proof",
     "instrument_legacy_structural_probes",
+    "legacy_structural_probe_lock",
     "write_legacy_structural_probe_output",
 ]

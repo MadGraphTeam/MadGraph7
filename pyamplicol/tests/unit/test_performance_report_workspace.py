@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 import subprocess
 from pathlib import Path
 
@@ -55,6 +56,21 @@ def _seed_template(repo: Path) -> None:
         merge_artifacts=False,
     )
     (docs / "pyAmpliCol.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+
+def _try_report_writer_lock(
+    repo: str,
+    profile: str,
+    outcomes: object,
+) -> None:
+    service = ReportService(
+        ReportPaths.from_repo(Path(repo), profile=profile),
+    )
+    try:
+        with service.store.named_lock("report-writer", timeout=0.0):
+            outcomes.put("acquired")
+    except LockTimeoutError:
+        outcomes.put("timeout")
 
 
 def test_profile_names_and_paths_are_safe_and_machine_isolated(
@@ -721,19 +737,25 @@ def test_export_holds_source_writer_lock_while_copying(
     repo = tmp_path / "repo"
     _seed_template(repo)
     initialize_profile(repo, "macbook_M3")
-    competing = ReportService(
-        ReportPaths.from_repo(repo, profile="macbook_M3")
-    )
     original_copy = workspace_module._copy_publication_members
     observed_lock = False
 
     def checking_copy(source: Path, destination: Path) -> None:
         nonlocal observed_lock
-        with (
-            pytest.raises(LockTimeoutError),
-            competing.store.named_lock("report-writer", timeout=0.0),
-        ):
-            pass
+        context = multiprocessing.get_context("fork")
+        outcomes = context.Queue()
+        process = context.Process(
+            target=_try_report_writer_lock,
+            args=(
+                str(repo),
+                "macbook_M3",
+                outcomes,
+            ),
+        )
+        process.start()
+        process.join(timeout=3)
+        assert process.exitcode == 0
+        assert outcomes.get(timeout=1) == "timeout"
         observed_lock = True
         original_copy(source, destination)
 

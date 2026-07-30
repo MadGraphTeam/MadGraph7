@@ -61,6 +61,10 @@ class LockTimeoutError(ArtifactStoreError):
     """A filesystem lock could not be acquired before its deadline."""
 
 
+class LockCancelledError(ArtifactStoreError):
+    """A caller cancelled while waiting for a filesystem lock."""
+
+
 class ArtifactAction(StrEnum):
     """Concrete action selected from an artifact policy and current state."""
 
@@ -250,6 +254,7 @@ def _filesystem_lock(
     *,
     timeout: float | None,
     poll_interval: float,
+    cancellation_requested: Callable[[], bool] | None = None,
 ) -> Iterator[None]:
     if timeout is not None and timeout < 0:
         raise ValueError("lock timeout must be non-negative or None")
@@ -274,6 +279,10 @@ def _filesystem_lock(
     deadline = None if timeout is None else time.monotonic() + timeout
     try:
         while True:
+            if cancellation_requested is not None and cancellation_requested():
+                raise LockCancelledError(
+                    f"cancelled while waiting for filesystem lock {lock_path}"
+                )
             try:
                 fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
@@ -325,11 +334,13 @@ class ArtifactStore:
         *,
         timeout: float | None = None,
         poll_interval: float = 0.05,
+        cancellation_requested: Callable[[], bool] | None = None,
     ) -> Iterator[None]:
         with _filesystem_lock(
             self._cell_lock_path(cell_id),
             timeout=timeout,
             poll_interval=poll_interval,
+            cancellation_requested=cancellation_requested,
         ):
             yield
 
@@ -340,6 +351,7 @@ class ArtifactStore:
         *,
         timeout: float | None = None,
         poll_interval: float = 0.05,
+        cancellation_requested: Callable[[], bool] | None = None,
     ) -> Iterator[None]:
         validated = _validate_cell_id(name)
         path = self.lock_root / "named" / f"{_safe_component(validated)}.lock"
@@ -347,6 +359,7 @@ class ArtifactStore:
             path,
             timeout=timeout,
             poll_interval=poll_interval,
+            cancellation_requested=cancellation_requested,
         ):
             yield
 
@@ -445,17 +458,13 @@ class ArtifactStore:
                         f"orphan attempt contains a symbolic link: {path}"
                     )
                 if path.is_file():
-                    artifact_paths.append(
-                        path.relative_to(attempt_root).as_posix()
-                    )
+                    artifact_paths.append(path.relative_to(attempt_root).as_posix())
                 elif not path.is_dir():
                     raise ArtifactStoreError(
                         f"orphan attempt contains a special file: {path}"
                     )
             if "worker-result.json" not in artifact_paths:
-                raise ArtifactStoreError(
-                    "orphan attempt lacks worker-result.json"
-                )
+                raise ArtifactStoreError("orphan attempt lacks worker-result.json")
             attempt = ArtifactAttempt(
                 store=self,
                 cell_id=validated_cell,
@@ -765,9 +774,7 @@ class ArtifactAttempt:
             if exception_type is None:
                 self.mark_interrupted("attempt exited without publication")
             else:
-                self.mark_interrupted(
-                    f"{exception_type.__name__}: {exception}"
-                )
+                self.mark_interrupted(f"{exception_type.__name__}: {exception}")
         return False
 
     def path(self, relative_path: str) -> Path:
@@ -800,10 +807,7 @@ class ArtifactAttempt:
         self._require_open()
         self.write_json("result.json", result)
         relative_paths = {"result.json", *artifact_paths}
-        records = [
-            self._file_record(relative)
-            for relative in sorted(relative_paths)
-        ]
+        records = [self._file_record(relative) for relative in sorted(relative_paths)]
         manifest = self._manifest(
             status="ok",
             result_path="result.json",
@@ -826,8 +830,17 @@ class ArtifactAttempt:
             artifact_paths=artifact_paths,
         )
 
-    def mark_interrupted(self, error: str) -> None:
-        self._seal_unsuccessful("interrupted", error)
+    def mark_interrupted(
+        self,
+        error: str,
+        *,
+        artifact_paths: Iterable[str] = (),
+    ) -> None:
+        self._seal_unsuccessful(
+            "interrupted",
+            error,
+            artifact_paths=artifact_paths,
+        )
 
     def _seal_unsuccessful(
         self,
@@ -843,8 +856,7 @@ class ArtifactAttempt:
             status=status,
             result_path=None,
             artifacts=[
-                self._file_record(relative)
-                for relative in sorted(set(artifact_paths))
+                self._file_record(relative) for relative in sorted(set(artifact_paths))
             ],
             error=error,
         )
@@ -906,6 +918,7 @@ __all__ = [
     "ArtifactStore",
     "ArtifactStoreError",
     "CurrentRecord",
+    "LockCancelledError",
     "LockTimeoutError",
     "ManifestValidationError",
 ]

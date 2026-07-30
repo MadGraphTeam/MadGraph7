@@ -6,10 +6,10 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from itertools import pairwise
-from math import cos, isfinite, pi, sin, sqrt
+from math import isfinite
 from typing import Any, Literal
 
 from ..evaluators.symbolica_compile import _compile_symbolica_outputs
@@ -35,7 +35,11 @@ from .dag_types import GenericDAG
 from .runtime_schema import build_runtime_expression_schema
 from .stage_planning import build_generic_stage_compiler_blueprint
 from .stage_types import GenericCompiledStageBlueprint
-from .validation import ValidationPointRecord, build_validation_point
+from .validation import (
+    ValidationPointRecord,
+    build_validation_point,
+    rotate_validation_point,
+)
 
 _ComplexDecimal = tuple[Decimal, Decimal]
 _CAPTURE_ABI = NUMERICAL_CURRENT_CAPTURE_ABI
@@ -543,7 +547,7 @@ def build_numerical_current_probe_points(
         count: int,
     ) -> tuple[ValidationPointRecord, ...]:
         return tuple(
-            _rotate_validation_point(
+            rotate_validation_point(
                 build_validation_point(
                     dag,
                     model,
@@ -1477,66 +1481,6 @@ def _kinematic_sha256(point: ValidationPointRecord) -> str:
             }
             for pdg, momentum in point.particles
         ]
-    )
-
-
-def _rotate_validation_point(
-    point: ValidationPointRecord,
-    *,
-    rotation_seed: int,
-) -> ValidationPointRecord:
-    """Apply a deterministic proper rotation to one physical event."""
-
-    if not point.available:
-        return point
-    digest = hashlib.sha256(
-        f"{rotation_seed}:proper-spatial-rotation-v1".encode("ascii")
-    ).digest()
-    denominator = float(1 << 64)
-    azimuth = 2.0 * pi * (
-        (int.from_bytes(digest[:8], "big") + 0.5) / denominator
-    )
-    cosine_polar = (
-        2.0 * ((int.from_bytes(digest[8:16], "big") + 0.5) / denominator)
-        - 1.0
-    )
-    sine_polar = sqrt(max(0.0, 1.0 - cosine_polar * cosine_polar))
-    cos_azimuth = cos(azimuth)
-    sin_azimuth = sin(azimuth)
-    # Rz(azimuth) Ry(polar), a proper orthogonal map taking +z to the
-    # deterministic direction above.
-    rotation = (
-        (
-            cos_azimuth * cosine_polar,
-            -sin_azimuth,
-            cos_azimuth * sine_polar,
-        ),
-        (
-            sin_azimuth * cosine_polar,
-            cos_azimuth,
-            sin_azimuth * sine_polar,
-        ),
-        (-sine_polar, 0.0, cosine_polar),
-    )
-
-    def rotated(
-        momentum: tuple[float, float, float, float],
-    ) -> tuple[float, float, float, float]:
-        energy, x_component, y_component, z_component = momentum
-        spatial = (x_component, y_component, z_component)
-        return (
-            energy,
-            *tuple(
-                sum(row[column] * spatial[column] for column in range(3))
-                for row in rotation
-            ),
-        )
-
-    return replace(
-        point,
-        particles=tuple(
-            (pdg, rotated(momentum)) for pdg, momentum in point.particles
-        ),
     )
 
 

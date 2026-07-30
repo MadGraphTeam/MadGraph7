@@ -134,6 +134,19 @@ _LOCATOR_POINTERS = (
         "environment",
         "DYLD_LIBRARY_PATH",
     ),
+    ("provenance", "manual_campaign", "public_cli_reproduction", "prepare"),
+    ("provenance", "manual_campaign", "public_cli_reproduction", "generate"),
+    ("provenance", "manual_campaign", "public_cli_reproduction", "profile"),
+)
+
+# Generation retains its output directory in the requested/effective CLI
+# configuration.  Unlike diagnostic locator fields, these values are expected
+# to identify the published result's artifact and must never be silently
+# redacted: an absolute path is accepted only when it is rooted in this
+# profile's artifact store.
+_STRICT_ARTIFACT_LOCATOR_POINTERS = (
+    ("provenance", "requested_config", "generation", "output"),
+    ("provenance", "effective_config", "generation", "output"),
 )
 
 _SCHEME_URI_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s]+")
@@ -200,6 +213,14 @@ def _pointer_matches(
 def _locator_pointer(pointer: tuple[str | int, ...]) -> bool:
     relative = _measurement_pointer(pointer)
     return any(_pointer_matches(relative, pattern) for pattern in _LOCATOR_POINTERS)
+
+
+def _strict_artifact_locator_pointer(pointer: tuple[str | int, ...]) -> bool:
+    relative = _measurement_pointer(pointer)
+    return any(
+        _pointer_matches(relative, pattern)
+        for pattern in _STRICT_ARTIFACT_LOCATOR_POINTERS
+    )
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -281,6 +302,33 @@ def _portable_locator_string(value: str, paths: ReportPaths) -> str:
     return result
 
 
+def _portable_artifact_locator_string(
+    value: str,
+    paths: ReportPaths,
+    *,
+    pointer: tuple[str | int, ...],
+) -> str:
+    """Project one exact artifact path, rejecting every external absolute root."""
+
+    has_absolute_path = bool(_absolute_path_fragments(value))
+    has_portable_root = any(marker in value for marker in _PORTABLE_ROOTS)
+    if not has_absolute_path and not has_portable_root:
+        return value
+    portable = _portable_locator_string(value, paths)
+    if not (portable == _ARTIFACT_ROOT or portable.startswith(f"{_ARTIFACT_ROOT}/")):
+        raise PublicationPortabilityError(
+            "artifact path outside publication artifact root at "
+            f"{_json_pointer(pointer)}: {value!r}"
+        )
+    try:
+        resolve_publication_path(portable, paths)
+    except ValueError as error:
+        raise PublicationPortabilityError(
+            f"invalid publication artifact path at {_json_pointer(pointer)}: {value!r}"
+        ) from error
+    return portable
+
+
 def _portable_publication_value(
     value: object,
     paths: ReportPaths,
@@ -288,6 +336,12 @@ def _portable_publication_value(
     pointer: tuple[str | int, ...],
 ) -> object:
     if isinstance(value, str):
+        if _strict_artifact_locator_pointer(pointer):
+            return _portable_artifact_locator_string(
+                value,
+                paths,
+                pointer=pointer,
+            )
         if _locator_pointer(pointer):
             return _portable_locator_string(value, paths)
         fragments = _absolute_path_fragments(value)

@@ -47,7 +47,11 @@ from .numerical_candidate_index import (
     build_numerical_observation_candidate_index,
     numerical_observation_tolerance_window_ids,
 )
-from .validation import ValidationPointRecord, build_process_validation_point
+from .validation import (
+    ValidationPointRecord,
+    build_process_validation_point,
+    rotate_validation_point,
+)
 
 if TYPE_CHECKING:
     from pyamplicol.processes.ir import CanonicalProcessIR
@@ -985,11 +989,18 @@ def build_recurrence_numerical_current_probe_points(
 
     def points(domain: str, count: int) -> tuple[ValidationPointRecord, ...]:
         return tuple(
-            build_process_validation_point(
-                process,
-                model,
-                process_id=process_id,
-                seed=_domain_seed(seed, domain=domain, index=index),
+            rotate_validation_point(
+                build_process_validation_point(
+                    process,
+                    model,
+                    process_id=process_id,
+                    seed=_domain_seed(seed, domain=domain, index=index),
+                ),
+                rotation_seed=_domain_seed(
+                    seed,
+                    domain=f"{domain}:spatial-rotation-v1",
+                    index=index,
+                ),
             )
             for index in range(count)
         )

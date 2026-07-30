@@ -14,6 +14,8 @@ from tools.performance_report.phase_state import (
 )
 from tools.performance_report.worker import (
     _atomic_json,
+    _JsonlProgressSink,
+    _source_identity,
     measure_cell,
     write_cell_result,
 )
@@ -29,6 +31,45 @@ def test_atomic_worker_result_is_canonical_and_complete(tmp_path: Path) -> None:
         "value": 1,
     }
     assert not list(path.parent.glob("*.tmp"))
+
+
+def test_manual_source_identity_is_git_free_and_validated(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "tools.performance_report.worker.require_eligible_report_source",
+        lambda _root: pytest.fail("manual source identity must not invoke Git"),
+    )
+
+    identity = _source_identity(tmp_path, "A" * 40, "b" * 40)
+
+    assert identity.revision == "a" * 40
+    assert identity.tree == "b" * 40
+    assert identity.dirty_paths == ()
+    with pytest.raises(ValueError, match="specified together"):
+        _source_identity(tmp_path, "a" * 40, None)
+    with pytest.raises(ValueError, match="revision must be"):
+        _source_identity(tmp_path, "not-a-revision", "b" * 40)
+
+
+def test_jsonl_progress_sink_captures_compact_typed_events(tmp_path: Path) -> None:
+    from pyamplicol.reporting import ProgressEnd, ProgressStart, ProgressUpdate
+
+    path = tmp_path / "progress.jsonl"
+    sink = _JsonlProgressSink(path)
+    sink.emit(ProgressStart("profile", "Profiling", 2, unit="samples"))
+    sink.emit(ProgressUpdate("profile", 1, 2, "sampled"))
+    sink.emit(ProgressEnd("profile", elapsed_seconds=0.25))
+
+    events = [
+        json.loads(line) for line in path.read_text(encoding="ascii").splitlines()
+    ]
+    assert [event["event"] for event in events] == ["start", "update", "end"]
+    assert {event["task_id"] for event in events} == {"profile"}
+    assert events[0]["total"] == 2
+    assert events[1]["completed"] == 1
+    assert events[2]["elapsed_seconds"] == 0.25
 
 
 def test_every_catalog_cell_has_unique_worker_identity() -> None:
@@ -124,9 +165,12 @@ def test_worker_success_carries_authenticated_split_harness(
     )
 
     assert result["provenance"]["worker_harness"] == harness
-    assert json.loads(
-        (tmp_path / "result.json").read_text(encoding="ascii")
-    )["provenance"]["worker_harness"] == harness
+    assert (
+        json.loads((tmp_path / "result.json").read_text(encoding="ascii"))[
+            "provenance"
+        ]["worker_harness"]
+        == harness
+    )
 
 
 def test_worker_constructs_and_threads_parent_phase_reporter(
@@ -167,9 +211,7 @@ def test_legacy_worker_threads_generation_phase_reporter_to_adapter(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    cell = REPORT_CATALOG.cell(
-        "reference-amplicol-lc-n1-dd-z-jets-selected-flow"
-    )
+    cell = REPORT_CATALOG.cell("reference-amplicol-lc-n1-dd-z-jets-selected-flow")
     reporter = object()
     observed: list[object] = []
 

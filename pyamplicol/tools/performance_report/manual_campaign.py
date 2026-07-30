@@ -1,0 +1,4794 @@
+# SPDX-License-Identifier: 0BSD
+"""Human-steerable MacBook M3 performance campaign.
+
+This module is intentionally a thin controller.  Cell definition, dependency
+planning, generation, profiling, atomic attempt publication, rendering, and PDF
+compilation remain owned by the existing performance-report and public
+``pyamplicol`` command APIs.
+"""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import difflib
+import hashlib
+import json
+import math
+import os
+import re
+import shlex
+import shutil
+import statistics
+import struct
+import sys
+import tempfile
+import textwrap
+import threading
+import time
+import uuid
+import zlib
+from collections import Counter
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from colorama import Fore, Style, just_fix_windows_console
+from prettytable import PrettyTable
+
+from .artifacts import ATTEMPT_SCHEMA, CURRENT_SCHEMA, ArtifactStore, CurrentRecord
+from .cache import reset_entry, validate_measurement
+from .campaign_policy import PolicyMeasurementState
+from .catalog import PROCESS_FAMILIES, REPORT_CATALOG, ReportCatalog
+from .models import (
+    Accuracy,
+    ArtifactPolicy,
+    CellSpec,
+    ExecutionMode,
+    ModelKey,
+    ResultStatus,
+    Workload,
+)
+from .publisher import (
+    DEFAULT_PDF_TIMEOUT_SECONDS,
+    _compile_pdf,
+)
+from .scheduler import (
+    CampaignResult,
+    CampaignScheduler,
+    CampaignSettings,
+    CellSelection,
+    PlannedCell,
+    plan_campaign,
+    select_cells,
+)
+from .service import ReportPaths, ReportService
+from .source_identity import ReportSourceIdentity, _generated_report_path
+
+PROFILE = "macbook_M3_manual"
+DEFAULT_GENERATION_LIMIT_SECONDS = 60.0 * 60.0
+DEFAULT_RAM_BYTES = 30_000_000_000
+DEFAULT_CORES_PER_WORKER = 1
+DEFAULT_TARGET_RUNTIME_SECONDS = 5.0
+DEFAULT_BATCH_SIZE = 128
+DEFAULT_WARMUP_RUNS = 2
+DEFAULT_MINIMUM_SAMPLES = 5
+DEFAULT_WORKER_STALE_SECONDS = 15.0
+DEFAULT_MANUAL_EXPECTED_PAGE_COUNT = 60
+MAX_TAIL_READ_BYTES = 64 * 1024
+MAX_LOG_TAIL_LINES = 8
+MANUAL_STATE_SCHEMA = "pyamplicol-manual-campaign-state-v1"
+SOURCE_MARKER_SCHEMA = "pyamplicol-manual-source-v1"
+_DASHBOARD_COUNTER_KEYS = (
+    "selected",
+    "recycled",
+    "active",
+    "completed",
+    "remaining",
+    "static_na",
+    "capped",
+    "failed",
+    "dependency_only",
+)
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
+
+class ManualCampaignError(RuntimeError):
+    """One concise, user-facing steering error."""
+
+
+def _manual_static_na_reason(cell: CellSpec) -> str | None:
+    """Return only stable catalog policy exclusions.
+
+    Runtime implementation limits belong under the ordinary worker resource
+    caps rather than becoming controller-specific static N/A rows.
+    """
+
+    return REPORT_CATALOG.static_na_reason(cell)
+
+
+class HelpFormatter(argparse.RawDescriptionHelpFormatter):
+    """Keep examples readable while displaying option defaults."""
+
+    def _get_help_string(self, action: argparse.Action) -> str:
+        text = action.help or ""
+        if (
+            action.default is not None
+            and action.default is not argparse.SUPPRESS
+            and "%(default)" not in text
+            and action.option_strings
+        ):
+            text += " (default: %(default)s)"
+        return text
+
+
+class Palette:
+    def __init__(self, enabled: bool) -> None:
+        self.enabled = enabled
+        just_fix_windows_console()
+
+    def paint(self, color: str, value: object, *, bright: bool = False) -> str:
+        text = str(value)
+        if not self.enabled:
+            return text
+        prefix = Style.BRIGHT if bright else ""
+        return f"{prefix}{color}{text}{Style.RESET_ALL}"
+
+    def key(self, value: object) -> str:
+        return self.paint(Fore.CYAN, value, bright=True)
+
+    def success(self, value: object) -> str:
+        return self.paint(Fore.GREEN, value)
+
+    def warning(self, value: object) -> str:
+        return self.paint(Fore.YELLOW, value)
+
+    def failure(self, value: object) -> str:
+        return self.paint(Fore.RED, value)
+
+    def neutral(self, value: object) -> str:
+        return str(value)
+
+
+def _color_enabled(arguments: argparse.Namespace, *, json_output: bool = False) -> bool:
+    return (
+        not json_output
+        and not bool(getattr(arguments, "no_color", False))
+        and "NO_COLOR" not in os.environ
+    )
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _atomic_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("x", encoding="ascii") as stream:
+            json.dump(
+                payload,
+                stream,
+                allow_nan=False,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _normal(value: str) -> str:
+    return value.strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def _positive_finite_float(value: str) -> float:
+    try:
+        result = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("expected a finite number") from error
+    if not math.isfinite(result) or result <= 0.0:
+        raise argparse.ArgumentTypeError("expected a positive finite number")
+    return result
+
+
+def _nonnegative_finite_float(value: str) -> float:
+    try:
+        result = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("expected a finite number") from error
+    if not math.isfinite(result) or result < 0.0:
+        raise argparse.ArgumentTypeError("expected a non-negative finite number")
+    return result
+
+
+def _flatten(values: Sequence[Sequence[str]] | None) -> tuple[str, ...]:
+    if not values:
+        return ()
+    flattened = tuple(item for group in values for item in group)
+    if any(_normal(item) in {"*", "all"} for item in flattened):
+        return ()
+    return flattened
+
+
+def _shell_join(arguments: Iterable[object]) -> str:
+    return shlex.join(tuple(str(argument) for argument in arguments))
+
+
+def _table(
+    headers: Sequence[str],
+    rows: Iterable[Sequence[object]],
+    *,
+    align: Mapping[str, str] | None = None,
+    max_width: Mapping[str, int] | None = None,
+) -> str:
+    value = PrettyTable()
+    value.field_names = list(headers)
+    value.hrules = 1
+    value.vrules = 1
+    value.padding_width = 1
+    for header in headers:
+        value.align[header] = "l"
+    if align is not None:
+        for header, direction in align.items():
+            value.align[header] = direction
+    if max_width is not None:
+        for header, width in max_width.items():
+            value.max_width[header] = width
+    for row in rows:
+        value.add_row(list(row))
+    return value.get_string()
+
+
+_MODEL_ALIASES = {
+    "builtin": ModelKey.BUILTIN_SM,
+    "built_in": ModelKey.BUILTIN_SM,
+    "built_in_sm": ModelKey.BUILTIN_SM,
+    "builtin_sm": ModelKey.BUILTIN_SM,
+    "sm": ModelKey.BUILTIN_SM,
+    "ufo": ModelKey.UFO_SM,
+    "sm_ufo": ModelKey.UFO_SM,
+    "ufo_sm": ModelKey.UFO_SM,
+    "external_sm": ModelKey.UFO_SM,
+    "scalar_contact": ModelKey.SCALAR_CONTACT,
+    "scalar_gravity": ModelKey.SCALAR_GRAVITY,
+}
+_ACCURACY_ALIASES = {
+    "lc": Accuracy.LC,
+    "leading_color": Accuracy.LC,
+    "leading_colour": Accuracy.LC,
+    "nlc": Accuracy.NLC,
+    "next_to_leading_color": Accuracy.NLC,
+    "next_to_leading_colour": Accuracy.NLC,
+    "full": Accuracy.FULL,
+    "full_color": Accuracy.FULL,
+    "full_colour": Accuracy.FULL,
+}
+_MODE_ALIASES = {
+    "amplicol": ExecutionMode.AMPLICOL,
+    "legacy": ExecutionMode.AMPLICOL,
+    "recurrence": ExecutionMode.RECURRENCE,
+    "ampli_col": ExecutionMode.RECURRENCE,
+    "compiled": ExecutionMode.COMPILED,
+    "eager": ExecutionMode.EAGER,
+}
+_WORKLOAD_ALIASES = {
+    "non_union_flow": Workload.SELECTED_FLOW,
+    "selected_flow": Workload.SELECTED_FLOW,
+    "single_flow": Workload.SELECTED_FLOW,
+    "single_flow_hel_sum": Workload.SELECTED_FLOW,
+    "topology_replay": Workload.SELECTED_FLOW,
+    "union_flow": Workload.ALL_FLOW,
+    "all_flow": Workload.ALL_FLOW,
+    "all_flows": Workload.ALL_FLOW,
+    "all_flows_single_hel": Workload.ALL_FLOW,
+    "all_flow_union": Workload.ALL_FLOW,
+    "contracted": Workload.CONTRACTED,
+}
+
+
+def _dataset_aliases(catalog: ReportCatalog) -> dict[str, frozenset[str]]:
+    dataset_ids = frozenset(cell.dataset_id for cell in catalog.measurement_cells())
+    aliases: dict[str, frozenset[str]] = {
+        _normal(dataset): frozenset({dataset}) for dataset in dataset_ids
+    }
+    aliases.update(
+        {
+            "z": frozenset(
+                dataset for dataset in dataset_ids if dataset.startswith("z_")
+            ),
+            "z_table": frozenset(
+                dataset for dataset in dataset_ids if dataset.startswith("z_")
+            ),
+            "matrix": frozenset(
+                dataset for dataset in dataset_ids if dataset.startswith("matrix_")
+            ),
+            "matrix_table": frozenset(
+                dataset for dataset in dataset_ids if dataset.startswith("matrix_")
+            ),
+            "matrix_best": frozenset(
+                dataset
+                for dataset in dataset_ids
+                if dataset.startswith("matrix_") and "_builtin_sm_" in dataset
+            ),
+            "reference": frozenset(
+                dataset
+                for dataset in dataset_ids
+                if dataset.startswith("reference_amplicol_")
+            ),
+            "scalar": frozenset(
+                dataset for dataset in dataset_ids if dataset.startswith("scalar_")
+            ),
+        }
+    )
+    return aliases
+
+
+def _invalid_value(
+    option: str,
+    value: str,
+    allowed: Iterable[str],
+) -> ManualCampaignError:
+    choices = tuple(sorted(set(allowed)))
+    suggestions = difflib.get_close_matches(_normal(value), choices, n=3, cutoff=0.45)
+    suffix = "" if not suggestions else f"; did you mean {', '.join(suggestions)}?"
+    if len(choices) > 24:
+        displayed = (
+            *choices[:24],
+            f"… {len(choices) - 24} more (use --help or a dry run to browse)",
+        )
+    else:
+        displayed = choices
+    return ManualCampaignError(
+        f"{option}: unsupported value {value!r}{suffix}\n"
+        + _table(("option", "allowed values"), ((option, ", ".join(displayed)),))
+    )
+
+
+def _empty_selection_error(
+    arguments: argparse.Namespace,
+    catalog: ReportCatalog,
+) -> ManualCampaignError:
+    provided = tuple(
+        option
+        for attribute, option in (
+            ("table", "--table"),
+            ("process_id", "--process-id"),
+            ("multiplicity", "--multiplicity"),
+            ("color_approximation", "--color-approximation"),
+            ("generation_mode", "--generation-mode"),
+            ("generation_engine", "--generation-engine"),
+            ("model", "--model"),
+            ("variant", "--variant"),
+            ("cell_id", "--cell-id"),
+        )
+        if getattr(arguments, attribute, None)
+    )
+    variants = sorted(
+        {
+            str(cell.variant)
+            for cell in catalog.measurement_cells()
+            if cell.variant is not None
+        }
+    )
+    multiplicities = sorted({cell.n_final for cell in catalog.measurement_cells()})
+    processes = tuple(
+        f"{family.identifier}:{family.key}" for family in PROCESS_FAMILIES
+    )
+    rows = (
+        (
+            "--table",
+            "z_table, matrix_table, matrix_best, scalar_contact, "
+            "scalar_gravity, reference",
+        ),
+        ("--process-id", ", ".join(processes)),
+        ("--multiplicity", ", ".join(str(value) for value in multiplicities)),
+        ("--color-approximation", "lc, nlc, full"),
+        ("--generation-mode", "non-union-flow, union-flow, contracted"),
+        ("--generation-engine", "amplicol, recurrence, compiled, eager"),
+        ("--model", "built_in, sm_ufo, scalar_contact, scalar_gravity"),
+        ("--variant", ", ".join(variants)),
+        (
+            "--cell-id",
+            "one exact canonical cell ID (see --help or a broader dry run)",
+        ),
+    )
+    suggestion = (
+        "Remove one selector at a time to find the conflicting dimension"
+        if not provided
+        else "Try removing one of " + ", ".join(provided)
+    )
+    return ManualCampaignError(
+        "the selector intersection contains no catalog entries. "
+        f"{suggestion}; wildcard `*`/`all` is also accepted.\n"
+        + _table(
+            ("selector", "canonical values / useful aliases"),
+            rows,
+            max_width={"canonical values / useful aliases": 96},
+        )
+    )
+
+
+def _resolve_map(
+    option: str,
+    raw_values: Sequence[str],
+    aliases: Mapping[str, Any],
+) -> frozenset[Any]:
+    resolved: set[Any] = set()
+    for raw in raw_values:
+        key = _normal(raw)
+        try:
+            resolved.add(aliases[key])
+        except KeyError:
+            raise _invalid_value(option, raw, aliases) from None
+    return frozenset(resolved)
+
+
+def _resolve_datasets(
+    raw_values: Sequence[str],
+    catalog: ReportCatalog,
+) -> frozenset[str]:
+    aliases = _dataset_aliases(catalog)
+    resolved: set[str] = set()
+    for raw in raw_values:
+        key = _normal(raw)
+        try:
+            resolved.update(aliases[key])
+        except KeyError:
+            raise _invalid_value("--table", raw, aliases) from None
+    return frozenset(resolved)
+
+
+def _resolve_processes(
+    raw_values: Sequence[str],
+) -> tuple[frozenset[str], frozenset[str]]:
+    by_id = {str(family.identifier): family.key for family in PROCESS_FAMILIES}
+    by_key = {_normal(family.key): family.key for family in PROCESS_FAMILIES}
+    process_keys: set[str] = set()
+    concrete: set[str] = set()
+    allowed = {**by_id, **by_key}
+    for raw in raw_values:
+        key = _normal(raw)
+        if key in allowed:
+            process_keys.add(allowed[key])
+        elif ">" in raw:
+            concrete.add(" ".join(raw.split()))
+        else:
+            raise _invalid_value("--process-id", raw, allowed) from None
+    return frozenset(process_keys), frozenset(concrete)
+
+
+def selection_from_arguments(
+    arguments: argparse.Namespace,
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> tuple[CellSelection, tuple[CellSpec, ...]]:
+    raw_tables = _flatten(getattr(arguments, "table", None))
+    raw_processes = _flatten(getattr(arguments, "process_id", None))
+    raw_multiplicities = _flatten(getattr(arguments, "multiplicity", None))
+    raw_accuracies = _flatten(getattr(arguments, "color_approximation", None))
+    raw_workloads = _flatten(getattr(arguments, "generation_mode", None))
+    raw_modes = _flatten(getattr(arguments, "generation_engine", None))
+    raw_models = _flatten(getattr(arguments, "model", None))
+    raw_variants = _flatten(getattr(arguments, "variant", None))
+    raw_cell_ids = _flatten(getattr(arguments, "cell_id", None))
+
+    multiplicities: set[int] = set()
+    for raw in raw_multiplicities:
+        try:
+            value = int(raw)
+        except ValueError:
+            raise ManualCampaignError(
+                f"--multiplicity expects positive integers, not {raw!r}"
+            ) from None
+        if value < 1:
+            raise ManualCampaignError("--multiplicity values must be positive")
+        multiplicities.add(value)
+
+    process_keys, processes = _resolve_processes(raw_processes)
+    known_variants = frozenset(
+        cell.variant for cell in catalog.measurement_cells() if cell.variant is not None
+    )
+    variants: set[str] = set()
+    for raw in raw_variants:
+        matches = {
+            variant for variant in known_variants if _normal(variant) == _normal(raw)
+        }
+        if not matches:
+            raise _invalid_value("--variant", raw, map(_normal, known_variants))
+        variants.update(matches)
+
+    known_cells = {cell.cell_id for cell in catalog.measurement_cells()}
+    cell_ids: set[str] = set()
+    for raw in raw_cell_ids:
+        normalized = raw.strip()
+        if normalized not in known_cells:
+            raise _invalid_value("--cell-id", normalized, known_cells)
+        cell_ids.add(normalized)
+
+    resolved_modes = _resolve_map(
+        "--generation-engine",
+        raw_modes,
+        _MODE_ALIASES,
+    )
+    resolved_models = _resolve_map("--model", raw_models, _MODEL_ALIASES)
+    selection = CellSelection(
+        datasets=_resolve_datasets(raw_tables, catalog),
+        modes=resolved_modes,
+        # Legacy AmpliCol represents the built-in SM but stores model=None.
+        # Apply the friendly model filter below so built_in + amplicol works.
+        models=frozenset(),
+        accuracies=_resolve_map(
+            "--color-approximation",
+            raw_accuracies,
+            _ACCURACY_ALIASES,
+        ),
+        process_keys=process_keys,
+        processes=processes,
+        multiplicities=frozenset(multiplicities),
+        variants=frozenset(variants),
+        workloads=_resolve_map(
+            "--generation-mode",
+            raw_workloads,
+            _WORKLOAD_ALIASES,
+        ),
+        cell_ids=frozenset(cell_ids),
+    )
+    selected = list(select_cells(selection, catalog=catalog))
+
+    normalized_tables = {_normal(value) for value in raw_tables}
+    if ExecutionMode.AMPLICOL in resolved_modes:
+        supplemental_datasets: frozenset[str] = frozenset()
+        supplemental_process_keys = selection.process_keys
+        supplemental_workloads = selection.workloads
+        supplemental_accuracies = selection.accuracies
+        if "z" in normalized_tables or "z_table" in normalized_tables:
+            supplemental_datasets = frozenset({"reference_amplicol_lc"})
+            supplemental_process_keys = frozenset({"dd_z_jets"})
+            supplemental_workloads = frozenset({Workload.SELECTED_FLOW})
+            supplemental_accuracies = frozenset({Accuracy.LC})
+        elif normalized_tables.intersection({"matrix", "matrix_table", "matrix_best"}):
+            supplemental_datasets = frozenset(
+                {
+                    "reference_amplicol_lc",
+                    "reference_amplicol_nlc",
+                    "reference_amplicol_full",
+                }
+            )
+        if supplemental_datasets:
+            supplement = CellSelection(
+                datasets=supplemental_datasets,
+                modes=frozenset({ExecutionMode.AMPLICOL}),
+                accuracies=supplemental_accuracies,
+                process_keys=supplemental_process_keys,
+                processes=selection.processes,
+                multiplicities=selection.multiplicities,
+                variants=selection.variants,
+                workloads=supplemental_workloads,
+                cell_ids=selection.cell_ids,
+            )
+            selected.extend(select_cells(supplement, catalog=catalog))
+
+    if resolved_models:
+        selected = [
+            cell
+            for cell in selected
+            if cell.measurement.model in resolved_models
+            or (
+                cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+                and ModelKey.BUILTIN_SM in resolved_models
+            )
+        ]
+    cells = tuple(
+        sorted(
+            {cell.cell_id: cell for cell in selected}.values(),
+            key=lambda item: item.cell_id,
+        )
+    )
+    if not cells:
+        raise _empty_selection_error(arguments, catalog)
+    return selection, cells
+
+
+def _model_cli_source(cell: CellSpec, repo_root: Path) -> str:
+    model = cell.measurement.model
+    if model is ModelKey.BUILTIN_SM:
+        return "built-in-sm"
+    mapping = {
+        ModelKey.UFO_SM: repo_root / "src/pyamplicol/assets/models/json/sm/sm.json",
+        ModelKey.SCALAR_CONTACT: (
+            repo_root / "src/pyamplicol/assets/models/json/scalars/scalars.json"
+        ),
+        ModelKey.SCALAR_GRAVITY: (
+            repo_root
+            / "src/pyamplicol/assets/models/json/scalar_gravity/scalar_gravity.json"
+        ),
+    }
+    if model is None:
+        return "<legacy-AmpliCol-has-no-pyamplicol-model>"
+    return os.fspath(mapping[model])
+
+
+def _reproduction_root(repo_root: Path, cell: CellSpec) -> Path:
+    return (
+        repo_root
+        / ".artifacts/performance_reports"
+        / PROFILE
+        / "manual-reproductions"
+        / cell.cell_id
+    )
+
+
+def _pyamplicol_cli(repo_root: Path) -> str:
+    return os.fspath(
+        (repo_root / ".venv/bin/pyamplicol").expanduser().resolve(strict=False)
+    )
+
+
+def _materialize_reproduction_momenta(
+    cell: CellSpec,
+    *,
+    repo_root: Path,
+    momenta: object,
+) -> Path:
+    """Publish the exact recorded report points for public recurrence."""
+
+    path = _reproduction_root(repo_root, cell) / "momenta.json"
+    _atomic_json(path, momenta)
+    return path
+
+
+@dataclass(frozen=True, slots=True)
+class ReproductionRecipe:
+    kind: str
+    prepare: tuple[str, ...] | None
+    generate: tuple[str, ...] | None
+    profile: tuple[str, ...] | None
+    note: str
+    exact: bool
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "kind": self.kind,
+            "prepare": (None if self.prepare is None else _shell_join(self.prepare)),
+            "generate": (None if self.generate is None else _shell_join(self.generate)),
+            "profile": None if self.profile is None else _shell_join(self.profile),
+            "note": self.note,
+            "exact": self.exact,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ReproductionSettings:
+    """Effective invocation settings used for active public CLI recipes."""
+
+    cores: int = DEFAULT_CORES_PER_WORKER
+    target_runtime: float = DEFAULT_TARGET_RUNTIME_SECONDS
+    batch_size: int = DEFAULT_BATCH_SIZE
+    warmups: int = DEFAULT_WARMUP_RUNS
+    minimum_samples: int = DEFAULT_MINIMUM_SAMPLES
+
+
+def reproduction_recipe(
+    cell: CellSpec,
+    *,
+    repo_root: Path,
+    artifact_path: str = "<ARTIFACT_DIR>",
+    cores: int = DEFAULT_CORES_PER_WORKER,
+    target_runtime: float = DEFAULT_TARGET_RUNTIME_SECONDS,
+    batch_size: int = DEFAULT_BATCH_SIZE,
+    warmups: int = DEFAULT_WARMUP_RUNS,
+    minimum_samples: int = DEFAULT_MINIMUM_SAMPLES,
+    measurement: Mapping[str, object] | None = None,
+) -> ReproductionRecipe:
+    if cell.measurement.execution_mode is ExecutionMode.AMPLICOL:
+        return ReproductionRecipe(
+            kind="legacy-report-adapter",
+            prepare=None,
+            generate=None,
+            profile=None,
+            note="Original AmpliCol has no public pyamplicol CLI subcommand.",
+            exact=False,
+        )
+    cli = _pyamplicol_cli(repo_root)
+    if artifact_path == "<ARTIFACT_DIR>":
+        artifact_path = os.fspath(_reproduction_root(repo_root, cell) / "artifact")
+    model_cache = _reproduction_root(repo_root, cell) / "model-cache"
+    provenance = (
+        measurement.get("provenance") if isinstance(measurement, Mapping) else None
+    )
+    requested = (
+        provenance.get("requested_config") if isinstance(provenance, Mapping) else None
+    )
+    requested_model = requested.get("model") if isinstance(requested, Mapping) else None
+    recorded_model_source = (
+        requested_model.get("source") if isinstance(requested_model, Mapping) else None
+    )
+    raw_model_source = (
+        recorded_model_source
+        if isinstance(recorded_model_source, str) and recorded_model_source
+        else _model_cli_source(cell, repo_root)
+    )
+    artifact_record = (
+        measurement.get("artifact") if isinstance(measurement, Mapping) else None
+    )
+    process_selector = cell.process
+    completed = (
+        isinstance(measurement, Mapping)
+        and measurement.get("status") == ResultStatus.OK.value
+        and isinstance(artifact_record, Mapping)
+        and isinstance(artifact_record.get("path"), str)
+        and isinstance(artifact_record.get("process_id"), str)
+    )
+    prepare: tuple[str, ...] | None = None
+    model_source = raw_model_source
+    prepared_execution = cell.measurement.execution_mode in {
+        ExecutionMode.EAGER,
+        ExecutionMode.RECURRENCE,
+    }
+    if prepared_execution and cell.measurement.model is ModelKey.UFO_SM:
+        ufo_source = _model_cli_source(cell, repo_root)
+        prepared_path = (
+            _reproduction_root(repo_root, cell)
+            / "prepared-models"
+            / "ufo-sm-jit-o2.pyamplicol-model"
+        )
+        prepare = (
+            cli,
+            "model",
+            "compile",
+            ufo_source,
+            os.fspath(prepared_path),
+            "--model-cache-dir",
+            os.fspath(model_cache),
+            "--model-cache",
+            "--backend",
+            "jit",
+            "--cores",
+            str(cores),
+            "--jit-optimization-level",
+            "2",
+            "--set",
+            "evaluator.execution_mode=recurrence",
+            "--format",
+            "json",
+            "--color",
+            "always",
+            "--progress",
+            "tty",
+        )
+        model_source = os.fspath(prepared_path)
+    layout = (
+        "all-flow-union" if cell.workload is Workload.ALL_FLOW else "topology-replay"
+    )
+    generate = (
+        cli,
+        "generate",
+        cell.process,
+        artifact_path,
+        "--model",
+        model_source,
+        "--model-cache",
+        "--model-cache-dir",
+        os.fspath(model_cache),
+        "--color-accuracy",
+        cell.measurement.accuracy.value,
+        "--lc-flow-layout",
+        layout,
+        "--execution-mode",
+        cell.measurement.execution_mode.value,
+        "--backend",
+        cell.measurement.backend,
+        "--workers",
+        str(cores),
+        "--cores",
+        str(cores),
+        "--batch-size",
+        str(batch_size),
+        "--output-chunk-size",
+        "512",
+        "--horner-iterations",
+        "10",
+        "--cpe-iterations",
+        "none",
+        "--max-horner-variables",
+        "1000",
+        "--max-common-pair-cache-entries",
+        "5000000",
+        "--max-common-pair-distance",
+        "1000",
+        "--jit-optimization-level",
+        str(cell.measurement.jit_optimization_level or 2),
+        "--cpp-optimization",
+        "O3",
+        "--emit-api-bundle",
+        "--validation",
+        "--validation-samples",
+        "10",
+        "--validation-seed",
+        "12345",
+        "--relative-tolerance",
+        "1e-12",
+        "--absolute-tolerance",
+        "1e-300",
+        "--post-build-validation",
+        "--numerical-current-reuse",
+        "--force",
+        "--color",
+        "always",
+        "--progress",
+        "tty",
+    )
+    selector_contract = (
+        measurement.get("selector_contract")
+        if isinstance(measurement, Mapping)
+        else None
+    )
+    selector: tuple[str, ...] = ()
+    if isinstance(selector_contract, Mapping):
+        if cell.workload is Workload.SELECTED_FLOW:
+            raw_flows = selector_contract.get("selected_color_flow_ids")
+            if isinstance(raw_flows, Sequence) and not isinstance(
+                raw_flows, (str, bytes)
+            ):
+                selector = tuple(
+                    argument
+                    for value in raw_flows
+                    for argument in ("--color-flow", str(value))
+                )
+        elif cell.workload is Workload.ALL_FLOW:
+            try:
+                from .runner import SelectorContract
+
+                raw_helicities: object = SelectorContract.from_mapping(
+                    selector_contract
+                ).runtime_all_flow_helicity_ids
+            except (TypeError, ValueError):
+                raw_helicities = ()
+            if isinstance(raw_helicities, Sequence):
+                selector = tuple(
+                    argument
+                    for value in raw_helicities
+                    for argument in ("--helicity", str(value))
+                )
+    selector_ready = cell.workload is Workload.CONTRACTED or bool(selector)
+    recorded_momenta = (
+        provenance.get("report_momenta") if isinstance(provenance, Mapping) else None
+    )
+    momenta_ready = isinstance(recorded_momenta, Sequence) and not isinstance(
+        recorded_momenta,
+        (str, bytes),
+    )
+    exact = (
+        completed
+        and cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+        and selector_ready
+        and momenta_ready
+    )
+    momenta: tuple[str, ...] = ()
+    if exact:
+        momenta = (
+            "--momenta",
+            os.fspath(
+                _materialize_reproduction_momenta(
+                    cell,
+                    repo_root=repo_root,
+                    momenta=recorded_momenta,
+                )
+            ),
+        )
+    profile = (
+        cli,
+        "profile",
+        artifact_path,
+        "--process",
+        process_selector,
+        "--target-runtime",
+        f"{target_runtime:g}",
+        "--batch-size",
+        str(batch_size),
+        "--warmup-runs",
+        str(warmups),
+        "--minimum-samples",
+        str(minimum_samples),
+        "--precision",
+        "16",
+        *momenta,
+        *selector,
+        "--format",
+        "json",
+        "--color",
+        "always",
+        "--progress",
+        "tty",
+    )
+    if cell.measurement.execution_mode is ExecutionMode.COMPILED:
+        kind = "public-cli+precompiled-generation+paired-arena-exceptions"
+        note = (
+            "Diagnostic only: the report injects a precompiled model outside "
+            "generation_seconds and publishes a paired private Arena profile; "
+            "the public commands do not reproduce either timing boundary."
+        )
+    elif cell.measurement.execution_mode is ExecutionMode.EAGER:
+        kind = "public-cli+paired-arena-profile-exception"
+        note = (
+            "Generation uses the public CLI path. Profile is diagnostic only: "
+            "the report publishes a paired private Arena timing boundary."
+        )
+    elif exact:
+        kind = "public-cli-exact"
+        note = (
+            "Exact completed-cell public commands with the published stable "
+            "selector and materialized report momenta."
+        )
+    else:
+        kind = "public-cli-template"
+        note = (
+            "Prepare (when shown) and generate are runnable. Profile is a "
+            "template only: its stable flow/helicity selector and exact "
+            "momenta are published after successful generation/measurement."
+        )
+    if prepare is not None:
+        kind += "+model-compile-prerequisite"
+    return ReproductionRecipe(
+        kind=kind,
+        prepare=prepare,
+        generate=generate,
+        profile=profile,
+        note=note,
+        exact=exact,
+    )
+
+
+def _git_directory(repo_root: Path) -> Path:
+    git_marker = repo_root / ".git"
+    if git_marker.is_file():
+        text = git_marker.read_text(encoding="ascii").strip()
+        prefix = "gitdir:"
+        if not text.startswith(prefix):
+            raise ManualCampaignError(".git worktree marker is malformed")
+        git_dir = Path(text[len(prefix) :].strip())
+        if not git_dir.is_absolute():
+            git_dir = (repo_root / git_dir).resolve(strict=False)
+    else:
+        git_dir = git_marker
+    if not git_dir.is_dir():
+        raise ManualCampaignError("checkout Git metadata directory is unavailable")
+    return git_dir
+
+
+def _git_common_directory(git_dir: Path) -> Path:
+    commondir = git_dir / "commondir"
+    if not commondir.is_file():
+        return git_dir
+    return (git_dir / commondir.read_text(encoding="ascii").strip()).resolve(
+        strict=False
+    )
+
+
+def _repo_head(repo_root: Path) -> str:
+    """Read the checkout revision without invoking Git."""
+
+    git_dir = _git_directory(repo_root)
+    head = (git_dir / "HEAD").read_text(encoding="ascii").strip()
+    if head.startswith("ref: "):
+        reference = head[5:]
+        loose = git_dir / reference
+        if loose.is_file():
+            head = loose.read_text(encoding="ascii").strip()
+        else:
+            common_dir = _git_common_directory(git_dir)
+            common_loose = common_dir / reference
+            if common_loose.is_file():
+                head = common_loose.read_text(encoding="ascii").strip()
+            else:
+                packed = common_dir / "packed-refs"
+                value = None
+                if packed.is_file():
+                    for line in packed.read_text(encoding="ascii").splitlines():
+                        if line.startswith(("#", "^")):
+                            continue
+                        candidate, separator, name = line.partition(" ")
+                        if separator and name == reference:
+                            value = candidate
+                            break
+                if value is None:
+                    raise ManualCampaignError(
+                        f"cannot resolve Git reference {reference!r}"
+                    )
+                head = value
+    if len(head) != 40 or any(
+        character not in "0123456789abcdef" for character in head
+    ):
+        raise ManualCampaignError("checkout HEAD is not a lowercase 40-hex revision")
+    return head
+
+
+def _commit_tree_marker(repo_root: Path, revision: str) -> str:
+    """Read a loose commit's real tree or use an explicit revision-only marker."""
+
+    common_dir = _git_common_directory(_git_directory(repo_root))
+    object_path = common_dir / "objects" / revision[:2] / revision[2:]
+    try:
+        raw = zlib.decompress(object_path.read_bytes())
+    except (OSError, zlib.error):
+        return f"manual-revision:{revision}"
+    _header, separator, body = raw.partition(b"\0")
+    if not separator:
+        return f"manual-revision:{revision}"
+    for line in body.splitlines():
+        if not line.startswith(b"tree "):
+            continue
+        value = line[5:].decode("ascii", errors="ignore")
+        if len(value) == 40 and all(
+            character in "0123456789abcdef" for character in value
+        ):
+            return value
+    return f"manual-revision:{revision}"
+
+
+def _index_tree_marker(
+    entries: Sequence[tuple[bytes, int, bytes]],
+) -> str:
+    """Build Git's tree identity from index object IDs, never file contents."""
+
+    root: dict[bytes, Any] = {}
+    for raw_path, indexed_mode, object_id in entries:
+        parts = raw_path.split(b"/")
+        if not parts or any(part in {b"", b".", b".."} for part in parts):
+            raise ManualCampaignError("checkout index contains an unsafe path")
+        node = root
+        for part in parts[:-1]:
+            existing = node.get(part)
+            if existing is None:
+                child: dict[bytes, Any] = {}
+                node[part] = child
+                node = child
+            elif isinstance(existing, dict):
+                node = existing
+            else:
+                raise ManualCampaignError(
+                    "checkout index contains a file/directory path collision"
+                )
+        leaf = parts[-1]
+        if leaf in node:
+            raise ManualCampaignError("checkout index contains duplicate paths")
+        kind = indexed_mode & 0o170000
+        if kind == 0o100000:
+            tree_mode = 0o100755 if indexed_mode & 0o111 else 0o100644
+        elif kind in {0o120000, 0o160000}:
+            tree_mode = kind
+        else:
+            raise ManualCampaignError(
+                f"checkout index contains unsupported mode {indexed_mode:o}"
+            )
+        node[leaf] = (tree_mode, object_id)
+
+    def encode_tree(node: Mapping[bytes, Any]) -> bytes:
+        records: list[bytes] = []
+        ordered = sorted(
+            node.items(),
+            key=lambda item: item[0] + (b"/" if isinstance(item[1], dict) else b""),
+        )
+        for name, value in ordered:
+            if isinstance(value, dict):
+                mode = b"40000"
+                object_id = encode_tree(value)
+            else:
+                indexed_mode, object_id = value
+                mode = f"{indexed_mode:o}".encode("ascii")
+            records.append(mode + b" " + name + b"\0" + object_id)
+        payload = b"".join(records)
+        # SHA-1 here is Git's tree-object address over index metadata.  No
+        # worktree or performance artifact bytes are read or hashed.
+        return hashlib.sha1(
+            b"tree " + str(len(payload)).encode("ascii") + b"\0" + payload,
+            usedforsecurity=False,
+        ).digest()
+
+    return encode_tree(root).hex()
+
+
+def _index_metadata_dirty_paths(repo_root: Path) -> tuple[str, ...]:
+    """Check index/worktree metadata and index-vs-HEAD; never run Git."""
+
+    index_path = _git_directory(repo_root) / "index"
+    try:
+        data = index_path.read_bytes()
+    except OSError as error:
+        raise ManualCampaignError(f"checkout index is unreadable: {error}") from error
+    if len(data) < 12:
+        raise ManualCampaignError("checkout index is truncated")
+    signature, version, count = struct.unpack("!4sII", data[:12])
+    if signature != b"DIRC" or version not in {2, 3}:
+        raise ManualCampaignError(
+            f"unsupported checkout index format: signature={signature!r}, "
+            f"version={version}"
+        )
+    offset = 12
+    tracked: set[str] = set()
+    dirty: list[str] = []
+    tree_entries: list[tuple[bytes, int, bytes]] = []
+    unmerged = False
+    for _entry in range(count):
+        start = offset
+        if offset + 62 > len(data):
+            raise ManualCampaignError("checkout index entry is truncated")
+        fields = struct.unpack("!10I20sH", data[offset : offset + 62])
+        offset += 62
+        mtime_seconds, mtime_nanoseconds = fields[2], fields[3]
+        indexed_mode, indexed_size, flags = fields[6], fields[9], fields[11]
+        object_id = fields[10]
+        if version >= 3 and flags & 0x4000:
+            offset += 2
+        encoded_length = flags & 0x0FFF
+        if encoded_length < 0x0FFF:
+            end = offset + encoded_length
+        else:
+            try:
+                end = data.index(b"\0", offset)
+            except ValueError as error:
+                raise ManualCampaignError(
+                    "checkout index path is unterminated"
+                ) from error
+        if end >= len(data):
+            raise ManualCampaignError("checkout index path is truncated")
+        raw_relative = data[offset:end]
+        relative = raw_relative.decode("utf-8", errors="surrogateescape")
+        tracked.add(relative)
+        offset = end + 1
+        while (offset - start) % 8:
+            offset += 1
+        if flags & 0x3000:
+            unmerged = True
+        else:
+            tree_entries.append((raw_relative, indexed_mode, object_id))
+        if _generated_report_path(relative):
+            continue
+        path = repo_root / relative
+        try:
+            observed = path.lstat()
+        except OSError:
+            dirty.append(relative)
+            continue
+        metadata = (
+            observed.st_mtime_ns // 1_000_000_000,
+            observed.st_mtime_ns % 1_000_000_000,
+            observed.st_size,
+            observed.st_mode & 0o170000,
+            observed.st_mode & 0o111,
+        )
+        expected = (
+            mtime_seconds,
+            mtime_nanoseconds,
+            indexed_size,
+            indexed_mode & 0o170000,
+            indexed_mode & 0o111,
+        )
+        if metadata != expected:
+            dirty.append(relative)
+    try:
+        revision = _repo_head(repo_root)
+    except (ManualCampaignError, OSError):
+        # Keep the metadata helper usable for deliberately minimal test
+        # indexes.  lightweight_source_identity() resolves HEAD first and
+        # therefore never takes this compatibility path.
+        revision = None
+    if revision is not None:
+        committed_tree = _commit_tree_marker(repo_root, revision)
+        if unmerged:
+            dirty.append("<unmerged Git index>")
+        elif committed_tree.startswith("manual-revision:"):
+            dirty.append("<index-vs-HEAD tree unavailable>")
+        elif _index_tree_marker(tree_entries) != committed_tree:
+            dirty.append("<staged index differs from HEAD>")
+    critical = (
+        "tools/performance_report/manual_campaign.py",
+        "docs/performance_reports/macbook_M3_manual/steer_performance_campaign.py",
+    )
+    dirty.extend(
+        relative
+        for relative in critical
+        if (repo_root / relative).exists() and relative not in tracked
+    )
+    return tuple(sorted(set(dirty)))
+
+
+def lightweight_source_identity(repo_root: Path) -> ReportSourceIdentity:
+    revision = _repo_head(repo_root)
+    return ReportSourceIdentity(
+        revision,
+        _commit_tree_marker(repo_root, revision),
+        _index_metadata_dirty_paths(repo_root),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class LightweightCurrent:
+    cell_id: str
+    attempt_id: str
+    result_path: Path
+    result: Mapping[str, object]
+    complete: bool
+    reusable: bool
+    reason: str
+    record: CurrentRecord | None = None
+
+
+def _read_object(path: Path) -> dict[str, object] | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _result_matches_cell(
+    result: Mapping[str, object],
+    cell: CellSpec,
+) -> bool:
+    provenance = result.get("provenance")
+    manual = (
+        provenance.get("manual_campaign") if isinstance(provenance, Mapping) else None
+    )
+    identity = manual.get("cell_identity") if isinstance(manual, Mapping) else None
+    if not isinstance(identity, Mapping):
+        return False
+    expected = {
+        "cell_id": cell.cell_id,
+        "dataset_id": cell.dataset_id,
+        "process_key": cell.process_key,
+        "process": cell.process,
+        "n_final": cell.n_final,
+        "workload": cell.workload.value,
+        "execution_mode": cell.measurement.execution_mode.value,
+        "model": (
+            None if cell.measurement.model is None else cell.measurement.model.value
+        ),
+        "accuracy": cell.measurement.accuracy.value,
+        "backend": cell.measurement.backend,
+        "variant": cell.variant,
+    }
+    return all(identity.get(key) == value for key, value in expected.items())
+
+
+def _required_result_artifact_exists(result: Mapping[str, object]) -> bool:
+    if result.get("status") != ResultStatus.OK.value:
+        return True
+    artifact = result.get("artifact")
+    if not isinstance(artifact, Mapping):
+        return False
+    raw_path = artifact.get("path")
+    return isinstance(raw_path, str) and Path(raw_path).exists()
+
+
+def lightweight_current(
+    store: ArtifactStore,
+    cell: CellSpec,
+    *,
+    source_revision: str,
+) -> LightweightCurrent | None:
+    """Read only the pointer, manifest metadata, and result required for reuse."""
+
+    root = store._cell_root(cell.cell_id)
+    pointer = _read_object(root / "current.json")
+    raw_attempt_id = None if pointer is None else pointer.get("attempt_id")
+    if (
+        pointer is None
+        or pointer.get("schema") != CURRENT_SCHEMA
+        or pointer.get("cell_id") != cell.cell_id
+        or not isinstance(raw_attempt_id, str)
+    ):
+        return None
+    attempt_id = raw_attempt_id
+    try:
+        parsed_attempt_id = uuid.UUID(attempt_id)
+    except ValueError:
+        parsed_attempt_id = None
+    canonical_manifest = f"attempts/{attempt_id}/manifest.json"
+    manifest_sha256 = pointer.get("manifest_sha256")
+    if (
+        parsed_attempt_id is None
+        or str(parsed_attempt_id) != attempt_id
+        or pointer.get("manifest_path") != canonical_manifest
+        or not isinstance(manifest_sha256, str)
+        or len(manifest_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in manifest_sha256)
+    ):
+        return LightweightCurrent(
+            cell.cell_id,
+            attempt_id,
+            root,
+            {},
+            False,
+            False,
+            "incomplete pointer metadata",
+        )
+    manifest_path = root / canonical_manifest
+    manifest = _read_object(manifest_path)
+    if (
+        manifest is None
+        or manifest.get("schema") != ATTEMPT_SCHEMA
+        or manifest.get("cell_id") != cell.cell_id
+        or manifest.get("attempt_id") != attempt_id
+        or manifest.get("status") != "ok"
+        or manifest.get("error") is not None
+        or not isinstance(manifest.get("result_path"), str)
+    ):
+        return LightweightCurrent(
+            cell.cell_id,
+            attempt_id,
+            root,
+            {},
+            False,
+            False,
+            "incomplete metadata",
+        )
+    try:
+        artifact_policy = ArtifactPolicy(str(manifest.get("artifact_policy")))
+    except ValueError:
+        return LightweightCurrent(
+            cell.cell_id,
+            attempt_id,
+            manifest_path,
+            {},
+            False,
+            False,
+            "unsupported artifact policy",
+        )
+    relative = Path(str(manifest["result_path"]))
+    if (
+        relative.is_absolute()
+        or not relative.parts
+        or any(part in {"", ".", ".."} for part in relative.parts)
+    ):
+        return LightweightCurrent(
+            cell.cell_id,
+            attempt_id,
+            root,
+            {},
+            False,
+            False,
+            "unsafe result path",
+        )
+    artifact_records = manifest.get("artifacts")
+    if not isinstance(artifact_records, list) or not any(
+        isinstance(record, Mapping) and record.get("path") == relative.as_posix()
+        for record in artifact_records
+    ):
+        return LightweightCurrent(
+            cell.cell_id,
+            attempt_id,
+            manifest_path,
+            {},
+            False,
+            False,
+            "result missing from manifest",
+        )
+    result_path = root / "attempts" / attempt_id / relative
+    result = _read_object(result_path)
+    if result is None:
+        return LightweightCurrent(
+            cell.cell_id,
+            attempt_id,
+            result_path,
+            {},
+            False,
+            False,
+            "result unreadable",
+        )
+    provenance = result.get("provenance")
+    revision = (
+        provenance.get("report_source_revision")
+        if isinstance(provenance, Mapping)
+        else None
+    )
+    status = str(result.get("status", ""))
+    complete = status in {
+        ResultStatus.OK.value,
+        ResultStatus.TIMEOUT.value,
+        ResultStatus.MEMORY_LIMIT.value,
+    }
+    measurement_valid = False
+    if complete:
+        try:
+            validate_measurement(result, expected_cell=cell)
+        except ValueError:
+            pass
+        else:
+            measurement_valid = True
+    complete = complete and measurement_valid
+    cell_match = _result_matches_cell(result, cell)
+    artifact_exists = _required_result_artifact_exists(result)
+    reusable = (
+        complete and revision == source_revision and cell_match and artifact_exists
+    )
+    if status not in {
+        ResultStatus.OK.value,
+        ResultStatus.TIMEOUT.value,
+        ResultStatus.MEMORY_LIMIT.value,
+    }:
+        reason = "incomplete status"
+    elif not measurement_valid:
+        reason = "invalid measurement schema"
+    elif revision != source_revision:
+        reason = "source mismatch"
+    elif not cell_match:
+        reason = "cell metadata mismatch"
+    elif not artifact_exists:
+        reason = "required artifact missing"
+    elif status in {ResultStatus.TIMEOUT.value, ResultStatus.MEMORY_LIMIT.value}:
+        reason = "resource-capped terminal"
+    else:
+        reason = "reusable"
+    record = (
+        CurrentRecord(
+            cell_id=cell.cell_id,
+            attempt_id=attempt_id,
+            manifest_path=manifest_path,
+            manifest_sha256=manifest_sha256,
+            result_path=result_path,
+            result=result,
+            artifacts=(),
+            artifact_policy=artifact_policy,
+        )
+        if complete
+        else None
+    )
+    return LightweightCurrent(
+        cell.cell_id,
+        attempt_id,
+        result_path,
+        result,
+        complete,
+        reusable,
+        reason,
+        record,
+    )
+
+
+def lightweight_currents(
+    service: ReportService,
+    cells: Sequence[CellSpec],
+    *,
+    source_revision: str,
+) -> dict[str, LightweightCurrent]:
+    result: dict[str, LightweightCurrent] = {}
+    for cell in cells:
+        current = lightweight_current(
+            service.store,
+            cell,
+            source_revision=source_revision,
+        )
+        if current is not None:
+            result[cell.cell_id] = current
+    return result
+
+
+def _lightweight_current_resolver(
+    service: ReportService,
+    *,
+    source_revision: str,
+    initial: Mapping[str, LightweightCurrent] | None = None,
+) -> Callable[
+    [CellSpec],
+    tuple[CurrentRecord, PolicyMeasurementState] | None,
+]:
+    """Resolve planner currents from cheap metadata without artifact hashing."""
+
+    cache: dict[str, LightweightCurrent | None] = dict(initial or {})
+
+    def resolve(
+        cell: CellSpec,
+    ) -> tuple[CurrentRecord, PolicyMeasurementState] | None:
+        if cell.cell_id not in cache:
+            cache[cell.cell_id] = lightweight_current(
+                service.store,
+                cell,
+                source_revision=source_revision,
+            )
+        current = cache[cell.cell_id]
+        if current is None or not current.reusable or current.record is None:
+            return None
+        state = {
+            ResultStatus.OK.value: PolicyMeasurementState.SUCCESS,
+            ResultStatus.TIMEOUT.value: PolicyMeasurementState.GENERATION_LIMIT,
+            ResultStatus.MEMORY_LIMIT.value: PolicyMeasurementState.MEMORY_LIMIT,
+        }.get(str(current.result.get("status")))
+        return None if state is None else (current.record, state)
+
+    return resolve
+
+
+def _installed_source_revision() -> str | None:
+    try:
+        from pyamplicol._internal.versions import (
+            active_source_revision,
+            package_version,
+        )
+
+        package_version()
+        return active_source_revision()
+    except (ImportError, RuntimeError, ValueError):
+        return None
+
+
+def require_measurement_ready(source: ReportSourceIdentity) -> None:
+    if not source.eligible:
+        examples = ", ".join(source.dirty_paths[:5])
+        remainder = max(0, len(source.dirty_paths) - 5)
+        suffix = "" if remainder == 0 else f", … {remainder} more"
+        raise ManualCampaignError(
+            "measurement source is not a clean committed checkout "
+            f"({examples}{suffix}); commit the campaign implementation and "
+            "rebuild before running measurements"
+        )
+    installed = _installed_source_revision()
+    if installed != source.revision:
+        observed = "null/unavailable" if installed is None else installed
+        raise ManualCampaignError(
+            "measurement runtime is not a clean build of this checkout: "
+            f"checkout={source.revision}, installed={observed}. Commit the "
+            "implementation, ensure the worktree is clean, then run "
+            "`just dev-install`; dirty-build evidence is never reusable."
+        )
+
+
+def _source_marker_path(service: ReportService) -> Path:
+    return service.paths.coordination_root / "manual-source.json"
+
+
+def update_source_marker(
+    service: ReportService,
+    source: ReportSourceIdentity,
+) -> bool:
+    """Record the active source once under a small lock; never inspect history."""
+
+    path = _source_marker_path(service)
+    with service.store.named_lock("manual-source-marker"):
+        previous = _read_object(path)
+        changed = (
+            previous is not None and previous.get("source_revision") != source.revision
+        )
+        _atomic_json(
+            path,
+            {
+                "schema": SOURCE_MARKER_SCHEMA,
+                "source_revision": source.revision,
+                "recorded_at_utc": _utc_now(),
+            },
+        )
+    return changed
+
+
+@dataclass(slots=True)
+class _IncrementalTailState:
+    identity: tuple[int, int] | None = None
+    offset: int = 0
+    pending: bytes = b""
+    last_read_bytes: int = 0
+
+
+@dataclass(slots=True)
+class WorkerView:
+    cell_id: str
+    dependency: bool = False
+    peer_instance: str | None = None
+    status: str = "queued"
+    step: str = "waiting"
+    phase: str = "preparation"
+    attempt_id: str | None = None
+    pid: int | None = None
+    member_pids: tuple[int, ...] = ()
+    wall_seconds: float = 0.0
+    cpu_seconds: float | None = None
+    current_rss_bytes: int = 0
+    peak_rss_bytes: int = 0
+    current_physical_footprint_bytes: int | None = None
+    peak_physical_footprint_bytes: int | None = None
+    current_guard_bytes: int = 0
+    peak_guard_bytes: int = 0
+    child_count: int = 0
+    progress_completed: int | None = None
+    progress_total: int | None = None
+    progress_message: str = ""
+    progress_task_id: str | None = None
+    progress_details: dict[str, object] = field(default_factory=dict)
+    log_path: str | None = None
+    progress_path: str | None = None
+    reproduce_prepare: str | None = None
+    reproduce_generate: str | None = None
+    reproduce_profile: str | None = None
+    published_wall_seconds_per_point: float | None = None
+    published_evaluator_total_seconds_per_point: float | None = None
+    events: list[str] = field(default_factory=list)
+    log_tail: list[str] = field(default_factory=list)
+    updated_at: float = field(default_factory=time.time)
+    _progress_tail_state: _IncrementalTailState = field(
+        default_factory=_IncrementalTailState,
+        repr=False,
+    )
+    _log_tail_state: _IncrementalTailState = field(
+        default_factory=_IncrementalTailState,
+        repr=False,
+    )
+
+    def as_dict(self) -> dict[str, object]:
+        payload = asdict(self)
+        payload.pop("_progress_tail_state", None)
+        payload.pop("_log_tail_state", None)
+        return payload
+
+
+@dataclass(slots=True)
+class DashboardState:
+    instance_id: str
+    selected_ids: tuple[str, ...]
+    recycled_ids: set[str]
+    static_na_ids: set[str]
+    source_revision: str = ""
+    generation_time_limit_seconds: float = DEFAULT_GENERATION_LIMIT_SECONDS
+    memory_limit_bytes: int = DEFAULT_RAM_BYTES
+    worker_wall_limit_seconds: float | None = None
+    reproduction_settings: ReproductionSettings = field(
+        default_factory=ReproductionSettings
+    )
+    dependency_ids: set[str] = field(default_factory=set)
+    workers: dict[str, WorkerView] = field(default_factory=dict)
+    completed_ids: set[str] = field(default_factory=set)
+    capped_ids: set[str] = field(default_factory=set)
+    failed_ids: set[str] = field(default_factory=set)
+    selected_index: int = 0
+    detail_scroll: int = 0
+    show_help: bool = False
+    started_at: float = field(default_factory=time.time)
+    interrupted: bool = False
+    counter_snapshot: dict[str, int] | None = None
+    lease_updated_at: float | None = None
+    live_snapshot: bool = False
+
+    @property
+    def active(self) -> tuple[WorkerView, ...]:
+        return tuple(
+            worker
+            for worker in self.workers.values()
+            if worker.status in {"queued", "preparing", "running"}
+        )
+
+    def counters(self) -> dict[str, int]:
+        if self.counter_snapshot is not None:
+            return dict(self.counter_snapshot)
+        selected = set(self.selected_ids)
+        recycled_ids = self.recycled_ids & selected
+        completed_ids = (self.completed_ids & selected) - recycled_ids
+        addressed = recycled_ids | completed_ids | (self.static_na_ids & selected)
+        active_ids = {
+            worker.cell_id for worker in self.active if worker.cell_id in selected
+        }
+        return {
+            "selected": len(self.selected_ids),
+            "recycled": len(recycled_ids),
+            "active": len(active_ids),
+            "completed": len(completed_ids),
+            "remaining": max(
+                0,
+                len(self.selected_ids) - len(addressed | active_ids),
+            ),
+            "static_na": len(self.static_na_ids & selected),
+            "capped": len(self.capped_ids & selected),
+            "failed": len(self.failed_ids & selected),
+            "dependency_only": len(self.dependency_ids),
+        }
+
+    def selected_worker(self) -> WorkerView | None:
+        rows = tuple(sorted(self.workers.values(), key=lambda item: item.cell_id))
+        if not rows:
+            return None
+        self.selected_index %= len(rows)
+        return rows[self.selected_index]
+
+
+class LeaseManager:
+    """Publish compact atomic informational state for concurrent dashboards."""
+
+    def __init__(
+        self,
+        service: ReportService,
+        state: DashboardState,
+    ) -> None:
+        self.service = service
+        self.state = state
+        self._guard = threading.Lock()
+        self._closed = False
+        self.path = (
+            service.paths.coordination_root
+            / "manual-leases"
+            / f"{state.instance_id}.json"
+        )
+
+    def _write(self) -> None:
+        if self._closed:
+            return
+        _atomic_json(
+            self.path,
+            {
+                "schema": MANUAL_STATE_SCHEMA,
+                "instance_id": self.state.instance_id,
+                "controller_pid": os.getpid(),
+                "source_revision": _repo_head(self.service.paths.repo_root),
+                "started_at": self.state.started_at,
+                "updated_at": time.time(),
+                "counters": self.state.counters(),
+                "limits": {
+                    "generation_time_limit_seconds": (
+                        self.state.generation_time_limit_seconds
+                    ),
+                    "memory_limit_bytes": self.state.memory_limit_bytes,
+                    "worker_wall_limit_seconds": (self.state.worker_wall_limit_seconds),
+                },
+                "workers": {
+                    key: worker.as_dict()
+                    for key, worker in sorted(self.state.workers.items())
+                    if worker.peer_instance is None
+                },
+            },
+        )
+
+    def publish(self) -> None:
+        with self._guard:
+            self._write()
+
+    def dashboard_snapshot(self) -> DashboardState:
+        with self._guard:
+            _merge_peer_workers(self.service, self.state)
+            return copy.deepcopy(self.state)
+
+    def observe(self, payload: Mapping[str, object]) -> None:
+        cell_id = str(payload.get("cell_id", ""))
+        if not cell_id:
+            return
+        event = str(payload.get("event", "update"))
+        with self._guard:
+            if self._closed:
+                return
+            worker = self.state.workers.setdefault(cell_id, WorkerView(cell_id))
+            worker.updated_at = time.time()
+            if event == "started":
+                worker.status = "preparing"
+                worker.step = "dependency preparation"
+                worker.dependency = bool(payload.get("dependency", False))
+                try:
+                    cell = self.service.catalog.cell(cell_id)
+                except KeyError:
+                    cell = None
+                if cell is not None:
+                    settings = self.state.reproduction_settings
+                    recipe = reproduction_recipe(
+                        cell,
+                        repo_root=self.service.paths.repo_root,
+                        cores=settings.cores,
+                        target_runtime=settings.target_runtime,
+                        batch_size=settings.batch_size,
+                        warmups=settings.warmups,
+                        minimum_samples=settings.minimum_samples,
+                    )
+                    worker.reproduce_prepare = (
+                        None if recipe.prepare is None else _shell_join(recipe.prepare)
+                    )
+                    worker.reproduce_generate = (
+                        None
+                        if recipe.generate is None
+                        else _shell_join(recipe.generate)
+                    )
+                    worker.reproduce_profile = (
+                        None if recipe.profile is None else _shell_join(recipe.profile)
+                    )
+            elif event == "worker":
+                worker.status = "running"
+                worker.step = "worker launched"
+                worker.attempt_id = str(payload.get("attempt_id") or "") or None
+                worker.log_path = str(payload.get("log_path") or "") or None
+                worker.progress_path = str(payload.get("progress_path") or "") or None
+            elif event == "resource":
+                worker.status = "running"
+                worker.pid = _optional_int(payload.get("pid"))
+                worker.member_pids = tuple(
+                    int(value) for value in payload.get("member_pids", ())
+                )
+                worker.phase = str(payload.get("phase") or "unknown")
+                worker.step = worker.phase.replace("_", " ")
+                worker.wall_seconds = _finite_float(payload.get("wall_seconds"))
+                worker.cpu_seconds = _optional_finite_float(payload.get("cpu_seconds"))
+                worker.current_rss_bytes = (
+                    _optional_int(payload.get("current_rss_bytes")) or 0
+                )
+                worker.peak_rss_bytes = (
+                    _optional_int(payload.get("peak_rss_bytes")) or 0
+                )
+                worker.current_physical_footprint_bytes = _optional_int(
+                    payload.get("current_physical_footprint_bytes")
+                )
+                worker.peak_physical_footprint_bytes = _optional_int(
+                    payload.get("peak_physical_footprint_bytes")
+                )
+                worker.current_guard_bytes = (
+                    _optional_int(payload.get("current_guard_bytes")) or 0
+                )
+                worker.peak_guard_bytes = (
+                    _optional_int(payload.get("peak_guard_bytes")) or 0
+                )
+                worker.child_count = _optional_int(payload.get("child_count")) or 0
+                _tail_progress(worker)
+                _tail_log(worker)
+            elif event == "finished":
+                worker.status = str(payload.get("status") or "unknown")
+                worker.step = str(payload.get("detail") or worker.status)
+                try:
+                    cell = self.service.catalog.cell(cell_id)
+                except KeyError:
+                    cell = None
+                if cell is not None:
+                    current = lightweight_current(
+                        self.service.store,
+                        cell,
+                        source_revision=self.state.source_revision,
+                    )
+                    if current is not None and current.complete:
+                        worker.published_wall_seconds_per_point = _number(
+                            current.result,
+                            "wall_seconds_per_point",
+                        )
+                        worker.published_evaluator_total_seconds_per_point = (
+                            _evaluator_total_number(current.result)
+                        )
+                        provenance = current.result.get("provenance")
+                        manual = (
+                            provenance.get("manual_campaign")
+                            if isinstance(provenance, Mapping)
+                            else None
+                        )
+                        recipe = (
+                            manual.get("public_cli_reproduction")
+                            if isinstance(manual, Mapping)
+                            else None
+                        )
+                        if isinstance(recipe, Mapping):
+                            prepare = recipe.get("prepare")
+                            generate = recipe.get("generate")
+                            profile = recipe.get("profile")
+                            worker.reproduce_prepare = (
+                                prepare if isinstance(prepare, str) else None
+                            )
+                            worker.reproduce_generate = (
+                                generate if isinstance(generate, str) else None
+                            )
+                            worker.reproduce_profile = (
+                                profile if isinstance(profile, str) else None
+                            )
+                _tail_progress(worker)
+                _tail_log(worker)
+                if worker.status in {
+                    "ok",
+                    "generation_limit",
+                    "memory_limit",
+                }:
+                    self.state.completed_ids.add(cell_id)
+                if worker.status in {"generation_limit", "memory_limit"}:
+                    self.state.capped_ids.add(cell_id)
+                elif worker.status not in {
+                    "ok",
+                    "reused",
+                    "skipped-current",
+                    "cancelled",
+                }:
+                    self.state.failed_ids.add(cell_id)
+            worker.events.append(f"{event}: {worker.step}")
+            del worker.events[:-8]
+            self._write()
+
+    def close(self) -> None:
+        with self._guard:
+            self._closed = True
+            self.path.unlink(missing_ok=True)
+
+
+def _optional_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return int(value)
+
+
+def _finite_float(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0.0
+    result = float(value)
+    return result if math.isfinite(result) else 0.0
+
+
+def _optional_finite_float(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    result = float(value)
+    return result if math.isfinite(result) else None
+
+
+def _incremental_tail_lines(
+    path: Path,
+    state: _IncrementalTailState,
+    *,
+    max_read_bytes: int = MAX_TAIL_READ_BYTES,
+) -> tuple[str, ...]:
+    """Read only newly appended complete lines, bounded after large jumps."""
+
+    if max_read_bytes <= 0:
+        raise ValueError("max_read_bytes must be positive")
+    try:
+        metadata = path.stat()
+    except OSError:
+        state.last_read_bytes = 0
+        return ()
+    identity = (metadata.st_dev, metadata.st_ino)
+    if state.identity != identity or metadata.st_size < state.offset:
+        state.identity = identity
+        state.offset = 0
+        state.pending = b""
+    start = state.offset
+    discard_partial_prefix = False
+    if metadata.st_size - start > max_read_bytes:
+        start = metadata.st_size - max_read_bytes
+        state.pending = b""
+        discard_partial_prefix = start > 0
+    try:
+        with path.open("rb") as stream:
+            stream.seek(start)
+            payload = stream.read(max_read_bytes)
+    except OSError:
+        state.last_read_bytes = 0
+        return ()
+    state.offset = start + len(payload)
+    state.last_read_bytes = len(payload)
+    if discard_partial_prefix:
+        separator = payload.find(b"\n")
+        payload = b"" if separator < 0 else payload[separator + 1 :]
+    combined = state.pending + payload
+    chunks = combined.split(b"\n")
+    if combined.endswith(b"\n"):
+        state.pending = b""
+        chunks.pop()
+    else:
+        state.pending = chunks.pop()[-max_read_bytes:]
+    return tuple(
+        chunk.rstrip(b"\r").decode("utf-8", errors="replace") for chunk in chunks
+    )
+
+
+def _tail_progress(worker: WorkerView) -> None:
+    if worker.progress_path is None:
+        return
+    lines = _incremental_tail_lines(
+        Path(worker.progress_path),
+        worker._progress_tail_state,
+    )
+    for line in reversed(lines):
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, Mapping):
+            continue
+        task_id = event.get("task_id")
+        worker.progress_task_id = (
+            str(task_id) if isinstance(task_id, str) and task_id else None
+        )
+        completed = _optional_int(event.get("completed"))
+        total = _optional_int(event.get("total"))
+        event_kind = event.get("event")
+        if completed is not None:
+            worker.progress_completed = completed
+        elif event_kind == "start":
+            worker.progress_completed = 0
+        if total is not None:
+            worker.progress_total = total
+        details = event.get("details")
+        if isinstance(details, Mapping):
+            worker.progress_details = {
+                str(key): value
+                for key, value in details.items()
+                if value is None or isinstance(value, (bool, int, float, str))
+            }
+        else:
+            worker.progress_details = {}
+        detail_step = worker.progress_details.get("step")
+        message = (
+            event.get("message")
+            or event.get("description")
+            or (detail_step if isinstance(detail_step, str) else None)
+        )
+        worker.progress_message = "" if message is None else str(message)
+        if worker.progress_message:
+            worker.step = worker.progress_message
+        return
+
+
+def _dashboard_log_line(value: str) -> str:
+    value = _ANSI_ESCAPE.sub("", value)
+    cleaned = "".join(
+        character
+        for character in value.replace("\t", "  ")
+        if ord(character) >= 32 and ord(character) != 127
+    )
+    return cleaned[-500:]
+
+
+def _tail_log(worker: WorkerView) -> None:
+    if worker.log_path is None:
+        return
+    lines = _incremental_tail_lines(Path(worker.log_path), worker._log_tail_state)
+    worker.log_tail.extend(
+        cleaned for line in lines if (cleaned := _dashboard_log_line(line))
+    )
+    del worker.log_tail[:-MAX_LOG_TAIL_LINES]
+
+
+def _human_duration(seconds: float) -> str:
+    seconds = max(0.0, seconds)
+    hours, remainder = divmod(int(seconds), 3600)
+    minutes, whole = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{whole:02d}"
+
+
+def _human_bytes(value: int) -> str:
+    if value < 1000:
+        return f"{value} B"
+    units = ("kB", "MB", "GB", "TB")
+    amount = float(value)
+    for unit in units:
+        amount /= 1000.0
+        if amount < 1000.0 or unit == units[-1]:
+            return f"{amount:.2f} {unit}"
+    return f"{value} B"
+
+
+def _progress_detail_summary(details: Mapping[str, object]) -> str:
+    """Render typed progress details without discarding native stage counters."""
+
+    ignored = {"process", "step"}
+    ordered_keys = (
+        "stage_index",
+        "stage_total",
+        "subset_size",
+        "candidate_parent_pair_count",
+        "candidate_parent_pair_total",
+        "current_count",
+        "contribution_count",
+        "dynamic_color_state_count",
+        "color_target_prune_count",
+        "inspected_current_count",
+        "certified_relation_count",
+        "applied_relation_count",
+        "generation_evidence_encoding",
+        "generation_raw_evidence_bytes",
+        "generation_evidence_transport_bytes",
+    )
+    ordered = [key for key in ordered_keys if key in details]
+    ordered.extend(
+        sorted(key for key in details if key not in ignored and key not in ordered)
+    )
+    fragments: list[str] = []
+    consumed: set[str] = set()
+    if "stage_index" in details and "stage_total" in details:
+        fragments.append(f"stage {details['stage_index']}/{details['stage_total']}")
+        consumed.update({"stage_index", "stage_total"})
+    if (
+        "candidate_parent_pair_count" in details
+        and "candidate_parent_pair_total" in details
+    ):
+        count = details["candidate_parent_pair_count"]
+        total = details["candidate_parent_pair_total"]
+        if isinstance(count, int) and isinstance(total, int):
+            fragments.append(f"candidate pairs {count:,}/{total:,}")
+            consumed.update(
+                {"candidate_parent_pair_count", "candidate_parent_pair_total"}
+            )
+    labels = {
+        "subset_size": "subset",
+        "current_count": "currents",
+        "contribution_count": "contributions",
+        "dynamic_color_state_count": "colour states",
+        "color_target_prune_count": "colour pruned",
+        "inspected_current_count": "currents inspected",
+        "certified_relation_count": "relations certified",
+        "applied_relation_count": "relations applied",
+        "generation_evidence_encoding": "evidence",
+        "generation_raw_evidence_bytes": "evidence raw",
+        "generation_evidence_transport_bytes": "evidence transport",
+    }
+    byte_fields = {
+        "generation_raw_evidence_bytes",
+        "generation_evidence_transport_bytes",
+    }
+    for key in ordered:
+        if key in consumed:
+            continue
+        value = details[key]
+        label = labels.get(key, key.replace("_", " "))
+        if key in byte_fields and isinstance(value, int):
+            rendered = _human_bytes(value)
+        elif isinstance(value, int) and not isinstance(value, bool):
+            rendered = f"{value:,}"
+        else:
+            rendered = str(value)
+        fragments.append(f"{label} {rendered}")
+    return " · ".join(fragments)
+
+
+def _worker_progress_ratio(worker: WorkerView) -> float:
+    if (
+        worker.progress_completed is not None
+        and worker.progress_total is not None
+        and worker.progress_total > 0
+    ):
+        return min(1.0, worker.progress_completed / worker.progress_total)
+    phase_ratio = {
+        "preparation": 0.05,
+        "generation": 0.35,
+        "profiling": 0.75,
+        "completed": 1.0,
+    }
+    return phase_ratio.get(worker.phase, 0.1)
+
+
+def _worker_progress_indicator(worker: WorkerView, *, compact: bool) -> str:
+    ratio = _worker_progress_ratio(worker)
+    slots = 4 if compact else 6
+    filled = min(slots, max(0, round(ratio * slots)))
+    return f"{'▰' * filled}{'▱' * (slots - filled)} {ratio * 100:3.0f}%"
+
+
+def _worker_enforcement_memory(worker: WorkerView, *, peak: bool = False) -> int:
+    guard = worker.peak_guard_bytes if peak else worker.current_guard_bytes
+    rss = worker.peak_rss_bytes if peak else worker.current_rss_bytes
+    return guard if guard > 0 else rss
+
+
+def _worker_from_lease(
+    cell_id: str,
+    raw: Mapping[str, object],
+    *,
+    peer_instance: str | None,
+) -> WorkerView:
+    """Decode one informational worker row without following referenced paths."""
+
+    def optional_text(key: str) -> str | None:
+        value = raw.get(key)
+        return value if isinstance(value, str) and value else None
+
+    def text(key: str, default: str) -> str:
+        value = optional_text(key)
+        return default if value is None else value
+
+    worker = WorkerView(
+        cell_id=cell_id,
+        dependency=raw.get("dependency") is True,
+        peer_instance=peer_instance,
+        status=text("status", "unknown"),
+        step=text("step", "waiting"),
+        phase=text("phase", "unknown"),
+        attempt_id=optional_text("attempt_id"),
+        pid=_optional_int(raw.get("pid")),
+        wall_seconds=max(0.0, _finite_float(raw.get("wall_seconds"))),
+        cpu_seconds=(
+            None
+            if (cpu_seconds := _optional_finite_float(raw.get("cpu_seconds"))) is None
+            else max(0.0, cpu_seconds)
+        ),
+        current_rss_bytes=max(
+            0,
+            _optional_int(raw.get("current_rss_bytes")) or 0,
+        ),
+        peak_rss_bytes=max(
+            0,
+            _optional_int(raw.get("peak_rss_bytes")) or 0,
+        ),
+        current_physical_footprint_bytes=_optional_int(
+            raw.get("current_physical_footprint_bytes")
+        ),
+        peak_physical_footprint_bytes=_optional_int(
+            raw.get("peak_physical_footprint_bytes")
+        ),
+        current_guard_bytes=max(
+            0,
+            _optional_int(raw.get("current_guard_bytes")) or 0,
+        ),
+        peak_guard_bytes=max(
+            0,
+            _optional_int(raw.get("peak_guard_bytes")) or 0,
+        ),
+        child_count=max(0, _optional_int(raw.get("child_count")) or 0),
+        progress_completed=_optional_int(raw.get("progress_completed")),
+        progress_total=_optional_int(raw.get("progress_total")),
+        progress_message=text("progress_message", ""),
+        progress_task_id=optional_text("progress_task_id"),
+        log_path=optional_text("log_path"),
+        progress_path=optional_text("progress_path"),
+        reproduce_prepare=optional_text("reproduce_prepare"),
+        reproduce_generate=optional_text("reproduce_generate"),
+        reproduce_profile=optional_text("reproduce_profile"),
+        published_wall_seconds_per_point=_optional_finite_float(
+            raw.get("published_wall_seconds_per_point")
+        ),
+        published_evaluator_total_seconds_per_point=_optional_finite_float(
+            raw.get("published_evaluator_total_seconds_per_point")
+        ),
+        updated_at=max(0.0, _finite_float(raw.get("updated_at"))),
+    )
+    raw_member_pids = raw.get("member_pids")
+    if isinstance(raw_member_pids, Sequence) and not isinstance(
+        raw_member_pids,
+        (str, bytes),
+    ):
+        worker.member_pids = tuple(
+            value
+            for item in raw_member_pids
+            if (value := _optional_int(item)) is not None and value >= 0
+        )
+    raw_progress_details = raw.get("progress_details")
+    if isinstance(raw_progress_details, Mapping):
+        worker.progress_details = {
+            str(key): value
+            for key, value in raw_progress_details.items()
+            if value is None or isinstance(value, (bool, int, float, str))
+        }
+    raw_events = raw.get("events")
+    if isinstance(raw_events, Sequence) and not isinstance(
+        raw_events,
+        (str, bytes),
+    ):
+        worker.events = [str(value) for value in raw_events[-8:]]
+    raw_log_tail = raw.get("log_tail")
+    if isinstance(raw_log_tail, Sequence) and not isinstance(
+        raw_log_tail,
+        (str, bytes),
+    ):
+        worker.log_tail = [
+            _dashboard_log_line(str(value))
+            for value in raw_log_tail[-MAX_LOG_TAIL_LINES:]
+        ]
+    return worker
+
+
+def _live_lease_workers(
+    service: ReportService,
+    selected_ids: frozenset[str],
+    *,
+    exclude_instance: str,
+    source_revision: str,
+) -> tuple[WorkerView, ...]:
+    root = service.paths.coordination_root / "manual-leases"
+    now = time.time()
+    workers: list[WorkerView] = []
+    if not root.is_dir():
+        return ()
+    for path in root.glob("*.json"):
+        payload = _read_object(path)
+        if payload is None:
+            continue
+        updated = _finite_float(payload.get("updated_at"))
+        if now - updated > DEFAULT_WORKER_STALE_SECONDS:
+            continue
+        instance_id = str(payload.get("instance_id") or "")
+        if not instance_id or instance_id == exclude_instance:
+            continue
+        if payload.get("source_revision") != source_revision:
+            continue
+        raw_workers = payload.get("workers")
+        if not isinstance(raw_workers, Mapping):
+            continue
+        for cell_id, raw in raw_workers.items():
+            if cell_id not in selected_ids or not isinstance(raw, Mapping):
+                continue
+            worker = _worker_from_lease(
+                str(cell_id),
+                raw,
+                peer_instance=instance_id,
+            )
+            if worker.status in {"queued", "preparing", "running"}:
+                workers.append(worker)
+    return tuple(workers)
+
+
+def _merge_peer_workers(
+    service: ReportService,
+    state: DashboardState,
+) -> None:
+    for key in tuple(state.workers):
+        if state.workers[key].peer_instance is not None:
+            del state.workers[key]
+    peers = _live_lease_workers(
+        service,
+        frozenset(state.selected_ids),
+        exclude_instance=state.instance_id,
+        source_revision=state.source_revision,
+    )
+    for worker in peers:
+        state.workers[f"peer:{worker.peer_instance}:{worker.cell_id}"] = worker
+
+
+def _lease_counter_snapshot(value: object) -> dict[str, int] | None:
+    if not isinstance(value, Mapping):
+        return None
+    counters: dict[str, int] = {}
+    for key in _DASHBOARD_COUNTER_KEYS:
+        observed = _optional_int(value.get(key))
+        if observed is None or observed < 0:
+            return None
+        counters[key] = observed
+    return counters
+
+
+def _lease_limits(
+    value: object,
+) -> tuple[float, int, float | None] | None:
+    """Decode effective invocation caps, retaining defaults for old leases."""
+
+    if value is None:
+        return (
+            DEFAULT_GENERATION_LIMIT_SECONDS,
+            DEFAULT_RAM_BYTES,
+            None,
+        )
+    if not isinstance(value, Mapping):
+        return None
+    generation = _optional_finite_float(value.get("generation_time_limit_seconds"))
+    memory = _optional_int(value.get("memory_limit_bytes"))
+    raw_wall = value.get("worker_wall_limit_seconds")
+    wall = None if raw_wall is None else _optional_finite_float(raw_wall)
+    if (
+        generation is None
+        or generation <= 0.0
+        or memory is None
+        or memory <= 0
+        or (raw_wall is not None and (wall is None or wall <= 0.0))
+    ):
+        return None
+    return generation, memory, wall
+
+
+def _live_dashboard_snapshot(
+    coordination_root: Path,
+    *,
+    instance: str | None,
+    stale_after_seconds: float,
+    now: float | None = None,
+) -> DashboardState:
+    """Build one read-only frame from compact, non-stale lease JSON only."""
+
+    if not math.isfinite(stale_after_seconds) or stale_after_seconds <= 0.0:
+        raise ManualCampaignError("--stale-after must be a positive finite value")
+    lease_root = coordination_root / "manual-leases"
+    current_time = time.time() if now is None else now
+    records: list[dict[str, object]] = []
+    if lease_root.is_dir():
+        for path in sorted(lease_root.glob("*.json")):
+            payload = _read_object(path)
+            if payload is None or payload.get("schema") != MANUAL_STATE_SCHEMA:
+                continue
+            instance_id = payload.get("instance_id")
+            source_revision = payload.get("source_revision")
+            updated_at = _optional_finite_float(payload.get("updated_at"))
+            counters = _lease_counter_snapshot(payload.get("counters"))
+            limits = _lease_limits(payload.get("limits"))
+            workers = payload.get("workers")
+            if (
+                not isinstance(instance_id, str)
+                or not instance_id
+                or len(instance_id) > 128
+                or not isinstance(source_revision, str)
+                or not source_revision
+                or updated_at is None
+                or updated_at <= 0.0
+                or current_time - updated_at > stale_after_seconds
+                or counters is None
+                or limits is None
+                or not isinstance(workers, Mapping)
+            ):
+                continue
+            records.append(payload)
+    if not records:
+        raise ManualCampaignError(
+            "no active manual-campaign lease is available; start `run` in "
+            "another terminal or increase --stale-after"
+        )
+
+    chosen: dict[str, object] | None = None
+    if instance is not None:
+        exact = [
+            payload for payload in records if payload.get("instance_id") == instance
+        ]
+        matches = (
+            exact
+            if exact
+            else [
+                payload
+                for payload in records
+                if str(payload.get("instance_id")).startswith(instance)
+            ]
+        )
+        identifiers = sorted({str(payload.get("instance_id")) for payload in matches})
+        if not matches:
+            available = ", ".join(
+                sorted(str(payload.get("instance_id")) for payload in records)
+            )
+            raise ManualCampaignError(
+                f"no active lease matches instance {instance!r}; available: {available}"
+            )
+        if len(identifiers) > 1:
+            raise ManualCampaignError(
+                f"instance prefix {instance!r} is ambiguous: " + ", ".join(identifiers)
+            )
+        chosen = max(
+            matches,
+            key=lambda payload: _finite_float(payload.get("updated_at")),
+        )
+    else:
+        chosen = max(
+            records,
+            key=lambda payload: _finite_float(payload.get("updated_at")),
+        )
+
+    instance_id = str(chosen["instance_id"])
+    source_revision = str(chosen["source_revision"])
+    updated_at = _finite_float(chosen["updated_at"])
+    started_at = _optional_finite_float(chosen.get("started_at")) or updated_at
+    counters = _lease_counter_snapshot(chosen["counters"])
+    assert counters is not None
+    limits = _lease_limits(chosen.get("limits"))
+    assert limits is not None
+    generation_limit, memory_limit, wall_limit = limits
+    state = DashboardState(
+        instance_id=instance_id,
+        selected_ids=(),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        source_revision=source_revision,
+        generation_time_limit_seconds=generation_limit,
+        memory_limit_bytes=memory_limit,
+        worker_wall_limit_seconds=wall_limit,
+        started_at=min(started_at, current_time),
+        counter_snapshot=counters,
+        lease_updated_at=updated_at,
+        live_snapshot=True,
+    )
+    raw_workers = chosen["workers"]
+    assert isinstance(raw_workers, Mapping)
+    for cell_id, raw in raw_workers.items():
+        if not isinstance(cell_id, str) or not cell_id or not isinstance(raw, Mapping):
+            continue
+        state.workers[cell_id] = _worker_from_lease(
+            cell_id,
+            raw,
+            peer_instance=None,
+        )
+
+    # Show active workers from concurrent same-source instances as peer rows.
+    # The overview counters remain the chosen invocation's own atomic snapshot,
+    # avoiding guesses or double-counting when selections overlap.
+    for payload in records:
+        peer_instance = str(payload["instance_id"])
+        if (
+            peer_instance == instance_id
+            or payload.get("source_revision") != source_revision
+        ):
+            continue
+        raw_peer_workers = payload["workers"]
+        assert isinstance(raw_peer_workers, Mapping)
+        for cell_id, raw in raw_peer_workers.items():
+            if (
+                not isinstance(cell_id, str)
+                or not cell_id
+                or not isinstance(raw, Mapping)
+            ):
+                continue
+            worker = _worker_from_lease(
+                cell_id,
+                raw,
+                peer_instance=peer_instance,
+            )
+            if worker.status not in {"queued", "preparing", "running"}:
+                continue
+            state.workers[f"peer:{peer_instance}:{cell_id}"] = worker
+
+    ordered_workers = tuple(
+        sorted(state.workers.values(), key=lambda worker: worker.cell_id)
+    )
+    state.selected_index = next(
+        (
+            index
+            for index, worker in enumerate(ordered_workers)
+            if worker.status in {"queued", "preparing", "running"}
+        ),
+        0,
+    )
+    return state
+
+
+def _snapshot_fixture(
+    *,
+    selected: int = 1666,
+    recycled: int = 318,
+    completed: int = 41,
+) -> DashboardState:
+    state = DashboardState(
+        instance_id="snapshot-demo",
+        selected_ids=tuple(f"cell-{index:04d}" for index in range(selected)),
+        recycled_ids={f"cell-{index:04d}" for index in range(recycled)},
+        static_na_ids={f"cell-{index:04d}" for index in range(12)},
+        source_revision="5b58aeb7600548e84e7214ee0ef62e5f159ec3fb",
+    )
+    state.completed_ids = {
+        f"cell-{index:04d}" for index in range(recycled, recycled + completed)
+    }
+    state.capped_ids = {"cell-0412"}
+    state.failed_ids = {"cell-0413"}
+    state.dependency_ids = {"reference-amplicol-lc-n6-dd-zzz-jets-selected-flow"}
+    state.workers = {
+        "matrix-compiled-builtin-sm-lc-n9-dd-zzz-jets-selected-flow": WorkerView(
+            "matrix-compiled-builtin-sm-lc-n9-dd-zzz-jets-selected-flow",
+            status="running",
+            step="native Arena sample 4/8",
+            phase="profiling",
+            attempt_id="b92b46a0-demo",
+            pid=42173,
+            member_pids=(42173, 42174, 42175),
+            wall_seconds=412.8,
+            cpu_seconds=971.2,
+            current_rss_bytes=8_724_300_000,
+            peak_rss_bytes=11_941_200_000,
+            child_count=2,
+            progress_completed=4,
+            progress_total=8,
+            progress_message="native Arena sample 4/8",
+            published_wall_seconds_per_point=0.000_669_99,
+            published_evaluator_total_seconds_per_point=0.000_654_31,
+            events=[
+                "generation: compiled Direct-Arena complete",
+                "profiling: warmups complete",
+                "profiling: native Arena sample 4/8",
+            ],
+        ),
+        "matrix-recurrence-ufo-sm-lc-n7-gg-gluons-all-flow": WorkerView(
+            "matrix-recurrence-ufo-sm-lc-n7-gg-gluons-all-flow",
+            status="running",
+            step="lowering selected colour-sector plan 37/72",
+            phase="generation",
+            attempt_id="dd84040e-demo",
+            pid=42191,
+            member_pids=(42191,),
+            wall_seconds=192.4,
+            cpu_seconds=185.0,
+            current_rss_bytes=3_252_000_000,
+            peak_rss_bytes=4_018_000_000,
+            progress_completed=37,
+            progress_total=72,
+            progress_message="lowering selected colour-sector plan 37/72",
+            events=[
+                "generation: model loaded",
+                "generation: recurrence plan projected",
+            ],
+        ),
+        "reference-amplicol-full-n6-dd-3q-lines-contracted": WorkerView(
+            "reference-amplicol-full-n6-dd-3q-lines-contracted",
+            dependency=True,
+            status="preparing",
+            step="prewarming original AmpliCol generator",
+            phase="preparation",
+            wall_seconds=8.3,
+            current_rss_bytes=181_000_000,
+            peak_rss_bytes=205_000_000,
+            events=["preparation: legacy generator prewarm"],
+        ),
+    }
+    worker_ids = tuple(state.workers)
+    state.selected_ids = (
+        *worker_ids,
+        *(f"cell-{index:04d}" for index in range(max(0, selected - len(worker_ids)))),
+    )
+    return state
+
+
+def _append_dashboard_line(
+    paragraph: Any,
+    spans: Sequence[tuple[str, object]],
+) -> None:
+    """Append a styled line through Ratatui's stable single-span API."""
+
+    for text, style in spans:
+        paragraph.append_span(text, style)
+    paragraph.line_break()
+
+
+def _ratatui_commands(
+    state: DashboardState,
+    *,
+    width: int,
+    height: int,
+    color: bool = True,
+) -> list[object]:
+    try:
+        from ratatui import Color, DrawCmd, Gauge, Paragraph, Table
+        from ratatui import Style as RStyle
+    except ImportError as error:
+        raise ManualCampaignError(
+            "Ratatui is unavailable; run `just dev-install`"
+        ) from error
+
+    counters = state.counters()
+    compact = width < 105 or height < 30
+    overview_height = 5 if compact else 7
+    table_height = max(7, min(13, height // 3))
+    footer_height = 1
+    detail_y = overview_height + table_height
+    detail_height = max(4, height - detail_y - footer_height)
+
+    if color:
+        title_style = RStyle(fg=Color.Cyan).bold()
+        key_style = RStyle(fg=Color.Cyan).bold()
+        success_style = RStyle(fg=Color.Green)
+        warning_style = RStyle(fg=Color.Yellow)
+        failure_style = RStyle(fg=Color.Red)
+        neutral_style = RStyle(fg=Color.White)
+        highlight_style = RStyle(fg=Color.Black, bg=Color.Cyan).bold()
+        gauge_label_style = RStyle(fg=Color.White).bold()
+        gauge_value_style = RStyle(fg=Color.Green, bg=Color.Black).bold()
+    else:
+        title_style = RStyle()
+        key_style = RStyle()
+        success_style = RStyle()
+        warning_style = RStyle()
+        failure_style = RStyle()
+        neutral_style = RStyle()
+        highlight_style = RStyle()
+        gauge_label_style = RStyle()
+        gauge_value_style = RStyle()
+
+    overview = Paragraph.new_empty()
+    overview.set_block_title(
+        f" LIVE Manual MacBook M3 campaign · {state.instance_id[:12]} "
+        if state.live_snapshot
+        else " Manual MacBook M3 campaign "
+    )
+    first = [
+        ("Selected ", key_style),
+        (str(counters["selected"]), neutral_style),
+        ("   Recycled ", key_style),
+        (str(counters["recycled"]), success_style),
+        ("   Active ", key_style),
+        (str(counters["active"]), warning_style),
+        ("   Completed ", key_style),
+        (str(counters["completed"]), success_style),
+        ("   Remaining ", key_style),
+        (str(counters["remaining"]), neutral_style),
+    ]
+    _append_dashboard_line(overview, first)
+    _append_dashboard_line(
+        overview,
+        [
+            ("Static N/A ", key_style),
+            (str(counters["static_na"]), warning_style),
+            ("   Capped ", key_style),
+            (str(counters["capped"]), warning_style),
+            ("   Failed ", key_style),
+            (str(counters["failed"]), failure_style),
+            ("   Dependency-only ", key_style),
+            (str(counters["dependency_only"]), neutral_style),
+        ],
+    )
+    _append_dashboard_line(
+        overview,
+        [
+            ("Caps ", key_style),
+            ("Generation ", key_style),
+            (
+                _human_duration(state.generation_time_limit_seconds),
+                warning_style,
+            ),
+            ("   RAM ", key_style),
+            (_human_bytes(state.memory_limit_bytes), warning_style),
+            ("   Total wall ", key_style),
+            (
+                (
+                    "disabled"
+                    if state.worker_wall_limit_seconds is None
+                    else _human_duration(state.worker_wall_limit_seconds)
+                ),
+                warning_style,
+            ),
+        ],
+    )
+    if not compact:
+        _append_dashboard_line(
+            overview,
+            [
+                ("Elapsed ", key_style),
+                (_human_duration(time.time() - state.started_at), neutral_style),
+                ("   Source ", key_style),
+                (state.source_revision[:12] or "unavailable", neutral_style),
+                *(
+                    (
+                        ("   Lease age ", key_style),
+                        (
+                            _human_duration(
+                                max(0.0, time.time() - state.lease_updated_at)
+                            ),
+                            success_style,
+                        ),
+                    )
+                    if state.lease_updated_at is not None
+                    else ()
+                ),
+            ],
+        )
+        _append_dashboard_line(
+            overview,
+            [
+                ("Clocks ", key_style),
+                (
+                    "outer wall and evaluator-total shown independently",
+                    neutral_style,
+                ),
+            ],
+        )
+
+    workers = tuple(sorted(state.workers.values(), key=lambda item: item.cell_id))
+    worker_table = Table()
+    worker_table.set_block_title(" Workers ↑/↓ to select ")
+    if compact:
+        worker_table.set_headers(
+            [
+                " ",
+                "cell",
+                "status",
+                "phase / step",
+                "progress",
+                "runtime",
+                "cap guard",
+            ]
+        )
+        worker_table.set_widths_percentages([3, 25, 10, 24, 16, 10, 12])
+    else:
+        worker_table.set_headers(
+            [
+                " ",
+                "cell",
+                "status",
+                "phase / step",
+                "progress",
+                "runtime",
+                "cap guard",
+                "PID tree",
+            ]
+        )
+        worker_table.set_widths_percentages([3, 23, 9, 22, 13, 8, 12, 10])
+    for index, worker in enumerate(workers):
+        marker = "▶" if index == state.selected_index % max(len(workers), 1) else " "
+        row = [
+            marker,
+            worker.cell_id,
+            worker.status,
+            worker.step,
+            _worker_progress_indicator(worker, compact=compact),
+            _human_duration(worker.wall_seconds),
+            _human_bytes(_worker_enforcement_memory(worker)),
+        ]
+        if not compact:
+            row.append(
+                "—"
+                if worker.pid is None
+                else f"{worker.pid}+{max(0, len(worker.member_pids) - 1)}"
+            )
+        worker_table.append_row(row)
+    worker_table.set_selected(
+        None if not workers else state.selected_index % len(workers)
+    )
+    worker_table.set_row_highlight_style(highlight_style)
+
+    selected = state.selected_worker()
+    details = Paragraph.new_empty()
+    details.set_block_title(
+        " Dashboard help " if state.show_help else " Selected worker "
+    )
+    if state.show_help:
+        _append_dashboard_line(
+            details, [("↑/↓ or j/k ", key_style), ("select worker", neutral_style)]
+        )
+        _append_dashboard_line(
+            details,
+            [("PgUp/PgDn ", key_style), ("scroll worker details", neutral_style)],
+        )
+        _append_dashboard_line(
+            details, [("? ", key_style), ("close this help", neutral_style)]
+        )
+        _append_dashboard_line(
+            details,
+            [
+                ("Ctrl-C/Esc ", key_style),
+                ("stop dispatch and workers safely", warning_style),
+            ],
+        )
+        ratio = 0.0 if selected is None else _worker_progress_ratio(selected)
+        gauge_label = "keyboard help"
+    elif selected is None:
+        _append_dashboard_line(details, [("No active worker", warning_style)])
+        ratio = 0.0
+        gauge_label = "waiting"
+    else:
+        _append_dashboard_line(
+            details,
+            [
+                ("Cell ", key_style),
+                (selected.cell_id, title_style),
+                *(
+                    (
+                        ("   Peer ", key_style),
+                        (selected.peer_instance[:12], neutral_style),
+                    )
+                    if selected.peer_instance is not None
+                    else ()
+                ),
+            ],
+        )
+        _append_dashboard_line(
+            details,
+            [
+                ("Phase ", key_style),
+                (selected.phase, warning_style),
+                ("   Step ", key_style),
+                (selected.step, neutral_style),
+            ],
+        )
+        _append_dashboard_line(
+            details,
+            [
+                ("Wall ", key_style),
+                (_human_duration(selected.wall_seconds), neutral_style),
+                ("   CPU ", key_style),
+                (
+                    (
+                        "unavailable"
+                        if selected.cpu_seconds is None
+                        else _human_duration(selected.cpu_seconds)
+                    ),
+                    neutral_style,
+                ),
+            ],
+        )
+        _append_dashboard_line(
+            details,
+            [
+                ("RSS current ", key_style),
+                (_human_bytes(selected.current_rss_bytes), neutral_style),
+                ("   RSS peak ", key_style),
+                (_human_bytes(selected.peak_rss_bytes), neutral_style),
+            ],
+        )
+        enforcement_current = _worker_enforcement_memory(selected)
+        enforcement_peak = _worker_enforcement_memory(selected, peak=True)
+        enforcement_style = (
+            failure_style
+            if enforcement_current > state.memory_limit_bytes
+            else warning_style
+        )
+        if selected.current_physical_footprint_bytes is not None and not compact:
+            physical_peak = (
+                selected.peak_physical_footprint_bytes
+                if selected.peak_physical_footprint_bytes is not None
+                else selected.current_physical_footprint_bytes
+            )
+            _append_dashboard_line(
+                details,
+                [
+                    ("Physical current ", key_style),
+                    (
+                        _human_bytes(selected.current_physical_footprint_bytes),
+                        neutral_style,
+                    ),
+                    ("   Physical peak ", key_style),
+                    (_human_bytes(physical_peak), neutral_style),
+                ],
+            )
+        _append_dashboard_line(
+            details,
+            [
+                ("Enforcement guard ", key_style),
+                (_human_bytes(enforcement_current), enforcement_style),
+                ("   Peak ", key_style),
+                (_human_bytes(enforcement_peak), enforcement_style),
+                ("   Cap ", key_style),
+                (_human_bytes(state.memory_limit_bytes), warning_style),
+                *(
+                    (
+                        ("   Physical ", key_style),
+                        (
+                            _human_bytes(selected.current_physical_footprint_bytes),
+                            neutral_style,
+                        ),
+                    )
+                    if compact and selected.current_physical_footprint_bytes is not None
+                    else ()
+                ),
+            ],
+        )
+        if compact and selected.log_tail:
+            _append_dashboard_line(
+                details,
+                [
+                    ("Recent log ", key_style),
+                    (selected.log_tail[-1], neutral_style),
+                ],
+            )
+        evaluator_total = selected.published_evaluator_total_seconds_per_point
+        _append_dashboard_line(
+            details,
+            [
+                ("Published outer wall ", key_style),
+                (
+                    "pending"
+                    if selected.published_wall_seconds_per_point is None
+                    else (
+                        f"{selected.published_wall_seconds_per_point * 1.0e6:.6g} μs/pt"
+                    ),
+                    neutral_style,
+                ),
+                ("   Evaluator total ", key_style),
+                (
+                    "unavailable/pending"
+                    if evaluator_total is None
+                    else f"{evaluator_total * 1.0e6:.6g} μs/pt",
+                    neutral_style,
+                ),
+            ],
+        )
+        if not compact:
+            progress_details = _progress_detail_summary(selected.progress_details)
+            if progress_details:
+                _append_dashboard_line(
+                    details,
+                    [
+                        ("Progress data ", key_style),
+                        (progress_details, neutral_style),
+                    ],
+                )
+            _append_dashboard_line(
+                details,
+                [
+                    ("PID tree ", key_style),
+                    (
+                        ", ".join(str(value) for value in selected.member_pids) or "—",
+                        neutral_style,
+                    ),
+                    ("   Attempt ", key_style),
+                    (selected.attempt_id or "—", neutral_style),
+                ],
+            )
+        if selected.log_tail and not compact:
+            for index, line in enumerate(selected.log_tail[-3:]):
+                _append_dashboard_line(
+                    details,
+                    [
+                        ("Recent log " if index == 0 else "           ", key_style),
+                        (line, neutral_style),
+                    ],
+                )
+        if not compact:
+            for event in selected.events[-max(1, detail_height - 6) :]:
+                _append_dashboard_line(
+                    details,
+                    [("• ", key_style), (event, neutral_style)],
+                )
+            if detail_height >= 10 and selected.reproduce_prepare:
+                _append_dashboard_line(
+                    details,
+                    [
+                        ("CLI prepare ", key_style),
+                        (selected.reproduce_prepare, neutral_style),
+                    ],
+                )
+            if detail_height >= 11 and selected.reproduce_generate:
+                _append_dashboard_line(
+                    details,
+                    [
+                        ("CLI generate ", key_style),
+                        (selected.reproduce_generate, neutral_style),
+                    ],
+                )
+            if detail_height >= 12 and selected.reproduce_profile:
+                _append_dashboard_line(
+                    details,
+                    [
+                        ("CLI profile ", key_style),
+                        (selected.reproduce_profile, neutral_style),
+                    ],
+                )
+        ratio = _worker_progress_ratio(selected)
+        gauge_label = (
+            selected.progress_message or f"{selected.phase} {round(100.0 * ratio):d}%"
+        )
+    details.set_scroll(state.detail_scroll)
+
+    gauge = Gauge().ratio(ratio).label(gauge_label)
+    gauge.set_styles(
+        neutral_style,
+        gauge_label_style,
+        gauge_value_style,
+    )
+    footer = Paragraph.from_text(
+        " ↑/↓ select  PgUp/PgDn scroll  ? help  Ctrl-C stop safely "
+    )
+
+    return [
+        DrawCmd.paragraph(overview, (0, 0, width, overview_height)),
+        DrawCmd.table(worker_table, (0, overview_height, width, table_height)),
+        DrawCmd.paragraph(details, (0, detail_y, width, detail_height - 2)),
+        DrawCmd.gauge(gauge, (0, height - 3, width, 2)),
+        DrawCmd.paragraph(footer, (0, height - 1, width, footer_height)),
+    ]
+
+
+def render_dashboard_frame(
+    state: DashboardState,
+    *,
+    width: int,
+    height: int,
+    cells: bool = False,
+    color: bool = True,
+) -> object:
+    if width < 60 or height < 18:
+        raise ManualCampaignError("dashboard dimensions must be at least 60x18")
+    try:
+        from ratatui_py import headless_render_frame, headless_render_frame_cells
+    except ImportError as error:
+        raise ManualCampaignError(
+            "Ratatui is unavailable; run `just dev-install`"
+        ) from error
+    commands = _ratatui_commands(state, width=width, height=height, color=color)
+    if cells:
+        return headless_render_frame_cells(width, height, commands)
+    return headless_render_frame(width, height, commands)
+
+
+def _handle_dashboard_key(
+    state: DashboardState,
+    event: Mapping[str, object],
+    cancellation: threading.Event,
+) -> bool:
+    """Apply one Ratatui key event; return true when rendering should stop."""
+
+    from ratatui import KeyCode, KeyMods
+
+    if event.get("kind") != "key":
+        return False
+    code = event.get("code")
+    ch = event.get("ch")
+    mods = _optional_int(event.get("mods")) or 0
+    if code == KeyCode.Up or (code == KeyCode.Char and ch == ord("k")):
+        state.selected_index -= 1
+        state.detail_scroll = 0
+    elif code == KeyCode.Down or (code == KeyCode.Char and ch == ord("j")):
+        state.selected_index += 1
+        state.detail_scroll = 0
+    elif code == KeyCode.PageUp:
+        state.detail_scroll = max(0, state.detail_scroll - 3)
+    elif code == KeyCode.PageDown:
+        state.detail_scroll += 3
+    elif code == KeyCode.Char and ch == ord("?"):
+        state.show_help = not state.show_help
+        state.detail_scroll = 0
+    elif code == KeyCode.Esc or (
+        code == KeyCode.Char and ch in {ord("c"), ord("C")} and mods & int(KeyMods.CTRL)
+    ):
+        state.interrupted = True
+        cancellation.set()
+        return True
+    return False
+
+
+def _run_live_dashboard(
+    lease: LeaseManager,
+    state: DashboardState,
+    finished: threading.Event,
+    cancellation: threading.Event,
+    *,
+    color: bool = True,
+) -> None:
+    try:
+        from ratatui_py import terminal_session
+    except ImportError as error:
+        raise ManualCampaignError(
+            "Ratatui is unavailable; run `just dev-install`"
+        ) from error
+    with terminal_session(raw=True, alt=True, clear=True) as terminal:
+        while not finished.is_set():
+            display_state = lease.dashboard_snapshot()
+            width, height = terminal.size()
+            terminal.draw_frame(
+                _ratatui_commands(
+                    display_state,
+                    width=width,
+                    height=height,
+                    color=color,
+                )
+            )
+            event = terminal.next_event(timeout_ms=150)
+            if event is None:
+                continue
+            if _handle_dashboard_key(state, event, cancellation):
+                break
+
+
+def _manual_baseline(
+    cell: CellSpec,
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> CellSpec | None:
+    if cell.measurement.execution_mode is ExecutionMode.AMPLICOL:
+        return None
+    dataset_id = f"reference_amplicol_{cell.measurement.accuracy.value}"
+    return next(
+        (
+            candidate
+            for candidate in catalog.measurement_cells()
+            if candidate.dataset_id == dataset_id
+            and candidate.process_key == cell.process_key
+            and candidate.n_final == cell.n_final
+            and candidate.workload is cell.workload
+        ),
+        None,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Comparison:
+    cell: CellSpec
+    baseline: CellSpec
+    candidate: float
+    reference: float
+
+    @property
+    def multiplier(self) -> float:
+        return self.candidate / self.reference
+
+
+def _number(measurement: Mapping[str, object], field: str) -> float | None:
+    value = measurement.get(field)
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(float(value))
+        or float(value) <= 0.0
+    ):
+        return None
+    return float(value)
+
+
+def _evaluator_total_number(measurement: Mapping[str, object]) -> float | None:
+    provenance = measurement.get("provenance")
+    record = (
+        provenance.get("evaluator_total_timing")
+        if isinstance(provenance, Mapping)
+        else None
+    )
+    return (
+        None
+        if not isinstance(record, Mapping)
+        else _number(record, "raw_seconds_per_point")
+    )
+
+
+def comparison_statistics(comparisons: Sequence[Comparison]) -> dict[str, object]:
+    if not comparisons:
+        return {
+            "count": 0,
+            "best": None,
+            "worst": None,
+            "median": None,
+            "mean": None,
+            "weighted_mean": None,
+        }
+    ordered = sorted(comparisons, key=lambda item: item.multiplier)
+    ratios = [item.multiplier for item in ordered]
+    return {
+        "count": len(ordered),
+        "best": ordered[0],
+        "worst": ordered[-1],
+        "median": statistics.median(ratios),
+        "mean": statistics.fmean(ratios),
+        "weighted_mean": (
+            math.fsum(item.candidate for item in ordered)
+            / math.fsum(item.reference for item in ordered)
+        ),
+    }
+
+
+def _comparison_identity(item: Comparison) -> dict[str, object]:
+    cell = item.cell
+    return {
+        "table": cell.dataset_id,
+        "cell_id": cell.cell_id,
+        "process_id": cell.process_key,
+        "process": cell.process,
+        "multiplicity": cell.n_final,
+        "color_approximation": cell.measurement.accuracy.value,
+        "generation_mode": cell.workload.value,
+        "generation_engine": cell.measurement.execution_mode.value,
+        "backend": cell.measurement.backend,
+        "model": (
+            None if cell.measurement.model is None else cell.measurement.model.value
+        ),
+        "variant": cell.variant,
+        "candidate": item.candidate,
+        "amplicol": item.reference,
+        "multiplier": item.multiplier,
+        "amplicol_cell_id": item.baseline.cell_id,
+    }
+
+
+def _inspect_metric(
+    cells: Sequence[CellSpec],
+    currents: Mapping[str, LightweightCurrent],
+    *,
+    field: str | None,
+    generation: bool,
+    evaluator_total: bool = False,
+) -> tuple[dict[str, object], Counter[str]]:
+    comparisons: list[Comparison] = []
+    exclusions: Counter[str] = Counter()
+    for cell in cells:
+        if cell.measurement.execution_mode is ExecutionMode.AMPLICOL:
+            exclusions["amplicol_candidate"] += 1
+            continue
+        baseline = _manual_baseline(cell)
+        if baseline is None:
+            exclusions["no_amplicol_baseline"] += 1
+            continue
+        if generation and cell.workload is Workload.ALL_FLOW:
+            exclusions["incompatible_generation_layout"] += 1
+            continue
+        candidate_current = currents.get(cell.cell_id)
+        baseline_current = currents.get(baseline.cell_id)
+        if candidate_current is None:
+            exclusions["candidate_missing"] += 1
+            continue
+        if not candidate_current.reusable:
+            exclusions[f"candidate_{candidate_current.reason.replace(' ', '_')}"] += 1
+            continue
+        if baseline_current is None:
+            exclusions["baseline_missing"] += 1
+            continue
+        if not baseline_current.reusable:
+            exclusions[f"baseline_{baseline_current.reason.replace(' ', '_')}"] += 1
+            continue
+        if candidate_current.result.get("status") in {
+            ResultStatus.TIMEOUT.value,
+            ResultStatus.MEMORY_LIMIT.value,
+        }:
+            exclusions["candidate_resource_capped"] += 1
+            continue
+        if baseline_current.result.get("status") in {
+            ResultStatus.TIMEOUT.value,
+            ResultStatus.MEMORY_LIMIT.value,
+        }:
+            exclusions["baseline_resource_capped"] += 1
+            continue
+        if evaluator_total:
+            candidate = _evaluator_total_number(candidate_current.result)
+            reference = _evaluator_total_number(baseline_current.result)
+        else:
+            assert field is not None
+            candidate = _number(candidate_current.result, field)
+            reference = _number(baseline_current.result, field)
+        if candidate is None or reference is None:
+            exclusions["value_unavailable"] += 1
+            continue
+        comparisons.append(Comparison(cell, baseline, candidate, reference))
+    raw = comparison_statistics(comparisons)
+    payload = {
+        key: (_comparison_identity(value) if isinstance(value, Comparison) else value)
+        for key, value in raw.items()
+    }
+    return payload, exclusions
+
+
+def _inspect_payload(
+    service: ReportService,
+    cells: Sequence[CellSpec],
+    *,
+    source: ReportSourceIdentity,
+) -> dict[str, object]:
+    required = {cell.cell_id: cell for cell in cells}
+    for cell in cells:
+        baseline = _manual_baseline(cell)
+        if baseline is not None:
+            required[baseline.cell_id] = baseline
+    currents = lightweight_currents(
+        service,
+        tuple(required.values()),
+        source_revision=source.revision,
+    )
+    statuses: Counter[str] = Counter()
+    for cell in cells:
+        if _manual_static_na_reason(cell) is not None:
+            statuses["static_not_available"] += 1
+            continue
+        current = currents.get(cell.cell_id)
+        if current is None:
+            statuses[ResultStatus.NOT_AVAILABLE.value] += 1
+        elif not current.reusable:
+            statuses[current.reason.replace(" ", "_")] += 1
+        else:
+            statuses[str(current.result.get("status"))] += 1
+    generation, generation_exclusions = _inspect_metric(
+        cells,
+        currents,
+        field="generation_seconds",
+        generation=True,
+    )
+    runtime, runtime_exclusions = _inspect_metric(
+        cells,
+        currents,
+        field="wall_seconds_per_point",
+        generation=False,
+    )
+    evaluator_total, evaluator_total_exclusions = _inspect_metric(
+        cells,
+        currents,
+        field=None,
+        generation=False,
+        evaluator_total=True,
+    )
+    selected_currents = tuple(
+        currents[cell.cell_id]
+        for cell in cells
+        if cell.cell_id in currents and currents[cell.cell_id].reusable
+    )
+    clock_coverage = {
+        "outer_wall_available": sum(
+            _number(current.result, "wall_seconds_per_point") is not None
+            for current in selected_currents
+        ),
+        "evaluator_total_available": sum(
+            _evaluator_total_number(current.result) is not None
+            for current in selected_currents
+        ),
+        "narrow_execution_available": sum(
+            _number(current.result, "execution_seconds_per_point") is not None
+            for current in selected_currents
+        ),
+    }
+    return {
+        "profile": PROFILE,
+        "source_revision": source.revision,
+        "selection_count": len(cells),
+        "reusable_count": sum(
+            bool(current.reusable)
+            for cell_id, current in currents.items()
+            if cell_id in {cell.cell_id for cell in cells}
+        ),
+        "statuses": dict(sorted(statuses.items())),
+        "generation_multiplier_vs_amplicol": generation,
+        "runtime_wall_multiplier_vs_amplicol": runtime,
+        "runtime_evaluator_total_multiplier_vs_amplicol": evaluator_total,
+        "clock_coverage": clock_coverage,
+        "exclusions": {
+            "generation": dict(sorted(generation_exclusions.items())),
+            "runtime_wall": dict(sorted(runtime_exclusions.items())),
+            "runtime_evaluator_total": dict(sorted(evaluator_total_exclusions.items())),
+        },
+        "clock_note": (
+            "Outer wall and evaluator-total are independent clocks; missing "
+            "narrow attribution remains unavailable and is never fabricated."
+        ),
+    }
+
+
+def _format_multiplier(value: object) -> str:
+    return "—" if value is None else f"{float(value):.4g}x"
+
+
+def _paint_multiplier(palette: Palette, value: object) -> str:
+    rendered = _format_multiplier(value)
+    if value is None:
+        return palette.neutral(rendered)
+    multiplier = float(value)
+    if math.isclose(multiplier, 1.0, rel_tol=1.0e-12, abs_tol=1.0e-12):
+        return palette.neutral(rendered)
+    return palette.success(rendered) if multiplier < 1.0 else palette.failure(rendered)
+
+
+def _print_inspect(payload: Mapping[str, object], palette: Palette) -> None:
+    print(
+        _table(
+            ("key", "value"),
+            (
+                (palette.key("profile"), payload["profile"]),
+                (palette.key("source"), str(payload["source_revision"])[:12]),
+                (palette.key("selected"), payload["selection_count"]),
+                (palette.key("reusable"), palette.success(payload["reusable_count"])),
+                (
+                    palette.key("clock coverage"),
+                    ", ".join(
+                        f"{key}={value}"
+                        for key, value in payload["clock_coverage"].items()
+                    ),
+                ),
+                (palette.key("clock semantics"), payload["clock_note"]),
+            ),
+        )
+    )
+    statuses = payload["statuses"]
+    assert isinstance(statuses, Mapping)
+    print()
+    print(
+        _table(
+            ("status", "entries"),
+            (
+                (
+                    palette.key(status),
+                    (
+                        palette.success(count)
+                        if status == ResultStatus.OK.value
+                        else (
+                            palette.failure(count)
+                            if any(
+                                token in status
+                                for token in ("error", "failed", "mismatch")
+                            )
+                            else palette.warning(count)
+                        )
+                    ),
+                )
+                for status, count in statuses.items()
+            ),
+            align={"entries": "r"},
+        )
+    )
+    rows: list[tuple[object, ...]] = []
+    for title, key in (
+        ("Generation", "generation_multiplier_vs_amplicol"),
+        ("Runtime wall", "runtime_wall_multiplier_vs_amplicol"),
+        (
+            "Runtime evaluator total",
+            "runtime_evaluator_total_multiplier_vs_amplicol",
+        ),
+    ):
+        summary = payload[key]
+        assert isinstance(summary, Mapping)
+        best = summary.get("best")
+        worst = summary.get("worst")
+        rows.append(
+            (
+                palette.key(title),
+                summary.get("count"),
+                _paint_multiplier(
+                    palette,
+                    (None if not isinstance(best, Mapping) else best.get("multiplier")),
+                ),
+                _paint_multiplier(palette, summary.get("median")),
+                _paint_multiplier(palette, summary.get("mean")),
+                _paint_multiplier(palette, summary.get("weighted_mean")),
+                _paint_multiplier(
+                    palette,
+                    (
+                        None
+                        if not isinstance(worst, Mapping)
+                        else worst.get("multiplier")
+                    ),
+                ),
+            )
+        )
+    print()
+    print(
+        _table(
+            (
+                "metric",
+                "pairs",
+                "best",
+                "median",
+                "average",
+                "weighted avg",
+                "worst",
+            ),
+            rows,
+            align={"pairs": "r"},
+        )
+    )
+    identities: list[tuple[object, ...]] = []
+    for title, key in (
+        ("generation best", "generation_multiplier_vs_amplicol"),
+        ("generation worst", "generation_multiplier_vs_amplicol"),
+        ("runtime best", "runtime_wall_multiplier_vs_amplicol"),
+        ("runtime worst", "runtime_wall_multiplier_vs_amplicol"),
+        (
+            "evaluator-total best",
+            "runtime_evaluator_total_multiplier_vs_amplicol",
+        ),
+        (
+            "evaluator-total worst",
+            "runtime_evaluator_total_multiplier_vs_amplicol",
+        ),
+    ):
+        summary = payload[key]
+        assert isinstance(summary, Mapping)
+        identity = summary.get("best" if title.endswith("best") else "worst")
+        if not isinstance(identity, Mapping):
+            continue
+        for label, identity_field in (
+            ("table", "table"),
+            ("cell", "cell_id"),
+            ("process ID", "process_id"),
+            ("concrete process", "process"),
+            ("multiplicity", "multiplicity"),
+            ("colour", "color_approximation"),
+            ("layout/workload", "generation_mode"),
+            ("engine", "generation_engine"),
+            ("backend", "backend"),
+            ("model", "model"),
+            ("variant", "variant"),
+            ("candidate value", "candidate"),
+            ("AmpliCol baseline", "amplicol"),
+            ("multiplier", "multiplier"),
+        ):
+            value = identity.get(identity_field)
+            if identity_field == "multiplier":
+                value = _paint_multiplier(palette, value)
+            identities.append((palette.key(title), palette.key(label), value))
+    if identities:
+        print()
+        print(
+            _table(
+                ("extreme", "key", "value"),
+                identities,
+            )
+        )
+    exclusions = payload["exclusions"]
+    assert isinstance(exclusions, Mapping)
+    print()
+    print(
+        _table(
+            ("metric", "excluded reason", "count"),
+            (
+                (palette.key(metric), reason, count)
+                for metric, raw in exclusions.items()
+                if isinstance(raw, Mapping)
+                for reason, count in raw.items()
+            ),
+            align={"count": "r"},
+        )
+    )
+
+
+def _campaign_settings(
+    arguments: argparse.Namespace,
+    source: ReportSourceIdentity,
+    *,
+    observer: Any = None,
+    cancelled: Any = None,
+) -> CampaignSettings:
+    workers = int(arguments.workers)
+    cores = int(arguments.cores_per_worker)
+    available = os.cpu_count() or 1
+    if workers * cores > available and not bool(arguments.allow_oversubscription):
+        raise ManualCampaignError(
+            f"{workers} workers x {cores} cores exceeds {available} logical "
+            "CPUs; lower either value or pass --allow-oversubscription"
+        )
+    return CampaignSettings(
+        workers=workers,
+        cell_cores=cores,
+        target_runtime_seconds=float(arguments.target_measurement_duration),
+        batch_size=int(arguments.batch_size),
+        warmup_runs=int(arguments.warmups),
+        minimum_samples=int(arguments.minimum_samples),
+        timeout_seconds=arguments.worker_wall_limit,
+        generation_time_limit_seconds=float(arguments.generation_time_limit),
+        max_rss_bytes=int(arguments.ram_limit),
+        artifact_policy=(
+            ArtifactPolicy.REGENERATE
+            if arguments.force_refresh
+            else ArtifactPolicy.REUSE
+        ),
+        missing_only=not arguments.force_refresh,
+        rerun=bool(arguments.force_refresh),
+        allow_symbolica_parallel=bool(arguments.allow_engine_parallelism),
+        resource_sample_interval_seconds=float(arguments.resource_sample_interval),
+        termination_grace_seconds=float(arguments.termination_grace),
+        source_identity_override=source,
+        progress_observer=observer,
+        cancellation_requested=cancelled,
+        manual_terminal_censors=True,
+        report_profile=None,
+    )
+
+
+def _dry_run_rows(
+    direct: Sequence[CellSpec],
+    planned: Sequence[PlannedCell],
+    *,
+    repo_root: Path,
+    arguments: argparse.Namespace,
+) -> Iterable[tuple[object, ...]]:
+    direct_ids = {cell.cell_id for cell in direct}
+    for item in planned:
+        recipe = reproduction_recipe(
+            item.cell,
+            repo_root=repo_root,
+            cores=arguments.cores_per_worker,
+            target_runtime=arguments.target_measurement_duration,
+            batch_size=arguments.batch_size,
+            warmups=arguments.warmups,
+            minimum_samples=arguments.minimum_samples,
+        )
+        role = "direct" if item.cell.cell_id in direct_ids else "dependency"
+        yield (
+            f"{role} · rank {item.rank}",
+            "\n".join(
+                (
+                    item.cell.cell_id,
+                    f"engine: {item.cell.measurement.execution_mode.value}",
+                    f"kind: {recipe.kind}",
+                    f"exact: {'yes' if recipe.exact else 'no'}",
+                    f"note: {recipe.note}",
+                )
+            ),
+        )
+
+
+def _wrapped_shell(
+    arguments: Sequence[str],
+    *,
+    width: int,
+    indent: str = "  ",
+) -> str:
+    """Wrap shell words without splitting quoted arguments."""
+
+    words = [shlex.quote(str(argument)) for argument in arguments]
+    lines: list[str] = []
+    current = indent
+    for word in words:
+        separator = "" if current == indent else " "
+        if current != indent and len(current) + len(separator) + len(word) > width:
+            lines.append(current)
+            current = indent + word
+        else:
+            current += separator + word
+    if current != indent:
+        lines.append(current)
+    return " \\\n".join(lines)
+
+
+def _dry_run_recipe_blocks(
+    direct: Sequence[CellSpec],
+    *,
+    repo_root: Path,
+    arguments: argparse.Namespace,
+    width: int,
+) -> Iterable[str]:
+    for index, cell in enumerate(direct, start=1):
+        if _manual_static_na_reason(cell) is not None:
+            continue
+        recipe = reproduction_recipe(
+            cell,
+            repo_root=repo_root,
+            cores=arguments.cores_per_worker,
+            target_runtime=arguments.target_measurement_duration,
+            batch_size=arguments.batch_size,
+            warmups=arguments.warmups,
+            minimum_samples=arguments.minimum_samples,
+        )
+        metadata = _table(
+            ("key", "value"),
+            (
+                ("recipe", index),
+                ("cell", cell.cell_id),
+                ("kind", recipe.kind),
+                ("exact", "yes" if recipe.exact else "no"),
+                ("note", recipe.note),
+            ),
+            max_width={"value": max(36, width - 16)},
+        )
+        commands: list[str] = [metadata]
+        for label, command in (
+            ("Prepare prerequisite", recipe.prepare),
+            ("Generate", recipe.generate),
+            (
+                "Profile" if recipe.exact else "Profile template/diagnostic",
+                recipe.profile,
+            ),
+        ):
+            if command is None:
+                continue
+            commands.extend((f"{label}:", _wrapped_shell(command, width=width)))
+        yield "\n".join(commands)
+
+
+def _cancel_and_join_campaign_worker(
+    worker: threading.Thread,
+    cancellation: threading.Event,
+    *,
+    timeout_seconds: float,
+) -> tuple[bool, bool]:
+    """Request worker-tree cancellation and perform at most one bounded join."""
+
+    cancellation.set()
+    interrupted = False
+    try:
+        worker.join(timeout=max(0.0, timeout_seconds))
+    except KeyboardInterrupt:
+        interrupted = True
+        cancellation.set()
+    return interrupted, worker.is_alive()
+
+
+def _run_campaign(
+    arguments: argparse.Namespace,
+    *,
+    repo_root: Path,
+    service: ReportService,
+    source: ReportSourceIdentity,
+    cells: Sequence[CellSpec],
+    palette: Palette,
+) -> int:
+    measurable = tuple(cell for cell in cells if _manual_static_na_reason(cell) is None)
+    static_na = {
+        cell.cell_id for cell in cells if _manual_static_na_reason(cell) is not None
+    }
+    if not measurable:
+        print(
+            palette.warning(
+                f"All {len(cells)} selected entries are policy/static unavailable; "
+                "no attempts were created."
+            )
+        )
+        print(
+            _table(
+                ("cell", "reason"),
+                ((cell.cell_id, _manual_static_na_reason(cell)) for cell in cells),
+            )
+        )
+        return 0
+    lightweight = lightweight_currents(
+        service,
+        measurable,
+        source_revision=source.revision,
+    )
+    recycled = {
+        cell_id
+        for cell_id, current in lightweight.items()
+        if current.reusable and not arguments.force_refresh
+    }
+    preliminary_settings = _campaign_settings(arguments, source)
+    planned = plan_campaign(
+        measurable,
+        store=service.store,
+        settings=preliminary_settings,
+        expected_revision=source.revision,
+        expected_tree=None,
+        current_resolver=_lightweight_current_resolver(
+            service,
+            source_revision=source.revision,
+            initial=lightweight,
+        ),
+    )
+    if arguments.dry_run:
+        terminal_width = max(
+            80,
+            min(160, shutil.get_terminal_size(fallback=(120, 24)).columns),
+        )
+        print(
+            _table(
+                ("key", "value"),
+                (
+                    (palette.key("direct entries"), len(cells)),
+                    (palette.key("static N/A"), len(static_na)),
+                    (palette.key("recycled"), len(recycled)),
+                    (palette.key("planned with dependencies"), len(planned)),
+                    (palette.key("source"), source.revision),
+                ),
+            )
+        )
+        print()
+        if static_na:
+            print(
+                _table(
+                    ("static/policy unavailable cell", "reason"),
+                    (
+                        (cell.cell_id, _manual_static_na_reason(cell))
+                        for cell in cells
+                        if cell.cell_id in static_na
+                    ),
+                )
+            )
+            print()
+        print(
+            _table(
+                ("entry", "details"),
+                _dry_run_rows(
+                    cells,
+                    planned,
+                    repo_root=repo_root,
+                    arguments=arguments,
+                ),
+                max_width={"entry": 18, "details": max(48, terminal_width - 27)},
+            )
+        )
+        direct_recipes = tuple(
+            cell for cell in cells if _manual_static_na_reason(cell) is None
+        )
+        for block in _dry_run_recipe_blocks(
+            direct_recipes,
+            repo_root=repo_root,
+            arguments=arguments,
+            width=terminal_width,
+        ):
+            print()
+            print(block)
+        return 0
+
+    require_measurement_ready(source)
+    update_source_marker(service, source)
+    measurable_ids = {cell.cell_id for cell in measurable}
+    if not planned and measurable_ids <= recycled:
+        print(
+            _table(
+                ("key", "value"),
+                (
+                    (palette.key("selected entries"), len(cells)),
+                    (palette.key("measurable entries"), len(measurable)),
+                    (
+                        palette.key("recycled measurable entries"),
+                        palette.success(len(recycled)),
+                    ),
+                    (
+                        palette.key("static N/A entries"),
+                        (
+                            palette.warning(len(static_na))
+                            if static_na
+                            else palette.neutral(0)
+                        ),
+                    ),
+                    (palette.key("workers created"), palette.success(0)),
+                    (palette.key("attempts created"), palette.success(0)),
+                ),
+                align={"value": "r"},
+            )
+        )
+        print()
+        print(
+            palette.success(
+                "All selected measurable entries were recycled "
+                f"({len(recycled)} of {len(measurable)}); no workers or "
+                "attempts were created."
+            )
+        )
+        if static_na:
+            print(
+                palette.warning(
+                    f"{len(static_na)} selected static N/A "
+                    f"{'entry remains' if len(static_na) == 1 else 'entries remain'} "
+                    "policy unavailable and accounted for separately."
+                )
+            )
+        return 0
+    cancellation = threading.Event()
+    finished = threading.Event()
+    state = DashboardState(
+        instance_id=uuid.uuid4().hex,
+        selected_ids=tuple(cell.cell_id for cell in cells),
+        recycled_ids=recycled,
+        static_na_ids=static_na,
+        source_revision=source.revision,
+        generation_time_limit_seconds=float(arguments.generation_time_limit),
+        memory_limit_bytes=int(arguments.ram_limit),
+        worker_wall_limit_seconds=arguments.worker_wall_limit,
+        reproduction_settings=ReproductionSettings(
+            cores=int(arguments.cores_per_worker),
+            target_runtime=float(arguments.target_measurement_duration),
+            batch_size=int(arguments.batch_size),
+            warmups=int(arguments.warmups),
+            minimum_samples=int(arguments.minimum_samples),
+        ),
+        dependency_ids={item.cell.cell_id for item in planned if item.dependency},
+    )
+    lease = LeaseManager(service, state)
+    lease.publish()
+    settings = _campaign_settings(
+        arguments,
+        source,
+        observer=lease.observe,
+        cancelled=cancellation.is_set,
+    )
+    scheduler = CampaignScheduler(service, settings=settings)
+    result_holder: list[CampaignResult] = []
+    error_holder: list[BaseException] = []
+
+    def execute() -> None:
+        try:
+            result_holder.append(scheduler.run(planned))
+        except BaseException as error:
+            error_holder.append(error)
+        finally:
+            finished.set()
+
+    worker = threading.Thread(
+        target=execute,
+        name="manual-performance-campaign",
+        daemon=False,
+    )
+    worker.start()
+    interrupted = False
+    join_interrupted = False
+    worker_alive = False
+    try:
+        interactive = (
+            not arguments.no_dashboard
+            and bool(getattr(sys.stdin, "isatty", lambda: False)())
+            and bool(getattr(sys.stdout, "isatty", lambda: False)())
+        )
+        if interactive:
+            _run_live_dashboard(
+                lease,
+                state,
+                finished,
+                cancellation,
+                color=palette.enabled,
+            )
+        else:
+            while not finished.wait(timeout=0.25):
+                pass
+    except KeyboardInterrupt:
+        interrupted = True
+        state.interrupted = True
+        cancellation.set()
+    finally:
+        if state.interrupted:
+            interrupted = True
+        try:
+            join_interrupted, worker_alive = _cancel_and_join_campaign_worker(
+                worker,
+                cancellation,
+                timeout_seconds=max(5.0, arguments.termination_grace + 2.0),
+            )
+        finally:
+            lease.close()
+    if join_interrupted or worker_alive:
+        interrupted = True
+        state.interrupted = True
+    if interrupted:
+        print(
+            palette.warning(
+                "Interrupted: dispatch stopped, process trees received cancellation, "
+                "completed currents were preserved, and leases were removed."
+            ),
+            file=sys.stderr,
+        )
+        return 130
+    if error_holder:
+        raise error_holder[0]
+    result = result_holder[0]
+    statuses = Counter(outcome.status for outcome in result.outcomes)
+    print(
+        _table(
+            ("status", "entries"),
+            (
+                (
+                    palette.key(status),
+                    (
+                        palette.success(count)
+                        if status in {"ok", "reused", "skipped-current"}
+                        else palette.warning(count)
+                    ),
+                )
+                for status, count in sorted(statuses.items())
+            ),
+            align={"entries": "r"},
+        )
+    )
+    return 1 if result.failed else 0
+
+
+def _capture_lightweight_snapshot(
+    service: ReportService,
+    *,
+    source: ReportSourceIdentity,
+) -> tuple[dict[str, LightweightCurrent], tuple[tuple[str, str], ...]]:
+    cells = tuple(service.catalog.measurement_cells())
+    for _attempt in range(3):
+        currents = lightweight_currents(
+            service,
+            cells,
+            source_revision=source.revision,
+        )
+        identity = tuple(
+            sorted(
+                (cell_id, current.attempt_id)
+                for cell_id, current in currents.items()
+                if current.reusable
+            )
+        )
+        confirmed = lightweight_currents(
+            service,
+            cells,
+            source_revision=source.revision,
+        )
+        confirmed_identity = tuple(
+            sorted(
+                (cell_id, current.attempt_id)
+                for cell_id, current in confirmed.items()
+                if current.reusable
+            )
+        )
+        if identity == confirmed_identity:
+            return currents, identity
+    raise ManualCampaignError(
+        "current pointers changed during three snapshot reads; retry refresh-pdf"
+    )
+
+
+def _merge_lightweight_snapshot(
+    service: ReportService,
+    currents: Mapping[str, LightweightCurrent],
+) -> tuple[dict[str, dict[str, object]], int]:
+    caches = service.reset_payloads()
+    by_cell = {cell.cell_id: cell for cell in service.catalog.measurement_cells()}
+    merged = 0
+    for payload in caches.values():
+        entries = payload["entries"]
+        assert isinstance(entries, list)
+        for entry in entries:
+            assert isinstance(entry, dict)
+            cell_id = str(entry["cell_id"])
+            cell = by_cell[cell_id]
+            if service.catalog.static_na_reason(cell) is not None:
+                entry["measurement"] = reset_entry(cell)["measurement"]
+                continue
+            current = currents.get(cell_id)
+            if current is None or not current.reusable:
+                continue
+            validate_measurement(current.result, expected_cell=cell)
+            entry["measurement"] = dict(current.result)
+            merged += 1
+    service.validate_payloads(caches)
+    return caches, merged
+
+
+def _copy_report_sources(source: Path, destination: Path) -> None:
+    shutil.copytree(
+        source,
+        destination,
+        ignore=shutil.ignore_patterns(
+            "pyAmpliCol.pdf",
+            "*.aux",
+            "*.bbl",
+            "*.bcf",
+            "*.blg",
+            "*.fdb_latexmk",
+            "*.fls",
+            "*.log",
+            "*.out",
+            "*.run.xml",
+            "*.synctex.gz",
+            "*.toc",
+        ),
+    )
+
+
+def _install_report_snapshot(
+    service: ReportService,
+    staging_docs: Path,
+    table_names: Sequence[str],
+) -> None:
+    sources: list[tuple[Path, Path]] = [
+        *(
+            (
+                path,
+                service.paths.results_dir / path.name,
+            )
+            for path in sorted((staging_docs / "results").glob("*.json"))
+        ),
+        *(
+            (
+                staging_docs / name,
+                service.paths.docs_dir / name,
+            )
+            for name in sorted(table_names)
+        ),
+        (
+            staging_docs / "pyAmpliCol.pdf",
+            service.paths.docs_dir / "pyAmpliCol.pdf",
+        ),
+    ]
+    for source_path, _destination in sources:
+        if not source_path.is_file():
+            raise ManualCampaignError(f"staged report member is missing: {source_path}")
+    backup_root = staging_docs.parent / "previous"
+    backup_root.mkdir()
+    replaced: list[tuple[Path, Path | None]] = []
+    with service.store.named_lock("report-writer"):
+        try:
+            for source_path, destination in sources:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                backup = None
+                if destination.exists():
+                    backup = backup_root / destination.relative_to(
+                        service.paths.docs_dir
+                    )
+                    backup.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(destination, backup)
+                temporary = destination.with_name(
+                    f".{destination.name}.manual-{uuid.uuid4().hex}"
+                )
+                try:
+                    shutil.copy2(source_path, temporary)
+                    os.replace(temporary, destination)
+                finally:
+                    temporary.unlink(missing_ok=True)
+                replaced.append((destination, backup))
+        except BaseException:
+            for destination, backup in reversed(replaced):
+                if backup is None:
+                    destination.unlink(missing_ok=True)
+                else:
+                    os.replace(backup, destination)
+            raise
+
+
+def _refresh_pdf(
+    arguments: argparse.Namespace,
+    *,
+    service: ReportService,
+    source: ReportSourceIdentity,
+    palette: Palette,
+) -> int:
+    currents, snapshot = _capture_lightweight_snapshot(service, source=source)
+    caches, merged = _merge_lightweight_snapshot(service, currents)
+    build_root = service.paths.artifact_root / "manual-publication-builds"
+    build_root.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix="refresh-", dir=build_root))
+    try:
+        staging_docs = staging / "docs"
+        _copy_report_sources(service.paths.docs_dir, staging_docs)
+        staging_service = ReportService(
+            ReportPaths.from_repo(
+                service.paths.repo_root,
+                docs_dir=staging_docs,
+                artifact_root=service.paths.artifact_root,
+                coordination_root=service.paths.coordination_root,
+            ),
+            catalog=service.catalog,
+        )
+        staging_service.bind_measurement_lineage(None)
+        staging_service.bind_original_amplicol_seed(None)
+        tables = staging_service._render_tables(caches)
+        staging_service._snapshot_files(caches, tables)
+        page_count = _compile_pdf(
+            staging_docs,
+            expected_page_count=int(arguments.expected_page_count),
+            timeout_seconds=float(arguments.pdf_timeout),
+        )
+        _install_report_snapshot(service, staging_docs, tuple(tables))
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    print(
+        _table(
+            ("key", "value"),
+            (
+                (palette.key("current snapshot"), len(snapshot)),
+                (palette.key("measurements merged"), merged),
+                (palette.key("tables rebuilt"), len(tables)),
+                (palette.key("PDF pages"), page_count),
+                (
+                    palette.key("installed"),
+                    palette.success(service.paths.docs_dir / "pyAmpliCol.pdf"),
+                ),
+            ),
+        )
+    )
+    return 0
+
+
+_PROCESS_SELECTOR_GUIDE = "\n".join(
+    f"  {family.identifier:>2}: {family.key}" for family in PROCESS_FAMILIES
+)
+_DATASET_SELECTOR_GUIDE = textwrap.fill(
+    ", ".join(sorted({cell.dataset_id for cell in REPORT_CATALOG.measurement_cells()})),
+    width=78,
+    initial_indent="  ",
+    subsequent_indent="  ",
+)
+_ALIAS_SELECTOR_GUIDE = """
+  table groups: z/z_table; matrix/matrix_table; matrix_best; reference; scalar
+  colour: lc/leading_color/leading_colour;
+          nlc/next_to_leading_color/next_to_leading_colour;
+          full/full_color/full_colour
+  layouts: non_union_flow/selected_flow/single_flow/single_flow_hel_sum/
+           topology_replay; union_flow/all_flow/all_flows/
+           all_flows_single_hel/all_flow_union; contracted
+  engines: amplicol/legacy; recurrence/ampli_col; compiled; eager
+  models: builtin/built_in/built_in_sm/builtin_sm/sm;
+          ufo/sm_ufo/ufo_sm/external_sm; scalar_contact; scalar_gravity
+""".strip("\n")
+
+
+STEERING_GUIDE = f"""
+Steering model
+--------------
+Selectors are repeatable and accept several values after one option. Values
+within one dimension are ORed; dimensions are ANDed. Omitted dimensions and a
+quoted '*' (or 'all') mean all values. Hyphens, underscores, and case are
+normalized. `non-union-flow` means one selected colour flow with the helicity
+sum; `union-flow` means all colour flows at one helicity; NLC/full rows use the
+contracted workload.
+
+Where the report protocol permits, the controller parses, resolves, and
+dispatches the real public `pyamplicol generate` and `pyamplicol profile`
+subcommands in-process. Dry runs print directly runnable generation commands
+and clearly labelled pre-generation profile templates; completed recurrence
+provenance replaces templates with stable selectors and a materialized exact
+momenta input. Compiled generation's precompiled-model injection and
+compiled/eager paired Arena publication remain explicit report-protocol
+exceptions. Original AmpliCol uses its maintained legacy adapter because no
+public pyamplicol subcommand exists.
+
+Resource and availability policy
+--------------------------------
+Multiplicity-eight all-flow recurrence is runnable. Current releases use
+bounded spooled/compressed numerical-current evidence, so the former manual
+1-GiB-envelope policy block no longer applies; the ordinary generation-time
+and 30-GB process-tree caps still apply. Z-table C++/ASM variants above
+multiplicity six remain catalog-defined static N/A and create no attempts.
+
+Canonical selector values and aliases
+-------------------------------------
+  tables: z_table (z), matrix, matrix_best, reference, scalar, or exact dataset
+  colour: lc, nlc, full
+  layouts: non-union-flow (selected-flow/topology-replay),
+           union-flow (all-flow), contracted
+  engines: amplicol, recurrence, compiled, eager
+  models: built_in (builtin_sm), sm_ufo (ufo_sm), scalar_contact, scalar_gravity
+  variants: recurrence_jit_o2, jit_o1, jit_o3, eager_jit_o2, cpp_o3, asm_o3
+  wildcard: quoted '*' or all; omitted selectors also mean all
+
+Accepted aliases
+----------------
+{_ALIAS_SELECTOR_GUIDE}
+
+Exact dataset IDs
+-----------------
+{_DATASET_SELECTOR_GUIDE}
+
+Process IDs
+-----------
+{_PROCESS_SELECTOR_GUIDE}
+
+Common recipes
+--------------
+  One exact cell:
+    steer_performance_campaign.py run --cell-id CELL_ID
+
+  Multiplicities 3 and 4 for both SM models:
+    steer_performance_campaign.py run --multiplicity 3 4 --model built_in sm_ufo
+
+  Complete Z table:
+    steer_performance_campaign.py run --table z_table
+
+  Every catalog entry, planned only:
+    steer_performance_campaign.py run --dry-run
+
+  Four workers, two cores each:
+    steer_performance_campaign.py run --workers 4 --cores-per-worker 2
+
+  Recompute instead of reusing same-source currents:
+    steer_performance_campaign.py run --force-refresh --table z_table
+
+  Inspect recurrence and compiled LC rows:
+    steer_performance_campaign.py inspect --color-approximation lc \\
+      --generation-engine recurrence compiled
+
+  Rebuild every JSON/TeX table and the PDF:
+    steer_performance_campaign.py refresh-pdf
+
+  Deterministic dashboard fixture for layout review:
+    steer_performance_campaign.py dashboard-snapshot --width 120 --height 36
+
+  Read-only snapshot of the newest active campaign lease:
+    steer_performance_campaign.py dashboard-snapshot --live
+
+  Snapshot one concurrent invocation by exact ID or unique prefix:
+    steer_performance_campaign.py dashboard-snapshot --live --instance ID_PREFIX
+
+Keyboard controls
+-----------------
+  ↑/↓ or j/k  select a worker     PgUp/PgDn  scroll
+  ?           show help           Ctrl-C/Esc stop safely
+
+The selected-worker panel preserves typed engine details when available,
+including recurrence stages, current/contribution counts, relation counts,
+and evidence sizes. RAM is the sampled process-tree current/peak usage.
+"""
+
+
+def _selector_parent() -> argparse.ArgumentParser:
+    parent = argparse.ArgumentParser(add_help=False)
+    parent.add_argument(
+        "--table",
+        nargs="+",
+        action="append",
+        metavar="TABLE",
+        help=(
+            "Rendered table/dataset selector. Canonical groups: z_table, "
+            "matrix, matrix_best, reference, scalar; exact dataset IDs are "
+            "also accepted. Repeat or supply multiple values."
+        ),
+    )
+    parent.add_argument(
+        "--process-id",
+        nargs="+",
+        action="append",
+        metavar="ID",
+        help=(
+            "Process family number 1..14, process key, or quoted concrete "
+            "process. Numeric IDs follow the report's canonical process list."
+        ),
+    )
+    parent.add_argument(
+        "--multiplicity",
+        "--multiplcity",
+        nargs="+",
+        action="append",
+        metavar="N",
+        help="Final-state multiplicity; positive integers such as 3 4.",
+    )
+    parent.add_argument(
+        "--color-approximation",
+        "--color_approximation",
+        "--colour-approximation",
+        "--colour_approximation",
+        nargs="+",
+        action="append",
+        metavar="LEVEL",
+        help="Colour accuracy: lc, nlc, or full (friendly long aliases accepted).",
+    )
+    parent.add_argument(
+        "--generation-mode",
+        nargs="+",
+        action="append",
+        metavar="LAYOUT",
+        help=(
+            "Workload/layout: union-flow, non-union-flow, or contracted. "
+            "Aliases all-flow, selected-flow, and topology-replay are accepted."
+        ),
+    )
+    parent.add_argument(
+        "--generation-engine",
+        nargs="+",
+        action="append",
+        metavar="ENGINE",
+        help="Engine: amplicol, recurrence, compiled, or eager.",
+    )
+    parent.add_argument(
+        "--model",
+        nargs="+",
+        action="append",
+        metavar="MODEL",
+        help=(
+            "Model: built_in/builtin_sm, sm_ufo/ufo_sm, scalar_contact, or "
+            "scalar_gravity."
+        ),
+    )
+    parent.add_argument(
+        "--variant",
+        nargs="+",
+        action="append",
+        metavar="VARIANT",
+        help="Z-table implementation variant; repeat or supply multiple values.",
+    )
+    parent.add_argument(
+        "--cell-id",
+        nargs="+",
+        action="append",
+        metavar="CELL",
+        help="Exact canonical cell identity; repeat or supply multiple values.",
+    )
+    return parent
+
+
+def _output_parent() -> argparse.ArgumentParser:
+    parent = argparse.ArgumentParser(add_help=False)
+    parent.add_argument(
+        "--no-color",
+        action="store_true",
+        help=(
+            "Disable ANSI colours and Ratatui styles. Output is coloured by "
+            "default; NO_COLOR also disables colour. Inspect JSON never contains "
+            "ANSI escapes; dashboard cell JSON retains numeric style metadata "
+            "unless colour is disabled."
+        ),
+    )
+    return parent
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="steer_performance_campaign.py",
+        description=(
+            "Safely steer, observe, inspect, and publish the fresh manual "
+            "MacBook M3 performance campaign."
+        ),
+        epilog=STEERING_GUIDE,
+        formatter_class=HelpFormatter,
+    )
+    commands = parser.add_subparsers(dest="command", required=True)
+    selectors = _selector_parent()
+    output = _output_parent()
+
+    run = commands.add_parser(
+        "run",
+        parents=[selectors, output],
+        help="Select cells, preview dependencies, or run supervised workers.",
+        description=(
+            "Select report cells, reuse matching same-source currents, plan "
+            "dependencies, and execute resource-supervised workers."
+        ),
+        epilog=STEERING_GUIDE,
+        formatter_class=HelpFormatter,
+    )
+    resources = run.add_argument_group("workers and resource limits")
+    resources.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Concurrent cell workers.",
+    )
+    resources.add_argument(
+        "--cores-per-worker",
+        type=int,
+        default=DEFAULT_CORES_PER_WORKER,
+        help="Generation/engine cores assigned to each worker.",
+    )
+    resources.add_argument(
+        "--generation-time-limit",
+        type=_positive_finite_float,
+        default=DEFAULT_GENERATION_LIMIT_SECONDS,
+        metavar="SECONDS",
+        help=(
+            "Generation-only cap per process tree; preparation and legacy "
+            "generation count, adaptive profiling does not."
+        ),
+    )
+    resources.add_argument(
+        "--ram-limit",
+        type=int,
+        default=DEFAULT_RAM_BYTES,
+        metavar="BYTES",
+        help="Decimal process-tree RAM ceiling per worker (30 GB = 30000000000).",
+    )
+    resources.add_argument(
+        "--worker-wall-limit",
+        type=_positive_finite_float,
+        default=None,
+        metavar="SECONDS",
+        help="Optional total worker wall-time cap; disabled when omitted.",
+    )
+    resources.add_argument(
+        "--resource-sample-interval",
+        type=_positive_finite_float,
+        default=1.0,
+        metavar="SECONDS",
+        help="Process-tree CPU/RAM/dashboard sampling interval.",
+    )
+    resources.add_argument(
+        "--termination-grace",
+        type=_nonnegative_finite_float,
+        default=5.0,
+        metavar="SECONDS",
+        help="Grace after SIGTERM before a remaining process tree is killed.",
+    )
+    resources.add_argument(
+        "--allow-oversubscription",
+        action="store_true",
+        help="Permit workers x cores to exceed logical CPU count.",
+    )
+    resources.add_argument(
+        "--allow-engine-parallelism",
+        action="store_true",
+        help=(
+            "Allow concurrent engine preparation where the scheduler normally "
+            "serializes it."
+        ),
+    )
+    profiling = run.add_argument_group("profiling hyperparameters")
+    profiling.add_argument(
+        "--target-measurement-duration",
+        type=_positive_finite_float,
+        default=DEFAULT_TARGET_RUNTIME_SECONDS,
+        metavar="SECONDS",
+        help="Target accumulated profiling duration for each runtime.",
+    )
+    profiling.add_argument(
+        "--minimum-samples",
+        type=int,
+        default=DEFAULT_MINIMUM_SAMPLES,
+        help="Minimum independent timed profiling blocks (at least 5).",
+    )
+    profiling.add_argument(
+        "--warmups",
+        type=int,
+        default=DEFAULT_WARMUP_RUNS,
+        help="Untimed runtime warmup calls before calibration.",
+    )
+    profiling.add_argument(
+        "--batch-size",
+        type=int,
+        default=DEFAULT_BATCH_SIZE,
+        help="Phase-space points in each runtime batch.",
+    )
+    behavior = run.add_argument_group("reuse and display")
+    behavior.add_argument(
+        "--force-refresh",
+        action="store_true",
+        help=(
+            "Create a fresh generation+measurement attempt even when a "
+            "complete same-source current exists; history is retained."
+        ),
+    )
+    behavior.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Print direct cells, dependency closure, reuse counts, and "
+            "copy-paste public CLI recipes without launching workers."
+        ),
+    )
+    behavior.add_argument(
+        "--no-dashboard",
+        action="store_true",
+        help="Run without the interactive Ratatui terminal dashboard.",
+    )
+
+    inspect = commands.add_parser(
+        "inspect",
+        parents=[selectors, output],
+        help="Inspect coverage and AmpliCol-relative summary statistics.",
+        description=(
+            "Summarize lightweight current metadata and compute candidate / "
+            "AmpliCol generation, outer-wall runtime, and independent "
+            "evaluator-total runtime multipliers."
+        ),
+        epilog=(
+            "Lower multipliers are better. The weighted average is exactly "
+            "sum(candidate) / sum(AmpliCol). Missing, capped, incompatible, "
+            "and baseline-less pairs are excluded and counted.\n\n" + STEERING_GUIDE
+        ),
+        formatter_class=HelpFormatter,
+    )
+    inspect.add_argument(
+        "--format",
+        choices=("human", "json"),
+        default="human",
+        help="Human coloured tables or stable uncoloured JSON.",
+    )
+
+    refresh = commands.add_parser(
+        "refresh-pdf",
+        parents=[output],
+        help="Rebuild every table and atomically replace the report PDF.",
+        description=(
+            "Capture one stable same-source current snapshot, rebuild every "
+            "result JSON and TeX table, compile in a fresh directory, and "
+            "atomically install pyAmpliCol.pdf."
+        ),
+        epilog=STEERING_GUIDE,
+        formatter_class=HelpFormatter,
+    )
+    refresh.add_argument(
+        "--expected-page-count",
+        type=int,
+        default=DEFAULT_MANUAL_EXPECTED_PAGE_COUNT,
+        help=(
+            "Stable page count required from the manual-profile edition. "
+            "The longer profile metadata gives this fresh edition 60 pages."
+        ),
+    )
+    refresh.add_argument(
+        "--pdf-timeout",
+        type=_positive_finite_float,
+        default=DEFAULT_PDF_TIMEOUT_SECONDS,
+        metavar="SECONDS",
+        help="Direct latexmk process timeout.",
+    )
+
+    snapshot = commands.add_parser(
+        "dashboard-snapshot",
+        parents=[output],
+        help="Capture a deterministic fixture or read-only live lease frame.",
+        description=(
+            "Render a Ratatui headless frame for visual review and automated "
+            "style/value assertions. The default is a deterministic synthetic "
+            "fixture. --live instead reads only compact non-stale JSON leases "
+            "from the manual profile's ignored coordination directory: it "
+            "does not inspect results, artifacts, source identity, or Git."
+        ),
+        epilog=(
+            "Selection rules:\n"
+            "  Without --live, output is deterministic and independent of "
+            "campaign state.\n"
+            "  With --live, the newest active lease is selected unless "
+            "--instance names\n"
+            "  an exact ID or unique prefix. Active same-source peer workers "
+            "are shown\n"
+            "  as peer rows; overview totals remain the selected invocation's "
+            "own atomic\n"
+            "  counters so overlapping selections are never guessed or "
+            "double-counted.\n\n"
+            "Examples:\n"
+            "  steer_performance_campaign.py dashboard-snapshot "
+            "--width 80 --height 24\n"
+            "  steer_performance_campaign.py dashboard-snapshot "
+            "--width 160 --height 48 --cells-json\n"
+            "  steer_performance_campaign.py dashboard-snapshot --live "
+            "--width 160 --height 48\n"
+            "  steer_performance_campaign.py dashboard-snapshot --live "
+            "--instance 7f91c2 --stale-after 30"
+        ),
+        formatter_class=HelpFormatter,
+    )
+    snapshot.add_argument("--width", type=int, default=120, help="Frame columns.")
+    snapshot.add_argument("--height", type=int, default=36, help="Frame rows.")
+    snapshot.add_argument(
+        "--cells-json",
+        action="store_true",
+        help=(
+            "Emit ANSI-free styled-cell JSON instead of the terminal frame. "
+            "Use --no-color or NO_COLOR to zero the Ratatui style metadata."
+        ),
+    )
+    snapshot.add_argument(
+        "--live",
+        action="store_true",
+        help=(
+            "Capture actual running state from lightweight lease JSON only. "
+            "No measurement/current/artifact/source/Git data is read, and "
+            "nothing is written. Without this flag the synthetic fixture is "
+            "rendered."
+        ),
+    )
+    snapshot.add_argument(
+        "--instance",
+        "--instance-id",
+        metavar="ID_OR_PREFIX",
+        help=(
+            "With --live, select one invocation by its exact instance ID or a "
+            "unique prefix. Omit to select the most recently updated active "
+            "lease."
+        ),
+    )
+    snapshot.add_argument(
+        "--stale-after",
+        type=_positive_finite_float,
+        default=DEFAULT_WORKER_STALE_SECONDS,
+        metavar="SECONDS",
+        help=(
+            "With --live, ignore leases older than this positive interval. "
+            "Increase only when resource sampling is intentionally slower."
+        ),
+    )
+    return parser
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    repo_root: Path | None = None,
+) -> int:
+    parser = build_parser()
+    arguments = parser.parse_args(argv)
+    root = (
+        Path.cwd().resolve(strict=False)
+        if repo_root is None
+        else repo_root.expanduser().resolve(strict=False)
+    )
+    json_output = arguments.command == "inspect" and arguments.format == "json"
+    palette = Palette(_color_enabled(arguments, json_output=json_output))
+    try:
+        if arguments.command == "dashboard-snapshot":
+            if arguments.instance is not None and not arguments.live:
+                raise ManualCampaignError("--instance requires --live")
+            state = (
+                _live_dashboard_snapshot(
+                    ReportPaths.from_repo(root, profile=PROFILE).coordination_root,
+                    instance=arguments.instance,
+                    stale_after_seconds=arguments.stale_after,
+                )
+                if arguments.live
+                else _snapshot_fixture()
+            )
+            result = render_dashboard_frame(
+                state,
+                width=arguments.width,
+                height=arguments.height,
+                cells=arguments.cells_json,
+                color=palette.enabled,
+            )
+            if arguments.cells_json:
+                json.dump(result, sys.stdout, indent=2, sort_keys=True)
+                sys.stdout.write("\n")
+            else:
+                print(result)
+            return 0
+
+        service = ReportService(ReportPaths.from_repo(root, profile=PROFILE))
+        service.bind_measurement_lineage(None)
+        service.bind_original_amplicol_seed(None)
+        source = lightweight_source_identity(root)
+
+        if arguments.command == "refresh-pdf":
+            return _refresh_pdf(
+                arguments,
+                service=service,
+                source=source,
+                palette=palette,
+            )
+
+        _selection, cells = selection_from_arguments(arguments)
+        if arguments.command == "inspect":
+            payload = _inspect_payload(service, cells, source=source)
+            if arguments.format == "json":
+                json.dump(payload, sys.stdout, indent=2, sort_keys=True)
+                sys.stdout.write("\n")
+            else:
+                _print_inspect(payload, palette)
+            return 0
+        if arguments.command == "run":
+            return _run_campaign(
+                arguments,
+                repo_root=root,
+                service=service,
+                source=source,
+                cells=cells,
+                palette=palette,
+            )
+        parser.error(f"unsupported command {arguments.command!r}")
+    except KeyboardInterrupt:
+        print(
+            palette.warning("Interrupted cleanly; completed currents were preserved."),
+            file=sys.stderr,
+        )
+        return 130
+    except (ManualCampaignError, OSError, RuntimeError, TypeError, ValueError) as error:
+        print(palette.failure(f"error: {error}"), file=sys.stderr)
+        return 2
+    return 2
+
+
+__all__ = [
+    "Comparison",
+    "DashboardState",
+    "LightweightCurrent",
+    "ManualCampaignError",
+    "ReproductionRecipe",
+    "ReproductionSettings",
+    "WorkerView",
+    "build_parser",
+    "comparison_statistics",
+    "lightweight_current",
+    "main",
+    "render_dashboard_frame",
+    "reproduction_recipe",
+    "selection_from_arguments",
+]

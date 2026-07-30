@@ -177,8 +177,7 @@ def _campaign_commands(profile: str, policy: CampaignPolicy) -> str:
         )
     else:
         populate_options = (
-            "  --workers 1 --cell-cores 1 --target-runtime 5 "
-            "--refresh-pdf end"
+            "  --workers 1 --cell-cores 1 --target-runtime 5 --refresh-pdf end"
         )
     return "\n".join(
         line
@@ -312,10 +311,14 @@ def _processor_description() -> str:
                 return value
     if platform.system() == "Linux":
         try:
-            for line in Path("/proc/cpuinfo").read_text(
-                encoding="utf-8",
-                errors="replace",
-            ).splitlines():
+            for line in (
+                Path("/proc/cpuinfo")
+                .read_text(
+                    encoding="utf-8",
+                    errors="replace",
+                )
+                .splitlines()
+            ):
                 key, separator, value = line.partition(":")
                 if separator and key.strip() in {"model name", "Hardware"}:
                     rendered = value.strip()
@@ -433,9 +436,7 @@ def _authenticated_environment_payload(
         re.fullmatch(r"[0-9a-f]{64}", digest) is None
         for digest in (native_extension_digest, package_tree_digest)
     ):
-        raise ReportWorkspaceError(
-            "active runtime file identity digest is not SHA-256"
-        )
+        raise ReportWorkspaceError("active runtime file identity digest is not SHA-256")
     candidate_fingerprint = _required_text(
         candidate_identity.get("candidate_fingerprint"),
         "active runtime candidate fingerprint",
@@ -639,6 +640,7 @@ def initialize_profile(
     source_profile: str | None = None,
     reset_measurements: bool = False,
     measurement_policy: str | None = None,
+    require_source_audit: bool = True,
 ) -> Path:
     """Create a new tracked report profile atomically.
 
@@ -668,10 +670,7 @@ def initialize_profile(
     parent.mkdir(parents=True, exist_ok=True)
     staging = parent / f".{validated}.init-{uuid.uuid4().hex}"
     state_root = (
-        root
-        / ".artifacts"
-        / "performance-report-workspace-init"
-        / uuid.uuid4().hex
+        root / ".artifacts" / "performance-report-workspace-init" / uuid.uuid4().hex
     )
     try:
         source_paths = ReportPaths.from_repo(root, profile=source_profile)
@@ -683,7 +682,8 @@ def initialize_profile(
                     "a profile with mixed Class-C source lineage can only seed a "
                     "new profile with reset_measurements=True"
                 )
-            source_service.audit()
+            if require_source_audit:
+                source_service.audit()
             _copy_publication_members(source, staging)
         _install_standalone_builder(staging)
         target_paths = ReportPaths.from_repo(root, profile=validated)
@@ -777,8 +777,10 @@ def _read_environment_payload(path: Path) -> dict[str, str]:
         "python_package_tree_sha256",
         "candidate_fingerprint",
     }
-    if not isinstance(raw, dict) or set(raw) != required or not all(
-        isinstance(value, str) for value in raw.values()
+    if (
+        not isinstance(raw, dict)
+        or set(raw) != required
+        or not all(isinstance(value, str) for value in raw.values())
     ):
         raise ReportWorkspaceError(
             f"report environment metadata has an invalid shape: {path}"
@@ -918,9 +920,7 @@ def require_active_profile_environment(
         expected_source_revision=expected_source_revision,
         active_runtime=active_runtime,
     )
-    if _stable_environment_identity(active) != _stable_environment_identity(
-        recorded
-    ):
+    if _stable_environment_identity(active) != _stable_environment_identity(recorded):
         raise ReportWorkspaceError(
             "active measurement runtime differs from the authenticated profile "
             "environment; rerun refresh-profile-environment"
@@ -1095,9 +1095,7 @@ def _validate_workspace(
         raise ReportWorkspaceError(
             "workspace environment JSON and generated TeX do not match"
         )
-    active = service or ReportService(
-        ReportPaths.from_repo(root, profile=profile)
-    )
+    active = service or ReportService(ReportPaths.from_repo(root, profile=profile))
     active.audit()
     return path
 
@@ -1121,10 +1119,7 @@ def export_profile(
     target.parent.mkdir(parents=True, exist_ok=True)
     staging = target.parent / f".{target.name}.export-{uuid.uuid4().hex}"
     state_root = (
-        root
-        / ".artifacts"
-        / "performance-report-workspace-export"
-        / uuid.uuid4().hex
+        root / ".artifacts" / "performance-report-workspace-export" / uuid.uuid4().hex
     )
     try:
         with source_service.store.named_lock("report-writer"):

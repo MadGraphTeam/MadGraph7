@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import multiprocessing
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,7 @@ from tools.performance_report.legacy_structure import (
     _parse_module,
     emit_legacy_scope_unavailable_proof,
     emit_legacy_structural_proof,
+    instrument_legacy_structural_probes,
 )
 from tools.performance_report.models import Accuracy, Workload
 
@@ -64,6 +66,55 @@ AMPICOL_STRUCTURAL_KERNEL 2 3 0 2 1 2.0D+00 0.0D+00
 AMPICOL_STRUCTURAL_KERNEL_SINGLET 2 0
 AMPICOL_STRUCTURAL_DESTINATION 1 3 1
 """
+
+_DIRECT_SOURCE = """\
+  logical :: print_matrix, fixed_helicity
+  print_matrix = .false.
+  fixed_helicity = .false.
+  call get_environment_variable('AMPICOL_COLOR_PROBE_MATRIX',env_value)
+  if (trim(adjustl(env_value)).eq.'1') print_matrix = .true.
+  env_value = ''
+  call print_recursion_counts()
+  subroutine parse_color_accuracy()
+"""
+
+_LIBRARY_SOURCE = """\
+  logical :: print_matrix
+  print_matrix = .false.
+  call get_environment_variable('AMPICOL_COLOR_PROBE_MATRIX',env_value)
+  if (trim(adjustl(env_value)).eq.'1') print_matrix = .true.
+
+  argc = command_argument_count()
+  call build_row_to_integral()
+  integer function colour_order_match_sign(jgroup,jint,row,pass,leg_map)
+"""
+
+
+def _instrument_probe_sources_in_process(
+    repository: str,
+    artifact_path: str,
+    entered: object,
+    release: object | None,
+    outcomes: object,
+    *,
+    interrupt: bool,
+) -> None:
+    try:
+        with instrument_legacy_structural_probes(
+            Path(repository),
+            Path(artifact_path),
+        ):
+            entered.set()
+            if release is not None and not release.wait(timeout=5):
+                raise TimeoutError("test did not release instrumented checkout")
+            if interrupt:
+                raise KeyboardInterrupt
+    except KeyboardInterrupt:
+        outcomes.put("interrupted")
+    except BaseException as error:
+        outcomes.put(f"error:{type(error).__name__}:{error}")
+    else:
+        outcomes.put("ok")
 
 
 def _reference(*, workload: Workload, accuracy: Accuracy = Accuracy.LC) -> object:
@@ -158,28 +209,8 @@ def test_direct_probe_requires_dense_maps_and_exact_accuracy(
 
 
 def test_probe_instrumentation_has_real_histogram_emitter() -> None:
-    direct = """\
-  logical :: print_matrix, fixed_helicity
-  print_matrix = .false.
-  fixed_helicity = .false.
-  call get_environment_variable('AMPICOL_COLOR_PROBE_MATRIX',env_value)
-  if (trim(adjustl(env_value)).eq.'1') print_matrix = .true.
-  env_value = ''
-  call print_recursion_counts()
-  subroutine parse_color_accuracy()
-"""
-    library = """\
-  logical :: print_matrix
-  print_matrix = .false.
-  call get_environment_variable('AMPICOL_COLOR_PROBE_MATRIX',env_value)
-  if (trim(adjustl(env_value)).eq.'1') print_matrix = .true.
-
-  argc = command_argument_count()
-  call build_row_to_integral()
-  integer function colour_order_match_sign(jgroup,jint,row,pass,leg_map)
-"""
-    patched_direct = _instrument_direct_source(direct)
-    patched_library = _instrument_library_source(library)
+    patched_direct = _instrument_direct_source(_DIRECT_SOURCE)
+    patched_library = _instrument_library_source(_LIBRARY_SOURCE)
     assert "AMPICOL_STRUCTURAL_ATTACHMENT" in patched_direct
     assert "AMPICOL_STRUCTURAL_DESTINATION" in patched_direct
     assert "AMPICOL_COLOR_PROBE_LIBRARY_CALLS" in patched_library
@@ -188,6 +219,97 @@ def test_probe_instrumentation_has_real_histogram_emitter() -> None:
         in patched_library
     )
     assert "AMPICOL_COLOR_PROBE_LIBRARY_ROW" in patched_library
+
+
+def test_probe_instrumentation_serializes_processes_and_restores_after_interrupt(
+    tmp_path: Path,
+) -> None:
+    repository = tmp_path / "legacy"
+    repository.mkdir()
+    direct = repository / "amplicol_color_probe.f03"
+    library = repository / "amplicol_color_library_probe.f03"
+    direct.write_text(_DIRECT_SOURCE, encoding="utf-8")
+    library.write_text(_LIBRARY_SOURCE, encoding="utf-8")
+    unrelated_repository = tmp_path / "unrelated-legacy"
+    unrelated_repository.mkdir()
+    (unrelated_repository / direct.name).write_text(_DIRECT_SOURCE, encoding="utf-8")
+    (unrelated_repository / library.name).write_text(_LIBRARY_SOURCE, encoding="utf-8")
+
+    context = multiprocessing.get_context("fork")
+    first_entered = context.Event()
+    release_first = context.Event()
+    second_entered = context.Event()
+    unrelated_entered = context.Event()
+    outcomes = context.Queue()
+    first = context.Process(
+        target=_instrument_probe_sources_in_process,
+        args=(
+            str(repository),
+            str(tmp_path / "first-artifact"),
+            first_entered,
+            release_first,
+            outcomes,
+        ),
+        kwargs={"interrupt": True},
+    )
+    second = context.Process(
+        target=_instrument_probe_sources_in_process,
+        args=(
+            str(repository),
+            str(tmp_path / "second-artifact"),
+            second_entered,
+            None,
+            outcomes,
+        ),
+        kwargs={"interrupt": False},
+    )
+    unrelated = context.Process(
+        target=_instrument_probe_sources_in_process,
+        args=(
+            str(unrelated_repository),
+            str(tmp_path / "unrelated-artifact"),
+            unrelated_entered,
+            None,
+            outcomes,
+        ),
+        kwargs={"interrupt": False},
+    )
+
+    first.start()
+    assert first_entered.wait(timeout=3)
+    unrelated.start()
+    assert unrelated_entered.wait(timeout=3)
+    unrelated.join(timeout=3)
+    assert unrelated.exitcode == 0
+    second.start()
+    assert not second_entered.wait(timeout=0.2)
+    assert second.is_alive()
+    release_first.set()
+    assert second_entered.wait(timeout=3)
+    first.join(timeout=3)
+    second.join(timeout=3)
+
+    assert first.exitcode == 0
+    assert second.exitcode == 0
+    assert sorted(outcomes.get(timeout=1) for _ in range(3)) == [
+        "interrupted",
+        "ok",
+        "ok",
+    ]
+    assert direct.read_text(encoding="utf-8") == _DIRECT_SOURCE
+    assert library.read_text(encoding="utf-8") == _LIBRARY_SOURCE
+    assert (
+        tmp_path
+        / "first-artifact"
+        / "legacy-structural-evidence"
+        / "instrumented-amplicol_color_probe.f03"
+    ).is_file()
+    assert (
+        tmp_path
+        / "second-artifact"
+        / "legacy-structural-evidence"
+        / "instrumented-amplicol_color_probe.f03"
+    ).is_file()
 
 
 def test_selected_flow_sidecar_is_atomic_and_producer_compatible(

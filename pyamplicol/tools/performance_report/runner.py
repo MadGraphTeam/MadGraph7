@@ -18,7 +18,11 @@ from collections.abc import Mapping, Sequence
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from pyamplicol.config import BenchmarkConfig
+    from pyamplicol.reporting import ProgressSink
 
 from .arena_profile import (
     ARENA_PHASE_TIMING_SCOPE,
@@ -76,6 +80,19 @@ _RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI = (
 _RECURRENCE_JIT_SOURCE_APPLICATION_ABI = "symjit-application-storage-v3"
 _RECURRENCE_JIT_DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v1"
 _RECURRENCE_JIT_SOURCE_RUNTIME_CAPABILITY = "symjit.application.complex-f64.v1"
+
+# These labels make the public-command boundary, and its two report-only
+# exceptions, explicit in returned generation/profile evidence.
+PUBLIC_CLI_COMMAND_PATH = "pyamplicol-cli-parse-resolve-dispatch-v1"
+LOADED_RUNTIME_PROFILE_COMMAND_PATH = (
+    "pyamplicol-profile-loaded-runtime-and-points-injection-v1"
+)
+PAIRED_ARENA_PROFILE_COMMAND_PATH = "pyamplicol-report-private-paired-arena-profile-v1"
+PRECOMPILED_GENERATION_COMMAND_PATH = (
+    "pyamplicol-generate-precompiled-model-injection-v1"
+)
+
+
 class RunnerError(RuntimeError):
     """Raised when a cell cannot satisfy the report measurement contract."""
 
@@ -85,7 +102,11 @@ class RunnerSettings:
     target_runtime_seconds: float = DEFAULT_TARGET_RUNTIME_SECONDS
     batch_size: int = 128
     worker_cores: int = 1
+    warmup_runs: int = 2
+    minimum_samples: int = 5
     model_cache_dir: Path | None = None
+    progress: ProgressSink | None = None
+    source_revision_override: str | None = None
 
     def __post_init__(self) -> None:
         if self.target_runtime_seconds <= 0.0:
@@ -94,6 +115,21 @@ class RunnerSettings:
             raise ValueError("batch_size must be positive")
         if self.worker_cores < 1:
             raise ValueError("worker_cores must be positive")
+        if self.warmup_runs < 0:
+            raise ValueError("warmup_runs must be non-negative")
+        if self.minimum_samples < _ARENA_MINIMUM_SAMPLES:
+            raise ValueError(
+                f"minimum_samples must be at least {_ARENA_MINIMUM_SAMPLES}"
+            )
+        if self.progress is not None and not callable(
+            getattr(self.progress, "emit", None)
+        ):
+            raise TypeError("progress must implement ProgressSink.emit(event)")
+        if (
+            self.source_revision_override is not None
+            and not self.source_revision_override
+        ):
+            raise ValueError("source_revision_override must be non-empty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,6 +237,7 @@ class GeneratedArtifact:
     model_preparation_reused: bool
     requested_config: Mapping[str, object]
     effective_config: Mapping[str, object]
+    generation_command_path: str | None = None
 
 
 class RuntimeLike(Protocol):
@@ -383,12 +420,61 @@ def config_values(
         "benchmark": {
             "target_runtime": settings.target_runtime_seconds,
             "batch_size": settings.batch_size,
-            "warmup_runs": 2,
-            "minimum_samples": 5,
+            "warmup_runs": settings.warmup_runs,
+            "minimum_samples": settings.minimum_samples,
         },
         "output": {"format": "json", "progress": "off"},
     }
     return values
+
+
+def _cli_override_value(value: object) -> str:
+    """Encode one config leaf using the public ``--set`` value grammar."""
+
+    if value is None:
+        return "null"
+    if isinstance(value, Path):
+        value = os.fspath(value)
+    return json.dumps(
+        value,
+        allow_nan=False,
+        ensure_ascii=True,
+        separators=(",", ":"),
+    )
+
+
+def _cli_overrides(
+    values: Mapping[str, object],
+    *,
+    prefix: str = "",
+) -> tuple[str, ...]:
+    """Flatten config values into deterministic public ``--set`` arguments."""
+
+    arguments: list[str] = []
+    for key in sorted(values):
+        path = f"{prefix}.{key}" if prefix else key
+        value = values[key]
+        if isinstance(value, Mapping):
+            arguments.extend(_cli_overrides(value, prefix=path))
+            continue
+        arguments.extend(("--set", f"{path}={_cli_override_value(value)}"))
+    return tuple(arguments)
+
+
+def _generation_cli_argv(
+    cell: CellSpec,
+    destination: Path,
+    values: Mapping[str, object],
+) -> tuple[str, ...]:
+    """Return the exact public ``pyamplicol generate`` argument vector."""
+
+    command_values = {key: value for key, value in values.items() if key != "process"}
+    return (
+        "generate",
+        cell.process,
+        os.fspath(destination),
+        *_cli_overrides(command_values),
+    )
 
 
 def _physics_ids(physics: object, name: str) -> tuple[str, ...]:
@@ -1544,8 +1630,7 @@ def derive_selector_contract(
                 for color_index in range(len(point[helicity_index]))
             )
             if any(
-                not math.isfinite(component.real)
-                or not math.isfinite(component.imag)
+                not math.isfinite(component.real) or not math.isfinite(component.imag)
                 for component in components
             ):
                 raise RunnerError(
@@ -1751,9 +1836,14 @@ def _calibrate_arena_repetitions(
     target_runtime: float,
     sample_count: int,
     selector_arguments: Mapping[str, object],
+    progress: ProgressSink | None = None,
+    task_id: str = "report-profile:calibration",
 ) -> tuple[int, list[dict[str, object]]]:
     if not callable(timer):
         raise RunnerError("native unprofiled wall timer is unavailable")
+    if progress is not None:
+        from pyamplicol.reporting import ProgressUpdate
+
     target_per_block = target_runtime / sample_count
     repetitions = 1
     observed = _positive_duration(
@@ -1761,6 +1851,19 @@ def _calibrate_arena_repetitions(
         "Arena wall calibration duration",
     )
     blocks = [{"repetitions": repetitions, "duration_seconds": observed}]
+    if progress is not None:
+        progress.emit(
+            ProgressUpdate(
+                task_id,
+                1,
+                _ARENA_MAX_CALIBRATION_BLOCKS + 1,
+                "initial timing block",
+                {
+                    "duration_seconds": observed,
+                    "repetitions": repetitions,
+                },
+            )
+        )
     for _ in range(_ARENA_MAX_CALIBRATION_BLOCKS):
         estimate = math.ceil(repetitions * target_per_block / observed)
         candidate = min(max(estimate, 1), _ARENA_MAX_REPETITIONS)
@@ -1771,9 +1874,20 @@ def _calibrate_arena_repetitions(
             timer(batch, repetitions, **selector_arguments),
             "Arena wall calibration duration",
         )
-        blocks.append(
-            {"repetitions": repetitions, "duration_seconds": observed}
-        )
+        blocks.append({"repetitions": repetitions, "duration_seconds": observed})
+        if progress is not None:
+            progress.emit(
+                ProgressUpdate(
+                    task_id,
+                    len(blocks),
+                    _ARENA_MAX_CALIBRATION_BLOCKS + 1,
+                    "refining repetitions",
+                    {
+                        "duration_seconds": observed,
+                        "repetitions": repetitions,
+                    },
+                )
+            )
         ratio = observed / target_per_block
         if 0.75 <= ratio <= 1.5:
             break
@@ -1787,6 +1901,7 @@ def _run_arena_benchmark(
     execution_mode: str,
     benchmark_config: object,
     selectors: Mapping[str, tuple[str, ...] | None],
+    progress: ProgressSink | None = None,
 ) -> _ArenaBenchmarkResult:
     """Measure native wall time and authenticate a paired private Arena profile."""
 
@@ -1824,11 +1939,13 @@ def _run_arena_benchmark(
         or minimum_samples < _ARENA_MINIMUM_SAMPLES
     ):
         raise RunnerError(
-            f"Arena report timing requires at least {_ARENA_MINIMUM_SAMPLES} "
-            "samples"
+            f"Arena report timing requires at least {_ARENA_MINIMUM_SAMPLES} samples"
         )
     if precision != 16:
         raise RunnerError("Arena report timing requires native f64 precision")
+    if progress is not None:
+        from pyamplicol.reporting import ProgressEnd, ProgressStart, ProgressUpdate
+
     batch = _arena_benchmark_batch(points, batch_size)
     selector_arguments: dict[str, object] = {
         "helicities": selectors.get("helicities"),
@@ -1836,82 +1953,217 @@ def _run_arena_benchmark(
         "precision": 16,
     }
     profile_arguments = {**selector_arguments, "include_values": False}
-    for _ in range(warmup_runs):
-        _positive_duration(
-            timer(batch, 1, **selector_arguments),
-            "Arena wall warmup duration",
+    parent_task_id = "report-profile"
+    warmup_task_id = f"{parent_task_id}:warmup"
+    calibration_task_id = f"{parent_task_id}:calibration"
+    samples_task_id = f"{parent_task_id}:samples"
+    started = time.perf_counter() if progress is not None else 0.0
+    active_task_id: str | None = None
+    if progress is not None:
+        progress.emit(
+            ProgressStart(
+                parent_task_id,
+                f"Profiling {execution_mode} runtime",
+                None,
+                unit="stages",
+                details={
+                    "target_runtime_seconds": target_runtime,
+                    "minimum_samples": minimum_samples,
+                },
+            )
         )
-        warmup_profile = profiler(batch, 1, **profile_arguments)
-        if not isinstance(warmup_profile, Mapping):
-            raise RunnerError("native warmed Arena profile is not an object")
+    try:
+        active_task_id = warmup_task_id
+        if progress is not None:
+            progress.emit(
+                ProgressStart(
+                    warmup_task_id,
+                    "Warming the native runtime",
+                    warmup_runs,
+                    parent_task_id=parent_task_id,
+                    unit="runs",
+                )
+            )
+        warmup_started = time.perf_counter() if progress is not None else 0.0
+        for index in range(warmup_runs):
+            _positive_duration(
+                timer(batch, 1, **selector_arguments),
+                "Arena wall warmup duration",
+            )
+            warmup_profile = profiler(batch, 1, **profile_arguments)
+            if not isinstance(warmup_profile, Mapping):
+                raise RunnerError("native warmed Arena profile is not an object")
+            try:
+                build_arena_profile_evidence(
+                    (warmup_profile,),
+                    execution_mode=execution_mode,
+                    repetitions_per_profile=1,
+                    batch_size=len(batch),
+                )
+            except ArenaProfileEvidenceError as error:
+                raise RunnerError(f"invalid warmed Arena profile: {error}") from error
+            if progress is not None:
+                progress.emit(
+                    ProgressUpdate(
+                        warmup_task_id,
+                        index + 1,
+                        warmup_runs,
+                        "runtime warmed",
+                    )
+                )
+        if progress is not None:
+            progress.emit(
+                ProgressEnd(
+                    warmup_task_id,
+                    elapsed_seconds=time.perf_counter() - warmup_started,
+                )
+            )
+        active_task_id = calibration_task_id
+        if progress is not None:
+            progress.emit(
+                ProgressStart(
+                    calibration_task_id,
+                    "Calibrating repetitions",
+                    _ARENA_MAX_CALIBRATION_BLOCKS + 1,
+                    parent_task_id=parent_task_id,
+                    unit="blocks",
+                )
+            )
+        calibration_started = time.perf_counter() if progress is not None else 0.0
+        repetitions, calibration_blocks = _calibrate_arena_repetitions(
+            timer,
+            batch,
+            target_runtime=target_runtime,
+            sample_count=minimum_samples,
+            selector_arguments=selector_arguments,
+            progress=progress,
+            task_id=calibration_task_id,
+        )
+        if progress is not None:
+            progress.emit(
+                ProgressEnd(
+                    calibration_task_id,
+                    elapsed_seconds=time.perf_counter() - calibration_started,
+                    details={
+                        "blocks": len(calibration_blocks),
+                        "repetitions": repetitions,
+                    },
+                )
+            )
+        active_task_id = samples_task_id
+        if progress is not None:
+            progress.emit(
+                ProgressStart(
+                    samples_task_id,
+                    "Measuring paired runtime samples",
+                    _ARENA_MAX_SAMPLES,
+                    parent_task_id=parent_task_id,
+                    unit="samples",
+                    details={
+                        "minimum_samples": minimum_samples,
+                        "target_runtime_seconds": target_runtime,
+                    },
+                )
+            )
+        samples_started = time.perf_counter() if progress is not None else 0.0
+        evaluated_points = repetitions * len(batch)
+        headline_samples: list[float] = []
+        headline_durations: list[float] = []
+        evaluator_total_durations: list[float] = []
+        raw_profiles: list[Mapping[str, object]] = []
+        profile_elapsed = 0.0
+        while (
+            len(headline_samples) < minimum_samples
+            or math.fsum(headline_durations) < target_runtime
+        ):
+            if len(headline_samples) >= _ARENA_MAX_SAMPLES:
+                raise RunnerError(
+                    "Arena report benchmark could not reach its target duration "
+                    f"within {_ARENA_MAX_SAMPLES} samples"
+                )
+            headline_started = time.perf_counter()
+            evaluator_total_duration = _positive_duration(
+                timer(batch, repetitions, **selector_arguments),
+                "Arena evaluator-total duration",
+            )
+            wall_duration = _positive_duration(
+                time.perf_counter() - headline_started,
+                "Arena headline wall duration",
+            )
+            headline_durations.append(wall_duration)
+            evaluator_total_durations.append(evaluator_total_duration)
+            headline_samples.append(wall_duration / evaluated_points)
+            profile_started = time.perf_counter()
+            raw_profile = profiler(batch, repetitions, **profile_arguments)
+            profile_elapsed += time.perf_counter() - profile_started
+            if not isinstance(raw_profile, Mapping):
+                raise RunnerError("native warmed Arena profile is not an object")
+            raw_profiles.append(raw_profile)
+            if progress is not None:
+                progress.emit(
+                    ProgressUpdate(
+                        samples_task_id,
+                        len(headline_samples),
+                        _ARENA_MAX_SAMPLES,
+                        "sample complete",
+                        {
+                            "elapsed_seconds": math.fsum(headline_durations),
+                            "minimum_samples": minimum_samples,
+                            "target_runtime_seconds": target_runtime,
+                        },
+                    )
+                )
+        if progress is not None:
+            progress.emit(
+                ProgressEnd(
+                    samples_task_id,
+                    elapsed_seconds=time.perf_counter() - samples_started,
+                    details={
+                        "samples": len(headline_samples),
+                        "measured_seconds": math.fsum(headline_durations),
+                    },
+                )
+            )
+        active_task_id = None
         try:
-            build_arena_profile_evidence(
-                (warmup_profile,),
+            arena_evidence = build_arena_profile_evidence(
+                raw_profiles,
                 execution_mode=execution_mode,
-                repetitions_per_profile=1,
+                repetitions_per_profile=repetitions,
                 batch_size=len(batch),
             )
         except ArenaProfileEvidenceError as error:
             raise RunnerError(f"invalid warmed Arena profile: {error}") from error
-    repetitions, calibration_blocks = _calibrate_arena_repetitions(
-        timer,
-        batch,
-        target_runtime=target_runtime,
-        sample_count=minimum_samples,
-        selector_arguments=selector_arguments,
-    )
-    evaluated_points = repetitions * len(batch)
-    headline_samples: list[float] = []
-    headline_durations: list[float] = []
-    evaluator_total_durations: list[float] = []
-    raw_profiles: list[Mapping[str, object]] = []
-    profile_elapsed = 0.0
-    while (
-        len(headline_samples) < minimum_samples
-        or math.fsum(headline_durations) < target_runtime
-    ):
-        if len(headline_samples) >= _ARENA_MAX_SAMPLES:
-            raise RunnerError(
-                "Arena report benchmark could not reach its target duration "
-                f"within {_ARENA_MAX_SAMPLES} samples"
+        sample_count = len(headline_samples)
+        uncertainty = _arena_statistics(headline_samples)
+    except BaseException as error:
+        if progress is not None:
+            if active_task_id is not None:
+                progress.emit(
+                    ProgressEnd(active_task_id, success=False, message=str(error))
+                )
+            progress.emit(
+                ProgressEnd(
+                    parent_task_id,
+                    success=False,
+                    message=str(error),
+                    elapsed_seconds=time.perf_counter() - started,
+                )
             )
-        headline_started = time.perf_counter()
-        evaluator_total_duration = _positive_duration(
-            timer(batch, repetitions, **selector_arguments),
-            "Arena evaluator-total duration",
+        raise
+    if progress is not None:
+        progress.emit(
+            ProgressEnd(
+                parent_task_id,
+                elapsed_seconds=time.perf_counter() - started,
+            )
         )
-        wall_duration = _positive_duration(
-            time.perf_counter() - headline_started,
-            "Arena headline wall duration",
-        )
-        headline_durations.append(wall_duration)
-        evaluator_total_durations.append(evaluator_total_duration)
-        headline_samples.append(wall_duration / evaluated_points)
-        profile_started = time.perf_counter()
-        raw_profile = profiler(batch, repetitions, **profile_arguments)
-        profile_elapsed += time.perf_counter() - profile_started
-        if not isinstance(raw_profile, Mapping):
-            raise RunnerError("native warmed Arena profile is not an object")
-        raw_profiles.append(raw_profile)
-    try:
-        arena_evidence = build_arena_profile_evidence(
-            raw_profiles,
-            execution_mode=execution_mode,
-            repetitions_per_profile=repetitions,
-            batch_size=len(batch),
-        )
-    except ArenaProfileEvidenceError as error:
-        raise RunnerError(f"invalid warmed Arena profile: {error}") from error
-    sample_count = len(headline_samples)
-    uncertainty = _arena_statistics(headline_samples)
     mean_wall = statistics.fmean(headline_samples)
     achieved_runtime = math.fsum(headline_durations)
     evaluator_total_accumulated = math.fsum(evaluator_total_durations)
     measured_evaluations = sample_count * repetitions
     measured_points = measured_evaluations * len(batch)
-    evaluator_total_time_per_point = (
-        evaluator_total_accumulated / measured_points
-    )
+    evaluator_total_time_per_point = evaluator_total_accumulated / measured_points
     return _ArenaBenchmarkResult(
         effective_config=benchmark_config,
         sample_count=sample_count,
@@ -1932,14 +2184,12 @@ def _run_arena_benchmark(
             "evaluator_total_time_status": "measured",
             "evaluator_total_time_ratio_eligible": False,
             "evaluator_total_time_source": EVALUATOR_TOTAL_TIMING_SOURCE,
-            "evaluator_total_time_sample_contract": (
-                EVALUATOR_TOTAL_SAMPLE_CONTRACT
-            ),
-            "evaluator_total_accumulated_seconds": (
-                evaluator_total_accumulated
-            ),
+            "evaluator_total_time_sample_contract": (EVALUATOR_TOTAL_SAMPLE_CONTRACT),
+            "evaluator_total_accumulated_seconds": (evaluator_total_accumulated),
             "timing_breakdown_sample_pass": ARENA_PROFILE_SAMPLE_PASS,
             "profile_protocol": ARENA_PROFILE_PROTOCOL,
+            "report_command_path": PAIRED_ARENA_PROFILE_COMMAND_PATH,
+            "report_public_cli_path": None,
             "profile_attribution_boundary": ARENA_PROFILE_BOUNDARY,
             "profile_attribution_borrowed_flat_input": True,
             "profile_attribution_preallocated_output": True,
@@ -1965,9 +2215,7 @@ def _run_arena_benchmark(
             "profile_attribution_elapsed_seconds": profile_elapsed,
             "headline_block_durations_seconds": headline_durations,
             "calibration": {
-                "target_seconds_per_block": (
-                    target_runtime / minimum_samples
-                ),
+                "target_seconds_per_block": (target_runtime / minimum_samples),
                 "blocks": calibration_blocks,
             },
             "interrupted": False,
@@ -1987,15 +2235,54 @@ def _run_arena_benchmark(
     )
 
 
+def _profile_cli_argv(
+    benchmark_config: BenchmarkConfig,
+) -> tuple[str, ...]:
+    """Return public ``pyamplicol profile`` arguments for one loaded runtime."""
+
+    arguments = [
+        "profile",
+        ".pyamplicol-loaded-runtime",
+        "--target-runtime",
+        str(benchmark_config.target_runtime),
+        "--batch-size",
+        str(benchmark_config.batch_size),
+        "--precision",
+        str(benchmark_config.precision),
+        "--warmup-runs",
+        str(benchmark_config.warmup_runs),
+        "--minimum-samples",
+        str(benchmark_config.minimum_samples),
+        "--format",
+        "json",
+        "--progress",
+        "off",
+    ]
+    for identifier in benchmark_config.helicity_ids:
+        arguments.extend(("--helicity", str(identifier)))
+    for identifier in benchmark_config.color_flow_ids:
+        arguments.extend(("--color-flow", str(identifier)))
+    return tuple(arguments)
+
+
 def _run_report_benchmark(
     runtime: object,
     points: object,
     *,
     execution_mode: ExecutionMode,
-    benchmark_config: object,
+    benchmark_config: BenchmarkConfig,
     selectors: Mapping[str, tuple[str, ...] | None],
+    progress: ProgressSink | None = None,
 ) -> object:
-    """Select the mode's authenticated timing protocol without fallback."""
+    """Select the authenticated timing command path without fallback.
+
+    Recurrence uses the public ``profile`` parser/config/dispatch path.  Its
+    narrowly scoped service override supplies the already authenticated runtime
+    and exact in-memory point set, avoiding an artifact reload inside the
+    measured campaign.  Compiled/eager retain the report-only paired private
+    Arena protocol because the public profiler does not expose that paired
+    headline/attribution boundary.
+    """
 
     if execution_mode in {ExecutionMode.EAGER, ExecutionMode.COMPILED}:
         backend = getattr(runtime, "_backend", None)
@@ -2010,11 +2297,70 @@ def _run_report_benchmark(
             execution_mode=execution_mode.value,
             benchmark_config=benchmark_config,
             selectors=selectors,
+            progress=progress,
         )
     if execution_mode is ExecutionMode.RECURRENCE:
         from pyamplicol.api import BenchmarkRunner
+        from pyamplicol.cli import CliInvocation, parse_cli
+        from pyamplicol.cli.handlers import DefaultCliServices, dispatch
+        from pyamplicol.config import RunConfig
+        from pyamplicol.reporting import NullProgressSink
 
-        return BenchmarkRunner(benchmark_config).run(runtime, points=points)
+        selected_progress = progress or NullProgressSink()
+        invocation = parse_cli(_profile_cli_argv(benchmark_config))
+        if not isinstance(invocation, CliInvocation):
+            raise RunnerError("public profile parser returned a non-command invocation")
+        resolution = invocation.resolve()
+        if resolution.effective.benchmark != benchmark_config:
+            raise RunnerError(
+                "public profile arguments do not preserve report benchmark settings"
+            )
+        expected_helicities = tuple(selectors["helicities"] or ())
+        expected_color_flows = tuple(selectors["color_flows"] or ())
+        if (
+            resolution.effective.benchmark.helicity_ids != expected_helicities
+            or resolution.effective.benchmark.color_flow_ids != expected_color_flows
+        ):
+            raise RunnerError(
+                "public profile arguments do not preserve report selectors"
+            )
+
+        class _LoadedRuntimeProfileServices(DefaultCliServices):
+            """Inject only the authenticated loaded runtime and exact points.
+
+            Parsing, typed resolution, progress propagation, benchmark settings,
+            and dispatch remain the public ``pyamplicol profile`` path.
+            """
+
+            def benchmark(
+                self,
+                config: RunConfig,
+                command_progress: ProgressSink,
+            ) -> object:
+                result = BenchmarkRunner(
+                    config,
+                    progress=command_progress,
+                ).run(runtime, points=points)
+                environment = getattr(result, "environment", None)
+                if not isinstance(environment, Mapping):
+                    raise RunnerError(
+                        "public profile result does not retain environment evidence"
+                    )
+                return replace(
+                    result,
+                    environment={
+                        **environment,
+                        "report_command_path": (LOADED_RUNTIME_PROFILE_COMMAND_PATH),
+                        "report_public_cli_path": PUBLIC_CLI_COMMAND_PATH,
+                    },
+                )
+
+        return dispatch(
+            resolution.effective,
+            _LoadedRuntimeProfileServices(),
+            selected_progress,
+            dry_run=invocation.dry_run,
+        )
     raise RunnerError(
         f"unsupported pyAmpliCol report execution mode: {execution_mode.value}"
     )
@@ -2070,9 +2416,7 @@ def _benchmark_measurement(
             else getattr(breakdown, "evaluator_call_time", None)
         )
         raw_arena_evidence = getattr(benchmark, "arena_profile_evidence", None)
-        profile_repetitions = environment.get(
-            "native_profile_repetitions_per_sample"
-        )
+        profile_repetitions = environment.get("native_profile_repetitions_per_sample")
         profile_batch_size = environment.get("native_profile_batch_size")
         try:
             arena_profile_evidence = validate_arena_profile_evidence(
@@ -2095,8 +2439,7 @@ def _benchmark_measurement(
             != ARENA_PROFILE_SAMPLE_PASS
             or environment.get("timing_breakdown_sample_pass")
             != ARENA_PROFILE_SAMPLE_PASS
-            or environment.get("profile_attribution_boundary")
-            != ARENA_PROFILE_BOUNDARY
+            or environment.get("profile_attribution_boundary") != ARENA_PROFILE_BOUNDARY
             or environment.get("profile_attribution_borrowed_flat_input") is not True
             or environment.get("profile_attribution_preallocated_output") is not True
             or environment.get("profile_attribution_phase_timing_scope")
@@ -2115,8 +2458,7 @@ def _benchmark_measurement(
             or isinstance(profile_batch_size, bool)
             or not isinstance(profile_batch_size, int)
             or profile_batch_size < 1
-            or profile_repetitions * profile_batch_size
-            != raw_points_per_sample
+            or profile_repetitions * profile_batch_size != raw_points_per_sample
             or arena_profile_evidence.get("repetitions_per_profile")
             != profile_repetitions
             or arena_profile_evidence.get("batch_size") != profile_batch_size
@@ -2209,32 +2551,24 @@ def _benchmark_measurement(
             raise RunnerError(
                 "benchmark has incomplete accumulated evaluator-total timing"
             )
-        repetitions = environment.get(
-            "native_profile_repetitions_per_sample"
-        )
+        repetitions = environment.get("native_profile_repetitions_per_sample")
         batch_size = environment.get("native_profile_batch_size")
         measured_point_count = environment.get("measured_point_count")
         raw_total = environment["evaluator_total_time_raw_seconds_per_point"]
         evaluator_total_timing = {
             "abi": EVALUATOR_TOTAL_TIMING_ABI,
             "status": environment["evaluator_total_time_status"],
-            "ratio_eligible": environment[
-                "evaluator_total_time_ratio_eligible"
-            ],
+            "ratio_eligible": environment["evaluator_total_time_ratio_eligible"],
             "raw_seconds_per_point": raw_total,
             "source": environment["evaluator_total_time_source"],
             "execution_mode": environment.get("execution_mode"),
-            "sample_contract": environment[
-                "evaluator_total_time_sample_contract"
-            ],
+            "sample_contract": environment["evaluator_total_time_sample_contract"],
             "sample_count": benchmark.sample_count,
             "repetitions_per_sample": repetitions,
             "batch_size": batch_size,
             "points_per_sample": raw_points_per_sample,
             "measured_point_count": measured_point_count,
-            "accumulated_seconds": environment[
-                "evaluator_total_accumulated_seconds"
-            ],
+            "accumulated_seconds": environment["evaluator_total_accumulated_seconds"],
         }
         total_measurement = {
             "status": ResultStatus.OK.value,
@@ -2270,6 +2604,19 @@ def _benchmark_measurement(
         or float(achieved_runtime) < 0.0
     ):
         raise RunnerError("benchmark did not report its achieved timing duration")
+    command_evidence: dict[str, object] = {}
+    if "report_command_path" in environment:
+        command_path = environment.get("report_command_path")
+        if not isinstance(command_path, str) or not command_path:
+            raise RunnerError("benchmark has an invalid report command path")
+        command_evidence["report_command_path"] = command_path
+    if "report_public_cli_path" in environment:
+        public_path = environment.get("report_public_cli_path")
+        if public_path is not None and (
+            not isinstance(public_path, str) or not public_path
+        ):
+            raise RunnerError("benchmark has an invalid public CLI command path")
+        command_evidence["report_public_cli_path"] = public_path
     return {
         "status": ResultStatus.OK.value,
         "wall_seconds_per_point": float(benchmark.wall_time_per_point),
@@ -2284,18 +2631,15 @@ def _benchmark_measurement(
         "standard_error_seconds_per_point": float(uncertainty.standard_error),
         "relative_standard_error": float(uncertainty.relative_standard_error),
         "benchmark_evidence": {
+            **command_evidence,
             "target_runtime_seconds": target_runtime,
             "achieved_runtime_seconds": float(achieved_runtime),
             "target_runtime_achieved": (
                 float(achieved_runtime) >= 0.95 * target_runtime
             ),
-            "completed_sample_count": environment.get(
-                "completed_sample_count"
-            ),
+            "completed_sample_count": environment.get("completed_sample_count"),
             "planned_sample_count": environment.get("planned_sample_count"),
-            "repetitions_per_sample": environment.get(
-                "repetitions_per_sample"
-            ),
+            "repetitions_per_sample": environment.get("repetitions_per_sample"),
             "measured_point_count": environment.get("measured_point_count"),
             "interrupted": bool(environment.get("interrupted", False)),
         },
@@ -2307,8 +2651,9 @@ def profile_runtime(
     points: object,
     *,
     cell: CellSpec,
-    benchmark_config: object,
+    benchmark_config: BenchmarkConfig,
     selector_contract: SelectorContract | None,
+    progress: ProgressSink | None = None,
 ) -> dict[str, object]:
     validate_runtime_contract(cell, runtime)
     if selector_contract is not None:
@@ -2328,6 +2673,7 @@ def profile_runtime(
         execution_mode=cell.measurement.execution_mode,
         benchmark_config=selected_config,
         selectors=selectors,
+        progress=progress,
     )
     result = _benchmark_measurement(
         benchmark,
@@ -2381,56 +2727,123 @@ def generate_artifact(
     """Generate one complete-coverage artifact and time process generation only."""
 
     from pyamplicol.api import Generator, ModelSource
-    from pyamplicol.config import Action
+    from pyamplicol.cli import CliInvocation, parse_cli
+    from pyamplicol.cli.handlers import DefaultCliServices, dispatch
+    from pyamplicol.config import Action, RunConfig
     from pyamplicol.config.resolver import config_to_dict, resolve_config
+    from pyamplicol.reporting import NullProgressSink
 
     values = config_values(cell, settings, repo_root=repo_root)
-    resolution = resolve_config(values, action=Action.GENERATE, base_dir=repo_root)
-    assert cell.measurement.model is not None
-    source_path = _model_source_path(repo_root, cell.measurement.model)
-    source = (
-        ModelSource.built_in_sm()
-        if source_path is None
-        else ModelSource.from_path(source_path)
+    generation_values = values["generation"]
+    assert isinstance(generation_values, dict)
+    generation_values.update(
+        {
+            "output": os.fspath(destination),
+            "mode": "replace",
+        }
     )
-    model_started = time.perf_counter()
-    prepared_execution = cell.measurement.execution_mode in {
-        ExecutionMode.EAGER,
-        ExecutionMode.RECURRENCE,
-    }
+    values["process"] = {"entries": [{"expression": cell.process}]}
     if prepared_model_path is not None:
         if not prepared_model_path.is_file():
             raise RunnerError(f"prepared model does not exist: {prepared_model_path}")
-        model = ModelSource.from_path(prepared_model_path)
-        preparation_reused = True
-    elif prepared_execution and cell.measurement.model is ModelKey.BUILTIN_SM:
-        # Omitting the explicit model lets the generation service select the
-        # validated wheel-owned built-in-SM JIT O2 prepared pack.
-        model = None
-        preparation_reused = True
-    elif prepared_execution:
+        model_values = values["model"]
+        assert isinstance(model_values, dict)
+        model_values["source"] = os.fspath(prepared_model_path)
+    expected_resolution = resolve_config(
+        values,
+        action=Action.GENERATE,
+        base_dir=repo_root,
+    )
+    invocation = parse_cli(_generation_cli_argv(cell, destination, values))
+    if not isinstance(invocation, CliInvocation):
+        raise RunnerError("public generate parser returned a non-command invocation")
+    resolution = invocation.resolve()
+    if (
+        resolution.requested != expected_resolution.requested
+        or resolution.effective != expected_resolution.effective
+    ):
         raise RunnerError(
-            f"{cell.measurement.model.value} {cell.measurement.execution_mode.value} "
-            "generation requires a prepared model path"
+            "public generate arguments do not preserve report generation settings"
         )
-    else:
-        model = source.compile(
-            cache_dir=settings.model_cache_dir,
-            use_cache=True,
-            require_supported=True,
-        )
-        preparation_reused = False
-    model_seconds = time.perf_counter() - model_started
     generation_phase = (
         nullcontext() if phase_reporter is None else phase_reporter.generation()
     )
     with generation_phase:
+        # The process-tree watchdog owns the complete preparation+generation
+        # interval, while the published generation timer below intentionally
+        # continues to measure dispatch/generation only.
+        assert cell.measurement.model is not None
+        source_path = _model_source_path(repo_root, cell.measurement.model)
+        source = (
+            ModelSource.built_in_sm()
+            if source_path is None
+            else ModelSource.from_path(source_path)
+        )
+        model_started = time.perf_counter()
+        prepared_execution = cell.measurement.execution_mode in {
+            ExecutionMode.EAGER,
+            ExecutionMode.RECURRENCE,
+        }
+        if prepared_model_path is not None:
+            model = ModelSource.from_path(prepared_model_path)
+            preparation_reused = True
+        elif prepared_execution and cell.measurement.model is ModelKey.BUILTIN_SM:
+            # Omitting the explicit model lets the generation service select the
+            # validated wheel-owned built-in-SM JIT O2 prepared pack.
+            model = None
+            preparation_reused = True
+        elif prepared_execution:
+            raise RunnerError(
+                f"{cell.measurement.model.value} "
+                f"{cell.measurement.execution_mode.value} generation requires "
+                "a prepared model path"
+            )
+        else:
+            model = source.compile(
+                cache_dir=settings.model_cache_dir,
+                use_cache=True,
+                require_supported=True,
+            )
+            preparation_reused = False
+        model_seconds = time.perf_counter() - model_started
         generation_started = time.perf_counter()
-        Generator(resolution).generate(
-            cell.process,
-            destination,
-            model=model,
-            mode="replace",
+        selected_progress = settings.progress or NullProgressSink()
+        if prepared_execution:
+            command_services = DefaultCliServices(resolution=resolution)
+            generation_command_path = PUBLIC_CLI_COMMAND_PATH
+        else:
+
+            class _PreparedGenerationServices(DefaultCliServices):
+                """Inject only the already compiled model into public dispatch.
+
+                The public parser, typed resolution, progress path, and dispatch
+                are retained.  This report-only handler exception is necessary
+                to exclude model preparation from the process-generation timer.
+                """
+
+                def generate(
+                    self,
+                    config: RunConfig,
+                    command_progress: ProgressSink,
+                ) -> object:
+                    return Generator(
+                        resolution,
+                        progress=command_progress,
+                    ).generate(
+                        cell.process,
+                        destination,
+                        model=model,
+                        mode="replace",
+                    )
+
+            command_services = _PreparedGenerationServices(resolution=resolution)
+            generation_command_path = PRECOMPILED_GENERATION_COMMAND_PATH
+
+        dispatch(
+            resolution.effective,
+            command_services,
+            selected_progress,
+            dry_run=invocation.dry_run,
         )
         generation_seconds = time.perf_counter() - generation_started
     effective_config = _authenticated_effective_config(destination)
@@ -2442,6 +2855,7 @@ def generate_artifact(
         model_preparation_reused=preparation_reused,
         requested_config=config_to_dict(resolution.requested),
         effective_config=effective_config,
+        generation_command_path=generation_command_path,
     )
 
 

@@ -1,0 +1,123 @@
+% SPDX-License-Identifier: 0BSD
+\section{Reusable Leading-Colour Execution Layouts}
+\label{sec:lc-flow-layouts}
+
+Leading-colour coverage and its numerical layout are separate concepts.  Let
+\(\mathcal H\) be the retained helicities and \(\mathcal F\) the retained
+physical colour flows.  Complete leading-colour coverage represents
+\begin{equation}
+  \mathcal C_{\mathrm{LC}}=\mathcal H\times\mathcal F
+  \label{eq:lc-complete-coverage}
+\end{equation}
+and can expose every resolved amplitude \(\mathcal A_{hf}\).  For selected
+subsets \(S_H\subseteq\mathcal H\) and \(S_F\subseteq\mathcal F\), the
+observable is
+\begin{equation}
+  \mathcal W(S_H,S_F)
+  =\mathcal N\sum_{h\in S_H}\sum_{f\in S_F}w_{hf}
+   \left|\sum_{r\in G(h,f)}\mathcal A^{(r)}_{hf}\right|^2 .
+  \label{eq:lc-runtime-selection}
+\end{equation}
+Here \(G(h,f)\) is a coherent contribution group, \(w_{hf}\) contains exact
+symmetry and leading-colour weights, and \(\mathcal N\) is the process
+normalization.  The layout changes how this sum is scheduled, not its
+components or normalization.
+
+\subsection{Two complete-coverage layouts}
+
+The report measures two layouts because selected-flow and all-flow workloads
+offer different opportunities for sharing:
+
+\begin{center}
+\small
+\begin{tabular}{@{}L{1.32in}L{2.40in}L{2.40in}@{}}
+\toprule
+\textbf{property} & \textbf{topology replay} &
+  \textbf{all-flow union} \\
+\midrule
+Measured workload & one selected flow, summed helicities &
+  all flows, one selected helicity \\
+Retained physics & every flow and helicity &
+  every flow and helicity \\
+Main reuse & equivalent flow topologies related by exact permutations and
+  factors & currents and closures shared directly across all flows \\
+Availability & compiled, eager, and recurrence &
+  compiled, eager, and recurrence \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+In topology replay, exact relations partition physical flows into equivalence
+classes. If \(\rho(f)\) represents the class containing \(f\), the calculation
+records a permutation \(\pi_f\), an exact factor \(s_f\), and the corresponding
+weight:
+\begin{equation}
+  \mathcal A_{h f}(p)
+  =s_f\,\mathcal A_{\pi_f(h),\rho(f)}\!\left(\pi_f(p)\right).
+  \label{eq:lc-topology-replay}
+\end{equation}
+This avoids constructing an independent current graph for every physical
+ordering and is suited to selected-flow, helicity-summed evaluation.
+
+The all-flow union instead merges the dependency graphs of all resolved
+components:
+\begin{equation}
+  D_{\mathrm{union}}
+  =\left(\bigcup_{h\in\mathcal H,\,f\in\mathcal F}D_{hf}\right)
+   \big/\!\sim ,
+  \label{eq:lc-all-flow-union}
+\end{equation}
+where \(\sim\) identifies currents, kernel values, and closures that are
+algebraically equal up to retained exact factors.  For a selected helicity,
+one graph traversal then reuses intermediate currents across all flows.
+
+Compiled mode specializes the chosen layout to process-wide stage evaluators.
+Eager mode applies prepared-model kernels to the same dependency structure,
+and recurrence mode constructs a compact current schedule directly. These
+execution choices do not change \(\mathcal H\), \(\mathcal F\), or
+Eq.~\eqref{eq:lc-runtime-selection}.
+
+\subsection{Runtime selection}
+
+Flow and helicity selections refer to physical components.  A selection may be
+applied to a complete batch or specified independently for each point; omitting
+an axis sums all retained entries on that axis.  Rows with equal selections can
+be grouped into contiguous numerical batches.  This grouping changes neither
+the generated coverage nor the resolved result.
+
+\subsection{Generation and reference boundaries}
+
+The two layouts build different graphs and numerical schedules, so their
+process-generation times are distinct observables:
+\begin{equation}
+  T_{\mathrm{gen}}^{\mathrm{replay}}
+  \quad\hbox{and}\quad
+  T_{\mathrm{gen}}^{\mathrm{union}}.
+  \label{eq:lc-two-generation-times}
+\end{equation}
+Cross-mode comparisons use the same layout on both sides.  Preparation of
+reusable model-level kernels occurs before the process-generation timer and is
+not included in these table values.
+
+The original-\AC{} reference uses two different routes. For the selected-flow
+workload, its generation value measures creation of the process library. For
+the all-flow workload, the reported setup value measures preparation of direct
+all-flow evaluation. The corresponding runtime measurements implement the
+same physical workloads as \PAC{}, but the all-flow setup quantities do not
+define a like-for-like process-generation speedup. The table therefore reports
+both quantities absolutely and marks their generation comparison as not
+comparable.
+
+\subsection{NLC and full colour}
+
+The alternative layouts apply only at leading colour.  NLC and full-colour
+evaluation construct an amplitude basis and contract it with the appropriate
+colour metric:
+\begin{equation}
+  \mathcal W_{\mathrm{contracted}}
+  =\mathcal N\sum_h\sum_{a,b}
+   \mathcal A_{ha}^{*}\,C_{ab}\,\mathcal A_{hb}.
+  \label{eq:contracted-colour-layout}
+\end{equation}
+These treatments do not expose the physical leading-colour flow axis, so there
+is no topology-replay or all-flow-union distinction.

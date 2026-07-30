@@ -76,9 +76,7 @@ def test_epyc_worker_environment_injects_shared_native_compiler_gate(
         "PYAMPLICOL_NATIVE_COMPILER_GATE_DIR": str(
             (tmp_path / "coordination" / "native-compiler-slots").resolve()
         ),
-        "PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT": str(
-            X86_EPYC_NATIVE_COMPILER_SLOTS
-        ),
+        "PYAMPLICOL_NATIVE_COMPILER_SLOT_COUNT": str(X86_EPYC_NATIVE_COMPILER_SLOTS),
     }
     assert (
         _worker_environment_overrides(
@@ -349,14 +347,13 @@ def test_z_native_cap_is_resolved_before_any_attempt_is_planned(
     capped = tuple(
         cell
         for cell in REPORT_CATALOG.z_cells()
-        if cell.n_final == 7
-        and cell.variant in {"asm_o3", "cpp_o3"}
+        if cell.n_final == 7 and cell.variant in {"asm_o3", "cpp_o3"}
     )
 
     assert len(capped) == 8
-    assert {
-        REPORT_CATALOG.static_na_reason(cell) for cell in capped
-    } == {"native-backend-generation-cap-n6-v1"}
+    assert {REPORT_CATALOG.static_na_reason(cell) for cell in capped} == {
+        "native-backend-generation-cap-n6-v1"
+    }
     store_root = tmp_path / "native-cap"
     planned = plan_campaign(
         capped,
@@ -421,16 +418,12 @@ def test_campaign_run_rejects_forged_static_na_plan_before_worker_setup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = _service(tmp_path)
-    cell = REPORT_CATALOG.cell(
-        "reference-amplicol-full-n6-dd-4q-lines-contracted"
-    )
+    cell = REPORT_CATALOG.cell("reference-amplicol-full-n6-dd-4q-lines-contracted")
     scheduler = CampaignScheduler(service, settings=CampaignSettings())
     monkeypatch.setattr(
         scheduler,
         "_ensure_prepared_model",
-        lambda _planned: pytest.fail(
-            "static N/A plan reached prepared-model setup"
-        ),
+        lambda _planned: pytest.fail("static N/A plan reached prepared-model setup"),
     )
     monkeypatch.setattr(
         scheduler,
@@ -457,9 +450,39 @@ def test_campaign_run_rejects_forged_static_na_plan_before_worker_setup(
         )
 
     assert service.store.load_current(cell.cell_id, missing_ok=True) is None
-    assert tuple(
-        service.paths.artifact_root.glob("cells/*/attempts/*")
-    ) == ()
+    assert tuple(service.paths.artifact_root.glob("cells/*/attempts/*")) == ()
+
+
+def test_campaign_cancelled_while_queued_starts_no_preflight_or_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    cell = REPORT_CATALOG.cell(
+        "z-builtin-sm-n3-dd-z-jets-recurrence-jit-o2-selected-flow"
+    )
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(cancellation_requested=lambda: True),
+    )
+    monkeypatch.setattr(
+        scheduler,
+        "_ensure_prepared_model",
+        lambda _planned: pytest.fail("cancelled campaign reached model preflight"),
+    )
+    result = scheduler.run(
+        (
+            PlannedCell(
+                cell,
+                dependency=False,
+                baseline_cell_id=None,
+                rank=0,
+            ),
+        )
+    )
+
+    assert result.outcomes == ()
+    assert tuple(service.paths.artifact_root.glob("cells/*/attempts/*")) == ()
 
 
 def test_contracted_n6_multi_quark_plans_separate_legacy_capability(
@@ -484,9 +507,12 @@ def test_contracted_n6_multi_quark_plans_separate_legacy_capability(
         "reference-amplicol-full-n6-dd-3q-lines-contracted",
         three_line.cell_id,
     }
-    assert next(
-        item for item in three_line_plan if item.cell == three_line
-    ).baseline_cell_id == "reference-amplicol-full-n6-dd-3q-lines-contracted"
+    assert (
+        next(
+            item for item in three_line_plan if item.cell == three_line
+        ).baseline_cell_id
+        == "reference-amplicol-full-n6-dd-3q-lines-contracted"
+    )
 
     four_line_plan = plan_campaign(
         (four_line,),
@@ -502,9 +528,12 @@ def test_contracted_n6_multi_quark_plans_separate_legacy_capability(
         settings=CampaignSettings(),
     )
     assert four_line in {item.cell for item in compiled_plan}
-    assert next(
-        item for item in compiled_plan if item.cell == four_line_compiled
-    ).baseline_cell_id == four_line.cell_id
+    assert (
+        next(
+            item for item in compiled_plan if item.cell == four_line_compiled
+        ).baseline_cell_id
+        == four_line.cell_id
+    )
 
 
 def test_missing_only_schedules_stale_direct_peer_and_recomparison(
@@ -523,9 +552,7 @@ def test_missing_only_schedules_stale_direct_peer_and_recomparison(
     target = next(item for item in initial if item.cell == candidate)
     baseline_id = target.baseline_cell_id
     stale_peer_id = next(
-        peer_id
-        for peer_id in target.comparison_peer_ids
-        if peer_id != baseline_id
+        peer_id for peer_id in target.comparison_peer_ids if peer_id != baseline_id
     )
     for item in initial:
         _publish_current(
@@ -822,9 +849,7 @@ def test_reuse_and_retime_use_equivalent_artifact_but_target_baseline(
     assert command[command.index("--cell-id") + 1] == (
         "matrix-recurrence-builtin-sm-lc-n1-dd-z-jets-selected-flow"
     )
-    assert command[command.index("--docs-dir") + 1].endswith(
-        "/repo/docs/arxiv"
-    )
+    assert command[command.index("--docs-dir") + 1].endswith("/repo/docs/arxiv")
     assert command[command.index("--artifact-root") + 1].endswith("/artifacts")
     assert command[command.index("--coordination-root") + 1].endswith("/locks")
 

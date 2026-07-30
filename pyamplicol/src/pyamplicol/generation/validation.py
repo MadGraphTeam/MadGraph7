@@ -3,9 +3,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from ..models.base import Model
@@ -101,6 +102,64 @@ def build_process_validation_point(
     )
 
 
+def rotate_validation_point(
+    point: ValidationPointRecord,
+    *,
+    rotation_seed: int,
+) -> ValidationPointRecord:
+    """Apply a deterministic proper rotation to one physical event."""
+
+    if not point.available:
+        return point
+    digest = hashlib.sha256(
+        f"{rotation_seed}:proper-spatial-rotation-v1".encode("ascii")
+    ).digest()
+    denominator = float(1 << 64)
+    azimuth = 2.0 * math.pi * (
+        (int.from_bytes(digest[:8], "big") + 0.5) / denominator
+    )
+    cosine_polar = (
+        2.0 * ((int.from_bytes(digest[8:16], "big") + 0.5) / denominator)
+        - 1.0
+    )
+    sine_polar = math.sqrt(max(0.0, 1.0 - cosine_polar * cosine_polar))
+    cos_azimuth = math.cos(azimuth)
+    sin_azimuth = math.sin(azimuth)
+    # Rz(azimuth) Ry(polar), a proper orthogonal map taking +z to the
+    # deterministic direction above.
+    rotation = (
+        (
+            cos_azimuth * cosine_polar,
+            -sin_azimuth,
+            cos_azimuth * sine_polar,
+        ),
+        (
+            sin_azimuth * cosine_polar,
+            cos_azimuth,
+            sin_azimuth * sine_polar,
+        ),
+        (-sine_polar, 0.0, cosine_polar),
+    )
+
+    def rotated(momentum: FourMomentum) -> FourMomentum:
+        energy, x_component, y_component, z_component = momentum
+        spatial = (x_component, y_component, z_component)
+        return (
+            energy,
+            *tuple(
+                sum(row[column] * spatial[column] for column in range(3))
+                for row in rotation
+            ),
+        )
+
+    return replace(
+        point,
+        particles=tuple(
+            (pdg, rotated(momentum)) for pdg, momentum in point.particles
+        ),
+    )
+
+
 def validation_point_map(
     records: tuple[ValidationPointRecord, ...],
 ) -> Mapping[str, Mapping[str, object]]:
@@ -162,5 +221,6 @@ __all__ = [
     "ValidationPointRecord",
     "build_process_validation_point",
     "build_validation_point",
+    "rotate_validation_point",
     "validation_point_map",
 ]

@@ -86,7 +86,7 @@ from .study_contract import (
     require_z_table_f_explicit_cell,
     z_table_f_worker_harness_identity,
 )
-from .worker import write_cell_result
+from .worker import _JsonlProgressSink, write_cell_result
 from .worker_harness import (
     LEGACY_ADAPTER,
     POLICY_ENTRYPOINT,
@@ -101,9 +101,7 @@ from .workspace import (
     require_active_profile_environment,
 )
 
-_PINNED_EPYC_ORPHAN_CELL_ID = (
-    "reference-amplicol-lc-n8-gg-gluons-selected-flow"
-)
+_PINNED_EPYC_ORPHAN_CELL_ID = "reference-amplicol-lc-n8-gg-gluons-selected-flow"
 _PINNED_EPYC_ORPHAN_ATTEMPT_ID = "83e5c9c7-dbf6-4d61-b724-f4580df2cfa3"
 _PINNED_EPYC_ORPHAN_WORKER_SHA256 = (
     "5f3a42f9e3d034efedd8b670e7acbf2b54a427449106dbabc29050f3d93afbe6"
@@ -174,17 +172,14 @@ def _authenticated_worker_harness(
         raise ValueError(
             "split worker wrapper/source options are restricted to workers"
         )
-    measured_root = Path(values["measurement_source_root"]).expanduser().resolve(
-        strict=True
+    measured_root = (
+        Path(values["measurement_source_root"]).expanduser().resolve(strict=True)
     )
     if measured_root != repo_root.resolve(strict=True):
-        raise ValueError(
-            "worker --repo-root must equal --measurement-source-root"
-        )
+        raise ValueError("worker --repo-root must equal --measurement-source-root")
     measured = require_eligible_report_source(measured_root)
     if (
-        measured.revision
-        != values["expected_measurement_source_revision"]
+        measured.revision != values["expected_measurement_source_revision"]
         or measured.tree != values["expected_measurement_source_tree"]
     ):
         raise ValueError(
@@ -202,10 +197,8 @@ def _authenticated_worker_harness(
     entrypoint_sha256 = _sha256_file(wrapper_root / POLICY_ENTRYPOINT)
     legacy_adapter_sha256 = _sha256_file(wrapper_root / LEGACY_ADAPTER)
     if (
-        entrypoint_sha256
-        != values["expected_policy_entrypoint_sha256"]
-        or legacy_adapter_sha256
-        != values["expected_legacy_adapter_sha256"]
+        entrypoint_sha256 != values["expected_policy_entrypoint_sha256"]
+        or legacy_adapter_sha256 != values["expected_legacy_adapter_sha256"]
     ):
         raise ValueError(
             "worker policy-wrapper file identity differs from its authorization"
@@ -477,6 +470,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     worker.add_argument("--batch-size", type=int, default=128)
     worker.add_argument("--cell-cores", type=int, default=1)
+    worker.add_argument("--warmup-runs", type=int, default=2)
+    worker.add_argument("--minimum-samples", type=int, default=5)
+    worker.add_argument("--progress-jsonl", type=Path)
+    worker.add_argument("--manual-source-revision", help=argparse.SUPPRESS)
+    worker.add_argument("--manual-source-tree", help=argparse.SUPPRESS)
     worker.add_argument("--phase-state-path", type=Path, help=argparse.SUPPRESS)
     worker.add_argument("--phase-state-run-id", help=argparse.SUPPRESS)
     worker.add_argument(
@@ -491,7 +489,9 @@ def _parser() -> argparse.ArgumentParser:
         choices=(ModelKey.BUILTIN_SM.value, ModelKey.UFO_SM.value),
     )
     prepare.add_argument("--result-json", type=Path, required=True)
+    prepare.add_argument("--progress-jsonl", type=Path)
     prepare.add_argument("--cell-cores", type=int, default=1)
+    prepare.add_argument("--producer-revision", help=argparse.SUPPRESS)
 
     populate = subparsers.add_parser(
         "populate",
@@ -849,14 +849,10 @@ def _launch_async_publication(
         else entrypoint
     ).expanduser()
     if entrypoint_candidate.is_symlink():
-        raise RuntimeError(
-            "asynchronous publication entrypoint is unavailable"
-        )
+        raise RuntimeError("asynchronous publication entrypoint is unavailable")
     selected_entrypoint = entrypoint_candidate.resolve(strict=True)
     if not selected_entrypoint.is_file():
-        raise RuntimeError(
-            "asynchronous publication entrypoint is unavailable"
-        )
+        raise RuntimeError("asynchronous publication entrypoint is unavailable")
     log_root = service.paths.artifact_root / "publication-logs"
     log_root.mkdir(parents=True, exist_ok=True)
     log_path = log_root / "refresh-pdf-end.log"
@@ -909,8 +905,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         and args.command != "prepare-class-c-bridge"
     ):
         parser.error(
-            "--class-c-ancestor-runtime-root is restricted to "
-            "prepare-class-c-bridge"
+            "--class-c-ancestor-runtime-root is restricted to prepare-class-c-bridge"
         )
     if args.command == "init-profile":
         output = initialize_profile(
@@ -1055,9 +1050,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "pending_locator": pending.relative_to(
                         service.paths.artifact_root
                     ).as_posix(),
-                    "current_snapshot_sha256": prepared[
-                        "current_snapshot_sha256"
-                    ],
+                    "current_snapshot_sha256": prepared["current_snapshot_sha256"],
                     **(
                         {}
                         if ancestor_runtime is None
@@ -1086,9 +1079,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(
             json.dumps(
                 {
-                    "lineage": (
-                        service.paths.docs_dir / "measurement_lineage.json"
-                    ).relative_to(repo_root).as_posix(),
+                    "lineage": (service.paths.docs_dir / "measurement_lineage.json")
+                    .relative_to(repo_root)
+                    .as_posix(),
                     "descendant_revision": finalized["descendant_revision"],
                 },
                 sort_keys=True,
@@ -1108,14 +1101,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if args.command == "seal-existing-worker-result":
         if args.report_profile is None:
-            parser.error(
-                "seal-existing-worker-result requires --report-profile"
-            )
+            parser.error("seal-existing-worker-result requires --report-profile")
         source = require_eligible_report_source(repo_root)
         if source.revision != args.expected_source_revision:
-            parser.error(
-                "active source does not match --expected-source-revision"
-            )
+            parser.error("active source does not match --expected-source-revision")
         require_active_profile_environment(
             repo_root,
             args.report_profile,
@@ -1143,12 +1132,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 or not isinstance(provenance, Mapping)
                 or provenance.get("report_source_revision") != source.revision
                 or provenance.get("report_source_tree") != source.tree
-                or provenance.get("report_measured_source_revision")
-                != source.revision
+                or provenance.get("report_measured_source_revision") != source.revision
                 or provenance.get("report_measured_source_tree") != source.tree
                 or not isinstance(artifact, Mapping)
-                or artifact.get("path")
-                != os.fspath(attempt_root / "artifact")
+                or artifact.get("path") != os.fspath(attempt_root / "artifact")
                 or provenance.get("worker_log")
                 != os.fspath(attempt_root / "worker.log")
                 or not (attempt_root / "artifact").is_dir()
@@ -1173,9 +1160,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 result,
                 expected_source_revision=source.revision,
                 expected_source_tree=source.tree,
-                allow_pinned_orphan_unavailable_resources=(
-                    allow_unavailable_resources
-                ),
+                allow_pinned_orphan_unavailable_resources=(allow_unavailable_resources),
             )
             if state is not PolicyMeasurementState.SUCCESS:
                 raise ValueError(
@@ -1244,22 +1229,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             requested = select_cells(_selection(args))
             if not requested:
                 parser.error("cell filters select no report cells")
-            catalog_ids = {
-                cell.cell_id for cell in REPORT_CATALOG.measurement_cells()
-            }
+            catalog_ids = {cell.cell_id for cell in REPORT_CATALOG.measurement_cells()}
             unknown_exclusions = sorted(
                 set(args.exclude_cell_id).difference(catalog_ids)
             )
             if unknown_exclusions:
                 parser.error(
-                    "unknown --exclude-cell-id values: "
-                    + ", ".join(unknown_exclusions)
+                    "unknown --exclude-cell-id values: " + ", ".join(unknown_exclusions)
                 )
             if args.max_ram_gib is not None and args.max_ram_gb is not None:
                 parser.error("--max-ram-gib and --max-ram-gb are mutually exclusive")
             if args.campaign_max_ram_gb is not None and (
-                args.campaign_max_ram_gib is not None
-                or args.limit_gib is not None
+                args.campaign_max_ram_gib is not None or args.limit_gib is not None
             ):
                 parser.error(
                     "--campaign-max-ram-gb is mutually exclusive with "
@@ -1288,10 +1269,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     expected_active_revision=expected_revision,
                     expected_active_tree=source_identity.tree,
                 )
-                if (
-                    measurement_lineage is None
-                    and original_amplicol_seed is None
-                ):
+                if measurement_lineage is None and original_amplicol_seed is None:
                     raise MeasurementLineageError(
                         "--fast-lineage requires a finalized measurement lineage "
                         "or authenticated original-AmpliCol campaign seed"
@@ -1307,13 +1285,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.study_policy is not None:
                 if args.report_profile is not None:
                     raise ValueError(
-                        "--study-policy cannot be combined with "
-                        "--report-profile"
+                        "--study-policy cannot be combined with --report-profile"
                     )
                 if args.study_contract is None:
-                    raise ValueError(
-                        "--study-policy requires --study-contract"
-                    )
+                    raise ValueError("--study-policy requires --study-contract")
                 if (
                     len(args.cell_id) != 1
                     or args.dataset
@@ -1340,14 +1315,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     active_study_contract,
                     args.cell_id[0],
                 )
-                campaign_policy = resolve_campaign_policy(
-                    args.study_policy
-                )
+                campaign_policy = resolve_campaign_policy(args.study_policy)
                 policy_profile = MACBOOK_M3_PROFILE
             elif args.study_contract is not None:
-                raise ValueError(
-                    "--study-contract requires --study-policy"
-                )
+                raise ValueError("--study-contract requires --study-policy")
             elif args.report_profile is None:
                 campaign_policy = STRICT_POLICY
             else:
@@ -1400,9 +1371,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             expected_worker_harness=(
                 None
                 if active_study_contract is None
-                else z_table_f_worker_harness_identity(
-                    active_study_contract
-                )
+                else z_table_f_worker_harness_identity(active_study_contract)
             ),
         )
         try:
@@ -1417,26 +1386,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "scheduled": len(planned),
                         "source_revision": expected_revision,
                         "source_tree": source_identity.tree,
-                        "campaign_policy": (
-                            settings.campaign_policy.as_manifest()
-                        ),
+                        "campaign_policy": (settings.campaign_policy.as_manifest()),
                         "policy_profile": settings.report_profile,
                         "study_contract_sha256": (
                             None
                             if active_study_contract is None
                             else active_study_contract["sha256"]
                         ),
-                        "excluded_cell_ids": sorted(
-                            set(args.exclude_cell_id)
-                        ),
+                        "excluded_cell_ids": sorted(set(args.exclude_cell_id)),
                         "cells": [
                             {
                                 "cell_id": item.cell.cell_id,
                                 "dependency": item.dependency,
                                 "baseline_cell_id": item.baseline_cell_id,
-                                "comparison_peer_ids": list(
-                                    item.comparison_peer_ids
-                                ),
+                                "comparison_peer_ids": list(item.comparison_peer_ids),
                                 "rank": item.rank,
                             }
                             for item in planned
@@ -1460,9 +1423,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 service,
                 settings=settings,
                 study_contract=active_study_contract,
-                study_contract_wrapper_root=(
-                    Path(__file__).resolve().parents[2]
-                ),
+                study_contract_wrapper_root=(Path(__file__).resolve().parents[2]),
             )
         result = scheduler.run(planned)
         if args.refresh_pdf == "end":
@@ -1478,9 +1439,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "failed": len(result.failed),
                     "source_revision": expected_revision,
                     "source_tree": source_identity.tree,
-                    "campaign_policy": (
-                        settings.campaign_policy.as_manifest()
-                    ),
+                    "campaign_policy": (settings.campaign_policy.as_manifest()),
                     "policy_profile": settings.report_profile,
                     "study_contract_sha256": (
                         None
@@ -1523,10 +1482,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             target_runtime_seconds=args.target_runtime,
             batch_size=args.batch_size,
             worker_cores=args.cell_cores,
+            warmup_runs=args.warmup_runs,
+            minimum_samples=args.minimum_samples,
+            progress_jsonl=args.progress_jsonl,
+            manual_source_revision=args.manual_source_revision,
+            manual_source_tree=args.manual_source_tree,
             baseline_json=args.baseline_json,
-            peer_json=tuple(
-                (cell_id, Path(path)) for cell_id, path in args.peer_json
-            ),
+            peer_json=tuple((cell_id, Path(path)) for cell_id, path in args.peer_json),
             prepared_model_path=args.prepared_model,
             reused_measurement_json=args.reused_measurement_json,
             phase_state_path=args.phase_state_path,
@@ -1544,14 +1506,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                 repo_root=repo_root,
                 worker_cores=args.cell_cores,
                 model=ModelKey(args.model),
+                producer_revision=args.producer_revision,
+                progress=(
+                    None
+                    if args.progress_jsonl is None
+                    else _JsonlProgressSink(args.progress_jsonl)
+                ),
             )
             payload = {
                 "path": os.fspath(path),
                 "reused": reused,
                 **(
-                    {}
-                    if worker_harness is None
-                    else {"worker_harness": worker_harness}
+                    {} if worker_harness is None else {"worker_harness": worker_harness}
                 ),
             }
             returncode = 0

@@ -572,6 +572,16 @@ def _bootstrap_exact_python(arguments: list[str]) -> None:
             MEASUREMENT_SOURCE_ROOT
         )
         import_paths = [str(path) for path in measured_paths]
+    elif COMMAND in {"_prepare", "_worker"}:
+        # The scheduler deliberately starts workers with ``-I -S``.  On
+        # Python 3.12, suppressing ``site`` also prevents pyvenv.cfg from
+        # changing ``sys.prefix``, so generic sysconfig discovery below would
+        # resolve the base interpreter's site-packages instead of this
+        # checkout's venv.  Workers always use the repository venv; recover
+        # and authenticate its paths explicitly just as split workers do.
+        import_paths = [
+            str(path) for path in _measured_venv_site_paths(REPOSITORY_ROOT)
+        ]
     else:
         import_paths = []
         native_package = _native_package_dir()

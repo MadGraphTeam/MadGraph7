@@ -710,6 +710,75 @@ def test_generation_limit_excludes_preparation_and_post_generation(
     assert result.generation_phase.generation_elapsed_seconds == 1.0
 
 
+@pytest.mark.parametrize(
+    ("phase", "expected_phase"),
+    (
+        ("preparation", "pre-generation"),
+        ("generation", "generation"),
+        ("profiling", "post-generation"),
+    ),
+)
+def test_cancellation_terminates_the_process_tree_in_every_worker_phase(
+    tmp_path: Path,
+    phase: str,
+    expected_phase: str,
+) -> None:
+    clock = FakeClock()
+    process = FakeProcess()
+    channel = WorkerPhaseChannel.create(tmp_path / f"{phase}.json")
+    reporter = WorkerPhaseReporter(
+        channel,
+        worker_pid=process.pid,
+        clock_ns=lambda: int(clock.now * 1_000_000_000),
+    )
+    generation = reporter.generation()
+    if phase == "generation":
+        generation.__enter__()
+    elif phase == "profiling":
+        with generation:
+            pass
+    cancellation = False
+    signals: list[tuple[int, tuple[int, ...], int]] = []
+
+    def sleep(duration: float) -> None:
+        nonlocal cancellation
+        clock.now += duration
+        cancellation = True
+
+    def signal_tree(pgid: int, members: object, selected_signal: int) -> None:
+        signals.append(
+            (pgid, tuple(sorted(members)), selected_signal)  # type: ignore[arg-type]
+        )
+        process.returncode = -selected_signal
+
+    try:
+        result = supervise_worker(
+            ("worker",),
+            generation_timeout_seconds=60.0,
+            phase_channel=channel,
+            interval_seconds=1.0,
+            snapshotter=lambda: {
+                100: ProcessRecord(100, 1, 100),
+                101: ProcessRecord(101, 100, 50),
+            },
+            popen_factory=lambda *_args, **_kwargs: process,
+            clock=clock,
+            sleeper=sleep,
+            signaler=signal_tree,
+            cancellation_requested=lambda: cancellation,
+        )
+    finally:
+        if phase == "generation":
+            generation.__exit__(None, None, None)
+
+    assert result.reason == "cancelled"
+    assert result.returncode == -signal.SIGTERM
+    assert signals == [(100, (100, 101), signal.SIGTERM)]
+    assert result.generation_phase is not None
+    assert result.generation_phase.authenticated
+    assert result.generation_phase.final_phase == expected_phase
+
+
 def test_supervisor_accepts_completed_zero_work_generation_phase(
     tmp_path: Path,
 ) -> None:

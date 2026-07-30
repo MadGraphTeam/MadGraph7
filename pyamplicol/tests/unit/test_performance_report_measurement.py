@@ -16,16 +16,19 @@ from tools.performance_report.measurement import (
     _stable_runtime_identity,
     _validate_runtime_identity_postflight,
     failure_measurement,
+    generated_artifact_from_measurement,
     measure_pyamplicol_cell,
     source_revision,
 )
-from tools.performance_report.models import ExecutionMode, ResultStatus
+from tools.performance_report.models import Accuracy, ExecutionMode, ResultStatus
 from tools.performance_report.phase_state import (
     WorkerPhaseChannel,
     WorkerPhaseReporter,
     read_worker_phase_state,
 )
 from tools.performance_report.runner import (
+    LOADED_RUNTIME_PROFILE_COMMAND_PATH,
+    PUBLIC_CLI_COMMAND_PATH,
     GeneratedArtifact,
     RunnerError,
     RunnerSettings,
@@ -59,9 +62,7 @@ def test_baseline_contract_and_matrix_element_are_strict() -> None:
 
 
 def test_lc_all_flow_baseline_must_authenticate_nonzero_common_component() -> None:
-    cell = REPORT_CATALOG.cell(
-        "matrix-compiled-builtin-sm-lc-n2-ud-epve-jets-all-flow"
-    )
+    cell = REPORT_CATALOG.cell("matrix-compiled-builtin-sm-lc-n2-ud-epve-jets-all-flow")
     baseline = {
         "validation": {
             "lc_common_component": {
@@ -183,6 +184,136 @@ def test_measurement_routes_reused_artifact_through_phase_completion(
         )
 
     assert observed == [(artifact, reporter)]
+
+
+def test_reusable_artifact_retains_generation_command_path(tmp_path: Path) -> None:
+    artifact_path = tmp_path / "artifact"
+    artifact_path.mkdir()
+    measurement = {
+        "status": ResultStatus.OK.value,
+        "generation_seconds": 2.5,
+        "artifact": {"path": str(artifact_path), "process_id": "process"},
+        "provenance": {
+            "requested_config": {},
+            "effective_config": {},
+            "model_preparation_seconds": 0.25,
+            "model_preparation_reused": True,
+            "generation_command_path": PUBLIC_CLI_COMMAND_PATH,
+        },
+    }
+
+    artifact = generated_artifact_from_measurement(measurement)
+
+    assert artifact.generation_command_path == PUBLIC_CLI_COMMAND_PATH
+
+    del measurement["provenance"]["generation_command_path"]
+    legacy = generated_artifact_from_measurement(measurement)
+    assert legacy.generation_command_path is None
+
+    measurement["provenance"]["generation_command_path"] = 42
+    with pytest.raises(RunnerError, match="reusable artifact metadata is malformed"):
+        generated_artifact_from_measurement(measurement)
+
+
+def test_measurement_persists_generation_and_runtime_command_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import tools.performance_report.measurement as report_measurement
+
+    cell = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+        and cell.measurement.accuracy is Accuracy.NLC
+    )
+    artifact_path = tmp_path / "artifact"
+    artifact = GeneratedArtifact(
+        path=artifact_path,
+        process_id="process",
+        generation_seconds=2.5,
+        model_preparation_seconds=0.25,
+        model_preparation_reused=True,
+        requested_config={},
+        effective_config={},
+        generation_command_path=PUBLIC_CLI_COMMAND_PATH,
+    )
+
+    class Runtime:
+        def evaluate(self, *_args: object, **_kwargs: object) -> list[float]:
+            return [1.0]
+
+    identity = {
+        "loaded_module_origin_policy": {
+            "observations": [],
+        }
+    }
+    profile = {
+        "status": ResultStatus.OK.value,
+        "wall_seconds_per_point": 1.0e-6,
+        "execution_seconds_per_point": 0.5e-6,
+        "matrix_element": 1.0,
+        "sample_count": 5,
+        "standard_error_seconds_per_point": 0.1e-6,
+        "relative_standard_error": 0.1,
+        "execution_timing": {},
+        "arena_profile_evidence": {},
+        "benchmark_evidence": {
+            "report_command_path": LOADED_RUNTIME_PROFILE_COMMAND_PATH,
+        },
+        "resolved_sum_validation": {"status": ResultStatus.OK.value},
+    }
+    monkeypatch.setattr(
+        report_measurement,
+        "generate_artifact",
+        lambda *_args, **_kwargs: artifact,
+    )
+    monkeypatch.setattr(
+        report_measurement,
+        "validate_artifact_contract",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        report_measurement,
+        "_load_runtime",
+        lambda *_args, **_kwargs: Runtime(),
+    )
+    monkeypatch.setattr(
+        report_measurement,
+        "runtime_identity_payload",
+        lambda *_args, **_kwargs: identity,
+    )
+    monkeypatch.setattr(
+        report_measurement,
+        "shared_validation_points",
+        lambda _process: ((1.0,),),
+    )
+    monkeypatch.setattr(
+        report_measurement,
+        "_resolution_benchmark_config",
+        lambda _config: object(),
+    )
+    monkeypatch.setattr(
+        report_measurement,
+        "profile_runtime",
+        lambda *_args, **_kwargs: deepcopy(profile),
+    )
+
+    measurement = measure_pyamplicol_cell(
+        cell,
+        artifact_path=artifact_path,
+        settings=RunnerSettings(source_revision_override="a" * 40),
+        repo_root=tmp_path,
+        baseline=None,
+    )
+
+    provenance = measurement["provenance"]
+    assert provenance["generation_command_path"] == PUBLIC_CLI_COMMAND_PATH
+    assert provenance["report_momenta"] == [[1.0]]
+    assert (
+        provenance["runtime_profile"]["report_command_path"]
+        == LOADED_RUNTIME_PROFILE_COMMAND_PATH
+    )
 
 
 def test_catalog_contains_no_amplicol_candidate_matrix_cell() -> None:
