@@ -1421,7 +1421,9 @@ jobs:
     # reproduce the process it crosses into (2->2 and 2->3, every merged flavor,
     # split orders), the density matrix must follow the crossing, an s-channel
     # constraint must disable the machinery, and the good-helicity sets must obey
-    # the crossing's row permutation.
+    # the crossing's row permutation. TestGoodHelCParityDedup rides along (same
+    # backend, ~10s): the C-parity de-duplication of the helicity sum must hold
+    # where it engages and refuse itself where the pairs do not match.
     # Needs gfortran AND f2py (restore-pip-cache provides meson/ninja and sets
     # f2py_compiler); the f2py-backed tests skip without it, which fails the job.
     runs-on: ubuntu-24.04
@@ -1431,10 +1433,10 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
-      - name: crossing symmetry, fortran standalone
+      - name: crossing symmetry + C-parity good-helicity dedup, fortran standalone
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py -pA TestStandaloneCrossSymmetry -t0 -l INFO
+            ./tests/test_manager.py -pA TestStandaloneCrossSymmetry TestGoodHelCParityDedup -t0 -l INFO
 
 
   acceptancetest_crossing_cpp:

@@ -143,6 +143,29 @@ def _iflav(cross, flav, nflav):
     return cross * nflav + flav
 
 
+def _massless_2to2(energy, cos_theta):
+    """A massless 2->2 point: (leg1_in, leg2_in, leg3_out, leg4_out)."""
+    halfe = 0.5 * energy
+    sin_theta = math.sqrt(1.0 - cos_theta ** 2)
+    return [(halfe, 0.0, 0.0, halfe),
+            (halfe, 0.0, 0.0, -halfe),
+            (halfe, halfe * sin_theta, 0.0, halfe * cos_theta),
+            (halfe, -halfe * sin_theta, 0.0, -halfe * cos_theta)]
+
+
+# The C-parity de-duplication halves the helicity sum by pairing every row with
+# its fully flipped partner. Two all-massless 2->2 processes bracket the rule:
+#   u u~ > g g    pure QCD, parity conserving -- every pair matches, so the
+#                 reuse ENGAGES and its halve-and-double arithmetic must leave
+#                 the answer alone.
+#   d u~ > e- ve~ pure charged current, maximally parity violating (V-A) -- only
+#                 left-handed fermions couple, so the flipped partner of the one
+#                 surviving row is identically zero and the all-or-nothing rule
+#                 must REFUSE the reuse for the whole flavor.
+PROC_CPARITY_PAIRED = 'u u~ > g g'
+PROC_CPARITY_BROKEN = 'd u~ > e- ve~'
+
+
 # Subprocess probe for the good-helicity remap (GHREMAP) relation. Run against
 # a compiled matrix2py module: for every DERIVABLE crossing (active partners all
 # final), the crossed good-helicity set -- the rows where py_smatrixhel_idx is
@@ -590,12 +613,7 @@ C        of the process the extended FLAV_IDX selects (crossed and conjugated).
         Every parton here (u, u~, g) is massless, so one point serves both
         processes; only the interpretation of each slot differs.
         """
-        halfe = 0.5 * self.energy
-        sin_theta = math.sqrt(1.0 - cos_theta ** 2)
-        return [(halfe, 0.0, 0.0, halfe),
-                (halfe, 0.0, 0.0, -halfe),
-                (halfe, halfe * sin_theta, 0.0, halfe * cos_theta),
-                (halfe, -halfe * sin_theta, 0.0, -halfe * cos_theta)]
+        return _massless_2to2(self.energy, cos_theta)
 
     def _read_nflav(self, pdir):
         """NFLAV of a generated process, needed to encode the extended IFLAV.
@@ -1412,6 +1430,275 @@ print("F2PY_PDG_OK")
             with self.subTest(cross=cross):
                 self._assert_decay_crossing(base, base_line, ref_line, cross,
                                             pdgs)
+
+
+class TestGoodHelCParityDedup(unittest.TestCase):
+    """The C-parity de-duplication of the helicity sum must be transparent.
+
+    SMATRIX pairs every helicity row IHEL with FLIP(IHEL), the row with every
+    helicity negated. For the first 20 unpolarized calls it evaluates both and
+    compares |M|^2 (the scan phase); from then on -- and ONLY if every pair
+    matched -- it evaluates the lower-index row once, counts it twice and skips
+    its partner, halving the loop (the fast phase).
+
+    Both halves of that contract are checked directly rather than through a
+    golden number:
+
+      (a) the premise, per row: for a parity-conserving process the paired rows
+          really do have the same |M|^2 at the same momenta, and for a
+          parity-violating one they do not. Probed row by row through
+          SMATRIXHEL, whose helicity CODE comes from the process' own
+          ENCODE_HEL, so this also pins the pairing to the canonical encoding
+          rather than to a row index the test guessed.
+
+      (b) the consequence: the plain unpolarized sum is the same before and
+          after the fast phase switches on -- both where the reuse engages (the
+          halve-and-double arithmetic) and where it must refuse itself. The
+          second is the regression: the verdict used to default to "de-duplicate"
+          and the validating scan could be skipped entirely (read_good_hel forces
+          NTRY past MAXTRIES), so a flavor whose pairs nothing had verified
+          silently summed half of its helicities.
+
+    Verified by instrumenting SMATRIX to print DEDUP while writing these: over 30
+    successive calls u u~ > g g ends with CSYM true and the fast phase ON from
+    call 20, while d u~ > e- ve~ ends with CSYM false and never enters it. The
+    two processes really do cover the engage and the refuse branch, so neither
+    stability check passes merely because nothing ever happened.
+    """
+
+    energy = 1000.0
+    cos_theta = 0.3
+    # > 20 unpolarized calls, so the last ones are in the fast phase.
+    nrepeat = 30
+    # The fast phase accumulates 2*|M|^2 at the representative instead of adding
+    # the partner separately, so the sum is reassociated: equal to the last bit
+    # is not guaranteed, agreement to ~1e-12 is.
+    tolerance = 1e-12
+
+    debugging = getattr(unittest, 'debug', False)
+
+    def setUp(self):
+        self.cmd = cmd_interface.MasterCmd()
+        self.cmd.no_notification()
+        self.tmpdir = tempfile.mkdtemp(
+            prefix='cparity_debug_' if self.debugging else 'cparity_')
+
+    def tearDown(self):
+        if not self.debugging and os.path.isdir(self.tmpdir):
+            shutil.rmtree(self.tmpdir)
+
+    # ------------------------------------------------------------------
+    def _generate(self, process, name):
+        """Standalone-output `process`, build the C-parity driver, return its
+        P* dir."""
+        outdir = pjoin(self.tmpdir, name)
+        self.cmd.exec_cmd('set automatic_html_opening False')
+        self.cmd.exec_cmd('set group_subprocesses False')
+        self.cmd.exec_cmd('set apply_flavor_grouping True')
+        self.cmd.exec_cmd('import model sm')
+        self.cmd.exec_cmd('generate %s' % process)
+        self.cmd.exec_cmd('output standalone %s -f' % outdir)
+
+        subproc_root = pjoin(outdir, 'SubProcesses')
+        pdirs = [pjoin(subproc_root, entry)
+                 for entry in sorted(os.listdir(subproc_root))
+                 if entry.startswith('P')
+                 and os.path.isdir(pjoin(subproc_root, entry))]
+        self.assertEqual(len(pdirs), 1,
+                         'Expected a single subprocess directory for %s, got %s'
+                         % (process, pdirs))
+        pdir = pdirs[0]
+        source = open(pjoin(pdir, 'matrix.f')).read()
+        # The probe drives flavor 1 directly, so the process must not have been
+        # merged into a multi-flavor matrix element behind our back.
+        nflav = re.search(r'PARAMETER\s*\(NFLAV=(\d+)\)', source)
+        self.assertTrue(nflav, 'Could not read NFLAV from %s' % pdir)
+        self.assertEqual(int(nflav.group(1)), 1,
+                         '%s came out with NFLAV=%s; the probe assumes a single '
+                         'flavor' % (process, nflav.group(1)))
+        ncomb = re.search(r'PARAMETER\s*\(\s*NCOMB=(\d+)\)', source)
+        self.assertTrue(ncomb, 'Could not read NCOMB from %s' % pdir)
+        self._write_driver(pdir, int(ncomb.group(1)))
+        retcode = self._call(['make', 'check'], pdir)
+        self.assertEqual(retcode, 0, 'Failed to compile the driver in %s' % pdir)
+        return pdir
+
+    @staticmethod
+    def _call(command, cwd):
+        if logger.isEnabledFor(logging.INFO):
+            return subprocess.call(command, cwd=cwd)
+        with open(os.devnull, 'w') as devnull:
+            return subprocess.call(command, stdout=devnull, stderr=devnull,
+                                   cwd=cwd)
+
+    def _write_driver(self, pdir, ncomb):
+        """Replace check_sa.f by a driver with the two probes this needs.
+
+        MODE 1 walks the helicity table and reports (|M(h)|^2, |M(-h)|^2) for
+        every row, going through ENCODE_HEL so the codes are the process' own.
+        MODE 2 calls the plain unpolarized SMATRIX repeatedly at one point, so
+        the scan phase and the fast phase can be compared within a single run --
+        the de-duplication state lives in SMATRIX and does not survive the
+        process.
+        """
+        driver = '''      PROGRAM CPARITY_DRIVER
+      use model_object
+      IMPLICIT NONE
+      INCLUDE "coupl.inc"
+      INCLUDE "nexternal.inc"
+      INTEGER NCOMB
+      PARAMETER (NCOMB=%(ncomb)d)
+      REAL*8 P(0:3,NEXTERNAL), ANS, ANSFLIP
+      INTEGER I, J, MODE, NREP, IHEL, CODE, FCODE, IDEN_STAR
+      INTEGER NHEL_STAR(NEXTERNAL,NCOMB)
+      INTEGER THIS(NEXTERNAL), FLIPPED(NEXTERNAL)
+      call setpara('param_card.dat')
+      OPEN(UNIT=42,FILE='cparity_input.dat',STATUS='OLD')
+      READ(42,*) MODE
+      DO I=1,NEXTERNAL
+         READ(42,*) (P(J,I),J=0,3)
+      ENDDO
+      IF (MODE.EQ.1) THEN
+C        Per-row C-parity probe. SMATRIXHEL selects a single row by its
+C        canonical code and undoes the helicity average, the same on both
+C        rows of a pair, so the two values are directly comparable.
+         CALL GET_NHEL(IDEN_STAR,NHEL_STAR)
+         DO IHEL=1,NCOMB
+            DO J=1,NEXTERNAL
+               THIS(J) = NHEL_STAR(J,IHEL)
+               FLIPPED(J) = -NHEL_STAR(J,IHEL)
+            ENDDO
+            CALL ENCODE_HEL(THIS, CODE)
+            CALL ENCODE_HEL(FLIPPED, FCODE)
+            CALL SMATRIXHEL(P, CODE, 1, ANS)
+            CALL SMATRIXHEL(P, FCODE, 1, ANSFLIP)
+            WRITE(*,'(A,3(1X,I6),2(1X,ES25.17))')
+     &        'PAIR=', IHEL, CODE, FCODE, ANS, ANSFLIP
+         ENDDO
+      ELSE
+C        The plain unpolarized sum, repeatedly: NTRY_CSYM crosses its
+C        threshold part way through and the fast phase takes over.
+         READ(42,*) NREP
+         DO I=1,NREP
+            CALL SMATRIX(P,1,ANS)
+            WRITE(*,'(A,1X,I6,1X,ES25.17)') 'ANS=', I, ANS
+         ENDDO
+      ENDIF
+      CLOSE(42)
+      END
+'''
+        with open(pjoin(pdir, 'check_sa.f'), 'w') as fsock:
+            fsock.write(driver % {'ncomb': ncomb})
+
+    def _probe(self, pdir, lines):
+        with open(pjoin(pdir, 'cparity_input.dat'), 'w') as fsock:
+            fsock.write('\n'.join(lines) + '\n')
+        return subprocess.Popen(['./check'], stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT,
+                                cwd=pdir).communicate()[0].decode()
+
+    def _momentum_lines(self):
+        return [' '.join('%.17e' % component for component in mom)
+                for mom in _massless_2to2(self.energy, self.cos_theta)]
+
+    def _pairs(self, pdir):
+        """[(row, |M(h)|^2, |M(-h)|^2)] over the whole helicity table."""
+        output = self._probe(pdir, ['1'] + self._momentum_lines())
+        pairs = [(int(row), float(direct), float(flipped))
+                 for row, _code, _fcode, direct, flipped
+                 in re.findall(r'PAIR=\s+(\d+)\s+(\d+)\s+(\d+)\s+'
+                               r'(\S+)\s+(\S+)', output)]
+        self.assertTrue(pairs, 'no C-parity pair read from %s, got:\n%s'
+                        % (pdir, output))
+        return pairs
+
+    def _repeated_sums(self, pdir):
+        """The unpolarized SMATRIX value of each of `nrepeat` successive calls."""
+        output = self._probe(pdir, ['2'] + self._momentum_lines()
+                             + ['%d' % self.nrepeat])
+        values = [float(value)
+                  for _call, value in re.findall(r'ANS=\s+(\d+)\s+(\S+)', output)]
+        self.assertEqual(len(values), self.nrepeat,
+                         'expected %d matrix elements from %s, got %d:\n%s'
+                         % (self.nrepeat, pdir, len(values), output))
+        return values
+
+    def _assert_sum_is_stable(self, pdir, label):
+        """Every repeated call must give the first call's value.
+
+        Call 1 is in the scan phase (full helicity sum, both members of every
+        pair evaluated); the last calls are past the threshold. If the reuse is
+        wrong -- a missing factor of two, or a de-duplication applied to a
+        flavor whose pairs do not match -- the value steps part way through.
+        """
+        values = self._repeated_sums(pdir)
+        reference = values[0]
+        self.assertNotEqual(reference, 0.0,
+                            '%s gives a null matrix element' % label)
+        for index, value in enumerate(values, start=1):
+            self.assertLessEqual(
+                abs(value - reference), self.tolerance * abs(reference),
+                '%s: call %d gives %r but call 1 gave %r -- the C-parity '
+                'de-duplication changed the unpolarized sum'
+                % (label, index, value, reference))
+
+    # ------------------------------------------------------------------
+    def test_cparity_pairs_match_for_qcd(self):
+        """Parity-conserving: every row equals its fully flipped partner.
+
+        This is the premise the fast phase rests on. Checked row by row, so a
+        pairing built on the wrong encoding fails here rather than silently
+        halving the sum somewhere else.
+        """
+        pdir = self._generate(PROC_CPARITY_PAIRED, 'Proc_cparity_qcd')
+        pairs = self._pairs(pdir)
+        nonzero = 0
+        for row, direct, flipped in pairs:
+            scale = max(abs(direct), abs(flipped))
+            if scale == 0.0:
+                continue
+            nonzero += 1
+            self.assertLessEqual(
+                abs(direct - flipped), 1e-10 * scale,
+                '%s row %d: |M(h)|^2=%r but |M(-h)|^2=%r; the C-parity pairing '
+                'the de-duplication relies on does not hold'
+                % (PROC_CPARITY_PAIRED, row, direct, flipped))
+        self.assertGreater(nonzero, 1,
+                           'only %d non-zero helicity row(s) in %s: the pairing '
+                           'is not being exercised'
+                           % (nonzero, PROC_CPARITY_PAIRED))
+
+    def test_cparity_pairs_broken_for_charged_current(self):
+        """Maximally parity-violating: at least one pair must NOT match.
+
+        Without this the "all-or-nothing refusal" half of the rule would never
+        be exercised -- if every process in the suite happened to be
+        parity-conserving, a de-duplication that never refuses would pass.
+        """
+        pdir = self._generate(PROC_CPARITY_BROKEN, 'Proc_cparity_cc')
+        pairs = self._pairs(pdir)
+        mismatched = [(row, direct, flipped)
+                      for row, direct, flipped in pairs
+                      if abs(direct - flipped)
+                      > 1e-10 * max(abs(direct), abs(flipped), 1e-99)]
+        self.assertTrue(
+            mismatched,
+            '%s: every helicity row matched its flipped partner, so this '
+            'process does not test the refusal path any more' % PROC_CPARITY_BROKEN)
+
+    def test_dedup_leaves_the_paired_sum_unchanged(self):
+        """The reuse engages here, and must not move the answer."""
+        pdir = self._generate(PROC_CPARITY_PAIRED, 'Proc_cparity_qcd_sum')
+        self._assert_sum_is_stable(pdir, PROC_CPARITY_PAIRED)
+
+    def test_refused_dedup_leaves_the_broken_sum_unchanged(self):
+        """The regression: the reuse must refuse itself here.
+
+        If it does not, the fast phase drops every row whose partner is zero and
+        doubles the wrong ones, and the sum moves at call 21.
+        """
+        pdir = self._generate(PROC_CPARITY_BROKEN, 'Proc_cparity_cc_sum')
+        self._assert_sum_is_stable(pdir, PROC_CPARITY_BROKEN)
 
 
 class TestCheckCrossingCommand(unittest.TestCase):
