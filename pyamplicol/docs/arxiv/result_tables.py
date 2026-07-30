@@ -178,6 +178,8 @@ def _require_git_identity(
     revision: str,
     tree: str,
     require_clean: bool,
+    require_tracked_clean: bool = False,
+    untracked_source_paths: tuple[str, ...] = (),
 ) -> None:
     if (
         _git_value(root, "HEAD^{commit}") != revision
@@ -200,6 +202,55 @@ def _require_git_identity(
         )
         if completed.returncode != 0 or completed.stdout:
             raise RuntimeError("policy-wrapper checkout is not clean")
+    if require_tracked_clean:
+        completed = subprocess.run(
+            (
+                "git",
+                "-C",
+                str(root),
+                "diff",
+                "--quiet",
+                "--no-ext-diff",
+                "HEAD",
+                "--",
+            ),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if completed.returncode == 1:
+            raise RuntimeError(
+                "measured-source checkout has tracked changes"
+            )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                "cannot inspect measured-source tracked cleanliness"
+            )
+    if untracked_source_paths:
+        completed = subprocess.run(
+            (
+                "git",
+                "-C",
+                str(root),
+                "ls-files",
+                "--others",
+                "--exclude-standard",
+                "-z",
+                "--",
+                *untracked_source_paths,
+            ),
+            check=False,
+            capture_output=True,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                "cannot inspect measured-source untracked files"
+            )
+        if completed.stdout:
+            raise RuntimeError(
+                "measured-source checkout has untracked files in "
+                "imported source roots"
+            )
 
 
 def _sha256_file(path: Path) -> str:
@@ -419,6 +470,9 @@ if _SPLIT_WORKER_SPECIFIED:
         revision=measured_revision,
         tree=measured_tree,
         require_clean=False,
+        require_tracked_clean=True,
+        # ``src`` is the measured checkout's only Python import root.
+        untracked_source_paths=("src",),
     )
     _require_git_identity(
         REPOSITORY_ROOT,

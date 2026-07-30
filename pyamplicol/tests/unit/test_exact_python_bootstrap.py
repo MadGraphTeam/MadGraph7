@@ -620,3 +620,74 @@ def test_split_worker_uses_wrapper_tools_and_measured_source_venv(
         "roots": [str(measured_package)],
         "native_extension": str(measured_package / native_name),
     }
+
+    preimport_sentinel.unlink()
+    (output / "_worker.json").unlink()
+    (measured_package / "__init__.py").write_text(
+        "ORIGIN = 'dirty-measured-pyamplicol'\n",
+        encoding="ascii",
+    )
+    dirty_result = subprocess.run(
+        (
+            measured / ".venv/bin/python",
+            "-I",
+            "-S",
+            "-B",
+            wrapper_entrypoint,
+            *common_arguments,
+            "_worker",
+            "--result-json",
+            output / "dirty-result.json",
+        ),
+        cwd=measured,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=environment,
+        timeout=30,
+    )
+
+    assert dirty_result.returncode != 0
+    assert (
+        "measured-source checkout has tracked changes"
+        in dirty_result.stderr
+    )
+    assert not preimport_sentinel.exists()
+    assert not (output / "_worker.json").exists()
+
+    (measured_package / "__init__.py").write_text(
+        "ORIGIN = 'measured-pyamplicol'\n",
+        encoding="ascii",
+    )
+    (measured_package / "injected.py").write_text(
+        "raise RuntimeError('untracked measured source was imported')\n",
+        encoding="ascii",
+    )
+    untracked_result = subprocess.run(
+        (
+            measured / ".venv/bin/python",
+            "-I",
+            "-S",
+            "-B",
+            wrapper_entrypoint,
+            *common_arguments,
+            "_worker",
+            "--result-json",
+            output / "untracked-result.json",
+        ),
+        cwd=measured,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=environment,
+        timeout=30,
+    )
+
+    assert untracked_result.returncode != 0
+    assert (
+        "measured-source checkout has untracked files in imported "
+        "source roots"
+        in untracked_result.stderr
+    )
+    assert not preimport_sentinel.exists()
+    assert not (output / "_worker.json").exists()
