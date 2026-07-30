@@ -245,6 +245,7 @@ class RecurrenceProcessArtifact:
     physics: Mapping[str, object]
     recurrence_schedule_path: Path
     recurrence_schedule_digest: str
+    recurrence_native_schedule_semantic_digest: str
     recurrence_schedule_size_bytes: int
     recurrence_schedule_sha256: str
     recurrence_schedule_member_count: int
@@ -3908,6 +3909,10 @@ def _validate_recurrence_schedule_sharing(manifest: ArtifactManifest) -> None:
             binding.get("process_semantic_digest"),
             f"recurrence process binding {process_id!r} semantic digest",
         )
+        _recurrence_binding_native_schedule_semantic_digest(
+            binding,
+            process_id=process_id,
+        )
         _validate_recurrence_process_remap(
             binding.get("remap"),
             context=f"recurrence process binding {process_id!r}",
@@ -3965,6 +3970,29 @@ def _validate_recurrence_schedule_sharing(manifest: ArtifactManifest) -> None:
             raise ValueError(
                 f"recurrence shared schedule {digest} binding ownership is inconsistent"
             )
+
+
+def _recurrence_binding_native_schedule_semantic_digest(
+    binding: Mapping[str, object],
+    *,
+    process_id: str,
+) -> str:
+    # Direct-plan-v2 artifacts published before relation-policy separation
+    # embedded the native identity in schedule_digest. Only an absent field
+    # receives that compatibility fallback; an explicitly malformed value
+    # must still fail closed.
+    value = (
+        binding["native_schedule_semantic_digest"]
+        if "native_schedule_semantic_digest" in binding
+        else binding.get("schedule_digest")
+    )
+    return _canonical_sha256(
+        value,
+        (
+            f"recurrence process binding {process_id!r} "
+            "native schedule semantic digest"
+        ),
+    )
 
 
 def _validate_recurrence_process_remap(

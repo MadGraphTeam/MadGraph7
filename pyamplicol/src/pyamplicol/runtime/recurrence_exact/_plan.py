@@ -61,6 +61,16 @@ class _ParameterProjectionRow:
 
 
 @dataclass(frozen=True, slots=True)
+class _RuntimeParameterSchemaRow:
+    runtime_slot: int
+    runtime_name: str
+    parameter_template_id: int
+    prepared_parameter_id: int | None
+    component: int
+    probe_policy: str = "native-template-default-perturbed-v1"
+
+
+@dataclass(frozen=True, slots=True)
 class _SourceTemplate:
     template_id: int
     dimension: int
@@ -118,6 +128,7 @@ class _RecurrenceExactPlan:
     parameter_projection: tuple[_ParameterProjectionRow, ...]
     parameter_derivation: _PreparedParameterDerivation | None
     runtime_defaults: tuple[Decimal, ...] = ()
+    runtime_parameter_schema: tuple[_RuntimeParameterSchemaRow, ...] = ()
     color_contraction: _RecurrenceColorContraction | None = None
 
     @classmethod
@@ -170,6 +181,10 @@ class _RecurrenceExactPlan:
             )
         )
         runtime_defaults = _parse_runtime_parameter_defaults(runtime_parameters)
+        runtime_parameter_schema = _runtime_parameter_schema(
+            metadata,
+            runtime_parameters,
+        )
         defaults = tuple(
             _parse_complex_default(value, index)
             for index, value in enumerate(
@@ -226,6 +241,7 @@ class _RecurrenceExactPlan:
             parameter_projection=projection_rows,
             parameter_derivation=derivation,
             runtime_defaults=runtime_defaults,
+            runtime_parameter_schema=runtime_parameter_schema,
             color_contraction=color_contraction,
         )
         result._validate(pack)
@@ -278,6 +294,10 @@ class _RecurrenceExactPlan:
             )
         )
         runtime_defaults = _parse_runtime_parameter_defaults(runtime_parameters)
+        runtime_parameter_schema = _runtime_parameter_schema(
+            runtime_metadata,
+            runtime_parameters,
+        )
         defaults = tuple(
             _parse_complex_default(value, index)
             for index, value in enumerate(
@@ -334,6 +354,7 @@ class _RecurrenceExactPlan:
             parameter_projection=projection_rows,
             parameter_derivation=derivation,
             runtime_defaults=runtime_defaults,
+            runtime_parameter_schema=runtime_parameter_schema,
             color_contraction=None,
         )
         result._validate(pack, allow_missing_color_contraction=True)
@@ -747,6 +768,78 @@ def _parameter_projection(
             )
         rows.append(_ParameterProjectionRow(runtime_slot, prepared_slot, component))
     return tuple(rows), by_name
+
+
+def _runtime_parameter_schema(
+    metadata: Mapping[str, object],
+    runtime_parameters: Sequence[Mapping[str, object]],
+) -> tuple[_RuntimeParameterSchemaRow, ...]:
+    raw_projection = tuple(
+        _mapping(value, f"parameter projection {index}")
+        for index, value in enumerate(
+            _sequence(metadata.get("parameter_projection"), "parameter projection")
+        )
+    )
+    if len(raw_projection) != len(runtime_parameters):
+        raise ArtifactError(
+            "recurrence runtime parameter schema does not cover every flattened slot"
+        )
+    rows: list[_RuntimeParameterSchemaRow] = []
+    for index, (projection, parameter) in enumerate(
+        zip(raw_projection, runtime_parameters, strict=True)
+    ):
+        runtime_slot = _nonnegative_int(
+            projection.get("runtime_slot"),
+            f"parameter projection {index} runtime slot",
+        )
+        parameter_index = _nonnegative_int(
+            parameter.get("parameter_index"),
+            f"runtime parameter {index} parameter index",
+        )
+        runtime_name = projection.get("runtime_name")
+        if (
+            runtime_slot != index
+            or parameter_index != index
+            or not isinstance(runtime_name, str)
+            or not runtime_name
+        ):
+            raise ArtifactError(
+                f"recurrence runtime parameter schema row {index} is not canonical"
+            )
+        prepared_parameter_id = projection.get("prepared_parameter_id")
+        if prepared_parameter_id is not None:
+            prepared_parameter_id = _nonnegative_int(
+                prepared_parameter_id,
+                f"parameter projection {index} prepared parameter ID",
+            )
+        parameter_kind = parameter.get("kind")
+        if not isinstance(parameter_kind, str) or not parameter_kind:
+            raise ArtifactError(
+                f"runtime parameter {index} has no canonical parameter kind"
+            )
+        probe_policy = (
+            "derived-overwritten-fixed-zero-v1"
+            if parameter_kind
+            in {"derived", "derived_parameter_component"}
+            else "native-template-default-perturbed-v1"
+        )
+        rows.append(
+            _RuntimeParameterSchemaRow(
+                runtime_slot=runtime_slot,
+                runtime_name=runtime_name,
+                parameter_template_id=_nonnegative_int(
+                    projection.get("parameter_template_id"),
+                    f"parameter projection {index} parameter template ID",
+                ),
+                prepared_parameter_id=prepared_parameter_id,
+                component=_nonnegative_int(
+                    projection.get("component"),
+                    f"parameter projection {index} component",
+                ),
+                probe_policy=probe_policy,
+            )
+        )
+    return tuple(rows)
 
 
 def _prepared_parameter_indices(

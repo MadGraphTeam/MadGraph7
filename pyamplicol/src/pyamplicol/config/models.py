@@ -553,6 +553,13 @@ class GenerationRelationDiscoveryConfig:
                 minimum=0.0,
             ),
         )
+        if any(
+            value == 0.0 and math.copysign(1.0, value) < 0.0
+            for value in (self.relative_tolerance, self.absolute_tolerance)
+        ):
+            raise ConfigurationError(
+                "generation.relation_discovery tolerances cannot use negative zero"
+            )
         if self.relative_tolerance == 0.0 and self.absolute_tolerance == 0.0:
             raise ConfigurationError(
                 "generation.relation_discovery tolerances cannot both be zero"

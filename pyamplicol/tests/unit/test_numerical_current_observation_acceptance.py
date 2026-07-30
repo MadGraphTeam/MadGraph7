@@ -197,6 +197,48 @@ def test_equal_opposite_and_zero_relations_certify_and_replay(
         source_semantics_sha256=_OTHER_SOURCE_SEMANTICS,
     )
 
+    for field in (
+        "relative_tolerance_binary64",
+        "absolute_tolerance_binary64",
+    ):
+        noncanonical = dict(payload)
+        noncanonical[field] = str(payload[field]).upper()
+        with pytest.raises(ValueError, match="tolerances are invalid"):
+            NumericalCurrentRelationCertificate.from_json_dict(noncanonical)
+    negative_zero = dict(payload)
+    negative_zero["relative_tolerance_binary64"] = "-0x0.0p+0"
+    with pytest.raises(ValueError, match="tolerances are invalid"):
+        NumericalCurrentRelationCertificate.from_json_dict(negative_zero)
+    for spelling in ("-0", "0.0", "0e99"):
+        noncanonical_residual = dict(payload)
+        noncanonical_residual[
+            "candidate_maximum_absolute_residual"
+        ] = spelling
+        with pytest.raises(ValueError, match="canonical decimal"):
+            NumericalCurrentRelationCertificate.from_json_dict(
+                noncanonical_residual
+            )
+
+
+def test_generic_numerical_tolerance_boundaries_reject_negative_zero() -> None:
+    exact = _certify(
+        "equal",
+        candidate_current_values=_CANDIDATE_REPRESENTATIVE,
+        verification_current_values=_VERIFICATION_REPRESENTATIVE,
+        relative_tolerance=float.fromhex("0x0.0000000000001p-1022"),
+        absolute_tolerance=0.0,
+    )
+    assert exact is not None
+    assert exact.relative_tolerance.hex() == "0x0.0000000000001p-1022"
+    for invalid in (-0.0, float("nan"), float("inf")):
+        assert _certify(
+            "equal",
+            candidate_current_values=_CANDIDATE_REPRESENTATIVE,
+            verification_current_values=_VERIFICATION_REPRESENTATIVE,
+            relative_tolerance=invalid,
+            absolute_tolerance=1.0e-80,
+        ) is None
+
 
 @pytest.mark.parametrize("relation_kind", ("equal", "opposite", "zero"))
 def test_nearest_false_relation_with_documented_residual_is_rejected(

@@ -13,7 +13,8 @@ use crate::recurrence::{
 };
 use crate::{ArtifactProcess, PROCESS_ARTIFACT_SCHEMA_VERSION, RusticolError, RusticolResult};
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
 pub(super) const RECURRENCE_RUNTIME_STORAGE_ABI: &str = "pacbin-v1";
@@ -99,6 +100,8 @@ pub(super) struct RecurrenceProcessBinding {
     pub(super) abi: String,
     pub(super) process_id: String,
     pub(super) schedule_digest: String,
+    #[serde(default)]
+    pub(super) native_schedule_semantic_digest: Option<String>,
     pub(super) process_semantic_digest: String,
     pub(super) process_support_words: Vec<u64>,
     pub(super) remap: RecurrenceProcessRemap,
@@ -318,6 +321,7 @@ pub(super) struct RecurrenceRelationDiscoverySummary {
     pub(super) certificate_replay: RecurrenceRelationCertificateReplay,
     pub(super) numerical_candidate_count: u64,
     pub(super) uncertified_candidate_count: u64,
+    pub(super) rejected_hypothesis_count: u64,
     pub(super) exact_certified_relation_count: u64,
     pub(super) applied_relation_count: u64,
     pub(super) interaction_evaluation_count_before: u64,
@@ -332,7 +336,21 @@ pub(super) struct RecurrenceRelationDiscoverySummary {
     pub(super) certificate_count: u64,
     pub(super) certificates_truncated: bool,
     pub(super) rejected_candidates: Vec<RecurrenceRelationRejectedCandidate>,
+    #[serde(default)]
+    pub(super) rejected_candidate_diagnostics: Option<RecurrenceRelationRejectedDiagnostics>,
     pub(super) follow_up_boundary: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RecurrenceRelationRejectedDiagnostics {
+    pub(super) total_rejected_hypothesis_count: u64,
+    pub(super) retained_count: u64,
+    pub(super) truncated: bool,
+    pub(super) truncation_policy: String,
+    pub(super) retained_sha256: String,
+    pub(super) full_census_sha256: String,
+    pub(super) full_rejection_sha256: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -350,10 +368,18 @@ pub(super) struct RecurrenceRelationDiscoveryProbe {
     pub(super) status: String,
     pub(super) precision_digits: u32,
     pub(super) probe_count: u32,
+    pub(super) verification_probe_count: u32,
     pub(super) effective_projection_count: u32,
     pub(super) seed: u64,
     pub(super) deterministic: bool,
     pub(super) candidate_only: bool,
+    pub(super) tested_hypothesis_count: u64,
+    pub(super) verification_rejected_count: u64,
+    pub(super) runtime_parameter_schema_sha256: Option<String>,
+    pub(super) candidate_observation_batch_sha256: Option<String>,
+    pub(super) verification_observation_batch_sha256: Option<String>,
+    pub(super) decision_sha256: Option<String>,
+    pub(super) rejection_decision_sha256: String,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -899,6 +925,12 @@ impl RecurrenceRuntimeContainer {
 }
 
 impl RecurrenceProcessBinding {
+    pub(super) fn native_schedule_semantic_digest(&self) -> &str {
+        self.native_schedule_semantic_digest
+            .as_deref()
+            .unwrap_or(&self.schedule_digest)
+    }
+
     fn validate(&self, process_key: &str) -> RusticolResult<()> {
         if self.abi != RECURRENCE_PROCESS_BINDING_ABI
             || self.path != RECURRENCE_PROCESS_BINDING_PATH
@@ -913,6 +945,9 @@ impl RecurrenceProcessBinding {
             ));
         }
         parse_sha256(&self.schedule_digest, "recurrence root schedule")?;
+        if let Some(digest) = self.native_schedule_semantic_digest.as_deref() {
+            parse_sha256(digest, "recurrence native schedule semantic digest")?;
+        }
         parse_sha256(
             &self.process_semantic_digest,
             "recurrence process semantic binding",
@@ -1485,6 +1520,7 @@ impl RecurrenceRelationDiscoverySummary {
             &[
                 self.numerical_candidate_count,
                 self.uncertified_candidate_count,
+                self.rejected_hypothesis_count,
                 self.exact_certified_relation_count,
                 self.applied_relation_count,
                 self.interaction_evaluation_count_before,
@@ -1504,13 +1540,78 @@ impl RecurrenceRelationDiscoverySummary {
         if self.probe.status != "completed"
             || self.probe.precision_digits < 80
             || self.probe.probe_count < 2
+            || self.probe.verification_probe_count < 2
             || self.probe.effective_projection_count < self.probe.probe_count
             || !self.probe.deterministic
-            || !self.probe.candidate_only
         {
             return Err(RusticolError::integrity(
                 "recurrence relation-discovery probe contract is invalid",
             ));
+        }
+        parse_sha256(
+            &self.probe.rejection_decision_sha256,
+            "recurrence rejected-hypothesis decisions",
+        )?;
+        for (digest, context) in [
+            (
+                self.probe.runtime_parameter_schema_sha256.as_ref(),
+                "recurrence runtime-parameter schema",
+            ),
+            (
+                self.probe.candidate_observation_batch_sha256.as_ref(),
+                "recurrence candidate observation batch",
+            ),
+            (
+                self.probe.verification_observation_batch_sha256.as_ref(),
+                "recurrence verification observation batch",
+            ),
+            (
+                self.probe.decision_sha256.as_ref(),
+                "recurrence full hypothesis decisions",
+            ),
+        ] {
+            if let Some(digest) = digest {
+                parse_sha256(digest, context)?;
+            }
+        }
+        if !self.probe.candidate_only {
+            let authenticated_raw_commitments = [
+                self.probe.runtime_parameter_schema_sha256.as_ref(),
+                self.probe.candidate_observation_batch_sha256.as_ref(),
+                self.probe.verification_observation_batch_sha256.as_ref(),
+                self.probe.decision_sha256.as_ref(),
+            ];
+            let certified = self.exact_certified_relation_count;
+            if authenticated_raw_commitments
+                .iter()
+                .any(|digest| digest.is_none())
+                || self.numerical_candidate_count
+                    != certified
+                        .checked_add(self.probe.verification_rejected_count)
+                        .ok_or_else(|| {
+                            RusticolError::integrity("recurrence raw candidate count overflows")
+                        })?
+                || self.uncertified_candidate_count != self.probe.verification_rejected_count
+                || self.uncertified_candidate_count
+                    != self
+                        .numerical_candidate_count
+                        .checked_sub(certified)
+                        .ok_or_else(|| {
+                            RusticolError::integrity("recurrence raw uncertified count underflows")
+                        })?
+                || self.rejected_hypothesis_count
+                    != self
+                        .probe
+                        .tested_hypothesis_count
+                        .checked_sub(certified)
+                        .ok_or_else(|| {
+                            RusticolError::integrity("recurrence raw rejection count underflows")
+                        })?
+            {
+                return Err(RusticolError::integrity(
+                    "recurrence authenticated raw rejection census is inconsistent",
+                ));
+            }
         }
         let certified = self.exact_certified_relation_count;
         let applied = self.applied_relation_count;
@@ -1614,6 +1715,110 @@ impl RecurrenceRelationDiscoverySummary {
                 &rejected.reason,
                 "recurrence relation-discovery rejection reason",
             )?;
+        }
+        if !self.probe.candidate_only && self.rejected_candidate_diagnostics.is_none() {
+            return Err(RusticolError::integrity(
+                "full recurrence numerical probes require rejected-candidate diagnostics",
+            ));
+        }
+        if let Some(diagnostics) = self.rejected_candidate_diagnostics.as_ref() {
+            let retained = u64::try_from(self.rejected_candidates.len()).map_err(|_| {
+                RusticolError::artifact(
+                    "recurrence relation-discovery rejection sample count exceeds u64",
+                )
+            })?;
+            let retention_is_consistent = match diagnostics.truncation_policy.as_str() {
+                "first-16-in-canonical-discovery-order-v1" => {
+                    retained
+                        == diagnostics
+                            .total_rejected_hypothesis_count
+                            .min(MAX_RELATION_DISCOVERY_SAMPLES as u64)
+                }
+                "none-authenticated-full-rejection-digest-v1" => retained == 0,
+                _ => false,
+            };
+            if diagnostics.total_rejected_hypothesis_count != self.rejected_hypothesis_count
+                || diagnostics.retained_count != retained
+                || diagnostics.truncated != (diagnostics.total_rejected_hypothesis_count > retained)
+                || !retention_is_consistent
+            {
+                return Err(RusticolError::integrity(
+                    "recurrence relation-discovery rejection diagnostics are inconsistent",
+                ));
+            }
+            let retained_rows = self
+                .rejected_candidates
+                .iter()
+                .map(|rejected| json!({"reason": &rejected.reason}))
+                .collect::<Vec<_>>();
+            let retained_payload = json!({
+                "abi": "pyamplicol-rejected-relation-diagnostics-v1",
+                "rows": retained_rows,
+            });
+            let retained_bytes = serde_json::to_vec(&retained_payload).map_err(|error| {
+                RusticolError::artifact(format!(
+                    "could not canonicalize recurrence retained rejection diagnostics: {error}"
+                ))
+            })?;
+            let expected_retained_sha256 = format!("{:x}", Sha256::digest(retained_bytes));
+            if diagnostics.retained_sha256 != expected_retained_sha256 {
+                return Err(RusticolError::integrity(
+                    "recurrence retained rejection diagnostics commitment is inconsistent",
+                ));
+            }
+            let full_census_payload = json!({
+                "abi": "pyamplicol-relation-discovery-full-census-v1",
+                "tested_hypothesis_count":
+                    self.probe.tested_hypothesis_count,
+                "numerical_candidate_count": self.numerical_candidate_count,
+                "verification_rejected_count":
+                    self.probe.verification_rejected_count,
+                "uncertified_candidate_count":
+                    self.uncertified_candidate_count,
+                "certified_relation_count":
+                    self.exact_certified_relation_count,
+                "rejected_hypothesis_count":
+                    self.rejected_hypothesis_count,
+                "applied_relation_count": self.applied_relation_count,
+                "runtime_parameter_schema_sha256":
+                    self.probe.runtime_parameter_schema_sha256,
+                "candidate_observation_batch_sha256":
+                    self.probe.candidate_observation_batch_sha256,
+                "verification_observation_batch_sha256":
+                    self.probe.verification_observation_batch_sha256,
+                "decision_sha256": self.probe.decision_sha256,
+                "rejection_decision_sha256":
+                    self.probe.rejection_decision_sha256,
+            });
+            let full_census_bytes = serde_json::to_vec(&full_census_payload).map_err(|error| {
+                RusticolError::artifact(format!(
+                    "could not canonicalize recurrence rejection census: {error}"
+                ))
+            })?;
+            let expected_full_census_sha256 = format!("{:x}", Sha256::digest(full_census_bytes));
+            if diagnostics.full_census_sha256 != expected_full_census_sha256
+                || diagnostics.full_rejection_sha256 != self.probe.rejection_decision_sha256
+            {
+                return Err(RusticolError::integrity(
+                    "recurrence full rejection census or decision commitment is inconsistent",
+                ));
+            }
+            for (digest, context) in [
+                (
+                    &diagnostics.retained_sha256,
+                    "recurrence retained rejection diagnostics",
+                ),
+                (
+                    &diagnostics.full_census_sha256,
+                    "recurrence rejection full census",
+                ),
+                (
+                    &diagnostics.full_rejection_sha256,
+                    "recurrence full rejection decisions",
+                ),
+            ] {
+                parse_sha256(digest, context)?;
+            }
         }
         Ok(())
     }
@@ -2763,6 +2968,7 @@ pub(super) mod tests {
                 "abi": RECURRENCE_PROCESS_BINDING_ABI,
                 "process_id": "x_to_x",
                 "schedule_digest": "aa".repeat(32),
+                "native_schedule_semantic_digest": "ab".repeat(32),
                 "process_semantic_digest": "11".repeat(32),
                 "process_support_words": [1],
                 "remap": {
@@ -2885,6 +3091,34 @@ pub(super) mod tests {
     }
 
     fn add_python_relation_discovery(value: &mut Value, requested_mode: &str) {
+        let retained_payload = json!({
+            "abi": "pyamplicol-rejected-relation-diagnostics-v1",
+            "rows": [],
+        });
+        let retained_sha256 = format!(
+            "{:x}",
+            Sha256::digest(serde_json::to_vec(&retained_payload).unwrap())
+        );
+        let rejection_decision_sha256 = "aa".repeat(32);
+        let full_census = json!({
+            "abi": "pyamplicol-relation-discovery-full-census-v1",
+            "tested_hypothesis_count": 0,
+            "numerical_candidate_count": 0,
+            "verification_rejected_count": 0,
+            "uncertified_candidate_count": 0,
+            "certified_relation_count": 0,
+            "rejected_hypothesis_count": 0,
+            "applied_relation_count": 0,
+            "runtime_parameter_schema_sha256": null,
+            "candidate_observation_batch_sha256": null,
+            "verification_observation_batch_sha256": null,
+            "decision_sha256": null,
+            "rejection_decision_sha256": rejection_decision_sha256,
+        });
+        let full_census_sha256 = format!(
+            "{:x}",
+            Sha256::digest(serde_json::to_vec(&full_census).unwrap())
+        );
         value["plan"]["inspection_summary"]["relation_discovery"] = json!({
             "schema_version": 1,
             "requested_mode": requested_mode,
@@ -2899,10 +3133,18 @@ pub(super) mod tests {
                 "status": "completed",
                 "precision_digits": 96,
                 "probe_count": 4,
+                "verification_probe_count": 4,
                 "effective_projection_count": 7,
                 "seed": 17,
                 "deterministic": true,
-                "candidate_only": true
+                "candidate_only": true,
+                "tested_hypothesis_count": 0,
+                "verification_rejected_count": 0,
+                "runtime_parameter_schema_sha256": null,
+                "candidate_observation_batch_sha256": null,
+                "verification_observation_batch_sha256": null,
+                "decision_sha256": null,
+                "rejection_decision_sha256": rejection_decision_sha256
             },
             "certificate_replay": {
                 "algorithm": relation_certificate_algorithm(),
@@ -2911,6 +3153,7 @@ pub(super) mod tests {
             },
             "numerical_candidate_count": 0,
             "uncertified_candidate_count": 0,
+            "rejected_hypothesis_count": 0,
             "exact_certified_relation_count": 0,
             "applied_relation_count": 0,
             "interaction_evaluation_count_before": 0,
@@ -2925,6 +3168,15 @@ pub(super) mod tests {
             "certificate_count": 0,
             "certificates_truncated": false,
             "rejected_candidates": [],
+            "rejected_candidate_diagnostics": {
+                "total_rejected_hypothesis_count": 0,
+                "retained_count": 0,
+                "truncated": false,
+                "truncation_policy": "first-16-in-canonical-discovery-order-v1",
+                "retained_sha256": retained_sha256,
+                "full_census_sha256": full_census_sha256,
+                "full_rejection_sha256": "aa".repeat(32)
+            },
             "follow_up_boundary": "exact relation discovery is opt-in"
         });
     }
@@ -3096,8 +3348,7 @@ pub(super) mod tests {
             (legacy_full_hzz_fixture_value(), "full"),
             (legacy_nlc_hzz_fixture_value(), "nlc"),
         ] {
-            let parsed =
-                parse_hzz_fixture(&serde_json::to_vec(&value).unwrap(), accuracy).unwrap();
+            let parsed = parse_hzz_fixture(&serde_json::to_vec(&value).unwrap(), accuracy).unwrap();
             assert!(
                 parsed
                     .plan
@@ -3179,6 +3430,102 @@ pub(super) mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("diagnostic recurrence relation discovery altered")
+        );
+    }
+
+    #[test]
+    fn rejects_tampered_rejected_diagnostics_commitment() {
+        let mut value = manifest();
+        add_python_relation_discovery(&mut value, "diagnostic");
+        value["plan"]["inspection_summary"]["relation_discovery"]["rejected_candidate_diagnostics"]
+            ["retained_sha256"] = json!("00".repeat(32));
+
+        assert!(
+            parse(&value)
+                .unwrap_err()
+                .to_string()
+                .contains("retained rejection diagnostics commitment")
+        );
+    }
+
+    #[test]
+    fn rejects_tampered_full_rejection_census_and_decision_commitments() {
+        for field in ["full_census_sha256", "full_rejection_sha256"] {
+            let mut value = manifest();
+            add_python_relation_discovery(&mut value, "diagnostic");
+            value["plan"]["inspection_summary"]["relation_discovery"]["rejected_candidate_diagnostics"]
+                [field] = json!("00".repeat(32));
+
+            assert!(
+                parse(&value)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("full rejection census or decision commitment"),
+                "tampered {field} was not rejected"
+            );
+        }
+    }
+
+    fn mark_relation_discovery_as_full_probe(value: &mut Value) {
+        let discovery = &mut value["plan"]["inspection_summary"]["relation_discovery"];
+        discovery["probe"]["candidate_only"] = json!(false);
+        for field in [
+            "runtime_parameter_schema_sha256",
+            "candidate_observation_batch_sha256",
+            "verification_observation_batch_sha256",
+            "decision_sha256",
+        ] {
+            discovery["probe"][field] = json!("bb".repeat(32));
+        }
+    }
+
+    #[test]
+    fn rejects_full_probe_with_removed_rejected_diagnostics() {
+        let mut value = manifest();
+        add_python_relation_discovery(&mut value, "diagnostic");
+        mark_relation_discovery_as_full_probe(&mut value);
+        value["plan"]["inspection_summary"]["relation_discovery"]
+            .as_object_mut()
+            .unwrap()
+            .remove("rejected_candidate_diagnostics");
+
+        assert!(
+            parse(&value)
+                .unwrap_err()
+                .to_string()
+                .contains("require rejected-candidate diagnostics")
+        );
+    }
+
+    #[test]
+    fn rejects_full_probe_with_null_rejected_diagnostics() {
+        let mut value = manifest();
+        add_python_relation_discovery(&mut value, "diagnostic");
+        mark_relation_discovery_as_full_probe(&mut value);
+        value["plan"]["inspection_summary"]["relation_discovery"]["rejected_candidate_diagnostics"] =
+            Value::Null;
+
+        assert!(
+            parse(&value)
+                .unwrap_err()
+                .to_string()
+                .contains("require rejected-candidate diagnostics")
+        );
+    }
+
+    #[test]
+    fn rejects_raw_uncertified_count_that_disagrees_with_verification_failures() {
+        let mut value = manifest();
+        add_python_relation_discovery(&mut value, "diagnostic");
+        mark_relation_discovery_as_full_probe(&mut value);
+        let discovery = &mut value["plan"]["inspection_summary"]["relation_discovery"];
+        discovery["uncertified_candidate_count"] = json!(1);
+
+        assert!(
+            parse(&value)
+                .unwrap_err()
+                .to_string()
+                .contains("authenticated raw rejection census is inconsistent")
         );
     }
 
@@ -3555,6 +3902,46 @@ pub(super) mod tests {
             error
                 .to_string()
                 .contains("64 lowercase hexadecimal characters")
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_native_schedule_semantic_digest() {
+        let mut value = manifest();
+        value["plan"]["process_binding"]["native_schedule_semantic_digest"] =
+            json!("AB".repeat(32));
+        let error = parse(&value).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("64 lowercase hexadecimal characters")
+        );
+    }
+
+    #[test]
+    fn native_schedule_semantic_digest_has_a_legacy_schedule_fallback() {
+        let value = manifest();
+        let parsed = parse(&value).unwrap();
+        assert_eq!(
+            parsed
+                .plan
+                .process_binding
+                .native_schedule_semantic_digest(),
+            "ab".repeat(32)
+        );
+
+        let mut legacy = value;
+        legacy["plan"]["process_binding"]
+            .as_object_mut()
+            .unwrap()
+            .remove("native_schedule_semantic_digest");
+        let parsed = parse(&legacy).unwrap();
+        assert_eq!(
+            parsed
+                .plan
+                .process_binding
+                .native_schedule_semantic_digest(),
+            "aa".repeat(32)
         );
     }
 

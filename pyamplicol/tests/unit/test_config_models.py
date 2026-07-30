@@ -227,6 +227,21 @@ def test_relation_discovery_defaults_on_and_validates_certification_policy() -> 
         GenerationRelationDiscoveryConfig(relative_tolerance=-1.0)
     with pytest.raises(ConfigurationError, match="absolute_tolerance"):
         GenerationRelationDiscoveryConfig(absolute_tolerance=-1.0)
+    with pytest.raises(ConfigurationError, match="negative zero"):
+        GenerationRelationDiscoveryConfig(
+            relative_tolerance=-0.0,
+            absolute_tolerance=1.0e-80,
+        )
+    with pytest.raises(ConfigurationError, match="negative zero"):
+        GenerationRelationDiscoveryConfig(
+            relative_tolerance=1.0e-70,
+            absolute_tolerance=-0.0,
+        )
+    subnormal = GenerationRelationDiscoveryConfig(
+        relative_tolerance=float.fromhex("0x0.0000000000001p-1022"),
+        absolute_tolerance=0.0,
+    )
+    assert subnormal.relative_tolerance.hex() == "0x0.0000000000001p-1022"
     with pytest.raises(ConfigurationError, match="cannot both be zero"):
         GenerationRelationDiscoveryConfig(
             relative_tolerance=0.0,

@@ -1144,6 +1144,18 @@ def test_candidate_only_relation_is_rejected_by_independent_points() -> None:
         item["reason"] == "independent-verification-rejected-candidate"
         for item in discovery.report.rejected_candidates
     )
+    payload = discovery.report.to_json_dict()
+    assert payload["rejected_hypothesis_count"] == (
+        payload["tested_hypothesis_count"]
+        - payload["certified_numerical_relation_count"]
+    )
+    diagnostics = payload["rejected_candidate_diagnostics"]
+    assert diagnostics["total_rejected_hypothesis_count"] == payload[
+        "rejected_hypothesis_count"
+    ]
+    assert diagnostics["full_rejection_sha256"] == (
+        discovery.report.rejected_decision_sha256
+    )
 
 
 def test_warmup_requires_disjoint_candidate_and_verification_points() -> None:

@@ -683,6 +683,34 @@ impl ValidatedRecurrenceTemplateInput {
         self.input
     }
 
+    /// Return the authenticated kind/default contract for every parameter.
+    ///
+    /// Numerical recurrence probes use this model-owned catalog to anchor
+    /// mutable runtime defaults. Derived parameters deliberately retain no
+    /// semantic probe default because their prepared slots are overwritten by
+    /// the authenticated parameter-derivation evaluator.
+    pub fn parameter_kind_and_default_factors(
+        &self,
+    ) -> RusticolResult<Vec<(ParameterKind, Option<ExactComplexRational>)>> {
+        let input = self.input.as_view();
+        let catalogs = input.validate_catalogs()?;
+        input
+            .parameters
+            .iter()
+            .map(|row| {
+                Ok((
+                    ParameterKind::try_from(row.kind)?,
+                    optional_factor(
+                        &catalogs.factors,
+                        row.default_factor_id,
+                        "parameter default",
+                    )?
+                    .copied(),
+                ))
+            })
+            .collect()
+    }
+
     pub(crate) fn closure_component_coefficients(
         &self,
         closure_template_id: u32,

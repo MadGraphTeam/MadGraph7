@@ -1535,6 +1535,23 @@ fn apply_recurrence_relation_discovery(
                     "certificate-set digest",
                     evidence.certificate_set_sha256.as_str(),
                 ),
+                (
+                    "runtime-parameter-schema digest",
+                    evidence.runtime_parameter_schema_sha256.as_str(),
+                ),
+                (
+                    "candidate observation-batch digest",
+                    evidence.candidate_observation_batch_sha256.as_str(),
+                ),
+                (
+                    "verification observation-batch digest",
+                    evidence.verification_observation_batch_sha256.as_str(),
+                ),
+                ("decision digest", evidence.decision_sha256.as_str()),
+                (
+                    "rejection decision digest",
+                    evidence.rejection_decision_sha256.as_str(),
+                ),
             ] {
                 if !is_sha256(value) {
                     return Err(invalid(format!(
@@ -1564,7 +1581,6 @@ fn apply_recurrence_relation_discovery(
                 if current.current_id != mapping.current_id
                     || current.is_source
                     || representative.current_id != mapping.execution_representative_id
-                    || representative.is_source
                     || current.contract != representative.contract
                     || mapping.current_dimension != current.contract.component_count
                     || !is_sha256(&mapping.certificate_proof_sha256)
@@ -1619,7 +1635,9 @@ fn apply_recurrence_relation_discovery(
                     relations,
                     numerical_candidate_count: evidence.numerical_candidate_count,
                     uncertified_candidate_count: evidence.verification_rejected_count,
+                    rejected_hypothesis_count: evidence.rejected_hypothesis_count,
                     rejected_candidates: Vec::new(),
+                    rejected_decision_sha256: evidence.rejection_decision_sha256.clone(),
                     effective_projection_count: options
                         .probe_count
                         .checked_add(options.verification_probe_count)
@@ -1741,8 +1759,26 @@ fn apply_recurrence_relation_discovery(
             .numerical_evidence
             .as_ref()
             .map(|evidence| evidence.certificate_set_sha256.clone()),
+        authenticated_runtime_parameter_schema_sha256: options
+            .numerical_evidence
+            .as_ref()
+            .map(|evidence| evidence.runtime_parameter_schema_sha256.clone()),
+        authenticated_candidate_observation_batch_sha256: options
+            .numerical_evidence
+            .as_ref()
+            .map(|evidence| evidence.candidate_observation_batch_sha256.clone()),
+        authenticated_verification_observation_batch_sha256: options
+            .numerical_evidence
+            .as_ref()
+            .map(|evidence| evidence.verification_observation_batch_sha256.clone()),
+        authenticated_decision_sha256: options
+            .numerical_evidence
+            .as_ref()
+            .map(|evidence| evidence.decision_sha256.clone()),
+        rejected_decision_sha256: outcome.rejected_decision_sha256,
         tested_hypothesis_count,
         verification_rejected_count,
+        rejected_hypothesis_count: outcome.rejected_hypothesis_count,
         effective_projection_count: outcome.effective_projection_count,
         numerical_candidate_count: outcome.numerical_candidate_count,
         uncertified_candidate_count: outcome.uncertified_candidate_count,

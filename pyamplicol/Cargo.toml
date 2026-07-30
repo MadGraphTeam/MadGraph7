@@ -24,6 +24,9 @@ repository = "https://github.com/mg5amcnlo/pyamplicol"
 bincode = { version = "2.0", features = ["serde"] }
 libc = "0.2"
 numpy = "0.28"
+num-bigint = "0.4"
+num-rational = "0.4"
+num-traits = "0.2"
 pyo3 = { version = "0.28", features = ["abi3-py311"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["float_roundtrip", "raw_value"] }

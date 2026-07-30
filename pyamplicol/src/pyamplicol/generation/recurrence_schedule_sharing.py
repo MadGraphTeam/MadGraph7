@@ -296,7 +296,8 @@ class RecurrenceScheduleLoweringCache(Generic[_T]):
             remap: RecurrenceProcessRemap | None = None
             for candidate in self._processes:
                 if (
-                    candidate.direct_executor_count != executor_count
+                    candidate.schedule_digest != digest
+                    or candidate.direct_executor_count != executor_count
                     or candidate.parameter_slot_count != parameter_count
                 ):
                     continue
@@ -351,6 +352,7 @@ class RecurrenceScheduleProcess(Protocol):
     process_id: str
     recurrence_schedule_path: Path
     recurrence_schedule_digest: str
+    recurrence_native_schedule_semantic_digest: str
     recurrence_schedule_size_bytes: int
     recurrence_schedule_sha256: str
     recurrence_schedule_member_count: int
@@ -361,23 +363,15 @@ class RecurrenceScheduleProcess(Protocol):
     recurrence_process_remap: RecurrenceProcessRemap
 
 
-def recurrence_schedule_semantic_digest(
+def _recurrence_schedule_identity_payload(
     logical: RecurrenceBuilderLogicalInputV1,
     *,
     prepared_kernel_pack_digest: str,
     direct_template_catalog_digest: str,
     point_tile_size: int,
     workspace_mib: int,
-    relation_discovery: Mapping[str, object] | None = None,
-) -> str:
-    """Return the exact pre-lowering identity of one executable schedule.
-
-    Only concrete process ownership is normalized. All model, crossing,
-    selector, color, proof, parameter, and runtime-option semantics remain in
-    the digest, so a false-positive alias cannot skip native lowering.
-    """
-
-    payload = {
+) -> dict[str, object]:
+    return {
         "contract": "pyamplicol-recurrence-prelower-schedule-identity-v1",
         "logical": _schedule_plain(logical),
         "prepared_kernel_pack_digest": _require_sha256(
@@ -389,9 +383,61 @@ def recurrence_schedule_semantic_digest(
         "point_tile_size": _positive_integer(point_tile_size, "point tile size"),
         "workspace_mib": _positive_integer(workspace_mib, "workspace MiB"),
     }
-    # Preserve the historical/default schedule identity byte-for-byte when
-    # discovery is off. Opt-in diagnostics and certified reuse are lowering
-    # semantics and therefore receive distinct content-addressed schedules.
+
+
+def recurrence_native_schedule_semantic_digest(
+    logical: RecurrenceBuilderLogicalInputV1,
+    *,
+    prepared_kernel_pack_digest: str,
+    direct_template_catalog_digest: str,
+    point_tile_size: int,
+    workspace_mib: int,
+) -> str:
+    """Return the relation-independent semantic identity embedded by native lowering.
+
+    Only concrete process ownership is normalized. All model, crossing,
+    selector, color, proof, parameter, and runtime-option semantics remain in
+    the digest. Relation-discovery policy is deliberately excluded: it governs
+    the lowering request, while certified relations themselves are authenticated
+    separately and a request that applies none must retain the source schedule's
+    byte identity.
+    """
+
+    return _canonical_digest(
+        _recurrence_schedule_identity_payload(
+            logical,
+            prepared_kernel_pack_digest=prepared_kernel_pack_digest,
+            direct_template_catalog_digest=direct_template_catalog_digest,
+            point_tile_size=point_tile_size,
+            workspace_mib=workspace_mib,
+        )
+    )
+
+
+def recurrence_schedule_semantic_digest(
+    logical: RecurrenceBuilderLogicalInputV1,
+    *,
+    prepared_kernel_pack_digest: str,
+    direct_template_catalog_digest: str,
+    point_tile_size: int,
+    workspace_mib: int,
+    relation_discovery: Mapping[str, object] | None = None,
+) -> str:
+    """Return the policy-bearing request/cache identity for schedule lowering.
+
+    This identity isolates discovery policies in temporary paths, lowering
+    cache ownership, and artifact grouping. Native serialization receives
+    :func:`recurrence_native_schedule_semantic_digest` instead, so policy alone
+    cannot perturb a schedule when no certified relation is applied.
+    """
+
+    payload = _recurrence_schedule_identity_payload(
+        logical,
+        prepared_kernel_pack_digest=prepared_kernel_pack_digest,
+        direct_template_catalog_digest=direct_template_catalog_digest,
+        point_tile_size=point_tile_size,
+        workspace_mib=workspace_mib,
+    )
     if relation_discovery is not None:
         payload["relation_discovery"] = _schedule_plain(relation_discovery)
     return _canonical_digest(payload)
@@ -1024,6 +1070,7 @@ class RecurrenceProcessBinding:
     """One independent concrete-process binding to a root schedule."""
 
     __slots__ = (
+        "native_schedule_semantic_digest",
         "payload",
         "process_id",
         "process_semantic_digest",
@@ -1039,12 +1086,17 @@ class RecurrenceProcessBinding:
         *,
         process_id: str,
         schedule_digest: str,
+        native_schedule_semantic_digest: str,
         process_semantic_digest: str,
         process_support_mask: int,
         remap: RecurrenceProcessRemap,
     ) -> None:
         self.process_id = _nonempty_text(process_id, "process ID")
         self.schedule_digest = _require_sha256(schedule_digest, "schedule digest")
+        self.native_schedule_semantic_digest = _require_sha256(
+            native_schedule_semantic_digest,
+            "native schedule semantic digest",
+        )
         self.process_semantic_digest = _require_sha256(
             process_semantic_digest, "process semantic digest"
         )
@@ -1082,6 +1134,9 @@ class RecurrenceProcessBinding:
             "abi": RECURRENCE_PROCESS_BINDING_ABI,
             "process_id": self.process_id,
             "schedule_digest": self.schedule_digest,
+            "native_schedule_semantic_digest": (
+                self.native_schedule_semantic_digest
+            ),
             "process_semantic_digest": self.process_semantic_digest,
             "process_support_words": list(self.process_support_words),
             "remap": self.remap.to_mapping(),
@@ -1151,6 +1206,7 @@ def intern_recurrence_schedules(
 
     schedules: dict[str, RecurrenceSharedSchedule] = {}
     schedule_processes: dict[str, list[str]] = {}
+    schedule_native_semantics: dict[str, str] = {}
     bindings: list[RecurrenceProcessBinding] = []
     process_ids: set[str] = set()
     support_masks: set[int] = set()
@@ -1175,6 +1231,10 @@ def intern_recurrence_schedules(
             process.recurrence_schedule_digest,
             f"process {process_id!r} schedule digest",
         )
+        native_semantic_digest = _require_sha256(
+            process.recurrence_native_schedule_semantic_digest,
+            f"process {process_id!r} native schedule semantic digest",
+        )
         candidate = RecurrenceSharedSchedule(
             digest=digest,
             source_path=process.recurrence_schedule_path,
@@ -1196,12 +1256,22 @@ def intern_recurrence_schedules(
             raise RecurrenceScheduleSharingError(
                 f"schedule digest {digest} maps to different payloads"
             )
+        previous_native_semantic_digest = schedule_native_semantics.get(digest)
+        if (
+            previous_native_semantic_digest is not None
+            and previous_native_semantic_digest != native_semantic_digest
+        ):
+            raise RecurrenceScheduleSharingError(
+                f"schedule digest {digest} maps to different native semantics"
+            )
         schedules.setdefault(digest, candidate)
+        schedule_native_semantics.setdefault(digest, native_semantic_digest)
         schedule_processes.setdefault(digest, []).append(process_id)
         bindings.append(
             RecurrenceProcessBinding(
                 process_id=process_id,
                 schedule_digest=digest,
+                native_schedule_semantic_digest=native_semantic_digest,
                 process_semantic_digest=process.builder_input_sha256,
                 process_support_mask=support_mask,
                 remap=process.recurrence_process_remap,
@@ -1556,5 +1626,6 @@ __all__ = [
     "encode_recurrence_process_binding",
     "exact_recurrence_process_bijection",
     "intern_recurrence_schedules",
+    "recurrence_native_schedule_semantic_digest",
     "recurrence_schedule_semantic_digest",
 ]

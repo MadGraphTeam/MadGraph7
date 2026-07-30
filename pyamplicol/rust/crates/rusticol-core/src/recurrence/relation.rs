@@ -21,9 +21,9 @@ use crate::{RusticolError, RusticolResult};
 const PROJECTION_PRIME: u64 = (1_u64 << 61) - 1;
 const RELATION_CERTIFICATE_ALGORITHM: &str = "recurrence-exact-rational-row-vector-replay-v1";
 pub const NUMERICAL_RELATION_CERTIFICATE_ALGORITHM: &str =
-    "authenticated-independent-recursive-decimal-probes-v1";
+    "authenticated-independent-recursive-decimal-raw-probes-v2";
 pub const RECURRENCE_NUMERICAL_SOURCE_ABI: &str =
-    "pyamplicol-recurrence-numerical-current-source-v2";
+    "pyamplicol-recurrence-numerical-current-source-v3";
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(format!("recurrence relation discovery: {}", message.into()))
@@ -156,8 +156,13 @@ impl RecurrenceRelationDiscoveryOptions {
             .len()
             .checked_add(evidence.verification_rejected_count)
             .ok_or_else(|| invalid("numerical evidence candidate count overflows usize"))?;
+        let expected_rejected_count = evidence
+            .tested_hypothesis_count
+            .checked_sub(evidence.mappings.len())
+            .ok_or_else(|| invalid("numerical evidence rejected-hypothesis count underflows"))?;
         if evidence.numerical_candidate_count != expected_candidate_count
             || evidence.tested_hypothesis_count < evidence.numerical_candidate_count
+            || evidence.rejected_hypothesis_count != expected_rejected_count
         {
             return Err(invalid(
                 "numerical evidence candidate counters are inconsistent",
@@ -203,6 +208,11 @@ pub struct RecurrenceNumericalRelationEvidence {
     pub schedule_semantic_digest: String,
     pub baseline_runtime_layout_digest: String,
     pub source_semantics_sha256: String,
+    pub runtime_parameter_schema_sha256: String,
+    pub candidate_observation_batch_sha256: String,
+    pub verification_observation_batch_sha256: String,
+    pub decision_sha256: String,
+    pub rejection_decision_sha256: String,
     pub certificate_algorithm: String,
     pub certificate_set_sha256: String,
     pub precision_digits: u32,
@@ -213,6 +223,7 @@ pub struct RecurrenceNumericalRelationEvidence {
     pub seed: u64,
     pub numerical_candidate_count: usize,
     pub verification_rejected_count: usize,
+    pub rejected_hypothesis_count: usize,
     pub tested_hypothesis_count: usize,
     pub mappings: Vec<RecurrenceNumericalCurrentMapping>,
 }
@@ -306,12 +317,46 @@ pub fn recurrence_numerical_source_semantics_sha256(
             }))
         })
         .collect::<RusticolResult<Vec<JsonValue>>>()?;
+    let selector_schedule = match plan.strategy() {
+        RecurrenceStrategy::TopologyReplay => json!({
+            "policy": "seeded-replay-target-per-physical-point-v1",
+            "replay_targets": plan
+                .replay_targets()
+                .iter()
+                .enumerate()
+                .map(|(target_index, target)| json!({
+                    "target_index": target_index,
+                    "public_flow_id": target.public_flow_id,
+                    "representative_id": target.representative_id,
+                    "selector_domain_id": target.selector_domain_id,
+                }))
+                .collect::<Vec<_>>(),
+        }),
+        RecurrenceStrategy::AllFlowUnion => json!({
+            "policy": "seeded-helicity-per-selector-domain-and-physical-point-v1",
+            "resolved_helicities": plan
+                .resolved_helicities()
+                .iter()
+                .enumerate()
+                .map(|(helicity_index, helicity)| json!({
+                    "helicity_index": helicity_index,
+                    "helicity_id": helicity.id,
+                    "selector_domain_id": helicity.selector_domain_id,
+                }))
+                .collect::<Vec<_>>(),
+        }),
+        RecurrenceStrategy::ContractedColorUnion => json!({
+            "policy": "fixed-contracted-source-schedule-v1",
+            "fixed_source_schedule": true,
+        }),
+    };
     let payload = json!({
         "abi": RECURRENCE_NUMERICAL_SOURCE_ABI,
         "process_id": process_id,
         "strategy": plan.strategy().as_str(),
         "schedule_semantic_digest": plan.semantic_digest().to_string(),
         "baseline_runtime_layout_digest": plan.runtime_layout_digest().to_string(),
+        "selector_schedule": selector_schedule,
         "currents": currents,
     });
     let bytes = serde_json::to_vec(&payload)
@@ -324,7 +369,8 @@ pub fn authenticate_recurrence_numerical_relation_provenance(
     baseline_plan: &DirectRecurrencePlan,
     process_id: &str,
 ) -> RusticolResult<()> {
-    if evidence.baseline_runtime_layout_digest != baseline_plan.runtime_layout_digest().to_string() {
+    if evidence.baseline_runtime_layout_digest != baseline_plan.runtime_layout_digest().to_string()
+    {
         return Err(RusticolError::integrity(
             "numerical relation evidence baseline runtime-layout digest does not match the native baseline",
         ));
@@ -403,8 +449,14 @@ pub struct RecurrenceRelationDiscoveryReport {
     pub seed: u64,
     pub certificate_algorithm: String,
     pub authenticated_certificate_set_sha256: Option<String>,
+    pub authenticated_runtime_parameter_schema_sha256: Option<String>,
+    pub authenticated_candidate_observation_batch_sha256: Option<String>,
+    pub authenticated_verification_observation_batch_sha256: Option<String>,
+    pub authenticated_decision_sha256: Option<String>,
+    pub rejected_decision_sha256: String,
     pub tested_hypothesis_count: usize,
     pub verification_rejected_count: usize,
+    pub rejected_hypothesis_count: usize,
     pub effective_projection_count: u32,
     pub numerical_candidate_count: usize,
     pub uncertified_candidate_count: usize,
@@ -426,7 +478,9 @@ pub(crate) struct RecurrenceRelationDiscoveryOutcome {
     pub relations: Vec<RecurrenceCurrentRelationCertificate>,
     pub numerical_candidate_count: usize,
     pub uncertified_candidate_count: usize,
+    pub rejected_hypothesis_count: usize,
     pub rejected_candidates: Vec<String>,
+    pub rejected_decision_sha256: String,
     pub effective_projection_count: u32,
 }
 
@@ -476,12 +530,26 @@ pub(crate) fn discover_recurrence_current_relations(
     inputs: &[RelationCurrentInput],
     options: &RecurrenceRelationDiscoveryOptions,
 ) -> RusticolResult<RecurrenceRelationDiscoveryOutcome> {
+    let rejection_root = format!(
+        "{:x}",
+        Sha256::digest(
+            serde_json::to_vec(&json!({
+                "abi": "rusticol-recurrence-rejected-decision-chain-v1",
+                "precision_digits": options.precision_digits,
+                "probe_count": options.probe_count,
+                "seed": options.seed,
+            }))
+            .map_err(|error| invalid(format!("could not encode rejection root: {error}")))?,
+        )
+    );
     if options.mode == RecurrenceRelationDiscoveryMode::Off {
         return Ok(RecurrenceRelationDiscoveryOutcome {
             relations: Vec::new(),
             numerical_candidate_count: 0,
             uncertified_candidate_count: 0,
+            rejected_hypothesis_count: 0,
             rejected_candidates: Vec::new(),
+            rejected_decision_sha256: rejection_root,
             effective_projection_count: 0,
         });
     }
@@ -507,6 +575,7 @@ pub(crate) fn discover_recurrence_current_relations(
     let mut numerical_candidate_count = 0usize;
     let mut uncertified_candidate_count = 0usize;
     let mut rejected_candidates = Vec::new();
+    let mut rejected_decision_sha256 = rejection_root;
 
     for input in inputs {
         if input.is_source {
@@ -549,20 +618,30 @@ pub(crate) fn discover_recurrence_current_relations(
                             break;
                         }
                         uncertified_candidate_count += 1;
+                        let reason = format!(
+                            "current {} and representative {} failed exact certificate replay",
+                            input.current_id, representative_id
+                        );
+                        let mut digest = Sha256::new();
+                        digest.update(rejected_decision_sha256.as_bytes());
+                        digest.update(reason.as_bytes());
+                        rejected_decision_sha256 = format!("{:x}", digest.finalize());
                         if rejected_candidates.len() < 16 {
-                            rejected_candidates.push(format!(
-                                "current {} and representative {} failed exact certificate replay",
-                                input.current_id, representative_id
-                            ));
+                            rejected_candidates.push(reason);
                         }
                     }
                     None => {
                         uncertified_candidate_count += 1;
+                        let reason = format!(
+                            "current {} and representative {} collided numerically without an exact relation",
+                            input.current_id, representative_id
+                        );
+                        let mut digest = Sha256::new();
+                        digest.update(rejected_decision_sha256.as_bytes());
+                        digest.update(reason.as_bytes());
+                        rejected_decision_sha256 = format!("{:x}", digest.finalize());
                         if rejected_candidates.len() < 16 {
-                            rejected_candidates.push(format!(
-                                "current {} and representative {} collided numerically without an exact relation",
-                                input.current_id, representative_id
-                            ));
+                            rejected_candidates.push(reason);
                         }
                     }
                 }
@@ -585,7 +664,9 @@ pub(crate) fn discover_recurrence_current_relations(
         relations,
         numerical_candidate_count,
         uncertified_candidate_count,
+        rejected_hypothesis_count: uncertified_candidate_count,
         rejected_candidates,
+        rejected_decision_sha256,
         effective_projection_count,
     })
 }

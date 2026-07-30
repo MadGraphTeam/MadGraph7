@@ -369,6 +369,91 @@ fn certified_reuse_row_scale_copies_without_calling_an_interaction_executor() {
 }
 
 #[test]
+fn zero_self_reuse_clears_stale_destination_before_scale_copy() {
+    let mut parts = super::direct_plan::tests::valid_parts();
+    parts.currents[0].component_count = 1;
+    parts.contributions[0] = DirectContributionRow {
+        // A certified zero current legitimately uses its own just-cleared
+        // destination as the execution representative.
+        parent0_component_base: 2,
+        parent1_component_base_or_sentinel: DIRECT_NONE_U32,
+        parent0_momentum_form_id: 1,
+        parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+        destination_component_base: 2,
+        exact_factor_id: 0,
+        selector_domain_id: 0,
+        flags: DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION
+            | DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE,
+    };
+    parts.row_groups[1].direct_executor_id = DIRECT_NONE_U32;
+    parts.finalizations[0].exact_factor_id = 1;
+    parts.closures[0].exact_factor_id = 1;
+    parts.closures[0].component_factor_start = 1;
+    parts.exact_factors = vec![ExactComplexRational::ZERO, ExactComplexRational::ONE];
+    let plan = DirectRecurrencePlan::new(parts).unwrap();
+    let executors = DirectExecutorCatalog::new(
+        &plan,
+        plan.direct_template_catalog_digest(),
+        vec![
+            DirectExecutorHandle::Source {
+                call: fill_sources,
+                context: std::ptr::null(),
+            },
+            DirectExecutorHandle::Contribution {
+                call: accumulate_contributions,
+                context: std::ptr::null(),
+            },
+            DirectExecutorHandle::Finalization {
+                call: finalize_currents,
+                context: std::ptr::null(),
+            },
+            DirectExecutorHandle::Closure {
+                call: accumulate_closures,
+                context: std::ptr::null(),
+            },
+        ],
+    )
+    .unwrap();
+
+    let mut current_re = [f64::NAN; 12];
+    let mut current_im = [f64::NAN; 12];
+    let mut amplitude_re = [0.0; 4];
+    let mut amplitude_im = [0.0; 4];
+    let momenta = [1.0, 2.0, 3.0, 4.0];
+    let parameters_re = [1.0];
+    let parameters_im = [0.0];
+    let factors_re = [0.0, 1.0];
+    let factors_im = [0.0, 0.0];
+    let mut workspace = DirectWorkspace {
+        current_re: &mut current_re,
+        current_im: &mut current_im,
+        amplitude_re: &mut amplitude_re,
+        amplitude_im: &mut amplitude_im,
+        momenta: &momenta,
+        momentum_form_count: 1,
+        lorentz_component_count: 1,
+        parameters_re: &parameters_re,
+        parameters_im: &parameters_im,
+        factors_re: &factors_re,
+        factors_im: &factors_im,
+        point_stride: 4,
+    };
+    let mut counters = DirectExecutionCounters::default();
+
+    execute_direct_plan(&plan, &executors, &mut workspace, 4, &mut counters).unwrap();
+
+    assert_eq!(workspace.current_re[8..12], [0.0; 4]);
+    assert_eq!(workspace.current_im[8..12], [0.0; 4]);
+    assert_eq!(counters.contribution_calls, 1);
+    assert_eq!(counters.contribution_rows, 1);
+    assert_eq!(
+        plan.row_groups()[1].direct_executor_id,
+        DIRECT_NONE_U32,
+        "certified zero reuse must not call an interaction executor"
+    );
+}
+
+#[test]
 fn direct_backend_source_contains_no_eager_packing_or_batch_evaluator_route() {
     let source = include_str!("direct_backend.rs");
     for forbidden in [

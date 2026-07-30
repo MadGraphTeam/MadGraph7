@@ -11,6 +11,9 @@ from typing import cast
 
 import pytest
 
+from pyamplicol.generation.artifact_writer import (
+    _recurrence_binding_native_schedule_semantic_digest,
+)
 from pyamplicol.generation.recurrence_columnar import (
     ExactComplexRationalV1,
     RecurrenceBuilderLogicalInputV1,
@@ -42,6 +45,7 @@ from pyamplicol.generation.recurrence_schedule_sharing import (
     encode_recurrence_process_binding,
     exact_recurrence_process_bijection,
     intern_recurrence_schedules,
+    recurrence_native_schedule_semantic_digest,
     recurrence_schedule_semantic_digest,
 )
 from pyamplicol.models.recurrence_template import (
@@ -114,7 +118,7 @@ def test_prelower_identity_normalizes_only_process_ownership() -> None:
     ) != _schedule_key(first)
 
 
-def test_opt_in_relation_discovery_is_part_of_schedule_identity() -> None:
+def test_relation_discovery_only_changes_request_cache_identity() -> None:
     logical = cast(
         RecurrenceBuilderLogicalInputV1,
         _Logical("subprocess-a", 1, (_Leg(1, 1), _Leg(-1, 1)), _digest("p")),
@@ -133,7 +137,15 @@ def test_opt_in_relation_discovery_is_part_of_schedule_identity() -> None:
         )
 
     baseline = schedule_digest()
+    native = recurrence_native_schedule_semantic_digest(
+        logical,
+        prepared_kernel_pack_digest=_digest("pack"),
+        direct_template_catalog_digest=_digest("templates"),
+        point_tile_size=1024,
+        workspace_mib=256,
+    )
     assert schedule_digest(None) == baseline
+    assert native == baseline
     contract = {
         "mode": "diagnostic",
         "precision_digits": 96,
@@ -143,6 +155,7 @@ def test_opt_in_relation_discovery_is_part_of_schedule_identity() -> None:
         "absolute_tolerance": 1.0e-80,
         "seed": 7,
         "color_accuracy": "lc",
+        "probe_process_id": "subprocess-a",
     }
     diagnostic = schedule_digest(contract)
     certified = schedule_digest(
@@ -150,6 +163,8 @@ def test_opt_in_relation_discovery_is_part_of_schedule_identity() -> None:
     )
     assert diagnostic != baseline
     assert certified != diagnostic
+    assert native != diagnostic
+    assert native != certified
     for field, replacement in (
         ("precision_digits", 112),
         ("probe_count", 5),
@@ -158,6 +173,7 @@ def test_opt_in_relation_discovery_is_part_of_schedule_identity() -> None:
         ("absolute_tolerance", 1.0e-75),
         ("seed", 8),
         ("color_accuracy", "nlc"),
+        ("probe_process_id", "subprocess-b"),
     ):
         assert schedule_digest({**contract, field: replacement}) != diagnostic
 
@@ -420,14 +436,14 @@ def test_crossed_processes_share_only_through_an_exact_bijection() -> None:
 
     first = cache.lower_process(
         root,
-        schedule_digest=_digest("root schedule"),
+        schedule_digest=_digest("shared request"),
         direct_executor_count=4,
         parameter_slot_count=1,
         lower=lambda: lower("root"),
     )
     second = cache.lower_process(
         target,
-        schedule_digest=_digest("target schedule"),
+        schedule_digest=_digest("shared request"),
         direct_executor_count=4,
         parameter_slot_count=1,
         lower=lambda: lower("target"),
@@ -436,6 +452,38 @@ def test_crossed_processes_share_only_through_an_exact_bijection() -> None:
     assert first.output == second.output == "root"
     assert second.schedule_digest == first.schedule_digest
     assert second.remap == remap
+
+
+def test_isomorphic_processes_do_not_share_different_request_identities() -> None:
+    root = _crossed_logical(target=False)
+    target = _crossed_logical(target=True)
+    cache = RecurrenceScheduleLoweringCache[str]()
+    calls = 0
+
+    def lower(value: str) -> str:
+        nonlocal calls
+        calls += 1
+        return value
+
+    first = cache.lower_process(
+        root,
+        schedule_digest=_digest("root probe context"),
+        direct_executor_count=4,
+        parameter_slot_count=1,
+        lower=lambda: lower("root evidence"),
+    )
+    second = cache.lower_process(
+        target,
+        schedule_digest=_digest("target probe context"),
+        direct_executor_count=4,
+        parameter_slot_count=1,
+        lower=lambda: lower("target evidence"),
+    )
+
+    assert calls == 2
+    assert first.output == "root evidence"
+    assert second.output == "target evidence"
+    assert first.schedule_digest != second.schedule_digest
 
 
 def test_cross_process_aliasing_fails_closed_on_contract_changes() -> None:
@@ -498,6 +546,7 @@ def _process(
     *,
     process_id: str,
     schedule_digest: str,
+    native_schedule_digest: str | None = None,
     payload: bytes,
     support_mask: int,
 ) -> SimpleNamespace:
@@ -507,6 +556,11 @@ def _process(
         process_id=process_id,
         recurrence_schedule_path=path,
         recurrence_schedule_digest=schedule_digest,
+        recurrence_native_schedule_semantic_digest=(
+            schedule_digest
+            if native_schedule_digest is None
+            else native_schedule_digest
+        ),
         recurrence_schedule_size_bytes=len(payload),
         recurrence_schedule_sha256=hashlib.sha256(payload).hexdigest(),
         recurrence_schedule_member_count=1,
@@ -556,6 +610,84 @@ def test_bounded_process_set_interns_before_publication(tmp_path: Path) -> None:
     assert plan.binding("u_ubar_to_g_g").artifact_path.endswith(
         "/recurrence-binding.bin"
     )
+    assert (
+        plan.binding("u_ubar_to_g_g").native_schedule_semantic_digest
+        == shared
+    )
+
+
+def test_package_identity_is_distinct_from_native_schedule_semantics(
+    tmp_path: Path,
+) -> None:
+    request_digest = _digest("certified request")
+    native_digest = _digest("relation-independent source schedule")
+    plan = intern_recurrence_schedules(
+        (
+            _process(
+                tmp_path,
+                process_id="u_ubar_to_g_g",
+                schedule_digest=request_digest,
+                native_schedule_digest=native_digest,
+                payload=b"schedule",
+                support_mask=1,
+            ),
+        )
+    )
+
+    binding = plan.binding("u_ubar_to_g_g")
+    assert plan.schedules[0].digest == request_digest
+    assert binding.schedule_digest == request_digest
+    assert binding.native_schedule_semantic_digest == native_digest
+    assert binding.to_mapping()["native_schedule_semantic_digest"] == native_digest
+
+
+def test_shared_request_digest_rejects_different_native_semantics(
+    tmp_path: Path,
+) -> None:
+    request_digest = _digest("shared certified request")
+    with pytest.raises(
+        RecurrenceScheduleSharingError,
+        match="maps to different native semantics",
+    ):
+        intern_recurrence_schedules(
+            (
+                _process(
+                    tmp_path,
+                    process_id="first",
+                    schedule_digest=request_digest,
+                    native_schedule_digest=_digest("first source schedule"),
+                    payload=b"shared",
+                    support_mask=1,
+                ),
+                _process(
+                    tmp_path,
+                    process_id="second",
+                    schedule_digest=request_digest,
+                    native_schedule_digest=_digest("second source schedule"),
+                    payload=b"shared",
+                    support_mask=2,
+                ),
+            )
+        )
+
+
+def test_legacy_binding_falls_back_only_when_native_digest_is_absent() -> None:
+    schedule_digest = _digest("legacy native schedule identity")
+    assert (
+        _recurrence_binding_native_schedule_semantic_digest(
+            {"schedule_digest": schedule_digest},
+            process_id="legacy",
+        )
+        == schedule_digest
+    )
+    with pytest.raises(ValueError, match="native schedule semantic digest"):
+        _recurrence_binding_native_schedule_semantic_digest(
+            {
+                "schedule_digest": schedule_digest,
+                "native_schedule_semantic_digest": None,
+            },
+            process_id="malformed",
+        )
 
 
 def test_binding_payload_is_compact_and_process_owned() -> None:
@@ -612,6 +744,7 @@ def test_process_support_bits_are_independent() -> None:
         process_id="first",
         recurrence_schedule_path=Path(__file__),
         recurrence_schedule_digest=_digest("schedule"),
+        recurrence_native_schedule_semantic_digest=_digest("schedule"),
         recurrence_schedule_size_bytes=Path(__file__).stat().st_size,
         recurrence_schedule_sha256=hashlib.sha256(
             Path(__file__).read_bytes()

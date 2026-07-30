@@ -164,6 +164,7 @@ from .recurrence_projection import (
 )
 from .recurrence_schedule_sharing import (
     RecurrenceScheduleLoweringCache,
+    recurrence_native_schedule_semantic_digest,
     recurrence_schedule_semantic_digest,
 )
 from .recurrence_template_columnar import (
@@ -535,6 +536,14 @@ def _recurrence_relation_reporting(
                     "verification_rejected_count",
                 ),
                 (
+                    native.get("uncertified_candidate_count"),
+                    "verification_rejected_count",
+                ),
+                (
+                    native.get("rejected_hypothesis_count"),
+                    "rejected_hypothesis_count",
+                ),
+                (
                     native_probe.get("tested_hypothesis_count"),
                     "tested_hypothesis_count",
                 ),
@@ -542,6 +551,52 @@ def _recurrence_relation_reporting(
         ):
             raise GenerationError(
                 "native recurrence candidate counters disagree with the warm-up"
+            )
+        candidate_commitment = candidate_capture.get(
+            "observation_batch_sha256"
+        )
+        verification_commitment = verification_capture.get(
+            "observation_batch_sha256"
+        )
+        if any(
+            native_probe.get(key) != expected
+            for key, expected in (
+                (
+                    "runtime_parameter_schema_sha256",
+                    candidate_capture.get(
+                        "runtime_parameter_schema_sha256"
+                    ),
+                ),
+                (
+                    "candidate_observation_batch_sha256",
+                    candidate_commitment,
+                ),
+                (
+                    "verification_observation_batch_sha256",
+                    verification_commitment,
+                ),
+                ("decision_sha256", discovery.get("decision_sha256")),
+                (
+                    "rejection_decision_sha256",
+                    discovery.get("rejection_decision_sha256"),
+                ),
+            )
+        ):
+            raise GenerationError(
+                "native recurrence raw-evidence commitments disagree with "
+                "the authenticated warm-up"
+            )
+        rejected_diagnostics = native.get("rejected_candidate_diagnostics")
+        if (
+            not isinstance(rejected_diagnostics, Mapping)
+            or rejected_diagnostics.get("total_rejected_hypothesis_count")
+            != discovery.get("rejected_hypothesis_count")
+            or rejected_diagnostics.get("full_rejection_sha256")
+            != discovery.get("rejection_decision_sha256")
+        ):
+            raise GenerationError(
+                "native recurrence rejected-hypothesis diagnostics disagree "
+                "with the authenticated warm-up"
             )
     aggregate = {
         "schema_version": 1,
@@ -2840,6 +2895,7 @@ class GenerationBackend:
                 },
             )
             builder_input = build_recurrence_builder_input_v1(logical)
+            native_process_id = logical.process_id
             runtime_metadata = build_recurrence_runtime_metadata(
                 logical,
                 model_inputs.catalog,
@@ -2872,9 +2928,23 @@ class GenerationBackend:
                     ),
                     "seed": relation_discovery.seed,
                     "color_accuracy": str(expanded.process_ir.color_accuracy),
+                    "probe_process_id": native_process_id,
                 }
             )
-            candidate_schedule_digest = recurrence_schedule_semantic_digest(
+            native_schedule_semantic_digest = (
+                recurrence_native_schedule_semantic_digest(
+                    logical,
+                    prepared_kernel_pack_digest=(
+                        model_inputs.prepared_kernel_pack_digest
+                    ),
+                    direct_template_catalog_digest=(
+                        model_inputs.direct_template_catalog.catalog_digest
+                    ),
+                    point_tile_size=recurrence_evaluator.point_tile_size,
+                    workspace_mib=recurrence_evaluator.workspace_mib,
+                )
+            )
+            request_schedule_digest = recurrence_schedule_semantic_digest(
                 logical,
                 prepared_kernel_pack_digest=(model_inputs.prepared_kernel_pack_digest),
                 direct_template_catalog_digest=(
@@ -2944,7 +3014,7 @@ class GenerationBackend:
                 final_schedule_path = (
                     temporary_root
                     / "recurrence-schedules"
-                    / candidate_schedule_digest
+                    / request_schedule_digest
                     / "recurrence-runtime.pacbin"
                 )
 
@@ -2961,7 +3031,7 @@ class GenerationBackend:
                             model_inputs.template_input,
                             model_inputs.direct_template_catalog,
                             model_inputs.prepared_kernel_pack_digest,
-                            candidate_schedule_digest,
+                            native_schedule_semantic_digest,
                             destination,
                             point_tile_size=recurrence_evaluator.point_tile_size,
                             workspace_mib=recurrence_evaluator.workspace_mib,
@@ -3003,7 +3073,7 @@ class GenerationBackend:
                         lane_report = recurrence_numerical_current_opt_out_report(
                             _parse_exact_sections(
                                 output.exact_sections,
-                                process_name,
+                                native_process_id,
                             ),
                             color_accuracy=str(
                                 expanded.process_ir.color_accuracy
@@ -3025,7 +3095,7 @@ class GenerationBackend:
                     baseline = lower_once(
                         temporary_root
                         / ".numerical-current-baseline"
-                        / candidate_schedule_digest
+                        / request_schedule_digest
                         / "recurrence-runtime.pacbin",
                         mode="off",
                         evidence=None,
@@ -3035,7 +3105,7 @@ class GenerationBackend:
                         build_recurrence_numerical_current_probe_points(
                             expanded.process_ir,
                             model,
-                            process_id=process_name,
+                            process_id=native_process_id,
                             seed=relation_discovery.seed,
                             candidate_count=relation_discovery.probe_count,
                             verification_count=(
@@ -3047,7 +3117,7 @@ class GenerationBackend:
                         with _SYMBOLICA_MATERIALIZATION_LOCK:
                             baseline_plan = _RecurrenceExactPlan.from_generation(
                                 raw_sections=baseline.exact_sections,
-                                process_id=process_name,
+                                process_id=native_process_id,
                                 bundle=model_inputs.bundle,
                                 runtime_metadata=runtime_metadata,
                             )
@@ -3091,7 +3161,7 @@ class GenerationBackend:
                         with _SYMBOLICA_MATERIALIZATION_LOCK:
                             applied_plan = _RecurrenceExactPlan.from_generation(
                                 raw_sections=output.exact_sections,
-                                process_id=process_name,
+                                process_id=native_process_id,
                                 bundle=model_inputs.bundle,
                                 runtime_metadata=runtime_metadata,
                             )
@@ -3131,7 +3201,7 @@ class GenerationBackend:
 
                 shared = lowering_cache.lower_process(
                     logical,
-                    schedule_digest=candidate_schedule_digest,
+                    schedule_digest=request_schedule_digest,
                     direct_executor_count=len(
                         model_inputs.direct_template_catalog.templates
                     ),
@@ -3349,6 +3419,9 @@ class GenerationBackend:
             physics=physics,
             recurrence_schedule_path=output.payload_path,
             recurrence_schedule_digest=schedule_digest,
+            recurrence_native_schedule_semantic_digest=(
+                native_schedule_semantic_digest
+            ),
             recurrence_schedule_size_bytes=output.payload_size_bytes,
             recurrence_schedule_sha256=output.payload_sha256,
             recurrence_schedule_member_count=output.member_count,

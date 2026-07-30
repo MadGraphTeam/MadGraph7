@@ -8,12 +8,15 @@ import importlib.util
 import json
 import os
 from collections.abc import Iterator
+from dataclasses import replace
 from decimal import Decimal
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+import pyamplicol.generation.service as generation_service
 from pyamplicol import CompiledModel, Generator, ModelSource, Runtime
 from pyamplicol.api.errors import EvaluationError
 from pyamplicol.artifacts import inspect_artifact, load_manifest
@@ -113,8 +116,19 @@ def _generation_config(
     *,
     color_accuracy: str = "lc",
     lc_flow_layout: str = "topology-replay",
-    relation_discovery_mode: str = "off",
+    relation_discovery_mode: str | None = "off",
 ) -> RunConfig:
+    relation_discovery = GenerationRelationDiscoveryConfig(
+        precision_digits=80,
+        probe_count=2,
+        verification_probe_count=2,
+        seed=17,
+    )
+    if relation_discovery_mode is not None:
+        relation_discovery = replace(
+            relation_discovery,
+            mode=relation_discovery_mode,
+        )
     return RunConfig(
         action="generate",
         color=ColorConfig(
@@ -124,13 +138,7 @@ def _generation_config(
         generation=GenerationConfig(
             workers=1,
             emit_api_bundle=False,
-            relation_discovery=GenerationRelationDiscoveryConfig(
-                mode=relation_discovery_mode,
-                precision_digits=80,
-                probe_count=2,
-                verification_probe_count=2,
-                seed=17,
-            ),
+            relation_discovery=relation_discovery,
             validation=GenerationValidationConfig(
                 enabled=False,
                 post_build_validation=False,
@@ -934,10 +942,26 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
         probe_contract = discovery["probe_contract"]
         assert isinstance(probe_contract, dict)
         assert probe_contract["algorithm"] == (
-            "authenticated-independent-recursive-decimal-probes-v1"
+            "authenticated-independent-recursive-decimal-raw-probes-v2"
         )
         assert probe_contract["independent_verification"] is True
         assert probe_contract["current_dimension_bound"] is True
+        assert probe_contract["runtime_parameter_schema_sha256"] == candidate[
+            "runtime_parameter_schema_sha256"
+        ]
+        assert candidate["parameter_contexts"]
+        assert verification["parameter_contexts"]
+        assert set(candidate["parameter_context_sha256s"]).isdisjoint(
+            verification["parameter_context_sha256s"]
+        )
+        persisted = lane["persisted_numerical_evidence"]
+        assert persisted["raw_evidence_retained"] is False
+        assert persisted["generation_raw_evidence_bytes"] > 0
+        assert persisted["measured_payload_bytes"] < 64 << 20
+        assert (
+            persisted["full_census"]["decision_sha256"]
+            == discovery["decision_sha256"]
+        )
         assert discovery["certified_numerical_relation_count"] == lane[
             "certified_relation_count"
         ]
@@ -1038,14 +1062,132 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
     ]
 
 
+def test_charged_current_alias_uses_native_identity_for_numerical_probes(
+    tmp_path: Path,
+    builtin_sm_recurrence_jit_o2_model: ModelSource,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep display ownership separate from the canonical native schedule ID."""
+
+    _require_native_recurrence()
+    observed_process_ids: list[str] = []
+    original = generation_service.build_recurrence_numerical_current_probe_points
+
+    def recording_probe_builder(*args: Any, **kwargs: Any) -> Any:
+        process_id = str(kwargs["process_id"])
+        result = original(*args, **kwargs)
+        observed_process_ids.append(process_id)
+        assert all(
+            point.process_id == process_id
+            for capture in result
+            for point in capture
+        )
+        assert all(
+            point.process == _CHARGED_CURRENT_PROCESS
+            for capture in result
+            for point in capture
+        )
+        return result
+
+    monkeypatch.setattr(
+        generation_service,
+        "build_recurrence_numerical_current_probe_points",
+        recording_probe_builder,
+    )
+    artifact = tmp_path / "charged-current-alias"
+    Generator(
+        _generation_config(
+            "recurrence",
+            relation_discovery_mode=None,
+        )
+    ).generate(
+        _CHARGED_CURRENT_PROCESS,
+        artifact,
+        model=builtin_sm_recurrence_jit_o2_model,
+    )
+
+    assert len(observed_process_ids) == 1
+    canonical_process_id = observed_process_ids[0]
+    execution = _single_recurrence_execution(artifact)
+    display_process_id = str(load_manifest(artifact).processes[0]["id"])
+    assert canonical_process_id != display_process_id
+    assert execution["plan"]["process_binding"]["process_id"] == display_process_id
+    lane = _manifest_relation_discovery(artifact)["lanes"]["primary"]
+    assert lane["requested_mode"] == "certified-reuse"
+
+
+def test_no_relation_default_and_explicit_opt_out_emit_identical_recurrence_plan(
+    tmp_path: Path,
+    builtin_sm_recurrence_jit_o2_model: ModelSource,
+) -> None:
+    """Default-on discovery is byte-neutral when its certified set is empty."""
+
+    _require_native_recurrence()
+    artifacts: dict[str, Path] = {}
+    executions: dict[str, dict[str, Any]] = {}
+    for label, mode in (("default", None), ("off", "off")):
+        artifact = tmp_path / label
+        Generator(
+            _generation_config(
+                "recurrence",
+                relation_discovery_mode=mode,
+            )
+        ).generate(
+            _NEUTRAL_CURRENT_PROCESS,
+            artifact,
+            model=builtin_sm_recurrence_jit_o2_model,
+        )
+        artifacts[label] = artifact
+        executions[label] = _single_recurrence_execution(artifact)
+
+    default_lane = _manifest_relation_discovery(artifacts["default"])["lanes"][
+        "primary"
+    ]
+    assert default_lane["requested_mode"] == "certified-reuse"
+    assert default_lane["certified_relation_count"] == 0
+    assert default_lane["applied_relation_count"] == 0
+    assert default_lane["state"] == "no_certified_numerical_relation"
+    default_schedule = next(
+        artifacts["default"].rglob("recurrence-runtime.pacbin")
+    )
+    off_schedule = next(artifacts["off"].rglob("recurrence-runtime.pacbin"))
+    assert default_schedule.read_bytes() == off_schedule.read_bytes()
+    assert (
+        executions["default"]["plan"]["inspection_summary"]["schedule_digest"]
+        != executions["off"]["plan"]["inspection_summary"]["schedule_digest"]
+    )
+    assert (
+        executions["default"]["plan"]["process_binding"][
+            "native_schedule_semantic_digest"
+        ]
+        == executions["off"]["plan"]["process_binding"][
+            "native_schedule_semantic_digest"
+        ]
+    )
+    assert (
+        executions["default"]["recurrence_summary"]
+        == executions["off"]["recurrence_summary"]
+    )
+    for key in (
+        "schedule",
+        "construction",
+        "selector_work_certificate",
+        "direct_arena",
+    ):
+        assert executions["default"]["plan"]["inspection_summary"].get(
+            key
+        ) == executions["off"]["plan"]["inspection_summary"].get(key)
+
+
 @pytest.mark.parametrize("model_source", ("builtin", "ufo"))
-def test_recurrence_numerical_audit_rejects_near_relations_and_matches_runtime(
+def test_recurrence_numerical_audit_applies_exact_opposites_and_rejects_near_relations(
     tmp_path: Path,
     model_source: str,
     builtin_sm_recurrence_jit_o2_model: ModelSource,
     ufo_sm_recurrence_jit_o2_model: CompiledModel,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Reject merely near relations while preserving both public SM frontends."""
+    """Apply exact reuse, reject near matches, and preserve both SM frontends."""
 
     _require_native_recurrence()
     model = (
@@ -1072,13 +1214,39 @@ def test_recurrence_numerical_audit_rejects_near_relations_and_matches_runtime(
     lanes: dict[str, dict[str, Any]] = {}
     native_reports: dict[str, dict[str, Any]] = {}
     runtimes: dict[str, Runtime] = {}
+    active_artifact: Path | None = None
+    active_mode: str | None = None
+    warning_publications: list[tuple[str, bool, str]] = []
+    warning_counts = {"off": 0, "diagnostic": 0, "certified-reuse": 0}
+    original_warning = generation_service._LOGGER.warning
+
+    def record_warning(message: object, *args: object, **kwargs: object) -> None:
+        rendered = str(message) % args if args else str(message)
+        if "proofless-numerical-current-relations-applied-v1" in rendered:
+            assert active_mode is not None
+            warning_counts[active_mode] += 1
+            warning_publications.append(
+                (
+                    active_mode,
+                    active_artifact is not None
+                    and (active_artifact / "artifact.json").is_file(),
+                    rendered,
+                )
+            )
+        original_warning(message, *args, **kwargs)
+
+    monkeypatch.setattr(generation_service._LOGGER, "warning", record_warning)
     for mode in ("off", "diagnostic", "certified-reuse"):
         artifact = tmp_path / f"{model_source}-{mode}"
+        active_artifact = artifact
+        active_mode = mode
         Generator(
             _generation_config(
                 "recurrence",
                 lc_flow_layout="all-flow-union",
-                relation_discovery_mode=mode,
+                relation_discovery_mode=(
+                    None if mode == "certified-reuse" else mode
+                ),
             )
         ).generate(
             _RELATION_REUSE_PROCESS,
@@ -1119,43 +1287,150 @@ def test_recurrence_numerical_audit_rejects_near_relations_and_matches_runtime(
 
     diagnostic = lanes["diagnostic"]
     certified = lanes["certified-reuse"]
-    assert diagnostic["state"] == "no_certified_numerical_relation"
-    assert diagnostic["certified_relation_count"] == 0
+    assert diagnostic["state"] == "authenticated-numerical-diagnostic-only"
+    assert diagnostic["certified_relation_count"] == 2
     assert diagnostic["applied_relation_count"] == 0
     assert diagnostic["warning"]["required"] is False
-    assert certified["state"] == "no_certified_numerical_relation"
-    assert certified["certified_relation_count"] == 0
-    assert certified["applied_relation_count"] == 0
-    assert certified["warning"]["required"] is False
-    assert certified["application_validation"]["status"] == (
-        "not-required-no-applied-relations"
+    assert certified["state"] == "authenticated-numerical-applied"
+    assert certified["certified_relation_count"] == 2
+    assert certified["applied_relation_count"] == 2
+    assert certified["warning"] == {
+        "required": True,
+        "emit": "once-per-generated-artifact",
+        "code": "proofless-numerical-current-relations-applied-v1",
+        "message": (
+            "applied authenticated numerical equal/opposite/zero current reuse "
+            "without an exact structural proof; disable with "
+            "--no-numerical-current-reuse"
+        ),
+    }
+    assert warning_counts == {
+        "off": 0,
+        "diagnostic": 0,
+        "certified-reuse": 1,
+    }
+    assert len(warning_publications) == 1
+    warning_mode, artifact_existed, warning_message = warning_publications[0]
+    assert warning_mode == "certified-reuse"
+    assert artifact_existed is True
+    assert "--no-numerical-current-reuse" in warning_message
+    assert certified["application_validation"]["status"] == "verified"
+    assert (
+        certified["application"]["certificate_replay"]["status"] == "verified"
     )
-    assert certified["application"]["certificate_replay"]["status"] == (
-        "no_certified_numerical_relation"
-    )
-    assert diagnostic["application"]["certificates"] == []
-    assert certified["application"]["certificates"] == []
+    assert diagnostic["application"]["relation_kind_counts"] == {
+        "equal": 0,
+        "opposite": 2,
+        "zero": 0,
+    }
+    assert certified["application"]["relation_kind_counts"] == {
+        "equal": 0,
+        "opposite": 2,
+        "zero": 0,
+    }
+    assert [
+        (
+            certificate["current_id"],
+            certificate["representative_id"],
+            certificate["relation_kind"],
+        )
+        for certificate in certified["application"]["certificates"]
+    ] == [(36, 35, "opposite"), (39, 38, "opposite")]
     nearest = certified["discovery"]["nearest_rejected_hypothesis"]
-    assert nearest["current_id"] == 36
-    assert nearest["representative_id"] == 35
-    assert nearest["relation_kind"] == "opposite"
-    assert float(nearest["maximum_tolerance_ratio"]) > 1.0
+    assert nearest["current_id"] == 54
+    assert nearest["representative_id"] is None
+    assert nearest["relation_kind"] == "zero"
+    assert Fraction(str(nearest["maximum_tolerance_ratio"])) > 1
+    candidate_index = certified["discovery"]["candidate_index"]
+    assert candidate_index == {
+        "algorithm": "complete-contract-anchor-tolerance-window-v1",
+        "completeness": "complete-within-configured-tolerance",
+        "contract_count": 38,
+        "exhaustive_fallback_contract_count": 0,
+        "theoretical_pair_hypothesis_count": 184,
+        "screened_pair_hypothesis_count": 38,
+        "zero_hypothesis_count": 66,
+        "screened_hypothesis_budget": 1_000_000,
+        "budget_classification": "within-authenticated-budget",
+        "nearest_rejected_scope": (
+            "zero-and-tolerance-window-screened-hypotheses"
+        ),
+    }
+    persisted = certified["persisted_numerical_evidence"]
+    assert persisted["raw_evidence_retained"] is False
+    assert (
+        persisted["measured_payload_bytes"]
+        < persisted["generation_raw_evidence_bytes"]
+    )
+    assert persisted["full_census"] == {
+        "inspected_current_count": 72,
+        "tested_hypothesis_count": 104,
+        "numerical_candidate_count": 54,
+        "verification_rejected_count": 52,
+        "uncertified_candidate_count": 52,
+        "certified_relation_count": 2,
+        "rejected_hypothesis_count": 102,
+        "candidate_index": candidate_index,
+        "decision_sha256": certified["discovery"]["decision_sha256"],
+        "rejection_decision_sha256": certified["discovery"][
+            "rejection_decision_sha256"
+        ],
+        "certificate_set_sha256": certified["application"][
+            "certificate_replay"
+        ]["certificate_set_sha256"],
+    }
+    for capture_name in ("candidate_capture", "verification_capture"):
+        replay_capture = persisted[capture_name]
+        assert replay_capture["certificate_current_ids"] == [35, 36, 38, 39]
+        assert [
+            row["current_id"] for row in replay_capture["observations"]
+        ] == [35, 36, 38, 39]
+        assert replay_capture["full_batch_commitment"]["current_count"] == 72
+
     diagnostic_native = native_reports["diagnostic"]
     certified_native = native_reports["certified-reuse"]
-    assert diagnostic_native["exact_certified_relation_count"] == 0
+    for native_report in (diagnostic_native, certified_native):
+        assert native_report["probe"]["tested_hypothesis_count"] == 104
+        assert native_report["numerical_candidate_count"] == 54
+        assert native_report["probe"]["verification_rejected_count"] == 52
+        assert native_report["uncertified_candidate_count"] == 52
+        assert native_report["exact_certified_relation_count"] == 2
+        assert native_report["rejected_hypothesis_count"] == 102
+        assert native_report["numerical_candidate_count"] == (
+            native_report["exact_certified_relation_count"]
+            + native_report["uncertified_candidate_count"]
+        )
+        assert native_report["rejected_hypothesis_count"] == (
+            native_report["probe"]["tested_hypothesis_count"]
+            - native_report["exact_certified_relation_count"]
+        )
+        assert native_report["rejected_candidates"] == []
+        rejected_diagnostics = native_report[
+            "rejected_candidate_diagnostics"
+        ]
+        assert rejected_diagnostics["total_rejected_hypothesis_count"] == 102
+        assert rejected_diagnostics["retained_count"] == 0
+        assert rejected_diagnostics["truncated"] is True
+        assert rejected_diagnostics["truncation_policy"] == (
+            "none-authenticated-full-rejection-digest-v1"
+        )
+        assert rejected_diagnostics["full_rejection_sha256"] == (
+            native_report["probe"]["rejection_decision_sha256"]
+        )
+    assert diagnostic_native["exact_certified_relation_count"] == 2
     assert diagnostic_native["applied_relation_count"] == 0
     assert diagnostic_native["scale_copy_row_count"] == 0
-    assert certified_native["state"] == "diagnostic-only"
-    assert certified_native["exact_certified_relation_count"] == 0
-    assert certified_native["applied_relation_count"] == 0
-    assert certified_native["scale_copy_row_count"] == 0
+    assert certified_native["state"] == "exact-certified-applied"
+    assert certified_native["exact_certified_relation_count"] == 2
+    assert certified_native["applied_relation_count"] == 2
+    assert certified_native["scale_copy_row_count"] == 2
     assert certified_native["current_count_before"] == 72
     assert certified_native["current_count_after"] == 72
     assert certified_native["contribution_count_before"] == 138
     assert certified_native["contribution_count_after"] == 138
     assert certified_native["interaction_evaluation_count_before"] == 138
-    assert certified_native["interaction_evaluation_count_after"] == 138
-    assert certified_native["interaction_evaluation_savings"] == 0
+    assert certified_native["interaction_evaluation_count_after"] == 136
+    assert certified_native["interaction_evaluation_savings"] == 2
     _assert_runtime_values_match(
         runtimes["certified-reuse"],
         runtimes["diagnostic"],
@@ -1169,6 +1444,12 @@ def test_recurrence_numerical_audit_rejects_near_relations_and_matches_runtime(
     assert (
         executions["off"]["recurrence_summary"]
         == executions["diagnostic"]["recurrence_summary"]
+    )
+    assert (
+        executions["certified-reuse"]["plan"]["inspection_summary"][
+            "direct_arena"
+        ]["row_group_count"]
+        == off_inspection["direct_arena"]["row_group_count"] + 1
     )
     for key in (
         "schedule",
@@ -1626,7 +1907,7 @@ def test_builtin_full_n5_pure_gluon_recurrence_fits_static_template_budget(
         == "resident-pending-contributions-v1"
     )
 
-    # Integral ceilings for 1.05 × the authenticated AmpliCol static modules.
+    # Integral ceilings for 1.05x the authenticated AmpliCol static modules.
     assert construction["peak_current_count"] <= 2_557
     assert construction["peak_contribution_count"] <= 15_372
     certificate = inspection["selector_work_certificate"]

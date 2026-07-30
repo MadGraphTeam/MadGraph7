@@ -11,18 +11,22 @@ from __future__ import annotations
 
 import hashlib
 import json
-from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from fractions import Fraction
-from math import fsum, isfinite
+from math import copysign, fsum, isfinite
 from typing import Literal, TypeAlias
 
 from ..models.base import Model, VertexEvaluationEquivalence
 from .contracts import runtime_coupling_parameter_names
 from .dag_types import AmplitudeRoot, CurrentNode, GenericDAG, InteractionNode
+from .numerical_candidate_index import (
+    NumericalObservationCandidateIndex,
+    build_numerical_observation_candidate_index,
+    numerical_observation_tolerance_window_ids,
+)
 
 _ComplexWeight: TypeAlias = tuple[float, float]
 _CurrentContract: TypeAlias = tuple[object, ...]
@@ -54,6 +58,51 @@ NUMERICAL_CURRENT_RELATION_WARNING = (
 )
 _MAX_REJECTED_DIAGNOSTICS = 16
 _NUMERICAL_DECIMAL_GUARD_DIGITS = 16
+
+
+def _is_negative_zero(value: float) -> bool:
+    return value == 0.0 and copysign(1.0, value) < 0.0
+
+
+def _rejected_candidate_diagnostics(
+    rows: Sequence[Mapping[str, object]],
+    *,
+    total_rejected: int,
+    full_census: Mapping[str, object],
+    full_rejection_sha256: str,
+) -> dict[str, object]:
+    retained = [dict(row) for row in rows]
+    return {
+        "total_rejected_hypothesis_count": total_rejected,
+        "retained_count": len(retained),
+        "truncated": total_rejected > len(retained),
+        "truncation_policy": (
+            f"first-{_MAX_REJECTED_DIAGNOSTICS}-in-canonical-discovery-order-v1"
+        ),
+        "retained_sha256": _canonical_payload_sha256(
+            {
+                "abi": "pyamplicol-rejected-relation-diagnostics-v1",
+                "rows": retained,
+            }
+        ),
+        "full_census_sha256": _canonical_payload_sha256(
+            {
+                "abi": "pyamplicol-relation-discovery-full-census-v1",
+                **dict(full_census),
+            }
+        ),
+        "full_rejection_sha256": full_rejection_sha256,
+    }
+
+
+def _advance_rejection_digest(previous: str, row: Mapping[str, object]) -> str:
+    encoded = json.dumps(
+        dict(row),
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    return hashlib.sha256(bytes.fromhex(previous) + encoded).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -512,6 +561,10 @@ class NumericalCurrentRelationCertificate:
             or not isfinite(absolute_tolerance)
             or relative_tolerance < 0.0
             or absolute_tolerance < 0.0
+            or _is_negative_zero(relative_tolerance)
+            or _is_negative_zero(absolute_tolerance)
+            or relative_payload != relative_tolerance.hex()
+            or absolute_payload != absolute_tolerance.hex()
             or (relative_tolerance == 0.0 and absolute_tolerance == 0.0)
         ):
             raise ValueError(
@@ -560,10 +613,14 @@ class NumericalCurrentRelationCertificate:
                 raise ValueError(
                     "numerical current relation residual encoding is invalid"
                 ) from error
-            if not residual.is_finite() or residual < 0:
+            if (
+                not residual.is_finite()
+                or residual < 0
+                or raw != _canonical_decimal_string(residual)
+            ):
                 raise ValueError(
                     "numerical current relation residuals must be finite "
-                    "and nonnegative"
+                    "and nonnegative canonical decimal strings"
                 )
             residuals.append(residual)
         certificate = cls(
@@ -782,6 +839,8 @@ class NumericalCurrentObservationDiscoveryReport:
     exhaustive_fallback_contract_count: int
     numerical_candidate_count: int
     verification_rejected_count: int
+    rejected_hypothesis_count: int
+    rejected_decision_sha256: str
     certificates: tuple[NumericalCurrentRelationCertificate, ...]
     rejected_candidates: tuple[dict[str, object], ...]
     nearest_rejected_hypothesis: dict[str, object] | None
@@ -876,12 +935,44 @@ class NumericalCurrentObservationDiscoveryReport:
             },
             "numerical_candidate_count": self.numerical_candidate_count,
             "verification_rejected_count": self.verification_rejected_count,
+            "rejected_hypothesis_count": self.rejected_hypothesis_count,
             "certified_numerical_relation_count": len(self.certificates),
             "certificates": [
                 certificate.to_json_dict()
                 for certificate in self.certificates
             ],
             "rejected_candidates": list(self.rejected_candidates),
+            "rejected_candidate_diagnostics": (
+                _rejected_candidate_diagnostics(
+                    self.rejected_candidates,
+                    total_rejected=self.rejected_hypothesis_count,
+                    full_census={
+                        "candidate_capture_sha256": (
+                            self.candidate_capture_sha256
+                        ),
+                        "verification_capture_sha256": (
+                            self.verification_capture_sha256
+                        ),
+                        "tested_hypothesis_count": (
+                            self.tested_hypothesis_count
+                        ),
+                        "numerical_candidate_count": (
+                            self.numerical_candidate_count
+                        ),
+                        "verification_rejected_count": (
+                            self.verification_rejected_count
+                        ),
+                        "rejected_hypothesis_count": (
+                            self.rejected_hypothesis_count
+                        ),
+                        "certified_relation_count": len(self.certificates),
+                        "rejection_decision_sha256": (
+                            self.rejected_decision_sha256
+                        ),
+                    },
+                    full_rejection_sha256=self.rejected_decision_sha256,
+                )
+            ),
             "nearest_rejected_hypothesis": (
                 self.nearest_rejected_hypothesis
             ),
@@ -903,72 +994,17 @@ class NumericalCurrentObservationDiscoveryResult:
     structural_equivalences: tuple[_CurrentValueEquivalence, ...]
 
 
-@dataclass(frozen=True, slots=True)
-class _NumericalObservationCandidateIndex:
-    """One complete tolerance-window index for an execution contract."""
-
-    observation_index: int
-    scalar_component: int
-    entries: tuple[tuple[Decimal, int], ...]
+_NumericalObservationCandidateIndex = NumericalObservationCandidateIndex[Decimal]
 
 
 def _build_numerical_observation_candidate_index(
     member_ids: Sequence[int],
     observations: Mapping[int, tuple[tuple[Decimal, Decimal], ...]],
 ) -> _NumericalObservationCandidateIndex:
-    """Choose the most discriminating deterministic scalar projection."""
-
-    members = tuple(member_ids)
-    if not members:
-        raise ValueError("numerical candidate index has no members")
-    observation_count = len(observations[members[0]])
-    if observation_count == 0 or any(
-        len(observations[current_id]) != observation_count
-        for current_id in members
-    ):
-        raise ValueError(
-            "numerical candidate index members have inconsistent widths"
-        )
-    scalar_choices = tuple(
-        (observation_index, scalar_component)
-        for observation_index in range(observation_count)
-        for scalar_component in (0, 1)
-    )
-
-    def discrimination(
-        choice: tuple[int, int],
-    ) -> tuple[int, int, int, int]:
-        observation_index, scalar_component = choice
-        values = tuple(
-            observations[current_id][observation_index][scalar_component]
-            for current_id in members
-        )
-        return (
-            len(set(values)),
-            sum(value != 0 for value in values),
-            -observation_index,
-            -scalar_component,
-        )
-
-    observation_index, scalar_component = max(
-        scalar_choices,
-        key=discrimination,
-    )
-    entries = tuple(
-        sorted(
-            (
-                observations[current_id][observation_index][
-                    scalar_component
-                ],
-                current_id,
-            )
-            for current_id in members
-        )
-    )
-    return _NumericalObservationCandidateIndex(
-        observation_index=observation_index,
-        scalar_component=scalar_component,
-        entries=entries,
+    return build_numerical_observation_candidate_index(
+        member_ids,
+        observations,
+        normalize=lambda value: value,
     )
 
 
@@ -982,52 +1018,21 @@ def _numerical_observation_tolerance_window_ids(
     absolute_tolerance: Decimal,
     precision_digits: int,
 ) -> tuple[int, ...]:
-    """Return every earlier representative that can pass the full test.
+    """Use the shared sound window under the configured Decimal context."""
 
-    If ``r < 1`` and a scalar pair passes
-    ``|x-y| <= a + r*max(|x|, |y|)``, then
-    ``|x-y| <= (a + r*|x|)/(1-r)``.  The implementation uses the larger
-    magnitude of the selected complex pair for ``|x|``.  Consequently no
-    equal/opposite relation inside the configured full-vector tolerance can
-    fall outside this one-dimensional window.  Policies with ``r >= 1`` use
-    the exhaustive contract list instead.
-    """
-
-    if relation_kind not in {"equal", "opposite"}:
-        raise ValueError("numerical candidate index relation is unsupported")
-    if not 0 <= index.observation_index < len(current_values):
-        raise ValueError("numerical candidate index observation is invalid")
     if type(precision_digits) is not int or precision_digits < 80:
         raise ValueError("numerical candidate index precision is invalid")
     with localcontext() as context:
         context.prec = precision_digits + _NUMERICAL_DECIMAL_GUARD_DIGITS
         context.rounding = ROUND_HALF_EVEN
-        if relative_tolerance >= 1:
-            return tuple(
-                representative_id
-                for _value, representative_id in index.entries
-                if representative_id < current_id
-            )
-        selected = current_values[index.observation_index]
-        selected_scalar = selected[index.scalar_component]
-        target = (
-            selected_scalar
-            if relation_kind == "equal"
-            else -selected_scalar
-        )
-        current_scale = max(abs(selected[0]), abs(selected[1]))
-        radius = (
-            absolute_tolerance + relative_tolerance * current_scale
-        ) / (Decimal(1) - relative_tolerance)
-        lower = bisect_left(index.entries, (target - radius, -1))
-        upper = bisect_right(
-            index.entries,
-            (target + radius, current_id - 1),
-        )
-        return tuple(
-            representative_id
-            for _value, representative_id in index.entries[lower:upper]
-            if representative_id < current_id
+        return numerical_observation_tolerance_window_ids(
+            index,
+            current_values,
+            relation_kind=relation_kind,
+            current_id=current_id,
+            relative_tolerance=relative_tolerance,
+            absolute_tolerance=absolute_tolerance,
+            normalize=lambda value: value,
         )
 
 
@@ -1100,6 +1105,8 @@ def certify_numerical_current_observations(
         or not isfinite(absolute)
         or relative < 0.0
         or absolute < 0.0
+        or _is_negative_zero(relative)
+        or _is_negative_zero(absolute)
         or (relative == 0.0 and absolute == 0.0)
     ):
         return None
@@ -1361,6 +1368,8 @@ def verify_numerical_current_relation_certificate(
         or not isfinite(certificate.absolute_tolerance)
         or certificate.relative_tolerance < 0.0
         or certificate.absolute_tolerance < 0.0
+        or _is_negative_zero(certificate.relative_tolerance)
+        or _is_negative_zero(certificate.absolute_tolerance)
         or (
             certificate.relative_tolerance == 0.0
             and certificate.absolute_tolerance == 0.0
@@ -1682,6 +1691,8 @@ def discover_generic_dag_numerical_current_relations(
         or not isfinite(absolute)
         or relative < 0.0
         or absolute < 0.0
+        or _is_negative_zero(relative)
+        or _is_negative_zero(absolute)
         or (relative == 0.0 and absolute == 0.0)
     ):
         raise ValueError("numerical current discovery tolerances are invalid")
@@ -1812,6 +1823,14 @@ def discover_generic_dag_numerical_current_relations(
     screened_pair_hypothesis_count = 0
     numerical_candidate_count = 0
     verification_rejected_count = 0
+    rejected_hypothesis_count = 0
+    rejected_decision_sha256 = _canonical_payload_sha256(
+        {
+            "abi": "pyamplicol-generic-dag-rejected-decision-chain-v1",
+            "candidate_capture_sha256": candidate_capture_sha256,
+            "verification_capture_sha256": verification_capture_sha256,
+        }
+    )
 
     def record_rejected(
         *,
@@ -1827,6 +1846,9 @@ def discover_generic_dag_numerical_current_relations(
         reason: str,
     ) -> None:
         nonlocal nearest_rejected
+        nonlocal rejected_decision_sha256
+        nonlocal rejected_hypothesis_count
+        rejected_hypothesis_count += 1
         candidate = (
             residuals[2],
             residuals[0],
@@ -1837,24 +1859,27 @@ def discover_generic_dag_numerical_current_relations(
         )
         if nearest_rejected is None or candidate < nearest_rejected:
             nearest_rejected = candidate
+        row = {
+            "current_id": current_id,
+            "representative_id": representative_id,
+            "relation_kind": relation_kind,
+            "reason": reason,
+            "maximum_absolute_residual": (
+                _canonical_decimal_string(residuals[0])
+            ),
+            "maximum_relative_residual": (
+                _canonical_decimal_string(residuals[1])
+            ),
+            "maximum_tolerance_ratio": (
+                _canonical_decimal_string(residuals[2])
+            ),
+        }
+        rejected_decision_sha256 = _advance_rejection_digest(
+            rejected_decision_sha256,
+            row,
+        )
         if len(rejected_candidates) < _MAX_REJECTED_DIAGNOSTICS:
-            rejected_candidates.append(
-                {
-                    "current_id": current_id,
-                    "representative_id": representative_id,
-                    "relation_kind": relation_kind,
-                    "reason": reason,
-                    "maximum_absolute_residual": (
-                        _canonical_decimal_string(residuals[0])
-                    ),
-                    "maximum_relative_residual": (
-                        _canonical_decimal_string(residuals[1])
-                    ),
-                    "maximum_tolerance_ratio": (
-                        _canonical_decimal_string(residuals[2])
-                    ),
-                }
-            )
+            rejected_candidates.append(row)
 
     for current in dag.currents:
         contract = contracts[current.id]
@@ -2046,6 +2071,12 @@ def discover_generic_dag_numerical_current_relations(
             ),
         }
     certificate_tuple = tuple(certificates)
+    if rejected_hypothesis_count != (
+        tested_hypothesis_count - len(certificate_tuple)
+    ):
+        raise AssertionError(
+            "generic numerical rejection census is internally inconsistent"
+        )
     state = (
         "certified_numerical_relations"
         if certificate_tuple
@@ -2085,6 +2116,8 @@ def discover_generic_dag_numerical_current_relations(
         ),
         numerical_candidate_count=numerical_candidate_count,
         verification_rejected_count=verification_rejected_count,
+        rejected_hypothesis_count=rejected_hypothesis_count,
+        rejected_decision_sha256=rejected_decision_sha256,
         certificates=certificate_tuple,
         rejected_candidates=tuple(rejected_candidates),
         nearest_rejected_hypothesis=nearest_payload,
@@ -3131,6 +3164,7 @@ class RelationDiscoveryReport:
     interaction_evaluation_count_after: int | None
     certificates: tuple[ExactCurrentRelationCertificate, ...] = ()
     rejected_candidates: tuple[dict[str, object], ...] = ()
+    rejected_decision_sha256: str = ""
     follow_up_boundary: str | None = None
 
     def to_json_dict(self) -> dict[str, object]:
@@ -3157,6 +3191,7 @@ class RelationDiscoveryReport:
             },
             "numerical_candidate_count": self.numerical_candidate_count,
             "uncertified_candidate_count": self.uncertified_candidate_count,
+            "rejected_hypothesis_count": self.uncertified_candidate_count,
             "exact_certified_relation_count": (self.exact_certified_relation_count),
             "applied_relation_count": self.applied_relation_count,
             "interaction_evaluation_count_before": (
@@ -3179,6 +3214,32 @@ class RelationDiscoveryReport:
                 certificate.to_json_dict() for certificate in self.certificates
             ],
             "rejected_candidates": list(self.rejected_candidates),
+            "rejected_candidate_diagnostics": (
+                _rejected_candidate_diagnostics(
+                    self.rejected_candidates,
+                    total_rejected=self.uncertified_candidate_count,
+                    full_census={
+                        "requested_mode": self.requested_mode,
+                        "numerical_candidate_count": (
+                            self.numerical_candidate_count
+                        ),
+                        "uncertified_candidate_count": (
+                            self.uncertified_candidate_count
+                        ),
+                        "rejected_hypothesis_count": (
+                            self.uncertified_candidate_count
+                        ),
+                        "exact_certified_relation_count": (
+                            self.exact_certified_relation_count
+                        ),
+                        "applied_relation_count": self.applied_relation_count,
+                        "rejection_decision_sha256": (
+                            self.rejected_decision_sha256
+                        ),
+                    },
+                    full_rejection_sha256=self.rejected_decision_sha256,
+                )
+            ),
             "follow_up_boundary": self.follow_up_boundary,
         }
 
@@ -3212,10 +3273,27 @@ class _NumericalRelationDiscovery:
         self.uncertified_candidate_count = 0
         self.certificates: list[ExactCurrentRelationCertificate] = []
         self.rejected_candidates: list[dict[str, object]] = []
+        self.rejected_decision_sha256 = _canonical_payload_sha256(
+            {
+                "abi": "pyamplicol-exact-rejected-decision-chain-v1",
+                "precision_digits": self.precision_digits,
+                "probe_count": self.probe_count,
+                "seed": self.seed,
+            }
+        )
         self._representatives_by_fingerprint: dict[
             tuple[_CurrentContract, tuple[object, ...]],
             list[tuple[int, _CurrentTermVector]],
         ] = {}
+
+    def record_rejected(self, row: Mapping[str, object]) -> None:
+        payload = dict(row)
+        self.rejected_decision_sha256 = _advance_rejection_digest(
+            self.rejected_decision_sha256,
+            payload,
+        )
+        if len(self.rejected_candidates) < _MAX_REJECTED_DIAGNOSTICS:
+            self.rejected_candidates.append(payload)
 
     def consider(
         self,
@@ -3247,14 +3325,13 @@ class _NumericalRelationDiscovery:
                 )
                 if factor is None:
                     self.uncertified_candidate_count += 1
-                    if len(self.rejected_candidates) < _MAX_REJECTED_DIAGNOSTICS:
-                        self.rejected_candidates.append(
-                            {
-                                "current_id": current_id,
-                                "representative_id": representative_id,
-                                "reason": "numerical-candidate-lacks-exact-certificate",
-                            }
-                        )
+                    self.record_rejected(
+                        {
+                            "current_id": current_id,
+                            "representative_id": representative_id,
+                            "reason": "numerical-candidate-lacks-exact-certificate",
+                        }
+                    )
                     continue
                 exact_matches.append((representative_id, factor, representative_vector))
             if exact_matches:
@@ -3597,11 +3674,12 @@ def discover_recursive_evaluation_relations(
         discovery.certificates,
     ):
         discovery.uncertified_candidate_count += len(discovery.certificates)
-        if len(discovery.rejected_candidates) < _MAX_REJECTED_DIAGNOSTICS:
-            discovery.rejected_candidates.append(
+        for certificate in discovery.certificates:
+            discovery.record_rejected(
                 {
                     "reason": "exact-certificate-chain-replay-failed",
-                    "relation_count": len(discovery.certificates),
+                    "current_id": certificate.current_id,
+                    "representative_id": certificate.representative_id,
                 }
             )
         discovery.certificates.clear()
@@ -3640,6 +3718,7 @@ def discover_recursive_evaluation_relations(
         ),
         certificates=tuple(discovery.certificates),
         rejected_candidates=tuple(discovery.rejected_candidates),
+        rejected_decision_sha256=discovery.rejected_decision_sha256,
         follow_up_boundary=(
             "direct vertex-kernel equivalence remains model-certificate-owned; "
             "this pass promotes exact current proportionality and its induced "

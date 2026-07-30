@@ -11,6 +11,7 @@ import pytest
 from pyamplicol.api.errors import ArtifactError, EvaluationError
 from pyamplicol.runtime.recurrence_exact import _executor as executor_module
 from pyamplicol.runtime.recurrence_exact._execution import (
+    _clear_stage,
     _evaluate_union_point,
     _execute_certified_reuse_row,
     _execute_union_source,
@@ -28,6 +29,7 @@ from pyamplicol.runtime.recurrence_exact._plan_v2 import (
     _AmplitudeDestination,
     _Closure,
     _Contribution,
+    _Current,
     _ExactFactor,
     _Executor,
     _MomentumForm,
@@ -218,6 +220,53 @@ def test_union_schedule_executes_certified_reuse_as_exact_scale_copy() -> None:
         (Decimal(12), Decimal(8)),
         (Decimal(24), Decimal(16)),
     )
+
+
+def test_zero_self_reuse_clears_stale_decimal_destination_before_copy() -> None:
+    plan = _scalar_union_plan()
+    sections = plan.sections
+    zero_factor_id = len(sections.exact_factors)
+    plan.sections = replace(
+        sections,
+        currents=(
+            _Current(
+                2,
+                1,
+                0,
+                2,
+                2,
+                0,
+                1,
+                0,
+                0,
+                0,
+                DIRECT_NONE_U32,
+                DIRECT_NONE_U32,
+            ),
+        ),
+        exact_factors=(*sections.exact_factors, _factor(0)),
+    )
+    arena = [
+        (Decimal(1), Decimal(2)),
+        (Decimal(3), Decimal(4)),
+        (Decimal("NaN"), Decimal("NaN")),
+        (Decimal("NaN"), Decimal("NaN")),
+    ]
+    row = _Contribution(
+        2,
+        DIRECT_NONE_U32,
+        2,
+        DIRECT_NONE_U32,
+        2,
+        zero_factor_id,
+        0,
+        3,
+    )
+
+    _clear_stage(plan, arena, 1)
+    _execute_certified_reuse_row(plan, row, arena)
+
+    assert arena[2:] == [(_ZERO, _ZERO), (_ZERO, _ZERO)]
 
 
 def test_certified_reuse_rejects_noncanonical_encoding() -> None:

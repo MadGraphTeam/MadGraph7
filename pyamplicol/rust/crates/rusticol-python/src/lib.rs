@@ -5,6 +5,8 @@ mod eager_lowering;
 #[cfg(feature = "numpy")]
 mod recurrence;
 #[cfg(feature = "numpy")]
+mod recurrence_numerical_evidence;
+#[cfg(feature = "numpy")]
 mod recurrence_template;
 
 #[cfg(feature = "numpy")]

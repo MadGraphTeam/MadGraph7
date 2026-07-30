@@ -1979,6 +1979,11 @@ fn authenticated_numerical_evidence_applies_only_its_verified_mapping() {
             "authenticated-numerical-test",
         )
         .unwrap(),
+        runtime_parameter_schema_sha256: digest(60).to_string(),
+        candidate_observation_batch_sha256: digest(61).to_string(),
+        verification_observation_batch_sha256: digest(62).to_string(),
+        decision_sha256: digest(64).to_string(),
+        rejection_decision_sha256: digest(65).to_string(),
         certificate_algorithm: NUMERICAL_RELATION_CERTIFICATE_ALGORITHM.to_owned(),
         certificate_set_sha256: digest(63).to_string(),
         precision_digits: 96,
@@ -1989,6 +1994,7 @@ fn authenticated_numerical_evidence_applies_only_its_verified_mapping() {
         seed: 0x5059_414d,
         numerical_candidate_count: 4,
         verification_rejected_count: 3,
+        rejected_hypothesis_count: 46,
         tested_hypothesis_count: 47,
         mappings: vec![RecurrenceNumericalCurrentMapping {
             current_id: structural_certificate.current_id,
@@ -2080,6 +2086,44 @@ fn authenticated_numerical_evidence_applies_only_its_verified_mapping() {
         1
     );
 
+    let mut zero_options = options.clone();
+    let zero_mapping = &mut zero_options.numerical_evidence.as_mut().unwrap().mappings[0];
+    zero_mapping.representative_id = None;
+    zero_mapping.execution_representative_id = zero_mapping.current_id;
+    zero_mapping.relation_kind = "zero".to_owned();
+    zero_mapping.factor = ExactComplexRational::ZERO;
+    let (zero_plan, zero_report) = lower_recurrence_direct_plan_v2_with_relation_discovery(
+        &program,
+        &templates,
+        &catalog,
+        semantic_digest,
+        digest(2),
+        catalog_digest,
+        runtime_options(),
+        &zero_options,
+    )
+    .unwrap();
+    let zero_report = zero_report.unwrap();
+    assert_eq!(zero_report.applied_relation_count, 1);
+    assert_eq!(zero_report.scale_copy_row_count, 1);
+    assert!(
+        zero_report.interaction_evaluation_count_after
+            < zero_report.interaction_evaluation_count_before
+    );
+    let zero_row = zero_plan
+        .contributions()
+        .iter()
+        .find(|row| row.flags & DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE != 0)
+        .unwrap();
+    assert_eq!(
+        zero_row.parent0_component_base, zero_row.destination_component_base,
+        "a certified zero current must self-reference its cleared stage destination"
+    );
+    assert_eq!(
+        zero_plan.exact_factors()[zero_row.exact_factor_id as usize],
+        ExactComplexRational::ZERO
+    );
+
     let mut mismatched = options.clone();
     mismatched
         .numerical_evidence
@@ -2149,11 +2193,7 @@ fn authenticated_numerical_evidence_applies_only_its_verified_mapping() {
     );
 
     let mut source_target = options;
-    let mapping = &mut source_target
-        .numerical_evidence
-        .as_mut()
-        .unwrap()
-        .mappings[0];
+    let mapping = &mut source_target.numerical_evidence.as_mut().unwrap().mappings[0];
     mapping.current_id = 0;
     mapping.representative_id = None;
     mapping.execution_representative_id = 0;

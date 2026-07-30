@@ -515,9 +515,14 @@ fn load_plan(
     }
     let bytes = reader.member_bytes(RECURRENCE_DIRECT_SCHEDULE_MEMBER)?;
     let plan = decode_recurrence_direct_plan_v2(bytes)?;
-    if plan.semantic_digest().to_string() != manifest.plan.process_binding.schedule_digest {
+    if plan.semantic_digest().to_string()
+        != manifest
+            .plan
+            .process_binding
+            .native_schedule_semantic_digest()
+    {
         return Err(RusticolError::integrity(
-            "recurrence root schedule digest disagrees with its process binding",
+            "recurrence native schedule semantic digest disagrees with its process binding",
         ));
     }
     if plan.prepared_pack_digest().to_string() != manifest.prepared_kernel_pack_digest
