@@ -318,7 +318,7 @@ c         Set right sign for ANS, based on sign of chosen helicity
     IF (MULTI_CHANNEL) THEN
         XTOT=0D0
         DO I=1,LMAXCONFIGS
-	    J = CONFSUB(%(proc_id)s, I)
+	    J = %(me_confsub_j)s
 	    if (J.ne.0) then
 	    if(sde_strat.eq.1) then
 	         AMP2(J) = AMP2(J) * GET_CHANNEL_CUT(P, I)

@@ -2571,7 +2571,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             open(crossing_template).read() % replace_dict
 
     def fill_crossing_replace_dict_me(self, matrix_element, replace_dict,
-                                      use_crossing, proc_id):
+                                      use_crossing, proc_id, xgrow_map=None):
         """Fill the crossing holes of matrix_madevent_group_v4.inc.
 
         The madevent group SMATRIX differs structurally from the standalone one
@@ -2581,6 +2581,12 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         reproduces the historical madevent code, so a non-crossing output is
         unchanged; the extended-FLAV_IDX decode / APPLY_CROSSING path is only
         written out when use_crossing is True (added in the ON slice).
+
+        ``xgrow_map`` (Track-A bases only) is ``{cross: (dep_proc_id, cmap)}``
+        for every within-group router flavor routed here: which subprocess the
+        crossed call is FOR, and that subprocess's diagram -> this module's
+        diagram map under the crossing. It drives the multi-channel row; see
+        the ``me_confsub_j`` fill below.
         """
         pid = str(proc_id)
         if not use_crossing:
@@ -2599,6 +2605,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 'crossing_routines_me': '',
                 'me_matrix_ic_param': '',
                 'me_matrix_ic_decl': '',
+                # Multi-channel row: without crossing this matrix element is
+                # only ever called for its own subprocess, so its own CONFSUB
+                # row is the right one and AMP2 is already in its numbering.
+                'me_confsub_j': 'CONFSUB(%s, I)' % pid,
                 # helicity-recycling template variant (matrix<i>_hel):
                 'smatrix_hel_cross_decl':
                     'C     Generated without crossing symmetry: IFLAV is a plain'
@@ -2643,7 +2653,73 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             'ghfilt_data': self.format_integer_data_lines(
                 'GHFILT', self.compute_ghfilt(matrix_element,
                                               allow_reverse=True))}
+        # ---- multi-channel row for calls routed here by a within-group router.
+        # CHANNEL and AMP2 are both in THIS module's diagram numbering (the
+        # router already translated CHANNEL through the crossing), but the loop
+        # that builds XTOT must enumerate the configs of the subprocess the call
+        # is FOR: GET_CHANNEL_CUT(P, I) is evaluated on the DEPENDENT's momenta,
+        # so I has to be a config of the dependent's row, and the AMP2 slot
+        # paired with it is the dependent's diagram sent through the crossing.
+        # Walking our own row instead pairs each amplitude with a different
+        # config's cut -- a bijective relabel, so the weights still sum to 1 and
+        # the cross section is unchanged, but the importance sampling is
+        # mis-paired. Both lookups are resolved from CROSSUSE through baked
+        # tables rather than a common block set by the router: madevent runs
+        # vectorised (IVEC/warps) and mutable shared state would race.
+        #
+        # Safe to key on the crossing code alone: a base that serves a
+        # within-group router is never also a cross-group (Track B) base --
+        # compute_crossgroup_routing skips any group that has within-group
+        # routing -- so no foreign crossing can reach these tables.
+        ngraphs_me = len(matrix_element.get('diagrams'))
+        nxc = (matrix_element.get_nexternal_ninitial()[0] + 1) ** 2 - 1
+        xg_rows, xg_cols = {}, {}
+        xg_cfg = [list(range(0, ngraphs_me + 1))]   # column 1 = identity
+        for cross in sorted(xgrow_map or {}):
+            dep_pid, cmap = xgrow_map[cross]
+            # Only a clean permutation of our own diagrams is usable: anything
+            # else (a fallback map, or a dependent with a different diagram
+            # count) keeps our own row, i.e. the historical behaviour.
+            if not 1 <= cross <= nxc or \
+                    sorted(cmap) != list(range(1, ngraphs_me + 1)):
+                continue
+            col = [0] + list(cmap)
+            if col not in xg_cfg:
+                xg_cfg.append(col)
+            xg_rows[cross] = dep_pid
+            xg_cols[cross] = xg_cfg.index(col) + 1
+        if xg_rows:
+            def _data2d(name, icol, values, per_line=10):
+                out = []
+                for s in range(0, len(values), per_line):
+                    chunk = values[s:s + per_line]
+                    out.append('      DATA (%s(I,%d),I=%d,%d) /%s/'
+                               % (name, icol, s, s + len(chunk) - 1,
+                                  ','.join(str(v) for v in chunk)))
+                return out
+            xg_lines = ['      INTEGER IXROW, IXR',
+                        '      INTEGER XGROWT(0:%d), XGCOLT(0:%d)' % (nxc, nxc),
+                        self.format_integer_data_lines(
+                            'XGROWT', [xg_rows.get(c, int(pid))
+                                       for c in range(nxc + 1)]),
+                        self.format_integer_data_lines(
+                            'XGCOLT', [xg_cols.get(c, 1)
+                                       for c in range(nxc + 1)]),
+                        '      INTEGER XGCFG(0:%d,%d)'
+                        % (ngraphs_me, len(xg_cfg))]
+            for icol, col in enumerate(xg_cfg):
+                xg_lines += _data2d('XGCFG', icol + 1, col)
+            xg_decl = '\n' + '\n'.join(xg_lines)
+            xg_decode = ('\n      IXROW = XGROWT(CROSSUSE)'
+                         '\n      IXR = XGCOLT(CROSSUSE)')
+            # Slot 0 of every XGCFG column is 0, so a config this subprocess has
+            # no diagram for still reads back as 0 and is skipped as before.
+            confsub_j = 'XGCFG(CONFSUB(IXROW, I), IXR)'
+        else:
+            xg_decl, xg_decode = '', ''
+            confsub_j = 'CONFSUB(%s, I)' % pid
         replace_dict.update({
+            'me_confsub_j': confsub_j,
             'smatrix_me_cross_decl': (
                 '      INTEGER NFLAV\n'
                 '      PARAMETER (NFLAV=%(nflav)d)\n'
@@ -2658,7 +2734,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 # SMATRIX call from the crossing permutation XGPERM/XGSGN.
                 '      INTEGER GHIDXA(NCOMB), XGPERM(NEXTERNAL)\n'
                 '      INTEGER XGSGN(NEXTERNAL), XGDUM, XGH'
-                ) % {'nflav': nflav, 'cp': cp},
+                '%(xg_decl)s'
+                ) % {'nflav': nflav, 'cp': cp, 'xg_decl': xg_decl},
             # Decode the crossing and build the crossed P/NHEL/IC once, before the
             # helicity loop. An unusable crossing (spin*color = 0) has a zero ME.
             'smatrix_me_cross_decode': (
@@ -2685,7 +2762,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 '        CALL %(cp)sCROSS_GHIDX(CROSSUSE, XGPERM, XGSGN,\n'
                 '     &   NHEL(1,XGH), GHIDXA(XGH))\n'
                 '      ENDDO'
-                ) % {'cp': cp},
+                '%(xg_decode)s'
+                ) % {'cp': cp, 'xg_decode': xg_decode},
             'me_flav_key': 'FLAV_USE',
             # The shared GOODHEL filter (keyed by the reduced flavor) is gated
             # and trained through the runtime remap GHIDXA: crossed row I is good
@@ -2727,7 +2805,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 '      REAL*8 PUSE(0:3,NEXTERNAL)\n'
                 '      INTEGER %(cp)sGET_SPINCOL_CROSS\n'
                 '      INTEGER %(cp)sGET_IDENT_CROSS'
-                ) % {'nflav': nflav, 'cp': cp},
+                '%(xg_decl)s'
+                ) % {'nflav': nflav, 'cp': cp, 'xg_decl': xg_decl},
             'smatrix_hel_cross_decode': (
                 '      CROSSUSE = (IFLAV-1) / NFLAV\n'
                 '      IDENUSE = %(cp)sGET_SPINCOL_CROSS(CROSSUSE)\n'
@@ -2745,7 +2824,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 '        PUSE(3,XKCR) = P(3,PERM(XKCR))\n'
                 '        IC(XKCR) = SGN(XKCR)\n'
                 '      ENDDO'
-                ) % {'cp': cp},
+                '%(xg_decode)s'
+                ) % {'cp': cp, 'xg_decode': xg_decode},
             'hel_matrix_call_args': 'PUSE ,IC, FLAV_USE, TS, AMP2, JAMP2, IVEC',
             'hel_matrix_ic_param': 'IC,',
             # C-parity de-duplication only for the uncrossed base process
@@ -7983,7 +8063,8 @@ class ProcessExporterFortranME(ProcessExporterFortran):
     # write_matrix_element_v4
     #===========================================================================
     def write_matrix_element_v4(self, writer, matrix_element, fortran_model,
-                           proc_id = "", config_map = [], subproc_number = ""):
+                           proc_id = "", config_map = [], subproc_number = "",
+                           xgrow_map = None):
         """Export a matrix element to a matrix.f file in MG4 madevent format"""
 
         if not matrix_element.get('processes') or \
@@ -8051,7 +8132,8 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             and not any(self.breaks_crossing_symmetry(proc)
                         for proc in matrix_element.get('processes')))
         self.fill_crossing_replace_dict_me(matrix_element, replace_dict,
-                                           me_use_crossing, proc_id)
+                                           me_use_crossing, proc_id,
+                                           xgrow_map=xgrow_map)
 
  
         mask_decl, mask_setup, n_flavors, active_flavor_mask = \
@@ -10237,6 +10319,47 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         baked_nhs = {}   # base_index -> baked base-NHSTATE array name
         baked_col = {}   # base_index -> baked base colour table names
         dep_col = self._color_code_tables(matrix_element)
+        # Multi-channel config remap. CHANNEL arrives as THIS subprocess's AMP2
+        # slot (SUBDIAG = CONFSUB(<this proc>, iconf), a diagram number in this
+        # module's numbering), but the base SMATRIX enhances AMP2(CHANNEL) in
+        # ITS numbering: AMP2 is filled by the BASE's diagrams evaluated at the
+        # CROSSED momenta, so the slot holding |this subprocess's diagram m|^2 is
+        # the base diagram carrying m's topology *under the crossing*. Translate
+        # the slot with the same map the cross-group path uses for DSIG_XGCONFIG
+        # -- and for the same reason; walking the base's own CONFSUB row instead
+        # would name the base diagram that shares the topology with legs left in
+        # place, which is not the one the crossed momenta filled. Per flavor,
+        # since each routes to its own base/crossing. Emitted only when some
+        # flavor is non-identity (it usually is not, the diagram numbering being
+        # largely crossing-covariant), so most routers are unchanged.
+        #
+        # The base applies the same map to its multi-channel row (xgrow_map in
+        # fill_crossing_replace_dict_me) and accepts it only as a permutation of
+        # ITS diagrams, so a base with a different diagram count is left alone on
+        # both sides -- crossing partners always have the same count, this only
+        # keeps the two ends from disagreeing.
+        ngraphs = len(matrix_element.get('diagrams'))
+        ident_cfg = list(range(1, ngraphs + 1))
+        cfg_cache = {}   # (base_index, cross) -> map; flavors often share one
+        configmap = []
+        for (b, iflav) in routing:
+            key = (b, (iflav - 1) // len(matrix_elements[b]
+                                         .get_external_flavors_with_iden()))
+            if key not in cfg_cache:
+                cmap = self._crossgroup_configmap(
+                    matrix_element, matrix_elements[b], key[1])
+                if len(matrix_elements[b].get('diagrams')) != ngraphs:
+                    cmap = ident_cfg
+                cfg_cache[key] = cmap
+            configmap.append(cfg_cache[key])
+        chan_name = None
+        if any(cm != ident_cfg for cm in configmap):
+            chan_name = 'XGCONF_%s' % proc_id
+            decl.append('      INTEGER XCHAN')
+            decl.append('      INTEGER %s(%d,%d)'
+                        % (chan_name, ngraphs, len(configmap)))
+            decl.append('      DATA %s /%s/' % (
+                chan_name, ','.join(str(x) for col in configmap for x in col)))
         for flav0, (base_index, iflav) in enumerate(routing):
             base_me = matrix_elements[base_index]
             nflav_base = len(base_me.get_external_flavors_with_iden())
@@ -10244,9 +10367,19 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             colmap = self._router_colmap(matrix_element, base_me, cross)
             kw = 'IF' if flav0 == 0 else 'ELSE IF'
             dispatch.append('      %s (IFLAV.EQ.%d) THEN' % (kw, flav0 + 1))
+            chan = 'channel'
+            if chan_name:
+                # A config this subprocess has no diagram for gives CHANNEL=0;
+                # leave it alone (the base's own multi-channel block already
+                # handles what it gets) rather than indexing outside the table.
+                chan = 'XCHAN'
+                dispatch += [
+                    '        XCHAN = channel',
+                    '        IF (channel.GE.1.AND.channel.LE.%d) XCHAN ='
+                    ' %s(channel,%d)' % (ngraphs, chan_name, flav0 + 1)]
             dispatch.append(
-                '        CALL SMATRIX%d(P, %d, RHEL, RCOL, channel, IVEC, ANS,'
-                ' IHEL, ICOL)' % (base_index + 1, iflav))
+                '        CALL SMATRIX%d(P, %d, RHEL, RCOL, %s, IVEC, ANS,'
+                ' IHEL, ICOL)' % (base_index + 1, iflav, chan))
             perm_called = False
             # Encode the crossed helicity code (skip cross 0 = identity).
             if cross != 0:
@@ -10506,6 +10639,30 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                         perms.append(pi)
         else:
             crossing_bases, crossing_routing = None, None
+        # Per base: {crossing -> (dependent proc_id, dep-diagram -> base-diagram
+        # map)}. The base's multi-channel loop needs both to weight a routed call
+        # correctly -- the row says which configs to enumerate (they pair with
+        # GET_CHANNEL_CUT on the dependent's momenta), the map turns each of that
+        # subprocess's diagrams into the AMP2 slot the crossed evaluation filled.
+        # See fill_crossing_replace_dict_me.
+        base_xgrow = {}
+        if crossing_routing is not None:
+            cfg_cache = {}
+            for idep, route in enumerate(crossing_routing):
+                if route is None or idep in crossing_bases:
+                    continue
+                for (base_index, iflav) in route:
+                    base_me = matrix_elements[base_index]
+                    cross = (iflav - 1) // len(
+                        base_me.get_external_flavors_with_iden())
+                    if not cross:
+                        continue
+                    key = (idep, base_index, cross)
+                    if key not in cfg_cache:
+                        cfg_cache[key] = self._crossgroup_configmap(
+                            matrix_elements[idep], base_me, cross)
+                    base_xgrow.setdefault(base_index, {})[cross] = (
+                        idep + 1, cfg_cache[key])
 
         for ime, matrix_element in \
                 enumerate(matrix_elements):
@@ -10563,12 +10720,13 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                     matrix_elements=matrix_elements)
             elif self.opt['hel_recycling']:
                 filename = 'matrix%d_orig.f' % (ime+1)
-                replace_dict = self.write_matrix_element_v4(None, 
+                replace_dict = self.write_matrix_element_v4(None,
                                 matrix_element,
                                 fortran_model,
                                 proc_id=str(ime+1),
                                 config_map=subproc_group.get('diagram_maps')[ime],
-                                subproc_number=group_number)
+                                subproc_number=group_number,
+                                xgrow_map=base_xgrow.get(ime))
                 calls,ncolor = replace_dict['return_value']
                 tfile = open(replace_dict['template_file']).read()
                 file = misc.apply_template(tfile, replace_dict)
@@ -10598,12 +10756,13 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             else:
                 filename = 'matrix%d.f' % (ime+1)
                 calls, ncolor = \
-                   self.write_matrix_element_v4(writers.FortranWriter(filename), 
+                   self.write_matrix_element_v4(writers.FortranWriter(filename),
                                 matrix_element,
                                 fortran_model,
                                 proc_id=str(ime+1),
                                 config_map=subproc_group.get('diagram_maps')[ime],
-                                subproc_number=group_number)
+                                subproc_number=group_number,
+                                xgrow_map=base_xgrow.get(ime))
 
             if second_exporter:
                 process_exporter_cpp = second_exporter.oneprocessclass(matrix_element,second_helas, prefix=ime)
