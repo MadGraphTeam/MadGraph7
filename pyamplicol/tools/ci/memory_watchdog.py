@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: 0BSD
-"""Run a command under an aggregate process-tree RSS limit.
+"""Run a command under a conservative aggregate process-tree memory limit.
 
 The implementation deliberately uses only the Python standard library. Linux
-RSS data comes from ``/proc``; macOS uses the platform ``ps`` command. The
-child starts in a new process session so the watchdog can terminate both its
-process group and descendants that create another process group.
+RSS data comes from ``/proc``; macOS uses the platform ``ps`` command and
+``proc_pid_rusage`` physical-footprint data. The child starts in a new process
+session so the watchdog can terminate both its process group and descendants
+that create another process group.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import ctypes.util
+import errno
 import math
 import os
 import platform
@@ -37,6 +39,16 @@ DEFAULT_POLL_INTERVAL = 0.25
 DEFAULT_TERMINATE_GRACE = 5.0
 MEMORY_LIMIT_EXIT_CODE = 137
 WATCHDOG_ERROR_EXIT_CODE = 125
+RSS_LIMIT_REASON = "process-tree-rss-limit"
+DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON = (
+    "darwin-process-tree-physical-footprint-limit"
+)
+DARWIN_PHYSICAL_FOOTPRINT_PROBE_REASON = (
+    "darwin-process-tree-physical-footprint-probe-unavailable"
+)
+_RUSAGE_INFO_V0 = 0
+_RUSAGE_INFO_V0_BYTES = 96
+_RUSAGE_INFO_PHYS_FOOTPRINT_OFFSET = 72
 
 
 class ProbeError(RuntimeError):
@@ -59,9 +71,11 @@ class MemorySample:
 
     rss_bytes: int
     members: tuple[ProcessInfo, ...]
+    physical_footprint_bytes: int | None = None
 
 
 Snapshotter = Callable[[], dict[int, ProcessInfo]]
+PhysicalFootprintProbe = Callable[[Iterable[int]], dict[int, int]]
 
 
 def _positive_finite(value: str) -> float:
@@ -199,6 +213,66 @@ def _parse_darwin_taskinfo_rss(text: bytes) -> int:
     return struct.unpack_from("=Q", text, 8)[0]
 
 
+def _parse_darwin_rusage_phys_footprint(text: bytes) -> int:
+    """Return ``ri_phys_footprint`` from Darwin ``rusage_info_v0`` bytes."""
+
+    minimum_size = _RUSAGE_INFO_PHYS_FOOTPRINT_OFFSET + 8
+    if len(text) < minimum_size:
+        raise ValueError("incomplete Darwin rusage_info_v0 record")
+    return struct.unpack_from(
+        "=Q", text, _RUSAGE_INFO_PHYS_FOOTPRINT_OFFSET
+    )[0]
+
+
+class DarwinPhysicalFootprintProbe:
+    """Read per-process physical footprints through Darwin ``libproc``."""
+
+    def __init__(self) -> None:
+        library_name = ctypes.util.find_library("proc") or "/usr/lib/libproc.dylib"
+        try:
+            library = ctypes.CDLL(library_name, use_errno=True)
+            proc_pid_rusage = library.proc_pid_rusage
+        except (AttributeError, OSError) as error:
+            raise ProbeError(
+                f"cannot load Darwin proc_pid_rusage: {error}"
+            ) from error
+        proc_pid_rusage.argtypes = (
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_void_p,
+        )
+        proc_pid_rusage.restype = ctypes.c_int
+        self._proc_pid_rusage = proc_pid_rusage
+
+    def __call__(self, pids: Iterable[int]) -> dict[int, int]:
+        footprints: dict[int, int] = {}
+        for pid in sorted(set(pids)):
+            buffer = ctypes.create_string_buffer(_RUSAGE_INFO_V0_BYTES)
+            ctypes.set_errno(0)
+            result = self._proc_pid_rusage(
+                pid,
+                _RUSAGE_INFO_V0,
+                buffer,
+            )
+            if result == 0:
+                footprints[pid] = _parse_darwin_rusage_phys_footprint(
+                    buffer.raw
+                )
+                continue
+            error_number = ctypes.get_errno()
+            if error_number in {errno.ENOENT, errno.ESRCH}:
+                # The process exited between the process-tree and footprint
+                # snapshots. Its prior RSS remains in this sample.
+                continue
+            detail = (
+                os.strerror(error_number) if error_number else "unknown error"
+            )
+            raise ProbeError(
+                f"proc_pid_rusage({pid}) failed: {detail}"
+            )
+        return footprints
+
+
 def _darwin_libproc_snapshot() -> dict[int, ProcessInfo]:
     """Collect a Darwin snapshot through libproc when ``ps`` is unavailable."""
 
@@ -294,7 +368,11 @@ class ProcessTreeSampler:
         self.root_pgid = root_pgid
         self._known_pids = {root_pid}
 
-    def sample(self, records: dict[int, ProcessInfo]) -> MemorySample:
+    def sample(
+        self,
+        records: dict[int, ProcessInfo],
+        physical_footprint_probe: PhysicalFootprintProbe | None = None,
+    ) -> MemorySample:
         children: dict[int, list[int]] = defaultdict(list)
         for record in records.values():
             children[record.ppid].append(record.pid)
@@ -315,14 +393,36 @@ class ProcessTreeSampler:
 
         self._known_pids = selected
         members = tuple(records[pid] for pid in sorted(selected))
+        physical_footprint: int | None = None
+        if physical_footprint_probe is not None:
+            footprints = physical_footprint_probe(
+                member.pid for member in members
+            )
+            # A member can exit between probes. Falling back to the member's
+            # RSS for that one sample is conservative and avoids dropping its
+            # last observed memory from the aggregate.
+            physical_footprint = sum(
+                footprints.get(member.pid, member.rss_bytes)
+                for member in members
+            )
         return MemorySample(
             rss_bytes=sum(record.rss_bytes for record in members),
             members=members,
+            physical_footprint_bytes=physical_footprint,
         )
 
 
 def _format_bytes(value: int) -> str:
     return f"{value / GIB:.3f} GiB"
+
+
+def _guard_observation(sample: MemorySample) -> tuple[int, str]:
+    """Return the conservative enforced byte count and stable reason code."""
+
+    physical = sample.physical_footprint_bytes
+    if physical is not None and physical >= sample.rss_bytes:
+        return physical, DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON
+    return sample.rss_bytes, RSS_LIMIT_REASON
 
 
 def _normalized_exit_code(returncode: int) -> int:
@@ -391,6 +491,7 @@ def run_guarded(
     poll_interval: float = DEFAULT_POLL_INTERVAL,
     terminate_grace: float = DEFAULT_TERMINATE_GRACE,
     snapshotter: Snapshotter = process_snapshot,
+    physical_footprint_probe: PhysicalFootprintProbe | None = None,
     stderr: TextIO = sys.stderr,
 ) -> int:
     """Run ``command`` and return its shell-compatible exit status."""
@@ -414,9 +515,15 @@ def run_guarded(
         return 126
 
     sampler = ProcessTreeSampler(process.pid, process.pid)
+    metric = (
+        "max(process-tree-rss,darwin-process-tree-physical-footprint)"
+        if physical_footprint_probe is not None
+        else "process-tree-rss"
+    )
     print(
         "memory-watchdog: guarding"
         f" pid={process.pid} limit={_format_bytes(limit_bytes)}"
+        f" metric={metric}"
         f" command={shlex.join(command)}",
         file=stderr,
         flush=True,
@@ -435,6 +542,10 @@ def run_guarded(
             signal.signal(selected_signal, remember_signal)
 
     peak_rss = 0
+    peak_physical_footprint: int | None = (
+        0 if physical_footprint_probe is not None else None
+    )
+    peak_guard = 0
     peak_processes = 0
     consecutive_probe_failures = 0
     try:
@@ -450,11 +561,14 @@ def run_guarded(
                 return 128 + received_signal
 
             try:
-                sample = sampler.sample(snapshotter())
+                sample = sampler.sample(
+                    snapshotter(),
+                    physical_footprint_probe=physical_footprint_probe,
+                )
             except ProbeError as error:
                 consecutive_probe_failures += 1
                 print(
-                    "memory-watchdog: RSS probe failed"
+                    "memory-watchdog: memory probe failed"
                     f" ({consecutive_probe_failures}/3): {error}",
                     file=stderr,
                     flush=True,
@@ -471,13 +585,29 @@ def run_guarded(
             else:
                 consecutive_probe_failures = 0
                 peak_rss = max(peak_rss, sample.rss_bytes)
+                if sample.physical_footprint_bytes is not None:
+                    peak_physical_footprint = max(
+                        peak_physical_footprint or 0,
+                        sample.physical_footprint_bytes,
+                    )
+                guard_bytes, limit_reason = _guard_observation(sample)
+                peak_guard = max(peak_guard, guard_bytes)
                 peak_processes = max(peak_processes, len(sample.members))
-                if sample.rss_bytes > limit_bytes:
+                if guard_bytes > limit_bytes:
+                    physical_detail = (
+                        _format_bytes(sample.physical_footprint_bytes)
+                        if sample.physical_footprint_bytes is not None
+                        else "unavailable"
+                    )
                     print(
-                        "memory-watchdog: RSS limit exceeded:"
-                        f" {_format_bytes(sample.rss_bytes)} >"
-                        f" {_format_bytes(limit_bytes)} across"
-                        f" {len(sample.members)} processes; terminating tree",
+                        "memory-watchdog: memory limit exceeded"
+                        f" reason={limit_reason}"
+                        f" observed={_format_bytes(guard_bytes)}"
+                        f" limit={_format_bytes(limit_bytes)}"
+                        f" rss={_format_bytes(sample.rss_bytes)}"
+                        f" physical_footprint={physical_detail}"
+                        f" processes={len(sample.members)};"
+                        " terminating tree",
                         file=stderr,
                         flush=True,
                     )
@@ -493,9 +623,16 @@ def run_guarded(
             returncode = process.poll()
             if returncode is not None:
                 normalized = _normalized_exit_code(returncode)
+                footprint_detail = (
+                    _format_bytes(peak_physical_footprint)
+                    if peak_physical_footprint is not None
+                    else "unavailable"
+                )
                 print(
                     "memory-watchdog: command finished"
                     f" exit={normalized} peak_rss={_format_bytes(peak_rss)}"
+                    f" peak_physical_footprint={footprint_detail}"
+                    f" peak_guard={_format_bytes(peak_guard)}"
                     f" peak_processes={peak_processes}",
                     file=stderr,
                     flush=True,
@@ -518,20 +655,20 @@ def run_guarded(
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "run a command and terminate its process tree when aggregate RSS "
-            "exceeds a limit"
+            "run a command and terminate its process tree when conservative "
+            "aggregate memory exceeds a limit"
         )
     )
     limits = parser.add_mutually_exclusive_group()
     limits.add_argument(
         "--limit-gib",
         type=_positive_finite,
-        help=f"RSS limit in GiB (default: {DEFAULT_LIMIT_GIB:g})",
+        help=f"memory limit in GiB (default: {DEFAULT_LIMIT_GIB:g})",
     )
     limits.add_argument(
         "--limit-mib",
         type=_positive_finite,
-        help="RSS limit in MiB; useful for focused watchdog tests",
+        help="memory limit in MiB; useful for focused watchdog tests",
     )
     parser.add_argument(
         "--poll-interval",
@@ -570,11 +707,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         limit_gib = arguments.limit_gib or DEFAULT_LIMIT_GIB
         limit_bytes = int(limit_gib * GIB)
+    physical_footprint_probe: PhysicalFootprintProbe | None = None
+    if platform.system() == "Darwin":
+        try:
+            physical_footprint_probe = DarwinPhysicalFootprintProbe()
+        except ProbeError as error:
+            print(
+                "memory-watchdog: Darwin physical-footprint probe unavailable"
+                f" reason={DARWIN_PHYSICAL_FOOTPRINT_PROBE_REASON}: {error}",
+                file=sys.stderr,
+                flush=True,
+            )
+            return WATCHDOG_ERROR_EXIT_CODE
     return run_guarded(
         command,
         limit_bytes=limit_bytes,
         poll_interval=arguments.poll_interval,
         terminate_grace=arguments.terminate_grace,
+        physical_footprint_probe=physical_footprint_probe,
     )
 
 

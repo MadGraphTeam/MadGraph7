@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import io
 import os
 import struct
 import subprocess
@@ -60,10 +61,152 @@ def test_ps_parser_and_tree_sampler_include_group_and_escaped_descendants() -> N
     )
     sampler = watchdog.ProcessTreeSampler(root_pid=100, root_pgid=100)
 
-    sample = sampler.sample(records)
+    footprints = {
+        100: 8 * watchdog.MIB,
+        101: 7 * watchdog.MIB,
+        103: 6 * watchdog.MIB,
+    }
+    sample = sampler.sample(
+        records,
+        physical_footprint_probe=lambda pids: {
+            pid: footprints[pid] for pid in pids if pid in footprints
+        },
+    )
 
     assert tuple(member.pid for member in sample.members) == (100, 101, 102, 103)
     assert sample.rss_bytes == (1024 + 2048 + 4096 + 512) * 1024
+    assert sample.physical_footprint_bytes == (
+        8 * watchdog.MIB
+        + 7 * watchdog.MIB
+        + 4096 * 1024  # Conservative RSS fallback for the raced-out PID.
+        + 6 * watchdog.MIB
+    )
+    assert watchdog._guard_observation(sample) == (
+        sample.physical_footprint_bytes,
+        watchdog.DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON,
+    )
+
+
+def test_raced_out_footprint_member_falls_back_to_its_last_rss() -> None:
+    records = {
+        100: watchdog.ProcessInfo(100, 1, 100, 3 * watchdog.MIB),
+        101: watchdog.ProcessInfo(101, 100, 100, 5 * watchdog.MIB),
+    }
+    sampler = watchdog.ProcessTreeSampler(root_pid=100, root_pgid=100)
+
+    sample = sampler.sample(
+        records,
+        physical_footprint_probe=lambda _pids: {100: 7 * watchdog.MIB},
+    )
+
+    assert sample.rss_bytes == 8 * watchdog.MIB
+    assert sample.physical_footprint_bytes == 12 * watchdog.MIB
+
+
+def test_guard_observation_falls_back_to_rss_without_darwin_metric() -> None:
+    sample = watchdog.MemorySample(
+        rss_bytes=11 * watchdog.MIB,
+        members=(),
+    )
+    lower_footprint = watchdog.MemorySample(
+        rss_bytes=11 * watchdog.MIB,
+        members=(),
+        physical_footprint_bytes=9 * watchdog.MIB,
+    )
+
+    assert watchdog._guard_observation(sample) == (
+        11 * watchdog.MIB,
+        watchdog.RSS_LIMIT_REASON,
+    )
+    assert watchdog._guard_observation(lower_footprint) == (
+        11 * watchdog.MIB,
+        watchdog.RSS_LIMIT_REASON,
+    )
+
+
+def test_footprint_over_rss_terminates_with_stable_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeProcess:
+        pid = 43210
+
+        def __init__(self) -> None:
+            self.returncode: int | None = None
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def wait(self, timeout: float) -> int:
+            del timeout
+            self.returncode = self.returncode or -9
+            return self.returncode
+
+    process = FakeProcess()
+    monkeypatch.setattr(
+        watchdog.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: process,
+    )
+
+    def record_signal(_pgid: int, selected_signal: int) -> None:
+        process.returncode = -selected_signal
+
+    monkeypatch.setattr(watchdog.os, "killpg", record_signal)
+    monkeypatch.setattr(watchdog.os, "kill", lambda *_args: None)
+
+    def snapshotter() -> dict[int, watchdog.ProcessInfo]:
+        return {
+            process.pid: watchdog.ProcessInfo(
+                process.pid,
+                1,
+                process.pid,
+                8 * watchdog.MIB,
+            )
+        }
+
+    stderr = io.StringIO()
+
+    returncode = watchdog.run_guarded(
+        ("synthetic-child",),
+        limit_bytes=16 * watchdog.MIB,
+        poll_interval=0.001,
+        terminate_grace=0,
+        snapshotter=snapshotter,
+        physical_footprint_probe=lambda pids: {
+            pid: 20 * watchdog.MIB for pid in pids
+        },
+        stderr=stderr,
+    )
+
+    assert returncode == watchdog.MEMORY_LIMIT_EXIT_CODE
+    assert (
+        "reason="
+        f"{watchdog.DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON}"
+        in stderr.getvalue()
+    )
+    assert "rss=0.008 GiB" in stderr.getvalue()
+    assert "physical_footprint=0.020 GiB" in stderr.getvalue()
+
+
+def test_main_uses_rss_only_on_non_darwin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run_guarded(
+        command: tuple[str, ...] | list[str],
+        **kwargs: object,
+    ) -> int:
+        captured["command"] = tuple(command)
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(watchdog.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(watchdog, "run_guarded", fake_run_guarded)
+
+    assert watchdog.main(("--limit-mib", "32", "--", "synthetic-child")) == 0
+    assert captured["physical_footprint_probe"] is None
+    assert captured["limit_bytes"] == 32 * watchdog.MIB
 
 
 def test_darwin_libproc_parsers_extract_identity_and_rss() -> None:
@@ -73,13 +216,21 @@ def test_darwin_libproc_parsers_extract_identity_and_rss() -> None:
     struct.pack_into("=I", bsd, 100, 67)
     task = bytearray(96)
     struct.pack_into("=Q", task, 8, 987_654_321)
+    rusage = bytearray(96)
+    struct.pack_into("=Q", rusage, 72, 1_234_567_890)
 
     assert watchdog._parse_darwin_bsdinfo(bytes(bsd)) == (123, 45, 67)
     assert watchdog._parse_darwin_taskinfo_rss(bytes(task)) == 987_654_321
+    assert (
+        watchdog._parse_darwin_rusage_phys_footprint(bytes(rusage))
+        == 1_234_567_890
+    )
     with pytest.raises(ValueError, match="incomplete Darwin proc_bsdinfo"):
         watchdog._parse_darwin_bsdinfo(b"short")
     with pytest.raises(ValueError, match="incomplete Darwin proc_taskinfo"):
         watchdog._parse_darwin_taskinfo_rss(b"short")
+    with pytest.raises(ValueError, match="incomplete Darwin rusage_info_v0"):
+        watchdog._parse_darwin_rusage_phys_footprint(b"short")
 
 
 def test_platform_probe_rejects_unsupported_hosts() -> None:
@@ -96,6 +247,16 @@ def test_host_probe_observes_current_process() -> None:
 
     assert os.getpid() in records
     assert records[os.getpid()].rss_bytes > 0
+
+
+@pytest.mark.skipif(
+    sys.platform != "darwin",
+    reason="physical-footprint probing uses Darwin libproc",
+)
+def test_darwin_physical_footprint_probe_observes_current_process() -> None:
+    footprints = watchdog.DarwinPhysicalFootprintProbe()((os.getpid(),))
+
+    assert footprints[os.getpid()] > 0
 
 
 @pytest.mark.skipif(os.name != "posix", reason="process groups require POSIX")
@@ -198,7 +359,15 @@ time.sleep(30)
     )
 
     assert completed.returncode == watchdog.MEMORY_LIMIT_EXIT_CODE
-    assert "RSS limit exceeded" in completed.stderr
+    assert "memory limit exceeded" in completed.stderr
+    assert (
+        f"reason={watchdog.RSS_LIMIT_REASON}" in completed.stderr
+        or (
+            "reason="
+            f"{watchdog.DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON}"
+            in completed.stderr
+        )
+    )
     assert marker.read_text(encoding="ascii") == "terminated"
     child_pid = int(pid_path.read_text(encoding="ascii"))
     deadline = time.monotonic() + 3
