@@ -2472,7 +2472,7 @@ class TestMEfromfile(unittest.TestCase):
         set notification_center False --no_save
         generate p p > w+ j
         add process p p > w- j
-        output %(path)s
+        output madevent %(path)s
         launch
         madspin=ON
         analysis=OFF

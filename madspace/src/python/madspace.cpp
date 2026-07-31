@@ -1778,7 +1778,13 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_static("info", &Logger::info, py::arg("message"))
         .def_static("warning", &Logger::warning, py::arg("message"))
         .def_static("error", &Logger::error, py::arg("message"))
-        .def_static("set_log_handler", &Logger::set_log_handler, py::arg("func"));
+        .def_static("set_log_handler", &Logger::set_log_handler, py::arg("func"))
+        .def_static("clear_log_handler", &Logger::clear_log_handler);
+
+    // prevent memory error due to static lifetime of log handler
+    py::module_::import("atexit").attr("register")(py::cpp_function([]() {
+        Logger::clear_log_handler();
+    }));
 
     m.def(
         "initialize_vegas_grid",
