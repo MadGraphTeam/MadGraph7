@@ -136,10 +136,15 @@ def test_package_identity_binds_ordered_shadowing_roots(
     assert forward["sha256"] != reverse["sha256"]
 
 
-def _module(origin: Path, *, namespace: bool = False) -> SimpleNamespace:
+def _module(
+    origin: Path,
+    *,
+    cached: Path | None = None,
+    namespace: bool = False,
+) -> SimpleNamespace:
     return SimpleNamespace(
         __file__=None if namespace else str(origin),
-        __cached__=None,
+        __cached__=None if cached is None else str(cached),
         __spec__=SimpleNamespace(
             origin=None if namespace else str(origin),
             submodule_search_locations=[str(origin)] if namespace else None,
@@ -156,6 +161,9 @@ def test_loaded_origins_are_exact_authenticated_members(
     package.mkdir()
     package_init = package / "__init__.py"
     package_init.write_text("VALUE = 1\n", encoding="utf-8")
+    cache = package / "__pycache__" / "__init__.cpython-test.pyc"
+    cache.parent.mkdir()
+    cache.write_bytes(b"ordinary pip-created bytecode cache")
     native = package / "_rusticol.so"
     native.write_bytes(b"native")
     expected_tree = runtime_evidence.python_package_tree_identity(package)
@@ -164,7 +172,7 @@ def test_loaded_origins_are_exact_authenticated_members(
         dont_write_bytecode=True,
         pycache_prefix=sys.pycache_prefix,
         modules={
-            "pyamplicol": _module(package_init),
+            "pyamplicol": _module(package_init, cached=cache),
             "pyamplicol._rusticol": _module(native),
         },
     )
@@ -180,6 +188,41 @@ def test_loaded_origins_are_exact_authenticated_members(
     assert policy["observed_module_count"] == 2
     assert len(policy["observations"]) == 2
     assert len(policy["observations_sha256"]) == 64
+
+
+def test_loaded_origins_reject_actual_sourceless_bytecode(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _isolate_bytecode(monkeypatch, tmp_path)
+    package = tmp_path / "pyamplicol"
+    package.mkdir()
+    package_init = package / "__init__.py"
+    package_init.write_text("VALUE = 1\n", encoding="utf-8")
+    native = package / "_rusticol.so"
+    native.write_bytes(b"native")
+    expected_tree = runtime_evidence.python_package_tree_identity(package)
+    expected_native = runtime_evidence._path_file_identity(native)
+    bytecode = package / "__pycache__" / "injected.pyc"
+    bytecode.parent.mkdir()
+    bytecode.write_bytes(b"sourceless bytecode")
+    fake_sys = SimpleNamespace(
+        dont_write_bytecode=True,
+        pycache_prefix=sys.pycache_prefix,
+        modules={"pyamplicol.injected": _module(bytecode)},
+    )
+    monkeypatch.setattr(runtime_evidence, "sys", fake_sys)
+
+    with pytest.raises(
+        runtime_evidence.RuntimeEvidenceError,
+        match="used sourceless bytecode",
+    ):
+        runtime_evidence.loaded_pyamplicol_origin_policy(
+            package,
+            native_extension=native,
+            expected_package_identity=expected_tree,
+            expected_native_identity=expected_native,
+        )
 
 
 def test_loaded_origins_reject_unrecorded_and_excluded_members(

@@ -494,9 +494,6 @@ def loaded_pyamplicol_origin_policy(
         (int(record["root_index"]), str(record["path"])): record
         for record in member_records
     }
-    prefix = (
-        None if sys.pycache_prefix is None else Path(str(sys.pycache_prefix))
-    )
     observed = 0
     observations: list[dict[str, object]] = []
     for name, module in tuple(sys.modules.items()):
@@ -614,24 +611,6 @@ def loaded_pyamplicol_origin_policy(
                     "sha256": member["sha256"],
                 }
             )
-        cached_value = getattr(module, "__cached__", None)
-        if isinstance(cached_value, str) and cached_value:
-            cached = Path(cached_value).expanduser()
-            if prefix is None:
-                under_prefix = any(
-                    cached.is_relative_to(root) for root in roots
-                ) and "__pycache__" in cached.parts
-            else:
-                try:
-                    cached.relative_to(prefix)
-                    under_prefix = True
-                except ValueError:
-                    under_prefix = False
-            if not cached.is_absolute() or not under_prefix or cached.exists():
-                raise RuntimeEvidenceError(
-                    "loaded pyamplicol module exposes an eligible bytecode cache: "
-                    f"{name}"
-                )
         observed += 1
     if observed == 0:
         raise RuntimeEvidenceError("no loaded pyamplicol modules were observed")
