@@ -9,13 +9,21 @@ C     NCOMB below is the RECYCLED count (only the good helicity combinations
 C     survive); NHEL(0,K) carries the original helicity id of row K, which is
 C     what the polarization filter and SMATRIXHEL select on.
       SUBROUTINE %(proc_prefix)sSMATRIXHEL(P, HEL, FLAV_IDX, ANS)
-C     Matrix element restricted to the single ORIGINAL helicity id HEL,
-C     rescaled by HELAVGFACTOR exactly like the standard standalone.
+C     Matrix element restricted to a single helicity configuration, rescaled by
+C     HELAVGFACTOR exactly like the standard standalone. HEL is the CANONICAL
+C     mixed-radix helicity code (what the standard SMATRIX compares against
+C     HELALLOW), not a row index: NHEL(0,K) gives the row K had in the full
+C     pre-recycling enumeration, and HELALLOW turns that row into its code. The
+C     two coincide for an unpolarized process (HELALLOW is then 1..NCOMBFULL)
+C     but not when a polarization restriction selects a subset of the codes.
       IMPLICIT NONE
       INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
       INTEGER                 NCOMB
       PARAMETER (             NCOMB=${ncomb})
+C     Number of helicity rows BEFORE recycling (the allowed-code list length).
+      INTEGER    NCOMBFULL
+      PARAMETER (NCOMBFULL=%(ncomb)d)
       INTEGER HELAVGFACTOR
       PARAMETER (HELAVGFACTOR=%(hel_avg_factor)d)
       INTEGER    NFLAV
@@ -32,7 +40,9 @@ C     I is the implied-DO variable of the recycled NHEL DATA statements below.
       INTEGER FLAVOR(NEXTERNAL)
       INTEGER %(proc_prefix)sBROKEN_SYM
       INTEGER NHEL(0:NEXTERNAL,NCOMB)
+      INTEGER HELALLOW(NCOMBFULL)
 ${helicity_lines}
+%(hel_allow_data)s
 %(den_factor_line)s
 C ----------
 C BEGIN CODE
@@ -42,7 +52,7 @@ C ----------
       CALL %(proc_prefix)sGET_FLAVOR(FLAV_IDX, FLAVOR)
       CALL %(proc_prefix)sMATRIX(P, FLAV_IDX, TS)
       DO K = 1, NCOMB
-         IF (NHEL(0,K).EQ.HEL) ANS = ANS + TS(K)
+         IF (HELALLOW(NHEL(0,K)).EQ.HEL) ANS = ANS + TS(K)
       ENDDO
       ANS = ANS / DBLE(IDEN) * %(proc_prefix)sBROKEN_SYM(FLAVOR)
       ANS = ANS * HELAVGFACTOR
