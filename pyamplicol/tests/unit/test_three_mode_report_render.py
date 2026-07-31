@@ -408,13 +408,20 @@ def test_all_twelve_matrices_render_in_catalog_order(reset_caches) -> None:
         if dataset.candidate.accuracy is Accuracy.NLC
     )
     assert r"\textbf{ID} & \textbf{base process} & \textbf{metric}" in lc_tex
-    assert r"\multicolumn{8}{@{\hspace{0.06in}}c}{\textbf{n=1}}" in lc_tex
-    assert r"\multicolumn{8}{:@{\hspace{0.06in}}c}{\textbf{n=2}}" in lc_tex
-    assert r"\multicolumn{3}{@{\hspace{0.06in}}c}{\textbf{n=1}}" in contracted_tex
-    assert r"\multicolumn{3}{:@{\hspace{0.06in}}c}{\textbf{n=2}}" in contracted_tex
+    assert r"\multicolumn{8}{c}{\textbf{n=1}}" in lc_tex
+    assert r"\multicolumn{8}{c}{\textbf{n=2}}" in lc_tex
+    assert r"\multicolumn{3}{c}{\textbf{n=1}}" in contracted_tex
+    assert r"\multicolumn{3}{c}{\textbf{n=2}}" in contracted_tex
     assert r"\makebox[\linewidth][c]{%" in lc_tex
     assert r"\rowcolor{refblue}" in lc_tex
-    assert lc_tex.count(r"\multicolumn{8}{:@{\hspace{0.06in}}l}") >= 4
+    assert lc_tex.count(r"\multicolumn{8}{l}") >= 4
+    tabular_spec = next(
+        line for line in lc_tex.splitlines() if line.startswith(r"\begin{tabular}")
+    )
+    assert r"@{\hspace" not in tabular_spec
+    assert ":" not in tabular_spec
+    assert r"\dashlinedash" not in lc_tex
+    assert r"\dashlinegap" not in lc_tex
     assert r"\texttt{abs }" not in lc_tex
     assert r"\textcolor{ReportMuted}{\scriptsize gen. [s]}" in lc_tex
     assert (
@@ -505,13 +512,10 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
         )
         == 2
     )
-    assert (
-        r">{\matrixentryfontlc}r@{\hspace{0.08em}}"
-        r">{\matrixentryfontlc}l"
-    ) in tex
+    assert r">{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l" in tex
     assert (
         r"\textbf{metric} & \multicolumn{8}"
-        r"{@{\hspace{0.06in}}c}{\textbf{n=1}}"
+        r"{c}{\textbf{n=1}}"
     ) in tex
     assert r"\matrixcolumnheading" not in tex
     assert r"\shortstack{\textbf{n=" not in tex
@@ -742,8 +746,8 @@ def test_best_mode_renders_mixed_policy_censors_without_a_winner_code(
     assert row.count(marker) == 1
     assert runtime_row.count(marker) == 1
     assert (
-        r">{\matrixentryfont}l@{\hspace{0.050in}}"
-        r">{\matrixentryfont}r@{\hspace{0.08em}}"
+        r">{\matrixentryfont}l"
+        r">{\matrixentryfont}r@{}"
         r">{\matrixentryfont}l"
     ) in tex
     assert r"\bestmodecode{" not in row
