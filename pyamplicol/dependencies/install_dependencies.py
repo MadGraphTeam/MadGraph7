@@ -1400,6 +1400,7 @@ def _build_ratatui_wheel(
         environment = dict(
             _venv_environment(),
             RATATUI_FFI_SRC=str(external_ffi_source.resolve()),
+            CARGO_TARGET_DIR=str((external_ffi_source / "target").resolve()),
             # Keep the exact revision visible to the upstream build even though
             # RATATUI_FFI_SRC takes precedence and prevents its fallback clone.
             RATATUI_FFI_TAG=ffi_revision,
