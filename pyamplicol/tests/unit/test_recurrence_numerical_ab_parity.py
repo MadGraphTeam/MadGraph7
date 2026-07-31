@@ -14,6 +14,17 @@ from tools.developer import recurrence_numerical_ab_parity as parity
 PROCESS_KEY, PROCESS_EXPRESSION = parity.PROCESS_CASES[0]
 
 
+def test_file_identity_matches_harness_explicit_model_identity(
+    tmp_path: Path,
+) -> None:
+    prepared_model = tmp_path / "model.pack"
+    prepared_model.write_bytes(b"prepared-model")
+
+    assert parity._path_identity(
+        prepared_model.resolve()
+    ) == parity.harness._path_identity(prepared_model.resolve())
+
+
 def _selector_contract(layout: str) -> dict[str, object]:
     if layout == "topology-replay":
         body: dict[str, object] = {

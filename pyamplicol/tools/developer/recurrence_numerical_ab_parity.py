@@ -140,6 +140,7 @@ def _path_identity(path: Path) -> dict[str, object]:
     resolved = path.resolve(strict=True)
     return {
         "path": str(resolved),
+        "resolved_path": str(resolved),
         "size_bytes": resolved.stat().st_size,
         "sha256": _sha256_file(resolved),
     }
