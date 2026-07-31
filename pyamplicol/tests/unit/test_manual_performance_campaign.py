@@ -1201,6 +1201,90 @@ def _manual_service(tmp_path: Path) -> ReportService:
     )
 
 
+def test_read_only_views_use_recorded_measurement_source_epoch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _manual_service(tmp_path)
+    checkout_revision = "b" * 40
+    measurement_revision = "a" * 40
+    assert (
+        manual_campaign.recorded_measurement_source_revision(
+            service,
+            checkout_revision=checkout_revision,
+        )
+        == checkout_revision
+    )
+
+    marker = service.paths.coordination_root / "manual-source.json"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(
+        json.dumps(
+            {
+                "schema": manual_campaign.SOURCE_MARKER_SCHEMA,
+                "source_revision": measurement_revision,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert (
+        manual_campaign.recorded_measurement_source_revision(
+            service,
+            checkout_revision=checkout_revision,
+        )
+        == measurement_revision
+    )
+
+    observed: list[str] = []
+
+    def stop_after_source_selection(
+        _service: ReportService,
+        *,
+        source_revision: str,
+    ) -> object:
+        observed.append(source_revision)
+        raise RuntimeError("snapshot stopped after source selection")
+
+    monkeypatch.setattr(
+        manual_campaign,
+        "_capture_lightweight_snapshot",
+        stop_after_source_selection,
+    )
+    source = manual_campaign.ReportSourceIdentity(
+        checkout_revision,
+        "c" * 40,
+        (),
+    )
+    with pytest.raises(RuntimeError, match="snapshot stopped"):
+        manual_campaign._refresh_pdf(
+            _parse("refresh-pdf", "--quiet"),
+            service=service,
+            source=source,
+            palette=manual_campaign.Palette(False),
+        )
+    assert observed == [measurement_revision]
+
+
+def test_malformed_measurement_source_marker_is_not_guessed(tmp_path: Path) -> None:
+    service = _manual_service(tmp_path)
+    marker = service.paths.coordination_root / "manual-source.json"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(
+        json.dumps(
+            {
+                "schema": manual_campaign.SOURCE_MARKER_SCHEMA,
+                "source_revision": "short",
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ManualCampaignError, match="source marker is malformed"):
+        manual_campaign.recorded_measurement_source_revision(
+            service,
+            checkout_revision="b" * 40,
+        )
+
+
 def _write_lease(
     service: ReportService,
     *,
