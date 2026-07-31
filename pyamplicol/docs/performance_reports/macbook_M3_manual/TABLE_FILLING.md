@@ -29,6 +29,9 @@ Selections whose planned dependency closure includes original AmpliCol require
 exposing the PR #12 probe sources and Make targets. The
 `amplicol_with_patches` branch works now, and a compatible upstream revision
 will work unchanged after the PR is merged.
+Pass `--local-amplicol PATH` to the initial `profiling-campaign copy` command
+to store that checkout as the copied campaign's default; an explicit
+`run --original-amplicol PATH` still overrides it.
 
 Inside a contributor checkout it re-executes with the repository `.venv`; an
 installed copy uses the wheel's Python runtime. Both modes reuse compatible

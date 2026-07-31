@@ -1795,6 +1795,48 @@ def test_installed_run_disables_dashboard_when_optional_bindings_are_missing(
     assert arguments.no_dashboard is True
 
 
+def test_installed_campaign_uses_copied_local_amplicol_and_explicit_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    docs_dir = tmp_path / "campaign"
+    docs_dir.mkdir()
+    configured = (tmp_path / "configured-amplicol").resolve()
+    override = (tmp_path / "override-amplicol").resolve()
+    (docs_dir / ".pyamplicol-original-amplicol").write_text(
+        f"{configured}\n",
+        encoding="utf-8",
+    )
+    observed: list[Path] = []
+
+    def validate(path: Path) -> tuple[Path, str]:
+        observed.append(path)
+        return path, "a" * 40
+
+    monkeypatch.setattr(
+        manual_campaign,
+        "_validated_original_amplicol_checkout",
+        validate,
+    )
+
+    arguments = _parse("run", "--dry-run")
+    assert manual_campaign._resolve_original_amplicol(
+        arguments,
+        installed=True,
+        root=tmp_path,
+        docs_dir=docs_dir,
+    ) == (configured, "a" * 40)
+
+    arguments.original_amplicol = override
+    assert manual_campaign._resolve_original_amplicol(
+        arguments,
+        installed=True,
+        root=tmp_path,
+        docs_dir=docs_dir,
+    ) == (override, "a" * 40)
+    assert observed == [configured, override]
+
+
 def test_source_run_does_not_probe_or_change_dashboard_capability(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

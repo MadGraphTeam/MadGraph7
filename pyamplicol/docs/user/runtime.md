@@ -341,9 +341,10 @@ For the complete reproducible measurement workspace, run
 `pyamplicol profiling-campaign copy DEST --force`. The copied launcher resolves
 runtime resources from the installed package and automatically continues
 headlessly if the optional Ratatui bindings are unavailable. It asks for
-`run --original-amplicol PATH_TO_CLEAN_COMPLETE_CHECKOUT` only when the selected
-cells use the original-AmpliCol reference backend; no such checkout is needed
-for pyAmpliCol backends.
+an original-AmpliCol checkout only when selected cells use that reference
+backend. Pass `copy DEST --local-amplicol PATH_TO_CLEAN_COMPLETE_CHECKOUT` to
+record a destination-local default, or override it later with
+`run --original-amplicol PATH`; pyAmpliCol backends need no such checkout.
 
 ## Artifact Trust
 

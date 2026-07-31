@@ -38,6 +38,9 @@ AmpliCol comparison, pass `run --original-amplicol PATH`, where `PATH` is a
 clean, complete checkout exposing the color-probe sources and Make targets
 from PR #12. The `amplicol_with_patches` branch works now; a compatible
 upstream revision will work unchanged after the PR is merged.
+Alternatively, add `--local-amplicol PATH` to the copy command to record that
+checkout as this campaign's default; a later `run --original-amplicol PATH`
+overrides it.
 
 Rebuild every table and the PDF from one stable current-result snapshot with:
 

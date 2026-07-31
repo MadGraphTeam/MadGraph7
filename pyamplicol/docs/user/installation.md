@@ -29,8 +29,9 @@ pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
 
 Its launcher uses installed resources and runs headlessly when the optional
 Ratatui bindings are absent. An original-AmpliCol checkout is needed only when
-that reference backend is selected; provide it to the copied launcher's `run`
-command as `--original-amplicol /path/to/clean/complete/checkout`.
+that reference backend is selected. Record its default while copying with
+`--local-amplicol /path/to/clean/complete/checkout`, or provide/override it on
+the copied launcher's `run` command with `--original-amplicol PATH`.
 
 ## Source Install
 

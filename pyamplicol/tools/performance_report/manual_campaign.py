@@ -99,6 +99,7 @@ _ORIGINAL_AMPLICOL_REQUIRED_MAKE_TARGETS = (
     "amplicol_color_probe",
     "amplicol_color_library_probe",
 )
+_LOCAL_AMPLICOL_CONFIG = ".pyamplicol-original-amplicol"
 MAX_TAIL_READ_BYTES = 64 * 1024
 MAX_LOG_TAIL_LINES = 8
 MANUAL_STATE_SCHEMA = "pyamplicol-manual-campaign-state-v1"
@@ -5086,10 +5087,7 @@ def _validated_original_amplicol_checkout(path: Path) -> tuple[Path, str]:
         text=True,
     )
     revision = head.stdout.strip()
-    if (
-        head.returncode != 0
-        or re.fullmatch(r"[0-9a-f]{40}", revision) is None
-    ):
+    if head.returncode != 0 or re.fullmatch(r"[0-9a-f]{40}", revision) is None:
         raise ManualCampaignError(
             "--original-amplicol must be a Git checkout with a concrete HEAD"
         )
@@ -5106,6 +5104,47 @@ def _validated_original_amplicol_checkout(path: Path) -> tuple[Path, str]:
             "or relocate local changes and build products first"
         )
     return repository, revision
+
+
+def _configured_original_amplicol(docs_dir: Path) -> Path | None:
+    config = docs_dir / _LOCAL_AMPLICOL_CONFIG
+    if not config.exists():
+        return None
+    if config.is_symlink() or not config.is_file():
+        raise ManualCampaignError(
+            f"campaign local-AmpliCol configuration is not a regular file: {config}"
+        )
+    try:
+        lines = config.read_text(encoding="utf-8").splitlines()
+    except OSError as error:
+        raise ManualCampaignError(
+            f"cannot read campaign local-AmpliCol configuration: {config}"
+        ) from error
+    if len(lines) != 1 or not lines[0] or not Path(lines[0]).is_absolute():
+        raise ManualCampaignError(
+            f"campaign local-AmpliCol configuration is invalid: {config}"
+        )
+    return Path(lines[0])
+
+
+def _resolve_original_amplicol(
+    arguments: argparse.Namespace,
+    *,
+    installed: bool,
+    root: Path,
+    docs_dir: Path,
+) -> tuple[Path | None, str | None]:
+    original = arguments.original_amplicol
+    if original is None:
+        if installed:
+            original = _configured_original_amplicol(docs_dir)
+        else:
+            default_original = root / "dependencies/checkouts/legacy-amplicol"
+            if default_original.is_dir():
+                original = default_original
+    if original is None:
+        return None, None
+    return _validated_original_amplicol_checkout(original)
 
 
 def _dry_run_rows(
@@ -5463,12 +5502,11 @@ def _run_campaign(
             print(block)
         return 0
 
-    if (
-        getattr(preliminary_settings, "original_amplicol_repository", None) is None
-        and any(
-            item.cell.measurement.execution_mode is ExecutionMode.AMPLICOL
-            for item in planned
-        )
+    if getattr(
+        preliminary_settings, "original_amplicol_repository", None
+    ) is None and any(
+        item.cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+        for item in planned
     ):
         raise ManualCampaignError(
             "this campaign selection requires original AmpliCol; pass "
@@ -6533,19 +6571,15 @@ def main(
         )
 
         if arguments.command == "run":
-            original = arguments.original_amplicol
-            if original is None and not installed:
-                default_original = root / "dependencies/checkouts/legacy-amplicol"
-                if default_original.is_dir():
-                    original = default_original
-            if original is None:
-                arguments.original_amplicol = None
-                arguments.original_amplicol_revision = None
-            else:
-                (
-                    arguments.original_amplicol,
-                    arguments.original_amplicol_revision,
-                ) = _validated_original_amplicol_checkout(original)
+            (
+                arguments.original_amplicol,
+                arguments.original_amplicol_revision,
+            ) = _resolve_original_amplicol(
+                arguments,
+                installed=installed,
+                root=root,
+                docs_dir=service.paths.docs_dir,
+            )
 
         if arguments.command == "refresh-pdf":
             return _refresh_pdf(

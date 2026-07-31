@@ -46,6 +46,7 @@ _PROFILING_CAMPAIGN_GLOBS = (
     "results/*.json",
 )
 _PROFILING_CAMPAIGN_FILE_COUNT = 55
+_PROFILING_CAMPAIGN_LOCAL_AMPLICOL = ".pyamplicol-original-amplicol"
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +57,7 @@ class UtilityInvocation:
     name: str | None = None
     force: bool = False
     overrides: tuple[str, ...] = ()
+    local_amplicol: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +100,15 @@ def _utility_parser() -> argparse.ArgumentParser:
     campaign_copy = profiling_commands.add_parser("copy")
     campaign_copy.add_argument("destination", type=Path)
     campaign_copy.add_argument("--force", action="store_true")
+    campaign_copy.add_argument(
+        "--local-amplicol",
+        type=Path,
+        metavar="PATH_TO_COMPLETE_CHECKOUT",
+        help=(
+            "Record a clean, complete original-AmpliCol checkout as the "
+            "default for this copied campaign."
+        ),
+    )
 
     for name in ("doctor", "self-test"):
         command = commands.add_parser(name)
@@ -140,6 +151,7 @@ def parse_utility(argv: Sequence[str]) -> UtilityInvocation:
             "profiling-campaign-copy",
             path=namespace.destination,
             force=bool(namespace.force),
+            local_amplicol=namespace.local_amplicol,
         )
     return UtilityInvocation(namespace.utility, output_format=namespace.format)
 
@@ -220,7 +232,29 @@ def _copy_tree(source: Path, destination: Path, *, force: bool) -> Path:
     return target
 
 
-def _copy_profiling_campaign(destination: Path, *, force: bool) -> Path:
+def _resolved_original_amplicol_checkout(path: Path) -> Path:
+    try:
+        repository = path.expanduser().resolve(strict=True)
+    except OSError as error:
+        raise ConfigurationError(
+            f"--local-amplicol checkout is unavailable: {path}"
+        ) from error
+    if not repository.is_dir():
+        raise ConfigurationError(f"--local-amplicol is not a directory: {repository}")
+    return repository
+
+
+def _copy_profiling_campaign(
+    destination: Path,
+    *,
+    force: bool,
+    local_amplicol: Path | None = None,
+) -> Path:
+    validated_amplicol = (
+        None
+        if local_amplicol is None
+        else _resolved_original_amplicol_checkout(local_amplicol)
+    )
     source = profiling_campaign_root()
     target = destination.expanduser().resolve(strict=False)
     if target.exists():
@@ -235,6 +269,14 @@ def _copy_profiling_campaign(destination: Path, *, force: bool) -> Path:
         output = target / relative
         output.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source / relative, output)
+    local_amplicol_path = target / _PROFILING_CAMPAIGN_LOCAL_AMPLICOL
+    if validated_amplicol is None:
+        local_amplicol_path.unlink(missing_ok=True)
+    else:
+        local_amplicol_path.write_text(
+            f"{validated_amplicol}\n",
+            encoding="utf-8",
+        )
     return target
 
 
@@ -330,7 +372,13 @@ def execute_utility(invocation: UtilityInvocation) -> object:
         return str(destination)
     if invocation.kind == "profiling-campaign-copy":
         assert invocation.path is not None
-        return str(_copy_profiling_campaign(invocation.path, force=invocation.force))
+        return str(
+            _copy_profiling_campaign(
+                invocation.path,
+                force=invocation.force,
+                local_amplicol=invocation.local_amplicol,
+            )
+        )
     if invocation.kind == "doctor":
         return run_doctor()
     if invocation.kind == "self-test":

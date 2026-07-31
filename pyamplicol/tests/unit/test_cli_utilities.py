@@ -24,12 +24,8 @@ def test_examples_copy_requires_force_for_nonempty_destination(
     destination = tmp_path / "examples"
     assert run_cli(("examples", "copy", str(destination))) == 0
     assert (destination / "builtin_sm_lc.toml").is_file()
-    assert (
-        destination / "benchmark_z6g_single_flow_helicity_sum.toml"
-    ).is_file()
-    assert (
-        destination / "benchmark_z6g_all_flows_single_helicity.toml"
-    ).is_file()
+    assert (destination / "benchmark_z6g_single_flow_helicity_sum.toml").is_file()
+    assert (destination / "benchmark_z6g_all_flows_single_helicity.toml").is_file()
     selected_card = (
         destination / "benchmark_z6g_single_flow_helicity_sum.toml"
     ).read_text(encoding="utf-8")
@@ -83,6 +79,44 @@ def test_profiling_campaign_copy_is_reset_and_requires_force(
     )
     assert "not empty" in stderr.getvalue()
     assert run_cli(("profiling-campaign", "copy", str(destination), "--force")) == 0
+
+
+def test_profiling_campaign_copy_records_local_amplicol_default(
+    tmp_path: Path,
+) -> None:
+    checkout = tmp_path / "original-amplicol"
+    checkout.mkdir()
+    checkout = checkout.resolve()
+    destination = tmp_path / "profiling-campaign"
+    invocation = parse_cli(
+        (
+            "profiling-campaign",
+            "copy",
+            str(destination),
+            "--local-amplicol",
+            str(checkout),
+        )
+    )
+    assert isinstance(invocation, UtilityInvocation)
+    assert invocation.local_amplicol == checkout
+
+    assert (
+        run_cli(
+            (
+                "profiling-campaign",
+                "copy",
+                str(destination),
+                "--local-amplicol",
+                str(checkout),
+            )
+        )
+        == 0
+    )
+    configured = destination / ".pyamplicol-original-amplicol"
+    assert configured.read_text(encoding="utf-8") == f"{checkout}\n"
+
+    assert run_cli(("profiling-campaign", "copy", str(destination), "--force")) == 0
+    assert not configured.exists()
 
 
 def test_config_template_and_resolve(tmp_path: Path) -> None:
