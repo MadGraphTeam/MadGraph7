@@ -4814,6 +4814,8 @@ def _aggregate_profile_workers(
             "worker_command": worker.get("worker_command"),
             "worker_invocation": worker.get("worker_invocation"),
             "worker_process_record": dict(worker_process_record),
+            "peak_rss_after_cold_load": worker.get("peak_rss_after_cold_load"),
+            "peak_rss_after_profile": worker.get("peak_rss_after_profile"),
             "pre_timing_verification": _compact_profile_verification(verification),
             "post_timing_loaded_runtime_artifact": worker.get(
                 "post_timing_loaded_runtime_artifact"

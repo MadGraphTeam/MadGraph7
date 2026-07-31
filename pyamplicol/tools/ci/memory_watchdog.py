@@ -256,22 +256,34 @@ class DarwinPhysicalFootprintProbe:
     def __call__(self, pids: Iterable[int]) -> dict[int, int]:
         footprints: dict[int, int] = {}
         for pid in sorted(set(pids)):
+            error_number = 0
             buffer = ctypes.create_string_buffer(_RUSAGE_INFO_V0_BYTES)
-            ctypes.set_errno(0)
-            result = self._proc_pid_rusage(
-                pid,
-                _RUSAGE_INFO_V0,
-                buffer,
-            )
-            if result == 0:
-                footprints[pid] = _parse_darwin_rusage_phys_footprint(
-                    buffer.raw
+            for attempt in range(3):
+                ctypes.set_errno(0)
+                result = self._proc_pid_rusage(
+                    pid,
+                    _RUSAGE_INFO_V0,
+                    buffer,
                 )
-                continue
-            error_number = ctypes.get_errno()
-            if error_number in {errno.ENOENT, errno.ESRCH}:
-                # The process exited between the process-tree and footprint
-                # snapshots. Its prior RSS remains in this sample.
+                if result == 0:
+                    footprints[pid] = _parse_darwin_rusage_phys_footprint(
+                        buffer.raw
+                    )
+                    break
+                error_number = ctypes.get_errno()
+                if error_number in {errno.ENOENT, errno.ESRCH}:
+                    # The process exited between the process-tree and
+                    # footprint snapshots. Its prior RSS remains in this
+                    # sample.
+                    break
+                if error_number not in {errno.EACCES, errno.EPERM} or attempt == 2:
+                    break
+                # Darwin can transiently report EPERM while a short-lived
+                # descendant crosses exec/exit. Retry the same PID in-place;
+                # persistent access failures still fail closed below.
+            else:  # pragma: no cover - the bounded loop always breaks
+                result = -1
+            if result == 0 or error_number in {errno.ENOENT, errno.ESRCH}:
                 continue
             detail = (
                 os.strerror(error_number) if error_number else "unknown error"

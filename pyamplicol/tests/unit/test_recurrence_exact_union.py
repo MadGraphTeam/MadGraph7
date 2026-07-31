@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 from dataclasses import astuple, replace
-from decimal import Decimal
+from decimal import Decimal, localcontext
+from types import SimpleNamespace
 
 import pytest
 
@@ -16,6 +17,11 @@ from pyamplicol.runtime.recurrence_exact._execution import (
     _execute_certified_reuse_row,
     _execute_union_source,
     _kernel_inputs,
+    _trusted_executor_recipe,
+    _trusted_kernel_inputs,
+)
+from pyamplicol.runtime.recurrence_exact._execution import (
+    _factor as _resolved_factor,
 )
 from pyamplicol.runtime.recurrence_exact._executor import RecurrenceExactExecutor
 from pyamplicol.runtime.recurrence_exact._plan import (
@@ -487,6 +493,106 @@ def test_exact_contribution_inputs_reject_unauthenticated_parent_permutation() -
             (),
             ((Decimal(10), _ZERO), (Decimal(20), _ZERO)),
         )
+
+
+def test_exact_factor_cache_is_schedule_local_and_context_exact() -> None:
+    plan = _scalar_union_plan()
+    plan.sections = replace(
+        plan.sections,
+        exact_factors=(
+            *plan.sections.exact_factors,
+            _ExactFactor(1, 3, -2, 7),
+        ),
+    )
+    factor_id = len(plan.sections.exact_factors) - 1
+    low_precision_cache = [None] * len(plan.sections.exact_factors)
+    with localcontext() as context:
+        context.prec = 9
+        first = _resolved_factor(
+            plan,
+            factor_id,
+            cache=low_precision_cache,
+        )
+        second = _resolved_factor(
+            plan,
+            factor_id,
+            cache=low_precision_cache,
+        )
+    high_precision_cache = [None] * len(plan.sections.exact_factors)
+    with localcontext() as context:
+        context.prec = 40
+        high_precision = _resolved_factor(
+            plan,
+            factor_id,
+            cache=high_precision_cache,
+        )
+
+    assert first is second
+    assert first != high_precision
+    assert first == (Decimal("0.333333333"), Decimal("-0.285714286"))
+
+
+def test_trusted_executor_recipe_matches_validated_kernel_inputs() -> None:
+    plan = _scalar_union_plan()
+    plan.executor_couplings = {7: (Decimal("1.25"), Decimal("-0.5"))}
+    plan.executor_parent_permutations = {
+        **plan.executor_parent_permutations,
+        7: (1, 0),
+    }
+    executor = _Executor(
+        7,
+        "contribution",
+        "add",
+        (1, 1),
+        1,
+        2,
+        3,
+        None,
+    )
+    contracts = (
+        {"component": 0, "role": "left-current"},
+        {"component": 0, "role": "right-current"},
+        {"component": 0, "role": "left-momentum"},
+        {"component": 0, "role": "right-momentum"},
+        {"component": 0, "role": "coupling-real"},
+        {"component": 0, "role": "coupling-imag"},
+        {
+            "component": 0,
+            "role": "model-parameter",
+            "model_parameter_index": 0,
+        },
+    )
+    kernel = SimpleNamespace(record=SimpleNamespace(input_contracts=contracts))
+    plan.kernels = {3: kernel}
+    row = _Contribution(0, 1, 0, 1, 0, 0, 0, 0)
+    momenta = (
+        (Decimal(100), _ZERO, _ZERO, _ZERO),
+        (Decimal(200), _ZERO, _ZERO, _ZERO),
+    )
+    parameters = ((Decimal(300), Decimal(400)),)
+    arena = ((Decimal(10), _ZERO), (Decimal(20), _ZERO))
+
+    recipe = _trusted_executor_recipe(plan, executor)
+    inputs = _trusted_kernel_inputs(
+        plan,
+        recipe.inputs,
+        executor,
+        row,
+        momenta,
+        parameters,
+        arena,
+    )
+
+    assert _trusted_executor_recipe(plan, executor) is recipe
+    assert inputs == _kernel_inputs(
+        plan,
+        contracts,
+        executor,
+        row,
+        momenta,
+        parameters,
+        arena,
+    )
 
 
 def test_union_exact_resolved_values_sum_incoherently_by_flow(

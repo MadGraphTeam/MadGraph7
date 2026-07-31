@@ -596,6 +596,8 @@ def _runtime_profile_summary(value: object) -> dict[str, Any] | None:
                     "evaluated_point_count": sample.get("evaluated_point_count"),
                     "interrupted": sample.get("interrupted"),
                     "worker_wall_seconds": worker_wall,
+                    "peak_rss_after_cold_load": sample.get("peak_rss_after_cold_load"),
+                    "peak_rss_after_profile": sample.get("peak_rss_after_profile"),
                 }
             )
         measurements.append(

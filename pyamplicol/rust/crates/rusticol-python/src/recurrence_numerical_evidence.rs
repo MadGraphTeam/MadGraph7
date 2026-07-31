@@ -24,6 +24,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::{self, Read, Write};
 use std::ops::Range;
 use std::str::FromStr;
+use std::time::Instant;
 
 use crate::recurrence::{
     canonical_json_bytes, canonical_json_sha256, hex_digest, invalid, json_array, json_bool,
@@ -844,9 +845,21 @@ struct DerivedNumericalRelation {
 
 #[derive(Clone, Debug)]
 struct RawNumericalCandidateIndex {
+    #[cfg(test)]
     observation_index: usize,
     scalar_component: usize,
     entries: Vec<(BigRational, u32)>,
+    selected_values: Vec<(u32, ExactProbeComplex)>,
+}
+
+impl RawNumericalCandidateIndex {
+    fn selected_value(&self, current_id: u32, context: &str) -> RusticolResult<&ExactProbeComplex> {
+        let index = self
+            .selected_values
+            .binary_search_by_key(&current_id, |(candidate_id, _value)| *candidate_id)
+            .map_err(|_| invalid(format!("{context} selected observation is absent")))?;
+        Ok(&self.selected_values[index].1)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -863,6 +876,63 @@ struct RawNumericalDerivation {
     exhaustive_fallback_contract_count: usize,
     decision_sha256: String,
     rejection_decision_sha256: String,
+}
+
+/// Internal, generation-only measurements for numerical-evidence replay.
+///
+/// This record never enters a Python result, recurrence artifact, runtime
+/// payload, semantic digest, or public ABI.
+#[doc(hidden)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(super) struct RecurrenceEvidenceAuthenticationTelemetry {
+    pub transport_decode_nanoseconds: u64,
+    pub capture_authentication_nanoseconds: u64,
+    pub candidate_index_nanoseconds: u64,
+    pub hypothesis_replay_nanoseconds: u64,
+    pub derivation_finalization_nanoseconds: u64,
+    pub evidence_finalization_nanoseconds: u64,
+    pub total_nanoseconds: u64,
+    pub candidate_index_observation_row_scan_count: usize,
+    pub retained_selected_observation_count: usize,
+    pub selected_observation_reuse_count: usize,
+    pub zero_residual_streamed_value_count: usize,
+    pub materialized_observation_vector_count: usize,
+    pub rational_string_materialization_count: usize,
+    pub rational_string_use_count: usize,
+    pub rational_string_reuse_count: usize,
+}
+
+impl RecurrenceEvidenceAuthenticationTelemetry {
+    fn checked_add(target: &mut usize, value: usize, description: &str) -> RusticolResult<()> {
+        *target = target
+            .checked_add(value)
+            .ok_or_else(|| invalid(format!("{description} exceeds usize")))?;
+        Ok(())
+    }
+
+    fn record_rational_string_uses(&mut self, count: usize) -> RusticolResult<()> {
+        Self::checked_add(
+            &mut self.rational_string_use_count,
+            count,
+            "evidence-authentication rational-string use count",
+        )
+    }
+
+    fn finish_rational_string_census(&mut self) -> RusticolResult<()> {
+        self.rational_string_reuse_count = self
+            .rational_string_use_count
+            .checked_sub(self.rational_string_materialization_count)
+            .ok_or_else(|| {
+                invalid(
+                    "evidence-authentication rational-string use count is below materialization count",
+                )
+            })?;
+        Ok(())
+    }
+}
+
+fn elapsed_nanoseconds(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX)
 }
 
 #[derive(Clone, Debug)]
@@ -882,9 +952,15 @@ pub(super) struct AuthenticatedRuntimeParameterContract {
 
 #[derive(Clone, Debug)]
 struct RelationResiduals {
-    maximum_absolute: BigRational,
-    maximum_relative: BigRational,
     maximum_ratio: BigRational,
+    strings: RelationResidualStrings,
+}
+
+#[derive(Clone, Debug)]
+struct RelationResidualStrings {
+    maximum_absolute: String,
+    maximum_relative: String,
+    maximum_ratio: String,
 }
 
 pub(super) fn authenticated_runtime_parameter_contract(
@@ -989,30 +1065,52 @@ pub(super) fn parse_numerical_relation_evidence(
     bytes: &[u8],
     runtime_parameters: &AuthenticatedRuntimeParameterContract,
 ) -> RusticolResult<RecurrenceNumericalRelationEvidence> {
+    parse_numerical_relation_evidence_with_telemetry(bytes, runtime_parameters)
+        .map(|(evidence, _telemetry)| evidence)
+}
+
+#[doc(hidden)]
+pub(super) fn parse_numerical_relation_evidence_with_telemetry(
+    bytes: &[u8],
+    runtime_parameters: &AuthenticatedRuntimeParameterContract,
+) -> RusticolResult<(
+    RecurrenceNumericalRelationEvidence,
+    RecurrenceEvidenceAuthenticationTelemetry,
+)> {
+    let total_started = Instant::now();
+    let mut telemetry = RecurrenceEvidenceAuthenticationTelemetry::default();
     if bytes.is_empty() {
         return Err(invalid("numerical relation evidence must not be empty"));
     }
-    if bytes.starts_with(COMPRESSED_EVIDENCE_MAGIC) {
+    let evidence = if bytes.starts_with(COMPRESSED_EVIDENCE_MAGIC) {
+        let decode_started = Instant::now();
         let decoded = decode_compressed_evidence(bytes)?;
-        return parse_numerical_relation_evidence_v3(
+        telemetry.transport_decode_nanoseconds = elapsed_nanoseconds(decode_started);
+        parse_numerical_relation_evidence_v3(
             &decoded,
             RawEvidenceStorage::CompressedEnvelope {
                 transport_bytes: bytes.len(),
             },
             runtime_parameters,
-        );
-    }
-    parse_numerical_relation_evidence_v3(
-        bytes,
-        RawEvidenceStorage::ResidentJson,
-        runtime_parameters,
-    )
+            &mut telemetry,
+        )?
+    } else {
+        parse_numerical_relation_evidence_v3(
+            bytes,
+            RawEvidenceStorage::ResidentJson,
+            runtime_parameters,
+            &mut telemetry,
+        )?
+    };
+    telemetry.total_nanoseconds = elapsed_nanoseconds(total_started);
+    Ok((evidence, telemetry))
 }
 
 fn parse_numerical_relation_evidence_v3(
     bytes: &[u8],
     storage: RawEvidenceStorage,
     runtime_parameters: &AuthenticatedRuntimeParameterContract,
+    telemetry: &mut RecurrenceEvidenceAuthenticationTelemetry,
 ) -> RusticolResult<RecurrenceNumericalRelationEvidence> {
     // The global byte ceiling protects serde before the source shape is
     // available.  Once parsed, the authenticated scalar/row geometry derives
@@ -1248,6 +1346,7 @@ fn parse_numerical_relation_evidence_v3(
         ));
     }
     let seed = json_u64(object, "seed", "numerical relation seed")?;
+    let capture_authentication_started = Instant::now();
     let candidate = parse_raw_numerical_capture(
         bytes,
         located_observations.candidate,
@@ -1281,6 +1380,8 @@ fn parse_numerical_relation_evidence_v3(
         seed,
     )?;
     validate_independent_raw_captures(&candidate, &verification, runtime_parameters, seed)?;
+    telemetry.capture_authentication_nanoseconds =
+        elapsed_nanoseconds(capture_authentication_started);
 
     let derivation = derive_raw_numerical_relations(
         &source,
@@ -1302,7 +1403,9 @@ fn parse_numerical_relation_evidence_v3(
         )?,
         &runtime_parameter_schema_sha256,
         &certificate_algorithm,
+        telemetry,
     )?;
+    let evidence_finalization_started = Instant::now();
     let supplied_decision_sha256 = evidence_sha256(
         object,
         "decision_sha256",
@@ -1388,7 +1491,7 @@ fn parse_numerical_relation_evidence_v3(
             "numerical relation certificate-set digest does not match native raw-evidence replay",
         ));
     }
-    Ok(RecurrenceNumericalRelationEvidence {
+    let evidence = RecurrenceNumericalRelationEvidence {
         requested_mode,
         schedule_semantic_digest,
         baseline_runtime_layout_digest,
@@ -1415,7 +1518,10 @@ fn parse_numerical_relation_evidence_v3(
             .into_iter()
             .map(|relation| relation.mapping)
             .collect(),
-    })
+    };
+    telemetry.evidence_finalization_nanoseconds =
+        elapsed_nanoseconds(evidence_finalization_started);
+    Ok(evidence)
 }
 
 fn parse_raw_source_semantics(
@@ -2761,6 +2867,7 @@ fn parse_raw_observation_values(
     Ok(values)
 }
 
+#[cfg(test)]
 fn raw_observation_value(
     capture: &RawNumericalCapture<'_>,
     current_id: u32,
@@ -2804,6 +2911,7 @@ fn exact_probe_scalar(value: &ExactProbeComplex, scalar_component: usize) -> &Bi
 fn build_raw_numerical_candidate_indexes(
     source: &RawSourceSemantics,
     candidate: &RawNumericalCapture<'_>,
+    telemetry: &mut RecurrenceEvidenceAuthenticationTelemetry,
 ) -> RusticolResult<BTreeMap<Vec<u8>, RawNumericalCandidateIndex>> {
     let mut members_by_contract = BTreeMap::<Vec<u8>, Vec<u32>>::new();
     for current in &source.currents {
@@ -2850,16 +2958,27 @@ fn build_raw_numerical_candidate_indexes(
                         Ok(())
                     },
                 )?;
+                RecurrenceEvidenceAuthenticationTelemetry::checked_add(
+                    &mut telemetry.candidate_index_observation_row_scan_count,
+                    1,
+                    "evidence-authentication candidate-index row-scan count",
+                )?;
             }
             let mut best_choice = (0_usize, 0_usize);
             let mut best_score = (0_usize, 0_usize);
+            let mut sorted_column = Vec::<&str>::with_capacity(members.len());
             for observation_index in 0..width {
                 for scalar_component in 0..2 {
-                    let column = &mut scalar_columns[observation_index * 2 + scalar_component];
-                    column.sort_unstable();
-                    let unique = usize::from(!column.is_empty())
-                        + column.windows(2).filter(|pair| pair[0] != pair[1]).count();
-                    let nonzero = column.iter().filter(|value| **value != "0").count();
+                    let column = &scalar_columns[observation_index * 2 + scalar_component];
+                    sorted_column.clear();
+                    sorted_column.extend_from_slice(column);
+                    sorted_column.sort_unstable();
+                    let unique = usize::from(!sorted_column.is_empty())
+                        + sorted_column
+                            .windows(2)
+                            .filter(|pair| pair[0] != pair[1])
+                            .count();
+                    let nonzero = sorted_column.iter().filter(|value| **value != "0").count();
                     let score = (unique, nonzero);
                     if score > best_score
                         || score == best_score
@@ -2870,28 +2989,64 @@ fn build_raw_numerical_candidate_indexes(
                     }
                 }
             }
-            let mut entries = members
+            let selected_column_start = best_choice
+                .0
+                .checked_mul(2)
+                .ok_or_else(|| invalid("raw numerical selected column overflows usize"))?;
+            let real_column = &scalar_columns[selected_column_start];
+            let imaginary_column = &scalar_columns[selected_column_start + 1];
+            if real_column.len() != members.len() || imaginary_column.len() != members.len() {
+                return Err(invalid(
+                    "raw numerical selected observation column is incomplete",
+                ));
+            }
+            let selected_values = members
                 .iter()
-                .map(|current_id| {
-                    let value = raw_observation_value(
-                        candidate,
-                        *current_id,
-                        best_choice.0,
-                        "raw numerical candidate index",
-                    )?;
+                .zip(real_column.iter().zip(imaginary_column.iter()))
+                .map(|(current_id, (real, imaginary))| {
                     Ok((
-                        exact_probe_scalar(&value, best_choice.1).clone(),
                         *current_id,
+                        (
+                            parse_canonical_decimal(
+                                real,
+                                "raw numerical candidate index selected real part",
+                            )?,
+                            parse_canonical_decimal(
+                                imaginary,
+                                "raw numerical candidate index selected imaginary part",
+                            )?,
+                        ),
                     ))
                 })
                 .collect::<RusticolResult<Vec<_>>>()?;
+            RecurrenceEvidenceAuthenticationTelemetry::checked_add(
+                &mut telemetry.retained_selected_observation_count,
+                selected_values.len(),
+                "evidence-authentication retained selected-observation count",
+            )?;
+            let mut entries = selected_values
+                .iter()
+                .map(|(current_id, value)| {
+                    (
+                        exact_probe_scalar(value, best_choice.1).clone(),
+                        *current_id,
+                    )
+                })
+                .collect::<Vec<_>>();
+            RecurrenceEvidenceAuthenticationTelemetry::checked_add(
+                &mut telemetry.selected_observation_reuse_count,
+                selected_values.len(),
+                "evidence-authentication selected-observation reuse count",
+            )?;
             entries.sort();
             Ok((
                 contract,
                 RawNumericalCandidateIndex {
+                    #[cfg(test)]
                     observation_index: best_choice.0,
                     scalar_component: best_choice.1,
                     entries,
+                    selected_values,
                 },
             ))
         })
@@ -2962,11 +3117,14 @@ fn derive_raw_numerical_relations(
     absolute_tolerance_hex: &str,
     runtime_parameter_schema_sha256: &str,
     certificate_algorithm: &str,
+    telemetry: &mut RecurrenceEvidenceAuthenticationTelemetry,
 ) -> RusticolResult<RawNumericalDerivation> {
     const DECISION_CHAIN_ABI: &str = "pyamplicol-recurrence-numerical-decision-chain-v1";
     const REJECTION_CHAIN_ABI: &str = "pyamplicol-recurrence-rejected-numerical-decision-chain-v1";
     const MAX_SCREENED_HYPOTHESES: usize = 1_000_000;
-    let candidate_indexes = build_raw_numerical_candidate_indexes(source, candidate)?;
+    let candidate_index_started = Instant::now();
+    let candidate_indexes = build_raw_numerical_candidate_indexes(source, candidate, telemetry)?;
+    telemetry.candidate_index_nanoseconds = elapsed_nanoseconds(candidate_index_started);
     let mut prior_by_contract = BTreeMap::<Vec<u8>, Vec<u32>>::new();
     let mut derived = Vec::new();
     let mut numerical_candidate_count = 0_usize;
@@ -2995,6 +3153,7 @@ fn derive_raw_numerical_relations(
         }),
         "raw numerical rejection-chain root",
     )?;
+    let hypothesis_replay_started = Instant::now();
     for current in &source.currents {
         let prior = prior_by_contract
             .entry(current.contract_key.clone())
@@ -3006,15 +3165,16 @@ fn derive_raw_numerical_relations(
         let candidate_index = candidate_indexes
             .get(&current.contract_key)
             .ok_or_else(|| invalid("raw numerical candidate index contract is absent"))?;
-        let selected = raw_observation_value(
-            candidate,
-            current.current_id,
-            candidate_index.observation_index,
-            "raw numerical candidate index current",
+        let selected = candidate_index
+            .selected_value(current.current_id, "raw numerical candidate index current")?;
+        RecurrenceEvidenceAuthenticationTelemetry::checked_add(
+            &mut telemetry.selected_observation_reuse_count,
+            1,
+            "evidence-authentication selected-observation reuse count",
         )?;
         let equal_representatives = raw_numerical_tolerance_window_ids(
             candidate_index,
-            &selected,
+            selected,
             current.current_id,
             "equal",
             relative_tolerance,
@@ -3022,7 +3182,7 @@ fn derive_raw_numerical_relations(
         )?;
         let opposite_representatives = raw_numerical_tolerance_window_ids(
             candidate_index,
-            &selected,
+            selected,
             current.current_id,
             "opposite",
             relative_tolerance,
@@ -3074,6 +3234,7 @@ fn derive_raw_numerical_relations(
                 candidate,
                 relative_tolerance,
                 absolute_tolerance,
+                telemetry,
             )?;
             if candidate_residuals.maximum_ratio > BigRational::one() {
                 decision_chain = advance_decision_chain(
@@ -3084,6 +3245,7 @@ fn derive_raw_numerical_relations(
                     &candidate_residuals,
                     None,
                     false,
+                    telemetry,
                 )?;
                 rejection_chain = advance_rejection_chain(
                     &rejection_chain,
@@ -3092,6 +3254,7 @@ fn derive_raw_numerical_relations(
                     relation_kind,
                     &candidate_residuals,
                     "candidate-observations-not-equal",
+                    telemetry,
                 )?;
                 continue;
             }
@@ -3105,6 +3268,7 @@ fn derive_raw_numerical_relations(
                 verification,
                 relative_tolerance,
                 absolute_tolerance,
+                telemetry,
             )?;
             if verification_residuals.maximum_ratio > BigRational::one() {
                 verification_rejected_count = verification_rejected_count
@@ -3118,6 +3282,7 @@ fn derive_raw_numerical_relations(
                     &candidate_residuals,
                     Some(&verification_residuals),
                     false,
+                    telemetry,
                 )?;
                 rejection_chain = advance_rejection_chain(
                     &rejection_chain,
@@ -3126,6 +3291,7 @@ fn derive_raw_numerical_relations(
                     relation_kind,
                     &verification_residuals,
                     "independent-verification-rejected-candidate",
+                    telemetry,
                 )?;
                 continue;
             }
@@ -3151,6 +3317,7 @@ fn derive_raw_numerical_relations(
                 absolute_tolerance_hex,
                 runtime_parameter_schema_sha256,
                 certificate_algorithm,
+                telemetry,
             )?);
             decision_chain = advance_decision_chain(
                 &decision_chain,
@@ -3160,11 +3327,14 @@ fn derive_raw_numerical_relations(
                 &candidate_residuals,
                 Some(&verification_residuals),
                 true,
+                telemetry,
             )?;
             break;
         }
         prior.push(current.current_id);
     }
+    telemetry.hypothesis_replay_nanoseconds = elapsed_nanoseconds(hypothesis_replay_started);
+    let derivation_finalization_started = Instant::now();
     let rejected_hypothesis_count = tested_hypothesis_count
         .checked_sub(derived.len())
         .ok_or_else(|| invalid("raw numerical rejected-hypothesis count underflows"))?;
@@ -3184,6 +3354,9 @@ fn derive_raw_numerical_relations(
         "raw numerical decision-chain census",
     )?;
     let rejection_decision_sha256 = rejection_chain;
+    telemetry.finish_rational_string_census()?;
+    telemetry.derivation_finalization_nanoseconds =
+        elapsed_nanoseconds(derivation_finalization_started);
     Ok(RawNumericalDerivation {
         relations: derived,
         numerical_candidate_count,
@@ -3204,6 +3377,7 @@ fn derive_raw_numerical_relations(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn advance_decision_chain(
     previous: &str,
     current_id: u32,
@@ -3212,18 +3386,20 @@ fn advance_decision_chain(
     candidate: &RelationResiduals,
     verification: Option<&RelationResiduals>,
     selected: bool,
+    telemetry: &mut RecurrenceEvidenceAuthenticationTelemetry,
 ) -> RusticolResult<String> {
+    telemetry.record_rational_string_uses(if verification.is_some() { 6 } else { 3 })?;
     let row = serde_json::json!({
         "current_id": current_id,
         "representative_id": representative_id,
         "relation_kind": relation_kind,
-        "candidate_maximum_absolute_residual": rational_string(&candidate.maximum_absolute),
-        "candidate_maximum_relative_residual": rational_string(&candidate.maximum_relative),
-        "candidate_maximum_tolerance_ratio": rational_string(&candidate.maximum_ratio),
+        "candidate_maximum_absolute_residual": candidate.strings.maximum_absolute.as_str(),
+        "candidate_maximum_relative_residual": candidate.strings.maximum_relative.as_str(),
+        "candidate_maximum_tolerance_ratio": candidate.strings.maximum_ratio.as_str(),
         "candidate_accepted": candidate.maximum_ratio <= BigRational::one(),
-        "verification_maximum_absolute_residual": verification.map(|value| rational_string(&value.maximum_absolute)),
-        "verification_maximum_relative_residual": verification.map(|value| rational_string(&value.maximum_relative)),
-        "verification_maximum_tolerance_ratio": verification.map(|value| rational_string(&value.maximum_ratio)),
+        "verification_maximum_absolute_residual": verification.map(|value| value.strings.maximum_absolute.as_str()),
+        "verification_maximum_relative_residual": verification.map(|value| value.strings.maximum_relative.as_str()),
+        "verification_maximum_tolerance_ratio": verification.map(|value| value.strings.maximum_ratio.as_str()),
         "verification_accepted": verification.map(|value| value.maximum_ratio <= BigRational::one()),
         "selected": selected,
     });
@@ -3241,15 +3417,17 @@ fn advance_rejection_chain(
     relation_kind: &str,
     residuals: &RelationResiduals,
     reason: &str,
+    telemetry: &mut RecurrenceEvidenceAuthenticationTelemetry,
 ) -> RusticolResult<String> {
+    telemetry.record_rational_string_uses(3)?;
     let row = serde_json::json!({
         "current_id": current_id,
         "representative_id": representative_id,
         "relation_kind": relation_kind,
         "reason": reason,
-        "maximum_absolute_residual": rational_string(&residuals.maximum_absolute),
-        "maximum_relative_residual": rational_string(&residuals.maximum_relative),
-        "maximum_tolerance_ratio": rational_string(&residuals.maximum_ratio),
+        "maximum_absolute_residual": residuals.strings.maximum_absolute.as_str(),
+        "maximum_relative_residual": residuals.strings.maximum_relative.as_str(),
+        "maximum_tolerance_ratio": residuals.strings.maximum_ratio.as_str(),
     });
     let previous = semantic_digest_from_hex(previous, "raw numerical rejection-chain predecessor")?;
     let mut digest = Sha256::new();
@@ -3268,80 +3446,165 @@ fn relation_residuals(
     capture: &RawNumericalCapture<'_>,
     relative_tolerance: &BigRational,
     absolute_tolerance: &BigRational,
+    telemetry: &mut RecurrenceEvidenceAuthenticationTelemetry,
 ) -> RusticolResult<RelationResiduals> {
-    let current =
-        parse_raw_observation_values(capture, current_id, "raw numerical current observations")?;
-    let representative = representative_id
-        .map(|representative_id| {
-            parse_raw_observation_values(
-                capture,
-                representative_id,
-                "raw numerical representative observations",
-            )
-        })
-        .transpose()?;
-    if relation_kind != "zero"
-        && representative
-            .as_ref()
-            .is_none_or(|representative| representative.len() != current.len())
-    {
-        return Err(invalid("raw numerical relation width is invalid"));
-    }
     let mut maximum_absolute = BigRational::zero();
     let mut maximum_relative = BigRational::zero();
     let mut maximum_ratio = BigRational::zero();
-    for (index, current_value) in current.iter().enumerate() {
-        let zero = (BigRational::zero(), BigRational::zero());
-        let representative_value = if relation_kind == "zero" {
-            &zero
-        } else {
-            representative
-                .as_ref()
-                .expect("checked non-zero representative")
-                .get(index)
-                .ok_or_else(|| invalid("raw representative observation is absent"))?
-        };
-        let (right_real, right_imaginary) = match relation_kind {
-            "zero" | "equal" => (
-                representative_value.0.clone(),
-                representative_value.1.clone(),
-            ),
-            "opposite" => (
-                -representative_value.0.clone(),
-                -representative_value.1.clone(),
-            ),
-            _ => return Err(invalid("raw numerical relation kind is unsupported")),
-        };
-        let difference = (&current_value.0 - right_real)
-            .abs()
-            .max((&current_value.1 - right_imaginary).abs());
-        let scale = current_value
-            .0
-            .abs()
-            .max(current_value.1.abs())
-            .max(representative_value.0.abs())
-            .max(representative_value.1.abs());
-        let allowed = absolute_tolerance + relative_tolerance * &scale;
-        let (relative, ratio) = if difference.is_zero() {
-            (BigRational::zero(), BigRational::zero())
-        } else {
-            if allowed <= BigRational::zero() {
-                return Err(invalid("raw numerical tolerance is not positive"));
-            }
-            (
-                &difference / scale.max(absolute_tolerance.clone()),
-                &difference / allowed,
-            )
-        };
-        maximum_absolute = maximum_absolute.max(difference);
-        maximum_relative = maximum_relative.max(relative);
-        maximum_ratio = maximum_ratio.max(ratio);
+    if relation_kind == "zero" {
+        if representative_id.is_some() {
+            return Err(invalid("raw numerical zero relation has a representative"));
+        }
+        visit_raw_observation_text(
+            capture,
+            current_id,
+            "raw numerical current observations",
+            |index, real, imaginary| {
+                let current_value = (
+                    parse_canonical_decimal(
+                        real,
+                        &format!("raw numerical current observations component {index} real part"),
+                    )?,
+                    parse_canonical_decimal(
+                        imaginary,
+                        &format!(
+                            "raw numerical current observations component {index} imaginary part"
+                        ),
+                    )?,
+                );
+                accumulate_relation_residual(
+                    relation_kind,
+                    &current_value,
+                    None,
+                    relative_tolerance,
+                    absolute_tolerance,
+                    &mut maximum_absolute,
+                    &mut maximum_relative,
+                    &mut maximum_ratio,
+                )
+            },
+        )?;
+        let streamed_value_count = capture
+            .dimensions
+            .get(current_id as usize)
+            .copied()
+            .and_then(|dimension| capture.point_count.checked_mul(usize::from(dimension)))
+            .ok_or_else(|| invalid("raw numerical zero-residual width overflows usize"))?;
+        RecurrenceEvidenceAuthenticationTelemetry::checked_add(
+            &mut telemetry.zero_residual_streamed_value_count,
+            streamed_value_count,
+            "evidence-authentication zero-residual streamed-value count",
+        )?;
+    } else {
+        let current = parse_raw_observation_values(
+            capture,
+            current_id,
+            "raw numerical current observations",
+        )?;
+        let representative_id = representative_id
+            .ok_or_else(|| invalid("raw numerical non-zero relation has no representative"))?;
+        let representative = parse_raw_observation_values(
+            capture,
+            representative_id,
+            "raw numerical representative observations",
+        )?;
+        RecurrenceEvidenceAuthenticationTelemetry::checked_add(
+            &mut telemetry.materialized_observation_vector_count,
+            2,
+            "evidence-authentication materialized observation-vector count",
+        )?;
+        if representative.len() != current.len() {
+            return Err(invalid("raw numerical relation width is invalid"));
+        }
+        for (current_value, representative_value) in current.iter().zip(&representative) {
+            accumulate_relation_residual(
+                relation_kind,
+                current_value,
+                Some(representative_value),
+                relative_tolerance,
+                absolute_tolerance,
+                &mut maximum_absolute,
+                &mut maximum_relative,
+                &mut maximum_ratio,
+            )?;
+        }
     }
+    let strings = RelationResidualStrings {
+        maximum_absolute: rational_string(&maximum_absolute),
+        maximum_relative: rational_string(&maximum_relative),
+        maximum_ratio: rational_string(&maximum_ratio),
+    };
+    RecurrenceEvidenceAuthenticationTelemetry::checked_add(
+        &mut telemetry.rational_string_materialization_count,
+        3,
+        "evidence-authentication rational-string materialization count",
+    )?;
     Ok(RelationResiduals {
-        maximum_absolute,
-        maximum_relative,
         maximum_ratio,
+        strings,
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn accumulate_relation_residual(
+    relation_kind: &str,
+    current_value: &ExactProbeComplex,
+    representative_value: Option<&ExactProbeComplex>,
+    relative_tolerance: &BigRational,
+    absolute_tolerance: &BigRational,
+    maximum_absolute: &mut BigRational,
+    maximum_relative: &mut BigRational,
+    maximum_ratio: &mut BigRational,
+) -> RusticolResult<()> {
+    let current_scale = current_value.0.abs().max(current_value.1.abs());
+    let (difference, scale) = match relation_kind {
+        "zero" => {
+            if representative_value.is_some() {
+                return Err(invalid("raw numerical zero relation has a representative"));
+            }
+            (current_scale.clone(), current_scale)
+        }
+        "equal" | "opposite" => {
+            let representative_value = representative_value
+                .ok_or_else(|| invalid("raw numerical non-zero relation has no representative"))?;
+            let (right_real, right_imaginary) = if relation_kind == "equal" {
+                (
+                    representative_value.0.clone(),
+                    representative_value.1.clone(),
+                )
+            } else {
+                (
+                    -representative_value.0.clone(),
+                    -representative_value.1.clone(),
+                )
+            };
+            (
+                (&current_value.0 - right_real)
+                    .abs()
+                    .max((&current_value.1 - right_imaginary).abs()),
+                current_scale
+                    .max(representative_value.0.abs())
+                    .max(representative_value.1.abs()),
+            )
+        }
+        _ => return Err(invalid("raw numerical relation kind is unsupported")),
+    };
+    let allowed = absolute_tolerance + relative_tolerance * &scale;
+    let (relative, ratio) = if difference.is_zero() {
+        (BigRational::zero(), BigRational::zero())
+    } else {
+        if allowed <= BigRational::zero() {
+            return Err(invalid("raw numerical tolerance is not positive"));
+        }
+        (
+            &difference / scale.max(absolute_tolerance.clone()),
+            &difference / allowed,
+        )
+    };
+    *maximum_absolute = std::mem::take(maximum_absolute).max(difference);
+    *maximum_relative = std::mem::take(maximum_relative).max(relative);
+    *maximum_ratio = std::mem::take(maximum_ratio).max(ratio);
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3361,6 +3624,7 @@ fn build_derived_numerical_relation(
     absolute_tolerance_hex: &str,
     runtime_parameter_schema_sha256: &str,
     certificate_algorithm: &str,
+    telemetry: &mut RecurrenceEvidenceAuthenticationTelemetry,
 ) -> RusticolResult<DerivedNumericalRelation> {
     let factor = match relation_kind {
         "equal" => rusticol_core::recurrence::ExactComplexRational::ONE,
@@ -3413,6 +3677,7 @@ fn build_derived_numerical_relation(
     });
     let probe_contract_sha256 =
         canonical_json_sha256(&probe_contract, "raw numerical probe contract")?;
+    telemetry.record_rational_string_uses(12)?;
     let proof = serde_json::json!({
         "algorithm": certificate_algorithm,
         "source_semantics_sha256": probe_contract["source_semantics_sha256"],
@@ -3436,12 +3701,12 @@ fn build_derived_numerical_relation(
         "verification_observations_sha256": verification_observations_sha256,
         "proof_kind": "authenticated-numerical",
         "factor_integer": factor_integer,
-        "candidate_maximum_absolute_residual": rational_string(&candidate_residuals.maximum_absolute),
-        "candidate_maximum_relative_residual": rational_string(&candidate_residuals.maximum_relative),
-        "candidate_maximum_tolerance_ratio": rational_string(&candidate_residuals.maximum_ratio),
-        "verification_maximum_absolute_residual": rational_string(&verification_residuals.maximum_absolute),
-        "verification_maximum_relative_residual": rational_string(&verification_residuals.maximum_relative),
-        "verification_maximum_tolerance_ratio": rational_string(&verification_residuals.maximum_ratio),
+        "candidate_maximum_absolute_residual": candidate_residuals.strings.maximum_absolute.as_str(),
+        "candidate_maximum_relative_residual": candidate_residuals.strings.maximum_relative.as_str(),
+        "candidate_maximum_tolerance_ratio": candidate_residuals.strings.maximum_ratio.as_str(),
+        "verification_maximum_absolute_residual": verification_residuals.strings.maximum_absolute.as_str(),
+        "verification_maximum_relative_residual": verification_residuals.strings.maximum_relative.as_str(),
+        "verification_maximum_tolerance_ratio": verification_residuals.strings.maximum_ratio.as_str(),
         "probe_contract_sha256": probe_contract_sha256,
     });
     let proof_sha256 = canonical_json_sha256(&proof, "raw numerical relation proof")?;
@@ -3464,12 +3729,12 @@ fn build_derived_numerical_relation(
         "runtime_parameter_schema_sha256": runtime_parameter_schema_sha256,
         "candidate_capture_sha256": candidate.capture_contract_sha256,
         "verification_capture_sha256": verification.capture_contract_sha256,
-        "candidate_maximum_absolute_residual": rational_string(&candidate_residuals.maximum_absolute),
-        "candidate_maximum_relative_residual": rational_string(&candidate_residuals.maximum_relative),
-        "candidate_maximum_tolerance_ratio": rational_string(&candidate_residuals.maximum_ratio),
-        "verification_maximum_absolute_residual": rational_string(&verification_residuals.maximum_absolute),
-        "verification_maximum_relative_residual": rational_string(&verification_residuals.maximum_relative),
-        "verification_maximum_tolerance_ratio": rational_string(&verification_residuals.maximum_ratio),
+        "candidate_maximum_absolute_residual": candidate_residuals.strings.maximum_absolute.as_str(),
+        "candidate_maximum_relative_residual": candidate_residuals.strings.maximum_relative.as_str(),
+        "candidate_maximum_tolerance_ratio": candidate_residuals.strings.maximum_ratio.as_str(),
+        "verification_maximum_absolute_residual": verification_residuals.strings.maximum_absolute.as_str(),
+        "verification_maximum_relative_residual": verification_residuals.strings.maximum_relative.as_str(),
+        "verification_maximum_tolerance_ratio": verification_residuals.strings.maximum_ratio.as_str(),
         "candidate_observations_sha256": candidate_observations_sha256,
         "verification_observations_sha256": verification_observations_sha256,
         "probe_contract_sha256": probe_contract_sha256,
@@ -3966,6 +4231,7 @@ mod tests {
             seed,
         )
         .unwrap();
+        let mut derivation_telemetry = RecurrenceEvidenceAuthenticationTelemetry::default();
         let derivation = derive_raw_numerical_relations(
             &source,
             &candidate,
@@ -3978,6 +4244,7 @@ mod tests {
             &python_f64_hex(absolute_tolerance),
             &runtime_parameter_schema_sha256,
             rusticol_core::recurrence::NUMERICAL_RELATION_CERTIFICATE_ALGORITHM,
+            &mut derivation_telemetry,
         )
         .unwrap();
         assert_eq!(
@@ -4052,6 +4319,23 @@ mod tests {
     fn numerical_relation_evidence_recomputes_every_digest_layer() {
         let evidence = canonical_numerical_relation_evidence();
         let encoded = canonical_json_bytes(&evidence, "test numerical evidence").unwrap();
+        assert_eq!(encoded.len(), 16_869);
+        assert_eq!(
+            hex_digest(Sha256::digest(&encoded)),
+            "555ef413d29a0f07e09b92abe564d104bc7787c953d4622df8a6ba11051abb0f",
+        );
+        assert_eq!(
+            evidence["decision_sha256"],
+            "e1899c8791f374e406550435e7ff3e3c57044be2a9161b3f39a023df283cc403",
+        );
+        assert_eq!(
+            evidence["rejection_decision_sha256"],
+            "ff294e07e4c84a5c6645c71ad1b9c55aff8dc5f7bfa302b3f20c367ffcfa01be",
+        );
+        assert_eq!(
+            evidence["certificate_set_sha256"],
+            "5c500444d772f455df8650acaa1d38ca75638452b84c8e9bc0a5037756a04c97",
+        );
         let parsed = parse_fixture(&encoded).unwrap();
         assert_eq!(parsed.mappings.len(), 3);
         assert_eq!(
@@ -4113,6 +4397,173 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("was not independently derived")
+        );
+    }
+
+    #[test]
+    fn profiled_evidence_authentication_is_semantically_identical() {
+        let evidence = canonical_numerical_relation_evidence();
+        let encoded = canonical_json_bytes(&evidence, "profiled numerical evidence").unwrap();
+        let expected = parse_fixture(&encoded).unwrap();
+        let (profiled, telemetry) = parse_numerical_relation_evidence_with_telemetry(
+            &encoded,
+            &empty_runtime_parameter_contract(),
+        )
+        .unwrap();
+
+        assert_eq!(profiled, expected);
+        assert_eq!(telemetry.transport_decode_nanoseconds, 0);
+        assert!(telemetry.total_nanoseconds >= telemetry.candidate_index_nanoseconds);
+        assert!(telemetry.total_nanoseconds >= telemetry.hypothesis_replay_nanoseconds);
+        assert!(telemetry.total_nanoseconds >= telemetry.evidence_finalization_nanoseconds);
+        assert_eq!(
+            (
+                telemetry.candidate_index_observation_row_scan_count,
+                telemetry.retained_selected_observation_count,
+                telemetry.selected_observation_reuse_count,
+                telemetry.zero_residual_streamed_value_count,
+                telemetry.materialized_observation_vector_count,
+                telemetry.rational_string_materialization_count,
+                telemetry.rational_string_use_count,
+                telemetry.rational_string_reuse_count,
+            ),
+            (6, 6, 11, 24, 8, 30, 78, 48),
+        );
+
+        let compressed = compressed_envelope(&encoded);
+        let (compressed_profiled, compressed_telemetry) =
+            parse_numerical_relation_evidence_with_telemetry(
+                &compressed,
+                &empty_runtime_parameter_contract(),
+            )
+            .unwrap();
+        assert_eq!(compressed_profiled, expected);
+        assert!(
+            compressed_telemetry.total_nanoseconds
+                >= compressed_telemetry.transport_decode_nanoseconds
+        );
+        assert_eq!(
+            compressed_telemetry.rational_string_reuse_count,
+            telemetry.rational_string_reuse_count,
+        );
+    }
+
+    #[test]
+    fn candidate_index_retains_the_exact_selected_observations() {
+        let source = RawSourceSemantics {
+            value: json!({}),
+            process_id: "selected-observation-test".to_owned(),
+            physical_pdgs: vec![1],
+            strategy: "contracted-color-union".to_owned(),
+            selector_schedule: json!({}),
+            currents: (0..3)
+                .map(|current_id| RawSourceCurrent {
+                    current_id,
+                    is_source: false,
+                    contract_key: vec![7],
+                    dimension: 1,
+                })
+                .collect(),
+        };
+        let bytes = canonical_json_bytes(
+            &json!([
+                {"current_id": 0, "dimension": 1, "values": [["1", "10"], ["4", "0"]]},
+                {"current_id": 1, "dimension": 1, "values": [["2", "10"], ["4", "0"]]},
+                {"current_id": 2, "dimension": 1, "values": [["3", "10"], ["4", "0"]]},
+            ]),
+            "selected observation fixture",
+        )
+        .unwrap();
+        let capture = capture_from_observation_array(&bytes, &source, 2);
+        let mut telemetry = RecurrenceEvidenceAuthenticationTelemetry::default();
+        let indexes =
+            build_raw_numerical_candidate_indexes(&source, &capture, &mut telemetry).unwrap();
+        let index = indexes.get(&vec![7]).unwrap();
+
+        assert_eq!((index.observation_index, index.scalar_component), (0, 0));
+        for current_id in 0..3 {
+            assert_eq!(
+                index
+                    .selected_value(current_id, "retained selected observation")
+                    .unwrap(),
+                &raw_observation_value(
+                    &capture,
+                    current_id,
+                    index.observation_index,
+                    "retained selected observation",
+                )
+                .unwrap(),
+            );
+        }
+        assert_eq!(telemetry.candidate_index_observation_row_scan_count, 3);
+        assert_eq!(telemetry.retained_selected_observation_count, 3);
+        assert_eq!(telemetry.selected_observation_reuse_count, 3);
+        assert!(
+            index
+                .selected_value(u32::MAX, "retained selected observation")
+                .unwrap_err()
+                .to_string()
+                .contains("selected observation is absent")
+        );
+    }
+
+    #[test]
+    fn zero_residuals_stream_without_materialized_comparison_vectors() {
+        let source = RawSourceSemantics {
+            value: json!({}),
+            process_id: "zero-residual-test".to_owned(),
+            physical_pdgs: vec![1],
+            strategy: "contracted-color-union".to_owned(),
+            selector_schedule: json!({}),
+            currents: vec![RawSourceCurrent {
+                current_id: 0,
+                is_source: false,
+                contract_key: vec![1],
+                dimension: 1,
+            }],
+        };
+        let bytes = canonical_json_bytes(
+            &json!([
+                {"current_id": 0, "dimension": 1, "values": [["3", "4"], ["0", "0"]]},
+            ]),
+            "zero residual fixture",
+        )
+        .unwrap();
+        let capture = capture_from_observation_array(&bytes, &source, 2);
+        let mut telemetry = RecurrenceEvidenceAuthenticationTelemetry::default();
+        let residuals = relation_residuals(
+            "zero",
+            0,
+            None,
+            &capture,
+            &BigRational::zero(),
+            &BigRational::one(),
+            &mut telemetry,
+        )
+        .unwrap();
+
+        assert_eq!(residuals.maximum_ratio, BigRational::from_integer(4.into()));
+        assert_eq!(residuals.strings.maximum_absolute, "4");
+        assert_eq!(residuals.strings.maximum_relative, "1");
+        assert_eq!(residuals.strings.maximum_ratio, "4");
+        assert_eq!(telemetry.zero_residual_streamed_value_count, 2);
+        assert_eq!(telemetry.materialized_observation_vector_count, 0);
+        assert_eq!(telemetry.rational_string_materialization_count, 3);
+    }
+
+    #[test]
+    #[ignore = "manual recurrence evidence-authentication microbenchmark"]
+    fn benchmark_canonical_evidence_authentication() {
+        let evidence = canonical_numerical_relation_evidence();
+        let encoded = canonical_json_bytes(&evidence, "benchmark numerical evidence").unwrap();
+        let started = std::time::Instant::now();
+        for _ in 0..50 {
+            let parsed = parse_fixture(&encoded).unwrap();
+            assert_eq!(parsed.mappings.len(), 3);
+        }
+        eprintln!(
+            "evidence-authentication-benchmark iterations=50 elapsed_ns={}",
+            started.elapsed().as_nanos()
         );
     }
 
@@ -4361,6 +4812,7 @@ mod tests {
             observation_index: 0,
             scalar_component: 0,
             entries,
+            selected_values: Vec::new(),
         };
         let current = (
             BigRational::from_integer(BigInt::from(10)),
@@ -4520,6 +4972,7 @@ mod tests {
         )
         .unwrap();
         let boundary_capture = capture_from_observation_array(&boundary_bytes, &source, 1);
+        let mut telemetry = RecurrenceEvidenceAuthenticationTelemetry::default();
         let boundary = relation_residuals(
             "equal",
             1,
@@ -4527,6 +4980,7 @@ mod tests {
             &boundary_capture,
             &BigRational::zero(),
             &BigRational::one(),
+            &mut telemetry,
         )
         .unwrap();
         assert_eq!(boundary.maximum_ratio, BigRational::one());
@@ -4546,6 +5000,7 @@ mod tests {
             &outside_capture,
             &BigRational::zero(),
             &BigRational::one(),
+            &mut telemetry,
         )
         .unwrap();
         assert!(outside.maximum_ratio > BigRational::one());

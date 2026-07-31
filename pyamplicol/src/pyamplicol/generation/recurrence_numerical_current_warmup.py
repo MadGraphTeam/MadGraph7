@@ -111,6 +111,9 @@ _Mode = Literal["diagnostic", "certified-reuse"]
 _Point = tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...]
 _CurrentContract = tuple[object, ...]
 _EvidenceEncoding = Literal["canonical-json-v3", "zlib-canonical-json-v1"]
+_Residuals = tuple[Fraction, Fraction, Fraction]
+_ResidualStrings = tuple[str, str, str]
+_Tolerance = Decimal | Fraction
 
 
 @dataclass(frozen=True, slots=True)
@@ -1300,6 +1303,7 @@ def _capture_recurrence_current_observations(
         if static_context is None
         else static_context.current_dimensions
     )
+    expected_current_ids = frozenset(dimensions)
     observations: dict[int, list[_ComplexDecimal]] = {
         current_id: [] for current_id in dimensions
     }
@@ -1397,11 +1401,12 @@ def _capture_recurrence_current_observations(
                     domain=domain,
                     index=point_index,
                 ),
+                expected_current_ids=expected_current_ids,
             )
             if probe_timings is not None:
                 probe_timings.append(time.perf_counter() - probe_started)
             context_payloads.append(context_payload)
-            if set(captured) != set(dimensions):
+            if captured.keys() != expected_current_ids:
                 raise ValueError("recurrence exact current capture is incomplete")
             for current_id, dimension in dimensions.items():
                 values = captured[current_id]
@@ -1539,6 +1544,7 @@ def _capture_one_point(
     precision: int,
     *,
     selector_seed: int,
+    expected_current_ids: frozenset[int],
 ) -> tuple[dict[int, tuple[_ComplexDecimal, ...]], object]:
     sections = plan.sections
     if sections.strategy == "topology-replay":
@@ -1556,6 +1562,7 @@ def _capture_one_point(
                 precision,
                 current_observer=observer,
             ),
+            expected_current_ids=expected_current_ids,
         )
         return captured, {
             "strategy": sections.strategy,
@@ -1586,6 +1593,7 @@ def _capture_one_point(
                     precision,
                     current_observer=observer,
                 ),
+                expected_current_ids=expected_current_ids,
             )
             selected.append(
                 {
@@ -1615,6 +1623,7 @@ def _capture_one_point(
             precision,
             current_observer=observer,
         ),
+        expected_current_ids=expected_current_ids,
     )
     return captured, {
         "strategy": sections.strategy,
@@ -1625,6 +1634,8 @@ def _capture_one_point(
 def _capture_execution(
     sections: _RecurrenceExactSectionsV1,
     operation: object,
+    *,
+    expected_current_ids: frozenset[int] | None = None,
 ) -> dict[int, tuple[_ComplexDecimal, ...]]:
     captured: dict[int, tuple[_ComplexDecimal, ...]] = {}
 
@@ -1641,9 +1652,13 @@ def _capture_execution(
     if not callable(operation):  # pragma: no cover - internal type contract
         raise TypeError("recurrence capture operation is not callable")
     operation(observe)
-    expected = {current.semantic_id for current in sections.currents}
-    if set(captured) != expected:
-        missing = sorted(expected - set(captured))
+    expected = (
+        frozenset(current.semantic_id for current in sections.currents)
+        if expected_current_ids is None
+        else expected_current_ids
+    )
+    if captured.keys() != expected:
+        missing = sorted(expected - captured.keys())
         raise ArtifactError(
             f"recurrence current observation missed semantic currents {missing[:8]}"
         )
@@ -1779,8 +1794,10 @@ def _discover_relations(
         current_id: int,
         representative_id: int | None,
         relation_kind: _RelationKind,
-        candidate_residuals: tuple[Fraction, Fraction, Fraction],
-        verification_residuals: tuple[Fraction, Fraction, Fraction] | None,
+        candidate_residuals: _Residuals,
+        candidate_residual_strings: _ResidualStrings,
+        verification_residuals: _Residuals | None,
+        verification_residual_strings: _ResidualStrings | None,
         selected: bool,
     ) -> None:
         nonlocal decision_chain
@@ -1791,30 +1808,30 @@ def _discover_relations(
                     "current_id": current_id,
                     "representative_id": representative_id,
                     "relation_kind": relation_kind,
-                    "candidate_maximum_absolute_residual": _fraction_string(
-                        candidate_residuals[0]
+                    "candidate_maximum_absolute_residual": (
+                        candidate_residual_strings[0]
                     ),
-                    "candidate_maximum_relative_residual": _fraction_string(
-                        candidate_residuals[1]
+                    "candidate_maximum_relative_residual": (
+                        candidate_residual_strings[1]
                     ),
-                    "candidate_maximum_tolerance_ratio": _fraction_string(
-                        candidate_residuals[2]
+                    "candidate_maximum_tolerance_ratio": (
+                        candidate_residual_strings[2]
                     ),
                     "candidate_accepted": candidate_residuals[2] <= 1,
                     "verification_maximum_absolute_residual": (
                         None
-                        if verification_residuals is None
-                        else _fraction_string(verification_residuals[0])
+                        if verification_residual_strings is None
+                        else verification_residual_strings[0]
                     ),
                     "verification_maximum_relative_residual": (
                         None
-                        if verification_residuals is None
-                        else _fraction_string(verification_residuals[1])
+                        if verification_residual_strings is None
+                        else verification_residual_strings[1]
                     ),
                     "verification_maximum_tolerance_ratio": (
                         None
-                        if verification_residuals is None
-                        else _fraction_string(verification_residuals[2])
+                        if verification_residual_strings is None
+                        else verification_residual_strings[2]
                     ),
                     "verification_accepted": (
                         None
@@ -1831,7 +1848,8 @@ def _discover_relations(
         current_id: int,
         representative_id: int | None,
         relation_kind: _RelationKind,
-        residuals: tuple[Fraction, Fraction, Fraction],
+        residuals: _Residuals,
+        residual_strings: _ResidualStrings,
         reason: str,
     ) -> None:
         nonlocal nearest, rejected_hypotheses, rejection_chain
@@ -1841,9 +1859,9 @@ def _discover_relations(
             "representative_id": representative_id,
             "relation_kind": relation_kind,
             "reason": reason,
-            "maximum_absolute_residual": _fraction_string(residuals[0]),
-            "maximum_relative_residual": _fraction_string(residuals[1]),
-            "maximum_tolerance_ratio": _fraction_string(residuals[2]),
+            "maximum_absolute_residual": residual_strings[0],
+            "maximum_relative_residual": residual_strings[1],
+            "maximum_tolerance_ratio": residual_strings[2],
         }
         rejection_chain = hashlib.sha256(
             bytes.fromhex(rejection_chain) + _canonical_json_bytes(rejected_row)
@@ -1867,10 +1885,11 @@ def _discover_relations(
         if current.source_row != DIRECT_NONE_U32:
             prior.append(current.semantic_id)
             continue
+        candidate_current_observations = candidate.observations[current.semantic_id]
         equal_representatives = set(
             _raw_numerical_tolerance_window_ids(
                 candidate_indexes[contract],
-                candidate.observations[current.semantic_id],
+                candidate_current_observations,
                 relation_kind="equal",
                 current_id=current.semantic_id,
                 relative_tolerance=relative_fraction,
@@ -1880,7 +1899,7 @@ def _discover_relations(
         opposite_representatives = set(
             _raw_numerical_tolerance_window_ids(
                 candidate_indexes[contract],
-                candidate.observations[current.semantic_id],
+                candidate_current_observations,
                 relation_kind="opposite",
                 current_id=current.semantic_id,
                 relative_tolerance=relative_fraction,
@@ -1915,26 +1934,30 @@ def _discover_relations(
             ],
         ]
         accepted = False
+        verification_current_observations: Sequence[_ComplexDecimal] | None = None
         for relation_kind, representative_id in hypotheses:
             tested += 1
             candidate_residuals = _relation_residuals(
                 relation_kind,
-                candidate.observations[current.semantic_id],
+                candidate_current_observations,
                 (
                     None
                     if representative_id is None
                     else candidate.observations[representative_id]
                 ),
-                relative_tolerance=relative,
-                absolute_tolerance=absolute,
+                relative_tolerance=relative_fraction,
+                absolute_tolerance=absolute_fraction,
             )
+            candidate_residual_strings = _residual_strings(candidate_residuals)
             if candidate_residuals[2] > 1:
                 record_decision(
                     current_id=current.semantic_id,
                     representative_id=representative_id,
                     relation_kind=relation_kind,
                     candidate_residuals=candidate_residuals,
+                    candidate_residual_strings=candidate_residual_strings,
                     verification_residuals=None,
+                    verification_residual_strings=None,
                     selected=False,
                 )
                 record_rejected(
@@ -1942,21 +1965,27 @@ def _discover_relations(
                     representative_id=representative_id,
                     relation_kind=relation_kind,
                     residuals=candidate_residuals,
+                    residual_strings=candidate_residual_strings,
                     reason="candidate-observations-not-equal",
                 )
                 continue
             candidates += 1
+            if verification_current_observations is None:
+                verification_current_observations = verification.observations[
+                    current.semantic_id
+                ]
             verification_residuals = _relation_residuals(
                 relation_kind,
-                verification.observations[current.semantic_id],
+                verification_current_observations,
                 (
                     None
                     if representative_id is None
                     else verification.observations[representative_id]
                 ),
-                relative_tolerance=relative,
-                absolute_tolerance=absolute,
+                relative_tolerance=relative_fraction,
+                absolute_tolerance=absolute_fraction,
             )
+            verification_residual_strings = _residual_strings(verification_residuals)
             if verification_residuals[2] > 1:
                 verification_rejected += 1
                 record_decision(
@@ -1964,7 +1993,9 @@ def _discover_relations(
                     representative_id=representative_id,
                     relation_kind=relation_kind,
                     candidate_residuals=candidate_residuals,
+                    candidate_residual_strings=candidate_residual_strings,
                     verification_residuals=verification_residuals,
+                    verification_residual_strings=(verification_residual_strings),
                     selected=False,
                 )
                 record_rejected(
@@ -1972,6 +2003,7 @@ def _discover_relations(
                     representative_id=representative_id,
                     relation_kind=relation_kind,
                     residuals=verification_residuals,
+                    residual_strings=verification_residual_strings,
                     reason="independent-verification-rejected-candidate",
                 )
                 continue
@@ -1993,7 +2025,9 @@ def _discover_relations(
                     candidate=candidate,
                     verification=verification,
                     candidate_residuals=candidate_residuals,
+                    candidate_residual_strings=candidate_residual_strings,
                     verification_residuals=verification_residuals,
+                    verification_residual_strings=(verification_residual_strings),
                     precision_digits=precision_digits,
                     seed=seed,
                     relative_tolerance=relative_tolerance,
@@ -2005,7 +2039,9 @@ def _discover_relations(
                 representative_id=representative_id,
                 relation_kind=relation_kind,
                 candidate_residuals=candidate_residuals,
+                candidate_residual_strings=candidate_residual_strings,
                 verification_residuals=verification_residuals,
+                verification_residual_strings=verification_residual_strings,
                 selected=True,
             )
             accepted = True
@@ -2146,8 +2182,10 @@ def _build_certificate(
     source_semantics_sha256: str,
     candidate: RecurrenceCurrentObservationCapture,
     verification: RecurrenceCurrentObservationCapture,
-    candidate_residuals: tuple[Fraction, Fraction, Fraction],
-    verification_residuals: tuple[Fraction, Fraction, Fraction],
+    candidate_residuals: _Residuals,
+    candidate_residual_strings: _ResidualStrings,
+    verification_residuals: _Residuals,
+    verification_residual_strings: _ResidualStrings,
     precision_digits: int,
     seed: int,
     relative_tolerance: float,
@@ -2197,18 +2235,12 @@ def _build_certificate(
         **probe_contract,
         "proof_kind": "authenticated-numerical",
         "factor_integer": list(factor),
-        "candidate_maximum_absolute_residual": _fraction_string(candidate_residuals[0]),
-        "candidate_maximum_relative_residual": _fraction_string(candidate_residuals[1]),
-        "candidate_maximum_tolerance_ratio": _fraction_string(candidate_residuals[2]),
-        "verification_maximum_absolute_residual": _fraction_string(
-            verification_residuals[0]
-        ),
-        "verification_maximum_relative_residual": _fraction_string(
-            verification_residuals[1]
-        ),
-        "verification_maximum_tolerance_ratio": _fraction_string(
-            verification_residuals[2]
-        ),
+        "candidate_maximum_absolute_residual": candidate_residual_strings[0],
+        "candidate_maximum_relative_residual": candidate_residual_strings[1],
+        "candidate_maximum_tolerance_ratio": candidate_residual_strings[2],
+        "verification_maximum_absolute_residual": verification_residual_strings[0],
+        "verification_maximum_relative_residual": verification_residual_strings[1],
+        "verification_maximum_tolerance_ratio": verification_residual_strings[2],
         "probe_contract_sha256": probe_digest,
     }
     return RecurrenceNumericalCurrentCertificate(
@@ -2494,6 +2526,8 @@ def _validate_applied_observations(
         relative_tolerance,
         absolute_tolerance,
     )
+    relative_fraction = Fraction(relative)
+    absolute_fraction = Fraction(absolute)
     maximum_absolute = Fraction(0)
     maximum_relative = Fraction(0)
     maximum_ratio = Fraction(0)
@@ -2509,8 +2543,8 @@ def _validate_applied_observations(
             before,
             after,
             sign=1,
-            relative_tolerance=relative,
-            absolute_tolerance=absolute,
+            relative_tolerance=relative_fraction,
+            absolute_tolerance=absolute_fraction,
         )
         maximum_absolute = max(maximum_absolute, residuals[0])
         maximum_relative = max(maximum_relative, residuals[1])
@@ -2570,25 +2604,52 @@ def _relation_residuals(
     current: Sequence[_ComplexDecimal],
     representative: Sequence[_ComplexDecimal] | None,
     *,
-    relative_tolerance: Decimal,
-    absolute_tolerance: Decimal,
-) -> tuple[Fraction, Fraction, Fraction]:
-    comparison: Sequence[_ComplexDecimal]
+    relative_tolerance: _Tolerance,
+    absolute_tolerance: _Tolerance,
+) -> _Residuals:
     if relation_kind == "zero":
-        comparison = tuple((Decimal(0), Decimal(0)) for _ in current)
-        sign = 1
-    else:
-        if representative is None or len(current) != len(representative):
-            raise ValueError("recurrence numerical relation width is invalid")
-        comparison = representative
-        sign = 1 if relation_kind == "equal" else -1
+        return _zero_residuals(
+            current,
+            relative_tolerance=relative_tolerance,
+            absolute_tolerance=absolute_tolerance,
+        )
+    if representative is None or len(current) != len(representative):
+        raise ValueError("recurrence numerical relation width is invalid")
     return _pair_residuals(
         current,
-        comparison,
-        sign=sign,
+        representative,
+        sign=1 if relation_kind == "equal" else -1,
         relative_tolerance=relative_tolerance,
         absolute_tolerance=absolute_tolerance,
     )
+
+
+def _zero_residuals(
+    current: Sequence[_ComplexDecimal],
+    *,
+    relative_tolerance: _Tolerance,
+    absolute_tolerance: _Tolerance,
+) -> _Residuals:
+    maximum_absolute = Fraction(0)
+    maximum_relative = Fraction(0)
+    maximum_ratio = Fraction(0)
+    relative_fraction = _tolerance_fraction(relative_tolerance)
+    absolute_fraction = _tolerance_fraction(absolute_tolerance)
+    for current_value in current:
+        current_real = Fraction(current_value[0])
+        current_imaginary = Fraction(current_value[1])
+        difference = max(abs(current_real), abs(current_imaginary))
+        allowed = absolute_fraction + relative_fraction * difference
+        relative = (
+            Fraction(0)
+            if difference == 0
+            else difference / max(difference, absolute_fraction)
+        )
+        ratio = Fraction(0) if difference == 0 else difference / allowed
+        maximum_absolute = max(maximum_absolute, difference)
+        maximum_relative = max(maximum_relative, relative)
+        maximum_ratio = max(maximum_ratio, ratio)
+    return maximum_absolute, maximum_relative, maximum_ratio
 
 
 def _pair_residuals(
@@ -2596,17 +2657,19 @@ def _pair_residuals(
     right: Sequence[_ComplexDecimal],
     *,
     sign: int,
-    relative_tolerance: Decimal,
-    absolute_tolerance: Decimal,
-) -> tuple[Fraction, Fraction, Fraction]:
+    relative_tolerance: _Tolerance,
+    absolute_tolerance: _Tolerance,
+) -> _Residuals:
     if len(left) != len(right):
         raise ValueError("recurrence numerical comparison width is invalid")
     maximum_absolute = Fraction(0)
     maximum_relative = Fraction(0)
     maximum_ratio = Fraction(0)
-    relative_fraction = Fraction(relative_tolerance)
-    absolute_fraction = Fraction(absolute_tolerance)
+    relative_fraction = _tolerance_fraction(relative_tolerance)
+    absolute_fraction = _tolerance_fraction(absolute_tolerance)
     for left_value, right_value in zip(left, right, strict=True):
+        left_real = Fraction(left_value[0])
+        left_imaginary = Fraction(left_value[1])
         right_real = Fraction(right_value[0])
         right_imaginary = Fraction(right_value[1])
         signed = (
@@ -2615,12 +2678,12 @@ def _pair_residuals(
             else (-right_real, -right_imaginary)
         )
         difference = max(
-            abs(Fraction(left_value[0]) - Fraction(signed[0])),
-            abs(Fraction(left_value[1]) - Fraction(signed[1])),
+            abs(left_real - signed[0]),
+            abs(left_imaginary - signed[1]),
         )
         scale = max(
-            abs(Fraction(left_value[0])),
-            abs(Fraction(left_value[1])),
+            abs(left_real),
+            abs(left_imaginary),
             abs(right_real),
             abs(right_imaginary),
         )
@@ -2635,6 +2698,10 @@ def _pair_residuals(
         maximum_relative = max(maximum_relative, relative)
         maximum_ratio = max(maximum_ratio, ratio)
     return maximum_absolute, maximum_relative, maximum_ratio
+
+
+def _tolerance_fraction(value: _Tolerance) -> Fraction:
+    return value if isinstance(value, Fraction) else Fraction(value)
 
 
 def _relation_observation_sha256(
@@ -2946,6 +3013,14 @@ def _fraction_string(value: Fraction) -> str:
         str(value.numerator)
         if value.denominator == 1
         else f"{value.numerator}/{value.denominator}"
+    )
+
+
+def _residual_strings(residuals: _Residuals) -> _ResidualStrings:
+    return (
+        _fraction_string(residuals[0]),
+        _fraction_string(residuals[1]),
+        _fraction_string(residuals[2]),
     )
 
 

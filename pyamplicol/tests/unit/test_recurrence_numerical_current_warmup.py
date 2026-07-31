@@ -6,6 +6,7 @@ import hashlib
 import json
 import tempfile
 import zlib
+from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
@@ -39,6 +40,7 @@ from pyamplicol.generation.recurrence_numerical_current_warmup import (
     _raw_evidence_wire_byte_limit,
     _raw_streaming_consumer_memory_upper_bound,
     _read_compressed_evidence_spool,
+    _relation_residuals,
     _runtime_parameter_schema_payload,
     _spooled_capture_memory_upper_bound,
     _SpooledObservationMapping,
@@ -94,6 +96,44 @@ def test_opposite_residual_is_independent_of_ambient_decimal_context() -> None:
         )
 
     assert residuals == (0, 0, 0)
+
+
+def test_zero_residual_specialization_matches_explicit_zero_comparison() -> None:
+    current = (
+        (Decimal("0"), Decimal("-0")),
+        (Decimal("1.25"), Decimal("-3.5")),
+        (
+            Decimal("0.123456789012345678901234567890123456789"),
+            Decimal("-9.87654321098765432109876543210987654321"),
+        ),
+    )
+    relative = Fraction(1, 10**70)
+    absolute = Fraction(1, 10**80)
+
+    expected = _pair_residuals(
+        current,
+        tuple((Decimal(0), Decimal(0)) for _ in current),
+        sign=1,
+        relative_tolerance=Decimal("1e-70"),
+        absolute_tolerance=Decimal("1e-80"),
+    )
+    actual = _relation_residuals(
+        "zero",
+        current,
+        None,
+        relative_tolerance=relative,
+        absolute_tolerance=absolute,
+    )
+
+    assert actual == expected
+    with pytest.raises(ValueError, match="relation width is invalid"):
+        _relation_residuals(
+            "equal",
+            current,
+            None,
+            relative_tolerance=relative,
+            absolute_tolerance=absolute,
+        )
 
 
 def _topology_replay_plan() -> _RecurrenceExactPlan:
@@ -938,6 +978,102 @@ def test_spooled_discovery_preserves_global_equal_opposite_and_zero_relations() 
     assert {
         (certificate.current_id, certificate.relation_kind) for certificate in actual
     } >= {(3, "equal"), (4, "opposite"), (5, "zero")}
+
+
+def test_discovery_reads_each_candidate_current_once_and_reuses_residual_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _no_relation_plan()
+    source_digest = recurrence_numerical_source_semantics_sha256(plan.sections)
+    candidate = capture_recurrence_current_observations(
+        plan,
+        _points(1),
+        precision_digits=80,
+        source_semantics_sha256=source_digest,
+        seed=71,
+        domain="candidate-current-probes-v1",
+    )
+    verification = capture_recurrence_current_observations(
+        plan,
+        _points(101),
+        precision_digits=80,
+        source_semantics_sha256=source_digest,
+        seed=71,
+        domain="independent-verification-current-probes-v1",
+    )
+    candidate_indexes = _build_candidate_indexes(
+        plan.sections,
+        candidate.observations,
+    )
+    expected_certificates, expected_report = _discover_relations(
+        plan.sections,
+        candidate,
+        verification,
+        source_semantics_sha256=source_digest,
+        precision_digits=80,
+        seed=71,
+        relative_tolerance=1.0e-60,
+        absolute_tolerance=1.0e-70,
+        color_accuracy="lc",
+        candidate_indexes=candidate_indexes,
+    )
+    spool = _SpooledObservationMapping(candidate.observations)
+
+    class CountingRows(
+        Mapping[int, tuple[tuple[Decimal, Decimal], ...]],
+    ):
+        def __init__(self) -> None:
+            self.reads: dict[int, int] = {}
+
+        def __getitem__(
+            self,
+            current_id: int,
+        ) -> tuple[tuple[Decimal, Decimal], ...]:
+            self.reads[current_id] = self.reads.get(current_id, 0) + 1
+            return spool[current_id]
+
+        def __iter__(self) -> Iterator[int]:
+            return iter(spool)
+
+        def __len__(self) -> int:
+            return len(spool)
+
+    rows = CountingRows()
+    fraction_string_calls = 0
+    fraction_string = recurrence_warmup._fraction_string
+
+    def counted_fraction_string(value: Fraction) -> str:
+        nonlocal fraction_string_calls
+        fraction_string_calls += 1
+        return fraction_string(value)
+
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_fraction_string",
+        counted_fraction_string,
+    )
+    try:
+        actual_certificates, actual_report = _discover_relations(
+            plan.sections,
+            replace(candidate, observations=rows),
+            verification,
+            source_semantics_sha256=source_digest,
+            precision_digits=80,
+            seed=71,
+            relative_tolerance=1.0e-60,
+            absolute_tolerance=1.0e-70,
+            color_accuracy="lc",
+            candidate_indexes=candidate_indexes,
+        )
+    finally:
+        spool.close()
+
+    assert actual_certificates == expected_certificates == ()
+    assert actual_report == expected_report
+    assert rows.reads == {2: 1, 3: 1}
+    assert fraction_string_calls == 3 * (
+        int(actual_report["tested_hypothesis_count"]) + 1
+    )
 
 
 def test_dynamic_raw_geometry_rejects_adversarial_sizes_and_reserves_wire() -> None:
