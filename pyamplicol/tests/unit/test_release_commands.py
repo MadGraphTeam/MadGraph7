@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import subprocess
 import sys
+import tomllib
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -55,7 +57,23 @@ def candidate_dependency_provenance(
     state_path = tmp_path / "install-state.json"
     contributor_data = (ROOT / "dependencies" / "contributor-lock.toml").read_bytes()
     contributor_path.write_bytes(contributor_data)
-    state_path.write_bytes((ROOT / "dependencies" / "install-state.json").read_bytes())
+    contributor = tomllib.loads(contributor_data.decode("utf-8"))
+    symbolica = contributor["symbolica"]
+    state_path.write_text(
+        json.dumps(
+            {
+                "publishable": False,
+                "schema_version": 1,
+                "sources": {
+                    "symbolica": {
+                        "revision": symbolica["candidate_revision"],
+                        "url": symbolica["source_url"],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(
         release_artifacts,
         "_CONTRIBUTOR_DEPENDENCY_LOCK",
