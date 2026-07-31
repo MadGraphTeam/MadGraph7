@@ -46,17 +46,6 @@ def _overlay(tmp_path: Path) -> Path:
         overlay / "Cargo.lock",
     )
     package_root = overlay / "src" / "pyamplicol"
-    prepared_pack_compiler_sha256 = (
-        prepared_models_module._prepared_pack_compiler_digest(package_root)
-    )
-    for metadata_path in (package_root / "assets" / "prepared_models").glob(
-        "*.metadata.json"
-    ):
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        metadata["producer"]["prepared_pack_compiler_sha256"] = (
-            prepared_pack_compiler_sha256
-        )
-        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
     metadata = json.loads(
         (
             package_root
@@ -198,11 +187,6 @@ def test_source_ready_asset_metadata_is_derived_from_bundle_and_source(
     )
 
     actual_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    expected_metadata["producer"]["prepared_pack_compiler_sha256"] = (
-        prepared_models_module._prepared_pack_compiler_digest(
-            ROOT / "src" / "pyamplicol"
-        )
-    )
     with (ROOT / "dependencies/contributor-lock.toml").open("rb") as stream:
         contributor = tomllib.load(stream)
     assert (
@@ -433,22 +417,6 @@ def test_wheel_staging_rejects_built_in_source_edits(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     with pytest.raises(RuntimeError, match="model_source_digest is stale"):
-        stage_packaged_prepared_models(overlay, "candidate")
-
-
-def test_wheel_staging_rejects_prepared_payload_compiler_edits(
-    tmp_path: Path,
-) -> None:
-    overlay = _overlay(tmp_path)
-    source = overlay / "src" / "pyamplicol" / "evaluators" / "symbolica_compile.py"
-    source.write_text(
-        source.read_text(encoding="utf-8") + "\n# drift\n",
-        encoding="utf-8",
-    )
-    with pytest.raises(
-        RuntimeError,
-        match="prepared_pack_compiler_sha256 is stale",
-    ):
         stage_packaged_prepared_models(overlay, "candidate")
 
 

@@ -18,9 +18,7 @@ ASSET_STEM = f"built-in-sm-jit-o2-{canonical_architecture()}"
 
 def _metadata() -> dict[str, object]:
     return json.loads(
-        (ASSET_ROOT / f"{ASSET_STEM}.metadata.json").read_text(
-            encoding="utf-8"
-        )
+        (ASSET_ROOT / f"{ASSET_STEM}.metadata.json").read_text(encoding="utf-8")
     )
 
 
@@ -67,8 +65,7 @@ def test_packaged_builtin_sm_jit_o2_is_discoverable_and_validated(
         }
         assert len(eligible_ids) == 36
         assert {
-            variant.base_kernel_id
-            for variant in bundle.kernel_pack.kernel_variants
+            variant.base_kernel_id for variant in bundle.kernel_pack.kernel_variants
         } == eligible_ids
         assert all(
             variant.variant_id == "independent-block-4"
@@ -101,9 +98,10 @@ def test_packaged_prepared_model_materializes_stable_cached_copy(
     assert first == second
     assert first.is_file()
     assert first.parent.name == _metadata()["bundle_sha256"]
-    assert first.read_bytes() == (
-        ASSET_ROOT / f"{ASSET_STEM}.pyamplicol-model"
-    ).read_bytes()
+    assert (
+        first.read_bytes()
+        == (ASSET_ROOT / f"{ASSET_STEM}.pyamplicol-model").read_bytes()
+    )
 
 
 def test_packaged_prepared_model_rejects_unknown_identity() -> None:
@@ -129,9 +127,7 @@ def test_packaged_prepared_model_rejects_unsupported_host_architecture(
             prepared_models.PackagedPreparedModelError,
             match="host architecture",
         ),
-        prepared_models.packaged_prepared_model_path(
-            prepared_models.BUILTIN_SM_JIT_O2
-        ),
+        prepared_models.packaged_prepared_model_path(prepared_models.BUILTIN_SM_JIT_O2),
     ):
         pass
 
@@ -151,9 +147,7 @@ def test_packaged_prepared_model_rejects_resource_tampering(
             prepared_models.PackagedPreparedModelError,
             match="size does not match",
         ),
-        prepared_models.packaged_prepared_model_path(
-            prepared_models.BUILTIN_SM_JIT_O2
-        ),
+        prepared_models.packaged_prepared_model_path(prepared_models.BUILTIN_SM_JIT_O2),
     ):
         pass
 
@@ -169,9 +163,7 @@ def test_packaged_prepared_model_rejects_package_version_drift(
             prepared_models.PackagedPreparedModelError,
             match="package_version is stale",
         ),
-        prepared_models.packaged_prepared_model_path(
-            prepared_models.BUILTIN_SM_JIT_O2
-        ),
+        prepared_models.packaged_prepared_model_path(prepared_models.BUILTIN_SM_JIT_O2),
     ):
         pass
 
@@ -192,7 +184,6 @@ def test_packaged_prepared_model_runtime_ignores_producer_source_fingerprints(
         "model_compiler_sha256",
         "model_source_digest",
         "native_build_inputs_sha256",
-        "prepared_pack_compiler_sha256",
     ):
         producer[key] = "0" * 64
     (copied / f"{ASSET_STEM}.metadata.json").write_text(

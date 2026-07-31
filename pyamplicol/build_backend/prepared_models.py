@@ -46,7 +46,6 @@ _PRODUCER_KEYS = frozenset(
         "model_compiler_version",
         "model_source_digest",
         "package_version",
-        "prepared_pack_compiler_sha256",
     }
 )
 _EXPECTED_ID = "built-in-sm-jit-o2"
@@ -348,7 +347,6 @@ def _write_packaged_prepared_model_asset(
         package_root / "models" / "loading.py", "MODEL_COMPILER_VERSION"
     )
     model_compiler_digest = _model_compiler_digest(package_root)
-    prepared_pack_compiler_digest = _prepared_pack_compiler_digest(package_root)
     source_digest = _built_in_source_digest(package_root)
     expected_compiled = {
         "compiled_model_schema_version": compiled_schema,
@@ -433,7 +431,6 @@ def _write_packaged_prepared_model_asset(
             "model_compiler_version": model_compiler_version,
             "model_source_digest": source_digest,
             "package_version": package_version,
-            "prepared_pack_compiler_sha256": prepared_pack_compiler_digest,
         },
         "schema_version": 1,
         "target": expected_target,
@@ -539,14 +536,12 @@ def _validate_bundle(
     )
     model_compiler_sha256 = _model_compiler_digest(package_root)
     model_source_digest = _built_in_source_digest(package_root)
-    prepared_pack_compiler_sha256 = _prepared_pack_compiler_digest(package_root)
     expected_producer = {
         "compiled_model_schema": compiled_schema,
         "model_compiler_sha256": model_compiler_sha256,
         "model_compiler_version": compiler_version,
         "model_source_digest": model_source_digest,
         "package_version": _expected_package_version(overlay, mode),
-        "prepared_pack_compiler_sha256": prepared_pack_compiler_sha256,
     }
     for key, expected in expected_producer.items():
         if packaged_producer.get(key) != expected:
@@ -728,25 +723,6 @@ def _model_compiler_digest(package_root: Path) -> str:
             *(package_root / "_internal" / "physics").glob("*.py"),
             package_root / "processes" / "core_syntax.py",
         )
-    )
-    digest = hashlib.sha256()
-    for path in paths:
-        relative = path.relative_to(package_root).as_posix()
-        digest.update(relative.encode("utf-8") + b"\0")
-        digest.update(path.read_bytes())
-        digest.update(b"\0")
-    return digest.hexdigest()
-
-
-def _prepared_pack_compiler_digest(package_root: Path) -> str:
-    paths = sorted(
-        {
-            *(package_root / "models").glob("prepared*.py"),
-            *(package_root / "evaluators").glob("symbolica*.py"),
-            *(package_root / "config").glob("*.py"),
-            package_root / "_internal" / "physics" / "symbols.py",
-            package_root / "_internal" / "versions.py",
-        }
     )
     digest = hashlib.sha256()
     for path in paths:

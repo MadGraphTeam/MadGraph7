@@ -134,16 +134,6 @@ def _builtin_model_source_digest() -> str:
     return outer.hexdigest()
 
 
-def _prepared_pack_compiler_digest() -> str:
-    digest = hashlib.sha256()
-    for name, data in sorted(_PREPARED_PACK_COMPILER_SOURCE_FILES.items()):
-        relative = PurePosixPath(name).relative_to("pyamplicol").as_posix()
-        digest.update(relative.encode("utf-8") + b"\0")
-        digest.update(data)
-        digest.update(b"\0")
-    return digest.hexdigest()
-
-
 import _artifacts as artifacts  # noqa: E402
 from _artifacts import (  # noqa: E402
     _REQUIRED_WHEEL_PACKAGE_MEMBERS,
@@ -234,9 +224,7 @@ def _prepared_model_files(
                 ),
             },
             "build_contract": {"candidate_fingerprint": None, "mode": mode},
-            "producer": {
-                "prepared_pack_compiler_sha256": (_prepared_pack_compiler_digest())
-            },
+            "producer": {},
             "target": {
                 "portable": True,
                 "word_bits": 64,

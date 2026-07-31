@@ -355,14 +355,18 @@ def test_ordinary_wheel_build_rejects_prepared_model_digest_drift(
         lambda _path: pytest.fail("ordinary wheel stripped stale payloads"),
     )
 
-    def reject_digest(_path: Path, _mode: str) -> None:
-        raise RuntimeError("prepared_pack_compiler_sha256 is stale")
+    def reject_stale_pack(_path: Path, _mode: str) -> None:
+        raise RuntimeError("prepared model metadata is stale")
 
-    monkeypatch.setattr(backend, "stage_packaged_prepared_models", reject_digest)
+    monkeypatch.setattr(
+        backend,
+        "stage_packaged_prepared_models",
+        reject_stale_pack,
+    )
 
     with pytest.raises(
         RuntimeError,
-        match="prepared_pack_compiler_sha256 is stale",
+        match="prepared model metadata is stale",
     ):
         backend.build_wheel(str(tmp_path / "dist"))
 
