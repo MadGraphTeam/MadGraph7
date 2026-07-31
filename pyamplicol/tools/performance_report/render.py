@@ -573,6 +573,19 @@ def _metric_group_cell(
     )
 
 
+def _metric_summary_group_cell(
+    content: str,
+    accuracy: Accuracy,
+    *,
+    n_final: int,
+) -> str:
+    """Render one summary group with multiplicity-alternating shading."""
+
+    if n_final % 2 == 1:
+        content = rf"\cellcolor{{refblue}}{content}"
+    return _metric_group_cell(content, accuracy, alignment="l")
+
+
 def _metric_row_label(*, runtime: bool) -> str:
     label = r"run [\(\mu\mathrm{s}/\mathrm{pt}\)]" if runtime else r"gen. [s]"
     return rf"\textcolor{{ReportMuted}}{{\scriptsize {label}}}"
@@ -1296,13 +1309,13 @@ def _matrix_block(
             (
                 r"\multicolumn{3}{@{}l}{\textbf{summary: generation}} & "
                 + " & ".join(
-                    _metric_group_cell(
+                    _metric_summary_group_cell(
                         _matrix_generation_summary(
                             views_by_n[n_final],
                             dataset,
                         ),
                         accuracy,
-                        alignment="l",
+                        n_final=n_final,
                     )
                     for n_final in multiplicities
                 )
@@ -1312,13 +1325,13 @@ def _matrix_block(
             (
                 r"\multicolumn{3}{@{}l}{\textbf{summary: wall}} & "
                 + " & ".join(
-                    _metric_group_cell(
+                    _metric_summary_group_cell(
                         _matrix_wall_summary(
                             views_by_n[n_final],
                             accuracy,
                         ),
                         accuracy,
-                        alignment="l",
+                        n_final=n_final,
                     )
                     for n_final in multiplicities
                 )
@@ -2100,13 +2113,13 @@ def _best_mode_block(
             (
                 r"\multicolumn{3}{@{}l}{\textbf{summary: generation}} & "
                 + " & ".join(
-                    _metric_group_cell(
+                    _metric_summary_group_cell(
                         _best_mode_generation_summary(
                             views_by_n[n_final],
                             accuracy,
                         ),
                         accuracy,
-                        alignment="l",
+                        n_final=n_final,
                     )
                     for n_final in multiplicities
                 )
@@ -2116,13 +2129,13 @@ def _best_mode_block(
             (
                 r"\multicolumn{3}{@{}l}{\textbf{summary: wall}} & "
                 + " & ".join(
-                    _metric_group_cell(
+                    _metric_summary_group_cell(
                         _best_mode_wall_summary(
                             views_by_n[n_final],
                             accuracy,
                         ),
                         accuracy,
-                        alignment="l",
+                        n_final=n_final,
                     )
                     for n_final in multiplicities
                 )
