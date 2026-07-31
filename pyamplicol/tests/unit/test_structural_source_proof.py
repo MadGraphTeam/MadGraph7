@@ -15,6 +15,7 @@ from pyamplicol.generation.evaluator_container import (
     write_pacbin_atomic,
 )
 from pyamplicol.generation.structural_source_proof import (
+    _payload_paths,
     build_generation_structural_proof,
     validate_generation_structural_proof,
 )
@@ -32,7 +33,10 @@ def _fixture(root: Path) -> tuple[dict[str, object], dict[str, object]]:
         "color_accuracy": "lc",
         "external_pdg_order": [1, -1, 23],
         "compiled": {
-            "stage_evaluators": {"application_path": "processes/process/stage.symjit"}
+            "stage_evaluators": {
+                "application_path": "processes/process/stage.symjit",
+                "settings": {"compiler_path": "/usr/bin/c++"},
+            }
         },
         "runtime_schema": {
             "source_fill": {"source_count": 3},
@@ -128,3 +132,14 @@ def test_generation_proof_rejects_semantic_and_member_tampering(
             expected_source_revision=REVISION,
             execution=execution,
         )
+
+
+def test_generation_proof_keeps_payload_paths_confined() -> None:
+    assert _payload_paths(
+        {
+            "application_path": "processes/process/stage.symjit",
+            "compiler_path": "/usr/bin/c++",
+        }
+    ) == ("processes/process/stage.symjit",)
+    with pytest.raises(ValueError, match="execution payload path is not confined"):
+        _payload_paths({"application_path": "/outside/stage.symjit"})

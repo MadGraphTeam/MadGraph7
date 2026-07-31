@@ -24,6 +24,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPENDENCIES = ROOT / "dependencies"
+PYPROJECT = ROOT / "pyproject.toml"
 RELEASE_LOCK = DEPENDENCIES / "release-lock.toml"
 CONTRIBUTOR_LOCK = DEPENDENCIES / "contributor-lock.toml"
 # Retained as the public constant used by older contributor-side callers.
@@ -770,6 +771,35 @@ def _runtime_requirements_text() -> str:
     return "\n".join(lines) + "\n"
 
 
+def _contributor_python_requirements() -> tuple[str, ...]:
+    """Reuse the project's build, test, and documentation requirements."""
+
+    with PYPROJECT.open("rb") as stream:
+        project_file = tomllib.load(stream)
+    build_system = project_file.get("build-system")
+    project = project_file.get("project")
+    if not isinstance(build_system, dict) or not isinstance(project, dict):
+        raise SetupError("pyproject must define build-system and project tables")
+    optional = project.get("optional-dependencies")
+    if not isinstance(optional, dict):
+        raise SetupError("pyproject must define optional dependencies")
+
+    requirements: list[str] = []
+    for description, raw in (
+        ("build-system.requires", build_system.get("requires")),
+        ("project.optional-dependencies.test", optional.get("test")),
+        ("project.optional-dependencies.docs", optional.get("docs")),
+    ):
+        if not isinstance(raw, list) or not all(
+            isinstance(item, str) and item for item in raw
+        ):
+            raise SetupError(f"pyproject {description} must be a string list")
+        requirements.extend(raw)
+    if len(requirements) != len(set(requirements)):
+        raise SetupError("pyproject contributor requirements contain duplicates")
+    return tuple(requirements)
+
+
 def _venv_bootstrap_python() -> Path:
     """Return an interpreter that remains available if this venv is reset."""
 
@@ -779,7 +809,7 @@ def _venv_bootstrap_python() -> Path:
     return Path(sys.executable)
 
 
-def _ensure_venv(runner: Runner, payload: dict[str, Any]) -> None:
+def _ensure_venv(runner: Runner) -> None:
     if not _venv_python().is_file():
         runner.run([_venv_bootstrap_python(), "-m", "venv", VENV])
     python = _venv_python()
@@ -798,18 +828,10 @@ def _ensure_venv(runner: Runner, payload: dict[str, Any]) -> None:
                 [python, "-m", "ensurepip", "--upgrade"],
                 env=_venv_environment(),
             )
-    toolchain = payload["toolchain"]
     contributor_tools = [
         "pip",
-        "build>=1.2,<2",
-        "jsonschema>=4.22,<5",
-        f"maturin=={toolchain['maturin']}",
-        "mypy>=1.13,<2",
-        "pytest>=8.3,<9",
-        "ruff>=0.9,<1",
+        *_contributor_python_requirements(),
         "setuptools>=68,<81",
-        "twine>=6,<7",
-        "wheel>=0.45,<1",
     ]
     runner.run(
         [python, "-m", "pip", "install", "--upgrade", *contributor_tools],
@@ -1205,7 +1227,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         with_legacy=not args.without_legacy_amplicol,
     )
     _ensure_just(runner)
-    _ensure_venv(runner, payload)
+    _ensure_venv(runner)
     for source in sources:
         _checkout(runner, source, update=args.update)
     _configure_sources(runner)

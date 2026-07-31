@@ -7,13 +7,20 @@ from pathlib import Path
 
 import pytest
 
-from pyamplicol import Generator, ModelSource, ResolvedEvaluation, Runtime
+from pyamplicol import (
+    CompiledModel,
+    Generator,
+    ModelSource,
+    ResolvedEvaluation,
+    Runtime,
+)
 from pyamplicol.artifacts import inspect_artifact
 from pyamplicol.color.plan import build_color_plan
 from pyamplicol.config import (
     ColorConfig,
     EagerEvaluatorConfig,
     EvaluatorConfig,
+    EvaluatorOptimizationConfig,
     GenerationConfig,
     GenerationValidationConfig,
     JITConfig,
@@ -23,6 +30,56 @@ from pyamplicol.config import (
 from pyamplicol.generation.phase_space import massive_rambo_final_state
 from pyamplicol.models.builtin.process_ir import build_process_ir
 from pyamplicol.models.builtin.validation import generic_validation_point
+
+_RECURRENCE_KIND = "pyamplicol-runtime-recurrence-execution"
+_RECURRENCE_PLAN_ABI = "pyamplicol-recurrence-plan-v2"
+_SM_MODEL_ROOT = (
+    Path(__file__).resolve().parents[2]
+    / "src"
+    / "pyamplicol"
+    / "assets"
+    / "models"
+    / "json"
+    / "sm"
+)
+
+
+@pytest.fixture(scope="module")
+def ufo_sm_recurrence_jit_o2_model(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> CompiledModel:
+    if importlib.util.find_spec("pyamplicol._rusticol") is None:
+        pytest.skip("the Rusticol extension has not been built")
+    if importlib.util.find_spec("symbolica") is None:
+        pytest.skip("Symbolica is unavailable")
+    root = tmp_path_factory.mktemp("lc-selected-flow-ufo-sm")
+    model = ModelSource.from_path(
+        _SM_MODEL_ROOT / "sm.json",
+        restriction=_SM_MODEL_ROOT / "restrict_default.json",
+    ).compile(
+        cache_dir=root / "model-cache",
+        use_cache=True,
+        prepared_output=root / "ufo-sm-jit-o2.pyamplicol-model",
+        evaluator=EvaluatorConfig(
+            execution_mode="recurrence",
+            optimization=EvaluatorOptimizationConfig(cores=1),
+            jit=JITConfig(optimization_level=2),
+        ),
+    )
+    assert model.is_prepared
+    assert model.prepared_backend == "jit"
+    return model
+
+
+def _model_for_kind(
+    model_kind: str,
+    request: pytest.FixtureRequest,
+) -> CompiledModel | None:
+    if model_kind == "built-in":
+        return None
+    model = request.getfixturevalue("ufo_sm_recurrence_jit_o2_model")
+    assert isinstance(model, CompiledModel)
+    return model
 
 
 @pytest.mark.parametrize(
@@ -92,16 +149,14 @@ def test_selected_lc_artifact_matches_complete_artifact_physical_flow(
     complete_inspection = inspect_artifact(complete_path).processes[0]
     selected_inspection = inspect_artifact(selected_path).processes[0]
 
-    assert complete_inspection.selector_provenance == (
-        "pyamplicol-runtime-selectors-v1"
-    )
+    assert complete_inspection.selector_provenance == (_RECURRENCE_PLAN_ABI)
     assert complete_inspection.helicity_runtime_contract == "complete-reusable"
     assert complete_inspection.color_flow_runtime_contract == "complete-reusable"
     assert complete_inspection.generation_specialized_axes == ()
     assert complete_inspection.selected_source_helicities == ()
     assert complete_inspection.selected_color_sector_ids == ()
-    assert complete_inspection.helicity_recurrence_status == "available"
-    assert complete_inspection.helicity_residual_current_count == 0
+    assert complete_inspection.execution_mode == "recurrence"
+    assert complete_inspection.lc_flow_layout == "topology-replay"
     if complete_inspection.lc_physical_sector_count is not None:
         assert complete_inspection.lc_replayed_sector_count is not None
         assert complete_inspection.lc_residual_sector_count is not None
@@ -124,16 +179,16 @@ def test_selected_lc_artifact_matches_complete_artifact_physical_flow(
     assert selected_inspection.lc_physical_sector_count is None
 
     assert flow_id in {flow.id for flow in complete.physics.color_flows}
-    assert tuple((flow.id, flow.word) for flow in selected.physics.color_flows) == (
-        (flow_id, flow_word),
-    )
+    selected_flow_by_id = {flow.id: flow for flow in selected.physics.color_flows}
+    assert flow_id in selected_flow_by_id
+    assert selected_flow_by_id[flow_id].word == flow_word
 
     complete_component = complete.evaluate_resolved(
         momenta,
         color_flows=[flow_id],
     ).total()[0]
     complete_total = complete.evaluate(momenta, color_flows=[flow_id])[0]
-    selected_total = selected.evaluate(momenta)[0]
+    selected_total = selected.evaluate(momenta, color_flows=[flow_id])[0]
     assert complete_total == pytest.approx(
         selected_total,
         rel=1.0e-12,
@@ -242,7 +297,7 @@ def test_complete_pure_gluon_replay_matches_every_sector_specialization(
         selected_helicities = {
             str(label): value for label, value in enumerate(helicity.values, start=1)
         }
-        specialized_by_sector: dict[int, complex] = {}
+        specialized_by_sector: dict[int, Runtime] = {}
         for sector in color_plan.sectors:
             path = tmp_path / f"h{helicity_index}-sector{sector.id}"
             Generator(
@@ -256,14 +311,15 @@ def test_complete_pure_gluon_replay_matches_every_sector_specialization(
                     evaluator=evaluator,
                 )
             ).generate(process, path)
-            specialized_by_sector[int(sector.id)] = Runtime.load(path).evaluate(
-                momenta
-            )[0]
+            specialized_by_sector[int(sector.id)] = Runtime.load(path)
 
         for color_index, color in enumerate(complete.physics.color_flows):
             reusable = resolved.values[0][helicity_index][color_index]
             exact_reusable = exact.values[0][helicity_index][color_index]
-            specialized = specialized_by_sector[sector_by_flow[color.id]]
+            specialized = specialized_by_sector[sector_by_flow[color.id]].evaluate(
+                momenta,
+                color_flows=(color.id,),
+            )[0]
             assert reusable.real == pytest.approx(
                 specialized.real,
                 rel=1.0e-12,
@@ -296,26 +352,13 @@ def test_complete_pure_gluon_replay_matches_every_sector_specialization(
 def test_complete_lc_fixed_helicity_selection_composes_with_flow_replay(
     tmp_path: Path,
     model_kind: str,
+    request: pytest.FixtureRequest,
 ) -> None:
     if importlib.util.find_spec("pyamplicol._rusticol") is None:
         pytest.skip("the Rusticol extension has not been built")
 
     artifact = tmp_path / model_kind
-    model = None
-    if model_kind == "ufo-sm":
-        model_root = (
-            Path(__file__).resolve().parents[2]
-            / "src"
-            / "pyamplicol"
-            / "assets"
-            / "models"
-            / "json"
-            / "sm"
-        )
-        model = ModelSource.from_path(
-            model_root / "sm.json",
-            restriction=model_root / "restrict_default.json",
-        )
+    model = _model_for_kind(model_kind, request)
     Generator(
         RunConfig(
             action="generate",
@@ -335,9 +378,11 @@ def test_complete_lc_fixed_helicity_selection_composes_with_flow_replay(
             encoding="utf-8"
         )
     )
-    assert any(
-        record["schedule_mode"] == "nested-runtime"
-        for record in execution["helicity_selector_executions"]
+    assert execution["kind"] == _RECURRENCE_KIND
+    assert execution["recurrence_plan_abi"] == _RECURRENCE_PLAN_ABI
+    assert (
+        execution["plan"]["inspection_summary"]["direct_arena"]["selector_domain_count"]
+        == 2
     )
 
     point = (
@@ -501,26 +546,13 @@ def test_three_line_lc_publication_reload_and_union_components_match(
 def test_complete_pure_gluon_fixed_helicity_preserves_every_physical_flow(
     tmp_path: Path,
     model_kind: str,
+    request: pytest.FixtureRequest,
 ) -> None:
     if importlib.util.find_spec("pyamplicol._rusticol") is None:
         pytest.skip("the Rusticol extension has not been built")
 
     artifact = tmp_path / model_kind
-    model = None
-    if model_kind == "ufo-sm":
-        model_root = (
-            Path(__file__).resolve().parents[2]
-            / "src"
-            / "pyamplicol"
-            / "assets"
-            / "models"
-            / "json"
-            / "sm"
-        )
-        model = ModelSource.from_path(
-            model_root / "sm.json",
-            restriction=model_root / "restrict_default.json",
-        )
+    model = _model_for_kind(model_kind, request)
     Generator(
         RunConfig(
             action="generate",
@@ -538,9 +570,11 @@ def test_complete_pure_gluon_fixed_helicity_preserves_every_physical_flow(
     execution = json.loads(
         (artifact / "processes/g_g_to_g_g/execution.json").read_text(encoding="utf-8")
     )
-    assert any(
-        record["schedule_mode"] == "nested-runtime"
-        for record in execution["helicity_selector_executions"]
+    assert execution["kind"] == _RECURRENCE_KIND
+    assert execution["recurrence_plan_abi"] == _RECURRENCE_PLAN_ABI
+    assert (
+        execution["plan"]["inspection_summary"]["direct_arena"]["selector_domain_count"]
+        == 4
     )
 
     point = (
@@ -849,7 +883,8 @@ def test_eager_complete_replay_matches_specialized_flows_and_point_selectors(
                 actual.imag, rel=1.0e-12, abs=1.0e-15
             )
 
-    # Independent legacy generated-library oracle at this deterministic point.
+    # Independent legacy generated-library oracle at this deterministic point,
+    # adjusted to the exact alpha_ew = 1 / 132.507 normalization.
     helicity_sums = tuple(
         sum(
             resolved.values[0][helicity_index][color_index].real
@@ -859,8 +894,8 @@ def test_eager_complete_replay_matches_specialized_flows_and_point_selectors(
     )
     assert dict(zip(resolved.color_ids, helicity_sums, strict=True)) == pytest.approx(
         {
-            "flow:2,4,5,1": 2.2077590207957575e-7,
-            "flow:2,5,4,1": 4.7670411360157456e-2,
+            "flow:2,4,5,1": 2.20775902078958e-7,
+            "flow:2,5,4,1": 4.767041136002407e-2,
         },
         rel=1.0e-12,
         abs=1.0e-15,
@@ -882,23 +917,11 @@ def test_eager_complete_replay_matches_specialized_flows_and_point_selectors(
 
 def test_external_sm_complete_three_line_flows_match_builtin(
     tmp_path: Path,
+    ufo_sm_recurrence_jit_o2_model: CompiledModel,
 ) -> None:
     if importlib.util.find_spec("pyamplicol._rusticol") is None:
         pytest.skip("the Rusticol extension has not been built")
 
-    model_root = (
-        Path(__file__).resolve().parents[2]
-        / "src"
-        / "pyamplicol"
-        / "assets"
-        / "models"
-        / "json"
-        / "sm"
-    )
-    external_model = ModelSource.from_path(
-        model_root / "sm.json",
-        restriction=model_root / "restrict_default.json",
-    )
     config = RunConfig(
         action="generate",
         generation=GenerationConfig(
@@ -914,7 +937,11 @@ def test_external_sm_complete_three_line_flows_match_builtin(
     builtin_path = tmp_path / "builtin"
     external_path = tmp_path / "external"
     Generator(config).generate(process, builtin_path)
-    Generator(config).generate(process, external_path, model=external_model)
+    Generator(config).generate(
+        process,
+        external_path,
+        model=ufo_sm_recurrence_jit_o2_model,
+    )
 
     final_state = massive_rambo_final_state(
         4,
@@ -954,25 +981,13 @@ def test_external_sm_complete_three_line_flows_match_builtin(
 
 def test_external_sm_fixed_width_multigluon_current_matches_builtin(
     tmp_path: Path,
+    ufo_sm_recurrence_jit_o2_model: CompiledModel,
 ) -> None:
     """Keep the proven AmpliCol transverse Yang--Mills convention."""
 
     if importlib.util.find_spec("pyamplicol._rusticol") is None:
         pytest.skip("the Rusticol extension has not been built")
 
-    model_root = (
-        Path(__file__).resolve().parents[2]
-        / "src"
-        / "pyamplicol"
-        / "assets"
-        / "models"
-        / "json"
-        / "sm"
-    )
-    external_model = ModelSource.from_path(
-        model_root / "sm.json",
-        restriction=model_root / "restrict_default.json",
-    )
     config = RunConfig(
         action="generate",
         process=ProcessConfig(
@@ -998,7 +1013,11 @@ def test_external_sm_fixed_width_multigluon_current_matches_builtin(
     builtin_path = tmp_path / "builtin-fixed-width"
     external_path = tmp_path / "external-fixed-width"
     Generator(config).generate(process, builtin_path)
-    Generator(config).generate(process, external_path, model=external_model)
+    Generator(config).generate(
+        process,
+        external_path,
+        model=ufo_sm_recurrence_jit_o2_model,
+    )
 
     final_state = massive_rambo_final_state(
         4,

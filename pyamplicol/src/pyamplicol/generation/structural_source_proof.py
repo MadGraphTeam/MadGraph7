@@ -26,6 +26,8 @@ SEMANTIC_MAP_DOMAINS = {
     "closure_map": "closure_map-v1",
     "source_contract": "source_contract-v1",
 }
+# Compiler executables record provenance; they are not members of the artifact payload.
+_DIAGNOSTIC_PATH_FIELDS = frozenset({"compiler_path"})
 
 
 def canonical_sha256(domain: str, value: object) -> str:
@@ -130,6 +132,7 @@ def _payload_paths(value: object) -> tuple[str, ...]:
         elif (
             isinstance(item, str)
             and field is not None
+            and field not in _DIAGNOSTIC_PATH_FIELDS
             and (field == "path" or field.endswith("_path"))
             and item
         ):

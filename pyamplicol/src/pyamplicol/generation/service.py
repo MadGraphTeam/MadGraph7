@@ -3519,6 +3519,11 @@ class GenerationBackend:
             process_id=process_name,
             resolved_helicities=resolved_helicities,
             normalization=normalization_payload,
+            selected_color_sector_ids=(
+                None
+                if selection.selected_color_sector_ids is None
+                else tuple(sorted(selection.selected_color_sector_ids))
+            ),
             color_plan=prepared.complete_color_plan,
         )
         profile["physics-metadata"] = time.perf_counter() - physics_started

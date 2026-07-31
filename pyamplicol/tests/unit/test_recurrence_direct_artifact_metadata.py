@@ -254,6 +254,7 @@ def test_recurrence_physics_identifies_direct_plan_and_runtime_layout() -> None:
         process_id="d_dbar_to_z_g",
         resolved_helicities=((-1,),),
         normalization={},
+        selected_color_sector_ids=None,
     )
 
     extensions = physics["extensions"]
@@ -275,6 +276,67 @@ def test_recurrence_physics_identifies_direct_plan_and_runtime_layout() -> None:
     assert reduction["kind"] == "pyamplicol-recurrence-native-reduction-v2"
     assert reduction["plan_member_path"] == (
         "schedule/recurrence-direct-schedule-v2.bin"
+    )
+
+
+def test_recurrence_physics_keeps_sector_ids_distinct_from_flow_ids() -> None:
+    exact_one = SimpleNamespace(
+        real_numerator=1,
+        real_denominator=1,
+        imag_numerator=0,
+        imag_denominator=1,
+    )
+    external_leg = SimpleNamespace(
+        source_slot=0,
+        public_label=1,
+        source_states=(SimpleNamespace(state_index=0, public_helicity=-1),),
+    )
+    logical = SimpleNamespace(
+        process_id="g_g_to_g_g",
+        layout="topology-replay",
+        selected_source_coverage=None,
+        selected_public_flow_ids=(0, 1),
+        external_legs=(external_leg,),
+        public_flows=tuple(
+            SimpleNamespace(
+                flow_id=index,
+                public_id=f"flow:{index}",
+                word_source_slots=(0,),
+                reduction_weight=exact_one,
+            )
+            for index in range(2)
+        ),
+    )
+    process = SimpleNamespace(
+        key="g_g_to_g_g",
+        process="g g > g g",
+        color_accuracy="lc",
+        legs=(
+            SimpleNamespace(
+                label=1,
+                particle="g",
+                pdg=21,
+                is_initial=True,
+            ),
+        ),
+    )
+
+    physics = recurrence_physics.build_recurrence_physics(
+        process,
+        logical,
+        SimpleNamespace(parameters=()),
+        process_id="g_g_to_g_g",
+        resolved_helicities=((-1,),),
+        normalization={},
+        selected_color_sector_ids=(7,),
+    )
+
+    color_axis = physics["extensions"]["runtime_selectors"]["axes"]["color_flow"]
+    assert color_axis["generation_coverage"] == "selected"
+    assert color_axis["generation_selection"] == [7]
+    assert tuple(component["id"] for component in physics["color_components"]) == (
+        "flow:0",
+        "flow:1",
     )
 
 
@@ -336,6 +398,7 @@ def test_recurrence_physics_expands_global_helicity_flip_aliases() -> None:
         process_id="d_dbar_to_z_g",
         resolved_helicities=((-1,),),
         normalization={},
+        selected_color_sector_ids=None,
     )
 
     assert physics["coverage"]["structural_zero_helicity_count"] == 0

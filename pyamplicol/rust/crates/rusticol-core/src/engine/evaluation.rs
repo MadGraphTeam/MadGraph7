@@ -44,6 +44,18 @@ fn evaluate_direct_color_schedule(
 }
 
 impl ExecutionRuntime {
+    fn use_helicity_sum_runtime_for_selection(
+        &self,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+    ) -> bool {
+        self.helicity_sum_runtime.is_some()
+            && (selected_helicity_ids.is_none()
+                || self
+                    .physics
+                    .as_ref()
+                    .is_some_and(|physics| physics.has_contracted_color_axis()))
+    }
+
     pub(super) fn set_lc_sector_selector(&mut self, sector_id: Option<i64>) -> Option<f64> {
         let index = *self
             .model_parameter_name_to_index
@@ -143,12 +155,12 @@ impl ExecutionRuntime {
                 batch.point_count()
             )));
         }
-        if selected_helicity_ids.is_none()
+        if self.use_helicity_sum_runtime_for_selection(selected_helicity_ids)
             && let Some(sum_runtime) = self.helicity_sum_runtime.as_mut()
         {
             return sum_runtime.run_f64_selected_into_unprofiled(
                 batch,
-                None,
+                selected_helicity_ids,
                 selected_color_ids,
                 output,
             );
@@ -225,10 +237,14 @@ impl ExecutionRuntime {
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<ResolvedValues<f64>> {
-        if selected_helicity_ids.is_none()
+        if self.use_helicity_sum_runtime_for_selection(selected_helicity_ids)
             && let Some(sum_runtime) = self.helicity_sum_runtime.as_mut()
         {
-            return sum_runtime.run_resolved_f64_unprofiled(batch, None, selected_color_ids);
+            return sum_runtime.run_resolved_f64_unprofiled(
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+            );
         }
         if self.color_topology_replay_enabled {
             return self.run_resolved_f64_with_color_topology_replay_unprofiled(
@@ -1445,10 +1461,14 @@ impl ExecutionRuntime {
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<(Vec<f64>, RuntimeProfile)> {
-        if selected_helicity_ids.is_none()
+        if self.use_helicity_sum_runtime_for_selection(selected_helicity_ids)
             && let Some(sum_runtime) = self.helicity_sum_runtime.as_mut()
         {
-            return sum_runtime.run_f64_selected_totals(batch, None, selected_color_ids);
+            return sum_runtime.run_f64_selected_totals(
+                batch,
+                selected_helicity_ids,
+                selected_color_ids,
+            );
         }
         if self.color_topology_replay_enabled {
             let (resolved, mut profile) = self.run_resolved_f64_with_color_topology_replay(
@@ -1590,10 +1610,10 @@ impl ExecutionRuntime {
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
     ) -> RusticolResult<(ResolvedValues<f64>, RuntimeProfile)> {
-        if selected_helicity_ids.is_none()
+        if self.use_helicity_sum_runtime_for_selection(selected_helicity_ids)
             && let Some(sum_runtime) = self.helicity_sum_runtime.as_mut()
         {
-            return sum_runtime.run_resolved_f64(batch, None, selected_color_ids);
+            return sum_runtime.run_resolved_f64(batch, selected_helicity_ids, selected_color_ids);
         }
         if self.color_topology_replay_enabled {
             return self.run_resolved_f64_with_color_topology_replay(
@@ -2440,13 +2460,13 @@ impl ExecutionRuntime {
         T: RusticolHighPrecisionNumber,
         Complex<T>: Real + EvaluationDomain,
     {
-        if selected_helicity_ids.is_none()
+        if self.use_helicity_sum_runtime_for_selection(selected_helicity_ids)
             && let Some(sum_runtime) = self.helicity_sum_runtime.as_mut()
         {
             return sum_runtime.run_resolved_generic(
                 batch,
                 binary_precision,
-                None,
+                selected_helicity_ids,
                 selected_color_ids,
             );
         }

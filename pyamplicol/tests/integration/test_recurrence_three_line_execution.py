@@ -155,7 +155,10 @@ def test_three_line_topology_replay_matches_amplicol_and_compiled_per_flow(
             post_build_validation=False,
         ),
     )
-    evaluator = EvaluatorConfig(jit=JITConfig(optimization_level=1))
+    evaluator = EvaluatorConfig(
+        execution_mode="compiled",
+        jit=JITConfig(optimization_level=1),
+    )
     by_model: dict[str, dict[str, float]] = {}
     mismatches: dict[str, dict[str, dict[str, float]]] = {}
 

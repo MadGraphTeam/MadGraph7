@@ -87,6 +87,7 @@ def build_recurrence_physics(
     process_id: str,
     resolved_helicities: Sequence[Sequence[int]],
     normalization: Mapping[str, object],
+    selected_color_sector_ids: Sequence[int] | None,
     color_plan: GenericColorPlan | None = None,
 ) -> dict[str, object]:
     """Build strict ``pyamplicol-resolved-physics`` metadata pre-DAG."""
@@ -176,6 +177,18 @@ def build_recurrence_physics(
         if logical.selected_public_flow_ids is None
         else set(logical.selected_public_flow_ids)
     )
+    selected_sector_ids = (
+        None
+        if selected_color_sector_ids is None
+        else tuple(sorted({int(value) for value in selected_color_sector_ids}))
+    )
+    if (selected_flow_ids is None) != (selected_sector_ids is None):
+        raise ValueError(
+            "recurrence selected public flows and requested color sectors must "
+            "be recorded together"
+        )
+    if selected_sector_ids == ():
+        raise ValueError("recurrence selected color sectors cannot be empty")
     retained_flows = _retained_public_flows(logical)
     if not retained_flows:
         raise ValueError("recurrence physics has no retained public LC flow")
@@ -305,7 +318,7 @@ def build_recurrence_physics(
                     },
                     "color_flow": {
                         "generation_coverage": color_coverage,
-                        "generation_selection": sorted(selected_flow_ids or ()),
+                        "generation_selection": list(selected_sector_ids or ()),
                         "runtime_contract": (
                             "complete-reusable"
                             if color_coverage == "complete"

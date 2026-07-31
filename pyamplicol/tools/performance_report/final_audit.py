@@ -1629,6 +1629,13 @@ def _pdf_text_identity(path: Path) -> dict[str, object]:
         if reader.is_encrypted:
             raise FinalAuditError("report PDF is unexpectedly encrypted")
         pages = [page.extract_text() or "" for page in reader.pages]
+    except ModuleNotFoundError as error:
+        if error.name == "pypdf":
+            raise FinalAuditError(
+                "final PDF audit requires the documentation extra; install "
+                "`pyamplicol[docs]`"
+            ) from error
+        raise
     except FinalAuditError:
         raise
     except Exception as error:

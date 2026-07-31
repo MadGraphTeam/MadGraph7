@@ -343,6 +343,24 @@ def test_contributor_runtime_requirements_use_the_full_hash_locked_closure() -> 
     assert requirements.count("--hash=sha256:") > 20
 
 
+def test_contributor_tools_reuse_project_build_test_and_docs_requirements() -> None:
+    module = _module()
+    with module.PYPROJECT.open("rb") as stream:
+        project_file = module.tomllib.load(stream)
+    project = project_file["project"]
+    optional = project["optional-dependencies"]
+    expected = (
+        *project_file["build-system"]["requires"],
+        *optional["test"],
+        *optional["docs"],
+    )
+
+    requirements = module._contributor_python_requirements()
+
+    assert requirements == expected
+    assert "pypdf>=5,<6" in requirements
+
+
 def test_candidate_dependency_only_build_installs_and_verifies_symbolica(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

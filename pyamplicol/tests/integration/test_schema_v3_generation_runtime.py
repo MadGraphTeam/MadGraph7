@@ -378,6 +378,7 @@ def test_current_source_generates_and_evaluates_schema_v3(
     config = RunConfig(
         action="generate",
         color=ColorConfig(accuracy=accuracy),
+        evaluator=EvaluatorConfig(execution_mode="compiled"),
     )
     artifact = tmp_path / accuracy
 
@@ -442,7 +443,7 @@ def test_current_source_generates_and_evaluates_schema_v3(
         assert benchmark.wall_time_per_point > 0.0
         assert benchmark.evaluator_time_per_point >= 0.0
         assert benchmark.environment["wall_time_source"] == (
-            "runtime_core_repeated_wall_time"
+            "python_outer_perf_counter_wall_time"
         )
         assert benchmark.timing_breakdown is not None
         breakdown = benchmark.timing_breakdown
@@ -532,6 +533,7 @@ def test_nlc_one_line_shared_orderings_match_sector_local_reference(
         RunConfig(
             action="generate",
             color=ColorConfig(accuracy="nlc"),
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
         )
     ).generate("g g > t t~ g", artifact)
 
@@ -548,6 +550,7 @@ def test_nlc_one_line_shared_orderings_match_sector_local_reference(
         "amplitude_root_count": 6,
         "current_count": 35,
         "interaction_count": 66,
+        "interaction_evaluation_count": 42,
         "source_count": 5,
         "truncated": False,
     }
@@ -555,6 +558,7 @@ def test_nlc_one_line_shared_orderings_match_sector_local_reference(
         "amplitude_root_count": 192,
         "current_count": 250,
         "interaction_count": 624,
+        "interaction_evaluation_count": 412,
         "source_count": 10,
         "truncated": False,
     }
@@ -603,6 +607,7 @@ def test_recursive_current_reuse_matches_unshared_contracted_runtime(
             validation=GenerationValidationConfig(samples=1),
         ),
         evaluator=EvaluatorConfig(
+            execution_mode="compiled",
             output_chunk_size=512,
             optimization=EvaluatorOptimizationConfig(cores=1),
             jit=JITConfig(optimization_level=1),
@@ -699,6 +704,7 @@ def test_chunked_stage_evaluators_prune_inputs_and_preserve_precision(
             color=ColorConfig(accuracy="lc"),
             generation=GenerationConfig(workers=1, emit_api_bundle=False),
             evaluator=EvaluatorConfig(
+                execution_mode="compiled",
                 output_chunk_size=output_chunk_size,
                 optimization=EvaluatorOptimizationConfig(cores=1),
                 jit=JITConfig(optimization_level=1),
@@ -789,6 +795,7 @@ def test_current_source_external_models_match_reference(
         action="generate",
         model=ModelConfig(cache=False),
         color=ColorConfig(accuracy=reference["color_accuracy"]),
+        evaluator=EvaluatorConfig(execution_mode="compiled"),
     )
     artifact = tmp_path / case_name
     result = Generator(config).generate(
@@ -895,6 +902,7 @@ def test_current_source_external_sm_matches_builtin_reference(
         action="generate",
         model=ModelConfig(cache=False),
         color=ColorConfig(accuracy=accuracy),
+        evaluator=EvaluatorConfig(execution_mode="compiled"),
     )
     artifact = tmp_path / f"external-sm-{source_kind}-{accuracy}"
     Generator(config).generate(
@@ -986,6 +994,7 @@ def test_external_sm_color_dummy_relabeling_preserves_resolved_runtime(
         action="generate",
         model=ModelConfig(cache=False),
         color=ColorConfig(accuracy="lc"),
+        evaluator=EvaluatorConfig(execution_mode="compiled"),
     )
     Generator(config).generate(
         reference["process"],
@@ -1050,6 +1059,7 @@ def test_external_sm_mass_overrides_refresh_sources_and_derived_masses(
         action="generate",
         model=ModelConfig(cache=False),
         color=ColorConfig(accuracy="lc"),
+        evaluator=EvaluatorConfig(execution_mode="compiled"),
     )
     artifact = tmp_path / "external-sm-runtime-mass"
     Generator(config).generate(
@@ -1108,6 +1118,7 @@ def test_runtime_rejects_external_mass_class_changes_atomically(
             action="generate",
             model=ModelConfig(cache=False),
             color=ColorConfig(accuracy="lc"),
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
         )
     ).generate(
         "d d~ > z",

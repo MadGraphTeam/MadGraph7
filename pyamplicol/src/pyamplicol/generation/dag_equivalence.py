@@ -2770,8 +2770,8 @@ def _validate_numerical_current_application_baseline(
             )
         )
         if expected_factor is None or not _complex_weight_bits_equal(
-            expected_factor,
-            interaction.evaluation_factor,
+            _canonical_complex_weight(expected_factor),
+            _canonical_complex_weight(interaction.evaluation_factor),
         ):
             raise ValueError(
                 "numerical current application baseline evaluation metadata "

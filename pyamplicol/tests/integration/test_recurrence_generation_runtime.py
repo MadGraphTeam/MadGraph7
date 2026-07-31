@@ -1335,21 +1335,24 @@ def test_recurrence_numerical_audit_applies_exact_opposites_and_rejects_near_rel
             certificate["relation_kind"],
         )
         for certificate in certified["application"]["certificates"]
-    ] == [(36, 35, "opposite"), (39, 38, "opposite")]
+    ] == [(32, 31, "opposite"), (35, 34, "opposite")]
     nearest = certified["discovery"]["nearest_rejected_hypothesis"]
-    assert nearest["current_id"] == 54
-    assert nearest["representative_id"] is None
-    assert nearest["relation_kind"] == "zero"
+    assert nearest["current_id"] == 46
+    assert nearest["representative_id"] == {
+        "builtin": 42,
+        "ufo": 43,
+    }[model_source]
+    assert nearest["relation_kind"] == "equal"
     assert Fraction(str(nearest["maximum_tolerance_ratio"])) > 1
     candidate_index = certified["discovery"]["candidate_index"]
     assert candidate_index == {
         "algorithm": "complete-contract-anchor-tolerance-window-v1",
         "completeness": "complete-within-configured-tolerance",
-        "contract_count": 38,
+        "contract_count": 31,
         "exhaustive_fallback_contract_count": 0,
-        "theoretical_pair_hypothesis_count": 184,
-        "screened_pair_hypothesis_count": 38,
-        "zero_hypothesis_count": 66,
+        "theoretical_pair_hypothesis_count": 272,
+        "screened_pair_hypothesis_count": 266,
+        "zero_hypothesis_count": 62,
         "screened_hypothesis_budget": 1_000_000,
         "budget_classification": "within-authenticated-budget",
         "nearest_rejected_scope": (
@@ -1363,13 +1366,13 @@ def test_recurrence_numerical_audit_applies_exact_opposites_and_rejects_near_rel
         < persisted["generation_raw_evidence_bytes"]
     )
     assert persisted["full_census"] == {
-        "inspected_current_count": 72,
-        "tested_hypothesis_count": 104,
-        "numerical_candidate_count": 54,
-        "verification_rejected_count": 52,
-        "uncertified_candidate_count": 52,
+        "inspected_current_count": 68,
+        "tested_hypothesis_count": 328,
+        "numerical_candidate_count": 314,
+        "verification_rejected_count": 312,
+        "uncertified_candidate_count": 312,
         "certified_relation_count": 2,
-        "rejected_hypothesis_count": 102,
+        "rejected_hypothesis_count": 326,
         "candidate_index": candidate_index,
         "decision_sha256": certified["discovery"]["decision_sha256"],
         "rejection_decision_sha256": certified["discovery"][
@@ -1381,21 +1384,21 @@ def test_recurrence_numerical_audit_applies_exact_opposites_and_rejects_near_rel
     }
     for capture_name in ("candidate_capture", "verification_capture"):
         replay_capture = persisted[capture_name]
-        assert replay_capture["certificate_current_ids"] == [35, 36, 38, 39]
+        assert replay_capture["certificate_current_ids"] == [31, 32, 34, 35]
         assert [
             row["current_id"] for row in replay_capture["observations"]
-        ] == [35, 36, 38, 39]
-        assert replay_capture["full_batch_commitment"]["current_count"] == 72
+        ] == [31, 32, 34, 35]
+        assert replay_capture["full_batch_commitment"]["current_count"] == 68
 
     diagnostic_native = native_reports["diagnostic"]
     certified_native = native_reports["certified-reuse"]
     for native_report in (diagnostic_native, certified_native):
-        assert native_report["probe"]["tested_hypothesis_count"] == 104
-        assert native_report["numerical_candidate_count"] == 54
-        assert native_report["probe"]["verification_rejected_count"] == 52
-        assert native_report["uncertified_candidate_count"] == 52
+        assert native_report["probe"]["tested_hypothesis_count"] == 328
+        assert native_report["numerical_candidate_count"] == 314
+        assert native_report["probe"]["verification_rejected_count"] == 312
+        assert native_report["uncertified_candidate_count"] == 312
         assert native_report["exact_certified_relation_count"] == 2
-        assert native_report["rejected_hypothesis_count"] == 102
+        assert native_report["rejected_hypothesis_count"] == 326
         assert native_report["numerical_candidate_count"] == (
             native_report["exact_certified_relation_count"]
             + native_report["uncertified_candidate_count"]
@@ -1408,7 +1411,7 @@ def test_recurrence_numerical_audit_applies_exact_opposites_and_rejects_near_rel
         rejected_diagnostics = native_report[
             "rejected_candidate_diagnostics"
         ]
-        assert rejected_diagnostics["total_rejected_hypothesis_count"] == 102
+        assert rejected_diagnostics["total_rejected_hypothesis_count"] == 326
         assert rejected_diagnostics["retained_count"] == 0
         assert rejected_diagnostics["truncated"] is True
         assert rejected_diagnostics["truncation_policy"] == (
@@ -1424,12 +1427,12 @@ def test_recurrence_numerical_audit_applies_exact_opposites_and_rejects_near_rel
     assert certified_native["exact_certified_relation_count"] == 2
     assert certified_native["applied_relation_count"] == 2
     assert certified_native["scale_copy_row_count"] == 2
-    assert certified_native["current_count_before"] == 72
-    assert certified_native["current_count_after"] == 72
-    assert certified_native["contribution_count_before"] == 138
-    assert certified_native["contribution_count_after"] == 138
-    assert certified_native["interaction_evaluation_count_before"] == 138
-    assert certified_native["interaction_evaluation_count_after"] == 136
+    assert certified_native["current_count_before"] == 68
+    assert certified_native["current_count_after"] == 68
+    assert certified_native["contribution_count_before"] == 132
+    assert certified_native["contribution_count_after"] == 132
+    assert certified_native["interaction_evaluation_count_before"] == 132
+    assert certified_native["interaction_evaluation_count_after"] == 130
     assert certified_native["interaction_evaluation_savings"] == 2
     _assert_runtime_values_match(
         runtimes["certified-reuse"],

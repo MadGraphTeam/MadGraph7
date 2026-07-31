@@ -407,6 +407,27 @@ class SymbolicaExactExecutor:
             ) from exc
         if not isinstance(self._execution, dict) or not isinstance(self._physics, dict):
             raise ArtifactError("exact-runtime metadata is not an object")
+        self._primary_execution = self._execution
+        self._primary_physics = self._physics
+        helicity_sum_execution = self._execution.get("helicity_sum_execution")
+        if helicity_sum_execution is not None:
+            if not isinstance(helicity_sum_execution, dict):
+                raise ArtifactError("compiled helicity-sum execution is not an object")
+            physics_reduction = helicity_sum_execution.get("physics_reduction")
+            if not isinstance(physics_reduction, dict):
+                raise ArtifactError(
+                    "compiled helicity-sum execution has no physics reduction"
+                )
+            self._helicity_sum_execution: dict[str, object] | None = (
+                helicity_sum_execution
+            )
+            self._helicity_sum_physics: dict[str, object] | None = {
+                **self._physics,
+                "reduction": physics_reduction,
+            }
+        else:
+            self._helicity_sum_execution = None
+            self._helicity_sum_physics = None
         self._permutation = permutation
         self._lc_replay = _lc_replay_plan(
             self._execution,
@@ -438,6 +459,7 @@ class SymbolicaExactExecutor:
                 "precision must be a positive integer number of decimal digits"
             )
         working_precision = _working_precision(precision)
+        self._activate_execution(helicities)
         points = _prepare_points(momenta, self._physics, self._permutation)
         state_payload = _runtime_state(self._native_runtime)
         parameters = tuple(
@@ -505,6 +527,30 @@ class SymbolicaExactExecutor:
             color_ids=color_ids,
             color_accuracy=cast(Any, str(self._physics["color_accuracy"])),
         )
+
+    def _activate_execution(self, helicities: Sequence[str] | None) -> None:
+        primary_execution = getattr(self, "_primary_execution", self._execution)
+        primary_physics = getattr(self, "_primary_physics", self._physics)
+        helicity_sum_execution = getattr(self, "_helicity_sum_execution", None)
+        helicity_sum_physics = getattr(self, "_helicity_sum_physics", None)
+        use_helicity_sum = helicity_sum_execution is not None and (
+            helicities is None or str(primary_physics.get("color_accuracy")) != "lc"
+        )
+        execution = helicity_sum_execution if use_helicity_sum else primary_execution
+        physics = helicity_sum_physics if use_helicity_sum else primary_physics
+        assert execution is not None and physics is not None
+        if self._execution is execution:
+            return
+        self._execution = execution
+        self._physics = physics
+        self._lc_replay = _lc_replay_plan(execution, physics, self._permutation)
+        self._helicity_plan = _exact_helicity_plan(
+            execution,
+            physics,
+            self._permutation,
+        )
+        self._stage_evaluators = None
+        self._amplitude_evaluator = None
 
     def _load_evaluators(self) -> None:
         if self._stage_evaluators is not None:
@@ -1060,9 +1106,7 @@ def _parse_exact_helicity_plan(
                 root_factors=schedule.root_factors,
             )
         )
-    return _ExactHelicityPlan(
-        schedules=tuple(resolved_schedules)
-    )
+    return _ExactHelicityPlan(schedules=tuple(resolved_schedules))
 
 
 def _exact_source_routes(
@@ -2070,11 +2114,15 @@ def _lc_materialized_sectors(
             raise ArtifactError(
                 "computed LC materialized color does not represent itself"
             )
-        weight = _decimal(
+        all_sector_weight = _decimal(
             root.get("all_sector_weight"), "materialized LC sector weight"
         )
-        if weight <= 0:
+        helicity_weight = _decimal(
+            root.get("helicity_weight", 1), "materialized helicity weight"
+        )
+        if all_sector_weight <= 0 or helicity_weight <= 0:
             raise ArtifactError("materialized LC sector weight must be positive")
+        weight = all_sector_weight / helicity_weight
         sector = _LcMaterializedSector(color, weight)
         previous = result.setdefault(sector_id, sector)
         if previous != sector:

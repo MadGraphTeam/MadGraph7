@@ -16,6 +16,7 @@ from pyamplicol.generation.dag_equivalence import (
     _exact_representable_complex_product,
     _exact_representable_complex_ratio,
     _term_vector_scaled_exactly,
+    _validate_numerical_current_application_baseline,
     assign_recursive_current_evaluation_reuse,
     project_rectangular_dynamic_color_classes,
 )
@@ -249,6 +250,36 @@ def test_projective_factor_propagates_to_a_child_evaluation_group() -> None:
     # Roots consume separately materialized currents. Rewriting a shared child
     # kernel must therefore leave the physical amplitude contraction untouched.
     assert rewritten.amplitude_roots == dag.amplitude_roots
+
+
+def test_numerical_baseline_authentication_canonicalizes_signed_zero_only() -> None:
+    model = BuiltinSMModel()
+    dag = assign_recursive_current_evaluation_reuse(
+        compile_generic_dag(
+            build_process_ir("d d~ > z g", color_accuracy="lc"),
+            model=model,
+        ),
+        model,
+    )
+    interaction = dag.interactions[0]
+    factor = interaction.evaluation_factor
+    signed_zero = replace(
+        interaction,
+        evaluation_factor=(factor[0], -0.0),
+    )
+    signed_zero_dag = replace(
+        dag,
+        interactions=(signed_zero, *dag.interactions[1:]),
+    )
+
+    _validate_numerical_current_application_baseline(signed_zero_dag, model)
+
+    tampered = replace(signed_zero, evaluation_factor=(factor[0] + 1.0, -0.0))
+    with pytest.raises(ValueError, match="unauthenticated for interaction 0"):
+        _validate_numerical_current_application_baseline(
+            replace(dag, interactions=(tampered, *dag.interactions[1:])),
+            model,
+        )
 
 
 def _dynamic_color_projection_fixture() -> tuple[

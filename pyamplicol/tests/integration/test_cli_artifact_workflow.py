@@ -216,8 +216,9 @@ def test_cli_inspect_evaluate_and_profile_select_processes_by_public_identity(
         )
         assert profile["process_id"] == runtime.physics.process_id
         assert profile["process_expression"] == runtime.physics.process
-        assert profile["environment"]["wall_time_source"] == (
-            "runtime_core_repeated_wall_time"
+        assert (
+            profile["environment"]["wall_time_source"]
+            == "python_outer_perf_counter_wall_time"
         )
         assert profile["effective_config"]["target_runtime"] == pytest.approx(0.001)
         assert profile["effective_config"]["batch_size"] == 2
