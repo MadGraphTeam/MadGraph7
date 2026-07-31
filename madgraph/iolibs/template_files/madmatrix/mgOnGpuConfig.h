@@ -186,6 +186,58 @@ namespace mgOnGpu
   typedef fptype fptype_invmass;
 #endif
 
+  // --- Multi-precision stage-specific types ---
+  // Each type can be independently controlled via its own macro.
+  // Defaults are based on fptype/fptype2 and new mixed prec approach
+
+  // fptype_momenta: for momenta storage and polarization vector inputs
+#if defined MGONGPU_FPTYPE_MOMENTA_DOUBLE
+  typedef double fptype_momenta;
+#elif defined MGONGPU_FPTYPE_MOMENTA_FLOAT
+  typedef float fptype_momenta;
+#else
+  typedef fptype fptype_momenta;
+#endif
+
+  // fptype_denom: for denominator variables in vertex functions
+#if defined MGONGPU_FPTYPE_DENOM_DOUBLE
+  typedef double fptype_denom;
+#elif defined MGONGPU_FPTYPE_DENOM_FLOAT
+  typedef float fptype_denom;
+#else
+  typedef fptype fptype_denom;
+#endif
+
+  // fptype_polarization: for wavefunction/polarization outputs
+#if defined MGONGPU_FPTYPE_POLARIZATION_DOUBLE
+  typedef double fptype_polarization;
+#elif defined MGONGPU_FPTYPE_POLARIZATION_FLOAT
+  typedef float fptype_polarization;
+#else
+  typedef fptype fptype_polarization;
+#endif
+
+  // fptype_vertex: for VVF vertex function (FFV1_0, FFV1P0_3) internal computation
+#if defined MGONGPU_FPTYPE_VERTEX_DOUBLE
+  typedef double fptype_vertex;
+#elif defined MGONGPU_FPTYPE_VERTEX_FLOAT
+  typedef float fptype_vertex;
+#else
+  typedef fptype2 fptype_vertex;
+#endif
+
+  // fptype_amp: for amplitude/jamp variables
+#if defined MGONGPU_FPTYPE_AMP_DOUBLE
+  typedef double fptype_amp;
+#elif defined MGONGPU_FPTYPE_AMP_FLOAT
+  typedef float fptype_amp;
+#else
+  typedef fptype2 fptype_amp;
+#endif
+
+  // fptype_colour: for color algebra (alias for fptype2)
+  typedef fptype2 fptype_colour;
+
   // --- Platform-specific software implementation details
 
   // Maximum number of blocks per grid
@@ -210,6 +262,12 @@ namespace mgOnGpu
 using mgOnGpu::fptype;
 using mgOnGpu::fptype2;
 using mgOnGpu::fptype_invmass;
+using mgOnGpu::fptype_momenta;
+using mgOnGpu::fptype_polarization;
+using mgOnGpu::fptype_vertex;
+using mgOnGpu::fptype_denom;
+using mgOnGpu::fptype_amp;
+using mgOnGpu::fptype_colour;
 
 // Undefine ARM_NEON (hack for cppnone on Apple silicon ARM)
 #ifdef MGONGPU_NOARMNEON

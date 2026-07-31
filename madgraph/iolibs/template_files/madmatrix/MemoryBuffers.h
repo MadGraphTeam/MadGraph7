@@ -226,6 +226,8 @@ namespace mg5amcCpu
   // A class encapsulating a simple CUDA device buffer managed on an ad-hoc basis
   typedef DeviceBuffer<fptype, 1> DeviceBufferSimple;
   typedef DeviceBuffer<fptype2, 1> DeviceBufferSimple2;
+  // A simple CUDA device buffer using fptype_amp (for JAMP buffers)
+  typedef DeviceBuffer<fptype_amp, 1> DeviceBufferAmp;
 #endif
 
   //--------------------------------------------------------------------------
@@ -312,19 +314,19 @@ namespace mg5amcCpu
   //--------------------------------------------------------------------------
 
   // A base class encapsulating a memory buffer for denominators (of the multichannel single-diagram enhancement factors)
-  typedef BufferBase<fptype> BufferDenominators;
+  typedef BufferBase<fptype_denom> BufferDenominators;
 
   // The size (number of elements) per event in a memory buffer for denominators
   constexpr size_t sizePerEventDenominators = 1;
 
 #ifndef MGONGPUCPP_GPUIMPL
   // A class encapsulating a C++ host buffer for denominators
-  typedef HostBuffer<fptype, sizePerEventDenominators, HostBufferALIGNED> HostBufferDenominators;
+  typedef HostBuffer<fptype_denom, sizePerEventDenominators, HostBufferALIGNED> HostBufferDenominators;
 #else
   // A class encapsulating a CUDA pinned host buffer for denominators
-  typedef PinnedHostBuffer<fptype, sizePerEventDenominators> PinnedHostBufferDenominators;
+  typedef PinnedHostBuffer<fptype_denom, sizePerEventDenominators> PinnedHostBufferDenominators;
   // A class encapsulating a CUDA device buffer for denominators
-  typedef DeviceBuffer<fptype, sizePerEventDenominators> DeviceBufferDenominators;
+  typedef DeviceBuffer<fptype_denom, sizePerEventDenominators> DeviceBufferDenominators;
 #endif
 
   //--------------------------------------------------------------------------
@@ -348,20 +350,20 @@ namespace mg5amcCpu
   //--------------------------------------------------------------------------
 
   // A base class encapsulating a memory buffer for momenta
-  typedef BufferBase<fptype> BufferMomenta;
+  typedef BufferBase<fptype_momenta> BufferMomenta;
 
   // The size (number of elements) per event in a memory buffer for momenta
   constexpr size_t sizePerEventMomenta = MemoryBuffers::np4 * MemoryBuffers::npar;
 
 #ifndef MGONGPUCPP_GPUIMPL
   // A class encapsulating a C++ host buffer for momenta
-  typedef HostBuffer<fptype, sizePerEventMomenta, HostBufferALIGNED> HostBufferMomenta;
-  //typedef HostBuffer<fptype, sizePerEventMomenta, HostBufferMISALIGNED> HostBufferMomenta; // TEST MISALIGNMENT!
+  typedef HostBuffer<fptype_momenta, sizePerEventMomenta, HostBufferALIGNED> HostBufferMomenta;
+  //typedef HostBuffer<fptype_momenta, sizePerEventMomenta, HostBufferMISALIGNED> HostBufferMomenta; // TEST MISALIGNMENT!
 #else
   // A class encapsulating a CUDA pinned host buffer for momenta
-  typedef PinnedHostBuffer<fptype, sizePerEventMomenta> PinnedHostBufferMomenta;
+  typedef PinnedHostBuffer<fptype_momenta, sizePerEventMomenta> PinnedHostBufferMomenta;
   // A class encapsulating a CUDA device buffer for momenta
-  typedef DeviceBuffer<fptype, sizePerEventMomenta> DeviceBufferMomenta;
+  typedef DeviceBuffer<fptype_momenta, sizePerEventMomenta> DeviceBufferMomenta;
 #endif
 
   //--------------------------------------------------------------------------
@@ -418,19 +420,19 @@ namespace mg5amcCpu
   //--------------------------------------------------------------------------
 
   // A base class encapsulating a memory buffer for wavefunctions
-  typedef BufferBase<fptype> BufferWavefunctions;
+  typedef BufferBase<fptype_vertex> BufferWavefunctions;
 
   // The size (number of elements) per event in a memory buffer for wavefunctions
   constexpr size_t sizePerEventWavefunctions = MemoryBuffers::nw6 * MemoryBuffers::nx2;
 
 #ifndef MGONGPUCPP_GPUIMPL
   // A class encapsulating a C++ host buffer for wavefunctions
-  typedef HostBuffer<fptype, sizePerEventWavefunctions, HostBufferALIGNED> HostBufferWavefunctions;
+  typedef HostBuffer<fptype_vertex, sizePerEventWavefunctions, HostBufferALIGNED> HostBufferWavefunctions;
 #else
   // A class encapsulating a CUDA pinned host buffer for wavefunctions
-  typedef PinnedHostBuffer<fptype, sizePerEventWavefunctions> PinnedHostBufferWavefunctions;
+  typedef PinnedHostBuffer<fptype_vertex, sizePerEventWavefunctions> PinnedHostBufferWavefunctions;
   // A class encapsulating a CUDA device buffer for wavefunctions
-  typedef DeviceBuffer<fptype, sizePerEventWavefunctions> DeviceBufferWavefunctions;
+  typedef DeviceBuffer<fptype_vertex, sizePerEventWavefunctions> DeviceBufferWavefunctions;
 #endif
 
   //--------------------------------------------------------------------------

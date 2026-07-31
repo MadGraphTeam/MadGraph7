@@ -644,14 +644,16 @@ namespace mg5amcCpu
 
 #else // i.e. #ifndef MGONGPU_CPPSIMD
 
-  inline fptype
-  fpternary( const bool& mask, const fptype& a, const fptype& b )
+  template<typename FP>
+  inline FP
+  fpternary( const bool& mask, const FP& a, const FP& b )
   {
     return ( mask ? a : b );
   }
 
-  inline cxtype
-  cxternary( const bool& mask, const cxtype& a, const cxtype& b )
+  template<typename CX>
+  inline CX
+  cxternary( const bool& mask, const CX& a, const CX& b )
   {
     return ( mask ? a : b );
   }
@@ -861,14 +863,16 @@ namespace mg5amcCpu
   }
   */
 
-  inline __host__ __device__ fptype
-  fpternary( const bool& mask, const fptype& a, const fptype& b )
+  template<typename FP>
+  inline __host__ __device__ FP
+  fpternary( const bool& mask, const FP& a, const FP& b )
   {
     return ( mask ? a : b );
   }
 
-  inline __host__ __device__ cxtype
-  cxternary( const bool& mask, const cxtype& a, const cxtype& b )
+  template<typename CX>
+  inline __host__ __device__ CX
+  cxternary( const bool& mask, const CX& a, const CX& b )
   {
     return ( mask ? a : b );
   }
@@ -893,6 +897,18 @@ namespace mg5amcCpu
   typedef cxtype_ref cxtype_sv_ref;
   typedef fptype_invmass fptype_invmass_sv;
   typedef cxtype_invmass cxtype_invmass_sv;
+  typedef fptype_momenta fptype_momenta_sv;
+  typedef fptype_polarization fptype_polarization_sv;
+  typedef fptype_vertex fptype_vertex_sv;
+  typedef fptype_denom fptype_denom_sv;
+  typedef fptype_amp fptype_amp_sv;
+  typedef fptype_colour fptype_colour_sv;
+  typedef cxtype_momenta cxtype_momenta_sv;
+  typedef cxtype_polarization cxtype_polarization_sv;
+  typedef cxtype_vertex cxtype_vertex_sv;
+  typedef cxtype_denom cxtype_denom_sv;
+  typedef cxtype_amp cxtype_amp_sv;
+  typedef cxtype_colour cxtype_colour_sv;
 #elif defined MGONGPU_CPPSIMD
   typedef bool_v bool_sv;
   typedef fptype_v fptype_sv;
@@ -904,6 +920,19 @@ namespace mg5amcCpu
   // aliases the normal fptype_sv / cxtype_sv vectors.
   typedef fptype_sv fptype_invmass_sv;
   typedef cxtype_sv cxtype_invmass_sv;
+  // Stage-specific scalar-or-vector types (scalar fallback for SIMD; SIMD vectorization TBD)
+  typedef fptype_momenta fptype_momenta_sv;
+  typedef fptype_polarization fptype_polarization_sv;
+  typedef fptype_vertex fptype_vertex_sv;
+  typedef fptype_denom fptype_denom_sv;
+  typedef fptype_amp fptype_amp_sv;
+  typedef fptype_colour fptype_colour_sv;
+  typedef cxtype_momenta cxtype_momenta_sv;
+  typedef cxtype_polarization cxtype_polarization_sv;
+  typedef cxtype_vertex cxtype_vertex_sv;
+  typedef cxtype_denom cxtype_denom_sv;
+  typedef cxtype_amp cxtype_amp_sv;
+  typedef cxtype_colour cxtype_colour_sv;
 #else
   typedef bool bool_sv;
   typedef fptype fptype_sv;
@@ -913,22 +942,39 @@ namespace mg5amcCpu
   typedef cxtype_ref cxtype_sv_ref;
   typedef fptype_invmass fptype_invmass_sv;
   typedef cxtype_invmass cxtype_invmass_sv;
+  typedef fptype_momenta fptype_momenta_sv;
+  typedef fptype_polarization fptype_polarization_sv;
+  typedef fptype_vertex fptype_vertex_sv;
+  typedef fptype_denom fptype_denom_sv;
+  typedef fptype_amp fptype_amp_sv;
+  typedef fptype_colour fptype_colour_sv;
+  typedef cxtype_momenta cxtype_momenta_sv;
+  typedef cxtype_polarization cxtype_polarization_sv;
+  typedef cxtype_vertex cxtype_vertex_sv;
+  typedef cxtype_denom cxtype_denom_sv;
+  typedef cxtype_amp cxtype_amp_sv;
 #endif
 
   // Scalar-or-vector zeros: scalar in CUDA, vector or scalar in C++
+  // Template version for multi-precision (explicit template parameter required)
 #ifdef MGONGPUCPP_GPUIMPL /* clang-format off */
-  inline __host__ __device__ cxtype cxzero_sv(){ return cxtype( 0, 0 ); }
+  template<typename CX = cxtype>
+  inline __host__ __device__ CX cxzero_sv(){ return CX( 0, 0 ); }
 #elif defined MGONGPU_CPPSIMD
   inline cxtype_v cxzero_sv() { return cxtype_v(); } // RRRR=0000 IIII=0000
+  template<typename CX>
+  inline CX cxzero_sv() { return CX( 0, 0 ); }
 #else
-  inline cxtype cxzero_sv() { return cxtype( 0, 0 ); }
+  template<typename CX = cxtype>
+  inline CX cxzero_sv() { return CX( 0, 0 ); }
 #endif /* clang-format on */
 
   //==========================================================================
 
-  // Functions and operators for cxtype_sv
-  inline __host__ __device__ fptype_sv
-  cxabs2( const cxtype_sv& c )
+  // Functions and operators for cxtype_sv (and multi-precision variant)
+  template<typename CX>
+  inline __host__ __device__ auto
+  cxabs2( const CX& c ) -> decltype( cxreal( c ) * cxreal( c ) + cximag( c ) * cximag( c ) )
   {
     return cxreal( c ) * cxreal( c ) + cximag( c ) * cximag( c );
   }

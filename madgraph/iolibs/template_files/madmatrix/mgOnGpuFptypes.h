@@ -41,20 +41,23 @@ namespace mg5amcCpu
   }
   */
 
-  inline __host__ __device__ const fptype&
-  fpmax( const fptype& a, const fptype& b )
+  template<typename FP>
+  inline __host__ __device__ const FP&
+  fpmax( const FP& a, const FP& b )
   {
     return ( ( b < a ) ? a : b );
   }
 
-  inline __host__ __device__ const fptype&
-  fpmin( const fptype& a, const fptype& b )
+  template<typename FP>
+  inline __host__ __device__ const FP&
+  fpmin( const FP& a, const FP& b )
   {
     return ( ( a < b ) ? a : b );
   }
 
-  inline __host__ __device__ fptype
-  fpsqrt( const fptype& f )
+  template<typename FP>
+  inline __host__ __device__ FP
+  fpsqrt( const FP& f )
   {
 #if defined MGONGPU_FPTYPE_FLOAT
     // See https://docs.nvidia.com/cuda/cuda-math-api/group__CUDA__MATH__SINGLE.html
@@ -75,20 +78,23 @@ namespace mg5amcCpu
   // Floating point types - C++
   //------------------------------
 
-  inline const fptype&
-  fpmax( const fptype& a, const fptype& b )
+  template<typename FP>
+  inline const FP&
+  fpmax( const FP& a, const FP& b )
   {
     return std::max( a, b );
   }
 
-  inline const fptype&
-  fpmin( const fptype& a, const fptype& b )
+  template<typename FP>
+  inline const FP&
+  fpmin( const FP& a, const FP& b )
   {
     return std::min( a, b );
   }
 
-  inline fptype
-  fpsqrt( const fptype& f )
+  template<typename FP>
+  inline FP
+  fpsqrt( const FP& f )
   {
     return std::sqrt( f );
   }
