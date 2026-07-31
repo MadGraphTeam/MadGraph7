@@ -420,6 +420,61 @@ def test_all_twelve_matrices_render_in_catalog_order(reset_caches) -> None:
     assert r"\matrixcolumnheading" not in lc_tex
 
 
+def test_matrix_summary_backgrounds_alternate_by_multiplicity(
+    reset_caches,
+) -> None:
+    rendered = render_all_matrix_tables(reset_caches)
+
+    def summary_patterns(tex: str, span: int) -> list[list[bool]]:
+        rows = [
+            line
+            for line in tex.splitlines()
+            if r"\textbf{summary:" in line
+        ]
+        return [
+            [
+                cell.startswith(
+                    rf"\multicolumn{{{span}}}{{l}}{{\cellcolor{{refblue}}"
+                )
+                for cell in row.split(" & ")[1:]
+            ]
+            for row in rows
+        ]
+
+    lc_tex = next(
+        rendered[dataset.table_name]
+        for dataset in REPORT_CATALOG.matrix_datasets
+        if dataset.candidate.accuracy is Accuracy.LC
+    )
+    contracted_tex = next(
+        rendered[dataset.table_name]
+        for dataset in REPORT_CATALOG.matrix_datasets
+        if dataset.candidate.accuracy is Accuracy.NLC
+    )
+    def assert_alternating(tex: str, span: int) -> None:
+        patterns = summary_patterns(tex, span)
+        for row_index, pattern in enumerate(patterns):
+            first_n = (row_index // 2) * 3 + 1
+            assert pattern == [
+                n_final % 2 == 1
+                for n_final in range(first_n, first_n + len(pattern))
+            ]
+        assert all(
+            not row.startswith(
+                r"\multicolumn{3}{@{}l}{\cellcolor{refblue}"
+            )
+            for row in tex.splitlines()
+            if r"\textbf{summary:" in row
+        )
+
+    assert_alternating(lc_tex, 8)
+    assert_alternating(contracted_tex, 3)
+
+    for accuracy, span in ((Accuracy.LC, 8), (Accuracy.NLC, 3)):
+        best_tex = render_best_mode_table(accuracy, reset_caches)
+        assert_alternating(best_tex, span)
+
+
 def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> None:
     caches = copy.deepcopy(reset_caches)
     reference = _cache_by_dataset(caches, "reference_amplicol_lc")
