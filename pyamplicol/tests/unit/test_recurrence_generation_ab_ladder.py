@@ -89,7 +89,7 @@ def test_command_wraps_each_capture_and_runtime_workers_in_watchdog(
     )
     assert generation_command[:6] == [
         str(variant.python),
-        str(checkout / ladder.WATCHDOG_RELATIVE_PATH),
+        str(ladder.ROOT / ladder.WATCHDOG_RELATIVE_PATH),
         "--limit-gib",
         "30",
         "--",

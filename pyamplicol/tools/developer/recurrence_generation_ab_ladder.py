@@ -277,7 +277,11 @@ def build_sample_command(
 ) -> list[str]:
     """Construct the exact watchdog and harness command for one sample."""
 
-    watchdog = variant.checkout / WATCHDOG_RELATIVE_PATH
+    # The guard is measurement infrastructure, not part of either measured
+    # runtime.  Use the audited watchdog from the campaign checkout for both
+    # variants so a frozen baseline remains pristine and benefits from
+    # fail-closed platform fixes made after that baseline was captured.
+    watchdog = ROOT / WATCHDOG_RELATIVE_PATH
     harness = variant.checkout / HARNESS_RELATIVE_PATH
     harness_output = sample_root / "harness"
     result_json = sample_root / "harness-result.json"
