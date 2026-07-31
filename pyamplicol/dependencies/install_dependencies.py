@@ -1136,6 +1136,8 @@ def _build_candidate_project_wheel(runner: Runner) -> None:
             "-m",
             "build",
             "--wheel",
+            "--no-isolation",
+            "--skip-dependency-check",
             "--outdir",
             project_wheels,
         ],

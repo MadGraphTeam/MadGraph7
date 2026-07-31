@@ -20,6 +20,41 @@ import _pyamplicol_build as backend  # noqa: E402
 import sdk  # noqa: E402
 
 
+def _git(repo: Path, *arguments: str) -> str:
+    completed = subprocess.run(
+        ["git", *arguments],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip()
+
+
+def _source_identity_checkout(tmp_path: Path) -> Path:
+    repo = tmp_path / "source-identity-checkout"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "build@example.invalid")
+    _git(repo, "config", "user.name", "Build Test")
+    classifier = repo / "tools/performance_report/source_identity.py"
+    classifier.parent.mkdir(parents=True)
+    shutil.copy2(ROOT / "tools/performance_report/source_identity.py", classifier)
+    profile = repo / "docs/performance_reports/manual"
+    (profile / "results").mkdir(parents=True)
+    (profile / "results/cache.json").write_text("{}\n", encoding="utf-8")
+    (profile / "result_sample_table.tex").write_text("% table\n", encoding="utf-8")
+    (profile / "pyAmpliCol.pdf").write_bytes(b"%PDF-1.4\n")
+    (profile / "pyAmpliCol.tex").write_text("% report source\n", encoding="utf-8")
+    source = repo / "src/runtime.py"
+    source.parent.mkdir()
+    source.write_text("VALUE = 1\n", encoding="utf-8")
+    (repo / "pyproject.toml").write_text("[project]\nname='test'\n", encoding="utf-8")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "fixture")
+    return repo
+
+
 def test_prepared_model_bootstrap_is_candidate_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -495,7 +530,11 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
         "_candidate_inputs",
         lambda: candidate_inputs,
     )
-    monkeypatch.setattr(backend, "_clean_source_revision", lambda: "a" * 40)
+    monkeypatch.setattr(
+        backend,
+        "_clean_source_revision",
+        lambda **_kwargs: "a" * 40,
+    )
     temporary_directory = tmp_path / "overlay-temporary"
     temporary_directory.mkdir()
     cargo_target_directory = tmp_path / "shared-cargo-target"
@@ -627,6 +666,65 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
     ).read_bytes() == source_core
 
 
+def test_candidate_overlay_reuses_one_workspace_local_build_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    cache = checkout / ".artifacts/dev-install"
+    cache.mkdir(parents=True)
+    monkeypatch.setattr(backend, "ROOT", checkout)
+    monkeypatch.setenv("PYAMPLICOL_CANDIDATE_CACHE_ROOT", str(cache))
+    digests = iter(("a" * 64, "b" * 64))
+    observed: list[tuple[Path, str | None]] = []
+    monkeypatch.setattr(
+        backend,
+        "_native_build_inputs_digest",
+        lambda *_args, **_kwargs: next(digests),
+    )
+
+    def populate(
+        source: Path,
+        _mode: str,
+        *,
+        native_build_inputs_sha256: str | None,
+        **_kwargs,
+    ) -> None:
+        source.mkdir(parents=True)
+        observed.append((source, native_build_inputs_sha256))
+
+    monkeypatch.setattr(backend, "_populate_overlay", populate)
+    paths: list[tuple[Path, Path]] = []
+    for _ in range(2):
+        with backend._overlay("candidate") as pair:
+            paths.append(pair)
+
+    expected = (cache / "project-build/source", cache / "cargo-target")
+    assert paths == [expected, expected]
+    assert observed == [
+        (expected[0], "a" * 64),
+        (expected[0], "b" * 64),
+    ]
+    assert backend._candidate_cache_root("release") is None
+
+
+def test_candidate_build_cache_rejects_non_workspace_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    monkeypatch.setattr(backend, "ROOT", checkout)
+    monkeypatch.setenv(
+        "PYAMPLICOL_CANDIDATE_CACHE_ROOT",
+        str(tmp_path / "outside"),
+    )
+
+    with pytest.raises(RuntimeError, match="workspace-local developer cache"):
+        backend._candidate_cache_root("candidate")
+
+
 def test_release_overlay_uses_canonical_git_locked_resolution() -> None:
     source_lock = (ROOT / "Cargo.lock").read_bytes()
     with backend._overlay("release") as (overlay, _target):
@@ -751,6 +849,48 @@ def test_release_prepared_model_bootstrap_does_not_require_git_identity(
         )
     assert "source_revision" not in build_info
     assert build_info["native_build_inputs_sha256"] == "c" * 64
+
+
+def test_candidate_source_revision_ignores_only_generated_report_outputs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    checkout = _source_identity_checkout(tmp_path)
+    profile = checkout / "docs/performance_reports/manual"
+    (profile / "results/cache.json").write_text('{"updated":true}\n', encoding="utf-8")
+    (profile / "result_sample_table.tex").write_text("% updated\n", encoding="utf-8")
+    (profile / "pyAmpliCol.pdf").write_bytes(b"%PDF-1.7\n")
+    monkeypatch.setattr(backend, "ROOT", checkout)
+
+    assert backend._clean_source_revision() is None
+    assert backend._clean_source_revision(allow_generated_report_outputs=True) == _git(
+        checkout, "rev-parse", "HEAD"
+    )
+
+
+@pytest.mark.parametrize(
+    "relative",
+    (
+        "src/runtime.py",
+        "docs/performance_reports/manual/pyAmpliCol.tex",
+        "pyproject.toml",
+        "docs/performance_reports/manual/unexpected.json",
+    ),
+)
+def test_candidate_source_revision_rejects_non_generated_dirt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    relative: str,
+) -> None:
+    checkout = _source_identity_checkout(tmp_path)
+    profile = checkout / "docs/performance_reports/manual"
+    (profile / "results/cache.json").write_text('{"updated":true}\n', encoding="utf-8")
+    changed = checkout / relative
+    changed.parent.mkdir(parents=True, exist_ok=True)
+    changed.write_text("changed\n", encoding="utf-8")
+    monkeypatch.setattr(backend, "ROOT", checkout)
+
+    assert backend._clean_source_revision(allow_generated_report_outputs=True) is None
 
 
 def test_release_build_info_is_minimal_and_retained_from_sdist(
@@ -1252,6 +1392,7 @@ def test_candidate_digest_rejects_patch_paths_outside_dependency_checkouts(
 def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
     hook: str,
     arguments: tuple[str, ...],
     expected: str | list[str],
@@ -1392,6 +1533,9 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
 
     result = getattr(backend, hook)(*arguments)
     assert result == expected
+    output = capsys.readouterr().out
+    assert ("* Building native C SDK" in output) is with_sdk
+    assert ("* Native C SDK built." in output) is with_sdk
     assert gates == ["release"]
     assert bool(sdk_stages) is with_sdk
     assert selftest_stages == ([(overlay, "aarch64-apple-darwin")] if with_sdk else [])
@@ -1447,13 +1591,26 @@ def test_sdk_build_references_the_python_owned_safe_rust_wrapper(
         sdk, "_validate_archive_linkage", lambda *_args, **_kwargs: None
     )
     monkeypatch.setattr(sdk, "_package_version", lambda _root: "0.1.0")
+    stale = tmp_path / "wheel-data/_sdk/stale.txt"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("stale\n", encoding="utf-8")
 
     staging = sdk.build_sdk(ROOT, tmp_path / "target")
 
+    assert not stale.exists()
     assert not (staging / "rust" / "rusticol.rs").exists()
     assert (ROOT / sdk.RUST_SDK_SOURCE).is_file()
     metadata = json.loads((staging / "metadata.json").read_text(encoding="utf-8"))
     assert metadata["rust_source"] == "rust/rusticol.rs"
+
+
+def test_python_extension_rebuilds_and_refreshes_embedded_sdk() -> None:
+    build_script = (
+        ROOT / "rust/crates/rusticol-python/build.rs"
+    ).read_text(encoding="utf-8")
+
+    assert "PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256" in build_script
+    assert "remove_dir_all(&sdk_output)" in build_script
 
 
 def test_sdk_build_restores_maturin_pruned_sdist_workspace_member(

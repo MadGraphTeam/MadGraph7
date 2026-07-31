@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 import re
+import runpy
 import shutil
 import stat
 import subprocess
@@ -256,6 +257,7 @@ _INJECTION_ENVIRONMENT_NAMES = {
     "OBJC_INCLUDE_PATH",
     "PKG_CONFIG_PATH",
     "PYAMPLICOL_BUILD_OVERLAY",
+    "PYAMPLICOL_CANDIDATE_CACHE_ROOT",
     "PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256",
     "PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP",
     "PYAMPLICOL_SELFTEST_FIXTURE_BOOTSTRAP",
@@ -1143,7 +1145,7 @@ def _mark_candidate(
 
     package = overlay / "src" / "pyamplicol"
     package.mkdir(parents=True, exist_ok=True)
-    source_revision = _clean_source_revision()
+    source_revision = _clean_source_revision(allow_generated_report_outputs=True)
     (package / "_build_info.json").write_text(
         json.dumps(
             {
@@ -1242,7 +1244,37 @@ def _stage_release_build_info(overlay: Path, version: str) -> None:
         raise RuntimeError("release source archive has invalid build provenance")
 
 
-def _clean_source_revision() -> str | None:
+def _generated_report_status_only(status: bytes) -> bool:
+    """Recognize only report outputs already excluded by campaign identity."""
+
+    records = status.split(b"\0")
+    if (
+        not records
+        or records[-1]
+        or not all(len(record) >= 4 and record[2:3] == b" " for record in records[:-1])
+    ):
+        return False
+    paths = tuple(os.fsdecode(record[3:]) for record in records[:-1])
+    classifier_path = Path("tools/performance_report/source_identity.py")
+    if classifier_path.as_posix() in paths:
+        return False
+    try:
+        namespace = runpy.run_path(str(ROOT / classifier_path))
+        classifier = namespace.get("_generated_report_path")
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+    if not callable(classifier):
+        return False
+    try:
+        return all(classifier(path) is True for path in paths)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return False
+
+
+def _clean_source_revision(
+    *,
+    allow_generated_report_outputs: bool = False,
+) -> str | None:
     """Return the exact source revision only for a clean Git checkout.
 
     Candidate wheels remain useful for ordinary dirty-tree development, where
@@ -1271,13 +1303,17 @@ def _clean_source_revision() -> str | None:
                 "--porcelain=v1",
                 "-z",
                 "--untracked-files=all",
+                "--no-renames",
             ],
             cwd=ROOT,
             env=environment,
             check=True,
             capture_output=True,
         ).stdout
-        if status:
+        if status and (
+            not allow_generated_report_outputs
+            or not _generated_report_status_only(status)
+        ):
             return None
         revision = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -1383,6 +1419,79 @@ def _stage_cargo_inputs(
         raise RuntimeError("candidate build overlay has no Cargo patch configuration")
 
 
+def _candidate_cache_root(mode: str) -> Path | None:
+    """Return the one opt-in, workspace-local contributor build cache."""
+
+    if mode != "candidate":
+        return None
+    raw = os.environ.get("PYAMPLICOL_CANDIDATE_CACHE_ROOT")
+    if raw is None:
+        return None
+    candidate = Path(raw).expanduser()
+    expected = ROOT / ".artifacts" / "dev-install"
+    if not candidate.is_absolute() or candidate.resolve(strict=False) != expected:
+        raise RuntimeError(
+            "PYAMPLICOL_CANDIDATE_CACHE_ROOT must be the workspace-local "
+            f"developer cache: {expected}"
+        )
+    candidate.mkdir(parents=True, exist_ok=True)
+    if candidate.is_symlink() or candidate.resolve(strict=True) != expected:
+        raise RuntimeError("candidate build cache may not use symbolic links")
+    return candidate
+
+
+@contextmanager
+def _candidate_cache_lock(cache_root: Path) -> Iterator[None]:
+    """Serialize refresh and use of the fixed contributor build overlay."""
+
+    try:
+        import fcntl
+    except ImportError as error:  # pragma: no cover - unsupported build host
+        raise RuntimeError("candidate build caching requires a POSIX host") from error
+    lock_path = cache_root / "project-build.lock"
+    if lock_path.is_symlink():
+        raise RuntimeError("candidate build cache lock may not be a symbolic link")
+    with lock_path.open("a+b") as stream:
+        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+
+def _populate_overlay(
+    source: Path,
+    mode: str,
+    *,
+    native_build_inputs_sha256: str | None,
+    release_prepared_model_bootstrap: bool,
+    project_release_prepared_models: bool,
+) -> None:
+    _copy_allowlisted_source(source)
+    if mode == "release" and project_release_prepared_models:
+        project_release_packaged_prepared_model_store(
+            source,
+            require_store=os.path.lexists(ROOT / ".git"),
+        )
+    else:
+        discard_release_packaged_prepared_model_store(source)
+    _stage_cargo_inputs(
+        source,
+        mode,
+        native_build_inputs_sha256=native_build_inputs_sha256,
+    )
+    if release_prepared_model_bootstrap:
+        if native_build_inputs_sha256 is None:
+            raise RuntimeError(
+                "release prepared-model bootstrap has no native source identity"
+            )
+        _mark_release_prepared_model_bootstrap(
+            source,
+            canonical_package_version(source),
+            native_build_inputs_sha256=native_build_inputs_sha256,
+        )
+
+
 @contextmanager
 def _overlay(
     mode: str,
@@ -1392,43 +1501,60 @@ def _overlay(
     temporary_directory: Path | None = None,
     cargo_target_directory: Path | None = None,
 ) -> Iterator[tuple[Path, Path]]:
+    native_build_inputs_sha256 = (
+        _native_build_inputs_digest(
+            ROOT,
+            normalize_release_cargo_lock=release_prepared_model_bootstrap,
+        )
+        if mode == "candidate" or release_prepared_model_bootstrap
+        else None
+    )
+    cache_root = (
+        _candidate_cache_root(mode)
+        if temporary_directory is None and cargo_target_directory is None
+        else None
+    )
+    if cache_root is not None:
+        with _candidate_cache_lock(cache_root):
+            build_root = cache_root / "project-build"
+            source = build_root / "source"
+            target = cache_root / "cargo-target"
+            cargo_home = cache_root / "cargo-home"
+            for path in (build_root, source, target, cargo_home):
+                if path.is_symlink():
+                    raise RuntimeError(
+                        f"candidate build cache entry may not be a symlink: {path}"
+                    )
+            if source.exists():
+                if not source.is_dir():
+                    raise RuntimeError(
+                        "candidate build overlay path is not a directory"
+                    )
+                shutil.rmtree(source)
+            build_root.mkdir(parents=True, exist_ok=True)
+            _populate_overlay(
+                source,
+                mode,
+                native_build_inputs_sha256=native_build_inputs_sha256,
+                release_prepared_model_bootstrap=release_prepared_model_bootstrap,
+                project_release_prepared_models=project_release_prepared_models,
+            )
+            yield source, target
+        return
+
     with TemporaryDirectory(
         prefix="pyamplicol-build-",
         dir=temporary_directory,
     ) as temporary:
         root = Path(temporary)
         source = root / "source"
-        native_build_inputs_sha256 = (
-            _native_build_inputs_digest(
-                ROOT,
-                normalize_release_cargo_lock=release_prepared_model_bootstrap,
-            )
-            if mode == "candidate" or release_prepared_model_bootstrap
-            else None
-        )
-        _copy_allowlisted_source(source)
-        if mode == "release" and project_release_prepared_models:
-            project_release_packaged_prepared_model_store(
-                source,
-                require_store=os.path.lexists(ROOT / ".git"),
-            )
-        else:
-            discard_release_packaged_prepared_model_store(source)
-        _stage_cargo_inputs(
+        _populate_overlay(
             source,
             mode,
             native_build_inputs_sha256=native_build_inputs_sha256,
+            release_prepared_model_bootstrap=release_prepared_model_bootstrap,
+            project_release_prepared_models=project_release_prepared_models,
         )
-        if release_prepared_model_bootstrap:
-            if native_build_inputs_sha256 is None:
-                raise RuntimeError(
-                    "release prepared-model bootstrap has no native source identity"
-                )
-            _mark_release_prepared_model_bootstrap(
-                source,
-                canonical_package_version(source),
-                native_build_inputs_sha256=native_build_inputs_sha256,
-            )
         yield (
             source,
             (
@@ -1712,7 +1838,13 @@ def _from_overlay(
                         )
                     else:
                         stage_packaged_prepared_models(overlay, mode)
+                    print(
+                        "* Building native C SDK (Cargo; cold builds can take "
+                        "several minutes)...",
+                        flush=True,
+                    )
                     sdk = build_sdk(overlay, target_dir)
+                    print("* Native C SDK built.", flush=True)
                     sdk_metadata = json.loads(
                         (sdk / "metadata.json").read_text(encoding="utf-8")
                     )

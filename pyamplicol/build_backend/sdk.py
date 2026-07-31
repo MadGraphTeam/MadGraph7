@@ -545,6 +545,10 @@ def build_sdk(root: Path, target_dir: Path) -> Path:
     )
 
     staging = target_dir.parent / "wheel-data" / "_sdk"
+    if staging.is_symlink() or (staging.exists() and not staging.is_dir()):
+        raise RuntimeError(f"Rusticol SDK staging path is unsafe: {staging}")
+    if staging.exists():
+        shutil.rmtree(staging)
     rust_source = root / RUST_SDK_SOURCE
     if not rust_source.is_file():
         raise RuntimeError(f"missing Rusticol SDK source: {rust_source}")

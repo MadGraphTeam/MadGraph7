@@ -1211,6 +1211,7 @@ def test_deployment(
     mode: str,
     wheelhouses: Sequence[Path],
     keep: bool,
+    abi3_smoke_only: bool = False,
 ) -> Path | None:
     report = audit_wheel(wheel, mode=mode)
     DEPLOYMENT_ROOT.mkdir(parents=True, exist_ok=True)
@@ -1265,60 +1266,73 @@ def test_deployment(
             }
         )
         run([python, "-I", "-c", _INSTALLED_SMOKE], env=smoke_environment)
-        run(
-            [python, "-I", "-m", "pyamplicol.selftest"],
-            env=smoke_environment,
-        )
+        if not abi3_smoke_only:
+            run(
+                [python, "-I", "-m", "pyamplicol.selftest"],
+                env=smoke_environment,
+            )
         run(
             [python, "-I", "-c", _SYMBOLICA_FREE_F64_SMOKE],
             env=smoke_environment,
         )
-        numpy_version = installation.versions.get("numpy")
-        if numpy_version is None:
-            raise ReleaseError("deployment dependency closure has no NumPy version")
-        _symbolica_absent_f64_smoke(
-            wheel,
-            target_python=target_python,
-            sandbox=sandbox,
-            numpy_version=numpy_version,
-        )
-        backend_environment = dict(smoke_environment)
-        backend_environment["SYMBOLICA_HIDE_BANNER"] = "1"
-        run(
-            [python, "-I", "-c", _INSTALLED_BACKEND_AND_PRECISION_SMOKE],
-            cwd=sandbox,
-            env=backend_environment,
-        )
-        run(
-            [python, "-I", "-m", "pyamplicol", "self-test", "--format", "json"],
-            env=smoke_environment,
-        )
-        copied_examples = sandbox / "examples"
-        run(
-            _examples_copy_command(python, copied_examples),
-            env=smoke_environment,
-        )
-        if not any(path.is_file() for path in copied_examples.rglob("*")):
-            raise ReleaseError("installed example-copy command produced no files")
-        example_artifact = copied_examples / "artifacts/external_ufo_sm"
-        run(
-            _copied_example_command(
-                python,
-                copied_examples / "external_ufo_sm.toml",
-            ),
-            cwd=copied_examples,
-            env=smoke_environment,
-        )
-        if not (example_artifact / "artifact.json").is_file():
-            raise ReleaseError(
-                "installed external-UFO example did not generate its artifact"
+        native_sdk_validated = False
+        if not abi3_smoke_only:
+            numpy_version = installation.versions.get("numpy")
+            if numpy_version is None:
+                raise ReleaseError(
+                    "deployment dependency closure has no NumPy version"
+                )
+            _symbolica_absent_f64_smoke(
+                wheel,
+                target_python=target_python,
+                sandbox=sandbox,
+                numpy_version=numpy_version,
             )
-        native_sdk_validated = _native_sdk_smoke(
-            python,
-            sandbox=sandbox,
-            mode=mode,
-            environment=smoke_environment,
-        )
+            backend_environment = dict(smoke_environment)
+            backend_environment["SYMBOLICA_HIDE_BANNER"] = "1"
+            run(
+                [python, "-I", "-c", _INSTALLED_BACKEND_AND_PRECISION_SMOKE],
+                cwd=sandbox,
+                env=backend_environment,
+            )
+            run(
+                [
+                    python,
+                    "-I",
+                    "-m",
+                    "pyamplicol",
+                    "self-test",
+                    "--format",
+                    "json",
+                ],
+                env=smoke_environment,
+            )
+            copied_examples = sandbox / "examples"
+            run(
+                _examples_copy_command(python, copied_examples),
+                env=smoke_environment,
+            )
+            if not any(path.is_file() for path in copied_examples.rglob("*")):
+                raise ReleaseError("installed example-copy command produced no files")
+            example_artifact = copied_examples / "artifacts/external_ufo_sm"
+            run(
+                _copied_example_command(
+                    python,
+                    copied_examples / "external_ufo_sm.toml",
+                ),
+                cwd=copied_examples,
+                env=smoke_environment,
+            )
+            if not (example_artifact / "artifact.json").is_file():
+                raise ReleaseError(
+                    "installed external-UFO example did not generate its artifact"
+                )
+            native_sdk_validated = _native_sdk_smoke(
+                python,
+                sandbox=sandbox,
+                mode=mode,
+                environment=smoke_environment,
+            )
         (sandbox / "deployment-result.json").write_text(
             json.dumps(
                 {
@@ -1328,6 +1342,7 @@ def test_deployment(
                     "wheel": wheel.name,
                     "wheel_sha256": sha256(wheel),
                     "version": report.version,
+                    "validation_scope": ("abi3-smoke" if abi3_smoke_only else "full"),
                     "native_sdk_validated": native_sdk_validated,
                 },
                 indent=2,
@@ -1352,6 +1367,14 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--wheelhouse", type=Path, action="append", default=[])
     parser.add_argument("--no-build", action="store_true")
     parser.add_argument("--keep", action="store_true")
+    parser.add_argument(
+        "--abi3-smoke-only",
+        action="store_true",
+        help=(
+            "validate installed abi3/import/direct-runtime compatibility without "
+            "repeating generation and native SDK tests"
+        ),
+    )
     return parser
 
 
@@ -1384,6 +1407,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             mode=mode,
             wheelhouses=wheelhouses,
             keep=args.keep,
+            abi3_smoke_only=args.abi3_smoke_only,
         )
     return 0
 

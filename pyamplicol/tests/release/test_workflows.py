@@ -276,6 +276,10 @@ def test_release_workflow_uses_one_retained_sdist_and_all_targets() -> None:
     assert "manylinux_2_28_x86_64" in workflow
     assert 'python-version: "3.14"' in workflow
     assert "cp314-cp314" in workflow
+    assert workflow.count("--abi3-smoke-only") == 2
+    assert workflow.index('python-version: "3.14"') < workflow.index(
+        "--abi3-smoke-only"
+    )
     assert "--require-all-targets" in workflow
     assert "--output-dir .artifacts/validated" in workflow
     assert "--skip-clean-install" in workflow

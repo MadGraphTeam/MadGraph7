@@ -7,6 +7,7 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -113,6 +114,74 @@ def test_installed_backend_smoke_covers_precision_compiled_and_eager() -> None:
     assert "eager_runtime.evaluate(momenta, precision=80)" in smoke
 
 
+def test_abi3_smoke_skips_duplicate_generation_and_sdk_checks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    wheel = tmp_path / "pyamplicol-0.1.0-cp311-abi3-test.whl"
+    wheel.write_bytes(b"wheel")
+    commands: list[list[str]] = []
+
+    def fake_run(command, **_kwargs):
+        rendered = [os.fspath(item) for item in command]
+        commands.append(rendered)
+        return subprocess.CompletedProcess(rendered, 0, "", "")
+
+    def unexpected(*_args, **_kwargs):
+        raise AssertionError("full deployment check ran during abi3 smoke")
+
+    monkeypatch.setattr(deployment, "DEPLOYMENT_ROOT", tmp_path / "deployments")
+    monkeypatch.setattr(
+        deployment,
+        "audit_wheel",
+        lambda *_args, **_kwargs: SimpleNamespace(version="0.1.0"),
+    )
+    monkeypatch.setattr(deployment, "run", fake_run)
+    monkeypatch.setattr(deployment, "runtime_environment", lambda _venv: {})
+    monkeypatch.setattr(deployment, "interpreter_tags", lambda _python: ["abi3"])
+    monkeypatch.setattr(
+        deployment,
+        "_install_dependencies",
+        lambda *_args, **_kwargs: deployment.DependencyInstallation(
+            {"numpy": "2.4.2"}, {}
+        ),
+    )
+    monkeypatch.setattr(deployment, "_symbolica_absent_f64_smoke", unexpected)
+    monkeypatch.setattr(deployment, "_native_sdk_smoke", unexpected)
+
+    sandbox = deployment.test_deployment(
+        wheel,
+        target_python=Path(sys.executable),
+        mode="release",
+        wheelhouses=(),
+        keep=True,
+        abi3_smoke_only=True,
+    )
+
+    assert sandbox is not None
+    assert any(
+        command[-2:] == ["-c", deployment._INSTALLED_SMOKE]
+        for command in commands
+    )
+    assert any(
+        command[-2:] == ["-c", deployment._SYMBOLICA_FREE_F64_SMOKE]
+        for command in commands
+    )
+    assert not any(
+        deployment._INSTALLED_BACKEND_AND_PRECISION_SMOKE in command
+        for command in commands
+    )
+    assert not any("pyamplicol.selftest" in command for command in commands)
+    assert not any(
+        "self-test" in command or "examples" in command for command in commands
+    )
+    result = json.loads(
+        (sandbox / "deployment-result.json").read_text(encoding="utf-8")
+    )
+    assert result["validation_scope"] == "abi3-smoke"
+    assert result["native_sdk_validated"] is False
+
+
 from _common import ReleaseError, clean_environment  # noqa: E402
 
 
@@ -186,7 +255,7 @@ def test_candidate_deployment_builds_fresh_instead_of_reusing_stale_wheel(
     stale = retained / "pyamplicol-0.1.0.dev0+candidate.stale-cp311-abi3-test.whl"
     stale.write_bytes(b"stale")
     scratch = tmp_path / "scratch"
-    selected: list[Path] = []
+    selected: list[tuple[Path, bool]] = []
 
     @contextmanager
     def fake_temporary(_prefix: str):
@@ -207,7 +276,7 @@ def test_candidate_deployment_builds_fresh_instead_of_reusing_stale_wheel(
         return candidates[0]
 
     def fake_deployment(wheel, **_kwargs):
-        selected.append(wheel)
+        selected.append((wheel, bool(_kwargs["abi3_smoke_only"])))
 
     monkeypatch.setattr(deployment, "check_dependency_gate", lambda *_a, **_k: None)
     monkeypatch.setattr(deployment, "external_temporary_directory", fake_temporary)
@@ -217,8 +286,19 @@ def test_candidate_deployment_builds_fresh_instead_of_reusing_stale_wheel(
     monkeypatch.setattr(deployment, "wheelhouse_directories", lambda _path: [])
     monkeypatch.setattr(deployment, "test_deployment", fake_deployment)
 
-    assert deployment.main(["--candidate", "--artifact-dir", os.fspath(retained)]) == 0
-    assert selected and selected[0].read_bytes() == b"fresh"
+    assert (
+        deployment.main(
+            [
+                "--candidate",
+                "--artifact-dir",
+                os.fspath(retained),
+                "--abi3-smoke-only",
+            ]
+        )
+        == 0
+    )
+    assert selected and selected[0][0].read_bytes() == b"fresh"
+    assert selected[0][1] is True
     assert stale.read_bytes() == b"stale"
 
 

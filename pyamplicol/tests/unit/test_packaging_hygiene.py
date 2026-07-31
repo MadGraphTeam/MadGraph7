@@ -146,6 +146,7 @@ def test_dev_install_keeps_all_build_caches_inside_the_workspace() -> None:
         "PYTHONPYCACHEPREFIX",
     ):
         assert recipe.count(f'{variable}="$PWD/{{{{dev_cache}}}}/') == 2
+    assert recipe.count('PYAMPLICOL_CANDIDATE_CACHE_ROOT="$PWD/{{dev_cache}}"') == 1
 
 
 @pytest.mark.parametrize(

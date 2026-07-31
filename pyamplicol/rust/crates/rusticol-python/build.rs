@@ -34,10 +34,17 @@ fn copy_tree(source: &Path, destination: &Path) -> io::Result<()> {
 fn main() {
     pyo3_build_config::add_extension_module_link_args();
     println!("cargo:rerun-if-env-changed=PYAMPLICOL_SDK_STAGING");
+    println!("cargo:rerun-if-env-changed=PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256");
+    let output = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR"));
+    let sdk_output = output.join("_sdk");
+    match fs::remove_dir_all(&sdk_output) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => panic!("remove previous Rusticol SDK from OUT_DIR: {error}"),
+    }
     let Some(staging) = env::var_os("PYAMPLICOL_SDK_STAGING") else {
         return;
     };
     let source = PathBuf::from(staging);
-    let output = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR"));
-    copy_tree(&source, &output.join("_sdk")).expect("copy validated Rusticol SDK into OUT_DIR");
+    copy_tree(&source, &sdk_output).expect("copy validated Rusticol SDK into OUT_DIR");
 }

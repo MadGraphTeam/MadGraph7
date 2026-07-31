@@ -558,6 +558,8 @@ def test_candidate_project_wheel_does_not_force_asset_bootstrap(
     assert len(calls) == 2
     build_command, build_environment = calls[0]
     assert build_command[1:4] == ["-m", "build", "--wheel"]
+    assert "--no-isolation" in build_command
+    assert "--skip-dependency-check" in build_command
     assert build_environment is not None
     assert build_environment["PYAMPLICOL_BUILD_MODE"] == "candidate"
     install_command, install_environment = calls[1]

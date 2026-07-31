@@ -179,6 +179,7 @@ jobs:
           python tools/release/test_deployment.py
           --python "$(command -v python)"
           --wheel .artifacts/platform/pyamplicol-*.whl
+          --abi3-smoke-only
           --no-build
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -240,6 +241,7 @@ jobs:
                 "$PY311" tools/release/test_deployment.py \
                 --python "$PY314" \
                 --wheel .artifacts/platform/pyamplicol-*.whl \
+                --abi3-smoke-only \
                 --no-build
             '
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
