@@ -318,6 +318,9 @@ _LIBRARY_SUBROUTINE = r"""
   end subroutine print_library_call_histogram
 
 """
+_LIBRARY_FUNCTION_HEADER = (
+    "  integer function colour_order_match_sign(jgroup,jint,row,allow_reflection)\n"
+)
 
 
 def _instrument_direct_source(text: str) -> str:
@@ -401,9 +404,8 @@ def _instrument_library_source(text: str) -> str:
     )
     return _replace_once(
         text,
-        "  integer function colour_order_match_sign(jgroup,jint,row,pass,leg_map)\n",
-        _LIBRARY_SUBROUTINE
-        + "  integer function colour_order_match_sign(jgroup,jint,row,pass,leg_map)\n",
+        _LIBRARY_FUNCTION_HEADER,
+        _LIBRARY_SUBROUTINE + _LIBRARY_FUNCTION_HEADER,
         label="library structural subroutine",
     )
 

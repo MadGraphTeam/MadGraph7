@@ -86,7 +86,7 @@ _LIBRARY_SOURCE = """\
 
   argc = command_argument_count()
   call build_row_to_integral()
-  integer function colour_order_match_sign(jgroup,jint,row,pass,leg_map)
+  integer function colour_order_match_sign(jgroup,jint,row,allow_reflection)
 """
 
 
