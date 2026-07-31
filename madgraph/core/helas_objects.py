@@ -5583,6 +5583,37 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
             yield one_flavor, signed_pdg, signature
 
+    def set_excluded_flavors(self, flavors):
+        """Declare external-flavor assignments this module does NOT cover.
+
+        A merged matrix element offers every flavor its diagrams support. That
+        is right while one module covers a whole pattern, and wrong as soon as
+        two modules are meant to SHARE a pattern's flavors between them -- each
+        would offer the other's, and the two would double count.
+
+        The case that needs it: ``Q Q~ > Q Q~`` bundles three coupling classes,
+        and the flavor-changing annihilation ``q q~ > q' q~'`` is the one class a
+        crossing of ``Q Q > Q Q`` reaches only with the two light legs the other
+        way round. A module cannot list that class in the reachable order
+        (its leg pattern is shared by every row -- the FLAVOR table carries
+        unsigned group POSITIONS), so freeing it means generating a sibling with
+        the reordered pattern and giving each module HALF the flavors. This is
+        how a module is told which half is not its own.
+
+        `flavors` is an iterable of flavor-index tuples, in the same convention
+        as get_external_flavors(). Setting it invalidates the populated store so
+        the next read recomputes; passing an empty set restores the default
+        "cover everything the diagrams support".
+        """
+        self._excluded_flavors = frozenset(tuple(f) for f in flavors)
+        # force a repopulate: allowed_flavors and everything derived from it
+        # (masks, pdg tables, coupling classes) must be rebuilt.
+        self._flavor_populated = False
+        self['allowed_flavors'] = []
+        self['allowed_flavors_pdgs'] = []
+        self['allowed_flavors_with_iden'] = []
+        self['allowed_flavors_with_iden_pdgs'] = []
+
     def populate_flavor_validity(self, model=None):
         """Eager, single-source-of-truth pass for multi-flavor generation.
 
@@ -5692,8 +5723,19 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
             # populate every diagram's store for this flavor
             if self.check_flavor_for_all_diagrams(one_flavor, model):
-                flavor_list.append(one_flavor)
-                pdg_list.append(signed_pdg)
+                # A flavor this module has been told it does not cover (see
+                # set_excluded_flavors) is still CHECKED -- the per-diagram
+                # store stays an honest record of what the diagrams support --
+                # but it is not offered, so it gets no bit in the flavor masks
+                # and no row anywhere downstream. Everything that describes the
+                # module's flavor content (compute_flavor_masks, the PDG
+                # tables, get_external_flavors_with_iden, the generated FLAVOR
+                # table) reads allowed_flavors, so dropping it here is the one
+                # place that needs to know.
+                if tuple(one_flavor) not in getattr(self, '_excluded_flavors',
+                                                    ()):
+                    flavor_list.append(one_flavor)
+                    pdg_list.append(signed_pdg)
                 checked[signature] = True
             else:
                 checked[signature] = False
