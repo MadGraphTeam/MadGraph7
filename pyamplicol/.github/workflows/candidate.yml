@@ -137,6 +137,7 @@ jobs:
               chmod +x /tmp/rustup-init
               /tmp/rustup-init -y --profile minimal --default-toolchain 1.89.0
               source "$HOME/.cargo/env"
+              export RUSTUP_TOOLCHAIN=1.89.0
               PYTHON=/opt/python/cp311-cp311/bin/python
               "$PYTHON" -m pip install "build>=1.2,<2" "maturin==1.14.1"
               "$PYTHON" tools/ci/memory_watchdog.py --limit-gib 30 -- \

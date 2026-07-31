@@ -16,7 +16,6 @@
     let
       systems = [
         "aarch64-darwin"
-        "x86_64-darwin"
         "aarch64-linux"
         "x86_64-linux"
       ];
@@ -58,7 +57,9 @@
           platformTools =
             lib.optionals stdenv.isLinux [
               pkgs.binutils
+              pkgs.lsof
               pkgs.patchelf
+              pkgs.procps
             ]
             ++ lib.optionals stdenv.isDarwin [
               pkgs.darwin.cctools
@@ -88,7 +89,7 @@
                 gzip
                 just
                 jq
-                lhapdf
+                m4
                 ninja
                 openssh
                 patch

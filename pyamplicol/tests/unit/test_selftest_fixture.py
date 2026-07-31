@@ -596,9 +596,12 @@ def test_source_selftest_compiled_model_matches_active_compiler_sources() -> Non
     expected_producer = loading.compiler_fingerprint()
     actual_producer = dict(compiled["producer"])
     # The portable source template is retargeted to the concrete candidate or
-    # release version by the wheel overlay.
-    expected_producer.pop("pyamplicol")
-    actual_producer.pop("pyamplicol")
+    # release version by the wheel overlay. The full compiler-source hash is
+    # provenance rather than a compatibility boundary, just as it is for the
+    # packaged prepared-model store.
+    for provenance_field in ("pyamplicol", "model_compiler_sha256"):
+        expected_producer.pop(provenance_field)
+        actual_producer.pop(provenance_field)
 
     assert compiled["kind"] == loading.COMPILED_MODEL_KIND
     assert compiled["schema_version"] == loading.COMPILED_MODEL_SCHEMA_VERSION

@@ -115,6 +115,7 @@ jobs:
     env:
       MACOSX_DEPLOYMENT_TARGET: "11.0"
       PYAMPLICOL_BUILD_MODE: release
+      RUSTUP_TOOLCHAIN: "1.89.0"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -221,6 +222,7 @@ jobs:
               chmod +x /tmp/rustup-init
               /tmp/rustup-init -y --profile minimal --default-toolchain 1.89.0
               source "$HOME/.cargo/env"
+              export RUSTUP_TOOLCHAIN=1.89.0
               PY311=/opt/python/cp311-cp311/bin/python
               PY314=/opt/python/cp314-cp314/bin/python
               "$PY311" -m pip install \

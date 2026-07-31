@@ -56,6 +56,7 @@ def test_native_toolchains_and_manylinux_image_are_immutable() -> None:
     assert "manylinux_2_28_x86_64:latest" not in workflows
     assert workflows.count(f"rust-toolchain@{RUST_TOOLCHAIN_ACTION_SHA}") == 3
     assert workflows.count(f"default-toolchain {RUST_TOOLCHAIN}") == 2
+    assert workflows.count(f"export RUSTUP_TOOLCHAIN={RUST_TOOLCHAIN}") == 2
     assert workflows.count(MANYLINUX_IMAGE) == 2
     assert "cargo install just" not in workflows
     assert "pip install --upgrade pip" not in workflows
@@ -260,6 +261,9 @@ def test_candidate_and_release_heavy_commands_use_memory_watchdog() -> None:
 
 def test_release_workflow_uses_one_retained_sdist_and_all_targets() -> None:
     workflow = (WORKFLOWS / "release-artifacts.yml").read_text(encoding="utf-8")
+    macos_job = workflow.split("  macos-wheels:\n", maxsplit=1)[1].split(
+        "\n  manylinux-wheel:\n", maxsplit=1
+    )[0]
     assert "workflow_dispatch:" in workflow
     assert "signed_tag" not in workflow
     assert "Verify signed" not in workflow
@@ -298,6 +302,7 @@ def test_release_workflow_uses_one_retained_sdist_and_all_targets() -> None:
     assert "tests/unit/test_dependency_gate.py" in workflow
     assert "just source-gate" not in workflow
     assert "brew install gcc" in workflow
+    assert f'RUSTUP_TOOLCHAIN: "{RUST_TOOLCHAIN}"' in macos_job
     assert "gcc-c++ gcc-gfortran make" in workflow
     assert workflow.count("tools/release/test_deployment.py") == 4
     assert "Collect validated release artifacts" in workflow

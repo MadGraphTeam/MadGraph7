@@ -1301,6 +1301,10 @@ def test_short_repository_root_is_matched_only_at_a_path_token_boundary(
         b"symbolic/path/to/io/helpers.rs",
         marker,
     )
+    assert not artifacts._contains_forbidden_path(
+        b"\0native-instruction-bytes:\x8f/ioX\x91",
+        marker,
+    )
     assert artifacts._contains_forbidden_path(
         b"compiled from /io/dependencies/checkouts/symjit/rust/lib.rs",
         marker,
@@ -1309,6 +1313,23 @@ def test_short_repository_root_is_matched_only_at_a_path_token_boundary(
         b"\0/io/source/rust/crates/rusticol-core/src/lib.rs",
         marker,
     )
+    assert artifacts._contains_forbidden_path(b"checkout root: /io\0", marker)
+
+
+def test_native_scan_requires_short_repository_directory_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    marker = b"/io"
+    monkeypatch.setattr(artifacts, "_REPOSITORY_PATH_MARKER", marker)
+    monkeypatch.setattr(artifacts, "_FORBIDDEN_PATH_MARKERS", (b"/tmp/", marker))
+
+    artifacts._scan_embedded_paths(
+        {"pyamplicol/_rusticol.abi3.so": b"\x8f/io\x91"}
+    )
+    with pytest.raises(ArtifactError, match="non-relocatable path marker '/io/'"):
+        artifacts._scan_embedded_paths(
+            {"pyamplicol/_rusticol.abi3.so": b"\0/io/source.rs\0"}
+        )
 
 
 def test_temporary_path_marker_is_matched_only_at_a_path_token_boundary() -> None:

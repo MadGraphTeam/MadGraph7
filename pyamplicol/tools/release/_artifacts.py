@@ -872,12 +872,12 @@ def _sanitized_native_bytes(data: bytes, *, allow_local_rustup: bool) -> bytes:
 def _contains_forbidden_path(data: bytes, marker: bytes) -> bool:
     """Return whether *marker* occurs as the forbidden path it represents.
 
-    Require every absolute marker to begin a new path token. A direct
+    Require every absolute marker to occupy a complete path token. A direct
     substring check would misclassify deterministic remapped paths such as
     ``/pyamplicol/checkout/.artifacts/dev-install/tmp/...`` as host ``/tmp``
     paths, and a manylinux checkout rooted at ``/io`` would collide with
-    ordinary ``.../src/io/...`` paths. Real absolute paths remain rejected at
-    the start of a string or after punctuation, whitespace, or a NUL byte.
+    ordinary ``.../src/io/...`` paths or arbitrary native instruction bytes.
+    Real absolute paths remain rejected at token boundaries.
     """
 
     needle = marker.lower()
@@ -886,10 +886,30 @@ def _contains_forbidden_path(data: bytes, marker: bytes) -> bool:
     lowered = data.lower()
     offset = 0
     while (index := lowered.find(needle, offset)) >= 0:
-        if index == 0 or lowered[index - 1] not in _PATH_TOKEN_BYTES:
+        starts_token = index == 0 or lowered[index - 1] not in _PATH_TOKEN_BYTES
+        end = index + len(needle)
+        ends_token = (
+            needle.endswith((b"/", b"\\"))
+            or end == len(lowered)
+            or lowered[end] not in _PATH_TOKEN_BYTES
+            or lowered[end] in b"/\\"
+        )
+        if starts_token and ends_token:
             return True
         offset = index + 1
     return False
+
+
+def _native_forbidden_path_markers() -> tuple[bytes, ...]:
+    """Use directory prefixes for the dynamic checkout root in native bytes."""
+
+    root = _REPOSITORY_PATH_MARKER.rstrip(b"/\\")
+    fixed = tuple(
+        marker
+        for marker in _FORBIDDEN_PATH_MARKERS
+        if marker != _REPOSITORY_PATH_MARKER
+    )
+    return (*fixed, root + b"/", root + b"\\")
 
 
 def _scan_embedded_paths(
@@ -904,12 +924,17 @@ def _scan_embedded_paths(
             build_info = _json_object(entries, name)
             build_info.pop("source_checkout", None)
             scanned = json.dumps(build_info, sort_keys=True).encode("utf-8")
-        if name.lower().endswith(_NATIVE_MEMBER_SUFFIXES):
+        native_member = name.lower().endswith(_NATIVE_MEMBER_SUFFIXES)
+        if native_member:
             scanned = _sanitized_native_bytes(
                 data, allow_local_rustup=allow_local_rustup
             )
         lowered = scanned.lower()
-        markers = _FORBIDDEN_PATH_MARKERS
+        markers = (
+            _native_forbidden_path_markers()
+            if native_member
+            else _FORBIDDEN_PATH_MARKERS
+        )
         if name.lower().endswith((".dylib", ".pyd", ".so")):
             markers += _FORBIDDEN_NATIVE_RELATIVE_MARKERS
         for marker in markers:
@@ -1341,7 +1366,7 @@ def _reject_native_paths(output: str, description: str) -> None:
 
 
 def _reject_native_path_bytes(data: bytes, description: str) -> None:
-    for marker in _FORBIDDEN_PATH_MARKERS:
+    for marker in _native_forbidden_path_markers():
         if _contains_forbidden_path(data, marker):
             raise ArtifactError(
                 f"{description} embeds non-relocatable path "
