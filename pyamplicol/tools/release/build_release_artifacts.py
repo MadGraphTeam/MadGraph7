@@ -72,6 +72,7 @@ def build_release_artifacts(
     sdist_only: bool,
     retained_sdist_path: Path | None,
 ) -> list[Path]:
+    python = python.resolve()
     if mode == "release" and allow_dirty_candidate:
         raise ReleaseError("--allow-dirty is available only for candidate builds")
     if sdist_only and retained_sdist_path is not None:

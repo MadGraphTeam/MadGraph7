@@ -248,6 +248,7 @@ def test_sdist_build_uses_clean_external_source_without_byte_parity(
         yield scratch
 
     def fake_run(command, *, cwd, env, **_kwargs):
+        observed["python"] = Path(command[0])
         observed["cwd"] = cwd
         observed["env"] = env
         output = Path(command[command.index("--outdir") + 1])
@@ -256,6 +257,7 @@ def test_sdist_build_uses_clean_external_source_without_byte_parity(
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setenv("PYTHONPATH", "/parent/source")
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(build_from_sdist, "audit_sdist", lambda *_a, **_k: None)
     monkeypatch.setattr(
         build_from_sdist,
@@ -279,10 +281,11 @@ def test_sdist_build_uses_clean_external_source_without_byte_parity(
         source_wheel,
         output,
         mode="release",
-        python=Path(sys.executable),
+        python=Path(".venv/bin/python"),
     )
     assert rebuilt.read_bytes() == b"independently rebuilt wheel"
     assert observed["cwd"] == extracted
+    assert observed["python"] == (tmp_path / ".venv/bin/python").resolve()
     assert "PYTHONPATH" not in observed["env"]
 
 
@@ -317,7 +320,7 @@ def test_release_gate_failure_prevents_artifact_build(
     assert built is False
 
 
-def test_release_build_does_not_inspect_git_cleanliness(
+def test_release_build_normalizes_python_without_inspecting_git_cleanliness(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -339,6 +342,7 @@ def test_release_build_does_not_inspect_git_cleanliness(
         wheel: bool,
         sdist: bool,
     ) -> None:
+        assert _python == (tmp_path / ".venv/bin/python").resolve()
         assert mode == "release"
         assert wheel is False
         assert sdist is True
@@ -362,10 +366,11 @@ def test_release_build_does_not_inspect_git_cleanliness(
     monkeypatch.setattr(build_release_artifacts, "_build", fake_build)
     monkeypatch.setattr(build_release_artifacts, "audit_sdist", lambda *_a, **_k: None)
 
+    monkeypatch.chdir(tmp_path)
     artifacts = build_release_artifacts.build_release_artifacts(
         tmp_path / "output",
         mode="release",
-        python=Path(sys.executable),
+        python=Path(".venv/bin/python"),
         allow_dirty_candidate=False,
         sdist_only=True,
         retained_sdist_path=None,

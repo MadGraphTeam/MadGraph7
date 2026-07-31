@@ -37,6 +37,7 @@ def build_wheel_from_sdist(
 ) -> Path:
     """Build from an untouched sdist and retain the independently audited wheel."""
 
+    python = python.resolve()
     sdist = sdist.resolve()
     source_wheel = source_wheel.resolve()
     output_directory = output_directory.resolve()
