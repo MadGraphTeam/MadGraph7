@@ -15,7 +15,9 @@ BLASLIBS =
 LINKLIBS =  -L$(LIBDIR) -ldhelas -lmodel $(BLASLIBS)
 LIBS = $(LIBDIR)/libdhelas.$(libext) $(LIBDIR)/libmodel.$(libext)
 LIBS_SHARED = $(LIBDIR)/libdhelas.$(dylibext) $(LIBDIR)/libmodel.$(dylibext)
-PROCESS=  matrix.o
+# matrix_getamp.f only exists with --hel_recycling, and only when the recycled
+# helas block was large enough to be split out of MATRIX.
+PROCESS=  matrix.o $(patsubst %.f,%.o,$(wildcard matrix_getamp.f))
 CHECK_SA=  check_sa.o
 CHECK_SA_SPLITORDERS=  check_sa_born_splitOrders.o
  
@@ -27,6 +29,13 @@ $(PROG): $(LIBS) $(PROCESS) $(CHECK_SA) makefile
 
 $(PROG_SPLITORDERS): $(PROCESS) $(CHECK_SA_SPLITORDERS) makefile $(LIBS)
 	$(FC) $(FFLAGS) -o $(PROG) $(PROCESS) $(CHECK_SA_SPLITORDERS) $(LINKLIBS)
+
+# The helicity-recycled amplitude block is CALL-bound: its work happens inside
+# libdhelas (already built at -O2), so optimizing the call sequencing itself
+# buys nothing at runtime while costing minutes of compile time on a dense
+# process. Build it at -O0 (the last -O on the command line wins).
+matrix_getamp.o: matrix_getamp.f
+	$(FC) $(FFLAGS) -O0 -c -o $@ $<
 
 driver.f: nexternal.inc pmass.inc ngraphs.inc coupl.inc
 
@@ -44,8 +53,8 @@ ifeq ($(origin MENUM),undefined)
   MENUM=2
 endif
 
-libme$(PDIR).$(dylibext): $(LIBDIR)/libdhelas.$(dylibext) $(LIBDIR)/libmodel.$(dylibext) matrix.o
-	gfortran $(DYNLIBFLAG) $(RPATHFLAG)libme$(PDIR).$(dylibext) -o libme$(PDIR).$(dylibext) matrix.o ../../Source/DHELAS/*.o ../../Source/MODEL/*.o
+libme$(PDIR).$(dylibext): $(LIBDIR)/libdhelas.$(dylibext) $(LIBDIR)/libmodel.$(dylibext) $(PROCESS)
+	gfortran $(DYNLIBFLAG) $(RPATHFLAG)libme$(PDIR).$(dylibext) -o libme$(PDIR).$(dylibext) $(PROCESS) ../../Source/DHELAS/*.o ../../Source/MODEL/*.o
 
 matrix$(MENUM)py.so: f2py_matrix_wrapper.f libme$(PDIR).$(dylibext)  makefile 
 	touch __init__.py

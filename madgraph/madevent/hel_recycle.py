@@ -1056,12 +1056,168 @@ class HelicityRecycler():
             misc.sprint("No helicity", self.input_file)
             self.write_zero_matrix_element()
             return
-        
+
         atexit.register(self.clean_up)
         self.read_orig()
         self.write_amp_chunks()
         self.read_template()
+        self.split_helas_block()
         atexit.unregister(self.clean_up)
+
+    #===========================================================================
+    # Splitting the recycled helas block out of MATRIX
+    #===========================================================================
+    # The recycled MATRIX holds the whole amplitude construction (externals,
+    # shared wavefunctions, P1N currents, CombineAmp) as one straight-line
+    # block. For a dense process that block is enormous -- g g > t t~ g g g
+    # gives ~54k statements -- and a single function that size defeats the
+    # optimizer: gfortran spends ~105 s at -O2 on it AND produces slower code
+    # than if it were split (register allocation degrades on one huge body).
+    #
+    # Moving the block into its own file, cut into chunk subroutines that share
+    # W/AMP by reference, and compiling that file at -O0 fixes both ends: the
+    # block is CALL-bound (its work happens inside libdhelas, already compiled
+    # at -O2), so its own optimization level barely matters for runtime.
+    # Measured on g g > t t~ g g g: compile 105 s -> ~18 s, runtime 0.78 s ->
+    # ~0.52 s, same matrix element.
+    #
+    # Small processes must stay monolithic: there the -O2 monolith optimizes
+    # perfectly and splitting costs runtime (g g > t t~ g g: 0.19 -> 0.28 s).
+    # Hence a threshold on the number of statements, not a chunk count.
+
+    # a statement that opens a block we must not cut through
+    _IF_THEN = re.compile(r'^\s*IF\s*\(.*\)\s*THEN\s*$', re.IGNORECASE)
+    _END_IF = re.compile(r'^\s*END\s*IF\b', re.IGNORECASE)
+    _AMP_INIT = re.compile(r'^\s*AMP\s*\(\s*:\s*,\s*:\s*\)\s*=', re.IGNORECASE)
+    _BLOCK_START = re.compile(r'^\s*(CALL\s|IF\s*\(\s*IAND)', re.IGNORECASE)
+    _BLOCK_END = re.compile(r'^\s*(JAMP\s*\(|DO\s+K\s*=\s*1\s*,\s*NCOMB)',
+                            re.IGNORECASE)
+
+    def _group_statements(self, block):
+        """Group the block's physical lines into atomic units.
+
+        A unit is a full fortran statement (continuation lines carry '&' or '$'
+        in column 6, comments and blank lines attach to the statement they
+        precede), and an IF(...)THEN ... ENDIF guard -- which is how a merged
+        process' per-flavor mask wraps a P1N/CombineAmp pair -- is kept whole.
+        """
+        stmts, cur, depth = [], [], 0
+        for line in block:
+            stripped = line.strip()
+            is_comment = bool(line) and line[0] in 'Cc*!'
+            cont = len(line) > 5 and line[5] in '&$'
+            if cur and (cont or is_comment or not stripped or depth > 0):
+                cur.append(line)
+            elif not cur:
+                cur.append(line)
+            else:
+                stmts.append(cur)
+                cur = [line]
+            if not is_comment:
+                if self._IF_THEN.match(line):
+                    depth += 1
+                elif self._END_IF.match(line) and depth > 0:
+                    depth -= 1
+                    # the ENDIF closes the guard: the unit is complete
+                    if depth == 0:
+                        stmts.append(cur)
+                        cur = []
+        if cur:
+            stmts.append(cur)
+        return stmts
+
+    @staticmethod
+    def _starts_with_combine(stmt):
+        """A CombineAmp consumes the TMP its immediately preceding P1N call
+        wrote, so a chunk must never begin with one."""
+        for line in stmt:
+            if line.strip() and not line[0] in 'Cc*!':
+                return 'combineamp' in line.lower()
+        return False
+
+    def split_helas_block(self):
+        """Move the recycled helas block of MATRIX into chunk subroutines in a
+        separate file. No-op unless the caller configured chunk_stmts and a
+        chunk_spec, or when the block is below the threshold.
+
+        Returns the number of chunks written (0 when nothing was split)."""
+        spec = getattr(self, 'chunk_spec', None)
+        limit = getattr(self, 'chunk_stmts', 0)
+        chunk_file = getattr(self, 'chunk_file', None)
+        if not spec or not limit or not chunk_file:
+            return 0
+
+        with open(self.output_file) as fsock:
+            lines = fsock.read().splitlines()
+
+        def find(regex, start=0):
+            for i in range(start, len(lines)):
+                if regex.match(lines[i]):
+                    return i
+            return -1
+
+        amp_init = find(self._AMP_INIT)
+        if amp_init == -1:
+            return 0
+        begin = find(self._BLOCK_START, amp_init)
+        if begin == -1:
+            return 0
+        end = find(self._BLOCK_END, begin)
+        if end == -1:
+            return 0
+
+        stmts = self._group_statements(lines[begin:end])
+        if len(stmts) <= limit:
+            # small enough to stay in MATRIX: make sure no chunk file survives
+            # from an earlier, larger pass.
+            if os.path.exists(chunk_file):
+                os.remove(chunk_file)
+            return 0
+
+        chunks, cur = [], []
+        for stmt in stmts:
+            if cur and len(cur) >= limit and not self._starts_with_combine(stmt):
+                chunks.append(cur)
+                cur = []
+            cur.append(stmt)
+        if cur:
+            chunks.append(cur)
+        if len(chunks) <= 1:
+            if os.path.exists(chunk_file):
+                os.remove(chunk_file)
+            return 0
+
+        prefix = spec['name']
+        # Which shared objects the chunks take by reference: whichever of the
+        # candidates the block actually mentions. Deriving it from the block
+        # rather than from the caller keeps the signature right whatever the
+        # enclosing MATRIX happens to declare -- IC only exists when the
+        # crossing machinery threads it, the CURRENT_*_MASK arrays only for a
+        # merged process.
+        block_text = '\n'.join(lines[begin:end])
+        used = [(name, decl) for name, decl in spec['candidates']
+                if re.search(r'\b%s\b' % re.escape(name), block_text)]
+        args = ', '.join(name for name, _ in used)
+        preamble = '\n'.join(
+            [spec['prologue']] + [decl for _, decl in used] +
+            [spec['locals'], spec['epilogue']])
+        preamble = Template(preamble).safe_substitute(self.template_dict)
+
+        calls, bodies = [], []
+        for i, chunk in enumerate(chunks, 1):
+            name = '%s%d' % (prefix, i)
+            calls.append('      CALL %s(%s)' % (name, args))
+            body = ['      SUBROUTINE %s(%s)' % (name, args), preamble]
+            for stmt in chunk:
+                body.extend(stmt)
+            body.append('      END')
+            bodies.append('\n'.join(body))
+
+        with open(chunk_file, 'w') as fsock:
+            fsock.write('\n\n\n'.join(bodies) + '\n')
+        with open(self.output_file, 'w') as fsock:
+            fsock.write('\n'.join(lines[:begin] + calls + lines[end:]) + '\n')
+        return len(chunks)
 
     def clean_up(self):
         pass

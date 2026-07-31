@@ -7790,6 +7790,17 @@ C       so this also stays correct for split-order processes.
                                              append_amp_init=not hel_recycling)
         replace_dict['flavor_mask_decl'] = mask_decl
         replace_dict['flavor_mask_setup'] = mask_setup
+        # Word counts of the per-call masks, needed by anything that has to
+        # redeclare CURRENT_*_MASK outside the matrix element routine (the
+        # --hel_recycling chunk subroutines). 0 when there is no mask.
+        if n_mask > 0:
+            replace_dict['nwords_wf'] = \
+                (len(matrix_element.get_all_wavefunctions()) + 63) // 64
+            replace_dict['nwords_amp'] = \
+                (len(matrix_element.get_all_amplitudes()) + 63) // 64
+        else:
+            replace_dict['nwords_wf'] = 0
+            replace_dict['nwords_amp'] = 0
 
         fortran_model.use_flavor_mask = (n_mask > 0)
         fortran_model.me_n_flavors = n_mask
@@ -8384,9 +8395,85 @@ C       so this also stays correct for split-order processes.
                          for rep, flip in sorted(reuse)) + '\n'
         return sorted(bad_set), text
 
+    # Statements per chunk when the recycled helas block is split out of MATRIX
+    # (see HelicityRecycler.split_helas_block). Also the threshold below which
+    # the block is left in MATRIX: a small block optimizes perfectly as one
+    # unit and splitting it costs runtime. Overridable per output with
+    # --hel_recycling_chunk=<n> (0 disables the split entirely).
+    hel_recycling_chunk_stmts = 1500
+
+    def _hel_recycling_chunk_size(self):
+        """Statements per chunk, from --hel_recycling_chunk if given."""
+        try:
+            return int(self.cmd_options.get('hel_recycling_chunk',
+                                            self.hel_recycling_chunk_stmts))
+        except (TypeError, ValueError):
+            logger.warning('--hel_recycling_chunk must be an integer; using %s',
+                           self.hel_recycling_chunk_stmts)
+            return self.hel_recycling_chunk_stmts
+
+    def _hel_recycling_chunk_spec(self, replace_dict, out_path):
+        """Describe how to split the recycled helas block of the standalone
+        MATRIX into chunk subroutines: the file to write them to, the shared
+        state they take by reference, and their declaration preamble.
+
+        NWAVEFUNCS/NCOMB are the RECYCLED counts, which only the rewriter knows,
+        so they are left as ${...} for it to substitute. The rewriter picks the
+        arguments from the candidates the block actually references."""
+        prologue = (
+            '      use model_object\n'
+            '      use aloha_object\n'
+            '      IMPLICIT NONE\n'
+            '      INTEGER    NEXTERNAL\n'
+            '      PARAMETER (NEXTERNAL=%(nexternal)s)\n'
+            '      INTEGER    NWAVEFUNCS, NCOMB, NGRAPHS\n'
+            '      PARAMETER (NWAVEFUNCS=${nwavefuncs}, NCOMB=${ncomb},\n'
+            '     & NGRAPHS=%(ngraphs)s)\n'
+            '      REAL*8     ZERO\n'
+            '      PARAMETER (ZERO=0D0)\n'
+            '      COMPLEX*16 IMAG1\n'
+            '      PARAMETER (IMAG1=(0D0,1D0))'
+            ) % {'nexternal': replace_dict['nexternal'],
+                 'ngraphs': replace_dict['ngraphs']}
+        candidates = [
+            ('P', '      REAL*8 P(0:3,NEXTERNAL)'),
+            ('IC', '      INTEGER IC(NEXTERNAL)'),
+            ('FLAVOR', '      INTEGER FLAVOR(NEXTERNAL)'),
+            ('W', '      type(aloha) W(NWAVEFUNCS)'),
+            ('AMP', '      COMPLEX*16 AMP(NCOMB,NGRAPHS)'),
+        ]
+        if replace_dict.get('nwords_wf'):
+            # the word counts go in the prologue: either mask may be the only
+            # one the block references, and both declarations need them.
+            prologue += ('\n      INTEGER NWORDS_WF, NWORDS_AMP\n'
+                         '      PARAMETER (NWORDS_WF=%(nwords_wf)d,'
+                         ' NWORDS_AMP=%(nwords_amp)d)' % replace_dict)
+            candidates += [
+                ('CURRENT_WF_MASK',
+                 '      INTEGER*8 CURRENT_WF_MASK(NWORDS_WF)'),
+                ('CURRENT_AMP_MASK',
+                 '      INTEGER*8 CURRENT_AMP_MASK(NWORDS_AMP)'),
+            ]
+        locals_ = (
+            '      COMPLEX*16 TMP(%(wavefunctionsize)s)\n'
+            '      COMPLEX*16 DUM0,DUM1\n'
+            '      DATA DUM0, DUM1/(0D0, 0D0), (1D0, 0D0)/\n'
+            '      double precision bwcutoff'
+            ) % {'wavefunctionsize': replace_dict['wavefunctionsize']}
+        epilogue = "      include 'coupl.inc'\n      bwcutoff=15"
+        base = out_path[:-2] if out_path.endswith('.f') else out_path
+        # proc_prefix keeps the chunk names distinct when several subprocess
+        # libraries end up in one f2py module (write_f2py_splitter).
+        return {'file': '%s_getamp.f' % base,
+                'stmts': self._hel_recycling_chunk_size(),
+                'spec': {'name': '%sGET_AMP_CH' % replace_dict['proc_prefix'],
+                         'prologue': prologue,
+                         'candidates': candidates, 'locals': locals_,
+                         'epilogue': epilogue}}
+
     def _run_hel_recycle(self, orig_path, driver_path, out_path,
                          good_hels, bad_amps, bad_amps_perhel, gauge,
-                         csym_reuse=''):
+                         csym_reuse='', chunk=None):
         """Run the madevent DAG rewriter to turn matrix_orig.f + template_matrix.f
         into the recycled matrix.f at out_path. good_hels/bad_amps/bad_amps_perhel
         are string lists in the gen_ximprove format; all empty bad_* + good_hels =
@@ -8396,6 +8483,10 @@ C       so this also stays correct for split-order processes.
                                                 bad_amps_perhel, gauge=gauge)
         if csym_reuse:
             recycler.template_dict['csym_reuse'] = csym_reuse
+        if chunk:
+            recycler.chunk_file = chunk['file']
+            recycler.chunk_stmts = chunk['stmts']
+            recycler.chunk_spec = chunk['spec']
         recycler.hel_filt = True     # drop helicity combinations not in good_hels
         recycler.amp_splt = True     # P1N amplitude split (the speed-up)
         recycler.amp_filt = bool(bad_amps) or bool(bad_amps_perhel)
@@ -8464,18 +8555,22 @@ C       so this also stays correct for split-order processes.
         except Exception:
             pass
 
+        # How to split the recycled helas block out of MATRIX (no-op for a
+        # block below the threshold); shared by both rewriter passes.
+        chunk = self._hel_recycling_chunk_spec(rd, out_path)
+
         # First pass: keep every helicity combination (compute-all, exact).
         ncomb = matrix_element.get_helicity_combinations()
         good_hels = [str(i) for i in range(1, ncomb + 1)]
         self._run_hel_recycle(orig_path, driver_path, out_path,
-                              good_hels, [], [], gauge)
+                              good_hels, [], [], gauge, chunk=chunk)
 
         # Register for the finalize() warm-up + re-optimization pass.
         if not hasattr(self, '_hr_warmup'):
             self._hr_warmup = []
         self._hr_warmup.append({'dirpath': dirpath, 'orig_path': orig_path,
                                 'driver_path': driver_path, 'out_path': out_path,
-                                'ncomb': ncomb, 'gauge': gauge,
+                                'ncomb': ncomb, 'gauge': gauge, 'chunk': chunk,
                                 'ngraphs': matrix_element.get_number_of_amplitudes()})
 
     @staticmethod
@@ -8573,7 +8668,7 @@ C       so this also stays correct for split-order processes.
             self._run_hel_recycle(info['orig_path'], info['driver_path'],
                                   info['out_path'], good_hels, bad_amps,
                                   bad_amps_perhel, info['gauge'],
-                                  csym_reuse=csym_reuse)
+                                  csym_reuse=csym_reuse, chunk=info.get('chunk'))
             logger.info('hel_recycling: %s/%s good helicities, %s dead amplitudes'
                 ', %s C-parity pairs reused in %s', len(good_hels),
                 info['ncomb'], len(bad_amps),
