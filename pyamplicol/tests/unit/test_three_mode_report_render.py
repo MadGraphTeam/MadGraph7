@@ -500,18 +500,30 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
     )
     assert (
         r"\textcolor{ReportMuted}{\scriptsize gen. [s]}"
-        r" & \texttt{10.0} & \matrixpunct{|} & \texttt{10.0} &  & "
+        r" & \texttt{10.0} & \matrixpunct{|} & \texttt{10.0} & "
+        r"\bestmodecodeprefix{c} & "
         r"\bestmoderatio{ReportGreen}{0.400} & "
-        r"\matrixpunct{|} & \bestmodencprefix{\texttt{5.00}} & "
-        r"\bestmodenclabel"
+        r"\matrixpunct{|} & "
+        r"\bestmodeabsoluteprefix{\texttt{5.00}} & "
+        r"\bestmodecode{e}"
     ) in row
     assert (
-        runtime_row.count(
-            r"\bestmodeopenprefix & "
-            r"\bestmodeprimaryratio{ReportGreen}{0.100}"
-        )
-        == 2
-    )
+        r"\bestmodecodeprefix{c}\bestmodeopenprefix & "
+        r"\bestmodeprimaryratio{ReportGreen}{0.100}"
+    ) in runtime_row
+    assert (
+        r"\bestmodecodeprefix{e}\bestmodeopenprefix & "
+        r"\bestmodeprimaryratio{ReportGreen}{0.100}"
+    ) in runtime_row
+    assert (
+        r"\providecommand{\bestmodecompactprefix}[1]{"
+        r"\matrixpunct{(}\textcolor{ReportMuted}{\texttt{[x#1]}}"
+        r"\hspace{0.04in}}"
+    ) in tex
+    assert (
+        r"\providecommand{\bestmodemix}[1]{"
+        r"\begingroup\matrixsummaryfont"
+    ) in tex
     assert r">{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l" in tex
     assert (
         r"\textbf{metric} & \multicolumn{8}"
@@ -519,7 +531,8 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
     ) in tex
     assert r"\matrixcolumnheading" not in tex
     assert r"\shortstack{\textbf{n=" not in tex
-    assert r"\bestmodecode{" not in row
+    assert r"\bestmodecodeprefix{c}" in row
+    assert r"\bestmodecode{e}" in row
     assert r"\matrixtotalevaluator{" not in row
     assert r"\matrixrecurrencecore{" not in row
     generation_summary = next(
@@ -533,11 +546,14 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
         r"#1\\[-0.12em]#2\end{tabular}}"
     ) in tex
     assert r"\bestmodesummarystats{\matrixsummarystats{" in generation_summary
-    assert r"}{\bestmodemix{A:0|B:1|C:0}}" in generation_summary
-    assert r"A:0|B:0|C:1" not in generation_summary
+    assert r"}{\bestmodemix{r:0|c:1|e:0}}" in generation_summary
+    assert r"r:0|c:0|e:1" not in generation_summary
     assert generation_summary.count(
         r"\matrixsummaryratio{ReportGreen}{0.400}"
-    ) == 5
+    ) == 4
+    assert generation_summary.count(
+        r"\matrixsummaryratiohighlight{ReportGreen}{0.400}"
+    ) == 1
     assert r"\texttt{10.0}" not in generation_summary
     assert r"\texttt{5.00}" not in generation_summary
 
@@ -552,7 +568,7 @@ def test_ratio_summary_reports_five_exact_statistics_without_absolute_times() ->
         r"\matrixsummaryratio{ReportOrange}{1.00}}{"
         r"\matrixsummaryratio{ReportRed}{3.00}}{"
         r"\matrixsummaryratio{ReportRed}{2.00}}{"
-        r"\matrixsummaryratio{ReportRed}{2.00}}{"
+        r"\matrixsummaryratiohighlight{ReportRed}{2.00}}{"
         r"\matrixsummaryratio{ReportRed}{2.50}}"
     )
     assert r"\texttt{" not in summary
@@ -1717,7 +1733,8 @@ def test_amplicol_all_flow_setup_generation_ratio_is_not_comparable(
     )
     assert r"\texttt{10}" not in generation_summary
     assert r"\matrixratio{ReportRed}{1e+05}" not in tex
-    assert "n.c. (not comparable)" in tex
+    assert "setup boundary differs from the reference" in tex
+    assert "n.c." not in tex
 
 
 def test_four_line_recurrence_renders_absolute_values_without_legacy_oracle(
@@ -1754,7 +1771,8 @@ def test_four_line_recurrence_renders_absolute_values_without_legacy_oracle(
         r"\matrixncabsolute{\matrixwallabsolute{\texttt{2}}}"
     ) >= 2
     assert tex.count(r"\matrixstaticna{ReportMuted}") >= 2
-    assert "n.c. (not comparable)" in tex
+    assert "absolute quantities without a baseline ratio" in tex
+    assert "n.c." not in tex
 
 
 def test_four_line_contracted_n6_renders_without_legacy_dependency(
@@ -1783,7 +1801,8 @@ def test_four_line_contracted_n6_renders_without_legacy_dependency(
     assert r"\textbf{n=6}" in tex
     assert r"\matrixncabsolute{\texttt{12}}" in tex
     assert r"\matrixstaticna{ReportMuted}" in tex
-    assert "n.c. means not comparable" in tex
+    assert "absolute quantities without a baseline ratio" in tex
+    assert "n.c." not in tex
 
 
 def test_z_all_flow_setup_generation_ratio_is_not_comparable(
@@ -1821,6 +1840,7 @@ def test_z_all_flow_setup_generation_ratio_is_not_comparable(
     assert r"\matrixncabsolute{\texttt{10}}" in tex
     assert r"\matrixratio{ReportRed}{1e+05}" not in tex
     assert "setup boundary differs from the reference" in tex
+    assert "n.c." not in tex
 
 
 def test_cross_mode_all_flow_generation_ratio_remains_layout_matched(
