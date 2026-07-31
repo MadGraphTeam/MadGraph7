@@ -454,6 +454,23 @@ def _build_mode() -> str:
     return value
 
 
+def _release_wheel_config_settings(
+    config_settings: Mapping[str, Any] | None,
+) -> Mapping[str, Any] | None:
+    """Ask Maturin to repair Linux release wheels for the declared platform."""
+
+    if _build_mode() != "release" or sys.platform != "linux":
+        return config_settings
+    settings = dict(config_settings or {})
+    if "maturin.build-args" in settings or "build-args" in settings:
+        raise RuntimeError(
+            "Linux release wheel builds do not accept caller-supplied Maturin "
+            "build arguments"
+        )
+    settings["maturin.build-args"] = ["--compatibility", "manylinux_2_28"]
+    return settings
+
+
 def _check_dependencies(mode: str) -> None:
     command = [
         sys.executable,
@@ -1713,6 +1730,7 @@ def build_wheel(
     config_settings: Mapping[str, Any] | None = None,
     metadata_directory: str | None = None,
 ) -> str:
+    config_settings = _release_wheel_config_settings(config_settings)
     filename = _from_overlay(
         maturin.build_wheel,
         wheel_directory,

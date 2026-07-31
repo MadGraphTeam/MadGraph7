@@ -191,6 +191,61 @@ def test_prepared_model_bootstrap_strips_only_generated_payloads(
     assert not bundle.exists()
 
 
+def test_linux_release_wheel_requests_manylinux_repair(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "release")
+    monkeypatch.setattr(backend.sys, "platform", "linux")
+    observed: dict[str, object] = {}
+
+    def delegated(operation, *args, **kwargs):
+        observed["operation"] = operation
+        observed["args"] = args
+        observed["kwargs"] = kwargs
+        return "pyamplicol.whl"
+
+    monkeypatch.setattr(backend, "_from_overlay", delegated)
+
+    assert backend.build_wheel("dist") == "pyamplicol.whl"
+    assert observed == {
+        "operation": backend.maturin.build_wheel,
+        "args": (
+            "dist",
+            {"maturin.build-args": ["--compatibility", "manylinux_2_28"]},
+            None,
+        ),
+        "kwargs": {
+            "with_sdk": True,
+            "retain_release_build_info": True,
+        },
+    }
+
+
+def test_candidate_and_non_linux_wheels_preserve_frontend_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    supplied = {"frontend.setting": "preserved"}
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "candidate")
+    monkeypatch.setattr(backend.sys, "platform", "linux")
+    assert backend._release_wheel_config_settings(supplied) is supplied
+
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "release")
+    monkeypatch.setattr(backend.sys, "platform", "darwin")
+    assert backend._release_wheel_config_settings(supplied) is supplied
+
+
+def test_linux_release_wheel_rejects_frontend_maturin_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PYAMPLICOL_BUILD_MODE", "release")
+    monkeypatch.setattr(backend.sys, "platform", "linux")
+
+    with pytest.raises(RuntimeError, match="caller-supplied Maturin build arguments"):
+        backend._release_wheel_config_settings(
+            {"maturin.build-args": ["--compatibility", "off"]}
+        )
+
+
 def test_candidate_bootstrap_wheel_strips_stale_generated_assets(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
