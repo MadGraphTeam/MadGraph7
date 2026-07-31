@@ -1273,6 +1273,8 @@ fn mixed_backend_runtime_artifact() -> TestArtifact {
         "direct_arena": true,
         "source_digest": sha256(DIRECT_SYMJIT_PROGRAM.as_bytes()),
         "target": {
+            "word_bits": 64,
+            "endianness": "little",
             "triple": "test-native",
             "cpu_features": [],
         },
@@ -2020,12 +2022,31 @@ fn clean_source_structural_proof_payload_roundtrips_with_exact_declaration() {
     ] {
         let mut malformed = TestArtifact::new();
         add_structural_source_proof(&mut malformed);
-        let payload = malformed.manifest["payloads"]
-            .as_array_mut()
-            .expect("payload array")
-            .last_mut()
-            .expect("structural proof payload");
-        payload[field] = value;
+        {
+            let payload = malformed.manifest["payloads"]
+                .as_array_mut()
+                .expect("payload array")
+                .last_mut()
+                .expect("structural proof payload");
+            payload[field] = value;
+            if field == "process_id" {
+                payload["path"] = json!("processes/missing/structural-source-proof.json");
+            }
+        }
+        if field == "process_id" {
+            let destination = malformed
+                .root
+                .join("processes/missing/structural-source-proof.json");
+            fs::create_dir_all(destination.parent().expect("structural proof parent"))
+                .expect("create structural proof parent");
+            fs::rename(
+                malformed
+                    .root
+                    .join("processes/p0/structural-source-proof.json"),
+                destination,
+            )
+            .expect("move structural proof to its exact declaration");
+        }
         malformed.write_manifest();
         let error = VerifiedArtifact::open(&malformed.root).unwrap_err();
         assert!(

@@ -2641,6 +2641,8 @@ mod tests {
                 direct_arena: true,
                 source_digest: format!("{:x}", Sha256::digest(plane_program.as_bytes())),
                 target: serde_json::json!({
+                    "word_bits": 64,
+                    "endianness": "little",
                     "triple": "test-native",
                     "cpu_features": [],
                 }),

@@ -4112,6 +4112,8 @@ mod compiled_plane_arena_contract_tests {
             "direct_arena": true,
             "source_digest": "00".repeat(32),
             "target": {
+                "word_bits": 64,
+                "endianness": "little",
                 "triple": "test-native",
                 "cpu_features": [],
             },

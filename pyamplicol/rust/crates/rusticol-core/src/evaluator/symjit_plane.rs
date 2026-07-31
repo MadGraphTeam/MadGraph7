@@ -632,10 +632,6 @@ impl std::fmt::Debug for SymjitBoundPlaneKernel<'_, '_> {
 
 #[cfg(test)]
 impl SymjitBoundPlaneKernel<'_, '_> {
-    pub(crate) const fn point_count(&self) -> usize {
-        self.table.point_count
-    }
-
     pub(crate) fn execute_all(&mut self) -> RusticolResult<()> {
         self.execute_range(0, self.table.point_count)
     }

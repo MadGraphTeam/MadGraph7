@@ -2007,7 +2007,7 @@ mod tests {
             3,
             1,
             2,
-            false,
+            true,
         )
         .unwrap();
         let descriptor = eager_direct_descriptor_for_source_application_bytes(

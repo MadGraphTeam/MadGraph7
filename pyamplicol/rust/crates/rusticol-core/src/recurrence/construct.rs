@@ -2461,11 +2461,9 @@ impl MaterializedColorTargets {
             self.accepted_component_forests
                 .borrow_mut()
                 .insert(state.components().into());
-        } else {
-            if self.collect_telemetry {
-                self.acceptance_reject_count
-                    .set(self.acceptance_reject_count.get().saturating_add(1));
-            }
+        } else if self.collect_telemetry {
+            self.acceptance_reject_count
+                .set(self.acceptance_reject_count.get().saturating_add(1));
         }
         accepted
     }
@@ -12224,14 +12222,14 @@ mod tests {
             LCColorComponent::new(LCColorComponentKind::OpenString, vec![source_slot]).unwrap()
         };
         let mut sectors = vec![Vec::new(); 256];
-        for sector_index in 0..192 {
-            sectors[sector_index].push(component(10));
+        for sector in sectors.iter_mut().take(192) {
+            sector.push(component(10));
         }
-        for sector_index in 64..256 {
-            sectors[sector_index].push(component(20));
+        for sector in sectors.iter_mut().take(256).skip(64) {
+            sector.push(component(20));
         }
-        for sector_index in (0..256).step_by(2) {
-            sectors[sector_index].push(component(30));
+        for sector in sectors.iter_mut().take(256).step_by(2) {
+            sector.push(component(30));
         }
         for sector in &mut sectors[192..] {
             sector.push(component(40));
