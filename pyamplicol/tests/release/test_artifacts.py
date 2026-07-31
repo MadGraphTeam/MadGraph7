@@ -1323,6 +1323,20 @@ def test_short_repository_root_is_matched_only_at_a_path_token_boundary(
     )
 
 
+def test_temporary_path_marker_is_matched_only_at_a_path_token_boundary() -> None:
+    marker = b"/tmp/"
+
+    assert not artifacts._contains_forbidden_path(
+        b"/pyamplicol/checkout/.artifacts/dev-install/tmp/build/source.rs",
+        marker,
+    )
+    assert artifacts._contains_forbidden_path(
+        b"compiled from /tmp/build/source.rs",
+        marker,
+    )
+    assert artifacts._contains_forbidden_path(b"\0/tmp/build/source.rs", marker)
+
+
 def test_release_allows_rust_standard_library_backtrace_source_paths(
     tmp_path: Path,
 ) -> None:

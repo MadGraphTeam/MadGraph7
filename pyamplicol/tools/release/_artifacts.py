@@ -872,22 +872,18 @@ def _sanitized_native_bytes(data: bytes, *, allow_local_rustup: bool) -> bytes:
 def _contains_forbidden_path(data: bytes, marker: bytes) -> bool:
     """Return whether *marker* occurs as the forbidden path it represents.
 
-    Most forbidden markers include enough context to use a direct substring
-    check.  The repository root is environment-dependent, however, and a
-    manylinux build conventionally mounts the checkout at ``/io``.  Matching
-    that three-byte root anywhere would reject ordinary paths such as
-    ``.../library/std/src/io/error.rs``.  Require the repository marker to
-    begin a new path token while still rejecting ``/io/...`` at the start of a
-    string or after punctuation, whitespace, or a NUL byte.
+    Require every absolute marker to begin a new path token. A direct
+    substring check would misclassify deterministic remapped paths such as
+    ``/pyamplicol/checkout/.artifacts/dev-install/tmp/...`` as host ``/tmp``
+    paths, and a manylinux checkout rooted at ``/io`` would collide with
+    ordinary ``.../src/io/...`` paths. Real absolute paths remain rejected at
+    the start of a string or after punctuation, whitespace, or a NUL byte.
     """
 
     needle = marker.lower()
     if not needle:
         return False
     lowered = data.lower()
-    if marker != _REPOSITORY_PATH_MARKER:
-        return needle in lowered
-
     offset = 0
     while (index := lowered.find(needle, offset)) >= 0:
         if index == 0 or lowered[index - 1] not in _PATH_TOKEN_BYTES:
