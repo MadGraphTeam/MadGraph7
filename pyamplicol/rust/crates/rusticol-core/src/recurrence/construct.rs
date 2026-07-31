@@ -1410,7 +1410,9 @@ struct PreparedTransition {
     input_exchange_factor: Option<ExactComplexRational>,
     transition_exact_factor: ExactComplexRational,
     contraction_exact_factor: ExactComplexRational,
-    output_factor: ExactComplexRational,
+    coupling_authenticated: bool,
+    binding_coupling: ExactComplexRational,
+    output_factor_source: u8,
     result_flavour: PreparedFlavourFlow,
     quantum_semantic_digest: SemanticDigest,
     witnesses: Box<[PreparedTransitionWitness]>,
@@ -1470,11 +1472,13 @@ impl PreparedTransition {
             .get(row.color_contraction_template_id as usize)
             .copied()
             .ok_or_else(|| invalid("transition color contraction is absent"))?;
-        let binding_coupling = authenticate_runtime_coupling(
-            catalog,
-            quantum,
+        let quantum_coupling = catalog.factor(
+            quantum.exact_coupling_factor_id,
+            "transition quantum-flow coupling",
+        )?;
+        let binding_coupling = catalog.factor(
             row.binding_coupling_factor_id,
-            "transition",
+            "transition binding coupling",
         )?;
         let canonical_input_order = match catalog.u32_sequence(
             row.canonical_input_order_sequence_id,
@@ -1496,8 +1500,6 @@ impl PreparedTransition {
         let transition_exact_factor = catalog.factor(row.exact_factor_id, "transition exact")?;
         let contraction_exact_factor =
             catalog.factor(contraction.exact_coefficient_factor_id, "color contraction")?;
-        let output_factor =
-            output_factor_from_binding(binding_coupling, row.output_factor_source, "transition")?;
         let result_flavour = PreparedFlavourFlow::new(quantum, catalog)?;
         let quantum_semantic_digest =
             catalog.digest(quantum.semantic_digest_id, "quantum-flow semantic")?;
@@ -1525,7 +1527,9 @@ impl PreparedTransition {
             input_exchange_factor,
             transition_exact_factor,
             contraction_exact_factor,
-            output_factor,
+            coupling_authenticated: quantum_coupling == binding_coupling,
+            binding_coupling,
+            output_factor_source: row.output_factor_source,
             result_flavour,
             quantum_semantic_digest,
             witnesses,
@@ -1576,6 +1580,19 @@ impl PreparedTransition {
 
     fn result_flavour_flow(&self, parents: &[&CurrentCoreKey; 2]) -> Vec<i32> {
         self.result_flavour.apply(parents)
+    }
+
+    fn output_factor(&self) -> RusticolResult<ExactComplexRational> {
+        if !self.coupling_authenticated {
+            return Err(invalid(
+                "transition binding coupling does not match its quantum-flow coupling witness",
+            ));
+        }
+        output_factor_from_binding(
+            self.binding_coupling,
+            self.output_factor_source,
+            "transition",
+        )
     }
 
     fn structural_transition(&self) -> RusticolResult<StructuralTransition> {
@@ -5765,7 +5782,7 @@ fn add_transition_contributions(
         prepared.transition_exact_factor,
         exchange_factor,
         prepared.contraction_exact_factor,
-        prepared.output_factor,
+        prepared.output_factor()?,
     ])?;
     let parent_reflections = [
         currents[parent_ids[0] as usize].reflection.clone(),
@@ -9291,6 +9308,7 @@ fn merged_momentum(
     CanonicalMomentumLinearForm::new(terms)
 }
 
+#[cfg(test)]
 fn authenticate_runtime_coupling(
     catalog: &TemplateCatalog<'_>,
     quantum: QuantumFlowRow,
@@ -10834,7 +10852,7 @@ mod tests {
             )
             .unwrap();
             assert_eq!(
-                prepared.output_factor,
+                prepared.output_factor().unwrap(),
                 output_factor_from_binding(
                     binding_coupling,
                     prepared.row.output_factor_source,
@@ -10847,7 +10865,7 @@ mod tests {
                     prepared.transition_exact_factor,
                     prepared_exchange_factor,
                     prepared.contraction_exact_factor,
-                    prepared.output_factor,
+                    prepared.output_factor().unwrap(),
                 ])
                 .unwrap(),
                 multiply_factors(&[
@@ -12479,6 +12497,30 @@ mod tests {
             )
             .unwrap(),
             ExactComplexRational::new(ExactRational::new(-5, 7).unwrap(), ExactRational::ZERO,),
+        );
+    }
+
+    #[test]
+    fn prepared_transition_defers_reachable_only_output_factor_rejection() {
+        let mut template = scalar_reference_template();
+        template.transitions[0].output_factor_source = OutputFactorSource::CouplingImag as u8;
+        let catalog = TemplateCatalog::new(&template).unwrap();
+        let prepared = PreparedTransitionCatalog::new(&template, &catalog).unwrap();
+        let transition = prepared
+            .rows_by_state_pair
+            .values()
+            .next()
+            .unwrap()
+            .first()
+            .unwrap();
+        assert_eq!(
+            transition.output_factor().unwrap_err(),
+            output_factor_from_binding(
+                ExactComplexRational::ONE,
+                OutputFactorSource::CouplingImag as u8,
+                "transition",
+            )
+            .unwrap_err()
         );
     }
 
