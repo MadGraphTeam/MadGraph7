@@ -37,6 +37,7 @@ CF2PY INTENT(IN) :: FLAV_IDX
       REAL*8 TS(NCOMB)
 C     I is the implied-DO variable of the recycled NHEL DATA statements below.
       INTEGER I, K, IDEN
+      INTEGER JC(NEXTERNAL)
       INTEGER FLAVOR(NEXTERNAL)
       INTEGER %(proc_prefix)sBROKEN_SYM
       INTEGER NHEL(0:NEXTERNAL,NCOMB)
@@ -48,9 +49,12 @@ C ----------
 C BEGIN CODE
 C ----------
       ANS = 0D0
-      IF (FLAV_IDX.LT.1 .OR. FLAV_IDX.GT.NFLAV) RETURN
+%(hr_helcheck)s
       CALL %(proc_prefix)sGET_FLAVOR(FLAV_IDX, FLAVOR)
-      CALL %(proc_prefix)sMATRIX(P, FLAV_IDX, TS)
+      DO K = 1, NEXTERNAL
+         JC(K) = +1
+      ENDDO
+      CALL %(proc_prefix)sMATRIX(P, JC, FLAV_IDX, TS)
       DO K = 1, NCOMB
          IF (HELALLOW(NHEL(0,K)).EQ.HEL) ANS = ANS + TS(K)
       ENDDO
@@ -88,8 +92,12 @@ CF2PY INTENT(IN) :: FLAV_IDX
 C     I is the implied-DO variable of the recycled NHEL DATA statements below.
       INTEGER I, K, L, M, IDEN
       LOGICAL SELECTED, FOUNDIT
+      INTEGER JC(NEXTERNAL)
+C     Reduced flavor index: FLAV_IDX with its crossing part stripped.
+      INTEGER FLAV_USE
       INTEGER FLAVOR(NEXTERNAL)
       INTEGER %(proc_prefix)sBROKEN_SYM
+%(hr_cross_decl)s
 C     For a 1>N process BEAMTWO_HELAVGFACTOR would be set to 1.
       INTEGER BEAMS_HELAVGFACTOR(2)
       DATA (BEAMS_HELAVGFACTOR(K),K=1,2)/%(beamone_helavgfactor)d,%(beamtwo_helavgfactor)d/
@@ -105,12 +113,19 @@ C ----------
 C     FLAV_IDX out of range means the requested flavor is not an allowed
 C     combination: its matrix element is identically zero.
       ANS = 0D0
-      IF (FLAV_IDX.LT.1 .OR. FLAV_IDX.GT.NFLAV) RETURN
-      CALL %(proc_prefix)sGET_FLAVOR(FLAV_IDX, FLAVOR)
+%(hr_cross_decode)s
+      CALL %(proc_prefix)sGET_FLAVOR(FLAV_USE, FLAVOR)
+      DO K = 1, NEXTERNAL
+         JC(K) = +1
+      ENDDO
+%(hr_cross_apply)s
 C     The recycled MATRIX returns the color-summed |M|^2 for every (good)
 C     helicity combination at once in TS; the dead combinations were dropped at
-C     generation time, so there is no runtime good-helicity filter here.
-      CALL %(proc_prefix)sMATRIX(P, FLAV_IDX, TS)
+C     generation time, so there is no runtime good-helicity filter here. Under a
+C     crossing the baked helicity rows play the role of the CROSSED
+C     configurations, which is why the warm-up measures the good rows of every
+C     crossing and the recycled table is their union.
+%(hr_matrix_call)s
       DO K = 1, NCOMB
 C        Beam polarization: keep only the rows whose per-leg helicities are in
 C        the requested set (same test as IS_BORN_HEL_SELECTED, evaluated on the
@@ -135,7 +150,7 @@ C        recycled table).
          ENDIF
          ANS = ANS + TS(K)
       ENDDO
-      ANS = ANS / DBLE(IDEN) * %(proc_prefix)sBROKEN_SYM(FLAVOR)
+%(hr_iden_line)s
       DO L = 1, NINITIAL
          IF (POLARIZATIONS(L,0).NE.-1) THEN
             ANS = ANS * BEAMS_HELAVGFACTOR(L)
@@ -145,7 +160,7 @@ C        recycled table).
       END
 
 
-      SUBROUTINE %(proc_prefix)sMATRIX(P, FLAV_IDX, TS)
+      SUBROUTINE %(proc_prefix)sMATRIX(P, IC, FLAV_IDX, TS)
       use model_object
       use aloha_object
 C
@@ -170,7 +185,10 @@ C
 C
 C ARGUMENTS
 C
+C     P and IC must ALREADY be crossed and FLAV_IDX ALREADY reduced to
+C     1..NFLAV: SMATRIX applies the crossing once, above.
       REAL*8 P(0:3,NEXTERNAL)
+      INTEGER IC(NEXTERNAL)
       INTEGER FLAV_IDX
       REAL*8 TS(NCOMB)
 C
@@ -247,6 +265,9 @@ ${csym_reuse}
 
 
 %(flavor_pdg_function)s
+
+
+%(crossing_routines)s
 
 
       SUBROUTINE %(proc_prefix)sGET_DENSITY(P, POS, N_CHANGING, ALLOW_HEL,

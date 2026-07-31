@@ -21,7 +21,7 @@ C     per-leg helicity ranges before it parses the wavefunction calls.
 %(helicity_lines)s
       END
 C
-      DOUBLE PRECISION FUNCTION %(proc_prefix)sMATRIX(P, NHEL, FLAV_IDX)
+      DOUBLE PRECISION FUNCTION %(proc_prefix)sMATRIX(P, NHEL, IC, FLAV_IDX)
       use model_object
       use aloha_object
 C
@@ -47,9 +47,11 @@ C
 C ARGUMENTS
 C
       REAL*8 P(0:3,NEXTERNAL)
-      INTEGER NHEL(NEXTERNAL)
-C     Reduced flavor index (1..NFLAV). FLAVOR(NEXTERNAL) is rebuilt from it by
-C     the flavor block below, exactly as in the standard GET_AMP.
+C     P, NHEL and IC must ALREADY be crossed (the warm-up applies the crossing
+C     once per point, as SMATRIX does), and FLAV_IDX must ALREADY be reduced to
+C     1..NFLAV. FLAVOR(NEXTERNAL) is rebuilt from it by the flavor block below,
+C     exactly as in the standard GET_AMP.
+      INTEGER NHEL(NEXTERNAL), IC(NEXTERNAL)
       INTEGER FLAV_IDX
       INTEGER FLAVOR(NEXTERNAL)
 C
@@ -120,3 +122,11 @@ C ----------
       ENDDO
       %(proc_prefix)sMATRIX = %(proc_prefix)sMATRIX/%(proc_prefix)sDENOM
       END
+
+
+C     Crossing machinery, also emitted here so the warm-up probe (which links
+C     matrix_orig.f alone) can enumerate the crossings and measure the good
+C     helicities of each. Empty when the process was generated without crossing
+C     symmetry. matrix_orig.f and the recycled matrix.f are never linked
+C     together, so the duplicate definitions never clash.
+%(crossing_routines)s

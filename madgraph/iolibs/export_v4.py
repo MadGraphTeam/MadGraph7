@@ -7763,11 +7763,7 @@ C       so this also stays correct for split-order processes.
         # pins a specific s-channel, which no crossing of them preserves. This
         # is decided here rather than in the interface so that one constrained
         # `add process` does not disable crossing for the unconstrained ones.
-        # The recycled MATRIX bakes its helicity rows and takes no IC, so it
-        # cannot serve a crossed FLAV_IDX yet: crossing is turned off for it
-        # (the crossed subprocesses are then generated as separate matrix
-        # elements, exactly as with --use_crossing=False).
-        use_crossing = self.opt['use_crossing'] and not hel_recycling and \
+        use_crossing = self.opt['use_crossing'] and \
             not any(self.breaks_crossing_symmetry(proc)
                     for proc in matrix_element.get('processes'))
 
@@ -7804,12 +7800,12 @@ C       so this also stays correct for split-order processes.
         # splitOrders) have no IC to read and must keep the bare flag. Mirror
         # the template choice made further down; split_orders is only fetched
         # again here, which is side-effect free.
-        # --hel_recycling writes its own templates (no IC argument reaches the
-        # recycled MATRIX yet), so it keeps the bare NSF/NSV flag.
+        # --hel_recycling writes its own templates, whose MATRIX also takes the
+        # crossed IC built by APPLY_CROSSING, so it threads IC just the same.
         fortran_model.use_crossing_ic = (
             use_crossing
-            and not hel_recycling
-            and self.matrix_template == 'matrix_standalone_v4.inc'
+            and (hel_recycling
+                 or self.matrix_template == 'matrix_standalone_v4.inc')
             and self.opt['export_format'] not in ('standalone_msP',
                                                   'standalone_msF',
                                                   'matchbox',
@@ -8167,6 +8163,8 @@ C       so this also stays correct for split-order processes.
         # left empty when the process was generated with --use_crossing=False.
         self.fill_crossing_replace_dict(matrix_element, replace_dict,
                                         use_crossing)
+        # The recycled driver has its own (smaller) set of crossing holes.
+        self.fill_crossing_replace_dict_hr(replace_dict, use_crossing)
 
         # GET_PDG_FOR_FLAVOR (extended FLAV_IDX -> per-leg PDG). Must come after
         # fill_crossing_replace_dict, which decides whether it decodes a
@@ -8239,6 +8237,121 @@ C       so this also stays correct for split-order processes.
     #===========================================================================
     # helicity recycling (--hel_recycling)
     #===========================================================================
+    def fill_crossing_replace_dict_hr(self, replace_dict, use_crossing):
+        """Fill the crossing holes of matrix_standalone_hel_v4.inc.
+
+        The recycled driver cannot reuse the standard SMATRIX snippets: it has
+        no NHEL(NEXTERNAL,NCOMB) table to permute (its helicity rows are baked
+        into the HELAS calls and already play the role of the CROSSED
+        configurations), so it only needs the crossed momenta and NSF flags.
+        The union over crossings of the good rows is what makes that valid, and
+        it is the warm-up that measures it.
+
+        Requires proc_prefix and nflav to be set already.
+        """
+        prefix = replace_dict['proc_prefix']
+        if not use_crossing:
+            replace_dict.update({
+                'hr_cross_decl':
+                    'C     Generated without crossing symmetry: FLAV_IDX is a'
+                    ' plain flavor index.',
+                'hr_cross_decode':
+                    '      FLAV_USE = FLAV_IDX\n'
+                    '      IF (FLAV_IDX.LT.1 .OR. FLAV_IDX.GT.NFLAV) RETURN',
+                'hr_cross_apply': '',
+                'hr_matrix_call':
+                    '      CALL %sMATRIX(P, JC, FLAV_USE, TS)' % prefix,
+                'hr_iden_line':
+                    '      ANS=ANS/DBLE(IDEN)*%sBROKEN_SYM(FLAVOR)' % prefix,
+                'hr_helcheck':
+                    '      IF (FLAV_IDX.LT.1 .OR. FLAV_IDX.GT.NFLAV) RETURN',
+                'hr_warmup_ncross': '1',
+                'hr_warmup_cross_decl': '',
+                'hr_warmup_cross_skip': '',
+                'hr_warmup_cross_apply': '',
+            })
+            return
+
+        replace_dict.update({
+            'hr_cross_decl':
+                'C     CROSSUSE is the crossing carried by FLAV_IDX and IDENUSE the'
+                ' initial\nC     state spin*color average of the process it crosses'
+                ' into. PUSE/ICUSE are\nC     the crossed momenta and NSF flags,'
+                ' built once per SMATRIX call.\n'
+                '      INTEGER IDENUSE, CROSSUSE\n'
+                '      INTEGER %(p)sGET_SPINCOL_CROSS\n'
+                '      INTEGER %(p)sGET_IDENT_CROSS\n'
+                '      REAL*8 PUSE(0:3,NEXTERNAL)\n'
+                '      INTEGER ICUSE(NEXTERNAL)\n'
+                'C     APPLY_CROSSING permutes a helicity row together with the'
+                ' momenta; the\nC     recycled driver has no row to permute, so it'
+                ' feeds a dummy one.\n'
+                '      INTEGER NHELDUM(NEXTERNAL), NHELOUT(NEXTERNAL)\n'
+                '      INTEGER DUMFLAV' % {'p': prefix},
+            'hr_cross_decode':
+                'C     CROSS = (FLAV_IDX-1)/NFLAV is the crossing to apply. IDENUSE'
+                ' is 0 for a\nC     crossing that cannot be applied, whose matrix'
+                ' element is identically zero.\n'
+                '      CROSSUSE = (FLAV_IDX-1) / NFLAV\n'
+                '      FLAV_USE = MOD(FLAV_IDX-1, NFLAV) + 1\n'
+                '      IF (FLAV_IDX.LT.1) RETURN\n'
+                '      IDENUSE = %(p)sGET_SPINCOL_CROSS(CROSSUSE)\n'
+                '      IF (IDENUSE.EQ.0) RETURN' % {'p': prefix},
+            'hr_cross_apply':
+                '      IF (CROSSUSE.NE.0) THEN\n'
+                '        NHELDUM(:) = 0\n'
+                '        CALL %(p)sAPPLY_CROSSING(FLAV_IDX, P, NHELDUM, JC,\n'
+                '     &   PUSE, NHELOUT, ICUSE, DUMFLAV)\n'
+                '      ENDIF' % {'p': prefix},
+            'hr_matrix_call':
+                '      IF (CROSSUSE.EQ.0) THEN\n'
+                '        CALL %(p)sMATRIX(P, JC, FLAV_USE, TS)\n'
+                '      ELSE\n'
+                '        CALL %(p)sMATRIX(PUSE, ICUSE, FLAV_USE, TS)\n'
+                '      ENDIF' % {'p': prefix},
+            'hr_iden_line':
+                'C     Uncrossed: IDEN carries the representative identical-particle'
+                '\nC     factor and BROKEN_SYM corrects it per flavor. Crossed:'
+                ' rebuild the\nC     denominator as initial state spin*color (per'
+                ' crossing) times the\nC     identical final state factor of the'
+                ' actual crossed flavors.\n'
+                '      IF (CROSSUSE.EQ.0) THEN\n'
+                '        ANS=ANS/DBLE(IDEN)*%(p)sBROKEN_SYM(FLAVOR)\n'
+                '      ELSE\n'
+                '        ANS=ANS/DBLE(IDENUSE*%(p)sGET_IDENT_CROSS(CROSSUSE,\n'
+                '     &   FLAVOR))\n'
+                '      ENDIF' % {'p': prefix},
+            'hr_helcheck':
+                'C     A crossed FLAV_IDX would need the base row that maps onto'
+                ' each baked\nC     (crossed) row, which the recycled table does not'
+                ' carry.\n'
+                '      IF (FLAV_IDX.GT.NFLAV) THEN\n'
+                "        WRITE(*,*) 'SMATRIXHEL: a crossed FLAV_IDX is not"
+                " supported with --hel_recycling'\n"
+                '        STOP 1\n'
+                '      ENDIF\n'
+                '      IF (FLAV_IDX.LT.1) RETURN',
+            'hr_warmup_ncross': '(NEXTERNAL+1)*(NEXTERNAL+1)',
+            'hr_warmup_cross_decl':
+                '      INTEGER %(p)sGET_SPINCOL_CROSS\n'
+                '      EXTERNAL %(p)sGET_SPINCOL_CROSS' % {'p': prefix},
+            'hr_warmup_cross_skip':
+                'C         Skip a crossing that cannot be applied: its matrix'
+                ' element is\nC         identically zero, so it needs no helicity'
+                ' row.\n'
+                '          IF (CROSS.NE.0) THEN\n'
+                '            IF (%(p)sGET_SPINCOL_CROSS(CROSS).EQ.0) CYCLE\n'
+                '          ENDIF' % {'p': prefix},
+            'hr_warmup_cross_apply':
+                'C           Cross the momenta and the NSF flags exactly as'
+                ' SMATRIX does.\n'
+                '            IF (CROSS.NE.0) THEN\n'
+                '              NHELDUM(:) = 0\n'
+                '              CALL %(p)sAPPLY_CROSSING(FLAV_EXT, P, NHELDUM, JC,\n'
+                '     &         PUSE, NHELOUT, ICUSE, DUMFLAV)\n'
+                '            ENDIF' % {'p': prefix},
+        })
+
     def _run_hel_recycle(self, orig_path, driver_path, out_path,
                          good_hels, bad_amps, bad_amps_perhel, gauge):
         """Run the madevent DAG rewriter to turn matrix_orig.f + template_matrix.f

@@ -22,18 +22,31 @@ C**************************************************************************
       PARAMETER (NFLAV=%(nflav)d)
       INTEGER    NPS
       PARAMETER (NPS=16)
+C     Phase-space points per CROSSED configuration (the uncrossed one keeps the
+C     full NPS): a crossing only adds rows to the union, so a coarser scan is
+C     enough and keeps the probe cheap when NCROSS is large.
+      INTEGER    NPSCROSS
+      PARAMETER (NPSCROSS=4)
+C     Crossing codes to scan. 1 (identity only) when the process was generated
+C     without crossing symmetry.
+      INTEGER    NCROSS
+      PARAMETER (NCROSS=%(hr_warmup_ncross)s)
       REAL*8     LIMHEL
       PARAMETER (LIMHEL=1D-12)
       REAL*8     ZERO
       PARAMETER (ZERO=0D0)
 C     LOCAL
-      INTEGER I, IHEL, ITRY, IFLV
+      INTEGER I, IHEL, ITRY, IFLV, CROSS, NPSUSE, FLAV_EXT
       REAL*8 P(0:3,NEXTERNAL), PMASS(NEXTERNAL), TOTALMASS
+      REAL*8 PUSE(0:3,NEXTERNAL)
+      INTEGER JC(NEXTERNAL), ICUSE(NEXTERNAL)
+      INTEGER NHELDUM(NEXTERNAL), NHELOUT(NEXTERNAL), DUMFLAV
       REAL*8 SQRTS, T, ANS, TSARR(NCOMB)
       LOGICAL GOODHEL(NCOMB)
 C     EXTERNAL
       DOUBLE PRECISION %(proc_prefix)sMATRIX
       EXTERNAL %(proc_prefix)sMATRIX
+%(hr_warmup_cross_decl)s
 C     SHARED WITH matrix_orig.f
       INTEGER NHEL(NEXTERNAL, NCOMB)
       COMMON/%(proc_prefix)sHEL_TABLE/NHEL
@@ -58,25 +71,41 @@ C-----
       ENDDO
 
 C     Loop over every flavor index: a helicity that contributes for ANY flavor
-C     must be kept, since one recycled matrix.f serves them all.
+C     must be kept, since one recycled matrix.f serves them all. Same for the
+C     crossings: the recycled table bakes its helicity rows, and under a
+C     crossing those rows are used as the CROSSED configurations, so a row that
+C     any crossing needs must survive. Measuring each crossing here is what
+C     makes the recycled matrix.f a valid union over all of them.
       DO IFLV=1, NFLAV
-        DO ITRY=1, NPS
-          IF (NINCOMING.EQ.1) THEN
-            SQRTS = PMASS(1)
-          ELSE
-            SQRTS = 500D0 + 250D0*ITRY
-            IF (SQRTS.LE.2D0*TOTALMASS) SQRTS = 2.1D0*TOTALMASS + 100D0*ITRY
-          ENDIF
-          CALL GET_MOMENTA(SQRTS, PMASS, P)
-          ANS = 0D0
-          DO IHEL=1, NCOMB
-            %(proc_prefix)sCUR_IHEL = IHEL
-            T = %(proc_prefix)sMATRIX(P, NHEL(1,IHEL), IFLV)
-            TSARR(IHEL) = T
-            ANS = ANS + T
-          ENDDO
-          DO IHEL=1, NCOMB
-            IF (DABS(TSARR(IHEL)) .GT. ANS*LIMHEL/NCOMB) GOODHEL(IHEL)=.TRUE.
+        DO CROSS=0, NCROSS-1
+          FLAV_EXT = CROSS*NFLAV + IFLV
+%(hr_warmup_cross_skip)s
+          NPSUSE = NPS
+          IF (CROSS.NE.0) NPSUSE = NPSCROSS
+          DO ITRY=1, NPSUSE
+            IF (NINCOMING.EQ.1) THEN
+              SQRTS = PMASS(1)
+            ELSE
+              SQRTS = 500D0 + 250D0*ITRY
+              IF (SQRTS.LE.2D0*TOTALMASS) SQRTS = 2.1D0*TOTALMASS + 100D0*ITRY
+            ENDIF
+            CALL GET_MOMENTA(SQRTS, PMASS, P)
+            DO I=1, NEXTERNAL
+              JC(I) = +1
+            ENDDO
+            PUSE(:,:) = P(:,:)
+            ICUSE(:) = JC(:)
+%(hr_warmup_cross_apply)s
+            ANS = 0D0
+            DO IHEL=1, NCOMB
+              %(proc_prefix)sCUR_IHEL = IHEL
+              T = %(proc_prefix)sMATRIX(PUSE, NHEL(1,IHEL), ICUSE, IFLV)
+              TSARR(IHEL) = T
+              ANS = ANS + T
+            ENDDO
+            DO IHEL=1, NCOMB
+              IF (DABS(TSARR(IHEL)) .GT. ANS*LIMHEL/NCOMB) GOODHEL(IHEL)=.TRUE.
+            ENDDO
           ENDDO
         ENDDO
       ENDDO
