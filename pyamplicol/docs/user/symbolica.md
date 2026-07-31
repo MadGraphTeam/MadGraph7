@@ -52,15 +52,15 @@ artifact target triple matches the runtime and every recorded CPU feature is
 available. Rusticol rejects incompatible target metadata before loading the
 library. Generating any of these evaluator payloads still uses Symbolica.
 
-This is the deployment path for the Python, Rust, C++, and Fortran APIs. Rust,
-C++, and Fortran are f64-only. Independent runtime handles can execute
-concurrently even when the artifact was generated in restricted mode; one
-mutable handle itself must not be called concurrently.
+This is the deployment path for the Python, C11, C++17, Fortran 2008, and Rust
+2021 APIs. C11, C++17, Fortran 2008, and Rust 2021 are f64-only. Independent
+runtime handles can execute concurrently even when the artifact was generated
+in restricted mode; one mutable handle itself must not be called concurrently.
 
 The distinction is precision- and payload-based. Python precision requests
 other than 16 load retained Symbolica evaluator state and therefore require the
-Symbolica Python package and applicable runtime license. The Rust, C++, and
-Fortran APIs expose only the Symbolica-independent f64 path.
+Symbolica Python package and applicable runtime license. The C11, C++17,
+Fortran 2008, and Rust 2021 APIs expose only the Symbolica-independent f64 path.
 
 ## Request A License
 

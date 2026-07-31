@@ -13,13 +13,24 @@ python -m pip install pyamplicol
 ```
 
 The planned `cp311-abi3` wheels support Python 3.11 and newer on macOS arm64,
-macOS x86_64, and manylinux x86_64. Wheel users do not need Rust. A C++ or
-Fortran compiler is needed only when compiling a native consumer against the
-included Rusticol SDK.
+macOS x86_64, and manylinux x86_64. Wheel users do not need Rust. A C, C++,
+Fortran, or Rust compiler is needed only when compiling that language's native
+consumer against the included Rusticol SDK.
 
 `pyamplicol==0.1.0` is not published at this milestone. See
 [Release Status](release-status.md) before treating a locally built artifact
 as a release.
+
+An installed wheel can also materialize a fresh profiling campaign:
+
+```console
+pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
+```
+
+Its launcher uses installed resources and runs headlessly when the optional
+Ratatui bindings are absent. An original-AmpliCol checkout is needed only when
+that reference backend is selected; provide it to the copied launcher's `run`
+command as `--original-amplicol /path/to/clean/complete/checkout`.
 
 ## Source Install
 
@@ -30,10 +41,10 @@ python -m pip install .
 ```
 
 This runs the same in-tree PEP 517/Maturin backend used for release artifacts
-and resolves published dependencies only. It requires Python 3.11+, Rust 1.89+
-and a C/C++ toolchain. The build checks the release dependency contract and
-fails clearly if a required published version or compatibility state is not
-ready; it does not substitute contributor inputs.
+and resolves exact published packages/crates plus SymJIT 2.22.0 from its
+official repository at the immutable revision recorded in the release lock. It
+requires Python 3.11+, Rust 1.89+ and a C/C++ toolchain. The build checks that
+release dependency contract and does not substitute contributor inputs.
 
 An unpacked release source distribution supports the same command:
 
@@ -82,8 +93,7 @@ publishing.
 
 ## Contributor Environment
 
-While exact release dependencies are gated, prepare the isolated managed
-environment with:
+For contributor development, prepare the isolated managed environment with:
 
 ```console
 just dev-install
@@ -113,7 +123,8 @@ published-wheel imports are unchanged.
 
 The flake is a source-checkout contributor tool rather than part of the PyPI
 source distribution, because that distribution excludes the candidate
-dependency installer and accepts published dependencies only.
+dependency installer and accepts only the release-locked published
+packages/crates plus the official immutable SymJIT Git revision.
 
 This mode uses pinned candidate dependency inputs and marks its wheels
 non-publishable. To omit the optional independent legacy-Fortran oracle:

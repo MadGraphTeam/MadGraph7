@@ -23,8 +23,10 @@ inputs or intentional input/output aliases.
 
 This boundary supersedes the former private-fork DirectApplication and
 DirectTable design. The complete migration and acceptance gates are recorded
-in
-[`SYMJIT_CRATE_2_22_ARENA_MIGRATION_PLAN.md`](SYMJIT_CRATE_2_22_ARENA_MIGRATION_PLAN.md).
+in the saved
+[`plan`](SYMJIT_CRATE_2_22_ARENA_MIGRATION_PLAN.md), with implementation and
+verification status in the
+[`migration report`](SYMJIT_CRATE_2_22_ARENA_MIGRATION_REPORT.md).
 
 ## Standard P-kernel model
 
@@ -85,7 +87,7 @@ destination only when all of the following are proven:
 5. the invocation has no unresolved alias or fanout hazard.
 
 The P-kernel epilogue then performs the identity overwrite directly into the
-destination plane. Compiled fused stages use this form for their authenticated
+destination plane. Compiled fused stages use this form for their validated
 disjoint outputs. Recurrence rows and eager attachments may also use it for a
 single proven-safe identity overwrite.
 
@@ -103,7 +105,7 @@ scheduling semantics explicit and testable.
 ## Validation and trust boundary
 
 Serialized SymJIT applications are trusted compiler inputs, not a sandbox.
-Before binding them, pyAmpliCol and Rusticol authenticate:
+Before binding them, pyAmpliCol and Rusticol validate:
 
 - application and plane-binding ABI identities;
 - split-complex descriptor order and exact plane counts;

@@ -23,11 +23,12 @@ unchanged.
 
 ## Dependency Modes
 
-Release mode reads `dependencies/release-lock.toml` and accepts only exact
-published package/crate versions and compatible ABI metadata. An immutable Git
-revision is permitted only when both the release lock and canonical
-`Cargo.lock` name the same repository and full commit. Path, editable,
-floating-Git, and candidate dependencies are forbidden.
+Release mode reads `dependencies/release-lock.toml` and accepts exact published
+package/crate versions plus SymJIT 2.22.0 from the official
+`siravan/symjit-crate` repository at immutable revision
+`d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7`. The release lock and canonical
+`Cargo.lock` must name that same repository and full commit. Other Git, path,
+editable, floating, and candidate dependencies are forbidden.
 
 Candidate mode is available only from a full source checkout. It reads the
 repository-only contributor contract and produces explicitly non-publishable
@@ -78,7 +79,8 @@ The wheel contains:
 
 - the typed Python package and one native extension;
 - model assets with their provenance and content manifest;
-- packaged examples and Python/Rust/C++/Fortran API templates;
+- packaged examples, an empty profiling-campaign workspace, and
+  Python/C11/C++17/Fortran 2008/Rust 2021 API templates;
 - direct-JIT f64 self-test data;
 - license and third-party notice files;
 - the target-specific Rusticol C ABI archive, C/C++ headers, Fortran module
@@ -111,7 +113,8 @@ the package features that verify those payloads against accidental mutation.
 ## Source Distribution
 
 One retained source distribution is the source of all release wheels. It must
-build with `python -m pip install .` using published dependencies and contain:
+build with `python -m pip install .` using release-locked published
+packages/crates plus the official immutable SymJIT Git revision and contain:
 
 - Python/Rust/build sources and lockfiles;
 - schemas, tests, examples, docs, and release tooling;
@@ -144,7 +147,7 @@ consumer environment. Validation includes:
 - `twine check` and platform/native-dependency audits;
 - import, CLI, direct-JIT f64 self-test, and packaged-example checks;
 - Python total/resolved runtime behavior with Symbolica imports blocked;
-- C++17, Fortran 2008, and generated Rust f64 driver compilation/execution;
+- C11, C++17, Fortran 2008, and Rust 2021 f64 driver compilation/execution;
 - model-parameter card and direct UFO-parameter override behavior;
 - the independent physics oracle and required regression gates.
 

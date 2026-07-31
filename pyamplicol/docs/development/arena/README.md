@@ -4,6 +4,15 @@
 This directory groups the design, implementation, and validation record for
 the eager and compiled Direct-Arena work.
 
+## Current SymJIT migration
+
+- [`SYMJIT_UPSTREAM_SEPARATION.md`](SYMJIT_UPSTREAM_SEPARATION.md) describes the
+  active upstream dependency and ownership boundary.
+- [`SYMJIT_CRATE_2_22_ARENA_MIGRATION_PLAN.md`](SYMJIT_CRATE_2_22_ARENA_MIGRATION_PLAN.md)
+  preserves the migration plan verbatim.
+- [`SYMJIT_CRATE_2_22_ARENA_MIGRATION_REPORT.md`](SYMJIT_CRATE_2_22_ARENA_MIGRATION_REPORT.md)
+  records the resulting implementation and verification status.
+
 ## Architecture and optimization
 
 - [`COMPILED_DAG_DIRECT_ARENA_FEASIBILITY.md`](COMPILED_DAG_DIRECT_ARENA_FEASIBILITY.md)

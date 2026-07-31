@@ -47,8 +47,9 @@ on every push to `main` and on pull requests, covering CPython 3.11 through
 contracts, import laziness, repository policy, deployment harness logic, SDK
 configuration, and release metadata. Pull requests and manual dispatch
 additionally run one guarded Ubuntu candidate job covering selected
-unit/integration tests, generation, the Python/Rust/C++/Fortran APIs, Rust
-checks, the native SDK, self-test, and checkout-independent examples. Keeping
+unit/integration tests, generation, the Python, C11, C++17, Fortran 2008, and
+Rust 2021 APIs, Rust checks, the native SDK, self-test, and
+checkout-independent examples. Keeping
 the candidate job off ordinary `main` pushes prevents rapid documentation or
 report checkpoints from repeatedly cancelling the same expensive dependency
 build.
@@ -61,8 +62,8 @@ pinned contributor candidate inputs; their outputs are explicitly marked as
 candidates, retained for inspection, and cannot be promoted to release files.
 
 The **Validated release artifacts** workflow is also manually dispatched. Its
-defined release path verifies published dependency inputs, runs the full source
-gate and a fresh numerical comparison against the pinned independent Fortran
+defined release path verifies locked release dependency inputs, runs the full
+source gate and a fresh numerical comparison against the pinned independent Fortran
 implementation, retains one source distribution, builds the three target
 wheels from that source distribution, tests installed wheels on CPython 3.11
 and 3.14, and collects the unchanged package files. The
@@ -133,20 +134,19 @@ artifact validation gate.
   duplicated into the portable-pack compatibility contract.
 - `ufo-model-loader==0.1.7` is the pinned published loader input.
 - Every supported wheel target must complete clean installation, Python
-  self-test, generated Python/Rust/C++/Fortran driver tests, and native SDK
-  audits.
+  self-test, generated Python, C11, C++17, Fortran 2008, and Rust 2021 driver
+  tests, and native SDK audits.
 - Candidate artifacts are marked non-publishable and are rejected by the
   publication workflow.
 - Protected `testpypi` and `pypi` GitHub environments exist. Matching
   TestPyPI/PyPI Trusted Publisher or pending-publisher registrations must still
   be confirmed before the first publication.
 
-The SymJIT dependency is an authenticated immutable Git archive plus one
-ordered generic patch. Python wheel and source-distribution builds carry the
-patch and reconstruct the verified configured tree locally; they do not depend
-on a moving branch or the retired private fork. Publishing pyAmpliCol's
-internal Rust crates independently through crates.io would still require a
-compatible patched or upstreamed SymJIT release.
+The release and Cargo locks resolve the official `siravan/symjit-crate`
+repository directly at immutable revision
+`d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7`. Contributor setup clones and
+path-patches that same commit. There is no source archive, local patch,
+patch/tree attestation, moving branch, or private-fork dependency.
 
 Strict release builds fail closed on these conditions. The authoritative
 machine-readable state is `dependencies/release-lock.toml`; contributor-only

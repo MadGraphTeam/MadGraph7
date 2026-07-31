@@ -103,6 +103,18 @@ timings and counters; progress and diagnostics remain on stderr.
 output. TOML run cards continue to use `action = "benchmark"`, and the Python
 interface remains `BenchmarkRunner`/`BenchmarkResult`.
 
+To copy a fresh, editable profiling campaign from an installed wheel:
+
+```console
+pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
+```
+
+The copied launcher uses installed pyAmpliCol resources and automatically runs
+headlessly when the optional Ratatui bindings are unavailable. Only selections
+that benchmark original AmpliCol require
+`run --original-amplicol /path/to/clean/complete/checkout`; all pyAmpliCol
+backends work without that checkout.
+
 ### Run `q q~ > Z + 6g` in all three execution modes
 
 The copied examples contain one matched card per execution strategy:
@@ -184,8 +196,8 @@ comparison cards.
 | Goal | Command | Dependency source |
 | --- | --- | --- |
 | Install a released wheel | `python -m pip install pyamplicol` | PyPI; no Rust compiler |
-| Build and install this source tree | `python -m pip install .` | Published packages only |
-| Retain a local wheel | `just wheel` | Published packages only; writes `dist/` |
+| Build and install this source tree | `python -m pip install .` | Published packages/crates plus the pinned official SymJIT Git revision |
+| Retain a local wheel | `just wheel` | Published packages/crates plus the pinned official SymJIT Git revision; writes `dist/` |
 | Install the matching retained wheel | `just install-wheel PYTHON=/path/to/python` | Existing or newly built wheel |
 | Enter the complete Nix contributor shell | `nix develop` | Python/Rust/native/Fortran/TeX toolchains |
 | Prepare a contributor environment | `just dev-install` | Pinned, non-publishable candidate inputs |
@@ -216,8 +228,9 @@ or a different extension is found, the next import fails with a request to rerun
 the normal package-manager import path.
 
 Strict source and wheel builds use `dependencies/release-lock.toml` and fail
-closed while a required published dependency remains unverified. Contributor
-inputs never enter a release wheel or source distribution. See
+closed if a locked published package/crate or the official immutable SymJIT Git
+revision does not match. Contributor inputs never enter a release wheel or
+source distribution. See
 [Installation](docs/user/installation.md) for the complete build matrix.
 
 ## Generate
@@ -349,7 +362,7 @@ independent. Prepared C++ and ASM packs remain target-native.
 Rusticol tiles large point batches through a reusable workspace. Configure the
 upper bounds with `[evaluator.eager] point_tile_size = 1024` and
 `workspace_mib = 256`. The generated artifact supports the same Python, C11,
-Rust, C++17, and Fortran 2008 total/resolved APIs and selectors as compiled
+C++17, Fortran 2008, and Rust 2021 total/resolved APIs and selectors as compiled
 mode. JIT f64 evaluation of saved SymJIT applications is Symbolica-free after
 generation. Eager generation and non-f64 evaluation retain the normal
 Symbolica requirement. ASM and C++ accept batches but remain scalar; only
@@ -488,9 +501,9 @@ artifacts/pp_zjj/API/
   fortran/check_standalone.f90
 ```
 
-All five drivers select a concrete process, accept a JSON model-parameter card
-and direct overrides, evaluate resolved components, explicitly sum them, and
-compare with the optimized total:
+The Python, C11, C++17, Fortran 2008, and Rust 2021 drivers select a concrete
+process, accept a JSON model-parameter card and direct overrides, evaluate
+resolved components, explicitly sum them, and compare with the optimized total:
 
 ```console
 python artifacts/pp_zjj/API/python/check_standalone.py \
@@ -510,9 +523,9 @@ The generated Rust 2021 program includes the wheel-shipped safe wrapper located
 by `rusticol-config --rust-source` and links the installed Rusticol C ABI with
 `rusticol-config --rustflags`. Its Makefile uses `rustc`; `rust-script` is an
 optional convenience target, not a runtime requirement. No separately
-published Rust crate is needed. Rust, C++, and Fortran reject `--precision`
-values other than 16; use the generated Python driver for precision-controlled
-Symbolica evaluation.
+published Rust crate is needed. C11, C++17, Fortran 2008, and Rust 2021 reject
+`--precision` values other than 16; use the generated Python driver for
+precision-controlled Symbolica evaluation.
 
 Native build products are placed in a sibling `.pyamplicol-api-build/`
 directory, outside the integrity-checked artifact. The installed wheel exposes

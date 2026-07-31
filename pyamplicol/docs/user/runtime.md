@@ -208,7 +208,8 @@ separate MIT-licensed SymJIT runtime. ASM and C++ backends instead load their
 compiled evaluator library when the artifact target triple matches the runtime
 and every recorded CPU feature is available. Neither f64 path imports
 Symbolica, reads its license state, or applies its generation-time resource
-clamp. Python, Rust, C++, and Fortran share these f64 capabilities.
+clamp. Python, C11, C++17, Fortran 2008, and Rust 2021 share these f64
+capabilities.
 
 Other positive Python precision requests lazily load retained Symbolica
 evaluator states and replay the recorded stage-local plan. Decimal input keeps
@@ -220,8 +221,8 @@ requested decimal precision after guard-digit evaluation.
 Direct SymJIT applications are lowered to native code when loaded. ASM/C++
 artifacts contain target-specific native libraries and fail compatibility
 validation before executable state is loaded when the target or required CPU
-features do not match. Rust, C++, and Fortran expose f64 only and reject
-precision requests other than 16.
+features do not match. C11, C++17, Fortran 2008, and Rust 2021 expose f64 only
+and reject precision requests other than 16.
 
 ## Runtime Profiling
 
@@ -257,8 +258,8 @@ For f64 artifacts, wall time starts inside Rusticol after the caller-language
 momentum buffer has been converted and covers repeated ordinary core
 evaluations through reduction. The evaluator time remains the sum of generated
 stage and amplitude evaluator calls. This keeps Python/NumPy conversion and
-language-wrapper costs out of the runtime metric shared by the Python, Rust,
-C++, and Fortran APIs.
+language-wrapper costs out of the runtime metric shared by the Python, C11,
+C++17, Fortran 2008, and Rust 2021 APIs.
 
 The human result is a colorized PrettyTable showing the selected process, wall
 and evaluator means with standard errors, wall standard deviation and relative
@@ -335,6 +336,14 @@ fields.
 `pyamplicol benchmark` is retained as a compatibility alias for `profile` with
 the same flags and output. Existing run cards remain valid and continue to use
 `action = "benchmark"`; no `action = "profile"` card value is introduced.
+
+For the complete reproducible measurement workspace, run
+`pyamplicol profiling-campaign copy DEST --force`. The copied launcher resolves
+runtime resources from the installed package and automatically continues
+headlessly if the optional Ratatui bindings are unavailable. It asks for
+`run --original-amplicol PATH_TO_CLEAN_COMPLETE_CHECKOUT` only when the selected
+cells use the original-AmpliCol reference backend; no such checkout is needed
+for pyAmpliCol backends.
 
 ## Artifact Trust
 
