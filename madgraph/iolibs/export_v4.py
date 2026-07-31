@@ -8352,8 +8352,41 @@ C       so this also stays correct for split-order processes.
                 '            ENDIF' % {'p': prefix},
         })
 
+    @staticmethod
+    def _hel_recycling_csym(csym_pairs, good_hels, bad_amps_perhel, nb_amp):
+        """Fold the measured C-parity pairs into the recycler inputs.
+
+        For each surviving (representative, partner) pair BOTH rows stay in the
+        helicity table -- so the |M|^2 sum, the polarization filter and
+        SMATRIXHEL keep a value per row -- but every amplitude of the partner is
+        added to bad_amps_perhel, so its HELAS calls are never generated, and
+        its |M|^2 is copied back from the representative by the csym_reuse
+        block. The reuse indices are the OPTIM's positions (helicities are
+        renumbered 1..len(good_hels) in the recycled file).
+
+        Returns (bad_amps_perhel, csym_reuse_text).
+        """
+        if not csym_pairs:
+            return bad_amps_perhel, ''
+        good_set = set(int(h) for h in good_hels)
+        opt_index = dict((h, i + 1) for i, h in enumerate(sorted(good_set)))
+        bad_set = set(bad_amps_perhel)
+        reuse = []
+        for rep, flip in csym_pairs:
+            if rep not in good_set or flip not in good_set:
+                continue
+            for amp in range(1, nb_amp + 1):
+                bad_set.add((flip, amp))
+            reuse.append((opt_index[rep], opt_index[flip]))
+        if not reuse:
+            return bad_amps_perhel, ''
+        text = '\n'.join('      TS(%d) = TS(%d)' % (flip, rep)
+                         for rep, flip in sorted(reuse)) + '\n'
+        return sorted(bad_set), text
+
     def _run_hel_recycle(self, orig_path, driver_path, out_path,
-                         good_hels, bad_amps, bad_amps_perhel, gauge):
+                         good_hels, bad_amps, bad_amps_perhel, gauge,
+                         csym_reuse=''):
         """Run the madevent DAG rewriter to turn matrix_orig.f + template_matrix.f
         into the recycled matrix.f at out_path. good_hels/bad_amps/bad_amps_perhel
         are string lists in the gen_ximprove format; all empty bad_* + good_hels =
@@ -8361,6 +8394,8 @@ C       so this also stays correct for split-order processes.
         import madgraph.madevent.hel_recycle as hel_recycle
         recycler = hel_recycle.HelicityRecycler(good_hels, bad_amps,
                                                 bad_amps_perhel, gauge=gauge)
+        if csym_reuse:
+            recycler.template_dict['csym_reuse'] = csym_reuse
         recycler.hel_filt = True     # drop helicity combinations not in good_hels
         recycler.amp_splt = True     # P1N amplitude split (the speed-up)
         recycler.amp_filt = bool(bad_amps) or bool(bad_amps_perhel)
@@ -8440,20 +8475,25 @@ C       so this also stays correct for split-order processes.
             self._hr_warmup = []
         self._hr_warmup.append({'dirpath': dirpath, 'orig_path': orig_path,
                                 'driver_path': driver_path, 'out_path': out_path,
-                                'ncomb': ncomb, 'gauge': gauge})
+                                'ncomb': ncomb, 'gauge': gauge,
+                                'ngraphs': matrix_element.get_number_of_amplitudes()})
 
     @staticmethod
     def _parse_hel_warmup(stdout):
         """Parse the hel_warmup stdout into (good_hels, bad_amps,
-        bad_amps_perhel) using the same rules as gen_ximprove.py."""
+        bad_amps_perhel, csym_pairs) using the same rules as gen_ximprove.py."""
         all_hel = set()
         all_zamp = set()
         all_zampperhel = set()
+        all_csym = set()
         for line in stdout.splitlines():
             if "=" not in line and ":" not in line:
                 continue
             if 'Matrix Element/Good Helicity:' in line:
                 all_hel.add(tuple(line.split()[3:5]))
+            if 'CSYM PAIR:' in line:
+                # (me_index, representative_hel, dropped_partner_hel)
+                all_csym.add(tuple(line.split()[2:5]))
             if 'Amplitude/ZEROAMP:' in line:
                 all_zamp.add(tuple(line.split()[1:3]))
             if 'HEL/ZEROAMP:' in line:
@@ -8466,7 +8506,8 @@ C       so this also stays correct for split-order processes.
         good_hels = [str(x) for x in sorted(int(h) for _, h in all_hel)]
         bad_amps = [str(x) for x in sorted(int(a) for _, a in all_zamp)]
         bad_amps_perhel = sorted((int(h), int(a)) for _, h, a in all_zampperhel)
-        return good_hels, bad_amps, bad_amps_perhel
+        csym_pairs = sorted((int(rep), int(flip)) for _, rep, flip in all_csym)
+        return good_hels, bad_amps, bad_amps_perhel, csym_pairs
 
     def _run_hel_recycling_warmups(self, fortran_compiler=None):
         """After the Source libraries are built, compile + run each hel_warmup.f
@@ -8521,15 +8562,22 @@ C       so this also stays correct for split-order processes.
                     'the compute-all matrix.f.', dirpath, err)
                 continue
 
-            good_hels, bad_amps, bad_amps_perhel = self._parse_hel_warmup(stdout)
+            good_hels, bad_amps, bad_amps_perhel, csym_pairs = \
+                self._parse_hel_warmup(stdout)
             if not good_hels:
                 continue  # nothing measured -> keep the compute-all version
 
+            bad_amps_perhel, csym_reuse = self._hel_recycling_csym(
+                csym_pairs, good_hels, bad_amps_perhel, info['ngraphs'])
+
             self._run_hel_recycle(info['orig_path'], info['driver_path'],
                                   info['out_path'], good_hels, bad_amps,
-                                  bad_amps_perhel, info['gauge'])
-            logger.info('hel_recycling: %s/%s good helicities, %s dead amplitudes '
-                'in %s', len(good_hels), info['ncomb'], len(bad_amps),
+                                  bad_amps_perhel, info['gauge'],
+                                  csym_reuse=csym_reuse)
+            logger.info('hel_recycling: %s/%s good helicities, %s dead amplitudes'
+                ', %s C-parity pairs reused in %s', len(good_hels),
+                info['ncomb'], len(bad_amps),
+                len(csym_reuse.splitlines()) if csym_reuse else 0,
                 os.path.basename(dirpath))
             # tidy up the probe binary + intermediate objects.
             for f in ('hel_warmup', 'matrix_orig.o', 'hel_warmup.o'):

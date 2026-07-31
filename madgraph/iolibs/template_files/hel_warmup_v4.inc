@@ -43,6 +43,14 @@ C     LOCAL
       INTEGER NHELDUM(NEXTERNAL), NHELOUT(NEXTERNAL), DUMFLAV
       REAL*8 SQRTS, T, ANS, TSARR(NCOMB)
       LOGICAL GOODHEL(NCOMB)
+C     C-parity de-duplication. FLIP(I) is the row whose helicity configuration
+C     is the full negation of row I (an involution); CSYM stays true only while
+C     EVERY pair gave the same |M|^2 at EVERY sampled point, flavor and
+C     crossing -- the same all-or-nothing verdict the standard SMATRIX reaches
+C     at run time. A self-paired row (all helicities zero) disables it, since
+C     then the pairing halves nothing.
+      INTEGER FLIP(NCOMB), JHEL, KHEL
+      LOGICAL CSYM, HELSAME
 C     EXTERNAL
       DOUBLE PRECISION %(proc_prefix)sMATRIX
       EXTERNAL %(proc_prefix)sMATRIX
@@ -68,6 +76,24 @@ C-----
       CALL %(proc_prefix)sRESET_ZEROAMP()
       DO I=1,NCOMB
         GOODHEL(I) = .FALSE.
+      ENDDO
+
+C     Build the C-parity partner table once (fixed per process).
+      CSYM = .TRUE.
+      DO IHEL=1,NCOMB
+        FLIP(IHEL) = IHEL
+        DO JHEL=1,NCOMB
+          HELSAME = .TRUE.
+          DO KHEL=1,NEXTERNAL
+            IF (NHEL(KHEL,JHEL).NE.-NHEL(KHEL,IHEL)) HELSAME = .FALSE.
+          ENDDO
+          IF (HELSAME) THEN
+            FLIP(IHEL) = JHEL
+            GOTO 30
+          ENDIF
+        ENDDO
+ 30     CONTINUE
+        IF (FLIP(IHEL).EQ.IHEL) CSYM = .FALSE.
       ENDDO
 
 C     Loop over every flavor index: a helicity that contributes for ANY flavor
@@ -106,6 +132,23 @@ C     makes the recycled matrix.f a valid union over all of them.
             DO IHEL=1, NCOMB
               IF (DABS(TSARR(IHEL)) .GT. ANS*LIMHEL/NCOMB) GOODHEL(IHEL)=.TRUE.
             ENDDO
+C           One mismatch anywhere permanently invalidates the C-parity reuse.
+C           A pair whose BOTH members sit below the good-helicity threshold is
+C           pure round-off (those rows are dropped from the recycled table
+C           anyway), so comparing them relatively would reject the reuse on
+C           noise -- e.g. 1.5D-30 against 3.1D-31 for a dead row of g g > t t~.
+            IF (CSYM) THEN
+              DO IHEL=1, NCOMB
+                IF (FLIP(IHEL).GT.IHEL) THEN
+                  IF (DABS(TSARR(IHEL)) .GT. ANS*LIMHEL/NCOMB .OR.
+     &                DABS(TSARR(FLIP(IHEL))) .GT. ANS*LIMHEL/NCOMB) THEN
+                    IF (DABS(TSARR(IHEL)-TSARR(FLIP(IHEL))) .GT.
+     &                  1D-6*(DABS(TSARR(IHEL))+DABS(TSARR(FLIP(IHEL)))))
+     &                CSYM = .FALSE.
+                  ENDIF
+                ENDIF
+              ENDDO
+            ENDIF
           ENDDO
         ENDDO
       ENDDO
@@ -115,6 +158,17 @@ C     makes the recycled matrix.f a valid union over all of them.
           WRITE(*,*) 'Matrix Element/Good Helicity: 1 ', IHEL
         ENDIF
       ENDDO
+C     Surviving C-parity pairs (representative first). The exporter drops the
+C     partner's amplitudes from the recycled matrix.f and copies the
+C     representative's |M|^2 into it instead.
+      IF (CSYM) THEN
+        DO IHEL=1, NCOMB
+          IF (FLIP(IHEL).GT.IHEL .AND. GOODHEL(IHEL)
+     &        .AND. GOODHEL(FLIP(IHEL))) THEN
+            WRITE(*,*) 'CSYM PAIR: 1 ', IHEL, FLIP(IHEL)
+          ENDIF
+        ENDDO
+      ENDIF
       CALL %(proc_prefix)sPRINT_ZERO_AMP()
       END
 
