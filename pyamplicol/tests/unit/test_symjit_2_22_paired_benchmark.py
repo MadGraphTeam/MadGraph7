@@ -602,13 +602,20 @@ while True:
             log=log,
         )
         deadline = time.monotonic() + 5.0
-        while not child_pid_path.is_file():
+        child_pid: int | None = None
+        while child_pid is None:
             if process.poll() is not None:
                 pytest.fail(f"driver exited early with status {process.returncode}")
             if time.monotonic() >= deadline:
                 pytest.fail("timed out waiting for capture child")
+            raw_pid = (
+                child_pid_path.read_text(encoding="ascii")
+                if child_pid_path.is_file()
+                else ""
+            )
+            if raw_pid.isdecimal():
+                child_pid = int(raw_pid)
             time.sleep(0.01)
-        child_pid = int(child_pid_path.read_text(encoding="ascii"))
         paired._terminate({"driver": process}, grace_seconds=2.0)
 
     deadline = time.monotonic() + 2.0
