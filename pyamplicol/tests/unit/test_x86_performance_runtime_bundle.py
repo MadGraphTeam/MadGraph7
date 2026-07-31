@@ -655,6 +655,9 @@ def test_materialize_runtime_reconstructs_both_lanes_without_network(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    checkout = tmp_path / "logical-checkout"
+    checkout.mkdir()
+    monkeypatch.setattr(bundle, "ROOT", checkout)
     bundle_root = tmp_path / "bundle"
     dependencies = bundle_root / "dependency-site"
     dependencies.mkdir(parents=True)
@@ -709,7 +712,11 @@ def test_materialize_runtime_reconstructs_both_lanes_without_network(
 
 def test_materialize_runtime_rejects_nonempty_destination(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    checkout = tmp_path / "logical-checkout"
+    checkout.mkdir()
+    monkeypatch.setattr(bundle, "ROOT", checkout)
     bundle_root = tmp_path / "bundle"
     dependencies = bundle_root / "dependency-site"
     dependencies.mkdir(parents=True)

@@ -46,34 +46,12 @@ _SDK_FILES = {
     "pyamplicol/_sdk/link.json",
     "pyamplicol/_sdk/metadata.json",
 }
-_NATIVE_BUILD_INPUT_FILES = (
-    Path("Cargo.lock"),
-    Path("Cargo.toml"),
-    Path("pyproject.toml"),
-    Path("rust-toolchain.toml"),
-    Path("dependencies/candidate-Cargo.lock"),
-    Path("dependencies/candidate-cargo-config.toml"),
-    Path("dependencies/contributor-lock.toml"),
-    Path("dependencies/install-state.json"),
-    Path("dependencies/release-lock.toml"),
-)
-_NATIVE_BUILD_INPUT_TREES = (
-    Path("build_backend"),
-    Path("dependencies/patches"),
-    Path("rust"),
-)
-_NATIVE_BUILD_INPUT_SUFFIXES = {
-    ".f90",
-    ".h",
-    ".hpp",
-    ".json",
-    ".patch",
-    ".py",
-    ".pyi",
-    ".rs",
-    ".toml",
-}
 _NATIVE_EXTENSION_SUFFIXES = (".dylib", ".pyd", ".so")
+
+sys.path.insert(0, str(ROOT / "build_backend"))
+from native_build_identity import native_build_inputs_digest  # noqa: E402
+
+sys.path.pop(0)
 
 
 def _host_target() -> str | None:
@@ -106,30 +84,15 @@ def _publication_lock(directory: Path):
             fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
 
-def _native_build_inputs_digest(root: Path) -> str:
-    paths = [root / relative for relative in _NATIVE_BUILD_INPUT_FILES]
-    for relative in _NATIVE_BUILD_INPUT_TREES:
-        tree = root / relative
-        if not tree.is_dir():
-            continue
-        paths.extend(
-            path
-            for path in tree.rglob("*")
-            if path.is_file()
-            and not {"__pycache__", "target"}.intersection(path.relative_to(tree).parts)
-            and path.suffix in _NATIVE_BUILD_INPUT_SUFFIXES
-        )
-    digest = hashlib.sha256()
-    for path in sorted(set(paths)):
-        if not path.is_file():
-            continue
-        relative = path.relative_to(root).as_posix().encode("utf-8")
-        data = path.read_bytes()
-        digest.update(len(relative).to_bytes(8, "little"))
-        digest.update(relative)
-        digest.update(len(data).to_bytes(8, "little"))
-        digest.update(data)
-    return digest.hexdigest()
+def _native_build_inputs_digest(
+    root: Path,
+    *,
+    normalize_release_cargo_lock: bool = False,
+) -> str:
+    return native_build_inputs_digest(
+        root,
+        normalize_release_cargo_lock=normalize_release_cargo_lock,
+    )
 
 
 def _wheel_identity(members: Mapping[str, bytes]) -> tuple[str, str]:
@@ -242,6 +205,8 @@ def _stage_runtime_locked(
 ) -> dict[str, object]:
     """Stage one wheel and publish its provenance only after all payloads."""
 
+    if mode not in {"candidate", "release"}:
+        raise ReleaseError(f"unsupported source runtime mode: {mode}")
     marker = source_build_info.parent / ".staging"
     _write_atomic(marker, b"incomplete\n", mode=0o600)
     wheel = wheel.resolve(strict=True)
@@ -306,7 +271,10 @@ def _stage_runtime_locked(
         raise ReleaseError(
             "source runtime wheel build metadata and METADATA versions differ"
         )
-    native_digest = _native_build_inputs_digest(source_root)
+    native_digest = _native_build_inputs_digest(
+        source_root,
+        normalize_release_cargo_lock=mode == "release",
+    )
     if mode == "candidate":
         if build_info.get("publishable") is not False:
             raise ReleaseError("candidate source runtime wheel is not marked candidate")
@@ -315,6 +283,16 @@ def _stage_runtime_locked(
                 "candidate source runtime wheel was built from different native "
                 "sources; rerun `just dev-install`"
             )
+    elif not (
+        build_info.get("publishable") is True
+        or (
+            build_info.get("publishable") is False
+            and build_info.get("release_prepared_model_bootstrap") is True
+        )
+    ):
+        raise ReleaseError(
+            "release source runtime wheel has an inconsistent release marker"
+        )
 
     selftest_prefix = f"pyamplicol/assets/selftest/{target}/"
     selected = {
@@ -353,9 +331,11 @@ def _stage_runtime_locked(
     if len(final_extensions) != 1 or final_extensions[0].name != expected_extension:
         raise ReleaseError("source runtime extension publication was not exact")
 
+    build_info["native_build_inputs_sha256"] = native_digest
     build_info["source_runtime"] = {
         "extension_name": expected_extension,
         "extension_sha256": hashlib.sha256(members[extension_names[0]]).hexdigest(),
+        "mode": mode,
         "native_build_inputs_sha256": native_digest,
     }
     _write_atomic(

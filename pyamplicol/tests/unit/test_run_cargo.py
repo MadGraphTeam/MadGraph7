@@ -29,6 +29,9 @@ def test_run_cargo_uses_clean_overlay(
     tmp_path: Path,
 ) -> None:
     module = _module()
+    monkeypatch.setattr(module.sys, "platform", "darwin")
+    monkeypatch.setenv("CC", "/attacker/cc")
+    monkeypatch.setenv("CXX", "/attacker/c++")
     overlay = tmp_path / "overlay"
     target = tmp_path / "target"
     overlay.mkdir()
@@ -66,8 +69,9 @@ def test_run_cargo_uses_clean_overlay(
     assert options["cwd"] == overlay
     assert options["env"]["CARGO_HOME"] == str(tmp_path / "cargo-home")
     assert options["env"]["CARGO_TARGET_DIR"] == str(target)
-    if module.sys.platform == "darwin":
-        assert options["env"]["MACOSX_DEPLOYMENT_TARGET"] == "11.0"
+    assert options["env"]["CC"] == "/usr/bin/clang"
+    assert options["env"]["CXX"] == "/usr/bin/clang++"
+    assert options["env"]["MACOSX_DEPLOYMENT_TARGET"] == "11.0"
 
 
 def test_rust_tests_use_only_the_selected_python_loader_directories(

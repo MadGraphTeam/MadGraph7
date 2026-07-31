@@ -286,8 +286,7 @@ def test_recurrence_profile_reports_paired_schedule_and_nested_attribution() -> 
     assert "paired recurrence" in rendered
     assert "paired evaluator" not in rendered
     assert (
-        "Rusticol Recurrence Timing Breakdown (paired profiled attribution)"
-        in rendered
+        "Rusticol Recurrence Timing Breakdown (paired profiled attribution)" in rendered
     )
     assert "Profile wall (paired profiled pass)" in rendered
     assert "Recurrence schedule (inclusive)" in rendered

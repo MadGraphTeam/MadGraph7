@@ -75,6 +75,17 @@ def test_source_identity_records_commit_tree_and_clean_state(
     }
 
 
+def test_source_identity_rejects_a_nested_path_inside_an_outer_checkout(
+    tmp_path: Path,
+) -> None:
+    repo = _repository(tmp_path)
+    nested = repo / "scratch/repo"
+    nested.mkdir(parents=True)
+
+    with pytest.raises(ReportSourceIdentityError, match="not the repository root"):
+        inspect_report_source(nested)
+
+
 def test_generated_report_outputs_do_not_dirty_measurement_source(
     tmp_path: Path,
 ) -> None:

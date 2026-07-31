@@ -13,7 +13,7 @@ import subprocess
 import sys
 import tomllib
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 try:
@@ -63,13 +63,10 @@ _SOURCE_TREE_EXCLUDES = {
     "dist",
     "target",
 }
-_EMPTY_PATCH_CLOSURE_SHA256 = hashlib.sha256(b"[]").hexdigest()
 _CANDIDATE_ABIS = {
     "symbolica_serialization": "symbolica-bincode2-v1",
     "symjit_application": "symjit-application-storage-v3",
-    "symjit_direct_application": "symjit-direct-application-storage-v1",
-    "symjit_direct_table_binding": "symjit-direct-table-binding-v1",
-    "symjit_direct_table_descriptor": "symjit-direct-table-descriptor-v1",
+    "symjit_plane_application": "pyamplicol-symjit-plane-application-v2",
 }
 
 
@@ -177,6 +174,17 @@ def _project_python_dependencies() -> dict[str, str]:
 
 def _release_contract_issues(lock: dict[str, Any]) -> list[GateIssue]:
     issues: list[GateIssue] = []
+    abis = lock.get("abis")
+    if not isinstance(abis, dict) or any(
+        abis.get(name) != value for name, value in _CANDIDATE_ABIS.items()
+    ):
+        issues.append(
+            GateIssue(
+                "release-abi-contract",
+                "release-lock.toml must pin the Symbolica serialization, SymJIT "
+                "storage, and SymJIT plane-application ABIs",
+            )
+        )
     forbidden_tables = {"legal_status", "python_runtime_lock"}.intersection(lock)
     if forbidden_tables:
         issues.append(
@@ -227,6 +235,13 @@ def _release_contract_issues(lock: dict[str, Any]) -> list[GateIssue]:
         "version",
         "repository",
         "revision",
+        "source_url",
+        "archive_prefix",
+        "archive_sha256",
+        "source_tree_sha256",
+        "configured_tree_sha256",
+        "release_cargo_lock_sha256",
+        "patches",
     }
     allowed_loader = {
         "python_distribution",
@@ -240,7 +255,8 @@ def _release_contract_issues(lock: dict[str, Any]) -> list[GateIssue]:
         issues.append(
             GateIssue(
                 "release-lock-scope",
-                "published dependency sections must contain compatibility data only",
+                "release dependency sections contain fields outside their approved "
+                "compatibility and source contracts",
             )
         )
     if (
@@ -273,6 +289,7 @@ def _release_contract_issues(lock: dict[str, Any]) -> list[GateIssue]:
                 "ufo-model-loader compatibility data disagrees with the exact pin",
             )
         )
+    issues.extend(_release_symjit_source_issues(lock))
     return issues
 
 
@@ -419,14 +436,72 @@ def _release_cargo_lock_issues(lock: dict[str, Any]) -> list[GateIssue]:
         f"git+{symjit.get('repository', '')}?rev={symjit.get('revision', '')}"
         f"#{symjit.get('revision', '')}"
     )
-    issues = _registry_source_issues(
-        packages,
-        local_crates=_LOCAL_CRATES,
-        prefix="release",
-        exact_git_sources={
-            "symjit": (str(symjit.get("version", "")), symjit_source)
-        },
+    lock_bytes = CARGO_LOCK_PATH.read_bytes()
+    local_lock = (
+        hashlib.sha256(lock_bytes).hexdigest()
+        == symjit.get("release_cargo_lock_sha256")
     )
+    if local_lock:
+        issues = _registry_source_issues(
+            packages,
+            local_crates={*_LOCAL_CRATES, "symjit"},
+            prefix="release",
+        )
+        matches = [
+            package
+            for package in packages
+            if package.get("name") == "symjit"
+            and package.get("version") == symjit.get("version")
+            and package.get("source") is None
+        ]
+        if len(matches) != 1:
+            issues.append(
+                GateIssue(
+                    "release-cargo-local-source",
+                    "release-local Cargo.lock must resolve exactly one authenticated "
+                    "SymJIT path package",
+                )
+            )
+    else:
+        issues = _registry_source_issues(
+            packages,
+            local_crates=_LOCAL_CRATES,
+            prefix="release",
+            exact_git_sources={
+                "symjit": (str(symjit.get("version", "")), symjit_source)
+            },
+        )
+        marker = (
+            "[[package]]\n"
+            'name = "symjit"\n'
+            f'version = "{symjit.get("version", "")}"\n'
+            f'source = "{symjit_source}"\n'
+        )
+        try:
+            text = lock_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            text = ""
+        if text.count(marker) == 1:
+            projected = text.replace(
+                marker,
+                (
+                    "[[package]]\n"
+                    'name = "symjit"\n'
+                    f'version = "{symjit.get("version", "")}"\n'
+                ),
+                1,
+            ).encode("utf-8")
+            projected_sha256 = hashlib.sha256(projected).hexdigest()
+        else:
+            projected_sha256 = ""
+        if projected_sha256 != symjit.get("release_cargo_lock_sha256"):
+            issues.append(
+                GateIssue(
+                    "release-cargo-lock-projection",
+                    "canonical Cargo.lock does not project to the authenticated "
+                    "release-local SymJIT resolution",
+                )
+            )
     symbolica = lock.get("symbolica", {})
     name = str(symbolica.get("rust_crate", "symbolica"))
     version = str(symbolica.get("rust_version", ""))
@@ -573,17 +648,279 @@ def _source_tree_sha256(root: Path) -> str:
     return digest.hexdigest()
 
 
+def _candidate_patch_contract(
+    contributor: dict[str, Any],
+    *,
+    lock_path: Path | None = None,
+    issue_code: str = "candidate-patch-contract",
+    label: str = "contributor",
+) -> tuple[list[dict[str, str]], list[GateIssue]]:
+    lock_path = CONTRIBUTOR_LOCK_PATH if lock_path is None else lock_path
+    raw_patches = contributor.get("patches")
+    if not isinstance(raw_patches, list):
+        return [], [
+            GateIssue(
+                issue_code,
+                f"{label} SymJIT patches must be an ordered list",
+            )
+        ]
+    allowed_keys = {
+        "name",
+        "target",
+        "path",
+        "sha256",
+        "applies_to_revision",
+    }
+    symjit = contributor.get("symjit")
+    revision = symjit.get("candidate_revision") if isinstance(symjit, dict) else None
+    dependency_root = lock_path.parent.resolve()
+    state: list[dict[str, str]] = []
+    issues: list[GateIssue] = []
+    seen_names: set[str] = set()
+    seen_paths: set[str] = set()
+    for index, entry in enumerate(raw_patches):
+        if not isinstance(entry, dict) or set(entry) != allowed_keys:
+            issues.append(
+                GateIssue(
+                    issue_code,
+                    f"{label} patch {index} has an invalid field set",
+                )
+            )
+            continue
+        if not all(
+            isinstance(entry[key], str) and entry[key] for key in allowed_keys
+        ):
+            issues.append(
+                GateIssue(
+                    issue_code,
+                    f"{label} patch {index} fields must be nonempty strings",
+                )
+            )
+            continue
+        normalized = {key: str(entry[key]) for key in allowed_keys}
+        name = normalized["name"]
+        target = normalized["target"]
+        relative = normalized["path"]
+        digest = normalized["sha256"]
+        applies_to = normalized["applies_to_revision"]
+        pure = PurePosixPath(relative)
+        invalid_path = (
+            pure.is_absolute()
+            or not pure.parts
+            or pure.parts[0] != "patches"
+            or pure.suffix != ".patch"
+            or any(part in {"", ".", ".."} for part in pure.parts)
+        )
+        if (
+            name in seen_names
+            or relative in seen_paths
+            or target != "symjit"
+            or applies_to != revision
+            or _SHA256.fullmatch(digest) is None
+            or invalid_path
+        ):
+            issues.append(
+                GateIssue(
+                    issue_code,
+                    f"{label} patch {name!r} has an invalid identity contract",
+                )
+            )
+            continue
+        path = dependency_root.joinpath(*pure.parts)
+        try:
+            resolved = path.resolve(strict=True)
+            resolved.relative_to(dependency_root)
+        except (OSError, ValueError):
+            issues.append(
+                GateIssue(
+                    issue_code,
+                    f"{label} patch {name!r} is missing or escapes dependencies",
+                )
+            )
+            continue
+        current = dependency_root
+        symlinked = False
+        for part in pure.parts:
+            current /= part
+            symlinked = symlinked or current.is_symlink()
+        if (
+            symlinked
+            or not resolved.is_file()
+            or hashlib.sha256(resolved.read_bytes()).hexdigest() != digest
+        ):
+            issues.append(
+                GateIssue(
+                    issue_code,
+                    f"{label} patch {name!r} is not an authenticated regular file",
+                )
+            )
+            continue
+        seen_names.add(name)
+        seen_paths.add(relative)
+        state.append(
+            {
+                "name": name,
+                "target": target,
+                "path": pure.as_posix(),
+                "sha256": digest,
+                "applies_to_revision": applies_to,
+            }
+        )
+    return state, issues
+
+
+def _release_symjit_source_issues(lock: dict[str, Any]) -> list[GateIssue]:
+    """Validate the source, generic patch, and local-lock release contract."""
+
+    symjit = lock.get("symjit")
+    if not isinstance(symjit, dict):
+        return [
+            GateIssue(
+                "release-symjit-source",
+                "release-lock.toml has no SymJIT source contract",
+            )
+        ]
+    issues: list[GateIssue] = []
+    revision = symjit.get("revision")
+    digests: dict[str, str] = {}
+    for key in (
+        "archive_sha256",
+        "source_tree_sha256",
+        "configured_tree_sha256",
+        "release_cargo_lock_sha256",
+    ):
+        digest = symjit.get(key)
+        if not isinstance(digest, str) or _SHA256.fullmatch(digest) is None:
+            issues.append(
+                GateIssue(
+                    "release-symjit-source",
+                    f"release SymJIT {key} must be a SHA-256 digest",
+                )
+            )
+        else:
+            digests[key] = digest
+    if (
+        not isinstance(revision, str)
+        or _GIT_REVISION.fullmatch(revision) is None
+        or not isinstance(symjit.get("source_url"), str)
+        or not str(symjit["source_url"]).endswith(f"/{revision}.tar.gz")
+        or not isinstance(symjit.get("archive_prefix"), str)
+        or revision not in str(symjit["archive_prefix"])
+    ):
+        issues.append(
+            GateIssue(
+                "release-symjit-source",
+                "release SymJIT archive must identify the immutable Git revision",
+            )
+        )
+    pseudo_contributor = {
+        "patches": symjit.get("patches"),
+        "symjit": {"candidate_revision": revision},
+    }
+    patch_state, patch_issues = _candidate_patch_contract(
+        pseudo_contributor,
+        lock_path=LOCK_PATH,
+        issue_code="release-symjit-patch",
+        label="release SymJIT",
+    )
+    issues.extend(patch_issues)
+    if not patch_state:
+        issues.append(
+            GateIssue(
+                "release-symjit-patch",
+                "release SymJIT requires its authenticated generic patch closure",
+            )
+        )
+    if (
+        patch_state
+        and digests.get("source_tree_sha256")
+        == digests.get("configured_tree_sha256")
+    ):
+        issues.append(
+            GateIssue(
+                "release-symjit-source",
+                "patched SymJIT source and configured tree identities must differ",
+            )
+        )
+
+    if CONTRIBUTOR_LOCK_PATH.is_file():
+        try:
+            contributor = _load_contributor_lock()
+            contributor_symjit = contributor["symjit"]
+            shared = {
+                "version": (
+                    symjit.get("version"),
+                    contributor_symjit.get("candidate_version"),
+                ),
+                "repository": (
+                    symjit.get("repository"),
+                    contributor_symjit.get("repository"),
+                ),
+                "revision": (
+                    revision,
+                    contributor_symjit.get("candidate_revision"),
+                ),
+                "source_url": (
+                    symjit.get("source_url"),
+                    contributor_symjit.get("source_url"),
+                ),
+                "archive_prefix": (
+                    symjit.get("archive_prefix"),
+                    contributor_symjit.get("archive_prefix"),
+                ),
+                "archive_sha256": (
+                    symjit.get("archive_sha256"),
+                    contributor_symjit.get("archive_sha256"),
+                ),
+                "source_tree_sha256": (
+                    symjit.get("source_tree_sha256"),
+                    contributor_symjit.get("source_tree_sha256"),
+                ),
+                "configured_tree_sha256": (
+                    symjit.get("configured_tree_sha256"),
+                    contributor_symjit.get("candidate_tree_sha256"),
+                ),
+                "patches": (
+                    symjit.get("patches"),
+                    contributor.get("patches"),
+                ),
+            }
+        except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
+            issues.append(
+                GateIssue(
+                    "release-contributor-symjit",
+                    f"could not compare release and contributor SymJIT locks: {error}",
+                )
+            )
+        else:
+            drift = sorted(name for name, pair in shared.items() if pair[0] != pair[1])
+            if drift:
+                issues.append(
+                    GateIssue(
+                        "release-contributor-symjit",
+                        "release and contributor builds do not share the same "
+                        "authenticated SymJIT source: " + ", ".join(drift),
+                    )
+                )
+    return issues
+
+
+def _patch_closure_sha256(patches: list[dict[str, str]]) -> str:
+    encoded = json.dumps(
+        patches,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _candidate_contributor_contract_issues(
     contributor: dict[str, Any],
 ) -> list[GateIssue]:
     issues: list[GateIssue] = []
-    if contributor.get("patches") != []:
-        issues.append(
-            GateIssue(
-                "candidate-patch-contract",
-                "contributor-lock.toml must explicitly disable local patches",
-            )
-        )
+    patch_state, patch_issues = _candidate_patch_contract(contributor)
+    issues.extend(patch_issues)
     if contributor.get("abis") != _CANDIDATE_ABIS:
         issues.append(
             GateIssue(
@@ -614,6 +951,7 @@ def _candidate_contributor_contract_issues(
             tree_digests[key] = digest
     if (
         len(tree_digests) == 2
+        and not patch_state
         and tree_digests["source_tree_sha256"]
         != tree_digests["candidate_tree_sha256"]
     ):
@@ -636,7 +974,9 @@ def _candidate_config_issues() -> list[GateIssue]:
             GateIssue("candidate-cargo-config", f"invalid Cargo patch config: {error}")
         ]
     if (
-        not isinstance(patch_tables, dict)
+        not isinstance(config, dict)
+        or set(config) != {"patch"}
+        or not isinstance(patch_tables, dict)
         or set(patch_tables) != {"crates-io"}
         or not isinstance(registry_patches, dict)
         or set(registry_patches)
@@ -651,14 +991,25 @@ def _candidate_config_issues() -> list[GateIssue]:
         ]
     issues: list[GateIssue] = []
     checkout_root = CHECKOUTS_PATH.resolve()
+    expected_paths = {
+        "graphica": checkout_root / "symbolica" / "lib" / "graphica",
+        "numerica": checkout_root / "symbolica" / "lib" / "numerica",
+        "symbolica": checkout_root / "symbolica",
+        "symjit": checkout_root / "symjit",
+    }
     patches = registry_patches
     for name, entry in patches.items():
         path_value = entry.get("path") if isinstance(entry, dict) else None
-        if not isinstance(path_value, str):
+        if (
+            not isinstance(entry, dict)
+            or set(entry) != {"path"}
+            or not isinstance(path_value, str)
+        ):
             issues.append(
                 GateIssue(
                     "candidate-cargo-config",
-                    f"candidate Cargo patch {name} has no local path",
+                    f"candidate Cargo patch {name} must contain exactly one "
+                    "local path",
                 )
             )
             continue
@@ -670,6 +1021,15 @@ def _candidate_config_issues() -> list[GateIssue]:
                 GateIssue(
                     "candidate-cargo-config",
                     f"candidate Cargo patch {name} escapes dependencies/checkouts",
+                )
+            )
+            continue
+        if path != expected_paths[name]:
+            issues.append(
+                GateIssue(
+                    "candidate-cargo-config",
+                    f"candidate Cargo patch {name} does not resolve to its "
+                    "locked checkout",
                 )
             )
             continue
@@ -716,6 +1076,7 @@ def _candidate_issues(_release_lock: dict[str, Any]) -> list[GateIssue]:
         prefix="candidate",
     )
     issues.extend(_candidate_contributor_contract_issues(contributor))
+    patch_state, _ = _candidate_patch_contract(contributor)
     if not isinstance(state, dict) or state.get("schema_version") != 1:
         issues.append(
             GateIssue("candidate-state-invalid", "installer state must use schema 1")
@@ -736,11 +1097,11 @@ def _candidate_issues(_release_lock: dict[str, Any]) -> list[GateIssue]:
                 "installer state is not bound to the current contributor lock",
             )
         )
-    if state.get("patches") != []:
+    if state.get("patches") != patch_state:
         issues.append(
             GateIssue(
                 "candidate-state-patches",
-                "installer state must record an empty local patch set",
+                "installer state does not match the authenticated patch contract",
             )
         )
     sources = state.get("sources")
@@ -796,12 +1157,14 @@ def _candidate_issues(_release_lock: dict[str, Any]) -> list[GateIssue]:
                                 "digest",
                             )
                         )
-                    if entry.get("patch_sha256") != _EMPTY_PATCH_CLOSURE_SHA256:
+                    if entry.get("patch_sha256") != _patch_closure_sha256(
+                        patch_state
+                    ):
                         issues.append(
                             GateIssue(
                                 "candidate-source-patch",
-                                "installer SymJIT source entry does not record the "
-                                "empty patch closure",
+                                "installer SymJIT source entry does not match the "
+                                "authenticated patch closure",
                             )
                         )
                     if checkout.is_dir():

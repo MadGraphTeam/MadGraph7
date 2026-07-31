@@ -957,6 +957,10 @@ def test_three_quark_line_contracted_uses_exact_direct_probe(
     accuracy: Accuracy,
 ) -> None:
     api = FakeApi((1, -1, 2, -2, 3, -3, 21, 21))
+    api.entry = FakeEntry(
+        process_pdgs=api.pdgs,
+        color_order=(2, 7, 8, 1, 3, 4, 5, 6),
+    )
     adapter, _api, executor = _adapter(api)
     monkeypatch.setattr(
         "tools.performance_report.legacy._shared_point",

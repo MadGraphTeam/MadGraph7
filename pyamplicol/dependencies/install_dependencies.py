@@ -20,7 +20,7 @@ import urllib.request
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -87,6 +87,16 @@ class Source:
     @property
     def path(self) -> Path:
         return CHECKOUTS / self.key
+
+
+@dataclass(frozen=True)
+class ContributorPatch:
+    name: str
+    target: str
+    relative_path: str
+    path: Path
+    sha256: str
+    applies_to_revision: str
 
 
 class Runner:
@@ -209,6 +219,43 @@ def _require_tools() -> None:
         raise SetupError("missing contributor tools: " + ", ".join(sorted(missing)))
 
 
+def _managed_trash_destination(name: str, *, workspace_root: Path) -> Path:
+    """Return one new recoverable destination inside workspace-local trash."""
+
+    relative = Path(name)
+    if (
+        relative.is_absolute()
+        or len(relative.parts) != 1
+        or relative.name in {"", ".", ".."}
+    ):
+        raise SetupError(f"invalid managed dependency trash entry: {name!r}")
+    if workspace_root.is_symlink() or TRASH.is_symlink():
+        raise SetupError(
+            "managed dependency workspace and trash must not be symbolic links: "
+            f"{workspace_root}, {TRASH}"
+        )
+    resolved_workspace = workspace_root.resolve(strict=False)
+    resolved_trash = TRASH.resolve(strict=False)
+    try:
+        resolved_trash.relative_to(resolved_workspace)
+    except ValueError as error:
+        raise SetupError(
+            f"managed dependency trash resolves outside the workspace: {TRASH}"
+        ) from error
+    destination = TRASH / relative
+    try:
+        destination.resolve(strict=False).relative_to(resolved_trash)
+    except ValueError as error:
+        raise SetupError(
+            f"managed dependency trash entry escapes its root: {destination}"
+        ) from error
+    if destination.exists() or destination.is_symlink():
+        raise SetupError(
+            f"managed dependency trash destination already exists: {destination}"
+        )
+    return destination
+
+
 def _archive_managed_state(runner: Runner) -> None:
     managed = (
         VENV,
@@ -222,8 +269,11 @@ def _archive_managed_state(runner: Runner) -> None:
     present = [path for path in managed if path.exists() or path.is_symlink()]
     if not present:
         return
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    destination = TRASH / f"dependency-reset-{stamp}"
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    destination = _managed_trash_destination(
+        f"dependency-reset-{stamp}",
+        workspace_root=ROOT,
+    )
     for path in present:
         relative = path.relative_to(ROOT)
         target = destination / relative
@@ -289,23 +339,278 @@ def _source_tree_sha256(root: Path) -> str:
     return digest.hexdigest()
 
 
-def _require_patchless_contributor_lock(payload: dict[str, Any]) -> None:
-    """Reject every local source-patch contract.
+def _contributor_patches(
+    payload: dict[str, Any],
+) -> tuple[ContributorPatch, ...]:
+    """Load and authenticate the ordered generic contributor patch series."""
 
-    Contributor builds consume the immutable fork exactly as archived.  Patch
-    application is intentionally not a supported compatibility path.
-    """
-
-    if payload.get("patches") != []:
-        raise SetupError(
-            "contributor lock patches must be exactly an empty list; "
-            "local source patching is unsupported"
+    raw_patches = payload.get("patches")
+    if not isinstance(raw_patches, list):
+        raise SetupError("contributor lock patches must be a list")
+    allowed_keys = {
+        "name",
+        "target",
+        "path",
+        "sha256",
+        "applies_to_revision",
+    }
+    dependency_root = DEPENDENCIES.resolve()
+    patches: list[ContributorPatch] = []
+    seen_names: set[str] = set()
+    seen_paths: set[str] = set()
+    for index, entry in enumerate(raw_patches):
+        if not isinstance(entry, dict) or set(entry) != allowed_keys:
+            raise SetupError(
+                f"contributor patch {index} must contain only "
+                + "/".join(sorted(allowed_keys))
+            )
+        values = {key: entry[key] for key in allowed_keys}
+        if not all(isinstance(value, str) and value for value in values.values()):
+            raise SetupError(
+                f"contributor patch {index} fields must be nonempty strings"
+            )
+        name = str(entry["name"])
+        target = str(entry["target"])
+        relative = str(entry["path"])
+        expected_sha256 = str(entry["sha256"])
+        revision = str(entry["applies_to_revision"])
+        if name in seen_names:
+            raise SetupError(f"contributor patch name is repeated: {name}")
+        if relative in seen_paths:
+            raise SetupError(f"contributor patch path is repeated: {relative}")
+        if target != "symjit":
+            raise SetupError(f"unsupported contributor patch target: {target}")
+        target_revision = str(payload["symjit"]["candidate_revision"])
+        if revision != target_revision:
+            raise SetupError(
+                f"contributor patch {name} targets revision {revision}, "
+                f"expected {target_revision}"
+            )
+        if _SHA256_PATTERN.fullmatch(expected_sha256) is None:
+            raise SetupError(f"contributor patch {name} has an invalid SHA-256")
+        pure = PurePosixPath(relative)
+        if (
+            pure.is_absolute()
+            or not pure.parts
+            or pure.parts[0] != "patches"
+            or pure.suffix != ".patch"
+            or any(part in {"", ".", ".."} for part in pure.parts)
+        ):
+            raise SetupError(
+                f"contributor patch {name} has an unsafe dependency path: {relative}"
+            )
+        path = DEPENDENCIES.joinpath(*pure.parts)
+        try:
+            resolved = path.resolve(strict=True)
+            resolved.relative_to(dependency_root)
+        except (OSError, ValueError) as error:
+            raise SetupError(
+                f"contributor patch {name} is missing or escapes dependencies: "
+                f"{relative}"
+            ) from error
+        current = DEPENDENCIES
+        for part in pure.parts:
+            current /= part
+            if current.is_symlink():
+                raise SetupError(f"contributor patch {name} may not use symlinks")
+        if not resolved.is_file():
+            raise SetupError(f"contributor patch {name} is not a regular file")
+        actual_sha256 = hashlib.sha256(resolved.read_bytes()).hexdigest()
+        if actual_sha256 != expected_sha256:
+            raise SetupError(
+                f"contributor patch {name} digest mismatch: "
+                f"expected {expected_sha256}, got {actual_sha256}"
+            )
+        patches.append(
+            ContributorPatch(
+                name=name,
+                target=target,
+                relative_path=pure.as_posix(),
+                path=resolved,
+                sha256=expected_sha256,
+                applies_to_revision=revision,
+            )
         )
+        seen_names.add(name)
+        seen_paths.add(relative)
+    return tuple(patches)
+
+
+def _patch_state(
+    patches: Sequence[ContributorPatch],
+) -> list[dict[str, str]]:
+    return [
+        {
+            "name": patch.name,
+            "target": patch.target,
+            "path": patch.relative_path,
+            "sha256": patch.sha256,
+            "applies_to_revision": patch.applies_to_revision,
+        }
+        for patch in patches
+    ]
+
+
+def _patch_closure_sha256(patches: Sequence[ContributorPatch]) -> str:
+    """Hash the complete ordered patch contract for compact provenance."""
+
+    encoded = json.dumps(
+        _patch_state(patches),
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _managed_checkout(name: str) -> Path:
+    """Return one exact managed checkout child that cannot escape by symlink."""
+
+    relative = Path(name)
+    if (
+        relative.is_absolute()
+        or len(relative.parts) != 1
+        or relative.name in {"", ".", ".."}
+    ):
+        raise SetupError(f"invalid managed dependency checkout name: {name!r}")
+    destination = CHECKOUTS / relative
+    workspace_anchor = CHECKOUTS.parent.parent
+    try:
+        for path in (
+            workspace_anchor,
+            CHECKOUTS.parent,
+            CHECKOUTS,
+            destination,
+        ):
+            if path.is_symlink():
+                raise SetupError(
+                    "managed dependency checkout path must not be a symbolic link: "
+                    f"{path}"
+                )
+        workspace_root = workspace_anchor.resolve(strict=False)
+        checkout_root = CHECKOUTS.resolve(strict=False)
+        resolved_destination = destination.resolve(strict=False)
+    except OSError as error:
+        raise SetupError(
+            f"could not validate managed checkout path {destination}: {error}"
+        ) from error
+    try:
+        checkout_root.relative_to(workspace_root)
+        resolved_relative = resolved_destination.relative_to(checkout_root)
+    except ValueError as error:
+        raise SetupError(
+            "managed dependency checkout resolves outside the workspace root: "
+            f"{destination}"
+        ) from error
+    if resolved_relative != relative:
+        raise SetupError(
+            "managed dependency path does not resolve to the expected checkout: "
+            f"{destination}"
+        )
+    return destination
+
+
+def _managed_symjit_checkout() -> Path:
+    """Return the validated managed SymJIT checkout."""
+
+    return _managed_checkout("symjit")
+
+
+def _apply_contributor_patches(
+    runner: Runner,
+    payload: dict[str, Any],
+) -> None:
+    """Apply each authenticated patch once, or verify it is already applied."""
+
+    destination = _managed_symjit_checkout()
+    patches = _contributor_patches(payload)
+    if not patches:
+        return
+    if runner.dry_run:
+        for patch in patches:
+            print(
+                f"# verify/apply {patch.name} to {patch.target} "
+                f"at {patch.applies_to_revision}"
+            )
+        return
+    if not destination.is_dir():
+        raise SetupError("contributor patch target is missing: symjit")
+    expected = str(payload["symjit"]["candidate_tree_sha256"])
+    if _source_tree_sha256(destination) == expected:
+        return
+
+    patch_environment = dict(os.environ)
+    for name in ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE"):
+        patch_environment.pop(name, None)
+    # The archive is not a Git checkout. Prevent Git from adopting the parent
+    # pyAmpliCol repository, where the managed checkout is ignored.
+    patch_environment["GIT_CEILING_DIRECTORIES"] = str(
+        destination.parent.resolve()
+    )
+    for patch in patches:
+        forward = [
+            "git",
+            "apply",
+            "--check",
+            "--whitespace=nowarn",
+            patch.path,
+        ]
+        reverse = [
+            "git",
+            "apply",
+            "--check",
+            "--reverse",
+            "--whitespace=nowarn",
+            patch.path,
+        ]
+        can_apply = runner.run(
+            forward,
+            cwd=destination,
+            env=patch_environment,
+            capture=True,
+            check=False,
+        )
+        is_applied = runner.run(
+            reverse,
+            cwd=destination,
+            env=patch_environment,
+            capture=True,
+            check=False,
+        )
+        if can_apply.returncode == 0 and is_applied.returncode == 0:
+            raise SetupError(
+                f"contributor patch {patch.name} has ambiguous apply state"
+            )
+        if can_apply.returncode == 0:
+            runner.run(
+                ["git", "apply", "--whitespace=nowarn", patch.path],
+                cwd=destination,
+                env=patch_environment,
+                capture=True,
+            )
+            is_applied = runner.run(
+                reverse,
+                cwd=destination,
+                env=patch_environment,
+                capture=True,
+                check=False,
+            )
+        if is_applied.returncode != 0:
+            detail = (
+                can_apply.stderr.strip()
+                or is_applied.stderr.strip()
+                or "patch does not match the managed source"
+            )
+            raise SetupError(
+                f"contributor patch {patch.name} is neither cleanly applicable "
+                f"nor fully applied; rerun with --reset: {detail}"
+            )
 
 
 def _verify_symjit_tree(runner: Runner, payload: dict[str, Any]) -> str | None:
-    """Verify the pristine installed SymJIT source-tree identity."""
+    """Verify the final configured SymJIT source-tree identity."""
 
+    destination = _managed_symjit_checkout()
     symjit = payload["symjit"]
     source = symjit.get("source_tree_sha256")
     expected = symjit.get("candidate_tree_sha256")
@@ -316,25 +621,26 @@ def _verify_symjit_tree(runner: Runner, payload: dict[str, Any]) -> str | None:
         or _SHA256_PATTERN.fullmatch(expected) is None
     ):
         raise SetupError("contributor lock has no valid SymJIT source-tree SHA-256")
-    if expected != source:
+    if not payload.get("patches") and expected != source:
         raise SetupError(
             "patchless SymJIT source and candidate tree identities must match"
         )
     if runner.dry_run:
-        print(f"# verify pristine SymJIT tree at sha256:{expected}")
+        print(f"# verify configured SymJIT tree at sha256:{expected}")
         return None
-    actual = _source_tree_sha256(CHECKOUTS / "symjit")
+    actual = _source_tree_sha256(destination)
     if actual != expected:
         raise SetupError(
-            "pristine SymJIT source tree digest mismatch: "
+            "configured SymJIT source tree digest mismatch: "
             f"expected {expected}, got {actual}; rerun with --reset"
         )
     return actual
 
 
 def _checkout(runner: Runner, source: Source, *, update: bool) -> None:
-    if not source.path.exists():
-        source.path.parent.mkdir(parents=True, exist_ok=True)
+    destination = _managed_checkout(source.key)
+    if not destination.exists():
+        destination.parent.mkdir(parents=True, exist_ok=True)
         clone_command = [
             "git",
             "clone",
@@ -342,40 +648,40 @@ def _checkout(runner: Runner, source: Source, *, update: bool) -> None:
         ]
         if source.branch is not None:
             clone_command.extend(["--branch", source.branch, "--single-branch"])
-        clone_command.extend(["--no-checkout", source.url, str(source.path)])
+        clone_command.extend(["--no-checkout", source.url, str(destination)])
         runner.run(clone_command)
         runner.run(
             ["git", "checkout", "--detach", source.revision],
-            cwd=source.path,
+            cwd=destination,
         )
         return
     if runner.dry_run:
         print(f"# verify {source.key} at {source.revision}")
         return
-    head = _git_head(runner, source.path)
+    head = _git_head(runner, destination)
     if head == source.revision:
         return
     if not update:
         raise SetupError(
-            f"{source.path} is at {head}, expected {source.revision}; "
+            f"{destination} is at {head}, expected {source.revision}; "
             "rerun with --update or --reset"
         )
     fetch_ref = source.branch or source.revision
-    runner.run(["git", "fetch", "origin", fetch_ref], cwd=source.path)
+    runner.run(["git", "fetch", "origin", fetch_ref], cwd=destination)
     runner.run(
         ["git", "checkout", "--detach", source.revision],
-        cwd=source.path,
+        cwd=destination,
     )
 
 
 def _materialize_symjit(runner: Runner, payload: dict[str, Any]) -> None:
     """Materialize the exact checksummed SymJIT source archive."""
 
+    destination = _managed_symjit_checkout()
     symjit = payload["symjit"]
     version = str(symjit["candidate_version"])
     expected_sha256 = str(symjit["archive_sha256"])
     archive_prefix = str(symjit["archive_prefix"])
-    destination = CHECKOUTS / "symjit"
     if runner.dry_run:
         print(
             f"# download and verify SymJIT {version} from {symjit['source_url']} "
@@ -384,15 +690,28 @@ def _materialize_symjit(runner: Runner, payload: dict[str, Any]) -> None:
         return
 
     manifest = destination / "Cargo.toml"
-    if manifest.is_file():
-        with manifest.open("rb") as stream:
-            installed = tomllib.load(stream)
-        if str(installed.get("package", {}).get("version")) != version:
-            raise SetupError(
-                f"{destination} is not SymJIT {version}; rerun with --reset"
+    if destination.is_dir():
+        source_tree = str(symjit["source_tree_sha256"])
+        candidate_tree = str(symjit["candidate_tree_sha256"])
+        installed_tree = _source_tree_sha256(destination)
+        if installed_tree in {source_tree, candidate_tree}:
+            _require_symjit_rlib_manifest(
+                manifest,
+                expected_version=version,
             )
-        return
-    if destination.exists():
+            return
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        archived = _managed_trash_destination(
+            f"symjit-source-{stamp}-{installed_tree[:12]}",
+            workspace_root=CHECKOUTS.parent.parent,
+        )
+        print(
+            f"$ mv {shlex.quote(str(destination))} "
+            f"{shlex.quote(str(archived))}"
+        )
+        archived.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(destination), str(archived))
+    elif destination.exists():
         raise SetupError(f"invalid managed SymJIT source at {destination}")
 
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -436,6 +755,9 @@ def _materialize_symjit(runner: Runner, payload: dict[str, Any]) -> None:
                             f"could not read SymJIT archive member: {member.name}"
                         )
                     target.write_bytes(stream.read())
+                    target.chmod(
+                        (target.stat().st_mode & ~0o111) | (member.mode & 0o111)
+                    )
                 else:
                     raise SetupError(
                         f"unsupported SymJIT archive member: {member.name}"
@@ -447,6 +769,10 @@ def _materialize_symjit(runner: Runner, payload: dict[str, Any]) -> None:
                 "pristine SymJIT source tree digest mismatch: "
                 f"expected {expected_tree}, got {actual_tree}"
             )
+        _require_symjit_rlib_manifest(
+            extracted / "Cargo.toml",
+            expected_version=version,
+        )
         os.replace(extracted, destination)
 
 
@@ -458,8 +784,12 @@ def _replace_section(text: str, name: str, body: str) -> str:
     return pattern.sub(replacement, text, count=1)
 
 
-def _require_symjit_rlib_manifest(path: Path) -> None:
-    """Require the fork's immutable manifest to expose only its Rust library."""
+def _require_symjit_rlib_manifest(
+    path: Path,
+    *,
+    expected_version: str | None = None,
+) -> None:
+    """Require the immutable upstream manifest to expose an rlib library."""
 
     try:
         with path.open("rb") as stream:
@@ -468,23 +798,33 @@ def _require_symjit_rlib_manifest(path: Path) -> None:
         raise SetupError(
             f"could not validate managed SymJIT manifest: {error}"
         ) from error
+    package = manifest.get("package")
+    if not isinstance(package, dict) or package.get("name") != "symjit":
+        raise SetupError("managed SymJIT source has the wrong package identity")
+    if (
+        expected_version is not None
+        and str(package.get("version")) != expected_version
+    ):
+        raise SetupError(
+            "managed SymJIT source has the wrong package version: "
+            f"expected {expected_version}, got {package.get('version')!r}"
+        )
     library = manifest.get("lib")
     if not isinstance(library, dict) or library.get("crate-type") != ["rlib"]:
-        raise SetupError("managed SymJIT fork must be an rlib-only crate")
+        raise SetupError("managed SymJIT source must expose an rlib-only library")
 
 
 def _configure_source_manifests(runner: Runner) -> None:
+    symjit = _managed_symjit_checkout()
+    symbolica = _managed_checkout("symbolica")
+    community = _managed_checkout("symbolica-community")
+    gammaloop = _managed_checkout("gammaloop")
     if runner.dry_run:
         print(
             "# configure candidate Cargo manifests to pinned local paths; "
-            "verify SymJIT remains pristine"
+            "verify the configured SymJIT tree remains authenticated"
         )
         return
-    symbolica = CHECKOUTS / "symbolica"
-    symjit = CHECKOUTS / "symjit"
-    community = CHECKOUTS / "symbolica-community"
-    gammaloop = CHECKOUTS / "gammaloop"
-
     _require_symjit_rlib_manifest(symjit / "Cargo.toml")
 
     symbolica_cargo = symbolica / "Cargo.toml"
@@ -606,7 +946,7 @@ symbolica = { path = "../symbolica" }
 
 def _configure_sources(runner: Runner) -> None:
     _configure_source_manifests(runner)
-    community = CHECKOUTS / "symbolica-community"
+    community = _managed_checkout("symbolica-community")
     if runner.dry_run:
         print("# restore the upstream symbolica-community Cargo.lock")
     else:
@@ -632,11 +972,13 @@ def _configure_sources(runner: Runner) -> None:
 
 
 def _write_cargo_config(runner: Runner) -> None:
+    symjit = _managed_symjit_checkout()
+    symbolica = _managed_checkout("symbolica")
     entries = {
-        "graphica": CHECKOUTS / "symbolica" / "lib" / "graphica",
-        "numerica": CHECKOUTS / "symbolica" / "lib" / "numerica",
-        "symbolica": CHECKOUTS / "symbolica",
-        "symjit": CHECKOUTS / "symjit",
+        "graphica": symbolica / "lib" / "graphica",
+        "numerica": symbolica / "lib" / "numerica",
+        "symbolica": symbolica,
+        "symjit": symjit,
     }
     text = ["# Generated by dependencies/install_dependencies.py", "[patch.crates-io]"]
     text.extend(
@@ -912,10 +1254,11 @@ def _archive_candidate_wheels(directory: Path, prefix: str) -> None:
     candidates = sorted(directory.glob(f"{prefix}*.whl"))
     if not candidates:
         return
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    destination = (
-        TRASH / f"candidate-wheel-refresh-{stamp}" / directory.relative_to(ROOT)
-    )
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    destination = _managed_trash_destination(
+        f"candidate-wheel-refresh-{stamp}",
+        workspace_root=ROOT,
+    ) / directory.relative_to(ROOT)
     destination.mkdir(parents=True, exist_ok=True)
     for wheel in candidates:
         shutil.move(str(wheel), str(destination / wheel.name))
@@ -953,6 +1296,7 @@ def _build_candidate_dependency_wheels(
     runner: Runner,
     payload: dict[str, Any],
 ) -> None:
+    community = _managed_checkout("symbolica-community")
     python = _venv_python()
     environment = _venv_environment()
     symbolica_wheels = WHEELHOUSE / "symbolica"
@@ -972,7 +1316,7 @@ def _build_candidate_dependency_wheels(
             "--out",
             symbolica_wheels,
         ],
-        cwd=CHECKOUTS / "symbolica-community",
+        cwd=community,
         env=environment,
     )
     if not runner.dry_run:
@@ -1001,12 +1345,6 @@ def _build_candidate_project_wheel(runner: Runner) -> None:
     build_environment = dict(
         environment,
         PYAMPLICOL_BUILD_MODE="candidate",
-        # Contributor installation is also the recovery path after native or
-        # prepared-model producer inputs change.  Its wheel is explicitly
-        # non-publishable, so omit stale prepared payloads while rebuilding
-        # the current native runtime.  Keep this flag local to the one build
-        # subprocess: ordinary wheel builds and runtime loading remain strict.
-        PYAMPLICOL_PREPARED_MODEL_BOOTSTRAP="1",
     )
     if not runner.dry_run:
         _archive_candidate_wheels(project_wheels, "pyamplicol")
@@ -1050,17 +1388,22 @@ def _write_state(
     payload: dict[str, Any],
     sources: tuple[Source, ...],
 ) -> None:
-    _require_patchless_contributor_lock(payload)
+    symjit_checkout = _managed_symjit_checkout()
+    source_checkouts = {
+        source.key: _managed_checkout(source.key) for source in sources
+    }
+    patches = _contributor_patches(payload)
     if runner.dry_run:
         print(f"# write {STATE}")
         return
     source_state: dict[str, dict[str, str]] = {}
     for source in sources:
-        head = _git_head(runner, source.path)
+        checkout = source_checkouts[source.key]
+        head = _git_head(runner, checkout)
         source_state[source.key] = {
             "url": source.url,
             "revision": head,
-            "worktree_sha256": _source_tree_sha256(source.path),
+            "worktree_sha256": _source_tree_sha256(checkout),
         }
         if source.branch is not None:
             source_state[source.key]["branch"] = source.branch
@@ -1080,7 +1423,7 @@ def _write_state(
         ).hexdigest(),
         "cargo_config_sha256": hashlib.sha256(CARGO_CONFIG.read_bytes()).hexdigest(),
         "sources": source_state,
-        "patches": [],
+        "patches": _patch_state(patches),
     }
     symjit = payload["symjit"]
     source_state["symjit"] = {
@@ -1088,8 +1431,8 @@ def _write_state(
         "revision": str(symjit["candidate_revision"]),
         "version": str(symjit["candidate_version"]),
         "archive_sha256": str(symjit["archive_sha256"]),
-        "patch_sha256": _EMPTY_PATCH_CLOSURE_SHA256,
-        "worktree_sha256": _source_tree_sha256(CHECKOUTS / "symjit"),
+        "patch_sha256": _patch_closure_sha256(patches),
+        "worktree_sha256": _source_tree_sha256(symjit_checkout),
     }
     STATE.write_text(
         json.dumps(state, indent=2, sort_keys=True) + "\n",
@@ -1116,7 +1459,7 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     payload = _lock()
-    _require_patchless_contributor_lock(payload)
+    _contributor_patches(payload)
     runner = Runner(dry_run=args.dry_run)
     if args.reset:
         _archive_managed_state(runner)
@@ -1131,6 +1474,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for source in sources:
         _checkout(runner, source, update=args.update)
     _materialize_symjit(runner, payload)
+    _apply_contributor_patches(runner, payload)
     _configure_sources(runner)
     _verify_symjit_tree(runner, payload)
     _write_cargo_config(runner)

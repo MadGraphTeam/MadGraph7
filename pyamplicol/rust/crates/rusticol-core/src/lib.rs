@@ -71,4 +71,30 @@ pub const PROCESS_ARTIFACT_SCHEMA_VERSION: u32 = 3;
 pub const RUNTIME_PHYSICS_SCHEMA_VERSION: u32 = 1;
 pub const C_ABI_VERSION: u32 = 1;
 pub const SYMBOLICA_SERIALIZATION_ABI: &str = "symbolica-bincode2-v1";
+
+/// Unstable implementation details shared with pyAmpliCol's private PyO3
+/// extension. This module is absent from ordinary/default rusticol-core builds.
+#[cfg(feature = "python-generation-bridge")]
+#[doc(hidden)]
+pub mod __private {
+    use crate::RusticolResult;
+
+    /// Unstable cold-path bridge for the private PyO3 artifact generator.
+    #[doc(hidden)]
+    pub fn compile_symbolica_program_to_plane_application_bytes(
+        program_repr: &str,
+        input_complex_count: usize,
+        output_complex_count: usize,
+        optimization_level: u8,
+        compress: bool,
+    ) -> RusticolResult<Vec<u8>> {
+        crate::engine::compile_symbolica_program_to_plane_application_bytes(
+            program_repr,
+            input_complex_count,
+            output_complex_count,
+            optimization_level,
+            compress,
+        )
+    }
+}
 pub const ARTIFACT_MANIFEST_FILE: &str = "artifact.json";

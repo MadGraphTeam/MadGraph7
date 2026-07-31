@@ -469,10 +469,14 @@ pub(super) fn validate_evaluator_reference(
     match evaluator {
         EvaluatorManifest::SymjitApplication {
             application_path,
+            plane_application,
             evaluator_state_path,
             ..
         } => {
             validate_evaluator_state_path(artifact, relative_root, application_path)?;
+            if let Some(plane) = plane_application {
+                validate_evaluator_state_path(artifact, relative_root, &plane.application_path)?;
+            }
             if let Some(path) = evaluator_state_path {
                 validate_evaluator_state_path(artifact, relative_root, path)?;
             }

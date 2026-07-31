@@ -68,7 +68,7 @@ def canonical_package_version(root: Path) -> str:
 
 
 def check_contributor_lock_consistency(root: Path) -> None:
-    """Check the compatibility value shared by release and contributor locks."""
+    """Check dependency identities shared by release and contributor locks."""
 
     release = _load_toml(root / "dependencies" / "release-lock.toml")
     contributor = _load_toml(root / "dependencies" / "contributor-lock.toml")
@@ -96,4 +96,86 @@ def check_contributor_lock_consistency(root: Path) -> None:
         raise RuntimeError(
             "release and contributor dependency locks disagree on the Symbolica "
             f"serialization ABI: {rendered}"
+        )
+
+    try:
+        plane_values = {
+            "release [abis]": _required_string(
+                release["abis"]["symjit_plane_application"],
+                "release-lock [abis].symjit_plane_application",
+            ),
+            "contributor [abis]": _required_string(
+                contributor["abis"]["symjit_plane_application"],
+                "contributor-lock [abis].symjit_plane_application",
+            ),
+        }
+    except (KeyError, TypeError) as error:
+        raise RuntimeError(
+            "dependency lock compatibility contract is incomplete"
+        ) from error
+    if len(set(plane_values.values())) != 1:
+        rendered = ", ".join(
+            f"{name}={value!r}" for name, value in plane_values.items()
+        )
+        raise RuntimeError(
+            "release and contributor dependency locks disagree on the SymJIT "
+            f"plane-application ABI: {rendered}"
+        )
+
+    try:
+        release_symjit = release["symjit"]
+        contributor_symjit = contributor["symjit"]
+        shared_symjit = {
+            "version": (
+                release_symjit["version"],
+                contributor_symjit["candidate_version"],
+            ),
+            "repository": (
+                release_symjit["repository"],
+                contributor_symjit["repository"],
+            ),
+            "revision": (
+                release_symjit["revision"],
+                contributor_symjit["candidate_revision"],
+            ),
+            "source_url": (
+                release_symjit["source_url"],
+                contributor_symjit["source_url"],
+            ),
+            "archive_prefix": (
+                release_symjit["archive_prefix"],
+                contributor_symjit["archive_prefix"],
+            ),
+            "archive_sha256": (
+                release_symjit["archive_sha256"],
+                contributor_symjit["archive_sha256"],
+            ),
+            "source_tree_sha256": (
+                release_symjit["source_tree_sha256"],
+                contributor_symjit["source_tree_sha256"],
+            ),
+            "configured_tree_sha256": (
+                release_symjit["configured_tree_sha256"],
+                contributor_symjit["candidate_tree_sha256"],
+            ),
+            "patches": (
+                release_symjit["patches"],
+                contributor["patches"],
+            ),
+        }
+    except (KeyError, TypeError) as error:
+        raise RuntimeError(
+            "dependency lock SymJIT source contract is incomplete"
+        ) from error
+    disagreements = {
+        name: pair for name, pair in shared_symjit.items() if pair[0] != pair[1]
+    }
+    if disagreements:
+        rendered = ", ".join(
+            f"{name}=release:{pair[0]!r}/contributor:{pair[1]!r}"
+            for name, pair in disagreements.items()
+        )
+        raise RuntimeError(
+            "release and contributor dependency locks disagree on the authenticated "
+            f"SymJIT source: {rendered}"
         )

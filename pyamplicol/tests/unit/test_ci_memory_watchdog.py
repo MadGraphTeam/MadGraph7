@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import ctypes
 import errno
+import hashlib
 import io
+import json
 import os
 import struct
 import subprocess
@@ -33,6 +35,8 @@ def test_argument_validation_and_default_limit() -> None:
 
     assert parsed.limit_gib is None
     assert parsed.limit_mib is None
+    assert parsed.report_json is None
+    assert parsed.bind_result_json is None
     assert watchdog.DEFAULT_LIMIT_GIB == 30.0
     with pytest.raises(SystemExit) as missing:
         watchdog.main(())
@@ -40,6 +44,131 @@ def test_argument_validation_and_default_limit() -> None:
     with pytest.raises(SystemExit) as invalid:
         watchdog.main(("--limit-gib", "0", "--", "true"))
     assert invalid.value.code == 2
+    with pytest.raises(SystemExit) as unreported_binding:
+        watchdog.main(("--bind-result-json", "result.json", "--", "true"))
+    assert unreported_binding.value.code == 2
+    with pytest.raises(SystemExit) as aliased_outputs:
+        watchdog.main(
+            (
+                "--report-json",
+                "evidence.json",
+                "--bind-result-json",
+                "evidence.json",
+                "--",
+                "true",
+            )
+        )
+    assert aliased_outputs.value.code == 2
+
+
+def test_final_report_is_content_addressed_and_binds_result(tmp_path: Path) -> None:
+    result_path = tmp_path / "campaign.json"
+    result_path.write_text('{"complete":true}\n', encoding="ascii")
+    report_path = tmp_path / "watchdog.json"
+
+    returncode = watchdog._emit_final_report(
+        report_path=report_path,
+        bound_result_path=result_path,
+        command=("python", "paired.py", "--result-json", str(result_path)),
+        working_directory=str(tmp_path),
+        started_at_utc="2026-07-31T00:00:00+00:00",
+        started_monotonic=time.monotonic() - 1.0,
+        child_pid=123,
+        child_exit_code=0,
+        watchdog_exit_code=0,
+        outcome="command-finished",
+        reason=None,
+        limit_bytes=30 * watchdog.GIB,
+        poll_interval=0.25,
+        terminate_grace=5.0,
+        metric="process-tree-rss",
+        probe_sample_count=4,
+        probe_failure_count=2,
+        maximum_consecutive_probe_failures=1,
+        peak_rss_bytes=1024,
+        peak_physical_footprint_bytes=None,
+        peak_guard_bytes=1024,
+        peak_processes=2,
+        stderr=io.StringIO(),
+    )
+
+    payload = json.loads(report_path.read_text(encoding="ascii"))
+    unsigned = dict(payload)
+    digest = unsigned.pop("content_sha256")
+    assert returncode == 0
+    assert digest == watchdog._sha256(unsigned)
+    assert payload["passes"] is True
+    assert payload["enforcement"]["completed_under_retry_policy"] is True
+    assert payload["enforcement"]["probe_failure_count"] == 2
+    assert payload["enforcement"]["maximum_consecutive_probe_failures"] == 1
+    identity = payload["result_binding"]["identity"]
+    assert identity["resolved_path"] == str(result_path.resolve())
+    assert identity["sha256"] == hashlib.sha256(result_path.read_bytes()).hexdigest()
+
+
+def test_requested_report_is_emitted_when_command_cannot_start(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report_path = tmp_path / "watchdog-failure.json"
+
+    def missing(*_args: object, **_kwargs: object) -> object:
+        raise FileNotFoundError
+
+    monkeypatch.setattr(watchdog.subprocess, "Popen", missing)
+    returncode = watchdog.run_guarded(
+        ("missing-command",),
+        limit_bytes=watchdog.MIB,
+        report_path=report_path,
+        stderr=io.StringIO(),
+    )
+
+    payload = json.loads(report_path.read_text(encoding="ascii"))
+    assert returncode == 127
+    assert payload["complete"] is True
+    assert payload["passes"] is False
+    assert payload["execution"]["outcome"] == "command-not-found"
+    assert payload["execution"]["watchdog_exit_code"] == 127
+
+
+def test_success_without_requested_bound_result_fails_closed(
+    tmp_path: Path,
+) -> None:
+    report_path = tmp_path / "watchdog.json"
+    missing_result = tmp_path / "missing-campaign.json"
+
+    returncode = watchdog._emit_final_report(
+        report_path=report_path,
+        bound_result_path=missing_result,
+        command=("python", "paired.py"),
+        working_directory=str(tmp_path),
+        started_at_utc="2026-07-31T00:00:00+00:00",
+        started_monotonic=time.monotonic() - 1.0,
+        child_pid=123,
+        child_exit_code=0,
+        watchdog_exit_code=0,
+        outcome="command-finished",
+        reason=None,
+        limit_bytes=30 * watchdog.GIB,
+        poll_interval=0.25,
+        terminate_grace=5.0,
+        metric="process-tree-rss",
+        probe_sample_count=4,
+        probe_failure_count=0,
+        maximum_consecutive_probe_failures=0,
+        peak_rss_bytes=1024,
+        peak_physical_footprint_bytes=None,
+        peak_guard_bytes=1024,
+        peak_processes=2,
+        stderr=io.StringIO(),
+    )
+
+    payload = json.loads(report_path.read_text(encoding="ascii"))
+    assert returncode == watchdog.WATCHDOG_ERROR_EXIT_CODE
+    assert payload["passes"] is False
+    assert payload["execution"]["outcome"] == "result-binding-failed"
+    assert payload["result_binding"]["identity"] is None
+    assert payload["result_binding"]["error"]
 
 
 def test_linux_proc_parsers_handle_parentheses_and_rss() -> None:

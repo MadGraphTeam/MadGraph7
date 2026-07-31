@@ -28,9 +28,11 @@ def _source_leaf(
     *,
     path: str = "evaluators/stage.symjit",
     output_len: int = 1,
+    include_plane: bool = True,
 ) -> dict[str, object]:
-    return {
+    leaf: dict[str, object] = {
         "kind": "symjit-application-evaluator",
+        "backend": "jit",
         "runtime_capability": gate.SYMJIT_RUNTIME_CAPABILITY,
         "input_len": 1,
         "output_len": output_len,
@@ -38,6 +40,17 @@ def _source_leaf(
         "application_abi": gate.SYMJIT_APPLICATION_ABI,
         "optimization_level": 3,
     }
+    if include_plane:
+        leaf["plane_application"] = {
+            "application_path": path.replace(".symjit", ".plane.symjit"),
+            "application_abi": gate.SYMJIT_PLANE_APPLICATION_ABI,
+            "storage_abi": gate.SYMJIT_APPLICATION_ABI,
+            "translation_mode": "symbolica-structured-instructions",
+            "optimization_level": 3,
+            "direct_arena": True,
+            "source_digest": "1" * 64,
+        }
+    return leaf
 
 
 def _certificate(payload: dict[str, object]) -> dict[str, object]:
@@ -49,7 +62,7 @@ def _direct_policies() -> dict[str, object]:
         "kind": gate.COMPILED_STAGE_PLAN_KIND,
         "schema_version": gate.COMPILED_STAGE_PLAN_SCHEMA_VERSION,
         "application_abi": gate.COMPILED_PLANE_DIRECT_APPLICATION_ABI,
-        "source_application_abi": gate.SYMJIT_APPLICATION_ABI,
+        "source_application_abi": gate.SYMJIT_PLANE_APPLICATION_ABI,
         "element_layout": "split-complex-component-major",
         "input_output_aliasing": "forbidden",
         "output_output_aliasing": "forbidden",
@@ -111,8 +124,8 @@ def _stage() -> dict[str, object]:
             {
                 "kind": gate.COMPILED_RESIDUAL_LEAF_KIND,
                 "leaf_id": 0,
-                "application_path": "evaluators/stage.symjit",
-                "source_application_abi": gate.SYMJIT_APPLICATION_ABI,
+                "application_path": "evaluators/stage.plane.symjit",
+                "source_application_abi": gate.SYMJIT_PLANE_APPLICATION_ABI,
                 "optimization_level": 3,
                 "direct_codegen_optimization_level": 3,
                 "input_indices": [0],
@@ -218,8 +231,8 @@ def _mixed_current_stage() -> dict[str, object]:
             {
                 "kind": gate.COMPILED_RESIDUAL_LEAF_KIND,
                 "leaf_id": 0,
-                "application_path": "evaluators/residual.symjit",
-                "source_application_abi": gate.SYMJIT_APPLICATION_ABI,
+                "application_path": "evaluators/residual.plane.symjit",
+                "source_application_abi": gate.SYMJIT_PLANE_APPLICATION_ABI,
                 "optimization_level": 3,
                 "direct_codegen_optimization_level": 3,
                 "input_indices": [0],
@@ -237,11 +250,11 @@ def _mixed_current_stage() -> dict[str, object]:
                 "kernel_id": 0,
                 "motif_digest": "1" * 64,
                 "exact_source_digest": "2" * 64,
-                "source_application_abi": gate.SYMJIT_APPLICATION_ABI,
+                "source_application_abi": gate.SYMJIT_PLANE_APPLICATION_ABI,
                 "application_abi": gate.COMPILED_PLANE_DIRECT_APPLICATION_ABI,
                 "descriptor_abi": gate.COMPILED_DIRECT_TABLE_DESCRIPTOR_ABI,
                 "binding_abi": gate.COMPILED_DIRECT_TABLE_BINDING_ABI,
-                "application_path": "evaluators/kernel.symjit",
+                "application_path": "evaluators/kernel.plane.symjit",
                 "application_sha256": "3" * 64,
                 "application_size_bytes": 4096,
                 "descriptor_path": "evaluators/kernel.table",
@@ -305,7 +318,7 @@ def _execution_payload() -> dict[str, object]:
         "compiled": {
             "model_parameter_evaluator": {
                 "kind": "model-parameter-evaluator",
-                "evaluator": _source_leaf(),
+                "evaluator": _source_leaf(include_plane=False),
             },
             "stage_evaluators": {
                 "kind": "generic-dag-stage-evaluator-artifacts",
@@ -459,7 +472,7 @@ def test_table_only_stage_may_omit_the_residual_evaluator() -> None:
             lambda payload: payload["compiled"]["stage_evaluators"]["amplitude_stage"][
                 "compiled_plane_arena"
             ]["residual_leaves"][0].update({"direct_codegen_optimization_level": 2}),
-            "fixed O3",
+            "does not match.*plane",
         ),
         (
             lambda payload: payload["compiled"]["stage_evaluators"]["amplitude_stage"][

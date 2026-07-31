@@ -2,10 +2,11 @@
 """Prepared model metadata for Direct-Arena recurrence executors.
 
 This module deliberately describes executable ownership without adapting the
-existing packed eager-kernel ABI. Portable JIT bindings reference the existing
-``application.symjit`` payload and authenticate the load-time Direct-Arena
-transform. Target-native C++/ASM bindings reference a split-real shared library
-that exports the same typed arena/row contract directly.
+existing packed eager-kernel ABI. Portable JIT bindings reference a standard
+SymJIT direct-arena P-kernel and authenticate Rusticol-owned plane, broadcast,
+scratch-output, and destination-policy metadata. Target-native C++/ASM bindings
+reference a split-real shared library that exports the same typed arena/row
+contract directly.
 """
 
 from __future__ import annotations
@@ -16,6 +17,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Literal, TypeAlias, cast
 
+from .._internal.versions import (
+    RECURRENCE_DIRECT_BINDING_ABI,
+    SYMJIT_PLANE_APPLICATION_ABI,
+)
 from .recurrence_direct_intrinsics import (
     RECURRENCE_INTRINSIC_SCALE_KIND,
     CertifiedRecurrenceIntrinsic,
@@ -30,11 +35,9 @@ from .recurrence_template import (
 RECURRENCE_DIRECT_TEMPLATE_ABI = "pyamplicol-recurrence-direct-template-v1"
 RECURRENCE_DIRECT_BACKEND_ABI = "rusticol.recurrence-direct-backend.v1"
 RECURRENCE_DIRECT_CANONICALIZATION_ABI = "pyamplicol-canonical-json-v1"
-RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI = (
-    "pyamplicol-recurrence-direct-payload-binding-v1"
-)
+RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI = RECURRENCE_DIRECT_BINDING_ABI
 RECURRENCE_DIRECT_IDENTITY_FINALIZER = "rusticol.identity-finalize-in-place.v1"
-SYMJIT_DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v1"
+SYMJIT_DIRECT_APPLICATION_ABI = SYMJIT_PLANE_APPLICATION_ABI
 NATIVE_DIRECT_APPLICATION_ABI = "pyamplicol-recurrence-native-direct-library-v1"
 
 DirectRole: TypeAlias = Literal["source", "contribution", "finalization", "closure"]
@@ -243,7 +246,8 @@ class RecurrenceDirectPayloadBindingV1:
     def __post_init__(self) -> None:
         if self.abi != RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI:
             raise RecurrenceDirectTemplateError(
-                f"unsupported direct payload-binding ABI {self.abi!r}"
+                f"unsupported direct payload-binding ABI {self.abi!r}; "
+                "regenerate the prepared model with this pyAmpliCol version"
             )
         if self.kind not in _PAYLOAD_BINDING_KINDS:
             raise RecurrenceDirectTemplateError(
@@ -1470,12 +1474,11 @@ def build_recurrence_direct_template_catalog(
 ) -> RecurrenceDirectTemplateCatalogV1:
     """Derive stable direct executors from one authenticated semantic catalog.
 
-    ``prepared_jit_sources`` references each existing portable O2
-    ``application.symjit`` and derives its authenticated load-time direct
-    transform. ``prepared_native_sources`` references target-native split-real
-    libraries and their typed exported entry points. Omitting both records
-    prepared kernels as pending and never treats their packed eager evaluator
-    as a direct call.
+    ``prepared_jit_sources`` references each portable O2 plane application and
+    derives its authenticated P-kernel arena binding. ``prepared_native_sources``
+    references target-native split-real libraries and their typed exported
+    entry points. Omitting both records prepared kernels as pending and never
+    treats their packed eager evaluator as a direct call.
     """
 
     if not isinstance(recurrence_catalog, RecurrenceTemplateCatalog):
@@ -1500,6 +1503,13 @@ def build_recurrence_direct_template_catalog(
         raise RecurrenceDirectTemplateError(
             "prepared JIT direct catalogs cannot reference native direct sources"
         )
+    if backend == "jit":
+        for kernel_id, source in jit_sources.items():
+            if source.source_application_abi != SYMJIT_PLANE_APPLICATION_ABI:
+                raise RecurrenceDirectTemplateError(
+                    f"prepared JIT direct source for kernel {kernel_id} is not "
+                    "a SymJIT plane application; regenerate the prepared model"
+                )
     if backend in {"cpp", "asm"} and jit_sources:
         raise RecurrenceDirectTemplateError(
             "prepared native direct catalogs cannot reference SymJIT sources"

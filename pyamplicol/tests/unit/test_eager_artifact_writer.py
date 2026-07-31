@@ -45,6 +45,37 @@ from pyamplicol.models.prepared import (
 )
 
 
+def _plane_application(
+    root: str,
+    *,
+    input_arity: int,
+    output_arity: int,
+) -> dict[str, object]:
+    return {
+        "application_path": f"{root}/plane-application.symjit",
+        "application_abi": artifact_writer.SYMJIT_PLANE_APPLICATION_ABI,
+        "storage_abi": artifact_writer.SYMJIT_APPLICATION_ABI,
+        "element_layout": "split-complex-plane-major",
+        "descriptor_order": "inputs-re-im-then-outputs-re-im",
+        "input_complex_count": input_arity,
+        "output_complex_count": output_arity,
+        "input_plane_count": 2 * input_arity,
+        "output_plane_count": 2 * output_arity,
+        "compiler_type": "native",
+        "translation_mode": "symbolica-structured-instructions",
+        "optimization_level": 2,
+        "simd": True,
+        "complex": True,
+        "fast_math": True,
+        "fast_complex": False,
+        "compression": True,
+        "threading": False,
+        "direct_arena": True,
+        "source_digest": "0" * 64,
+        "target": {"triple": "test-native", "cpu_features": []},
+    }
+
+
 def _kernel(kernel_id: int, signature: str) -> PreparedKernelRecord:
     root = f"kernels/{kernel_id}"
     return PreparedKernelRecord(
@@ -74,6 +105,11 @@ def _kernel(kernel_id: int, signature: str) -> PreparedKernelRecord:
             "input_len": 1,
             "output_len": 1,
             "application_path": f"{root}/application.symjit",
+            "plane_application": _plane_application(
+                root,
+                input_arity=1,
+                output_arity=1,
+            ),
             "evaluator_state_path": f"{root}/exact.evaluator.bin",
         },
     )
@@ -114,6 +150,11 @@ def _variant(kernel: PreparedKernelRecord) -> PreparedKernelVariantRecord:
             "input_len": 4,
             "output_len": 4,
             "application_path": f"{root}/application.symjit",
+            "plane_application": _plane_application(
+                root,
+                input_arity=4,
+                output_arity=4,
+            ),
             "evaluator_state_path": f"{root}/exact.evaluator.bin",
         },
     )
@@ -134,7 +175,10 @@ def _prepared_model(
         backend="jit",
         optimization_settings=settings,
         producer={"distribution": "pyamplicol", "version": "test"},
-        dependency_abis={"symjit_application": artifact_writer.SYMJIT_APPLICATION_ABI},
+        dependency_abis={
+            "symjit_application": artifact_writer.SYMJIT_APPLICATION_ABI,
+            "symjit_plane_application": "pyamplicol-symjit-plane-application-v2",
+        },
         provenance={"compiled_model": "test"},
         target={
             "portable": True,
@@ -371,6 +415,7 @@ def test_plan_v3_writer_filters_pack_and_appends_atomically(
 
     pack_identity = manifest.extensions["eager_prepared_pack"]
     assert pack_identity["kind"] == "pyamplicol-prepared-kernel-pack-identity"
+    assert pack_identity["abi"] == "pyamplicol-prepared-kernel-pack-identity-v2"
     assert pack_identity["kernel_count"] == 3
     assert len(pack_identity["identity_sha256"]) == 64
     pack = json.loads(

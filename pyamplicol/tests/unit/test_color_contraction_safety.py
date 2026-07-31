@@ -186,7 +186,7 @@ def test_three_open_line_nlc_keeps_exact_qualified_coefficients() -> None:
     ) == (0.0, 8.0, 8.0)
 
 
-def test_nlc_one_open_line_recycles_orderings_in_one_shared_dag() -> None:
+def test_nlc_one_open_line_recycles_runtime_route_safe_orderings() -> None:
     model = BuiltinSMModel()
     process = build_process_ir("g g > t t~ g", color_accuracy="nlc")
     plan = build_color_plan(process, color_accuracy="nlc")
@@ -197,7 +197,9 @@ def test_nlc_one_open_line_recycles_orderings_in_one_shared_dag() -> None:
     assert engine.shared_lc_orderings is True
     assert len(dag.currents) == 250
     assert len(dag.interactions) == 624
-    assert dag.interaction_evaluation_count == 348
+    # Reversed ordered-label routes stay distinct even when their color
+    # ordering is shared; only route-safe kernel evaluations may be recycled.
+    assert dag.interaction_evaluation_count == 420
     assert len(dag.amplitude_roots) == 192
 
 

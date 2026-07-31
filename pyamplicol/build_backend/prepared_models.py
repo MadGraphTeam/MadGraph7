@@ -12,13 +12,19 @@ import shutil
 import sys
 import tomllib
 from collections.abc import Mapping, Sequence
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import ModuleType
 from typing import Any, cast
+
+from native_build_identity import (
+    canonical_release_cargo_lock_bytes,
+    native_build_inputs_digest,
+)
 
 _ASSET_DIRECTORY = Path("src/pyamplicol/assets/prepared_models")
 _RELEASE_STORE_CONTAINER = Path("release_assets")
 _RELEASE_STORE_DIRECTORY = _RELEASE_STORE_CONTAINER / "prepared_models"
+_SOURCE_ROOT = Path(__file__).resolve().parents[1]
 _EXPECTED_ARCHITECTURES = ("aarch64", "x86_64")
 _METADATA_KEYS = frozenset(
     {
@@ -38,6 +44,21 @@ _METADATA_KEYS = frozenset(
         "schema_version",
         "target",
     }
+)
+_PRODUCER_KEYS = frozenset(
+    {
+        "compiled_model_schema",
+        "model_compiler_sha256",
+        "model_compiler_version",
+        "model_source_digest",
+        "native_build_inputs_sha256",
+        "package_version",
+        "prepared_pack_compiler_sha256",
+    }
+)
+_SYMJIT_SOURCE_KEYS = frozenset({"configured_tree_sha256", "patches"})
+_SYMJIT_PATCH_KEYS = frozenset(
+    {"applies_to_revision", "name", "path", "sha256", "target"}
 )
 _EXPECTED_ID = "built-in-sm-jit-o2"
 
@@ -138,7 +159,12 @@ def discard_release_packaged_prepared_model_store(overlay: Path) -> None:
     shutil.rmtree(container)
 
 
-def stage_packaged_prepared_models(overlay: Path, mode: str) -> None:
+def stage_packaged_prepared_models(
+    overlay: Path,
+    mode: str,
+    *,
+    source_root: Path | None = None,
+) -> None:
     """Fail closed unless the wheel-owned prepared model matches the overlay."""
 
     if mode not in {"candidate", "release"}:
@@ -163,12 +189,14 @@ def stage_packaged_prepared_models(overlay: Path, mode: str) -> None:
         if unexpected:
             details.append("unexpected: " + ", ".join(unexpected))
         raise RuntimeError(
-            "packaged prepared-model asset set is invalid ("
-            + "; ".join(details)
-            + ")"
+            "packaged prepared-model asset set is invalid (" + "; ".join(details) + ")"
         )
 
     contract = _load_prepared_contract(package_root / "models" / "prepared.py")
+    native_build_inputs_sha256 = native_build_inputs_digest(
+        _SOURCE_ROOT if source_root is None else source_root,
+        normalize_release_cargo_lock=mode == "release",
+    )
     for architecture in _EXPECTED_ARCHITECTURES:
         metadata_name, expected_bundle_name = _asset_names(architecture)
         metadata = _load_json(
@@ -178,10 +206,7 @@ def stage_packaged_prepared_models(overlay: Path, mode: str) -> None:
         _require_exact_keys(metadata, _METADATA_KEYS, "prepared-model metadata")
         if metadata.get("schema_version") != 1:
             raise RuntimeError("unsupported packaged prepared-model metadata schema")
-        if (
-            metadata.get("id") != _EXPECTED_ID
-            or metadata.get("model") != "built-in-sm"
-        ):
+        if metadata.get("id") != _EXPECTED_ID or metadata.get("model") != "built-in-sm":
             raise RuntimeError("packaged prepared-model identity is invalid")
         bundle_name = _required_string(metadata.get("bundle"), "metadata.bundle")
         if bundle_name != expected_bundle_name:
@@ -217,6 +242,7 @@ def stage_packaged_prepared_models(overlay: Path, mode: str) -> None:
             package_root=package_root,
             overlay=overlay,
             mode=mode,
+            native_build_inputs_sha256=native_build_inputs_sha256,
         )
 
 
@@ -304,9 +330,7 @@ def _write_packaged_prepared_model_asset(
         raise RuntimeError("packaged built-in prepared model must use portable JIT O2")
 
     compiled = dict(bundle.compiled_model)
-    compiled_producer = _mapping(
-        compiled.get("producer"), "compiled_model.producer"
-    )
+    compiled_producer = _mapping(compiled.get("producer"), "compiled_model.producer")
     compiled_source = _mapping(compiled.get("source"), "compiled_model.source")
     package_version = _required_string(
         compiled_producer.get("pyamplicol"), "compiled_model producer version"
@@ -342,8 +366,20 @@ def _write_packaged_prepared_model_asset(
     model_compiler_digest = _model_compiler_digest(package_root)
     prepared_pack_compiler_digest = _prepared_pack_compiler_digest(package_root)
     source_digest = _built_in_source_digest(package_root)
+    native_build_inputs_sha256 = native_build_inputs_digest(
+        overlay,
+        normalize_release_cargo_lock=mode == "release",
+    )
+    if (
+        pack.producer.get("native_build_inputs_sha256")
+        != native_build_inputs_sha256
+    ):
+        raise RuntimeError(
+            "prepared kernel-pack native build inputs SHA-256 is stale"
+        )
     expected_compiled = {
         "compiled_model_schema_version": compiled_schema,
+        "model_compiler_sha256": model_compiler_digest,
         "model_compiler_version": model_compiler_version,
     }
     for key, expected in expected_compiled.items():
@@ -351,6 +387,19 @@ def _write_packaged_prepared_model_asset(
             raise RuntimeError(f"prepared compiled-model producer {key} is stale")
     if compiled_source.get("kind") != "built-in-sm":
         raise RuntimeError("prepared bundle does not contain the built-in SM")
+    if compiled_source.get("digest") != source_digest:
+        raise RuntimeError("prepared bundle built-in model source digest is stale")
+    if pack.provenance.get("compiled_model_digest") != source_digest:
+        raise RuntimeError("prepared kernel-pack model source digest is stale")
+    pack_model_source = _mapping(
+        pack.provenance.get("model_source"),
+        "kernel_pack.provenance.model_source",
+    )
+    if (
+        pack_model_source.get("kind") != "built-in-sm"
+        or pack_model_source.get("digest") != source_digest
+    ):
+        raise RuntimeError("prepared kernel-pack model source identity is stale")
 
     if mode == "candidate":
         assert contributor is not None
@@ -369,15 +418,18 @@ def _write_packaged_prepared_model_asset(
             package_root / "_internal" / "versions.py",
             "SYMJIT_APPLICATION_ABI",
         ),
+        "symjit_plane_application_abi": _literal_assignment(
+            package_root / "_internal" / "versions.py",
+            "SYMJIT_PLANE_APPLICATION_ABI",
+        ),
         "symjit_version": symjit_version,
-        "ufo_model_loader_version": release["ufo_model_loader"][
-            "required_version"
-        ],
+        "ufo_model_loader_version": release["ufo_model_loader"]["required_version"],
     }
     expected_pack_dependencies = {
         "symbolica_serialization": dependencies["symbolica_serialization_abi"],
         "symbolica_version": dependencies["symbolica_version"],
         "symjit_application": dependencies["symjit_application_abi"],
+        "symjit_plane_application": dependencies["symjit_plane_application_abi"],
     }
     for key, expected in expected_pack_dependencies.items():
         if pack.dependency_abis.get(key) != expected:
@@ -385,13 +437,15 @@ def _write_packaged_prepared_model_asset(
 
     if mode == "candidate":
         assert contributor is not None
-        sources = {
-            "symbolica": contributor["symbolica"]["candidate_revision"],
-            "symbolica-community": contributor["symbolica"]["community_revision"],
-            "symjit": contributor["symjit"]["candidate_revision"],
-        }
+        sources = _candidate_sources(contributor)
     else:
         sources = _release_sources(overlay, release)
+    symjit_source = _symjit_source_identity(
+        overlay,
+        mode=mode,
+        release=release,
+        contributor=contributor,
+    )
 
     metadata_name, bundle_name = _asset_names(architecture)
     metadata: dict[str, object] = {
@@ -400,6 +454,7 @@ def _write_packaged_prepared_model_asset(
             "candidate_fingerprint": candidate_fingerprint,
             "mode": mode,
             "sources": sources,
+            "symjit_source": symjit_source,
         },
         "bundle": bundle_name,
         "bundle_sha256": hashlib.sha256(bundle_bytes).hexdigest(),
@@ -421,6 +476,7 @@ def _write_packaged_prepared_model_asset(
             "model_compiler_sha256": model_compiler_digest,
             "model_compiler_version": model_compiler_version,
             "model_source_digest": source_digest,
+            "native_build_inputs_sha256": native_build_inputs_sha256,
             "package_version": package_version,
             "prepared_pack_compiler_sha256": prepared_pack_compiler_digest,
         },
@@ -455,6 +511,7 @@ def _validate_bundle(
     package_root: Path,
     overlay: Path,
     mode: str,
+    native_build_inputs_sha256: str,
 ) -> None:
     pack = bundle.kernel_pack
     if bundle.backend != "jit" or metadata.get("backend") != "jit":
@@ -494,12 +551,12 @@ def _validate_bundle(
     if bundle.manifest.get("schema_version") != bundle_schema:
         raise RuntimeError("prepared bundle declares an incompatible container schema")
 
-    build_contract = _mapping(
-        metadata.get("build_contract"), "metadata.build_contract"
-    )
+    build_contract = _mapping(metadata.get("build_contract"), "metadata.build_contract")
     _require_exact_keys(
         build_contract,
-        frozenset({"candidate_fingerprint", "mode", "sources"}),
+        frozenset(
+            {"candidate_fingerprint", "mode", "sources", "symjit_source"}
+        ),
         "metadata.build_contract",
     )
     if build_contract.get("mode") != mode:
@@ -523,10 +580,41 @@ def _validate_bundle(
             "regenerate the built-in portable JIT O2 prepared-model asset"
         )
     sources = _mapping(build_contract.get("sources"), "metadata.build_contract.sources")
-    if mode == "release" and dict(sources) != _release_sources(overlay):
+    with (overlay / "dependencies" / "release-lock.toml").open("rb") as stream:
+        release = tomllib.load(stream)
+    contributor: Mapping[str, Any] | None = None
+    if mode == "candidate":
+        with (overlay / "dependencies" / "contributor-lock.toml").open(
+            "rb"
+        ) as stream:
+            contributor = tomllib.load(stream)
+        expected_sources = _candidate_sources(contributor)
+    else:
+        expected_sources = _release_sources(overlay, release)
+    if dict(sources) != expected_sources:
         raise RuntimeError(
-            "packaged prepared model release source identity is stale; "
-            "regenerate it with the active release lock"
+            "packaged prepared model source identity is stale; "
+            f"regenerate it with the active {mode} lock"
+        )
+    symjit_source = _mapping(
+        build_contract.get("symjit_source"),
+        "metadata.build_contract.symjit_source",
+    )
+    _require_exact_keys(
+        symjit_source,
+        _SYMJIT_SOURCE_KEYS,
+        "metadata.build_contract.symjit_source",
+    )
+    expected_symjit_source = _symjit_source_identity(
+        overlay,
+        mode=mode,
+        release=release,
+        contributor=contributor,
+    )
+    if _plain_json(symjit_source) != expected_symjit_source:
+        raise RuntimeError(
+            "packaged prepared model SymJIT configured source identity is stale; "
+            f"regenerate it with the active {mode} lock and patch closure"
         )
 
     compiled = dict(bundle.compiled_model)
@@ -544,10 +632,22 @@ def _validate_bundle(
         package_root / "models" / "loading.py", "MODEL_COMPILER_VERSION"
     )
     packaged_producer = _mapping(metadata.get("producer"), "metadata.producer")
+    _require_exact_keys(
+        packaged_producer,
+        _PRODUCER_KEYS,
+        "metadata.producer",
+    )
+    model_compiler_sha256 = _model_compiler_digest(package_root)
+    model_source_digest = _built_in_source_digest(package_root)
+    prepared_pack_compiler_sha256 = _prepared_pack_compiler_digest(package_root)
     expected_producer = {
         "compiled_model_schema": compiled_schema,
+        "model_compiler_sha256": model_compiler_sha256,
         "model_compiler_version": compiler_version,
+        "model_source_digest": model_source_digest,
+        "native_build_inputs_sha256": native_build_inputs_sha256,
         "package_version": _expected_package_version(overlay, mode),
+        "prepared_pack_compiler_sha256": prepared_pack_compiler_sha256,
     }
     for key, expected in expected_producer.items():
         if packaged_producer.get(key) != expected:
@@ -559,16 +659,38 @@ def _validate_bundle(
         raise RuntimeError("prepared compiled-model schema is stale")
     if producer.get("model_compiler_version") != compiler_version:
         raise RuntimeError("prepared model compiler version is stale")
+    if producer.get("model_compiler_sha256") != model_compiler_sha256:
+        raise RuntimeError("prepared model compiler SHA-256 is stale")
     if producer.get("pyamplicol") != expected_producer["package_version"]:
         raise RuntimeError("prepared compiled-model package version is stale")
+    if source.get("digest") != model_source_digest:
+        raise RuntimeError("prepared compiled-model source digest is stale")
     if pack.producer.get("version") != expected_producer["package_version"]:
         raise RuntimeError("prepared kernel-pack package version is stale")
     if pack.producer.get("compiled_model_schema") != compiled_schema:
         raise RuntimeError("prepared kernel-pack compiled-model schema is stale")
     if pack.producer.get("model_compiler_version") != compiler_version:
         raise RuntimeError("prepared kernel-pack model compiler version is stale")
+    if (
+        pack.producer.get("native_build_inputs_sha256")
+        != native_build_inputs_sha256
+    ):
+        raise RuntimeError(
+            "prepared kernel-pack native build inputs SHA-256 is stale"
+        )
     if pack.provenance.get("model_name") != "built-in-sm":
         raise RuntimeError("prepared kernel-pack model provenance is invalid")
+    if pack.provenance.get("compiled_model_digest") != model_source_digest:
+        raise RuntimeError("prepared kernel-pack compiled-model digest is stale")
+    pack_model_source = _mapping(
+        pack.provenance.get("model_source"),
+        "kernel_pack.provenance.model_source",
+    )
+    if (
+        pack_model_source.get("kind") != "built-in-sm"
+        or pack_model_source.get("digest") != model_source_digest
+    ):
+        raise RuntimeError("prepared kernel-pack model source identity is stale")
 
     dependencies = _mapping(metadata.get("dependencies"), "metadata.dependencies")
     _validate_dependency_contract(
@@ -628,6 +750,10 @@ def _validate_dependency_contract(
             package_root / "_internal" / "versions.py",
             "SYMJIT_APPLICATION_ABI",
         ),
+        "symjit_plane_application_abi": _literal_assignment(
+            package_root / "_internal" / "versions.py",
+            "SYMJIT_PLANE_APPLICATION_ABI",
+        ),
     }
     for key, value in expected.items():
         if dependencies.get(key) != value:
@@ -639,12 +765,11 @@ def _validate_dependency_contract(
         "symbolica_version": expected["symbolica_version"],
         "symbolica_serialization": expected["symbolica_serialization_abi"],
         "symjit_application": expected["symjit_application_abi"],
+        "symjit_plane_application": expected["symjit_plane_application_abi"],
     }
     for key, value in pack_expected.items():
         if pack_dependency_abis.get(key) != value:
-            raise RuntimeError(
-                f"prepared kernel-pack dependency ABI {key} is stale"
-            )
+            raise RuntimeError(f"prepared kernel-pack dependency ABI {key} is stale")
 
 
 def _symjit_version(overlay: Path) -> str:
@@ -672,6 +797,148 @@ def _release_package_version(
     return cargo_version
 
 
+def _candidate_sources(contributor: Mapping[str, Any]) -> dict[str, str]:
+    """Return the contributor-lock source revisions used by candidate packs."""
+
+    try:
+        symbolica = _mapping(
+            contributor["symbolica"],
+            "contributor-lock Symbolica source",
+        )
+        symjit = _mapping(
+            contributor["symjit"],
+            "contributor-lock SymJIT source",
+        )
+    except KeyError as error:
+        raise RuntimeError("contributor-lock source identity is incomplete") from error
+    return {
+        "symbolica": _required_string(
+            symbolica.get("candidate_revision"),
+            "contributor-lock Symbolica revision",
+        ),
+        "symbolica-community": _required_string(
+            symbolica.get("community_revision"),
+            "contributor-lock Symbolica community revision",
+        ),
+        "symjit": _required_string(
+            symjit.get("candidate_revision"),
+            "contributor-lock SymJIT revision",
+        ),
+    }
+
+
+def _symjit_source_identity(
+    overlay: Path,
+    *,
+    mode: str,
+    release: Mapping[str, Any],
+    contributor: Mapping[str, Any] | None,
+) -> dict[str, object]:
+    """Return and authenticate the configured tree and ordered patch closure."""
+
+    try:
+        if mode == "candidate":
+            if contributor is None:
+                raise RuntimeError(
+                    "candidate prepared-model identity has no contributor lock"
+                )
+            symjit = _mapping(
+                contributor["symjit"],
+                "contributor-lock SymJIT source",
+            )
+            revision = _required_string(
+                symjit.get("candidate_revision"),
+                "contributor-lock SymJIT revision",
+            )
+            configured_tree = _required_sha256(
+                symjit.get("candidate_tree_sha256"),
+                "contributor-lock SymJIT configured tree",
+            )
+            raw_patches = contributor.get("patches")
+        else:
+            symjit = _mapping(release["symjit"], "release-lock SymJIT source")
+            revision = _required_string(
+                symjit.get("revision"),
+                "release-lock SymJIT revision",
+            )
+            configured_tree = _required_sha256(
+                symjit.get("configured_tree_sha256"),
+                "release-lock SymJIT configured tree",
+            )
+            raw_patches = symjit.get("patches")
+    except KeyError as error:
+        raise RuntimeError(f"{mode} SymJIT source identity is incomplete") from error
+
+    if not isinstance(raw_patches, list) or not raw_patches:
+        raise RuntimeError(f"{mode} SymJIT patch closure must be a nonempty list")
+    dependency_root = (overlay / "dependencies").resolve()
+    patches: list[dict[str, str]] = []
+    names: set[str] = set()
+    relatives: set[str] = set()
+    for index, raw_patch in enumerate(raw_patches):
+        patch = _mapping(raw_patch, f"{mode} SymJIT patch {index}")
+        _require_exact_keys(
+            patch,
+            _SYMJIT_PATCH_KEYS,
+            f"{mode} SymJIT patch {index}",
+        )
+        normalized = {
+            key: _required_string(
+                patch.get(key),
+                f"{mode} SymJIT patch {index}.{key}",
+            )
+            for key in sorted(_SYMJIT_PATCH_KEYS)
+        }
+        relative = normalized["path"]
+        pure = PurePosixPath(relative)
+        if (
+            normalized["name"] in names
+            or relative in relatives
+            or normalized["target"] != "symjit"
+            or normalized["applies_to_revision"] != revision
+            or pure.is_absolute()
+            or not pure.parts
+            or pure.parts[0] != "patches"
+            or pure.suffix != ".patch"
+            or any(part in {"", ".", ".."} for part in pure.parts)
+        ):
+            raise RuntimeError(
+                f"{mode} SymJIT patch {index} has an invalid identity"
+            )
+        _required_sha256(
+            normalized["sha256"],
+            f"{mode} SymJIT patch {index} digest",
+        )
+        patch_path = overlay / "dependencies" / Path(*pure.parts)
+        try:
+            resolved = patch_path.resolve(strict=True)
+            resolved.relative_to(dependency_root)
+        except (OSError, ValueError) as error:
+            raise RuntimeError(
+                f"{mode} SymJIT patch {index} is missing or unsafe"
+            ) from error
+        current = overlay / "dependencies"
+        for part in pure.parts:
+            current /= part
+            if current.is_symlink():
+                raise RuntimeError(
+                    f"{mode} SymJIT patch {index} uses a symlink"
+                )
+        if not resolved.is_file():
+            raise RuntimeError(f"{mode} SymJIT patch {index} is not a regular file")
+        if hashlib.sha256(resolved.read_bytes()).hexdigest() != normalized["sha256"]:
+            raise RuntimeError(
+                f"{mode} SymJIT patch {index} content does not match its lock digest"
+            )
+        names.add(normalized["name"])
+        relatives.add(relative)
+        patches.append(normalized)
+    return {
+        "configured_tree_sha256": configured_tree,
+        "patches": patches,
+    }
+
+
 def _release_sources(
     overlay: Path, release: Mapping[str, Any] | None = None
 ) -> dict[str, str]:
@@ -695,8 +962,10 @@ def _release_sources(
         )
     if _cargo_package_version(overlay, "symjit") != symjit_version:
         raise RuntimeError("Cargo.lock SymJIT version differs from release-lock.toml")
-    with (overlay / "Cargo.lock").open("rb") as stream:
-        cargo_lock = tomllib.load(stream)
+    cargo_lock_path = overlay / "Cargo.lock"
+    cargo_lock_bytes = cargo_lock_path.read_bytes()
+    canonical_release_cargo_lock_bytes(overlay, cargo_lock_bytes)
+    cargo_lock = tomllib.loads(cargo_lock_bytes.decode("utf-8"))
     packages = cargo_lock.get("package")
     if not isinstance(packages, list):
         raise RuntimeError("Cargo.lock has no package array")
@@ -707,10 +976,12 @@ def _release_sources(
     ]
     if len(symjit_packages) != 1:
         raise RuntimeError("Cargo.lock must contain exactly one symjit package")
-    source = _required_string(
-        symjit_packages[0].get("source"), "Cargo.lock SymJIT source"
+    source = symjit_packages[0].get("source")
+    expected_source = (
+        f"git+{release['symjit']['repository']}?rev={symjit_revision}"
+        f"#{symjit_revision}"
     )
-    if not source.endswith(f"#{symjit_revision}"):
+    if source not in {None, expected_source}:
         raise RuntimeError("Cargo.lock SymJIT source differs from release-lock.toml")
     return {
         "symbolica": symbolica,
@@ -818,11 +1089,16 @@ def _literal_assignment(path: Path, name: str) -> str | int:
 def _load_prepared_contract(path: Path) -> ModuleType:
     digest = hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:16]
     package_name = f"_pyamplicol_build_prepared_contract_{digest}"
-    module_name = f"{package_name}.prepared"
+    models_package_name = f"{package_name}.models"
+    module_name = f"{models_package_name}.prepared"
     package = ModuleType(package_name)
     package.__package__ = package_name
-    package.__path__ = [str(path.parent)]  # type: ignore[attr-defined]
+    package.__path__ = [str(path.parent.parent)]  # type: ignore[attr-defined]
+    models_package = ModuleType(models_package_name)
+    models_package.__package__ = models_package_name
+    models_package.__path__ = [str(path.parent)]  # type: ignore[attr-defined]
     sys.modules[package_name] = package
+    sys.modules[models_package_name] = models_package
     spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:
         sys.modules.pop(package_name, None)
@@ -859,6 +1135,15 @@ def _required_string(value: object, context: str) -> str:
     if not isinstance(value, str) or not value:
         raise RuntimeError(f"{context} must be a nonempty string")
     return value
+
+
+def _required_sha256(value: object, context: str) -> str:
+    digest = _required_string(value, context)
+    if len(digest) != 64 or any(
+        character not in "0123456789abcdef" for character in digest
+    ):
+        raise RuntimeError(f"{context} must be a SHA-256 digest")
+    return digest
 
 
 def _require_exact_keys(

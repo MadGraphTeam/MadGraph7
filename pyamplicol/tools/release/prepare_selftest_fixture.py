@@ -20,10 +20,10 @@ ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_ROOT = ROOT / "src" / "pyamplicol" / "assets" / "selftest"
 PORTABLE_TEMPLATE = "portable-64le"
 PORTABLE_OPTIMIZATION_LEVEL = 2
-PORTABLE_DIRECT_CODEGEN_OPTIMIZATION_LEVEL = 3
 COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY = "compiled-plane-arena-v1"
-COMPILED_PLANE_DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v1"
+COMPILED_PLANE_DIRECT_APPLICATION_ABI = "pyamplicol-compiled-plane-kernel-v2"
 SYMJIT_APPLICATION_ABI = "symjit-application-storage-v3"
+SYMJIT_PLANE_APPLICATION_ABI = "pyamplicol-symjit-plane-application-v2"
 SYMJIT_F64_RUNTIME_CAPABILITY = "symjit.application.complex-f64.v1"
 COMPATIBLE_TARGETS = (
     "aarch64-apple-darwin",
@@ -224,7 +224,7 @@ def validate_portable_artifact_capabilities(
 
 def _validate_portable_symjit_source(
     evaluator: Mapping[str, object],
-) -> None:
+) -> Mapping[str, object]:
     if (
         evaluator.get("compiler_type") != "native"
         or evaluator.get("translation_mode") != "indirect"
@@ -238,6 +238,80 @@ def _validate_portable_symjit_source(
             f"{PORTABLE_OPTIMIZATION_LEVEL}; other optimization levels "
             "may contain source-architecture register allocation"
         )
+    if (
+        evaluator.get("runtime_capability") != SYMJIT_F64_RUNTIME_CAPABILITY
+        or evaluator.get("application_abi") != SYMJIT_APPLICATION_ABI
+        or evaluator.get("element_layout") != "complex-f64"
+        or evaluator.get("batch_layout") != "row-major"
+    ):
+        raise RuntimeError("portable self-test has an incompatible SymJIT source ABI")
+    application_path = evaluator.get("application_path")
+    if not isinstance(application_path, str) or not application_path:
+        raise RuntimeError("portable self-test has no ordinary SymJIT application path")
+    input_len = _portable_nonnegative_int(
+        evaluator,
+        "input_len",
+        context="portable self-test SymJIT evaluator",
+    )
+    output_len = _portable_nonnegative_int(
+        evaluator,
+        "output_len",
+        context="portable self-test SymJIT evaluator",
+    )
+    plane = evaluator.get("plane_application")
+    if not isinstance(plane, Mapping):
+        raise RuntimeError(
+            "portable self-test SymJIT evaluator has no plane application"
+        )
+    expected_plane = {
+        "application_abi": SYMJIT_PLANE_APPLICATION_ABI,
+        "storage_abi": SYMJIT_APPLICATION_ABI,
+        "element_layout": "split-complex-plane-major",
+        "descriptor_order": "inputs-re-im-then-outputs-re-im",
+        "input_complex_count": input_len,
+        "output_complex_count": output_len,
+        "input_plane_count": 2 * input_len,
+        "output_plane_count": 2 * output_len,
+        "compiler_type": "native",
+        "translation_mode": "symbolica-structured-instructions",
+        "optimization_level": PORTABLE_OPTIMIZATION_LEVEL,
+        "simd": True,
+        "complex": True,
+        "fast_math": True,
+        "fast_complex": False,
+        "threading": False,
+        "direct_arena": True,
+    }
+    if any(plane.get(name) != value for name, value in expected_plane.items()):
+        raise RuntimeError(
+            "portable self-test SymJIT plane application contract is incompatible"
+        )
+    plane_path = plane.get("application_path")
+    if not isinstance(plane_path, str) or not plane_path:
+        raise RuntimeError(
+            "portable self-test SymJIT plane application path is invalid"
+        )
+    source_digest = plane.get("source_digest")
+    if (
+        not isinstance(source_digest, str)
+        or len(source_digest) != 64
+        or any(character not in "0123456789abcdef" for character in source_digest)
+    ):
+        raise RuntimeError(
+            "portable self-test SymJIT plane source digest is invalid"
+        )
+    if not isinstance(plane.get("compression"), bool):
+        raise RuntimeError(
+            "portable self-test SymJIT plane compression flag is invalid"
+        )
+    target = plane.get("target")
+    if (
+        not isinstance(target, Mapping)
+        or target.get("word_bits") != 64
+        or target.get("endianness") != "little"
+    ):
+        raise RuntimeError("portable self-test SymJIT plane target is incompatible")
+    return plane
 
 
 def _portable_arena_source_leaves(
@@ -305,17 +379,10 @@ def _portable_arena_source_leaves(
 
     if kind != "symjit-application-evaluator":
         raise RuntimeError(f"{context} is not an all-SymJIT compiled Plane-Arena stage")
-    _validate_portable_symjit_source(evaluator)
-    if (
-        evaluator.get("runtime_capability") != SYMJIT_F64_RUNTIME_CAPABILITY
-        or evaluator.get("application_abi") != SYMJIT_APPLICATION_ABI
-        or evaluator.get("element_layout") != "complex-f64"
-        or evaluator.get("batch_layout") != "row-major"
-    ):
-        raise RuntimeError(f"{context} has an incompatible SymJIT source ABI")
-    application_path = evaluator.get("application_path")
+    plane = _validate_portable_symjit_source(evaluator)
+    application_path = plane.get("application_path")
     if not isinstance(application_path, str) or not application_path:
-        raise RuntimeError(f"{context} has no SymJIT application path")
+        raise RuntimeError(f"{context} has no SymJIT plane application path")
     input_len = _portable_nonnegative_int(evaluator, "input_len", context=context)
     output_len = _portable_nonnegative_int(evaluator, "output_len", context=context)
     if input_len != len(parent_inputs) or output_len == 0:
@@ -325,11 +392,11 @@ def _portable_arena_source_leaves(
         [
             {
                 "application_path": application_path,
-                "source_application_abi": SYMJIT_APPLICATION_ABI,
-                "optimization_level": PORTABLE_OPTIMIZATION_LEVEL,
-                "direct_codegen_optimization_level": (
-                    PORTABLE_DIRECT_CODEGEN_OPTIMIZATION_LEVEL
-                ),
+                "source_application_abi": SYMJIT_PLANE_APPLICATION_ABI,
+                "optimization_level": plane["optimization_level"],
+                "direct_codegen_optimization_level": plane[
+                    "optimization_level"
+                ],
                 "input_len": input_len,
                 "output_len": output_len,
                 "input_indices": list(parent_inputs),
@@ -484,7 +551,7 @@ def _validate_portable_arena_stage(
         "schema_version": 1,
         "kind": "compiled-plane-arena-stage",
         "application_abi": COMPILED_PLANE_DIRECT_APPLICATION_ABI,
-        "source_application_abi": SYMJIT_APPLICATION_ABI,
+        "source_application_abi": SYMJIT_PLANE_APPLICATION_ABI,
         "element_layout": "split-complex-component-major",
         "output_operation": "overwrite",
         "output_factor": "identity",
@@ -544,13 +611,12 @@ def _validate_portable_arena_stage(
             raise RuntimeError(
                 f"{context} compiled_plane_arena leaf {leaf_index} is invalid"
             )
-        if (
-            raw_leaf.get("direct_codegen_optimization_level")
-            != PORTABLE_DIRECT_CODEGEN_OPTIMIZATION_LEVEL
+        if raw_leaf.get("direct_codegen_optimization_level") != expected_leaf.get(
+            "direct_codegen_optimization_level"
         ):
             raise RuntimeError(
-                f"{context} compiled_plane_arena direct codegen must use "
-                f"optimization level {PORTABLE_DIRECT_CODEGEN_OPTIMIZATION_LEVEL}"
+                f"{context} compiled_plane_arena direct codegen optimization "
+                "does not match its SymJIT plane application"
             )
         if any(raw_leaf.get(name) != value for name, value in expected_leaf.items()):
             raise RuntimeError(
@@ -615,8 +681,9 @@ def validate_portable_execution_manifest(
 
     This is the shared release-facing contract used while preparing, staging,
     and auditing the installed self-test fixture. It deliberately validates the
-    portable O2 SymJIT source together with the complete O3 Direct-Arena
-    descriptor rather than treating either representation as sufficient alone.
+    portable O2 ordinary SymJIT fallback together with the complete O2
+    P-kernel Plane-Arena descriptor rather than treating either representation
+    as sufficient alone.
     """
 
     evaluator_count = 0

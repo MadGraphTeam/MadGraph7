@@ -191,6 +191,7 @@ def test_packaged_prepared_model_runtime_ignores_producer_source_fingerprints(
     for key in (
         "model_compiler_sha256",
         "model_source_digest",
+        "native_build_inputs_sha256",
         "prepared_pack_compiler_sha256",
     ):
         producer[key] = "0" * 64

@@ -22,6 +22,7 @@ from .._internal.versions import (
     SYMBOLICA_CPP_RUNTIME_CAPABILITY,
     SYMJIT_APPLICATION_ABI,
     SYMJIT_F64_RUNTIME_CAPABILITY,
+    SYMJIT_PLANE_APPLICATION_ABI,
 )
 from ..evaluators.execution_schema import (
     aggregate_runtime_capabilities,
@@ -532,11 +533,28 @@ def _compiled_plane_arena_leaves(
             or evaluator.get("batch_layout") != "row-major"
         ):
             raise ValueError("compiled SymJIT leaf has an incompatible source ABI")
-        application_path = evaluator.get("application_path")
-        source_application_abi = SYMJIT_APPLICATION_ABI
+        plane = evaluator.get("plane_application")
+        if not isinstance(plane, Mapping):
+            raise ValueError(
+                "compiled SymJIT leaf predates the SymJIT 2.22 plane ABI; "
+                "regenerate this artifact"
+            )
+        if (
+            plane.get("application_abi") != SYMJIT_PLANE_APPLICATION_ABI
+            or plane.get("storage_abi") != SYMJIT_APPLICATION_ABI
+            or plane.get("element_layout") != "split-complex-plane-major"
+            or plane.get("descriptor_order")
+            != "inputs-re-im-then-outputs-re-im"
+        ):
+            raise ValueError("compiled SymJIT leaf has an incompatible plane ABI")
+        application_path = plane.get("application_path")
+        source_application_abi = SYMJIT_PLANE_APPLICATION_ABI
         application_abi = COMPILED_PLANE_DIRECT_APPLICATION_ABI
-        optimization_level = _required_nonnegative_int(evaluator, "optimization_level")
-        direct_codegen_optimization_level = 3
+        optimization_level = _required_nonnegative_int(
+            plane,
+            "optimization_level",
+        )
+        direct_codegen_optimization_level = optimization_level
         if optimization_level not in {0, 1, 2, 3}:
             raise ValueError(
                 "compiled SymJIT plane-arena optimization level must be 0, 1, 2, or 3"

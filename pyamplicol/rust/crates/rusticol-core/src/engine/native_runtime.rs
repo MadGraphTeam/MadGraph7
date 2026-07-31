@@ -72,6 +72,7 @@ struct CompiledDirectProfileSnapshot {
     source_fill_bytes: u64,
     momentum_fill_bytes: u64,
     parameter_fill_bytes: u64,
+    scalar_broadcast_fill_bytes: u64,
     amplitude_clear_bytes: u64,
     backend_call_count: u64,
     boundary_input_bytes: u64,
@@ -176,6 +177,7 @@ fn compiled_direct_profile_snapshot(
         snapshot.source_fill_bytes = traffic.source_fill_bytes;
         snapshot.momentum_fill_bytes = traffic.momentum_fill_bytes;
         snapshot.parameter_fill_bytes = traffic.parameter_fill_bytes;
+        snapshot.scalar_broadcast_fill_bytes = traffic.scalar_broadcast_fill_bytes;
         snapshot.amplitude_clear_bytes = traffic.amplitude_clear_bytes;
         snapshot.backend_call_count = traffic.leaf.calls;
         snapshot.boundary_input_bytes = traffic.boundary_input_bytes;
@@ -216,6 +218,9 @@ fn compiled_direct_profile_snapshot(
         snapshot.parameter_fill_bytes = snapshot
             .parameter_fill_bytes
             .saturating_add(child.parameter_fill_bytes);
+        snapshot.scalar_broadcast_fill_bytes = snapshot
+            .scalar_broadcast_fill_bytes
+            .saturating_add(child.scalar_broadcast_fill_bytes);
         snapshot.amplitude_clear_bytes = snapshot
             .amplitude_clear_bytes
             .saturating_add(child.amplitude_clear_bytes);
@@ -1316,6 +1321,9 @@ impl NativeRuntime {
                         .boundary_current_output_bytes,
                     compiled_direct_arena_boundary_amplitude_output_bytes: after
                         .boundary_amplitude_output_bytes,
+                    compiled_direct_arena_internal_broadcast_bytes: after
+                        .scalar_broadcast_fill_bytes
+                        .saturating_sub(before.scalar_broadcast_fill_bytes),
                     total_materialized_value_count: batch.len() as u64,
                     ..RuntimeProfile::default()
                 };
@@ -1560,8 +1568,12 @@ impl NativeRuntime {
             runtime_profile.compiled_direct_arena_boundary_amplitude_output_bytes = after
                 .boundary_amplitude_output_bytes
                 .saturating_sub(before.boundary_amplitude_output_bytes);
+            runtime_profile.compiled_direct_arena_internal_broadcast_bytes = after
+                .scalar_broadcast_fill_bytes
+                .saturating_sub(before.scalar_broadcast_fill_bytes);
             attach_compiled_direct_configuration(&mut runtime_profile, after);
         }
+        runtime_profile.validate_recurrence_direct_boundary_traffic()?;
         let mut profile: NativeRuntimeProfile = runtime_profile.into();
         profile.native_input_component_count = measured_input_components_u64;
         profile.native_input_pack_bytes = 0;
@@ -1675,6 +1687,7 @@ impl NativeRuntime {
                 }
             }
         };
+        profile.validate_recurrence_direct_boundary_traffic()?;
         let mut profile: NativeRuntimeProfile = profile.into();
         profile.native_input_pack_s = profile_duration_seconds(native_input_pack_elapsed);
         profile.native_input_crossing_s = profile_duration_seconds(native_input_crossing_elapsed);
@@ -1762,6 +1775,7 @@ impl NativeRuntime {
                     effective_helicities,
                     effective_colors,
                 )?;
+                runtime_profile.validate_recurrence_direct_boundary_traffic()?;
                 let mut profile: NativeRuntimeProfile = runtime_profile.into();
                 attach_point_selector_profile(
                     &mut profile,
@@ -1856,6 +1870,7 @@ impl NativeRuntime {
             for partition_profile in &partition_profiles {
                 runtime_profile.add_sector(partition_profile);
             }
+            runtime_profile.validate_recurrence_direct_boundary_traffic()?;
             let mut profile: NativeRuntimeProfile = runtime_profile.into();
             attach_point_selector_profile(
                 &mut profile,

@@ -13,7 +13,7 @@ use crate::{
 #[derive(Clone)]
 pub(super) struct Fixture {
     kernels: Vec<EagerKernelSpec>,
-    prepared_parameter_count: u32,
+    pub(super) prepared_parameter_count: u32,
     pub(super) currents: Vec<EagerPlanCurrentRow>,
     pub(super) values: Vec<EagerPlanValueRow>,
     pub(super) momenta: Vec<EagerPlanMomentumRow>,

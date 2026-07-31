@@ -2282,6 +2282,7 @@ pub(crate) fn flatten_evaluators_from_store(
             required_defuns,
             evaluator_state_path,
             evaluator_state_runtime_capability,
+            ..
         } => {
             #[cfg(feature = "f64-symjit")]
             {
@@ -2565,13 +2566,16 @@ fn unsupported_capability(capability: &str) -> RusticolError {
 }
 
 #[cfg(feature = "symbolica-runtime")]
-fn load_evaluator_state_source(
-    source: &EvaluatorPayloadSource,
-) -> RusticolResult<(
+type LoadedEvaluatorState = (
     JITCompilationSettings,
     ExpressionEvaluator<Complex<Rational>>,
     Option<JITCompiledEvaluator<Complex<f64>>>,
-)> {
+);
+
+#[cfg(feature = "symbolica-runtime")]
+fn load_evaluator_state_source(
+    source: &EvaluatorPayloadSource,
+) -> RusticolResult<LoadedEvaluatorState> {
     let bytes = source.read()?;
     load_evaluator_state_bytes(bytes.as_ref(), &source.display_name())
 }
@@ -2580,11 +2584,7 @@ fn load_evaluator_state_source(
 fn load_evaluator_state_bytes(
     bytes: &[u8],
     display_name: &str,
-) -> RusticolResult<(
-    JITCompilationSettings,
-    ExpressionEvaluator<Complex<Rational>>,
-    Option<JITCompiledEvaluator<Complex<f64>>>,
-)> {
+) -> RusticolResult<LoadedEvaluatorState> {
     type SavedEvaluator = (
         bool,
         JITCompilationSettings,

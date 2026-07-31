@@ -616,6 +616,7 @@ mod tests {
             word_bits: 64,
             endianness: "little".to_string(),
             required_defuns: Vec::new(),
+            plane_application: None,
             evaluator_state_path: Some("absent-exact-evaluator-state.bin".to_string()),
             evaluator_state_runtime_capability: Some(
                 SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY.to_string(),

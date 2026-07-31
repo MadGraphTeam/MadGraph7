@@ -222,16 +222,26 @@ def containing_workspace() -> Path:
     return parent
 
 
+def _release_temporary_path_is_isolated(path: Path) -> bool:
+    """Accept external scratch or the checkout's dedicated artifact tree."""
+
+    workspace = containing_workspace()
+    if not is_relative_to(path, workspace):
+        return True
+    artifact_root = (ROOT / ".artifacts").resolve()
+    return is_relative_to(path, artifact_root)
+
+
 @contextmanager
 def external_temporary_directory(prefix: str) -> Iterator[Path]:
-    """Create scratch space outside the checkout and its containing workspace."""
+    """Create scratch outside tracked source, including under ``.artifacts``."""
 
     with tempfile.TemporaryDirectory(prefix=prefix) as raw:
         path = Path(raw).resolve()
-        workspace = containing_workspace()
-        if is_relative_to(path, workspace):
+        if not _release_temporary_path_is_isolated(path):
             raise ReleaseError(
-                f"temporary release workspace must be outside {workspace}: {path}"
+                "temporary release workspace must be outside "
+                f"{containing_workspace()} or below {ROOT / '.artifacts'}: {path}"
             )
         yield path
 

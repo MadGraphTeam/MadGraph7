@@ -16,6 +16,7 @@ def _bootstrap_wheel(
     publishable: bool = False,
     include_prepared_payload: bool = False,
     include_release_store: bool = False,
+    include_selftest_fixture: bool = False,
 ) -> Path:
     marker = {
         "candidate_fingerprint": None,
@@ -23,7 +24,7 @@ def _bootstrap_wheel(
         "publishable": publishable,
         "release_prepared_model_bootstrap": True,
         "schema_version": 1,
-        "selftest_fixture_bootstrap": False,
+        "selftest_fixture_bootstrap": True,
         "source_checkout": str(producer.ROOT.resolve()),
         "version": "0.1.0",
     }
@@ -44,6 +45,8 @@ def _bootstrap_wheel(
         members[
             "release_assets/prepared_models/built-in-sm-jit-o2-x86_64.metadata.json"
         ] = b"{}\n"
+    if include_selftest_fixture:
+        members["pyamplicol/assets/selftest/portable-64le/expected.json"] = b"{}\n"
     with zipfile.ZipFile(path, "w") as archive:
         for name, payload in members.items():
             archive.writestr(name, payload)
@@ -58,6 +61,7 @@ def test_release_bootstrap_wheel_is_explicitly_non_publishable(tmp_path: Path) -
     assert result["version"] == "0.1.0"
     assert result["publishable"] is False
     assert result["release_prepared_model_bootstrap"] is True
+    assert result["selftest_fixture_bootstrap"] is True
     assert result["candidate_fingerprint"] is None
 
 
@@ -98,6 +102,21 @@ def test_release_bootstrap_wheel_rejects_auxiliary_source_store(
     with pytest.raises(
         producer.ReleasePreparedModelError,
         match="release prepared-model source store",
+    ):
+        producer.audit_bootstrap_wheel(wheel)
+
+
+def test_release_bootstrap_wheel_rejects_stale_selftest_fixture(
+    tmp_path: Path,
+) -> None:
+    wheel = _bootstrap_wheel(
+        tmp_path / "pyamplicol-0.1.0.whl",
+        include_selftest_fixture=True,
+    )
+
+    with pytest.raises(
+        producer.ReleasePreparedModelError,
+        match="stale self-test fixture",
     ):
         producer.audit_bootstrap_wheel(wheel)
 

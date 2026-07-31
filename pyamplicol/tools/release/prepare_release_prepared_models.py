@@ -96,7 +96,7 @@ def audit_bootstrap_wheel(wheel: Path) -> dict[str, object]:
             "publishable": False,
             "candidate_fingerprint": None,
             "release_prepared_model_bootstrap": True,
-            "selftest_fixture_bootstrap": False,
+            "selftest_fixture_bootstrap": True,
             "version": EXPECTED_VERSION,
         }
         for key, expected in expected_marker.items():
@@ -128,6 +128,10 @@ def audit_bootstrap_wheel(wheel: Path) -> dict[str, object]:
             raise ReleasePreparedModelError(
                 "bootstrap wheel contains stale prepared-model payloads"
             )
+        if any(name.startswith("pyamplicol/assets/selftest/") for name in names):
+            raise ReleasePreparedModelError(
+                "bootstrap wheel contains a stale self-test fixture"
+            )
         if any(
             name == "release_assets" or name.startswith("release_assets/")
             for name in names
@@ -141,6 +145,7 @@ def audit_bootstrap_wheel(wheel: Path) -> dict[str, object]:
         "path": str(path),
         "publishable": False,
         "release_prepared_model_bootstrap": True,
+        "selftest_fixture_bootstrap": True,
         "version": EXPECTED_VERSION,
     }
 

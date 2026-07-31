@@ -66,6 +66,7 @@ from .._internal.versions import (
     SYMBOLICA_SERIALIZATION_ABI,
     SYMJIT_APPLICATION_ABI,
     SYMJIT_F64_RUNTIME_CAPABILITY,
+    SYMJIT_PLANE_APPLICATION_ABI,
     TOML_SCHEMA_VERSION,
     active_native_source_identity,
     active_source_revision,
@@ -74,6 +75,7 @@ from .._internal.versions import (
 )
 from ..evaluators.execution_schema import evaluator_runtime_capabilities
 from ..models.loading import COMPILED_MODEL_SCHEMA_VERSION, CompiledModel
+from ..models.prepared import PREPARED_KERNEL_PACK_IDENTITY_ABI
 from .contracts import RuntimeExpressionSchema
 from .eager_columnar import EAGER_LOWERING_INPUT_ABI
 from .eager_lowering import EAGER_RUNTIME_KIND
@@ -1026,14 +1028,26 @@ def _eager_direct_evaluator_manifest(
         raise ValueError(
             f"eager-direct-arena-v1 kernel {kernel_id} is not a SymJIT application"
         )
-    application_path = manifest.get("application_path")
+    plane_application = manifest.get("plane_application")
+    if not isinstance(plane_application, Mapping):
+        raise ValueError(
+            f"eager-direct-arena-v1 kernel {kernel_id} predates the "
+            "SymJIT plane-application ABI; regenerate the prepared model"
+        )
+    application_path = plane_application.get("application_path")
     if not isinstance(application_path, str) or not application_path:
         raise ValueError(
-            f"eager-direct-arena-v1 kernel {kernel_id} has no source application"
+            f"eager-direct-arena-v1 kernel {kernel_id} has no plane application"
         )
-    if manifest.get("application_abi") != SYMJIT_APPLICATION_ABI:
+    if (
+        plane_application.get("application_abi") != SYMJIT_PLANE_APPLICATION_ABI
+        or plane_application.get("storage_abi") != SYMJIT_APPLICATION_ABI
+        or plane_application.get("input_complex_count") != input_complex_count
+        or plane_application.get("output_complex_count") != output_complex_count
+    ):
         raise ValueError(
-            f"eager-direct-arena-v1 kernel {kernel_id} has an incompatible source ABI"
+            f"eager-direct-arena-v1 kernel {kernel_id} has an incompatible "
+            "plane-application contract"
         )
     reader = getattr(bundle, "read_payload", None)
     if not callable(reader):  # pragma: no cover - internal type invariant
@@ -1055,7 +1069,7 @@ def _eager_direct_evaluator_manifest(
     result["build_timing"] = timing
     result["direct_table"] = {
         "capability": EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
-        "source_application_abi": SYMJIT_APPLICATION_ABI,
+        "source_application_abi": SYMJIT_PLANE_APPLICATION_ABI,
         "descriptor_abi": EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
         "binding_abi": EAGER_DIRECT_TABLE_BINDING_ABI,
         "descriptor_path": descriptor_path,
@@ -1259,11 +1273,14 @@ def _eager_prepared_pack_identity(
         sort_keys=True,
     ).encode("ascii")
     digest = hashlib.sha256(
-        b"pyamplicol-prepared-kernel-pack-identity-v1\x00" + canonical_manifest
+        PREPARED_KERNEL_PACK_IDENTITY_ABI.encode("ascii")
+        + b"\x00"
+        + canonical_manifest
     ).hexdigest()
     return {
         "kind": _EAGER_PACK_IDENTITY_KIND,
         "schema_version": _EAGER_PACK_IDENTITY_SCHEMA_VERSION,
+        "abi": PREPARED_KERNEL_PACK_IDENTITY_ABI,
         "eager_kernel_abi": EAGER_KERNEL_ABI,
         "identity_sha256": digest,
         "backend": bundle.kernel_pack.backend,
@@ -2616,7 +2633,7 @@ def _compiled_plane_arena_stage(
     }
     symjit_contract = (
         result["application_abi"] == COMPILED_PLANE_DIRECT_APPLICATION_ABI
-        and result["source_application_abi"] == SYMJIT_APPLICATION_ABI
+        and result["source_application_abi"] == SYMJIT_PLANE_APPLICATION_ABI
     )
     native_contract = (
         result["application_abi"] == NATIVE_COMPILED_DIRECT_APPLICATION_ABI
@@ -2645,7 +2662,15 @@ def _compiled_plane_arena_stage(
         input_indices = list(_sequence(leaf_map["input_indices"]))
         if (
             leaf_map["source_application_abi"] != result["source_application_abi"]
-            or leaf_map["direct_codegen_optimization_level"] != 3
+            or (
+                symjit_contract
+                and leaf_map["direct_codegen_optimization_level"]
+                != leaf_map["optimization_level"]
+            )
+            or (
+                native_contract
+                and leaf_map["direct_codegen_optimization_level"] != 3
+            )
             or len(input_indices) != int(leaf_map["input_len"])
             or leaf_map["output_start"] != output_cursor
             or leaf_map["output_stop"] != output_cursor + int(leaf_map["output_len"])
@@ -2735,6 +2760,17 @@ def _evaluator(record: Mapping[str, object]) -> dict[str, object]:
             raise ValueError(
                 "direct SymJIT evaluator has an invalid optimization level"
             )
+        plane = record.get("plane_application")
+        if not isinstance(plane, Mapping):
+            raise ValueError(
+                "direct SymJIT evaluator predates the SymJIT 2.22 plane "
+                "binding ABI; regenerate this artifact"
+            )
+        result["plane_application"] = _symjit_plane_application(
+            plane,
+            input_complex_count=int(result["input_len"]),
+            output_complex_count=int(result["output_len"]),
+        )
         return result
     if kind == "jit-symbolica-evaluator":
         result = _select(
@@ -2809,6 +2845,86 @@ def _evaluator(record: Mapping[str, object]) -> dict[str, object]:
             )
         return result
     raise ValueError(f"unsupported evaluator artifact kind {kind!r}")
+
+
+def _symjit_plane_application(
+    record: Mapping[str, object],
+    *,
+    input_complex_count: int,
+    output_complex_count: int,
+) -> dict[str, object]:
+    result = _select(
+        record,
+        "application_path",
+        "application_abi",
+        "storage_abi",
+        "element_layout",
+        "descriptor_order",
+        "input_complex_count",
+        "output_complex_count",
+        "input_plane_count",
+        "output_plane_count",
+        "compiler_type",
+        "translation_mode",
+        "optimization_level",
+        "simd",
+        "complex",
+        "fast_math",
+        "fast_complex",
+        "compression",
+        "threading",
+        "direct_arena",
+        "source_digest",
+        "target",
+    )
+    expected = {
+        "application_abi": SYMJIT_PLANE_APPLICATION_ABI,
+        "storage_abi": SYMJIT_APPLICATION_ABI,
+        "element_layout": "split-complex-plane-major",
+        "descriptor_order": "inputs-re-im-then-outputs-re-im",
+        "input_complex_count": input_complex_count,
+        "output_complex_count": output_complex_count,
+        "input_plane_count": 2 * input_complex_count,
+        "output_plane_count": 2 * output_complex_count,
+        "compiler_type": "native",
+        "translation_mode": "symbolica-structured-instructions",
+        "simd": True,
+        "complex": True,
+        "fast_math": True,
+        "fast_complex": False,
+        "threading": False,
+        "direct_arena": True,
+    }
+    for field, expected_value in expected.items():
+        if result[field] != expected_value:
+            raise ValueError(
+                f"direct SymJIT plane application {field} is incompatible; "
+                "regenerate this artifact"
+            )
+    path = result["application_path"]
+    digest = result["source_digest"]
+    optimization_level = result["optimization_level"]
+    if not isinstance(path, str) or not path:
+        raise ValueError("direct SymJIT plane application path is invalid")
+    if (
+        not isinstance(digest, str)
+        or len(digest) != 64
+        or any(character not in "0123456789abcdef" for character in digest)
+    ):
+        raise ValueError("direct SymJIT plane source digest is invalid")
+    if (
+        isinstance(optimization_level, bool)
+        or not isinstance(optimization_level, int)
+        or optimization_level not in {0, 1, 2, 3}
+    ):
+        raise ValueError("direct SymJIT plane optimization level is invalid")
+    if not isinstance(result["compression"], bool):
+        raise ValueError("direct SymJIT plane compression flag is invalid")
+    target = _mapping(result["target"])
+    if target.get("word_bits") != 64 or target.get("endianness") != "little":
+        raise ValueError("direct SymJIT plane target is incompatible")
+    result["target"] = _plain_mapping(target)
+    return result
 
 
 def _native_compiled_direct_application(

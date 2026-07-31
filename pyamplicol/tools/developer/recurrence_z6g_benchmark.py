@@ -15,6 +15,12 @@ all-flow-union captures with pinned legacy AmpliCol evidence.
 Authoritative lane timing is the median and raw MAD of seven independently
 warmed, identity-verified subprocess measurements per mode/batch cell.
 
+For an immutable baseline recapture, the harness itself may live outside the
+source tree under test. Set ``PYAMPLICOL_BENCHMARK_SOURCE_ROOT`` to the
+absolute path of that clean checkout; command provenance still authenticates
+the external harness while source/build provenance is read from the selected
+checkout.
+
 Example::
 
     .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
@@ -46,34 +52,91 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any, Literal, cast
 
-ROOT = Path(__file__).resolve().parents[2]
+
+def _resolve_benchmark_source_root(
+    requested: str | None,
+    *,
+    script_path: Path = Path(__file__),
+) -> Path:
+    default = script_path.resolve().parents[2]
+    if requested is None or not requested.strip():
+        return default
+    candidate = Path(requested)
+    if not candidate.is_absolute():
+        raise RuntimeError("PYAMPLICOL_BENCHMARK_SOURCE_ROOT must be an absolute path")
+    try:
+        resolved = candidate.resolve(strict=True)
+    except OSError as error:
+        raise RuntimeError(
+            "PYAMPLICOL_BENCHMARK_SOURCE_ROOT does not resolve to a source checkout"
+        ) from error
+    required = ("Cargo.toml", "pyproject.toml")
+    if not resolved.is_dir() or any(
+        not (resolved / relative).is_file() for relative in required
+    ):
+        raise RuntimeError(
+            "PYAMPLICOL_BENCHMARK_SOURCE_ROOT is not a pyAmpliCol source checkout"
+        )
+    return resolved
+
+
+ROOT = _resolve_benchmark_source_root(
+    os.environ.get("PYAMPLICOL_BENCHMARK_SOURCE_ROOT")
+)
 PREPARED_MODEL_ID = "built-in-sm-jit-o2"
 PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL = 2
 DEFAULT_BATCH_SIZES = (1, 128, 1024)
 MIN_AUTHORITATIVE_SAMPLES = 7
+AUTHORITATIVE_EXECUTION_MODES = ("compiled", "recurrence")
+DIAGNOSTIC_EXECUTION_MODES = ("eager",)
 EXECUTION_MODES = ("compiled", "eager", "recurrence")
 LC_FLOW_LAYOUTS = ("topology-replay", "all-flow-union")
 VALIDATION_SEED = 12345
+RTOL = 1.0e-12
+ATOL = 1.0e-15
 RESULT_KIND = "pyamplicol-recurrence-z6g-benchmark"
-RESULT_SCHEMA = 6
+RESULT_SCHEMA = 7
+RAW_NATIVE_WALL_BLOCK_KIND = "pyamplicol-raw-native-wall-blocks"
+RAW_NATIVE_WALL_BLOCK_SCHEMA = 2
+RAW_NATIVE_WALL_MEASUREMENT_CONTRACT = (
+    "warmed-native-wall-minimum-duration-v1"
+)
 ARTIFACT_SEMANTIC_IDENTITY_SCHEMA = 3
 LOGICAL_REDUCTION_ORDER_ABI = "helicity-major-color-minor-v1"
 REUSE_SIGNATURE_KIND = "pyamplicol-benchmark-artifact-reuse-signature"
 REUSE_SIGNATURE_SCHEMA = 3
 PROFILE_SCHEDULE_KIND = "pyamplicol-interleaved-subprocess-profile-schedule"
 PROFILE_SCHEDULE_SCHEMA = 2
+PAIRED_PROFILE_READY_KIND = "pyamplicol-paired-profile-ready"
+PAIRED_PROFILE_TOKEN_KIND = "pyamplicol-paired-profile-token"
+PAIRED_PROFILE_COMPLETION_KIND = "pyamplicol-paired-profile-completion"
+PAIRED_PROFILE_COORDINATION_KIND = "pyamplicol-paired-profile-coordination"
+PAIRED_PROFILE_COORDINATION_SCHEMA = 1
 WORKER_VERIFICATION_KIND = "pyamplicol-profile-worker-pre-timing-verification"
 WORKER_VERIFICATION_SCHEMA = 1
 RETAINED_WORKER_RESULT_KIND = "pyamplicol-retained-profile-worker-result"
 RETAINED_WORKER_RESULT_SCHEMA = 1
 PRESERVED_WORKER_RESULT_KIND = "pyamplicol-preserved-worker-result-evidence"
 PRESERVED_WORKER_RESULT_SCHEMA = 1
-CAPTURE_ACCEPTANCE_SCHEMA = 4
+CAPTURE_ACCEPTANCE_SCHEMA = 6
 M0_ACCEPTANCE_KIND = "pyamplicol-milestone-0-evidence-manifest"
 M0_ACCEPTANCE_SCHEMA = 4
 _WORKER_MARKER = "PYAMPLICOL_RECURRENCE_Z6G_WORKER_RESULT="
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _REVISION_PATTERN = re.compile(r"[0-9a-f]{40}")
+MIGRATION_PROCESS_REQUEST = "d d~ > z + 6*g"
+MIGRATION_PROCESS_CANONICAL = "d d~ > Z g g g g g g"
+MIGRATION_PROCESS_NAME = "ddbar_Z_6g"
+MIGRATION_UNION_SELECTED_HELICITY_ID = "h:-1,+1,-1,+1,-1,+1,-1,+1,-1"
+MIGRATION_UNION_SELECTED_HELICITY_VALUES = (-1, 1, -1, 1, -1, 1, -1, 1, -1)
+MIGRATION_UNION_PHYSICAL_COLOR_COUNT = 720
+
+
+def _within_numerical_tolerance(
+    actual: complex | float,
+    expected: complex | float,
+) -> bool:
+    return abs(actual - expected) <= ATOL + RTOL * abs(expected)
 
 
 class HarnessError(RuntimeError):
@@ -88,19 +151,49 @@ def _process_name(gluon_count: int) -> str:
     return f"uubar_Z_{gluon_count}g"
 
 
+def _canonical_process_expression(expression: str) -> str:
+    normalized = " ".join(expression.split())
+    if normalized.casefold() == MIGRATION_PROCESS_REQUEST.casefold():
+        return MIGRATION_PROCESS_CANONICAL
+    return normalized
+
+
 def _selected_process(arguments: argparse.Namespace) -> str:
     return (
         _process(arguments.gluon_count)
         if arguments.process_expression is None
-        else arguments.process_expression
+        else _canonical_process_expression(arguments.process_expression)
     )
 
 
 def _selected_process_name(arguments: argparse.Namespace) -> str:
+    if arguments.process_expression is None:
+        return _process_name(arguments.gluon_count)
+    if _selected_process(arguments) == MIGRATION_PROCESS_CANONICAL:
+        return MIGRATION_PROCESS_NAME
+    return "custom_process"
+
+
+def _authoritative_process_family(arguments: argparse.Namespace) -> bool:
+    """Return whether the selected process belongs to an acceptance campaign."""
+
     return (
-        _process_name(arguments.gluon_count)
-        if arguments.process_expression is None
-        else "custom_process"
+        arguments.process_expression is None
+        or _selected_process(arguments) == MIGRATION_PROCESS_CANONICAL
+    )
+
+
+def _selected_union_semantic_exception_enabled(
+    arguments: argparse.Namespace | None,
+) -> bool:
+    """Return whether the one audited union-workload projection is applicable."""
+
+    return bool(
+        arguments is not None
+        and arguments.lc_flow_layout == "all-flow-union"
+        and _selected_process(arguments) == MIGRATION_PROCESS_CANONICAL
+        and arguments.helicity == MIGRATION_UNION_SELECTED_HELICITY_ID
+        and arguments.specialize_flow_at_generation is False
     )
 
 
@@ -140,6 +233,28 @@ def _resource_peak() -> dict[str, object]:
             "not an aggregate process-tree sample"
         ),
     }
+
+
+def _valid_resource_peak(value: object) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    self_bytes = value.get("self_peak_bytes")
+    child_bytes = value.get("maximum_child_peak_bytes")
+    observed_bytes = value.get("observed_lower_bound_bytes")
+    return (
+        value.get("source") == "resource.getrusage"
+        and not isinstance(self_bytes, bool)
+        and isinstance(self_bytes, int)
+        and self_bytes >= 0
+        and not isinstance(child_bytes, bool)
+        and isinstance(child_bytes, int)
+        and child_bytes >= 0
+        and not isinstance(observed_bytes, bool)
+        and isinstance(observed_bytes, int)
+        and observed_bytes == max(self_bytes, child_bytes)
+        and isinstance(value.get("semantics"), str)
+        and bool(value["semantics"])
+    )
 
 
 def _artifact_stats(path: Path) -> dict[str, int]:
@@ -583,6 +698,49 @@ def _runtime_provenance(
     }
 
 
+def _validate_expected_runtime_identity(
+    source_identity: Mapping[str, object],
+    runtime_provenance: Mapping[str, object],
+    *,
+    expected_source_revision: str | None,
+    expected_native_build_inputs_sha256: str | None,
+) -> None:
+    if (expected_source_revision is None) != (
+        expected_native_build_inputs_sha256 is None
+    ):
+        raise HarnessError(
+            "expected source revision and native-build-input digest must be "
+            "provided together"
+        )
+    if expected_source_revision is None:
+        return
+    if _REVISION_PATTERN.fullmatch(expected_source_revision) is None:
+        raise HarnessError("expected source revision is not a full Git revision")
+    if (
+        expected_native_build_inputs_sha256 is None
+        or _SHA256_PATTERN.fullmatch(expected_native_build_inputs_sha256) is None
+    ):
+        raise HarnessError(
+            "expected native-build-input digest is not a SHA-256 value"
+        )
+    native_extension = runtime_provenance.get("native_extension")
+    if not isinstance(native_extension, Mapping):
+        raise HarnessError("active runtime provenance has no native extension")
+    if source_identity.get("revision") != expected_source_revision:
+        raise HarnessError(
+            "benchmark source revision does not match the externally pinned "
+            "revision"
+        )
+    if (
+        native_extension.get("build_inputs_sha256")
+        != expected_native_build_inputs_sha256
+    ):
+        raise HarnessError(
+            "benchmark native build does not match the externally pinned "
+            "build-input digest"
+        )
+
+
 def _selected_model_identity(
     arguments: argparse.Namespace,
     *,
@@ -681,8 +839,8 @@ def _semantic_generation_signature(
             "enabled": True,
             "samples": arguments.validation_samples,
             "seed": VALIDATION_SEED,
-            "relative_tolerance": 1.0e-12,
-            "absolute_tolerance": 1.0e-300,
+            "relative_tolerance": RTOL,
+            "absolute_tolerance": ATOL,
             "post_build_validation": True,
         },
         "generation": {
@@ -2793,6 +2951,7 @@ def _statistics_payload(value: Any) -> dict[str, float]:
 
 def _benchmark_payload(result: Any) -> dict[str, object]:
     evaluator_uncertainty = result.evaluator_uncertainty
+    timing_breakdown = getattr(result, "timing_breakdown", None)
     return {
         "batch_size": int(result.effective_config.batch_size),
         "sample_count": int(result.sample_count),
@@ -2811,6 +2970,11 @@ def _benchmark_payload(result: Any) -> dict[str, object]:
             if evaluator_uncertainty is None
             else _statistics_payload(evaluator_uncertainty)
         ),
+        "timing_breakdown": (
+            None
+            if timing_breakdown is None
+            else _plain(dataclasses.asdict(timing_breakdown))
+        ),
         "timing_sources": {
             "wall": result.environment.get("wall_time_source"),
             "evaluator": result.environment.get("evaluator_time_source"),
@@ -2827,6 +2991,8 @@ def _native_wall_block_payload(
     batch_size: int,
     repetitions_per_block: int,
     block_count: int,
+    minimum_native_wall_seconds: float,
+    calibration: Mapping[str, object],
     selectors: Mapping[str, object],
     fixture_points_sha256: str,
 ) -> dict[str, object]:
@@ -2842,6 +3008,10 @@ def _native_wall_block_payload(
         or batch_size <= 0
         or not validation_points
         or _SHA256_PATTERN.fullmatch(fixture_points_sha256) is None
+        or isinstance(minimum_native_wall_seconds, bool)
+        or not isinstance(minimum_native_wall_seconds, (float, int))
+        or not math.isfinite(float(minimum_native_wall_seconds))
+        or float(minimum_native_wall_seconds) <= 0.0
     ):
         raise HarnessError("raw native-wall block configuration is invalid")
     backend = getattr(runtime, "_backend", None)
@@ -2853,7 +3023,19 @@ def _native_wall_block_payload(
     )
     blocks: list[dict[str, object]] = []
     seconds_per_point: list[float] = []
-    for block_index in range(block_count):
+    observed_native_wall_seconds = 0.0
+    observed_caller_elapsed_seconds = 0.0
+    maximum_block_count = max(block_count * 4, block_count + 16)
+    while (
+        len(blocks) < block_count
+        or observed_native_wall_seconds < float(minimum_native_wall_seconds)
+    ):
+        if len(blocks) >= maximum_block_count:
+            raise HarnessError(
+                "raw native-wall calibration could not satisfy the configured "
+                "minimum duration"
+            )
+        block_index = len(blocks)
         started_at = _utc_now()
         started = time.perf_counter()
         duration = timer(
@@ -2887,13 +3069,23 @@ def _native_wall_block_payload(
         record["content_sha256"] = _canonical_sha256(record)
         blocks.append(record)
         seconds_per_point.append(per_point)
+        observed_native_wall_seconds += float(duration)
+        observed_caller_elapsed_seconds += elapsed
     median = statistics.median(seconds_per_point)
     mad = statistics.median(abs(value - median) for value in seconds_per_point)
     return {
-        "kind": "pyamplicol-raw-native-wall-blocks",
-        "schema_version": 1,
+        "kind": RAW_NATIVE_WALL_BLOCK_KIND,
+        "schema_version": RAW_NATIVE_WALL_BLOCK_SCHEMA,
+        "measurement_contract": RAW_NATIVE_WALL_MEASUREMENT_CONTRACT,
         "source": "runtime._benchmark_f64_wall_time",
         "fixture_points_sha256": fixture_points_sha256,
+        "minimum_native_wall_seconds": float(minimum_native_wall_seconds),
+        "observed_native_wall_seconds": observed_native_wall_seconds,
+        "observed_caller_elapsed_seconds": observed_caller_elapsed_seconds,
+        "minimum_duration_satisfied": (
+            observed_native_wall_seconds >= float(minimum_native_wall_seconds)
+        ),
+        "calibration": dict(calibration),
         "block_count": len(blocks),
         "repetitions_per_block": repetitions_per_block,
         "evaluation_count": len(blocks) * repetitions_per_block,
@@ -3004,8 +3196,8 @@ def _generation_config(
                 enabled=True,
                 samples=validation_samples,
                 seed=VALIDATION_SEED,
-                relative_tolerance=1.0e-12,
-                absolute_tolerance=1.0e-300,
+                relative_tolerance=RTOL,
+                absolute_tolerance=ATOL,
                 post_build_validation=True,
             ),
         ),
@@ -3151,10 +3343,13 @@ def _profile_worker(arguments: argparse.Namespace) -> dict[str, object]:
     from pyamplicol import BenchmarkRunner, Runtime
     from pyamplicol.config import BenchmarkConfig
 
-    if len(arguments.batch_size) != 1:
+    timing_profile = getattr(arguments, "operation", "profile") == "profile"
+    if timing_profile and len(arguments.batch_size) != 1:
         raise HarnessError(
             "profile timing workers require exactly one batch size per subprocess"
         )
+    if not timing_profile and arguments.batch_size:
+        raise HarnessError("preflight workers do not accept timing batch sizes")
     pre_timing_verification = _verify_profile_worker_environment(arguments)
     artifact = arguments.artifact.resolve()
     load_started = time.perf_counter()
@@ -3261,12 +3456,15 @@ def _profile_worker(arguments: argparse.Namespace) -> dict[str, object]:
                 "resolved_sum": _complex_payload(resolved_total),
                 "absolute_difference": absolute,
                 "relative_difference": relative,
-                "passes": absolute <= 1.0e-15 or relative <= 1.0e-12,
+                "passes": _within_numerical_tolerance(
+                    selected_total,
+                    resolved_total,
+                ),
             }
         )
 
     profiles: list[dict[str, object]] = []
-    for batch_size in arguments.batch_size:
+    for batch_size in arguments.batch_size if timing_profile else ():
         try:
             result = BenchmarkRunner(
                 BenchmarkConfig(
@@ -3307,15 +3505,55 @@ def _profile_worker(arguments: argparse.Namespace) -> dict[str, object]:
             or result.evaluated_point_count != result.evaluation_count * batch_size
         ):
             raise HarnessError("benchmark runner returned invalid timing counts")
+        minimum_block_count = max(
+            MIN_AUTHORITATIVE_SAMPLES,
+            arguments.minimum_samples,
+        )
+        estimated_seconds_per_repetition = (
+            float(result.wall_time_per_point) * batch_size
+        )
+        if (
+            not math.isfinite(estimated_seconds_per_repetition)
+            or estimated_seconds_per_repetition <= 0.0
+        ):
+            raise HarnessError(
+                "benchmark runner returned an invalid raw-wall calibration"
+            )
+        repetitions_per_raw_block = max(
+            result.repetitions_per_sample,
+            math.ceil(
+                (arguments.target_runtime * 1.02)
+                / (minimum_block_count * estimated_seconds_per_repetition)
+            ),
+        )
+        calibration = {
+            "kind": "benchmark-runner-wall-rate-calibration",
+            "schema_version": 1,
+            "benchmark_runner_sample_count": result.sample_count,
+            "benchmark_runner_repetitions_per_sample": (
+                result.repetitions_per_sample
+            ),
+            "benchmark_runner_total_repetitions": (
+                result.sample_count * result.repetitions_per_sample
+            ),
+            "benchmark_runner_wall_seconds_per_point": (
+                float(result.wall_time_per_point)
+            ),
+            "requested_minimum_block_count": minimum_block_count,
+            "preceded_by_benchmark_runner_warmup_runs": (
+                arguments.warmup_runs
+            ),
+            "duration_headroom_factor": 1.02,
+            "scaled_repetitions_per_block": repetitions_per_raw_block,
+        }
         raw_blocks = _native_wall_block_payload(
             runtime,
             validation_points,
             batch_size=batch_size,
-            repetitions_per_block=result.repetitions_per_sample,
-            block_count=max(
-                MIN_AUTHORITATIVE_SAMPLES,
-                arguments.minimum_samples,
-            ),
+            repetitions_per_block=repetitions_per_raw_block,
+            block_count=minimum_block_count,
+            minimum_native_wall_seconds=arguments.target_runtime,
+            calibration=calibration,
             selectors=selectors,
             fixture_points_sha256=str(validation_fixture["points_sha256"]),
         )
@@ -3324,6 +3562,7 @@ def _profile_worker(arguments: argparse.Namespace) -> dict[str, object]:
             "wall_seconds_per_point",
             "wall_uncertainty",
             "sample_count",
+            "repetitions_per_sample",
             "evaluation_count",
             "evaluated_point_count",
         ):
@@ -3336,6 +3575,9 @@ def _profile_worker(arguments: argparse.Namespace) -> dict[str, object]:
             "raw_mad_seconds_per_point": raw_blocks["wall_seconds_per_point_mad"],
         }
         measurement["sample_count"] = raw_blocks["block_count"]
+        measurement["repetitions_per_sample"] = raw_blocks[
+            "repetitions_per_block"
+        ]
         measurement["evaluation_count"] = raw_blocks["evaluation_count"]
         measurement["evaluated_point_count"] = raw_blocks["evaluated_point_count"]
         measurement["inner_native_wall_blocks"] = raw_blocks
@@ -3344,7 +3586,7 @@ def _profile_worker(arguments: argparse.Namespace) -> dict[str, object]:
     loaded_artifact_after_timing = _loaded_runtime_artifact_verification(
         runtime,
         expected_artifact_id=pre_timing_verification["expected"]["artifact_id"],
-        phase="after-timing",
+        phase=("after-timing" if timing_profile else "after-validation-preflight"),
     )
 
     return {
@@ -3410,7 +3652,7 @@ def _profile_worker(arguments: argparse.Namespace) -> dict[str, object]:
 
 def _worker_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("operation", choices=("generate", "profile"))
+    parser.add_argument("operation", choices=("generate", "preflight", "profile"))
     parser.add_argument(
         "--mode",
         choices=("compiled", "eager", "recurrence"),
@@ -3458,9 +3700,12 @@ def _worker_main(argv: Sequence[str]) -> int:
     arguments = _worker_parser().parse_args(argv)
     if arguments.warmup_runs < 0:
         raise HarnessError("warmup runs must be non-negative")
-    if arguments.operation == "profile" and arguments.validation_point_artifact is None:
+    if (
+        arguments.operation in {"preflight", "profile"}
+        and arguments.validation_point_artifact is None
+    ):
         raise HarnessError(
-            "profile workers require an explicit --validation-point-artifact"
+            "validation workers require an explicit --validation-point-artifact"
         )
     if arguments.operation == "profile" and (
         arguments.schedule_index is None
@@ -3809,7 +4054,10 @@ def _comparison(
                 "right": _complex_payload(right_value),
                 "absolute_difference": absolute,
                 "relative_difference": relative,
-                "passes": absolute <= 1.0e-15 or relative <= 1.0e-12,
+                "passes": _within_numerical_tolerance(
+                    left_value,
+                    right_value,
+                ),
             }
         )
     counts_match = len(left_values) == len(right_values)
@@ -3955,6 +4203,45 @@ def _profile_selector_contract_matches(
     )
 
 
+def _selected_union_selector_projection(
+    arguments: argparse.Namespace,
+    selector_contract: object,
+    semantic_identity: object,
+) -> dict[str, object]:
+    """Project away only the audited nonselected structural-zero census."""
+
+    if not _selected_union_semantic_exception_enabled(arguments):
+        raise HarnessError(
+            "selected-union selector projection is outside its audited workload"
+        )
+    if not _profile_selector_contract_matches(
+        arguments,
+        selector_contract,
+        semantic_identity,
+    ):
+        raise HarnessError("selected-union selector contract is invalid")
+    assert isinstance(selector_contract, Mapping)
+    if (
+        selector_contract.get("resolved_helicity_id")
+        != MIGRATION_UNION_SELECTED_HELICITY_ID
+        or selector_contract.get("workload")
+        != "all-flows/runtime-selected-single-helicity"
+    ):
+        raise HarnessError("selected-union selector does not resolve the audited ID")
+    return {
+        key: selector_contract[key]
+        for key in (
+            "color_flow_request",
+            "resolved_color_flow_id",
+            "helicity_request",
+            "resolved_helicity_id",
+            "color_flow_count",
+            "helicity_count",
+            "workload",
+        )
+    }
+
+
 def _validated_lane_validation_values(
     validation: Mapping[str, Any],
     fixture_contract: Mapping[str, object],
@@ -3992,7 +4279,10 @@ def _validated_lane_validation_values(
             abs(resolved_value),
             1.0e-300,
         )
-        expected_pass = absolute <= 1.0e-15 or relative <= 1.0e-12
+        expected_pass = _within_numerical_tolerance(
+            selected_value,
+            resolved_value,
+        )
         if (
             not math.isfinite(absolute)
             or not math.isfinite(relative)
@@ -4042,11 +4332,27 @@ def _validated_lane_validation_values(
         or validation.get("passes") is not lane_passes
     ):
         raise HarnessError(f"{mode} validation summary is inconsistent")
-    _validated_resolved_components(
+    resolved_components = _validated_resolved_components(
         validation,
         point_count=point_count,
         mode=mode,
     )
+    for resolved_value, components in zip(
+        resolved,
+        resolved_components,
+        strict=True,
+    ):
+        component_sum = sum(components, 0.0j)
+        absolute = abs(resolved_value - component_sum)
+        relative = absolute / max(
+            abs(resolved_value),
+            abs(component_sum),
+            1.0e-300,
+        )
+        if not _within_numerical_tolerance(component_sum, resolved_value):
+            raise HarnessError(
+                f"{mode} resolved sum disagrees with its physical components"
+            )
     return selected
 
 
@@ -4129,7 +4435,7 @@ def _resolved_component_comparison(
             relative = absolute / max(abs(left_value), abs(right_value), 1.0e-300)
             maximum_absolute = max(maximum_absolute, absolute)
             maximum_relative = max(maximum_relative, relative)
-            values_pass &= absolute <= 1.0e-15 or relative <= 1.0e-12
+            values_pass &= _within_numerical_tolerance(left_value, right_value)
             compared_component_count += 1
     return {
         "left_mode": left_mode,
@@ -4150,6 +4456,8 @@ def _resolved_component_comparison(
 
 def _pairwise_profile_validation(
     profiles: Mapping[str, Mapping[str, Any]],
+    *,
+    arguments: argparse.Namespace | None = None,
 ) -> dict[str, object]:
     unknown = set(profiles).difference(EXECUTION_MODES)
     if unknown:
@@ -4163,12 +4471,24 @@ def _pairwise_profile_validation(
         raise HarnessError("profile validation requires at least one lane")
     lane_validation_passes = True
     selector_contracts: list[object] = []
+    selector_projections: list[dict[str, object]] = []
     fixture_contracts: list[dict[str, object]] = []
+    selected_union_projection = _selected_union_semantic_exception_enabled(arguments)
     for mode in ordered_modes:
         validation = profiles[mode].get("validation")
         if not isinstance(validation, Mapping):
             raise HarnessError(f"{mode} profile returned invalid validation metadata")
-        selector_contracts.append(profiles[mode].get("selector_contract"))
+        selector_contract = profiles[mode].get("selector_contract")
+        selector_contracts.append(selector_contract)
+        if selected_union_projection:
+            assert arguments is not None
+            selector_projections.append(
+                _selected_union_selector_projection(
+                    arguments,
+                    selector_contract,
+                    profiles[mode].get("artifact_semantic_identity"),
+                )
+            )
         fixture_contract = _validation_fixture_contract(validation, mode=mode)
         fixture_contracts.append(fixture_contract)
         _validated_lane_validation_values(
@@ -4196,8 +4516,15 @@ def _pairwise_profile_validation(
                 right_mode,
                 right_validation,
             )
-    selectors_match = all(
-        contract == selector_contracts[0] for contract in selector_contracts[1:]
+    selectors_match = (
+        all(
+            projection == selector_projections[0]
+            for projection in selector_projections[1:]
+        )
+        if selected_union_projection
+        else all(
+            contract == selector_contracts[0] for contract in selector_contracts[1:]
+        )
     )
     fixtures_match = all(
         contract == fixture_contracts[0] for contract in fixture_contracts[1:]
@@ -4220,12 +4547,106 @@ def _pairwise_profile_validation(
         "comparisons": comparisons,
         "resolved_component_comparisons": resolved_component_comparisons,
         "selectors_match": selectors_match,
+        "selector_comparison_policy": (
+            "ddbar-z6g-all-flow-union-selected-helicity-v1"
+            if selected_union_projection
+            else "strict-exact-v1"
+        ),
         "fixtures_match": fixtures_match,
         "fixture_contract": fixture_contracts[0] if fixtures_match else None,
         "lane_validation_passes": lane_validation_passes,
         "pairwise_validation_passes": pairwise_passes,
         "passes": validation_passes,
     }
+
+
+def _preflight_profile_from_worker(
+    worker: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Extract the immutable semantic/numerical body from a preflight worker."""
+
+    mode = worker.get("mode")
+    verification = worker.get("pre_timing_verification")
+    measurements = worker.get("profiles")
+    if (
+        not isinstance(mode, str)
+        or mode not in EXECUTION_MODES
+        or not isinstance(verification, Mapping)
+        or measurements != []
+    ):
+        raise HarnessError("validation preflight worker returned an invalid payload")
+    semantic_identity = verification.get("artifact_semantic_identity")
+    semantic_identity_sha256 = verification.get("artifact_semantic_identity_sha256")
+    if not isinstance(
+        semantic_identity, Mapping
+    ) or semantic_identity_sha256 != _canonical_sha256(semantic_identity):
+        raise HarnessError(
+            "validation preflight worker returned unaddressed artifact semantics"
+        )
+    return {
+        "mode": mode,
+        "process_id": worker.get("process_id"),
+        "process_expression": worker.get("process_expression"),
+        "selector_contract": worker.get("selector_contract"),
+        "validation": worker.get("validation"),
+        "artifact_semantic_identity": dict(semantic_identity),
+        "artifact_semantic_identity_sha256": semantic_identity_sha256,
+        "profiles": [],
+    }
+
+
+def _validation_preflight_contract(
+    arguments: argparse.Namespace,
+    profiles: Mapping[str, Mapping[str, Any]],
+) -> dict[str, object]:
+    """Validate lane semantics and deterministic physics before any timing."""
+
+    semantic = _profile_artifact_semantic_contract(
+        profiles,
+        arguments=arguments,
+    )
+    numerical = _pairwise_profile_validation(
+        profiles,
+        arguments=arguments,
+    )
+    passes = (
+        bool(profiles)
+        and semantic.get("passes") is True
+        and semantic.get("lanes_match") is True
+        and numerical.get("passes") is True
+    )
+    return {
+        "kind": "pyamplicol-pre-profile-validation-contract",
+        "schema_version": 1,
+        "passes": passes,
+        "observed_modes": [mode for mode in EXECUTION_MODES if mode in profiles],
+        "semantic_contract": semantic,
+        "numerical_contract": numerical,
+    }
+
+
+def _require_validation_preflight(
+    arguments: argparse.Namespace,
+    profiles: Mapping[str, Mapping[str, Any]],
+) -> dict[str, object]:
+    try:
+        contract = _validation_preflight_contract(arguments, profiles)
+    except HarnessError as error:
+        raise HarnessError(
+            "pre-profile lane validation failed before timing: " + str(error)
+        ) from error
+    if contract["passes"] is not True:
+        semantic = contract["semantic_contract"]
+        assert isinstance(semantic, Mapping)
+        raw_errors = semantic.get("errors")
+        errors = (
+            [str(error) for error in raw_errors] if isinstance(raw_errors, list) else []
+        )
+        detail = "; ".join(errors) or "deterministic numerical comparison failed"
+        raise HarnessError(
+            "pre-profile lane validation failed before timing: " + detail
+        )
+    return contract
 
 
 def _write_json_atomic(path: Path, payload: Mapping[str, object]) -> None:
@@ -4236,6 +4657,187 @@ def _write_json_atomic(path: Path, payload: Mapping[str, object]) -> None:
         encoding="utf-8",
     )
     os.replace(temporary, path)
+
+
+def _content_addressed_record(payload: Mapping[str, object]) -> dict[str, object]:
+    result = dict(payload)
+    result["content_sha256"] = _canonical_sha256(result)
+    return result
+
+
+def _read_content_addressed_record(path: Path, *, label: str) -> dict[str, object]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise HarnessError(f"{label} is not readable canonical JSON: {path}") from error
+    if not isinstance(payload, dict):
+        raise HarnessError(f"{label} is not a JSON object: {path}")
+    unsigned = dict(payload)
+    digest = unsigned.pop("content_sha256", None)
+    if (
+        not isinstance(digest, str)
+        or _SHA256_PATTERN.fullmatch(digest) is None
+        or digest != _canonical_sha256(unsigned)
+    ):
+        raise HarnessError(f"{label} is not content-addressed: {path}")
+    return payload
+
+
+def _paired_coordination_role_directory(arguments: argparse.Namespace) -> Path | None:
+    root = arguments.paired_profile_coordination_dir
+    if root is None:
+        return None
+    return (
+        root.resolve()
+        / arguments.paired_profile_session_id
+        / arguments.lc_flow_layout
+        / arguments.paired_profile_role
+    )
+
+
+def _paired_schedule_plan(
+    profile_schedule: Mapping[str, object],
+) -> list[dict[str, object]]:
+    raw_entries = profile_schedule.get("entries")
+    if not isinstance(raw_entries, list):
+        raise HarnessError("paired profile coordination requires a planned schedule")
+    result: list[dict[str, object]] = []
+    for index, raw in enumerate(raw_entries):
+        if not isinstance(raw, Mapping):
+            raise HarnessError(f"paired profile schedule entry {index} is invalid")
+        result.append(
+            {
+                field: raw.get(field)
+                for field in ("schedule_index", "round", "mode", "batch_size")
+            }
+        )
+    return result
+
+
+def _initialize_paired_profile_coordination(
+    arguments: argparse.Namespace,
+    *,
+    source_identity: Mapping[str, object],
+    runtime_provenance: Mapping[str, object],
+    profile_schedule: Mapping[str, object],
+    result_json: Path,
+) -> dict[str, object] | None:
+    role_directory = _paired_coordination_role_directory(arguments)
+    if role_directory is None:
+        return None
+    role_directory.mkdir(parents=True, exist_ok=True)
+    plan = _paired_schedule_plan(profile_schedule)
+    ready = _content_addressed_record(
+        {
+            "kind": PAIRED_PROFILE_READY_KIND,
+            "schema_version": PAIRED_PROFILE_COORDINATION_SCHEMA,
+            "session_id": arguments.paired_profile_session_id,
+            "role": arguments.paired_profile_role,
+            "layout": arguments.lc_flow_layout,
+            "source_revision": source_identity.get("revision"),
+            "source_identity_sha256": _canonical_sha256(source_identity),
+            "runtime_provenance_sha256": _canonical_sha256(runtime_provenance),
+            "profile_schedule_plan": plan,
+            "profile_schedule_plan_sha256": _canonical_sha256(plan),
+            "result_json": str(result_json),
+            "ready_at_utc": _utc_now(),
+        }
+    )
+    ready_path = role_directory / "ready.json"
+    if ready_path.exists():
+        raise HarnessError(
+            "paired profile coordination ready record already exists; "
+            "use a fresh session directory"
+        )
+    _write_json_atomic(ready_path, ready)
+    return {
+        "kind": PAIRED_PROFILE_COORDINATION_KIND,
+        "schema_version": PAIRED_PROFILE_COORDINATION_SCHEMA,
+        "session_id": arguments.paired_profile_session_id,
+        "role": arguments.paired_profile_role,
+        "layout": arguments.lc_flow_layout,
+        "ready_record": ready,
+        "completion_records": [],
+    }
+
+
+def _wait_for_paired_profile_token(
+    arguments: argparse.Namespace,
+    schedule_entry: Mapping[str, object],
+) -> dict[str, object] | None:
+    role_directory = _paired_coordination_role_directory(arguments)
+    if role_directory is None:
+        return None
+    schedule_index = schedule_entry.get("schedule_index")
+    if isinstance(schedule_index, bool) or not isinstance(schedule_index, int):
+        raise HarnessError("paired profile schedule index is invalid")
+    path = role_directory / f"token-{schedule_index:06d}.json"
+    deadline = time.monotonic() + arguments.paired_profile_wait_timeout
+    while not path.is_file():
+        if time.monotonic() >= deadline:
+            raise HarnessError(f"timed out waiting for paired profile token: {path}")
+        time.sleep(0.1)
+    token = _read_content_addressed_record(path, label="paired profile token")
+    expected = {
+        "kind": PAIRED_PROFILE_TOKEN_KIND,
+        "schema_version": PAIRED_PROFILE_COORDINATION_SCHEMA,
+        "session_id": arguments.paired_profile_session_id,
+        "role": arguments.paired_profile_role,
+        "layout": arguments.lc_flow_layout,
+        **{
+            field: schedule_entry.get(field)
+            for field in ("schedule_index", "round", "mode", "batch_size")
+        },
+    }
+    if any(token.get(field) != value for field, value in expected.items()):
+        raise HarnessError(f"paired profile token does not match its slot: {path}")
+    if not _is_utc_timestamp(token.get("issued_at_utc")):
+        raise HarnessError(f"paired profile token has no valid timestamp: {path}")
+    return token
+
+
+def _record_paired_profile_completion(
+    arguments: argparse.Namespace,
+    *,
+    schedule_entry: Mapping[str, object],
+    token: Mapping[str, object] | None,
+    worker_result: Mapping[str, object],
+) -> dict[str, object] | None:
+    role_directory = _paired_coordination_role_directory(arguments)
+    if role_directory is None:
+        return None
+    if token is None:
+        raise HarnessError("paired profile completion has no scheduler token")
+    invocation = worker_result.get("worker_invocation")
+    result_record = worker_result.get("worker_result_record")
+    if not isinstance(invocation, Mapping) or not isinstance(result_record, Mapping):
+        raise HarnessError("paired profile completion lacks worker provenance")
+    schedule_index = schedule_entry.get("schedule_index")
+    assert isinstance(schedule_index, int)
+    completion = _content_addressed_record(
+        {
+            "kind": PAIRED_PROFILE_COMPLETION_KIND,
+            "schema_version": PAIRED_PROFILE_COORDINATION_SCHEMA,
+            "session_id": arguments.paired_profile_session_id,
+            "role": arguments.paired_profile_role,
+            "layout": arguments.lc_flow_layout,
+            **{
+                field: schedule_entry.get(field)
+                for field in ("schedule_index", "round", "mode", "batch_size")
+            },
+            "token_sha256": token.get("content_sha256"),
+            "worker_invocation_sha256": invocation.get("content_sha256"),
+            "worker_result_record_sha256": result_record.get("content_sha256"),
+            "worker_started_at_utc": invocation.get("started_at_utc"),
+            "worker_finished_at_utc": invocation.get("finished_at_utc"),
+            "recorded_at_utc": _utc_now(),
+        }
+    )
+    path = role_directory / f"completion-{schedule_index:06d}.json"
+    if path.exists():
+        raise HarnessError(f"paired profile completion already exists: {path}")
+    _write_json_atomic(path, completion)
+    return completion
 
 
 def _build_profile_schedule(
@@ -4818,6 +5420,9 @@ def _aggregate_profile_workers(
             "post_timing_loaded_runtime_artifact": worker.get(
                 "post_timing_loaded_runtime_artifact"
             ),
+            "cold_load_seconds": worker.get("cold_load_seconds"),
+            "peak_rss_after_cold_load": worker.get("peak_rss_after_cold_load"),
+            "peak_rss_after_profile": worker.get("peak_rss_after_profile"),
             "lane_contract_sha256": _canonical_sha256(contract),
             "timing_configuration": worker.get("timing_configuration"),
             "worker_measurement": dict(measurement),
@@ -4848,6 +5453,9 @@ def _aggregate_profile_workers(
         aggregated_measurements: list[dict[str, object]] = []
         for batch_size, samples in sorted(lane_samples[mode].items()):
             values: list[float] = []
+            cold_load_values: list[float] = []
+            cold_load_rss_values: list[int] = []
+            profiled_rss_values: list[int] = []
             for sample in samples:
                 value = sample.get("wall_seconds_per_point")
                 if (
@@ -4860,8 +5468,36 @@ def _aggregate_profile_workers(
                         f"{mode}/{batch_size} worker returned invalid wall timing"
                     )
                 values.append(float(value))
+                cold_load = sample.get("cold_load_seconds")
+                peak_after_load = sample.get("peak_rss_after_cold_load")
+                peak_after_profile = sample.get("peak_rss_after_profile")
+                if (
+                    isinstance(cold_load, bool)
+                    or not isinstance(cold_load, (float, int))
+                    or not math.isfinite(float(cold_load))
+                    or float(cold_load) <= 0.0
+                    or not _valid_resource_peak(peak_after_load)
+                    or not _valid_resource_peak(peak_after_profile)
+                ):
+                    raise HarnessError(
+                        f"{mode}/{batch_size} worker returned invalid cold-load "
+                        "resource evidence"
+                    )
+                assert isinstance(peak_after_load, Mapping)
+                assert isinstance(peak_after_profile, Mapping)
+                cold_load_values.append(float(cold_load))
+                cold_load_rss_values.append(
+                    int(peak_after_load["observed_lower_bound_bytes"])
+                )
+                profiled_rss_values.append(
+                    int(peak_after_profile["observed_lower_bound_bytes"])
+                )
             median = statistics.median(values)
             mad = statistics.median(abs(value - median) for value in values)
+            cold_load_median = statistics.median(cold_load_values)
+            cold_load_mad = statistics.median(
+                abs(value - cold_load_median) for value in cold_load_values
+            )
             aggregated_measurements.append(
                 {
                     "batch_size": batch_size,
@@ -4871,6 +5507,17 @@ def _aggregate_profile_workers(
                     "wall_seconds_per_point_median": median,
                     "wall_seconds_per_point_mad": mad,
                     "statistics_contract": "subprocess-median-and-raw-mad-v1",
+                    "cold_load_seconds_median": cold_load_median,
+                    "cold_load_seconds_mad": cold_load_mad,
+                    "cold_load_peak_rss_bytes_median": statistics.median(
+                        cold_load_rss_values
+                    ),
+                    "profiled_peak_rss_bytes_median": statistics.median(
+                        profiled_rss_values
+                    ),
+                    "resource_statistics_contract": (
+                        "subprocess-median-and-raw-mad-v1"
+                    ),
                     "subprocess_samples": samples,
                     "interrupted": any(
                         sample.get("interrupted") is not False for sample in samples
@@ -4890,7 +5537,11 @@ def _profile_measurement_contract(
     profiles: Mapping[str, Mapping[str, Any]],
     *,
     profile_schedule: Mapping[str, object] | None,
+    required_modes: Sequence[str] | None = None,
 ) -> dict[str, object]:
+    selected_modes = tuple(
+        arguments.modes if required_modes is None else required_modes
+    )
     lanes: dict[str, dict[str, object]] = {}
     root_process_contracts = [
         (
@@ -4904,7 +5555,8 @@ def _profile_measurement_contract(
                 else None
             ),
         )
-        for profile in profiles.values()
+        for mode in selected_modes
+        if (profile := profiles.get(mode)) is not None
     ]
     root_processes_match = bool(root_process_contracts) and all(
         contract == root_process_contracts[0] for contract in root_process_contracts[1:]
@@ -4934,9 +5586,10 @@ def _profile_measurement_contract(
         schedule_contract["passes"] is True
         and arguments.subprocess_samples >= MIN_AUTHORITATIVE_SAMPLES
         and arguments.minimum_samples >= MIN_AUTHORITATIVE_SAMPLES
-        and arguments.warmup_runs >= 1
+        and arguments.warmup_runs >= 2
+        and arguments.target_runtime >= 5.0
     )
-    for mode in EXECUTION_MODES:
+    for mode in selected_modes:
         profile = profiles.get(mode)
         if profile is None:
             lanes[mode] = {
@@ -5105,6 +5758,9 @@ def _profile_measurement_contract(
                 sources = sample.get("timing_sources")
                 environment = sample.get("environment")
                 timing_configuration = sample.get("timing_configuration")
+                cold_load_seconds = sample.get("cold_load_seconds")
+                peak_rss_after_cold_load = sample.get("peak_rss_after_cold_load")
+                peak_rss_after_profile = sample.get("peak_rss_after_profile")
                 schedule_index = sample.get("schedule_index")
                 verification = sample.get("pre_timing_verification")
                 post_timing_loaded_artifact = sample.get(
@@ -5113,6 +5769,18 @@ def _profile_measurement_contract(
                 sample_round = sample.get("round")
                 invocation = sample.get("worker_invocation")
                 worker_command = sample.get("worker_command")
+                if (
+                    isinstance(cold_load_seconds, bool)
+                    or not isinstance(cold_load_seconds, (float, int))
+                    or not math.isfinite(float(cold_load_seconds))
+                    or float(cold_load_seconds) <= 0.0
+                    or not _valid_resource_peak(peak_rss_after_cold_load)
+                    or not _valid_resource_peak(peak_rss_after_profile)
+                ):
+                    errors.append(
+                        f"profile batch {batch_size} subprocess sample "
+                        f"{sample_index} lacks cold-load/resource evidence"
+                    )
                 if (
                     isinstance(sample_round, bool)
                     or not isinstance(sample_round, int)
@@ -5473,9 +6141,53 @@ def _profile_measurement_contract(
                     raw_evaluated_point_count = raw_blocks.get("evaluated_point_count")
                     raw_wall_median = raw_blocks.get("wall_seconds_per_point_median")
                     raw_wall_mad = raw_blocks.get("wall_seconds_per_point_mad")
+                    raw_minimum_duration = raw_blocks.get(
+                        "minimum_native_wall_seconds"
+                    )
+                    raw_observed_duration = raw_blocks.get(
+                        "observed_native_wall_seconds"
+                    )
+                    raw_caller_duration = raw_blocks.get(
+                        "observed_caller_elapsed_seconds"
+                    )
+                    raw_calibration = raw_blocks.get("calibration")
+                    calibration_runner_samples = (
+                        raw_calibration.get("benchmark_runner_sample_count")
+                        if isinstance(raw_calibration, Mapping)
+                        else None
+                    )
+                    calibration_runner_repetitions = (
+                        raw_calibration.get(
+                            "benchmark_runner_repetitions_per_sample"
+                        )
+                        if isinstance(raw_calibration, Mapping)
+                        else None
+                    )
+                    calibration_runner_total = (
+                        raw_calibration.get("benchmark_runner_total_repetitions")
+                        if isinstance(raw_calibration, Mapping)
+                        else None
+                    )
+                    calibration_runner_wall = (
+                        raw_calibration.get(
+                            "benchmark_runner_wall_seconds_per_point"
+                        )
+                        if isinstance(raw_calibration, Mapping)
+                        else None
+                    )
+                    calibration_headroom = (
+                        raw_calibration.get("duration_headroom_factor")
+                        if isinstance(raw_calibration, Mapping)
+                        else None
+                    )
                     if (
-                        raw_blocks.get("kind") != "pyamplicol-raw-native-wall-blocks"
-                        or not _is_exact_int(raw_blocks.get("schema_version"), 1)
+                        raw_blocks.get("kind") != RAW_NATIVE_WALL_BLOCK_KIND
+                        or not _is_exact_int(
+                            raw_blocks.get("schema_version"),
+                            RAW_NATIVE_WALL_BLOCK_SCHEMA,
+                        )
+                        or raw_blocks.get("measurement_contract")
+                        != RAW_NATIVE_WALL_MEASUREMENT_CONTRACT
                         or raw_blocks.get("source")
                         != "runtime._benchmark_f64_wall_time"
                         or raw_blocks.get("fixture_points_sha256")
@@ -5513,6 +6225,69 @@ def _profile_measurement_contract(
                         or raw_blocks.get("blocks_sha256")
                         != _canonical_sha256(raw_inventory)
                         or raw_wall_median != sample_wall
+                        or isinstance(raw_minimum_duration, bool)
+                        or not isinstance(raw_minimum_duration, (float, int))
+                        or not math.isfinite(float(raw_minimum_duration))
+                        or raw_minimum_duration != arguments.target_runtime
+                        or isinstance(raw_observed_duration, bool)
+                        or not isinstance(raw_observed_duration, (float, int))
+                        or not math.isfinite(float(raw_observed_duration))
+                        or float(raw_observed_duration)
+                        < float(raw_minimum_duration)
+                        or isinstance(raw_caller_duration, bool)
+                        or not isinstance(raw_caller_duration, (float, int))
+                        or not math.isfinite(float(raw_caller_duration))
+                        or float(raw_caller_duration) <= 0.0
+                        or float(raw_caller_duration)
+                        < float(raw_observed_duration)
+                        or raw_blocks.get("minimum_duration_satisfied") is not True
+                        or not isinstance(raw_calibration, Mapping)
+                        or raw_calibration.get("kind")
+                        != "benchmark-runner-wall-rate-calibration"
+                        or not _is_exact_int(
+                            raw_calibration.get("schema_version"),
+                            1,
+                        )
+                        or isinstance(calibration_runner_samples, bool)
+                        or not isinstance(calibration_runner_samples, int)
+                        or calibration_runner_samples <= 0
+                        or isinstance(calibration_runner_repetitions, bool)
+                        or not isinstance(calibration_runner_repetitions, int)
+                        or calibration_runner_repetitions <= 0
+                        or not _is_exact_int(
+                            calibration_runner_total,
+                            calibration_runner_samples
+                            * calibration_runner_repetitions,
+                        )
+                        or isinstance(calibration_runner_wall, bool)
+                        or not isinstance(calibration_runner_wall, (float, int))
+                        or not math.isfinite(float(calibration_runner_wall))
+                        or float(calibration_runner_wall) <= 0.0
+                        or isinstance(calibration_headroom, bool)
+                        or not isinstance(calibration_headroom, (float, int))
+                        or not math.isfinite(float(calibration_headroom))
+                        or float(calibration_headroom) != 1.02
+                        or not _is_exact_int(
+                            raw_calibration.get(
+                                "requested_minimum_block_count"
+                            ),
+                            max(
+                                MIN_AUTHORITATIVE_SAMPLES,
+                                arguments.minimum_samples,
+                            ),
+                        )
+                        or not _is_exact_int(
+                            raw_calibration.get(
+                                "scaled_repetitions_per_block"
+                            ),
+                            raw_repetitions,
+                        )
+                        or not _is_exact_int(
+                            raw_calibration.get(
+                                "preceded_by_benchmark_runner_warmup_runs"
+                            ),
+                            arguments.warmup_runs,
+                        )
                     ):
                         errors.append(
                             f"profile batch {batch_size} subprocess sample "
@@ -5579,6 +6354,8 @@ def _profile_measurement_contract(
                         )
                         or not math.isfinite(float(block["native_wall_seconds"]))
                         or float(block["native_wall_seconds"]) <= 0.0
+                        or float(block["caller_elapsed_seconds"])
+                        < float(block["native_wall_seconds"])
                         or isinstance(
                             block.get("wall_seconds_per_point"),
                             bool,
@@ -5635,6 +6412,47 @@ def _profile_measurement_contract(
                         raw_mad = statistics.median(
                             abs(value - raw_median) for value in raw_values
                         )
+                        observed_native_duration = sum(
+                            float(block["native_wall_seconds"])
+                            for block in raw_inventory
+                        )
+                        observed_caller_duration = sum(
+                            float(block["caller_elapsed_seconds"])
+                            for block in raw_inventory
+                        )
+                        requested_block_count = int(
+                            raw_calibration["requested_minimum_block_count"]
+                        )
+                        runner_repetition_count = int(
+                            calibration_runner_repetitions
+                        )
+                        runner_wall_seconds = float(calibration_runner_wall)
+                        headroom_factor = float(calibration_headroom)
+                        runner_total_repetitions = int(calibration_runner_total)
+                        expected_scaled_repetitions = max(
+                            runner_repetition_count,
+                            math.ceil(
+                                (
+                                    float(arguments.target_runtime)
+                                    * headroom_factor
+                                )
+                                / (
+                                    requested_block_count
+                                    * runner_wall_seconds
+                                    * batch_size
+                                )
+                            ),
+                        )
+                        invocation_wall_duration = (
+                            invocation.get("wall_seconds")
+                            if isinstance(invocation, Mapping)
+                            else None
+                        )
+                        process_wall_duration = (
+                            worker_process_record.get("wall_seconds")
+                            if isinstance(worker_process_record, Mapping)
+                            else None
+                        )
                         if (
                             not raw_values
                             or any(
@@ -5643,6 +6461,58 @@ def _profile_measurement_contract(
                             )
                             or raw_wall_median != raw_median
                             or raw_wall_mad != raw_mad
+                            or raw_observed_duration != observed_native_duration
+                            or raw_caller_duration != observed_caller_duration
+                            or observed_native_duration
+                            < float(arguments.target_runtime)
+                            or observed_caller_duration
+                            < float(arguments.target_runtime)
+                            or raw_repetitions != expected_scaled_repetitions
+                            or not isinstance(worker_measurement, Mapping)
+                            or worker_measurement.get(
+                                "benchmark_runner_sample_count"
+                            )
+                            != calibration_runner_samples
+                            or worker_measurement.get(
+                                "benchmark_runner_repetitions_per_sample"
+                            )
+                            != runner_repetition_count
+                            or worker_measurement.get(
+                                "benchmark_runner_evaluation_count"
+                            )
+                            != runner_total_repetitions
+                            or worker_measurement.get(
+                                "benchmark_runner_evaluated_point_count"
+                            )
+                            != runner_total_repetitions * batch_size
+                            or worker_measurement.get(
+                                "benchmark_runner_wall_seconds_per_point"
+                            )
+                            != runner_wall_seconds
+                            or isinstance(invocation_wall_duration, bool)
+                            or not isinstance(
+                                invocation_wall_duration,
+                                (float, int),
+                            )
+                            or not math.isfinite(
+                                float(invocation_wall_duration)
+                            )
+                            or float(invocation_wall_duration)
+                            < observed_native_duration
+                            or float(invocation_wall_duration)
+                            < observed_caller_duration
+                            or isinstance(process_wall_duration, bool)
+                            or not isinstance(
+                                process_wall_duration,
+                                (float, int),
+                            )
+                            or not math.isfinite(
+                                float(process_wall_duration)
+                            )
+                            or float(process_wall_duration)
+                            < observed_native_duration
+                            or float(process_wall_duration)
+                            < observed_caller_duration
                         ):
                             errors.append(
                                 f"profile batch {batch_size} subprocess sample "
@@ -5715,11 +6585,169 @@ def _profile_measurement_contract(
     }
 
 
+def _selected_union_semantic_projection(
+    arguments: argparse.Namespace,
+    profile: Mapping[str, Any],
+    identity: Mapping[str, Any],
+    *,
+    mode: str,
+) -> dict[str, object]:
+    """Build the sole relaxed cross-lane semantic projection.
+
+    Every lane is still fully authenticated and internally validated.  Across
+    lanes, this projection ignores only nonselected helicity coefficients and
+    structural-zero flags plus logical/execution reduction identities.  Those
+    fields may legitimately differ because recurrence carries a conservative
+    live-helicity census while compiled artifacts can certify more zeros.
+    """
+
+    if not _selected_union_semantic_exception_enabled(arguments):
+        raise HarnessError(
+            "selected-union semantic projection is outside its audited workload"
+        )
+    coverage = identity.get("coverage")
+    color_axis = identity.get("physical_color_flows")
+    helicity_axis = identity.get("physical_helicities")
+    specialized_axes = identity.get("generation_specialized_axes")
+    if (
+        not isinstance(coverage, Mapping)
+        or coverage.get("color") != "complete"
+        or coverage.get("helicities") != "complete"
+        or coverage.get("complete_physical_axes") is not True
+        or specialized_axes != []
+        or not isinstance(color_axis, Mapping)
+        or not isinstance(helicity_axis, Mapping)
+    ):
+        raise HarnessError(
+            f"{mode} selected-union artifact does not expose complete physical axes"
+        )
+    validated_color = _validated_logical_physical_axis(
+        color_axis,
+        label="physical_color_flows",
+        require_structural_zero=False,
+    )
+    validated_helicity = _validated_logical_physical_axis(
+        helicity_axis,
+        label="physical_helicities",
+        require_structural_zero=True,
+    )
+    color_ids = validated_color["ordered_ids"]
+    color_entries = validated_color["ordered_entries"]
+    helicity_ids = validated_helicity["ordered_ids"]
+    helicity_entries = validated_helicity["ordered_entries"]
+    assert isinstance(color_ids, list)
+    assert isinstance(color_entries, list)
+    assert isinstance(helicity_ids, list)
+    assert isinstance(helicity_entries, list)
+    if (
+        validated_color.get("count") != MIGRATION_UNION_PHYSICAL_COLOR_COUNT
+        or len(color_ids) != MIGRATION_UNION_PHYSICAL_COLOR_COUNT
+        or MIGRATION_UNION_SELECTED_HELICITY_ID not in helicity_ids
+    ):
+        raise HarnessError(
+            f"{mode} selected-union artifact has the wrong physical-axis inventory"
+        )
+    selected_index = helicity_ids.index(MIGRATION_UNION_SELECTED_HELICITY_ID)
+    selected_entry = helicity_entries[selected_index]
+    assert isinstance(selected_entry, Mapping)
+    selected_coefficient = selected_entry.get("coefficient")
+    if (
+        selected_entry.get("index") != selected_index
+        or selected_entry.get("id") != MIGRATION_UNION_SELECTED_HELICITY_ID
+        or tuple(selected_entry.get("values", ()))
+        != MIGRATION_UNION_SELECTED_HELICITY_VALUES
+        or isinstance(selected_coefficient, bool)
+        or not isinstance(selected_coefficient, (float, int))
+        or not math.isfinite(float(selected_coefficient))
+        or float(selected_coefficient) <= 0.0
+        or selected_entry.get("structural_zero") is not False
+    ):
+        raise HarnessError(
+            f"{mode} selected-union helicity entry is not live and canonical"
+        )
+    selector_projection = _selected_union_selector_projection(
+        arguments,
+        profile.get("selector_contract"),
+        identity,
+    )
+    validation = profile.get("validation")
+    if (
+        not isinstance(validation, Mapping)
+        or validation.get("resolved_helicity_ids")
+        != [MIGRATION_UNION_SELECTED_HELICITY_ID]
+        or validation.get("resolved_color_ids") != color_ids
+    ):
+        raise HarnessError(
+            f"{mode} selected-union resolved axes do not match artifact physics"
+        )
+    process_id = profile.get("process_id")
+    process_expression = profile.get("process_expression")
+    if (
+        not isinstance(process_id, str)
+        or not process_id
+        or not isinstance(process_expression, str)
+        or " ".join(process_expression.split()).casefold()
+        != MIGRATION_PROCESS_CANONICAL.casefold()
+    ):
+        raise HarnessError(
+            f"{mode} selected-union profile has the wrong process identity"
+        )
+    helicity_kinematics = [
+        {
+            "index": entry["index"],
+            "id": entry["id"],
+            "values": entry["values"],
+            **(
+                {
+                    "coefficient": entry["coefficient"],
+                    "structural_zero": entry["structural_zero"],
+                }
+                if entry["id"] == MIGRATION_UNION_SELECTED_HELICITY_ID
+                else {}
+            ),
+        }
+        for entry in helicity_entries
+        if isinstance(entry, Mapping)
+    ]
+    model_identity = identity.get("manifest_model_identity")
+    if not isinstance(model_identity, Mapping):
+        raise HarnessError(f"{mode} selected-union artifact has no model identity")
+    return {
+        "policy": "ddbar-z6g-all-flow-union-selected-helicity-v1",
+        "process_id": process_id,
+        "process_expression": MIGRATION_PROCESS_CANONICAL,
+        "physical_color_flows": {
+            "count": validated_color["count"],
+            "ordered_ids_sha256": validated_color["ordered_ids_sha256"],
+            "ordered_entries_sha256": validated_color["ordered_entries_sha256"],
+        },
+        "physical_helicities": {
+            "count": validated_helicity["count"],
+            "ordered_ids_sha256": validated_helicity["ordered_ids_sha256"],
+            "kinematic_entries_sha256": _canonical_sha256(helicity_kinematics),
+            "selected_index": selected_index,
+            "selected_entry": dict(selected_entry),
+        },
+        "normalization_sha256": identity.get("normalization_sha256"),
+        "model_common_physics_identity_sha256": model_identity.get(
+            "common_physics_identity_sha256"
+        ),
+        "runtime_selector_semantics_sha256": identity.get(
+            "runtime_selector_semantics_sha256"
+        ),
+        "profile_selector": selector_projection,
+        "resolved_color_ids_sha256": _canonical_sha256(color_ids),
+    }
+
+
 def _profile_artifact_semantic_contract(
     profiles: Mapping[str, Mapping[str, Any]],
+    *,
+    arguments: argparse.Namespace | None = None,
 ) -> dict[str, object]:
     lane_contracts: dict[str, dict[str, object]] = {}
     errors: list[str] = []
+    selected_union_projection = _selected_union_semantic_exception_enabled(arguments)
     for mode, profile in profiles.items():
         identity = profile.get("artifact_semantic_identity")
         identity_sha256 = profile.get("artifact_semantic_identity_sha256")
@@ -5891,7 +6919,7 @@ def _profile_artifact_semantic_contract(
                 f"{mode} model/selector/reduction semantic identity is invalid"
             )
             continue
-        lane_contracts[mode] = {
+        lane_contract: dict[str, object] = {
             **axis_contracts,
             "normalization_sha256": normalization_sha256,
             "model_common_physics_identity_sha256": model_common_sha256,
@@ -5901,21 +6929,43 @@ def _profile_artifact_semantic_contract(
             "execution_reduction_identity_sha256": (execution_reduction_sha256),
             "execution_schedule_ordering_sha256": execution_ordering_sha256,
         }
-    common_physics = {
-        mode: {
-            "physical_color_flows": contract["physical_color_flows"],
-            "physical_helicities": contract["physical_helicities"],
-            "normalization_sha256": contract["normalization_sha256"],
-            "model_common_physics_identity_sha256": contract[
-                "model_common_physics_identity_sha256"
-            ],
-            "runtime_selector_semantics_sha256": contract[
-                "runtime_selector_semantics_sha256"
-            ],
-            "reduction_ordering_sha256": contract["reduction_ordering_sha256"],
+        if selected_union_projection:
+            assert arguments is not None
+            try:
+                lane_contract["selected_union_workload_projection"] = (
+                    _selected_union_semantic_projection(
+                        arguments,
+                        profile,
+                        identity,
+                        mode=mode,
+                    )
+                )
+            except HarnessError as error:
+                errors.append(str(error))
+                continue
+        lane_contracts[mode] = lane_contract
+    common_physics = (
+        {
+            mode: contract["selected_union_workload_projection"]
+            for mode, contract in lane_contracts.items()
         }
-        for mode, contract in lane_contracts.items()
-    }
+        if selected_union_projection
+        else {
+            mode: {
+                "physical_color_flows": contract["physical_color_flows"],
+                "physical_helicities": contract["physical_helicities"],
+                "normalization_sha256": contract["normalization_sha256"],
+                "model_common_physics_identity_sha256": contract[
+                    "model_common_physics_identity_sha256"
+                ],
+                "runtime_selector_semantics_sha256": contract[
+                    "runtime_selector_semantics_sha256"
+                ],
+                "reduction_ordering_sha256": contract["reduction_ordering_sha256"],
+            }
+            for mode, contract in lane_contracts.items()
+        }
+    )
     common_values = list(common_physics.values())
     lanes_match = (
         bool(common_values)
@@ -5924,8 +6974,14 @@ def _profile_artifact_semantic_contract(
     )
     if common_values and set(lane_contracts) == set(profiles) and not lanes_match:
         errors.append(
-            "profile lanes have different model, ordered physical-axis entries, "
-            "runtime-selector semantics, normalization, or reduction ordering"
+            "profile lanes differ outside the audited selected-union "
+            "helicity/reduction projection"
+            if selected_union_projection
+            else (
+                "profile lanes have different model, ordered physical-axis "
+                "entries, runtime-selector semantics, normalization, or "
+                "reduction ordering"
+            )
         )
     return {
         "passes": bool(profiles)
@@ -5933,6 +6989,11 @@ def _profile_artifact_semantic_contract(
         and len(lane_contracts) == len(profiles),
         "errors": errors,
         "lanes_match": lanes_match,
+        "comparison_policy": (
+            "ddbar-z6g-all-flow-union-selected-helicity-v1"
+            if selected_union_projection
+            else "strict-exact-v1"
+        ),
         "lane_contracts": lane_contracts,
         "common_physics_contract": (
             common_values[0] if common_values and lanes_match else None
@@ -5947,8 +7008,17 @@ def _capture_acceptance(
     *,
     profile_schedule: Mapping[str, object] | None,
 ) -> dict[str, object]:
-    observed_modes = [mode for mode in EXECUTION_MODES if mode in profiles]
-    missing_modes = [mode for mode in EXECUTION_MODES if mode not in profiles]
+    authoritative_profiles = {
+        mode: profiles[mode]
+        for mode in AUTHORITATIVE_EXECUTION_MODES
+        if mode in profiles
+    }
+    observed_modes = [
+        mode for mode in AUTHORITATIVE_EXECUTION_MODES if mode in profiles
+    ]
+    missing_modes = [
+        mode for mode in AUTHORITATIVE_EXECUTION_MODES if mode not in profiles
+    ]
     missing_batch_sizes = [
         batch_size
         for batch_size in DEFAULT_BATCH_SIZES
@@ -5958,11 +7028,23 @@ def _capture_acceptance(
         arguments,
         profiles,
         profile_schedule=profile_schedule,
+        required_modes=AUTHORITATIVE_EXECUTION_MODES,
     )
-    artifact_semantic_contract = _profile_artifact_semantic_contract(profiles)
+    artifact_semantic_contract = _profile_artifact_semantic_contract(
+        authoritative_profiles,
+        arguments=arguments,
+    )
+    authoritative_validation = (
+        _pairwise_profile_validation(
+            authoritative_profiles,
+            arguments=arguments,
+        )
+        if not missing_modes
+        else None
+    )
     specialized_axes_by_mode: dict[str, list[str]] = {}
     incomplete_physical_axes: list[str] = []
-    for mode, profile in profiles.items():
+    for mode, profile in authoritative_profiles.items():
         semantic_identity = profile.get("artifact_semantic_identity")
         coverage = (
             semantic_identity.get("coverage")
@@ -5986,9 +7068,10 @@ def _capture_acceptance(
         ):
             incomplete_physical_axes.append(mode)
     ineligibility_reasons: list[str] = []
-    if arguments.process_expression is not None:
+    if not _authoritative_process_family(arguments):
         ineligibility_reasons.append(
-            "a custom process expression is diagnostic-only for milestone 0"
+            "the custom process expression is outside the authoritative "
+            "u u~ or d d~ Z+6g campaigns"
         )
     if arguments.gluon_count != 6:
         ineligibility_reasons.append(
@@ -6020,11 +7103,96 @@ def _capture_acceptance(
     )
     complete = evidence_complete and authoritative_eligible
     passes = (
-        validation_summary.get("passes") is True
+        authoritative_validation.get("passes") is True
         and measurement_contract["passes"] is True
-        if complete and validation_summary is not None
+        if complete and authoritative_validation is not None
         else None
     )
+    eager_requested = "eager" in arguments.modes
+    eager_observed = "eager" in profiles
+    eager_profiles = {
+        mode: profiles[mode]
+        for mode in (*AUTHORITATIVE_EXECUTION_MODES, "eager")
+        if mode in profiles
+    }
+    eager_measurement = (
+        _profile_measurement_contract(
+            arguments,
+            profiles,
+            profile_schedule=profile_schedule,
+            required_modes=("eager",),
+        )
+        if eager_requested
+        else None
+    )
+    eager_semantics = (
+        _profile_artifact_semantic_contract(
+            eager_profiles,
+            arguments=arguments,
+        )
+        if eager_observed and not missing_modes
+        else None
+    )
+    eager_validation = (
+        _pairwise_profile_validation(
+            eager_profiles,
+            arguments=arguments,
+        )
+        if eager_observed and not missing_modes
+        else None
+    )
+    eager_complete = bool(
+        eager_requested
+        and eager_observed
+        and not missing_batch_sizes
+        and eager_measurement is not None
+        and eager_measurement.get("passes") is True
+        and eager_semantics is not None
+        and eager_semantics.get("passes") is True
+        and eager_semantics.get("lanes_match") is True
+    )
+    eager_passes = (
+        eager_validation.get("passes") is True
+        if eager_complete and eager_validation is not None
+        else None
+    )
+    eager_diagnostic = {
+        "requested": eager_requested,
+        "observed": eager_observed,
+        "complete": eager_complete,
+        "passes": eager_passes,
+        "measurement_contract": eager_measurement,
+        "artifact_semantic_contract": eager_semantics,
+        "validation_summary": eager_validation,
+        "ineligibility_reasons": [
+            reason
+            for condition, reason in (
+                (
+                    eager_requested and not eager_observed,
+                    "the requested eager profile lane is missing",
+                ),
+                (
+                    eager_observed
+                    and eager_measurement is not None
+                    and eager_measurement.get("passes") is not True,
+                    "eager measurement evidence is incomplete",
+                ),
+                (
+                    eager_observed
+                    and eager_semantics is not None
+                    and eager_semantics.get("passes") is not True,
+                    "eager selectors or physical semantics are not comparable",
+                ),
+                (
+                    eager_observed
+                    and eager_validation is not None
+                    and eager_validation.get("passes") is not True,
+                    "eager numerical validation is not comparable or passing",
+                ),
+            )
+            if condition
+        ],
+    }
     return {
         "kind": "pyamplicol-three-lane-layout-capture",
         "schema_version": CAPTURE_ACCEPTANCE_SCHEMA,
@@ -6035,9 +7203,11 @@ def _capture_acceptance(
         "authoritative_ineligibility_reasons": ineligibility_reasons,
         "generation_specialized_axes_by_mode": specialized_axes_by_mode,
         "incomplete_physical_axes": incomplete_physical_axes,
-        "required_modes": list(EXECUTION_MODES),
+        "required_modes": list(AUTHORITATIVE_EXECUTION_MODES),
         "observed_modes": observed_modes,
         "missing_modes": missing_modes,
+        "diagnostic_modes": list(DIAGNOSTIC_EXECUTION_MODES),
+        "eager_diagnostic": eager_diagnostic,
         "required_batch_sizes": list(DEFAULT_BATCH_SIZES),
         "observed_batch_sizes": list(arguments.batch_size),
         "missing_batch_sizes": missing_batch_sizes,
@@ -6047,13 +7217,13 @@ def _capture_acceptance(
         "generation_only": arguments.generation_only,
         "lane_self_validation_passes": (
             None
-            if validation_summary is None
-            else validation_summary.get("lane_validation_passes")
+            if authoritative_validation is None
+            else authoritative_validation.get("lane_validation_passes")
         ),
         "pairwise_validation_passes": (
             None
-            if validation_summary is None
-            else validation_summary.get("pairwise_validation_passes")
+            if authoritative_validation is None
+            else authoritative_validation.get("pairwise_validation_passes")
         ),
     }
 
@@ -6091,7 +7261,8 @@ def _milestone0_acceptance_manifest(
         "accepted": False,
         "status": "incomplete",
         "required": {
-            "execution_modes": list(EXECUTION_MODES),
+            "authoritative_execution_modes": list(AUTHORITATIVE_EXECUTION_MODES),
+            "diagnostic_execution_modes": list(DIAGNOSTIC_EXECUTION_MODES),
             "lc_flow_layouts": list(LC_FLOW_LAYOUTS),
             "batch_sizes": list(DEFAULT_BATCH_SIZES),
             "external_lanes": ["amplicol"],
@@ -6120,10 +7291,31 @@ def _milestone0_acceptance_manifest(
 
 
 def run(arguments: argparse.Namespace) -> dict[str, object]:
+    if (
+        getattr(arguments, "paired_profile_coordination_dir", None) is not None
+        and arguments.warmup_runs != 2
+    ):
+        raise HarnessError(
+            "paired migration captures require exactly two warmup runs"
+        )
     started_at = _utc_now()
     started = time.perf_counter()
     source_identity = _git_source_identity()
     runtime_provenance = _runtime_provenance(source_identity)
+    _validate_expected_runtime_identity(
+        source_identity,
+        runtime_provenance,
+        expected_source_revision=getattr(
+            arguments,
+            "expected_source_revision",
+            None,
+        ),
+        expected_native_build_inputs_sha256=getattr(
+            arguments,
+            "expected_native_build_inputs_sha256",
+            None,
+        ),
+    )
     if arguments.prepared_model is not None:
         try:
             arguments.prepared_model = arguments.prepared_model.expanduser().resolve(
@@ -6320,8 +7512,7 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
         "recurrence",
         next(iter(artifacts.values())),
     )
-    worker_profile_arguments: list[str] = [
-        "profile",
+    validation_worker_arguments: list[str] = [
         "--validation-point-artifact",
         str(validation_point_artifact),
         "--target-runtime",
@@ -6348,13 +7539,99 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
         "--jit-optimization-level",
         str(arguments.jit_optimization_level),
     ]
+    validation_preflight: dict[str, object] | None = None
+    preflight_profiles: dict[str, dict[str, Any]] = {}
+    preflight_worker_evidence: dict[str, dict[str, object]] = {}
+    if not arguments.generation_only:
+        for mode, artifact in artifacts.items():
+            generation_record = generation[mode]
+            scheduled_artifact_identity = generation_record["artifact_identity"]
+            scheduled_reuse_provenance = generation_record["artifact_reuse_provenance"]
+            assert isinstance(scheduled_artifact_identity, Mapping)
+            assert isinstance(scheduled_reuse_provenance, Mapping)
+            expectations = _profile_identity_expectations(
+                source_identity,
+                runtime_provenance,
+                scheduled_artifact_identity,
+                scheduled_reuse_provenance,
+                reuse_sidecar=_reuse_signature_path(artifact),
+            )
+            print(f"Validating {mode} lane before profiling", file=sys.stderr)
+            worker = _run_worker(
+                (
+                    "preflight",
+                    *validation_worker_arguments,
+                    "--mode",
+                    mode,
+                    "--artifact",
+                    str(artifact),
+                    *_profile_expectation_arguments(expectations),
+                ),
+                mode=mode,
+                phase="validation-preflight",
+                timeout_seconds=arguments.profile_timeout,
+            )
+            drift_rechecks.append(
+                _recheck_driver_state(
+                    source_identity,
+                    runtime_provenance,
+                    artifact_baselines,
+                    phase=f"after-{mode}-validation-preflight",
+                )
+            )
+            preflight_profiles[mode] = _preflight_profile_from_worker(worker)
+            verification = worker.get("pre_timing_verification")
+            assert isinstance(verification, Mapping)
+            fixture = preflight_profiles[mode]["validation"]
+            fixture_contract = (
+                _validation_fixture_contract(fixture, mode=mode)
+                if isinstance(fixture, Mapping)
+                else None
+            )
+            preflight_worker_evidence[mode] = {
+                "worker_invocation": worker.get("worker_invocation"),
+                "worker_process_record": worker.get("worker_process_record"),
+                "worker_result_record": worker.get("worker_result_record"),
+                "cold_load_seconds": worker.get("cold_load_seconds"),
+                "peak_rss_after_cold_load": worker.get("peak_rss_after_cold_load"),
+                "peak_rss_after_validation": worker.get("peak_rss_after_profile"),
+                "artifact_semantic_identity_sha256": verification.get(
+                    "artifact_semantic_identity_sha256"
+                ),
+                "validation_fixture": fixture_contract,
+            }
+        authoritative_preflight_profiles = {
+            mode: preflight_profiles[mode]
+            for mode in AUTHORITATIVE_EXECUTION_MODES
+            if mode in preflight_profiles
+        }
+        if not authoritative_preflight_profiles:
+            authoritative_preflight_profiles = dict(preflight_profiles)
+        validation_preflight = _require_validation_preflight(
+            arguments,
+            authoritative_preflight_profiles,
+        )
+        validation_preflight["worker_evidence"] = preflight_worker_evidence
+
+    worker_profile_arguments: list[str] = [
+        "profile",
+        *validation_worker_arguments,
+    ]
     profile_schedule: dict[str, object] | None = None
+    paired_profile_coordination: dict[str, object] | None = None
     profile_worker_results: list[dict[str, Any]] = []
     if not arguments.generation_only:
         profile_schedule = _build_profile_schedule(
             arguments.modes,
             arguments.batch_size,
             subprocess_samples=arguments.subprocess_samples,
+        )
+        paired_profile_coordination = _initialize_paired_profile_coordination(
+            arguments,
+            source_identity=source_identity,
+            runtime_provenance=runtime_provenance,
+            profile_schedule=profile_schedule,
+            result_json=result_json,
         )
         raw_schedule_entries = profile_schedule["entries"]
         assert isinstance(raw_schedule_entries, list)
@@ -6377,6 +7654,7 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
                 scheduled_reuse_provenance,
                 reuse_sidecar=_reuse_signature_path(artifact),
             )
+            paired_token = _wait_for_paired_profile_token(arguments, raw_entry)
             print(
                 f"Profiling schedule {schedule_index}: round {schedule_round}, "
                 f"{mode}, batch {batch_size}",
@@ -6431,6 +7709,19 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
             raw_entry["worker_result_sha256"] = result_record[
                 "addressed_payload_sha256"
             ]
+            paired_completion = _record_paired_profile_completion(
+                arguments,
+                schedule_entry=raw_entry,
+                token=paired_token,
+                worker_result=worker_result,
+            )
+            if paired_completion is not None:
+                raw_entry["paired_profile_token"] = dict(paired_token or {})
+                raw_entry["paired_profile_completion"] = paired_completion
+                assert paired_profile_coordination is not None
+                completion_records = paired_profile_coordination["completion_records"]
+                assert isinstance(completion_records, list)
+                completion_records.append(paired_completion)
             profile_worker_results.append(worker_result)
 
     profiles = (
@@ -6439,7 +7730,14 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
         else _aggregate_profile_workers(profile_schedule, profile_worker_results)
     )
 
-    validation_summary = _pairwise_profile_validation(profiles) if profiles else None
+    validation_summary = (
+        _pairwise_profile_validation(
+            profiles,
+            arguments=arguments,
+        )
+        if profiles
+        else None
+    )
     capture = _capture_acceptance(
         arguments,
         profiles,
@@ -6512,6 +7810,8 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
         },
         "generation": generation,
         "profile_schedule": profile_schedule,
+        "validation_preflight": validation_preflight,
+        "paired_profile_coordination": paired_profile_coordination,
         "profiles": profiles,
         "validation_summary": validation_summary,
         "selector_contracts_match": (
@@ -6563,6 +7863,20 @@ def parser() -> argparse.ArgumentParser:
         "--prepared-model",
         type=Path,
         help="explicit prepared-model bundle used by every selected execution mode",
+    )
+    result.add_argument(
+        "--expected-source-revision",
+        help=(
+            "externally pinned clean source revision; must be supplied together "
+            "with --expected-native-build-inputs-sha256"
+        ),
+    )
+    result.add_argument(
+        "--expected-native-build-inputs-sha256",
+        help=(
+            "externally pinned native build-input digest; must be supplied "
+            "together with --expected-source-revision"
+        ),
     )
     result.add_argument(
         "--generation-only",
@@ -6662,6 +7976,29 @@ def parser() -> argparse.ArgumentParser:
         action="store_true",
         help="fail rather than generate when any selected artifact is missing",
     )
+    result.add_argument(
+        "--paired-profile-coordination-dir",
+        type=Path,
+        help=(
+            "workspace-local coordination directory used by the paired "
+            "baseline/candidate scheduler"
+        ),
+    )
+    result.add_argument(
+        "--paired-profile-role",
+        choices=("baseline", "candidate"),
+        help="role owned by this driver in a paired profile campaign",
+    )
+    result.add_argument(
+        "--paired-profile-session-id",
+        help="opaque scheduler session identifier for paired profiling",
+    )
+    result.add_argument(
+        "--paired-profile-wait-timeout",
+        type=_positive_float,
+        default=7200.0,
+        help="maximum seconds to wait for each paired scheduler token",
+    )
     return result
 
 
@@ -6707,6 +8044,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         arguments = parser().parse_args(values)
         if arguments.force and arguments.reuse_only:
             raise HarnessError("--force and --reuse-only are mutually exclusive")
+        paired_fields = (
+            arguments.paired_profile_coordination_dir,
+            arguments.paired_profile_role,
+            arguments.paired_profile_session_id,
+        )
+        if any(value is not None for value in paired_fields) and not all(
+            value is not None for value in paired_fields
+        ):
+            raise HarnessError(
+                "paired profile coordination directory, role, and session ID "
+                "must be provided together"
+            )
+        if arguments.paired_profile_coordination_dir is not None:
+            if arguments.generation_only:
+                raise HarnessError(
+                    "paired profile coordination cannot be generation-only"
+                )
+            if (
+                not isinstance(arguments.paired_profile_session_id, str)
+                or re.fullmatch(
+                    r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}",
+                    arguments.paired_profile_session_id,
+                )
+                is None
+            ):
+                raise HarnessError("paired profile session ID is invalid")
         arguments.modes = _normalize_modes(arguments)
         arguments.batch_size = _normalize_batch_sizes(arguments)
         arguments.driver_command = _command_identity(

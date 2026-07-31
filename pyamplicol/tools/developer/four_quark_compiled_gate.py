@@ -168,13 +168,14 @@ SQRT_S = 2_000.0
 RELATIVE_TOLERANCE = 1.0e-12
 ABSOLUTE_TOLERANCE = 1.0e-300
 COMPILED_PLANE_ARENA_CAPABILITY = "compiled-plane-arena-v2"
-COMPILED_PLANE_DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v1"
-COMPILED_DIRECT_TABLE_BINDING_ABI = "symjit-direct-table-binding-v1"
-COMPILED_DIRECT_TABLE_DESCRIPTOR_ABI = "symjit-direct-table-descriptor-v1"
+COMPILED_PLANE_DIRECT_APPLICATION_ABI = "pyamplicol-compiled-plane-kernel-v2"
+COMPILED_DIRECT_TABLE_BINDING_ABI = "pyamplicol-eager-plane-table-binding-v2"
+COMPILED_DIRECT_TABLE_DESCRIPTOR_ABI = "pyamplicol-eager-plane-table-descriptor-v1"
 NATIVE_COMPILED_DIRECT_APPLICATION_ABI = (
     "pyamplicol-native-compiled-direct-application-v1"
 )
 SYMJIT_APPLICATION_ABI = "symjit-application-storage-v3"
+SYMJIT_PLANE_APPLICATION_ABI = "pyamplicol-symjit-plane-application-v2"
 SYMJIT_RUNTIME_CAPABILITY = "symjit.application.complex-f64.v1"
 RESULT_KIND = "pyamplicol-four-quark-compiled-direct-arena-gate"
 SCHEMA_VERSION = 1
@@ -1027,7 +1028,7 @@ def _audit_direct_descriptor(
         raise GateError(f"{label}.compiled_plane_arena has the wrong schema")
     expected_scalars = {
         "application_abi": COMPILED_PLANE_DIRECT_APPLICATION_ABI,
-        "source_application_abi": SYMJIT_APPLICATION_ABI,
+        "source_application_abi": SYMJIT_PLANE_APPLICATION_ABI,
         "element_layout": "split-complex-component-major",
         "input_output_aliasing": "forbidden",
         "output_output_aliasing": "forbidden",
@@ -1095,26 +1096,50 @@ def _audit_direct_descriptor(
             or direct.get("leaf_id") != index
         ):
             raise GateError(f"{label} residual leaf identity is incompatible")
-        source_path = _safe_relative_path(
+        if (
+            source.get("application_abi") != SYMJIT_APPLICATION_ABI
+            or source.get("runtime_capability") != SYMJIT_RUNTIME_CAPABILITY
+        ):
+            raise GateError(
+                f"{label} ordinary SymJIT fallback leaf identity is inconsistent"
+            )
+        _safe_relative_path(
             source.get("application_path"),
             label=f"{label}.source_leaves[{index}].application_path",
         )
+        plane = _mapping(
+            source.get("plane_application"),
+            label=f"{label}.source_leaves[{index}].plane_application",
+        )
+        source_path = _safe_relative_path(
+            plane.get("application_path"),
+            label=(
+                f"{label}.source_leaves[{index}].plane_application.application_path"
+            ),
+        )
         if (
             direct.get("application_path") != source_path
-            or direct.get("source_application_abi") != SYMJIT_APPLICATION_ABI
-            or source.get("application_abi") != SYMJIT_APPLICATION_ABI
-            or source.get("runtime_capability") != SYMJIT_RUNTIME_CAPABILITY
+            or direct.get("source_application_abi")
+            != SYMJIT_PLANE_APPLICATION_ABI
+            or plane.get("application_abi") != SYMJIT_PLANE_APPLICATION_ABI
+            or plane.get("storage_abi") != SYMJIT_APPLICATION_ABI
+            or plane.get("translation_mode")
+            != "symbolica-structured-instructions"
+            or plane.get("direct_arena") is not True
+            or not isinstance(plane.get("source_digest"), str)
+            or SHA256_PATTERN.fullmatch(str(plane.get("source_digest"))) is None
         ):
             raise GateError(f"{label} Direct-Arena leaf identity is inconsistent")
         if (
             direct.get("optimization_level") != 3
             or source.get("optimization_level") != 3
+            or plane.get("optimization_level") != 3
         ):
             raise GateError(f"{label} Direct-Arena leaf is not JIT O3")
         if direct.get("direct_codegen_optimization_level") != 3:
             raise GateError(
-                f"{label} Direct-Arena leaf does not authenticate fixed O3 "
-                "direct code generation"
+                f"{label} Direct-Arena leaf direct codegen does not match its "
+                "plane application"
             )
         indices = _sequence(
             direct.get("input_indices"),
@@ -1219,7 +1244,8 @@ def _audit_direct_descriptor(
     for index, kernel in enumerate(kernels):
         if (
             kernel.get("kernel_id") != index
-            or kernel.get("source_application_abi") != SYMJIT_APPLICATION_ABI
+            or kernel.get("source_application_abi")
+            != SYMJIT_PLANE_APPLICATION_ABI
             or kernel.get("application_abi") != COMPILED_PLANE_DIRECT_APPLICATION_ABI
             or kernel.get("binding_abi") != COMPILED_DIRECT_TABLE_BINDING_ABI
             or kernel.get("descriptor_abi") != COMPILED_DIRECT_TABLE_DESCRIPTOR_ABI

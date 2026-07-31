@@ -2825,10 +2825,14 @@ fn prune_inactive_lane_contributions(
         }
     }
 
-    for current_id in domain.lane_internal_start..domain.lane_internal_end {
+    for (current_id, current) in currents
+        .iter_mut()
+        .enumerate()
+        .take(domain.lane_internal_end)
+        .skip(domain.lane_internal_start)
+    {
         let current_id_u32 = u32::try_from(current_id)
             .map_err(|_| invalid("recurrence lane current ID exceeds u32"))?;
-        let current = &mut currents[current_id];
         let before = current.contributions.len();
         if live.contains(&current_id_u32) {
             current.contributions.retain(|_, factor| !factor.is_zero());
@@ -3338,6 +3342,7 @@ fn reciprocal_reflection_proof(
 /// with reciprocal, complete fan-in proofs is compacted to its canonical
 /// orientation. Stage currents cannot depend on one another, so compacting the
 /// stage tail cannot invalidate any stored parent current ID.
+#[allow(clippy::too_many_arguments)]
 fn reconcile_stage_reflections(
     stage_start: usize,
     color_states: &mut DynamicLCColorStateInterner,
@@ -7950,7 +7955,7 @@ mod tests {
         );
         assert_eq!(
             construction_sector_groups(RecurrenceStrategy::AllFlowUnion, &sectors, &[]),
-            [sectors.clone()]
+            std::slice::from_ref(&sectors)
         );
 
         let first_lane = PendingConstructionDomain {
@@ -8501,7 +8506,26 @@ mod tests {
 
     #[test]
     fn topology_replay_color_projection_rejects_a_missing_internal_tuple() {
-        let (currents, closures) = projection_test_graph(true, false);
+        let (currents, mut closures) = projection_test_graph(true, false);
+        // Keep both members of the first projected current class live through
+        // a separate, complete closure family.  Otherwise omitting current 6's
+        // contribution makes parent current 4 selector-dead, so [3, 2] is a
+        // complete singleton rectangle rather than a missing active tuple.
+        for parent in [3, 4] {
+            closures.insert(
+                PendingClosureKey {
+                    target_sector_id: 0,
+                    complete_source_states: Box::new([]),
+                    closure_template_id: 1,
+                    quantum_flow_template_id: None,
+                    parent_current_ids: vec![parent, 0].into_boxed_slice(),
+                },
+                PendingClosureGroup {
+                    contributions: vec![],
+                    exact_factor: ExactComplexRational::ONE,
+                },
+            );
+        }
         assert!(
             plan_topology_replay_color_projection(&currents, &closures)
                 .unwrap()

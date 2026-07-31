@@ -574,9 +574,7 @@ def _benchmark_summary(
             "paired evaluator"
             if paired_timing_samples
             else (
-                "diagnostic evaluator"
-                if separate_timing_samples
-                else "evaluator time"
+                "diagnostic evaluator" if separate_timing_samples else "evaluator time"
             )
         )
         profile_quantity = "evaluator"
@@ -1460,9 +1458,7 @@ def _artifact_inspection_summary(
                 )
             )
             if process.get("recurrence_color_storage") is not None:
-                factorization = process.get(
-                    "recurrence_color_factorization_kind"
-                )
+                factorization = process.get("recurrence_color_factorization_kind")
                 factorization_text = (
                     "none"
                     if factorization is None

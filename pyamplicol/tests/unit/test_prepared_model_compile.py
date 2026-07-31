@@ -32,6 +32,8 @@ from pyamplicol.models.recurrence_template import (
     RecurrenceTemplateCatalog,
 )
 
+_NATIVE_BUILD_INPUTS_SHA256 = "a" * 64
+
 
 class _FakeJitAdapter:
     def __init__(self, input_len: int = 1, output_len: int = 1) -> None:
@@ -42,8 +44,10 @@ class _FakeJitAdapter:
         payload_dir = artifact_dir / "evaluators"
         payload_dir.mkdir(parents=True, exist_ok=True)
         application = payload_dir / "random-application.symjit"
+        plane_application = payload_dir / "random-application.plane.symjit"
         state = payload_dir / "random-state.evaluator.bin"
         application.write_bytes(b"portable-symjit-application")
+        plane_application.write_bytes(b"portable-symjit-plane-application")
         state.write_bytes(b"exact-symbolica-state")
         return {
             "kind": "symjit-application-evaluator",
@@ -54,6 +58,34 @@ class _FakeJitAdapter:
             "output_len": self.output_len,
             "application_path": str(application.relative_to(artifact_dir)),
             "application_abi": "symjit-application-storage-v3",
+            "plane_application": {
+                "application_path": str(
+                    plane_application.relative_to(artifact_dir)
+                ),
+                "application_abi": "pyamplicol-symjit-plane-application-v2",
+                "storage_abi": "symjit-application-storage-v3",
+                "element_layout": "split-complex-plane-major",
+                "descriptor_order": "inputs-re-im-then-outputs-re-im",
+                "input_complex_count": self.input_len,
+                "output_complex_count": self.output_len,
+                "input_plane_count": 2 * self.input_len,
+                "output_plane_count": 2 * self.output_len,
+                "compiler_type": "native",
+                "translation_mode": "symbolica-structured-instructions",
+                "optimization_level": 2,
+                "simd": True,
+                "complex": True,
+                "fast_math": True,
+                "fast_complex": False,
+                "compression": True,
+                "threading": False,
+                "direct_arena": True,
+                "source_digest": hashlib.sha256(b"instructions").hexdigest(),
+                "target": {
+                    "word_bits": 64,
+                    "endianness": "little",
+                },
+            },
             "element_layout": "complex-f64",
             "batch_layout": "row-major",
             "compiler_type": "native",
@@ -121,8 +153,10 @@ def test_prepared_jit_direct_source_reuses_authenticated_application() -> None:
         exact_expressions=("pyamplicol::prepared_test_input",),
         exact_evaluator_state_path="kernels/000000/exact.evaluator.bin",
         f64_evaluator_manifest={
-            "application_path": application_path,
-            "application_abi": "symjit-application-storage-v3",
+            "plane_application": {
+                "application_path": application_path,
+                "application_abi": "pyamplicol-symjit-plane-application-v2",
+            },
         },
     )
 
@@ -140,7 +174,10 @@ def test_prepared_jit_direct_source_reuses_authenticated_application() -> None:
     assert source.prepared_kernel_id == 0
     assert source.source_application_path == application_path
     assert source.source_application_sha256 == application_digest
-    assert source.source_application_abi == "symjit-application-storage-v3"
+    assert (
+        source.source_application_abi
+        == "pyamplicol-symjit-plane-application-v2"
+    )
     assert source.output_arity == 1
     assert source.exact_expressions == record.exact_expressions
     assert json.loads(source.input_contracts[0])["role"] == "current"
@@ -1030,6 +1067,11 @@ def test_prepared_compiler_writes_structured_architecture_kernel_pack(
         "_validate_native_recurrence_template_input_v1",
         _native_recurrence_validation,
     )
+    monkeypatch.setattr(
+        prepared_compile,
+        "_native_build_inputs_sha256",
+        lambda: _NATIVE_BUILD_INPUTS_SHA256,
+    )
     compiled = compile_model_source("built-in-sm", use_cache=False)
     progress: list[tuple[str, int, int]] = []
 
@@ -1045,6 +1087,10 @@ def test_prepared_compiler_writes_structured_architecture_kernel_pack(
     assert result.output.name.endswith(".pyamplicol-model")
     assert result.kernel_count == 1
     assert result.bundle.backend == "jit"
+    assert (
+        result.bundle.kernel_pack.producer["native_build_inputs_sha256"]
+        == _NATIVE_BUILD_INPUTS_SHA256
+    )
     assert result.bundle.kernel_pack.optimization_settings["jit_compress"] is True
     assert result.bundle.kernel_pack.target["portable"] is True
     assert (
@@ -1068,9 +1114,12 @@ def test_prepared_compiler_writes_structured_architecture_kernel_pack(
     payload_binding = direct_catalog.templates[0].payload_binding
     assert payload_binding.kind == "prepared-direct-call"
     assert payload_binding.source_application_path in kernel.referenced_payload_paths
-    assert payload_binding.source_application_abi == "symjit-application-storage-v3"
+    assert (
+        payload_binding.source_application_abi
+        == "pyamplicol-symjit-plane-application-v2"
+    )
     assert payload_binding.direct_application_abi == (
-        "symjit-direct-application-storage-v1"
+        "pyamplicol-symjit-plane-application-v2"
     )
     assert payload_binding.role == "finalization"
     assert payload_binding.destination_operation == "finalize-in-place"
@@ -1118,6 +1167,11 @@ def test_prepared_jit_compiler_forces_portable_o2_without_changing_public_config
         prepared_compile,
         "_validate_native_recurrence_template_input_v1",
         _native_recurrence_validation,
+    )
+    monkeypatch.setattr(
+        prepared_compile,
+        "_native_build_inputs_sha256",
+        lambda: _NATIVE_BUILD_INPUTS_SHA256,
     )
     requested = EvaluatorConfig(jit=JITConfig(optimization_level=3))
     compiled = compile_model_source("built-in-sm", use_cache=False)
@@ -1182,6 +1236,11 @@ def test_prepared_compiler_emits_independent_block4_jit_variant(
         prepared_compile,
         "_validate_native_recurrence_template_input_v1",
         _native_recurrence_validation,
+    )
+    monkeypatch.setattr(
+        prepared_compile,
+        "_native_build_inputs_sha256",
+        lambda: _NATIVE_BUILD_INPUTS_SHA256,
     )
     compiled = compile_model_source("built-in-sm", use_cache=False)
 

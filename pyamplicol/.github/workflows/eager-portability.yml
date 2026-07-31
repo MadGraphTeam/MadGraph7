@@ -15,6 +15,10 @@ on:
       - rust/crates/rusticol-core/src/engine/**
       - rust/crates/rusticol-core/src/engine.rs
       - rust/crates/rusticol-core/src/evaluator/symjit.rs
+      - rust/crates/rusticol-core/src/evaluator/symjit_plane.rs
+      - rust/crates/rusticol-core/src/evaluator/symjit_direct.rs
+      - rust/crates/rusticol-core/src/evaluator/symjit_eager_direct.rs
+      - rust/crates/rusticol-core/src/evaluator/symjit_compiled_direct.rs
       - rust/crates/rusticol-core/src/lib.rs
       - rust/crates/rusticol-python/src/lib.rs
       - src/pyamplicol/_internal/physics/symbols.py
@@ -41,6 +45,10 @@ on:
       - rust/crates/rusticol-core/src/engine/**
       - rust/crates/rusticol-core/src/engine.rs
       - rust/crates/rusticol-core/src/evaluator/symjit.rs
+      - rust/crates/rusticol-core/src/evaluator/symjit_plane.rs
+      - rust/crates/rusticol-core/src/evaluator/symjit_direct.rs
+      - rust/crates/rusticol-core/src/evaluator/symjit_eager_direct.rs
+      - rust/crates/rusticol-core/src/evaluator/symjit_compiled_direct.rs
       - rust/crates/rusticol-core/src/lib.rs
       - rust/crates/rusticol-python/src/lib.rs
       - src/pyamplicol/_internal/physics/symbols.py

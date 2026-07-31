@@ -14,7 +14,10 @@ from __future__ import annotations
 import argparse
 import ctypes
 import ctypes.util
+import datetime as dt
 import errno
+import hashlib
+import json
 import math
 import os
 import platform
@@ -23,10 +26,11 @@ import signal
 import struct
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,6 +51,9 @@ DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON = (
 DARWIN_PHYSICAL_FOOTPRINT_PROBE_REASON = (
     "darwin-process-tree-physical-footprint-probe-unavailable"
 )
+WATCHDOG_REPORT_KIND = "pyamplicol-memory-watchdog-execution-report"
+WATCHDOG_REPORT_SCHEMA = 2
+WATCHDOG_SCOPE = "complete-orchestrator-process-tree-v1"
 _RUSAGE_INFO_V0 = 0
 _RUSAGE_INFO_V0_BYTES = 96
 _RUSAGE_INFO_PHYS_FOOTPRINT_OFFSET = 72
@@ -77,6 +84,80 @@ class MemorySample:
 
 Snapshotter = Callable[[], dict[int, ProcessInfo]]
 PhysicalFootprintProbe = Callable[[Iterable[int]], dict[int, int]]
+
+
+def _canonical_json_bytes(value: object) -> bytes:
+    return json.dumps(
+        value,
+        allow_nan=False,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+
+
+def _sha256(value: object) -> str:
+    return hashlib.sha256(_canonical_json_bytes(value)).hexdigest()
+
+
+def _utc_now() -> str:
+    return dt.datetime.now(dt.UTC).isoformat()
+
+
+def _result_identity(path: Path) -> dict[str, object]:
+    lexical = Path(os.path.abspath(path.expanduser()))
+    resolved = lexical.resolve(strict=True)
+    if not resolved.is_file():
+        raise OSError(f"bound result is not a regular file: {path}")
+    before = resolved.stat()
+    digest = hashlib.sha256()
+    with resolved.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    after = resolved.stat()
+    if (
+        before.st_dev,
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+    ) != (
+        after.st_dev,
+        after.st_ino,
+        after.st_size,
+        after.st_mtime_ns,
+    ):
+        raise OSError(f"bound result changed while it was hashed: {path}")
+    return {
+        "path": str(path),
+        "resolved_path": str(resolved),
+        "size_bytes": after.st_size,
+        "sha256": digest.hexdigest(),
+    }
+
+
+def _write_json_atomic(path: Path, payload: Mapping[str, object]) -> None:
+    destination = Path(os.path.abspath(path.expanduser()))
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists():
+        raise OSError(f"watchdog report already exists: {destination}")
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            dir=destination.parent,
+            prefix=f".{destination.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as stream:
+            temporary = Path(stream.name)
+            stream.write(_canonical_json_bytes(payload) + b"\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, destination)
+        temporary = None
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
 
 
 def _positive_finite(value: str) -> float:
@@ -493,6 +574,117 @@ def _terminate_tree(
         process.wait(timeout=max(grace_period, 1.0))
 
 
+def _emit_final_report(
+    *,
+    report_path: Path | None,
+    bound_result_path: Path | None,
+    command: Sequence[str],
+    working_directory: str,
+    started_at_utc: str,
+    started_monotonic: float,
+    child_pid: int | None,
+    child_exit_code: int | None,
+    watchdog_exit_code: int,
+    outcome: str,
+    reason: str | None,
+    limit_bytes: int,
+    poll_interval: float,
+    terminate_grace: float,
+    metric: str,
+    probe_sample_count: int,
+    probe_failure_count: int,
+    maximum_consecutive_probe_failures: int,
+    peak_rss_bytes: int,
+    peak_physical_footprint_bytes: int | None,
+    peak_guard_bytes: int,
+    peak_processes: int,
+    stderr: TextIO,
+) -> int:
+    """Write one terminal content-addressed report and return the final status."""
+
+    if report_path is None:
+        return watchdog_exit_code
+
+    binding_error: str | None = None
+    bound_result: dict[str, object] | None = None
+    if bound_result_path is not None:
+        try:
+            bound_result = _result_identity(bound_result_path)
+        except OSError as error:
+            binding_error = str(error)
+            if watchdog_exit_code == 0:
+                watchdog_exit_code = WATCHDOG_ERROR_EXIT_CODE
+                outcome = "result-binding-failed"
+                reason = "bound-result-unavailable"
+
+    enforcement_completed = (
+        watchdog_exit_code == 0
+        and child_exit_code == 0
+        and outcome == "command-finished"
+    )
+    payload: dict[str, object] = {
+        "kind": WATCHDOG_REPORT_KIND,
+        "schema_version": WATCHDOG_REPORT_SCHEMA,
+        "complete": True,
+        "passes": (
+            watchdog_exit_code == 0
+            and child_exit_code == 0
+            and enforcement_completed
+            and (bound_result_path is None or bound_result is not None)
+        ),
+        "watchdog": _result_identity(Path(__file__).resolve()),
+        "working_directory": working_directory,
+        "execution": {
+            "command": list(command),
+            "command_sha256": _sha256(list(command)),
+            "started_at_utc": started_at_utc,
+            "finished_at_utc": _utc_now(),
+            "elapsed_wall_seconds": max(time.monotonic() - started_monotonic, 0.0),
+            "child_pid": child_pid,
+            "child_exit_code": child_exit_code,
+            "watchdog_exit_code": watchdog_exit_code,
+            "outcome": outcome,
+            "reason": reason,
+        },
+        "enforcement": {
+            "scope": WATCHDOG_SCOPE,
+            "limit_bytes": limit_bytes,
+            "poll_interval_seconds": poll_interval,
+            "terminate_grace_seconds": terminate_grace,
+            "metric": metric,
+            "probe_sample_count": probe_sample_count,
+            "probe_failure_count": probe_failure_count,
+            "maximum_consecutive_probe_failures": (
+                maximum_consecutive_probe_failures
+            ),
+            "completed_under_retry_policy": enforcement_completed,
+            "peak_rss_bytes": peak_rss_bytes,
+            "peak_physical_footprint_bytes": peak_physical_footprint_bytes,
+            "peak_guard_bytes": peak_guard_bytes,
+            "peak_processes": peak_processes,
+        },
+        "result_binding": {
+            "requested": bound_result_path is not None,
+            "requested_path": (
+                None if bound_result_path is None else str(bound_result_path)
+            ),
+            "identity": bound_result,
+            "error": binding_error,
+        },
+    }
+    payload["content_sha256"] = _sha256(payload)
+    try:
+        _write_json_atomic(report_path, payload)
+    except OSError as error:
+        print(
+            f"memory-watchdog: cannot write final report: {error}",
+            file=stderr,
+            flush=True,
+        )
+        return WATCHDOG_ERROR_EXIT_CODE
+    return watchdog_exit_code
+
+
 def run_guarded(
     command: Sequence[str],
     *,
@@ -502,6 +694,8 @@ def run_guarded(
     snapshotter: Snapshotter = process_snapshot,
     physical_footprint_probe: PhysicalFootprintProbe | None = None,
     stderr: TextIO = sys.stderr,
+    report_path: Path | None = None,
+    bound_result_path: Path | None = None,
 ) -> int:
     """Run ``command`` and return its shell-compatible exit status."""
 
@@ -514,21 +708,84 @@ def run_guarded(
     if terminate_grace < 0:
         raise ValueError("terminate_grace must be non-negative")
 
-    try:
-        process = subprocess.Popen(tuple(command), start_new_session=True)
-    except FileNotFoundError:
-        print(f"memory-watchdog: command not found: {command[0]}", file=stderr)
-        return 127
-    except OSError as error:
-        print(f"memory-watchdog: cannot start command: {error}", file=stderr)
-        return 126
-
-    sampler = ProcessTreeSampler(process.pid, process.pid)
+    started_at_utc = _utc_now()
+    started_monotonic = time.monotonic()
+    working_directory = str(Path.cwd())
     metric = (
         "max(process-tree-rss,darwin-process-tree-physical-footprint)"
         if physical_footprint_probe is not None
         else "process-tree-rss"
     )
+    child_pid: int | None = None
+    peak_rss = 0
+    peak_physical_footprint: int | None = (
+        0 if physical_footprint_probe is not None else None
+    )
+    peak_guard = 0
+    peak_processes = 0
+    probe_sample_count = 0
+    probe_failure_count = 0
+    maximum_consecutive_probe_failures = 0
+    report_emitted = False
+
+    def finish(
+        exit_code: int,
+        *,
+        child_exit_code: int | None,
+        outcome: str,
+        reason: str | None = None,
+    ) -> int:
+        nonlocal report_emitted
+        report_emitted = True
+        return _emit_final_report(
+            report_path=report_path,
+            bound_result_path=bound_result_path,
+            command=command,
+            working_directory=working_directory,
+            started_at_utc=started_at_utc,
+            started_monotonic=started_monotonic,
+            child_pid=child_pid,
+            child_exit_code=child_exit_code,
+            watchdog_exit_code=exit_code,
+            outcome=outcome,
+            reason=reason,
+            limit_bytes=limit_bytes,
+            poll_interval=poll_interval,
+            terminate_grace=terminate_grace,
+            metric=metric,
+            probe_sample_count=probe_sample_count,
+            probe_failure_count=probe_failure_count,
+            maximum_consecutive_probe_failures=(
+                maximum_consecutive_probe_failures
+            ),
+            peak_rss_bytes=peak_rss,
+            peak_physical_footprint_bytes=peak_physical_footprint,
+            peak_guard_bytes=peak_guard,
+            peak_processes=peak_processes,
+            stderr=stderr,
+        )
+
+    try:
+        process = subprocess.Popen(tuple(command), start_new_session=True)
+    except FileNotFoundError:
+        print(f"memory-watchdog: command not found: {command[0]}", file=stderr)
+        return finish(
+            127,
+            child_exit_code=None,
+            outcome="command-not-found",
+            reason="command-not-found",
+        )
+    except OSError as error:
+        print(f"memory-watchdog: cannot start command: {error}", file=stderr)
+        return finish(
+            126,
+            child_exit_code=None,
+            outcome="command-start-failed",
+            reason="command-start-failed",
+        )
+
+    child_pid = process.pid
+    sampler = ProcessTreeSampler(process.pid, process.pid)
     print(
         "memory-watchdog: guarding"
         f" pid={process.pid} limit={_format_bytes(limit_bytes)}"
@@ -550,12 +807,6 @@ def run_guarded(
             previous_handlers[selected_signal] = signal.getsignal(selected_signal)
             signal.signal(selected_signal, remember_signal)
 
-    peak_rss = 0
-    peak_physical_footprint: int | None = (
-        0 if physical_footprint_probe is not None else None
-    )
-    peak_guard = 0
-    peak_processes = 0
     consecutive_probe_failures = 0
     pending_probe_reason: str | None = None
     try:
@@ -568,7 +819,16 @@ def run_guarded(
                     grace_period=terminate_grace,
                     poll_interval=poll_interval,
                 )
-                return 128 + received_signal
+                return finish(
+                    128 + received_signal,
+                    child_exit_code=(
+                        None
+                        if process.poll() is None
+                        else _normalized_exit_code(process.returncode)
+                    ),
+                    outcome="watchdog-signalled",
+                    reason=f"signal-{received_signal}",
+                )
 
             if pending_probe_reason is not None:
                 returncode = process.poll()
@@ -581,7 +841,12 @@ def run_guarded(
                         file=stderr,
                         flush=True,
                     )
-                    return WATCHDOG_ERROR_EXIT_CODE
+                    return finish(
+                        WATCHDOG_ERROR_EXIT_CODE,
+                        child_exit_code=_normalized_exit_code(returncode),
+                        outcome="memory-enforcement-unavailable",
+                        reason=pending_probe_reason,
+                    )
 
             probe_reason = MEMORY_PROBE_REASON
             try:
@@ -594,6 +859,11 @@ def run_guarded(
                 )
             except ProbeError as error:
                 consecutive_probe_failures += 1
+                probe_failure_count += 1
+                maximum_consecutive_probe_failures = max(
+                    maximum_consecutive_probe_failures,
+                    consecutive_probe_failures,
+                )
                 pending_probe_reason = probe_reason
                 print(
                     "memory-watchdog: memory probe failed"
@@ -612,7 +882,12 @@ def run_guarded(
                         file=stderr,
                         flush=True,
                     )
-                    return WATCHDOG_ERROR_EXIT_CODE
+                    return finish(
+                        WATCHDOG_ERROR_EXIT_CODE,
+                        child_exit_code=_normalized_exit_code(returncode),
+                        outcome="memory-enforcement-unavailable",
+                        reason=probe_reason,
+                    )
                 if consecutive_probe_failures >= 3:
                     _terminate_tree(
                         process,
@@ -627,8 +902,18 @@ def run_guarded(
                         file=stderr,
                         flush=True,
                     )
-                    return WATCHDOG_ERROR_EXIT_CODE
+                    return finish(
+                        WATCHDOG_ERROR_EXIT_CODE,
+                        child_exit_code=(
+                            None
+                            if process.poll() is None
+                            else _normalized_exit_code(process.returncode)
+                        ),
+                        outcome="memory-probe-failed",
+                        reason=probe_reason,
+                    )
             else:
+                probe_sample_count += 1
                 if pending_probe_reason is not None:
                     returncode = process.poll()
                     if returncode is not None:
@@ -640,7 +925,12 @@ def run_guarded(
                             file=stderr,
                             flush=True,
                         )
-                        return WATCHDOG_ERROR_EXIT_CODE
+                        return finish(
+                            WATCHDOG_ERROR_EXIT_CODE,
+                            child_exit_code=_normalized_exit_code(returncode),
+                            outcome="memory-enforcement-unavailable",
+                            reason=pending_probe_reason,
+                        )
                 consecutive_probe_failures = 0
                 pending_probe_reason = None
                 peak_rss = max(peak_rss, sample.rss_bytes)
@@ -677,7 +967,16 @@ def run_guarded(
                         grace_period=terminate_grace,
                         poll_interval=poll_interval,
                     )
-                    return MEMORY_LIMIT_EXIT_CODE
+                    return finish(
+                        MEMORY_LIMIT_EXIT_CODE,
+                        child_exit_code=(
+                            None
+                            if process.poll() is None
+                            else _normalized_exit_code(process.returncode)
+                        ),
+                        outcome="memory-limit-exceeded",
+                        reason=limit_reason,
+                    )
 
             returncode = process.poll()
             if returncode is not None:
@@ -691,7 +990,12 @@ def run_guarded(
                         file=stderr,
                         flush=True,
                     )
-                    return WATCHDOG_ERROR_EXIT_CODE
+                    return finish(
+                        WATCHDOG_ERROR_EXIT_CODE,
+                        child_exit_code=_normalized_exit_code(returncode),
+                        outcome="memory-enforcement-unavailable",
+                        reason=pending_probe_reason,
+                    )
                 normalized = _normalized_exit_code(returncode)
                 footprint_detail = (
                     _format_bytes(peak_physical_footprint)
@@ -707,7 +1011,12 @@ def run_guarded(
                     file=stderr,
                     flush=True,
                 )
-                return normalized
+                return finish(
+                    normalized,
+                    child_exit_code=normalized,
+                    outcome="command-finished",
+                    reason=None,
+                )
             time.sleep(poll_interval)
     finally:
         for selected_signal, previous in previous_handlers.items():
@@ -719,6 +1028,17 @@ def run_guarded(
                 snapshotter,
                 grace_period=terminate_grace,
                 poll_interval=poll_interval,
+            )
+        if not report_emitted:
+            finish(
+                WATCHDOG_ERROR_EXIT_CODE,
+                child_exit_code=(
+                    None
+                    if process.poll() is None
+                    else _normalized_exit_code(process.returncode)
+                ),
+                outcome="watchdog-exception",
+                reason="watchdog-exception",
             )
 
 
@@ -756,6 +1076,22 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--report-json",
+        type=Path,
+        help=(
+            "write one terminal content-addressed execution report on success "
+            "or failure"
+        ),
+    )
+    parser.add_argument(
+        "--bind-result-json",
+        type=Path,
+        help=(
+            "content-address this command result in --report-json; the guarded "
+            "command must create it"
+        ),
+    )
+    parser.add_argument(
         "command",
         nargs=argparse.REMAINDER,
         help="command to run, conventionally preceded by --",
@@ -771,6 +1107,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         command.pop(0)
     if not command:
         parser.error("a command is required after --")
+    if arguments.bind_result_json is not None and arguments.report_json is None:
+        parser.error("--bind-result-json requires --report-json")
+    if (
+        arguments.report_json is not None
+        and arguments.bind_result_json is not None
+        and Path(os.path.abspath(arguments.report_json.expanduser()))
+        == Path(os.path.abspath(arguments.bind_result_json.expanduser()))
+    ):
+        parser.error("--report-json and --bind-result-json must be different files")
 
     if arguments.limit_mib is not None:
         limit_bytes = int(arguments.limit_mib * MIB)
@@ -782,19 +1127,50 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             physical_footprint_probe = DarwinPhysicalFootprintProbe()
         except ProbeError as error:
+            started_at_utc = _utc_now()
+            started_monotonic = time.monotonic()
             print(
                 "memory-watchdog: Darwin physical-footprint probe unavailable"
                 f" reason={DARWIN_PHYSICAL_FOOTPRINT_PROBE_REASON}: {error}",
                 file=sys.stderr,
                 flush=True,
             )
-            return WATCHDOG_ERROR_EXIT_CODE
+            return _emit_final_report(
+                report_path=arguments.report_json,
+                bound_result_path=arguments.bind_result_json,
+                command=command,
+                working_directory=str(Path.cwd()),
+                started_at_utc=started_at_utc,
+                started_monotonic=started_monotonic,
+                child_pid=None,
+                child_exit_code=None,
+                watchdog_exit_code=WATCHDOG_ERROR_EXIT_CODE,
+                outcome="memory-probe-initialization-failed",
+                reason=DARWIN_PHYSICAL_FOOTPRINT_PROBE_REASON,
+                limit_bytes=limit_bytes,
+                poll_interval=arguments.poll_interval,
+                terminate_grace=arguments.terminate_grace,
+                metric=(
+                    "max(process-tree-rss,"
+                    "darwin-process-tree-physical-footprint)"
+                ),
+                probe_sample_count=0,
+                probe_failure_count=1,
+                maximum_consecutive_probe_failures=1,
+                peak_rss_bytes=0,
+                peak_physical_footprint_bytes=0,
+                peak_guard_bytes=0,
+                peak_processes=0,
+                stderr=sys.stderr,
+            )
     return run_guarded(
         command,
         limit_bytes=limit_bytes,
         poll_interval=arguments.poll_interval,
         terminate_grace=arguments.terminate_grace,
         physical_footprint_probe=physical_footprint_probe,
+        report_path=arguments.report_json,
+        bound_result_path=arguments.bind_result_json,
     )
 
 

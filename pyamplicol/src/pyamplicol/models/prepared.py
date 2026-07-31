@@ -30,11 +30,12 @@ PREPARED_MODEL_BUNDLE_SCHEMA_VERSION = 1
 PREPARED_MODEL_BUNDLE_SUFFIX = ".pyamplicol-model"
 EAGER_KERNEL_ABI = "pyamplicol-eager-kernel-v1"
 EAGER_KERNEL_ABI_VERSION = 1
-PREPARED_KERNEL_VARIANT_ABI = "pyamplicol-prepared-kernel-variant-v1"
-PREPARED_KERNEL_PACK_IDENTITY_ABI = "pyamplicol-prepared-kernel-pack-identity-v1"
+PREPARED_KERNEL_VARIANT_ABI = "pyamplicol-prepared-kernel-variant-v2"
+PREPARED_KERNEL_PACK_IDENTITY_ABI = "pyamplicol-prepared-kernel-pack-identity-v2"
 PREPARED_INDEPENDENT_BLOCK_SIZE = 4
 PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL = 2
 PREPARED_JIT_PORTABLE_TARGET = "symjit-storage-v3-portable"
+PREPARED_SYMJIT_PLANE_APPLICATION_ABI = "pyamplicol-symjit-plane-application-v2"
 
 PREPARED_MODEL_MANIFEST_PATH = "manifest.json"
 PREPARED_MODEL_COMPILED_MODEL_PATH = "model/model.pyAmplicol-model.json"
@@ -549,7 +550,8 @@ class PreparedKernelVariantRecord:
         _nonempty_string(self.variant_id, "kernel_variant.variant_id")
         if self.variant_abi != PREPARED_KERNEL_VARIANT_ABI:
             raise PreparedModelBundleError(
-                f"unsupported prepared kernel variant ABI {self.variant_abi!r}"
+                f"unsupported prepared kernel variant ABI {self.variant_abi!r}; "
+                "regenerate the prepared model with this pyAmpliCol version"
             )
         if self.kind != "independent-block":
             raise PreparedModelBundleError(
@@ -1178,6 +1180,15 @@ class PreparedKernelPack:
                 "kernel_pack.target.cpu_features must be sorted and unique"
             )
         if self.backend == "jit":
+            if (
+                self.dependency_abis.get("symjit_plane_application")
+                != PREPARED_SYMJIT_PLANE_APPLICATION_ABI
+            ):
+                raise PreparedModelBundleError(
+                    "prepared JIT packs must authenticate SymJIT plane-application "
+                    f"ABI {PREPARED_SYMJIT_PLANE_APPLICATION_ABI!r}; regenerate "
+                    "the prepared model"
+                )
             level = self.optimization_settings.get("jit_optimization_level")
             if level != PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL:
                 raise PreparedModelBundleError(
@@ -1512,7 +1523,8 @@ class PreparedKernelPackIdentity:
     def __post_init__(self) -> None:
         if self.abi != PREPARED_KERNEL_PACK_IDENTITY_ABI:
             raise PreparedModelBundleError(
-                f"unsupported prepared pack identity ABI {self.abi!r}"
+                f"unsupported prepared pack identity ABI {self.abi!r}; "
+                "regenerate the prepared model with this pyAmpliCol version"
             )
         for name in ("contract_digest", "payload_digest", "pack_digest"):
             _valid_sha256(getattr(self, name), f"prepared_pack_identity.{name}")

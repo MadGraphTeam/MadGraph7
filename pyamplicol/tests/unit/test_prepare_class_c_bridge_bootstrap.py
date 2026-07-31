@@ -100,3 +100,83 @@ def test_bind_ancestor_runtime_reconstructs_only_staged_runtime(
         "package_version": "0.1.0.dev0+candidate.test",
         "target": "test-target",
     }
+
+
+def test_bind_release_runtime_uses_release_projection_without_candidate_inputs(
+    tmp_path: Path,
+) -> None:
+    live = tmp_path / "live-descendant"
+    ancestor = tmp_path / "ancestor"
+    for root in (live, ancestor):
+        _write(root / "pyproject.toml", b"[project]\nname='pyamplicol'\n")
+        _write(root / "Cargo.toml", b"[workspace]\n")
+        _write(root / "src/pyamplicol/__init__.py", b"# tracked package\n")
+    _write(
+        ancestor / "build_backend/native_build_identity.py",
+        (
+            b"import hashlib\n"
+            b"def native_build_inputs_digest("
+            b"root, *, normalize_release_cargo_lock=False):\n"
+            b"    if not normalize_release_cargo_lock:\n"
+            b"        raise RuntimeError('release projection required')\n"
+            b"    return hashlib.sha256((root / 'Cargo.toml').read_bytes()).hexdigest()\n"
+        ),
+    )
+
+    live_package = live / "src/pyamplicol"
+    extension = live_package / "_rusticol.abi3.so"
+    _write(extension, b"release native extension")
+    for relative in (
+        "_sdk/fortran/rusticol.f90",
+        "_sdk/include/rusticol.h",
+        "_sdk/lib/librusticol_capi.a",
+        "_sdk/link.json",
+    ):
+        _write(live_package / relative, relative.encode("ascii"))
+    _write(
+        live_package / "_sdk/metadata.json",
+        json.dumps({"target": "release-target"}).encode("ascii"),
+    )
+    _write(
+        live_package / "assets/selftest/release-target/expected.json",
+        b'{"ok":true}\n',
+    )
+
+    native_digest = bootstrap._native_build_inputs_digest(
+        ancestor,
+        normalize_release_cargo_lock=True,
+    )
+    extension_sha256 = hashlib.sha256(extension.read_bytes()).hexdigest()
+    _write(
+        live / ".artifacts/source-runtime/_build_info.json",
+        (
+            json.dumps(
+                {
+                    "native_build_inputs_sha256": native_digest,
+                    "publishable": True,
+                    "source_runtime": {
+                        "extension_name": extension.name,
+                        "extension_sha256": extension_sha256,
+                        "mode": "release",
+                        "native_build_inputs_sha256": native_digest,
+                    },
+                    "version": "0.1.0",
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        ).encode("ascii"),
+    )
+
+    identity = bootstrap._bind_ancestor_runtime(live, ancestor)
+
+    assert not (ancestor / "dependencies/checkouts").exists()
+    assert all(not (ancestor / path).exists() for path in bootstrap._IGNORED_NATIVE_INPUTS)
+    assert identity == {
+        "candidate_fingerprint": None,
+        "extension_name": extension.name,
+        "extension_sha256": extension_sha256,
+        "native_build_inputs_sha256": native_digest,
+        "package_version": "0.1.0",
+        "target": "release-target",
+    }

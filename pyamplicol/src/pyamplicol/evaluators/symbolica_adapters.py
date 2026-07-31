@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import importlib
 import struct
 import sys
 import tempfile
@@ -23,6 +25,8 @@ from .._internal.versions import (
     SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
     SYMJIT_APPLICATION_ABI,
     SYMJIT_F64_RUNTIME_CAPABILITY,
+    SYMJIT_PLANE_APPLICATION_ABI,
+    verify_native_module,
 )
 from .execution_schema import aggregate_runtime_capabilities
 from .symbolica_helpers import (
@@ -161,11 +165,24 @@ class _JITSymbolicaEvaluatorAdapter:
         evaluator_dir = _artifact_subdirectory(artifact_dir, "evaluators")
         unique = uuid.uuid4().hex
         application_path = evaluator_dir / f"{self.label}_{unique}.symjit"
+        plane_application_path = (
+            evaluator_dir / f"{self.label}_{unique}.plane.symjit"
+        )
         evaluator_state_path = evaluator_dir / f"{self.label}_{unique}.evaluator.bin"
         save_started = time.perf_counter()
         application, element_layout = self._export_symjit_application()
         application_path.write_bytes(application)
         application_export_s = time.perf_counter() - save_started
+        plane_export_started = time.perf_counter()
+        (
+            plane_application,
+            plane_source_digest,
+            plane_target,
+        ) = self._export_symjit_plane_application(
+            optimization_level=self._optimization_level(),
+        )
+        plane_application_path.write_bytes(plane_application)
+        plane_application_export_s = time.perf_counter() - plane_export_started
         state_save_started = time.perf_counter()
         evaluator_state_path.write_bytes(self._source_evaluator.save())
         evaluator_save_s = time.perf_counter() - save_started
@@ -175,13 +192,12 @@ class _JITSymbolicaEvaluatorAdapter:
         build_timing = dict(self.build_timing)
         build_timing["jit_materialize_s"] = jit_compile_s
         build_timing["symjit_application_export_s"] = application_export_s
+        build_timing["symjit_plane_application_export_s"] = (
+            plane_application_export_s
+        )
         build_timing["evaluator_save_s"] = evaluator_state_save_s
         build_timing["artifact_manifest_s"] = jit_compile_s + evaluator_save_s
-        optimization_level = self.settings.get("jit_optimization_level", 3)
-        if isinstance(optimization_level, bool) or not isinstance(
-            optimization_level, int
-        ):
-            raise NativeEvaluationError("invalid SymJIT optimization-level metadata")
+        optimization_level = self._optimization_level()
         return {
             "kind": "symjit-application-evaluator",
             "runtime_capability": SYMJIT_F64_RUNTIME_CAPABILITY,
@@ -193,6 +209,32 @@ class _JITSymbolicaEvaluatorAdapter:
                 application_path, artifact_dir
             ),
             "application_abi": SYMJIT_APPLICATION_ABI,
+            "plane_application": {
+                "application_path": _artifact_path_for_manifest(
+                    plane_application_path,
+                    artifact_dir,
+                ),
+                "application_abi": SYMJIT_PLANE_APPLICATION_ABI,
+                "storage_abi": SYMJIT_APPLICATION_ABI,
+                "element_layout": "split-complex-plane-major",
+                "descriptor_order": "inputs-re-im-then-outputs-re-im",
+                "input_complex_count": self.input_len,
+                "output_complex_count": self.output_len,
+                "input_plane_count": 2 * self.input_len,
+                "output_plane_count": 2 * self.output_len,
+                "compiler_type": "native",
+                "translation_mode": "symbolica-structured-instructions",
+                "optimization_level": optimization_level,
+                "simd": True,
+                "complex": True,
+                "fast_math": True,
+                "fast_complex": False,
+                "compression": bool(self.settings.get("jit_compress", False)),
+                "threading": False,
+                "direct_arena": True,
+                "source_digest": plane_source_digest,
+                "target": plane_target,
+            },
             "element_layout": element_layout,
             "batch_layout": "row-major",
             "compiler_type": "native",
@@ -210,6 +252,99 @@ class _JITSymbolicaEvaluatorAdapter:
             "settings": self.settings,
             "build_timing": build_timing,
         }
+
+    def _optimization_level(self) -> int:
+        optimization_level = self.settings.get("jit_optimization_level", 3)
+        if (
+            isinstance(optimization_level, bool)
+            or not isinstance(optimization_level, int)
+            or optimization_level not in {0, 1, 2, 3}
+        ):
+            raise NativeEvaluationError("invalid SymJIT optimization-level metadata")
+        return optimization_level
+
+    def _export_symjit_plane_application(
+        self,
+        *,
+        optimization_level: int,
+    ) -> tuple[bytes, str, dict[str, object]]:
+        """Compile a standard complex P-kernel from Symbolica instructions."""
+
+        instructions = getattr(self._source_evaluator, "get_instructions", None)
+        if not callable(instructions):
+            raise NativeEvaluationError(
+                "this Symbolica build cannot expose structured evaluator "
+                "instructions for a direct-arena P-kernel; install the pinned "
+                "pyAmpliCol candidate dependency"
+            )
+        try:
+            program_repr = repr(instructions())
+        except Exception as error:
+            raise NativeEvaluationError(
+                "Symbolica could not export structured evaluator instructions "
+                "for a direct-arena P-kernel"
+            ) from error
+        if not program_repr:
+            raise NativeEvaluationError(
+                "Symbolica returned empty direct-arena P-kernel instructions"
+            )
+
+        try:
+            rusticol = importlib.import_module("pyamplicol._rusticol")
+            verify_native_module(rusticol)
+        except Exception as error:
+            raise NativeEvaluationError(
+                "the Rusticol extension required to compile a direct-arena "
+                "P-kernel is unavailable; reinstall pyAmpliCol"
+            ) from error
+        compile_plane = getattr(
+            rusticol,
+            "_compile_symjit_plane_application_v2",
+            None,
+        )
+        if not callable(compile_plane):
+            raise NativeEvaluationError(
+                "the installed Rusticol extension does not expose the SymJIT "
+                "2.22 plane compiler; reinstall pyAmpliCol"
+            )
+        try:
+            application = compile_plane(
+                program_repr,
+                self.input_len,
+                self.output_len,
+                optimization_level,
+                bool(self.settings.get("jit_compress", False)),
+            )
+        except Exception as error:
+            raise NativeEvaluationError(
+                "SymJIT could not compile the structured evaluator instructions "
+                "as a complex direct-arena P-kernel"
+            ) from error
+        if not isinstance(application, bytes) or not application:
+            raise NativeEvaluationError(
+                "Rusticol returned an empty or non-bytes direct-arena P-kernel"
+            )
+
+        target_info = getattr(rusticol, "target_info", None)
+        target: dict[str, object] = {
+            "word_bits": struct.calcsize("P") * 8,
+            "endianness": sys.byteorder,
+        }
+        if callable(target_info):
+            info = target_info()
+            triple = getattr(info, "triple", None)
+            cpu_features = getattr(info, "cpu_features", None)
+            if isinstance(triple, str) and triple:
+                target["triple"] = triple
+            if isinstance(cpu_features, list) and all(
+                isinstance(value, str) for value in cpu_features
+            ):
+                target["cpu_features"] = list(cpu_features)
+        return (
+            application,
+            hashlib.sha256(program_repr.encode("utf-8")).hexdigest(),
+            target,
+        )
 
     def _export_symjit_application(self) -> tuple[bytes, str]:
         if struct.calcsize("P") * 8 != 64 or sys.byteorder != "little":

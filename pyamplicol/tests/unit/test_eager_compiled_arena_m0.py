@@ -228,6 +228,18 @@ def _make_capture(
         selector_contract=_selector(layout),
         fixture=fixture,
     )
+    validation_preflight = benchmark._validation_preflight_contract(
+        arguments,
+        {
+            mode: profiles[mode]
+            for mode in benchmark.AUTHORITATIVE_EXECUTION_MODES
+            if mode in profiles
+        },
+    )
+    validation_preflight["worker_evidence"] = {
+        mode: {"fixture": "synthetic"}
+        for mode in benchmark.AUTHORITATIVE_EXECUTION_MODES
+    }
     validation = benchmark._pairwise_profile_validation(profiles)
     capture = benchmark._capture_acceptance(
         arguments,
@@ -365,6 +377,8 @@ def _make_capture(
         "configuration": configuration,
         "generation": generation,
         "profile_schedule": schedule,
+        "validation_preflight": validation_preflight,
+        "paired_profile_coordination": None,
         "profiles": profiles,
         "validation_summary": validation,
         "selector_contracts_match": validation["selectors_match"],
@@ -1238,6 +1252,21 @@ def test_cli_accepts_the_content_addressed_positive_fixture(
                 "provenance"
             ].__setitem__("external_watchdog_required_for_long_runs", False),
             id="watchdog-provenance-disabled",
+        ),
+        pytest.param(
+            lambda corpus: corpus["captures"][("built-in-sm", "topology-replay")][
+                "validation_preflight"
+            ].__setitem__("passes", False),
+            id="validation-preflight-drift",
+        ),
+        pytest.param(
+            lambda corpus: corpus["captures"][
+                ("built-in-sm", "topology-replay")
+            ].__setitem__(
+                "paired_profile_coordination",
+                {"kind": "unexpected-paired-campaign"},
+            ),
+            id="unexpected-paired-profile-coordination",
         ),
         pytest.param(
             lambda corpus: corpus["captures"][("built-in-sm", "topology-replay")][

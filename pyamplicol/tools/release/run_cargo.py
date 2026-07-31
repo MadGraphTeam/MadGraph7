@@ -57,8 +57,7 @@ def main(argv: list[str] | None = None) -> int:
             "PYTHONDONTWRITEBYTECODE": "1",
         }
         updates.update(_python_test_loader_updates(arguments))
-        if sys.platform == "darwin":
-            updates["MACOSX_DEPLOYMENT_TARGET"] = "11.0"
+        updates.update(backend._macos_native_build_updates())
         environment = backend._clean_environment(updates)
         completed = subprocess.run(
             ["cargo", *arguments],

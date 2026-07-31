@@ -23,6 +23,68 @@ from prepared_models import (  # noqa: E402
 )
 
 
+@pytest.fixture(autouse=True)
+def _simulate_regenerated_pack_native_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Project new source bindings until the binary fixtures are regenerated."""
+
+    original_contract_loader = prepared_models_module._load_prepared_contract
+
+    def load_contract(path: Path) -> object:
+        contract = original_contract_loader(path)
+
+        def load_bundle(bundle_path: Path) -> object:
+            bundle = contract.load_prepared_model_bundle(bundle_path)
+            pack = bundle.kernel_pack
+            package_root = path.parent.parent
+            model_compiler_sha256 = (
+                prepared_models_module._model_compiler_digest(package_root)
+            )
+            model_source_digest = prepared_models_module._built_in_source_digest(
+                package_root
+            )
+            compiled_model = dict(bundle.compiled_model)
+            compiled_producer = dict(compiled_model["producer"])
+            compiled_producer["model_compiler_sha256"] = model_compiler_sha256
+            compiled_model["producer"] = compiled_producer
+            compiled_source = dict(compiled_model["source"])
+            compiled_source["digest"] = model_source_digest
+            compiled_model["source"] = compiled_source
+            producer = dict(pack.producer)
+            producer["native_build_inputs_sha256"] = (
+                prepared_models_module.native_build_inputs_digest(ROOT)
+            )
+            provenance = dict(pack.provenance)
+            provenance["compiled_model_digest"] = model_source_digest
+            model_source = dict(provenance["model_source"])
+            model_source["digest"] = model_source_digest
+            provenance["model_source"] = model_source
+            wrapped_pack = SimpleNamespace(
+                backend=pack.backend,
+                dependency_abis=pack.dependency_abis,
+                kernels=pack.kernels,
+                optimization_settings=pack.optimization_settings,
+                producer=producer,
+                provenance=provenance,
+                target=pack.target,
+            )
+            return SimpleNamespace(
+                backend=bundle.backend,
+                compiled_model=compiled_model,
+                kernel_pack=wrapped_pack,
+                manifest=bundle.manifest,
+            )
+
+        return SimpleNamespace(load_prepared_model_bundle=load_bundle)
+
+    monkeypatch.setattr(
+        prepared_models_module,
+        "_load_prepared_contract",
+        load_contract,
+    )
+
+
 def _overlay(tmp_path: Path) -> Path:
     overlay = tmp_path / "overlay"
     shutil.copytree(
@@ -36,6 +98,11 @@ def _overlay(tmp_path: Path) -> Path:
         ROOT / "dependencies" / "release-lock.toml",
         dependencies / "release-lock.toml",
     )
+    shutil.copy2(
+        ROOT / "dependencies" / "contributor-lock.toml",
+        dependencies / "contributor-lock.toml",
+    )
+    _copy_symjit_patches(overlay, mode="candidate")
     shutil.copy2(ROOT / "Cargo.toml", overlay / "Cargo.toml")
     shutil.copy2(
         ROOT / "dependencies" / "candidate-Cargo.lock",
@@ -67,6 +134,7 @@ def _overlay(tmp_path: Path) -> Path:
         ),
         encoding="utf-8",
     )
+    _bind_static_pack_contract(overlay, mode="candidate")
     return overlay
 
 
@@ -83,9 +151,70 @@ def _release_overlay(tmp_path: Path) -> Path:
         ROOT / "dependencies" / "release-lock.toml",
         dependencies / "release-lock.toml",
     )
+    _copy_symjit_patches(overlay, mode="release")
     shutil.copy2(ROOT / "Cargo.toml", overlay / "Cargo.toml")
     shutil.copy2(ROOT / "Cargo.lock", overlay / "Cargo.lock")
     return overlay
+
+
+def _copy_symjit_patches(overlay: Path, *, mode: str) -> None:
+    dependencies = overlay / "dependencies"
+    lock_name = (
+        "contributor-lock.toml" if mode == "candidate" else "release-lock.toml"
+    )
+    with (dependencies / lock_name).open("rb") as stream:
+        lock = tomllib.load(stream)
+    patches = lock["patches"] if mode == "candidate" else lock["symjit"]["patches"]
+    for patch in patches:
+        relative = Path(patch["path"])
+        destination = dependencies / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / "dependencies" / relative, destination)
+
+
+def _bind_static_pack_contract(
+    overlay: Path,
+    *,
+    mode: str,
+    source_root: Path = ROOT,
+) -> None:
+    with (overlay / "dependencies/release-lock.toml").open("rb") as stream:
+        release = tomllib.load(stream)
+    contributor = None
+    if mode == "candidate":
+        with (overlay / "dependencies/contributor-lock.toml").open("rb") as stream:
+            contributor = tomllib.load(stream)
+        sources = prepared_models_module._candidate_sources(contributor)
+    else:
+        sources = prepared_models_module._release_sources(overlay, release)
+    symjit_source = prepared_models_module._symjit_source_identity(
+        overlay,
+        mode=mode,
+        release=release,
+        contributor=contributor,
+    )
+    native_digest = prepared_models_module.native_build_inputs_digest(
+        source_root,
+        normalize_release_cargo_lock=mode == "release",
+    )
+    package_root = overlay / "src/pyamplicol"
+    model_compiler_digest = prepared_models_module._model_compiler_digest(package_root)
+    model_source_digest = prepared_models_module._built_in_source_digest(package_root)
+    prepared_pack_compiler_digest = (
+        prepared_models_module._prepared_pack_compiler_digest(package_root)
+    )
+    asset_root = overlay / "src/pyamplicol/assets/prepared_models"
+    for metadata_path in asset_root.glob("*.metadata.json"):
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata["build_contract"]["sources"] = sources
+        metadata["build_contract"]["symjit_source"] = symjit_source
+        metadata["producer"]["model_compiler_sha256"] = model_compiler_digest
+        metadata["producer"]["model_source_digest"] = model_source_digest
+        metadata["producer"]["native_build_inputs_sha256"] = native_digest
+        metadata["producer"]["prepared_pack_compiler_sha256"] = (
+            prepared_pack_compiler_digest
+        )
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
 
 
 def _release_store(overlay: Path) -> Path:
@@ -119,16 +248,37 @@ def _release_bundle(overlay: Path, package_version: str = "0.1.0") -> object:
         package_root / "_internal" / "versions.py",
         "SYMJIT_APPLICATION_ABI",
     )
+    symjit_plane_abi = prepared_models_module._literal_assignment(
+        package_root / "_internal" / "versions.py",
+        "SYMJIT_PLANE_APPLICATION_ABI",
+    )
     pack = SimpleNamespace(
         backend="jit",
         dependency_abis={
             "symbolica_serialization": symbolica_abi,
             "symbolica_version": "2.2.0",
             "symjit_application": symjit_abi,
+            "symjit_plane_application": symjit_plane_abi,
         },
         kernels=(object(),),
         optimization_settings={"jit_optimization_level": 2},
-        producer={"version": package_version},
+        producer={
+            "native_build_inputs_sha256": (
+                prepared_models_module.native_build_inputs_digest(
+                    overlay,
+                    normalize_release_cargo_lock=True,
+                )
+            ),
+            "version": package_version,
+        },
+        provenance={
+            "compiled_model_digest": source_digest,
+            "model_name": "built-in-sm",
+            "model_source": {
+                "digest": source_digest,
+                "kind": "built-in-sm",
+            },
+        },
         target={
             "portable": True,
             "word_bits": 64,
@@ -180,15 +330,37 @@ def test_source_ready_asset_metadata_is_derived_from_bundle_and_source(
         actual_metadata["dependencies"]["symbolica_version"]
         == contributor["symbolica"]["candidate_version"]
     )
-    assert actual_metadata["producer"].keys() == expected_metadata["producer"].keys()
+    assert actual_metadata["producer"]["native_build_inputs_sha256"] == (
+        prepared_models_module.native_build_inputs_digest(ROOT)
+    )
     for key in actual_metadata["producer"]:
-        if key.endswith("_sha256") or key == "model_source_digest":
+        if (
+            key == "native_build_inputs_sha256"
+            or key.endswith("_sha256")
+            or key == "model_source_digest"
+        ):
             continue
         assert actual_metadata["producer"][key] == expected_metadata["producer"][key]
+    expected_build_contract = dict(expected_metadata["build_contract"])
+    expected_build_contract["symjit_source"] = (
+        prepared_models_module._symjit_source_identity(
+            ROOT,
+            mode="candidate",
+            release=tomllib.loads(
+                (ROOT / "dependencies/release-lock.toml").read_text(encoding="utf-8")
+            ),
+            contributor=contributor,
+        )
+    )
+    assert actual_metadata["build_contract"] == expected_build_contract
     assert {
-        key: value for key, value in actual_metadata.items() if key != "producer"
+        key: value
+        for key, value in actual_metadata.items()
+        if key not in {"build_contract", "producer"}
     } == {
-        key: value for key, value in expected_metadata.items() if key != "producer"
+        key: value
+        for key, value in expected_metadata.items()
+        if key not in {"build_contract", "producer"}
     }
     assert bundle_path.read_bytes() == source_bundle.read_bytes()
 
@@ -227,11 +399,53 @@ def test_release_source_ready_asset_uses_only_release_lock_identity(
             "symbolica": release["symbolica"]["rust_version"],
             "symjit": release["symjit"]["revision"],
         },
+        "symjit_source": {
+            "configured_tree_sha256": release["symjit"][
+                "configured_tree_sha256"
+            ],
+            "patches": release["symjit"]["patches"],
+        },
     }
+    assert metadata["producer"]["native_build_inputs_sha256"] == (
+        prepared_models_module.native_build_inputs_digest(
+            overlay,
+            normalize_release_cargo_lock=True,
+        )
+    )
     assert metadata["producer"]["package_version"] == "0.1.0"
     assert metadata["dependencies"]["symbolica_version"] == "2.2.0"
-    assert metadata["dependencies"]["symjit_version"] == "2.21.1"
+    assert metadata["dependencies"]["symjit_version"] == "2.22.0"
     assert bundle_path.read_bytes() == source_bundle.read_bytes()
+
+
+def test_release_source_identity_accepts_authenticated_projected_cargo_lock(
+    tmp_path: Path,
+) -> None:
+    overlay = _release_overlay(tmp_path)
+    with (overlay / "dependencies/release-lock.toml").open("rb") as stream:
+        release = tomllib.load(stream)
+    cargo_lock = overlay / "Cargo.lock"
+    expected_sources = prepared_models_module._release_sources(overlay, release)
+    expected_digest = prepared_models_module.native_build_inputs_digest(
+        overlay,
+        normalize_release_cargo_lock=True,
+    )
+
+    cargo_lock.write_bytes(
+        prepared_models_module.canonical_release_cargo_lock_bytes(
+            overlay,
+            cargo_lock.read_bytes(),
+        )
+    )
+
+    assert prepared_models_module._release_sources(overlay, release) == expected_sources
+    assert (
+        prepared_models_module.native_build_inputs_digest(
+            overlay,
+            normalize_release_cargo_lock=True,
+        )
+        == expected_digest
+    )
 
 
 def test_release_source_ready_asset_rejects_candidate_producer_version(
@@ -251,6 +465,32 @@ def test_release_source_ready_asset_rejects_candidate_producer_version(
     )
 
     with pytest.raises(RuntimeError, match=r"producer version '0\.1\.0'"):
+        write_release_packaged_prepared_model_asset(
+            overlay,
+            source_bundle,
+            tmp_path / "prepared",
+            architecture="aarch64",
+        )
+
+
+def test_source_ready_asset_rejects_missing_native_build_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    overlay = _release_overlay(tmp_path)
+    source_bundle = tmp_path / "unbound.pyamplicol-model"
+    source_bundle.write_bytes(b"unbound prepared bundle fixture")
+    bundle = _release_bundle(overlay)
+    bundle.kernel_pack.producer.pop("native_build_inputs_sha256")
+    monkeypatch.setattr(
+        prepared_models_module,
+        "_load_prepared_contract",
+        lambda _path: SimpleNamespace(
+            load_prepared_model_bundle=lambda _bundle_path: bundle
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="native build inputs SHA-256 is stale"):
         write_release_packaged_prepared_model_asset(
             overlay,
             source_bundle,
@@ -342,6 +582,14 @@ def test_release_source_store_rejects_stale_release_identity(
 ) -> None:
     overlay = _release_overlay(tmp_path)
     store = _release_store(overlay)
+    with (overlay / "dependencies/release-lock.toml").open("rb") as stream:
+        release = tomllib.load(stream)
+    symjit_source = prepared_models_module._symjit_source_identity(
+        overlay,
+        mode="release",
+        release=release,
+        contributor=None,
+    )
     for metadata_path in store.glob("*.metadata.json"):
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         metadata["build_contract"] = {
@@ -351,7 +599,14 @@ def test_release_source_store_rejects_stale_release_identity(
                 "symbolica": "2.2.0",
                 "symjit": "0" * 40,
             },
+            "symjit_source": symjit_source,
         }
+        metadata["producer"]["native_build_inputs_sha256"] = (
+            prepared_models_module.native_build_inputs_digest(
+                ROOT,
+                normalize_release_cargo_lock=True,
+            )
+        )
         metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
 
     project_release_packaged_prepared_model_store(
@@ -359,7 +614,7 @@ def test_release_source_store_rejects_stale_release_identity(
         require_store=True,
     )
 
-    with pytest.raises(RuntimeError, match="release source identity is stale"):
+    with pytest.raises(RuntimeError, match="source identity is stale"):
         stage_packaged_prepared_models(overlay, "release")
 
 
@@ -407,32 +662,138 @@ def test_candidate_wheel_staging_rejects_candidate_fingerprint_drift(
         stage_packaged_prepared_models(overlay, "candidate")
 
 
-def test_wheel_staging_accepts_built_in_source_edits(tmp_path: Path) -> None:
+def test_wheel_staging_rejects_metadata_without_native_build_identity(
+    tmp_path: Path,
+) -> None:
+    overlay = _overlay(tmp_path)
+    asset_root = overlay / "src/pyamplicol/assets/prepared_models"
+    for metadata_path in asset_root.glob("*.metadata.json"):
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata["producer"].pop("native_build_inputs_sha256")
+        metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match=r"missing: native_build_inputs_sha256"):
+        stage_packaged_prepared_models(overlay, "candidate")
+
+
+def test_wheel_staging_rejects_bundle_native_build_identity_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    overlay = _overlay(tmp_path)
+    bound_contract_loader = prepared_models_module._load_prepared_contract
+
+    def load_contract(path: Path) -> object:
+        contract = bound_contract_loader(path)
+
+        def load_bundle(bundle_path: Path) -> object:
+            bundle = contract.load_prepared_model_bundle(bundle_path)
+            bundle.kernel_pack.producer["native_build_inputs_sha256"] = "0" * 64
+            return bundle
+
+        return SimpleNamespace(load_prepared_model_bundle=load_bundle)
+
+    monkeypatch.setattr(
+        prepared_models_module,
+        "_load_prepared_contract",
+        load_contract,
+    )
+
+    with pytest.raises(RuntimeError, match="native build inputs SHA-256 is stale"):
+        stage_packaged_prepared_models(overlay, "candidate")
+
+
+def test_wheel_staging_rejects_built_in_source_edits(tmp_path: Path) -> None:
     overlay = _overlay(tmp_path)
     source = overlay / "src" / "pyamplicol" / "models" / "builtin" / "model.py"
     source.write_text(
         source.read_text(encoding="utf-8") + "\n# drift\n",
         encoding="utf-8",
     )
-    stage_packaged_prepared_models(overlay, "candidate")
+    with pytest.raises(RuntimeError, match="model_source_digest is stale"):
+        stage_packaged_prepared_models(overlay, "candidate")
 
 
-def test_wheel_staging_accepts_prepared_payload_compiler_edits(
+def test_wheel_staging_rejects_prepared_payload_compiler_edits(
     tmp_path: Path,
 ) -> None:
     overlay = _overlay(tmp_path)
-    source = (
-        overlay
-        / "src"
-        / "pyamplicol"
-        / "evaluators"
-        / "symbolica_compile.py"
-    )
+    source = overlay / "src" / "pyamplicol" / "evaluators" / "symbolica_compile.py"
     source.write_text(
         source.read_text(encoding="utf-8") + "\n# drift\n",
         encoding="utf-8",
     )
-    stage_packaged_prepared_models(overlay, "candidate")
+    with pytest.raises(
+        RuntimeError,
+        match="prepared_pack_compiler_sha256 is stale",
+    ):
+        stage_packaged_prepared_models(overlay, "candidate")
+
+
+def test_wheel_staging_rejects_model_compiler_edits(tmp_path: Path) -> None:
+    overlay = _overlay(tmp_path)
+    source = overlay / "src/pyamplicol/models/loading.py"
+    source.write_text(
+        source.read_text(encoding="utf-8") + "\n# drift\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="model_compiler_sha256 is stale"):
+        stage_packaged_prepared_models(overlay, "candidate")
+
+
+def test_wheel_staging_rejects_configured_symjit_tree_drift(
+    tmp_path: Path,
+) -> None:
+    overlay = _overlay(tmp_path)
+    lock_path = overlay / "dependencies/contributor-lock.toml"
+    lock_text = lock_path.read_text(encoding="utf-8")
+    with lock_path.open("rb") as stream:
+        lock = tomllib.load(stream)
+    current = lock["symjit"]["candidate_tree_sha256"]
+    changed = "0" * 64
+    lock_path.write_text(
+        lock_text.replace(
+            f'candidate_tree_sha256 = "{current}"',
+            f'candidate_tree_sha256 = "{changed}"',
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="configured source identity is stale"):
+        stage_packaged_prepared_models(overlay, "candidate")
+
+
+def test_wheel_staging_rejects_symjit_patch_content_drift(tmp_path: Path) -> None:
+    overlay = _overlay(tmp_path)
+    with (overlay / "dependencies/contributor-lock.toml").open("rb") as stream:
+        contributor = tomllib.load(stream)
+    patch = overlay / "dependencies" / contributor["patches"][0]["path"]
+    patch.write_bytes(patch.read_bytes() + b"\n# drift\n")
+
+    with pytest.raises(RuntimeError, match="content does not match its lock digest"):
+        stage_packaged_prepared_models(overlay, "candidate")
+
+
+def test_wheel_staging_rejects_native_build_input_drift(tmp_path: Path) -> None:
+    overlay = _overlay(tmp_path)
+    source_root = tmp_path / "native-source"
+    native_source = source_root / "rust/native.rs"
+    native_source.parent.mkdir(parents=True)
+    native_source.write_text("fn original() {}\n", encoding="utf-8")
+    _bind_static_pack_contract(
+        overlay,
+        mode="candidate",
+        source_root=source_root,
+    )
+    native_source.write_text("fn drifted() {}\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="native_build_inputs_sha256 is stale"):
+        stage_packaged_prepared_models(
+            overlay,
+            "candidate",
+            source_root=source_root,
+        )
 
 
 def test_wheel_staging_rejects_bundle_hash_drift(tmp_path: Path) -> None:
@@ -482,12 +843,7 @@ def test_wheel_staging_rejects_unexpected_prepared_model_tree(
 ) -> None:
     overlay = _overlay(tmp_path)
     unexpected = (
-        overlay
-        / "src"
-        / "pyamplicol"
-        / "assets"
-        / "prepared_models"
-        / "second-pack"
+        overlay / "src" / "pyamplicol" / "assets" / "prepared_models" / "second-pack"
     )
     unexpected.mkdir()
     with pytest.raises(RuntimeError, match="unexpected: second-pack"):
@@ -505,6 +861,7 @@ def test_release_payload_fails_closed_in_candidate_mode(tmp_path: Path) -> None:
     asset_root = overlay / "src/pyamplicol/assets/prepared_models"
     for metadata_path in asset_root.glob("*.metadata.json"):
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        symjit_source = metadata["build_contract"]["symjit_source"]
         metadata["build_contract"] = {
             "candidate_fingerprint": None,
             "mode": "release",
@@ -512,6 +869,7 @@ def test_release_payload_fails_closed_in_candidate_mode(tmp_path: Path) -> None:
                 "symbolica": "2.2.0",
                 "symjit": "0" * 40,
             },
+            "symjit_source": symjit_source,
         }
         metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
 

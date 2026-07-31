@@ -274,6 +274,7 @@ def _selector_semantics(
         return [memberships[row.domain_id] for row in rows]
 
     physics = _mapping(schema["physics"], "physics")
+    amplitude = _mapping(schema["amplitude_stage"], "amplitude_stage")
     extensions = _mapping(physics["extensions"], "physics.extensions")
     return {
         "enabled": True,
@@ -296,6 +297,7 @@ def _selector_semantics(
         "public_selectors": physics["selectors"],
         "runtime_selectors": extensions.get("runtime_selectors"),
         "lc_topology_replay": schema.get("lc_topology_replay"),
+        "color_topology_replay": amplitude.get("color_topology_replay"),
         "helicity_recurrence": schema.get("helicity_recurrence"),
     }
 
@@ -433,15 +435,72 @@ def _resolved_probe(
         )
 
     physics = _mapping(schema["physics"], "physics")
+    physical_groups: tuple[Mapping[str, object], ...] | None = None
+    color_replay_raw = amplitude.get("color_topology_replay")
+    if color_replay_raw is not None:
+        color_replay = _mapping(
+            color_replay_raw,
+            "amplitude_stage.color_topology_replay",
+        )
+        physical_groups = _records(
+            color_replay["physical_groups"],
+            "amplitude_stage.color_topology_replay.physical_groups",
+        )
+        expanded_amplitudes: dict[int, _ComplexFraction] = {}
+        for mapping in _records(
+            color_replay["mappings"],
+            "amplitude_stage.color_topology_replay.mappings",
+        ):
+            for route in _records(
+                mapping["group_routes"],
+                "amplitude_stage.color_topology_replay.group_routes",
+            ):
+                source_id = int(route["source_group_id"])
+                target_id = int(route["target_group_id"])
+                assert target_id not in expanded_amplitudes
+                factor = cast(Sequence[object], route["factor"])
+                expanded_amplitudes[target_id] = _complex_mul(
+                    group_amplitudes[source_id],
+                    (_fraction(factor[0]), _fraction(factor[1])),
+                )
+        assert set(expanded_amplitudes) == {
+            int(group["group_id"]) for group in physical_groups
+        }
+        group_amplitudes = defaultdict(
+            lambda: (Fraction(0), Fraction(0)),
+            expanded_amplitudes,
+        )
+
     reduction = _mapping(physics["reduction"], "physics.reduction")
     reduction_groups = _records(reduction["groups"], "physics.reduction.groups")
-    component_by_group: dict[int, str] = {}
-    for record in reduction_groups:
-        group_id = int(str(record["id"]).rsplit(":", maxsplit=1)[-1])
-        component_by_group[group_id] = (
-            f"{record['representative_color_id']}|"
-            f"{record['representative_helicity_id']}"
+    if physical_groups is None:
+        component_by_group = {}
+        for record in reduction_groups:
+            group_id = int(str(record["id"]).rsplit(":", maxsplit=1)[-1])
+            component_by_group[group_id] = (
+                f"{record['representative_color_id']}|"
+                f"{record['representative_helicity_id']}"
+            )
+    else:
+        color_components = _records(
+            physics["color_components"],
+            "physics.color_components",
         )
+        assert len(color_components) == 1
+        color_id = str(color_components[0]["id"])
+        helicity_ids = {
+            tuple(
+                int(value) for value in cast(Sequence[object], record["values"])
+            ): str(record["representative_id"])
+            for record in _records(physics["helicities"], "physics.helicities")
+        }
+        component_by_group = {
+            int(group["group_id"]): (
+                f"{color_id}|"
+                f"{helicity_ids[tuple(int(value) for value in cast(Sequence[object], group['helicities']))]}"
+            )
+            for group in physical_groups
+        }
 
     resolved: dict[str, Fraction] = defaultdict(Fraction)
     contraction = amplitude["color_contraction"]
@@ -547,7 +606,8 @@ def _snapshot(case: _GoldenCase) -> dict[str, object]:
     }
 
 
-# Filled from the audited plan-v2 lowerer at source 55bfedc.  These records are
+# Refreshed from the audited plan-v2 lowerer at source 172e58fd after including
+# exact color-topology replay in the semantic probe. These records are
 # intentionally small: counts diagnose structural drift and section digests
 # identify its semantic owner without checking Python serialization bytes.
 _EXPECTED: dict[str, dict[str, object]] = {
@@ -570,14 +630,14 @@ _EXPECTED: dict[str, dict[str, object]] = {
             "value_slots": 69,
         },
         "digests": {
-            "exact": "b88e25d6e5ea38e0236214b9bf3819bb39af0e3ed07974fd5bfc199d72ede151",
-            "layout": "d7315911d47d8765b6927f60daceaeaf6253b10467eeb6750d972040494ed232",
-            "reductions": "56631bb2966cc4e1c93acc745458f76e18c7f9dde39d3eaf2687a39456933b52",
+            "exact": "cdfb65b1a25397fca763b53bcecaa3e57dfb8ea039eea5c5df92727800565a36",
+            "layout": "afe5e25ff4839e2c2ffac67dbf7053d838edfa716fc8248c44e792bc3dedb52a",
+            "reductions": "3864a2185e4b6613de4cd650431a1cb6a42c224556e73ffb57d471dc5424b6f1",
             "resolved": "4347816ea9472a7c77bd4638259933ac67a562a9fa7478795233da6dc43cab7b",
-            "selectors": "75a7aefa991e100a68ae1b02bfaccf6061abd7a6c5bcb1fa81958306aa40a70d",
-            "tables": "5cc960af0634e6d8c31badf74f69c778cc3e2a5c89bf77cd92215c836f1b691b",
+            "selectors": "2c9494a80c1b38aa55088559f35585e0cbe18d66b3739b466d56b7d7af634403",
+            "tables": "a469fc2988f5d7a1cd355eb0b4e77b9f49f2cb818f0ff703c90fac2070fd976f",
         },
-        "semantic_sha256": "159815a017c6d2760b8a9f51cdec689988fbb7cc9b556232e8c4b7424af63759",
+        "semantic_sha256": "4177b037ca833e9061539db84956ca0913b3bd3733cb0bb15a1ba63667e6397e",
     },
     "lc-all-flow-union": {
         "counts": {
@@ -598,70 +658,70 @@ _EXPECTED: dict[str, dict[str, object]] = {
             "value_slots": 117,
         },
         "digests": {
-            "exact": "a7fb382acdbff7e6a9f0cc5aee4da3ecb5ab169bc51ad11e4a0dd808e68f7772",
-            "layout": "a853478261d8e35a684e32b7d62a65bf110b30b7947038edaf5a20f4d3a5ba31",
-            "reductions": "3702ceb56c38b667fba9186ce8fe5d0517879f999091b5c934de28d8f3d5d40e",
+            "exact": "8ff7c3aff6c0ae0760f3bbc414af3b1d632eb013dee0956e4456c5bcf40ebb70",
+            "layout": "82c6111ea57f6e9468017679dc56833e09ddd88b4e3cf05b9629d1eda5813d25",
+            "reductions": "b7d5c3c614f70ad6c4bf7f8afb1b3a0a8a5c33dcae0a0c12d271992928ec3a2a",
             "resolved": "f038d7b438a5b59baabc439fb712dbe3fd455f433f20e9da7490e574acc22927",
-            "selectors": "b67fca860ca8a143cf6f63160fa78d57de01f7ffd9d27f0eba378647d483b3da",
-            "tables": "1c6e620fbd32c611af8fcf5042f6875eb73ebf4ec11d5faf729e86836f28b7ba",
+            "selectors": "bc01c9f480a41d5cb7084d918279f835869fd563cb253cd8333e839c2988f2df",
+            "tables": "5522514898584719be2a0b0d0e4a9ca7f05b46159ff7e8d3b3534f07bde42ee1",
         },
-        "semantic_sha256": "e700e383227259ad182627eb3c4aec32c4e9a4dffc80eedadf1c506f9afbf2cc",
+        "semantic_sha256": "a365ccff80fcf6ae16b3c6ee6994a0fbab0eed0f81b6f44c136aeb5bc60827fe",
     },
     "nlc-contracted": {
         "counts": {
-            "amplitude_roots": 18,
-            "attachments": 120,
-            "closures": 18,
+            "amplitude_roots": 9,
+            "attachments": 60,
+            "closures": 9,
             "color_contraction_entries": 63,
             "couplings": 1,
-            "current_slots": 73,
-            "finalizations": 66,
-            "invocations": 84,
-            "momentum_slots": 13,
-            "reduction_groups": 18,
+            "current_slots": 42,
+            "finalizations": 35,
+            "invocations": 54,
+            "momentum_slots": 10,
+            "reduction_groups": 9,
             "referenced_exact_kernels": 4,
-            "selector_domains": 34,
-            "selector_memberships": 54,
+            "selector_domains": 16,
+            "selector_memberships": 23,
             "stages": 2,
-            "value_slots": 73,
+            "value_slots": 42,
         },
         "digests": {
-            "exact": "b27b0cad1501b6a7e8b5af85536106b07a186a352c2106711c187594988660fd",
-            "layout": "2500a3dc283495b7c86405a25ce5de90841d026f27a2a38ee0644b98739696df",
-            "reductions": "513d22dc4c4cb819e3e2b15ee87fbdb5e50cefaa33c10a7b1b9457a95cc46c16",
-            "resolved": "8992b3b811e142e32f5ea1b1bdf1101bb91ccf8b353db7f6be48626473532ffb",
-            "selectors": "a24b39783b6fdacd1579979cd7b9978351f8cb402d983828d179d0bbda836a19",
-            "tables": "614fe6783c43e62fda3c6ae4b7766b5a9d4e5d74a25fd4af484fa95b749d502f",
+            "exact": "c4905646ff2051da0d01f39d272bf9254e06783b9ba111464d0cee6f001564ca",
+            "layout": "5011450f81d92ba87006ac33fba1aceb4411ef1d86b04c2361b3e5237659e7a2",
+            "reductions": "317a7505a86b995ce56e5de37ae8d16468147e044967f9820f861fd2f1289f61",
+            "resolved": "673928032c4063e5aacb8eab41076de0d6c49ea64e56b13c0fa43c149c2c2393",
+            "selectors": "72534cf8b4737ba7bbf91913532f6240828386a1cd1d3146b253f44680af0a00",
+            "tables": "88ed14086d10d7d6fae05582da191f5e58a800fbe882550f0d4ece556d53885c",
         },
-        "semantic_sha256": "0c2d33d935b9e35598c576ce032d2c986f1f663a0569e6a4932dab1fa79453e6",
+        "semantic_sha256": "099f175a73df2ea2b912676fe1e9a8a1db406e293fe625632229d38cfc34108e",
     },
     "full-contracted": {
         "counts": {
-            "amplitude_roots": 18,
-            "attachments": 120,
-            "closures": 18,
+            "amplitude_roots": 9,
+            "attachments": 60,
+            "closures": 9,
             "color_contraction_entries": 63,
             "couplings": 1,
-            "current_slots": 73,
-            "finalizations": 66,
-            "invocations": 84,
-            "momentum_slots": 13,
-            "reduction_groups": 18,
+            "current_slots": 42,
+            "finalizations": 35,
+            "invocations": 54,
+            "momentum_slots": 10,
+            "reduction_groups": 9,
             "referenced_exact_kernels": 4,
-            "selector_domains": 34,
-            "selector_memberships": 54,
+            "selector_domains": 16,
+            "selector_memberships": 23,
             "stages": 2,
-            "value_slots": 73,
+            "value_slots": 42,
         },
         "digests": {
-            "exact": "b27b0cad1501b6a7e8b5af85536106b07a186a352c2106711c187594988660fd",
-            "layout": "b68828f7c57130df4fd916691cb30df937a4f8f6009a69b133bbe58b923aa8dd",
-            "reductions": "aee94cd71574e24ee90fef2f8070e3fded7b4f61ec02789d1d6cd60602e3350a",
-            "resolved": "c5608596ba42ddfdbad9e0a5c27db395519b32704386767f4b25100b4375a30c",
-            "selectors": "9ca1b90505098cc6f19d87eba29baa552da47173ff2658f359e27de838bc1ca2",
-            "tables": "6a7710cc016be365d0cc68a0d588766c4da4a6f890731bb15ed1312d22028d5d",
+            "exact": "c4905646ff2051da0d01f39d272bf9254e06783b9ba111464d0cee6f001564ca",
+            "layout": "ad636a8248db6743486a0d3194ff8b08d52fd84c3c46dcaa39bc333c908227d5",
+            "reductions": "3f33aa7c721a382fd58fc911e9fd87a0323d16a8a05a286a87aa28a841a6eea4",
+            "resolved": "19acacf5110579b2c157b48dc5c4aacac3da5b51d76f13658ce4a5cbd73754de",
+            "selectors": "6f33e6fbd9d47db7a6f0bb8434606ef5b24eb2c644fd3d03006a35201b89a6d3",
+            "tables": "c34d6a21080a973da4120a7ddd76d238b3fdbe905fd415d498a7097699ff08bb",
         },
-        "semantic_sha256": "94754ee82ff1bade48c19c3c2a217d3e92b03d948182e4c1082600fc0f9530f6",
+        "semantic_sha256": "eb591d6fa4d86a6e6c0aa8d582af9e349a5a789fa1d903c3a4c3a9b4d1571d33",
     },
 }
 

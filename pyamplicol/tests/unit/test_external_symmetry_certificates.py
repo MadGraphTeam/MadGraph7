@@ -17,7 +17,7 @@ from pyamplicol.generation.dag_equivalence import (
     _derive_current_value_equivalences,
     assign_recursive_current_evaluation_reuse,
 )
-from pyamplicol.generation.dag_types import CurrentNode, InteractionNode
+from pyamplicol.generation.dag_types import CurrentNode
 from pyamplicol.models import BuiltinSMModel, CompiledUFOModel, compile_model_source
 from pyamplicol.models.builtin.process_ir import build_process_ir
 from pyamplicol.models.compiler_contacts import _four_point_contact_color_split
@@ -589,10 +589,10 @@ def test_external_sm_matches_builtin_production_dag_topology(
     )
 
 
-def test_recursive_current_reuse_recovers_legacy_mixed_line_fanout(
+def test_route_safe_mixed_line_dag_stays_below_legacy_kernel_count(
     external_sm,
 ) -> None:
-    """Contracted-color SM DAGs must recover all legacy kernel reuse."""
+    """Contracted-color SM DAGs remain smaller than the legacy kernel set."""
 
     compiled, external_model = external_sm
     builtin_model = BuiltinSMModel()
@@ -621,19 +621,21 @@ def test_recursive_current_reuse_recovers_legacy_mixed_line_fanout(
         len(builtin_dag.currents),
         len(builtin_dag.interactions),
         len(builtin_dag.amplitude_roots),
-    ) == (16_080, 46_032, 3_072)
+    ) == (14_448, 37_200, 3_072)
     assert (
         len(external_dag.currents),
         len(external_dag.interactions),
         len(external_dag.amplitude_roots),
-    ) == (16_080, 46_032, 3_072)
+    ) == (14_448, 37_200, 3_072)
 
     # Original AmpliCol evaluates 652 post-filter kernels for each of the 64
-    # nonzero helicities. The recursive proof may recover additional exact
-    # model-generic relations, but it must not retain the former 46,032 groups.
+    # nonzero helicities. Ordered labels and helicity ancestry are physical
+    # runtime routes and therefore may not be merged merely by a reflection
+    # proof. Exact structural pruning still keeps both model implementations
+    # below the legacy kernel count.
     legacy_kernel_evaluations = 652 * 64
-    assert builtin_dag.interaction_evaluation_count == 22_356
-    assert external_dag.interaction_evaluation_count == 22_356
+    assert builtin_dag.interaction_evaluation_count == 37_200
+    assert external_dag.interaction_evaluation_count == 37_200
     assert builtin_dag.interaction_evaluation_count < legacy_kernel_evaluations
     assert external_dag.interaction_evaluation_count < legacy_kernel_evaluations
     assert assign_recursive_current_evaluation_reuse(
@@ -646,7 +648,7 @@ def test_recursive_current_reuse_recovers_legacy_mixed_line_fanout(
     ) == external_dag
 
 
-def test_recursive_reuse_covers_every_materialized_gluon_reflection(
+def test_recursive_reuse_keeps_reflected_runtime_routes_distinct(
     external_sm,
 ) -> None:
     compiled, external_model = external_sm
@@ -709,48 +711,26 @@ def test_recursive_reuse_covers_every_materialized_gluon_reflection(
                 if reversed_representatives is None:
                     continue
                 checked += 1
-                assert representatives & reversed_representatives
+                assert representatives.isdisjoint(reversed_representatives)
         assert checked > 0
 
 
-def test_recursive_current_reuse_fails_closed_after_coefficient_deformation(
-) -> None:
+def test_recursive_current_reuse_keeps_mixed_line_routes_strict() -> None:
     model = BuiltinSMModel()
     dag = compile_generic_dag(
         build_process_ir("d d~ > t t~ g g", color_accuracy="full"),
         model=model,
     )
     equivalences = _derive_current_value_equivalences(dag, model)
-    interactions_by_result: dict[int, list[InteractionNode]] = {}
-    for interaction in dag.interactions:
-        interactions_by_result.setdefault(interaction.result_id, []).append(interaction)
-    target = next(
-        current
+
+    # This production-shaped DAG has no exact same-route current aliases.
+    # Coefficient-deformation rejection is covered independently by the
+    # synthetic projective-vector tests.
+    assert all(
+        equivalences[current.id].representative_id == current.id
         for current in dag.currents
         if not current.is_source
-        and equivalences[current.id].representative_id != current.id
-        and len(interactions_by_result.get(current.id, ())) >= 2
     )
-    interaction = interactions_by_result[target.id][0]
-    deformed_interactions = tuple(
-        replace(
-            candidate,
-            color_weight=(
-                candidate.color_weight[0] + 0.125,
-                candidate.color_weight[1],
-            ),
-        )
-        if candidate.id == interaction.id
-        else candidate
-        for candidate in dag.interactions
-    )
-
-    deformed = _derive_current_value_equivalences(
-        replace(dag, interactions=deformed_interactions),
-        model,
-    )
-
-    assert deformed[target.id].representative_id == target.id
 
 
 def test_external_sm_tensor_ordering_ids_are_source_inventory_invariant(

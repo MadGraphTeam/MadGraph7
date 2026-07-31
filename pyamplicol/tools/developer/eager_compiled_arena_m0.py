@@ -36,7 +36,7 @@ OUTPUT_SCHEMA = 1
 CAPTURE_KIND = "pyamplicol-recurrence-z6g-benchmark"
 CAPTURE_SCHEMA = 6
 CAPTURE_ACCEPTANCE_KIND = "pyamplicol-three-lane-layout-capture"
-CAPTURE_ACCEPTANCE_SCHEMA = 4
+CAPTURE_ACCEPTANCE_SCHEMA = 5
 PER_LAYOUT_M0_KIND = "pyamplicol-milestone-0-evidence-manifest"
 PER_LAYOUT_M0_SCHEMA = 4
 
@@ -78,6 +78,8 @@ _CAPTURE_ROOT_KEYS = {
     "configuration",
     "generation",
     "profile_schedule",
+    "validation_preflight",
+    "paired_profile_coordination",
     "profiles",
     "validation_summary",
     "selector_contracts_match",
@@ -739,10 +741,34 @@ def _revalidate_schema6(
             arguments,
             recomputed_capture,
         )
+        recomputed_preflight = benchmark._validation_preflight_contract(
+            arguments,
+            {
+                mode: profiles[mode]
+                for mode in benchmark.AUTHORITATIVE_EXECUTION_MODES
+                if mode in profiles
+            },
+        )
     except Exception as error:
         raise EvidenceError(
             f"{model}/{layout} raw schema-6 evidence failed revalidation: {error}"
         ) from error
+    preflight = _require_mapping(
+        payload.get("validation_preflight"),
+        f"{model}/{layout}.validation_preflight",
+    )
+    stored_preflight_contract = {
+        key: value
+        for key, value in preflight.items()
+        if key != "worker_evidence"
+    }
+    if stored_preflight_contract != recomputed_preflight:
+        _die(f"{model}/{layout} stored validation preflight is stale or forged")
+    if payload.get("paired_profile_coordination") is not None:
+        _die(
+            f"{model}/{layout} portability capture unexpectedly uses paired "
+            "profile coordination"
+        )
     if payload.get("validation_summary") != recomputed_summary:
         _die(f"{model}/{layout} stored validation summary is stale or forged")
     if payload.get("capture_acceptance") != recomputed_capture:

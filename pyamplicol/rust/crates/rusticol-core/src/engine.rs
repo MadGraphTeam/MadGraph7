@@ -178,8 +178,8 @@ pub const RECURRENCE_CONTRACTED_COLOR_RUNTIME_CAPABILITY: &str =
     crate::recurrence::RECURRENCE_CONTRACTED_COLOR_CAPABILITY;
 pub const COMPILED_RUNTIME_SELECTORS_CAPABILITY: &str = "rusticol.compiled.runtime-selectors.v1";
 pub const COMPILED_PLANE_ARENA_RUNTIME_CAPABILITY: &str = "compiled-plane-arena-v1";
-pub const COMPILED_PLANE_DIRECT_APPLICATION_ABI: &str = "symjit-direct-application-storage-v1";
-pub const COMPILED_PLANE_SOURCE_APPLICATION_ABI: &str = "symjit-application-storage-v3";
+pub const COMPILED_PLANE_DIRECT_APPLICATION_ABI: &str = "pyamplicol-compiled-plane-kernel-v2";
+pub const COMPILED_PLANE_SOURCE_APPLICATION_ABI: &str = "pyamplicol-symjit-plane-application-v2";
 pub const COMPILED_HELICITY_DUAL_LANE_CAPABILITY: &str = "rusticol.compiled.helicity-dual-lane.v1";
 pub const COMPILED_HELICITY_SELECTOR_UNION_CAPABILITY: &str =
     "rusticol.compiled.helicity-selector-union.v1";
@@ -191,8 +191,8 @@ pub const COMPILED_COLOR_CONTRACTION_WALSH_C2K_CAPABILITY: &str =
     "rusticol.compiled.color-contraction-walsh-c2k.v1";
 pub const COMPILED_COLOR_TOPOLOGY_LANES_CAPABILITY: &str =
     "rusticol.compiled.color-topology-lanes.v1";
-#[cfg(feature = "f64-symjit")]
 pub const SYMJIT_APPLICATION_STORAGE_ABI: &str = "symjit-application-storage-v3";
+pub const SYMJIT_PLANE_APPLICATION_ABI: &str = "pyamplicol-symjit-plane-application-v2";
 
 #[doc(hidden)]
 pub fn preflight_prepared_kernel_pack(
@@ -1922,6 +1922,8 @@ enum EvaluatorManifest {
         word_bits: u8,
         endianness: String,
         required_defuns: Vec<String>,
+        #[serde(default)]
+        plane_application: Option<SymjitPlaneApplicationManifest>,
         evaluator_state_path: Option<String>,
         evaluator_state_runtime_capability: Option<String>,
     },
@@ -1953,6 +1955,122 @@ enum EvaluatorManifest {
         chunk_input_indices: Option<Vec<Vec<usize>>>,
         chunks: Vec<EvaluatorManifest>,
     },
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SymjitPlaneApplicationManifest {
+    application_path: String,
+    application_abi: String,
+    storage_abi: String,
+    element_layout: String,
+    descriptor_order: String,
+    input_complex_count: usize,
+    output_complex_count: usize,
+    input_plane_count: usize,
+    output_plane_count: usize,
+    compiler_type: String,
+    translation_mode: String,
+    optimization_level: u8,
+    simd: bool,
+    complex: bool,
+    fast_math: bool,
+    fast_complex: bool,
+    compression: bool,
+    threading: bool,
+    direct_arena: bool,
+    source_digest: String,
+    target: Value,
+}
+
+impl SymjitPlaneApplicationManifest {
+    fn validate(
+        &self,
+        input_complex_count: usize,
+        output_complex_count: usize,
+        optimization_level: u8,
+    ) -> RusticolResult<()> {
+        let expected_inputs = input_complex_count
+            .checked_mul(2)
+            .ok_or_else(|| RusticolError::integrity("SymJIT plane input count overflows usize"))?;
+        let expected_outputs = output_complex_count
+            .checked_mul(2)
+            .ok_or_else(|| RusticolError::integrity("SymJIT plane output count overflows usize"))?;
+        let digest_valid = self.source_digest.len() == 64
+            && self
+                .source_digest
+                .bytes()
+                .all(|value| value.is_ascii_hexdigit() && !value.is_ascii_uppercase());
+        if self.application_path.is_empty()
+            || self.application_abi != SYMJIT_PLANE_APPLICATION_ABI
+            || self.storage_abi != SYMJIT_APPLICATION_STORAGE_ABI
+            || self.element_layout != "split-complex-plane-major"
+            || self.descriptor_order != "inputs-re-im-then-outputs-re-im"
+            || self.input_complex_count != input_complex_count
+            || self.output_complex_count != output_complex_count
+            || self.input_plane_count != expected_inputs
+            || self.output_plane_count != expected_outputs
+            || self.compiler_type != "native"
+            || self.translation_mode != "symbolica-structured-instructions"
+            || self.optimization_level != optimization_level
+            || !self.simd
+            || !self.complex
+            || !self.fast_math
+            || self.fast_complex
+            || self.threading
+            || !self.direct_arena
+            || !digest_valid
+            || !valid_symjit_plane_target(&self.target)
+        {
+            return Err(RusticolError::compatibility(
+                "SymJIT plane application metadata is incompatible; regenerate the artifact",
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn valid_symjit_plane_target(target: &Value) -> bool {
+    let Some(target) = target.as_object() else {
+        return false;
+    };
+    if target.keys().any(|key| {
+        !matches!(
+            key.as_str(),
+            "word_bits" | "endianness" | "triple" | "cpu_features"
+        )
+    }) || target.get("word_bits").and_then(Value::as_u64) != Some(64)
+        || target.get("endianness").and_then(Value::as_str) != Some("little")
+    {
+        return false;
+    }
+    if let Some(triple) = target.get("triple") {
+        let Some(triple) = triple.as_str() else {
+            return false;
+        };
+        if triple.is_empty() || triple.contains('\0') {
+            return false;
+        }
+    }
+    if let Some(features) = target.get("cpu_features") {
+        let Some(features) = features.as_array() else {
+            return false;
+        };
+        let mut previous: Option<&str> = None;
+        for feature in features {
+            let Some(feature) = feature.as_str() else {
+                return false;
+            };
+            if feature.is_empty()
+                || feature.contains('\0')
+                || previous.is_some_and(|previous| previous >= feature)
+            {
+                return false;
+            }
+            previous = Some(feature);
+        }
+    }
+    true
 }
 
 /// One leaf in the canonical evaluator preorder used by loading, selector
@@ -2696,6 +2814,8 @@ struct RuntimeProfile {
     compiled_direct_arena_boundary_input_bytes: u64,
     compiled_direct_arena_boundary_current_output_bytes: u64,
     compiled_direct_arena_boundary_amplitude_output_bytes: u64,
+    /// Broadcast-plane refresh traffic internal to compiled P-kernels.
+    compiled_direct_arena_internal_broadcast_bytes: u64,
     reduction_input_component_count: u64,
     resolved_materialized_component_count: u64,
     total_materialized_value_count: u64,
@@ -2710,6 +2830,11 @@ struct RuntimeProfile {
     eager_closure_s: f64,
     eager_reduction_s: f64,
     eager_copy_out_s: f64,
+    /// P-kernel scratch reads and writes wholly inside eager Direct-Arena execution.
+    eager_internal_scratch_bytes: u64,
+    /// Point-independent coupling and parameter refreshes wholly inside eager
+    /// Direct-Arena execution.
+    eager_internal_broadcast_bytes: u64,
     recurrence_momentum_fill_s: f64,
     recurrence_union_source_fill_s: f64,
     /// Inclusive top-level recurrence schedule envelope. The role-specific
@@ -2735,6 +2860,22 @@ struct RuntimeProfile {
     recurrence_finalization_row_count: u64,
     recurrence_closure_call_count: u64,
     recurrence_closure_row_count: u64,
+    /// Legacy recurrence Direct-Arena packet counters. These remain private
+    /// because they authenticate the generated-kernel boundary rather than
+    /// the public diagnostic profiler's input/output materialization.
+    recurrence_direct_packed_input_bytes: u64,
+    recurrence_direct_packed_output_bytes: u64,
+    recurrence_direct_scatter_bytes: u64,
+    /// Lane-neutral Direct-Arena traffic counters observed by recurrence.
+    recurrence_direct_packet_input_bytes: u64,
+    recurrence_direct_packet_output_bytes: u64,
+    recurrence_direct_gather_bytes: u64,
+    recurrence_direct_traffic_scatter_bytes: u64,
+    recurrence_direct_remap_bytes: u64,
+    /// P-kernel output scratch traffic entirely inside recurrence execution.
+    recurrence_internal_scratch_bytes: u64,
+    /// P-kernel broadcast-plane traffic entirely inside recurrence execution.
+    recurrence_internal_broadcast_bytes: u64,
 }
 
 // Saved SymJIT applications are native payloads and do not currently guarantee
@@ -2818,6 +2959,8 @@ impl RuntimeProfile {
             sector.compiled_direct_arena_boundary_current_output_bytes;
         self.compiled_direct_arena_boundary_amplitude_output_bytes +=
             sector.compiled_direct_arena_boundary_amplitude_output_bytes;
+        self.compiled_direct_arena_internal_broadcast_bytes +=
+            sector.compiled_direct_arena_internal_broadcast_bytes;
         self.reduction_input_component_count += sector.reduction_input_component_count;
         self.resolved_materialized_component_count += sector.resolved_materialized_component_count;
         self.total_materialized_value_count += sector.total_materialized_value_count;
@@ -2832,6 +2975,19 @@ impl RuntimeProfile {
         self.eager_closure_s += sector.eager_closure_s;
         self.eager_reduction_s += sector.eager_reduction_s;
         self.eager_copy_out_s += sector.eager_copy_out_s;
+        self.eager_internal_scratch_bytes += sector.eager_internal_scratch_bytes;
+        self.eager_internal_broadcast_bytes += sector.eager_internal_broadcast_bytes;
+        self.recurrence_direct_packed_input_bytes += sector.recurrence_direct_packed_input_bytes;
+        self.recurrence_direct_packed_output_bytes += sector.recurrence_direct_packed_output_bytes;
+        self.recurrence_direct_scatter_bytes += sector.recurrence_direct_scatter_bytes;
+        self.recurrence_direct_packet_input_bytes += sector.recurrence_direct_packet_input_bytes;
+        self.recurrence_direct_packet_output_bytes += sector.recurrence_direct_packet_output_bytes;
+        self.recurrence_direct_gather_bytes += sector.recurrence_direct_gather_bytes;
+        self.recurrence_direct_traffic_scatter_bytes +=
+            sector.recurrence_direct_traffic_scatter_bytes;
+        self.recurrence_direct_remap_bytes += sector.recurrence_direct_remap_bytes;
+        self.recurrence_internal_scratch_bytes += sector.recurrence_internal_scratch_bytes;
+        self.recurrence_internal_broadcast_bytes += sector.recurrence_internal_broadcast_bytes;
         add_profile_vector(
             &mut self.stage_input_pack_by_stage_s,
             &sector.stage_input_pack_by_stage_s,
@@ -2856,6 +3012,30 @@ impl RuntimeProfile {
             &mut self.stage_output_assign_by_stage_s,
             &sector.stage_output_assign_by_stage_s,
         );
+    }
+
+    fn validate_recurrence_direct_boundary_traffic(&self) -> RusticolResult<()> {
+        if self.recurrence_direct_packed_input_bytes
+            | self.recurrence_direct_packed_output_bytes
+            | self.recurrence_direct_scatter_bytes
+            != 0
+        {
+            return Err(RusticolError::integrity(
+                "recurrence Direct-Arena execution recorded legacy pack/scatter boundary traffic",
+            ));
+        }
+        if self.recurrence_direct_packet_input_bytes
+            | self.recurrence_direct_packet_output_bytes
+            | self.recurrence_direct_gather_bytes
+            | self.recurrence_direct_traffic_scatter_bytes
+            | self.recurrence_direct_remap_bytes
+            != 0
+        {
+            return Err(RusticolError::integrity(
+                "recurrence Direct-Arena execution recorded packet/gather/scatter/remap traffic",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -4275,6 +4455,8 @@ pub(crate) use evaluator::native_direct::tests::count_allocations;
 pub(crate) use evaluator::symjit_direct::tests::count_allocations;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 pub(crate) use evaluator::symjit_eager_direct;
+#[cfg(feature = "f64-symjit")]
+pub(crate) use evaluator::symjit_plane::compile_symbolica_program_to_plane_application_bytes;
 use evaluator::*;
 
 #[path = "wavefunctions.rs"]

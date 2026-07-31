@@ -13,7 +13,6 @@ from tools.performance_report.cache import empty_measurement, reset_entry
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.measurement import (
     failure_measurement,
-    source_revision,
 )
 from tools.performance_report.models import ArtifactPolicy, ResultStatus
 from tools.performance_report.publication import publication_absolute_paths
@@ -131,6 +130,7 @@ def test_static_na_current_never_merges_into_publication_cache(
 def test_merge_joins_immutable_current_record_by_cell_id(tmp_path: Path) -> None:
     service = _service(tmp_path)
     service.publish(reset=True, merge_artifacts=False)
+    source = require_eligible_report_source(service.paths.repo_root)
     cell = next(
         item
         for item in service.catalog.measurement_cells()
@@ -216,7 +216,8 @@ def test_merge_joins_immutable_current_record_by_cell_id(tmp_path: Path) -> None
             "validation": {"status": "ok", DIRECT_AGREEMENT_FIELD: []},
             "resources": {},
             "provenance": {
-                "report_source_revision": source_revision(service.paths.repo_root),
+                "report_source_revision": source.revision,
+                "report_source_tree": source.tree,
                 "effective_config": {
                     "model": {
                         "cache_dir": str(service.paths.repo_root / ".cache/model"),

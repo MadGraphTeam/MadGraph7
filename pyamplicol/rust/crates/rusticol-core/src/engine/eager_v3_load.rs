@@ -259,6 +259,8 @@ fn load_eager_v3_direct_scheduler(
         Symjit {
             source: Vec<u8>,
             descriptor: Vec<u8>,
+            expected_optimization_level: u32,
+            expected_compression: bool,
         },
         Native {
             library: Arc<crate::artifact::PinnedNativeLibrary>,
@@ -295,16 +297,56 @@ fn load_eager_v3_direct_scheduler(
                         kernel.kernel_id
                     )));
                 }
-                let application_path = manifest
+                let plane_application = manifest
                     .f64_evaluator_manifest
-                    .get("application_path")
-                    .and_then(serde_json::Value::as_str)
+                    .get("plane_application")
+                    .and_then(serde_json::Value::as_object)
                     .ok_or_else(|| {
                         RusticolError::compatibility(format!(
-                            "eager Direct-Arena kernel {} has no SymJIT source application",
+                            "eager Direct-Arena kernel {} has no SymJIT plane application",
                             kernel.kernel_id
                         ))
                     })?;
+                let application_path = plane_application
+                    .get("application_path")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or_else(|| {
+                        RusticolError::artifact(format!(
+                            "eager Direct-Arena kernel {} has no plane-application path",
+                            kernel.kernel_id
+                        ))
+                    })?;
+                let expected_optimization_level = plane_application
+                    .get("optimization_level")
+                    .and_then(serde_json::Value::as_u64)
+                    .and_then(|level| u32::try_from(level).ok())
+                    .ok_or_else(|| {
+                        RusticolError::compatibility(format!(
+                            "eager Direct-Arena kernel {} has no authenticated SymJIT \
+                             optimization level; regenerate the prepared model",
+                            kernel.kernel_id
+                        ))
+                    })?;
+                let expected_compression = plane_application
+                    .get("compression")
+                    .and_then(serde_json::Value::as_bool)
+                    .ok_or_else(|| {
+                        RusticolError::compatibility(format!(
+                            "eager Direct-Arena kernel {} has no authenticated SymJIT \
+                             compression setting; regenerate the prepared model",
+                            kernel.kernel_id
+                        ))
+                    })?;
+                if plane_application
+                    .get("application_abi")
+                    .and_then(serde_json::Value::as_str)
+                    != Some(crate::eager_layout::EAGER_DIRECT_SOURCE_APPLICATION_ABI)
+                {
+                    return Err(RusticolError::compatibility(format!(
+                        "eager Direct-Arena kernel {} has an incompatible plane-application ABI",
+                        kernel.kernel_id
+                    )));
+                }
                 let source = payloads.source(application_path)?;
                 let source_bytes = source.read()?.into_owned();
                 let display_path = PathBuf::from(source.display_name());
@@ -332,6 +374,8 @@ fn load_eager_v3_direct_scheduler(
                     OwnedPreparedApplication::Symjit {
                         source: source_bytes,
                         descriptor,
+                        expected_optimization_level,
+                        expected_compression,
                     },
                     display_path,
                 )
@@ -417,12 +461,17 @@ fn load_eager_v3_direct_scheduler(
         .iter()
         .map(|kernel| {
             let application = match &kernel.application {
-                OwnedPreparedApplication::Symjit { source, descriptor } => {
-                    crate::eager_runtime::EagerDirectPreparedApplication::Symjit {
-                        source_application: source,
-                        descriptor,
-                    }
-                }
+                OwnedPreparedApplication::Symjit {
+                    source,
+                    descriptor,
+                    expected_optimization_level,
+                    expected_compression,
+                } => crate::eager_runtime::EagerDirectPreparedApplication::Symjit {
+                    source_application: source,
+                    descriptor,
+                    expected_optimization_level: *expected_optimization_level,
+                    expected_compression: *expected_compression,
+                },
                 OwnedPreparedApplication::Native {
                     library,
                     function_name,

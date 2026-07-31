@@ -427,7 +427,10 @@ def _build_artifact(
         backend="jit",
         optimization_settings={"jit_optimization_level": 2},
         producer={"distribution": "pyamplicol", "version": "test"},
-        dependency_abis={"symbolica_serialization": "test"},
+        dependency_abis={
+            "symbolica_serialization": "test",
+            "symjit_plane_application": "pyamplicol-symjit-plane-application-v2",
+        },
         provenance={"compiled_model": "test"},
         target={
             "portable": True,

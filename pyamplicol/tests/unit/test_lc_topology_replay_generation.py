@@ -785,6 +785,7 @@ def test_execution_manifest_carries_additive_replay_contract(
             "current_count": len(dag.currents),
             "source_count": len(dag.sources),
             "interaction_count": len(dag.interactions),
+            "interaction_evaluation_count": dag.interaction_evaluation_count,
             "amplitude_root_count": len(dag.amplitude_roots),
             "truncated": dag.truncated,
         },

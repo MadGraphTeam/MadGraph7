@@ -204,7 +204,7 @@ fn validate_execution_manifest(manifest: &ExecutionManifest) -> RusticolResult<(
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "f64-symjit"))]
 mod execution_summary_tests {
     use super::*;
 

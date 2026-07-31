@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -729,11 +730,15 @@ def test_export_holds_source_writer_lock_while_copying(
 
     def checking_copy(source: Path, destination: Path) -> None:
         nonlocal observed_lock
+        def contend() -> None:
+            with competing.store.named_lock("report-writer", timeout=0.0):
+                pass
+
         with (
+            ThreadPoolExecutor(max_workers=1) as executor,
             pytest.raises(LockTimeoutError),
-            competing.store.named_lock("report-writer", timeout=0.0),
         ):
-            pass
+            executor.submit(contend).result()
         observed_lock = True
         original_copy(source, destination)
 

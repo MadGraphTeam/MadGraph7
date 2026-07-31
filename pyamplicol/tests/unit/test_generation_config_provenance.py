@@ -71,6 +71,15 @@ def _stub_candidate_artifact_generation(
             symbolica_adapters._symjit_element_layout(),
         ),
     )
+    monkeypatch.setattr(
+        symbolica_adapters._JITSymbolicaEvaluatorAdapter,
+        "_export_symjit_plane_application",
+        lambda _self, *, optimization_level: (
+            b"test-symjit-plane-application",
+            "0" * 64,
+            {"word_bits": 64, "endianness": "little"},
+        ),
+    )
 
 
 def test_programmatic_generator_forwards_config_resolution(

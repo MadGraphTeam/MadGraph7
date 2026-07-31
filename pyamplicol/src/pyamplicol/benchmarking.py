@@ -53,9 +53,7 @@ _LC_ALL_FLOW_PROFILE_RECOMMENDATION = (
     "--lc-flow-layout all-flow-union for the optimized "
     "all-flows/single-helicity workload"
 )
-_EVALUATOR_TOTAL_SAMPLE_CONTRACT = (
-    "accumulated-repeated-warmed-evaluator-total-v1"
-)
+_EVALUATOR_TOTAL_SAMPLE_CONTRACT = "accumulated-repeated-warmed-evaluator-total-v1"
 _COMPILED_DIRECT_ARENA_COUNTER_KEYS = (
     "compiled_direct_arena_engine_count",
     "compiled_direct_arena_call_count",

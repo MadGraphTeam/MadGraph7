@@ -164,6 +164,7 @@ def _publish_info(
     payload["source_runtime"] = {
         "extension_name": extension.name,
         "extension_sha256": hashlib.sha256(extension.read_bytes()).hexdigest(),
+        "mode": "candidate",
         "native_build_inputs_sha256": native_digest,
     }
     SOURCE_RUNTIME_INFO.parent.mkdir(parents=True, exist_ok=True)

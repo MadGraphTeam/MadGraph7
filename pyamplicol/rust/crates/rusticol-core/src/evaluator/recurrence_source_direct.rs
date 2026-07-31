@@ -12,7 +12,7 @@
 #[cfg(not(feature = "symbolica-runtime"))]
 use num_complex::Complex;
 #[cfg(feature = "symbolica-runtime")]
-use symbolica::prelude::{Complex, Real, RealLike};
+use symbolica::prelude::Complex;
 
 use crate::recurrence::direct_backend::{
     DIRECT_STATUS_OK, DirectArenaView, DirectFactorView, DirectMomentumView, DirectParameterView,
