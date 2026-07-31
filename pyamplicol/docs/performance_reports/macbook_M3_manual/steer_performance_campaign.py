@@ -18,6 +18,25 @@ def _repository_root(entrypoint: Path) -> Path:
     raise RuntimeError("campaign entrypoint is not inside a pyAmpliCol checkout")
 
 
+def _embedded_profile(entrypoint: Path, repo_root: Path) -> str:
+    """Derive the campaign identity from its directory under report profiles."""
+
+    profile_parent = repo_root / "docs/performance_reports"
+    try:
+        relative = entrypoint.parent.relative_to(profile_parent)
+    except ValueError as error:
+        raise RuntimeError(
+            "campaign entrypoint must be directly inside "
+            "docs/performance_reports/<campaign>"
+        ) from error
+    if len(relative.parts) != 1:
+        raise RuntimeError(
+            "campaign entrypoint must be directly inside "
+            "docs/performance_reports/<campaign>"
+        )
+    return relative.parts[0]
+
+
 def _reexecute_with_repository_python(repo_root: Path) -> None:
     expected = repo_root / ".venv/bin/python"
     if not expected.is_file():
@@ -47,12 +66,13 @@ def _reexecute_with_repository_python(repo_root: Path) -> None:
 def main() -> int:
     entrypoint = Path(__file__).resolve()
     repo_root = _repository_root(entrypoint)
+    profile = _embedded_profile(entrypoint, repo_root)
     _reexecute_with_repository_python(repo_root)
     sys.path.insert(0, os.fspath(repo_root))
     sys.path.insert(0, os.fspath(repo_root / "src"))
     from tools.performance_report.manual_campaign import main as campaign_main
 
-    return campaign_main(sys.argv[1:], repo_root=repo_root)
+    return campaign_main(sys.argv[1:], repo_root=repo_root, profile=profile)
 
 
 if __name__ == "__main__":

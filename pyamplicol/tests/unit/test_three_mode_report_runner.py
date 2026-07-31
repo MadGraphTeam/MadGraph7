@@ -199,6 +199,7 @@ def test_benchmark_measurement_records_authenticated_arena_unavailable_timing() 
     assert measurement["benchmark_evidence"] == {
         "report_command_path": PAIRED_ARENA_PROFILE_COMMAND_PATH,
         "report_public_cli_path": None,
+        "measurement_phase_elapsed_seconds": 5.0,
         "target_runtime_seconds": 5.0,
         "achieved_runtime_seconds": 5.0,
         "target_runtime_achieved": True,
@@ -410,11 +411,12 @@ def test_report_arena_benchmark_uses_private_profiler_without_public_fallback(
 
     backend = Runtime()
     runtime = SimpleNamespace(_backend=backend)
-    clock_values: list[float] = []
-    clock = 0.0
+    clock_values = [0.0, 0.0, 0.2e-3, 0.2e-3, 0.4e-3, 0.4e-3]
+    clock = 0.4e-3
     for _ in range(5):
         clock_values.extend((clock, clock + 1.2e-3, clock + 1.2e-3, clock + 3.2e-3))
         clock += 3.2e-3
+    clock_values.extend((clock, clock + 0.1e-3))
     clock_iterator = iter(clock_values)
     monkeypatch.setattr(
         "tools.performance_report.runner.time.perf_counter",
@@ -444,6 +446,19 @@ def test_report_arena_benchmark_uses_private_profiler_without_public_fallback(
         5.0e-3
     )
     assert result.environment["measured_point_count"] == 10
+    assert result.environment["warmup_elapsed_seconds"] == pytest.approx(0.2e-3)
+    assert result.environment["calibration_elapsed_seconds"] == pytest.approx(
+        0.2e-3
+    )
+    assert result.environment["calibration_outer_elapsed_seconds"] == pytest.approx(
+        0.2e-3
+    )
+    assert result.environment["measurement_phase_elapsed_seconds"] == pytest.approx(
+        16.0e-3
+    )
+    assert result.environment["profile_total_elapsed_seconds"] == pytest.approx(
+        16.5e-3
+    )
     measurement = _benchmark_measurement(result, matrix_element=2.0)
     total_timing = measurement["evaluator_total_timing"]
     assert isinstance(total_timing, dict)
@@ -613,7 +628,10 @@ def test_report_benchmark_keeps_recurrence_on_supported_public_runner(
     )
 
     assert result is not expected
-    assert result.environment == {
+    assert result.environment["profile_total_elapsed_seconds"] >= 0.0
+    observed_environment = dict(result.environment)
+    observed_environment.pop("profile_total_elapsed_seconds")
+    assert observed_environment == {
         "existing": "evidence",
         "report_command_path": LOADED_RUNTIME_PROFILE_COMMAND_PATH,
         "report_public_cli_path": PUBLIC_CLI_COMMAND_PATH,

@@ -23,10 +23,21 @@ _UNRESOLVED_PATTERNS = (
 )
 
 
-def validate_latex_log(log: str) -> None:
-    """Reject layout overflow and unresolved cross-reference diagnostics."""
+def validate_latex_log(
+    log: str,
+    *,
+    allow_overfull_boxes: bool = False,
+) -> None:
+    """Reject unresolved diagnostics and, by default, layout overflow.
 
-    if "Overfull \\hbox" in log or "Overfull \\vbox" in log:
+    Interactive report refreshes may explicitly tolerate overfull boxes while
+    a campaign is still being filled.  The stricter default remains useful for
+    release and final-layout audits.
+    """
+
+    if not allow_overfull_boxes and (
+        "Overfull \\hbox" in log or "Overfull \\vbox" in log
+    ):
         raise StandaloneBuildError("LaTeX output contains an overfull box")
     for pattern in _UNRESOLVED_PATTERNS:
         if pattern.search(log):

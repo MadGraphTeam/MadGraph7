@@ -8,6 +8,7 @@ import pytest
 from tools.performance_report.standalone_build import (
     StandaloneBuildError,
     compile_report,
+    validate_latex_log,
 )
 
 
@@ -60,4 +61,21 @@ def test_standalone_builder_rejects_overfull_output(tmp_path: Path) -> None:
                 )
             ),
             passes=2,
+        )
+
+
+def test_latex_log_can_explicitly_allow_overfull_boxes() -> None:
+    validate_latex_log(
+        "Overfull \\hbox (1.0pt too wide)\n"
+        "Overfull \\vbox (2.0pt too high)\n",
+        allow_overfull_boxes=True,
+    )
+
+
+def test_latex_log_still_rejects_unresolved_references_when_overfull_allowed() -> None:
+    with pytest.raises(StandaloneBuildError, match="unresolved"):
+        validate_latex_log(
+            "Overfull \\hbox (1.0pt too wide)\n"
+            "LaTeX Warning: There were undefined references.\n",
+            allow_overfull_boxes=True,
         )

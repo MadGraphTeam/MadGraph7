@@ -71,6 +71,9 @@ Build a fresh, manually steerable MacBook M3 performance campaign whose concurre
 - Use the Python `ratatui` compatibility module, pinned through the developer-install dependency path. The campaign script must never install it. Use Ratatui’s headless frame and styled-cell APIs for deterministic capture tests. [Ratatui package documentation](https://pypi.org/project/ratatui/)
 - Render a responsive dashboard with an overview table, selectable worker table, selected-worker detail panel, progress gauges, resource information, recent events, and concise log tail.
 - Support arrow-key worker selection, scrolling, help, and reliable terminal restoration after completion, errors, or interrupts.
+- Keep running/preparing/queued workers above attention and completed rows, pan the worker viewport with arrow-key selection, use `d` to show/hide completed and successfully recycled rows, and use `e` to show/hide failures, caps, and recycled non-success rows. Show the error count in the overview.
+- For completed and recycled rows, replace repeated resource-sample chatter with a persisted typed phase table containing only directly measured durations (preparation, generation and its measured substeps, warm-up, calibration, profiling, attribution, and overall observed resources). Show original attempt/source/time/reuse provenance, state explicitly when no work ran in this invocation, and mark unavailable historical timings rather than deriving them.
+- Coalesce repeated active resource samples by phase so preparation and post-generation supervision remain visible without flooding the recent-event list.
 - Always show:
   - total entries selected;
   - entries already covered and recycled;
@@ -92,7 +95,9 @@ Build a fresh, manually steerable MacBook M3 performance campaign whose concurre
 - Exclude AmpliCol itself, missing or capped values, entries without a compatible baseline, and incompatible generation layouts. Report concise exclusion counts without performing additional artifact authentication.
 - Provide `--format json` as a machine-readable uncolored alternative.
 - `refresh-pdf` reads one stable snapshot of current-result metadata, regenerates every result JSON and TeX table, compiles in a fresh temporary build directory, and atomically installs a newly built `pyAmpliCol.pdf`.
+- Treat LaTeX overfull-box diagnostics as non-fatal layout warnings during `refresh-pdf`; genuine compilation errors remain fatal. On success, print the absolute path of the installed PDF.
 - Serialize only the report publication/install step. Incomplete worker attempts are naturally absent from current pointers and require no costly validation.
+- Keep campaign workspaces relocatable: a copied report directory derives its profile identity, artifact root, coordination root, source marker, report input, and output PDF from the copied directory/workspace metadata rather than a hard-coded `macbook_M3_manual` name, so copies can run as independent campaigns.
 
 ## Verification
 

@@ -727,6 +727,196 @@ def test_recycled_resource_cap_is_available_to_error_filter(
     assert worker.wall_seconds == 3601.0
     assert worker.peak_rss_bytes == 2_000_000_000
     assert worker.reproduce_generate is not None
+    assert worker.recycled
+
+    state = DashboardState(
+        instance_id="recycled-cap",
+        selected_ids=(cell.cell_id,),
+        recycled_ids={cell.cell_id},
+        static_na_ids=set(),
+        workers=workers,
+        show_completed=True,
+    )
+    assert [row.cell_id for row in state.visible_workers()] == [cell.cell_id]
+    state.show_errors = False
+    assert state.visible_workers() == ()
+
+
+def test_successful_recycled_result_uses_done_filter_and_persisted_timeline(
+    tmp_path: Path,
+) -> None:
+    cell = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+        and cell.measurement.model is ModelKey.BUILTIN_SM
+    )
+    result = {
+        "status": ResultStatus.OK.value,
+        "provenance": {
+            "report_source_revision": "a" * 40,
+            "manual_campaign": {
+                "cell_identity": {
+                    "execution_mode": "recurrence",
+                    "model": "builtin_sm",
+                },
+                "phase_timeline": {
+                    "schema": "pyamplicol-manual-campaign-phase-timeline-v1",
+                    "total_worker_wall_seconds": 12.5,
+                    "peak_rss_bytes": 2_048,
+                    "peak_guard_bytes": 4_096,
+                    "entries": [
+                        {
+                            "key": "preparation",
+                            "label": "Preparation",
+                            "seconds": 0.125,
+                            "status": "ok",
+                            "detail": "model ready",
+                        },
+                        {
+                            "key": "generation",
+                            "label": "Generation",
+                            "seconds": 2.5,
+                            "status": "ok",
+                        },
+                        {
+                            "key": "profiling",
+                            "label": "Profiling",
+                            "start_seconds": 3.0,
+                            "end_seconds": 9.0,
+                            "status": "ok",
+                        },
+                    ],
+                },
+            },
+        },
+    }
+    current = LightweightCurrent(
+        cell_id=cell.cell_id,
+        attempt_id="recycled-ok-attempt",
+        result_path=tmp_path / "worker-result.json",
+        result=result,
+        complete=True,
+        reusable=True,
+        reason="matching same-source current",
+    )
+
+    workers = manual_campaign._recycled_attention_workers(
+        (cell,),
+        {cell.cell_id: current},
+        {cell.cell_id},
+        repo_root=ROOT,
+        settings=ReproductionSettings(),
+    )
+    worker = workers[cell.cell_id]
+    assert worker.status == "recycled"
+    assert worker.recycled
+    assert worker.wall_seconds == 12.5
+    assert worker.peak_rss_bytes == 2_048
+    assert worker.peak_guard_bytes == 4_096
+    assert [row.phase for row in worker.phase_timeline] == [
+        "Preparation",
+        "Generation",
+        "Profiling",
+    ]
+    assert worker.phase_timeline[2].wall_seconds is None
+    assert worker.provenance_summary == (
+        "source aaaaaaaaaaaa · engine recurrence · model builtin_sm"
+    )
+
+    state = DashboardState(
+        instance_id="recycled-ok",
+        selected_ids=(cell.cell_id,),
+        recycled_ids={cell.cell_id},
+        static_na_ids=set(),
+        workers=workers,
+    )
+    assert state.visible_workers() == ()
+    state.show_completed = True
+    assert [row.cell_id for row in state.visible_workers()] == [cell.cell_id]
+    state.show_errors = False
+    assert [row.cell_id for row in state.visible_workers()] == [cell.cell_id]
+
+    frame = render_dashboard_frame(state, width=160, height=48)
+    assert "recycled" in frame
+    assert "No work executed by this invocation" in frame
+    assert "Reuse matching same-source current" in frame
+    assert "Phase timeline" in frame
+    assert "Preparation" in frame
+    assert "125.0 ms" in frame
+    assert "2.50 s" in frame
+    assert "Generation" in frame
+    assert "Profiling" in frame
+    assert "unavailable" in frame
+    assert "source aaaaaaaaaaaa" in frame
+
+    decoded = manual_campaign._worker_from_lease(
+        worker.cell_id,
+        worker.as_dict(),
+        peer_instance=None,
+    )
+    assert decoded.status == "recycled"
+    assert decoded.recycled
+    assert decoded.phase_timeline == worker.phase_timeline
+
+
+def test_completed_legacy_result_marks_missing_timeline_unavailable() -> None:
+    worker = WorkerView(
+        "legacy-completed",
+        status="ok",
+        phase="completed",
+        step="measurement published",
+    )
+    state = DashboardState(
+        instance_id="legacy-completed",
+        selected_ids=(worker.cell_id,),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        workers={worker.cell_id: worker},
+        show_completed=True,
+    )
+
+    frame = render_dashboard_frame(state, width=120, height=36)
+    assert "Provenance unavailable" in frame
+    assert "Phase timeline unavailable (older result)" in frame
+
+
+def test_phase_timeline_uses_only_explicit_legacy_durations() -> None:
+    rows = manual_campaign._extract_phase_timeline(
+        {
+            "generation_seconds": 2.25,
+            "provenance": {
+                "runtime_profile": {
+                    "measurement_phase_elapsed_seconds": 1.5,
+                    "started_seconds": 3.0,
+                    "finished_seconds": 99.0,
+                },
+            },
+        }
+    )
+
+    assert [(row.phase, row.wall_seconds) for row in rows] == [
+        ("Generation", 2.25),
+        ("Timed headline measurement", 1.5),
+    ]
+    assert (
+        manual_campaign._extract_phase_timeline(
+            {
+                "timeline": [{"label": "native core", "duration": 99.0}],
+                "provenance": {
+                    "manual_campaign": {
+                        "phase_timeline": {
+                            "schema": "unknown-timeline-v0",
+                            "entries": [
+                                {"label": "untrusted", "seconds": 123.0},
+                            ],
+                        }
+                    }
+                },
+            }
+        )
+        == ()
+    )
 
 
 @pytest.mark.parametrize(
@@ -1345,7 +1535,7 @@ def test_finished_reuse_stays_recycled_while_work_and_caps_complete(
     state = DashboardState(
         instance_id="local",
         selected_ids=("reused", "skipped", "fresh", "capped"),
-        recycled_ids={"reused", "skipped"},
+        recycled_ids=set(),
         static_na_ids=set(),
         source_revision="a" * 40,
     )
@@ -1368,6 +1558,10 @@ def test_finished_reuse_stays_recycled_while_work_and_caps_complete(
 
     assert state.completed_ids == {"fresh", "capped"}
     assert state.capped_ids == {"capped"}
+    assert state.workers["reused"].status == "recycled"
+    assert state.workers["reused"].recycled
+    assert state.workers["skipped"].status == "recycled"
+    assert state.workers["skipped"].recycled
     assert state.counters() == {
         "selected": 4,
         "recycled": 2,
@@ -1611,6 +1805,49 @@ def test_manual_refresh_projects_artifact_output_and_reproduction_commands(
             external[f"{cell.dataset_id}.json"],
             service.paths,
         )
+
+
+def test_copied_campaign_rebinds_private_pdf_build_profile(tmp_path: Path) -> None:
+    staging = tmp_path / "copied_campaign"
+    staging.mkdir()
+    (staging / "report_environment.json").write_text(
+        json.dumps({"profile": "macbook_M3_manual"}),
+        encoding="utf-8",
+    )
+    (staging / "report-workspace.json").write_text(
+        json.dumps(
+            {
+                "profile": "macbook_M3_manual",
+                "artifact_root": ".artifacts/performance-report/macbook_M3_manual",
+                "coordination_root": (
+                    ".artifacts/performance-report-coordination/macbook_M3_manual"
+                ),
+                "initialized_environment": {"profile": "macbook_M3_manual"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (staging / "report_environment.tex").write_text(
+        "\\renewcommand{\\ReportProfileName}{macbook\\_M3\\_manual}\n",
+        encoding="utf-8",
+    )
+
+    manual_campaign._stage_copied_profile_identity(staging, "independent_run")
+
+    environment = json.loads(
+        (staging / "report_environment.json").read_text(encoding="utf-8")
+    )
+    workspace = json.loads(
+        (staging / "report-workspace.json").read_text(encoding="utf-8")
+    )
+    assert environment["profile"] == "independent_run"
+    assert workspace["profile"] == "independent_run"
+    assert workspace["initialized_environment"]["profile"] == "independent_run"
+    assert workspace["artifact_root"].endswith("/independent_run")
+    assert workspace["coordination_root"].endswith("/independent_run")
+    assert "{independent\\_run}" in (
+        staging / "report_environment.tex"
+    ).read_text(encoding="utf-8")
 
 
 def test_executable_reexecutes_from_base_python_into_repository_venv() -> None:

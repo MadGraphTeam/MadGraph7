@@ -323,11 +323,15 @@ class BenchmarkBackend:
                         )
                     )
 
+            calibration_outer_started = time.perf_counter()
             calibration = _calibrate_repetitions(
                 evaluate_once,
                 self._config,
                 initial_seconds=last_warmup_seconds,
                 timer=measure_repetitions,
+            )
+            calibration_outer_elapsed = (
+                time.perf_counter() - calibration_outer_started
             )
             if self._progress is not None:
                 self._progress.emit(
@@ -747,6 +751,7 @@ class BenchmarkBackend:
                 "calibration_block_count": calibration.block_count,
                 "calibration_evaluation_count": calibration.evaluation_count,
                 "calibration_elapsed_seconds": calibration.elapsed_seconds,
+                "calibration_outer_elapsed_seconds": calibration_outer_elapsed,
                 **layout_environment,
                 **evaluator_environment,
             },

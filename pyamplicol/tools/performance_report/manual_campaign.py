@@ -65,7 +65,7 @@ from .scheduler import (
     plan_campaign,
     select_cells,
 )
-from .service import ReportPaths, ReportService
+from .service import ReportPaths, ReportService, validate_profile_name
 from .source_identity import ReportSourceIdentity, _generated_report_path
 from .timing import (
     evaluator_total_timing_record,
@@ -73,6 +73,7 @@ from .timing import (
 )
 
 PROFILE = "macbook_M3_manual"
+_ACTIVE_PROFILE = PROFILE
 DEFAULT_GENERATION_LIMIT_SECONDS = 60.0 * 60.0
 DEFAULT_RAM_BYTES = 30_000_000_000
 DEFAULT_CORES_PER_WORKER = 1
@@ -99,7 +100,9 @@ _DASHBOARD_COUNTER_KEYS = (
 )
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _ACTIVE_WORKER_STATUSES = frozenset({"queued", "preparing", "running"})
-_COMPLETED_WORKER_STATUSES = frozenset({"ok", "reused", "skipped-current"})
+_RECYCLED_SUCCESS_STATUSES = frozenset({"recycled", "reused", "skipped-current"})
+_COMPLETED_WORKER_STATUSES = frozenset({"ok", *_RECYCLED_SUCCESS_STATUSES})
+_PHASE_TIMELINE_SCHEMA = "pyamplicol-manual-campaign-phase-timeline-v1"
 
 
 class ManualCampaignError(RuntimeError):
@@ -627,7 +630,7 @@ def _reproduction_root(repo_root: Path, cell: CellSpec) -> Path:
     return (
         repo_root
         / ".artifacts/performance_reports"
-        / PROFILE
+        / _ACTIVE_PROFILE
         / "manual-reproductions"
         / cell.cell_id
     )
@@ -1595,6 +1598,18 @@ class _IncrementalTailState:
     last_read_bytes: int = 0
 
 
+@dataclass(frozen=True, slots=True)
+class PhaseTimelineRow:
+    """One normalized, presentation-only phase record from persisted evidence."""
+
+    phase: str
+    wall_seconds: float | None = None
+    cpu_seconds: float | None = None
+    peak_memory_bytes: int | None = None
+    status: str | None = None
+    detail: str | None = None
+
+
 @dataclass(slots=True)
 class WorkerView:
     cell_id: str
@@ -1629,6 +1644,10 @@ class WorkerView:
     published_wall_seconds_per_point: float | None = None
     published_evaluator_total_seconds_per_point: float | None = None
     published_recurrence_core_seconds_per_point: float | None = None
+    phase_timeline: tuple[PhaseTimelineRow, ...] = ()
+    provenance_summary: str | None = None
+    reuse_explanation: str | None = None
+    recycled: bool = False
     events: list[str] = field(default_factory=list)
     log_tail: list[str] = field(default_factory=list)
     updated_at: float = field(default_factory=time.time)
@@ -1886,7 +1905,15 @@ class LeaseManager:
                 _tail_progress(worker)
                 _tail_log(worker)
             elif event == "finished":
-                worker.status = str(payload.get("status") or "unknown")
+                reported_status = str(payload.get("status") or "unknown")
+                worker.status = (
+                    "recycled"
+                    if reported_status in _RECYCLED_SUCCESS_STATUSES
+                    else reported_status
+                )
+                worker.recycled = reported_status in _RECYCLED_SUCCESS_STATUSES
+                if worker.recycled:
+                    self.state.recycled_ids.add(cell_id)
                 worker.step = str(payload.get("detail") or worker.status)
                 try:
                     cell = self.service.catalog.cell(cell_id)
@@ -1900,6 +1927,15 @@ class LeaseManager:
                         source_revision=self.state.source_revision,
                     )
                     if current is not None and current.complete:
+                        worker.attempt_id = current.attempt_id
+                        _apply_persisted_worker_result(
+                            worker,
+                            current.result,
+                            recycled=worker.recycled,
+                            reuse_explanation=(
+                                current.reason if worker.recycled else None
+                            ),
+                        )
                         worker.published_wall_seconds_per_point = _number(
                             current.result,
                             "wall_seconds_per_point",
@@ -1934,6 +1970,8 @@ class LeaseManager:
                             worker.reproduce_profile = (
                                 profile if isinstance(profile, str) else None
                             )
+                if worker.recycled and worker.reuse_explanation is None:
+                    worker.reuse_explanation = worker.step
                 _tail_progress(worker)
                 _tail_log(worker)
                 if worker.status in {
@@ -1946,12 +1984,21 @@ class LeaseManager:
                     self.state.capped_ids.add(cell_id)
                 elif worker.status not in {
                     "ok",
-                    "reused",
-                    "skipped-current",
+                    "recycled",
                     "cancelled",
                 }:
                     self.state.failed_ids.add(cell_id)
-            worker.events.append(f"{event}: {worker.step}")
+            observed_event = (
+                f"resource: {worker.phase}"
+                if event == "resource"
+                else f"{event}: {worker.step}"
+            )
+            if not (
+                event == "resource"
+                and worker.events
+                and worker.events[-1] == observed_event
+            ):
+                worker.events.append(observed_event)
             del worker.events[:-8]
             self._write()
 
@@ -1979,6 +2026,283 @@ def _optional_finite_float(value: object) -> float | None:
         return None
     result = float(value)
     return result if math.isfinite(result) else None
+
+
+def _first_mapping_text(
+    values: Sequence[Mapping[str, object]],
+    keys: Sequence[str],
+) -> str | None:
+    for value in values:
+        for key in keys:
+            observed = value.get(key)
+            if isinstance(observed, str) and observed.strip():
+                return observed.strip()
+    return None
+
+
+def _manual_phase_timeline(
+    result: Mapping[str, object],
+) -> Mapping[str, object] | None:
+    """Return only the versioned manual-campaign phase-timeline contract."""
+
+    provenance = result.get("provenance")
+    if not isinstance(provenance, Mapping):
+        return None
+    manual = provenance.get("manual_campaign")
+    if not isinstance(manual, Mapping):
+        return None
+    timeline = manual.get("phase_timeline")
+    if (
+        not isinstance(timeline, Mapping)
+        or timeline.get("schema") != _PHASE_TIMELINE_SCHEMA
+    ):
+        return None
+    return timeline
+
+
+def _persisted_phase_timeline_row(value: object) -> PhaseTimelineRow | None:
+    """Decode exactly one entry from the versioned persisted contract."""
+
+    if not isinstance(value, Mapping):
+        return None
+    phase = _first_mapping_text((value,), ("label", "key"))
+    if phase is None:
+        return None
+    seconds = _optional_finite_float(value.get("seconds"))
+    cpu_seconds = _optional_finite_float(value.get("cpu_seconds"))
+    peak_memory = _optional_int(value.get("peak_memory_bytes"))
+    return PhaseTimelineRow(
+        phase=phase,
+        wall_seconds=seconds if seconds is not None and seconds >= 0.0 else None,
+        cpu_seconds=(
+            cpu_seconds if cpu_seconds is not None and cpu_seconds >= 0.0 else None
+        ),
+        peak_memory_bytes=(
+            peak_memory if peak_memory is not None and peak_memory >= 0 else None
+        ),
+        status=_first_mapping_text((value,), ("status",)),
+        detail=_first_mapping_text((value,), ("detail",)),
+    )
+
+
+def _persisted_phase_timeline_rows(
+    timeline: Mapping[str, object],
+) -> tuple[PhaseTimelineRow, ...]:
+    entries = timeline.get("entries")
+    if not isinstance(entries, Sequence) or isinstance(entries, (str, bytes)):
+        return ()
+    return tuple(
+        row
+        for entry in entries[:16]
+        if (row := _persisted_phase_timeline_row(entry)) is not None
+    )
+
+
+def _lease_phase_timeline_rows(value: object) -> tuple[PhaseTimelineRow, ...]:
+    """Decode only the controller's own compact WorkerView lease shape."""
+
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return ()
+    rows: list[PhaseTimelineRow] = []
+    for item in value[:16]:
+        if isinstance(item, PhaseTimelineRow):
+            rows.append(item)
+            continue
+        if not isinstance(item, Mapping):
+            continue
+        phase = item.get("phase")
+        if not isinstance(phase, str) or not phase:
+            continue
+        wall = _optional_finite_float(item.get("wall_seconds"))
+        cpu = _optional_finite_float(item.get("cpu_seconds"))
+        peak = _optional_int(item.get("peak_memory_bytes"))
+        status = item.get("status")
+        detail = item.get("detail")
+        rows.append(
+            PhaseTimelineRow(
+                phase=phase,
+                wall_seconds=wall if wall is not None and wall >= 0.0 else None,
+                cpu_seconds=cpu if cpu is not None and cpu >= 0.0 else None,
+                peak_memory_bytes=peak if peak is not None and peak >= 0 else None,
+                status=status if isinstance(status, str) and status else None,
+                detail=detail if isinstance(detail, str) and detail else None,
+            )
+        )
+    return tuple(rows)
+
+
+def _extract_phase_timeline(
+    result: Mapping[str, object],
+) -> tuple[PhaseTimelineRow, ...]:
+    """Normalize a persisted timeline without requiring it for result reuse."""
+
+    timeline = _manual_phase_timeline(result)
+    if timeline is not None:
+        return _persisted_phase_timeline_rows(timeline)
+
+    # Older results expose a few exact durations without a timeline wrapper.
+    # Use only those recorded numbers; never derive one phase from another.
+    rows: list[PhaseTimelineRow] = []
+    provenance = result.get("provenance")
+    provenance_values = provenance if isinstance(provenance, Mapping) else {}
+    preparation = _optional_finite_float(
+        provenance_values.get("model_preparation_seconds")
+    )
+    if preparation is not None and preparation >= 0.0:
+        rows.append(
+            PhaseTimelineRow(
+                "Model preparation",
+                wall_seconds=preparation,
+                status=(
+                    "reused"
+                    if provenance_values.get("model_preparation_reused") is True
+                    else "measured"
+                ),
+            )
+        )
+    generation = _optional_finite_float(result.get("generation_seconds"))
+    if generation is not None and generation >= 0.0:
+        rows.append(PhaseTimelineRow("Generation", wall_seconds=generation))
+    benchmark = provenance_values.get("runtime_profile")
+    benchmark_values = benchmark if isinstance(benchmark, Mapping) else {}
+    legacy_warmup = benchmark_values.get("warmup")
+    legacy_measurement = benchmark_values.get("measurement")
+    if isinstance(legacy_warmup, Mapping):
+        seconds = _optional_finite_float(legacy_warmup.get("elapsed_seconds"))
+        if seconds is not None and seconds >= 0.0:
+            rows.append(PhaseTimelineRow("Runtime warm-up", wall_seconds=seconds))
+    if isinstance(legacy_measurement, Mapping):
+        chunks = legacy_measurement.get("chunks")
+        durations: list[float] = []
+        if isinstance(chunks, Sequence) and not isinstance(chunks, (str, bytes)):
+            for chunk in chunks:
+                if not isinstance(chunk, Mapping):
+                    durations = []
+                    break
+                seconds = _optional_finite_float(chunk.get("elapsed_seconds"))
+                if seconds is None or seconds < 0.0:
+                    durations = []
+                    break
+                durations.append(seconds)
+        if durations:
+            rows.append(
+                PhaseTimelineRow(
+                    "Timed profiling",
+                    wall_seconds=math.fsum(durations),
+                )
+            )
+    for key, label in (
+        ("warmup_elapsed_seconds", "Runtime warm-up"),
+        ("calibration_outer_elapsed_seconds", "Runtime calibration"),
+        ("profile_attribution_elapsed_seconds", "Profiling attribution"),
+        ("evaluator_elapsed_seconds", "Profiling attribution"),
+        ("profile_total_elapsed_seconds", "Complete runtime profile"),
+    ):
+        seconds = _optional_finite_float(benchmark_values.get(key))
+        if seconds is not None and seconds >= 0.0:
+            rows.append(PhaseTimelineRow(label, wall_seconds=seconds))
+    if not any(
+        row.phase in {"Timed profiling", "Timed headline measurement"} for row in rows
+    ):
+        seconds = _optional_finite_float(
+            benchmark_values.get("achieved_runtime_seconds")
+        )
+        if seconds is None:
+            seconds = _optional_finite_float(
+                benchmark_values.get("measurement_phase_elapsed_seconds")
+            )
+        if seconds is not None and seconds >= 0.0:
+            rows.append(
+                PhaseTimelineRow(
+                    "Timed headline measurement",
+                    wall_seconds=seconds,
+                )
+            )
+    return tuple(rows)
+
+
+def _extract_provenance_summary(result: Mapping[str, object]) -> str | None:
+    provenance = result.get("provenance")
+    provenance_values = provenance if isinstance(provenance, Mapping) else {}
+    manual = provenance_values.get("manual_campaign")
+    manual_values = manual if isinstance(manual, Mapping) else {}
+    identity = manual_values.get("cell_identity")
+    identity_values = identity if isinstance(identity, Mapping) else {}
+    revision = _first_mapping_text(
+        (manual_values, provenance_values, result),
+        (
+            "report_measured_source_revision",
+            "report_source_revision",
+            "source_revision",
+        ),
+    )
+    engine = _first_mapping_text(
+        (identity_values, manual_values),
+        ("execution_mode", "generation_engine", "engine"),
+    )
+    model = _first_mapping_text(
+        (identity_values, manual_values),
+        ("model", "model_source"),
+    )
+    fragments: list[str] = []
+    if revision is not None:
+        fragments.append(f"source {revision[:12]}")
+    if engine is not None:
+        fragments.append(f"engine {engine}")
+    if model is not None:
+        fragments.append(f"model {model}")
+    recorded_at = _first_mapping_text((manual_values,), ("recorded_at_utc",))
+    if recorded_at is not None:
+        fragments.append(f"recorded {recorded_at}")
+    return " · ".join(fragments) or None
+
+
+def _stored_reproduction_command(
+    recipe: object,
+    key: str,
+) -> str | None:
+    value = recipe.get(key) if isinstance(recipe, Mapping) else None
+    return value if isinstance(value, str) and value else None
+
+
+def _apply_persisted_worker_result(
+    worker: WorkerView,
+    result: Mapping[str, object],
+    *,
+    recycled: bool,
+    reuse_explanation: str | None = None,
+) -> None:
+    """Populate optional dashboard evidence without making reuse depend on it."""
+
+    worker.phase_timeline = _extract_phase_timeline(result)
+    worker.provenance_summary = _extract_provenance_summary(result)
+    worker.recycled = recycled
+    worker.reuse_explanation = reuse_explanation if recycled else None
+    timeline = _manual_phase_timeline(result)
+    if isinstance(timeline, Mapping):
+        total_wall = _optional_finite_float(timeline.get("total_worker_wall_seconds"))
+        peak_rss = _optional_int(timeline.get("peak_rss_bytes"))
+        peak_guard = _optional_int(timeline.get("peak_guard_bytes"))
+        if worker.wall_seconds <= 0.0 and total_wall is not None and total_wall >= 0.0:
+            worker.wall_seconds = total_wall
+        if worker.peak_rss_bytes <= 0 and peak_rss is not None and peak_rss >= 0:
+            worker.peak_rss_bytes = peak_rss
+        if worker.peak_guard_bytes <= 0 and peak_guard is not None and peak_guard >= 0:
+            worker.peak_guard_bytes = peak_guard
+
+
+def _coalesced_worker_events(events: Sequence[str]) -> tuple[str, ...]:
+    """Collapse repeated resource samples while retaining phase transitions."""
+
+    rows: list[str] = []
+    previous_resource: str | None = None
+    for event in events:
+        resource = event if event.startswith("resource:") else None
+        if resource is not None and resource == previous_resource:
+            continue
+        rows.append(event)
+        previous_resource = resource
+    return tuple(rows)
 
 
 def _incremental_tail_lines(
@@ -2106,6 +2430,20 @@ def _human_duration(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{whole:02d}"
 
 
+def _human_phase_duration(seconds: float) -> str:
+    """Keep short phase timings visible without widening the worker runtime."""
+
+    seconds = max(0.0, seconds)
+    if seconds < 1.0:
+        return f"{seconds * 1000.0:.1f} ms"
+    if seconds < 60.0:
+        return f"{seconds:.2f} s"
+    if seconds < 3600.0:
+        minutes, remainder = divmod(seconds, 60.0)
+        return f"{int(minutes):02d}:{remainder:04.1f}"
+    return _human_duration(seconds)
+
+
 def _human_bytes(value: int) -> str:
     if value < 1000:
         return f"{value} B"
@@ -2220,6 +2558,45 @@ def _worker_enforcement_memory(worker: WorkerView, *, peak: bool = False) -> int
     return guard if guard > 0 else rss
 
 
+def _phase_timeline_lines(
+    rows: Sequence[PhaseTimelineRow],
+    *,
+    compact: bool,
+    limit: int,
+) -> tuple[str, ...]:
+    """Render a small aligned phase table that remains legible at 80 columns."""
+
+    rendered: list[str] = []
+    for row in rows[: max(0, limit)]:
+        wall = (
+            "unavailable"
+            if row.wall_seconds is None
+            else _human_phase_duration(row.wall_seconds)
+        )
+        outcome = " · ".join(
+            value for value in (row.status, row.detail) if value
+        ) or "recorded"
+        if compact:
+            rendered.append(f"{row.phase[:20]} · {wall} · {outcome}")
+            continue
+        cpu = (
+            "unavailable"
+            if row.cpu_seconds is None
+            else _human_phase_duration(row.cpu_seconds)
+        )
+        peak = (
+            "unavailable"
+            if row.peak_memory_bytes is None
+            else _human_bytes(row.peak_memory_bytes)
+        )
+        rendered.append(
+            f"{row.phase[:20]:<20}  {wall:>11}  {cpu:>11}  {peak:>11}  {outcome}"
+        )
+    if len(rows) > len(rendered):
+        rendered.append(f"… {len(rows) - len(rendered)} more persisted phases")
+    return tuple(rendered)
+
+
 def _worker_from_lease(
     cell_id: str,
     raw: Mapping[str, object],
@@ -2236,12 +2613,14 @@ def _worker_from_lease(
         value = optional_text(key)
         return default if value is None else value
 
+    raw_status = text("status", "unknown")
+    recycled = raw.get("recycled") is True or raw_status in _RECYCLED_SUCCESS_STATUSES
     worker = WorkerView(
         cell_id=cell_id,
         dependency=raw.get("dependency") is True,
         peer_instance=peer_instance,
         generation_engine=optional_text("generation_engine"),
-        status=text("status", "unknown"),
+        status="recycled" if raw_status in _RECYCLED_SUCCESS_STATUSES else raw_status,
         step=text("step", "waiting"),
         phase=text("phase", "unknown"),
         attempt_id=optional_text("attempt_id"),
@@ -2293,6 +2672,10 @@ def _worker_from_lease(
         published_recurrence_core_seconds_per_point=_optional_finite_float(
             raw.get("published_recurrence_core_seconds_per_point")
         ),
+        phase_timeline=_lease_phase_timeline_rows(raw.get("phase_timeline")),
+        provenance_summary=optional_text("provenance_summary"),
+        reuse_explanation=optional_text("reuse_explanation"),
+        recycled=recycled,
         updated_at=max(0.0, _finite_float(raw.get("updated_at"))),
     )
     raw_member_pids = raw.get("member_pids")
@@ -2976,6 +3359,72 @@ def _ratatui_commands(
                 (selected.step, neutral_style),
             ],
         )
+        persisted_summary = (
+            selected.status in _COMPLETED_WORKER_STATUSES or selected.recycled
+        )
+        if persisted_summary:
+            if selected.recycled:
+                _append_dashboard_line(
+                    details,
+                    [
+                        (
+                            "No work executed by this invocation",
+                            success_style,
+                        ),
+                    ],
+                )
+                _append_dashboard_line(
+                    details,
+                    [
+                        ("Reuse ", key_style),
+                        (
+                            selected.reuse_explanation or "existing current reused",
+                            neutral_style,
+                        ),
+                    ],
+                )
+            _append_dashboard_line(
+                details,
+                [
+                    ("Provenance ", key_style),
+                    (selected.provenance_summary or "unavailable", neutral_style),
+                ],
+            )
+            if selected.phase_timeline:
+                _append_dashboard_line(
+                    details,
+                    [
+                        ("Phase timeline ", key_style),
+                        (
+                            (
+                                "phase · wall · outcome"
+                                if compact
+                                else (
+                                    f"{'phase':<20}  {'wall':>11}  "
+                                    f"{'CPU':>11}  {'peak RAM':>11}  outcome"
+                                )
+                            ),
+                            neutral_style,
+                        ),
+                    ],
+                )
+                for line in _phase_timeline_lines(
+                    selected.phase_timeline,
+                    compact=compact,
+                    limit=len(selected.phase_timeline),
+                ):
+                    _append_dashboard_line(
+                        details,
+                        [("  ", key_style), (line, neutral_style)],
+                    )
+            else:
+                _append_dashboard_line(
+                    details,
+                    [
+                        ("Phase timeline ", key_style),
+                        ("unavailable (older result)", warning_style),
+                    ],
+                )
         _append_dashboard_line(
             details,
             [
@@ -3048,7 +3497,7 @@ def _ratatui_commands(
                 ),
             ],
         )
-        if compact and selected.log_tail:
+        if compact and selected.log_tail and not persisted_summary:
             _append_dashboard_line(
                 details,
                 [
@@ -3063,7 +3512,7 @@ def _ratatui_commands(
             if selected.status in {"queued", "preparing", "running"}
             else (
                 "not exposed"
-                if selected.status in {"ok", "reused", "skipped-current"}
+                if selected.status in _COMPLETED_WORKER_STATUSES
                 else "unavailable"
             )
         )
@@ -3129,7 +3578,7 @@ def _ratatui_commands(
                     (selected.attempt_id or "—", neutral_style),
                 ],
             )
-        if selected.log_tail and not compact:
+        if selected.log_tail and not compact and not persisted_summary:
             for index, line in enumerate(selected.log_tail[-3:]):
                 _append_dashboard_line(
                     details,
@@ -3139,11 +3588,13 @@ def _ratatui_commands(
                     ],
                 )
         if not compact:
-            for event in selected.events[-max(1, detail_height - 6) :]:
-                _append_dashboard_line(
-                    details,
-                    [("• ", key_style), (event, neutral_style)],
-                )
+            visible_events = _coalesced_worker_events(selected.events)
+            if not persisted_summary:
+                for event in visible_events[-max(1, detail_height - 6) :]:
+                    _append_dashboard_line(
+                        details,
+                        [("• ", key_style), (event, neutral_style)],
+                    )
             if detail_height >= 10 and selected.reproduce_prepare:
                 _append_dashboard_line(
                     details,
@@ -3658,7 +4109,7 @@ def _inspect_payload(
         ),
     }
     return {
-        "profile": PROFILE,
+        "profile": _ACTIVE_PROFILE,
         "source_revision": source.revision,
         "selection_count": len(cells),
         "reusable_count": sum(
@@ -4093,7 +4544,7 @@ def _recycled_attention_workers(
     repo_root: Path,
     settings: ReproductionSettings,
 ) -> dict[str, WorkerView]:
-    """Expose cheap same-source capped currents without scanning attempt history."""
+    """Expose same-source recycled currents without scanning attempt history."""
 
     workers: dict[str, WorkerView] = {}
     for cell in cells:
@@ -4104,6 +4555,9 @@ def _recycled_attention_workers(
             continue
         result_status = str(current.result.get("status") or "")
         status = {
+            ResultStatus.OK.value: "recycled",
+            "reused": "recycled",
+            "skipped-current": "recycled",
             ResultStatus.TIMEOUT.value: "generation_limit",
             ResultStatus.MEMORY_LIMIT.value: "memory_limit",
         }.get(result_status)
@@ -4111,16 +4565,30 @@ def _recycled_attention_workers(
             continue
         resources = current.result.get("resources")
         resource_values = resources if isinstance(resources, Mapping) else {}
-        recipe = reproduction_recipe(
-            cell,
-            repo_root=repo_root,
-            cores=settings.cores,
-            target_runtime=settings.target_runtime,
-            batch_size=settings.batch_size,
-            warmups=settings.warmups,
-            minimum_samples=settings.minimum_samples,
-            measurement=current.result,
+        provenance = current.result.get("provenance")
+        manual = (
+            provenance.get("manual_campaign")
+            if isinstance(provenance, Mapping)
+            else None
         )
+        stored_recipe = (
+            manual.get("public_cli_reproduction")
+            if isinstance(manual, Mapping)
+            else None
+        )
+        recipe = None
+        if not isinstance(stored_recipe, Mapping):
+            recipe = reproduction_recipe(
+                cell,
+                repo_root=repo_root,
+                cores=settings.cores,
+                target_runtime=settings.target_runtime,
+                batch_size=settings.batch_size,
+                warmups=settings.warmups,
+                minimum_samples=settings.minimum_samples,
+                measurement=current.result,
+            )
+
         worker = WorkerView(
             cell.cell_id,
             generation_engine=cell.measurement.execution_mode.value,
@@ -4128,9 +4596,13 @@ def _recycled_attention_workers(
             step=(
                 "recycled generation-time cap"
                 if status == "generation_limit"
-                else "recycled process-tree RAM cap"
+                else (
+                    "recycled process-tree RAM cap"
+                    if status == "memory_limit"
+                    else "reused existing current"
+                )
             ),
-            phase="recycled terminal",
+            phase="recycled current",
             attempt_id=current.attempt_id,
             wall_seconds=_finite_float(resource_values.get("wall_seconds")),
             cpu_seconds=_optional_finite_float(resource_values.get("cpu_seconds")),
@@ -4151,15 +4623,25 @@ def _recycled_attention_workers(
             or 0,
             progress_completed=1,
             progress_total=1,
-            progress_message="recycled capped result",
+            progress_message=(
+                "recycled capped result"
+                if status in {"generation_limit", "memory_limit"}
+                else "recycled current"
+            ),
             reproduce_prepare=(
-                None if recipe.prepare is None else _shell_join(recipe.prepare)
+                _stored_reproduction_command(stored_recipe, "prepare")
+                if recipe is None
+                else (None if recipe.prepare is None else _shell_join(recipe.prepare))
             ),
             reproduce_generate=(
-                None if recipe.generate is None else _shell_join(recipe.generate)
+                _stored_reproduction_command(stored_recipe, "generate")
+                if recipe is None
+                else (None if recipe.generate is None else _shell_join(recipe.generate))
             ),
             reproduce_profile=(
-                None if recipe.profile is None else _shell_join(recipe.profile)
+                _stored_reproduction_command(stored_recipe, "profile")
+                if recipe is None
+                else (None if recipe.profile is None else _shell_join(recipe.profile))
             ),
             published_wall_seconds_per_point=_number(
                 current.result,
@@ -4171,7 +4653,15 @@ def _recycled_attention_workers(
             published_recurrence_core_seconds_per_point=(
                 _recurrence_core_number(current.result)
             ),
+            recycled=True,
+            reuse_explanation=current.reason,
             events=[f"recycled: {current.reason}"],
+        )
+        _apply_persisted_worker_result(
+            worker,
+            current.result,
+            recycled=True,
+            reuse_explanation=current.reason,
         )
         workers[cell.cell_id] = worker
     return workers
@@ -4356,7 +4846,11 @@ def _run_campaign(
             settings=state.reproduction_settings,
         )
     )
-    state.capped_ids.update(state.workers)
+    state.capped_ids.update(
+        cell_id
+        for cell_id, worker in state.workers.items()
+        if worker.status in {"generation_limit", "memory_limit"}
+    )
     lease = LeaseManager(service, state)
     lease.publish()
     settings = _campaign_settings(
@@ -4541,6 +5035,50 @@ def _copy_report_sources(source: Path, destination: Path) -> None:
     )
 
 
+def _stage_copied_profile_identity(staging_docs: Path, profile: str) -> None:
+    """Rebind copied workspace labels inside the private PDF build only."""
+
+    environment_path = staging_docs / "report_environment.json"
+    environment = _read_object(environment_path)
+    if environment is not None:
+        environment["profile"] = profile
+        _atomic_json(environment_path, environment)
+
+    workspace_path = staging_docs / "report-workspace.json"
+    workspace = _read_object(workspace_path)
+    if workspace is not None:
+        workspace["profile"] = profile
+        workspace["artifact_root"] = f".artifacts/performance-report/{profile}"
+        workspace["coordination_root"] = (
+            f".artifacts/performance-report-coordination/{profile}"
+        )
+        initialized = workspace.get("initialized_environment")
+        if isinstance(initialized, Mapping):
+            workspace["initialized_environment"] = {
+                **initialized,
+                "profile": profile,
+            }
+        _atomic_json(workspace_path, workspace)
+
+    tex_path = staging_docs / "report_environment.tex"
+    try:
+        tex = tex_path.read_text(encoding="utf-8")
+    except OSError:
+        return
+    escaped_profile = profile.replace("_", r"\_")
+    updated, replacements = re.subn(
+        r"(\\renewcommand\{\\ReportProfileName\}\{)[^}\r\n]*(\})",
+        lambda match: f"{match.group(1)}{escaped_profile}{match.group(2)}",
+        tex,
+        count=1,
+    )
+    if replacements != 1:
+        raise ManualCampaignError(
+            "staged report environment does not define ReportProfileName"
+        )
+    tex_path.write_text(updated, encoding="utf-8")
+
+
 def _install_report_snapshot(
     service: ReportService,
     staging_docs: Path,
@@ -4616,6 +5154,10 @@ def _refresh_pdf(
     try:
         staging_docs = staging / "docs"
         _copy_report_sources(service.paths.docs_dir, staging_docs)
+        _stage_copied_profile_identity(
+            staging_docs,
+            service.paths.docs_dir.name,
+        )
         staging_service = ReportService(
             ReportPaths.from_repo(
                 service.paths.repo_root,
@@ -4633,6 +5175,7 @@ def _refresh_pdf(
             staging_docs,
             expected_page_count=int(arguments.expected_page_count),
             timeout_seconds=float(arguments.pdf_timeout),
+            allow_overfull_boxes=True,
         )
         _install_report_snapshot(service, staging_docs, tuple(tables))
     finally:
@@ -4652,6 +5195,7 @@ def _refresh_pdf(
             ),
         )
     )
+    print(f"PDF: {(service.paths.docs_dir / 'pyAmpliCol.pdf').resolve(strict=False)}")
     return 0
 
 
@@ -4697,6 +5241,13 @@ momenta input. Compiled generation's precompiled-model injection and
 compiled/eager paired Arena publication remain explicit report-protocol
 exceptions. Original AmpliCol uses its maintained legacy adapter because no
 public pyamplicol subcommand exists.
+
+Campaign copies
+---------------
+The campaign profile is the directory containing this executable beneath
+docs/performance_reports. Copy the complete manual campaign folder to another
+valid one-level name to obtain distinct artifact, coordination, source-marker,
+result, and PDF paths; the executable does not hard-code macbook_M3_manual.
 
 Resource and availability policy
 --------------------------------
@@ -4769,7 +5320,7 @@ Keyboard controls
 -----------------
   ↑/↓ or j/k  select a worker     PgUp/PgDn  scroll worker details
   d           show/hide completed successful workers (hidden by default)
-  e           show/hide errors, caps, and recycled attention rows
+  e           show/hide errors, caps, and recycled non-success rows
   ?           show help           Ctrl-C/Esc stop safely and discard partial attempts
 
 The selected-worker panel preserves typed engine details when available,
@@ -5053,7 +5604,10 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Capture one stable same-source current snapshot, rebuild every "
             "result JSON and TeX table, compile in a fresh directory, and "
-            "atomically install pyAmpliCol.pdf."
+            "atomically install pyAmpliCol.pdf. Overfull-box diagnostics are "
+            "reported by LaTeX but are non-fatal here; compilation errors and "
+            "unresolved references remain fatal. The final absolute PDF path "
+            "is printed on success."
         ),
         epilog=STEERING_GUIDE,
         formatter_class=HelpFormatter,
@@ -5157,7 +5711,12 @@ def main(
     argv: Sequence[str] | None = None,
     *,
     repo_root: Path | None = None,
+    profile: str = PROFILE,
 ) -> int:
+    global _ACTIVE_PROFILE
+
+    selected_profile = validate_profile_name(profile)
+    _ACTIVE_PROFILE = selected_profile
     parser = build_parser()
     arguments = parser.parse_args(argv)
     root = (
@@ -5173,7 +5732,10 @@ def main(
                 raise ManualCampaignError("--instance requires --live")
             state = (
                 _live_dashboard_snapshot(
-                    ReportPaths.from_repo(root, profile=PROFILE).coordination_root,
+                    ReportPaths.from_repo(
+                        root,
+                        profile=selected_profile,
+                    ).coordination_root,
                     instance=arguments.instance,
                     stale_after_seconds=arguments.stale_after,
                 )
@@ -5194,7 +5756,9 @@ def main(
                 print(result)
             return 0
 
-        service = ReportService(ReportPaths.from_repo(root, profile=PROFILE))
+        service = ReportService(
+            ReportPaths.from_repo(root, profile=selected_profile)
+        )
         service.bind_measurement_lineage(None)
         service.bind_original_amplicol_seed(None)
         source = lightweight_source_identity(root)

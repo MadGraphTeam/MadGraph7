@@ -10,6 +10,7 @@ import pytest
 from tools.performance_report.publisher import (
     PublicationResult,
     ReportPublisherError,
+    _compile_pdf,
     publish_once,
     run_publisher,
     validate_published_snapshot,
@@ -41,6 +42,51 @@ def _clean_report_service(tmp_path: Path) -> ReportService:
         check=True,
     )
     return service
+
+
+def test_pdf_compiler_can_allow_overfull_boxes_for_interactive_refresh(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "pyAmpliCol.tex").write_text(
+        "\\documentclass{article}\\begin{document}ok\\end{document}\n",
+        encoding="ascii",
+    )
+    latexmk = tmp_path / "latexmk"
+    latexmk.write_text(
+        "#!/usr/bin/env python3\n"
+        "from pathlib import Path\n"
+        "Path('pyAmpliCol.pdf').write_bytes(b'%PDF-1.4\\n%%EOF\\n')\n"
+        "Path('pyAmpliCol.log').write_text("
+        "'Overfull \\\\hbox (1.0pt too wide)\\n"
+        "Output written on pyAmpliCol.pdf (60 pages, 123 bytes).\\n', "
+        "encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    latexmk.chmod(0o755)
+    monkeypatch.setattr(
+        "tools.performance_report.publisher.shutil.which",
+        lambda _name: str(latexmk),
+    )
+
+    assert (
+        _compile_pdf(
+            docs,
+            expected_page_count=60,
+            timeout_seconds=10.0,
+            allow_overfull_boxes=True,
+        )
+        == 60
+    )
+
+    with pytest.raises(ReportPublisherError, match="overfull"):
+        _compile_pdf(
+            docs,
+            expected_page_count=60,
+            timeout_seconds=10.0,
+        )
 
 
 def test_publish_once_installs_one_consistent_snapshot(

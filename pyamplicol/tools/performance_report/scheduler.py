@@ -15,6 +15,7 @@ from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .agreements import incoming_agreement_edges
@@ -1102,6 +1103,7 @@ class CampaignScheduler:
         *,
         cell: CellSpec,
         censor: Mapping[str, object] | None = None,
+        progress_path: Path | None = None,
     ) -> None:
         if self.settings.source_identity_override is None:
             return
@@ -1152,10 +1154,23 @@ class CampaignScheduler:
                 "warmup_runs": self.settings.warmup_runs,
                 "minimum_samples": self.settings.minimum_samples,
                 "batch_size": self.settings.batch_size,
+                "recorded_at_utc": datetime.now(UTC).isoformat(),
                 "public_cli_reproduction": recipe.as_dict(),
             },
             **({} if censor is None else {"policy_censor": dict(censor)}),
         }
+        from .phase_timeline import build_phase_timeline
+
+        persisted_provenance = result["provenance"]
+        if not isinstance(persisted_provenance, dict):
+            raise TypeError("manual result provenance must be mutable")
+        manual = persisted_provenance["manual_campaign"]
+        if not isinstance(manual, dict):
+            raise TypeError("manual campaign provenance must be mutable")
+        manual["phase_timeline"] = build_phase_timeline(
+            result,
+            progress_path=progress_path,
+        )
 
     def _manual_terminal_result(
         self,
@@ -1163,6 +1178,7 @@ class CampaignScheduler:
         cell: CellSpec,
         reason: str,
         resources: Mapping[str, object],
+        progress_path: Path | None = None,
     ) -> tuple[dict[str, object], PolicyMeasurementState]:
         if reason == "generation_timeout":
             status = ResultStatus.TIMEOUT
@@ -1187,7 +1203,12 @@ class CampaignScheduler:
             f"worker terminated by {reason}",
             resources=resources,
         )
-        self._attach_manual_provenance(result, cell=cell, censor=censor)
+        self._attach_manual_provenance(
+            result,
+            cell=cell,
+            censor=censor,
+            progress_path=progress_path,
+        )
         return result, state
 
     def _current(
@@ -1957,6 +1978,7 @@ class CampaignScheduler:
                         cell=cell,
                         reason=supervised.reason,
                         resources=resources,
+                        progress_path=worker_progress,
                     )
                 elif (
                     supervised.reason == "generation_timeout"
@@ -2070,7 +2092,11 @@ class CampaignScheduler:
                         raise TypeError("worker result must be a JSON object")
                     result = dict(raw)
                     result["resources"] = resources
-                    self._attach_manual_provenance(result, cell=cell)
+                    self._attach_manual_provenance(
+                        result,
+                        cell=cell,
+                        progress_path=worker_progress,
+                    )
                     self._bind_study_result(
                         result,
                         require_existing_harness=True,

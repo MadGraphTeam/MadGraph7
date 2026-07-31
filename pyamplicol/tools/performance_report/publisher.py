@@ -248,6 +248,7 @@ def _compile_pdf(
     *,
     expected_page_count: int,
     timeout_seconds: float,
+    allow_overfull_boxes: bool = False,
 ) -> int:
     latexmk = shutil.which("latexmk")
     if latexmk is None:
@@ -289,7 +290,10 @@ def _compile_pdf(
     log_path = docs_dir / "pyAmpliCol.log"
     try:
         log = log_path.read_text(encoding="utf-8", errors="replace")
-        validate_latex_log(log)
+        validate_latex_log(
+            log,
+            allow_overfull_boxes=allow_overfull_boxes,
+        )
     except OSError as error:
         raise ReportPublisherError(f"cannot read LaTeX log: {error}") from error
     except StandaloneBuildError as error:

@@ -33,6 +33,14 @@ The live form reads only compact lease JSON in the ignored coordination
 directory. Use `--instance ID_OR_PREFIX` to choose among concurrent runs; see
 `dashboard-snapshot --help` for staleness and styled-cell capture controls.
 
+To create a separately named manual campaign inside the same checkout, copy
+this directory to another single directory under `docs/performance_reports/`.
+The steering entry point derives the profile name from its containing
+directory, so result artifacts, worker leases, locks, and reproduction files
+use independent roots for the copied name. Commit the copy and rebuild the
+repository environment before recording measurements so its source identity is
+clean.
+
 Create a portable copy, including raw data, TeX, and the reviewed PDF, from a
 source checkout with:
 

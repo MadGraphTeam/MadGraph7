@@ -156,6 +156,7 @@ def test_dashboard_uses_guard_memory_and_incremental_progress_and_log_tails(
     )
     assert worker._log_tail_state.last_read_bytes == len(appended_log.encode())
     assert worker.log_tail[-1] == "profiling batch 3"
+    assert worker.events.count("resource: profiling") == 1
     lease_payload = json.loads(lease.path.read_text(encoding="utf-8"))
     leased_worker = lease_payload["workers"][cell_id]
     assert leased_worker["current_rss_bytes"] == 800

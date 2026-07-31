@@ -1957,7 +1957,7 @@ def _run_arena_benchmark(
     warmup_task_id = f"{parent_task_id}:warmup"
     calibration_task_id = f"{parent_task_id}:calibration"
     samples_task_id = f"{parent_task_id}:samples"
-    started = time.perf_counter() if progress is not None else 0.0
+    started = time.perf_counter()
     active_task_id: str | None = None
     if progress is not None:
         progress.emit(
@@ -1984,7 +1984,7 @@ def _run_arena_benchmark(
                     unit="runs",
                 )
             )
-        warmup_started = time.perf_counter() if progress is not None else 0.0
+        warmup_started = time.perf_counter()
         for index in range(warmup_runs):
             _positive_duration(
                 timer(batch, 1, **selector_arguments),
@@ -2011,11 +2011,12 @@ def _run_arena_benchmark(
                         "runtime warmed",
                     )
                 )
+        warmup_elapsed = time.perf_counter() - warmup_started
         if progress is not None:
             progress.emit(
                 ProgressEnd(
                     warmup_task_id,
-                    elapsed_seconds=time.perf_counter() - warmup_started,
+                    elapsed_seconds=warmup_elapsed,
                 )
             )
         active_task_id = calibration_task_id
@@ -2029,7 +2030,7 @@ def _run_arena_benchmark(
                     unit="blocks",
                 )
             )
-        calibration_started = time.perf_counter() if progress is not None else 0.0
+        calibration_started = time.perf_counter()
         repetitions, calibration_blocks = _calibrate_arena_repetitions(
             timer,
             batch,
@@ -2039,11 +2040,12 @@ def _run_arena_benchmark(
             progress=progress,
             task_id=calibration_task_id,
         )
+        calibration_elapsed = time.perf_counter() - calibration_started
         if progress is not None:
             progress.emit(
                 ProgressEnd(
                     calibration_task_id,
-                    elapsed_seconds=time.perf_counter() - calibration_started,
+                    elapsed_seconds=calibration_elapsed,
                     details={
                         "blocks": len(calibration_blocks),
                         "repetitions": repetitions,
@@ -2065,7 +2067,7 @@ def _run_arena_benchmark(
                     },
                 )
             )
-        samples_started = time.perf_counter() if progress is not None else 0.0
+        samples_started = time.perf_counter()
         evaluated_points = repetitions * len(batch)
         headline_samples: list[float] = []
         headline_durations: list[float] = []
@@ -2113,11 +2115,12 @@ def _run_arena_benchmark(
                         },
                     )
                 )
+        samples_elapsed = time.perf_counter() - samples_started
         if progress is not None:
             progress.emit(
                 ProgressEnd(
                     samples_task_id,
-                    elapsed_seconds=time.perf_counter() - samples_started,
+                    elapsed_seconds=samples_elapsed,
                     details={
                         "samples": len(headline_samples),
                         "measured_seconds": math.fsum(headline_durations),
@@ -2151,19 +2154,20 @@ def _run_arena_benchmark(
                 )
             )
         raise
-    if progress is not None:
-        progress.emit(
-            ProgressEnd(
-                parent_task_id,
-                elapsed_seconds=time.perf_counter() - started,
-            )
-        )
     mean_wall = statistics.fmean(headline_samples)
     achieved_runtime = math.fsum(headline_durations)
     evaluator_total_accumulated = math.fsum(evaluator_total_durations)
     measured_evaluations = sample_count * repetitions
     measured_points = measured_evaluations * len(batch)
     evaluator_total_time_per_point = evaluator_total_accumulated / measured_points
+    profile_total_elapsed = time.perf_counter() - started
+    if progress is not None:
+        progress.emit(
+            ProgressEnd(
+                parent_task_id,
+                elapsed_seconds=profile_total_elapsed,
+            )
+        )
     return _ArenaBenchmarkResult(
         effective_config=benchmark_config,
         sample_count=sample_count,
@@ -2206,6 +2210,11 @@ def _run_arena_benchmark(
             "native_profile_batch_size": len(batch),
             "timing_sample_contract": PAIRED_TIMING_SAMPLE_CONTRACT,
             "elapsed_seconds": achieved_runtime,
+            "warmup_elapsed_seconds": warmup_elapsed,
+            "calibration_elapsed_seconds": calibration_elapsed,
+            "calibration_outer_elapsed_seconds": calibration_elapsed,
+            "measurement_phase_elapsed_seconds": samples_elapsed,
+            "profile_total_elapsed_seconds": profile_total_elapsed,
             "completed_sample_count": sample_count,
             "planned_sample_count": sample_count,
             "repetitions_per_sample": repetitions,
@@ -2337,10 +2346,12 @@ def _run_report_benchmark(
                 config: RunConfig,
                 command_progress: ProgressSink,
             ) -> object:
+                profile_started = time.perf_counter()
                 result = BenchmarkRunner(
                     config,
                     progress=command_progress,
                 ).run(runtime, points=points)
+                profile_total_elapsed = time.perf_counter() - profile_started
                 environment = getattr(result, "environment", None)
                 if not isinstance(environment, Mapping):
                     raise RunnerError(
@@ -2352,6 +2363,7 @@ def _run_report_benchmark(
                         **environment,
                         "report_command_path": (LOADED_RUNTIME_PROFILE_COMMAND_PATH),
                         "report_public_cli_path": PUBLIC_CLI_COMMAND_PATH,
+                        "profile_total_elapsed_seconds": profile_total_elapsed,
                     },
                 )
 
@@ -2617,6 +2629,40 @@ def _benchmark_measurement(
         ):
             raise RunnerError("benchmark has an invalid public CLI command path")
         command_evidence["report_public_cli_path"] = public_path
+    phase_evidence: dict[str, object] = {}
+    for field in (
+        "warmup_elapsed_seconds",
+        "calibration_elapsed_seconds",
+        "calibration_outer_elapsed_seconds",
+        "measurement_phase_elapsed_seconds",
+        "profile_total_elapsed_seconds",
+        "profile_attribution_elapsed_seconds",
+        "evaluator_elapsed_seconds",
+        "calibration_probe_seconds",
+    ):
+        if field not in environment:
+            continue
+        value = environment[field]
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or float(value) < 0.0
+        ):
+            raise RunnerError(f"benchmark has invalid {field.replace('_', ' ')}")
+        phase_evidence[field] = float(value)
+    for field in (
+        "calibration_block_count",
+        "calibration_evaluation_count",
+    ):
+        if field not in environment:
+            continue
+        value = environment[field]
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise RunnerError(f"benchmark has invalid {field.replace('_', ' ')}")
+        phase_evidence[field] = value
+    if "measurement_phase_elapsed_seconds" not in phase_evidence:
+        phase_evidence["measurement_phase_elapsed_seconds"] = float(achieved_runtime)
     return {
         "status": ResultStatus.OK.value,
         "wall_seconds_per_point": float(benchmark.wall_time_per_point),
@@ -2632,6 +2678,7 @@ def _benchmark_measurement(
         "relative_standard_error": float(uncertainty.relative_standard_error),
         "benchmark_evidence": {
             **command_evidence,
+            **phase_evidence,
             "target_runtime_seconds": target_runtime,
             "achieved_runtime_seconds": float(achieved_runtime),
             "target_runtime_achieved": (
