@@ -778,7 +778,7 @@ def test_prepared_pack_identity_rejects_predecessor_abi() -> None:
         )
 
 
-def test_reader_accepts_legacy_pack_without_kernel_variants(tmp_path: Path) -> None:
+def test_reader_rejects_pack_without_kernel_variants(tmp_path: Path) -> None:
     path = _valid_bundle(tmp_path)
 
     def remove_variants(manifest: dict[str, object]) -> None:
@@ -788,7 +788,26 @@ def test_reader_accepts_legacy_pack_without_kernel_variants(tmp_path: Path) -> N
 
     _mutate_manifest(path, remove_variants)
 
-    assert load_prepared_model_bundle(path).kernel_pack.kernel_variants == ()
+    with pytest.raises(PreparedModelBundleError, match="missing fields"):
+        load_prepared_model_bundle(path)
+
+
+def test_reader_rejects_kernel_without_proof_classes(tmp_path: Path) -> None:
+    path = _valid_bundle(tmp_path)
+
+    def remove_proof_classes(manifest: dict[str, object]) -> None:
+        pack = manifest["kernel_pack"]
+        assert isinstance(pack, dict)
+        kernels = pack["kernels"]
+        assert isinstance(kernels, list)
+        kernel = kernels[0]
+        assert isinstance(kernel, dict)
+        del kernel["proof_classes"]
+
+    _mutate_manifest(path, remove_proof_classes)
+
+    with pytest.raises(PreparedModelBundleError, match="missing fields"):
+        load_prepared_model_bundle(path)
 
 
 @pytest.mark.parametrize(

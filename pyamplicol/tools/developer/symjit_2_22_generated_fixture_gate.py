@@ -34,6 +34,10 @@ _NATIVE_BUILD_INPUTS_PATTERN = re.compile(r"[0-9a-f]{64}")
 _CANDIDATE_VERSION_PATTERN = re.compile(
     r"[0-9]+\.[0-9]+\.[0-9]+\.dev0\+candidate\.[0-9a-f]{12}"
 )
+_ARTIFACT_IDENTITY_CONTRACT = {
+    "kind": "pyamplicol-runtime-payload-identity",
+    "schema_version": 1,
+}
 
 
 class GateError(RuntimeError):
@@ -229,6 +233,15 @@ def _validate_fixture_identity(
     source_revision: str,
     native_build_inputs_sha256: str,
 ) -> None:
+    extensions = payload.get("extensions")
+    if (
+        not isinstance(extensions, dict)
+        or extensions.get("artifact_identity") != _ARTIFACT_IDENTITY_CONTRACT
+    ):
+        raise GateError(
+            f"{label} lacks the current artifact identity contract; "
+            f"regenerate it: {manifest}"
+        )
     producer = payload.get("producer")
     if not isinstance(producer, dict):
         raise GateError(f"{label} producer must be a JSON object: {manifest}")

@@ -245,7 +245,7 @@ lists, momenta and logs are under
 This audit authorizes only construction-transient indexes, exact-output
 enumeration, immutable metadata hoisting and profiling.  It does not authorize
 changes to recurrence artifacts, parameter layout, numerical evidence,
-`pyamplicol-symjit-plane-application-v1`,
+`pyamplicol-symjit-plane-application-v2`,
 `pyamplicol-recurrence-plane-binding-v2`, scratch/liveness allocation, runtime
 epilogues, or runtime scheduling.  Any such proposal belongs in the separate
 redesign scouting report and requires review.

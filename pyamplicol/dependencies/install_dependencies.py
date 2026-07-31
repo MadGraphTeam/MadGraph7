@@ -1388,6 +1388,15 @@ def _build_ratatui_wheel(
                 external_ffi_source,
                 ignore=shutil.ignore_patterns(".git", "target"),
             )
+            # Contributor builds keep temporary outputs inside this checkout.
+            # Stop Cargo from treating the private copy as a pyAmpliCol member.
+            manifest = external_ffi_source / "Cargo.toml"
+            manifest_text = manifest.read_text(encoding="utf-8")
+            if "\n[workspace]" not in f"\n{manifest_text}":
+                manifest.write_text(
+                    manifest_text.rstrip() + "\n\n[workspace]\n",
+                    encoding="utf-8",
+                )
         environment = dict(
             _venv_environment(),
             RATATUI_FFI_SRC=str(external_ffi_source.resolve()),

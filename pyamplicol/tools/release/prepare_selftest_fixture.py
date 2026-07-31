@@ -39,6 +39,25 @@ _RUNTIME_ARTIFACT_ID_PAYLOAD_ROLES = frozenset(
         "runtime-physics",
     }
 )
+ARTIFACT_IDENTITY_CONTRACT = {
+    "kind": "pyamplicol-runtime-payload-identity",
+    "schema_version": 1,
+}
+
+
+def validate_artifact_identity_contract(
+    manifest: Mapping[str, object],
+    *,
+    context: str,
+) -> None:
+    extensions = manifest.get("extensions")
+    if (
+        not isinstance(extensions, dict)
+        or extensions.get("artifact_identity") != ARTIFACT_IDENTITY_CONTRACT
+    ):
+        raise RuntimeError(
+            f"{context} lacks the current artifact identity contract; regenerate it"
+        )
 
 
 def _canonical_json(value: Mapping[str, object]) -> bytes:
@@ -1029,6 +1048,10 @@ def prepare(source: Path, destination: Path | None = None) -> Path:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if not isinstance(manifest, dict) or manifest.get("schema_version") != 3:
             raise RuntimeError("self-test source is not a schema-v3 artifact")
+        validate_artifact_identity_contract(
+            manifest,
+            context="self-test source",
+        )
         producer = manifest.get("producer")
         runtime_metadata = manifest.get("runtime")
         if not isinstance(producer, dict) or not isinstance(runtime_metadata, dict):

@@ -1015,7 +1015,6 @@ class PreparedKernelRecord:
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> PreparedKernelRecord:
         normalized = dict(value)
-        normalized.setdefault("proof_classes", ())
         expected = frozenset(
             (
                 "kernel_id",
@@ -1434,7 +1433,6 @@ class PreparedKernelPack:
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> PreparedKernelPack:
         normalized = dict(value)
-        normalized.setdefault("kernel_variants", ())
         normalized.setdefault("recurrence_template", None)
         normalized.setdefault("recurrence_direct_template", None)
         expected = frozenset(

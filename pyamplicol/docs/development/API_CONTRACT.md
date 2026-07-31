@@ -86,8 +86,10 @@ the canonical `CompiledModel`, or `None` for the configured/default source.
 ## Runtime
 
 `Runtime.load(artifact, *, process=None, model_parameters=None,
-mute_warnings=False) -> Runtime` validates schema, checksums, target, and ABI
-before loading executable state.
+mute_warnings=False) -> Runtime` validates the schema and identity-contract
+marker, confined references, target, and ABI before loading executable state.
+Call `pyamplicol.artifacts.validate_payloads()` for an explicit full checksum
+audit.
 
 `Runtime.physics` returns `ProcessPhysics` with stable particles, physical
 helicity IDs, physical color-flow IDs, contraction metadata, coverage, and

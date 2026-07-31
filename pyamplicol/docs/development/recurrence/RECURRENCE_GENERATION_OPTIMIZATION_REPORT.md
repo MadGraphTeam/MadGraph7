@@ -178,11 +178,11 @@ The implementation does not add or reintroduce `DirectApplication`,
 `DirectTable`, scalar-plane lowering, plane or row bindings, broadcast or
 scratch ownership, recurrence epilogues, or runtime row scheduling.  These are
 owned by the stable
-`pyamplicol-symjit-plane-application-v1` /
+`pyamplicol-symjit-plane-application-v2` /
 `pyamplicol-recurrence-plane-binding-v2` migration boundary.  The verbatim
-plan records the binding-v1 name that was current when it was approved; the
-migration subsequently advanced that schema to v2 without changing this
-optimization round's ownership boundary.
+plan records the application-v1 and binding-v1 names that were current when it
+was approved; the migration subsequently advanced both schemas to v2 without
+changing this optimization round's ownership boundary.
 
 Retained native sessions, zero-relation finalization, batched
 arbitrary-precision probes, shared structural DAGs with flow overlays,

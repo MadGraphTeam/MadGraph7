@@ -25,7 +25,11 @@ from typing import Any, TypeVar
 import maturin  # type: ignore[import-untyped]
 from native_build_identity import (
     canonical_candidate_cargo_config_bytes as _canonical_candidate_cargo_config_bytes,
+)
+from native_build_identity import (
     canonical_release_cargo_lock_bytes as _canonical_release_cargo_lock_bytes,
+)
+from native_build_identity import (
     native_build_inputs_digest as _native_build_inputs_digest,
 )
 from package_version import (
@@ -50,6 +54,21 @@ _RUNTIME_ARTIFACT_ID_PAYLOAD_ROLES = frozenset(
         "runtime-physics",
     }
 )
+_ARTIFACT_IDENTITY_CONTRACT = {
+    "kind": "pyamplicol-runtime-payload-identity",
+    "schema_version": 1,
+}
+
+
+def _require_artifact_identity_contract(manifest: Mapping[str, object]) -> None:
+    extensions = manifest.get("extensions")
+    if (
+        not isinstance(extensions, dict)
+        or extensions.get("artifact_identity") != _ARTIFACT_IDENTITY_CONTRACT
+    ):
+        raise RuntimeError(
+            "process artifact lacks the current identity contract; regenerate it"
+        )
 
 
 def _runtime_artifact_id(manifest: Mapping[str, object]) -> str:
@@ -819,6 +838,7 @@ def _stage_selftest_fixture(overlay: Path, target: str) -> None:
     path = selected / "artifact" / "artifact.json"
     try:
         manifest = json.loads(path.read_text(encoding="utf-8"))
+        _require_artifact_identity_contract(manifest)
         manifest["producer"]["version"] = package_version
         manifest["runtime"]["engine_version"] = package_version
         producer_target = manifest["producer"]["target"]

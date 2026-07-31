@@ -295,19 +295,15 @@ def test_eager_prepared_pack_settings_are_authoritative(
     assert "prepared model settings" in caplog.text
 
 
-def test_legacy_prepared_jit_pack_defaults_compression_to_false(
+def test_prepared_jit_pack_requires_explicit_compression_setting(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
     model = ModelSource.from_path(_prepared_builtin_sm(tmp_path, jit_compress=None))
 
-    plan = Generator(_eager_config()).plan("d d~ > z", model=model)
-
-    assert plan.requested_settings.evaluator.jit.compress is True
-    assert plan.effective_settings.evaluator.jit.compress is False
-    by_path = {adjustment.path: adjustment for adjustment in plan.adjustments}
-    assert (
-        "prepared eager kernel pack is authoritative"
-        in by_path["evaluator.jit.compress"].reason
-    )
+    with pytest.raises(
+        GenerationError,
+        match="omits optimization setting 'jit_compress'",
+    ):
+        Generator(_eager_config()).plan("d d~ > z", model=model)

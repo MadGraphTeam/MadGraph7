@@ -49,8 +49,9 @@ plan/recurrence-direct-plan-v2.bin
 ```
 
 Process artifacts retain schema v3 and PACBIN retains `pacbin-v1` framing.
-Pre-release recurrence contracts require no compatibility loader. Existing
-compiled and eager artifacts and prepared-kernel ABI v1 remain valid.
+Pre-release recurrence contracts require no compatibility loader. Predecessor
+plane, binding, and prepared-pack records fail closed with regeneration
+guidance.
 
 These packet-runtime identifiers are removed:
 
@@ -90,9 +91,8 @@ been finalized.
 ## Prepared Direct Template
 
 The optional prepared-model companion is a content-addressed semantic catalog
-above the existing callable-kernel catalog. Old prepared bundles remain valid
-for eager execution and fail recurrence preflight with an exact recompilation
-command.
+above the existing callable-kernel catalog. A current eager-only pack may omit
+the recurrence companion; predecessor prepared-pack ABIs are rejected.
 
 The catalog contains:
 

@@ -620,6 +620,11 @@ class ArtifactManifest:
             raise CompatibilityError(
                 f"unsupported process-artifact schema {schema!r}; expected v3"
             )
+        if "extensions" not in raw:
+            raise CompatibilityError(
+                "artifact predates the required runtime-payload identity contract; "
+                "regenerate it with the current pyAmpliCol"
+            )
         _keys(
             raw,
             "artifact manifest",
@@ -635,8 +640,9 @@ class ArtifactManifest:
                 "runtime",
                 "payloads",
                 "dependencies",
+                "extensions",
             },
-            optional={"default_process_id", "extensions"},
+            optional={"default_process_id"},
         )
         kind = raw.get("kind")
         if kind not in ("pyamplicol-process", "pyamplicol-process-set"):
@@ -649,7 +655,7 @@ class ArtifactManifest:
             raise ArtifactError("payloads must contain at least one payload")
         dependency_values = _sequence(raw.get("dependencies"), "dependencies")
         default_process = raw.get("default_process_id")
-        extensions = _mapping(raw.get("extensions", {}), "extensions")
+        extensions = _mapping(raw.get("extensions"), "extensions")
         _validate_artifact_identity_extension(extensions)
         created_utc = _string(raw.get("created_utc"), "created_utc")
         try:
@@ -904,12 +910,12 @@ def load_manifest(
 
 
 __all__ = [
-    "MANIFEST_NAME",
-    "SCHEMA_VERSION",
-    "ArtifactManifest",
     "ARTIFACT_IDENTITY_EXTENSION",
     "ARTIFACT_IDENTITY_KIND",
     "ARTIFACT_IDENTITY_SCHEMA_VERSION",
+    "MANIFEST_NAME",
+    "SCHEMA_VERSION",
+    "ArtifactManifest",
     "PayloadRecord",
     "artifact_identity_extension",
     "canonical_manifest_bytes",

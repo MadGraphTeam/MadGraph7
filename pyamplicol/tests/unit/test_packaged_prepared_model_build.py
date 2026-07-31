@@ -23,68 +23,6 @@ from prepared_models import (  # noqa: E402
 )
 
 
-@pytest.fixture(autouse=True)
-def _simulate_regenerated_pack_native_identity(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Project new source bindings until the binary fixtures are regenerated."""
-
-    original_contract_loader = prepared_models_module._load_prepared_contract
-
-    def load_contract(path: Path) -> object:
-        contract = original_contract_loader(path)
-
-        def load_bundle(bundle_path: Path) -> object:
-            bundle = contract.load_prepared_model_bundle(bundle_path)
-            pack = bundle.kernel_pack
-            package_root = path.parent.parent
-            model_compiler_sha256 = (
-                prepared_models_module._model_compiler_digest(package_root)
-            )
-            model_source_digest = prepared_models_module._built_in_source_digest(
-                package_root
-            )
-            compiled_model = dict(bundle.compiled_model)
-            compiled_producer = dict(compiled_model["producer"])
-            compiled_producer["model_compiler_sha256"] = model_compiler_sha256
-            compiled_model["producer"] = compiled_producer
-            compiled_source = dict(compiled_model["source"])
-            compiled_source["digest"] = model_source_digest
-            compiled_model["source"] = compiled_source
-            producer = dict(pack.producer)
-            producer["native_build_inputs_sha256"] = (
-                prepared_models_module.native_build_inputs_digest(ROOT)
-            )
-            provenance = dict(pack.provenance)
-            provenance["compiled_model_digest"] = model_source_digest
-            model_source = dict(provenance["model_source"])
-            model_source["digest"] = model_source_digest
-            provenance["model_source"] = model_source
-            wrapped_pack = SimpleNamespace(
-                backend=pack.backend,
-                dependency_abis=pack.dependency_abis,
-                kernels=pack.kernels,
-                optimization_settings=pack.optimization_settings,
-                producer=producer,
-                provenance=provenance,
-                target=pack.target,
-            )
-            return SimpleNamespace(
-                backend=bundle.backend,
-                compiled_model=compiled_model,
-                kernel_pack=wrapped_pack,
-                manifest=bundle.manifest,
-            )
-
-        return SimpleNamespace(load_prepared_model_bundle=load_bundle)
-
-    monkeypatch.setattr(
-        prepared_models_module,
-        "_load_prepared_contract",
-        load_contract,
-    )
-
-
 def _overlay(tmp_path: Path) -> Path:
     overlay = tmp_path / "overlay"
     shutil.copytree(
@@ -134,7 +72,6 @@ def _overlay(tmp_path: Path) -> Path:
         ),
         encoding="utf-8",
     )
-    _bind_static_pack_contract(overlay, mode="candidate")
     return overlay
 
 

@@ -1387,8 +1387,8 @@ def _prepared_pack_effective_values(
             )
         return settings[name]
 
-    def optional_bool(name: str, *, default: bool) -> bool:
-        value = settings.get(name, default)
+    def required_bool(name: str) -> bool:
+        value = required(name)
         if not isinstance(value, bool):
             raise GenerationError(
                 f"prepared kernel pack has a non-boolean optimization setting {name!r}"
@@ -1412,12 +1412,7 @@ def _prepared_pack_effective_values(
     }
     if pack.backend == "jit":
         values["evaluator.jit.optimization_level"] = required("jit_optimization_level")
-        # Packs produced before this setting became public used the uncompressed
-        # SymJIT path, so the compatibility default must remain false.
-        values["evaluator.jit.compress"] = optional_bool(
-            "jit_compress",
-            default=False,
-        )
+        values["evaluator.jit.compress"] = required_bool("jit_compress")
         return values
     optimization_level = required("compiled_optimization_level")
     if isinstance(optimization_level, bool) or not isinstance(optimization_level, int):

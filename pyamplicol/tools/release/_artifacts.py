@@ -59,6 +59,7 @@ from audit_sdist import (
 )
 from prepare_selftest_fixture import (
     _artifact_id,
+    validate_artifact_identity_contract,
     validate_portable_artifact_capabilities,
     validate_portable_execution_manifest,
 )
@@ -1203,6 +1204,10 @@ def _validate_selftest_fixture(
         for payload in tagged_payloads
     ):
         raise ArtifactError("wheel self-test evaluator target metadata is invalid")
+    validate_artifact_identity_contract(
+        manifest,
+        context="wheel self-test artifact",
+    )
     claimed_id = manifest.get("artifact_id")
     if claimed_id != _artifact_id(manifest):
         raise ArtifactError("wheel self-test artifact identity is invalid")

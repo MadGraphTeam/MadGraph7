@@ -225,7 +225,6 @@ pub struct ArtifactManifest {
     pub runtime: ArtifactRuntime,
     pub payloads: Vec<Payload>,
     pub dependencies: Vec<Dependency>,
-    #[serde(default)]
     pub extensions: BTreeMap<String, Value>,
 }
 
@@ -719,6 +718,7 @@ impl VerifiedArtifact {
                 "unsupported process artifact schema {schema_version}; this runtime requires schema v{PROCESS_ARTIFACT_SCHEMA_VERSION}"
             )));
         }
+        validate_artifact_identity_header(&header)?;
         reject_forbidden_nulls(&header)?;
         let manifest: ArtifactManifest = serde_json::from_slice(&bytes).map_err(|error| {
             RusticolError::serialization(format!(
@@ -1525,6 +1525,20 @@ fn validate_artifact_identity_extension(
         ));
     }
     Ok(())
+}
+
+fn validate_artifact_identity_header(manifest: &Value) -> RusticolResult<()> {
+    let Some(extensions) = manifest.get("extensions").and_then(Value::as_object) else {
+        return Err(RusticolError::compatibility(
+            "artifact predates the required runtime-payload identity contract; \
+             regenerate it with the current pyAmpliCol",
+        ));
+    };
+    let ordered = extensions
+        .iter()
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    validate_artifact_identity_extension(&ordered)
 }
 
 fn compatible_distribution_version(version: &str) -> bool {
