@@ -125,12 +125,16 @@ NLC/full, lower
 \end{tabular}
 \end{center}
 
-Summary rows report the baseline mean over valid candidate--baseline pairs and
-the ratio of sums
+Summary rows contain multipliers only, ordered as minimum, maximum, median,
+arithmetic mean, and weighted mean.  The arithmetic mean averages the
+individual candidate/baseline multipliers; the weighted mean is the ratio of
+sums
 \(\sum_i T_{\mathrm{candidate},i}/\sum_i T_{\mathrm{baseline},i}\).
-LC summaries remain separate for topology replay and all-flow union.
-Structurally inapplicable, resource-limited, unsupported, and
-validation-failed cells do not contribute to a ratio-of-sums summary.
+Generation summaries use topology replay for LC and the contracted workload
+for NLC and full colour; the non-comparable LC all-flow generation quantity is
+omitted.  Runtime summaries use wall time only, with separate aligned LC
+topology-replay and all-flow lines.  Structurally inapplicable,
+resource-limited, unsupported, and validation-failed cells do not contribute.
 
 The first three matrices provide a built-in-SM overview against original
 \AC{}.  For each process, multiplicity, colour treatment, and LC workload,

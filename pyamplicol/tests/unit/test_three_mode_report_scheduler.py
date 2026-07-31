@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pytest
@@ -485,6 +485,78 @@ def test_campaign_cancelled_while_queued_starts_no_preflight_or_attempt(
     assert tuple(service.paths.artifact_root.glob("cells/*/attempts/*")) == ()
 
 
+@pytest.mark.parametrize(
+    ("reason", "returncode", "succeeds"),
+    (
+        ("completed", 0, True),
+        ("completed", 1, False),
+        ("cancelled", -15, False),
+    ),
+)
+def test_prepared_model_preflight_always_emits_transient_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reason: str,
+    returncode: int,
+    succeeds: bool,
+) -> None:
+    service = _service(tmp_path)
+    cell = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+    planned = PlannedCell(
+        cell,
+        dependency=False,
+        baseline_cell_id=None,
+        rank=1,
+    )
+    prepared_model = tmp_path / "prepared-model.pyamplicol-model"
+    prepared_model.write_text("fixture\n", encoding="ascii")
+    events: list[dict[str, object]] = []
+
+    def observe(payload: Mapping[str, object]) -> None:
+        events.append(dict(payload))
+
+    def fake_supervise(
+        command: Sequence[str],
+        **_arguments: object,
+    ) -> SupervisedResult:
+        if succeeds:
+            result_path = Path(command[command.index("--result-json") + 1])
+            result_path.parent.mkdir(parents=True, exist_ok=True)
+            result_path.write_text(
+                json.dumps({"path": str(prepared_model)}) + "\n",
+                encoding="ascii",
+            )
+        return SupervisedResult(
+            returncode,
+            reason,  # type: ignore[arg-type]
+            ResourceUsage(True, 0, 0, 0, 0.0, 0.1),
+        )
+
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        fake_supervise,
+    )
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(progress_observer=observe),
+    )
+
+    if succeeds:
+        scheduler._ensure_prepared_model((planned,))
+    else:
+        with pytest.raises(RuntimeError, match="prepared-model preflight failed"):
+            scheduler._ensure_prepared_model((planned,))
+
+    attempt_id = "prepared-model-builtin_sm"
+    assert [event["event"] for event in events[:2]] == ["started", "worker"]
+    assert events[1]["attempt_id"] == attempt_id
+    assert events[-1] == {
+        "event": "preflight-finished",
+        "cell_id": cell.cell_id,
+        "attempt_id": attempt_id,
+    }
+
+
 def test_contracted_n6_multi_quark_plans_separate_legacy_capability(
     tmp_path: Path,
 ) -> None:
@@ -588,9 +660,7 @@ def test_z_cell_explicitly_reuses_valid_cross_source_comparisons(
         store=store,
         settings=CampaignSettings(),
     )
-    dependency_ids = {
-        item.cell.cell_id for item in initial if item.cell != candidate
-    }
+    dependency_ids = {item.cell.cell_id for item in initial if item.cell != candidate}
     for item in initial:
         if item.cell == candidate:
             continue

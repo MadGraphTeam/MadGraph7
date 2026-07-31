@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import base64
 import json
 import os
 import shutil
@@ -469,16 +470,89 @@ def test_ratatui_headless_frames_are_stable_and_informative(
 
 
 def test_ratatui_styled_cells_include_color_and_gauge_values() -> None:
-    cells = render_dashboard_frame(
-        _snapshot_fixture(),
-        width=120,
-        height=36,
-        cells=True,
-    )
+    from ratatui import Color
+
+    state = _snapshot_fixture()
+    width = 120
+    frame = render_dashboard_frame(state, width=width, height=36)
+    cells = render_dashboard_frame(state, width=width, height=36, cells=True)
     assert isinstance(cells, list)
     assert cells
     assert any(item.get("fg") not in (None, 0) for item in cells)
     assert any(item.get("ch") == ord("8") for item in cells)
+    header_y, header = next(
+        (index, line)
+        for index, line in enumerate(frame.splitlines())
+        if "cell" in line and "phase / step" in line
+    )
+    header_cell = cells[header_y * width + header.index("cell")]
+    assert header_cell["fg"] == int(Color.LightCyan)
+    assert int(header_cell["mods"]) & 1
+
+
+def test_dashboard_detail_columns_and_supervision_summary_are_styled() -> None:
+    from ratatui import Color
+
+    worker = WorkerView(
+        "completed-demo",
+        status="ok",
+        phase="complete",
+        step="published",
+        cpu_seconds=1.0,
+        current_rss_bytes=2_000,
+        peak_rss_bytes=3_000,
+        phase_timeline=(
+            manual_campaign.PhaseTimelineRow(
+                "Loading and compiling evaluator",
+                wall_seconds=1.25,
+                status="measured",
+            ),
+            manual_campaign.PhaseTimelineRow(
+                "Worker supervision",
+                wall_seconds=2.0,
+                cpu_seconds=1.0,
+                peak_memory_bytes=3_000,
+                status="observed",
+                detail="overall observed worker wall",
+            ),
+        ),
+    )
+    state = DashboardState(
+        instance_id="aligned-details",
+        selected_ids=(worker.cell_id,),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        workers={worker.cell_id: worker},
+        completed_ids={worker.cell_id},
+        show_completed=True,
+    )
+    width = 160
+    frame = render_dashboard_frame(state, width=width, height=48)
+    lines = frame.splitlines()
+    second_keys = {}
+    for first_key, key in (
+        ("Phase", "Step"),
+        ("Wall", "CPU"),
+        ("RSS current", "RSS peak"),
+        ("Guard current", "Guard peak"),
+        ("Outer wall", "Evaluator total"),
+        ("PID tree", "Attempt"),
+    ):
+        line = next(value for value in lines if first_key in value and key in value)
+        second_keys[key] = line.index(key)
+    assert len(set(second_keys.values())) == 1
+    assert "Loading and compiling evaluator" in frame
+
+    cells = render_dashboard_frame(state, width=width, height=48, cells=True)
+    summary_y, summary_line = next(
+        (index, line)
+        for index, line in enumerate(lines)
+        if "Worker supervision" in line
+    )
+    summary_cell = cells[summary_y * width + summary_line.index("Worker supervision")]
+    assert summary_cell["fg"] == int(Color.LightCyan)
+    assert summary_cell["bg"] == int(Color.DarkGray)
+    assert int(summary_cell["mods"]) & 1
 
 
 def test_dashboard_retains_and_renders_native_progress_counters(
@@ -575,6 +649,89 @@ def test_dashboard_keys_select_scroll_help_and_interrupt() -> None:
     )
     assert cancellation.is_set()
     assert state.interrupted
+
+
+def test_dashboard_command_drawer_scrolls_and_copies_exact_command() -> None:
+    from ratatui import KeyCode
+
+    command = " ".join(
+        ["pyamplicol", "generate"]
+        + [f"--option-{index} 'value {index}'" for index in range(30)]
+    )
+    worker = WorkerView(
+        "command-demo",
+        status="running",
+        phase="generation",
+        reproduce_prepare="pyamplicol model compile built-in-sm /tmp/model",
+        reproduce_generate=command,
+        reproduce_profile="pyamplicol profile /tmp/artifact --process 'd d~ > z'",
+    )
+    state = DashboardState(
+        instance_id="command-drawer",
+        selected_ids=(worker.cell_id,),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        workers={worker.cell_id: worker},
+    )
+    cancellation = threading.Event()
+
+    assert not _handle_dashboard_key(
+        state,
+        {"kind": "key", "code": KeyCode.Char, "ch": ord("2"), "mods": 0},
+        cancellation,
+    )
+    assert state.command_stage == "generate"
+    assert not _handle_dashboard_key(
+        state,
+        {"kind": "key", "code": KeyCode.Tab, "ch": 0, "mods": 0},
+        cancellation,
+    )
+    assert state.command_stage == "profile"
+    assert not _handle_dashboard_key(
+        state,
+        {"kind": "key", "code": KeyCode.Left, "ch": 0, "mods": 0},
+        cancellation,
+    )
+    assert state.command_stage == "generate"
+    first = render_dashboard_frame(state, width=80, height=24)
+    assert "Reproduction command · generate" in first
+    assert "wrapped lines 1-" in first
+    assert "--option-29" not in first
+
+    for _ in range(4):
+        assert not _handle_dashboard_key(
+            state,
+            {"kind": "key", "code": KeyCode.PageDown, "ch": 0, "mods": 0},
+            cancellation,
+        )
+    last = render_dashboard_frame(state, width=80, height=24)
+    assert "--option-29" in last
+
+    assert not _handle_dashboard_key(
+        state,
+        {"kind": "key", "code": KeyCode.Char, "ch": ord("y"), "mods": 0},
+        cancellation,
+    )
+    assert state.pending_clipboard == ("generate", command)
+    sequence = manual_campaign._osc52_clipboard_sequence(command)
+    encoded = sequence.removeprefix("\x1b]52;c;").removesuffix("\x07")
+    assert base64.b64decode(encoded).decode("utf-8") == command
+    assert not cancellation.is_set()
+
+    assert not _handle_dashboard_key(
+        state,
+        {"kind": "key", "code": KeyCode.Char, "ch": ord("p"), "mods": 0},
+        cancellation,
+    )
+    assert state.pending_print == ("generate", command)
+
+    assert not _handle_dashboard_key(
+        state,
+        {"kind": "key", "code": KeyCode.Esc, "ch": 0, "mods": 0},
+        cancellation,
+    )
+    assert state.command_stage is None
+    assert not cancellation.is_set()
 
 
 def test_dashboard_filters_order_and_keyboard_toggles() -> None:
@@ -884,6 +1041,30 @@ def test_completed_legacy_result_marks_missing_timeline_unavailable() -> None:
     assert "Phase timeline unavailable (older result)" in frame
 
 
+def test_selected_worker_preserves_subsecond_wall_and_cpu_durations() -> None:
+    worker = WorkerView(
+        "short-worker",
+        status="running",
+        phase="profiling",
+        step="first sample",
+        wall_seconds=0.125,
+        cpu_seconds=0.004,
+    )
+    state = DashboardState(
+        instance_id="short-worker",
+        selected_ids=(worker.cell_id,),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        workers={worker.cell_id: worker},
+    )
+
+    frame = render_dashboard_frame(state, width=120, height=36)
+
+    assert "Wall              125.0 ms" in frame
+    assert "CPU               4.0 ms" in frame
+    assert "Wall              00:00:00" not in frame
+
+
 def test_phase_timeline_uses_only_explicit_legacy_durations() -> None:
     rows = manual_campaign._extract_phase_timeline(
         {
@@ -1105,7 +1286,7 @@ def test_peer_leases_merge_by_sha_without_accumulating_or_double_counting(
         instance_id="peer-two",
         source_revision=state.source_revision,
         updated_at=now,
-        workers={"cell-a": active_worker},
+        workers={"cell-b": active_worker | {"cell_id": "cell-b"}},
     )
     _write_lease(
         service,
@@ -1128,7 +1309,7 @@ def test_peer_leases_merge_by_sha_without_accumulating_or_double_counting(
     expected_keys = {
         "cell-a",
         "peer:peer-one:cell-a",
-        "peer:peer-two:cell-a",
+        "peer:peer-two:cell-b",
     }
     assert set(first.workers) == expected_keys
     assert set(second.workers) == expected_keys
@@ -1140,6 +1321,12 @@ def test_peer_leases_merge_by_sha_without_accumulating_or_double_counting(
     }
     assert first.counters()["active"] == 1
     assert first.counters()["remaining"] == 1
+    assert len(first.peer_active) == 2
+    assert "Peer active 2" in render_dashboard_frame(first, width=120, height=36)
+
+    lease.publish()
+    payload = json.loads(lease.path.read_text(encoding="utf-8"))
+    assert payload["counters"]["active"] == 1
 
 
 def test_lease_manager_publishes_effective_invocation_caps(
@@ -1166,6 +1353,64 @@ def test_lease_manager_publishes_effective_invocation_caps(
         "memory_limit_bytes": 30_000_000_000,
         "worker_wall_limit_seconds": 1200.0,
     }
+
+
+def test_preflight_completion_removes_only_matching_transient_worker(
+    tmp_path: Path,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+        and cell.measurement.model is ModelKey.BUILTIN_SM
+    )
+    state = DashboardState(
+        instance_id="preflight-lifecycle",
+        selected_ids=(cell.cell_id,),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        source_revision="a" * 40,
+    )
+    lease = LeaseManager(service, state)
+    attempt_id = "prepared-model-builtin_sm"
+
+    lease.observe({"event": "started", "cell_id": cell.cell_id})
+    lease.observe(
+        {
+            "event": "worker",
+            "cell_id": cell.cell_id,
+            "attempt_id": attempt_id,
+        }
+    )
+
+    assert state.counters()["active"] == 1
+    lease.observe(
+        {
+            "event": "preflight-finished",
+            "cell_id": cell.cell_id,
+            "attempt_id": "different-attempt",
+        }
+    )
+    assert cell.cell_id in state.workers
+
+    lease.observe(
+        {
+            "event": "preflight-finished",
+            "cell_id": cell.cell_id,
+            "attempt_id": attempt_id,
+        }
+    )
+
+    assert cell.cell_id not in state.workers
+    assert state.completed_ids == set()
+    assert state.recycled_ids == set()
+    assert state.failed_ids == set()
+    assert state.counters()["active"] == 0
+    assert state.counters()["completed"] == 0
+    assert state.counters()["remaining"] == 1
+    payload = json.loads(lease.path.read_text(encoding="utf-8"))
+    assert payload["workers"] == {}
 
 
 def test_active_lease_recipe_uses_effective_invocation_settings(
@@ -1848,9 +2093,9 @@ def test_copied_campaign_rebinds_private_pdf_build_profile(tmp_path: Path) -> No
     assert workspace["initialized_environment"]["profile"] == "independent_run"
     assert workspace["artifact_root"].endswith("/independent_run")
     assert workspace["coordination_root"].endswith("/independent_run")
-    assert "{independent\\_run}" in (
-        staging / "report_environment.tex"
-    ).read_text(encoding="utf-8")
+    assert "{independent\\_run}" in (staging / "report_environment.tex").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_executable_reexecutes_from_base_python_into_repository_venv() -> None:
