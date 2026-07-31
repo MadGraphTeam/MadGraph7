@@ -64,11 +64,14 @@ def test_profiling_campaign_copy_is_reset_and_requires_force(
     assert launcher.read_text(encoding="utf-8").splitlines()[0] == (
         f"#!{sys.executable}"
     )
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    environment["PATH"] = "/usr/bin:/bin"
     direct = subprocess.run(
         (str(launcher), "--help"),
         check=False,
         capture_output=True,
-        env={**os.environ, "PATH": "/usr/bin:/bin"},
+        env=environment,
         text=True,
     )
     assert direct.returncode == 0, direct.stderr

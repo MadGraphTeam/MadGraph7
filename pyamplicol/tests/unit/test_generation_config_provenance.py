@@ -247,6 +247,8 @@ def test_cli_licensed_multiparticle_uses_concrete_resource_partition(
             "off",
             "--set",
             "generation.validation.post_build_validation=false",
+            "--set",
+            "generation.relation_discovery.mode=off",
         ),
         stdout=stdout,
         stderr=stderr,

@@ -427,6 +427,18 @@ def _equivalent_component_scale(
 ) -> _sym.Expression | None:
     if len(materialized) != len(compact) or not materialized:
         return None
+    if any(
+        frozenset(
+            symbol.to_canonical_string()
+            for symbol in dense.get_all_symbols(False)
+        )
+        != frozenset(
+            symbol.to_canonical_string()
+            for symbol in candidate.get_all_symbols(False)
+        )
+        for dense, candidate in zip(materialized, compact, strict=True)
+    ):
+        return None
     for scale in (_sym.E("1"), _sym.E("-1")):
         if all(
             (dense - scale * candidate).expand().to_canonical_string() == "0"

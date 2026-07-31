@@ -21,7 +21,6 @@ MANYLINUX_IMAGE = (
     "sha256:b04887b645dde99b9e955aeae3ff4da414992d0bd88259f046295b56361c5614"
 )
 MEMORY_WATCHDOG = "tools/ci/memory_watchdog.py --limit-gib 30 --"
-ARENA_X86_ACCEPTANCE = "tools/developer/arena_native_x86_acceptance.py"
 
 
 def _guarded_count(workflow: str, command: str) -> int:
@@ -55,7 +54,7 @@ def test_native_toolchains_and_manylinux_image_are_immutable() -> None:
     assert "rust-toolchain@stable" not in workflows
     assert "default-toolchain stable" not in workflows
     assert "manylinux_2_28_x86_64:latest" not in workflows
-    assert workflows.count(f"rust-toolchain@{RUST_TOOLCHAIN_ACTION_SHA}") == 6
+    assert workflows.count(f"rust-toolchain@{RUST_TOOLCHAIN_ACTION_SHA}") == 4
     assert workflows.count(f"default-toolchain {RUST_TOOLCHAIN}") == 2
     assert workflows.count(MANYLINUX_IMAGE) == 2
     assert "cargo install just --version 1.46.0 --locked" in workflows
@@ -99,26 +98,17 @@ def test_candidate_ci_is_read_only_and_covers_release_hosts() -> None:
     assert "retention-days:" in workflow
     assert "id-token: write" not in workflow
     assert "contents: read" in workflow
-    assert workflow.count("dependencies/install_dependencies.py") == 5
-    assert workflow.count("--without-legacy-amplicol") == 5
-    assert workflow.count("--no-build") == 3
+    assert workflow.count("dependencies/install_dependencies.py") == 2
+    assert workflow.count("--without-legacy-amplicol") == 2
+    assert workflow.count("--no-build") == 2
     assert "Focused clean-checkout release tests" in workflow
     assert "PYAMPLICOL_BUILD_MODE: release" in workflow
-    assert "Complete candidate source validation gate" in workflow
-    assert workflow.count("needs: candidate-source-validation") == 2
-    assert workflow.count("PYAMPLICOL_REQUIRE_NATIVE_TESTS") == 3
-    assert "just source-gate" in workflow
-    assert workflow.count("tools/release/test_deployment.py") == 3
-    assert "g++ gfortran make" in workflow
+    assert workflow.count("needs: release-tool-tests") == 2
+    assert workflow.count("PYAMPLICOL_REQUIRE_NATIVE_TESTS") == 2
+    assert "just source-gate" not in workflow
+    assert workflow.count("tools/release/test_deployment.py") == 2
     assert "gcc-c++ gcc-gfortran make" in workflow
     assert "brew install gcc" in workflow
-    source_job = workflow.split(
-        "  candidate-source-validation:\n",
-        maxsplit=1,
-    )[1].split("\n  macos-candidate:\n", maxsplit=1)[0]
-    assert source_job.index("Audit emitted Arena acceptance evidence") < (
-        source_job.index("actions/upload-artifact")
-    )
     macos_job = workflow.split("  macos-candidate:\n", maxsplit=1)[1].split(
         "\n  manylinux-candidate:\n",
         maxsplit=1,
@@ -126,62 +116,17 @@ def test_candidate_ci_is_read_only_and_covers_release_hosts() -> None:
     assert macos_job.index("Test the installed candidate wheel and native SDK") < (
         macos_job.index("actions/upload-artifact")
     )
+    manylinux_job = workflow.split("  manylinux-candidate:\n", maxsplit=1)[1]
+    assert manylinux_job.index("tools/release/test_deployment.py") < (
+        manylinux_job.index("actions/upload-artifact")
+    )
     assert "continue-on-error" not in workflow
 
 
-def test_candidate_native_x86_acceptance_is_exact_and_content_bound() -> None:
+def test_candidate_artifact_build_omits_duplicate_performance_ceremony() -> None:
     workflow = (WORKFLOWS / "candidate.yml").read_text(encoding="utf-8")
-    source_job = workflow.split(
-        "  candidate-source-validation:\n",
-        maxsplit=1,
-    )[1].split("\n  macos-candidate:\n", maxsplit=1)[0]
-
-    assert "runs-on: ubuntu-24.04" in source_job
-    assert "timeout-minutes: 360" in source_job
-    assert "ARENA_EVIDENCE_ROOT: /tmp/pyamplicol-arena-x86-${{ github.sha }}" in (
-        source_job
-    )
-    assert "ref: ${{ github.sha }}" in source_job
-    assert "persist-credentials: false" in source_job
-    assert source_job.count(ARENA_X86_ACCEPTANCE) == 2
-    assert "<<'PY'" not in source_job
-    assert "runtime-identity-preflight.json" in source_job
-    assert "compiled-all-jit-arena-gate.json" in source_job
-    assert "four-quark-compiled-gate.json" in source_job
-    assert "eager-compiled-color/result.json" in source_job
-    assert "arena-native-x86-acceptance.json" in source_job
-    assert '--expected-revision "${{ github.sha }}"' in source_job
-    assert source_job.count('--expected-workspace "${{ github.workspace }}"') == 2
-    assert source_job.count("--points 3") == 2
-    assert "--point-count 3" in source_job
-    assert "--generation-timeout 900" in source_job
-    assert "--generation-timeout 2400" in source_job
-    assert source_job.index(f"{ARENA_X86_ACCEPTANCE} \\\n            preflight") < (
-        source_job.index("compiled_all_jit_arena_gate.py")
-    )
-    assert source_job.index("eager_benchmark_matrix.py") < source_job.index(
-        f"{ARENA_X86_ACCEPTANCE}\n          audit"
-    )
-    assert source_job.index("arena-native-x86-acceptance.json") < source_job.index(
-        "if-no-files-found:"
-    )
-
-    helper = (ROOT / ARENA_X86_ACCEPTANCE).read_text(encoding="utf-8")
-    assert '"-I",' in helper
-    assert '"-S",' in helper
-    assert '"-B",' in helper
-    assert "preimport_python_runtime_identity" in helper
-    assert "source_only_bytecode_policy" in helper
-    assert "loaded_pyamplicol_origin_policy" in helper
-    assert "candidate_wheel_matches_loaded_runtime" in helper
-    assert "all_evidence_files_content_bound" in helper
-
-
-def test_candidate_x86_performance_pipeline_is_exact_and_fail_closed() -> None:
-    workflow = (WORKFLOWS / "candidate.yml").read_text(encoding="utf-8")
-    assert "/private/tmp/pyamplicol-arena-x86" not in workflow
-    assert "continue-on-error" not in workflow
-    for job in (
+    for removed_job in (
+        "candidate-source-validation",
         "x86-performance-runtime-bundle",
         "x86-performance-matrix-shard",
         "x86-qq-recurrence-capture",
@@ -189,149 +134,17 @@ def test_candidate_x86_performance_pipeline_is_exact_and_fail_closed() -> None:
         "x86-qq-recurrence-acceptance",
         "x86-portable-candidate-acceptance",
     ):
-        assert workflow.count(f"  {job}:\n") == 1
+        assert f"  {removed_job}:\n" not in workflow
 
-    runtime_job = workflow.split(
-        "  x86-performance-runtime-bundle:\n",
-        maxsplit=1,
-    )[1].split("\n  x86-performance-matrix-shard:\n", maxsplit=1)[0]
-    assert "runs-on: ubuntu-24.04" in runtime_job
-    assert "timeout-minutes: 360" in runtime_job
-    assert "needs: release-tool-tests" in runtime_job
-    baseline_root = "/private/tmp/pyamplicol-eager-compiled-arena-base-src"
-    assert f"BASELINE_SOURCE_ROOT: {baseline_root}" in runtime_job
-    assert f"working-directory: {baseline_root}" in runtime_job
-    assert (
-        "working-directory: /tmp/pyamplicol-eager-compiled-arena-base-src"
-        not in runtime_job
-    )
-    private_tmp_setup = "sudo install -d -m 1777 /private/tmp"
-    assert private_tmp_setup in runtime_job
-    assert 'test "$(stat -c \'%a\' /private/tmp)" = 1777' in runtime_job
-    assert runtime_job.index(private_tmp_setup) < runtime_job.index(
-        "git worktree add --detach"
-    )
-    assert "443f354a467cdda187996bef1a41fbd5a00ae28d" in runtime_job
-    assert "freeze-baseline" in runtime_job
-    assert "frozen-baseline-attestation.json" in runtime_job
-    assert runtime_job.count("build_release_artifacts.py") == 2
-    assert "bundle-dependencies" in runtime_job
-    assert "prepare-ufo" in runtime_job
-    assert "materialize" in runtime_job
-    assert "create-manifest" in runtime_job
-    assert "verify" in runtime_job
-    assert "if-no-files-found: error" in runtime_job
-    assert runtime_job.count("include-hidden-files: true") == 1
-
-    shard_job = workflow.split(
-        "  x86-performance-matrix-shard:\n",
-        maxsplit=1,
-    )[1].split("\n  x86-qq-recurrence-capture:\n", maxsplit=1)[0]
-    assert "needs: x86-performance-runtime-bundle" in shard_job
-    assert "timeout-minutes: 360" in shard_job
-    assert "shard: [0, 1, 2, 3, 4, 5, 6, 7]" in shard_job
-    assert "compiled_mode_matrix_x86.py shard" in shard_job
-    assert "--shard-count 8" in shard_job
-    assert "--samples 7" in shard_job
-    assert "--target-runtime 5" in shard_job
-    assert "--minimum-samples 7" in shard_job
-    assert "--warmup-runs 2" in shard_job
-    assert "--rerun-results" in shard_job
-    assert "--regenerate-artifacts" in shard_job
-    assert "runtime-bundle.json" in shard_job
-    raw_ufo_model = "src/pyamplicol/assets/models/json/sm/sm.json"
-    prepared_ufo_model = (
-        "$PERFORMANCE_BUNDLE_ROOT/prepared-models/"
-        "ufo-sm-jit-o2.pyamplicol-model"
-    )
-    assert raw_ufo_model in shard_job
-    assert prepared_ufo_model not in shard_job
-
-    capture_job = workflow.split(
-        "  x86-qq-recurrence-capture:\n",
-        maxsplit=1,
-    )[1].split("\n  x86-performance-matrix-aggregate:\n", maxsplit=1)[0]
-    assert "timeout-minutes: 360" in capture_job
-    for role in (
-        "builtin-topology",
-        "builtin-union",
-        "ufo-topology",
-        "ufo-union",
-    ):
-        assert capture_job.count(f"role: {role}") == 1
-    assert "recurrence_z6g_benchmark.py" in capture_job
-    assert capture_job.count("--mode compiled") == 1
-    assert capture_job.count("--mode eager") == 1
-    assert capture_job.count("--mode recurrence") == 1
-    assert "--target-runtime 5" in capture_job
-    assert "--minimum-samples 7" in capture_job
-    assert "--subprocess-samples 7" in capture_job
-    assert "--validation-samples 10" in capture_job
-    assert "--generation-timeout 10800" in capture_job
-    assert "--profile-timeout 1800" in capture_job
-    assert "--specialize-flow-at-generation" not in capture_job
-    assert "flow:2,4,5,6,7,8,9,1" in capture_job
-    assert "h:-1,+1,-1,+1,-1,+1,-1,+1,-1" in capture_job
-    assert (
-        "path: ${{ env.QQ_UPLOAD_ROOT }}/${{ matrix.role }}.json"
-        in capture_job
-    )
-    assert "path: ${{ env.QQ_CAPTURE_ROOT }}/" not in capture_job
-    assert "path: ${{ env.QQ_WORK_ROOT }}" not in capture_job
-    assert (
-        '"$QQ_UPLOAD_ROOT/${{ matrix.role }}.json"'
-        in capture_job
-    )
-    assert prepared_ufo_model in capture_job
-    assert raw_ufo_model not in capture_job
-
-    aggregate_job = workflow.split(
-        "  x86-performance-matrix-aggregate:\n",
-        maxsplit=1,
-    )[1].split("\n  x86-qq-recurrence-acceptance:\n", maxsplit=1)[0]
-    assert "compiled_mode_matrix_x86.py aggregate" in aggregate_job
-    assert "--shard-count 8" in aggregate_job
-    assert "merge-multiple: true" in aggregate_job
-    assert "compiled-mode-matrix-x86-aggregate.json" in aggregate_job
-    assert raw_ufo_model in aggregate_job
-    assert prepared_ufo_model not in aggregate_job
-
-    assert workflow.count(raw_ufo_model) == 2
-    assert workflow.count(prepared_ufo_model) == 2
-
-    qq_job = workflow.split(
-        "  x86-qq-recurrence-acceptance:\n",
-        maxsplit=1,
-    )[1].split("\n  x86-portable-candidate-acceptance:\n", maxsplit=1)[0]
-    assert "x86_qq_recurrence_acceptance.py" in qq_job
-    assert "merge-multiple: true" in qq_job
-    assert "--builtin-topology" in qq_job
-    assert "$QQ_CAPTURE_ROOT/builtin-topology.json" in qq_job
-    assert "$QQ_CAPTURE_ROOT/builtin-topology/result.json" not in qq_job
-    assert "--builtin-union" in qq_job
-    assert "--ufo-topology" in qq_job
-    assert "--ufo-union" in qq_job
-
-    final_job = workflow.split(
-        "  x86-portable-candidate-acceptance:\n",
-        maxsplit=1,
-    )[1].split("\n  macos-candidate:\n", maxsplit=1)[0]
-    for need in (
-        "candidate-source-validation",
-        "x86-performance-matrix-aggregate",
-        "x86-qq-recurrence-acceptance",
-    ):
-        assert f"- {need}" in final_job
-    assert "x86_portable_performance_acceptance.py" in final_job
-    assert "arena-native-x86-acceptance.json" in final_job
-    assert "compiled-mode-matrix-x86-aggregate.json" in final_job
-    assert "x86-qq-recurrence-acceptance.json" in final_job
-    assert '--expected-revision "${{ github.sha }}"' in final_job
-    assert "if-no-files-found: error" in final_job
-
-    assert workflow.count(
-        "actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0"
-    ) == 9
+    assert "443f354a467cdda187996bef1a41fbd5a00ae28d" not in workflow
+    assert "/private/tmp/pyamplicol-eager-compiled-arena-base-src" not in workflow
+    assert "x86_performance_runtime_bundle.py" not in workflow
+    assert "recurrence_z6g_benchmark.py" not in workflow
+    assert "compiled_mode_matrix_x86.py" not in workflow
+    assert "arena_native_x86_acceptance.py" not in workflow
+    assert "compiled_all_jit_arena_gate.py" not in workflow
+    assert "four_quark_compiled_gate.py" not in workflow
+    assert "eager_benchmark_matrix.py" not in workflow
 
 
 def test_automatic_tests_cover_generation_config_provenance() -> None:
@@ -392,65 +205,29 @@ def test_candidate_and_release_heavy_commands_use_memory_watchdog() -> None:
     candidate = (WORKFLOWS / "candidate.yml").read_text(encoding="utf-8")
     release = (WORKFLOWS / "release-artifacts.yml").read_text(encoding="utf-8")
 
-    assert candidate.count(MEMORY_WATCHDOG) == 19
+    assert candidate.count(MEMORY_WATCHDOG) == 6
     assert (
         _guarded_count(
             candidate,
             r'(?:python|"\$PYTHON") dependencies/install_dependencies\.py',
         )
-        == 5
+        == 2
     )
     assert (
         _guarded_count(
             candidate,
-            r'env PYTHON="\$PWD/\.venv/bin/python" just source-gate',
+            r'(?:python|"\$PYTHON") tools/release/test_deployment\.py',
         )
-        == 1
+        == 2
     )
     assert (
         _guarded_count(
             candidate,
-            r'(?:\.venv/bin/python|python|"\$PYTHON") '
-            r"tools/release/test_deployment\.py",
-        )
-        == 3
-    )
-    assert (
-        _guarded_count(
-            candidate,
-            r"\.venv/bin/python "
-            r"tools/developer/compiled_all_jit_arena_gate\.py",
-        )
-        == 1
-    )
-    assert (
-        _guarded_count(
-            candidate,
-            r"\.venv/bin/python tools/developer/four_quark_compiled_gate\.py",
-        )
-        == 1
-    )
-    assert (
-        _guarded_count(
-            candidate,
-            r"\.venv/bin/python tools/developer/eager_benchmark_matrix\.py",
-        )
-        == 1
-    )
-    assert (
-        _guarded_count(
-            candidate,
-            r'(?:\.venv/bin/python|python|"\$PYTHON") '
+            r'(?:python|"\$PYTHON") '
             r"tools/release/build_release_artifacts\.py",
         )
-        == 3
+        == 2
     )
-    assert (
-        f"{MEMORY_WATCHDOG} \\\n"
-        '            "$BASELINE_SOURCE_ROOT/.venv/bin/python" \\\n'
-        '            "$BASELINE_SOURCE_ROOT/tools/release/'
-        'build_release_artifacts.py"'
-    ) in candidate
 
     assert "ulimit -v" not in release
     assert release.count(MEMORY_WATCHDOG) == 11

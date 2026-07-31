@@ -29,11 +29,16 @@ def test_compact_component_scale_accepts_only_an_exact_sign() -> None:
         tuple(2 * component for component in compact),
         compact,
     )
+    disjoint = _equivalent_component_scale(
+        (_sym.E("1.1*(x+1)"),),
+        (_sym.E("y+1"),),
+    )
 
     assert positive == _sym.E("1")
     assert negative == _sym.E("-1")
     assert float_positive == _sym.E("1")
     assert rescaled is None
+    assert disjoint is None
 
 
 def test_float_component_scale_fails_closed_without_symbolica_abort() -> None:
