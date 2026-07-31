@@ -21,6 +21,7 @@ SDK_SOURCES = (
     ("rust/crates/rusticol-capi/fortran/rusticol.f90", "fortran/rusticol.f90"),
 )
 RUST_SDK_SOURCE = "src/pyamplicol/_sdk/rust/rusticol.rs"
+RUST_SDK_WORKSPACE_MEMBER = "rust/crates/rusticol-capi"
 NATIVE_MARKER = "native-static-libs:"
 FORBIDDEN_SYMBOLS = (
     "PyObject",
@@ -443,7 +444,55 @@ def _package_version(root: Path) -> str:
     return version
 
 
+def _ensure_sdk_workspace_member(root: Path) -> None:
+    """Restore the SDK crate that Maturin prunes from unpacked sdists."""
+
+    path = root / "Cargo.toml"
+    text = path.read_text(encoding="utf-8")
+    try:
+        members = tomllib.loads(text)["workspace"]["members"]
+    except (KeyError, TypeError, tomllib.TOMLDecodeError) as error:
+        raise RuntimeError("Cargo workspace member inventory is invalid") from error
+    if not isinstance(members, list) or not all(
+        isinstance(member, str) for member in members
+    ):
+        raise RuntimeError("Cargo workspace member inventory is invalid")
+    if RUST_SDK_WORKSPACE_MEMBER in members:
+        return
+    expected = [
+        "rust/crates/rusticol-core",
+        "rust/crates/rusticol-python",
+    ]
+    if (
+        members != expected
+        or not (root / RUST_SDK_WORKSPACE_MEMBER / "Cargo.toml").is_file()
+    ):
+        raise RuntimeError("Cargo workspace does not contain the Rusticol C SDK")
+
+    workspace = re.search(
+        r"(?ms)^\[workspace\]\s*\n(?P<body>.*?)(?=^\[|\Z)",
+        text,
+    )
+    if workspace is None:
+        raise RuntimeError("Cargo workspace member inventory is invalid")
+    body = workspace.group("body")
+    updated_body, count = re.subn(
+        r"(?ms)^(members\s*=\s*)\[.*?\]",
+        rf'\g<1>["{expected[0]}", "{expected[1]}", '
+        rf'"{RUST_SDK_WORKSPACE_MEMBER}"]',
+        body,
+        count=1,
+    )
+    if count != 1:
+        raise RuntimeError("Cargo workspace member inventory is invalid")
+    path.write_text(
+        text[: workspace.start("body")] + updated_body + text[workspace.end("body") :],
+        encoding="utf-8",
+    )
+
+
 def build_sdk(root: Path, target_dir: Path) -> Path:
+    _ensure_sdk_workspace_member(root)
     host = _host_target(root)
     target = _requested_target(host)
     environment = dict(os.environ, CARGO_TARGET_DIR=str(target_dir))

@@ -2085,6 +2085,7 @@ def test_sdist_rejects_mismatched_symjit_cargo_source(tmp_path: Path) -> None:
         "docs/user/installation.md",
         "examples/data/pp_zjj_momenta.json",
         "examples/python/typed_generation.py",
+        "rust/crates/rusticol-capi/Cargo.toml",
         "rust/crates/rusticol-capi/include/rusticol.h",
         "rust/crates/rusticol-python/stubs/pyamplicol/_rusticol.pyi",
         "schemas/README.md",

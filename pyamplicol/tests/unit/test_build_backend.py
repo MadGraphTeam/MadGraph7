@@ -1393,6 +1393,39 @@ def test_sdk_build_references_the_python_owned_safe_rust_wrapper(
     assert metadata["rust_source"] == "rust/rusticol.rs"
 
 
+def test_sdk_build_restores_maturin_pruned_sdist_workspace_member(
+    tmp_path: Path,
+) -> None:
+    cargo = tmp_path / "Cargo.toml"
+    cargo.write_text(
+        """\
+[workspace]
+members = ["rust/crates/rusticol-core", "rust/crates/rusticol-python"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+""",
+        encoding="utf-8",
+    )
+    capi = tmp_path / sdk.RUST_SDK_WORKSPACE_MEMBER / "Cargo.toml"
+    capi.parent.mkdir(parents=True)
+    capi.write_text('[package]\nname = "rusticol-capi"\n', encoding="utf-8")
+
+    sdk._ensure_sdk_workspace_member(tmp_path)
+
+    with cargo.open("rb") as stream:
+        members = tomllib.load(stream)["workspace"]["members"]
+    assert members == [
+        "rust/crates/rusticol-core",
+        "rust/crates/rusticol-python",
+        "rust/crates/rusticol-capi",
+    ]
+    restored = cargo.read_bytes()
+    sdk._ensure_sdk_workspace_member(tmp_path)
+    assert cargo.read_bytes() == restored
+
+
 def test_dependency_gate_subprocess_ignores_inherited_build_injection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
