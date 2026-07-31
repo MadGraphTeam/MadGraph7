@@ -8570,14 +8570,31 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             return None
         return [p + 1 for p in pi]
 
-    def _diagram_leg_subsets(self, me):
-        """Per diagram number, the set of its internal propagators' canonical
-        external-leg subsets -- a crossing-covariant topology signature (a
-        propagator is the set of external legs whose momenta flow through it, and
-        a subset and its complement are the same propagator). get_s_and_t_channels
-        numbers the propagators negative, external-inward; the final t-channel
-        'propagator' is a single external leg and is dropped (canonical length 1).
-        Returns (dict diagram_number -> frozenset of subsets, nexternal)."""
+    def _diagram_topology_signature(self, me):
+        """Per diagram number, the set of its internal propagators as
+        (canonical external-leg subset, |PDG|) -- a crossing-covariant topology
+        signature. A propagator is identified by the external legs whose momenta
+        flow through it (a subset and its complement are the same propagator,
+        hence the canonical choice of the two) TOGETHER WITH the particle running
+        in it. get_s_and_t_channels numbers the propagators negative,
+        external-inward; the final t-channel 'propagator' is a single external
+        leg and is dropped (canonical length 1).
+
+        The leg subsets alone are not a fine enough invariant: two diagrams can
+        route the same momenta through different particles, and then they share a
+        signature, the base lookup loses one of them and _crossgroup_configmap
+        degrades to the identity. g g > t t~ u u~ is the standing example -- the
+        gluon-exchange diagram and the one carrying the four-gluon vertex through
+        its auxiliary field have identical leg subsets and differ only here.
+
+        |PDG| and not PDG: crossing a leg between the initial and the final state
+        reverses the momentum flow through every propagator on its path, which
+        conjugates them. The magnitude is what is invariant under the relabelling
+        -- and staying invariant is the whole point, since this signature is what
+        matches a diagram to its counterpart in the crossed process.
+
+        Returns (dict diagram_number -> frozenset of (subset, |PDG|), nexternal).
+        """
         nx, nini = me.get_nexternal_ninitial()
         model = me.get('processes')[0].get('model')
         npdg = model.get_first_non_pdg()
@@ -8588,7 +8605,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             sch, tch = diag.get('amplitudes')[0].get_s_and_t_channels(
                 nini, model, npdg)
             ext = {i: frozenset([i]) for i in range(1, nx + 1)}
-            subs = set()
+            props = set()
             for vert in list(sch) + list(tch):
                 legs = vert.get('legs')
                 daughters = [l.get('number') for l in legs[:-1]]
@@ -8597,8 +8614,8 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                     else frozenset()
                 ext[legs[-1].get('number')] = s
                 if 2 <= len(canon(s)):
-                    subs.add(canon(s))
-            out[diag.get('number')] = frozenset(subs)
+                    props.add((canon(s), abs(legs[-1].get('id'))))
+            out[diag.get('number')] = frozenset(props)
         return out, nx
 
     def _crossgroup_configmap(self, dep_me, base_me, cross):
@@ -8608,25 +8625,49 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         must name the matching BASE diagram; otherwise the importance sampling is
         mis-paired (this only affects the variance, never the result -- summing the
         channels gives the full integral for any bijective pairing). Returns the
-        identity if the diagrams cannot be cleanly matched."""
-        bsub, nx = self._diagram_leg_subsets(base_me)
-        dsub, _ = self._diagram_leg_subsets(dep_me)
+        identity if the diagrams cannot be cleanly matched -- with a warning,
+        because that fallback is otherwise invisible: it is indistinguishable
+        from the common and legitimate case of a crossing-covariant numbering,
+        every matrix element still agrees to the last digit, and the only symptom
+        is a cross section that integrates slowly and unstably behind an error
+        estimate that no longer means anything."""
+        bsub, nx = self._diagram_topology_signature(base_me)
+        dsub, _ = self._diagram_topology_signature(dep_me)
         ngraphs = len(dep_me.get('diagrams'))
-        bsig = {frozenset(v): k for k, v in bsub.items()}
+        bsig = {v: k for k, v in bsub.items()}
         tables = ProcessExporterFortran.compute_crossing_tables(self, base_me)
         P = [tables['perm'][cross * nx + k] for k in range(nx)]
         d2b = {k + 1: P[k] + 1 for k in range(nx)}   # dep leg -> base leg
         allset = frozenset(range(1, nx + 1))
         canon = lambda s: min(s, allset - s, key=lambda x: (len(x), sorted(x)))
+
+        def bail(why):
+            logger.warning(
+                'crossing: could not match the diagrams of %s onto %s '
+                '(crossing %d): %s. Falling back to the identity config map -- '
+                'the cross section stays correct, but the multi-channel '
+                'importance sampling of the routed subprocess is mis-paired and '
+                'will integrate slowly, with an unreliable error estimate.',
+                dep_me.get('processes')[0].shell_string(),
+                base_me.get('processes')[0].shell_string(), cross, why)
+            return list(range(1, ngraphs + 1))
+
+        if len(bsig) != len(bsub):
+            return bail("%d of the base's %d diagrams share a topology "
+                        "signature with another"
+                        % (len(bsub) - len(bsig), len(bsub)))
         cmap = list(range(1, ngraphs + 1))
         for dd, ds in dsub.items():
             if not 1 <= dd <= ngraphs:
-                return list(range(1, ngraphs + 1))
-            sig = frozenset(canon(frozenset(d2b[l] for l in sub)) for sub in ds)
+                return bail('diagram number %d is outside 1..%d' % (dd, ngraphs))
+            sig = frozenset((canon(frozenset(d2b[l] for l in sub)), pdg)
+                            for (sub, pdg) in ds)
             if sig in bsig:
                 cmap[dd - 1] = bsig[sig]
+            else:
+                return bail('diagram %d has no counterpart in the base' % dd)
         if sorted(cmap) != list(range(1, ngraphs + 1)):
-            return list(range(1, ngraphs + 1))
+            return bail('the matching is not a bijection')
         return cmap
 
     def _dsig_crossgroup_fills(self, matrix_element, proc_id, crossgroup):

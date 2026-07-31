@@ -2428,6 +2428,244 @@ class TestCrossingPartition(unittest.TestCase):
                         'no module was eliminated by crossing in p p > j j')
 
 
+class TestCrossingConfigMap(unittest.TestCase):
+    """_crossgroup_configmap must send a crossed subprocess's multi-channel
+    CONFIG to the base diagram of the same topology under the crossing.
+
+    The dependent's genps samples its OWN config's poles, but the shared base
+    SMATRIX enhances AMP2(channel) in the BASE's diagram numbering, so `channel`
+    has to be translated on the way in. Any bijective pairing still sums to the
+    right integral -- what a wrong pairing wrecks is the importance sampling:
+    each channel's weight ends up on the wrong amplitude, so the variance blows
+    up and the error madevent quotes stops meaning anything.
+
+    That failure is invisible from the outside. The function returns the
+    IDENTITY when it cannot match the diagrams, which is indistinguishable from
+    the common and perfectly legitimate case of a crossing-covariant numbering;
+    the matrix elements still agree to every digit, and only the stability of
+    the cross section suffers. So it is checked here, on the map itself:
+    whatever base diagram a config is routed to must carry the same internal
+    propagators as the dependent's own diagram, once the crossing has relabelled
+    the legs.
+
+    Both crossing paths call it -- the within-group router (Track A,
+    write_matrix_router_file) and the cross-group auto_dsig fill (Track B,
+    _dsig_crossgroup_fills) -- so both are covered.
+    """
+
+    @staticmethod
+    def _canon(sub, allset):
+        return min(sub, allset - sub, key=lambda x: (len(x), sorted(x)))
+
+    @classmethod
+    def _propagators(cls, me):
+        """Per diagram number, its internal propagators as a frozenset of
+        (canonical external-leg subset, |PDG|).
+
+        Recomputed here rather than taken from the exporter's own topology
+        helper on purpose: this is the reference the map is judged against, so
+        it must not move when that helper does. A propagator is pinned down by
+        the external legs whose momenta flow through it -- a subset and its
+        complement being the same propagator, hence the canonical choice -- plus
+        the particle running in it. |PDG| and not PDG, because crossing a leg
+        reverses the flow through every propagator on its path and so conjugates
+        them; the magnitude is what survives the relabelling.
+        """
+        nx, nini = me.get_nexternal_ninitial()
+        model = me.get('processes')[0].get('model')
+        npdg = model.get_first_non_pdg()
+        allset = frozenset(range(1, nx + 1))
+        out = {}
+        for diag in me.get('diagrams'):
+            sch, tch = diag.get('amplitudes')[0].get_s_and_t_channels(
+                nini, model, npdg)
+            ext = {i: frozenset([i]) for i in range(1, nx + 1)}
+            props = set()
+            for vert in list(sch) + list(tch):
+                legs = vert.get('legs')
+                daughters = [l.get('number') for l in legs[:-1]]
+                sub = frozenset().union(*[ext.get(d, frozenset([d]))
+                                          for d in daughters]) if daughters \
+                    else frozenset()
+                ext[legs[-1].get('number')] = sub
+                # the last t-channel 'propagator' is a single external leg
+                if len(cls._canon(sub, allset)) >= 2:
+                    props.add((cls._canon(sub, allset),
+                               abs(legs[-1].get('id'))))
+            out[diag.get('number')] = frozenset(props)
+        return out, nx
+
+    def _routed_pairs(self, procs, defs=(), unfold=False):
+        """Every (track, dep_me, base_me, crossing) a generation routes through
+        a shared matrix element, collected from BOTH crossing paths.
+
+        unfold=True sets MG_MERGE_CROSSING=off so the crossed modules are kept
+        instead of folded away at generation -- that is what leaves within-group
+        (Track A) routers to find. With the default 'record' the same processes
+        come back as whole crossed GROUPS and go through Track B instead, so the
+        two settings exercise different code and neither subsumes the other.
+        """
+        import madgraph.iolibs.group_subprocs as group_subprocs
+        import madgraph.iolibs.export_v4 as export_v4
+        cmd = cmd_interface.MasterCmd()
+        cmd.run_cmd('import model sm')
+        for definition in defs:
+            cmd.run_cmd(definition)
+        old = os.environ.get('MG_MERGE_CROSSING')
+        if unfold:
+            os.environ['MG_MERGE_CROSSING'] = 'off'
+        try:
+            for i, proc in enumerate(procs):
+                cmd.run_cmd('%s %s' % ('generate' if i == 0 else 'add process',
+                                       proc))
+        finally:
+            if unfold:
+                if old is None:
+                    os.environ.pop('MG_MERGE_CROSSING', None)
+                else:
+                    os.environ['MG_MERGE_CROSSING'] = old
+        groups = group_subprocs.SubProcessGroup.group_amplitudes(
+            cmd._curr_amps, 'madevent')
+        for group in groups:
+            group.generate_matrix_elements()
+        exp = export_v4.ProcessExporterFortranMEGroup()
+        exp.opt['use_crossing'] = True
+
+        pairs = []
+
+        def add(track, dep, base, iflav):
+            nflav_base = len(base.get_external_flavors_with_iden())
+            pairs.append((track, dep, base, (iflav - 1) // nflav_base))
+
+        for group in groups:                      # Track A, within-group
+            mes = group.get('matrix_elements')
+            bases, routing = exp.partition_crossing_classes(mes)
+            for i, route in enumerate(routing):
+                if i in bases:
+                    continue
+                for (b, iflav) in route:
+                    add('A', mes[i], mes[b], iflav)
+        for (gi, mi), cg in exp.compute_crossgroup_routing(groups).items():
+            dep = groups[gi].get('matrix_elements')[mi]
+            for iflav in cg['flav_idx']:          # Track B, cross-group
+                add('B', dep, cg['base_me'], iflav)
+
+        # the flavors of one module usually share a (base, crossing)
+        seen, out = set(), []
+        for pair in pairs:
+            key = (pair[0], id(pair[1]), id(pair[2]), pair[3])
+            if key not in seen:
+                seen.add(key)
+                out.append(pair)
+        return exp, out
+
+    def _check(self, procs, defs=(), unfold=False, min_pairs=1):
+        exp, pairs = self._routed_pairs(procs, defs=defs, unfold=unfold)
+        checked = 0
+        for (track, dep, base, cross) in pairs:
+            ngraphs = len(dep.get('diagrams'))
+            if len(base.get('diagrams')) != ngraphs:
+                # both call sites leave a mismatched diagram count alone
+                continue
+            label = 'Track %s: %s <- %s (crossing %d)' % (
+                track, dep.get('processes')[0].shell_string(),
+                base.get('processes')[0].shell_string(), cross)
+            cmap = exp._crossgroup_configmap(dep, base, cross)
+            self.assertEqual(
+                sorted(cmap), list(range(1, ngraphs + 1)),
+                '%s: the config map is not a permutation of the %d diagrams'
+                % (label, ngraphs))
+            dprops, nx = self._propagators(dep)
+            bprops, _ = self._propagators(base)
+            perm = exp.get_crossing_permutation(cross, nx)[0]
+            d2b = {k + 1: perm[k] + 1 for k in range(nx)}
+            allset = frozenset(range(1, nx + 1))
+            fmt = lambda ps: sorted((sorted(s), pdg) for (s, pdg) in ps)
+            for d in range(1, ngraphs + 1):
+                want = frozenset(
+                    (self._canon(frozenset(d2b[l] for l in sub), allset), pdg)
+                    for (sub, pdg) in dprops[d])
+                self.assertEqual(
+                    bprops[cmap[d - 1]], want,
+                    '%s:\n  config %d is routed to base diagram %d, but that '
+                    'diagram is not this one crossed.\n'
+                    '  base diagram %d propagators: %s\n'
+                    '  dependent diagram %d crossed: %s\n'
+                    '  (a silent fallback to the identity map looks exactly '
+                    'like this; it costs cross-section stability, not the '
+                    'cross section itself)'
+                    % (label, d, cmap[d - 1], cmap[d - 1],
+                       fmt(bprops[cmap[d - 1]]), d, fmt(want)))
+            checked += 1
+        self.assertGreaterEqual(
+            checked, min_pairs,
+            'expected at least %d routed subprocess(es) to check, got %d -- '
+            'the generation no longer exercises the crossing router'
+            % (min_pairs, checked))
+
+    def test_configmap_cross_group(self):
+        """Track B. g g > t t~ u u~ and its crossing u u~ > t t~ g g land in two
+        separate groups, so the second routes to the first's matrix element
+        through the cross-group path. Both have 36 diagrams, two of which share
+        a pure leg-subset topology and are told apart only by the particle in
+        the propagator: a gluon, versus the auxiliary field that carries the
+        four-gluon vertex. Matching on the leg subsets alone collapses those two
+        into one signature, the pairing stops being a bijection, and the whole
+        map silently degrades to the identity -- which mis-pairs EVERY channel,
+        not just the ambiguous two.
+        """
+        self._check(['g g > t t~ u u~', 'u u~ > t t~ g g'])
+
+    def test_configmap_within_group(self):
+        """Track A. The same ambiguity reaches the within-group router: with the
+        crossed modules kept rather than folded away, p p > t t~ j j routes
+        g Q~ > t t~ g Q~ to g Q > t t~ g Q, again 36 diagrams with the same
+        gluon / four-gluon-auxiliary pair among them.
+        """
+        self._check(['p p > t t~ j j'], defs=['define j = g u u~'],
+                    unfold=True)
+
+    def test_configmap_stays_correct_where_it_already_worked(self):
+        """Control: p p > j j routes two modules and its diagrams have always
+        been matched cleanly. Sharpening the topology signature enough to split
+        the ambiguous pair above must not start REJECTING these -- an invariant
+        that is not crossing-covariant would fail here.
+        """
+        self._check(['p p > j j'], defs=['define j = g u u~'], unfold=True,
+                    min_pairs=2)
+
+    def test_unmatchable_diagrams_are_reported(self):
+        """The fallback must say so. Nothing downstream can detect a degraded
+        config map -- it is a legal bijection that merely samples badly -- so the
+        one chance to notice is at generation.
+
+        Fed two processes that are not crossings of each other (a synthetic
+        stand-in for any pair the topology signature cannot match, since the
+        physical pairs are all matched again now), the map must come back as the
+        identity AND name both matrix elements.
+        """
+        import madgraph.core.helas_objects as helas_objects
+        import madgraph.iolibs.export_v4 as export_v4
+        mes = []
+        for proc in ('u u~ > t t~ g g', 'u u~ > t t~ u u~'):
+            cmd = cmd_interface.MasterCmd()
+            cmd.exec_cmd('import model sm', printcmd=False)
+            cmd.exec_cmd('generate %s' % proc, printcmd=False)
+            mes.append(helas_objects.HelasMultiProcess(
+                cmd._curr_amps).get_matrix_elements()[0])
+        dep, base = mes
+        exp = export_v4.ProcessExporterFortranMEGroup()
+        with self.assertLogs('madgraph.export_v4', level='WARNING') as caught:
+            cmap = exp._crossgroup_configmap(dep, base, 0)
+        self.assertEqual(cmap, list(range(1, len(dep.get('diagrams')) + 1)),
+                         'an unmatchable pair must fall back to the identity')
+        said = '\n'.join(caught.output)
+        for name in ('uux_ttxgg', 'uux_ttxuux'):
+            self.assertIn(name, said,
+                          'the fallback warning does not name %s:\n%s'
+                          % (name, said))
+
+
 class TestMadeventCrossingHelicity(unittest.TestCase):
     """End-to-end regression for the crossed-helicity label written to the LHE.
 

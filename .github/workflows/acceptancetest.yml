@@ -1400,9 +1400,18 @@ jobs:
   # ---------------------------------------------------------------------------
   acceptancetest_crossing_static:
     # The parts that only inspect generated code / python objects: the crossing
-    # partition of a multi-flavor process, the canonical colour-flow code, and
-    # the outputs that cannot decode a crossing (they get the folded crossings
-    # expanded back instead). No compilation, so this is the fast smoke test.
+    # partition of a multi-flavor process, the multi-channel config map that
+    # pairs a routed subprocess's channels with the base's diagrams, the
+    # canonical colour-flow code, and the outputs that cannot decode a crossing
+    # (they get the folded crossings expanded back instead). No compilation, so
+    # this is the fast smoke test.
+    #
+    # TestCrossingConfigMap earns its place here rather than in an integration
+    # job because what it guards is invisible downstream: a mis-paired config map
+    # leaves every matrix element and the cross section itself correct, and only
+    # degrades the multi-channel sampling, so no xsec comparison catches it
+    # reliably -- it shows up as a slow, unstable integration behind an error
+    # estimate that no longer means anything.
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
@@ -1410,10 +1419,10 @@ jobs:
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
-      - name: crossing partition / colour-flow code / unsupported outputs
+      - name: crossing partition / config map / colour-flow code / unsupported outputs
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py -pA TestCrossingPartition TestColorFlowCode TestCrossingUnsupportedOutput -t0 -l INFO
+            ./tests/test_manager.py -pA TestCrossingPartition TestCrossingConfigMap TestColorFlowCode TestCrossingUnsupportedOutput -t0 -l INFO
 
 
   acceptancetest_crossing_fortran:
