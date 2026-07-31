@@ -88,6 +88,7 @@ MAX_TAIL_READ_BYTES = 64 * 1024
 MAX_LOG_TAIL_LINES = 8
 MANUAL_STATE_SCHEMA = "pyamplicol-manual-campaign-state-v1"
 SOURCE_MARKER_SCHEMA = "pyamplicol-manual-source-v1"
+_FULL_SOURCE_REVISION = re.compile(r"[0-9a-f]{40}")
 _DASHBOARD_COUNTER_KEYS = (
     "selected",
     "recycled",
@@ -1590,6 +1591,44 @@ def update_source_marker(
             },
         )
     return changed
+
+
+def recorded_measurement_source_revision(
+    service: ReportService,
+    *,
+    checkout_revision: str,
+) -> str:
+    """Select one recorded measurement epoch for read-only report views.
+
+    Renderer-only commits must not make already published measurements vanish.
+    Real campaign runs update this marker only after the checkout and installed
+    runtime have passed the strict measurement-readiness checks.  Reading the
+    marker therefore keeps refresh/inspect on one coherent source cohort while
+    leaving run-time reuse tied to the active checkout revision.
+    """
+
+    path = _source_marker_path(service)
+    with service.store.named_lock("manual-source-marker"):
+        exists = path.exists()
+        marker = _read_object(path)
+    if marker is None:
+        if exists:
+            raise ManualCampaignError(
+                f"campaign source marker is unreadable: {path}; refusing to "
+                "guess which measurement cohort to publish"
+            )
+        return checkout_revision
+    revision = marker.get("source_revision")
+    if (
+        marker.get("schema") != SOURCE_MARKER_SCHEMA
+        or not isinstance(revision, str)
+        or _FULL_SOURCE_REVISION.fullmatch(revision) is None
+    ):
+        raise ManualCampaignError(
+            f"campaign source marker is malformed: {path}; refusing to guess "
+            "which measurement cohort to publish"
+        )
+    return revision
 
 
 @dataclass(slots=True)
@@ -4608,7 +4647,8 @@ def _inspect_payload(
     service: ReportService,
     cells: Sequence[CellSpec],
     *,
-    source: ReportSourceIdentity,
+    source_revision: str,
+    renderer_revision: str,
 ) -> dict[str, object]:
     required = {cell.cell_id: cell for cell in cells}
     for cell in cells:
@@ -4618,7 +4658,7 @@ def _inspect_payload(
     currents = lightweight_currents(
         service,
         tuple(required.values()),
-        source_revision=source.revision,
+        source_revision=source_revision,
     )
     statuses: Counter[str] = Counter()
     for cell in cells:
@@ -4676,7 +4716,8 @@ def _inspect_payload(
     }
     return {
         "profile": _ACTIVE_PROFILE,
-        "source_revision": source.revision,
+        "source_revision": source_revision,
+        "renderer_source_revision": renderer_revision,
         "selection_count": len(cells),
         "reusable_count": sum(
             bool(current.reusable)
@@ -4721,23 +4762,31 @@ def _format_seconds_per_point(value: object) -> str:
 
 
 def _print_inspect(payload: Mapping[str, object], palette: Palette) -> None:
+    source_revision = str(payload["source_revision"])
+    renderer_revision = str(payload["renderer_source_revision"])
+    identity_rows: list[tuple[object, object]] = [
+        (palette.key("profile"), payload["profile"]),
+        (palette.key("measurement source"), source_revision[:12]),
+    ]
+    if renderer_revision != source_revision:
+        identity_rows.append((palette.key("renderer checkout"), renderer_revision[:12]))
+    identity_rows.extend(
+        (
+            (palette.key("selected"), payload["selection_count"]),
+            (palette.key("reusable"), palette.success(payload["reusable_count"])),
+            (
+                palette.key("clock coverage"),
+                ", ".join(
+                    f"{key}={value}" for key, value in payload["clock_coverage"].items()
+                ),
+            ),
+            (palette.key("clock semantics"), payload["clock_note"]),
+        )
+    )
     print(
         _table(
             ("key", "value"),
-            (
-                (palette.key("profile"), payload["profile"]),
-                (palette.key("source"), str(payload["source_revision"])[:12]),
-                (palette.key("selected"), payload["selection_count"]),
-                (palette.key("reusable"), palette.success(payload["reusable_count"])),
-                (
-                    palette.key("clock coverage"),
-                    ", ".join(
-                        f"{key}={value}"
-                        for key, value in payload["clock_coverage"].items()
-                    ),
-                ),
-                (palette.key("clock semantics"), payload["clock_note"]),
-            ),
+            identity_rows,
         )
     )
     statuses = payload["statuses"]
@@ -5518,14 +5567,14 @@ def _run_campaign(
 def _capture_lightweight_snapshot(
     service: ReportService,
     *,
-    source: ReportSourceIdentity,
+    source_revision: str,
 ) -> tuple[dict[str, LightweightCurrent], tuple[tuple[str, str], ...]]:
     cells = tuple(service.catalog.measurement_cells())
     for _attempt in range(3):
         currents = lightweight_currents(
             service,
             cells,
-            source_revision=source.revision,
+            source_revision=source_revision,
         )
         identity = tuple(
             sorted(
@@ -5537,7 +5586,7 @@ def _capture_lightweight_snapshot(
         confirmed = lightweight_currents(
             service,
             cells,
-            source_revision=source.revision,
+            source_revision=source_revision,
         )
         confirmed_identity = tuple(
             sorted(
@@ -5712,7 +5761,14 @@ def _refresh_pdf(
     source: ReportSourceIdentity,
     palette: Palette,
 ) -> int:
-    currents, snapshot = _capture_lightweight_snapshot(service, source=source)
+    measurement_revision = recorded_measurement_source_revision(
+        service,
+        checkout_revision=source.revision,
+    )
+    currents, snapshot = _capture_lightweight_snapshot(
+        service,
+        source_revision=measurement_revision,
+    )
     caches, merged = _merge_lightweight_snapshot(service, currents)
     build_root = service.paths.artifact_root / "manual-publication-builds"
     build_root.mkdir(parents=True, exist_ok=True)
@@ -5755,6 +5811,8 @@ def _refresh_pdf(
         _table(
             ("key", "value"),
             (
+                (palette.key("measurement source"), measurement_revision),
+                (palette.key("renderer checkout"), source.revision),
                 (palette.key("current snapshot"), len(snapshot)),
                 (palette.key("measurements merged"), merged),
                 (palette.key("tables rebuilt"), len(tables)),
@@ -6355,7 +6413,16 @@ def main(
 
         _selection, cells = selection_from_arguments(arguments)
         if arguments.command == "inspect":
-            payload = _inspect_payload(service, cells, source=source)
+            measurement_revision = recorded_measurement_source_revision(
+                service,
+                checkout_revision=source.revision,
+            )
+            payload = _inspect_payload(
+                service,
+                cells,
+                source_revision=measurement_revision,
+                renderer_revision=source.revision,
+            )
             if arguments.format == "json":
                 json.dump(payload, sys.stdout, indent=2, sort_keys=True)
                 sys.stdout.write("\n")
