@@ -5604,8 +5604,17 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         as get_external_flavors(). Setting it invalidates the populated store so
         the next read recomputes; passing an empty set restores the default
         "cover everything the diagrams support".
+
+        The set is stored on the PROCESS, not on this matrix element, because a
+        matrix element is a derived object: the exporter rebuilds it from the
+        amplitude, and an exclusion recorded here would be silently dropped on
+        the way. The process travels with the amplitude, so the module that
+        comes out the far end still knows which half of the flavors is not its
+        own.
         """
-        self._excluded_flavors = frozenset(tuple(f) for f in flavors)
+        excluded = frozenset(tuple(f) for f in flavors)
+        for proc in self.get('processes'):
+            proc._excluded_flavors = excluded
         # force a repopulate: allowed_flavors and everything derived from it
         # (masks, pdg tables, coupling classes) must be rebuilt.
         self._flavor_populated = False
@@ -5685,6 +5694,11 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
         flavor_list = []
         pdg_list = []
+        # Flavors this module has been told are not its own (set_excluded_
+        # flavors); carried on the process so it survives the exporter
+        # rebuilding the matrix element from the amplitude.
+        excluded_flavors = getattr(self.get('processes')[0],
+                                   '_excluded_flavors', ())
         # signature -> whether some diagram is valid for it, used to skip
         # permutation-equivalent assignments we have already decided on.
         checked = {}
@@ -5732,8 +5746,7 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 # tables, get_external_flavors_with_iden, the generated FLAVOR
                 # table) reads allowed_flavors, so dropping it here is the one
                 # place that needs to know.
-                if tuple(one_flavor) not in getattr(self, '_excluded_flavors',
-                                                    ()):
+                if tuple(one_flavor) not in excluded_flavors:
                     flavor_list.append(one_flavor)
                     pdg_list.append(signed_pdg)
                 checked[signature] = True
