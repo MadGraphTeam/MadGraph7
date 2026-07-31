@@ -134,6 +134,23 @@ def _fixture(
     }
 
 
+def _resource_peak(
+    *,
+    self_peak_bytes: int = 1024,
+    maximum_child_peak_bytes: int = 0,
+) -> dict[str, object]:
+    return {
+        "source": "resource.getrusage",
+        "self_peak_bytes": self_peak_bytes,
+        "maximum_child_peak_bytes": maximum_child_peak_bytes,
+        "observed_lower_bound_bytes": max(
+            self_peak_bytes,
+            maximum_child_peak_bytes,
+        ),
+        "semantics": benchmark._RESOURCE_PEAK_SEMANTICS,
+    }
+
+
 def _artifact_semantic_identity(
     *,
     specialized_axes: tuple[str, ...] = (),
@@ -479,6 +496,7 @@ def _profile(
     specialized_axes: tuple[str, ...] = (),
     semantic_identity: dict[str, object] | None = None,
     selector_contract: dict[str, object] | None = None,
+    process_expression: str = "u u~ > Z g g g g g g",
 ) -> dict[str, object]:
     schedule = _passing_schedule() if schedule is None else schedule
     validation_fixture = _fixture() if fixture is None else fixture
@@ -538,7 +556,7 @@ def _profile(
     }
     lane_contract = {
         "process_id": "process-1",
-        "process_expression": "u u~ > Z g g g g g g",
+        "process_expression": process_expression,
         "selector_contract": selector_contract,
         "validation": validation_record,
         "artifact_semantic_identity": semantic_identity,
@@ -617,6 +635,8 @@ def _profile(
                 "worker_command": entry["worker_invocation"]["command"],
                 "worker_invocation": entry["worker_invocation"],
                 "worker_process_record": process_record,
+                "peak_rss_after_cold_load": _resource_peak(),
+                "peak_rss_after_profile": _resource_peak(self_peak_bytes=2048),
                 "pre_timing_verification": verification,
                 "post_timing_loaded_runtime_artifact": {
                     "kind": "pyamplicol-loaded-runtime-artifact-verification",
@@ -674,7 +694,7 @@ def _profile(
         )
     return {
         "process_id": "process-1",
-        "process_expression": "u u~ > Z g g g g g g",
+        "process_expression": process_expression,
         "selector_contract": selector_contract,
         "validation": validation_record,
         "mode": mode,
@@ -968,6 +988,322 @@ def test_partial_lane_capture_never_vacuously_passes() -> None:
     assert not capture["complete"]
     assert capture["passes"] is None
     assert capture["missing_modes"] == ["compiled", "eager"]
+
+
+def _recurrence_runtime_acceptance_fixture(
+    *,
+    semantic_identity: dict[str, object] | None = None,
+    gluon_count: int = 6,
+    lc_flow_layout: str = "topology-replay",
+) -> dict[str, Any]:
+    process_expression = "d d~ > Z" + " g" * gluon_count
+    arguments = _arguments(
+        "--mode",
+        "recurrence",
+        "--gluon-count",
+        str(gluon_count),
+        "--process-expression",
+        process_expression,
+        "--lc-flow-layout",
+        lc_flow_layout,
+    )
+    source_identity = {"revision": "1" * 40, "dirty": False}
+    runtime_provenance = {"native_extension": {"sha256": "2" * 64}}
+    schedule = _passing_schedule(
+        modes=("recurrence",),
+        lc_flow_layout=lc_flow_layout,
+    )
+    schedule_entries = schedule["entries"]
+    assert isinstance(schedule_entries, list)
+    for entry in schedule_entries:
+        verification = entry["pre_timing_verification"]
+        for identities in (verification["expected"], verification["observed"]):
+            identities["source_identity_sha256"] = benchmark._canonical_sha256(
+                source_identity
+            )
+            identities["runtime_provenance_sha256"] = benchmark._canonical_sha256(
+                runtime_provenance
+            )
+    selector_contract = (
+        None
+        if lc_flow_layout == "topology-replay"
+        else {
+            "color_flow_request": "1",
+            "resolved_color_flow_id": None,
+            "helicity_request": "1",
+            "resolved_helicity_id": "h:-1,+1",
+            "color_flow_count": 1,
+            "helicity_count": 2,
+            "structural_zero_helicity_count": 0,
+            "workload": "all-flows/runtime-selected-single-helicity",
+        }
+    )
+    profile = _profile(
+        "recurrence",
+        (1.0 + 2.0j, 3.0 + 4.0j),
+        schedule=schedule,
+        semantic_identity=semantic_identity,
+        selector_contract=selector_contract,
+        process_expression=process_expression,
+    )
+    profiles = {"recurrence": profile}
+    validation_summary = benchmark._pairwise_profile_validation(profiles)
+    semantic_identity = profile["artifact_semantic_identity"]
+    semantic_sha256 = profile["artifact_semantic_identity_sha256"]
+    generation = {
+        "recurrence": {
+            "mode": "recurrence",
+            "generation_reused": False,
+            "artifact_identity": {
+                "artifact_id": "a" * 64,
+                "semantic_identity": copy.deepcopy(semantic_identity),
+                "semantic_identity_sha256": semantic_sha256,
+            },
+            "artifact_semantic_identity_sha256": semantic_sha256,
+            "effective_contract": {
+                "execution_mode": "recurrence",
+                "backend": "jit",
+                "jit_optimization_level": (
+                    benchmark.PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL
+                ),
+                "color_accuracy": "lc",
+                "lc_flow_layout": lc_flow_layout,
+            },
+        }
+    }
+    return {
+        "arguments": arguments,
+        "source_identity": source_identity,
+        "runtime_provenance": runtime_provenance,
+        "generation": generation,
+        "profiles": profiles,
+        "validation_summary": validation_summary,
+        "profile_schedule": schedule,
+    }
+
+
+def _recurrence_runtime_acceptance_record(
+    fixture: dict[str, Any],
+) -> dict[str, object]:
+    return benchmark._recurrence_runtime_acceptance(**fixture)
+
+
+@pytest.mark.parametrize("gluon_count", (5, 6))
+@pytest.mark.parametrize(
+    "lc_flow_layout",
+    ("topology-replay", "all-flow-union"),
+)
+def test_recurrence_runtime_acceptance_passes_and_is_content_addressed(
+    gluon_count: int,
+    lc_flow_layout: str,
+) -> None:
+    fixture = _recurrence_runtime_acceptance_fixture(
+        gluon_count=gluon_count,
+        lc_flow_layout=lc_flow_layout,
+    )
+    record = _recurrence_runtime_acceptance_record(fixture)
+
+    assert record["kind"] == benchmark.RECURRENCE_RUNTIME_ACCEPTANCE_KIND
+    assert record["schema_version"] == benchmark.RECURRENCE_RUNTIME_ACCEPTANCE_SCHEMA
+    assert record["accepted"] is True
+    assert record["status"] == "accepted"
+    assert record["errors"] == []
+    assert record["contracts"]["measurement"]["passes"] is True
+    assert record["contracts"]["artifact_semantics"]["passes"] is True
+    assert record["contracts"]["lane_validation"] == {
+        "passes": True,
+        "lane_validation_passes": True,
+        "selectors_match": True,
+        "fixtures_match": True,
+        "pairwise_validation_passes": None,
+        "summary_sha256": benchmark._canonical_sha256(fixture["validation_summary"]),
+    }
+    assert record["contracts"]["worker_rss"]["passes"] is True
+    assert record["contracts"]["worker_rss"]["worker_count"] == 21
+    bindings = record["bindings"]
+    assert bindings["generation_artifact_id"] == "a" * 64
+    assert (
+        bindings["generation_artifact_semantic_identity_sha256"]
+        == fixture["profiles"]["recurrence"]["artifact_semantic_identity_sha256"]
+    )
+    assert bindings["profile_schedule_sha256"] == benchmark._canonical_sha256(
+        fixture["profile_schedule"]
+    )
+    assert bindings["recurrence_profile_sha256"] == benchmark._canonical_sha256(
+        fixture["profiles"]["recurrence"]
+    )
+    assert record["content_sha256"] == benchmark._canonical_sha256(
+        {key: value for key, value in record.items() if key != "content_sha256"}
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    (
+        ("modes", ["compiled", "recurrence"], "only the recurrence mode"),
+        ("generation_only", True, "completed profiling"),
+        ("batch_size", [1, 1024, 128], "exact batches"),
+        ("warmup_runs", 1, "two warm-up"),
+        ("target_runtime", 4.999, "five-second"),
+        ("minimum_samples", 6, "at least seven"),
+        ("subprocess_samples", 6, "seven through twenty-one"),
+        ("subprocess_samples", 22, "seven through twenty-one"),
+        ("gluon_count", 4, "ladder process"),
+        ("process_expression", "u u~ > Z g", "ladder process"),
+        ("specialize_flow_at_generation", True, "forbids generation"),
+    ),
+)
+def test_recurrence_runtime_acceptance_rejects_noncanonical_configuration(
+    field: str,
+    value: object,
+    error: str,
+) -> None:
+    fixture = _recurrence_runtime_acceptance_fixture()
+    setattr(fixture["arguments"], field, value)
+    record = _recurrence_runtime_acceptance_record(fixture)
+    assert record["accepted"] is False
+    assert record["status"] == "rejected"
+    assert any(error in item for item in record["errors"])
+
+
+@pytest.mark.parametrize(
+    "failure",
+    (
+        "schedule",
+        "measurement",
+        "lane_validation",
+        "selector",
+        "fixture",
+        "profile_inventory",
+    ),
+)
+def test_recurrence_runtime_acceptance_reuses_authenticated_contracts(
+    failure: str,
+) -> None:
+    fixture = _recurrence_runtime_acceptance_fixture()
+    profile = fixture["profiles"]["recurrence"]
+    if failure == "schedule":
+        del fixture["profile_schedule"]["entries"][0]["worker_invocation"]
+    elif failure == "measurement":
+        profile["profiles"][0]["subprocess_samples"][0]["interrupted"] = True
+    elif failure == "lane_validation":
+        profile["validation"]["passes"] = False
+    elif failure == "selector":
+        profile["selector_contract"]["color_flow_request"] = "forged"
+    elif failure == "fixture":
+        profile["validation"]["fixture"]["points_sha256"] = "invalid"
+    else:
+        fixture["profiles"]["compiled"] = copy.deepcopy(profile)
+    record = _recurrence_runtime_acceptance_record(fixture)
+    assert record["accepted"] is False
+    if failure == "schedule":
+        assert record["contracts"]["measurement"]["schedule"]["passes"] is False
+    elif failure == "profile_inventory":
+        assert any(
+            "profile inventory is not recurrence-only" in item
+            for item in record["errors"]
+        )
+    else:
+        assert (
+            record["contracts"]["measurement"]["passes"] is False
+            or record["contracts"]["lane_validation"]["passes"] is False
+        )
+
+
+@pytest.mark.parametrize(
+    "failure",
+    (
+        "incomplete_axes",
+        "specialized_axes",
+        "artifact_id",
+        "semantic_digest",
+        "effective_contract",
+        "generation_reused",
+        "worker_binding",
+        "source",
+        "runtime",
+    ),
+)
+def test_recurrence_runtime_acceptance_rejects_unbound_semantics_or_provenance(
+    failure: str,
+) -> None:
+    semantic_identity = (
+        _artifact_semantic_identity(complete=False)
+        if failure == "incomplete_axes"
+        else (
+            _artifact_semantic_identity(specialized_axes=("color_flow",))
+            if failure == "specialized_axes"
+            else None
+        )
+    )
+    fixture = _recurrence_runtime_acceptance_fixture(
+        semantic_identity=semantic_identity
+    )
+    generation = fixture["generation"]["recurrence"]
+    if failure == "artifact_id":
+        generation["artifact_identity"]["artifact_id"] = "invalid"
+    elif failure == "semantic_digest":
+        generation["artifact_identity"]["semantic_identity_sha256"] = "3" * 64
+    elif failure == "effective_contract":
+        generation["effective_contract"]["backend"] = "forged"
+    elif failure == "generation_reused":
+        generation["generation_reused"] = True
+    elif failure == "worker_binding":
+        fixture["profile_schedule"]["entries"][0]["pre_timing_verification"][
+            "expected"
+        ]["artifact_id"] = "4" * 64
+    elif failure == "source":
+        fixture["source_identity"] = {}
+    elif failure == "runtime":
+        fixture["runtime_provenance"] = {}
+    record = _recurrence_runtime_acceptance_record(fixture)
+    assert record["accepted"] is False
+    if failure in {"incomplete_axes", "specialized_axes"}:
+        assert any(
+            "complete unspecialized physical axes" in item for item in record["errors"]
+        )
+    if failure == "worker_binding":
+        assert any("profile workers are not bound" in item for item in record["errors"])
+
+
+@pytest.mark.parametrize(
+    "failure",
+    (
+        "missing",
+        "extra_key",
+        "source",
+        "boolean",
+        "negative",
+        "maximum",
+        "post_below_cold",
+    ),
+)
+def test_recurrence_runtime_acceptance_validates_every_worker_rss_mapping(
+    failure: str,
+) -> None:
+    fixture = _recurrence_runtime_acceptance_fixture()
+    sample = fixture["profiles"]["recurrence"]["profiles"][0]["subprocess_samples"][0]
+    if failure == "missing":
+        del sample["peak_rss_after_cold_load"]
+    elif failure == "extra_key":
+        sample["peak_rss_after_cold_load"]["unexpected"] = 1
+    elif failure == "source":
+        sample["peak_rss_after_cold_load"]["source"] = "forged"
+    elif failure == "boolean":
+        sample["peak_rss_after_cold_load"]["self_peak_bytes"] = True
+    elif failure == "negative":
+        sample["peak_rss_after_cold_load"]["self_peak_bytes"] = -1
+    elif failure == "maximum":
+        sample["peak_rss_after_cold_load"]["observed_lower_bound_bytes"] = 1
+    else:
+        sample["peak_rss_after_profile"] = _resource_peak(self_peak_bytes=512)
+    _rebind_sample_result(fixture["profile_schedule"], sample)
+    record = _recurrence_runtime_acceptance_record(fixture)
+    assert record["accepted"] is False
+    rss_contract = record["contracts"]["worker_rss"]
+    assert rss_contract["passes"] is False
+    if failure == "post_below_cold":
+        assert any("below cold-load" in item for item in rss_contract["errors"])
 
 
 def test_complete_three_lane_capture_can_pass_but_m0_remains_fail_closed() -> None:

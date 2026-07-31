@@ -47,6 +47,8 @@ HARNESS_KIND = "pyamplicol-recurrence-z6g-benchmark"
 HARNESS_SCHEMA_VERSION = 6
 EXECUTION_KIND = "pyamplicol-runtime-recurrence-execution"
 EXECUTION_SCHEMA_VERSION = 3
+RUNTIME_ACCEPTANCE_KIND = "pyamplicol-recurrence-runtime-acceptance"
+RUNTIME_ACCEPTANCE_SCHEMA_VERSION = 1
 
 LAYOUTS = ("topology-replay", "all-flow-union")
 DEFAULT_MULTIPLICITIES = tuple(range(2, 10))
@@ -795,6 +797,281 @@ def _generation_only_acceptance(
     }
 
 
+def _recurrence_runtime_acceptance(
+    result: Mapping[str, Any],
+    recurrence: Mapping[str, Any],
+    *,
+    artifact: Path,
+) -> dict[str, Any] | None:
+    """Authenticate the harness's recurrence-only runtime acceptance record."""
+
+    configuration = _required_mapping(
+        result.get("configuration"),
+        description="benchmark configuration",
+    )
+    raw_acceptance = result.get("recurrence_runtime_acceptance")
+    if raw_acceptance is None:
+        return None
+    acceptance = _required_mapping(
+        raw_acceptance,
+        description="recurrence runtime acceptance",
+    )
+    without_digest = dict(acceptance)
+    content_sha256 = without_digest.pop("content_sha256", None)
+    if (
+        acceptance.get("kind") != RUNTIME_ACCEPTANCE_KIND
+        or acceptance.get("schema_version") != RUNTIME_ACCEPTANCE_SCHEMA_VERSION
+        or content_sha256 != _canonical_sha256(without_digest)
+    ):
+        raise LadderError("recurrence runtime acceptance address is invalid")
+    if (
+        acceptance.get("accepted") is not True
+        or acceptance.get("status") != "accepted"
+        or acceptance.get("errors") != []
+    ):
+        return None
+
+    required = _required_mapping(
+        acceptance.get("required"),
+        description="recurrence runtime requirements",
+    )
+    required_exact = {
+        "modes": ["recurrence"],
+        "generation_only": False,
+        "batch_sizes": list(DEFAULT_BATCH_SIZES),
+        "target_runtime_seconds": 5.0,
+        "warmup_runs": 2,
+        "minimum_internal_samples": 7,
+        "subprocess_samples_minimum": 7,
+        "subprocess_samples_maximum": 21,
+        "process_family": "d d~ > Z + (n-1)*g",
+        "accepted_n_values": [6, 7],
+        "generation_specialized_axes_allowed": False,
+        "complete_physical_axes_required": True,
+    }
+    if any(required.get(key) != value for key, value in required_exact.items()):
+        raise LadderError("recurrence runtime requirements are incomplete")
+
+    modes = configuration.get("modes")
+    batches = configuration.get("batch_sizes")
+    minimum_samples = configuration.get("minimum_samples")
+    subprocess_samples = configuration.get("subprocess_samples")
+    gluon_count = configuration.get("gluon_count")
+    normalized_process = (
+        " ".join(result["process"].split()).casefold()
+        if isinstance(result.get("process"), str)
+        else None
+    )
+    expected_process = (
+        "d d~ > z" + " g" * gluon_count
+        if (
+            not isinstance(gluon_count, bool)
+            and isinstance(gluon_count, int)
+            and gluon_count in (5, 6)
+        )
+        else None
+    )
+    if (
+        modes != ["recurrence"]
+        or configuration.get("generation_only") is not False
+        or batches != list(DEFAULT_BATCH_SIZES)
+        or configuration.get("target_runtime_seconds") != 5.0
+        or configuration.get("warmup_runs") != 2
+        or isinstance(minimum_samples, bool)
+        or not isinstance(minimum_samples, int)
+        or minimum_samples < 7
+        or isinstance(subprocess_samples, bool)
+        or not isinstance(subprocess_samples, int)
+        or not 7 <= subprocess_samples <= 21
+        or expected_process is None
+        or normalized_process != expected_process
+        or configuration.get("lc_flow_layout") not in LAYOUTS
+        or configuration.get("specialize_flow_at_generation") is not False
+    ):
+        raise LadderError("recurrence runtime configuration is not authoritative")
+
+    contracts = _required_mapping(
+        acceptance.get("contracts"),
+        description="recurrence runtime contracts",
+    )
+    measurement = _required_mapping(
+        contracts.get("measurement"),
+        description="recurrence runtime measurement contract",
+    )
+    artifact_semantics = _required_mapping(
+        contracts.get("artifact_semantics"),
+        description="recurrence runtime artifact semantic contract",
+    )
+    lane_validation = _required_mapping(
+        contracts.get("lane_validation"),
+        description="recurrence runtime lane validation",
+    )
+    worker_rss = _required_mapping(
+        contracts.get("worker_rss"),
+        description="recurrence runtime worker RSS contract",
+    )
+    expected_worker_count = subprocess_samples * len(DEFAULT_BATCH_SIZES)
+    cold_peak = worker_rss.get("maximum_cold_load_observed_lower_bound_bytes")
+    post_peak = worker_rss.get("maximum_post_profile_observed_lower_bound_bytes")
+    if (
+        measurement.get("passes") is not True
+        or artifact_semantics.get("passes") is not True
+        or lane_validation.get("passes") is not True
+        or lane_validation.get("lane_validation_passes") is not True
+        or lane_validation.get("selectors_match") is not True
+        or lane_validation.get("fixtures_match") is not True
+        or lane_validation.get("pairwise_validation_passes") is not None
+        or not isinstance(lane_validation.get("summary_sha256"), str)
+        or _SHA256_RE.fullmatch(lane_validation["summary_sha256"]) is None
+        or worker_rss.get("passes") is not True
+        or worker_rss.get("errors") != []
+        or worker_rss.get("worker_count") != expected_worker_count
+        or isinstance(cold_peak, bool)
+        or not isinstance(cold_peak, int)
+        or cold_peak < 0
+        or isinstance(post_peak, bool)
+        or not isinstance(post_peak, int)
+        or post_peak < cold_peak
+    ):
+        raise LadderError("recurrence runtime contracts are incomplete")
+
+    profiles = _required_mapping(
+        result.get("profiles"),
+        description="benchmark profiles",
+    )
+    if set(profiles) != {"recurrence"}:
+        raise LadderError("recurrence runtime profile inventory is invalid")
+    recurrence_profile = _required_mapping(
+        profiles.get("recurrence"),
+        description="recurrence runtime profile",
+    )
+    profile_schedule = _required_mapping(
+        result.get("profile_schedule"),
+        description="recurrence runtime profile schedule",
+    )
+    bindings = _required_mapping(
+        acceptance.get("bindings"),
+        description="recurrence runtime bindings",
+    )
+    source = _required_mapping(
+        result.get("source"),
+        description="benchmark source identity",
+    )
+    runtime_provenance = _required_mapping(
+        result.get("runtime_provenance"),
+        description="benchmark runtime provenance",
+    )
+    selector_contract = _required_mapping(
+        bindings.get("selector_contract"),
+        description="recurrence runtime selector contract",
+    )
+    validation_fixture = _required_mapping(
+        bindings.get("validation_fixture"),
+        description="recurrence runtime validation fixture",
+    )
+    observed_configuration = {
+        "modes": configuration.get("modes"),
+        "generation_only": configuration.get("generation_only"),
+        "batch_sizes": configuration.get("batch_sizes"),
+        "target_runtime_seconds": configuration.get("target_runtime_seconds"),
+        "warmup_runs": configuration.get("warmup_runs"),
+        "minimum_internal_samples": configuration.get("minimum_samples"),
+        "subprocess_samples": configuration.get("subprocess_samples"),
+        "gluon_count": configuration.get("gluon_count"),
+        "process_expression_override": result.get("process"),
+        "lc_flow_layout": configuration.get("lc_flow_layout"),
+        "color_flow_request": configuration.get("color_flow_request"),
+        "helicity_request": configuration.get("helicity_request"),
+        "validation_samples": configuration.get("validation_samples"),
+        "point_tile_size": configuration.get("point_tile_size"),
+        "jit_optimization_level": configuration.get("jit_optimization_level"),
+        "specialize_flow_at_generation": configuration.get(
+            "specialize_flow_at_generation"
+        ),
+        "prepared_model_path": configuration.get("prepared_model_path"),
+    }
+    bound_configuration = _required_mapping(
+        bindings.get("configuration"),
+        description="recurrence runtime bound configuration",
+    )
+    profile_selector = _required_mapping(
+        recurrence_profile.get("selector_contract"),
+        description="recurrence profile selector contract",
+    )
+    validation = _required_mapping(
+        recurrence_profile.get("validation"),
+        description="recurrence profile validation",
+    )
+    fixture = _required_mapping(
+        validation.get("fixture"),
+        description="recurrence profile validation fixture",
+    )
+    fixture_file = _required_mapping(
+        fixture.get("file"),
+        description="recurrence profile validation fixture file",
+    )
+    expected_fixture = {
+        "point_count": fixture.get("point_count"),
+        "points_sha256": fixture.get("points_sha256"),
+        "file_sha256": fixture_file.get("sha256"),
+    }
+    if (
+        bindings.get("source_identity_sha256") != _canonical_sha256(source)
+        or bindings.get("runtime_provenance_sha256")
+        != _canonical_sha256(runtime_provenance)
+        or bindings.get("profile_schedule_sha256")
+        != _canonical_sha256(profile_schedule)
+        or bindings.get("recurrence_profile_sha256")
+        != _canonical_sha256(recurrence_profile)
+        or bindings.get("selector_contract_sha256")
+        != _canonical_sha256(selector_contract)
+        or dict(selector_contract) != dict(profile_selector)
+        or bindings.get("validation_fixture_sha256")
+        != _canonical_sha256(validation_fixture)
+        or dict(validation_fixture) != expected_fixture
+        or bindings.get("process_id") != recurrence_profile.get("process_id")
+        or bindings.get("process_expression") != normalized_process
+        or bindings.get("lc_flow_layout") != configuration.get("lc_flow_layout")
+        or dict(bound_configuration) != observed_configuration
+        or bindings.get("configuration_sha256")
+        != _canonical_sha256(bound_configuration)
+    ):
+        raise LadderError("recurrence runtime bindings failed authentication")
+
+    artifact_identity = _required_mapping(
+        recurrence.get("artifact_identity"),
+        description="recurrence runtime artifact identity",
+    )
+    artifact_id = artifact_identity.get("artifact_id")
+    semantic_sha256 = recurrence.get("artifact_semantic_identity_sha256")
+    if (
+        recurrence.get("mode") != "recurrence"
+        or recurrence.get("generation_reused") is not False
+        or bindings.get("generation_artifact_id") != artifact_id
+        or bindings.get("generation_artifact_semantic_identity_sha256")
+        != semantic_sha256
+        or recurrence_profile.get("artifact_semantic_identity_sha256")
+        != semantic_sha256
+    ):
+        raise LadderError("recurrence runtime generation binding is invalid")
+    inventory = _verify_artifact_payload_inventory(artifact, artifact_identity)
+    return {
+        "kind": RUNTIME_ACCEPTANCE_KIND,
+        "schema_version": RUNTIME_ACCEPTANCE_SCHEMA_VERSION,
+        "passes": True,
+        "content_sha256": content_sha256,
+        "configuration_sha256": bindings.get("configuration_sha256"),
+        "profile_schedule_sha256": bindings.get("profile_schedule_sha256"),
+        "recurrence_profile_sha256": bindings.get("recurrence_profile_sha256"),
+        "selector_contract_sha256": bindings.get("selector_contract_sha256"),
+        "validation_fixture_sha256": bindings.get("validation_fixture_sha256"),
+        "worker_count": expected_worker_count,
+        "maximum_cold_load_observed_lower_bound_bytes": cold_peak,
+        "maximum_post_profile_observed_lower_bound_bytes": post_peak,
+        **inventory,
+    }
+
+
 def _runtime_profile_summary(value: object) -> dict[str, Any] | None:
     if value is None:
         return None
@@ -936,6 +1213,11 @@ def parse_harness_result(path: Path) -> dict[str, Any]:
         recurrence,
         artifact=artifact,
     )
+    recurrence_runtime_acceptance = _recurrence_runtime_acceptance(
+        result,
+        recurrence,
+        artifact=artifact,
+    )
     return {
         "harness_result_sha256": _sha256_file(path),
         "process": result.get("process"),
@@ -961,6 +1243,7 @@ def parse_harness_result(path: Path) -> dict[str, Any]:
         "native_inspection_summary": dict(inspection),
         "runtime_profile": _runtime_profile_summary(profiles.get("recurrence")),
         "generation_only_acceptance": generation_only_acceptance,
+        "recurrence_runtime_acceptance": recurrence_runtime_acceptance,
         "complete": result.get("complete"),
         "passes": result.get("passes"),
     }
@@ -1159,6 +1442,12 @@ def _sample_status(
     if (
         isinstance(generation_acceptance, Mapping)
         and generation_acceptance.get("passes") is True
+    ):
+        return "passed"
+    runtime_acceptance = harness_summary.get("recurrence_runtime_acceptance")
+    if (
+        isinstance(runtime_acceptance, Mapping)
+        and runtime_acceptance.get("passes") is True
     ):
         return "passed"
     if allow_diagnostic_incomplete_success and complete is not True and passes is None:
