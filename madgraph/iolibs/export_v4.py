@@ -3454,6 +3454,124 @@ C     crossing carried by FLAV_IDX moves across.
                 entries.append((index, cross, flav0, tuple(pdg)))
         return entries
 
+    def find_reorder_candidates(self, matrix_elements):
+        """Modules that keep their own matrix<i>.f ONLY because one flavor class
+        is listed with its final legs the other way round.
+
+        Pure analysis -- it changes no routing and no output. It names the work a
+        split would have to do, and it is the check that says whether a split is
+        worth attempting for a given process at all.
+
+        A module drops its matrix<i>.f only when EVERY flavor routes
+        (partition_crossing_classes), so one stubborn class keeps a whole 14-
+        diagram matrix element alive. For ``Q Q~ > t t~ Q Q~`` off
+        ``Q Q > t t~ Q Q`` that class is the flavor-changing annihilation
+        ``q q~ > t t~ q' q~'``: the crossing (I=0, J=5) delivers it as
+        ``(q~', q')`` while the module lists ``(q', q~')``. The module cannot fix
+        that by relabelling itself -- its leg pattern is shared by all its rows,
+        the FLAVOR table carrying unsigned group POSITIONS -- and no single
+        ordering suits all three of its classes anyway: flipping it repairs the
+        annihilation class and breaks the mixed t-channel one.
+
+        Peeling the class out into its own subprocess, GENERATED in the order the
+        crossing reaches, removes the conflict: written that way the process
+        keeps its diagrams (7 either way) and its signature matches the crossing
+        exactly, so it routes with no permutation applied anywhere at run time.
+        That is the point of doing it at generation rather than at the call site:
+        diagrams, configs, colour basis, helicity table, leshouche and flavor
+        table are then all built together in one order, and none of the
+        base->dependent maps needs composing with anything.
+
+        Returns ``{me_index: [(flav0, sigma, base_index, iflav), ...]}`` naming,
+        per module, the classes that need peeling; ``sigma`` is the final-leg
+        permutation their signature needs (0-based, indexed by the base's crossed
+        slot). Modules absent from the dict are already fine -- either they route
+        as they are, or a reorder would not save them either.
+        """
+        n = len(matrix_elements)
+        if not n:
+            return {}
+        nini = matrix_elements[0].get_nexternal_ninitial()[1]
+
+        def canon(pdg):
+            return (tuple(pdg[:nini]), tuple(sorted(pdg[nini:])))
+
+        def reorder(crossed, sig):
+            if tuple(crossed[:nini]) != tuple(sig[:nini]):
+                return None
+            nx = len(sig)
+            sigma = list(range(nx))
+            free = [k for k in range(nini, nx) if crossed[k] != sig[k]]
+            taken = set(range(nini)) | set(k for k in range(nini, nx)
+                                           if k not in free)
+            for k in free:
+                for j in range(nini, nx):
+                    if j not in taken and sig[j] == crossed[k]:
+                        sigma[k] = j
+                        taken.add(j)
+                        break
+                else:
+                    return None
+            return tuple(sigma)
+
+        sig_by_flav, exact, loose = [], [], []
+        for me in matrix_elements:
+            sbf, cm_e, cm_l = {}, {}, {}
+            for idx, cross, flav0, pdg in \
+                    self.compute_crossing_pdg_entries(me, zero_based=False):
+                if cross == 0:
+                    sbf[flav0] = pdg
+                cm_e.setdefault(pdg, (cross, idx, pdg))
+                cm_l.setdefault(canon(pdg), (cross, idx, pdg))
+            nflav = (max(sbf) + 1) if sbf else 0
+            sig_by_flav.append([sbf[f] for f in range(nflav)])
+            exact.append(cm_e)
+            loose.append(cm_l)
+
+        # Replay the real (exact-match) partition so the answer reflects the
+        # bases routing actually picks.
+        bases, blocked = [], {}
+        for i in range(n):
+            hits, ok = [], bool(bases)
+            for flav0, sig in enumerate(sig_by_flav[i]):
+                hit = None
+                for b in bases:
+                    cx = exact[b].get(sig)
+                    if cx is not None and cx[0] != 0:
+                        hit = True
+                        break
+                if hit is None:
+                    ok = False
+                    blocked.setdefault(i, []).append(flav0)
+            if not ok:
+                bases.append(i)
+
+        out = {}
+        for i, blocked_flavs in blocked.items():
+            if i not in bases:
+                continue                      # already routes; nothing to peel
+            peel, savable = [], True
+            for flav0 in blocked_flavs:
+                sig = sig_by_flav[i][flav0]
+                found = None
+                for b in bases:
+                    if b >= i:
+                        continue              # only earlier modules are bases
+                    cx = loose[b].get(canon(sig))
+                    if cx is None or cx[0] == 0:
+                        continue
+                    sigma = reorder(cx[2], sig)
+                    if sigma is not None:
+                        found = (flav0, sigma, b, cx[1])
+                        break
+                if found is None:
+                    savable = False           # a reorder would not save it
+                    break
+                peel.append(found)
+            if savable and peel:
+                out[i] = peel
+        return out
+
     def partition_crossing_classes(self, matrix_elements):
         """Route each subprocess *flavor* to a base matrix element via crossing.
 

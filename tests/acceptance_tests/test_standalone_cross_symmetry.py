@@ -2741,6 +2741,81 @@ class TestCrossingFlavorRepresentative(unittest.TestCase):
             'the representative test no longer covers the ordinal bug')
 
 
+class TestCrossingReorderCandidates(unittest.TestCase):
+    """find_reorder_candidates names the modules that keep their own matrix<i>.f
+    only because one flavor class is listed with its final legs the other way
+    round -- the modules a generation-time split could free.
+
+    ``p p > j j`` unfolded has the canonical example: ``Q Q~ > Q Q~`` routes two
+    of its three classes to ``Q Q > Q Q`` as generated, and is held back by the
+    flavor-changing annihilation ``q q~ > q' q~'``, which the crossing delivers
+    with the two light legs swapped. The module cannot relabel itself out of it
+    (its leg pattern is shared by every row) and no single ordering suits all
+    three classes, so the class has to be peeled into its own subprocess.
+
+    This is analysis only: the second test pins that calling it does not move the
+    routing, so it can be trusted not to change any output."""
+
+    def _mes(self, proc):
+        import madgraph.iolibs.group_subprocs as group_subprocs
+        import madgraph.iolibs.export_v4 as export_v4
+        cmd = cmd_interface.MasterCmd()
+        cmd.run_cmd('import model sm')
+        old = os.environ.get('MG_MERGE_CROSSING')
+        os.environ['MG_MERGE_CROSSING'] = 'off'
+        try:
+            cmd.run_cmd('generate %s --use_crossing=True' % proc)
+        finally:
+            if old is None:
+                os.environ.pop('MG_MERGE_CROSSING', None)
+            else:
+                os.environ['MG_MERGE_CROSSING'] = old
+        groups = group_subprocs.SubProcessGroup.group_amplitudes(
+            cmd._curr_amps, 'madevent')
+        out = []
+        for g in groups:
+            g.generate_matrix_elements()
+            mes = g.get('matrix_elements')
+            if len(mes) > 1:
+                out.append(mes)
+        return out, export_v4.ProcessExporterFortran()
+
+    def test_qqx_is_held_back_by_one_class(self):
+        groups, exp = self._mes('p p > j j')
+        found = []
+        for mes in groups:
+            names = [m.get('processes')[0].shell_string() for m in mes]
+            bases, _routing = exp.partition_crossing_classes(mes)
+            for i, peel in exp.find_reorder_candidates(mes).items():
+                found.append((names[i], len(peel), peel))
+                # a candidate must be a module that currently keeps its own ME
+                self.assertIn(i, bases,
+                              '%s is not a base; nothing to free' % names[i])
+                nx, nini = mes[i].get_nexternal_ninitial()
+                for _flav0, sigma, base_index, iflav in peel:
+                    # sigma permutes FINAL legs only -- the beams are not
+                    # interchangeable for the PDF
+                    self.assertEqual(sorted(sigma), list(range(nx)))
+                    self.assertEqual(list(sigma[:nini]), list(range(nini)))
+                    self.assertNotEqual(tuple(sigma), tuple(range(nx)),
+                                        'a candidate needs a real reorder')
+                    self.assertIn(base_index, bases)
+                    self.assertGreaterEqual(iflav, 1)
+        self.assertTrue(found, 'no reorder candidate found in p p > j j; the '
+                               'fixture no longer covers the split case')
+        self.assertTrue(any(n.endswith('QQx_QQx') for n, _c, _p in found),
+                        'expected Q Q~ > Q Q~ among the candidates: %s' % found)
+
+    def test_detection_does_not_move_the_routing(self):
+        """It is analysis: asking must not change what routing decides."""
+        groups, exp = self._mes('p p > j j')
+        for mes in groups:
+            before = exp.partition_crossing_classes(mes)
+            exp.find_reorder_candidates(mes)
+            after = exp.partition_crossing_classes(mes)
+            self.assertEqual(before, after)
+
+
 class TestMadeventCrossingHelicity(unittest.TestCase):
     """End-to-end regression for the crossed-helicity label written to the LHE.
 
