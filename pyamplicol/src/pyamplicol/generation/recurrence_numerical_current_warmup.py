@@ -129,6 +129,7 @@ class _WarmupStaticContext:
     runtime_defaults: tuple[Decimal, ...]
     runtime_parameter_schema: Mapping[str, object]
     runtime_parameter_schema_sha256: str
+    source_semantics: Mapping[str, object]
     source_semantics_sha256: str
 
 
@@ -941,6 +942,7 @@ def run_recurrence_numerical_current_warmup(
         evidence = _evidence_payload(
             plan.sections,
             mode=mode,
+            source_semantics=static_context.source_semantics,
             source_semantics_sha256=source_digest,
             certificates=certificates,
             discovery=discovery,
@@ -2243,6 +2245,7 @@ def _evidence_payload(
     sections: _RecurrenceExactSectionsV1,
     *,
     mode: _Mode,
+    source_semantics: Mapping[str, object],
     source_semantics_sha256: str,
     certificates: tuple[RecurrenceNumericalCurrentCertificate, ...],
     discovery: Mapping[str, object],
@@ -2277,7 +2280,7 @@ def _evidence_payload(
         "requested_mode": mode,
         "schedule_semantic_digest": sections.semantic_digest,
         "baseline_runtime_layout_digest": sections.runtime_layout_digest,
-        "source_semantics": _source_semantics_payload(sections),
+        "source_semantics": source_semantics,
         "source_semantics_sha256": source_semantics_sha256,
         "runtime_parameter_schema": dict(runtime_parameter_schema),
         "runtime_parameter_schema_sha256": (candidate.runtime_parameter_schema_sha256),
@@ -2738,12 +2741,11 @@ def _build_warmup_static_context(
         for current in plan.sections.currents
     }
     current_contracts = _current_contracts(plan.sections)
-    source_semantics_sha256 = _canonical_sha256(
-        _source_semantics_payload(
-            plan.sections,
-            contracts=current_contracts,
-        )
+    source_semantics = _source_semantics_payload(
+        plan.sections,
+        contracts=current_contracts,
     )
+    source_semantics_sha256 = _canonical_sha256(source_semantics)
     runtime_defaults = _runtime_parameter_defaults(plan)
     runtime_parameter_schema = _runtime_parameter_schema_payload(
         plan,
@@ -2755,6 +2757,7 @@ def _build_warmup_static_context(
         runtime_defaults=runtime_defaults,
         runtime_parameter_schema=runtime_parameter_schema,
         runtime_parameter_schema_sha256=_canonical_sha256(runtime_parameter_schema),
+        source_semantics=source_semantics,
         source_semantics_sha256=source_semantics_sha256,
     )
 

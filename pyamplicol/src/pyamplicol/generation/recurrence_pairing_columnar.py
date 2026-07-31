@@ -862,7 +862,7 @@ def _freeze_table(
         owned = (
             values
             if can_adopt
-            else np.array(values, dtype=expected_dtype, order="C", copy=True)
+            else np.array(values, dtype=values.dtype, order="C", copy=True)
         )
         owned.flags.writeable = False
         frozen.append(RecurrenceColumn(column_name, owned))

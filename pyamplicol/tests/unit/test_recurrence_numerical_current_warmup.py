@@ -352,8 +352,10 @@ def test_warmup_builds_static_semantics_once(
 ) -> None:
     contract_calls = 0
     default_calls = 0
+    source_semantics_calls = 0
     original_contracts = recurrence_warmup._current_contracts
     original_defaults = recurrence_warmup._runtime_parameter_defaults
+    original_source_semantics = recurrence_warmup._source_semantics_payload
 
     def counted_contracts(
         sections: _RecurrenceExactSectionsV1,
@@ -367,11 +369,25 @@ def test_warmup_builds_static_semantics_once(
         default_calls += 1
         return original_defaults(plan)
 
+    def counted_source_semantics(
+        sections: _RecurrenceExactSectionsV1,
+        *,
+        contracts: tuple[tuple[object, ...], ...] | None = None,
+    ) -> dict[str, object]:
+        nonlocal source_semantics_calls
+        source_semantics_calls += 1
+        return original_source_semantics(sections, contracts=contracts)
+
     monkeypatch.setattr(recurrence_warmup, "_current_contracts", counted_contracts)
     monkeypatch.setattr(
         recurrence_warmup,
         "_runtime_parameter_defaults",
         counted_defaults,
+    )
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_source_semantics_payload",
+        counted_source_semantics,
     )
     result = run_recurrence_numerical_current_warmup(
         _topology_replay_plan(),
@@ -387,6 +403,7 @@ def test_warmup_builds_static_semantics_once(
     try:
         assert contract_calls == 1
         assert default_calls == 1
+        assert source_semantics_calls == 1
         candidate_dimensions = result.candidate_capture.current_dimensions
         verification_dimensions = result.verification_capture.current_dimensions
         assert candidate_dimensions == verification_dimensions
