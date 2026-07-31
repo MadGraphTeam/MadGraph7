@@ -56,6 +56,125 @@ def _rewrite_authenticated_manifest(root: Path, manifest: dict[str, object]) -> 
     _write_json(root / "artifact.json", manifest)
 
 
+def _domain_sha256(domain: str, value: object) -> str:
+    encoded = json.dumps(
+        {"domain": domain, "value": value},
+        allow_nan=False,
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _add_structural_source_proof(root: Path) -> None:
+    execution_path = "processes/process/execution.json"
+    proof_path = "processes/process/structural-source-proof.json"
+    execution = json.loads((root / execution_path).read_text())
+    manifest = json.loads((root / "artifact.json").read_text())
+    execution_sha = _sha256(root / execution_path)
+    execution_size = (root / execution_path).stat().st_size
+    metrics = compare._structural_metrics(execution)
+    lane = {
+        "lane_id": "primary",
+        "loose_payload_paths": [execution_path],
+        "pacbin_member_paths": [],
+        "structural_metrics": metrics,
+        "structural_metrics_sha256": _domain_sha256(
+            "execution-lane-structural-metrics-v1",
+            metrics,
+        ),
+        "subtree_sha256": _domain_sha256(
+            "execution-lane-subtree-v1",
+            execution,
+        ),
+    }
+    inventory = {
+        "status": "complete",
+        "loose_payloads": [
+            {
+                "path": execution_path,
+                "sha256": execution_sha,
+                "size_bytes": execution_size,
+            }
+        ],
+        "pacbin_container": None,
+        "pacbin_members": [],
+        "lanes": [lane],
+        "roles": [
+            {
+                "lane_id": "primary",
+                "object_kind": "loose-payload",
+                "object_path": execution_path,
+            }
+        ],
+    }
+    inventory["inventory_sha256"] = _domain_sha256(
+        "physical-lane-inventory-v1",
+        inventory,
+    )
+    producer = manifest["producer"]
+    proof = {
+        "schema": "pyamplicol-generation-structural-source-proof-v1",
+        "status": "complete",
+        "process_id": "process",
+        "source_identity": {
+            "git_revision": producer["git_revision"],
+            "native_build_inputs_sha256": producer["native_build_inputs_sha256"],
+        },
+        "execution": {
+            "path": execution_path,
+            "sha256": execution_sha,
+            "kind": execution["kind"],
+            "color_accuracy": execution.get("color_accuracy"),
+        },
+        "semantic_maps": compare._structural_semantic_map_witnesses(execution),
+        "physical_lane_inventory": inventory,
+    }
+    proof["proof_content_sha256"] = _domain_sha256(
+        "generation-structural-source-proof-v1",
+        proof,
+    )
+    _write_json(root / proof_path, proof)
+    manifest["payloads"].append(
+        {
+            "executable": False,
+            "media_type": "application/json",
+            "path": proof_path,
+            "role": "structural-source-proof",
+            "sha256": _sha256(root / proof_path),
+            "size_bytes": (root / proof_path).stat().st_size,
+        }
+    )
+    manifest["payloads"].sort(key=lambda record: record["path"])
+    _rewrite_authenticated_manifest(root, manifest)
+
+
+def _rewrite_structural_source_proof(root: Path, proof: dict[str, object]) -> None:
+    proof_path = root / "processes/process/structural-source-proof.json"
+    inventory = proof["physical_lane_inventory"]
+    inventory.pop("inventory_sha256", None)
+    inventory["inventory_sha256"] = _domain_sha256(
+        "physical-lane-inventory-v1",
+        inventory,
+    )
+    proof.pop("proof_content_sha256", None)
+    proof["proof_content_sha256"] = _domain_sha256(
+        "generation-structural-source-proof-v1",
+        proof,
+    )
+    _write_json(proof_path, proof)
+    manifest = json.loads((root / "artifact.json").read_text())
+    proof_record = next(
+        record
+        for record in manifest["payloads"]
+        if record["path"].endswith("structural-source-proof.json")
+    )
+    proof_record["sha256"] = _sha256(proof_path)
+    proof_record["size_bytes"] = proof_path.stat().st_size
+    _rewrite_authenticated_manifest(root, manifest)
+
+
 def _projection_body(payload: bytes = b"structural-projection-proof") -> bytes:
     framed = b"PYAMP-COLOR-PROJECTION-BODY-V1\0\0" + struct.pack("<I", 1) + payload
     return framed + hashlib.sha256(framed).digest()
@@ -225,7 +344,7 @@ def _artifact(
             "direct_lowering": timing,
             "native_total": timing + 0.25,
         },
-        "schedule": {"current_count": current_count},
+        "schedule": {"closure_count": 3, "current_count": current_count},
         "semantic_digest": "b" * 64,
     }
     if projection_body is not None:
@@ -425,6 +544,98 @@ def test_only_enumerated_timing_and_provenance_differences_pass(
     assert any(
         path.endswith("/sha256") and "execution.json" in path for path in allowed_paths
     )
+
+
+def test_structural_proof_allows_only_authenticated_execution_derivations(
+    tmp_path: Path,
+) -> None:
+    baseline = _artifact(tmp_path / "baseline")
+    candidate = _artifact(
+        tmp_path / "candidate",
+        timing=2.0,
+        revision_digit="2",
+        native_digit="c",
+        version="0.1.0+candidate",
+    )
+    _add_structural_source_proof(baseline)
+    _add_structural_source_proof(candidate)
+
+    report = compare.compare_artifacts(baseline, candidate)
+
+    assert report["passes"] is True
+    assert report["unknown_difference_count"] == 0
+    proof_comparison = next(
+        record
+        for record in report["payload_comparisons"]
+        if record["path"].endswith("structural-source-proof.json")
+    )
+    assert proof_comparison["byte_for_byte_match"] is False
+    assert proof_comparison["normalized_match"] is True
+
+
+def test_coherently_rehashed_structural_proof_semantics_are_rejected(
+    tmp_path: Path,
+) -> None:
+    baseline = _artifact(tmp_path / "baseline")
+    candidate = _artifact(tmp_path / "candidate")
+    _add_structural_source_proof(baseline)
+    _add_structural_source_proof(candidate)
+    proof_path = candidate / "processes/process/structural-source-proof.json"
+    proof = json.loads(proof_path.read_text())
+    source_contract = proof["semantic_maps"]["source_contract"]
+    source_contract["rows"].append({"path": "forged", "value": True})
+    source_contract["sha256"] = _domain_sha256(
+        "source_contract-v1",
+        source_contract["rows"],
+    )
+    _rewrite_structural_source_proof(candidate, proof)
+
+    with pytest.raises(compare.ComparisonError, match="semantic maps are stale"):
+        compare.compare_artifacts(baseline, candidate)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("lane-metrics", "lane evidence is stale"),
+        ("duplicate-role", "role coverage is invalid"),
+        ("member-without-container", "members lack a container"),
+    ],
+)
+def test_coherently_rehashed_structural_inventory_forgery_is_rejected(
+    tmp_path: Path,
+    mutation: str,
+    message: str,
+) -> None:
+    baseline = _artifact(tmp_path / "baseline")
+    candidate = _artifact(tmp_path / "candidate")
+    _add_structural_source_proof(baseline)
+    _add_structural_source_proof(candidate)
+    proof_path = candidate / "processes/process/structural-source-proof.json"
+    proof = json.loads(proof_path.read_text())
+    inventory = proof["physical_lane_inventory"]
+    lane = inventory["lanes"][0]
+    if mutation == "lane-metrics":
+        lane["structural_metrics"].append({"path": "forged_count", "value": 1})
+        lane["structural_metrics_sha256"] = _domain_sha256(
+            "execution-lane-structural-metrics-v1",
+            lane["structural_metrics"],
+        )
+    elif mutation == "duplicate-role":
+        inventory["roles"].append(dict(inventory["roles"][0]))
+    else:
+        inventory["pacbin_members"].append(
+            {
+                "logical_path": "forged",
+                "kind": "symjit_application",
+                "length": 0,
+                "sha256": hashlib.sha256(b"").hexdigest(),
+            }
+        )
+    _rewrite_structural_source_proof(candidate, proof)
+
+    with pytest.raises(compare.ComparisonError, match=message):
+        compare.compare_artifacts(baseline, candidate)
 
 
 def test_runtime_payload_difference_fails_even_with_authenticated_hash(

@@ -45,6 +45,8 @@ ARTIFACT_ALLOWED_METADATA_PATHS = (
     "/payloads/*[schedule-index.json]/sha256",
     "/payloads/*[execution.json]/sha256",
     "/payloads/*[execution.json]/size_bytes",
+    "/payloads/*[structural-source-proof.json]/sha256",
+    "/payloads/*[structural-source-proof.json]/size_bytes",
 )
 EXECUTION_ALLOWED_METADATA_PATHS = (
     "/plan/inspection_summary/generation_timings_seconds",
@@ -60,10 +62,23 @@ PROJECTION_CERTIFICATE_ALLOWED_METADATA_PATHS = (
     "/source_revision",
     "/native_build_inputs_sha256",
 )
+STRUCTURAL_PROOF_ALLOWED_METADATA_PATHS = (
+    "/source_identity/git_revision",
+    "/source_identity/native_build_inputs_sha256",
+    "/execution/sha256",
+    "/physical_lane_inventory/loose_payloads[path=processes/*/execution.json]/sha256",
+    "/physical_lane_inventory/loose_payloads[path=processes/*/execution.json]/size_bytes",
+    "/physical_lane_inventory/lanes[id=primary]/subtree_sha256",
+    "/physical_lane_inventory/inventory_sha256",
+    "/proof_content_sha256",
+)
 
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _GIT_REVISION_RE = re.compile(r"[0-9a-f]{40}")
 _EXECUTION_PATH_RE = re.compile(r"processes/([^/]+)/execution[.]json")
+_STRUCTURAL_PROOF_PATH_RE = re.compile(
+    r"processes/([^/]+)/structural-source-proof[.]json"
+)
 _BINDING_PATH_RE = re.compile(r"processes/([^/]+)/recurrence-binding[.]bin")
 _RUNTIME_SCHEDULE_RE = re.compile(
     r"recurrence/schedules/([0-9a-f]{64})/recurrence-runtime[.]pacbin"
@@ -73,6 +88,21 @@ _PLAN_MEMBER_PATH = "schedule/recurrence-direct-schedule-v2.bin"
 _CERTIFICATE_MEMBER_PATH = "proof/recurrence-color-projection-v1.bin"
 _PLAN_MEMBER_KIND = 7
 _CERTIFICATE_MEMBER_KIND = 8
+_PACBIN_MEMBER_KIND_NAMES = {
+    1: "symjit_application",
+    2: "symbolica_exact_state",
+    3: "native_library",
+    4: "eager_runtime_metadata",
+    5: "eager_runtime_table",
+    7: "recurrence_direct_plan",
+    8: "recurrence_color_projection_certificate",
+}
+_STRUCTURAL_SEMANTIC_MAP_DOMAINS = {
+    "current_member_map": "current_member_map-v1",
+    "interaction_row_map": "interaction_row_map-v1",
+    "closure_map": "closure_map-v1",
+    "source_contract": "source_contract-v1",
+}
 
 _PACBIN_VERSION = 1
 _PACBIN_ALIGNMENT = 64
@@ -609,6 +639,7 @@ def _load_recurrence_pacbin(
     path: Path,
     *,
     description: str,
+    recurrence_contract: bool = True,
 ) -> RecurrencePacbinSnapshot:
     try:
         file_size = path.stat().st_size
@@ -837,6 +868,17 @@ def _load_recurrence_pacbin(
         ):
             raise ComparisonError(f"{description} trailing padding is nonzero")
 
+        snapshot = RecurrencePacbinSnapshot(
+            path=path,
+            file_size=file_size,
+            index_sha256=index_digest.hexdigest(),
+            unpacked_size_bytes=sum(member.length for member in members.values()),
+            members=members,
+            projection_certificate=None,
+        )
+        if not recurrence_contract:
+            return snapshot
+
         expected_members = {_PLAN_MEMBER_PATH}
         if _CERTIFICATE_MEMBER_PATH in members:
             expected_members.add(_CERTIFICATE_MEMBER_PATH)
@@ -861,11 +903,11 @@ def _load_recurrence_pacbin(
                 description=f"{description} projection certificate",
             )
         return RecurrencePacbinSnapshot(
-            path=path,
-            file_size=file_size,
-            index_sha256=index_digest.hexdigest(),
-            unpacked_size_bytes=sum(member.length for member in members.values()),
-            members=members,
+            path=snapshot.path,
+            file_size=snapshot.file_size,
+            index_sha256=snapshot.index_sha256,
+            unpacked_size_bytes=snapshot.unpacked_size_bytes,
+            members=snapshot.members,
             projection_certificate=certificate,
         )
 
@@ -1583,6 +1625,128 @@ def _canonical_sha256(value: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _canonical_domain_sha256(domain: str, value: object) -> str:
+    return _canonical_sha256({"domain": domain, "value": value})
+
+
+def _structural_semantic_map_witnesses(
+    execution: Mapping[str, Any],
+) -> dict[str, object]:
+    predicates = {
+        "current_member_map": lambda key: (
+            "current" in key
+            or key
+            in {
+                "source_count",
+                "source_fill",
+                "source_row_count",
+                "sources",
+                "value_storage",
+            }
+        ),
+        "interaction_row_map": lambda key: (
+            "interaction" in key
+            or "contribution" in key
+            or key in {"stages", "schedule"}
+        ),
+        "closure_map": lambda key: (
+            "closure" in key
+            or "amplitude" in key
+            or "destination" in key
+            or "reduction" in key
+        ),
+        "source_contract": lambda key: (
+            key
+            in {
+                "color_accuracy",
+                "external_particles",
+                "external_pdg_order",
+                "kind",
+                "model",
+                "normalization",
+                "parameter_layout",
+                "process",
+                "process_key",
+                "runtime_metadata",
+                "schema_version",
+            }
+        ),
+    }
+
+    def project(predicate: Callable[[str], bool]) -> list[dict[str, object]]:
+        rows: list[dict[str, object]] = []
+
+        def visit(value: object, path: str) -> None:
+            if isinstance(value, Mapping):
+                for raw_key in sorted(value, key=str):
+                    key = str(raw_key)
+                    child = value[raw_key]
+                    child_path = f"{path}.{key}" if path else key
+                    if predicate(key):
+                        rows.append({"path": child_path, "value": child})
+                    else:
+                        visit(child, child_path)
+            elif isinstance(value, Sequence) and not isinstance(value, str | bytes):
+                for index, child in enumerate(value):
+                    visit(child, f"{path}[{index}]")
+
+        visit(execution, "")
+        if not rows:
+            raise ComparisonError(
+                "structural proof execution lacks a semantic-map witness"
+            )
+        return rows
+
+    result: dict[str, object] = {}
+    identities: set[str] = set()
+    for name, predicate in predicates.items():
+        rows = project(predicate)
+        digest = _canonical_domain_sha256(
+            _STRUCTURAL_SEMANTIC_MAP_DOMAINS[name],
+            rows,
+        )
+        if digest in identities:
+            raise ComparisonError("structural proof semantic-map identities repeat")
+        identities.add(digest)
+        result[name] = {"sha256": digest, "rows": rows}
+    return result
+
+
+def _structural_metrics(value: object) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+
+    def visit(item: object, path: str) -> None:
+        if isinstance(item, Mapping):
+            for raw_key in sorted(item, key=str):
+                key = str(raw_key)
+                child = item[raw_key]
+                child_path = f"{path}.{key}" if path else key
+                if (
+                    isinstance(child, int)
+                    and not isinstance(child, bool)
+                    and (
+                        key.endswith("_count")
+                        or key.endswith("_size")
+                        or key.endswith("_size_bytes")
+                    )
+                ):
+                    if child < 0:
+                        raise ComparisonError(
+                            f"structural metric {child_path} must be non-negative"
+                        )
+                    rows.append({"path": child_path, "value": child})
+                else:
+                    visit(child, child_path)
+        elif isinstance(item, Sequence) and not isinstance(item, str | bytes):
+            for index, child in enumerate(item):
+                visit(child, f"{path}[{index}]")
+
+    visit(value, "")
+    if not rows:
+        raise ComparisonError("structural proof execution has no structural metrics")
+    return rows
+
+
 def _describe(value: object) -> object:
     if value is _MISSING:
         return {"kind": "missing"}
@@ -1981,6 +2145,491 @@ def _replace_pair(
     right_parent[key] = _NORMALIZED
 
 
+def _validate_structural_proof(
+    artifact: ArtifactSnapshot,
+    proof: Mapping[str, Any],
+    *,
+    relative_path: str,
+    label: str,
+) -> tuple[str, str]:
+    match = _STRUCTURAL_PROOF_PATH_RE.fullmatch(relative_path)
+    if match is None:
+        raise ComparisonError(f"{label} structural-proof path is invalid")
+    process_id = match.group(1)
+    expected_execution_path = f"processes/{process_id}/execution.json"
+    if (
+        proof.get("schema") != "pyamplicol-generation-structural-source-proof-v1"
+        or proof.get("status") != "complete"
+        or proof.get("process_id") != process_id
+    ):
+        raise ComparisonError(
+            f"{label} structural proof {relative_path} has an incompatible contract"
+        )
+    payload = artifact.payloads[relative_path]
+    if payload.role != "structural-source-proof":
+        raise ComparisonError(
+            f"{label} structural proof {relative_path} has an invalid payload role"
+        )
+
+    producer = _mapping(
+        artifact.manifest.get("producer"),
+        description=f"{label} artifact producer",
+    )
+    source_identity = _mapping(
+        proof.get("source_identity"),
+        description=f"{label} structural proof source identity",
+    )
+    source_revision = source_identity.get("git_revision")
+    native_build_inputs = source_identity.get("native_build_inputs_sha256")
+    if source_revision != producer.get(
+        "git_revision"
+    ) or native_build_inputs != producer.get("native_build_inputs_sha256"):
+        raise ComparisonError(
+            f"{label} structural proof {relative_path} is not bound to its producer"
+        )
+
+    execution_payload = artifact.payloads.get(expected_execution_path)
+    execution = artifact.executions.get(expected_execution_path)
+    if execution_payload is None or execution is None:
+        raise ComparisonError(
+            f"{label} structural proof {relative_path} lacks its execution payload"
+        )
+    execution_identity = _mapping(
+        proof.get("execution"),
+        description=f"{label} structural proof execution identity",
+    )
+    if (
+        execution_identity.get("path") != expected_execution_path
+        or execution_identity.get("sha256") != execution_payload.sha256
+        or execution_identity.get("kind") != execution.get("kind")
+        or execution_identity.get("color_accuracy") != execution.get("color_accuracy")
+    ):
+        raise ComparisonError(
+            f"{label} structural proof {relative_path} has a stale execution identity"
+        )
+
+    semantic_maps = _mapping(
+        proof.get("semantic_maps"),
+        description=f"{label} structural proof semantic maps",
+    )
+    if dict(semantic_maps) != _structural_semantic_map_witnesses(execution):
+        raise ComparisonError(
+            f"{label} structural proof {relative_path} semantic maps are stale"
+        )
+
+    inventory = _mapping(
+        proof.get("physical_lane_inventory"),
+        description=f"{label} structural proof physical inventory",
+    )
+    if inventory.get("status") != "complete":
+        raise ComparisonError(
+            f"{label} structural proof {relative_path} inventory is incomplete"
+        )
+    inventory_body = dict(inventory)
+    declared_inventory_digest = _sha256(
+        inventory_body.pop("inventory_sha256", None),
+        description=f"{label} structural proof inventory digest",
+    )
+    if declared_inventory_digest != _canonical_domain_sha256(
+        "physical-lane-inventory-v1",
+        inventory_body,
+    ):
+        raise ComparisonError(
+            f"{label} structural proof {relative_path} inventory digest is stale"
+        )
+
+    loose_records = _sequence(
+        inventory.get("loose_payloads"),
+        description=f"{label} structural proof loose payloads",
+    )
+    loose_paths: set[str] = set()
+    for index, raw_record in enumerate(loose_records):
+        record = _mapping(
+            raw_record,
+            description=f"{label} structural proof loose payload {index}",
+        )
+        record_path = _payload_relative_path(
+            record.get("path"),
+            description=f"{label} structural proof loose payload {index}",
+        )
+        if record_path in loose_paths or record_path not in artifact.payloads:
+            raise ComparisonError(
+                f"{label} structural proof {relative_path} has an invalid loose payload"
+            )
+        loose_paths.add(record_path)
+        concrete = artifact.payloads[record_path]
+        if (
+            record.get("sha256") != concrete.sha256
+            or record.get("size_bytes") != concrete.size_bytes
+        ):
+            raise ComparisonError(
+                f"{label} structural proof {relative_path} has stale loose payload "
+                f"metadata for {record_path}"
+            )
+    if expected_execution_path not in loose_paths:
+        raise ComparisonError(
+            f"{label} structural proof {relative_path} omits its execution payload"
+        )
+
+    raw_members = _sequence(
+        inventory.get("pacbin_members"),
+        description=f"{label} structural proof PACBIN members",
+    )
+    raw_container = inventory.get("pacbin_container")
+    actual_members: dict[str, dict[str, object]] = {}
+    if raw_container is not None:
+        container = _mapping(
+            raw_container,
+            description=f"{label} structural proof PACBIN container",
+        )
+        container_path = _payload_relative_path(
+            container.get("path"),
+            description=f"{label} structural proof PACBIN container",
+        )
+        container_payload = artifact.payloads.get(container_path)
+        if (
+            container_payload is None
+            or container.get("sha256") != container_payload.sha256
+            or container.get("size_bytes") != container_payload.size_bytes
+        ):
+            raise ComparisonError(
+                f"{label} structural proof {relative_path} PACBIN container is stale"
+            )
+        parsed_container = _load_recurrence_pacbin(
+            container_payload.path,
+            description=f"{label} structural proof evaluator container",
+            recurrence_contract=False,
+        )
+        if container.get(
+            "index_sha256"
+        ) != parsed_container.index_sha256 or container.get("member_count") != len(
+            parsed_container.members
+        ):
+            raise ComparisonError(
+                f"{label} structural proof {relative_path} PACBIN index is stale"
+            )
+        for member_path, member in parsed_container.members.items():
+            kind_name = _PACBIN_MEMBER_KIND_NAMES.get(member.kind)
+            if kind_name is None:
+                raise ComparisonError(
+                    f"{label} structural proof {relative_path} PACBIN member kind "
+                    "is unknown"
+                )
+            actual_members[member_path] = {
+                "logical_path": member_path,
+                "kind": kind_name,
+                "length": member.length,
+                "sha256": member.sha256,
+            }
+    elif raw_members:
+        raise ComparisonError(
+            f"{label} structural proof {relative_path} members lack a container"
+        )
+
+    declared_member_paths: set[str] = set()
+    for index, raw_member in enumerate(raw_members):
+        member = _mapping(
+            raw_member,
+            description=f"{label} structural proof PACBIN member {index}",
+        )
+        member_path = _nonempty_string(
+            member.get("logical_path"),
+            description=f"{label} structural proof PACBIN member {index}.logical_path",
+        )
+        if member_path in declared_member_paths or actual_members.get(
+            member_path
+        ) != dict(member):
+            raise ComparisonError(
+                f"{label} structural proof {relative_path} PACBIN member is stale"
+            )
+        declared_member_paths.add(member_path)
+
+    lanes = _sequence(
+        inventory.get("lanes"),
+        description=f"{label} structural proof execution lanes",
+    )
+    if len(lanes) != 1:
+        raise ComparisonError(
+            f"{label} recurrence structural proof {relative_path} must have one lane"
+        )
+    lane = _mapping(
+        lanes[0],
+        description=f"{label} structural proof primary lane",
+    )
+    metrics = _structural_metrics(execution)
+    if (
+        lane.get("lane_id") != "primary"
+        or lane.get("subtree_sha256")
+        != _canonical_domain_sha256("execution-lane-subtree-v1", execution)
+        or lane.get("structural_metrics") != metrics
+        or lane.get("structural_metrics_sha256")
+        != _canonical_domain_sha256("execution-lane-structural-metrics-v1", metrics)
+    ):
+        raise ComparisonError(
+            f"{label} structural proof {relative_path} lane evidence is stale"
+        )
+    lane_loose = _sequence(
+        lane.get("loose_payload_paths"),
+        description=f"{label} structural proof lane loose paths",
+    )
+    lane_members = _sequence(
+        lane.get("pacbin_member_paths"),
+        description=f"{label} structural proof lane member paths",
+    )
+    if (
+        any(not isinstance(path, str) for path in lane_loose)
+        or len(set(lane_loose)) != len(lane_loose)
+        or not set(lane_loose) <= loose_paths
+        or any(not isinstance(path, str) for path in lane_members)
+        or len(set(lane_members)) != len(lane_members)
+        or not set(lane_members) <= declared_member_paths
+    ):
+        raise ComparisonError(
+            f"{label} structural proof {relative_path} lane references are invalid"
+        )
+
+    expected_roles = {
+        ("primary", "loose-payload", str(path)) for path in lane_loose
+    } | {("primary", "pacbin-member", str(path)) for path in lane_members}
+    raw_roles = _sequence(
+        inventory.get("roles"),
+        description=f"{label} structural proof roles",
+    )
+    actual_roles: set[tuple[str, str, str]] = set()
+    for index, raw_role in enumerate(raw_roles):
+        role = _mapping(
+            raw_role,
+            description=f"{label} structural proof role {index}",
+        )
+        actual_roles.add(
+            (
+                str(role.get("lane_id")),
+                str(role.get("object_kind")),
+                str(role.get("object_path")),
+            )
+        )
+    if actual_roles != expected_roles or len(actual_roles) != len(raw_roles):
+        raise ComparisonError(
+            f"{label} structural proof {relative_path} role coverage is invalid"
+        )
+
+    proof_body = dict(proof)
+    declared_proof_digest = _sha256(
+        proof_body.pop("proof_content_sha256", None),
+        description=f"{label} structural proof content digest",
+    )
+    if declared_proof_digest != _canonical_domain_sha256(
+        "generation-structural-source-proof-v1",
+        proof_body,
+    ):
+        raise ComparisonError(
+            f"{label} structural proof {relative_path} content digest is stale"
+        )
+    return expected_execution_path, process_id
+
+
+def _normalize_structural_proof_pair(
+    baseline_artifact: ArtifactSnapshot,
+    candidate_artifact: ArtifactSnapshot,
+    baseline: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+    *,
+    relative_path: str,
+    baseline_execution: Mapping[str, Any],
+    candidate_execution: Mapping[str, Any],
+    allowed: list[dict[str, object]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    left_execution_path, _ = _validate_structural_proof(
+        baseline_artifact,
+        baseline,
+        relative_path=relative_path,
+        label="baseline",
+    )
+    right_execution_path, _ = _validate_structural_proof(
+        candidate_artifact,
+        candidate,
+        relative_path=relative_path,
+        label="candidate",
+    )
+    if (
+        left_execution_path != right_execution_path
+        or baseline_execution != candidate_execution
+    ):
+        raise ComparisonError(
+            f"structural proof {relative_path} does not have matched "
+            "execution semantics"
+        )
+
+    left = copy.deepcopy(dict(baseline))
+    right = copy.deepcopy(dict(candidate))
+    for path, json_path, category, validate in (
+        (
+            ("source_identity", "git_revision"),
+            "/source_identity/git_revision",
+            "provenance",
+            lambda value: (
+                value
+                if isinstance(value, str)
+                and _GIT_REVISION_RE.fullmatch(value) is not None
+                else _raise_invalid("structural-proof source revision")
+            ),
+        ),
+        (
+            ("source_identity", "native_build_inputs_sha256"),
+            "/source_identity/native_build_inputs_sha256",
+            "provenance",
+            lambda value: _sha256(
+                value,
+                description="structural-proof native-build identity",
+            ),
+        ),
+        (
+            ("execution", "sha256"),
+            "/execution/sha256",
+            "derived-execution-metadata",
+            lambda value: _sha256(
+                value,
+                description="structural-proof execution digest",
+            ),
+        ),
+    ):
+        _replace_pair(
+            left,
+            right,
+            path,
+            file=relative_path,
+            json_path=json_path,
+            category=category,
+            validate=validate,
+            allowed=allowed,
+        )
+
+    def mutable_execution_loose_record(
+        proof: dict[str, Any],
+        *,
+        label: str,
+    ) -> dict[str, Any]:
+        inventory = proof["physical_lane_inventory"]
+        if not isinstance(inventory, dict):
+            raise ComparisonError(
+                f"{label} structural proof {relative_path} inventory is invalid"
+            )
+        matches = [
+            record
+            for record in inventory.get("loose_payloads", ())
+            if isinstance(record, dict) and record.get("path") == left_execution_path
+        ]
+        if len(matches) != 1:
+            raise ComparisonError(
+                f"{label} structural proof {relative_path} execution inventory "
+                "is ambiguous"
+            )
+        return matches[0]
+
+    left_loose = mutable_execution_loose_record(left, label="baseline")
+    right_loose = mutable_execution_loose_record(right, label="candidate")
+    for key, validator in (
+        (
+            "sha256",
+            lambda value: _sha256(
+                value,
+                description="structural-proof loose execution digest",
+            ),
+        ),
+        (
+            "size_bytes",
+            lambda value: _nonnegative_int(
+                value,
+                description="structural-proof loose execution size",
+            ),
+        ),
+    ):
+        left_value = validator(left_loose.get(key))
+        right_value = validator(right_loose.get(key))
+        _record_allowed(
+            allowed,
+            file=relative_path,
+            json_path=(
+                "/physical_lane_inventory/loose_payloads"
+                f"[path={left_execution_path}]/{key}"
+            ),
+            category="derived-execution-metadata",
+            baseline=left_value,
+            candidate=right_value,
+        )
+        left_loose[key] = _NORMALIZED
+        right_loose[key] = _NORMALIZED
+
+    def mutable_primary_lane(
+        proof: dict[str, Any],
+        *,
+        label: str,
+    ) -> dict[str, Any]:
+        inventory = proof["physical_lane_inventory"]
+        if not isinstance(inventory, dict):
+            raise ComparisonError(
+                f"{label} structural proof {relative_path} inventory is invalid"
+            )
+        matches = [
+            lane
+            for lane in inventory.get("lanes", ())
+            if isinstance(lane, dict) and lane.get("lane_id") == "primary"
+        ]
+        if len(matches) != 1:
+            raise ComparisonError(
+                f"{label} structural proof {relative_path} primary lane is ambiguous"
+            )
+        return matches[0]
+
+    left_lane = mutable_primary_lane(left, label="baseline")
+    right_lane = mutable_primary_lane(right, label="candidate")
+    left_lane_digest = _sha256(
+        left_lane.get("subtree_sha256"),
+        description="baseline structural-proof lane digest",
+    )
+    right_lane_digest = _sha256(
+        right_lane.get("subtree_sha256"),
+        description="candidate structural-proof lane digest",
+    )
+    _record_allowed(
+        allowed,
+        file=relative_path,
+        json_path="/physical_lane_inventory/lanes[id=primary]/subtree_sha256",
+        category="derived-execution-metadata",
+        baseline=left_lane_digest,
+        candidate=right_lane_digest,
+    )
+    left_lane["subtree_sha256"] = _NORMALIZED
+    right_lane["subtree_sha256"] = _NORMALIZED
+
+    for path, json_path, domain in (
+        (
+            ("physical_lane_inventory", "inventory_sha256"),
+            "/physical_lane_inventory/inventory_sha256",
+            "derived-execution-metadata",
+        ),
+        (
+            ("proof_content_sha256",),
+            "/proof_content_sha256",
+            "derived-execution-and-provenance-metadata",
+        ),
+    ):
+        _replace_pair(
+            left,
+            right,
+            path,
+            file=relative_path,
+            json_path=json_path,
+            category=domain,
+            validate=lambda value, field=json_path: _sha256(
+                value,
+                description=f"structural-proof derived digest {field}",
+            ),
+            allowed=allowed,
+        )
+    return left, right
+
+
 def _normalize_schedule_index_pair(
     baseline: Mapping[str, Any],
     candidate: Mapping[str, Any],
@@ -2053,6 +2702,7 @@ def _normalize_manifest_pair(
     candidate: Mapping[str, Any],
     *,
     matched_execution_paths: set[str],
+    matched_structural_proof_paths: set[str],
     transitive_schedule_paths: set[str],
     schedule_index_matches: bool,
     allowed: list[dict[str, object]],
@@ -2202,6 +2852,40 @@ def _normalize_manifest_pair(
                 file="artifact.json",
                 json_path=f"/payloads[path={path}]/{key}",
                 category="derived-execution-metadata",
+                baseline=left_value,
+                candidate=right_value,
+            )
+            left_record[key] = _NORMALIZED
+            right_record[key] = _NORMALIZED
+
+    for path in sorted(
+        matched_structural_proof_paths & set(left_payloads) & set(right_payloads)
+    ):
+        left_record = left_payloads[path]
+        right_record = right_payloads[path]
+        for key, validator in (
+            (
+                "sha256",
+                lambda value, payload_path=path: _sha256(
+                    value,
+                    description=f"payload {payload_path}.sha256",
+                ),
+            ),
+            (
+                "size_bytes",
+                lambda value, payload_path=path: _nonnegative_int(
+                    value,
+                    description=f"payload {payload_path}.size_bytes",
+                ),
+            ),
+        ):
+            left_value = validator(left_record.get(key))
+            right_value = validator(right_record.get(key))
+            _record_allowed(
+                allowed,
+                file="artifact.json",
+                json_path=f"/payloads[path={path}]/{key}",
+                category="derived-structural-proof-metadata",
                 baseline=left_value,
                 candidate=right_value,
             )
@@ -2507,6 +3191,7 @@ def compare_artifacts(
     )
 
     matched_execution_paths: set[str] = set()
+    normalized_execution_pairs: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
     for path in sorted(set(baseline.executions) & set(candidate.executions)):
         left_payload = baseline.payloads[path]
         right_payload = candidate.payloads[path]
@@ -2529,6 +3214,7 @@ def compare_artifacts(
         payloads_match_policy = payloads_match_policy and execution_matches
         if execution_matches:
             matched_execution_paths.add(path)
+            normalized_execution_pairs[path] = (left_json, right_json)
         payload_comparisons.append(
             {
                 "path": path,
@@ -2543,12 +3229,89 @@ def compare_artifacts(
             }
         )
 
+    matched_structural_proof_paths: set[str] = set()
+    baseline_structural_proofs = {
+        path for path in baseline.payloads if _STRUCTURAL_PROOF_PATH_RE.fullmatch(path)
+    }
+    candidate_structural_proofs = {
+        path for path in candidate.payloads if _STRUCTURAL_PROOF_PATH_RE.fullmatch(path)
+    }
+    for path in sorted(baseline_structural_proofs & candidate_structural_proofs):
+        left_payload = baseline.payloads[path]
+        right_payload = candidate.payloads[path]
+        proof_bytes_match = (
+            left_payload.sha256 == right_payload.sha256
+            and left_payload.size_bytes == right_payload.size_bytes
+            and _files_equal(left_payload.path, right_payload.path)
+        )
+        exact_payload_bytes_match = exact_payload_bytes_match and proof_bytes_match
+        left_proof = _json_object(
+            left_payload.path,
+            description="baseline recurrence structural source proof",
+        )
+        right_proof = _json_object(
+            right_payload.path,
+            description="candidate recurrence structural source proof",
+        )
+        left_execution_path, _ = _validate_structural_proof(
+            baseline,
+            left_proof,
+            relative_path=path,
+            label="baseline",
+        )
+        right_execution_path, _ = _validate_structural_proof(
+            candidate,
+            right_proof,
+            relative_path=path,
+            label="candidate",
+        )
+        execution_pair = normalized_execution_pairs.get(left_execution_path)
+        if left_execution_path == right_execution_path and execution_pair is not None:
+            left_normalized, right_normalized = _normalize_structural_proof_pair(
+                baseline,
+                candidate,
+                left_proof,
+                right_proof,
+                relative_path=path,
+                baseline_execution=execution_pair[0],
+                candidate_execution=execution_pair[1],
+                allowed=allowed,
+            )
+        else:
+            left_normalized = left_proof
+            right_normalized = right_proof
+        differences = _json_differences(
+            left_normalized,
+            right_normalized,
+            file=path,
+        )
+        unknown.extend(differences)
+        proof_matches = not differences
+        payloads_match_policy = payloads_match_policy and proof_matches
+        if proof_matches:
+            matched_structural_proof_paths.add(path)
+        payload_comparisons.append(
+            {
+                "path": path,
+                "comparison": (
+                    "json-exact-except-authenticated-provenance-and-"
+                    "derived-execution-metadata"
+                ),
+                "baseline_sha256": left_payload.sha256,
+                "candidate_sha256": right_payload.sha256,
+                "byte_for_byte_match": proof_bytes_match,
+                "normalized_match": proof_matches,
+            }
+        )
+
     special_paths = {
         *baseline.recurrence_schedules,
         *candidate.recurrence_schedules,
         _SCHEDULE_INDEX_PATH,
         *baseline.executions,
         *candidate.executions,
+        *baseline_structural_proofs,
+        *candidate_structural_proofs,
     }
     for path in sorted(common_paths - special_paths):
         left = baseline.payloads[path]
@@ -2590,6 +3353,7 @@ def compare_artifacts(
         baseline.manifest,
         candidate.manifest,
         matched_execution_paths=matched_execution_paths,
+        matched_structural_proof_paths=matched_structural_proof_paths,
         transitive_schedule_paths=transitive_schedule_paths,
         schedule_index_matches=schedule_index_matches,
         allowed=allowed,
@@ -2653,8 +3417,15 @@ def compare_artifacts(
                 "exact-except-generation-timings-and-derived-projection-"
                 "certificate-digests-v2"
             ),
+            "structural_source_proofs": (
+                "exact-except-authenticated-provenance-and-derived-execution-"
+                "metadata-v1"
+            ),
             "artifact_allowed_metadata_paths": list(ARTIFACT_ALLOWED_METADATA_PATHS),
             "execution_allowed_metadata_paths": list(EXECUTION_ALLOWED_METADATA_PATHS),
+            "structural_proof_allowed_metadata_paths": list(
+                STRUCTURAL_PROOF_ALLOWED_METADATA_PATHS
+            ),
             "schedule_index_allowed_metadata_paths": list(
                 SCHEDULE_INDEX_ALLOWED_METADATA_PATHS
             ),

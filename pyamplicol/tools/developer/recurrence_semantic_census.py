@@ -28,7 +28,10 @@ from dataclasses import astuple, dataclass
 from pathlib import Path
 from typing import Any
 
-from pyamplicol.models.prepared import PreparedKernelPack
+from pyamplicol.models.prepared import EAGER_KERNEL_ABI, PreparedKernelPack
+from pyamplicol.models.recurrence_direct_template import (
+    RECURRENCE_DIRECT_IDENTITY_FINALIZER,
+)
 from pyamplicol.runtime.recurrence_exact._execution import _role_index
 from pyamplicol.runtime.recurrence_exact._plan_v2 import (
     DIRECT_NONE_U32,
@@ -49,6 +52,7 @@ CENSUS_SCHEMA_VERSION = 1
 COMPARISON_KIND = "pyamplicol-recurrence-semantic-census-comparison"
 COMPARISON_SCHEMA_VERSION = 1
 MAX_REPORTED_DIFFERENCES = 256
+_UNASSIGNED_ROW = object()
 
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _EXECUTION_PATH_RE = re.compile(r"processes/([^/]+)/execution[.]json")
@@ -197,14 +201,28 @@ def _executor_rows(
     role: str,
     row_count: int,
     bindings: Mapping[int, ExecutorSemanticBinding],
-) -> tuple[ExecutorSemanticBinding, ...]:
+    *,
+    allow_unbound: bool = False,
+) -> tuple[ExecutorSemanticBinding | None, ...]:
     expected_role = _role_index(role)
-    result: list[ExecutorSemanticBinding | None] = [None] * row_count
+    result: list[ExecutorSemanticBinding | object | None] = [
+        _UNASSIGNED_ROW
+    ] * row_count
     for group_index, group in enumerate(sections.row_groups):
         if group.role != expected_role:
             continue
-        binding = bindings.get(group.executor_id)
-        if binding is None or binding.role != role:
+        binding = (
+            None
+            if allow_unbound and group.executor_id == DIRECT_NONE_U32
+            else bindings.get(group.executor_id)
+        )
+        if binding is None and not (
+            allow_unbound and group.executor_id == DIRECT_NONE_U32
+        ):
+            raise SemanticCensusError(
+                f"{role} row group {group_index} has no matching semantic executor"
+            )
+        if binding is not None and binding.role != role:
             raise SemanticCensusError(
                 f"{role} row group {group_index} has no matching semantic executor"
             )
@@ -214,17 +232,22 @@ def _executor_rows(
                 f"{role} row group {group_index} is out of bounds"
             )
         for row_id in range(group.row_start, stop):
-            if result[row_id] is not None:
+            if result[row_id] is not _UNASSIGNED_ROW:
                 raise SemanticCensusError(
                     f"{role} runtime row {row_id} belongs to multiple row groups"
                 )
             result[row_id] = binding
-    if any(binding is None for binding in result):
-        missing = next(index for index, binding in enumerate(result) if binding is None)
+    if any(binding is _UNASSIGNED_ROW for binding in result):
+        missing = next(
+            index for index, binding in enumerate(result) if binding is _UNASSIGNED_ROW
+        )
         raise SemanticCensusError(
             f"{role} runtime row {missing} has no exact row-group owner"
         )
-    return tuple(binding for binding in result if binding is not None)
+    return tuple(
+        binding if isinstance(binding, ExecutorSemanticBinding) else None
+        for binding in result
+    )
 
 
 def _executor_reference(binding: ExecutorSemanticBinding) -> dict[str, object]:
@@ -305,7 +328,13 @@ def _source_records(
     source_metadata: Mapping[str, object],
 ) -> Iterable[dict[str, object]]:
     yield {"runtime_source_metadata": source_metadata}
-    executor_rows = _executor_rows(sections, "source", len(sections.sources), bindings)
+    executor_rows = _executor_rows(
+        sections,
+        "source",
+        len(sections.sources),
+        bindings,
+        allow_unbound=True,
+    )
     for row_id, (source, binding) in enumerate(
         zip(sections.sources, executor_rows, strict=True)
     ):
@@ -324,7 +353,7 @@ def _source_records(
                 sections, source.exact_factor_id, f"source row {row_id}"
             ),
             "selector_domain_id": source.selector_domain_id,
-            "executor": _executor_reference(binding),
+            "executor": (None if binding is None else _executor_reference(binding)),
         }
 
 
@@ -460,7 +489,13 @@ def _semantic_catalog_records(
     bindings: Mapping[int, ExecutorSemanticBinding],
     sections: _RecurrenceExactSectionsV1,
 ) -> Iterable[dict[str, object]]:
-    used_executor_ids = sorted({group.executor_id for group in sections.row_groups})
+    used_executor_ids = sorted(
+        {
+            group.executor_id
+            for group in sections.row_groups
+            if group.executor_id != DIRECT_NONE_U32
+        }
+    )
     for executor_id in used_executor_ids:
         binding = bindings.get(executor_id)
         if binding is None:
@@ -688,7 +723,9 @@ def _executor_bindings(
     record_by_id, state_templates = _semantic_record_index(semantic_payload)
     bindings: dict[int, ExecutorSemanticBinding] = {}
     for template in direct_catalog.templates:
-        roots = (*template.semantic_template_ids, template.evaluator_resolver_key)
+        roots = template.semantic_template_ids
+        if template.evaluator_resolver_key != RECURRENCE_DIRECT_IDENTITY_FINALIZER:
+            roots = (*roots, template.evaluator_resolver_key)
         binding = ExecutorSemanticBinding(
             executor_id=template.direct_executor_id,
             role=template.role,
@@ -968,6 +1005,11 @@ def _load_pack(snapshot: ArtifactSnapshot) -> PreparedKernelPack:
             "recurrence artifact lacks the prepared kernel-pack manifest"
         )
     raw = _json_object(payload.path, description="prepared kernel pack")
+    kernel_abi = raw.pop("eager_kernel_abi", None)
+    if kernel_abi != EAGER_KERNEL_ABI:
+        raise SemanticCensusError(
+            f"prepared kernel pack has unsupported eager ABI {kernel_abi!r}"
+        )
     try:
         return PreparedKernelPack.from_dict(raw)
     except ValueError as error:

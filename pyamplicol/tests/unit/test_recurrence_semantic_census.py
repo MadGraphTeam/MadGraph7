@@ -233,6 +233,26 @@ def test_source_semantics_fail_closed() -> None:
     assert {"sources", "runtime_layout"} <= domains
 
 
+def test_union_source_rows_may_be_owned_without_a_direct_executor() -> None:
+    sections, metadata, bindings, states = _inputs()
+    groups = list(sections.row_groups)
+    groups[0] = replace(groups[0], executor_id=DIRECT_NONE_U32)
+    union_sections = replace(
+        sections,
+        strategy="all-flow-union",
+        row_groups=tuple(groups),
+    )
+
+    built = _build(union_sections, metadata, bindings, states)
+    report = census.compare_census_sets(
+        {"synthetic": built},
+        {"synthetic": copy.deepcopy(built)},
+    )
+
+    assert report["passes"] is True
+    assert built["domains"]["sources"]["record_count"] == 3
+
+
 def test_interaction_endpoints_sign_and_contribution_multiset_fail_closed() -> None:
     sections, metadata, bindings, states = _inputs()
     factors = (
