@@ -109,7 +109,7 @@ def _release_bundle(overlay: Path, package_version: str = "0.1.0") -> object:
         package_root / "models" / "loading.py",
         "MODEL_COMPILER_VERSION",
     )
-    compiler_digest = prepared_models_module._model_compiler_digest(package_root)
+    compiler_digest = "a" * 64
     source_digest = prepared_models_module._built_in_source_digest(package_root)
     symbolica_abi = prepared_models_module._literal_assignment(
         package_root / "_internal" / "versions.py",
@@ -420,7 +420,9 @@ def test_wheel_staging_rejects_built_in_source_edits(tmp_path: Path) -> None:
         stage_packaged_prepared_models(overlay, "candidate")
 
 
-def test_wheel_staging_rejects_model_compiler_edits(tmp_path: Path) -> None:
+def test_wheel_staging_treats_model_compiler_digest_as_provenance(
+    tmp_path: Path,
+) -> None:
     overlay = _overlay(tmp_path)
     source = overlay / "src/pyamplicol/models/loading.py"
     source.write_text(
@@ -428,8 +430,7 @@ def test_wheel_staging_rejects_model_compiler_edits(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    with pytest.raises(RuntimeError, match="model_compiler_sha256 is stale"):
-        stage_packaged_prepared_models(overlay, "candidate")
+    stage_packaged_prepared_models(overlay, "candidate")
 
 
 def test_wheel_staging_rejects_bundle_hash_drift(tmp_path: Path) -> None:

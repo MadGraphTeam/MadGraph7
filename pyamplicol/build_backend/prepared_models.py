@@ -346,11 +346,13 @@ def _write_packaged_prepared_model_asset(
     model_compiler_version = _literal_assignment(
         package_root / "models" / "loading.py", "MODEL_COMPILER_VERSION"
     )
-    model_compiler_digest = _model_compiler_digest(package_root)
+    model_compiler_digest = _required_sha256(
+        compiled_producer.get("model_compiler_sha256"),
+        "compiled_model producer model_compiler_sha256",
+    )
     source_digest = _built_in_source_digest(package_root)
     expected_compiled = {
         "compiled_model_schema_version": compiled_schema,
-        "model_compiler_sha256": model_compiler_digest,
         "model_compiler_version": model_compiler_version,
     }
     for key, expected in expected_compiled.items():
@@ -534,11 +536,12 @@ def _validate_bundle(
         _PRODUCER_KEYS,
         "metadata.producer",
     )
-    model_compiler_sha256 = _model_compiler_digest(package_root)
     model_source_digest = _built_in_source_digest(package_root)
+    # The producer source digest remains useful provenance, but it is not a
+    # compatibility boundary. Explicit schema and compiler versions carry
+    # that contract without forcing pack regeneration after harmless edits.
     expected_producer = {
         "compiled_model_schema": compiled_schema,
-        "model_compiler_sha256": model_compiler_sha256,
         "model_compiler_version": compiler_version,
         "model_source_digest": model_source_digest,
         "package_version": _expected_package_version(overlay, mode),
@@ -553,8 +556,6 @@ def _validate_bundle(
         raise RuntimeError("prepared compiled-model schema is stale")
     if producer.get("model_compiler_version") != compiler_version:
         raise RuntimeError("prepared model compiler version is stale")
-    if producer.get("model_compiler_sha256") != model_compiler_sha256:
-        raise RuntimeError("prepared model compiler SHA-256 is stale")
     if producer.get("pyamplicol") != expected_producer["package_version"]:
         raise RuntimeError("prepared compiled-model package version is stale")
     if source.get("digest") != model_source_digest:
@@ -714,23 +715,6 @@ def _expected_package_version(overlay: Path, mode: str) -> str:
     return _required_string(
         cargo["workspace"]["package"]["version"], "Cargo package version"
     )
-
-
-def _model_compiler_digest(package_root: Path) -> str:
-    paths = sorted(
-        (
-            *(package_root / "models").glob("*.py"),
-            *(package_root / "_internal" / "physics").glob("*.py"),
-            package_root / "processes" / "core_syntax.py",
-        )
-    )
-    digest = hashlib.sha256()
-    for path in paths:
-        relative = path.relative_to(package_root).as_posix()
-        digest.update(relative.encode("utf-8") + b"\0")
-        digest.update(path.read_bytes())
-        digest.update(b"\0")
-    return digest.hexdigest()
 
 
 def _built_in_source_digest(package_root: Path) -> str:
