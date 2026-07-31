@@ -643,6 +643,9 @@ void MadnisTraining::update_history(
     Tensor abs_means_cpu = results.at(1).cpu();
     Tensor variances_cpu = results.at(2).cpu();
     double loss = loss_cpu.view<double, 1>()[0];
+    if (loss > 1e6) {
+        throw std::runtime_error("MadNIS training diverged. Please restart");
+    }
     if (_loss_history.size() < _config.log_interval) {
         _loss_history.push_back(loss);
         _lr_history.push_back(learning_rate);
