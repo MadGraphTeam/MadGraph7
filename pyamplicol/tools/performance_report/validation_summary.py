@@ -326,7 +326,7 @@ def render_validation_summary(
         ),
         r"\begin{center}",
         r"\small",
-        r"\begin{tabular}{@{}r r r r L{1.75in}@{}}",
+        r"\begin{tabular}{@{}l r r r l@{}}",
         r"\toprule",
         (
             r"\textbf{final-state multiplicity} & \textbf{declared} & "
@@ -373,11 +373,11 @@ def render_validation_summary(
             ),
             r"\begin{center}",
             r"\small",
-            r"\begin{tabular}{@{}L{3.65in}r R{1.45in}@{}}",
+            r"\begin{tabular}{@{}l r r@{}}",
             r"\toprule",
             (
                 r"\textbf{validation comparison} & \textbf{passed} & "
-                r"\textbf{largest relative difference} \\"
+                r"\textbf{max. relative difference} \\"
             ),
             r"\midrule",
             (

@@ -397,6 +397,25 @@ def test_all_twelve_matrices_render_in_catalog_order(reset_caches) -> None:
 
     assert len(rendered) == 12
     assert list(rendered) == expected
+    lc_tex = next(
+        rendered[dataset.table_name]
+        for dataset in REPORT_CATALOG.matrix_datasets
+        if dataset.candidate.accuracy is Accuracy.LC
+    )
+    contracted_tex = next(
+        rendered[dataset.table_name]
+        for dataset in REPORT_CATALOG.matrix_datasets
+        if dataset.candidate.accuracy is Accuracy.NLC
+    )
+    assert r"\textbf{ID} & \textbf{base process} & \textbf{metric}" in lc_tex
+    assert r"\multicolumn{6}{@{\hspace{0.06in}}c}{\textbf{n=1}}" in lc_tex
+    assert r"\multicolumn{3}{@{\hspace{0.06in}}c}{\textbf{n=1}}" in contracted_tex
+    assert r"\textcolor{ReportMuted}{\scriptsize generation [s]}" in lc_tex
+    assert (
+        r"\textcolor{ReportMuted}{\scriptsize runtime "
+        r"[\(\mu\mathrm{s}/\mathrm{pt}\)]}"
+    ) in lc_tex
+    assert r"\matrixcolumnheading" not in lc_tex
 
 
 def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> None:
@@ -459,8 +478,39 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
 
     tex = render_best_mode_table(Accuracy.LC, caches)
     row = next(line for line in tex.splitlines() if line.startswith(r"\texttt{1}"))
-    assert r"\matrixratio{ReportGreen}{0.4}\bestmodecode{B}" in row
-    assert r"\matrixratio{ReportGreen}{0.5}\bestmodecode{C}" in row
+    runtime_row = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith(
+            r" &  & \textcolor{ReportMuted}{\scriptsize runtime"
+        )
+    )
+    assert (
+        r"\textcolor{ReportMuted}{\scriptsize generation [s]}"
+        r" & \texttt{10.0} & \texttt{10.0} &  & "
+        r"\bestmoderatio{ReportGreen}{0.400} & "
+        r"\bestmodencprefix{\texttt{5.00}} & \bestmodenclabel"
+    ) in row
+    assert (
+        runtime_row.count(
+            r"\bestmodeopenprefix & "
+            r"\bestmodeprimaryratio{ReportGreen}{0.100}"
+        )
+        == 2
+    )
+    assert (
+        r">{\matrixentryfontlc}r@{\hspace{0.08em}}"
+        r">{\matrixentryfontlc}l"
+    ) in tex
+    assert (
+        r"\textbf{metric} & \multicolumn{6}"
+        r"{@{\hspace{0.06in}}c}{\textbf{n=1}}"
+    ) in tex
+    assert r"\matrixcolumnheading" not in tex
+    assert r"\shortstack{\textbf{n=" not in tex
+    assert r"\bestmodecode{" not in row
+    assert r"\matrixtotalevaluator{" not in row
+    assert r"\matrixrecurrencecore{" not in row
     generation_summary = next(
         line
         for line in tex.splitlines()
@@ -472,10 +522,10 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
         r"#1&#2\\[-0.16em]\multicolumn{2}{@{}l@{}}{#3}\end{tabular}}"
     ) in tex
     assert r"\bestmodesummarypair{" in generation_summary
-    assert r"}{\bestmodemix{A:0/B:1/C:0}}" in generation_summary
-    assert r"}{\bestmodemix{A:0/B:0/C:1}}" in generation_summary
-    assert r"\matrixratio{ReportGreen}{0.4}\bestmodemix" not in generation_summary
-    assert r"\matrixratio{ReportGreen}{0.5}\bestmodemix" not in generation_summary
+    assert r"}{\bestmodemix{A:0|B:1|C:0}}" in generation_summary
+    assert r"}{\bestmodemix{A:0|B:0|C:1}}" in generation_summary
+    assert r"\matrixratio{ReportGreen}{0.400}\bestmodemix" not in generation_summary
+    assert r"\matrixratio{ReportGreen}{0.500}\bestmodemix" not in generation_summary
 
 
 def test_best_mode_summary_tie_breaks_in_documented_mode_order(reset_caches) -> None:
@@ -586,9 +636,22 @@ def test_best_mode_renders_mixed_policy_censors_without_a_winner_code(
 
     tex = render_best_mode_table(Accuracy.NLC, caches)
     row = next(line for line in tex.splitlines() if line.startswith(r"\texttt{1}"))
+    runtime_row = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith(
+            r" &  & \textcolor{ReportMuted}{\scriptsize runtime"
+        )
+    )
 
-    marker = r"\matrixstatus{ReportOrange}{>2h/>80GB/dependency}"
-    assert row.count(marker) == 2
+    marker = r"\matrixstatus{ReportOrange}{>2h | >80GB | dependency}"
+    assert row.count(marker) == 1
+    assert runtime_row.count(marker) == 1
+    assert (
+        r">{\matrixentryfont}l@{\hspace{0.050in}}"
+        r">{\matrixentryfont}r@{\hspace{0.08em}}"
+        r">{\matrixentryfont}l"
+    ) in tex
     assert r"\bestmodecode{" not in row
     assert r"\matrixna{ReportMuted}" not in row
 
@@ -657,7 +720,7 @@ def test_best_mode_mixed_terminal_summaries_are_visibly_complete(
     wall_summary = next(
         line for line in tex.splitlines() if r"\textbf{summary: wall}" in line
     )
-    marker = r"\matrixstatus{ReportOrange}{>2h/>80GB/dependency}"
+    marker = r"\matrixstatus{ReportOrange}{>2h | >80GB | dependency}"
     assert generation_summary.count(marker) == 1
     assert wall_summary.count(marker) == 1
 
@@ -908,7 +971,8 @@ def test_z_evaluator_total_is_mode_independent_and_not_execution_attribution(
                 rf"\texttt{{{70.0 + all_total:.0f}}}}}"
             ) in row
     assert r"\textbf{eval total T}" in tex
-    assert r"\textbf{rec. core C [us/pt]}" in tex
+    assert r"\textbf{rec. core C}" in tex
+    assert r"\textbf{[\(\mu\mathrm{s}/\mathrm{pt}\)]}" in tex
     assert "Neither T nor C is derived from wall time or from the other" in tex
 
 
@@ -1914,6 +1978,7 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
     summary = summarize_validation(caches)
     tex = render_validation_summary(caches)
 
+    assert r"\begin{tabular}{@{}l r r r l@{}}" in tex
     assert summary.expected_by_n == (
         (1, 64),
         (2, 186),

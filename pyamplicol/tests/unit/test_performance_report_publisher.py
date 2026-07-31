@@ -89,6 +89,62 @@ def test_pdf_compiler_can_allow_overfull_boxes_for_interactive_refresh(
         )
 
 
+def test_pdf_compiler_streams_only_when_requested(
+    tmp_path: Path,
+    monkeypatch,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "pyAmpliCol.tex").write_text(
+        "\\documentclass{article}\\begin{document}ok\\end{document}\n",
+        encoding="ascii",
+    )
+    latexmk = tmp_path / "latexmk"
+    latexmk.write_text(
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        "print('live latex stdout', flush=True)\n"
+        "print('live latex stderr', file=sys.stderr, flush=True)\n"
+        "Path('pyAmpliCol.pdf').write_bytes(b'%PDF-1.4\\n%%EOF\\n')\n"
+        "Path('pyAmpliCol.log').write_text("
+        "'Output written on pyAmpliCol.pdf (3 pages, 123 bytes).\\n', "
+        "encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    latexmk.chmod(0o755)
+    monkeypatch.setattr(
+        "tools.performance_report.publisher.shutil.which",
+        lambda _name: str(latexmk),
+    )
+
+    assert (
+        _compile_pdf(
+            docs,
+            expected_page_count=3,
+            timeout_seconds=10.0,
+        )
+        == 3
+    )
+    captured = capfd.readouterr()
+    assert "live latex stdout" not in captured.out
+    assert "live latex stderr" not in captured.err
+
+    assert (
+        _compile_pdf(
+            docs,
+            expected_page_count=3,
+            timeout_seconds=10.0,
+            stream_output=True,
+        )
+        == 3
+    )
+    captured = capfd.readouterr()
+    assert "live latex stdout" in captured.out
+    assert "live latex stderr" in captured.err
+
+
 def test_publish_once_installs_one_consistent_snapshot(
     tmp_path: Path,
     monkeypatch,

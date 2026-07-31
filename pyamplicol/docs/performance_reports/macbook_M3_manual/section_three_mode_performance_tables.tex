@@ -104,17 +104,18 @@ failed validation has no timing ratio.
 \textbf{contract} & \textbf{baseline entry} & \textbf{candidate entries} \\
 \midrule
 LC, upper
-  & topology-replay/all-flow generation quantities in seconds
+  & topology replay \texttt{|} all-flow generation quantities in seconds
   & layout-matched ratios, except for the absolute \texttt{n.c.} all-flow
     candidate against original \AC{} \\
 LC, lower
-  & selected-flow/all-flow wall times in microseconds per point
+  & selected-flow \texttt{|} all-flow wall times in
+    \(\mu\mathrm{s}/\mathrm{pt}\)
   & wall ratio and, when exposed, a separate execution attribution \\
-NLC/full, upper
+NLC and full-colour, upper
   & contracted generation time in seconds
   & candidate generation ratio \\
-NLC/full, lower
-  & contracted wall time in microseconds per point
+NLC and full-colour, lower
+  & contracted wall time in \(\mu\mathrm{s}/\mathrm{pt}\)
   & wall ratio and, when exposed, a separate execution attribution \\
 \bottomrule
 \end{tabular}
@@ -129,14 +130,13 @@ validation-failed cells do not contribute to a ratio-of-sums summary.
 
 The first three matrices provide a built-in-SM overview against original
 \AC{}.  For each process, multiplicity, colour treatment, and LC workload,
-they select the validated pyAmpliCol mode with the smallest wall time.  The
-generation multiplier is followed by \texttt{(A)}, \texttt{(B)}, or
-\texttt{(C)} for recurrence JIT O2, compiled JIT O3, or eager-DAG JIT O2,
-respectively.  Selection is independent in every cell: the overview records
-the measured winner rather than prescribing one mode for all processes.
-For the LC all-flow workload, the displayed setup multiplier spans the
-different setup boundaries described above and is therefore descriptive, not
-a like-for-like compiler benchmark.
+they select the validated pyAmpliCol mode with the smallest wall time.
+Selection is independent in every cell: the overview records the measured
+winner rather than prescribing one mode for all processes.  Its upper row
+reports generation and its lower row reports runtime.  LC pairs use
+non-union-flow \texttt{|} union-flow ordering.  Since original-\AC{} all-flow
+setup and \PAC{} process generation have different boundaries, the latter is
+shown absolutely and marked \texttt{n.c.}, rather than as a misleading ratio.
 
 \input{result_matrix_best_builtin_sm_lc_table.tex}
 \input{result_matrix_best_builtin_sm_nlc_table.tex}

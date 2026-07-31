@@ -194,7 +194,10 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
     assert arguments.no_color is False
     assert arguments.force_refresh is False
     refresh = _parse("refresh-pdf")
-    assert refresh.expected_page_count == DEFAULT_MANUAL_EXPECTED_PAGE_COUNT == 60
+    assert refresh.expected_page_count is None
+    assert refresh.quiet is False
+    assert _parse("refresh-pdf", "--quiet").quiet is True
+    assert DEFAULT_MANUAL_EXPECTED_PAGE_COUNT == 59
     underscore = _parse("inspect", "--color_approximation", "lc")
     _selection, cells = selection_from_arguments(underscore)
     assert cells
@@ -1957,5 +1960,5 @@ def test_fresh_manual_report_compiles_with_the_manual_page_contract(
         expected_page_count=DEFAULT_MANUAL_EXPECTED_PAGE_COUNT,
         timeout_seconds=900.0,
     )
-    assert pages == 60
+    assert pages == 59
     assert (docs / "pyAmpliCol.pdf").stat().st_size > 100_000

@@ -178,6 +178,31 @@ class BestModeMatrixCell:
 
 
 @dataclass(frozen=True, slots=True)
+class _BestModeComparisonLayout:
+    """One comparison token in both inline and column-aligned forms."""
+
+    inline: str
+    prefix: str
+    primary: str
+
+
+@dataclass(frozen=True, slots=True)
+class _BestModeCellRows:
+    """Physical generation/runtime rows for one multiplicity cell."""
+
+    generation: tuple[str, ...]
+    runtime: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _MatrixCellRows:
+    """Physical generation/runtime rows for one detailed matrix cell."""
+
+    generation: tuple[str, ...]
+    runtime: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class VisibleCompleteness:
     """Render-level evidence for the publication's measured-cell contract."""
 
@@ -452,6 +477,94 @@ def _timing_value(value: float) -> str:
     return f"{value:.6g}"
 
 
+def _best_mode_value(value: float) -> str:
+    """Render exactly three significant digits in compact overview tables."""
+
+    rendered = f"{value:#.3g}"
+    if "e" not in rendered and "E" not in rendered and rendered.endswith("."):
+        return rendered[:-1]
+    return rendered
+
+
+def _best_mode_time(value: object, *, microseconds: bool = False) -> str:
+    if value is None:
+        return r"\matrixna{ReportMuted}"
+    number = float(value)
+    if not math.isfinite(number):
+        return r"\matrixna{ReportMuted}"
+    if microseconds:
+        number *= 1.0e6
+    return rf"\texttt{{{_best_mode_value(number)}}}"
+
+
+def _best_mode_ratio_color(value: float) -> str:
+    if value < 1.0:
+        return "ReportGreen"
+    if value < 2.0:
+        return "ReportOrange"
+    return "ReportRed"
+
+
+def _metric_group_span(accuracy: Accuracy) -> int:
+    return 6 if accuracy is Accuracy.LC else 3
+
+
+def _metric_group_column_spec(accuracy: Accuracy) -> str:
+    """Physical value columns shared by detailed and best-mode tables."""
+
+    font = (
+        r"\matrixentryfontlc"
+        if accuracy is Accuracy.LC
+        else r"\matrixentryfont"
+    )
+    if accuracy is Accuracy.LC:
+        return (
+            rf"@{{\hspace{{0.06in}}}}>{{{font}}}l"
+            r"@{\hspace{0.018in}\matrixpunct{|}\hspace{0.018in}}"
+            rf">{{{font}}}l"
+            rf"@{{\hspace{{0.050in}}}}>{{{font}}}r"
+            rf"@{{\hspace{{0.08em}}}}>{{{font}}}l"
+            r"@{\hspace{0.018in}\matrixpunct{|}\hspace{0.018in}}"
+            rf">{{{font}}}r"
+            rf"@{{\hspace{{0.08em}}}}>{{{font}}}l"
+        )
+    return (
+        rf"@{{\hspace{{0.06in}}}}>{{{font}}}l"
+        rf"@{{\hspace{{0.050in}}}}>{{{font}}}r"
+        rf"@{{\hspace{{0.08em}}}}>{{{font}}}l"
+    )
+
+
+def _metric_table_column_spec(
+    accuracy: Accuracy,
+    multiplicity_count: int,
+) -> str:
+    return (
+        r"@{}r@{\hspace{0.04in}}L{1.45in}@{\hspace{0.04in}}l"
+        + _metric_group_column_spec(accuracy) * multiplicity_count
+        + r"@{}"
+    )
+
+
+def _metric_group_cell(
+    content: str,
+    accuracy: Accuracy,
+) -> str:
+    return (
+        rf"\multicolumn{{{_metric_group_span(accuracy)}}}"
+        rf"{{@{{\hspace{{0.06in}}}}c}}{{{content}}}"
+    )
+
+
+def _metric_row_label(*, runtime: bool) -> str:
+    label = (
+        r"runtime [\(\mu\mathrm{s}/\mathrm{pt}\)]"
+        if runtime
+        else r"generation [s]"
+    )
+    return rf"\textcolor{{ReportMuted}}{{\scriptsize {label}}}"
+
+
 def _time(value: object, *, microseconds: bool = False) -> str:
     if value is None:
         return r"\matrixna{ReportMuted}"
@@ -538,6 +651,24 @@ def _metric(measurement: Measurement, field: str, *, microseconds: bool = False)
     if unavailable is not None:
         return unavailable
     return _time(measurement.get(field), microseconds=microseconds)
+
+
+def _best_mode_metric(
+    measurement: Measurement,
+    field: str,
+    *,
+    microseconds: bool = False,
+) -> str:
+    if not _ok(measurement):
+        return _status(measurement)
+    unavailable = _unavailable_time(
+        measurement,
+        field,
+        microseconds=microseconds,
+    )
+    if unavailable is not None:
+        return unavailable
+    return _best_mode_time(measurement.get(field), microseconds=microseconds)
 
 
 def _ratio_value(
@@ -739,7 +870,7 @@ def _matrix_macros() -> list[str]:
         ),
         (
             r"\providecommand{\matrixruntimetriple}[3]{"
-            r"\shortstack[l]{#1\\#2\matrixpunct{ / }#3}}"
+            r"\shortstack[l]{#1\\#2\matrixpunct{ | }#3}}"
         ),
         r"\providecommand{\matrixbelow}[1]{\textcolor{ReportMuted}{\texttt{<#1}}}",
         (
@@ -751,22 +882,6 @@ def _matrix_macros() -> list[str]:
             r"\providecommand{\matrixncabsolute}[1]{"
             r"\textcolor{ReportBlue}{\texttt{abs }}#1"
             r"\matrixpunct{; }\matrixstatus{ReportMuted}{n.c.}}"
-        ),
-        (
-            r"\providecommand{\matrixcelllc}[6]{"
-            r"\begingroup\matrixentryfontlc"
-            r"\scalebox{0.94}{"
-            r"\begin{tabular}[t]{"
-            r"@{}l@{\hspace{0.03in}}l@{\hspace{0.03in}}l@{}}"
-            r"#1&#2&#3\\#4&#5&#6"
-            r"\end{tabular}}\endgroup}"
-        ),
-        (
-            r"\providecommand{\matrixcellcontracted}[4]{"
-            r"\begingroup\matrixentryfont"
-            r"\begin{tabular}[t]{@{}l@{\hspace{0.04in}}l@{}}"
-            r"#1&#2\\#3&#4"
-            r"\end{tabular}\endgroup}"
         ),
     ]
 
@@ -823,7 +938,7 @@ def _lc_cell(
     view: JoinedMatrixCell,
     *,
     catalog: ReportCatalog = REPORT_CATALOG,
-) -> str:
+) -> _MatrixCellRows:
     selected, all_flow = view.workloads
     legacy_baseline_unavailable = _legacy_baseline_unavailable(
         view,
@@ -838,10 +953,6 @@ def _lc_cell(
         _static_na()
         if legacy_baseline_unavailable
         else _metric(all_flow.baseline, 'generation_seconds')
-    )
-    baseline_generation = (
-        rf"\matrixpair{{{selected_baseline_generation}}}"
-        rf"{{{all_flow_baseline_generation}}}"
     )
     selected_generation_ratio = _ratio_or_absolute(
         selected.candidate,
@@ -889,10 +1000,6 @@ def _lc_cell(
             microseconds=True,
         )
     )
-    baseline_runtime = (
-        rf"\matrixpair{{{selected_runtime}}}"
-        rf"{{{all_flow_runtime}}}"
-    )
     selected_ratio = _ratio_pair_or_absolute(
         selected.candidate,
         selected.baseline,
@@ -905,14 +1012,23 @@ def _lc_cell(
         candidate_mode=view.dataset.candidate.execution_mode,
         absolute=legacy_baseline_unavailable,
     )
-    return (
-        r"\matrixcelllc"
-        f"{{{baseline_generation}}}"
-        f"{{{selected_generation_ratio}}}"
-        f"{{{all_flow_generation_ratio}}}"
-        f"{{{baseline_runtime}}}"
-        f"{{{selected_ratio}}}"
-        f"{{{all_flow_ratio}}}"
+    return _MatrixCellRows(
+        generation=(
+            selected_baseline_generation,
+            all_flow_baseline_generation,
+            "",
+            selected_generation_ratio,
+            "",
+            all_flow_generation_ratio,
+        ),
+        runtime=(
+            selected_runtime,
+            all_flow_runtime,
+            "",
+            selected_ratio,
+            "",
+            all_flow_ratio,
+        ),
     )
 
 
@@ -920,7 +1036,7 @@ def _contracted_cell(
     view: JoinedMatrixCell,
     *,
     catalog: ReportCatalog = REPORT_CATALOG,
-) -> str:
+) -> _MatrixCellRows:
     joined = view.workloads[0]
     legacy_baseline_unavailable = _legacy_baseline_unavailable(
         view,
@@ -952,12 +1068,9 @@ def _contracted_cell(
             microseconds=True,
         )
     )
-    return (
-        r"\matrixcellcontracted"
-        f"{{{baseline_generation}}}"
-        f"{{{candidate_generation}}}"
-        f"{{{baseline_runtime}}}"
-        f"{{{candidate_runtime}}}"
+    return _MatrixCellRows(
+        generation=(baseline_generation, "", candidate_generation),
+        runtime=(baseline_runtime, "", candidate_runtime),
     )
 
 
@@ -1031,21 +1144,14 @@ def _matrix_block(
     block_index: int,
     block_count: int,
 ) -> list[str]:
-    # Three-column LC blocks have the widest nested entries.  Leave a little
-    # landscape-page breathing room so populated compiled rows cannot extend
-    # into the right crop boundary.
-    value_width = {2: "3.50in", 3: "2.42in"}.get(len(multiplicities))
-    if value_width is None:
+    if len(multiplicities) not in (2, 3):
         raise ValueError(
             "matrix blocks must contain two or three multiplicities"
         )
-    column_spec = (
-        r"@{}r@{\hspace{0.04in}}L{1.65in}"
-        + "".join(
-            rf"@{{\hspace{{0.06in}}}}L{{{value_width}}}"
-            for _ in multiplicities
-        )
-        + r"@{}"
+    accuracy = dataset.candidate.accuracy
+    column_spec = _metric_table_column_spec(
+        accuracy,
+        len(multiplicities),
     )
     lines = [
         r"\clearpage",
@@ -1067,8 +1173,14 @@ def _matrix_block(
         rf"\begin{{tabular}}{{{column_spec}}}",
         r"\toprule",
         (
-            r"\textbf{ID} & \textbf{base process} & "
-            + " & ".join(rf"\textbf{{n={n_final}}}" for n_final in multiplicities)
+            r"\textbf{ID} & \textbf{base process} & \textbf{metric} & "
+            + " & ".join(
+                _metric_group_cell(
+                    rf"\textbf{{n={n_final}}}",
+                    accuracy,
+                )
+                for n_final in multiplicities
+            )
             + r" \\"
         ),
         r"\specialrule{0.85pt}{0pt}{0pt}",
@@ -1077,29 +1189,47 @@ def _matrix_block(
         n_final: [] for n_final in multiplicities
     }
     for row_index, family in enumerate(adapter.catalog.process_families):
-        row = [rf"\texttt{{{family.identifier}}}", family.label_tex]
+        generation_row = [
+            rf"\texttt{{{family.identifier}}}",
+            family.label_tex,
+            _metric_row_label(runtime=False),
+        ]
+        runtime_row = ["", "", _metric_row_label(runtime=True)]
         for n_final in multiplicities:
             view = adapter.matrix_cell(dataset, family, n_final)
             views_by_n[n_final].append(view)
             if not view.applicable:
-                row.append(_not_applicable())
-            elif dataset.candidate.accuracy is Accuracy.LC:
-                row.append(_lc_cell(view, catalog=adapter.catalog))
+                generation_row.append(
+                    _metric_group_cell(_not_applicable(), accuracy)
+                )
+                runtime_row.append(_metric_group_cell("", accuracy))
+            elif accuracy is Accuracy.LC:
+                rendered = _lc_cell(view, catalog=adapter.catalog)
+                generation_row.extend(rendered.generation)
+                runtime_row.extend(rendered.runtime)
             else:
-                row.append(_contracted_cell(view, catalog=adapter.catalog))
+                rendered = _contracted_cell(view, catalog=adapter.catalog)
+                generation_row.extend(rendered.generation)
+                runtime_row.extend(rendered.runtime)
         if row_index % 2 == 0:
             lines.append(r"\rowcolor{refblue}")
-        lines.append(" & ".join(row) + r" \\")
+        lines.append(" & ".join(generation_row) + r" \\")
+        if row_index % 2 == 0:
+            lines.append(r"\rowcolor{refblue}")
+        lines.append(" & ".join(runtime_row) + r" \\")
         lines.append(r"\addlinespace[0.05em]")
     lines.extend(
         [
             r"\specialrule{1.05pt}{0.22em}{0.18em}",
             (
-                r"\multicolumn{2}{@{}l}{\textbf{summary: generation}} & "
+                r"\multicolumn{3}{@{}l}{\textbf{summary: generation}} & "
                 + " & ".join(
-                    _matrix_generation_summary(
-                        views_by_n[n_final],
-                        dataset,
+                    _metric_group_cell(
+                        _matrix_generation_summary(
+                            views_by_n[n_final],
+                            dataset,
+                        ),
+                        accuracy,
                     )
                     for n_final in multiplicities
                 )
@@ -1107,11 +1237,14 @@ def _matrix_block(
             ),
             r"\addlinespace[0.08em]",
             (
-                r"\multicolumn{2}{@{}l}{\textbf{summary: wall}} & "
+                r"\multicolumn{3}{@{}l}{\textbf{summary: wall}} & "
                 + " & ".join(
-                    _matrix_wall_summary(
-                        views_by_n[n_final],
-                        dataset.candidate.accuracy,
+                    _metric_group_cell(
+                        _matrix_wall_summary(
+                            views_by_n[n_final],
+                            accuracy,
+                        ),
+                        accuracy,
                     )
                     for n_final in multiplicities
                 )
@@ -1270,12 +1403,13 @@ def render_matrix_table(
         *_matrix_macros(),
         (
             r"\providecommand{\matrixpair}[2]{"
-            r"\begin{tabular}[t]{@{}l@{\hspace{0.025in}/\hspace{0.025in}}l@{}}"
+            r"\begin{tabular}[t]{@{}r@{\hspace{0.025in}"
+            r"\matrixpunct{|}\hspace{0.025in}}r@{}}"
             r"#1&#2\end{tabular}}"
         ),
         (
             r"\providecommand{\matrixsummarypair}[2]{"
-            r"\begin{tabular}[t]{@{}l@{\hspace{0.04in}}l@{}}#1&#2\end{tabular}}"
+            r"\begin{tabular}[t]{@{}r@{\hspace{0.04in}}l@{}}#1&#2\end{tabular}}"
         ),
         r"\clearpage",
         rf"\subsection{{{_tex_escape(dataset.title)}}}",
@@ -1310,12 +1444,6 @@ def render_all_matrix_tables(
     }
 
 
-def _best_mode_code(mode: ExecutionMode | None) -> str:
-    if mode is None:
-        return ""
-    return rf"\bestmodecode{{{_BEST_MODE_CODES[mode]}}}"
-
-
 def _canonical_best_mode_terminal_label(
     labels: Sequence[str | None],
 ) -> str | None:
@@ -1330,7 +1458,11 @@ def _canonical_best_mode_terminal_label(
         if label.startswith("dependency"):
             normalized = ("dependency",)
         else:
-            normalized = tuple(label.split("/"))
+            normalized = tuple(
+                item.strip()
+                for item in label.replace("|", "/").split("/")
+                if item.strip()
+            )
             if not normalized or any(
                 item not in {">2h", "dependency"}
                 and not (
@@ -1351,7 +1483,7 @@ def _canonical_best_mode_terminal_label(
             return (1, int(item[1:-2]))
         return (2, 0)
 
-    return "/".join(sorted(canonical, key=order)) or None
+    return " | ".join(sorted(canonical, key=order)) or None
 
 
 def _best_mode_terminal_label(
@@ -1374,43 +1506,153 @@ def _best_mode_terminal_status(joined: BestModeWorkload) -> str:
     )
 
 
-def _best_mode_ratio(
+def _best_mode_generation_comparison_layout(
     joined: BestModeWorkload,
-    field: str,
     *,
     baseline_static_na: bool = False,
-) -> str:
+    comparable: bool = True,
+) -> _BestModeComparisonLayout:
     if joined.mode is None:
-        return _best_mode_terminal_status(joined)
-    if baseline_static_na:
-        return _ratio_or_absolute(
-            joined.candidate,
-            joined.baseline,
-            field,
-            absolute=True,
-        ) + _best_mode_code(joined.mode)
+        status = _best_mode_terminal_status(joined)
+        return _BestModeComparisonLayout(status, "", status)
+    if not _ok(joined.candidate):
+        status = _status(joined.candidate)
+        return _BestModeComparisonLayout(status, "", status)
+    if baseline_static_na or not comparable:
+        absolute = _best_mode_metric(joined.candidate, "generation_seconds")
+        return _BestModeComparisonLayout(
+            rf"\matrixncabsolute{{{absolute}}}",
+            rf"\bestmodencprefix{{{absolute}}}",
+            r"\bestmodenclabel",
+        )
     if not _ok(joined.baseline):
-        return _status(joined.baseline)
-    return _ratio(joined.candidate, joined.baseline, field) + _best_mode_code(
-        joined.mode
-    )
-
-
-def _best_mode_runtime_ratio(
-    joined: BestModeWorkload,
-    *,
-    baseline_static_na: bool = False,
-) -> str:
-    if joined.mode is None:
-        return _best_mode_terminal_status(joined)
-    if not _ok(joined.baseline) and not baseline_static_na:
-        return _status(joined.baseline)
-    return _ratio_pair_or_absolute(
+        status = _status(joined.baseline)
+        return _BestModeComparisonLayout(status, "", status)
+    generation_ratio = _ratio_value(
         joined.candidate,
         joined.baseline,
-        candidate_mode=joined.mode,
-        absolute=baseline_static_na,
+        "generation_seconds",
     )
+    if generation_ratio is None:
+        unavailable = r"\matrixna{ReportMuted}"
+        return _BestModeComparisonLayout(unavailable, "", unavailable)
+    generation_color = _best_mode_ratio_color(generation_ratio)
+    ratio = (
+        rf"\bestmoderatio{{{generation_color}}}"
+        rf"{{{_best_mode_value(generation_ratio)}}}"
+    )
+    return _BestModeComparisonLayout(ratio, "", ratio)
+
+
+def _best_mode_generation_comparison(
+    joined: BestModeWorkload,
+    *,
+    baseline_static_na: bool = False,
+    comparable: bool = True,
+) -> str:
+    return _best_mode_generation_comparison_layout(
+        joined,
+        baseline_static_na=baseline_static_na,
+        comparable=comparable,
+    ).inline
+
+
+def _best_mode_runtime_comparison_layout(
+    joined: BestModeWorkload,
+    *,
+    baseline_static_na: bool = False,
+) -> _BestModeComparisonLayout:
+    if joined.mode is None:
+        status = _best_mode_terminal_status(joined)
+        return _BestModeComparisonLayout(status, "", status)
+    if not _ok(joined.candidate):
+        status = _status(joined.candidate)
+        return _BestModeComparisonLayout(status, "", status)
+    if baseline_static_na:
+        wall = _best_mode_metric(
+            joined.candidate,
+            "wall_seconds_per_point",
+            microseconds=True,
+        )
+        return _BestModeComparisonLayout(
+            rf"\matrixncabsolute{{{wall}}}",
+            rf"\bestmodencprefix{{{wall}}}",
+            r"\bestmodenclabel",
+        )
+    if not _ok(joined.baseline):
+        status = _status(joined.baseline)
+        return _BestModeComparisonLayout(status, "", status)
+    wall_ratio = _ratio_value(
+        joined.candidate,
+        joined.baseline,
+        "wall_seconds_per_point",
+    )
+    if wall_ratio is None:
+        unavailable = r"\matrixnaratio{ReportMuted}"
+        return _BestModeComparisonLayout(unavailable, "", unavailable)
+    wall_color = _best_mode_ratio_color(wall_ratio)
+    secondary_ratio = None
+    if (
+        unavailable_execution_timing_record(
+            joined.candidate,
+            "execution_seconds_per_point",
+        )
+        is None
+        and unavailable_execution_timing_record(
+            joined.baseline,
+            "execution_seconds_per_point",
+        )
+        is None
+    ):
+        secondary_ratio = _ratio_value(
+            joined.candidate,
+            joined.baseline,
+            "execution_seconds_per_point",
+        )
+    if secondary_ratio is None:
+        inline = (
+            rf"\bestmodewallratio{{{wall_color}}}"
+            rf"{{{_best_mode_value(wall_ratio)}}}"
+        )
+        return _BestModeComparisonLayout(
+            inline,
+            r"\bestmodeopenprefix",
+            (
+                rf"\bestmodeprimaryratio{{{wall_color}}}"
+                rf"{{{_best_mode_value(wall_ratio)}}}"
+            ),
+        )
+    inline = (
+        rf"\bestmodecompactratio{{{_best_mode_value(secondary_ratio)}}}"
+        rf"{{{wall_color}}}{{{_best_mode_value(wall_ratio)}}}"
+    )
+    return _BestModeComparisonLayout(
+        inline,
+        rf"\bestmodecompactprefix{{{_best_mode_value(secondary_ratio)}}}",
+        (
+            rf"\bestmodeprimaryratio{{{wall_color}}}"
+            rf"{{{_best_mode_value(wall_ratio)}}}"
+        ),
+    )
+
+
+def _best_mode_runtime_comparison(
+    joined: BestModeWorkload,
+    *,
+    baseline_static_na: bool = False,
+) -> str:
+    return _best_mode_runtime_comparison_layout(
+        joined,
+        baseline_static_na=baseline_static_na,
+    ).inline
+
+
+def _best_mode_comparison_columns(
+    layout: _BestModeComparisonLayout,
+) -> tuple[str, str]:
+    """Expose a comparison's prefix and primary anchor as table columns."""
+
+    return layout.prefix, layout.primary
 
 
 def _best_mode_summary_terminal_label(
@@ -1429,7 +1671,7 @@ def _best_mode_lc_cell(
     view: BestModeMatrixCell,
     *,
     catalog: ReportCatalog = REPORT_CATALOG,
-) -> str:
+) -> _BestModeCellRows:
     selected, all_flow = view.workloads
     baseline_static_na = _legacy_baseline_static_na(
         catalog=catalog,
@@ -1441,21 +1683,17 @@ def _best_mode_lc_cell(
     selected_baseline_generation = (
         _static_na()
         if baseline_static_na
-        else _metric(selected.baseline, "generation_seconds")
+        else _best_mode_metric(selected.baseline, "generation_seconds")
     )
     all_flow_baseline_generation = (
         _static_na()
         if baseline_static_na
-        else _metric(all_flow.baseline, "generation_seconds")
-    )
-    baseline_generation = (
-        rf"\matrixpair{{{selected_baseline_generation}}}"
-        rf"{{{all_flow_baseline_generation}}}"
+        else _best_mode_metric(all_flow.baseline, "generation_seconds")
     )
     selected_baseline_runtime = (
         _static_na()
         if baseline_static_na
-        else _metric(
+        else _best_mode_metric(
             selected.baseline,
             "wall_seconds_per_point",
             microseconds=True,
@@ -1464,42 +1702,42 @@ def _best_mode_lc_cell(
     all_flow_baseline_runtime = (
         _static_na()
         if baseline_static_na
-        else _metric(
+        else _best_mode_metric(
             all_flow.baseline,
             "wall_seconds_per_point",
             microseconds=True,
         )
     )
-    baseline_runtime = (
-        rf"\matrixpair{{{selected_baseline_runtime}}}"
-        rf"{{{all_flow_baseline_runtime}}}"
-    )
-    selected_generation_ratio = _best_mode_ratio(
-        selected,
-        "generation_seconds",
-        baseline_static_na=baseline_static_na,
-    )
-    all_flow_generation_ratio = _best_mode_ratio(
-        all_flow,
-        "generation_seconds",
-        baseline_static_na=baseline_static_na,
-    )
-    selected_runtime_ratio = _best_mode_runtime_ratio(
+    selected_generation = _best_mode_generation_comparison_layout(
         selected,
         baseline_static_na=baseline_static_na,
     )
-    all_flow_runtime_ratio = _best_mode_runtime_ratio(
+    all_flow_generation = _best_mode_generation_comparison_layout(
+        all_flow,
+        baseline_static_na=baseline_static_na,
+        comparable=False,
+    )
+    selected_runtime = _best_mode_runtime_comparison_layout(
+        selected,
+        baseline_static_na=baseline_static_na,
+    )
+    all_flow_runtime = _best_mode_runtime_comparison_layout(
         all_flow,
         baseline_static_na=baseline_static_na,
     )
-    return (
-        r"\matrixcelllc"
-        f"{{{baseline_generation}}}"
-        f"{{{selected_generation_ratio}}}"
-        f"{{{all_flow_generation_ratio}}}"
-        f"{{{baseline_runtime}}}"
-        f"{{{selected_runtime_ratio}}}"
-        f"{{{all_flow_runtime_ratio}}}"
+    return _BestModeCellRows(
+        generation=(
+            selected_baseline_generation,
+            all_flow_baseline_generation,
+            *_best_mode_comparison_columns(selected_generation),
+            *_best_mode_comparison_columns(all_flow_generation),
+        ),
+        runtime=(
+            selected_baseline_runtime,
+            all_flow_baseline_runtime,
+            *_best_mode_comparison_columns(selected_runtime),
+            *_best_mode_comparison_columns(all_flow_runtime),
+        ),
     )
 
 
@@ -1507,7 +1745,7 @@ def _best_mode_contracted_cell(
     view: BestModeMatrixCell,
     *,
     catalog: ReportCatalog = REPORT_CATALOG,
-) -> str:
+) -> _BestModeCellRows:
     joined = view.workloads[0]
     baseline_static_na = _legacy_baseline_static_na(
         catalog=catalog,
@@ -1519,32 +1757,34 @@ def _best_mode_contracted_cell(
     baseline_generation = (
         _static_na()
         if baseline_static_na
-        else _metric(joined.baseline, "generation_seconds")
+        else _best_mode_metric(joined.baseline, "generation_seconds")
     )
     baseline_runtime = (
         _static_na()
         if baseline_static_na
-        else _metric(
+        else _best_mode_metric(
             joined.baseline,
             "wall_seconds_per_point",
             microseconds=True,
         )
     )
-    generation_ratio = _best_mode_ratio(
-        joined,
-        "generation_seconds",
-        baseline_static_na=baseline_static_na,
-    )
-    runtime_ratio = _best_mode_runtime_ratio(
+    generation_comparison = _best_mode_generation_comparison_layout(
         joined,
         baseline_static_na=baseline_static_na,
     )
-    return (
-        r"\matrixcellcontracted"
-        f"{{{baseline_generation}}}"
-        f"{{{generation_ratio}}}"
-        f"{{{baseline_runtime}}}"
-        f"{{{runtime_ratio}}}"
+    runtime_comparison = _best_mode_runtime_comparison_layout(
+        joined,
+        baseline_static_na=baseline_static_na,
+    )
+    return _BestModeCellRows(
+        generation=(
+            baseline_generation,
+            *_best_mode_comparison_columns(generation_comparison),
+        ),
+        runtime=(
+            baseline_runtime,
+            *_best_mode_comparison_columns(runtime_comparison),
+        ),
     )
 
 
@@ -1555,6 +1795,7 @@ def _best_mode_summary_pair(
     *,
     microseconds: bool = False,
     show_mode_mix: bool = False,
+    comparable: bool = True,
 ) -> str:
     joined = tuple(
         next(item for item in view.workloads if item.workload is workload)
@@ -1595,23 +1836,26 @@ def _best_mode_summary_pair(
     baseline_sum = math.fsum(float(item.baseline[field]) for item in valid)
     candidate_sum = math.fsum(float(item.candidate[field]) for item in valid)
     baseline_mean = baseline_sum / len(valid)
-    ratio = candidate_sum / baseline_sum if baseline_sum > 0.0 else math.nan
-    baseline_text = _time(baseline_mean, microseconds=microseconds)
-    ratio_text = (
-        r"\matrixnaratio{ReportMuted}"
-        if not math.isfinite(ratio)
-        else _ratio(
-            {
-                "status": ResultStatus.OK.value,
-                field: candidate_sum,
-            },
-            {
-                "status": ResultStatus.OK.value,
-                field: baseline_sum,
-            },
-            field,
-        )
+    baseline_text = _best_mode_time(
+        baseline_mean,
+        microseconds=microseconds,
     )
+    if not comparable:
+        candidate_mean = candidate_sum / len(valid)
+        candidate_text = _best_mode_time(
+            candidate_mean,
+            microseconds=microseconds,
+        )
+        ratio_text = rf"\matrixncabsolute{{{candidate_text}}}"
+    else:
+        ratio = candidate_sum / baseline_sum if baseline_sum > 0.0 else math.nan
+        if not math.isfinite(ratio):
+            ratio_text = r"\matrixnaratio{ReportMuted}"
+        else:
+            ratio_text = (
+                rf"\matrixratio{{{_best_mode_ratio_color(ratio)}}}"
+                rf"{{{_best_mode_value(ratio)}}}"
+            )
     if show_mode_mix:
         counts = {
             mode: sum(item.mode is mode for item in valid)
@@ -1623,7 +1867,7 @@ def _best_mode_summary_pair(
             + "}{"
             + ratio_text
             + r"}{\bestmodemix{"
-            + "/".join(
+            + "|".join(
                 f"{_BEST_MODE_CODES[mode]}:{counts[mode]}"
                 for mode in _BEST_MODE_ORDER
             )
@@ -1648,6 +1892,7 @@ def _best_mode_generation_summary(
             Workload.ALL_FLOW,
             "generation_seconds",
             show_mode_mix=True,
+            comparable=False,
         )
         return (
             rf"\matrixpair{{{selected}}}{{{all_flow}}}"
@@ -1701,18 +1946,13 @@ def _best_mode_block(
         Accuracy.NLC: "NLC",
         Accuracy.FULL: "full-colour",
     }[accuracy]
-    value_width = {2: "3.50in", 3: "2.42in"}.get(len(multiplicities))
-    if value_width is None:
+    if len(multiplicities) not in (2, 3):
         raise ValueError(
             "matrix blocks must contain two or three multiplicities"
         )
-    column_spec = (
-        r"@{}r@{\hspace{0.04in}}L{1.65in}"
-        + "".join(
-            rf"@{{\hspace{{0.06in}}}}L{{{value_width}}}"
-            for _ in multiplicities
-        )
-        + r"@{}"
+    column_spec = _metric_table_column_spec(
+        accuracy,
+        len(multiplicities),
     )
     lines = [
         r"\clearpage",
@@ -1735,8 +1975,14 @@ def _best_mode_block(
         rf"\begin{{tabular}}{{{column_spec}}}",
         r"\toprule",
         (
-            r"\textbf{ID} & \textbf{base process} & "
-            + " & ".join(rf"\textbf{{n={n_final}}}" for n_final in multiplicities)
+            r"\textbf{ID} & \textbf{base process} & \textbf{metric} & "
+            + " & ".join(
+                _metric_group_cell(
+                    rf"\textbf{{n={n_final}}}",
+                    accuracy,
+                )
+                for n_final in multiplicities
+            )
             + r" \\"
         ),
         r"\specialrule{0.85pt}{0pt}{0pt}",
@@ -1745,27 +1991,46 @@ def _best_mode_block(
         n_final: [] for n_final in multiplicities
     }
     for row_index, family in enumerate(adapter.catalog.process_families):
-        row = [rf"\texttt{{{family.identifier}}}", family.label_tex]
+        generation_row = [
+            rf"\texttt{{{family.identifier}}}",
+            family.label_tex,
+            _metric_row_label(runtime=False),
+        ]
+        runtime_row = ["", "", _metric_row_label(runtime=True)]
         for n_final in multiplicities:
             view = adapter.best_mode_cell(accuracy, family, n_final)
             views_by_n[n_final].append(view)
             if not view.applicable:
-                row.append(_not_applicable())
-            elif accuracy is Accuracy.LC:
-                row.append(_best_mode_lc_cell(view, catalog=adapter.catalog))
-            else:
-                row.append(
-                    _best_mode_contracted_cell(view, catalog=adapter.catalog)
+                generation_row.append(
+                    _metric_group_cell(_not_applicable(), accuracy)
                 )
+                runtime_row.append(_metric_group_cell("", accuracy))
+            elif accuracy is Accuracy.LC:
+                rendered = _best_mode_lc_cell(
+                    view,
+                    catalog=adapter.catalog,
+                )
+                generation_row.extend(rendered.generation)
+                runtime_row.extend(rendered.runtime)
+            else:
+                rendered = _best_mode_contracted_cell(
+                    view,
+                    catalog=adapter.catalog,
+                )
+                generation_row.extend(rendered.generation)
+                runtime_row.extend(rendered.runtime)
         if row_index % 2 == 0:
             lines.append(r"\rowcolor{refblue}")
-        lines.append(" & ".join(row) + r" \\")
+        lines.append(" & ".join(generation_row) + r" \\")
+        if row_index % 2 == 0:
+            lines.append(r"\rowcolor{refblue}")
+        lines.append(" & ".join(runtime_row) + r" \\")
         lines.append(r"\addlinespace[0.05em]")
     boundary_note = (
-        r" For the LC all-flow workload, the generation multiplier compares "
-        r"pyAmpliCol process generation with AmpliCol direct-evaluation setup; "
-        r"it is a setup-cost indicator across different boundaries, not a "
-        r"like-for-like compiler benchmark."
+        r" For the LC all-flow workload, AmpliCol direct-evaluation setup and "
+        r"pyAmpliCol process generation have different boundaries, so the "
+        r"candidate generation value is shown absolutely and marked n.c.; no "
+        r"misleading multiplier is formed."
         if accuracy is Accuracy.LC
         else ""
     )
@@ -1773,10 +2038,13 @@ def _best_mode_block(
         [
             r"\specialrule{1.05pt}{0.22em}{0.18em}",
             (
-                r"\multicolumn{2}{@{}l}{\textbf{summary: generation}} & "
+                r"\multicolumn{3}{@{}l}{\textbf{summary: generation}} & "
                 + " & ".join(
-                    _best_mode_generation_summary(
-                        views_by_n[n_final],
+                    _metric_group_cell(
+                        _best_mode_generation_summary(
+                            views_by_n[n_final],
+                            accuracy,
+                        ),
                         accuracy,
                     )
                     for n_final in multiplicities
@@ -1785,10 +2053,13 @@ def _best_mode_block(
             ),
             r"\addlinespace[0.08em]",
             (
-                r"\multicolumn{2}{@{}l}{\textbf{summary: wall}} & "
+                r"\multicolumn{3}{@{}l}{\textbf{summary: wall}} & "
                 + " & ".join(
-                    _best_mode_wall_summary(
-                        views_by_n[n_final],
+                    _metric_group_cell(
+                        _best_mode_wall_summary(
+                            views_by_n[n_final],
+                            accuracy,
+                        ),
                         accuracy,
                     )
                     for n_final in multiplicities
@@ -1801,20 +2072,24 @@ def _best_mode_block(
             (
                 r"\ReportTableNote{The candidate is selected independently in "
                 r"each cell and workload by the smallest validated wall time. "
-                r"Generation multipliers identify that runtime winner: "
-                r"\texttt{(A)} recurrence JIT O2, \texttt{(B)} compiled JIT O3, "
-                r"and \texttt{(C)} eager-DAG JIT O2. Runtime entries are "
-                r"winner/AmpliCol wall-time multipliers marked W plus each "
-                r"winner's independent absolute evaluator total marked T; "
-                r"recurrence winners additionally show their narrower core "
-                r"marked C. T and C are never derived from wall time or from "
-                r"one another, and compiled/eager winners never fabricate C. "
+                r"The upper row is generation in seconds and the lower row is "
+                r"runtime in \(\mu\mathrm{s}/\mathrm{pt}\). In LC cells, each "
+                r"pair is non-union-flow \texttt{|} union-flow. Generation "
+                r"multipliers are coloured directly. Each runtime workload "
+                r"uses \texttt{([xS]xW)}: the muted bracket is the separately "
+                r"measured, ratio-eligible execution attribution when exposed, "
+                r"and the coloured value is the candidate/AmpliCol wall-time "
+                r"multiplier used as the figure of merit. Independent absolute "
+                r"T and recurrence-core C clocks remain in the detailed "
+                r"evidence and are never fabricated from wall time. Every "
+                r"displayed number uses exactly three significant digits. "
                 r"Original-AmpliCol "
                 r"rows beyond its three-open-quark-line scope are catalog "
-                r"static N/A entries; their candidate values are absolute "
-                r"n.c. quantities and are excluded from ratio summaries."
+                r"static N/A entries; their candidates are marked n.c. and "
+                r"excluded from ratio summaries."
                 + boundary_note
-                + r" Summary mode counts use the order A/B/C.}"
+                + r" Summary mode counts use A|B|C for recurrence JIT O2, "
+                r"compiled JIT O3, and eager-DAG JIT O2, respectively.}"
             ),
             r"\end{minipage}",
         ]
@@ -1844,16 +2119,45 @@ def render_best_mode_table(
         *_matrix_macros(),
         (
             r"\providecommand{\matrixpair}[2]{"
-            r"\begin{tabular}[t]{@{}l@{\hspace{0.025in}/\hspace{0.025in}}l@{}}"
+            r"\begin{tabular}[t]{@{}r@{\hspace{0.025in}"
+            r"\matrixpunct{|}\hspace{0.025in}}r@{}}"
             r"#1&#2\end{tabular}}"
         ),
         (
             r"\providecommand{\matrixsummarypair}[2]{"
-            r"\begin{tabular}[t]{@{}l@{\hspace{0.04in}}l@{}}#1&#2\end{tabular}}"
+            r"\begin{tabular}[t]{@{}r@{\hspace{0.04in}}l@{}}#1&#2\end{tabular}}"
         ),
         (
-            r"\providecommand{\bestmodecode}[1]{"
-            r"\hspace{0.025in}\textcolor{ReportBlue}{\texttt{(#1)}}}"
+            r"\providecommand{\bestmoderatio}[2]{"
+            r"\textcolor{#1}{\texttt{x#2}}}"
+        ),
+        (
+            r"\providecommand{\bestmodecompactratio}[3]{"
+            r"\matrixpunct{(}"
+            r"\textcolor{ReportMuted}{\texttt{[x#1]}}"
+            r"\textcolor{#2}{\texttt{x#3}}"
+            r"\matrixpunct{)}}"
+        ),
+        (
+            r"\providecommand{\bestmodewallratio}[2]{"
+            r"\matrixpunct{(}\textcolor{#1}{\texttt{x#2}}\matrixpunct{)}}"
+        ),
+        (
+            r"\providecommand{\bestmodecompactprefix}[1]{"
+            r"\matrixpunct{(}\textcolor{ReportMuted}{\texttt{[x#1]}}}"
+        ),
+        r"\providecommand{\bestmodeopenprefix}{\matrixpunct{(}}",
+        (
+            r"\providecommand{\bestmodeprimaryratio}[2]{"
+            r"\textcolor{#1}{\texttt{x#2}}\matrixpunct{)}}"
+        ),
+        (
+            r"\providecommand{\bestmodencprefix}[1]{"
+            r"\textcolor{ReportBlue}{\texttt{abs }}#1\matrixpunct{; }}"
+        ),
+        (
+            r"\providecommand{\bestmodenclabel}{"
+            r"\matrixstatus{ReportMuted}{n.c.}}"
         ),
         (
             r"\providecommand{\bestmodemix}[1]{"
@@ -2008,12 +2312,16 @@ def _z_block(
             r"\multicolumn{3}{c}{\textbf{all flows, single helicity}} \\"
         ),
         (
-            r"& & \textbf{gen [s]} & \textbf{wall [us/pt]} & "
+            r"& & \textbf{gen [s]} & "
+            r"\textbf{wall [\(\mu\mathrm{s}/\mathrm{pt}\)]} & "
             r"\shortstack{\textbf{eval total T}\\"
-            r"\textbf{rec. core C [us/pt]}} & \textbf{gen [s]} & "
-            r"\textbf{wall [us/pt]} & "
+            r"\textbf{rec. core C}\\"
+            r"\textbf{[\(\mu\mathrm{s}/\mathrm{pt}\)]}} & "
+            r"\textbf{gen [s]} & "
+            r"\textbf{wall [\(\mu\mathrm{s}/\mathrm{pt}\)]} & "
             r"\shortstack{\textbf{eval total T}\\"
-            r"\textbf{rec. core C [us/pt]}} \\"
+            r"\textbf{rec. core C}\\"
+            r"\textbf{[\(\mu\mathrm{s}/\mathrm{pt}\)]}} \\"
         ),
         r"\midrule",
     ]
@@ -2250,9 +2558,9 @@ def render_scalar_ladder(
     )
     rows = (
         ("generation [s]", "generation_seconds"),
-        (r"wall [$\mu$s/pt]", "wall_seconds_per_point"),
+        (r"wall [\(\mu\mathrm{s}/\mathrm{pt}\)]", "wall_seconds_per_point"),
         (
-            r"evaluator total [$\mu$s/pt]",
+            r"evaluator total [\(\mu\mathrm{s}/\mathrm{pt}\)]",
             "evaluator_total_seconds_per_point",
         ),
         ("matrix element", "matrix_element"),
@@ -2637,26 +2945,29 @@ def summarize_visible_completeness(
                             (
                                 _static_na()
                                 if baseline_static_na
-                                else _metric(
+                                else _best_mode_metric(
                                     joined.baseline,
                                     "generation_seconds",
                                 )
                             ),
-                            _best_mode_ratio(
+                            _best_mode_generation_comparison(
                                 joined,
-                                "generation_seconds",
                                 baseline_static_na=baseline_static_na,
+                                comparable=not (
+                                    accuracy is Accuracy.LC
+                                    and joined.workload is Workload.ALL_FLOW
+                                ),
                             ),
                             (
                                 _static_na()
                                 if baseline_static_na
-                                else _metric(
+                                else _best_mode_metric(
                                     joined.baseline,
                                     "wall_seconds_per_point",
                                     microseconds=True,
                                 )
                             ),
-                            _best_mode_runtime_ratio(
+                            _best_mode_runtime_comparison(
                                 joined,
                                 baseline_static_na=baseline_static_na,
                             ),
