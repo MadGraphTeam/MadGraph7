@@ -34,7 +34,7 @@ namespace
     fptype_amp* color_jamps,
 #endif
     fptype* numerators,
-    fptype* denominators,
+    fptype_amp* denominators,
     std::size_t count )
   {
     bool is_good_hel[CPPProcess::ncomb];
@@ -58,7 +58,7 @@ namespace
     fptype_amp* color_jamps,
 #endif
     fptype* numerators,
-    fptype* denominators,
+    fptype_amp* denominators,
     std::size_t count )
   {
     // static local initialization is called exactly once in a thread-safe way
@@ -136,7 +136,7 @@ namespace
   }
 
   __global__ void copy_outputs(
-    fptype* denominators,
+    fptype_amp* denominators,
     fptype* numerators,
     fptype* matrix_elements,
     unsigned int* diagram_index,
@@ -399,7 +399,8 @@ extern "C"
     std::size_t rounded_count = n_blocks * n_threads;
 
     fptype *momenta, *couplings, *g_s, *helicity_random, *color_random, *diagram_random;
-    fptype *matrix_elements, *numerators, *denominators, *ghel_matrix_elements;
+    fptype *matrix_elements, *numerators, *ghel_matrix_elements;
+    fptype_amp* denominators;
     fptype_amp *color_jamps, *ghel_jamps;
     int *helicity_index, *color_index;
     unsigned int *flavor_indices, *diagram_index;
@@ -430,7 +431,7 @@ extern "C"
         {reinterpret_cast<void**>(&diagram_index), rounded_count * sizeof( unsigned int )},
         {reinterpret_cast<void**>(&color_jamps), rounded_count * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype_amp )},
         {reinterpret_cast<void**>(&numerators), rounded_count * CPPProcess::ndiagrams * CPPProcess::ncomb * sizeof( fptype )},
-        {reinterpret_cast<void**>(&denominators), rounded_count * CPPProcess::ncomb * sizeof( fptype )},
+        {reinterpret_cast<void**>(&denominators), rounded_count * CPPProcess::ncomb * sizeof( fptype_amp )},
         {reinterpret_cast<void**>(&helicity_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&color_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&ghel_matrix_elements), rounded_count * CPPProcess::ncomb * sizeof( fptype )},
@@ -578,7 +579,7 @@ extern "C"
     HostBufferBase<fptype, false> matrix_elements( rounded_count );
     HostBufferBase<unsigned int, false> diagram_index( rounded_count );
     HostBufferBase<fptype, false> numerators( rounded_count * CPPProcess::ndiagrams );
-    HostBufferBase<fptype, false> denominators( rounded_count );
+    HostBufferBase<fptype_amp, false> denominators( rounded_count );
     HostBufferBase<int, false> helicity_index( rounded_count );
     HostBufferBase<int, false> color_index( rounded_count );
 
