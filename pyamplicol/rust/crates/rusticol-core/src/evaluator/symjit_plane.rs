@@ -1244,7 +1244,7 @@ mod tests {
     fn execute_forced_scalar(kernel: &SymjitPlaneKernel, table: &SymjitPlaneTable<'_>, len: usize) {
         for point in 0..len {
             let status = unsafe {
-                kernel.scalar(
+                (kernel.scalar)(
                     std::ptr::null(),
                     table.as_symjit_ptr(),
                     point,
@@ -1278,7 +1278,7 @@ mod tests {
         }
         while point < len {
             let status = unsafe {
-                kernel.scalar(
+                (kernel.scalar)(
                     std::ptr::null(),
                     table.as_symjit_ptr(),
                     point,

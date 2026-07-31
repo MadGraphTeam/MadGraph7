@@ -280,6 +280,9 @@ def test_source_selftest_fixture_is_one_portable_64bit_template() -> None:
         "cpu_features": [],
         "triple": module.PORTABLE_TEMPLATE,
     }
+    assert (
+        manifest["extensions"]["artifact_identity"] == module.ARTIFACT_IDENTITY_CONTRACT
+    )
     assert {
         payload["target"]["triple"]
         for payload in manifest["payloads"]

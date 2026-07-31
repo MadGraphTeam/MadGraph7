@@ -487,6 +487,10 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
             "cpu_features": [],
             "triple": target,
         }
+        assert (
+            selftest_manifest["extensions"]["artifact_identity"]
+            == backend._ARTIFACT_IDENTITY_CONTRACT
+        )
         target_payloads = [
             payload["target"]
             for payload in selftest_manifest["payloads"]

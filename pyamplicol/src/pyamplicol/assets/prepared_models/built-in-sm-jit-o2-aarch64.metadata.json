@@ -1,22 +1,34 @@
 {
   "backend": "jit",
   "build_contract": {
-    "candidate_fingerprint": "a38cc68d0520",
+    "candidate_fingerprint": "34f4013080a1",
     "mode": "candidate",
     "sources": {
       "symbolica": "77c137481904b8a5531ede86e3ef36b82beed7fd",
       "symbolica-community": "0deaa0f1484ec5c24f5f109176fa66f0d30134ca",
-      "symjit": "4e288ce5f3132b05e2a81eb6452c011b9e2bb936"
+      "symjit": "77789ff0f78232b1ea4608aceb397058df50b06d"
+    },
+    "symjit_source": {
+      "configured_tree_sha256": "4b4b791b0f2bbef33a7dbd2936d20dc722f7301e2e9e986b65b2a8b94d220b31",
+      "patches": [
+        {
+          "applies_to_revision": "77789ff0f78232b1ea4608aceb397058df50b06d",
+          "name": "symjit-raw-plane-descriptor-v1",
+          "path": "patches/symjit/upstream/0001-Expose-a-stable-raw-P-kernel-plane-descriptor.patch",
+          "sha256": "70012117436d77265b349c013b0df8c4fe72a04ced972090ba3ac069721b436d",
+          "target": "symjit"
+        }
+      ]
     }
   },
   "bundle": "built-in-sm-jit-o2-aarch64.pyamplicol-model",
-  "bundle_sha256": "33c9f762362d9c0136db154e57dc666dc221386b5000cbdae8b34f848c59d5ef",
-  "bundle_size": 7536825,
+  "bundle_sha256": "86509430038002698d39eea9f0c4b104e3390194cbd58469de7e3c161862080a",
+  "bundle_size": 7538796,
   "dependencies": {
     "symbolica_serialization_abi": "symbolica-bincode2-v1",
     "symbolica_version": "2.2.0",
     "symjit_application_abi": "symjit-application-storage-v3",
-    "symjit_plane_application_abi": "pyamplicol-symjit-plane-application-v1",
+    "symjit_plane_application_abi": "pyamplicol-symjit-plane-application-v2",
     "symjit_version": "2.22.0",
     "ufo_model_loader_version": "0.1.7"
   },
@@ -28,11 +40,12 @@
   "prepared_model_bundle_schema": 1,
   "producer": {
     "compiled_model_schema": 9,
-    "model_compiler_sha256": "f1fc69b68d585e5c4f85068c8b7e86820822d0cf9dbccde9d0bd78fc317497e6",
+    "model_compiler_sha256": "24e1af18b5bae66bf00be47b7a6bbd2b8c26a66e0748aa82035de4e856e5d209",
     "model_compiler_version": 13,
     "model_source_digest": "7f6fc84e6d7c4eda6c531b9901ab891abd67c3c0e2ad9d492b30ece760352ba8",
-    "package_version": "0.1.0.dev0+candidate.a38cc68d0520",
-    "prepared_pack_compiler_sha256": "d6c1b0757cf81a7bc5e794cb8a494082dfd6bb97a12b92886e5b838cf3c624ee"
+    "native_build_inputs_sha256": "de8ef2b03782839d65669dde768bd5bda39041d42cf4d4b8f4100cfb08cb21b6",
+    "package_version": "0.1.0.dev0+candidate.34f4013080a1",
+    "prepared_pack_compiler_sha256": "0e2a27a7bd46896b0b14529b54285108300cbf7d7f9668fba101078108a4b546"
   },
   "schema_version": 1,
   "target": {

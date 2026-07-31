@@ -14,8 +14,9 @@ operation, or table concept is added to SymJIT, and the generated kernel body
 is unchanged. No need for a second mixed plane/scalar or output-operation patch
 has been identified so far: pyAmpliCol owns persistent broadcast planes, safe
 direct-output classification, persistent scratch, and allocation-free complex
-epilogues. The pending performance campaign remains the saved plan's final
-decision gate for that second patch.
+epilogues. The wider performance and release-readiness campaigns were
+explicitly deferred by the user to a later combined release pass; they are not
+part of this short implementation finalization.
 
 The implementation preserves the Python and CLI source contracts and the public
 C ABI v1 plus generated C++, Fortran, and Rust SDK source interfaces. Final
@@ -31,11 +32,10 @@ public Rust SDK remain unchanged.
 Internal generated-artifact ABIs were bumped and predecessor artifacts fail
 closed with an instruction to regenerate.
 
-The acceptance commands below target one clean detached source snapshot. This
-report is updated afterward with the resulting content addresses and is
-therefore the only intended documentation-only delta from that verified tree.
-The final acceptance tables will be filled from the authenticated full-gate
-and paired-performance captures before staging.
+The acceptance commands below preserve the originally planned release gate for
+reference. The implementation round closed with focused contract checks and
+fresh active runtime assets; the full-gate and paired-performance tables are
+intentionally left for the later release-readiness pass.
 
 ## Reproducible identities
 
@@ -55,11 +55,20 @@ hardening landed afterward:
 - snapshot directory:
   `.artifacts/symjit-2.22-migration/clean-snapshots/candidate-prepack-final-20260731T051631Z`
 
-The candidate fingerprint and native-build-input digest will be recomputed
-from the final clean snapshot. A replacement pre-pack snapshot must be created
-from the current source before regeneration so that digest covers the finished
-provenance and evidence code. The final clean snapshot and regenerated packs
-remain pending.
+The integrated source through `7c1f17c` produced candidate fingerprint
+`34f4013080a1`. Fresh active AArch64 and x86_64 portable prepared-model bundles
+were generated from the same storage-v3 MIR and have identical SHA-256
+`86509430038002698d39eea9f0c4b104e3390194cbd58469de7e3c161862080a`.
+Their metadata pins SymJIT
+`77789ff0f78232b1ea4608aceb397058df50b06d` and declares
+`pyamplicol-symjit-plane-application-v2`.
+
+The tracked `portable-64le` self-test was also regenerated from the integrated
+runtime. It contains only the v2 plane-application ABI, requires the current
+`pyamplicol-runtime-payload-identity` marker, and records the new default of two
+post-build validation samples. Publication-only prepared packs under
+`release_assets/` were deliberately not regenerated in this implementation
+round; release staging rejects them fail-closed until the later release pass.
 
 The saved migration plan originally pinned SymJIT 2.22.0 revision
 `4e288ce5f3132b05e2a81eb6452c011b9e2bb936`. After that plan was approved,
@@ -145,7 +154,8 @@ log has SHA-256
 `39f398a8f90d337a39d9e60eb800fde3cc587bdf38fc6a9537268c5db9f542c9`.
 The rebased patch makes that test configuration explicit, enables identity
 outputs, and directly executes the raw SIMD accessor with lane-aligned actual
-row indices. Its replacement execution log is pending the host-free gate.
+row indices. Its replacement full-gate execution log is deferred to the
+release-readiness pass.
 
 No second patch has been added. Point-independent literals and couplings use
 persistent broadcast planes, mutable model-parameter planes refresh only when
@@ -357,9 +367,21 @@ dependency-policy suite reported 31 passed, and focused Rust predecessor tests
 reported 2 passed. These development results are supporting evidence; the
 final clean-snapshot gate results below supersede them.
 
-### Final clean gates
+### Short implementation finalization
 
-Pending host-free execution:
+The user-directed short finalization ran five focused Python contract tests
+(artifact identity, required prepared-record fields, and the tracked portable
+self-test) successfully under a 30 GiB guard with 0.050 GiB peak RSS. The
+focused Rust fail-closed identity test also passed under the guard with
+4.136 GiB peak RSS. That Rust invocation exposed and fixed two test-only calls
+which treated the stored scalar function pointer as a method. `cargo fmt
+--all --check`, Ruff lint, and `git diff --check` also passed. No broad test,
+performance, installer, or release campaign was run.
+
+### Deferred release-readiness gates
+
+These commands are intentionally deferred by the user's short-finalization
+directive:
 
 | Gate | Result | Peak guard | Authenticated log |
 |---|---:|---:|---|
@@ -452,8 +474,8 @@ dependency projections, materialized the immutable SymJIT archive, verified
 pristine and post-patch trees, applied the single ordered patch automatically,
 built Symbolica against the same checkout, and built/installed candidate
 pyAmpliCol with the superseded fingerprint `a38cc68d0520`. Fresh and repeat
-installs for the final patch digest, configured tree, and fingerprint remain
-part of the pending clean gates.
+installs for the final patch digest, configured tree, and fingerprint are
+deferred to the combined release-readiness pass.
 
 The final authenticated `cargo tree` capture and tracked-tree scans will be
 recorded after the final snapshot. Current scans contain no private-fork URL,

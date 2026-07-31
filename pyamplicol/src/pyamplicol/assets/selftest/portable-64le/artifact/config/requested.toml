@@ -31,7 +31,7 @@ emit_api_bundle = true
 
 [generation.validation]
 enabled = true
-samples = 10
+samples = 2
 seed = 12345
 relative_tolerance = 1e-12
 absolute_tolerance = 1e-300
@@ -99,4 +99,4 @@ progress = "off"
 log_level = "info"
 
 [symbolica]
-suggest_license = true
+suggest_license = false
