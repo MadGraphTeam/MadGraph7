@@ -66,7 +66,7 @@ def _parse(*arguments: str):
 
 
 def test_catalog_and_fresh_profile_are_complete_but_measurement_empty() -> None:
-    assert len(REPORT_CATALOG.measurement_cells()) == 1666
+    assert len(REPORT_CATALOG.measurement_cells()) == 1706
     assert PROFILE.is_dir()
     assert not (PROFILE / "pyAmpliCol.pdf").exists()
     assert not any(PROFILE.rglob("current.json"))
@@ -108,13 +108,13 @@ def test_selector_repetition_wildcard_aliases_and_intersection() -> None:
 
     all_arguments = _parse("inspect", "--table", "*", "--model", "all")
     _all_selection, all_cells = selection_from_arguments(all_arguments)
-    assert len(all_cells) == 1666
+    assert len(all_cells) == 1706
 
 
 def test_matrix_best_is_all_three_builtin_candidate_modes() -> None:
     arguments = _parse("inspect", "--table", "matrix_best")
     _selection, cells = selection_from_arguments(arguments)
-    assert len(cells) == 864
+    assert len(cells) == 888
     assert {cell.measurement.execution_mode for cell in cells} == {
         ExecutionMode.RECURRENCE,
         ExecutionMode.COMPILED,

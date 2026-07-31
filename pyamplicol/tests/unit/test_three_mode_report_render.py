@@ -451,7 +451,13 @@ def test_matrix_summary_backgrounds_alternate_by_multiplicity(
         for dataset in REPORT_CATALOG.matrix_datasets
         if dataset.candidate.accuracy is Accuracy.NLC
     )
+
     def assert_alternating(tex: str, span: int) -> None:
+        rows = [
+            line
+            for line in tex.splitlines()
+            if r"\textbf{summary:" in line
+        ]
         patterns = summary_patterns(tex, span)
         for row_index, pattern in enumerate(patterns):
             first_n = (row_index // 2) * 3 + 1
@@ -466,6 +472,9 @@ def test_matrix_summary_backgrounds_alternate_by_multiplicity(
             for row in tex.splitlines()
             if r"\textbf{summary:" in row
         )
+        assert all(row.endswith(r" \\[0.08em]") for row in rows[::2])
+        assert all(row.endswith(" \\\\") for row in rows[1::2])
+        assert r"\addlinespace[0.08em]" not in tex
 
     assert_alternating(lc_tex, 8)
     assert_alternating(contracted_tex, 3)
@@ -1268,10 +1277,10 @@ def test_visible_completeness_authenticates_catalog_static_na_slots(
     evidence = summary.as_dict()
 
     assert summary.complete
-    assert evidence["declared_measurement_cell_count"] == 1666
-    assert evidence["required_measurement_count"] == 1634
-    assert evidence["catalog_static_na_cell_count"] == 32
-    assert evidence["rendered_catalog_static_na_cell_count"] == 32
+    assert evidence["declared_measurement_cell_count"] == 1706
+    assert evidence["required_measurement_count"] == 1672
+    assert evidence["catalog_static_na_cell_count"] == 34
+    assert evidence["rendered_catalog_static_na_cell_count"] == 34
     assert evidence["applicable_na_display_slot_count"] == 0
     assert evidence["missing_rendered_cell_count"] == 0
 
@@ -2122,9 +2131,9 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
         (6, 181),
         (7, 155),
         (8, 155),
-        (9, 116),
+        (9, 154),
     )
-    assert summary.declared_total == 1666
+    assert summary.declared_total == 1706
     assert summary.static_na_by_n == (
         (1, 0),
         (2, 0),
@@ -2134,11 +2143,16 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
         (6, 4),
         (7, 10),
         (8, 10),
-        (9, 8),
+        (9, 10),
     )
-    assert summary.static_na_total == 32
-    assert summary.expected_total == 1634
+    assert summary.static_na_total == 34
+    assert summary.expected_total == 1672
     assert summary.passed_total == 4
+    assert summary.status_counts == (
+        ("not_available", 1668),
+        ("ok", 4),
+        ("static-na", 34),
+    )
     assert summary.oracle_count == 1
     assert summary.independent_count == 1
     assert summary.independent_maximum_relative_difference == 1.0e-9
@@ -2149,10 +2163,10 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
     assert summary.high_precision_count == 1
     assert summary.high_precision_maximum_relative_difference == 5.0e-14
     assert summary.uniform_source_revision == revision
-    assert "1666 & 32 & 4" in tex
-    assert "1666 declared cells" in tex
-    assert "1634 measurable cells" in tex
-    assert "32 catalog-authenticated static N/A" in tex
-    assert "412 matrix process/multiplicity positions" in tex
+    assert "1706 & 34 & 4" in tex
+    assert "1706 declared cells" in tex
+    assert "1672 measurable cells" in tex
+    assert "34 catalog-authenticated static N/A" in tex
+    assert "396 matrix process/multiplicity positions" in tex
     assert "36 reference execution fields" in tex
     assert rf"\nolinkurl{{{revision}}}" in tex

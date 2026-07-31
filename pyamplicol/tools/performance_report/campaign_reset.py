@@ -37,12 +37,13 @@ SEED_SCHEMA = "pyamplicol-original-amplicol-seed-v1"
 CAMPAIGN_MARKER_SCHEMA = "pyamplicol-performance-campaign-epoch-v1"
 RESET_JOURNAL_SCHEMA = "pyamplicol-performance-campaign-reset-v1"
 BASELINE_GATE_SCHEMA = "pyamplicol-performance-baseline-gate-v1"
-EXPECTED_CATALOG_CELL_COUNT = 1666
-EXPECTED_AMPLICOL_CELL_COUNT = 288
-EXPECTED_NON_AMPLICOL_CELL_COUNT = 1378
+EXPECTED_CATALOG_CELL_COUNT = 1706
+EXPECTED_AMPLICOL_CELL_COUNT = 296
+EXPECTED_NON_AMPLICOL_CELL_COUNT = 1410
 _SUPPORTED_SEED_CATALOG_CARDINALITIES = frozenset(
     {
         (1646, 284, 1362),
+        (1666, 288, 1378),
         (
             EXPECTED_CATALOG_CELL_COUNT,
             EXPECTED_AMPLICOL_CELL_COUNT,
@@ -505,7 +506,7 @@ def build_seed_manifest(
         or len(cells) - amplicol_count != EXPECTED_NON_AMPLICOL_CELL_COUNT
     ):
         raise CampaignResetError(
-            "campaign reset catalog cardinality differs from 1666/288/1378"
+            "campaign reset catalog cardinality differs from 1706/296/1410"
         )
     payload: dict[str, object] = {
         "schema": SEED_SCHEMA,

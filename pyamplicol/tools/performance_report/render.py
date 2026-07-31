@@ -1279,9 +1279,8 @@ def _matrix_block(
                     )
                     for n_final in multiplicities
                 )
-                + r" \\"
+                + r" \\[0.08em]"
             ),
-            r"\addlinespace[0.08em]",
             (
                 r"\multicolumn{3}{@{}l}{\textbf{summary: wall}} & "
                 + " & ".join(
@@ -2067,9 +2066,8 @@ def _best_mode_block(
                     )
                     for n_final in multiplicities
                 )
-                + r" \\"
+                + r" \\[0.08em]"
             ),
-            r"\addlinespace[0.08em]",
             (
                 r"\multicolumn{3}{@{}l}{\textbf{summary: wall}} & "
                 + " & ".join(

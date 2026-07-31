@@ -21,7 +21,7 @@ def test_reviewed_out_of_catalog_scope_is_exact_and_machine_readable() -> None:
     }
     assert requirements[
         "four-open-quark-lines-lc-candidate-proof"
-    ]["catalog_cell_count"] == 24
+    ]["catalog_cell_count"] == 32
     contracted = requirements[
         "four-open-quark-lines-contracted-candidate-proof"
     ]

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: 0BSD
 """Reviewed, fail-closed scope for matrix structural-parity coverage gaps.
 
-The 1,152-row restart gate covers every candidate cell that the canonical
+The 1,184-row restart gate covers every candidate cell that the canonical
 matrix catalog defines.  This registry makes the two intentionally absent
 classes explicit so that they cannot be mistaken for silently unproved rows.
 Any catalog change in these classes requires a review and registry update.
@@ -93,9 +93,9 @@ REVIEWED_MATRIX_SCOPE: dict[str, Any] = {
             "scope_id": "four-open-quark-lines-lc-candidate-proof",
             "process_key": "dd_4q_lines",
             "accuracy": "lc",
-            "n_final": [6, 7, 8],
+            "n_final": [6, 7, 8, 9],
             "mode_model_workload_plane_count": 8,
-            "catalog_cell_count": 24,
+            "catalog_cell_count": 32,
             "legacy_comparison": {
                 "status": "unavailable",
                 "reason": "original-amplicol-open-quark-line-limit",
@@ -198,10 +198,10 @@ def validate_reviewed_matrix_scope() -> dict[str, Any]:
     }
     expected_lc = {
         (n_final, mode, model, workload)
-        for n_final in (6, 7, 8)
+        for n_final in (6, 7, 8, 9)
         for mode, model, workload in _FOUR_QUARK_LC_PLANES
     }
-    if actual_lc != expected_lc or len(lc) != 24:
+    if actual_lc != expected_lc or len(lc) != 32:
         raise CatalogStructuralScopeError(
             "four-quark LC candidate-only structural proof coverage is incomplete"
         )

@@ -3141,7 +3141,7 @@ def _live_dashboard_snapshot(
 
 def _snapshot_fixture(
     *,
-    selected: int = 1666,
+    selected: int = 1706,
     recycled: int = 318,
     completed: int = 41,
 ) -> DashboardState:

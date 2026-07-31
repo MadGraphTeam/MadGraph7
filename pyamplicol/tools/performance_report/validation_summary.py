@@ -362,7 +362,7 @@ def render_validation_summary(
                 f"{display.declared_measurement_cell_count} declared cells, comprising "
                 f"{display.required_measurement_count} measurable cells and "
                 f"{display.catalog_static_na_cell_count} catalog-authenticated "
-                r"static N/A original-\AC{} rows; "
+                r"static N/A rows; "
                 f"{display.structurally_not_applicable_display_slot_count} "
                 r"matrix process/multiplicity positions marked "
                 r"\textsc{not applicable}; and "

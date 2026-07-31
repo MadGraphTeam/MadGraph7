@@ -300,7 +300,7 @@ def test_four_line_candidates_never_plan_unsupported_legacy_dependencies(
         settings=CampaignSettings(),
     )
 
-    assert len(requested) == 32
+    assert len(requested) == 40
     assert len(planned) == len(requested)
     assert all(
         item.cell.measurement.execution_mode is not ExecutionMode.AMPLICOL
@@ -337,7 +337,7 @@ def test_four_line_candidates_never_plan_unsupported_legacy_dependencies(
         store=_store(tmp_path / "legacy"),
         settings=CampaignSettings(),
     )
-    assert len(unavailable_legacy) == 32
+    assert len(unavailable_legacy) == 34
     assert legacy_plan == ()
 
 

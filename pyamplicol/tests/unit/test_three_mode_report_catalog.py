@@ -100,8 +100,8 @@ def test_lc_cells_have_two_runtime_workloads_and_contracted_cells_have_one() -> 
         for cell in REPORT_CATALOG.matrix_cells()
     )
 
-    assert counts[(Accuracy.LC, Workload.SELECTED_FLOW)] == 388
-    assert counts[(Accuracy.LC, Workload.ALL_FLOW)] == 388
+    assert counts[(Accuracy.LC, Workload.SELECTED_FLOW)] == 404
+    assert counts[(Accuracy.LC, Workload.ALL_FLOW)] == 404
     assert counts[(Accuracy.NLC, Workload.CONTRACTED)] == 188
     assert counts[(Accuracy.FULL, Workload.CONTRACTED)] == 188
     assert all(
@@ -109,6 +109,44 @@ def test_lc_cells_have_two_runtime_workloads_and_contracted_cells_have_one() -> 
         for cell in REPORT_CATALOG.matrix_cells()
         if cell.measurement.accuracy is not Accuracy.LC
     )
+
+
+def test_extended_lc_families_are_declared_through_n9() -> None:
+    process_keys = {"gg_tt_jets", "gg_gluons", "dd_3q_lines", "dd_4q_lines"}
+    cells = tuple(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.n_final == 9
+        and cell.process_key in process_keys
+        and cell.measurement.accuracy is Accuracy.LC
+    )
+
+    assert len(cells) == 40
+    assert {
+        (
+            cell.process_key,
+            cell.measurement.execution_mode,
+            cell.measurement.model,
+            cell.workload,
+        )
+        for cell in cells
+    } == {
+        (process_key, mode, model, workload)
+        for process_key in process_keys
+        for mode, model in {
+            (ExecutionMode.AMPLICOL, None),
+            (ExecutionMode.RECURRENCE, ModelKey.BUILTIN_SM),
+            (ExecutionMode.RECURRENCE, ModelKey.UFO_SM),
+            (ExecutionMode.COMPILED, ModelKey.BUILTIN_SM),
+            (ExecutionMode.EAGER, ModelKey.BUILTIN_SM),
+        }
+        for workload in {Workload.SELECTED_FLOW, Workload.ALL_FLOW}
+    }
+    assert {
+        cell.process_key
+        for cell in cells
+        if REPORT_CATALOG.static_na_reason(cell) is not None
+    } == {"dd_4q_lines"}
 
 
 def test_n_le_four_new_matrix_smoke_has_384_logical_process_cells() -> None:
@@ -234,6 +272,8 @@ def test_canonical_static_na_census_is_exact() -> None:
             "reference-amplicol-lc-n7-dd-4q-lines-all-flow",
             "reference-amplicol-lc-n8-dd-4q-lines-selected-flow",
             "reference-amplicol-lc-n8-dd-4q-lines-all-flow",
+            "reference-amplicol-lc-n9-dd-4q-lines-selected-flow",
+            "reference-amplicol-lc-n9-dd-4q-lines-all-flow",
             "reference-amplicol-nlc-n6-dd-4q-lines-contracted",
             "reference-amplicol-full-n6-dd-4q-lines-contracted",
         }
@@ -336,9 +376,9 @@ def test_contracted_n6_catalog_impact_is_scoped_to_multi_quark_families() -> Non
         and cell.measurement.accuracy is not Accuracy.LC
     )
 
-    assert len(REPORT_CATALOG.measurement_cells()) == 1666
-    assert len(REPORT_CATALOG.matrix_cells()) == 1152
-    assert len(REPORT_CATALOG.reference_cells()) == 288
+    assert len(REPORT_CATALOG.measurement_cells()) == 1706
+    assert len(REPORT_CATALOG.matrix_cells()) == 1184
+    assert len(REPORT_CATALOG.reference_cells()) == 296
     assert len(cells) == 20
     assert {cell.process_key for cell in cells} == {"dd_3q_lines", "dd_4q_lines"}
 

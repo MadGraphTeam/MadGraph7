@@ -177,10 +177,10 @@ def test_full_direct_agreement_graph_excludes_unavailable_four_line_legacy() -> 
     )
 
     assert counts == {
-        BUILTIN_UFO_RECURRENCE: 306,
+        BUILTIN_UFO_RECURRENCE: 314,
         Z_RECURRENCE_CROSS_MODE: 180,
-        LC_CROSS_LAYOUT_COMPONENT: 590,
-        LC_LEGACY_PYAMPLICOL_COMPONENT: 484,
+        LC_CROSS_LAYOUT_COMPONENT: 609,
+        LC_LEGACY_PYAMPLICOL_COMPONENT: 496,
     }
     assert {
         edge.kind for edge in incoming_agreement_edges(candidate)
@@ -199,17 +199,17 @@ def test_full_direct_agreement_graph_excludes_unavailable_four_line_legacy() -> 
         and edge.baseline.cell_id in measurable_ids
     )
     assert Counter(edge.kind for edge in measurable_edges) == {
-        BUILTIN_UFO_RECURRENCE: 306,
+        BUILTIN_UFO_RECURRENCE: 314,
         Z_RECURRENCE_CROSS_MODE: 156,
-        LC_CROSS_LAYOUT_COMPONENT: 578,
-        LC_LEGACY_PYAMPLICOL_COMPONENT: 472,
+        LC_CROSS_LAYOUT_COMPONENT: 597,
+        LC_LEGACY_PYAMPLICOL_COMPONENT: 484,
     }
     assert Counter(
         _direct_replay_category(edge) for edge in measurable_edges
     ) == {
-        "fully-replayed-pyamplicol": 946,
-        "replayed-pyamplicol-vs-authenticated-legacy": 472,
-        "authenticated-stored-legacy-layout": 94,
+        "fully-replayed-pyamplicol": 970,
+        "replayed-pyamplicol-vs-authenticated-legacy": 484,
+        "authenticated-stored-legacy-layout": 97,
     }
 
 

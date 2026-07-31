@@ -389,14 +389,14 @@ def _manifest(tmp_path: Path) -> dict[str, object]:
 
 def test_complete_exact_manifest_passes_every_catalog_row(tmp_path: Path) -> None:
     result = validate_manifest(_manifest(tmp_path), expected_revision=REVISION)
-    assert result["summary"]["expected_cell_count"] == 1152
+    assert result["summary"]["expected_cell_count"] == 1184
     assert result["summary"]["failed_row_count"] == 0
     assert result["summary"]["classification_counts"] == {
-        "certified-parity": 1120,
-        "legacy-scope-unavailable": 32,
+        "certified-parity": 1144,
+        "legacy-scope-unavailable": 40,
     }
     assert result["summary"]["restart_ready"] is True
-    assert len(result["rows"]) == 1152
+    assert len(result["rows"]) == 1184
 
 
 def test_summary_boolean_cannot_replace_per_row_evidence() -> None:
@@ -410,7 +410,7 @@ def test_summary_boolean_cannot_replace_per_row_evidence() -> None:
         expected_revision=REVISION,
     )
     assert result["summary"]["restart_ready"] is False
-    assert result["summary"]["failure_reason_counts"] == {"missing-record": 1152}
+    assert result["summary"]["failure_reason_counts"] == {"missing-record": 1184}
 
 
 def test_missing_and_unexpected_rows_are_listed_with_reasons(
