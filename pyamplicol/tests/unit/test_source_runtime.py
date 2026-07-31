@@ -440,6 +440,32 @@ def test_publishable_native_module_does_not_require_developer_build_id(
     versions.verify_native_module(native, expected_version="0.1.0")
 
 
+def test_publishable_native_source_identity_uses_wheel_extension(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        versions,
+        "_active_build_info",
+        lambda: {
+            "publishable": True,
+            "source_revision": "a" * 40,
+            "version": "0.1.0",
+        },
+    )
+    native = type(
+        "Native",
+        (),
+        {"native_build_inputs_sha256": staticmethod(lambda: "b" * 64)},
+    )()
+    monkeypatch.setattr(
+        versions.importlib,
+        "import_module",
+        lambda name: native if name == "pyamplicol._rusticol" else None,
+    )
+
+    assert versions.active_native_source_identity() == ("a" * 40, "b" * 64)
+
+
 def test_publishable_staged_source_runtime_requires_its_native_build_id(
     monkeypatch,
 ) -> None:

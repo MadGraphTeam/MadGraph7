@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import tomllib
 from collections.abc import Mapping
@@ -609,6 +610,15 @@ def active_native_source_identity() -> tuple[str, str]:
         )
     source_revision = build_info.get("source_revision")
     native_digest = build_info.get("native_build_inputs_sha256")
+    if native_digest is None and build_info.get("publishable") is True:
+        try:
+            native = importlib.import_module("pyamplicol._rusticol")
+        except ImportError as error:
+            raise RuntimeError(
+                "active native source identity is unavailable; reinstall pyAmpliCol"
+            ) from error
+        operation = getattr(native, "native_build_inputs_sha256", None)
+        native_digest = operation() if callable(operation) else None
     if (
         not isinstance(source_revision, str)
         or len(source_revision) != 40
