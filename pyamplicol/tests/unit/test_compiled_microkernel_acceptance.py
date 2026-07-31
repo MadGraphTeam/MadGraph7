@@ -12,17 +12,14 @@ import pytest
 from tools.developer import compiled_microkernel_acceptance as acceptance
 
 
-def test_dependency_identity_is_read_from_the_contributor_lock() -> None:
+def test_dependency_identity_is_read_from_the_release_lock() -> None:
     root = Path(__file__).resolve().parents[2]
-    with (root / "dependencies" / "contributor-lock.toml").open("rb") as stream:
+    with (root / "dependencies" / "release-lock.toml").open("rb") as stream:
         symjit = tomllib.load(stream)["symjit"]
 
-    assert symjit["candidate_revision"] == acceptance.DEPENDENCY_REVISION
-    assert symjit["archive_sha256"] == acceptance.DEPENDENCY_ARCHIVE_SHA256
-    assert symjit["source_tree_sha256"] == acceptance.DEPENDENCY_SOURCE_TREE_SHA256
-    assert (
-        symjit["candidate_tree_sha256"] == acceptance.DEPENDENCY_CANDIDATE_TREE_SHA256
-    )
+    assert symjit["repository"] == acceptance.DEPENDENCY_REPOSITORY
+    assert symjit["version"] == acceptance.DEPENDENCY_VERSION
+    assert symjit["revision"] == acceptance.DEPENDENCY_REVISION
 
 
 def _digest(character: str) -> str:
@@ -567,10 +564,9 @@ def _campaign() -> dict[str, object]:
         "kind": acceptance.CAMPAIGN_KIND,
         "schema_version": acceptance.CAMPAIGN_SCHEMA_VERSION,
         "dependency": {
+            "repository": acceptance.DEPENDENCY_REPOSITORY,
+            "version": acceptance.DEPENDENCY_VERSION,
             "revision": acceptance.DEPENDENCY_REVISION,
-            "archive_sha256": acceptance.DEPENDENCY_ARCHIVE_SHA256,
-            "source_tree_sha256": acceptance.DEPENDENCY_SOURCE_TREE_SHA256,
-            "candidate_tree_sha256": acceptance.DEPENDENCY_CANDIDATE_TREE_SHA256,
             "local_patch_count": 0,
             "direct_application_abi": acceptance.DIRECT_APPLICATION_ABI,
             "direct_table_binding_abi": acceptance.DIRECT_TABLE_BINDING_ABI,

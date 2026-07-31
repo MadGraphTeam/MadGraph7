@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: 0BSD
 """Audit DirectTable microkernel evidence without importing production code.
 
-The input is an authenticated, normalized campaign document.  This tool is
+The input is a validated, normalized campaign document.  This tool is
 deliberately independent of the generator and loader that produce the
 evidence: declared counts, byte totals, ordering, coverage, numerical results,
 and timing gates are recomputed here.
@@ -26,9 +26,9 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 CAMPAIGN_KIND = "pyamplicol-compiled-microkernel-campaign"
-CAMPAIGN_SCHEMA_VERSION = 1
+CAMPAIGN_SCHEMA_VERSION = 2
 RESULT_KIND = "pyamplicol-compiled-microkernel-acceptance"
-RESULT_SCHEMA_VERSION = 1
+RESULT_SCHEMA_VERSION = 2
 STAGE_PLAN_KIND = "compiled-stage-plan"
 STAGE_PLAN_SCHEMA_VERSION = 2
 
@@ -38,12 +38,11 @@ DIRECT_TABLE_BINDING_ABI = "pyamplicol-eager-plane-table-binding-v2"
 DIRECT_TABLE_DESCRIPTOR_ABI = "pyamplicol-eager-plane-table-descriptor-v1"
 
 _ROOT = Path(__file__).resolve().parents[2]
-with (_ROOT / "dependencies" / "contributor-lock.toml").open("rb") as _stream:
+with (_ROOT / "dependencies" / "release-lock.toml").open("rb") as _stream:
     _LOCKED_SYMJIT = tomllib.load(_stream)["symjit"]
-DEPENDENCY_REVISION = str(_LOCKED_SYMJIT["candidate_revision"])
-DEPENDENCY_ARCHIVE_SHA256 = str(_LOCKED_SYMJIT["archive_sha256"])
-DEPENDENCY_SOURCE_TREE_SHA256 = str(_LOCKED_SYMJIT["source_tree_sha256"])
-DEPENDENCY_CANDIDATE_TREE_SHA256 = str(_LOCKED_SYMJIT["candidate_tree_sha256"])
+DEPENDENCY_REPOSITORY = str(_LOCKED_SYMJIT["repository"])
+DEPENDENCY_VERSION = str(_LOCKED_SYMJIT["version"])
+DEPENDENCY_REVISION = str(_LOCKED_SYMJIT["revision"])
 
 TARGET_PROCESS = "u u~ > Z+6g"
 TARGET_FLOW = "flow:2,4,5,6,7,8,9,1"
@@ -1735,10 +1734,9 @@ def _validate_dependency(value: object, path: str) -> None:
     _exact_keys(
         dependency,
         {
+            "repository",
+            "version",
             "revision",
-            "archive_sha256",
-            "source_tree_sha256",
-            "candidate_tree_sha256",
             "local_patch_count",
             "direct_application_abi",
             "direct_table_binding_abi",
@@ -1747,10 +1745,9 @@ def _validate_dependency(value: object, path: str) -> None:
         path,
     )
     expected = {
+        "repository": DEPENDENCY_REPOSITORY,
+        "version": DEPENDENCY_VERSION,
         "revision": DEPENDENCY_REVISION,
-        "archive_sha256": DEPENDENCY_ARCHIVE_SHA256,
-        "source_tree_sha256": DEPENDENCY_SOURCE_TREE_SHA256,
-        "candidate_tree_sha256": DEPENDENCY_CANDIDATE_TREE_SHA256,
         "local_patch_count": 0,
         "direct_application_abi": DIRECT_APPLICATION_ABI,
         "direct_table_binding_abi": DIRECT_TABLE_BINDING_ABI,
