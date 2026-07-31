@@ -54,6 +54,15 @@ _PAYLOAD_ROLES = {
     "api-build-file",
     "sdk-metadata",
 }
+_RUNTIME_IDENTITY_PAYLOAD_ROLES = frozenset(
+    {
+        "compiled-model",
+        "evaluator-manifest",
+        "evaluator-state",
+        "model-parameters",
+        "runtime-physics",
+    }
+)
 
 
 def _keys(
@@ -703,20 +712,34 @@ def canonical_manifest_bytes(value: Mapping[str, object]) -> bytes:
     ).encode("utf-8")
 
 
+def _artifact_identity_content(value: Mapping[str, object]) -> dict[str, object]:
+    payloads = _sequence(value.get("payloads"), "payloads")
+    runtime_records: list[dict[str, object]] = []
+    for index, item in enumerate(payloads):
+        record = _mapping(item, f"payloads[{index}]")
+        role = _string(record.get("role"), f"payloads[{index}].role")
+        if role in _RUNTIME_IDENTITY_PAYLOAD_ROLES:
+            runtime_records.append(cast(dict[str, object], _plain(record)))
+    runtime_records.sort(key=lambda record: str(record.get("path", "")))
+    return {
+        "kind": "pyamplicol-runtime-payload-identity",
+        "schema_version": 1,
+        "payloads": runtime_records,
+    }
+
+
 def compute_artifact_id(value: Mapping[str, object]) -> str:
     import hashlib
 
-    content = dict(value)
-    content.pop("artifact_id", None)
+    content = _artifact_identity_content(value)
     return hashlib.sha256(canonical_manifest_bytes(content)).hexdigest()
 
 
-def validate_payloads(
+def _validate_target_compatibility(
     manifest: ArtifactManifest,
     *,
     expected_target: str | None = None,
 ) -> None:
-    seen: set[str] = set()
     producer_target = _target(manifest.producer.get("target"), "producer.target")
     target_triple = _string(producer_target.get("triple"), "producer.target.triple")
     if expected_target is not None and target_triple != expected_target:
@@ -724,6 +747,7 @@ def validate_payloads(
             f"artifact target {target_triple!r} is incompatible with "
             f"runtime target {expected_target!r}"
         )
+    seen: set[str] = set()
     for record in manifest.payloads:
         if record.path in seen:
             raise ArtifactError(f"duplicate artifact payload path: {record.path}")
@@ -751,6 +775,16 @@ def validate_payloads(
                 "artifact requires unavailable CPU features: " + ", ".join(unavailable)
             )
 
+
+def validate_payloads(
+    manifest: ArtifactManifest,
+    *,
+    expected_target: str | None = None,
+) -> None:
+    if compute_artifact_id(manifest.as_dict()) != manifest.artifact_id:
+        raise ArtifactError("artifact manifest identity digest mismatch")
+    _validate_target_compatibility(manifest, expected_target=expected_target)
+    seen = {record.path for record in manifest.payloads}
     for record in manifest.payloads:
         path = confined_path(manifest.root, record.path)
         if path.stat().st_size != record.size_bytes:
@@ -813,7 +847,7 @@ def load_manifest(
     artifact: str | Path,
     *,
     expected_target: str | None = None,
-    verify_payloads: bool = True,
+    verify_payloads: bool = False,
 ) -> ArtifactManifest:
     root = Path(artifact).expanduser().resolve(strict=True)
     if not root.is_dir():
@@ -824,10 +858,10 @@ def load_manifest(
     except json.JSONDecodeError as exc:
         raise ArtifactError(f"invalid artifact manifest JSON: {exc}") from exc
     manifest = ArtifactManifest.from_mapping(root, raw)
-    if compute_artifact_id(manifest.as_dict()) != manifest.artifact_id:
-        raise ArtifactError("artifact manifest identity digest mismatch")
     if verify_payloads:
         validate_payloads(manifest, expected_target=expected_target)
+    else:
+        _validate_target_compatibility(manifest, expected_target=expected_target)
     return manifest
 
 

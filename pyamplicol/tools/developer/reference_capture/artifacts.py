@@ -245,6 +245,9 @@ def materialize_artifacts(
         run_config = config_module.RunConfig(
             action="generate",
             color=config_module.ColorConfig(accuracy=spec.color_accuracy),
+            generation=config_module.GenerationConfig(
+                validation=config_module.GenerationValidationConfig(samples=10)
+            ),
         )
         model = (
             None

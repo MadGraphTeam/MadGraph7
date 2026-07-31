@@ -1378,37 +1378,51 @@ fn mixed_backend_runtime_artifact() -> TestArtifact {
 }
 
 #[test]
-fn artifact_identity_matches_python_canonical_json() {
-    let value = json!({
+fn artifact_identity_tracks_only_runtime_payload_records() {
+    let mut value = json!({
         "artifact_id": "0".repeat(64),
-        "ascii": "line\\nquote\"",
-        "float": 1e-6,
-        "integer": 7,
-        "unicode": "é𝄞",
+        "created_utc": "2026-07-31T00:00:00Z",
+        "payloads": [
+            {
+                "path": "config/effective.toml",
+                "role": "configuration-effective",
+                "media_type": "application/toml",
+                "size_bytes": 1,
+                "sha256": "1".repeat(64),
+                "executable": false,
+            },
+            {
+                "path": "processes/p0/validation-momenta.json",
+                "role": "validation-momenta",
+                "media_type": "application/json",
+                "size_bytes": 1,
+                "sha256": "2".repeat(64),
+                "executable": false,
+            },
+            {
+                "path": "processes/p0/physics.json",
+                "role": "runtime-physics",
+                "media_type": "application/json",
+                "size_bytes": 1,
+                "sha256": "3".repeat(64),
+                "executable": false,
+                "process_id": "p0",
+            },
+        ],
     });
+    let identity = compute_artifact_id(&value).unwrap();
 
-    assert_eq!(
-        compute_artifact_id(&value).unwrap(),
-        "68a18ed104e4bd88b1f2728869398f7a751d5c63642eb9fe8019559c62585619"
-    );
+    value["created_utc"] = json!("2030-01-01T00:00:00Z");
+    value["payloads"][0]["sha256"] = json!("a".repeat(64));
+    value["payloads"][1]["sha256"] = json!("b".repeat(64));
+    assert_eq!(compute_artifact_id(&value).unwrap(), identity);
+
+    value["payloads"][2]["sha256"] = json!("c".repeat(64));
+    assert_ne!(compute_artifact_id(&value).unwrap(), identity);
 }
 
 #[test]
-fn artifact_identity_preserves_python_exponent_spelling() {
-    let bytes = concat!(
-        "{\"artifact_id\":\"",
-        "0000000000000000000000000000000000000000000000000000000000000000",
-        "\",\"timing\":2.5417190045118332e-05}\n",
-    );
-
-    assert_eq!(
-        compute_artifact_id_from_bytes(bytes.as_bytes()).unwrap(),
-        "baf08640782801524444ad250d48322d3ad303abf83e788371e1485f209182d1"
-    );
-}
-
-#[test]
-fn valid_manifest_verifies_all_payloads() {
+fn valid_manifest_opens_trusted_payload_catalog() {
     let artifact = TestArtifact::new();
     let verified = VerifiedArtifact::open(&artifact.root).expect("valid artifact");
 
@@ -1421,39 +1435,6 @@ fn valid_manifest_verifies_all_payloads() {
             .requested_id,
         "p0"
     );
-}
-
-#[cfg(unix)]
-#[test]
-fn read_payload_authenticates_the_exact_open_file_across_path_replacement() {
-    let artifact = TestArtifact::new();
-    let verified = VerifiedArtifact::open(&artifact.root).expect("valid artifact");
-    let payload_path = artifact.root.join("physics.json");
-    let displaced_path = artifact.root.join("physics.authenticated");
-    let replacement_path = artifact.root.join("physics.replacement");
-    let original = fs::read(&payload_path).expect("read original payload");
-    let replacement = b"[]";
-    assert_eq!(
-        replacement.len(),
-        original.len(),
-        "replacement must bypass the size-only check"
-    );
-    fs::write(&replacement_path, replacement).expect("write replacement payload");
-
-    let returned = verified
-        .read_payload_with_pre_read_hook("physics.json", || {
-            fs::rename(&payload_path, &displaced_path).expect("displace authenticated payload");
-            fs::rename(&replacement_path, &payload_path).expect("publish replacement payload");
-        })
-        .expect("the already-open authenticated file remains stable");
-
-    assert_eq!(returned, original);
-    assert_ne!(returned, replacement);
-    let error = verified
-        .read_payload("physics.json")
-        .expect_err("a later open must reject the replacement bytes");
-    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
-    assert!(error.to_string().contains("SHA-256"));
 }
 
 #[cfg(feature = "f64-symjit")]
@@ -1488,7 +1469,7 @@ fn verified_artifact_resolves_packed_evaluator_payloads() {
 
 #[cfg(all(unix, feature = "f64-symjit"))]
 #[test]
-fn verified_loose_evaluator_source_reauthenticates_replacement_bytes() {
+fn trusted_loose_evaluator_source_reads_replacement_bytes() {
     let mut artifact = TestArtifact::new();
     add_test_payload(
         &mut artifact,
@@ -1510,12 +1491,10 @@ fn verified_loose_evaluator_source_reauthenticates_replacement_bytes() {
     fs::rename(&replacement_path, artifact.root.join("loose.symjit"))
         .expect("replace loose evaluator path");
 
-    let error = source
-        .read()
-        .expect_err("replacement evaluator bytes must be reauthenticated");
-
-    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
-    assert!(error.to_string().contains("SHA-256"));
+    assert_eq!(
+        source.read().expect("read trusted replacement").as_ref(),
+        b"bad-v1"
+    );
 }
 
 #[cfg(all(unix, feature = "f64-symjit"))]
@@ -1631,7 +1610,7 @@ fn direct_runtime_defers_symbolica_serialization_abi_validation() {
 }
 
 #[test]
-fn artifact_identity_is_recomputed_before_loading_payloads() {
+fn artifact_identity_is_trusted_during_normal_loading() {
     let artifact = TestArtifact::new();
     let path = artifact.root.join(ARTIFACT_MANIFEST_FILE);
     let mut manifest: Value =
@@ -1639,10 +1618,8 @@ fn artifact_identity_is_recomputed_before_loading_payloads() {
     manifest["model"]["name"] = json!("tampered-model");
     fs::write(&path, serde_json::to_vec_pretty(&manifest).unwrap()).unwrap();
 
-    let error = VerifiedArtifact::open(&artifact.root).unwrap_err();
-
-    assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
-    assert!(error.to_string().contains("identity digest mismatch"));
+    let opened = VerifiedArtifact::open(&artifact.root).expect("open trusted manifest");
+    assert_eq!(opened.manifest().model.name, "tampered-model");
 }
 
 #[test]
@@ -1703,18 +1680,19 @@ fn traversal_and_duplicate_payload_paths_are_rejected() {
 }
 
 #[test]
-fn payload_size_and_digest_are_checked_before_use() {
+fn payload_size_is_checked_when_payload_is_read() {
     let artifact = TestArtifact::new();
     fs::write(artifact.root.join("physics.json"), b"tampered").unwrap();
 
-    let error = VerifiedArtifact::open(&artifact.root).unwrap_err();
+    let opened = VerifiedArtifact::open(&artifact.root).expect("open trusted manifest");
+    let error = opened.read_payload("physics.json").unwrap_err();
 
     assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
-    assert!(error.to_string().contains("size") || error.to_string().contains("SHA-256"));
+    assert!(error.to_string().contains("size"));
 }
 
 #[test]
-fn manifest_preflight_runs_before_payload_verification() {
+fn manifest_preflight_runs_without_payload_verification() {
     let mut artifact = TestArtifact::new();
     artifact.manifest["processes"][0]["required_runtime_capabilities"] =
         json!(["symbolica.compiled-cpp.complex-f64.v1"]);
@@ -2138,7 +2116,7 @@ fn non_self_inverse_alias_pdg_order_is_verified() {
 
 #[cfg(unix)]
 #[test]
-fn symlink_payload_is_rejected_even_when_it_stays_inside_root() {
+fn referenced_symlink_payload_is_rejected_when_read() {
     use std::os::unix::fs::symlink;
 
     let artifact = TestArtifact::new();
@@ -2149,7 +2127,8 @@ fn symlink_payload_is_rejected_even_when_it_stays_inside_root() {
     .unwrap();
     symlink("physics-target.json", artifact.root.join("physics.json")).unwrap();
 
-    let error = VerifiedArtifact::open(&artifact.root).unwrap_err();
+    let opened = VerifiedArtifact::open(&artifact.root).expect("open trusted manifest");
+    let error = opened.read_payload("physics.json").unwrap_err();
 
     assert_eq!(error.kind(), crate::RusticolErrorKind::Security);
     assert!(error.to_string().contains("symlink"));
@@ -2157,7 +2136,7 @@ fn symlink_payload_is_rejected_even_when_it_stays_inside_root() {
 
 #[cfg(unix)]
 #[test]
-fn undeclared_symlinks_and_executables_are_rejected_anywhere_in_tree() {
+fn undeclared_tree_entries_are_ignored_for_trusted_artifacts() {
     use std::os::unix::fs::{PermissionsExt, symlink};
 
     let symlink_artifact = TestArtifact::new();
@@ -2167,9 +2146,7 @@ fn undeclared_symlinks_and_executables_are_rejected_anywhere_in_tree() {
         symlink_artifact.root.join("extra/undeclared-link"),
     )
     .unwrap();
-    let error = VerifiedArtifact::open(&symlink_artifact.root).unwrap_err();
-    assert_eq!(error.kind(), crate::RusticolErrorKind::Security);
-    assert!(error.to_string().contains("symlink"));
+    VerifiedArtifact::open(&symlink_artifact.root).expect("ignore undeclared symlink");
 
     let executable_artifact = TestArtifact::new();
     let executable = executable_artifact.root.join("undeclared-tool");
@@ -2177,7 +2154,5 @@ fn undeclared_symlinks_and_executables_are_rejected_anywhere_in_tree() {
     let mut permissions = fs::metadata(&executable).unwrap().permissions();
     permissions.set_mode(0o755);
     fs::set_permissions(&executable, permissions).unwrap();
-    let error = VerifiedArtifact::open(&executable_artifact.root).unwrap_err();
-    assert_eq!(error.kind(), crate::RusticolErrorKind::Security);
-    assert!(error.to_string().contains("undeclared executable"));
+    VerifiedArtifact::open(&executable_artifact.root).expect("ignore undeclared executable");
 }

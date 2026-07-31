@@ -41,6 +41,7 @@ def test_schema_v1_registry_contains_every_contract_leaf() -> None:
     assert "evaluator.jit.direct_translation" not in FIELD_REGISTRY
     assert FIELD_REGISTRY["action"].required
     assert FIELD_REGISTRY["generation.workers"].default == "auto"
+    assert FIELD_REGISTRY["generation.validation.samples"].default == 2
     assert FIELD_REGISTRY["evaluator.jit.optimization_level"].choices == (
         0,
         1,
@@ -182,7 +183,7 @@ def test_contract_defaults_are_typed() -> None:
     assert config.evaluator.eager == EagerEvaluatorConfig()
     assert config.evaluator.recurrence == RecurrenceEvaluatorConfig()
     assert config.schema_version == 1
-    assert config.generation.validation.samples == 10
+    assert config.generation.validation.samples == 2
     assert (
         config.generation.relation_discovery.mode
         is RelationDiscoveryMode.CERTIFIED_REUSE

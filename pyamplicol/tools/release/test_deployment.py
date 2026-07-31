@@ -299,6 +299,7 @@ from pyamplicol.config import (
     EvaluatorExecutionMode,
     EvaluatorOptimizationConfig,
     GenerationConfig,
+    GenerationValidationConfig,
     JITConfig,
     RunConfig,
     SymbolicaConfig,
@@ -315,7 +316,11 @@ for backend in (
     config = RunConfig(
         action="generate",
         color=ColorConfig(accuracy="lc"),
-        generation=GenerationConfig(workers=1, emit_api_bundle=False),
+        generation=GenerationConfig(
+            workers=1,
+            emit_api_bundle=False,
+            validation=GenerationValidationConfig(samples=10),
+        ),
         evaluator=EvaluatorConfig(
             backend=backend,
             execution_mode=EvaluatorExecutionMode.COMPILED,
@@ -368,7 +373,11 @@ eager_artifact = root / "eager-jit"
 eager_config = RunConfig(
     action="generate",
     color=ColorConfig(accuracy="lc"),
-    generation=GenerationConfig(workers=1, emit_api_bundle=False),
+    generation=GenerationConfig(
+        workers=1,
+        emit_api_bundle=False,
+        validation=GenerationValidationConfig(samples=10),
+    ),
     evaluator=EvaluatorConfig(
         backend=EvaluatorBackend.JIT,
         execution_mode=EvaluatorExecutionMode.EAGER,

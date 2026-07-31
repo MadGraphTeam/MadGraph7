@@ -53,7 +53,7 @@ stable process/alias ID:
 from pyamplicol import Runtime
 
 runtime = Runtime.load("artifacts/pp_zjj", process="d d~ > z g g")
-print(runtime.artifact_id)     # authenticated 64-character manifest identity
+print(runtime.artifact_id)      # 64-character runtime-payload content label
 print(runtime.execution_mode)  # compiled, eager, or recurrence
 print(runtime.physics.process)  # d d~ > Z g g
 print(runtime.physics.external_particles)
@@ -65,18 +65,23 @@ The equivalent stable selector is `process="p_p_to_z_j_j_4"`. Expression
 matching normalizes whitespace but preserves concrete particle names and
 ordering.
 
-Artifact schema, payload paths and hashes, target compatibility, and runtime ABI
-are validated before executable state is loaded.
-`runtime.artifact_id` is the lowercase SHA-256 identity authenticated by that
-load, and `runtime.execution_mode` is the native lane selected from the same
-validated artifact metadata. Both properties fail closed with `EvaluationError`
-if an injected backend cannot provide the identity. They belong to the public
-`Runtime` facade; the structural `RuntimeBackend` protocol intentionally keeps
-its older minimum surface so existing third-party backends remain loadable.
+Process artifacts are trusted executable inputs. Normal loading checks the
+schema, confined paths, references, target compatibility, and runtime ABI, but
+does not rehash the manifest or every payload. `runtime.artifact_id` is the
+lowercase SHA-256 content label of runtime-bearing payload records; requested
+and effective configuration, validation momenta, timing, and other provenance
+do not enter it. Call `pyamplicol.artifacts.validate_payloads(manifest)` when an
+explicit whole-artifact corruption audit is wanted.
+
+`runtime.execution_mode` is the native lane selected from the loaded artifact
+metadata. Both public properties fail closed with `EvaluationError` if an
+injected backend cannot provide them. The structural `RuntimeBackend` protocol
+intentionally keeps its older minimum surface so existing third-party backends
+remain loadable.
 
 On Unix, loading a PACBIN-backed artifact copies the container into anonymous
-memory, removes write access from that mapping, and authenticates the retained
-read-only bytes before parsing them. This guarantees that later replacement,
+memory and removes write access from that mapping before parsing it. This
+guarantees that later replacement,
 mutation, or truncation of the artifact path cannot change the running
 evaluator. The process needs virtual memory and RAM or swap equal to the PACBIN
 file size for the loaded runtime's lifetime; no temporary filesystem space is
