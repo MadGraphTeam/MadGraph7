@@ -160,6 +160,7 @@ from audit_sdist import (  # noqa: E402
     REQUIRED_SDIST_MEMBERS,
     prepared_model_asset_members,
 )
+from prepare_selftest_fixture import ARTIFACT_IDENTITY_CONTRACT  # noqa: E402
 
 
 @pytest.fixture
@@ -579,6 +580,9 @@ def _selftest_files(
     manifest = {
         "schema_version": 3,
         "artifact_id": "0" * 64,
+        "extensions": {
+            "artifact_identity": dict(ARTIFACT_IDENTITY_CONTRACT),
+        },
         "producer": {
             "distribution": "pyamplicol",
             "version": version,
