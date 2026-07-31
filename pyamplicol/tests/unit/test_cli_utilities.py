@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 from pathlib import Path
 
 from pyamplicol.cli import UtilityInvocation, parse_cli, run_cli
@@ -56,6 +57,7 @@ def test_profiling_campaign_copy_is_reset_and_requires_force(
     copied = tuple(path for path in destination.rglob("*") if path.is_file())
     assert len(copied) == 55
     assert (destination / "steer_performance_campaign.py").is_file()
+    assert os.access(destination / "steer_performance_campaign.py", os.X_OK)
     assert (destination / "TABLE_FILLING.md").is_file()
     assert (destination / "results/report-cache.schema.json").is_file()
     assert not (destination / "pyAmpliCol.pdf").exists()

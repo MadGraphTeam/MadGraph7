@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import stat
 from collections.abc import Sequence
 from dataclasses import dataclass
 from importlib import resources
@@ -269,6 +270,8 @@ def _copy_profiling_campaign(
         output = target / relative
         output.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source / relative, output)
+    launcher = target / "steer_performance_campaign.py"
+    launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     local_amplicol_path = target / _PROFILING_CAMPAIGN_LOCAL_AMPLICOL
     if validated_amplicol is None:
         local_amplicol_path.unlink(missing_ok=True)
