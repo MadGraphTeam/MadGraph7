@@ -67,6 +67,7 @@ _CANDIDATE_STATE_LOCKS = {
 }
 _CANDIDATE_SOURCE_FIELDS = {
     "gammaloop": ("url", "revision", "worktree_sha256"),
+    "ratatui-ffi": ("url", "revision", "worktree_sha256"),
     "symbolica": ("url", "revision", "worktree_sha256"),
     "symbolica-community": ("url", "revision", "worktree_sha256"),
     "symjit": (
@@ -188,7 +189,9 @@ def _required_hex(
     description: str,
 ) -> str:
     value = _required_string(payload, key, description=description)
-    if len(value) != length or any(character not in "0123456789abcdef" for character in value):
+    if len(value) != length or any(
+        character not in "0123456789abcdef" for character in value
+    ):
         raise RuntimeError(
             f"{description} {key} must be a lowercase {length}-digit hex value"
         )

@@ -163,6 +163,7 @@ _CANDIDATE_STATE_LOCKS = {
 }
 _CANDIDATE_SOURCE_FIELDS = {
     "gammaloop": ("url", "revision", "worktree_sha256"),
+    "ratatui-ffi": ("url", "revision", "worktree_sha256"),
     "symbolica": ("url", "revision", "worktree_sha256"),
     "symbolica-community": ("url", "revision", "worktree_sha256"),
     "symjit": (
@@ -997,8 +998,8 @@ __all__ = [
     "SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY",
     "SYMBOLICA_SERIALIZATION_ABI",
     "SYMJIT_APPLICATION_ABI",
-    "SYMJIT_PLANE_APPLICATION_ABI",
     "SYMJIT_F64_RUNTIME_CAPABILITY",
+    "SYMJIT_PLANE_APPLICATION_ABI",
     "TOML_SCHEMA_VERSION",
     "active_native_source_identity",
     "active_source_revision",
