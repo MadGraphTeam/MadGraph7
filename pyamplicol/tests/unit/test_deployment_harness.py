@@ -22,6 +22,19 @@ def test_installed_smoke_uses_the_v1_builtin_model_name() -> None:
     assert 'build_info["selftest_fixture_bootstrap"] is False' in (
         deployment._INSTALLED_SMOKE
     )
+    assert 'build_info["publishable"] is True' in deployment._INSTALLED_SMOKE
+    assert 'build_info["schema_version"] == 1' in deployment._INSTALLED_SMOKE
+    assert 'build_info["source_revision"]' in deployment._INSTALLED_SMOKE
+
+
+def test_installed_smoke_copies_and_dry_runs_the_profiling_campaign() -> None:
+    smoke = deployment._INSTALLED_SMOKE
+    assert '"profiling-campaign"' in smoke
+    assert 'campaign / "steer_performance_campaign.py"' in smoke
+    assert 'campaign / "pyAmpliCol.pdf"' in smoke
+    assert '"scalar_contact"' in smoke
+    assert '"--generation-engine"' in smoke
+    assert '"compiled"' in smoke
 
 
 def test_f64_deployment_smoke_hard_blocks_symbolica() -> None:

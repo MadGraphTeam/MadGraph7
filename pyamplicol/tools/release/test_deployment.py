@@ -108,7 +108,9 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import sys
+import tempfile
 import urllib.parse
 
 expected = json.loads(os.environ["PYAMPLICOL_EXPECTED_DEPENDENCIES"])
@@ -163,7 +165,19 @@ if mode == "candidate":
     assert build_info["selftest_fixture_bootstrap"] is False
     assert build_info["version"] == version
 else:
-    assert not build_info_resource.is_file()
+    build_info = json.loads(build_info_resource.read_text(encoding="utf-8"))
+    assert set(build_info) == {
+        "publishable",
+        "schema_version",
+        "selftest_fixture_bootstrap",
+        "source_revision",
+        "version",
+    }
+    assert build_info["schema_version"] == 1
+    assert build_info["publishable"] is True
+    assert build_info["selftest_fixture_bootstrap"] is False
+    assert build_info["version"] == version
+    assert re.fullmatch(r"[0-9a-f]{40}", build_info["source_revision"])
 
 sdk = load_sdk_info()
 metadata = json.loads(
@@ -198,6 +212,47 @@ for relative in (
     ("assets", "schemas", "runtime-physics-v1.schema.json"),
 ):
     assert package.joinpath(*relative).is_file(), relative
+
+with tempfile.TemporaryDirectory(prefix="pyamplicol-profiling-campaign-") as raw:
+    campaign = Path(raw) / "campaign"
+    subprocess.run(
+        (
+            sys.executable,
+            "-I",
+            "-m",
+            "pyamplicol",
+            "profiling-campaign",
+            "copy",
+            str(campaign),
+            "--force",
+        ),
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    launcher = campaign / "steer_performance_campaign.py"
+    assert launcher.is_file()
+    assert not (campaign / "pyAmpliCol.pdf").exists()
+    dry_run = subprocess.run(
+        (
+            sys.executable,
+            "-I",
+            str(launcher),
+            "run",
+            "--dry-run",
+            "--table",
+            "scalar_contact",
+            "--multiplicity",
+            "2",
+            "--generation-engine",
+            "compiled",
+            "--no-color",
+        ),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert dry_run.returncode == 0, (dry_run.stdout, dry_run.stderr)
 print(json.dumps({"mode": mode, "version": version, "sdk_target": sdk.target}))
 """
 )

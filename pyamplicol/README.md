@@ -6,7 +6,8 @@
 
 pyAmpliCol is a generator using current recursion to build fast color-ordered
 matrix-element evaluators. It supports built-in and external UFO models, with
-generated processes accessible from Python, Rust, C++17, and Fortran 2008.
+generated processes accessible from Python, C11, C++17, Fortran 2008, and
+Rust 2021.
 
 ## Quick Start
 
@@ -481,12 +482,13 @@ artifact:
 artifacts/pp_zjj/API/
   validation_points.dat
   python/check_standalone.py
+  c/check_standalone.c
   rust/check_standalone.rs
   cpp/check_standalone.cpp
   fortran/check_standalone.f90
 ```
 
-All four drivers select a concrete process, accept a JSON model-parameter card
+All five drivers select a concrete process, accept a JSON model-parameter card
 and direct overrides, evaluate resolved components, explicitly sum them, and
 compare with the optimized total:
 
@@ -494,6 +496,8 @@ compare with the optimized total:
 python artifacts/pp_zjj/API/python/check_standalone.py \
   --process 'd d~ > z g g' --set-parameter aS 0.117 0 --json
 
+make -C artifacts/pp_zjj/API/c run \
+  ARGS='--process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --json'
 make -C artifacts/pp_zjj/API/rust run \
   ARGS='--process "d d~ > z g g" --set-parameter aS 0.117 0 --precision 16 --json'
 make -C artifacts/pp_zjj/API/cpp run \
