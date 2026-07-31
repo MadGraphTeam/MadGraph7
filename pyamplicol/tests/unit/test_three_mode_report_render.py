@@ -508,13 +508,13 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
         r"\bestmodecode{e}"
     ) in row
     assert (
-        r"\bestmodecodeprefix{c}\bestmodeopenprefix & "
-        r"\bestmodeprimaryratio{ReportGreen}{0.100}"
-    ) in runtime_row
-    assert (
-        r"\bestmodecodeprefix{e}\bestmodeopenprefix & "
-        r"\bestmodeprimaryratio{ReportGreen}{0.100}"
-    ) in runtime_row
+        runtime_row.count(
+            r"\bestmodeopenprefix & "
+            r"\bestmodeprimaryratio{ReportGreen}{0.100}"
+        )
+        == 2
+    )
+    assert r"\bestmodecode" not in runtime_row
     assert (
         r"\providecommand{\bestmodecompactprefix}[1]{"
         r"\matrixpunct{(}\textcolor{ReportMuted}{\texttt{[x#1]}}"
@@ -524,6 +524,13 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
         r"\providecommand{\bestmodemix}[1]{"
         r"\begingroup\matrixsummaryfont"
     ) in tex
+    assert (
+        r"\providecommand{\matrixsummaryfont}{"
+        r"\fontsize{6.2pt}{7.4pt}\selectfont}"
+    ) in tex
+    assert r"\setlength{\fboxsep}{0.9pt}" in tex
+    assert r"\setlength{\fboxrule}{0.35pt}" in tex
+    assert r"\usefont{T1}{lmtt}{b}{n}x#2" in tex
     assert r">{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l" in tex
     assert (
         r"\textbf{metric} & \multicolumn{8}"
