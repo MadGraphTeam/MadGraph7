@@ -839,7 +839,7 @@ def _matrix_macros() -> list[str]:
     return [
         r"\providecommand{\matrixentryfont}{\fontsize{6.8pt}{7.8pt}\selectfont}",
         r"\providecommand{\matrixentryfontlc}{\fontsize{6.5pt}{7.5pt}\selectfont}",
-        r"\providecommand{\matrixsummaryfont}{\fontsize{4.1pt}{4.9pt}\selectfont}",
+        r"\providecommand{\matrixsummaryfont}{\fontsize{6.2pt}{7.4pt}\selectfont}",
         r"\providecommand{\matrixpunct}[1]{\textcolor{black}{\texttt{#1}}}",
         (
             r"\providecommand{\matrixratio}[2]{\matrixpunct{(}"
@@ -902,9 +902,9 @@ def _matrix_macros() -> list[str]:
         ),
         (
             r"\providecommand{\matrixsummaryratiohighlight}[2]{"
-            r"\begingroup\setlength{\fboxsep}{0.35pt}"
-            r"\setlength{\fboxrule}{0.25pt}"
-            r"\fbox{\textcolor{#1}{\bfseries\texttt{x#2}}}"
+            r"\begingroup\setlength{\fboxsep}{0.9pt}"
+            r"\setlength{\fboxrule}{0.35pt}"
+            r"\fbox{\textcolor{#1}{{\usefont{T1}{lmtt}{b}{n}x#2}}}"
             r"\endgroup}"
         ),
         (
@@ -1647,8 +1647,6 @@ def _best_mode_runtime_comparison_layout(
     if not _ok(joined.candidate):
         status = _status(joined.candidate)
         return _BestModeComparisonLayout(status, "", status)
-    assert joined.mode is not None
-    mode_code = _BEST_MODE_CODES[joined.mode]
     if baseline_static_na:
         wall = _best_mode_metric(
             joined.candidate,
@@ -1656,9 +1654,9 @@ def _best_mode_runtime_comparison_layout(
             microseconds=True,
         )
         return _BestModeComparisonLayout(
-            rf"\bestmodeabsolutechoice{{{wall}}}{{{mode_code}}}",
-            rf"\bestmodeabsoluteprefix{{{wall}}}",
-            rf"\bestmodecode{{{mode_code}}}",
+            wall,
+            wall,
+            "",
         )
     if not _ok(joined.baseline):
         status = _status(joined.baseline)
@@ -1696,8 +1694,8 @@ def _best_mode_runtime_comparison_layout(
             rf"{{{_best_mode_value(wall_ratio)}}}"
         )
         return _BestModeComparisonLayout(
-            rf"\bestmodecodeprefix{{{mode_code}}}{inline}",
-            rf"\bestmodecodeprefix{{{mode_code}}}\bestmodeopenprefix",
+            inline,
+            r"\bestmodeopenprefix",
             (
                 rf"\bestmodeprimaryratio{{{wall_color}}}"
                 rf"{{{_best_mode_value(wall_ratio)}}}"
@@ -1708,11 +1706,8 @@ def _best_mode_runtime_comparison_layout(
         rf"{{{wall_color}}}{{{_best_mode_value(wall_ratio)}}}"
     )
     return _BestModeComparisonLayout(
-        rf"\bestmodecodeprefix{{{mode_code}}}{inline}",
-        (
-            rf"\bestmodecodeprefix{{{mode_code}}}"
-            rf"\bestmodecompactprefix{{{_best_mode_value(secondary_ratio)}}}"
-        ),
+        inline,
+        rf"\bestmodecompactprefix{{{_best_mode_value(secondary_ratio)}}}",
         (
             rf"\bestmodeprimaryratio{{{wall_color}}}"
             rf"{{{_best_mode_value(wall_ratio)}}}"
@@ -2160,9 +2155,10 @@ def _best_mode_block(
                 r"median, average, and weighted-average order; the weighted "
                 r"average is the ratio of timing sums. The framed bold entry "
                 r"is the arithmetic average of the per-cell multipliers. "
-                r"Muted (r), (c), and (e) labels identify the recurrence, "
-                r"compiled, and eager winner selected by wall time for each "
-                r"workload. LC generation uses "
+                r"Muted (r), (c), and (e) labels on the generation row "
+                r"identify the recurrence, compiled, and eager winner selected "
+                r"by wall time for each workload; the runtime row does not "
+                r"repeat them. LC generation uses "
                 r"non-union flow only, while LC runtime keeps separate "
                 r"non-union and union wall-only lines. Summary mode counts "
                 r"use r|c|e for recurrence JIT O2, compiled JIT O3, and "
