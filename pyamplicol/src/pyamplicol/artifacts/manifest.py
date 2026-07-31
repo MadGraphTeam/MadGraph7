@@ -28,6 +28,9 @@ from .security import (
 
 MANIFEST_NAME = "artifact.json"
 SCHEMA_VERSION = 3
+ARTIFACT_IDENTITY_EXTENSION = "artifact_identity"
+ARTIFACT_IDENTITY_KIND = "pyamplicol-runtime-payload-identity"
+ARTIFACT_IDENTITY_SCHEMA_VERSION = 1
 _SHA256 = re.compile(r"^[a-f0-9]{64}$")
 _GIT_REVISION = re.compile(r"^[a-f0-9]{40}$")
 _PUBLIC_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:+,~-]{0,254}$")
@@ -63,6 +66,40 @@ _RUNTIME_IDENTITY_PAYLOAD_ROLES = frozenset(
         "runtime-physics",
     }
 )
+
+
+def artifact_identity_extension() -> dict[str, object]:
+    """Return the sole supported artifact-ID interpretation contract."""
+
+    return {
+        "kind": ARTIFACT_IDENTITY_KIND,
+        "schema_version": ARTIFACT_IDENTITY_SCHEMA_VERSION,
+    }
+
+
+def _validate_artifact_identity_extension(
+    extensions: Mapping[str, object],
+) -> None:
+    raw = extensions.get(ARTIFACT_IDENTITY_EXTENSION)
+    if raw is None:
+        raise CompatibilityError(
+            "artifact predates the required runtime-payload identity contract; "
+            "regenerate it with the current pyAmpliCol"
+        )
+    policy = _mapping(raw, f"extensions.{ARTIFACT_IDENTITY_EXTENSION}")
+    _keys(
+        policy,
+        f"extensions.{ARTIFACT_IDENTITY_EXTENSION}",
+        required={"kind", "schema_version"},
+    )
+    if (
+        policy.get("kind") != ARTIFACT_IDENTITY_KIND
+        or policy.get("schema_version") != ARTIFACT_IDENTITY_SCHEMA_VERSION
+    ):
+        raise CompatibilityError(
+            "artifact uses an unsupported artifact identity contract; "
+            "regenerate it with the current pyAmpliCol"
+        )
 
 
 def _keys(
@@ -612,7 +649,8 @@ class ArtifactManifest:
             raise ArtifactError("payloads must contain at least one payload")
         dependency_values = _sequence(raw.get("dependencies"), "dependencies")
         default_process = raw.get("default_process_id")
-        extensions = raw.get("extensions", {})
+        extensions = _mapping(raw.get("extensions", {}), "extensions")
+        _validate_artifact_identity_extension(extensions)
         created_utc = _string(raw.get("created_utc"), "created_utc")
         try:
             datetime.fromisoformat(created_utc.replace("Z", "+00:00"))
@@ -669,7 +707,7 @@ class ArtifactManifest:
             dependencies=tuple(
                 _dependency(item, index) for index, item in enumerate(dependency_values)
             ),
-            extensions=MappingProxyType(dict(_mapping(extensions, "extensions"))),
+            extensions=MappingProxyType(dict(extensions)),
         )
 
     def as_dict(self) -> dict[str, object]:
@@ -869,7 +907,11 @@ __all__ = [
     "MANIFEST_NAME",
     "SCHEMA_VERSION",
     "ArtifactManifest",
+    "ARTIFACT_IDENTITY_EXTENSION",
+    "ARTIFACT_IDENTITY_KIND",
+    "ARTIFACT_IDENTITY_SCHEMA_VERSION",
     "PayloadRecord",
+    "artifact_identity_extension",
     "canonical_manifest_bytes",
     "compute_artifact_id",
     "load_manifest",

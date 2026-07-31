@@ -26,6 +26,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const MAX_MANIFEST_BYTES: u64 = 16 * 1024 * 1024;
+const ARTIFACT_IDENTITY_EXTENSION: &str = "artifact_identity";
+const ARTIFACT_IDENTITY_KIND: &str = "pyamplicol-runtime-payload-identity";
+const ARTIFACT_IDENTITY_SCHEMA_VERSION: u64 = 1;
 #[cfg(test)]
 const RUNTIME_IDENTITY_PAYLOAD_ROLES: [&str; 5] = [
     "compiled-model",
@@ -1249,6 +1252,7 @@ fn locate_manifest(requested: &Path) -> RusticolResult<(PathBuf, PathBuf)> {
 fn validate_manifest(manifest: &ArtifactManifest) -> RusticolResult<()> {
     validate_sha256(&manifest.artifact_id, "artifact_id")?;
     validate_datetime(&manifest.created_utc)?;
+    validate_artifact_identity_extension(&manifest.extensions)?;
     if manifest.producer.distribution != "pyamplicol" {
         return Err(RusticolError::compatibility(format!(
             "unsupported artifact producer {:?}; expected pyamplicol",
@@ -1494,6 +1498,31 @@ fn validate_manifest(manifest: &ArtifactManifest) -> RusticolResult<()> {
                 dependency.name
             )));
         }
+    }
+    Ok(())
+}
+
+fn validate_artifact_identity_extension(
+    extensions: &BTreeMap<String, Value>,
+) -> RusticolResult<()> {
+    let Some(policy) = extensions
+        .get(ARTIFACT_IDENTITY_EXTENSION)
+        .and_then(Value::as_object)
+    else {
+        return Err(RusticolError::compatibility(
+            "artifact predates the required runtime-payload identity contract; \
+             regenerate it with the current pyAmpliCol",
+        ));
+    };
+    let valid = policy.len() == 2
+        && policy.get("kind").and_then(Value::as_str) == Some(ARTIFACT_IDENTITY_KIND)
+        && policy.get("schema_version").and_then(Value::as_u64)
+            == Some(ARTIFACT_IDENTITY_SCHEMA_VERSION);
+    if !valid {
+        return Err(RusticolError::compatibility(
+            "artifact uses an unsupported artifact identity contract; \
+             regenerate it with the current pyAmpliCol",
+        ));
     }
     Ok(())
 }

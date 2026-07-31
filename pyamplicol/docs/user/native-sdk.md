@@ -107,9 +107,11 @@ on output, and uses the same selector planner for compiled and eager artifacts.
 Resolved rectangular evaluation remains batch-global.
 
 SymJIT evaluator payloads are indexed members of the artifact-root
-`evaluators.pacbin` container. Native loaders validate the outer artifact hash,
-memory-map the container read-only, and pass member slices directly to SymJIT.
-C++/ASM shared libraries remain ordinary target-native files.
+`evaluators.pacbin` container. Native loaders require the current artifact
+identity contract and runtime ABI, memory-map the declared container read-only,
+and pass member slices directly to SymJIT. Use the explicit Python payload
+validator when a complete on-disk hash audit is required. C++/ASM shared
+libraries remain ordinary target-native files.
 
 ## Rust 2021 f64
 

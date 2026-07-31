@@ -171,6 +171,12 @@ impl TestArtifact {
             },
             "payloads": payloads,
             "dependencies": [],
+            "extensions": {
+                "artifact_identity": {
+                    "kind": ARTIFACT_IDENTITY_KIND,
+                    "schema_version": ARTIFACT_IDENTITY_SCHEMA_VERSION,
+                },
+            },
         });
         let mut artifact = Self { root, manifest };
         artifact.write_manifest();
@@ -1495,6 +1501,20 @@ fn valid_manifest_opens_trusted_payload_catalog() {
             .requested_id,
         "p0"
     );
+}
+
+#[test]
+fn artifact_without_current_identity_contract_fails_closed() {
+    let mut artifact = TestArtifact::new();
+    artifact.manifest["extensions"]
+        .as_object_mut()
+        .unwrap()
+        .remove(ARTIFACT_IDENTITY_EXTENSION);
+    artifact.write_manifest();
+
+    let error = VerifiedArtifact::open(&artifact.root).unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+    assert!(error.to_string().contains("regenerate"));
 }
 
 #[cfg(feature = "f64-symjit")]

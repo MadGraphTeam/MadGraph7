@@ -239,6 +239,20 @@ def test_artifact_id_tracks_only_runtime_bearing_payload_records() -> None:
     assert manifest_module.compute_artifact_id(runtime_changed) != identity
 
 
+def test_artifact_without_current_identity_contract_fails_closed(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "artifact"
+    _build(root)
+    path = root / "artifact.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    del manifest["extensions"]["artifact_identity"]
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(CompatibilityError, match="regenerate"):
+        load_manifest(root)
+
+
 def test_python_loader_checks_cpu_features_before_payload_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

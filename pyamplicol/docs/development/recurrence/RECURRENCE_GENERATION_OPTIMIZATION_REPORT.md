@@ -525,8 +525,10 @@ callers that need a complete integrity audit can still call
 content label over runtime-bearing payload declarations, so validation
 momenta, requested/effective configuration snapshots, timing, and provenance
 do not perturb it.  This deliberately drops backward identity-policy
-compatibility at the user's request; payload formats and runtime ABIs are not
-changed by this policy simplification.
+compatibility at the user's request.  The current identity contract is an
+explicit required manifest extension: absence, an older interpretation, or an
+older SymJIT plane ABI fails closed with regeneration guidance.  No
+generated-artifact compatibility shim is retained.
 
 ## Original AmpliCol comparison
 

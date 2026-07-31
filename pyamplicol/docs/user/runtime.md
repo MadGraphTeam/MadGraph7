@@ -73,6 +73,11 @@ and effective configuration, validation momenta, timing, and other provenance
 do not enter it. Call `pyamplicol.artifacts.validate_payloads(manifest)` when an
 explicit whole-artifact corruption audit is wanted.
 
+Artifacts must explicitly declare the current runtime-payload identity
+contract. Artifacts without that marker, with an older identity interpretation,
+or with an older SymJIT plane ABI fail closed with regeneration guidance; there
+is no generated-artifact compatibility shim.
+
 `runtime.execution_mode` is the native lane selected from the loaded artifact
 metadata. Both public properties fail closed with `EvaluationError` if an
 injected backend cannot provide them. The structural `RuntimeBackend` protocol

@@ -14,8 +14,10 @@ from pathlib import Path
 from typing import BinaryIO, Literal
 
 from .manifest import (
+    ARTIFACT_IDENTITY_EXTENSION,
     MANIFEST_NAME,
     PayloadRecord,
+    artifact_identity_extension,
     canonical_manifest_bytes,
     compute_artifact_id,
     load_manifest,
@@ -325,6 +327,15 @@ class ArtifactBuilder:
     ) -> Path:
         if not self._payloads:
             raise ValueError("an artifact must contain at least one payload")
+        manifest_extensions = dict(extensions or {})
+        supplied_identity = manifest_extensions.get(ARTIFACT_IDENTITY_EXTENSION)
+        expected_identity = artifact_identity_extension()
+        if supplied_identity is not None and supplied_identity != expected_identity:
+            raise ValueError(
+                "extensions.artifact_identity is compiler-owned and must use the "
+                "current runtime-payload identity contract"
+            )
+        manifest_extensions[ARTIFACT_IDENTITY_EXTENSION] = expected_identity
         manifest: dict[str, object] = {
             "schema_version": 3,
             "kind": kind,
@@ -343,7 +354,7 @@ class ArtifactBuilder:
                 )
             ],
             "dependencies": [dict(dependency) for dependency in dependencies],
-            "extensions": dict(extensions or {}),
+            "extensions": manifest_extensions,
         }
         if default_process_id is not None:
             manifest["default_process_id"] = default_process_id
