@@ -225,10 +225,7 @@ class VisibleCompleteness:
             or self.missing_rendered_cell_ids
             or self.contract_errors
             or self.declared_measurement_cell_count
-            != (
-                self.required_measurement_count
-                + self.catalog_static_na_cell_count
-            )
+            != (self.required_measurement_count + self.catalog_static_na_cell_count)
             or self.rendered_required_measurement_count
             != self.required_measurement_count
             or self.rendered_catalog_static_na_cell_count
@@ -244,9 +241,7 @@ class VisibleCompleteness:
             "schema_version": 2,
             "status": "ok" if self.complete else "incomplete",
             "maximum_n_final": self.maximum_n_final,
-            "declared_measurement_cell_count": (
-                self.declared_measurement_cell_count
-            ),
+            "declared_measurement_cell_count": (self.declared_measurement_cell_count),
             "required_measurement_count": self.required_measurement_count,
             "rendered_required_measurement_count": (
                 self.rendered_required_measurement_count
@@ -518,11 +513,7 @@ def _metric_group_column_spec(accuracy: Accuracy) -> str:
     form one visually continuous value.
     """
 
-    font = (
-        r"\matrixentryfontlc"
-        if accuracy is Accuracy.LC
-        else r"\matrixentryfont"
-    )
+    font = r"\matrixentryfontlc" if accuracy is Accuracy.LC else r"\matrixentryfont"
     if accuracy is Accuracy.LC:
         return (
             rf">{{{font}}}l"
@@ -549,14 +540,9 @@ def _metric_table_column_spec(
     multiplicity_count: int,
 ) -> str:
     multiplicity_groups = "".join(
-        _metric_group_column_spec(accuracy)
-        for _ in range(multiplicity_count)
+        _metric_group_column_spec(accuracy) for _ in range(multiplicity_count)
     )
-    return (
-        r"@{}rL{1.45in}l"
-        + multiplicity_groups
-        + r"@{}"
-    )
+    return r"@{}rL{1.45in}l" + multiplicity_groups + r"@{}"
 
 
 def _metric_group_cell(
@@ -615,11 +601,7 @@ def _status(measurement: Measurement) -> str:
     status = str(measurement.get("status", ResultStatus.NOT_AVAILABLE.value))
     policy_label = policy_status_label(measurement)
     if policy_label is not None:
-        return (
-            r"\matrixstatus{ReportOrange}{"
-            + _tex_escape(policy_label)
-            + "}"
-        )
+        return r"\matrixstatus{ReportOrange}{" + _tex_escape(policy_label) + "}"
     labels = {
         ResultStatus.NOT_AVAILABLE.value: "N/A",
         ResultStatus.TIMEOUT.value: "t/o",
@@ -697,10 +679,7 @@ def _ratio_value(
             if not isinstance(provenance, Mapping):
                 continue
             timing = provenance.get("execution_timing")
-            if (
-                isinstance(timing, Mapping)
-                and timing.get("ratio_eligible") is not True
-            ):
+            if isinstance(timing, Mapping) and timing.get("ratio_eligible") is not True:
                 return None
     if (
         unavailable_execution_timing_record(candidate, field) is not None
@@ -758,21 +737,13 @@ def _ratio_or_absolute(
 
 def _evaluator_total_clock(measurement: Measurement) -> str:
     total = evaluator_total_seconds_per_point(measurement)
-    value = (
-        _not_exposed()
-        if total is None
-        else _time(total, microseconds=True)
-    )
+    value = _not_exposed() if total is None else _time(total, microseconds=True)
     return r"\matrixtotalevaluator{" + value + "}"
 
 
 def _recurrence_core_clock(measurement: Measurement) -> str:
     core = recurrence_core_seconds_per_point(measurement)
-    value = (
-        _not_exposed()
-        if core is None
-        else _time(core, microseconds=True)
-    )
+    value = _not_exposed() if core is None else _time(core, microseconds=True)
     return r"\matrixrecurrencecore{" + value + "}"
 
 
@@ -795,9 +766,7 @@ def _ratio_pair(
             if wall < 2.0
             else "ReportRed"
         )
-        wall_clock = (
-            rf"\matrixwallclock{{{color}}}{{x{_compact(wall)}}}"
-        )
+        wall_clock = rf"\matrixwallclock{{{color}}}{{x{_compact(wall)}}}"
     total_clock = _evaluator_total_clock(candidate)
     if candidate_mode is not ExecutionMode.RECURRENCE:
         return rf"\matrixruntimepair{{{wall_clock}}}{{{total_clock}}}"
@@ -816,11 +785,7 @@ def _ratio_pair_or_absolute(
 ) -> str:
     if absolute and _ok(candidate):
         wall = _metric(candidate, "wall_seconds_per_point", microseconds=True)
-        wall_clock = (
-            r"\matrixncabsolute{\matrixwallabsolute{"
-            + wall
-            + "}}"
-        )
+        wall_clock = r"\matrixncabsolute{\matrixwallabsolute{" + wall + "}}"
         total_clock = _evaluator_total_clock(candidate)
         if candidate_mode is not ExecutionMode.RECURRENCE:
             return rf"\matrixruntimepair{{{wall_clock}}}{{{total_clock}}}"
@@ -985,12 +950,12 @@ def _lc_cell(
     selected_baseline_generation = (
         _static_na()
         if legacy_baseline_unavailable
-        else _metric(selected.baseline, 'generation_seconds')
+        else _metric(selected.baseline, "generation_seconds")
     )
     all_flow_baseline_generation = (
         _static_na()
         if legacy_baseline_unavailable
-        else _metric(all_flow.baseline, 'generation_seconds')
+        else _metric(all_flow.baseline, "generation_seconds")
     )
     selected_generation_ratio = _ratio_or_absolute(
         selected.candidate,
@@ -1008,10 +973,7 @@ def _lc_cell(
             view.dataset.candidate.execution_mode is ExecutionMode.RECURRENCE
             and view.dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
             and _ok(all_flow.candidate)
-            and (
-                _ok(all_flow.baseline)
-                or legacy_baseline_unavailable
-            )
+            and (_ok(all_flow.baseline) or legacy_baseline_unavailable)
         )
         else _ratio_or_absolute(
             all_flow.candidate,
@@ -1208,9 +1170,7 @@ def _matrix_block(
     block_count: int,
 ) -> list[str]:
     if len(multiplicities) not in (2, 3):
-        raise ValueError(
-            "matrix blocks must contain two or three multiplicities"
-        )
+        raise ValueError("matrix blocks must contain two or three multiplicities")
     accuracy = dataset.candidate.accuracy
     column_spec = _metric_table_column_spec(
         accuracy,
@@ -1414,8 +1374,7 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         "C. Neither T nor C is derived from wall time or from the other, and C "
         "is never relabeled as evaluator total."
         if dataset.candidate.execution_mode is ExecutionMode.RECURRENCE
-        else
-        " Runtime cells mark the candidate/baseline wall-time multiplier W and "
+        else " Runtime cells mark the candidate/baseline wall-time multiplier W and "
         "the independent absolute evaluator-total value marked T from its "
         "dedicated authenticated record. Compiled and eager cells do not "
         "fabricate a recurrence-core C value, and T is never copied from or "
@@ -1436,8 +1395,7 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         "per-cell multipliers. LC generation uses selected flow only, while LC "
         "runtime shows separate selected-flow and all-flow wall-only lines."
         if dataset.candidate.accuracy is Accuracy.LC
-        else
-        " Summary rows contain multipliers only in min, max, median, average, "
+        else " Summary rows contain multipliers only in min, max, median, average, "
         "and weighted-average order; the weighted average is the ratio of "
         "timing sums, and runtime statistics use wall time only. The framed "
         "bold entry is the arithmetic average of the per-cell multipliers."
@@ -1549,6 +1507,7 @@ def _canonical_best_mode_terminal_label(
         for item in normalized:
             if item not in canonical:
                 canonical.append(item)
+
     def order(item: str) -> tuple[int, int]:
         if item == ">2h":
             return (0, 0)
@@ -1572,11 +1531,7 @@ def _best_mode_terminal_label(
 def _best_mode_terminal_status(joined: BestModeWorkload) -> str:
     if joined.terminal_label is None:
         return _status(joined.candidate)
-    return (
-        r"\matrixstatus{ReportOrange}{"
-        + _tex_escape(joined.terminal_label)
-        + "}"
-    )
+    return r"\matrixstatus{ReportOrange}{" + _tex_escape(joined.terminal_label) + "}"
 
 
 def _best_mode_generation_comparison_layout(
@@ -1906,17 +1861,10 @@ def _best_mode_summary_pair(
         ):
             return _not_exposed()
         terminal_label = _canonical_best_mode_terminal_label(
-            tuple(
-                _best_mode_summary_terminal_label(item)
-                for item in joined
-            )
+            tuple(_best_mode_summary_terminal_label(item) for item in joined)
         )
         if terminal_label is not None:
-            return (
-                r"\matrixstatus{ReportOrange}{"
-                + _tex_escape(terminal_label)
-                + "}"
-            )
+            return r"\matrixstatus{ReportOrange}{" + _tex_escape(terminal_label) + "}"
         return r"\matrixna{ReportMuted}"
     statistics = _ratio_statistics_tex(
         tuple(
@@ -1926,16 +1874,14 @@ def _best_mode_summary_pair(
     )
     if show_mode_mix:
         counts = {
-            mode: sum(item.mode is mode for item in valid)
-            for mode in _BEST_MODE_ORDER
+            mode: sum(item.mode is mode for item in valid) for mode in _BEST_MODE_ORDER
         }
         return (
             r"\bestmodesummarystats{"
             + statistics
             + r"}{\bestmodemix{"
             + "|".join(
-                f"{_BEST_MODE_CODES[mode]}:{counts[mode]}"
-                for mode in _BEST_MODE_ORDER
+                f"{_BEST_MODE_CODES[mode]}:{counts[mode]}" for mode in _BEST_MODE_ORDER
             )
             + "}}"
         )
@@ -1998,9 +1944,7 @@ def _best_mode_block(
         Accuracy.FULL: "full-colour",
     }[accuracy]
     if len(multiplicities) not in (2, 3):
-        raise ValueError(
-            "matrix blocks must contain two or three multiplicities"
-        )
+        raise ValueError("matrix blocks must contain two or three multiplicities")
     column_spec = _metric_table_column_spec(
         accuracy,
         len(multiplicities),
@@ -2465,9 +2409,7 @@ def _z_block(
                 _z_evaluator_total(
                     selected,
                     reference=reference,
-                    recurrence=(
-                        variant.execution_mode is ExecutionMode.RECURRENCE
-                    ),
+                    recurrence=(variant.execution_mode is ExecutionMode.RECURRENCE),
                     static_na=selected_static_na,
                 ),
                 _z_value(
@@ -2487,9 +2429,7 @@ def _z_block(
                 _z_evaluator_total(
                     all_flow,
                     reference=reference,
-                    recurrence=(
-                        variant.execution_mode is ExecutionMode.RECURRENCE
-                    ),
+                    recurrence=(variant.execution_mode is ExecutionMode.RECURRENCE),
                     static_na=all_flow_static_na,
                 ),
             )
@@ -2518,9 +2458,7 @@ def _z_block(
                 r"and C is never relabeled as evaluator total. Older entries "
                 r"without authenticated total evidence remain marked not "
                 r"exposed; it is not a missing measurement. "
-                + _tex_escape(
-                    STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION
-                )
+                + _tex_escape(STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION)
                 + " ("
                 + _tex_escape(STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6)
                 + r").}"
@@ -2602,8 +2540,7 @@ def _scalar_value(measurement: Measurement, field: str) -> str:
     return _metric(
         measurement,
         field,
-        microseconds=field
-        in {"wall_seconds_per_point", "execution_seconds_per_point"},
+        microseconds=field in {"wall_seconds_per_point", "execution_seconds_per_point"},
     )
 
 
@@ -2633,9 +2570,7 @@ def render_scalar_ladder(
     tab_column_separation = "2.2pt" if dense else "3.2pt"
     column_spec = (
         rf"@{{}}L{{{label_width}}}"
-        + "".join(
-            rf"L{{{value_width}}}" for _ in dataset.multiplicities
-        )
+        + "".join(rf"L{{{value_width}}}" for _ in dataset.multiplicities)
         + r"@{}"
     )
     rows = (
@@ -2735,11 +2670,7 @@ def render_all_scalar_ladders(
 
 
 def _renders_na(value: str) -> bool:
-    return (
-        r"\matrixna{" in value
-        or r"\matrixnaratio{" in value
-        or "{N/A}" in value
-    )
+    return r"\matrixna{" in value or r"\matrixnaratio{" in value or "{N/A}" in value
 
 
 def _measurements_by_cell_id(
@@ -2788,14 +2719,10 @@ def summarize_visible_completeness(
         cell for cell in catalog.measurement_cells() if cell.n_final <= max_n_final
     )
     static_na_cells = tuple(
-        cell
-        for cell in declared_cells
-        if catalog.static_na_reason(cell) is not None
+        cell for cell in declared_cells if catalog.static_na_reason(cell) is not None
     )
     required_cells = tuple(
-        cell
-        for cell in declared_cells
-        if catalog.static_na_reason(cell) is None
+        cell for cell in declared_cells if catalog.static_na_reason(cell) is None
     )
     required_by_id = {cell.cell_id: cell for cell in required_cells}
     if len(required_by_id) != len(required_cells):
@@ -2913,9 +2840,7 @@ def summarize_visible_completeness(
                             f"{candidate.cell_id}: matrix baseline is missing"
                         )
                         continue
-                    baseline_static_na = (
-                        catalog.static_na_reason(baseline) is not None
-                    )
+                    baseline_static_na = catalog.static_na_reason(baseline) is not None
                     record(
                         baseline,
                         (
@@ -2975,9 +2900,7 @@ def summarize_visible_completeness(
                             _ratio_pair_or_absolute(
                                 joined.candidate,
                                 joined.baseline,
-                                candidate_mode=(
-                                    dataset.candidate.execution_mode
-                                ),
+                                candidate_mode=(dataset.candidate.execution_mode),
                                 absolute=baseline_static_na,
                             ),
                         ),
@@ -3123,9 +3046,7 @@ def summarize_visible_completeness(
                             )
                             if cell is None:
                                 continue
-                            static_na = (
-                                catalog.static_na_reason(cell) is not None
-                            )
+                            static_na = catalog.static_na_reason(cell) is not None
                             fragments = (
                                 _z_value(
                                     joined,
@@ -3236,19 +3157,14 @@ def summarize_visible_completeness(
     required_ids = set(required_by_id)
     missing = tuple(sorted(required_ids - rendered_cell_ids))
     static_na_ids = {cell.cell_id for cell in static_na_cells}
-    missing_static_na = tuple(
-        sorted(static_na_ids - rendered_static_na_cell_ids)
-    )
+    missing_static_na = tuple(sorted(static_na_ids - rendered_static_na_cell_ids))
     if missing_static_na:
         contract_errors.append(
-            "catalog static N/A cells are not rendered: "
-            + ", ".join(missing_static_na)
+            "catalog static N/A cells are not rendered: " + ", ".join(missing_static_na)
         )
     return VisibleCompleteness(
         maximum_n_final=max_n_final,
-        declared_measurement_cell_count=(
-            accounting.declared_measurement_cell_count
-        ),
+        declared_measurement_cell_count=(accounting.declared_measurement_cell_count),
         required_measurement_count=accounting.required_measurement_count,
         rendered_required_measurement_count=len(rendered_cell_ids & required_ids),
         structurally_not_applicable_display_slot_count=structural_seen,
@@ -3257,9 +3173,7 @@ def summarize_visible_completeness(
         missing_rendered_cell_ids=missing,
         contract_errors=tuple(sorted(set(contract_errors))),
         catalog_static_na_cell_count=accounting.catalog_static_na_cell_count,
-        rendered_catalog_static_na_cell_count=len(
-            rendered_static_na_cell_ids
-        ),
+        rendered_catalog_static_na_cell_count=len(rendered_static_na_cell_ids),
     )
 
 

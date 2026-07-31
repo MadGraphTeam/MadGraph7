@@ -169,10 +169,7 @@ def _mark_arena_unavailable(
         **{field: 0 for field in ZERO_ARENA_COUNTER_FIELDS},
         **{field: 0.0 for field in ZERO_ARENA_PHASE_TIME_FIELDS},
         **{field: [] for field in EMPTY_ARENA_PHASE_VECTOR_FIELDS},
-        **{
-            field: 0
-            for field in ZERO_COMPILED_BOUNDARY_COUNTER_FIELDS
-        },
+        **{field: 0 for field in ZERO_COMPILED_BOUNDARY_COUNTER_FIELDS},
     }
     if execution_mode == "compiled":
         raw_profile.update(
@@ -198,9 +195,7 @@ def _mark_arena_unavailable(
         "native_profile_points_per_sample": 128,
         "repetitions_per_sample": 1,
         "batch_size": 128,
-        "sample_contract": (
-            "paired_unprofiled_headline_profiled_attribution_v1"
-        ),
+        "sample_contract": ("paired_unprofiled_headline_profiled_attribution_v1"),
         "profile_protocol": "arena",
         "profile_sample_pass": "runtime._profile_arena_repeated",
         "profile_boundary": (
@@ -215,9 +210,7 @@ def _mark_arena_unavailable(
         "identical_repetitions": True,
         "execution_mode": execution_mode,
         "warmed_boundary_wall_seconds_per_point": 1.1e-6,
-        "arena_profile_evidence_sha256": digest_arena_profile_value(
-            arena_evidence
-        ),
+        "arena_profile_evidence_sha256": digest_arena_profile_value(arena_evidence),
     }
 
 
@@ -239,9 +232,7 @@ def _mark_evaluator_total(
         "raw_seconds_per_point": raw_total,
         "source": "runtime._benchmark_f64_wall_time.accumulated",
         "execution_mode": execution_mode,
-        "sample_contract": (
-            "accumulated-repeated-warmed-evaluator-total-v1"
-        ),
+        "sample_contract": ("accumulated-repeated-warmed-evaluator-total-v1"),
         "sample_count": 5,
         "repetitions_per_sample": 1,
         "batch_size": 128,
@@ -265,9 +256,7 @@ def _mark_recurrence_core(measurement: dict[str, object]) -> None:
         "compiled_direct_arena_active": False,
         "sample_count": 5,
         "native_profile_points_per_sample": 128,
-        "sample_contract": (
-            "paired_unprofiled_headline_profiled_attribution_v1"
-        ),
+        "sample_contract": ("paired_unprofiled_headline_profiled_attribution_v1"),
     }
 
 
@@ -494,9 +483,7 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
     runtime_row = next(
         line
         for line in tex.splitlines()
-        if line.startswith(
-            r" &  & \textcolor{ReportMuted}{\scriptsize run"
-        )
+        if line.startswith(r" &  & \textcolor{ReportMuted}{\scriptsize run")
     )
     assert (
         r"\textcolor{ReportMuted}{\scriptsize gen. [s]}"
@@ -543,9 +530,7 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
     assert r"\matrixtotalevaluator{" not in row
     assert r"\matrixrecurrencecore{" not in row
     generation_summary = next(
-        line
-        for line in tex.splitlines()
-        if r"\textbf{summary: generation}" in line
+        line for line in tex.splitlines() if r"\textbf{summary: generation}" in line
     )
     assert (
         r"\providecommand{\bestmodesummarystats}[2]{"
@@ -555,20 +540,17 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
     assert r"\bestmodesummarystats{\matrixsummarystats{" in generation_summary
     assert r"}{\bestmodemix{r:0|c:1|e:0}}" in generation_summary
     assert r"r:0|c:0|e:1" not in generation_summary
-    assert generation_summary.count(
-        r"\matrixsummaryratio{ReportGreen}{0.400}"
-    ) == 4
-    assert generation_summary.count(
-        r"\matrixsummaryratiohighlight{ReportGreen}{0.400}"
-    ) == 1
+    assert generation_summary.count(r"\matrixsummaryratio{ReportGreen}{0.400}") == 4
+    assert (
+        generation_summary.count(r"\matrixsummaryratiohighlight{ReportGreen}{0.400}")
+        == 1
+    )
     assert r"\texttt{10.0}" not in generation_summary
     assert r"\texttt{5.00}" not in generation_summary
 
 
 def test_ratio_summary_reports_five_exact_statistics_without_absolute_times() -> None:
-    summary = report_render._ratio_statistics_tex(
-        ((1.0, 1.0), (3.0, 9.0))
-    )
+    summary = report_render._ratio_statistics_tex(((1.0, 1.0), (3.0, 9.0)))
 
     assert summary == (
         r"\matrixsummarystats{"
@@ -629,9 +611,7 @@ def test_lc_summaries_omit_union_generation_and_keep_both_wall_workloads(
         caches,
     )
     generation_summary = next(
-        line
-        for line in tex.splitlines()
-        if r"\textbf{summary: generation}" in line
+        line for line in tex.splitlines() if r"\textbf{summary: generation}" in line
     )
     wall_summary = next(
         line for line in tex.splitlines() if r"\textbf{summary: wall}" in line
@@ -684,9 +664,7 @@ def test_best_mode_summary_tie_breaks_in_documented_mode_order(reset_caches) -> 
         REPORT_CATALOG.process_families[0],
         1,
     )
-    assert {item.mode for item in view.workloads} == {
-        ExecutionMode.RECURRENCE
-    }
+    assert {item.mode for item in view.workloads} == {ExecutionMode.RECURRENCE}
     rendered = render_all_best_mode_tables(caches)
     assert list(rendered) == [
         "result_matrix_best_builtin_sm_lc_table.tex",
@@ -738,21 +716,19 @@ def test_best_mode_renders_mixed_policy_censors_without_a_winner_code(
     eager_cell = REPORT_CATALOG.cell(
         str(candidate_entries[ExecutionMode.EAGER]["cell_id"])
     )
-    candidate_entries[ExecutionMode.EAGER]["measurement"] = (
-        policy_censor_measurement(
-            X86_EPYC_POLICY,
-            "x86_EPYC",
-            eager_cell,
-            kind=PolicyCensorKind.DEPENDENCY,
-            source_identity=_POLICY_IDENTITY,
-            resources=None,
-            dependencies=(
-                dependency_reference(
-                    recurrence_cell.cell_id,
-                    recurrence_censor,
-                ),
+    candidate_entries[ExecutionMode.EAGER]["measurement"] = policy_censor_measurement(
+        X86_EPYC_POLICY,
+        "x86_EPYC",
+        eager_cell,
+        kind=PolicyCensorKind.DEPENDENCY,
+        source_identity=_POLICY_IDENTITY,
+        resources=None,
+        dependencies=(
+            dependency_reference(
+                recurrence_cell.cell_id,
+                recurrence_censor,
             ),
-        )
+        ),
     )
 
     tex = render_best_mode_table(Accuracy.NLC, caches)
@@ -760,9 +736,7 @@ def test_best_mode_renders_mixed_policy_censors_without_a_winner_code(
     runtime_row = next(
         line
         for line in tex.splitlines()
-        if line.startswith(
-            r" &  & \textcolor{ReportMuted}{\scriptsize run"
-        )
+        if line.startswith(r" &  & \textcolor{ReportMuted}{\scriptsize run")
     )
 
     marker = r"\matrixstatus{ReportOrange}{>2h | >80GB | dependency}"
@@ -797,9 +771,7 @@ def test_best_mode_mixed_terminal_summaries_are_visibly_complete(
         if recurrence_entry["n_final"] != 1:
             continue
         process_key = str(recurrence_entry["process_key"])
-        recurrence_cell = REPORT_CATALOG.cell(
-            str(recurrence_entry["cell_id"])
-        )
+        recurrence_cell = REPORT_CATALOG.cell(str(recurrence_entry["cell_id"]))
         recurrence_censor = _generation_censor(recurrence_cell)
         recurrence_entry["measurement"] = recurrence_censor
         compiled_entry = _entry(
@@ -834,9 +806,7 @@ def test_best_mode_mixed_terminal_summaries_are_visibly_complete(
 
     tex = render_best_mode_table(Accuracy.NLC, caches)
     generation_summary = next(
-        line
-        for line in tex.splitlines()
-        if r"\textbf{summary: generation}" in line
+        line for line in tex.splitlines() if r"\textbf{summary: generation}" in line
     )
     wall_summary = next(
         line for line in tex.splitlines() if r"\textbf{summary: wall}" in line
@@ -873,9 +843,7 @@ def test_best_mode_terminal_baselines_are_visibly_complete(
     marker = r"\matrixstatus{ReportOrange}{>80GB}"
     assert row.count(marker) >= 2
     generation_summary = next(
-        line
-        for line in tex.splitlines()
-        if r"\textbf{summary: generation}" in line
+        line for line in tex.splitlines() if r"\textbf{summary: generation}" in line
     )
     wall_summary = next(
         line for line in tex.splitlines() if r"\textbf{summary: wall}" in line
@@ -915,9 +883,7 @@ def test_best_mode_missing_candidates_remain_incomplete_under_strict_policy(
 
     assert not completeness.complete
     assert any(
-        "result_matrix_best_builtin_sm_nlc_table.tex/n1/"
-        "dd_z_jets/contracted"
-        in slot
+        "result_matrix_best_builtin_sm_nlc_table.tex/n1/dd_z_jets/contracted" in slot
         for slot in completeness.applicable_na_display_slots
     )
 
@@ -989,14 +955,8 @@ def test_z_native_generation_cap_renders_static_na_in_both_models(
     ]
 
     assert len(capped_rows) == 6
-    assert all(
-        row.count(r"\matrixstaticna{ReportMuted}") == 6
-        for row in capped_rows
-    )
-    assert (
-        "user cap: native C++/ASM generation is not attempted above n=6"
-        in tex
-    )
+    assert all(row.count(r"\matrixstaticna{ReportMuted}") == 6 for row in capped_rows)
+    assert "user cap: native C++/ASM generation is not attempted above n=6" in tex
     assert "native-backend-generation-cap-n6-v1" in tex
 
 
@@ -1068,14 +1028,8 @@ def test_z_evaluator_total_is_mode_independent_and_not_execution_attribution(
             for line in tex.splitlines()
             if line.startswith("1 & ") and label in line
         )
-        assert (
-            rf"\matrixtotalevaluator{{\texttt{{{selected_total:.0f}}}}}"
-            in row
-        )
-        assert (
-            rf"\matrixtotalevaluator{{\texttt{{{all_total:.0f}}}}}"
-            in row
-        )
+        assert rf"\matrixtotalevaluator{{\texttt{{{selected_total:.0f}}}}}" in row
+        assert rf"\matrixtotalevaluator{{\texttt{{{all_total:.0f}}}}}" in row
         assert r"\matrixtotalevaluator{\texttt{1" not in row
         assert r"\matrixtotalevaluator{\texttt{10" not in row
         if mode == "recurrence":
@@ -1199,9 +1153,7 @@ def test_z_historical_recurrence_without_dedicated_total_is_not_exposed(
         "compiled_direct_arena_active": False,
         "sample_count": 5,
         "native_profile_points_per_sample": 200,
-        "sample_contract": (
-            "paired_unprofiled_headline_profiled_attribution_v1"
-        ),
+        "sample_contract": ("paired_unprofiled_headline_profiled_attribution_v1"),
     }
 
     tex = render_z_ladder(ModelKey.BUILTIN_SM, caches)
@@ -1566,10 +1518,7 @@ def test_future_dag_evaluator_total_is_absolute_and_never_ratioed(
         r"{\matrixtotalevaluator{\texttt{0.9}}}"
     ) in tex
     assert "absolute evaluator-total value marked T" in tex
-    assert (
-        r"\matrixruntimetriple{\matrixwallclock{ReportGreen}{x0.5}}"
-        not in tex
-    )
+    assert r"\matrixruntimetriple{\matrixwallclock{ReportGreen}{x0.5}}" not in tex
 
 
 def test_z_ladder_prints_not_exposed_instead_of_zero(
@@ -1734,9 +1683,7 @@ def test_amplicol_all_flow_setup_generation_ratio_is_not_comparable(
 
     assert tex.count(r"\matrixncabsolute{\texttt{10}}") == 1
     generation_summary = next(
-        line
-        for line in tex.splitlines()
-        if r"\textbf{summary: generation}" in line
+        line for line in tex.splitlines() if r"\textbf{summary: generation}" in line
     )
     assert r"\texttt{10}" not in generation_summary
     assert r"\matrixratio{ReportRed}{1e+05}" not in tex
@@ -1773,10 +1720,13 @@ def test_four_line_recurrence_renders_absolute_values_without_legacy_oracle(
 
     assert r"\matrixncabsolute{\texttt{4}}" in tex
     assert r"\matrixncabsolute{\texttt{10}}" in tex
-    assert tex.count(
-        r"\matrixruntimetriple{"
-        r"\matrixncabsolute{\matrixwallabsolute{\texttt{2}}}"
-    ) >= 2
+    assert (
+        tex.count(
+            r"\matrixruntimetriple{"
+            r"\matrixncabsolute{\matrixwallabsolute{\texttt{2}}}"
+        )
+        >= 2
+    )
     assert tex.count(r"\matrixstaticna{ReportMuted}") >= 2
     assert "absolute quantities without a baseline ratio" in tex
     assert "n.c." not in tex
@@ -1935,9 +1885,7 @@ def test_scalar_timing_marks_unavailable_arena_attribution_not_exposed(
     entries = cache["entries"]
     assert isinstance(entries, list)
     measurement = next(
-        entry["measurement"]
-        for entry in entries
-        if entry["n_final"] == 2
+        entry["measurement"] for entry in entries if entry["n_final"] == 2
     )
     _mark_arena_unavailable(measurement)
 
@@ -1970,9 +1918,7 @@ def test_scalar_timing_uses_dedicated_evaluator_total_not_wall(
     entries = cache["entries"]
     assert isinstance(entries, list)
     measurement = next(
-        entry["measurement"]
-        for entry in entries
-        if entry["n_final"] == 2
+        entry["measurement"] for entry in entries if entry["n_final"] == 2
     )
     assert isinstance(measurement, dict)
     _mark_arena_unavailable(measurement)
@@ -1991,9 +1937,7 @@ def test_scalar_timing_uses_dedicated_evaluator_total_not_wall(
     total_row = next(
         line
         for line in tex.splitlines()
-        if line.startswith(
-            r"evaluator total [\(\mu\mathrm{s}/\mathrm{pt}\)]"
-        )
+        if line.startswith(r"evaluator total [\(\mu\mathrm{s}/\mathrm{pt}\)]")
     )
 
     assert r"\texttt{218.105}" in wall_row
