@@ -722,6 +722,7 @@ def _wheel(
     selftest_missing_symjit_capability: str | None = None,
     selftest_direct_codegen_optimization_level: int = 2,
     selftest_fixture_bootstrap: bool = False,
+    metadata_description: str = "",
 ) -> Path:
     if requirement is not None and requirements is not None:
         raise ValueError("use requirement or requirements, not both")
@@ -778,7 +779,7 @@ def _wheel(
                 "License-Expression: 0BSD\n"
                 + "".join(f"License-File: {item}\n" for item in declared_legal_files)
                 + "".join(f"Requires-Dist: {item}\n" for item in runtime_requirements)
-                + "\n"
+                + f"\n{metadata_description}"
             ).encode(),
             f"{dist_info}/WHEEL": (
                 "Wheel-Version: 1.0\n"
@@ -1117,6 +1118,15 @@ def test_release_and_candidate_wheels_are_distinct_and_audited(
     assert candidate_report.version == candidate_version
     with pytest.raises(ArtifactError, match="release wheel has invalid version"):
         audit_wheel(candidate, mode="release", native_scan=False)
+
+
+def test_release_metadata_may_document_candidate_workflows(tmp_path: Path) -> None:
+    wheel = _wheel(
+        tmp_path,
+        metadata_description="Contributor candidate setup is non-publishable.\n",
+    )
+
+    assert audit_wheel(wheel, mode="release", native_scan=False).version == "0.1.0"
 
 
 def test_release_wheel_requires_the_minimal_build_marker(tmp_path: Path) -> None:

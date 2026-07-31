@@ -1675,9 +1675,6 @@ def audit_wheel(
             or re.fullmatch(r"[0-9a-f]{40}", source_revision) is None
         ):
             raise ArtifactError("release build marker is missing or inconsistent")
-        if b"candidate" in entries[metadata_name].lower():
-            raise ArtifactError("release wheel contains candidate markers")
-
     wheel_metadata = _message(entries[wheel_name], "WHEEL")
     if str(wheel_metadata.get("Root-Is-Purelib", "")).lower() != "false":
         raise ArtifactError("binary wheel must set Root-Is-Purelib: false")
