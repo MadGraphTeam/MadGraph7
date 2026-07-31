@@ -852,12 +852,28 @@ time.sleep(30)
     assert not _pid_exists(child_pid)
 
 
-def test_ci_helper_is_not_in_wheel_or_sdist_includes() -> None:
+def test_ci_helper_is_sdist_only_for_packaged_profiling_runtime() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     includes = pyproject["tool"]["maturin"]["include"]
-    paths = {entry["path"] if isinstance(entry, dict) else entry for entry in includes}
+    ci_entries = {
+        entry["path"]: entry.get("format")
+        for entry in includes
+        if isinstance(entry, dict)
+        and (
+            entry.get("path") == "tools/ci"
+            or str(entry.get("path", "")).startswith("tools/ci/")
+        )
+    }
 
-    assert not any(path == "tools/ci" or path.startswith("tools/ci/") for path in paths)
+    assert ci_entries == {
+        "tools/ci/__init__.py": ["sdist"],
+        "tools/ci/memory_watchdog.py": ["sdist"],
+    }
+    assert not any(
+        isinstance(entry, str)
+        and (entry == "tools/ci" or entry.startswith("tools/ci/"))
+        for entry in includes
+    )
 
 
 def test_tests_workflow_guards_every_heavy_validation_phase() -> None:

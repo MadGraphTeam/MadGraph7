@@ -102,6 +102,7 @@ def test_native_benchmark_duration_is_retained_as_publication_evidence() -> None
     result = _benchmark_measurement(benchmark, matrix_element=3.0)
 
     assert result["benchmark_evidence"] == {
+        "measurement_phase_elapsed_seconds": 5.02,
         "target_runtime_seconds": 5.0,
         "achieved_runtime_seconds": 5.02,
         "target_runtime_achieved": True,

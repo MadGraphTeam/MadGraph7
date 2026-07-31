@@ -109,7 +109,8 @@ def test_generation_recipe_spells_out_measurement_relevant_hyperparameters() -> 
     assert "--model-cache" in generate
     assert "--model-cache-dir" in generate
     assert "--numerical-current-reuse" in generate
-    assert parse_cli(generate[1:]).resolve().effective.action == "generate"
+    generate_index = generate.index("generate")
+    assert parse_cli(generate[generate_index:]).resolve().effective.action == "generate"
 
     assert recipe.profile is not None
     profile = recipe.profile
@@ -121,7 +122,8 @@ def test_generation_recipe_spells_out_measurement_relevant_hyperparameters() -> 
         ("--precision", "16"),
     ):
         assert profile[profile.index(option) + 1] == expected
-    assert parse_cli(profile[1:]).resolve().effective.action == "benchmark"
+    profile_index = profile.index("profile")
+    assert parse_cli(profile[profile_index:]).resolve().effective.action == "benchmark"
 
 
 def test_dry_run_recipe_blocks_cover_more_than_twenty_direct_cells() -> None:

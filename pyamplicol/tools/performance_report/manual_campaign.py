@@ -5042,7 +5042,11 @@ def _campaign_settings(
         discard_cancelled_attempts=True,
         report_profile=None,
         original_amplicol_repository=arguments.original_amplicol,
-        original_amplicol_revision=arguments.original_amplicol_revision,
+        original_amplicol_revision=getattr(
+            arguments,
+            "original_amplicol_revision",
+            None,
+        ),
     )
 
 
@@ -5460,7 +5464,7 @@ def _run_campaign(
         return 0
 
     if (
-        preliminary_settings.original_amplicol_repository is None
+        getattr(preliminary_settings, "original_amplicol_repository", None) is None
         and any(
             item.cell.measurement.execution_mode is ExecutionMode.AMPLICOL
             for item in planned

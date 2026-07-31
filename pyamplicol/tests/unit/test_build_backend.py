@@ -677,7 +677,11 @@ def test_release_prepared_model_bootstrap_does_not_require_git_identity(
         raise AssertionError("release bootstrap must not inspect Git identity")
 
     monkeypatch.setattr(backend, "_clean_source_revision", unexpected_revision)
-    monkeypatch.setattr(backend, "_native_build_inputs_digest", lambda _root: "c" * 64)
+    monkeypatch.setattr(
+        backend,
+        "_native_build_inputs_digest",
+        lambda _root, **_kwargs: "c" * 64,
+    )
 
     with backend._overlay(
         "release",
@@ -1603,6 +1607,12 @@ def test_pep517_backend_rejects_recursive_delegation(
 
     monkeypatch.setattr(backend, "_overlay", fake_overlay)
     monkeypatch.setattr(backend, "_check_dependencies", lambda _mode: None)
+    monkeypatch.setattr(
+        backend,
+        "canonical_package_version",
+        lambda _path: "0.1.0",
+    )
+    monkeypatch.setattr(backend, "_stage_release_build_info", lambda *_args: None)
     monkeypatch.setattr(
         backend,
         "stage_packaged_prepared_models",
