@@ -17,7 +17,7 @@ def _runtime_peak(value: int) -> dict[str, object]:
         "self_peak_bytes": value,
         "maximum_child_peak_bytes": 0,
         "observed_lower_bound_bytes": value,
-        "semantics": "profile worker process high-water",
+        "semantics": harness._RESOURCE_PEAK_SEMANTICS,
     }
 
 
@@ -248,6 +248,7 @@ def test_runtime_rss_survives_harness_aggregation_and_campaign_compaction(
         "worker_invocation": {},
         "worker_process_record": {},
         "worker_result_record": {},
+        "cold_load_seconds": 0.01,
         "peak_rss_after_cold_load": _runtime_peak(1_000_000_000),
         "peak_rss_after_profile": peak,
         "timing_configuration": {},

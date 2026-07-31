@@ -10,7 +10,6 @@ import pytest
 
 from tools.developer import symjit_2_22_generated_fixture_gate as gate
 
-
 _FIXTURE_NAMES = (
     "compiled_o3",
     "eager_o2",
@@ -39,6 +38,9 @@ def _manifest(name: str) -> dict[str, Any]:
             "git_revision": _SOURCE_REVISION,
             "native_build_inputs_sha256": _NATIVE_BUILD_INPUTS_SHA256,
             "version": _CANDIDATE_VERSION,
+        },
+        "extensions": {
+            "artifact_identity": dict(gate._ARTIFACT_IDENTITY_CONTRACT),
         },
     }
 
@@ -122,7 +124,7 @@ def test_preflight_requires_distinct_workspace_local_artifact_manifests(
     missing_manifest.mkdir()
     invalid = dict(fixtures)
     invalid["compiled_o3"] = missing_manifest
-    with pytest.raises(gate.GateError, match="missing artifact.json"):
+    with pytest.raises(gate.GateError, match=r"missing artifact\.json"):
         _preflight(invalid, workspace_root=root)
 
     outside = tmp_path / "outside"

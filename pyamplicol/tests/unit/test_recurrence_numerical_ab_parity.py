@@ -489,26 +489,55 @@ def test_matching_captures_emit_content_addressed_point_component_and_selector_e
 
 
 def test_point_and_resolved_component_drift_fail_independently() -> None:
-    baseline = _capture("baseline")
-    point_candidate = copy.deepcopy(_capture("candidate"))
-    point_validation = point_candidate["validation"]
-    point_validation["selected_totals"][0] = [3.0001, 0.0]
-    point_validation["resolved_sums"][0] = [3.0001, 0.0]
-    point_validation["point_comparisons"][0]["selected_total"] = [3.0001, 0.0]
-    point_validation["point_comparisons"][0]["resolved_sum"] = [3.0001, 0.0]
-    point_candidate = _readdress(point_candidate)
+    def set_components(
+        capture: dict[str, object],
+        components: list[list[float]],
+    ) -> dict[str, object]:
+        validation = capture["validation"]
+        total = sum((complex(*component) for component in components), 0.0j)
+        total_payload = [total.real, total.imag]
+        validation["resolved_components"][0] = components
+        validation["selected_totals"][0] = total_payload
+        validation["resolved_sums"][0] = total_payload
+        validation["point_comparisons"][0].update(
+            {
+                "selected_total": total_payload,
+                "resolved_sum": total_payload,
+                "absolute_difference": 0.0,
+                "relative_difference": 0.0,
+                "passes": True,
+            }
+        )
+        validation["maximum_absolute_difference"] = 0.0
+        validation["maximum_relative_difference"] = 0.0
+        validation["passes"] = True
+        return _readdress(capture)
 
-    point_comparison = _compare(baseline, point_candidate)
+    point_baseline = set_components(
+        _capture("baseline"),
+        [[1.0e9, 0.0], [-999_999_997.0, 0.0]],
+    )
+    point_candidate = set_components(
+        _capture("candidate"),
+        [[1.0e9 + 5.0e-4, 0.0], [-999_999_997.0 + 5.0e-4, 0.0]],
+    )
+
+    point_comparison = _compare(point_baseline, point_candidate)
     assert point_comparison["passes"] is False
     assert point_comparison["pointwise_comparisons"][0]["passes"] is False
     assert all(
         entry["passes"] for entry in point_comparison["resolved_component_comparisons"]
     )
 
-    component_candidate = copy.deepcopy(_capture("candidate"))
-    component_candidate["validation"]["resolved_components"][0][1] = [2.0001, 0.0]
-    component_candidate = _readdress(component_candidate)
-    component_comparison = _compare(baseline, component_candidate)
+    component_baseline = set_components(
+        _capture("baseline"),
+        [[1.0e9, 0.0], [2.0, 0.0]],
+    )
+    component_candidate = set_components(
+        _capture("candidate"),
+        [[1.0e9 - 1.0e-4, 0.0], [2.0 + 1.0e-4, 0.0]],
+    )
+    component_comparison = _compare(component_baseline, component_candidate)
     assert component_comparison["passes"] is False
     assert component_comparison["pointwise_comparisons"][0]["passes"] is True
     assert [

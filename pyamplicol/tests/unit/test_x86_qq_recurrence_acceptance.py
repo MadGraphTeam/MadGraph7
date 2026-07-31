@@ -191,7 +191,7 @@ def _capture(role: str, *, slow: bool = False) -> dict[str, Any]:
     contract = acceptance.CAPTURE_CONTRACTS[role]
     return {
         "kind": "pyamplicol-recurrence-z6g-benchmark",
-        "schema_version": 6,
+        "schema_version": acceptance.benchmark.RESULT_SCHEMA,
         "complete": True,
         "passes": True,
         "capture_acceptance": {"test": "capture"},

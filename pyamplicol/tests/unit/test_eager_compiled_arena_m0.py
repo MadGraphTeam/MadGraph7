@@ -350,6 +350,15 @@ def _make_capture(
         "specialize_flow_at_generation": False,
         "external_watchdog_required_for_long_runs": True,
     }
+    recurrence_runtime_acceptance = benchmark._recurrence_runtime_acceptance(
+        arguments,
+        source_identity=SOURCE,
+        runtime_provenance=RUNTIME,
+        generation=generation,
+        profiles=profiles,
+        validation_summary=validation,
+        profile_schedule=schedule,
+    )
     payload = {
         "kind": m0.CAPTURE_KIND,
         "schema_version": m0.CAPTURE_SCHEMA,
@@ -357,6 +366,7 @@ def _make_capture(
         "passes": True,
         "capture_acceptance": capture,
         "milestone0_acceptance": per_layout,
+        "recurrence_runtime_acceptance": recurrence_runtime_acceptance,
         "source": copy.deepcopy(SOURCE),
         "runtime_provenance": copy.deepcopy(RUNTIME),
         "provenance": {

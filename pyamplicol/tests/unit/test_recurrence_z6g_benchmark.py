@@ -747,20 +747,6 @@ def _profile(
                     "passes": True,
                 },
                 "cold_load_seconds": 0.01 + 0.001 * int(entry["round"]),
-                "peak_rss_after_cold_load": {
-                    "source": "resource.getrusage",
-                    "self_peak_bytes": 1024,
-                    "maximum_child_peak_bytes": 0,
-                    "observed_lower_bound_bytes": 1024,
-                    "semantics": "test high-water mark",
-                },
-                "peak_rss_after_profile": {
-                    "source": "resource.getrusage",
-                    "self_peak_bytes": 2048,
-                    "maximum_child_peak_bytes": 0,
-                    "observed_lower_bound_bytes": 2048,
-                    "semantics": "test high-water mark",
-                },
                 "lane_contract_sha256": lane_contract_sha256,
                 "timing_configuration": {
                     "minimum_internal_samples": (benchmark.MIN_AUTHORITATIVE_SAMPLES),
