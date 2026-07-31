@@ -63,10 +63,8 @@ def test_generation_reports_structural_reduction_and_helicity_recurrence() -> No
     assert isinstance(recurrence, dict)
     assert recurrence["contract_version"] == HELICITY_RECURRENCE_CONTRACT_VERSION
     assert recurrence["residual_current_count"] == 0
-    assert len(prepared.validation_points) == 10
-    assert [point.seed for point in prepared.validation_points] == list(
-        range(12345, 12355)
-    )
+    assert len(prepared.validation_points) == 2
+    assert [point.seed for point in prepared.validation_points] == [12345, 12346]
 
     metadata_only_backend = service_module.GenerationBackend(
         GenerationConfig(

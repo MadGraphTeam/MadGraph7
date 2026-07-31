@@ -511,6 +511,70 @@ def test_fake_darwin_libproc_handles_success_race_and_unexpected_error() -> None
         probe((3,))
 
 
+def test_darwin_footprint_probe_retries_transient_permission_race() -> None:
+    class FakeProcPidRusage:
+        argtypes: object = None
+        restype: object = None
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __call__(
+            self,
+            _pid: int,
+            _flavor: int,
+            buffer: object,
+        ) -> int:
+            self.calls += 1
+            if self.calls == 1:
+                ctypes.set_errno(errno.EPERM)
+                return -1
+            payload = struct.pack("=Q", 123_456_789)
+            ctypes.memmove(
+                ctypes.addressof(buffer) + 72,
+                payload,
+                len(payload),
+            )
+            return 0
+
+    class FakeLibrary:
+        proc_pid_rusage = FakeProcPidRusage()
+
+    library = FakeLibrary()
+    probe = watchdog.DarwinPhysicalFootprintProbe(library)
+
+    assert probe((7,)) == {7: 123_456_789}
+    assert library.proc_pid_rusage.calls == 2
+
+
+def test_darwin_footprint_probe_accepts_exit_after_permission_race() -> None:
+    class FakeProcPidRusage:
+        argtypes: object = None
+        restype: object = None
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __call__(
+            self,
+            _pid: int,
+            _flavor: int,
+            _buffer: object,
+        ) -> int:
+            self.calls += 1
+            ctypes.set_errno(errno.EPERM if self.calls == 1 else errno.ESRCH)
+            return -1
+
+    class FakeLibrary:
+        proc_pid_rusage = FakeProcPidRusage()
+
+    library = FakeLibrary()
+    probe = watchdog.DarwinPhysicalFootprintProbe(library)
+
+    assert probe((7,)) == {}
+    assert library.proc_pid_rusage.calls == 2
+
+
 def test_darwin_probe_constructor_rejects_missing_symbol() -> None:
     with pytest.raises(watchdog.ProbeError, match="proc_pid_rusage"):
         watchdog.DarwinPhysicalFootprintProbe(object())

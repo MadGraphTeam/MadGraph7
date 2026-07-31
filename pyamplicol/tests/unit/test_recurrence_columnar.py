@@ -489,6 +489,26 @@ def test_digest_and_bytes_ignore_nonsemantic_record_order() -> None:
     assert changed.canonical_digest != first.canonical_digest
 
 
+def test_private_freeze_adopts_owned_columns_and_copies_views() -> None:
+    owned = np.arange(4, dtype=np.dtype("<u4"))
+    adopted = recurrence_columnar._freeze_table("owned", {"value": owned})
+
+    assert adopted.column("value") is owned
+    assert owned.flags.owndata
+    assert not owned.flags.writeable
+
+    backing = np.arange(8, dtype=np.dtype("<u4"))
+    view = backing[::2]
+    copied = recurrence_columnar._freeze_table("view", {"value": view})
+    frozen = copied.column("value")
+
+    assert frozen is not view
+    assert frozen.flags.owndata
+    assert frozen.flags.c_contiguous
+    assert not frozen.flags.writeable
+    assert np.array_equal(frozen, view)
+
+
 def test_process_owned_pairing_tables_are_deterministic_and_separately_digested() -> (
     None
 ):

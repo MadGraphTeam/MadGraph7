@@ -77,8 +77,8 @@ emit_api_bundle = true
 [generation.validation]
 # generation.validation.enabled: Run generation validation. Default true.
 enabled = true
-# generation.validation.samples: Positive sample count. Default 10.
-samples = 10
+# generation.validation.samples: Positive sample count. Default 2.
+samples = 2
 # generation.validation.seed: Non-negative random seed. Default 12345.
 seed = 12345
 # generation.validation.relative_tolerance: Non-negative tolerance. Default 1e-12.

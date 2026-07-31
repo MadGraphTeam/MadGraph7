@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 
@@ -43,6 +43,7 @@ from ._plan_v2 import (
     RECURRENCE_PLAN_V2_ABI,
     RECURRENCE_RUNTIME_KIND,
     RECURRENCE_RUNTIME_LAYOUT_V2_ABI,
+    _Current,
     _Executor,
     _load_recurrence_exact_sections_v1,
     _NativeExactSectionsLoader,
@@ -130,6 +131,16 @@ class _RecurrenceExactPlan:
     runtime_defaults: tuple[Decimal, ...] = ()
     runtime_parameter_schema: tuple[_RuntimeParameterSchemaRow, ...] = ()
     color_contraction: _RecurrenceColorContraction | None = None
+    # Populated lazily only after the complete plan boundary has validated.
+    # The recipes are construction/runtime-session state, never serialized.
+    trusted_executor_recipes: dict[int, object] = field(
+        default_factory=dict,
+        repr=False,
+    )
+    trusted_currents_by_stage: dict[int, tuple[_Current, ...]] = field(
+        default_factory=dict,
+        repr=False,
+    )
 
     @classmethod
     def load(
@@ -819,8 +830,7 @@ def _runtime_parameter_schema(
             )
         probe_policy = (
             "derived-overwritten-fixed-zero-v1"
-            if parameter_kind
-            in {"derived", "derived_parameter_component"}
+            if parameter_kind in {"derived", "derived_parameter_component"}
             else "native-template-default-perturbed-v1"
         )
         rows.append(

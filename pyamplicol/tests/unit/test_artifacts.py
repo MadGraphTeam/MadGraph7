@@ -180,10 +180,14 @@ def test_builder_streams_files_and_registers_staged_payloads(
     assert (root / "payloads/registered.bin").read_bytes() == b"registered"
 
 
-def test_builder_round_trip_and_tamper_detection(tmp_path: Path) -> None:
+def test_builder_round_trip_and_explicit_tamper_detection(tmp_path: Path) -> None:
     root = tmp_path / "artifact"
     _build(root)
-    manifest = load_manifest(root, expected_target="test-target")
+    manifest = load_manifest(
+        root,
+        expected_target="test-target",
+        verify_payloads=True,
+    )
     assert manifest.default_process_id == "dd_to_z"
     assert manifest.payloads[0].path == "physics/process.json"
     assert manifest.runtime["required_runtime_capabilities"] == (
@@ -191,8 +195,48 @@ def test_builder_round_trip_and_tamper_detection(tmp_path: Path) -> None:
     )
 
     (root / "physics/process.json").write_text("modified\n", encoding="utf-8")
+    assert load_manifest(root).artifact_id == manifest.artifact_id
     with pytest.raises(ArtifactError, match=r"(size|digest) mismatch"):
-        load_manifest(root)
+        load_manifest(root, verify_payloads=True)
+
+
+def test_artifact_id_tracks_only_runtime_bearing_payload_records() -> None:
+    def record(path: str, role: str, digest: str) -> dict[str, object]:
+        return {
+            "path": path,
+            "role": role,
+            "media_type": "application/octet-stream",
+            "size_bytes": 1,
+            "sha256": digest * 64,
+            "executable": False,
+        }
+
+    manifest = {
+        "artifact_id": "0" * 64,
+        "created_utc": "2026-07-31T00:00:00Z",
+        "payloads": [
+            record("config/requested.toml", "configuration-requested", "1"),
+            record("config/effective.toml", "configuration-effective", "2"),
+            record(
+                "processes/p0/validation-momenta.json",
+                "validation-momenta",
+                "3",
+            ),
+            record("processes/p0/physics.json", "runtime-physics", "4"),
+        ],
+    }
+    identity = manifest_module.compute_artifact_id(manifest)
+
+    provenance_changed = json.loads(json.dumps(manifest))
+    for item in provenance_changed["payloads"][:3]:
+        item["sha256"] = "f" * 64
+        item["size_bytes"] = 999
+    provenance_changed["created_utc"] = "2030-01-01T00:00:00Z"
+    assert manifest_module.compute_artifact_id(provenance_changed) == identity
+
+    runtime_changed = json.loads(json.dumps(manifest))
+    runtime_changed["payloads"][3]["sha256"] = "f" * 64
+    assert manifest_module.compute_artifact_id(runtime_changed) != identity
 
 
 def test_python_loader_checks_cpu_features_before_payload_bytes(
@@ -207,7 +251,7 @@ def test_python_loader_checks_cpu_features_before_payload_bytes(
         lambda: ("test-target", ("sse2",)),
     )
     with pytest.raises(CompatibilityError, match="unavailable CPU features: avx2"):
-        load_manifest(root)
+        load_manifest(root, verify_payloads=True)
 
 
 def test_python_loader_accepts_available_canonical_cpu_features(
@@ -220,7 +264,7 @@ def test_python_loader_accepts_available_canonical_cpu_features(
         "_runtime_target_metadata",
         lambda: ("test-target", ("avx", "avx2", "fma", "sse2")),
     )
-    assert load_manifest(root).producer["target"] == {
+    assert load_manifest(root, verify_payloads=True).producer["target"] == {
         "triple": "test-target",
         "cpu_features": ("avx2", "fma"),
     }
@@ -248,7 +292,7 @@ def test_relative_paths_reject_escape_and_nonportable_forms(value: str) -> None:
         normalize_relative_path(value)
 
 
-def test_payload_symlink_is_rejected(tmp_path: Path) -> None:
+def test_explicit_validation_rejects_payload_symlink(tmp_path: Path) -> None:
     root = tmp_path / "artifact"
     _build(root)
     payload = root / "physics/process.json"
@@ -257,27 +301,27 @@ def test_payload_symlink_is_rejected(tmp_path: Path) -> None:
     payload.unlink()
     payload.symlink_to(target)
     with pytest.raises(ArtifactError, match="symlink"):
-        load_manifest(root)
+        load_manifest(root, verify_payloads=True)
 
 
-def test_undeclared_symlink_is_rejected(tmp_path: Path) -> None:
+def test_explicit_validation_rejects_undeclared_symlink(tmp_path: Path) -> None:
     root = tmp_path / "artifact"
     _build(root)
     target = tmp_path / "outside.txt"
     target.write_text("outside\n", encoding="utf-8")
     (root / "extra-link").symlink_to(target)
     with pytest.raises(ArtifactError, match="undeclared symlink"):
-        load_manifest(root)
+        load_manifest(root, verify_payloads=True)
 
 
-def test_undeclared_executable_is_rejected(tmp_path: Path) -> None:
+def test_explicit_validation_rejects_undeclared_executable(tmp_path: Path) -> None:
     root = tmp_path / "artifact"
     _build(root)
     executable = root / "injected"
     executable.write_text("#!/bin/sh\n", encoding="utf-8")
     executable.chmod(0o755)
     with pytest.raises(ArtifactError, match="undeclared executable"):
-        load_manifest(root)
+        load_manifest(root, verify_payloads=True)
 
 
 def test_evaluator_state_requires_target_metadata(tmp_path: Path) -> None:
@@ -298,7 +342,7 @@ def test_evaluator_state_requires_target_metadata(tmp_path: Path) -> None:
             runtime=_runtime(),
         )
     with pytest.raises(ArtifactError, match="no target metadata"):
-        load_manifest(root)
+        load_manifest(root, verify_payloads=True)
 
 
 def test_artifact_root_must_be_a_directory(tmp_path: Path) -> None:

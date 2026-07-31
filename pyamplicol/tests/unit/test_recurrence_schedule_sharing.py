@@ -11,6 +11,7 @@ from typing import cast
 
 import pytest
 
+import pyamplicol.generation.recurrence_schedule_sharing as schedule_sharing
 from pyamplicol.generation.artifact_writer import (
     _recurrence_binding_native_schedule_semantic_digest,
 )
@@ -176,6 +177,70 @@ def test_relation_discovery_only_changes_request_cache_identity() -> None:
         ("probe_process_id", "subprocess-b"),
     ):
         assert schedule_digest({**contract, field: replacement}) != diagnostic
+
+
+def test_combined_schedule_digests_match_public_wrappers() -> None:
+    logical = cast(
+        RecurrenceBuilderLogicalInputV1,
+        _Logical("subprocess-a", 1, (_Leg(1, 1), _Leg(-1, 1)), _digest("p")),
+    )
+    kwargs = {
+        "prepared_kernel_pack_digest": _digest("pack"),
+        "direct_template_catalog_digest": _digest("templates"),
+        "point_tile_size": 1024,
+        "workspace_mib": 256,
+    }
+    relation_discovery = {
+        "mode": "certified-reuse",
+        "precision_digits": 96,
+        "probe_count": 4,
+    }
+
+    native, request = schedule_sharing._recurrence_schedule_semantic_digests(
+        logical,
+        **kwargs,
+        relation_discovery=relation_discovery,
+    )
+
+    assert native == recurrence_native_schedule_semantic_digest(logical, **kwargs)
+    assert request == recurrence_schedule_semantic_digest(
+        logical,
+        **kwargs,
+        relation_discovery=relation_discovery,
+    )
+    assert schedule_sharing._recurrence_schedule_semantic_digests(
+        logical,
+        **kwargs,
+    ) == (native, native)
+
+
+def test_combined_schedule_digests_traverse_logical_input_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logical = cast(
+        RecurrenceBuilderLogicalInputV1,
+        _Logical("subprocess-a", 1, (_Leg(1, 1), _Leg(-1, 1)), _digest("p")),
+    )
+    original_schedule_plain = schedule_sharing._schedule_plain
+    logical_traversals = 0
+
+    def counting_schedule_plain(value: object) -> object:
+        nonlocal logical_traversals
+        if value is logical:
+            logical_traversals += 1
+        return original_schedule_plain(value)
+
+    monkeypatch.setattr(schedule_sharing, "_schedule_plain", counting_schedule_plain)
+    schedule_sharing._recurrence_schedule_semantic_digests(
+        logical,
+        prepared_kernel_pack_digest=_digest("pack"),
+        direct_template_catalog_digest=_digest("templates"),
+        point_tile_size=1024,
+        workspace_mib=256,
+        relation_discovery={"mode": "diagnostic"},
+    )
+
+    assert logical_traversals == 1
 
 
 def test_identical_process_schedules_are_lowered_once() -> None:

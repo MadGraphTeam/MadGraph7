@@ -15,6 +15,11 @@ all-flow-union captures with pinned legacy AmpliCol evidence.
 Authoritative lane timing is the median and raw MAD of seven independently
 warmed, identity-verified subprocess measurements per mode/batch cell.
 
+For a developer-only comparison, set
+``PYAMPLICOL_RECURRENCE_Z6G_SOURCE_CHECKOUT`` to an absolute clean worktree
+inside this driver's workspace. The frozen driver remains the executable
+script while source and installed-runtime provenance bind to that worktree.
+
 Example::
 
     .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
@@ -46,7 +51,69 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any, Literal, cast
 
-ROOT = Path(__file__).resolve().parents[2]
+
+class HarnessError(RuntimeError):
+    """Raised when the benchmark contract cannot be completed."""
+
+
+SOURCE_CHECKOUT_OVERRIDE_ENV = "PYAMPLICOL_RECURRENCE_Z6G_SOURCE_CHECKOUT"
+DRIVER_PATH = Path(__file__).resolve()
+DRIVER_ROOT = DRIVER_PATH.parents[2]
+_SOURCE_CHECKOUT_FILE_MARKERS = (
+    Path("Cargo.toml"),
+    Path("pyproject.toml"),
+    Path("src/pyamplicol/__init__.py"),
+    Path("tools/developer/recurrence_z6g_benchmark.py"),
+)
+
+
+def _resolve_source_checkout_root(
+    *,
+    driver_root: Path = DRIVER_ROOT,
+    environment: Mapping[str, str] = os.environ,
+) -> Path:
+    """Resolve the optional measured-checkout override, failing closed."""
+
+    workspace_root = driver_root.resolve(strict=True)
+    raw_override = environment.get(SOURCE_CHECKOUT_OVERRIDE_ENV)
+    if raw_override is None:
+        return workspace_root
+    if not raw_override:
+        raise HarnessError(
+            f"{SOURCE_CHECKOUT_OVERRIDE_ENV} must name an absolute source checkout"
+        )
+    override = Path(raw_override)
+    if not override.is_absolute():
+        raise HarnessError(f"{SOURCE_CHECKOUT_OVERRIDE_ENV} must be an absolute path")
+    try:
+        checkout = override.resolve(strict=True)
+    except OSError as error:
+        raise HarnessError(
+            f"{SOURCE_CHECKOUT_OVERRIDE_ENV} source checkout is unavailable"
+        ) from error
+    if not checkout.is_dir():
+        raise HarnessError(f"{SOURCE_CHECKOUT_OVERRIDE_ENV} does not name a directory")
+    if checkout != workspace_root and workspace_root not in checkout.parents:
+        raise HarnessError(
+            f"{SOURCE_CHECKOUT_OVERRIDE_ENV} must stay inside the driver workspace"
+        )
+    git_marker = checkout / ".git"
+    missing = [
+        marker.as_posix()
+        for marker in _SOURCE_CHECKOUT_FILE_MARKERS
+        if not (checkout / marker).is_file()
+    ]
+    if not git_marker.exists() or missing:
+        if not git_marker.exists():
+            missing.insert(0, ".git")
+        raise HarnessError(
+            f"{SOURCE_CHECKOUT_OVERRIDE_ENV} is not a pyAmpliCol source checkout; "
+            f"missing {', '.join(missing)}"
+        )
+    return checkout
+
+
+ROOT = _resolve_source_checkout_root()
 PREPARED_MODEL_ID = "built-in-sm-jit-o2"
 PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL = 2
 DEFAULT_BATCH_SIZES = (1, 128, 1024)
@@ -62,6 +129,8 @@ REUSE_SIGNATURE_KIND = "pyamplicol-benchmark-artifact-reuse-signature"
 REUSE_SIGNATURE_SCHEMA = 3
 PROFILE_SCHEDULE_KIND = "pyamplicol-interleaved-subprocess-profile-schedule"
 PROFILE_SCHEDULE_SCHEMA = 2
+RECURRENCE_RUNTIME_ACCEPTANCE_KIND = "pyamplicol-recurrence-runtime-acceptance"
+RECURRENCE_RUNTIME_ACCEPTANCE_SCHEMA = 1
 WORKER_VERIFICATION_KIND = "pyamplicol-profile-worker-pre-timing-verification"
 WORKER_VERIFICATION_SCHEMA = 1
 RETAINED_WORKER_RESULT_KIND = "pyamplicol-retained-profile-worker-result"
@@ -74,10 +143,19 @@ M0_ACCEPTANCE_SCHEMA = 4
 _WORKER_MARKER = "PYAMPLICOL_RECURRENCE_Z6G_WORKER_RESULT="
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _REVISION_PATTERN = re.compile(r"[0-9a-f]{40}")
-
-
-class HarnessError(RuntimeError):
-    """Raised when the benchmark contract cannot be completed."""
+_RESOURCE_PEAK_SEMANTICS = (
+    "self high-water mark and maximum completed-child high-water mark; "
+    "not an aggregate process-tree sample"
+)
+_RESOURCE_PEAK_KEYS = frozenset(
+    {
+        "source",
+        "self_peak_bytes",
+        "maximum_child_peak_bytes",
+        "observed_lower_bound_bytes",
+        "semantics",
+    }
+)
 
 
 def _process(gluon_count: int) -> str:
@@ -135,10 +213,7 @@ def _resource_peak() -> dict[str, object]:
         "self_peak_bytes": self_bytes,
         "maximum_child_peak_bytes": children_bytes,
         "observed_lower_bound_bytes": max(self_bytes, children_bytes),
-        "semantics": (
-            "self high-water mark and maximum completed-child high-water mark; "
-            "not an aggregate process-tree sample"
-        ),
+        "semantics": _RESOURCE_PEAK_SEMANTICS,
     }
 
 
@@ -3495,7 +3570,7 @@ def _run_worker(
     phase: str,
     timeout_seconds: float,
 ) -> dict[str, Any]:
-    command = (sys.executable, str(Path(__file__).resolve()), "_worker", *arguments)
+    command = (sys.executable, str(DRIVER_PATH), "_worker", *arguments)
     expected_operation = arguments[0] if arguments else None
     environment = os.environ.copy()
     environment.setdefault("SYMBOLICA_HIDE_BANNER", "1")
@@ -4814,6 +4889,8 @@ def _aggregate_profile_workers(
             "worker_command": worker.get("worker_command"),
             "worker_invocation": worker.get("worker_invocation"),
             "worker_process_record": dict(worker_process_record),
+            "peak_rss_after_cold_load": worker.get("peak_rss_after_cold_load"),
+            "peak_rss_after_profile": worker.get("peak_rss_after_profile"),
             "pre_timing_verification": _compact_profile_verification(verification),
             "post_timing_loaded_runtime_artifact": worker.get(
                 "post_timing_loaded_runtime_artifact"
@@ -4890,6 +4967,7 @@ def _profile_measurement_contract(
     profiles: Mapping[str, Mapping[str, Any]],
     *,
     profile_schedule: Mapping[str, object] | None,
+    required_modes: Sequence[str] = EXECUTION_MODES,
 ) -> dict[str, object]:
     lanes: dict[str, dict[str, object]] = {}
     root_process_contracts = [
@@ -4936,7 +5014,7 @@ def _profile_measurement_contract(
         and arguments.minimum_samples >= MIN_AUTHORITATIVE_SAMPLES
         and arguments.warmup_runs >= 1
     )
-    for mode in EXECUTION_MODES:
+    for mode in required_modes:
         profile = profiles.get(mode)
         if profile is None:
             lanes[mode] = {
@@ -5940,6 +6018,589 @@ def _profile_artifact_semantic_contract(
     }
 
 
+def _resource_peak_mapping_errors(
+    value: object,
+    *,
+    label: str,
+) -> list[str]:
+    if not isinstance(value, Mapping):
+        return [f"{label} is missing"]
+    errors: list[str] = []
+    if set(value) != _RESOURCE_PEAK_KEYS:
+        errors.append(f"{label} has unexpected keys")
+    if value.get("source") != "resource.getrusage":
+        errors.append(f"{label} has an invalid source")
+    if value.get("semantics") != _RESOURCE_PEAK_SEMANTICS:
+        errors.append(f"{label} has invalid semantics")
+    integer_fields = (
+        "self_peak_bytes",
+        "maximum_child_peak_bytes",
+        "observed_lower_bound_bytes",
+    )
+    integers: dict[str, int] = {}
+    for field in integer_fields:
+        raw = value.get(field)
+        if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
+            errors.append(f"{label} {field} is not a non-negative integer")
+        else:
+            integers[field] = raw
+    if len(integers) == len(integer_fields) and integers[
+        "observed_lower_bound_bytes"
+    ] != max(
+        integers["self_peak_bytes"],
+        integers["maximum_child_peak_bytes"],
+    ):
+        errors.append(f"{label} observed lower bound is inconsistent")
+    return errors
+
+
+def _recurrence_profile_rss_contract(
+    profile: Mapping[str, Any] | None,
+) -> dict[str, object]:
+    errors: list[str] = []
+    worker_count = 0
+    maximum_cold_load_bytes = 0
+    maximum_post_profile_bytes = 0
+    raw_measurements = profile.get("profiles") if isinstance(profile, Mapping) else None
+    if not isinstance(raw_measurements, list):
+        return {
+            "passes": False,
+            "errors": ["recurrence profile measurements are missing for RSS"],
+            "worker_count": 0,
+            "maximum_cold_load_observed_lower_bound_bytes": None,
+            "maximum_post_profile_observed_lower_bound_bytes": None,
+        }
+    for measurement_index, measurement in enumerate(raw_measurements):
+        samples = (
+            measurement.get("subprocess_samples")
+            if isinstance(measurement, Mapping)
+            else None
+        )
+        if not isinstance(samples, list):
+            errors.append(
+                f"recurrence RSS measurement {measurement_index} has no workers"
+            )
+            continue
+        for sample_index, sample in enumerate(samples):
+            worker_count += 1
+            label = f"recurrence RSS worker {measurement_index}/{sample_index}"
+            if not isinstance(sample, Mapping):
+                errors.append(f"{label} is invalid")
+                continue
+            cold = sample.get("peak_rss_after_cold_load")
+            post = sample.get("peak_rss_after_profile")
+            cold_errors = _resource_peak_mapping_errors(
+                cold,
+                label=f"{label} cold-load mapping",
+            )
+            post_errors = _resource_peak_mapping_errors(
+                post,
+                label=f"{label} post-profile mapping",
+            )
+            errors.extend(cold_errors)
+            errors.extend(post_errors)
+            if cold_errors or post_errors:
+                continue
+            assert isinstance(cold, Mapping)
+            assert isinstance(post, Mapping)
+            cold_values = {
+                field: cast(int, cold[field])
+                for field in (
+                    "self_peak_bytes",
+                    "maximum_child_peak_bytes",
+                    "observed_lower_bound_bytes",
+                )
+            }
+            post_values = {
+                field: cast(int, post[field])
+                for field in (
+                    "self_peak_bytes",
+                    "maximum_child_peak_bytes",
+                    "observed_lower_bound_bytes",
+                )
+            }
+            for field in cold_values:
+                if post_values[field] < cold_values[field]:
+                    errors.append(f"{label} post-profile {field} is below cold-load")
+            maximum_cold_load_bytes = max(
+                maximum_cold_load_bytes,
+                cold_values["observed_lower_bound_bytes"],
+            )
+            maximum_post_profile_bytes = max(
+                maximum_post_profile_bytes,
+                post_values["observed_lower_bound_bytes"],
+            )
+    if worker_count == 0:
+        errors.append("recurrence RSS profile contains no workers")
+    return {
+        "passes": not errors,
+        "errors": errors,
+        "worker_count": worker_count,
+        "maximum_cold_load_observed_lower_bound_bytes": (
+            maximum_cold_load_bytes if worker_count else None
+        ),
+        "maximum_post_profile_observed_lower_bound_bytes": (
+            maximum_post_profile_bytes if worker_count else None
+        ),
+    }
+
+
+def _recurrence_runtime_acceptance(
+    arguments: argparse.Namespace,
+    *,
+    source_identity: Mapping[str, object],
+    runtime_provenance: Mapping[str, object],
+    generation: Mapping[str, Mapping[str, object]],
+    profiles: Mapping[str, Mapping[str, Any]],
+    validation_summary: Mapping[str, object] | None,
+    profile_schedule: Mapping[str, object] | None,
+) -> dict[str, object]:
+    """Build a developer-only, fail-closed recurrence runtime evidence record."""
+
+    errors: list[str] = []
+    required_configuration = {
+        "modes": ["recurrence"],
+        "generation_only": False,
+        "batch_sizes": list(DEFAULT_BATCH_SIZES),
+        "target_runtime_seconds": 5.0,
+        "warmup_runs": 2,
+        "minimum_internal_samples": MIN_AUTHORITATIVE_SAMPLES,
+        "subprocess_samples_minimum": MIN_AUTHORITATIVE_SAMPLES,
+        "subprocess_samples_maximum": 21,
+        "process_family": "d d~ > Z + (n-1)*g",
+        "accepted_n_values": [6, 7],
+        "generation_specialized_axes_allowed": False,
+        "complete_physical_axes_required": True,
+    }
+    observed_configuration = {
+        "modes": getattr(arguments, "modes", None),
+        "generation_only": getattr(arguments, "generation_only", None),
+        "batch_sizes": getattr(arguments, "batch_size", None),
+        "target_runtime_seconds": getattr(arguments, "target_runtime", None),
+        "warmup_runs": getattr(arguments, "warmup_runs", None),
+        "minimum_internal_samples": getattr(arguments, "minimum_samples", None),
+        "subprocess_samples": getattr(arguments, "subprocess_samples", None),
+        "gluon_count": getattr(arguments, "gluon_count", None),
+        "process_expression_override": getattr(
+            arguments,
+            "process_expression",
+            None,
+        ),
+        "lc_flow_layout": getattr(arguments, "lc_flow_layout", None),
+        "color_flow_request": getattr(arguments, "color_flow", None),
+        "helicity_request": getattr(arguments, "helicity", None),
+        "validation_samples": getattr(arguments, "validation_samples", None),
+        "point_tile_size": getattr(arguments, "point_tile_size", None),
+        "jit_optimization_level": getattr(
+            arguments,
+            "jit_optimization_level",
+            None,
+        ),
+        "specialize_flow_at_generation": getattr(
+            arguments,
+            "specialize_flow_at_generation",
+            None,
+        ),
+        "prepared_model_path": (
+            None
+            if getattr(arguments, "prepared_model", None) is None
+            else str(arguments.prepared_model)
+        ),
+    }
+    if getattr(arguments, "modes", None) != ["recurrence"]:
+        errors.append("runtime acceptance requires only the recurrence mode")
+    if getattr(arguments, "generation_only", None) is not False:
+        errors.append("runtime acceptance requires completed profiling")
+    if getattr(arguments, "batch_size", None) != list(DEFAULT_BATCH_SIZES):
+        errors.append("runtime acceptance requires exact batches [1, 128, 1024]")
+    if not _is_exact_int(getattr(arguments, "warmup_runs", None), 2):
+        errors.append("runtime acceptance requires exactly two warm-up runs")
+    target_runtime = getattr(arguments, "target_runtime", None)
+    if (
+        isinstance(target_runtime, bool)
+        or not isinstance(target_runtime, (float, int))
+        or not math.isfinite(float(target_runtime))
+        or float(target_runtime) != 5.0
+    ):
+        errors.append("runtime acceptance requires a five-second target")
+    minimum_samples = getattr(arguments, "minimum_samples", None)
+    if (
+        isinstance(minimum_samples, bool)
+        or not isinstance(minimum_samples, int)
+        or minimum_samples < MIN_AUTHORITATIVE_SAMPLES
+    ):
+        errors.append("runtime acceptance requires at least seven native samples")
+    subprocess_samples = getattr(arguments, "subprocess_samples", None)
+    if (
+        isinstance(subprocess_samples, bool)
+        or not isinstance(subprocess_samples, int)
+        or not MIN_AUTHORITATIVE_SAMPLES <= subprocess_samples <= 21
+    ):
+        errors.append(
+            "runtime acceptance requires seven through twenty-one worker samples"
+        )
+    gluon_count = getattr(arguments, "gluon_count", None)
+    selected_process = _selected_process(arguments)
+    normalized_selected_process = " ".join(selected_process.split()).casefold()
+    expected_ladder_process = (
+        "d d~ > z" + " g" * gluon_count
+        if (
+            not isinstance(gluon_count, bool)
+            and isinstance(gluon_count, int)
+            and gluon_count in (5, 6)
+        )
+        else None
+    )
+    if (
+        expected_ladder_process is None
+        or normalized_selected_process != expected_ladder_process
+    ):
+        errors.append(
+            "runtime acceptance requires the exact d d~ > Z+(n-1)g "
+            "ladder process for n=6 or n=7"
+        )
+    if getattr(arguments, "lc_flow_layout", None) not in LC_FLOW_LAYOUTS:
+        errors.append("runtime acceptance has an invalid LC flow layout")
+    if getattr(arguments, "specialize_flow_at_generation", None) is not False:
+        errors.append("runtime acceptance forbids generation specialization")
+
+    recurrence_profile = profiles.get("recurrence")
+    recurrence_profiles = (
+        {"recurrence": recurrence_profile}
+        if isinstance(recurrence_profile, Mapping)
+        else {}
+    )
+    if set(profiles) != {"recurrence"}:
+        errors.append("runtime acceptance profile inventory is not recurrence-only")
+
+    try:
+        measurement_contract = _profile_measurement_contract(
+            arguments,
+            recurrence_profiles,
+            profile_schedule=profile_schedule,
+            required_modes=("recurrence",),
+        )
+    except (HarnessError, TypeError, ValueError) as error:
+        measurement_contract = {
+            "passes": False,
+            "errors": [f"measurement contract failed closed: {error}"],
+        }
+    if measurement_contract.get("passes") is not True:
+        errors.append("authenticated recurrence measurement contract did not pass")
+
+    try:
+        artifact_semantic_contract = _profile_artifact_semantic_contract(
+            recurrence_profiles
+        )
+    except (HarnessError, TypeError, ValueError) as error:
+        artifact_semantic_contract = {
+            "passes": False,
+            "errors": [f"artifact semantic contract failed closed: {error}"],
+        }
+    if artifact_semantic_contract.get("passes") is not True:
+        errors.append("recurrence artifact semantic contract did not pass")
+
+    try:
+        recomputed_validation = _pairwise_profile_validation(recurrence_profiles)
+    except (HarnessError, TypeError, ValueError) as error:
+        recomputed_validation = {
+            "passes": False,
+            "errors": [f"lane validation failed closed: {error}"],
+        }
+    if (
+        recomputed_validation.get("passes") is not True
+        or recomputed_validation.get("lane_validation_passes") is not True
+        or recomputed_validation.get("selectors_match") is not True
+        or recomputed_validation.get("fixtures_match") is not True
+        or recomputed_validation.get("pairwise_validation_passes") is not None
+    ):
+        errors.append("recurrence lane self-validation did not pass")
+    if not isinstance(validation_summary, Mapping) or _canonical_sha256(
+        validation_summary
+    ) != _canonical_sha256(recomputed_validation):
+        errors.append("retained validation summary does not match recomputation")
+
+    rss_contract = _recurrence_profile_rss_contract(
+        recurrence_profile if isinstance(recurrence_profile, Mapping) else None
+    )
+    if rss_contract.get("passes") is not True:
+        errors.append("recurrence worker RSS contract did not pass")
+
+    semantic_identity = (
+        recurrence_profile.get("artifact_semantic_identity")
+        if isinstance(recurrence_profile, Mapping)
+        else None
+    )
+    semantic_identity_sha256 = (
+        recurrence_profile.get("artifact_semantic_identity_sha256")
+        if isinstance(recurrence_profile, Mapping)
+        else None
+    )
+    coverage = (
+        semantic_identity.get("coverage")
+        if isinstance(semantic_identity, Mapping)
+        else None
+    )
+    generation_specialized_axes = (
+        semantic_identity.get("generation_specialized_axes")
+        if isinstance(semantic_identity, Mapping)
+        else None
+    )
+    if (
+        not isinstance(coverage, Mapping)
+        or coverage.get("complete_physical_axes") is not True
+        or generation_specialized_axes != []
+    ):
+        errors.append("recurrence artifact lacks complete unspecialized physical axes")
+
+    generation_record = generation.get("recurrence")
+    if (
+        not isinstance(generation_record, Mapping)
+        or generation_record.get("mode") != "recurrence"
+        or generation_record.get("generation_reused") is not False
+    ):
+        errors.append("recurrence generation evidence is not a fresh recurrence lane")
+    artifact_identity = (
+        generation_record.get("artifact_identity")
+        if isinstance(generation_record, Mapping)
+        else None
+    )
+    generation_semantic_identity = (
+        artifact_identity.get("semantic_identity")
+        if isinstance(artifact_identity, Mapping)
+        else None
+    )
+    artifact_id: str | None = None
+    try:
+        artifact_id = _required_sha256(
+            (
+                artifact_identity.get("artifact_id")
+                if isinstance(artifact_identity, Mapping)
+                else None
+            ),
+            label="recurrence generation artifact",
+        )
+    except HarnessError:
+        errors.append("recurrence generation artifact ID is invalid")
+    generation_semantic_sha256 = (
+        artifact_identity.get("semantic_identity_sha256")
+        if isinstance(artifact_identity, Mapping)
+        else None
+    )
+    generation_top_level_semantic_sha256 = (
+        generation_record.get("artifact_semantic_identity_sha256")
+        if isinstance(generation_record, Mapping)
+        else None
+    )
+    if (
+        not isinstance(semantic_identity_sha256, str)
+        or _SHA256_PATTERN.fullmatch(semantic_identity_sha256) is None
+        or not isinstance(generation_semantic_identity, Mapping)
+        or _canonical_sha256(generation_semantic_identity) != semantic_identity_sha256
+        or generation_semantic_sha256 != semantic_identity_sha256
+        or generation_top_level_semantic_sha256 != semantic_identity_sha256
+    ):
+        errors.append(
+            "recurrence generation artifact semantic identity is not profile-bound"
+        )
+    expected_effective_contract = {
+        "execution_mode": "recurrence",
+        "backend": "jit",
+        "jit_optimization_level": (
+            _expected_effective_jit_optimization_level(
+                arguments,
+                mode="recurrence",
+            )
+        ),
+        "color_accuracy": "lc",
+        "lc_flow_layout": getattr(arguments, "lc_flow_layout", None),
+    }
+    effective_contract = (
+        generation_record.get("effective_contract")
+        if isinstance(generation_record, Mapping)
+        else None
+    )
+    if not isinstance(effective_contract, Mapping) or any(
+        effective_contract.get(key) != value
+        for key, value in expected_effective_contract.items()
+    ):
+        errors.append("recurrence generation artifact contract is invalid")
+
+    selector_contract = (
+        recurrence_profile.get("selector_contract")
+        if isinstance(recurrence_profile, Mapping)
+        else None
+    )
+    validation = (
+        recurrence_profile.get("validation")
+        if isinstance(recurrence_profile, Mapping)
+        else None
+    )
+    try:
+        fixture_contract = (
+            _validation_fixture_contract(validation, mode="recurrence")
+            if isinstance(validation, Mapping)
+            else None
+        )
+    except HarnessError:
+        fixture_contract = None
+    if not isinstance(selector_contract, Mapping):
+        errors.append("recurrence selector identity is missing")
+    if not isinstance(fixture_contract, Mapping):
+        errors.append("recurrence validation fixture identity is missing")
+
+    source_identity_sha256 = (
+        _canonical_sha256(source_identity)
+        if isinstance(source_identity, Mapping) and source_identity
+        else None
+    )
+    runtime_provenance_sha256 = (
+        _canonical_sha256(runtime_provenance)
+        if isinstance(runtime_provenance, Mapping) and runtime_provenance
+        else None
+    )
+    if source_identity_sha256 is None:
+        errors.append("source identity is missing")
+    if runtime_provenance_sha256 is None:
+        errors.append("runtime provenance is missing")
+    expected_worker_bindings = {
+        "source_identity_sha256": source_identity_sha256,
+        "runtime_provenance_sha256": runtime_provenance_sha256,
+        "artifact_id": artifact_id,
+        "artifact_semantic_identity_sha256": semantic_identity_sha256,
+    }
+    raw_schedule_entries = (
+        profile_schedule.get("entries")
+        if isinstance(profile_schedule, Mapping)
+        else None
+    )
+    workers_are_generation_bound = isinstance(raw_schedule_entries, list) and bool(
+        raw_schedule_entries
+    )
+    if isinstance(raw_schedule_entries, list):
+        for entry in raw_schedule_entries:
+            verification = (
+                entry.get("pre_timing_verification")
+                if isinstance(entry, Mapping)
+                else None
+            )
+            expected = (
+                verification.get("expected")
+                if isinstance(verification, Mapping)
+                else None
+            )
+            observed = (
+                verification.get("observed")
+                if isinstance(verification, Mapping)
+                else None
+            )
+            if (
+                not isinstance(expected, Mapping)
+                or not isinstance(observed, Mapping)
+                or any(
+                    expected.get(field) != value or observed.get(field) != value
+                    for field, value in expected_worker_bindings.items()
+                )
+            ):
+                workers_are_generation_bound = False
+                break
+    if not workers_are_generation_bound:
+        errors.append(
+            "recurrence profile workers are not bound to source, runtime, and "
+            "generation identities"
+        )
+
+    process_expression = (
+        " ".join(
+            cast(str, recurrence_profile.get("process_expression")).split()
+        ).casefold()
+        if isinstance(recurrence_profile, Mapping)
+        and isinstance(recurrence_profile.get("process_expression"), str)
+        else None
+    )
+    expected_process_expression = " ".join(
+        _selected_process(arguments).split()
+    ).casefold()
+    process_id = (
+        recurrence_profile.get("process_id")
+        if isinstance(recurrence_profile, Mapping)
+        else None
+    )
+    if (
+        process_expression != expected_process_expression
+        or not isinstance(process_id, str)
+        or not process_id
+    ):
+        errors.append("recurrence process identity is invalid")
+
+    bindings = {
+        "source_identity_sha256": source_identity_sha256,
+        "runtime_provenance_sha256": runtime_provenance_sha256,
+        "generation_artifact_id": artifact_id,
+        "generation_artifact_semantic_identity_sha256": (generation_semantic_sha256),
+        "profile_schedule_sha256": (
+            _canonical_sha256(profile_schedule)
+            if isinstance(profile_schedule, Mapping)
+            else None
+        ),
+        "recurrence_profile_sha256": (
+            _canonical_sha256(recurrence_profile)
+            if isinstance(recurrence_profile, Mapping)
+            else None
+        ),
+        "selector_contract": (
+            dict(selector_contract) if isinstance(selector_contract, Mapping) else None
+        ),
+        "selector_contract_sha256": (
+            _canonical_sha256(selector_contract)
+            if isinstance(selector_contract, Mapping)
+            else None
+        ),
+        "validation_fixture": (
+            dict(fixture_contract) if isinstance(fixture_contract, Mapping) else None
+        ),
+        "validation_fixture_sha256": (
+            _canonical_sha256(fixture_contract)
+            if isinstance(fixture_contract, Mapping)
+            else None
+        ),
+        "process_id": process_id,
+        "process_expression": process_expression,
+        "lc_flow_layout": getattr(arguments, "lc_flow_layout", None),
+        "configuration": observed_configuration,
+        "configuration_sha256": _canonical_sha256(observed_configuration),
+    }
+    accepted = not errors
+    record: dict[str, object] = {
+        "kind": RECURRENCE_RUNTIME_ACCEPTANCE_KIND,
+        "schema_version": RECURRENCE_RUNTIME_ACCEPTANCE_SCHEMA,
+        "accepted": accepted,
+        "status": "accepted" if accepted else "rejected",
+        "errors": errors,
+        "required": required_configuration,
+        "contracts": {
+            "measurement": measurement_contract,
+            "artifact_semantics": artifact_semantic_contract,
+            "lane_validation": {
+                "passes": recomputed_validation.get("passes"),
+                "lane_validation_passes": recomputed_validation.get(
+                    "lane_validation_passes"
+                ),
+                "selectors_match": recomputed_validation.get("selectors_match"),
+                "fixtures_match": recomputed_validation.get("fixtures_match"),
+                "pairwise_validation_passes": recomputed_validation.get(
+                    "pairwise_validation_passes"
+                ),
+                "summary_sha256": _canonical_sha256(recomputed_validation),
+            },
+            "worker_rss": rss_contract,
+        },
+        "bindings": bindings,
+    }
+    record["content_sha256"] = _canonical_sha256(record)
+    return record
+
+
 def _capture_acceptance(
     arguments: argparse.Namespace,
     profiles: Mapping[str, Mapping[str, Any]],
@@ -6447,12 +7108,19 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
         profile_schedule=profile_schedule,
     )
     milestone0 = _milestone0_acceptance_manifest(arguments, capture)
+    recurrence_runtime_acceptance = _recurrence_runtime_acceptance(
+        arguments,
+        source_identity=source_identity,
+        runtime_provenance=runtime_provenance,
+        generation=generation,
+        profiles=profiles,
+        validation_summary=validation_summary,
+        profile_schedule=profile_schedule,
+    )
     finished_at = _utc_now()
     driver_command = getattr(arguments, "driver_command", None)
     if not isinstance(driver_command, Mapping):
-        driver_command = _command_identity(
-            (sys.executable, str(Path(__file__).resolve()))
-        )
+        driver_command = _command_identity((sys.executable, str(DRIVER_PATH)))
     payload: dict[str, object] = {
         "kind": RESULT_KIND,
         "schema_version": RESULT_SCHEMA,
@@ -6460,6 +7128,7 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
         "passes": capture["passes"],
         "capture_acceptance": capture,
         "milestone0_acceptance": milestone0,
+        "recurrence_runtime_acceptance": recurrence_runtime_acceptance,
         "source": source_identity,
         "runtime_provenance": runtime_provenance,
         "provenance": {
@@ -6710,7 +7379,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         arguments.modes = _normalize_modes(arguments)
         arguments.batch_size = _normalize_batch_sizes(arguments)
         arguments.driver_command = _command_identity(
-            (sys.executable, str(Path(__file__).resolve()), *values)
+            (sys.executable, str(DRIVER_PATH), *values)
         )
         if arguments.warmup_runs < 0:
             raise HarnessError("warmup runs must be non-negative")

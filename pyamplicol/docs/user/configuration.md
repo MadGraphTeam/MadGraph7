@@ -108,6 +108,12 @@ requires `built-in-sm` or a compatible `.pyamplicol-model` source.
 
 ## Default numerical current reuse
 
+Post-build validation defaults to two deterministic native binary64 points.
+This is a runtime total-versus-resolved consistency check. It is separate from,
+and does not reduce, the arbitrary-precision relation certification below:
+that remains at 96 digits with four candidate probes and four independent
+verification probes.
+
 Generation audits missed current relations during its bounded warm-up and
 applies certified reuse by default:
 

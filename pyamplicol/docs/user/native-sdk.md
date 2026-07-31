@@ -275,5 +275,6 @@ loading executable state. Higher-precision retained evaluator state is not a
 native SDK capability and remains available through the public
 Symbolica-backed Python exact-evaluation path.
 
-Process artifacts are trusted executable inputs. Their hashes verify payload
-consistency but do not establish origin.
+Process artifacts are trusted executable inputs. Normal loading does not
+reinterpret self-reported hashes as proof of origin; an explicit Python
+`validate_payloads()` call remains available for corruption audits.

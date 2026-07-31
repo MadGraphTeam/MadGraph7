@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from decimal import Decimal
+from typing import Any
 
 from pyamplicol.api.errors import ArtifactError, CompatibilityError, EvaluationError
 from pyamplicol.runtime.eager_exact._contracts import (
@@ -52,6 +54,26 @@ _CERTIFIED_REUSE_FLAGS = (
 
 _Point = Sequence[tuple[Decimal, Decimal, Decimal, Decimal]]
 _CurrentObserver = Callable[[int, tuple[_ComplexDecimal, ...]], None]
+_FactorCache = list[_ComplexDecimal | None]
+
+_INPUT_CURRENT = 0
+_INPUT_MOMENTUM = 1
+_INPUT_PARAMETER = 2
+_INPUT_CONSTANT = 3
+
+
+@dataclass(frozen=True, slots=True)
+class _TrustedInputRecipe:
+    kind: int
+    index: int
+    component: int
+    constant: _ComplexDecimal | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _TrustedExecutorRecipe:
+    kernel: Any
+    inputs: tuple[_TrustedInputRecipe, ...]
 
 
 def _evaluate_replay_point(
@@ -205,8 +227,10 @@ def _execute_schedule(
     current_observer: _CurrentObserver | None = None,
 ) -> tuple[_ComplexDecimal, ...]:
     sections = plan.sections
-    arena = [_complex_zero() for _ in range(sections.current_arena_components)]
-    amplitudes = [_complex_zero() for _ in range(sections.amplitude_destination_count)]
+    zero = _complex_zero()
+    arena = [zero] * sections.current_arena_components
+    amplitudes = [zero] * sections.amplitude_destination_count
+    factor_cache: _FactorCache = [None] * len(sections.exact_factors)
     initialized_contribution_stage: int | None = None
     active_stage: int | None = None
 
@@ -214,7 +238,7 @@ def _execute_schedule(
         if active_stage is not None and group.stage != active_stage:
             _observe_stage_currents(
                 current_observer,
-                sections.currents,
+                plan,
                 active_stage,
                 arena,
             )
@@ -243,6 +267,7 @@ def _execute_schedule(
                         momenta,
                         prepared_parameters,
                         arena,
+                        factor_cache=factor_cache,
                     )
                     continue
                 variant = selected_source_variants.get(source_row_id)
@@ -254,6 +279,7 @@ def _execute_schedule(
                         momenta,
                         prepared_parameters,
                         arena,
+                        factor_cache=factor_cache,
                     )
             continue
 
@@ -267,6 +293,7 @@ def _execute_schedule(
                         plan,
                         contribution_row,
                         arena,
+                        factor_cache=factor_cache,
                     )
                 continue
         executor = plan.executors.get(group.executor_id)
@@ -285,6 +312,7 @@ def _execute_schedule(
                     arena,
                     amplitudes,
                     precision,
+                    factor_cache=factor_cache,
                 )
         elif group.role == _ROLE_FINALIZATION:
             for finalization_row in sections.finalizations[start:stop]:
@@ -297,6 +325,7 @@ def _execute_schedule(
                     arena,
                     amplitudes,
                     precision,
+                    factor_cache=factor_cache,
                 )
         elif group.role == _ROLE_CLOSURE:
             for closure_row in sections.closures[start:stop]:
@@ -306,6 +335,7 @@ def _execute_schedule(
                         closure_row,
                         arena,
                         amplitudes,
+                        factor_cache=factor_cache,
                     )
                 else:
                     _execute_prepared_row(
@@ -317,13 +347,14 @@ def _execute_schedule(
                         arena,
                         amplitudes,
                         precision,
+                        factor_cache=factor_cache,
                     )
         else:  # pragma: no cover - native plan validation rejects this
             raise ArtifactError(f"unsupported recurrence row role {group.role}")
     if active_stage is not None:
         _observe_stage_currents(
             current_observer,
-            sections.currents,
+            plan,
             active_stage,
             arena,
         )
@@ -332,25 +363,41 @@ def _execute_schedule(
 
 def _observe_stage_currents(
     observer: _CurrentObserver | None,
-    currents: Sequence[_Current],
+    plan: _RecurrenceExactPlan,
     stage: int,
     arena: Sequence[_ComplexDecimal],
 ) -> None:
     if observer is None:
         return
-    for current in currents:
-        if current.stage == stage:
-            values = tuple(
-                _arena_value(arena, current.component_base, component)
-                for component in range(current.component_count)
-            )
-            observer(current.semantic_id, values)
+    for current in _currents_for_stage(plan, stage):
+        values = tuple(
+            _arena_value(arena, current.component_base, component)
+            for component in range(current.component_count)
+        )
+        observer(current.semantic_id, values)
+
+
+def _currents_for_stage(
+    plan: _RecurrenceExactPlan,
+    stage: int,
+) -> tuple[_Current, ...]:
+    cached = plan.trusted_currents_by_stage
+    if not cached:
+        grouped: dict[int, list[_Current]] = {}
+        for current in plan.sections.currents:
+            grouped.setdefault(current.stage, []).append(current)
+        cached.update(
+            (stage_id, tuple(currents)) for stage_id, currents in grouped.items()
+        )
+    return cached.get(stage, ())
 
 
 def _execute_certified_reuse_row(
     plan: _RecurrenceExactPlan,
     row: _Contribution,
     arena: list[_ComplexDecimal],
+    *,
+    factor_cache: _FactorCache | None = None,
 ) -> None:
     if (
         row.flags != _CERTIFIED_REUSE_FLAGS
@@ -359,7 +406,7 @@ def _execute_certified_reuse_row(
         or row.parent0_momentum <= 0
     ):
         raise ArtifactError("certified-reuse contribution has an invalid encoding")
-    factor = _factor(plan, row.exact_factor_id)
+    factor = _factor(plan, row.exact_factor_id, cache=factor_cache)
     component_count = row.parent0_momentum
     values = tuple(
         _complex_mul(
@@ -409,13 +456,13 @@ def _clear_stage(
     arena: list[_ComplexDecimal],
     stage: int,
 ) -> None:
-    for current in plan.sections.currents:
-        if current.node_kind != _NODE_CURRENT or current.stage != stage:
+    for current in _currents_for_stage(plan, stage):
+        if current.node_kind != _NODE_CURRENT:
             continue
         stop = current.component_base + current.component_count
         arena[current.component_base : stop] = [
-            _complex_zero() for _ in range(current.component_count)
-        ]
+            _complex_zero()
+        ] * current.component_count
 
 
 def _execute_source(
@@ -424,6 +471,8 @@ def _execute_source(
     momenta: Sequence[Sequence[Decimal]],
     prepared_parameters: Sequence[_ComplexDecimal],
     arena: list[_ComplexDecimal],
+    *,
+    factor_cache: _FactorCache | None = None,
 ) -> None:
     source = row
     template = plan.source_templates[source.source_template_or_dispatch_domain]
@@ -455,7 +504,7 @@ def _execute_source(
     wave = _source_wavefunction(template, momentum, helicity, chirality, mass)
     if len(wave) != template.dimension:
         raise ArtifactError("recurrence source wavefunction has the wrong dimension")
-    factor = _factor(plan, source.exact_factor_id)
+    factor = _factor(plan, source.exact_factor_id, cache=factor_cache)
     values = tuple(_complex_mul(value, factor) for value in wave)
     _write(arena, source.destination_base, values, replace=True)
 
@@ -467,6 +516,8 @@ def _execute_union_source(
     momenta: Sequence[Sequence[Decimal]],
     prepared_parameters: Sequence[_ComplexDecimal],
     arena: list[_ComplexDecimal],
+    *,
+    factor_cache: _FactorCache | None = None,
 ) -> None:
     if (
         source.source_template_or_dispatch_domain != variant.dispatch_domain_id
@@ -523,8 +574,8 @@ def _execute_union_source(
     if len(embeddings) != variant.embedding_count:
         raise ArtifactError("all-flow-union source embedding is out of bounds")
     source_factor = _complex_mul(
-        _factor(plan, source.exact_factor_id),
-        _factor(plan, variant.crossing_exact_factor_id),
+        _factor(plan, source.exact_factor_id, cache=factor_cache),
+        _factor(plan, variant.crossing_exact_factor_id, cache=factor_cache),
     )
     values = []
     for full_component, embedding in enumerate(embeddings):
@@ -544,7 +595,7 @@ def _execute_union_source(
         values.append(
             _complex_mul(
                 _complex_mul(value, source_factor),
-                _factor(plan, embedding.exact_factor_id),
+                _factor(plan, embedding.exact_factor_id, cache=factor_cache),
             )
         )
     _write(arena, source.destination_base, values, replace=True)
@@ -598,10 +649,12 @@ def _execute_finalization(
     arena: list[_ComplexDecimal],
     amplitudes: list[_ComplexDecimal],
     precision: int,
+    *,
+    factor_cache: _FactorCache | None = None,
 ) -> None:
     if executor.runtime_template is not None:
         if executor.runtime_template == "rusticol.identity-finalize-in-place.v1":
-            factor = _factor(plan, row.exact_factor_id)
+            factor = _factor(plan, row.exact_factor_id, cache=factor_cache)
             stop = row.component_base + row.component_count
             arena[row.component_base : stop] = [
                 _complex_mul(value, factor)
@@ -622,6 +675,7 @@ def _execute_finalization(
         arena,
         amplitudes,
         precision,
+        factor_cache=factor_cache,
     )
 
 
@@ -634,29 +688,21 @@ def _execute_prepared_row(
     arena: list[_ComplexDecimal],
     amplitudes: list[_ComplexDecimal],
     precision: int,
+    *,
+    factor_cache: _FactorCache | None = None,
 ) -> None:
-    kernel_id = plan.executor_exact_kernel_ids.get(
-        executor.executor_id,
-        executor.prepared_kernel_id,
-    )
-    if kernel_id is None:
-        raise ArtifactError(
-            f"direct executor {executor.executor_id} has no prepared exact kernel"
-        )
-    kernel = plan.kernels.get(kernel_id)
-    if kernel is None:
-        raise ArtifactError(f"prepared exact kernel {kernel_id} is absent")
-    inputs = _kernel_inputs(
+    recipe = _trusted_executor_recipe(plan, executor)
+    inputs = _trusted_kernel_inputs(
         plan,
-        kernel.record.input_contracts,
+        recipe.inputs,
         executor,
         row,
         momenta,
         prepared_parameters,
         arena,
     )
-    outputs = kernel.evaluate(inputs, precision)
-    factor = _factor(plan, row.exact_factor_id)
+    outputs = recipe.kernel.evaluate(inputs, precision)
+    factor = _factor(plan, row.exact_factor_id, cache=factor_cache)
     scaled = tuple(_complex_mul(value, factor) for value in outputs)
     if executor.role == "contribution" and isinstance(row, _Contribution):
         _write(arena, row.destination_base, scaled, replace=False)
@@ -675,6 +721,189 @@ def _execute_prepared_row(
         raise ArtifactError(
             f"prepared direct executor has unsupported role {executor.role!r}"
         )
+
+
+def _trusted_executor_recipe(
+    plan: _RecurrenceExactPlan,
+    executor: _Executor,
+) -> _TrustedExecutorRecipe:
+    cached = plan.trusted_executor_recipes.get(executor.executor_id)
+    if cached is not None:
+        if not isinstance(cached, _TrustedExecutorRecipe):
+            raise ArtifactError(
+                f"direct executor {executor.executor_id} has an invalid "
+                "trusted exact recipe"
+            )
+        return cached
+
+    kernel_id = plan.executor_exact_kernel_ids.get(
+        executor.executor_id,
+        executor.prepared_kernel_id,
+    )
+    if kernel_id is None:
+        raise ArtifactError(
+            f"direct executor {executor.executor_id} has no prepared exact kernel"
+        )
+    kernel = plan.kernels.get(kernel_id)
+    if kernel is None:
+        raise ArtifactError(f"prepared exact kernel {kernel_id} is absent")
+    recipe = _TrustedExecutorRecipe(
+        kernel=kernel,
+        inputs=_compile_trusted_inputs(
+            plan,
+            kernel.record.input_contracts,
+            executor,
+        ),
+    )
+    plan.trusted_executor_recipes[executor.executor_id] = recipe
+    return recipe
+
+
+def _compile_trusted_inputs(
+    plan: _RecurrenceExactPlan,
+    contracts: Sequence[Mapping[str, object]],
+    executor: _Executor,
+) -> tuple[_TrustedInputRecipe, ...]:
+    result = []
+    for index, contract in enumerate(contracts):
+        role = contract.get("role")
+        component = contract.get("component")
+        if (
+            isinstance(component, bool)
+            or not isinstance(component, int)
+            or component < 0
+        ):
+            raise ArtifactError(
+                f"prepared kernel input {index} has an invalid component"
+            )
+        if role in {"left-current", "current"}:
+            result.append(
+                _TrustedInputRecipe(
+                    _INPUT_CURRENT,
+                    _prepared_parent_operand(plan, executor, 0),
+                    component,
+                )
+            )
+        elif role == "right-current":
+            result.append(
+                _TrustedInputRecipe(
+                    _INPUT_CURRENT,
+                    _prepared_parent_operand(plan, executor, 1),
+                    component,
+                )
+            )
+        elif role in {"left-momentum", "momentum"}:
+            result.append(
+                _TrustedInputRecipe(
+                    _INPUT_MOMENTUM,
+                    _prepared_parent_operand(plan, executor, 0),
+                    component,
+                )
+            )
+        elif role == "right-momentum":
+            result.append(
+                _TrustedInputRecipe(
+                    _INPUT_MOMENTUM,
+                    _prepared_parent_operand(plan, executor, 1),
+                    component,
+                )
+            )
+        elif role in {"coupling-real", "coupling-imag"}:
+            coupling = plan.executor_couplings.get(executor.executor_id)
+            if coupling is None:
+                raise ArtifactError(
+                    f"direct executor {executor.executor_id} has no exact coupling"
+                )
+            result.append(
+                _TrustedInputRecipe(
+                    _INPUT_CONSTANT,
+                    0,
+                    component,
+                    (
+                        coupling[0 if role == "coupling-real" else 1],
+                        _ZERO,
+                    ),
+                )
+            )
+        elif role == "model-parameter":
+            parameter_id = contract.get("model_parameter_index")
+            if (
+                isinstance(parameter_id, bool)
+                or not isinstance(parameter_id, int)
+                or parameter_id < 0
+            ):
+                raise ArtifactError(
+                    f"prepared kernel input {index} has no model-parameter index"
+                )
+            result.append(
+                _TrustedInputRecipe(
+                    _INPUT_PARAMETER,
+                    parameter_id,
+                    component,
+                )
+            )
+        else:
+            raise CompatibilityError(
+                f"unsupported exact recurrence kernel input role {role!r}"
+            )
+    return tuple(result)
+
+
+def _trusted_kernel_inputs(
+    plan: _RecurrenceExactPlan,
+    recipes: Sequence[_TrustedInputRecipe],
+    executor: _Executor,
+    row: _Contribution | _Finalization | _Closure,
+    momenta: Sequence[Sequence[Decimal]],
+    prepared_parameters: Sequence[_ComplexDecimal],
+    arena: Sequence[_ComplexDecimal],
+) -> tuple[_ComplexDecimal, ...]:
+    result = []
+    current_bases: list[int | None] = [None, None]
+    momentum_form_ids: list[int | None] = [None, None]
+    for recipe in recipes:
+        if recipe.kind == _INPUT_CURRENT:
+            base = current_bases[recipe.index]
+            if base is None:
+                base = _parent_component_base(
+                    executor.role,
+                    row,
+                    recipe.index,
+                )
+                current_bases[recipe.index] = base
+            result.append(
+                _arena_value(
+                    arena,
+                    base,
+                    recipe.component,
+                )
+            )
+        elif recipe.kind == _INPUT_MOMENTUM:
+            form_id = momentum_form_ids[recipe.index]
+            if form_id is None:
+                form_id = _momentum_form_id(
+                    executor.role,
+                    row,
+                    recipe.index,
+                )
+                momentum_form_ids[recipe.index] = form_id
+            result.append(
+                _momentum_value(
+                    momenta,
+                    form_id,
+                    recipe.component,
+                )
+            )
+        elif recipe.kind == _INPUT_PARAMETER:
+            result.append(_parameter(prepared_parameters, recipe.index))
+        elif recipe.kind == _INPUT_CONSTANT and recipe.constant is not None:
+            result.append(recipe.constant)
+        else:  # pragma: no cover - recipes are constructed above
+            raise ArtifactError(
+                f"direct executor {executor.executor_id} has an invalid "
+                "trusted input recipe"
+            )
+    return tuple(result)
 
 
 def _kernel_inputs(
@@ -825,13 +1054,19 @@ def _execute_intrinsic_closure(
     row: _Closure,
     arena: Sequence[_ComplexDecimal],
     amplitudes: list[_ComplexDecimal],
+    *,
+    factor_cache: _FactorCache | None = None,
 ) -> None:
     if row.parent1_base == DIRECT_NONE_U32 or row.component_count == 0:
         raise ArtifactError("recurrence intrinsic closure has invalid parents")
-    row_factor = _factor(plan, row.exact_factor_id)
+    row_factor = _factor(plan, row.exact_factor_id, cache=factor_cache)
     value = _complex_zero()
     for component in range(row.component_count):
-        coefficient = _factor(plan, row.component_factor_start + component)
+        coefficient = _factor(
+            plan,
+            row.component_factor_start + component,
+            cache=factor_cache,
+        )
         left = _arena_value(arena, row.parent0_base, component)
         right = _arena_value(arena, row.parent1_base, component)
         value = _complex_add(
@@ -845,15 +1080,30 @@ def _execute_intrinsic_closure(
     )
 
 
-def _factor(plan: _RecurrenceExactPlan, factor_id: int) -> _ComplexDecimal:
+def _factor(
+    plan: _RecurrenceExactPlan,
+    factor_id: int,
+    *,
+    cache: _FactorCache | None = None,
+) -> _ComplexDecimal:
+    if cache is not None:
+        try:
+            cached = cache[factor_id]
+        except IndexError as exc:
+            raise ArtifactError("recurrence exact factor is out of range") from exc
+        if cached is not None:
+            return cached
     try:
         value = plan.sections.exact_factors[factor_id]
     except IndexError as exc:
         raise ArtifactError("recurrence exact factor is out of range") from exc
-    return (
+    resolved = (
         Decimal(value.real_numerator) / Decimal(value.real_denominator),
         Decimal(value.imaginary_numerator) / Decimal(value.imaginary_denominator),
     )
+    if cache is not None:
+        cache[factor_id] = resolved
+    return resolved
 
 
 def _parameter(

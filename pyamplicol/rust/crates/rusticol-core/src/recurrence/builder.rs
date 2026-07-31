@@ -75,6 +75,18 @@ impl AuthenticatedRecurrenceBuilderInput {
     ) -> RusticolResult<super::RecurrenceProgram> {
         super::construct::build_recurrence_program_with_progress(self, progress)
     }
+
+    /// Build while returning construction-only generation diagnostics.
+    #[doc(hidden)]
+    pub fn build_with_progress_and_telemetry(
+        &self,
+        progress: &mut dyn FnMut(super::RecurrenceBuildProgress) -> RusticolResult<()>,
+    ) -> RusticolResult<(
+        super::RecurrenceProgram,
+        super::RecurrenceGenerationTelemetry,
+    )> {
+        super::construct::build_recurrence_program_with_progress_and_telemetry(self, progress)
+    }
 }
 
 fn authenticate_singlet_closure_anchors(

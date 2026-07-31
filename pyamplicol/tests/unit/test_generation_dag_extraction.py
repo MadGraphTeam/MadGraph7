@@ -3,10 +3,15 @@ from __future__ import annotations
 
 import pytest
 
+import pyamplicol.generation.service as service_module
 from pyamplicol.api import Generator, ProcessAlias, ProcessRequest, ProcessSet
 from pyamplicol.api.errors import GenerationError
+from pyamplicol.color.plan import build_color_plan
 from pyamplicol.config import EvaluatorConfig, ProcessConfig, RunConfig
-from pyamplicol.generation.dag_algorithms import infer_minimal_coupling_order_limits
+from pyamplicol.generation.dag_algorithms import (
+    _infer_minimal_coupling_order_limits_from_color_plan,
+    infer_minimal_coupling_order_limits,
+)
 from pyamplicol.generation.dag_types import ColorState, CurrentIndex
 from pyamplicol.generation.runtime_schema import build_runtime_expression_schema
 from pyamplicol.generation.service import GenerationBackend
@@ -148,3 +153,98 @@ def test_minimal_coupling_limits_zero_nonminimal_model_orders() -> None:
     )
 
     assert limits == {"QCD": 2, "QED": 0}
+
+
+def test_minimal_coupling_limits_accept_existing_complete_color_plan() -> None:
+    process = build_process_ir("d d~ > u u~")
+    model = BuiltinSMModel()
+    color_plan = build_color_plan(
+        process,
+        color_accuracy=process.color_accuracy,
+        fold_trace_reflections=(
+            model.lc_trace_reflection_equivalence_is_proven(process)
+        ),
+    )
+
+    assert _infer_minimal_coupling_order_limits_from_color_plan(
+        process,
+        model=model,
+        color_plan=color_plan,
+    ) == infer_minimal_coupling_order_limits(process, model=model)
+
+
+def test_process_preparation_reuses_complete_color_plan_for_minimal_inference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process = build_process_ir("d d~ > u u~")
+    model = BuiltinSMModel()
+    reused_plans: list[object] = []
+    infer_from_plan = (
+        service_module._infer_minimal_coupling_order_limits_from_color_plan
+    )
+
+    def track_inference(*args: object, **kwargs: object) -> dict[str, int]:
+        reused_plans.append(kwargs["color_plan"])
+        return infer_from_plan(*args, **kwargs)
+
+    def reject_rebuild(*_args: object, **_kwargs: object) -> dict[str, int]:
+        pytest.fail("minimal inference rebuilt a color plan")
+
+    monkeypatch.setattr(
+        service_module,
+        "_infer_minimal_coupling_order_limits_from_color_plan",
+        track_inference,
+    )
+    monkeypatch.setattr(
+        service_module,
+        "infer_minimal_coupling_order_limits",
+        reject_rebuild,
+    )
+    prepared = GenerationBackend(
+        RunConfig(
+            action="generate",
+            evaluator=EvaluatorConfig(execution_mode="recurrence"),
+        ),
+        None,
+    )._prepare_process_construction(process, model)
+
+    assert len(reused_plans) == 1
+    assert reused_plans[0] is prepared.complete_color_plan
+
+
+def test_process_preparation_preserves_custom_color_plan_inference_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    process = build_process_ir("d d~ > u u~")
+    model = BuiltinSMModel()
+    rebuilds = 0
+
+    def reject_reuse(*_args: object, **_kwargs: object) -> dict[str, int]:
+        pytest.fail("custom color-plan inference unexpectedly reused a truncated plan")
+
+    def track_rebuild(*_args: object, **_kwargs: object) -> dict[str, int]:
+        nonlocal rebuilds
+        rebuilds += 1
+        return {"QCD": 2, "QED": 0}
+
+    monkeypatch.setattr(
+        service_module,
+        "_infer_minimal_coupling_order_limits_from_color_plan",
+        reject_reuse,
+    )
+    monkeypatch.setattr(
+        service_module,
+        "infer_minimal_coupling_order_limits",
+        track_rebuild,
+    )
+    prepared = GenerationBackend(
+        RunConfig(
+            action="generate",
+            process=ProcessConfig(max_color_sectors=1),
+            evaluator=EvaluatorConfig(execution_mode="recurrence"),
+        ),
+        None,
+    )._prepare_process_construction(process, model)
+
+    assert rebuilds == 1
+    assert prepared.coupling_order_limits == {"QCD": 2, "QED": 0}

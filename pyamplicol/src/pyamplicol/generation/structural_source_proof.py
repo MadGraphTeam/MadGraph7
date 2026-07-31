@@ -1,11 +1,9 @@
 # SPDX-License-Identifier: 0BSD
 """Generation-time structural source and physical-lane evidence.
 
-This module deliberately operates before ``artifact.json`` exists.  Its output
-is a regular artifact payload and therefore contributes to the final artifact
-identity.  A later, cell-specific numerical witness can safely bind both the
-final artifact ID and this payload's manifest SHA without creating an identity
-cycle.
+This module deliberately operates before ``artifact.json`` exists. Its output
+is provenance rather than runtime state, so callers bind its declared payload
+SHA directly when a later numerical witness needs the proof identity.
 """
 
 from __future__ import annotations

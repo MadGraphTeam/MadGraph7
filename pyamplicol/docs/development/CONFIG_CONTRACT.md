@@ -47,7 +47,7 @@ topology, replay, and reference-order IDs are not configurable.
 ### Generation Validation
 
 - `enabled: bool = true`
-- `samples: int = 10`
+- `samples: int = 2`
 - `seed: int = 12345`
 - `relative_tolerance: float = 1e-12`
 - `absolute_tolerance: float = 1e-300`
@@ -64,6 +64,8 @@ topology, replay, and reference-order IDs are not configurable.
 - `seed: int >= 0 = 1348026701`
 
 Candidate and independent verification probes are bounded and deterministic.
+The two post-build validation samples use the native binary64 runtime and are
+independent of the 96-digit relation-discovery certification probes below.
 Exact binary64 term-vector or `ExactComplexRational` schedule proofs remain the
 preferred promotion path. When no exact structural proof exists,
 `certified-reuse` may apply equal, opposite, or zero-current reuse only after

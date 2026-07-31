@@ -14,13 +14,15 @@ import json
 import pickle
 import struct
 import tempfile
+import time
 import zlib
 from collections import defaultdict
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from fractions import Fraction
 from math import copysign, isfinite
+from types import MappingProxyType
 from typing import TYPE_CHECKING, BinaryIO, Literal, cast
 
 from pyamplicol.api.errors import ArtifactError
@@ -113,6 +115,9 @@ _Mode = Literal["diagnostic", "certified-reuse"]
 _Point = tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...]
 _CurrentContract = tuple[object, ...]
 _EvidenceEncoding = Literal["canonical-json-v3", "zlib-canonical-json-v1"]
+_Residuals = tuple[Fraction, Fraction, Fraction]
+_ResidualStrings = tuple[str, str, str]
+_Tolerance = Decimal | Fraction
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +127,17 @@ class _RawEvidenceStorageGeometry:
     canonical_byte_limit: int
     encoding: _EvidenceEncoding
     producer_resident_upper_bound: int
+
+
+@dataclass(frozen=True, slots=True)
+class _WarmupStaticContext:
+    current_dimensions: Mapping[int, int]
+    current_contracts: tuple[_CurrentContract, ...]
+    runtime_defaults: tuple[Decimal, ...]
+    runtime_parameter_schema: Mapping[str, object]
+    runtime_parameter_schema_sha256: str
+    source_semantics: Mapping[str, object]
+    source_semantics_sha256: str
 
 
 class _SpooledObservationMapping(Mapping[int, tuple[_ComplexDecimal, ...]]):
@@ -582,6 +598,11 @@ class RecurrenceNumericalCurrentWarmupResult:
     evidence_canonical_bytes: int
     discovery_report: Mapping[str, object]
     application_validation: Mapping[str, object]
+    generation_profile_timings: Mapping[str, float] = field(
+        default_factory=dict,
+        compare=False,
+        repr=False,
+    )
 
     @property
     def applied_relation_count(self) -> int:
@@ -778,16 +799,26 @@ def run_recurrence_numerical_current_warmup(
     _validated_tolerances(relative_tolerance, absolute_tolerance)
     relative_tolerance = float(relative_tolerance)
     absolute_tolerance = float(absolute_tolerance)
+    generation_profile_timings: dict[str, float] = {}
+    geometry_started = time.perf_counter()
     geometry = _select_raw_evidence_storage_geometry(
         plan.sections,
         candidate_probe_count=len(candidate_points),
         verification_probe_count=len(verification_points),
         runtime_parameter_count=len(plan.runtime_parameter_schema),
     )
-    source_digest = recurrence_numerical_source_semantics_sha256(plan.sections)
-    runtime_parameter_schema = _runtime_parameter_schema_payload(plan)
-    runtime_parameter_schema_sha256 = _canonical_sha256(runtime_parameter_schema)
-    runtime_defaults = _runtime_parameter_defaults(plan)
+    generation_profile_timings["warmup_geometry"] = (
+        time.perf_counter() - geometry_started
+    )
+    static_context_started = time.perf_counter()
+    static_context = _build_warmup_static_context(plan)
+    generation_profile_timings["warmup_static_context"] = (
+        time.perf_counter() - static_context_started
+    )
+    source_digest = static_context.source_semantics_sha256
+    runtime_parameter_schema = static_context.runtime_parameter_schema
+    runtime_parameter_schema_sha256 = static_context.runtime_parameter_schema_sha256
+    runtime_defaults = static_context.runtime_defaults
     probe_policies = tuple(row.probe_policy for row in plan.runtime_parameter_schema)
     candidate_parameter_contexts = _build_parameter_probe_contexts(
         runtime_defaults,
@@ -811,7 +842,9 @@ def run_recurrence_numerical_current_warmup(
     verification_spool: _SpooledObservationMapping | None = None
     evidence_spool: BinaryIO | None = None
     try:
-        candidate = capture_recurrence_current_observations(
+        candidate_probe_timings: list[float] = []
+        candidate_capture_started = time.perf_counter()
+        candidate = _capture_recurrence_current_observations(
             plan,
             candidate_points,
             precision_digits=precision_digits,
@@ -820,17 +853,50 @@ def run_recurrence_numerical_current_warmup(
             domain="candidate-current-probes-v1",
             parameter_contexts=candidate_parameter_contexts,
             runtime_parameter_schema_sha256=runtime_parameter_schema_sha256,
+            static_context=static_context,
+            probe_timings=candidate_probe_timings,
+        )
+        generation_profile_timings["warmup_candidate_capture"] = (
+            time.perf_counter() - candidate_capture_started
+        )
+        generation_profile_timings.update(
+            {
+                f"warmup_candidate_probe_{index}": seconds
+                for index, seconds in enumerate(candidate_probe_timings)
+            }
+        )
+        candidate_index_started = time.perf_counter()
+        candidate_indexes: (
+            Mapping[
+                _CurrentContract,
+                NumericalObservationCandidateIndex[Fraction],
+            ]
+            | None
+        ) = _build_candidate_indexes(
+            plan.sections,
+            candidate.observations,
+            contracts=static_context.current_contracts,
+        )
+        generation_profile_timings["warmup_candidate_index"] = (
+            time.perf_counter() - candidate_index_started
         )
         if geometry.encoding == _COMPRESSED_EVIDENCE_ENCODING:
+            candidate_spool_started = time.perf_counter()
             candidate_spool = _SpooledObservationMapping(
                 candidate.observations,
-                candidate_indexes=_build_candidate_indexes(
-                    plan.sections,
-                    candidate.observations,
-                ),
+                candidate_indexes=candidate_indexes,
             )
             candidate = replace(candidate, observations=candidate_spool)
-        verification = capture_recurrence_current_observations(
+            # The verification capture can itself be large.  Keep the exact
+            # reusable index on disk until relation discovery instead of
+            # retaining both resident captures and the index simultaneously.
+            candidate_indexes = None
+            generation_profile_timings["warmup_candidate_spool"] = (
+                time.perf_counter() - candidate_spool_started
+            )
+        verification_probe_timings: list[float] = []
+        verification_capture_started = time.perf_counter()
+        verification = _capture_recurrence_current_observations(
             plan,
             verification_points,
             precision_digits=precision_digits,
@@ -839,14 +905,30 @@ def run_recurrence_numerical_current_warmup(
             domain="independent-verification-current-probes-v1",
             parameter_contexts=verification_parameter_contexts,
             runtime_parameter_schema_sha256=runtime_parameter_schema_sha256,
+            static_context=static_context,
+            probe_timings=verification_probe_timings,
+        )
+        generation_profile_timings["warmup_verification_capture"] = (
+            time.perf_counter() - verification_capture_started
+        )
+        generation_profile_timings.update(
+            {
+                f"warmup_verification_probe_{index}": seconds
+                for index, seconds in enumerate(verification_probe_timings)
+            }
         )
         if geometry.encoding == _COMPRESSED_EVIDENCE_ENCODING:
+            verification_spool_started = time.perf_counter()
             verification_spool = _SpooledObservationMapping(verification.observations)
             verification = replace(
                 verification,
                 observations=verification_spool,
             )
+            generation_profile_timings["warmup_verification_spool"] = (
+                time.perf_counter() - verification_spool_started
+            )
         _validate_independent_captures(candidate, verification)
+        discovery_started = time.perf_counter()
         certificates, discovery = _discover_relations(
             plan.sections,
             candidate,
@@ -857,10 +939,17 @@ def run_recurrence_numerical_current_warmup(
             relative_tolerance=relative_tolerance,
             absolute_tolerance=absolute_tolerance,
             color_accuracy=color_accuracy,
+            contracts=static_context.current_contracts,
+            candidate_indexes=candidate_indexes,
         )
+        generation_profile_timings["warmup_relation_discovery"] = (
+            time.perf_counter() - discovery_started
+        )
+        evidence_payload_started = time.perf_counter()
         evidence = _evidence_payload(
             plan.sections,
             mode=mode,
+            source_semantics=static_context.source_semantics,
             source_semantics_sha256=source_digest,
             certificates=certificates,
             discovery=discovery,
@@ -874,7 +963,11 @@ def run_recurrence_numerical_current_warmup(
             candidate=candidate,
             verification=verification,
         )
+        generation_profile_timings["warmup_evidence_payload"] = (
+            time.perf_counter() - evidence_payload_started
+        )
         _validate_raw_evidence_scalar_widths(candidate, verification)
+        evidence_serialization_started = time.perf_counter()
         if geometry.encoding == _RAW_EVIDENCE_ENCODING:
             encoded = _bounded_canonical_json_bytes(
                 evidence,
@@ -898,6 +991,9 @@ def run_recurrence_numerical_current_warmup(
                 canonical_byte_limit=geometry.canonical_byte_limit,
             )
             encoded = b""
+        generation_profile_timings["warmup_evidence_serialization"] = (
+            time.perf_counter() - evidence_serialization_started
+        )
         replay_current_ids = (
             tuple(
                 current_id
@@ -924,9 +1020,13 @@ def run_recurrence_numerical_current_warmup(
         # captures. Drop it before reading the compressed transport bytes.
         del evidence
         if evidence_spool is not None:
+            evidence_transport_started = time.perf_counter()
             encoded = _read_compressed_evidence_spool(evidence_spool)
             evidence_spool.close()
             evidence_spool = None
+            generation_profile_timings["warmup_evidence_transport_read"] = (
+                time.perf_counter() - evidence_transport_started
+            )
         return RecurrenceNumericalCurrentWarmupResult(
             requested_mode=mode,
             color_accuracy=color_accuracy,
@@ -953,6 +1053,9 @@ def run_recurrence_numerical_current_warmup(
                 "maximum_tolerance_ratio": None,
                 "application_capture": None,
             },
+            generation_profile_timings=MappingProxyType(
+                dict(generation_profile_timings)
+            ),
         )
     finally:
         if candidate_spool is not None:
@@ -1168,6 +1271,33 @@ def capture_recurrence_current_observations(
 ) -> RecurrenceCurrentObservationCapture:
     """Evaluate every current before Direct-Arena stage recycling."""
 
+    return _capture_recurrence_current_observations(
+        plan,
+        points,
+        precision_digits=precision_digits,
+        source_semantics_sha256=source_semantics_sha256,
+        seed=seed,
+        domain=domain,
+        parameter_contexts=parameter_contexts,
+        runtime_parameter_schema_sha256=runtime_parameter_schema_sha256,
+        static_context=None,
+        probe_timings=None,
+    )
+
+
+def _capture_recurrence_current_observations(
+    plan: _RecurrenceExactPlan,
+    points: Sequence[ValidationPointRecord],
+    *,
+    precision_digits: int,
+    source_semantics_sha256: str,
+    seed: int,
+    domain: str,
+    parameter_contexts: Sequence[Sequence[Decimal]] | None,
+    runtime_parameter_schema_sha256: str | None,
+    static_context: _WarmupStaticContext | None,
+    probe_timings: list[float] | None,
+) -> RecurrenceCurrentObservationCapture:
     records = tuple(points)
     if (
         type(precision_digits) is not int
@@ -1179,9 +1309,12 @@ def capture_recurrence_current_observations(
     ):
         raise ValueError("recurrence current capture point contract is invalid")
     sections = plan.sections
-    dimensions = {
-        current.semantic_id: current.component_count for current in sections.currents
-    }
+    dimensions = (
+        {current.semantic_id: current.component_count for current in sections.currents}
+        if static_context is None
+        else static_context.current_dimensions
+    )
+    expected_current_ids = frozenset(dimensions)
     observations: dict[int, list[_ComplexDecimal]] = {
         current_id: [] for current_id in dimensions
     }
@@ -1192,9 +1325,16 @@ def capture_recurrence_current_observations(
         records
     ):
         raise ValueError("recurrence current capture requires distinct physical points")
-    runtime_defaults = _runtime_parameter_defaults(plan)
-    schema_payload = _runtime_parameter_schema_payload(plan)
-    actual_schema_sha256 = _canonical_sha256(schema_payload)
+    if static_context is None:
+        runtime_defaults = _runtime_parameter_defaults(plan)
+        schema_payload = _runtime_parameter_schema_payload(
+            plan,
+            defaults=runtime_defaults,
+        )
+        actual_schema_sha256 = _canonical_sha256(schema_payload)
+    else:
+        runtime_defaults = static_context.runtime_defaults
+        actual_schema_sha256 = static_context.runtime_parameter_schema_sha256
     if (
         runtime_parameter_schema_sha256 is not None
         and runtime_parameter_schema_sha256 != actual_schema_sha256
@@ -1250,6 +1390,7 @@ def capture_recurrence_current_observations(
         for point_index, (record, parameter_context) in enumerate(
             zip(records, resolved_parameter_contexts, strict=True)
         ):
+            probe_started = time.perf_counter()
             parameters = plan.resolve_model_parameters(
                 parameter_context,
                 working_precision,
@@ -1271,9 +1412,12 @@ def capture_recurrence_current_observations(
                     domain=domain,
                     index=point_index,
                 ),
+                expected_current_ids=expected_current_ids,
             )
+            if probe_timings is not None:
+                probe_timings.append(time.perf_counter() - probe_started)
             context_payloads.append(context_payload)
-            if set(captured) != set(dimensions):
+            if captured.keys() != expected_current_ids:
                 raise ValueError("recurrence exact current capture is incomplete")
             for current_id, dimension in dimensions.items():
                 values = captured[current_id]
@@ -1320,6 +1464,7 @@ def capture_recurrence_current_observations(
             "context_policy": context_policy,
         }
     )
+    capture_dimensions = dimensions if static_context is None else dict(dimensions)
     return RecurrenceCurrentObservationCapture(
         precision_digits=precision_digits,
         points=records,
@@ -1331,7 +1476,7 @@ def capture_recurrence_current_observations(
         parameter_contexts=resolved_parameter_contexts,
         parameter_context_sha256s=parameter_context_sha256s,
         observations=frozen,
-        current_dimensions=dimensions,
+        current_dimensions=capture_dimensions,
         runtime_parameter_schema_sha256=actual_schema_sha256,
         source_semantics_sha256=source_semantics_sha256,
         observation_batch_sha256=batch_digest,
@@ -1350,8 +1495,11 @@ def recurrence_numerical_source_semantics_sha256(
 
 def _source_semantics_payload(
     sections: _RecurrenceExactSectionsV1,
+    *,
+    contracts: tuple[_CurrentContract, ...] | None = None,
 ) -> dict[str, object]:
-    contracts = _current_contracts(sections)
+    if contracts is None:
+        contracts = _current_contracts(sections)
     if sections.strategy == "topology-replay":
         selector_schedule: object = {
             "policy": _context_policy(sections.strategy),
@@ -1407,6 +1555,7 @@ def _capture_one_point(
     precision: int,
     *,
     selector_seed: int,
+    expected_current_ids: frozenset[int],
 ) -> tuple[dict[int, tuple[_ComplexDecimal, ...]], object]:
     sections = plan.sections
     if sections.strategy == "topology-replay":
@@ -1424,6 +1573,7 @@ def _capture_one_point(
                 precision,
                 current_observer=observer,
             ),
+            expected_current_ids=expected_current_ids,
         )
         return captured, {
             "strategy": sections.strategy,
@@ -1454,6 +1604,7 @@ def _capture_one_point(
                     precision,
                     current_observer=observer,
                 ),
+                expected_current_ids=expected_current_ids,
             )
             selected.append(
                 {
@@ -1483,6 +1634,7 @@ def _capture_one_point(
             precision,
             current_observer=observer,
         ),
+        expected_current_ids=expected_current_ids,
     )
     return captured, {
         "strategy": sections.strategy,
@@ -1493,6 +1645,8 @@ def _capture_one_point(
 def _capture_execution(
     sections: _RecurrenceExactSectionsV1,
     operation: object,
+    *,
+    expected_current_ids: frozenset[int] | None = None,
 ) -> dict[int, tuple[_ComplexDecimal, ...]]:
     captured: dict[int, tuple[_ComplexDecimal, ...]] = {}
 
@@ -1509,9 +1663,13 @@ def _capture_execution(
     if not callable(operation):  # pragma: no cover - internal type contract
         raise TypeError("recurrence capture operation is not callable")
     operation(observe)
-    expected = {current.semantic_id for current in sections.currents}
-    if set(captured) != expected:
-        missing = sorted(expected - set(captured))
+    expected = (
+        frozenset(current.semantic_id for current in sections.currents)
+        if expected_current_ids is None
+        else expected_current_ids
+    )
+    if captured.keys() != expected:
+        missing = sorted(expected - captured.keys())
         raise ArtifactError(
             f"recurrence current observation missed semantic currents {missing[:8]}"
         )
@@ -1552,11 +1710,14 @@ def _raw_numerical_tolerance_window_ids(
 def _build_candidate_indexes(
     sections: _RecurrenceExactSectionsV1,
     observations: Mapping[int, Sequence[_ComplexDecimal]],
+    *,
+    contracts: tuple[_CurrentContract, ...] | None = None,
 ) -> dict[
     _CurrentContract,
     NumericalObservationCandidateIndex[Fraction],
 ]:
-    contracts = _current_contracts(sections)
+    if contracts is None:
+        contracts = _current_contracts(sections)
     members_by_contract: dict[_CurrentContract, list[int]] = defaultdict(list)
     for current in sections.currents:
         members_by_contract[contracts[current.semantic_id]].append(current.semantic_id)
@@ -1580,6 +1741,12 @@ def _discover_relations(
     relative_tolerance: float,
     absolute_tolerance: float,
     color_accuracy: str,
+    contracts: tuple[_CurrentContract, ...] | None = None,
+    candidate_indexes: Mapping[
+        _CurrentContract,
+        NumericalObservationCandidateIndex[Fraction],
+    ]
+    | None = None,
 ) -> tuple[
     tuple[RecurrenceNumericalCurrentCertificate, ...],
     dict[str, object],
@@ -1590,18 +1757,20 @@ def _discover_relations(
     )
     relative_fraction = Fraction(relative)
     absolute_fraction = Fraction(absolute)
-    contracts = _current_contracts(sections)
-    spooled_indexes = (
-        candidate.observations.candidate_indexes
-        if isinstance(candidate.observations, _SpooledObservationMapping)
-        else None
-    )
-    if spooled_indexes is not None:
+    if contracts is None:
+        contracts = _current_contracts(sections)
+    if candidate_indexes is None:
+        spooled_indexes = (
+            candidate.observations.candidate_indexes
+            if isinstance(candidate.observations, _SpooledObservationMapping)
+            else None
+        )
         candidate_indexes = spooled_indexes
-    else:
+    if candidate_indexes is None:
         candidate_indexes = _build_candidate_indexes(
             sections,
             candidate.observations,
+            contracts=contracts,
         )
     prior_by_contract: dict[_CurrentContract, list[int]] = defaultdict(list)
     certificates: list[RecurrenceNumericalCurrentCertificate] = []
@@ -1636,8 +1805,10 @@ def _discover_relations(
         current_id: int,
         representative_id: int | None,
         relation_kind: _RelationKind,
-        candidate_residuals: tuple[Fraction, Fraction, Fraction],
-        verification_residuals: tuple[Fraction, Fraction, Fraction] | None,
+        candidate_residuals: _Residuals,
+        candidate_residual_strings: _ResidualStrings,
+        verification_residuals: _Residuals | None,
+        verification_residual_strings: _ResidualStrings | None,
         selected: bool,
     ) -> None:
         nonlocal decision_chain
@@ -1648,30 +1819,30 @@ def _discover_relations(
                     "current_id": current_id,
                     "representative_id": representative_id,
                     "relation_kind": relation_kind,
-                    "candidate_maximum_absolute_residual": _fraction_string(
-                        candidate_residuals[0]
+                    "candidate_maximum_absolute_residual": (
+                        candidate_residual_strings[0]
                     ),
-                    "candidate_maximum_relative_residual": _fraction_string(
-                        candidate_residuals[1]
+                    "candidate_maximum_relative_residual": (
+                        candidate_residual_strings[1]
                     ),
-                    "candidate_maximum_tolerance_ratio": _fraction_string(
-                        candidate_residuals[2]
+                    "candidate_maximum_tolerance_ratio": (
+                        candidate_residual_strings[2]
                     ),
                     "candidate_accepted": candidate_residuals[2] <= 1,
                     "verification_maximum_absolute_residual": (
                         None
-                        if verification_residuals is None
-                        else _fraction_string(verification_residuals[0])
+                        if verification_residual_strings is None
+                        else verification_residual_strings[0]
                     ),
                     "verification_maximum_relative_residual": (
                         None
-                        if verification_residuals is None
-                        else _fraction_string(verification_residuals[1])
+                        if verification_residual_strings is None
+                        else verification_residual_strings[1]
                     ),
                     "verification_maximum_tolerance_ratio": (
                         None
-                        if verification_residuals is None
-                        else _fraction_string(verification_residuals[2])
+                        if verification_residual_strings is None
+                        else verification_residual_strings[2]
                     ),
                     "verification_accepted": (
                         None
@@ -1688,7 +1859,8 @@ def _discover_relations(
         current_id: int,
         representative_id: int | None,
         relation_kind: _RelationKind,
-        residuals: tuple[Fraction, Fraction, Fraction],
+        residuals: _Residuals,
+        residual_strings: _ResidualStrings,
         reason: str,
     ) -> None:
         nonlocal nearest, rejected_hypotheses, rejection_chain
@@ -1698,9 +1870,9 @@ def _discover_relations(
             "representative_id": representative_id,
             "relation_kind": relation_kind,
             "reason": reason,
-            "maximum_absolute_residual": _fraction_string(residuals[0]),
-            "maximum_relative_residual": _fraction_string(residuals[1]),
-            "maximum_tolerance_ratio": _fraction_string(residuals[2]),
+            "maximum_absolute_residual": residual_strings[0],
+            "maximum_relative_residual": residual_strings[1],
+            "maximum_tolerance_ratio": residual_strings[2],
         }
         rejection_chain = hashlib.sha256(
             bytes.fromhex(rejection_chain) + _canonical_json_bytes(rejected_row)
@@ -1724,10 +1896,11 @@ def _discover_relations(
         if current.source_row != DIRECT_NONE_U32:
             prior.append(current.semantic_id)
             continue
+        candidate_current_observations = candidate.observations[current.semantic_id]
         equal_representatives = set(
             _raw_numerical_tolerance_window_ids(
                 candidate_indexes[contract],
-                candidate.observations[current.semantic_id],
+                candidate_current_observations,
                 relation_kind="equal",
                 current_id=current.semantic_id,
                 relative_tolerance=relative_fraction,
@@ -1737,7 +1910,7 @@ def _discover_relations(
         opposite_representatives = set(
             _raw_numerical_tolerance_window_ids(
                 candidate_indexes[contract],
-                candidate.observations[current.semantic_id],
+                candidate_current_observations,
                 relation_kind="opposite",
                 current_id=current.semantic_id,
                 relative_tolerance=relative_fraction,
@@ -1772,26 +1945,30 @@ def _discover_relations(
             ],
         ]
         accepted = False
+        verification_current_observations: Sequence[_ComplexDecimal] | None = None
         for relation_kind, representative_id in hypotheses:
             tested += 1
             candidate_residuals = _relation_residuals(
                 relation_kind,
-                candidate.observations[current.semantic_id],
+                candidate_current_observations,
                 (
                     None
                     if representative_id is None
                     else candidate.observations[representative_id]
                 ),
-                relative_tolerance=relative,
-                absolute_tolerance=absolute,
+                relative_tolerance=relative_fraction,
+                absolute_tolerance=absolute_fraction,
             )
+            candidate_residual_strings = _residual_strings(candidate_residuals)
             if candidate_residuals[2] > 1:
                 record_decision(
                     current_id=current.semantic_id,
                     representative_id=representative_id,
                     relation_kind=relation_kind,
                     candidate_residuals=candidate_residuals,
+                    candidate_residual_strings=candidate_residual_strings,
                     verification_residuals=None,
+                    verification_residual_strings=None,
                     selected=False,
                 )
                 record_rejected(
@@ -1799,21 +1976,27 @@ def _discover_relations(
                     representative_id=representative_id,
                     relation_kind=relation_kind,
                     residuals=candidate_residuals,
+                    residual_strings=candidate_residual_strings,
                     reason="candidate-observations-not-equal",
                 )
                 continue
             candidates += 1
+            if verification_current_observations is None:
+                verification_current_observations = verification.observations[
+                    current.semantic_id
+                ]
             verification_residuals = _relation_residuals(
                 relation_kind,
-                verification.observations[current.semantic_id],
+                verification_current_observations,
                 (
                     None
                     if representative_id is None
                     else verification.observations[representative_id]
                 ),
-                relative_tolerance=relative,
-                absolute_tolerance=absolute,
+                relative_tolerance=relative_fraction,
+                absolute_tolerance=absolute_fraction,
             )
+            verification_residual_strings = _residual_strings(verification_residuals)
             if verification_residuals[2] > 1:
                 verification_rejected += 1
                 record_decision(
@@ -1821,7 +2004,9 @@ def _discover_relations(
                     representative_id=representative_id,
                     relation_kind=relation_kind,
                     candidate_residuals=candidate_residuals,
+                    candidate_residual_strings=candidate_residual_strings,
                     verification_residuals=verification_residuals,
+                    verification_residual_strings=(verification_residual_strings),
                     selected=False,
                 )
                 record_rejected(
@@ -1829,6 +2014,7 @@ def _discover_relations(
                     representative_id=representative_id,
                     relation_kind=relation_kind,
                     residuals=verification_residuals,
+                    residual_strings=verification_residual_strings,
                     reason="independent-verification-rejected-candidate",
                 )
                 continue
@@ -1850,7 +2036,9 @@ def _discover_relations(
                     candidate=candidate,
                     verification=verification,
                     candidate_residuals=candidate_residuals,
+                    candidate_residual_strings=candidate_residual_strings,
                     verification_residuals=verification_residuals,
+                    verification_residual_strings=(verification_residual_strings),
                     precision_digits=precision_digits,
                     seed=seed,
                     relative_tolerance=relative_tolerance,
@@ -1862,7 +2050,9 @@ def _discover_relations(
                 representative_id=representative_id,
                 relation_kind=relation_kind,
                 candidate_residuals=candidate_residuals,
+                candidate_residual_strings=candidate_residual_strings,
                 verification_residuals=verification_residuals,
+                verification_residual_strings=verification_residual_strings,
                 selected=True,
             )
             accepted = True
@@ -2003,8 +2193,10 @@ def _build_certificate(
     source_semantics_sha256: str,
     candidate: RecurrenceCurrentObservationCapture,
     verification: RecurrenceCurrentObservationCapture,
-    candidate_residuals: tuple[Fraction, Fraction, Fraction],
-    verification_residuals: tuple[Fraction, Fraction, Fraction],
+    candidate_residuals: _Residuals,
+    candidate_residual_strings: _ResidualStrings,
+    verification_residuals: _Residuals,
+    verification_residual_strings: _ResidualStrings,
     precision_digits: int,
     seed: int,
     relative_tolerance: float,
@@ -2054,18 +2246,12 @@ def _build_certificate(
         **probe_contract,
         "proof_kind": "authenticated-numerical",
         "factor_integer": list(factor),
-        "candidate_maximum_absolute_residual": _fraction_string(candidate_residuals[0]),
-        "candidate_maximum_relative_residual": _fraction_string(candidate_residuals[1]),
-        "candidate_maximum_tolerance_ratio": _fraction_string(candidate_residuals[2]),
-        "verification_maximum_absolute_residual": _fraction_string(
-            verification_residuals[0]
-        ),
-        "verification_maximum_relative_residual": _fraction_string(
-            verification_residuals[1]
-        ),
-        "verification_maximum_tolerance_ratio": _fraction_string(
-            verification_residuals[2]
-        ),
+        "candidate_maximum_absolute_residual": candidate_residual_strings[0],
+        "candidate_maximum_relative_residual": candidate_residual_strings[1],
+        "candidate_maximum_tolerance_ratio": candidate_residual_strings[2],
+        "verification_maximum_absolute_residual": verification_residual_strings[0],
+        "verification_maximum_relative_residual": verification_residual_strings[1],
+        "verification_maximum_tolerance_ratio": verification_residual_strings[2],
         "probe_contract_sha256": probe_digest,
     }
     return RecurrenceNumericalCurrentCertificate(
@@ -2102,6 +2288,7 @@ def _evidence_payload(
     sections: _RecurrenceExactSectionsV1,
     *,
     mode: _Mode,
+    source_semantics: Mapping[str, object],
     source_semantics_sha256: str,
     certificates: tuple[RecurrenceNumericalCurrentCertificate, ...],
     discovery: Mapping[str, object],
@@ -2136,7 +2323,7 @@ def _evidence_payload(
         "requested_mode": mode,
         "schedule_semantic_digest": sections.semantic_digest,
         "baseline_runtime_layout_digest": sections.runtime_layout_digest,
-        "source_semantics": _source_semantics_payload(sections),
+        "source_semantics": source_semantics,
         "source_semantics_sha256": source_semantics_sha256,
         "runtime_parameter_schema": dict(runtime_parameter_schema),
         "runtime_parameter_schema_sha256": (candidate.runtime_parameter_schema_sha256),
@@ -2350,6 +2537,8 @@ def _validate_applied_observations(
         relative_tolerance,
         absolute_tolerance,
     )
+    relative_fraction = Fraction(relative)
+    absolute_fraction = Fraction(absolute)
     maximum_absolute = Fraction(0)
     maximum_relative = Fraction(0)
     maximum_ratio = Fraction(0)
@@ -2365,8 +2554,8 @@ def _validate_applied_observations(
             before,
             after,
             sign=1,
-            relative_tolerance=relative,
-            absolute_tolerance=absolute,
+            relative_tolerance=relative_fraction,
+            absolute_tolerance=absolute_fraction,
         )
         maximum_absolute = max(maximum_absolute, residuals[0])
         maximum_relative = max(maximum_relative, residuals[1])
@@ -2426,25 +2615,52 @@ def _relation_residuals(
     current: Sequence[_ComplexDecimal],
     representative: Sequence[_ComplexDecimal] | None,
     *,
-    relative_tolerance: Decimal,
-    absolute_tolerance: Decimal,
-) -> tuple[Fraction, Fraction, Fraction]:
-    comparison: Sequence[_ComplexDecimal]
+    relative_tolerance: _Tolerance,
+    absolute_tolerance: _Tolerance,
+) -> _Residuals:
     if relation_kind == "zero":
-        comparison = tuple((Decimal(0), Decimal(0)) for _ in current)
-        sign = 1
-    else:
-        if representative is None or len(current) != len(representative):
-            raise ValueError("recurrence numerical relation width is invalid")
-        comparison = representative
-        sign = 1 if relation_kind == "equal" else -1
+        return _zero_residuals(
+            current,
+            relative_tolerance=relative_tolerance,
+            absolute_tolerance=absolute_tolerance,
+        )
+    if representative is None or len(current) != len(representative):
+        raise ValueError("recurrence numerical relation width is invalid")
     return _pair_residuals(
         current,
-        comparison,
-        sign=sign,
+        representative,
+        sign=1 if relation_kind == "equal" else -1,
         relative_tolerance=relative_tolerance,
         absolute_tolerance=absolute_tolerance,
     )
+
+
+def _zero_residuals(
+    current: Sequence[_ComplexDecimal],
+    *,
+    relative_tolerance: _Tolerance,
+    absolute_tolerance: _Tolerance,
+) -> _Residuals:
+    maximum_absolute = Fraction(0)
+    maximum_relative = Fraction(0)
+    maximum_ratio = Fraction(0)
+    relative_fraction = _tolerance_fraction(relative_tolerance)
+    absolute_fraction = _tolerance_fraction(absolute_tolerance)
+    for current_value in current:
+        current_real = Fraction(current_value[0])
+        current_imaginary = Fraction(current_value[1])
+        difference = max(abs(current_real), abs(current_imaginary))
+        allowed = absolute_fraction + relative_fraction * difference
+        relative = (
+            Fraction(0)
+            if difference == 0
+            else difference / max(difference, absolute_fraction)
+        )
+        ratio = Fraction(0) if difference == 0 else difference / allowed
+        maximum_absolute = max(maximum_absolute, difference)
+        maximum_relative = max(maximum_relative, relative)
+        maximum_ratio = max(maximum_ratio, ratio)
+    return maximum_absolute, maximum_relative, maximum_ratio
 
 
 def _pair_residuals(
@@ -2452,17 +2668,19 @@ def _pair_residuals(
     right: Sequence[_ComplexDecimal],
     *,
     sign: int,
-    relative_tolerance: Decimal,
-    absolute_tolerance: Decimal,
-) -> tuple[Fraction, Fraction, Fraction]:
+    relative_tolerance: _Tolerance,
+    absolute_tolerance: _Tolerance,
+) -> _Residuals:
     if len(left) != len(right):
         raise ValueError("recurrence numerical comparison width is invalid")
     maximum_absolute = Fraction(0)
     maximum_relative = Fraction(0)
     maximum_ratio = Fraction(0)
-    relative_fraction = Fraction(relative_tolerance)
-    absolute_fraction = Fraction(absolute_tolerance)
+    relative_fraction = _tolerance_fraction(relative_tolerance)
+    absolute_fraction = _tolerance_fraction(absolute_tolerance)
     for left_value, right_value in zip(left, right, strict=True):
+        left_real = Fraction(left_value[0])
+        left_imaginary = Fraction(left_value[1])
         right_real = Fraction(right_value[0])
         right_imaginary = Fraction(right_value[1])
         signed = (
@@ -2471,12 +2689,12 @@ def _pair_residuals(
             else (-right_real, -right_imaginary)
         )
         difference = max(
-            abs(Fraction(left_value[0]) - Fraction(signed[0])),
-            abs(Fraction(left_value[1]) - Fraction(signed[1])),
+            abs(left_real - signed[0]),
+            abs(left_imaginary - signed[1]),
         )
         scale = max(
-            abs(Fraction(left_value[0])),
-            abs(Fraction(left_value[1])),
+            abs(left_real),
+            abs(left_imaginary),
             abs(right_real),
             abs(right_imaginary),
         )
@@ -2491,6 +2709,10 @@ def _pair_residuals(
         maximum_relative = max(maximum_relative, relative)
         maximum_ratio = max(maximum_ratio, ratio)
     return maximum_absolute, maximum_relative, maximum_ratio
+
+
+def _tolerance_fraction(value: _Tolerance) -> Fraction:
+    return value if isinstance(value, Fraction) else Fraction(value)
 
 
 def _relation_observation_sha256(
@@ -2563,8 +2785,11 @@ def _runtime_parameter_defaults(
 
 def _runtime_parameter_schema_payload(
     plan: _RecurrenceExactPlan,
+    *,
+    defaults: tuple[Decimal, ...] | None = None,
 ) -> dict[str, object]:
-    defaults = _runtime_parameter_defaults(plan)
+    if defaults is None:
+        defaults = _runtime_parameter_defaults(plan)
     return {
         "abi": _PARAMETER_SCHEMA_ABI,
         "parameters": [
@@ -2582,6 +2807,37 @@ def _runtime_parameter_schema_payload(
             )
         ],
     }
+
+
+def _build_warmup_static_context(
+    plan: _RecurrenceExactPlan,
+) -> _WarmupStaticContext:
+    """Build immutable generation-scoped data shared by every warm-up pass."""
+
+    current_dimensions = {
+        current.semantic_id: current.component_count
+        for current in plan.sections.currents
+    }
+    current_contracts = _current_contracts(plan.sections)
+    source_semantics = _source_semantics_payload(
+        plan.sections,
+        contracts=current_contracts,
+    )
+    source_semantics_sha256 = _canonical_sha256(source_semantics)
+    runtime_defaults = _runtime_parameter_defaults(plan)
+    runtime_parameter_schema = _runtime_parameter_schema_payload(
+        plan,
+        defaults=runtime_defaults,
+    )
+    return _WarmupStaticContext(
+        current_dimensions=current_dimensions,
+        current_contracts=current_contracts,
+        runtime_defaults=runtime_defaults,
+        runtime_parameter_schema=runtime_parameter_schema,
+        runtime_parameter_schema_sha256=_canonical_sha256(runtime_parameter_schema),
+        source_semantics=source_semantics,
+        source_semantics_sha256=source_semantics_sha256,
+    )
 
 
 def _build_parameter_probe_contexts(
@@ -2768,6 +3024,14 @@ def _fraction_string(value: Fraction) -> str:
         str(value.numerator)
         if value.denominator == 1
         else f"{value.numerator}/{value.denominator}"
+    )
+
+
+def _residual_strings(residuals: _Residuals) -> _ResidualStrings:
+    return (
+        _fraction_string(residuals[0]),
+        _fraction_string(residuals[1]),
+        _fraction_string(residuals[2]),
     )
 
 

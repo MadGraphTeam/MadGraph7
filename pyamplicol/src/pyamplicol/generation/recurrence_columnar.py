@@ -1875,15 +1875,11 @@ def _validate_logical_relations(
                     "distinguished_source_slot": distinguished_source_slot,
                     "external_source_count": len(external_legs),
                     "fermionic_source_slots": tuple(
-                        leg.source_slot
-                        for leg in external_legs
-                        if leg.is_fermionic
+                        leg.source_slot for leg in external_legs if leg.is_fermionic
                     ),
                     "open_string_count": len(open_blocks),
                     "physical_block_source_slots": physical_blocks,
-                    "policy": (
-                        "minimum-coloured-source-slot-open-line-block-rotation"
-                    ),
+                    "policy": ("minimum-coloured-source-slot-open-line-block-rotation"),
                     "process_source_label_order": tuple(
                         leg.public_label for leg in external_legs
                     ),
@@ -2487,7 +2483,10 @@ def _freeze_table(
         )
     frozen: list[RecurrenceColumn] = []
     for column_name, values in columns.items():
-        owned = np.array(values, dtype=values.dtype, order="C", copy=True)
+        if values.flags.owndata and values.flags.c_contiguous:
+            owned = values
+        else:
+            owned = np.array(values, dtype=values.dtype, order="C", copy=True)
         owned.flags.writeable = False
         frozen.append(RecurrenceColumn(column_name, owned))
     return RecurrenceColumnarTable(name, row_count, tuple(frozen))

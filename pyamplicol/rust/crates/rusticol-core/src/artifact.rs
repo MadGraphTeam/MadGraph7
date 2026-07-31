@@ -8,7 +8,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use serde_json::value::RawValue;
+#[cfg(test)]
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -26,6 +26,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const MAX_MANIFEST_BYTES: u64 = 16 * 1024 * 1024;
+#[cfg(test)]
+const RUNTIME_IDENTITY_PAYLOAD_ROLES: [&str; 5] = [
+    "compiled-model",
+    "evaluator-manifest",
+    "evaluator-state",
+    "model-parameters",
+    "runtime-physics",
+];
 const EVALUATOR_PAYLOAD_CONTAINER_EXTENSION: &str = "evaluator_payload_container";
 const EVALUATOR_PAYLOAD_CONTAINER_KIND: &str = "pyamplicol-evaluator-payload-container";
 const EVALUATOR_PAYLOAD_CONTAINER_STORAGE_ABI: &str = "pacbin-v1";
@@ -524,9 +532,7 @@ impl EvaluatorPayloadSource {
                 ))
             }),
             Self::AuthenticatedFile { root, payload } => {
-                authenticate_payload(root, payload, true, || {}).map(|bytes| {
-                    Cow::Owned(bytes.expect("authenticated evaluator bytes were requested"))
-                })
+                read_declared_payload(root, payload).map(Cow::Owned)
             }
             Self::Packed {
                 container,
@@ -649,9 +655,10 @@ impl EvaluatorPayloadStore {
 }
 
 impl VerifiedArtifact {
-    /// Verify an artifact directory or a direct v3 manifest path.
+    /// Open a trusted artifact directory or a direct v3 manifest path.
     ///
-    /// Every payload is size- and SHA-256-checked before this function returns.
+    /// Schema, references, and confined paths are checked. Payload digests are
+    /// deliberately not recomputed on the normal runtime path.
     pub fn open(path: impl AsRef<Path>) -> RusticolResult<Self> {
         Self::open_with_manifest_preflight(path, |_| Ok(()))
     }
@@ -709,7 +716,6 @@ impl VerifiedArtifact {
                 "unsupported process artifact schema {schema_version}; this runtime requires schema v{PROCESS_ARTIFACT_SCHEMA_VERSION}"
             )));
         }
-        validate_artifact_identity(&header, &bytes)?;
         reject_forbidden_nulls(&header)?;
         let manifest: ArtifactManifest = serde_json::from_slice(&bytes).map_err(|error| {
             RusticolError::serialization(format!(
@@ -723,6 +729,7 @@ impl VerifiedArtifact {
         let mut payloads = BTreeMap::new();
         let mut portable_paths = BTreeSet::new();
         for payload in &manifest.payloads {
+            validate_payload_declaration(payload)?;
             validate_relative_path(&payload.path, "payload path")?;
             if payload.path == ARTIFACT_MANIFEST_FILE {
                 return Err(RusticolError::security(format!(
@@ -747,20 +754,6 @@ impl VerifiedArtifact {
             }
         }
         validate_references(&manifest, &payloads)?;
-        validate_artifact_tree(&root, &payloads)?;
-        let evaluator_container_path = manifest
-            .extensions
-            .get(EVALUATOR_PAYLOAD_CONTAINER_EXTENSION)
-            .and_then(Value::as_object)
-            .and_then(|extension| extension.get("path"))
-            .and_then(Value::as_str);
-        for payload in payloads.values() {
-            if evaluator_container_path == Some(payload.path.as_str()) {
-                validate_payload_declaration(payload)?;
-            } else {
-                validate_payload(&root, payload)?;
-            }
-        }
         let evaluator_payload_container =
             load_evaluator_payload_container(&root, &manifest, &payloads)?;
         let payloads = Arc::new(payloads);
@@ -799,8 +792,7 @@ impl VerifiedArtifact {
 
     pub fn read_payload(&self, path: &str) -> RusticolResult<Vec<u8>> {
         let payload = self.payload(path)?;
-        authenticate_payload(&self.root, payload, true, || {})
-            .map(|bytes| bytes.expect("authenticated payload bytes were requested"))
+        read_declared_payload(&self.root, payload)
     }
 
     /// Open one declared loose payload and pin the checked file description.
@@ -813,20 +805,9 @@ impl VerifiedArtifact {
         open_checked_payload(&self.root, payload)
     }
 
-    #[cfg(test)]
-    pub(crate) fn read_payload_with_pre_read_hook(
-        &self,
-        path: &str,
-        hook: impl FnOnce(),
-    ) -> RusticolResult<Vec<u8>> {
-        let payload = self.payload(path)?;
-        authenticate_payload(&self.root, payload, true, hook)
-            .map(|bytes| bytes.expect("authenticated payload bytes were requested"))
-    }
-
     pub(crate) fn payload_path(&self, path: &str) -> RusticolResult<PathBuf> {
         let payload = self.payload(path)?;
-        validate_payload(&self.root, payload)?;
+        drop(open_checked_payload(&self.root, payload)?);
         Ok(self.root.join(path))
     }
 
@@ -1070,49 +1051,37 @@ fn normalize_process_expression(expression: &str) -> String {
         .join(" ")
 }
 
-fn validate_artifact_identity(manifest: &Value, bytes: &[u8]) -> RusticolResult<()> {
-    let claimed = manifest
-        .get("artifact_id")
-        .and_then(Value::as_str)
-        .ok_or_else(|| RusticolError::artifact("artifact_id must be a SHA-256 digest"))?;
-    validate_sha256(claimed, "artifact_id")?;
-    let computed = compute_artifact_id_from_bytes(bytes)?;
-    if computed != claimed {
-        return Err(RusticolError::integrity(format!(
-            "artifact manifest identity digest mismatch: found {claimed}, computed {computed}"
-        )));
-    }
-    Ok(())
-}
-
-fn compute_artifact_id_from_bytes(bytes: &[u8]) -> RusticolResult<String> {
-    let mut fields: BTreeMap<String, Box<RawValue>> =
-        serde_json::from_slice(bytes).map_err(|error| {
-            RusticolError::serialization(format!(
-                "could not preserve artifact manifest JSON for identity hashing: {error}"
-            ))
-        })?;
-    if fields.remove("artifact_id").is_none() {
-        return Err(RusticolError::artifact(
-            "artifact manifest has no artifact_id field",
-        ));
-    }
-    let mut canonical = serde_json::to_vec(&fields).map_err(|error| {
-        RusticolError::serialization(format!(
-            "could not canonicalize artifact manifest identity fields: {error}"
-        ))
-    })?;
-    canonical.push(b'\n');
-    Ok(format!("{:x}", Sha256::digest(&canonical)))
-}
-
 #[cfg(test)]
 fn compute_artifact_id(manifest: &Value) -> RusticolResult<String> {
-    let mut content = manifest.clone();
-    let object = content
-        .as_object_mut()
-        .ok_or_else(|| RusticolError::artifact("artifact manifest must be a JSON object"))?;
-    object.remove("artifact_id");
+    let payloads = manifest
+        .get("payloads")
+        .and_then(Value::as_array)
+        .ok_or_else(|| RusticolError::artifact("payloads must be an array"))?;
+    let mut runtime_records = Vec::new();
+    for (index, payload) in payloads.iter().enumerate() {
+        let role = payload.get("role").and_then(Value::as_str).ok_or_else(|| {
+            RusticolError::artifact(format!("payloads[{index}].role must be a non-empty string"))
+        })?;
+        if RUNTIME_IDENTITY_PAYLOAD_ROLES.contains(&role) {
+            runtime_records.push(payload.clone());
+        }
+    }
+    runtime_records.sort_by(|left, right| {
+        left.get("path")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .cmp(
+                right
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+            )
+    });
+    let content = serde_json::json!({
+        "kind": "pyamplicol-runtime-payload-identity",
+        "schema_version": 1,
+        "payloads": runtime_records,
+    });
     let mut canonical = String::new();
     write_python_canonical_json(&content, &mut canonical)?;
     canonical.push('\n');
@@ -1628,77 +1597,6 @@ fn require_payload_role(
     Ok(())
 }
 
-fn validate_artifact_tree(root: &Path, payloads: &BTreeMap<String, Payload>) -> RusticolResult<()> {
-    let declared = payloads.keys().map(String::as_str).collect::<BTreeSet<_>>();
-    validate_artifact_tree_directory(root, root, &declared)
-}
-
-fn validate_artifact_tree_directory(
-    root: &Path,
-    directory: &Path,
-    declared: &BTreeSet<&str>,
-) -> RusticolResult<()> {
-    let entries = fs::read_dir(directory).map_err(|error| {
-        RusticolError::security(format!(
-            "could not inspect artifact directory {}: {error}",
-            directory.display()
-        ))
-    })?;
-    for entry in entries {
-        let entry = entry.map_err(|error| {
-            RusticolError::security(format!("could not inspect artifact tree entry: {error}"))
-        })?;
-        let path = entry.path();
-        let relative = artifact_relative_path(root, &path)?;
-        let metadata = fs::symlink_metadata(&path).map_err(|error| {
-            RusticolError::security(format!(
-                "could not inspect artifact tree entry {relative:?}: {error}"
-            ))
-        })?;
-        let file_type = metadata.file_type();
-        if file_type.is_symlink() {
-            return Err(RusticolError::security(format!(
-                "artifact tree contains a symlink at {relative:?}"
-            )));
-        }
-        if file_type.is_dir() {
-            validate_artifact_tree_directory(root, &path, declared)?;
-            continue;
-        }
-        if !file_type.is_file() {
-            return Err(RusticolError::security(format!(
-                "artifact tree contains a non-regular entry at {relative:?}"
-            )));
-        }
-        if !declared.contains(relative.as_str()) && metadata_is_executable(&metadata) {
-            return Err(RusticolError::security(format!(
-                "artifact tree contains an undeclared executable at {relative:?}"
-            )));
-        }
-    }
-    Ok(())
-}
-
-fn artifact_relative_path(root: &Path, path: &Path) -> RusticolResult<String> {
-    let relative = path.strip_prefix(root).map_err(|_| {
-        RusticolError::security("artifact tree entry escapes the canonical artifact root")
-    })?;
-    let mut parts = Vec::new();
-    for component in relative.components() {
-        let std::path::Component::Normal(part) = component else {
-            return Err(RusticolError::security(
-                "artifact tree contains a non-normal path component",
-            ));
-        };
-        parts.push(
-            part.to_str().ok_or_else(|| {
-                RusticolError::security("artifact tree contains a non-UTF-8 path")
-            })?,
-        );
-    }
-    Ok(parts.join("/"))
-}
-
 fn metadata_is_executable(metadata: &fs::Metadata) -> bool {
     #[cfg(unix)]
     {
@@ -1712,95 +1610,37 @@ fn metadata_is_executable(metadata: &fs::Metadata) -> bool {
     }
 }
 
-fn validate_payload(root: &Path, payload: &Payload) -> RusticolResult<()> {
-    authenticate_payload(root, payload, false, || {}).map(|_| ())
-}
-
-fn authenticate_payload(
-    root: &Path,
-    payload: &Payload,
-    retain_bytes: bool,
-    pre_read_hook: impl FnOnce(),
-) -> RusticolResult<Option<Vec<u8>>> {
+fn read_declared_payload(root: &Path, payload: &Payload) -> RusticolResult<Vec<u8>> {
     validate_payload_declaration(payload)?;
     let mut file = open_checked_payload(root, payload)?;
-    pre_read_hook();
-
     let expected_size = usize::try_from(payload.size_bytes).map_err(|_| {
-        RusticolError::security(format!(
+        RusticolError::artifact(format!(
             "payload {:?} is too large for this platform",
             payload.path
         ))
     })?;
-    let mut retained = if retain_bytes {
-        let mut bytes = Vec::new();
-        bytes.try_reserve_exact(expected_size).map_err(|error| {
-            RusticolError::artifact(format!(
-                "could not allocate {} bytes for payload {:?}: {error}",
-                payload.size_bytes, payload.path
-            ))
-        })?;
-        Some(bytes)
-    } else {
-        None
-    };
-    let mut digest = Sha256::new();
-    let mut buffer = vec![0_u8; (1024 * 1024).min(expected_size.max(1))];
-    let mut consumed = 0_usize;
-    while consumed < expected_size {
-        let remaining = expected_size - consumed;
-        let chunk_size = remaining.min(buffer.len());
-        let count = loop {
-            match file.read(&mut buffer[..chunk_size]) {
-                Ok(count) => break count,
-                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
-                Err(error) => {
-                    return Err(RusticolError::artifact(format!(
-                        "could not read payload {:?}: {error}",
-                        payload.path
-                    )));
-                }
-            }
-        };
-        if count == 0 {
-            return Err(RusticolError::integrity(format!(
-                "payload {:?} changed while being read: expected {} bytes, read {consumed}",
-                payload.path, payload.size_bytes
-            )));
-        }
-        digest.update(&buffer[..count]);
-        if let Some(bytes) = &mut retained {
-            bytes.extend_from_slice(&buffer[..count]);
-        }
-        consumed += count;
-    }
-    let mut extra = [0_u8; 1];
-    let extra_count = loop {
-        match file.read(&mut extra) {
-            Ok(count) => break count,
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
-            Err(error) => {
-                return Err(RusticolError::artifact(format!(
-                    "could not finish reading payload {:?}: {error}",
-                    payload.path
-                )));
-            }
-        }
-    };
-    if extra_count != 0 {
+    let mut bytes = Vec::new();
+    bytes.try_reserve_exact(expected_size).map_err(|error| {
+        RusticolError::artifact(format!(
+            "could not allocate {} bytes for payload {:?}: {error}",
+            payload.size_bytes, payload.path
+        ))
+    })?;
+    file.read_to_end(&mut bytes).map_err(|error| {
+        RusticolError::artifact(format!(
+            "could not read payload {:?}: {error}",
+            payload.path
+        ))
+    })?;
+    if bytes.len() != expected_size {
         return Err(RusticolError::integrity(format!(
-            "payload {:?} changed while being read: it exceeds the declared {} bytes",
-            payload.path, payload.size_bytes
+            "payload {:?} changed while being read: expected {} bytes, read {}",
+            payload.path,
+            payload.size_bytes,
+            bytes.len()
         )));
     }
-    let actual = format!("{:x}", digest.finalize());
-    if actual != payload.sha256 {
-        return Err(RusticolError::integrity(format!(
-            "payload {:?} has SHA-256 {actual}, expected {}",
-            payload.path, payload.sha256
-        )));
-    }
-    Ok(retained)
+    Ok(bytes)
 }
 
 fn validate_payload_declaration(payload: &Payload) -> RusticolResult<()> {

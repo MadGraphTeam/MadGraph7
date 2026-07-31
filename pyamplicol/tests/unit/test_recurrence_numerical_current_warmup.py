@@ -7,6 +7,7 @@ import json
 import math
 import tempfile
 import zlib
+from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from decimal import Decimal, localcontext
 from fractions import Fraction
@@ -40,6 +41,7 @@ from pyamplicol.generation.recurrence_numerical_current_warmup import (
     _raw_evidence_wire_byte_limit,
     _raw_streaming_consumer_memory_upper_bound,
     _read_compressed_evidence_spool,
+    _relation_residuals,
     _runtime_parameter_schema_payload,
     _spooled_capture_memory_upper_bound,
     _SpooledObservationMapping,
@@ -174,6 +176,44 @@ def test_massive_one_body_recurrence_probe_domains_are_physical_and_distinct(
                 rel_tol=1.0e-12,
                 abs_tol=1.0e-10,
             )
+
+
+def test_zero_residual_specialization_matches_explicit_zero_comparison() -> None:
+    current = (
+        (Decimal("0"), Decimal("-0")),
+        (Decimal("1.25"), Decimal("-3.5")),
+        (
+            Decimal("0.123456789012345678901234567890123456789"),
+            Decimal("-9.87654321098765432109876543210987654321"),
+        ),
+    )
+    relative = Fraction(1, 10**70)
+    absolute = Fraction(1, 10**80)
+
+    expected = _pair_residuals(
+        current,
+        tuple((Decimal(0), Decimal(0)) for _ in current),
+        sign=1,
+        relative_tolerance=Decimal("1e-70"),
+        absolute_tolerance=Decimal("1e-80"),
+    )
+    actual = _relation_residuals(
+        "zero",
+        current,
+        None,
+        relative_tolerance=relative,
+        absolute_tolerance=absolute,
+    )
+
+    assert actual == expected
+    with pytest.raises(ValueError, match="relation width is invalid"):
+        _relation_residuals(
+            "equal",
+            current,
+            None,
+            relative_tolerance=relative,
+            absolute_tolerance=absolute,
+        )
 
 
 def _topology_replay_plan() -> _RecurrenceExactPlan:
@@ -425,6 +465,129 @@ def test_python_parameter_default_hex_matches_native_signed_binary64_contract() 
         "-0x1.8000000000000p+0",
         "-0x0.0000000000001p-1022",
     ]
+
+
+def test_warmup_builds_static_semantics_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contract_calls = 0
+    default_calls = 0
+    source_semantics_calls = 0
+    original_contracts = recurrence_warmup._current_contracts
+    original_defaults = recurrence_warmup._runtime_parameter_defaults
+    original_source_semantics = recurrence_warmup._source_semantics_payload
+
+    def counted_contracts(
+        sections: _RecurrenceExactSectionsV1,
+    ) -> tuple[tuple[object, ...], ...]:
+        nonlocal contract_calls
+        contract_calls += 1
+        return original_contracts(sections)
+
+    def counted_defaults(plan: _RecurrenceExactPlan) -> tuple[Decimal, ...]:
+        nonlocal default_calls
+        default_calls += 1
+        return original_defaults(plan)
+
+    def counted_source_semantics(
+        sections: _RecurrenceExactSectionsV1,
+        *,
+        contracts: tuple[tuple[object, ...], ...] | None = None,
+    ) -> dict[str, object]:
+        nonlocal source_semantics_calls
+        source_semantics_calls += 1
+        return original_source_semantics(sections, contracts=contracts)
+
+    monkeypatch.setattr(recurrence_warmup, "_current_contracts", counted_contracts)
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_runtime_parameter_defaults",
+        counted_defaults,
+    )
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_source_semantics_payload",
+        counted_source_semantics,
+    )
+    result = run_recurrence_numerical_current_warmup(
+        _topology_replay_plan(),
+        candidate_points=_points(1),
+        verification_points=_points(101),
+        mode="certified-reuse",
+        color_accuracy="lc",
+        precision_digits=80,
+        seed=53,
+        relative_tolerance=1.0e-60,
+        absolute_tolerance=1.0e-70,
+    )
+    try:
+        assert contract_calls == 1
+        assert default_calls == 1
+        assert source_semantics_calls == 1
+        candidate_dimensions = result.candidate_capture.current_dimensions
+        verification_dimensions = result.verification_capture.current_dimensions
+        assert candidate_dimensions == verification_dimensions
+        assert candidate_dimensions is not verification_dimensions
+        assert isinstance(candidate_dimensions, dict)
+        assert isinstance(verification_dimensions, dict)
+        current_id = next(iter(candidate_dimensions))
+        verification_dimension = verification_dimensions[current_id]
+        candidate_dimensions[current_id] = verification_dimension + 1
+        assert verification_dimensions[current_id] == verification_dimension
+    finally:
+        result.close()
+
+
+def test_warmup_phase_timings_are_diagnostic_only() -> None:
+    arguments = {
+        "candidate_points": _points(1),
+        "verification_points": _points(101),
+        "mode": "certified-reuse",
+        "color_accuracy": "lc",
+        "precision_digits": 80,
+        "seed": 53,
+        "relative_tolerance": 1.0e-60,
+        "absolute_tolerance": 1.0e-70,
+    }
+    result = run_recurrence_numerical_current_warmup(
+        _topology_replay_plan(),
+        **arguments,
+    )
+    repeated = run_recurrence_numerical_current_warmup(
+        _topology_replay_plan(),
+        **arguments,
+    )
+    try:
+        assert result.generation_profile_timings
+        assert all(
+            isinstance(seconds, float) and seconds >= 0.0
+            for seconds in result.generation_profile_timings.values()
+        )
+        assert {
+            key
+            for key in result.generation_profile_timings
+            if key.startswith("warmup_candidate_probe_")
+        } == {"warmup_candidate_probe_0", "warmup_candidate_probe_1"}
+        assert {
+            key
+            for key in result.generation_profile_timings
+            if key.startswith("warmup_verification_probe_")
+        } == {"warmup_verification_probe_0", "warmup_verification_probe_1"}
+        assert "generation_profile_timings" not in json.dumps(
+            result.to_json_dict(),
+            sort_keys=True,
+        )
+        assert result.evidence_json == repeated.evidence_json
+        assert result == repeated
+        assert result == replace(
+            result,
+            generation_profile_timings={"diagnostic-only": 1.0},
+        )
+        with pytest.raises(TypeError):
+            result.generation_profile_timings["not-mutable"] = 1.0  # type: ignore[index]
+    finally:
+        result.close()
+        repeated.close()
 
 
 def test_recurrence_certified_reuse_uses_two_independent_probe_sets() -> None:
@@ -785,14 +948,12 @@ def test_compressed_warmup_keeps_relation_rows_spooled_through_validation(
     monkeypatch.setattr(
         recurrence_warmup,
         "_select_raw_evidence_storage_geometry",
-        lambda *_args, **_kwargs: (
-            recurrence_warmup._RawEvidenceStorageGeometry(
-                scalar_count=128,
-                row_count=16,
-                canonical_byte_limit=1 << 20,
-                encoding="zlib-canonical-json-v1",
-                producer_resident_upper_bound=1 << 20,
-            )
+        lambda *_args, **_kwargs: recurrence_warmup._RawEvidenceStorageGeometry(
+            scalar_count=128,
+            row_count=16,
+            canonical_byte_limit=1 << 20,
+            encoding="zlib-canonical-json-v1",
+            producer_resident_upper_bound=1 << 20,
         ),
     )
     plan = _topology_replay_plan()
@@ -897,6 +1058,102 @@ def test_spooled_discovery_preserves_global_equal_opposite_and_zero_relations() 
     assert {
         (certificate.current_id, certificate.relation_kind) for certificate in actual
     } >= {(3, "equal"), (4, "opposite"), (5, "zero")}
+
+
+def test_discovery_reads_each_candidate_current_once_and_reuses_residual_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = _no_relation_plan()
+    source_digest = recurrence_numerical_source_semantics_sha256(plan.sections)
+    candidate = capture_recurrence_current_observations(
+        plan,
+        _points(1),
+        precision_digits=80,
+        source_semantics_sha256=source_digest,
+        seed=71,
+        domain="candidate-current-probes-v1",
+    )
+    verification = capture_recurrence_current_observations(
+        plan,
+        _points(101),
+        precision_digits=80,
+        source_semantics_sha256=source_digest,
+        seed=71,
+        domain="independent-verification-current-probes-v1",
+    )
+    candidate_indexes = _build_candidate_indexes(
+        plan.sections,
+        candidate.observations,
+    )
+    expected_certificates, expected_report = _discover_relations(
+        plan.sections,
+        candidate,
+        verification,
+        source_semantics_sha256=source_digest,
+        precision_digits=80,
+        seed=71,
+        relative_tolerance=1.0e-60,
+        absolute_tolerance=1.0e-70,
+        color_accuracy="lc",
+        candidate_indexes=candidate_indexes,
+    )
+    spool = _SpooledObservationMapping(candidate.observations)
+
+    class CountingRows(
+        Mapping[int, tuple[tuple[Decimal, Decimal], ...]],
+    ):
+        def __init__(self) -> None:
+            self.reads: dict[int, int] = {}
+
+        def __getitem__(
+            self,
+            current_id: int,
+        ) -> tuple[tuple[Decimal, Decimal], ...]:
+            self.reads[current_id] = self.reads.get(current_id, 0) + 1
+            return spool[current_id]
+
+        def __iter__(self) -> Iterator[int]:
+            return iter(spool)
+
+        def __len__(self) -> int:
+            return len(spool)
+
+    rows = CountingRows()
+    fraction_string_calls = 0
+    fraction_string = recurrence_warmup._fraction_string
+
+    def counted_fraction_string(value: Fraction) -> str:
+        nonlocal fraction_string_calls
+        fraction_string_calls += 1
+        return fraction_string(value)
+
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_fraction_string",
+        counted_fraction_string,
+    )
+    try:
+        actual_certificates, actual_report = _discover_relations(
+            plan.sections,
+            replace(candidate, observations=rows),
+            verification,
+            source_semantics_sha256=source_digest,
+            precision_digits=80,
+            seed=71,
+            relative_tolerance=1.0e-60,
+            absolute_tolerance=1.0e-70,
+            color_accuracy="lc",
+            candidate_indexes=candidate_indexes,
+        )
+    finally:
+        spool.close()
+
+    assert actual_certificates == expected_certificates == ()
+    assert actual_report == expected_report
+    assert rows.reads == {2: 1, 3: 1}
+    assert fraction_string_calls == 3 * (
+        int(actual_report["tested_hypothesis_count"]) + 1
+    )
 
 
 def test_dynamic_raw_geometry_rejects_adversarial_sizes_and_reserves_wire() -> None:
@@ -1192,6 +1449,7 @@ def test_recurrence_service_forwards_complete_numerical_contract_to_pyo3(
             "resolved_helicities": (),
             "amplitude_destinations": (),
             "exact_sections": {},
+            "generation_profile": {"serialized_bytes": {"container": len(b"pacbin")}},
             "member_count": 1,
             "unpacked_size_bytes": 6,
             "index_sha256": "b" * 64,
@@ -1230,9 +1488,39 @@ def test_recurrence_service_forwards_complete_numerical_contract_to_pyo3(
         relation_discovery_evidence_json=evidence,
         progress_callback=progress,
     )
+    cached_destination = tmp_path / "recurrence-runtime-cached.pacbin"
+    cached_catalog = SimpleNamespace(
+        catalog_digest="e" * 64,
+        to_dict=lambda: pytest.fail("cached direct-template JSON was rebuilt"),
+    )
+    cached_output = generation_service._invoke_rust_recurrence_lowering_v2(
+        builder,
+        template,
+        cached_catalog,
+        "f" * 64,
+        "1" * 64,
+        cached_destination,
+        point_tile_size=17,
+        workspace_mib=23,
+        relation_discovery_mode="certified-reuse",
+        relation_discovery_precision_digits=101,
+        relation_discovery_probe_count=3,
+        relation_discovery_verification_probe_count=5,
+        relation_discovery_relative_tolerance=1.25e-70,
+        relation_discovery_absolute_tolerance=2.5e-80,
+        relation_discovery_seed=123456789,
+        color_accuracy="nlc",
+        relation_discovery_evidence_json=evidence,
+        progress_callback=progress,
+        direct_template_catalog_json=b'{"a":2,"z":1}',
+    )
 
     assert output.payload_path == destination
-    assert len(calls) == 1
+    assert output.generation_profile == {
+        "serialized_bytes": {"container": len(b"pacbin")}
+    }
+    assert cached_output.payload_path == cached_destination
+    assert len(calls) == 2
     args, kwargs = calls[0]
     assert args[:2] == (builder, template)
     assert args[2] == b'{"a":2,"z":1}'
@@ -1254,3 +1542,6 @@ def test_recurrence_service_forwards_complete_numerical_contract_to_pyo3(
         "relation_discovery_evidence_json": evidence,
         "progress_callback": progress,
     }
+    cached_args, cached_kwargs = calls[1]
+    assert cached_args[2] == args[2]
+    assert cached_kwargs == kwargs

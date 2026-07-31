@@ -20,9 +20,10 @@ use rusticol_core::recurrence::{
     RECURRENCE_CONTRACTED_COLOR_CAPABILITY, RECURRENCE_DIRECT_PLAN_ABI,
     RECURRENCE_DIRECT_RUNTIME_CAPABILITY, RECURRENCE_DIRECT_RUNTIME_LAYOUT_ABI,
     RECURRENCE_DIRECT_SCHEDULE_MEMBER, RECURRENCE_DIRECT_TEMPLATE_ABI,
-    RECURRENCE_LC_COLOR_CAPABILITY, RecurrenceBuildProgress, RecurrenceRelationDiscoveryMode,
-    RecurrenceRelationDiscoveryOptions, RecurrenceRelationDiscoveryReport, RecurrenceStrategy,
-    SemanticDigest, authenticate_recurrence_numerical_relation_provenance,
+    RECURRENCE_LC_COLOR_CAPABILITY, RecurrenceBuildProgress, RecurrenceGenerationTelemetry,
+    RecurrenceRelationDiscoveryMode, RecurrenceRelationDiscoveryOptions,
+    RecurrenceRelationDiscoveryReport, RecurrenceStrategy, SemanticDigest,
+    authenticate_recurrence_numerical_relation_provenance,
     bind_recurrence_color_projection_certificate, checked_usize, lower_recurrence_direct_plan_v2,
     lower_recurrence_direct_plan_v2_with_relation_discovery,
     write_recurrence_direct_plan_pacbin_with_projection_certificate,
@@ -814,6 +815,7 @@ struct NativeDirectLoweringResult {
     relation_discovery: Option<RecurrenceRelationDiscoveryReport>,
     exact_sections: NativeRecurrenceExactSections,
     construction: RecurrenceConstructionMetrics,
+    generation_profile: RecurrenceGenerationTelemetry,
     timings: DirectLoweringTimings,
 }
 
@@ -1028,7 +1030,8 @@ fn lower_recurrence_direct(
         construction.include(&snapshot);
         progress(snapshot)
     };
-    let program = authenticated.build_with_progress(&mut tracked_progress)?;
+    let (program, generation_profile) =
+        authenticated.build_with_progress_and_telemetry(&mut tracked_progress)?;
     let projection_certificate = program
         .color_projection_certificate_body()
         .map(|body| {
@@ -1169,6 +1172,7 @@ fn lower_recurrence_direct(
         relation_discovery: relation_discovery_report,
         exact_sections,
         construction,
+        generation_profile,
         timings: DirectLoweringTimings {
             python_extraction_seconds,
             catalog_authentication_seconds,
@@ -2080,10 +2084,269 @@ fn report_recurrence_build_progress(
     .map_err(|error| invalid(format!("recurrence progress callback failed: {error}")))
 }
 
+fn recurrence_generation_profile_mapping<'py>(
+    py: Python<'py>,
+    native: &NativeDirectLoweringResult,
+) -> PyResult<Bound<'py, PyDict>> {
+    let profile = PyDict::new(py);
+    profile.set_item("schema_version", 1)?;
+    profile.set_item("scope", "generation-only")?;
+
+    let telemetry = &native.generation_profile;
+    let timings = PyDict::new(py);
+    for (name, nanoseconds) in [
+        (
+            "transition-catalog",
+            telemetry.transition_catalog_nanoseconds,
+        ),
+        (
+            "structural-feasibility",
+            telemetry.structural_feasibility_nanoseconds,
+        ),
+        (
+            "color-target-index",
+            telemetry.color_target_index_nanoseconds,
+        ),
+        ("structural-demand", telemetry.structural_demand_nanoseconds),
+        ("support-indexing", telemetry.support_indexing_nanoseconds),
+        (
+            "candidate-processing",
+            telemetry.candidate_processing_nanoseconds,
+        ),
+        (
+            "closure-processing",
+            telemetry.closure_processing_nanoseconds,
+        ),
+        (
+            "canonical-emission",
+            telemetry.canonical_emission_nanoseconds,
+        ),
+    ] {
+        timings.set_item(name, nanoseconds as f64 / 1_000_000_000.0)?;
+    }
+    for (name, seconds) in [
+        (
+            "python-extraction",
+            native.timings.python_extraction_seconds,
+        ),
+        (
+            "catalog-authentication",
+            native.timings.catalog_authentication_seconds,
+        ),
+        (
+            "semantic-construction-total",
+            native.timings.semantic_construction_seconds,
+        ),
+        ("direct-lowering", native.timings.direct_lowering_seconds),
+        ("serialization", native.timings.serialization_seconds),
+        ("native-total", native.timings.native_total_seconds),
+    ] {
+        timings.set_item(name, seconds)?;
+    }
+    profile.set_item("timings_seconds", timings)?;
+
+    let counters = PyDict::new(py);
+    for (name, value) in [
+        ("support_bucket_count", telemetry.support_bucket_count),
+        (
+            "support_bucket_probe_count",
+            telemetry.support_bucket_probe_count,
+        ),
+        (
+            "support_bucket_cache_hit_count",
+            telemetry.support_bucket_cache_hit_count,
+        ),
+        (
+            "support_bucket_cache_miss_count",
+            telemetry.support_bucket_cache_miss_count,
+        ),
+        (
+            "candidate_parent_pair_theoretical_count",
+            telemetry.candidate_parent_pair_theoretical_count,
+        ),
+        (
+            "candidate_parent_pair_visited_count",
+            telemetry.candidate_parent_pair_visited_count,
+        ),
+        (
+            "structural_feasible_support_count",
+            telemetry.structural_feasible_support_count,
+        ),
+        (
+            "structural_decomposition_count",
+            telemetry.structural_decomposition_count,
+        ),
+        (
+            "structural_forward_transition_probe_count",
+            telemetry.structural_forward_transition_probe_count,
+        ),
+        (
+            "structural_demand_support_count",
+            telemetry.structural_demand_support_count,
+        ),
+        (
+            "structural_demand_state_count",
+            telemetry.structural_demand_state_count,
+        ),
+        ("structural_reject_count", telemetry.structural_reject_count),
+        (
+            "transition_index_hit_count",
+            telemetry.transition_index_hit_count,
+        ),
+        (
+            "transition_index_miss_count",
+            telemetry.transition_index_miss_count,
+        ),
+        (
+            "transition_candidate_count",
+            telemetry.transition_candidate_count,
+        ),
+        ("quantum_match_count", telemetry.quantum_match_count),
+        ("coupling_match_count", telemetry.coupling_match_count),
+        ("transition_accept_count", telemetry.transition_accept_count),
+        ("color_shape_match_count", telemetry.color_shape_match_count),
+        ("color_result_count", telemetry.color_result_count),
+        (
+            "color_target_accept_count",
+            telemetry.color_target_accept_count,
+        ),
+        (
+            "color_target_reject_count",
+            telemetry.color_target_reject_count,
+        ),
+        (
+            "color_acceptance_cache_hit_count",
+            telemetry.color_acceptance_cache_hit_count,
+        ),
+        (
+            "color_acceptance_cache_miss_count",
+            telemetry.color_acceptance_cache_miss_count,
+        ),
+        (
+            "color_fragment_bucket_count",
+            telemetry.color_fragment_bucket_count,
+        ),
+        (
+            "color_fragment_hash_lookup_count",
+            telemetry.color_fragment_hash_lookup_count,
+        ),
+        (
+            "color_posting_incidence_count",
+            telemetry.color_posting_incidence_count,
+        ),
+        (
+            "color_sparse_posting_bucket_count",
+            telemetry.color_sparse_posting_bucket_count,
+        ),
+        (
+            "color_dense_posting_bucket_count",
+            telemetry.color_dense_posting_bucket_count,
+        ),
+        (
+            "color_sparse_posting_bytes",
+            telemetry.color_sparse_posting_bytes,
+        ),
+        (
+            "color_dense_posting_bytes",
+            telemetry.color_dense_posting_bytes,
+        ),
+        (
+            "accepted_parent_key_clone_count",
+            telemetry.accepted_parent_key_clone_count,
+        ),
+        (
+            "current_key_lookup_count",
+            telemetry.current_key_lookup_count,
+        ),
+        ("current_key_hit_count", telemetry.current_key_hit_count),
+        ("current_insert_count", telemetry.current_insert_count),
+        ("current_key_clone_count", telemetry.current_key_clone_count),
+        (
+            "indexed_hash_lookup_count",
+            telemetry.indexed_hash_lookup_count,
+        ),
+        (
+            "contribution_attempt_count",
+            telemetry.contribution_attempt_count,
+        ),
+        (
+            "contribution_insert_count",
+            telemetry.contribution_insert_count,
+        ),
+        (
+            "contribution_merge_count",
+            telemetry.contribution_merge_count,
+        ),
+        (
+            "closure_candidate_theoretical_count",
+            telemetry.closure_candidate_theoretical_count,
+        ),
+        ("closure_candidate_count", telemetry.closure_candidate_count),
+        (
+            "closure_support_lookup_count",
+            telemetry.closure_support_lookup_count,
+        ),
+        (
+            "closure_state_match_count",
+            telemetry.closure_state_match_count,
+        ),
+        (
+            "closure_color_attempt_count",
+            telemetry.closure_color_attempt_count,
+        ),
+        ("closure_group_count", telemetry.closure_group_count),
+        (
+            "closure_proof_contribution_count",
+            telemetry.closure_proof_contribution_count,
+        ),
+        (
+            "constructed_current_count",
+            telemetry.constructed_current_count,
+        ),
+        (
+            "constructed_contribution_count",
+            telemetry.constructed_contribution_count,
+        ),
+        (
+            "constructed_interaction_count",
+            telemetry.constructed_interaction_count,
+        ),
+        (
+            "constructed_dynamic_color_state_count",
+            telemetry.constructed_dynamic_color_state_count,
+        ),
+        ("emitted_current_count", telemetry.emitted_current_count),
+        (
+            "emitted_contribution_count",
+            telemetry.emitted_contribution_count,
+        ),
+        (
+            "emitted_interaction_count",
+            telemetry.emitted_interaction_count,
+        ),
+        (
+            "emitted_finalization_count",
+            telemetry.emitted_finalization_count,
+        ),
+        ("emitted_closure_count", telemetry.emitted_closure_count),
+    ] {
+        counters.set_item(name, value)?;
+    }
+    profile.set_item("operation_counters", counters)?;
+
+    let serialized_bytes = PyDict::new(py);
+    serialized_bytes.set_item("plan_payload", native.plan_payload_size)?;
+    serialized_bytes.set_item("container", native.container_size)?;
+    serialized_bytes.set_item("unpacked_container", native.unpacked_size_bytes)?;
+    profile.set_item("serialized_bytes", serialized_bytes)?;
+    Ok(profile)
+}
+
 fn direct_lowering_mapping(
     py: Python<'_>,
     native: NativeDirectLoweringResult,
 ) -> PyResult<Py<PyAny>> {
+    let generation_profile = recurrence_generation_profile_mapping(py, &native)?;
     let result = PyDict::new(py);
     result.set_item("kind", DIRECT_LOWERING_RESULT_KIND)?;
     result.set_item("schema_version", DIRECT_LOWERING_RESULT_SCHEMA_VERSION)?;
@@ -2313,6 +2576,7 @@ fn direct_lowering_mapping(
         "exact_sections",
         crate::recurrence_exact_sections_to_python(py, native.exact_sections)?,
     )?;
+    result.set_item("generation_profile", generation_profile)?;
     Ok(result.into_any().unbind())
 }
 

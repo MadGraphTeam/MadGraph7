@@ -286,6 +286,42 @@ def test_encoding_is_deterministic_and_model_equivalent_topology_is_stable() -> 
             assert np.array_equal(left_column.values, right_column.values)
 
 
+def test_private_freeze_adopts_schema_exact_owned_columns() -> None:
+    columns = pairing_columnar._allocate("rule_endpoint_pairings", 2)
+    columns["fundamental_source_slot"][:] = (2, 3)
+    columns["antifundamental_source_slot"][:] = (4, 5)
+    original = dict(columns)
+
+    table = pairing_columnar._freeze_table("rule_endpoint_pairings", columns)
+
+    for column in table.columns:
+        assert column.values is original[column.name]
+        assert column.values.flags.owndata
+        assert column.values.flags.c_contiguous
+        assert not column.values.flags.writeable
+
+
+def test_private_freeze_does_not_coerce_a_schema_mismatch() -> None:
+    payload = _encode(_identical_catalog())
+    columns = pairing_columnar._allocate("rule_endpoint_pairings", 4)
+    wrong_dtype = columns["fundamental_source_slot"].astype("<u8")
+    columns["fundamental_source_slot"] = wrong_dtype
+
+    malformed = pairing_columnar._freeze_table("rule_endpoint_pairings", columns)
+
+    assert malformed.column("fundamental_source_slot") is not wrong_dtype
+    assert malformed.column("fundamental_source_slot").dtype == wrong_dtype.dtype
+    tables = tuple(
+        malformed if table.name == "rule_endpoint_pairings" else table
+        for table in payload.tables
+    )
+    with pytest.raises(
+        RecurrenceColumnarInputError,
+        match="wrong little-endian fixed-width representation",
+    ):
+        pairing_columnar._FermionPairingColumnarV1(payload.abi, tables)
+
+
 def test_malformed_catalog_and_integer_bounds_fail_closed() -> None:
     catalog = _identical_catalog()
     with pytest.raises(RecurrenceColumnarInputError, match="topology digest"):

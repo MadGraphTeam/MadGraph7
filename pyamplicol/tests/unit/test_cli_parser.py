@@ -50,6 +50,16 @@ def test_generate_defaults_to_recurrence_execution() -> None:
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
 
 
+def test_generate_validation_samples_default_and_override() -> None:
+    default = parse_cli(("generate",)).resolve().effective
+    explicit = parse_cli(
+        ("generate", "--validation-samples", "10")
+    ).resolve().effective
+
+    assert default.generation.validation.samples == 2
+    assert explicit.generation.validation.samples == 10
+
+
 def test_generate_defaults_to_certified_numerical_current_reuse() -> None:
     config = parse_cli(("generate",)).resolve().effective
     assert (

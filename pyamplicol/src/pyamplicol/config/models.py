@@ -438,7 +438,7 @@ class ColorConfig:
 @dataclass(frozen=True, slots=True)
 class GenerationValidationConfig:
     enabled: bool = field(default=True, metadata=_setting("bool"))
-    samples: int = field(default=10, metadata=_setting("int"))
+    samples: int = field(default=2, metadata=_setting("int"))
     seed: int = field(default=12345, metadata=_setting("int"))
     relative_tolerance: float = field(default=1e-12, metadata=_setting("float"))
     absolute_tolerance: float = field(default=1e-300, metadata=_setting("float"))

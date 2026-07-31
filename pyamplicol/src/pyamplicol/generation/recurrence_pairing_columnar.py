@@ -851,9 +851,19 @@ def _freeze_table(
             f"table {name!r} columns do not match its private ABI schema"
         )
     frozen: list[RecurrenceColumn] = []
-    for column_name in expected_names:
+    for column_name, expected_dtype, expected_tail_shape in _TABLE_SCHEMAS[name]:
         values = columns[column_name]
-        owned = np.array(values, dtype=values.dtype, order="C", copy=True)
+        can_adopt = (
+            values.flags.owndata
+            and values.flags.c_contiguous
+            and values.dtype == expected_dtype
+            and values.shape[1:] == expected_tail_shape
+        )
+        owned = (
+            values
+            if can_adopt
+            else np.array(values, dtype=values.dtype, order="C", copy=True)
+        )
         owned.flags.writeable = False
         frozen.append(RecurrenceColumn(column_name, owned))
     row_count = len(frozen[0].values) if frozen else 0
