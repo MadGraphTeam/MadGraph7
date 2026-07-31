@@ -4,6 +4,8 @@ from __future__ import annotations
 import io
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 from pyamplicol.cli import UtilityInvocation, parse_cli, run_cli
@@ -58,6 +60,18 @@ def test_profiling_campaign_copy_is_reset_and_requires_force(
     assert len(copied) == 55
     assert (destination / "steer_performance_campaign.py").is_file()
     assert os.access(destination / "steer_performance_campaign.py", os.X_OK)
+    launcher = destination / "steer_performance_campaign.py"
+    assert launcher.read_text(encoding="utf-8").splitlines()[0] == (
+        f"#!{sys.executable}"
+    )
+    direct = subprocess.run(
+        (str(launcher), "--help"),
+        check=False,
+        capture_output=True,
+        env={**os.environ, "PATH": "/usr/bin:/bin"},
+        text=True,
+    )
+    assert direct.returncode == 0, direct.stderr
     assert (destination / "TABLE_FILLING.md").is_file()
     assert (destination / "results/report-cache.schema.json").is_file()
     assert not (destination / "pyAmpliCol.pdf").exists()

@@ -7,6 +7,7 @@ import argparse
 import os
 import shutil
 import stat
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from importlib import resources
@@ -271,6 +272,12 @@ def _copy_profiling_campaign(
         output.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source / relative, output)
     launcher = target / "steer_performance_campaign.py"
+    launcher_lines = launcher.read_bytes().splitlines(keepends=True)
+    if not launcher_lines or not launcher_lines[0].startswith(b"#!"):
+        raise ConfigurationError("profiling campaign launcher has no shebang")
+    launcher.write_bytes(
+        f"#!{sys.executable}\n".encode() + b"".join(launcher_lines[1:])
+    )
     launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     local_amplicol_path = target / _PROFILING_CAMPAIGN_LOCAL_AMPLICOL
     if validated_amplicol is None:
