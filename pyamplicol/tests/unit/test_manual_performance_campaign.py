@@ -1201,6 +1201,30 @@ def _manual_service(tmp_path: Path) -> ReportService:
     )
 
 
+def test_lease_publication_uses_runtime_revision_without_checkout_git(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _manual_service(tmp_path)
+    state = DashboardState(
+        instance_id="installed",
+        selected_ids=(),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        source_revision="a" * 40,
+    )
+
+    def forbidden(_repo_root: Path) -> str:
+        raise AssertionError("installed campaign lease inspected checkout Git")
+
+    monkeypatch.setattr(manual_campaign, "_repo_head", forbidden)
+    lease = LeaseManager(service, state)
+    lease.publish()
+
+    payload = json.loads(lease.path.read_text(encoding="utf-8"))
+    assert payload["source_revision"] == "a" * 40
+
+
 def test_read_only_views_use_recorded_measurement_source_epoch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

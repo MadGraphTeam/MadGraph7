@@ -1923,7 +1923,7 @@ class LeaseManager:
                 "schema": MANUAL_STATE_SCHEMA,
                 "instance_id": self.state.instance_id,
                 "controller_pid": os.getpid(),
-                "source_revision": _repo_head(self.service.paths.repo_root),
+                "source_revision": self.state.source_revision,
                 "started_at": self.state.started_at,
                 "updated_at": time.time(),
                 "counters": self.state.counters(),
