@@ -63,6 +63,7 @@ dependencies = [
 test = [
   "build>=1.2,<2",
   "jsonschema>=4.22,<5",
+  "maturin==1.14.1",
   "mypy>=1.13,<2",
   "pytest>=8.3,<9",
   "ruff>=0.9,<1",

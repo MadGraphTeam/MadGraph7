@@ -349,15 +349,20 @@ def test_contributor_tools_reuse_project_build_test_and_docs_requirements() -> N
         project_file = module.tomllib.load(stream)
     project = project_file["project"]
     optional = project["optional-dependencies"]
-    expected = (
-        *project_file["build-system"]["requires"],
-        *optional["test"],
-        *optional["docs"],
+    expected = tuple(
+        dict.fromkeys(
+            (
+                *project_file["build-system"]["requires"],
+                *optional["test"],
+                *optional["docs"],
+            )
+        )
     )
 
     requirements = module._contributor_python_requirements()
 
     assert requirements == expected
+    assert requirements.count("maturin==1.14.1") == 1
     assert "pypdf>=5,<6" in requirements
 
 

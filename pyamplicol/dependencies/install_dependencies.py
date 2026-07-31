@@ -795,9 +795,7 @@ def _contributor_python_requirements() -> tuple[str, ...]:
         ):
             raise SetupError(f"pyproject {description} must be a string list")
         requirements.extend(raw)
-    if len(requirements) != len(set(requirements)):
-        raise SetupError("pyproject contributor requirements contain duplicates")
-    return tuple(requirements)
+    return tuple(dict.fromkeys(requirements))
 
 
 def _venv_bootstrap_python() -> Path:
