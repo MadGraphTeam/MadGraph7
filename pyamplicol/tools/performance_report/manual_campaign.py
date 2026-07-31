@@ -82,7 +82,7 @@ DEFAULT_BATCH_SIZE = 128
 DEFAULT_WARMUP_RUNS = 2
 DEFAULT_MINIMUM_SAMPLES = 5
 DEFAULT_WORKER_STALE_SECONDS = 15.0
-DEFAULT_MANUAL_EXPECTED_PAGE_COUNT = 60
+DEFAULT_MANUAL_EXPECTED_PAGE_COUNT = 59
 MAX_TAIL_READ_BYTES = 64 * 1024
 MAX_LOG_TAIL_LINES = 8
 MANUAL_STATE_SCHEMA = "pyamplicol-manual-campaign-state-v1"
@@ -5173,9 +5173,14 @@ def _refresh_pdf(
         staging_service._snapshot_files(caches, tables)
         page_count = _compile_pdf(
             staging_docs,
-            expected_page_count=int(arguments.expected_page_count),
+            expected_page_count=(
+                None
+                if arguments.expected_page_count is None
+                else int(arguments.expected_page_count)
+            ),
             timeout_seconds=float(arguments.pdf_timeout),
             allow_overfull_boxes=True,
+            stream_output=not bool(arguments.quiet),
         )
         _install_report_snapshot(service, staging_docs, tuple(tables))
     finally:
@@ -5606,8 +5611,9 @@ def build_parser() -> argparse.ArgumentParser:
             "result JSON and TeX table, compile in a fresh directory, and "
             "atomically install pyAmpliCol.pdf. Overfull-box diagnostics are "
             "reported by LaTeX but are non-fatal here; compilation errors and "
-            "unresolved references remain fatal. The final absolute PDF path "
-            "is printed on success."
+            "unresolved references remain fatal. Compilation output streams "
+            "live by default; --quiet suppresses it. The final absolute PDF "
+            "path is printed on success."
         ),
         epilog=STEERING_GUIDE,
         formatter_class=HelpFormatter,
@@ -5615,10 +5621,10 @@ def build_parser() -> argparse.ArgumentParser:
     refresh.add_argument(
         "--expected-page-count",
         type=int,
-        default=DEFAULT_MANUAL_EXPECTED_PAGE_COUNT,
+        default=None,
         help=(
-            "Stable page count required from the manual-profile edition. "
-            "The longer profile metadata gives this fresh edition 60 pages."
+            "Optional stable page-count assertion. Omit it to accept legitimate "
+            "layout changes or a copied campaign profile with a different name."
         ),
     )
     refresh.add_argument(
@@ -5627,6 +5633,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_PDF_TIMEOUT_SECONDS,
         metavar="SECONDS",
         help="Direct latexmk process timeout.",
+    )
+    refresh.add_argument(
+        "--quiet",
+        action="store_true",
+        help=(
+            "Suppress live latexmk stdout/stderr. The final publication "
+            "summary and absolute PDF path are still printed."
+        ),
     )
 
     snapshot = commands.add_parser(

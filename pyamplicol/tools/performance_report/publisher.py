@@ -246,14 +246,15 @@ def _copy_report_source(source: Path, destination: Path) -> None:
 def _compile_pdf(
     docs_dir: Path,
     *,
-    expected_page_count: int,
+    expected_page_count: int | None,
     timeout_seconds: float,
     allow_overfull_boxes: bool = False,
+    stream_output: bool = False,
 ) -> int:
     latexmk = shutil.which("latexmk")
     if latexmk is None:
         raise ReportPublisherError("latexmk is required for report publication")
-    if expected_page_count < 1:
+    if expected_page_count is not None and expected_page_count < 1:
         raise ReportPublisherError("expected PDF page count must be positive")
     if not math.isfinite(timeout_seconds) or timeout_seconds <= 0.0:
         raise ReportPublisherError("PDF timeout must be finite and positive")
@@ -271,7 +272,7 @@ def _compile_pdf(
             ),
             cwd=docs_dir,
             check=False,
-            capture_output=True,
+            capture_output=not stream_output,
             text=True,
             env=environment,
             timeout=timeout_seconds,
@@ -281,9 +282,14 @@ def _compile_pdf(
             f"latexmk exceeded the {timeout_seconds:g}s publication timeout"
         ) from error
     if completed.returncode != 0:
-        tail = "\n".join(
-            (*completed.stdout.splitlines(), *completed.stderr.splitlines())[-80:]
-        )
+        if stream_output:
+            raise ReportPublisherError(
+                f"latexmk failed with exit {completed.returncode}; "
+                "see the compilation output above"
+            )
+        stdout = completed.stdout or ""
+        stderr = completed.stderr or ""
+        tail = "\n".join((*stdout.splitlines(), *stderr.splitlines())[-80:])
         raise ReportPublisherError(
             f"latexmk failed with exit {completed.returncode}:\n{tail}"
         )
@@ -302,7 +308,10 @@ def _compile_pdf(
     if not matches:
         raise ReportPublisherError("LaTeX log does not report a PDF page count")
     page_count = int(matches[-1].group("pages"))
-    if page_count != expected_page_count:
+    if (
+        expected_page_count is not None
+        and page_count != expected_page_count
+    ):
         raise ReportPublisherError(
             "compiled PDF page count differs from the expected stable layout: "
             f"{page_count} != {expected_page_count}"
