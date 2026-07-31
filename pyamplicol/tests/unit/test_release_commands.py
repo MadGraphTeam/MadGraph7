@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 import contextlib
-import hashlib
-import json
 import os
 import subprocess
 import sys
-import tomllib
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -58,36 +55,7 @@ def candidate_dependency_provenance(
     state_path = tmp_path / "install-state.json"
     contributor_data = (ROOT / "dependencies" / "contributor-lock.toml").read_bytes()
     contributor_path.write_bytes(contributor_data)
-    contributor = tomllib.loads(contributor_data.decode("utf-8"))
-    symbolica = contributor["symbolica"]
-    patches = [dict(entry) for entry in contributor["patches"]]
-    for patch in patches:
-        source = ROOT / "dependencies" / str(patch["path"])
-        destination = tmp_path / str(patch["path"])
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(source.read_bytes())
-    state_path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "publishable": False,
-                "release_lock_sha256": hashlib.sha256(
-                    (ROOT / "dependencies" / "release-lock.toml").read_bytes()
-                ).hexdigest(),
-                "contributor_lock_sha256": hashlib.sha256(contributor_data).hexdigest(),
-                "patches": patches,
-                "sources": {
-                    "symbolica": {
-                        "url": symbolica["source_url"],
-                        "revision": symbolica["candidate_revision"],
-                    }
-                },
-            },
-            sort_keys=True,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
+    state_path.write_bytes((ROOT / "dependencies" / "install-state.json").read_bytes())
     monkeypatch.setattr(
         release_artifacts,
         "_CONTRIBUTOR_DEPENDENCY_LOCK",

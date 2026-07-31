@@ -567,9 +567,20 @@ def _verify_candidate_install(payload: dict[str, Any]) -> None:
         raise RuntimeError(
             "candidate wheel source checkout is unavailable; rerun `just dev-install`"
         )
-    if _native_build_inputs_digest(source_root) != native_digest:
+    release_prepared_model_bootstrap = (
+        payload.get("release_prepared_model_bootstrap") is True
+    )
+    if _native_build_inputs_digest(
+        source_root,
+        normalize_release_cargo_lock=release_prepared_model_bootstrap,
+    ) != native_digest:
+        install_kind = (
+            "release prepared-model bootstrap"
+            if release_prepared_model_bootstrap
+            else "candidate wheel"
+        )
         raise RuntimeError(
-            "installed candidate wheel is stale for this checkout; "
+            f"installed {install_kind} is stale for this checkout; "
             "rerun `just dev-install`"
         )
 

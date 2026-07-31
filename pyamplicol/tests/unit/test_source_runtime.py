@@ -366,6 +366,32 @@ def test_installed_candidate_is_bound_to_its_checkout(tmp_path: Path) -> None:
         versions._verify_candidate_install(payload)
 
 
+def test_release_prepared_model_bootstrap_uses_release_native_identity(
+    tmp_path: Path,
+) -> None:
+    source_root = _source_root(tmp_path)
+    _write_candidate_native_inputs(source_root)
+    release_digest = versions._native_build_inputs_digest(
+        source_root,
+        normalize_release_cargo_lock=True,
+    )
+    assert release_digest != versions._native_build_inputs_digest(source_root)
+    payload = {
+        "publishable": False,
+        "release_prepared_model_bootstrap": True,
+        "source_checkout": str(source_root),
+        "native_build_inputs_sha256": release_digest,
+    }
+
+    versions._verify_candidate_install(payload)
+    (source_root / "rust/crates/example/src/lib.rs").write_text(
+        "pub fn value() -> u32 { 2 }\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="release prepared-model bootstrap is stale"):
+        versions._verify_candidate_install(payload)
+
+
 def test_native_module_build_id_must_match_candidate_metadata(monkeypatch) -> None:
     build_info = {
         "publishable": False,

@@ -33,6 +33,7 @@ from .common import (
 
 _SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
 _GIT_REVISION_RE = re.compile(r"^[a-f0-9]{40}$")
+_OFFICIAL_SYMJIT_SOURCE_URL = "https://github.com/siravan/symjit-crate.git"
 
 
 def _git_environment() -> dict[str, str]:
@@ -290,22 +291,16 @@ def collect_dependency_snapshot(runtime: RuntimeSnapshot) -> DependencySnapshot:
             "release-lock, contributor-lock, and install-state schema versions "
             "must be 1"
         )
-    release_digest = sha256_file(RELEASE_LOCK)
-    contributor_digest = sha256_file(CONTRIBUTOR_LOCK)
-    if state.get("release_lock_sha256") != release_digest:
-        raise CaptureError(
-            "dependencies/install-state.json is not bound to the current release lock; "
-            "rerun the dependency installer before capture"
-        )
-    if state.get("contributor_lock_sha256") != contributor_digest:
-        raise CaptureError(
-            "dependencies/install-state.json is not bound to the current "
-            "contributor lock; rerun the dependency installer before capture"
-        )
+    if state.get("publishable") is not False:
+        raise CaptureError("reference capture requires non-publishable install state")
 
+    release_digest = sha256_file(RELEASE_LOCK)
     sources = as_mapping(state.get("sources"), "install-state.sources")
-    symbolica = as_mapping(release.get("symbolica"), "release-lock.symbolica")
-    symjit = as_mapping(contributor.get("symjit"), "contributor-lock.symjit")
+    symbolica = as_mapping(
+        contributor.get("symbolica"),
+        "contributor-lock.symbolica",
+    )
+    symjit = as_mapping(release.get("symjit"), "release-lock.symjit")
     loader = {
         **as_mapping(
             release.get("ufo_model_loader"),
@@ -320,49 +315,42 @@ def collect_dependency_snapshot(runtime: RuntimeSnapshot) -> DependencySnapshot:
         contributor.get("legacy_amplicol"),
         "contributor-lock.legacy_amplicol",
     )
-    abis = as_mapping(release.get("abis"), "release-lock.abis")
+    release_abis = as_mapping(release.get("abis"), "release-lock.abis")
+    contributor_abis = as_mapping(
+        contributor.get("abis"),
+        "contributor-lock.abis",
+    )
     project = as_mapping(release.get("project"), "release-lock.project")
     symbolica_source = as_mapping(sources.get("symbolica"), "source symbolica")
     symjit_source = as_mapping(sources.get("symjit"), "source symjit")
-    contributor_patches = contributor.get("patches")
-    installed_patches = state.get("patches")
-    if (
-        not isinstance(contributor_patches, list)
-        or not contributor_patches
-        or installed_patches != contributor_patches
+
+    symbolica_descriptor = {
+        "url": symbolica.get("source_url"),
+        "revision": symbolica.get("candidate_revision"),
+    }
+    symjit_descriptor = {
+        "url": symjit.get("repository"),
+        "revision": symjit.get("revision"),
+    }
+    for name, descriptor, installed in (
+        ("Symbolica", symbolica_descriptor, symbolica_source),
+        ("SymJIT", symjit_descriptor, symjit_source),
     ):
-        raise CaptureError(
-            "installed contributor patch state does not match the contributor lock"
-        )
-    canonical_patches: list[dict[str, object]] = []
-    for index, raw_patch in enumerate(contributor_patches):
-        symjit_patch = as_mapping(
-            raw_patch,
-            f"contributor-lock.patches[{index}]",
-        )
-        patch_sha256 = str(symjit_patch.get("sha256", ""))
-        patch_path = symjit_patch.get("path")
+        source_url = descriptor["url"]
+        revision = descriptor["revision"]
         if (
-            symjit_patch.get("target") != "symjit"
-            or not isinstance(patch_path, str)
-            or not patch_path
-            or _SHA256_RE.fullmatch(patch_sha256) is None
+            not isinstance(source_url, str)
+            or not source_url
+            or not isinstance(revision, str)
+            or _GIT_REVISION_RE.fullmatch(revision) is None
         ):
-            raise CaptureError("installed SymJIT patch provenance is invalid")
-        tracked_patch = CONTRIBUTOR_LOCK.parent / patch_path
-        if not tracked_patch.is_file() or sha256_file(tracked_patch) != patch_sha256:
-            raise CaptureError("tracked SymJIT patch does not match its locked digest")
-        canonical_patches.append(dict(symjit_patch))
-    patch_sha256 = hashlib.sha256(
-        json.dumps(
-            canonical_patches,
-            ensure_ascii=True,
-            separators=(",", ":"),
-            sort_keys=True,
-        ).encode("utf-8")
-    ).hexdigest()
-    if symjit_source.get("patch_sha256") != patch_sha256:
-        raise CaptureError("installed SymJIT patch closure provenance is invalid")
+            raise CaptureError(f"{name} dependency source contract is invalid")
+        if installed.get("url") != source_url or installed.get("revision") != revision:
+            raise CaptureError(
+                f"installed {name} source does not match its dependency contract"
+            )
+    if symjit_descriptor["url"] != _OFFICIAL_SYMJIT_SOURCE_URL:
+        raise CaptureError("release lock does not use the official SymJIT repository")
 
     legacy_module = developer_module("legacy_amplicol")
     legacy_digest = canonical_sha256(
@@ -380,7 +368,7 @@ def collect_dependency_snapshot(runtime: RuntimeSnapshot) -> DependencySnapshot:
             "version": runtime.version,
             "revision": runtime.source_revision,
             "content_sha256": runtime.distribution_sha256,
-            "serialization_abi": str(abis["symbolica_serialization"]),
+            "serialization_abi": str(release_abis["symbolica_serialization"]),
             "license": str(project["license"]),
         },
         {
@@ -389,7 +377,7 @@ def collect_dependency_snapshot(runtime: RuntimeSnapshot) -> DependencySnapshot:
             "version": "schema-1",
             "revision": None,
             "content_sha256": release_digest,
-            "serialization_abi": str(abis["symbolica_serialization"]),
+            "serialization_abi": str(release_abis["symbolica_serialization"]),
             "license": str(project["license"]),
         },
         {
@@ -398,26 +386,25 @@ def collect_dependency_snapshot(runtime: RuntimeSnapshot) -> DependencySnapshot:
             "version": "schema-1",
             "revision": None,
             "content_sha256": sha256_file(INSTALL_STATE),
-            "serialization_abi": str(abis["symbolica_serialization"]),
+            "serialization_abi": str(release_abis["symbolica_serialization"]),
             "license": str(project["license"]),
         },
         {
             "id": "dependency:symbolica",
             "name": "Symbolica",
-            "version": str(symbolica["python_version"]),
-            "revision": str(symbolica_source["revision"]),
-            "content_sha256": str(symbolica_source["worktree_sha256"]),
-            "serialization_abi": str(symbolica["serialization_abi"]),
-            "license": str(symbolica["license"]),
+            "version": str(symbolica["candidate_version"]),
+            "revision": str(symbolica_descriptor["revision"]),
+            "content_sha256": canonical_sha256(symbolica_descriptor),
+            "serialization_abi": str(contributor_abis["symbolica_serialization"]),
+            "license": "Symbolica proprietary",
         },
         {
             "id": "dependency:symjit",
             "name": "Symjit",
-            "version": str(symjit["candidate_version"]),
-            "revision": str(symjit_source["revision"]),
-            "content_sha256": str(symjit_source["worktree_sha256"]),
-            "patch_sha256": patch_sha256,
-            "serialization_abi": str(abis["symbolica_serialization"]),
+            "version": str(symjit["version"]),
+            "revision": str(symjit_descriptor["revision"]),
+            "content_sha256": canonical_sha256(symjit_descriptor),
+            "serialization_abi": str(release_abis["symjit_application"]),
             "license": "MIT",
         },
         {

@@ -524,6 +524,95 @@ def test_runtime_snapshot_rejects_candidate_from_another_revision(
         )
 
 
+def _candidate_runtime_snapshot() -> capture.RuntimeSnapshot:
+    return capture.RuntimeSnapshot(
+        "0.1.0.dev0+candidate." + "2" * 12,
+        "2" * 12,
+        "1" * 40,
+        "3" * 64,
+        "4" * 64,
+    )
+
+
+def test_dependency_snapshot_uses_compact_source_descriptors() -> None:
+    snapshot = provenance.collect_dependency_snapshot(_candidate_runtime_snapshot())
+    payloads = {str(payload["id"]): payload for payload in snapshot.payloads}
+    symbolica_descriptor = {
+        "url": "https://github.com/symbolica-dev/symbolica.git",
+        "revision": "77c137481904b8a5531ede86e3ef36b82beed7fd",
+    }
+    symjit_descriptor = {
+        "url": "https://github.com/siravan/symjit-crate.git",
+        "revision": "d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7",
+    }
+
+    assert payloads["dependency:symbolica"] == {
+        "id": "dependency:symbolica",
+        "name": "Symbolica",
+        "version": "2.2.0",
+        "revision": symbolica_descriptor["revision"],
+        "content_sha256": provenance.canonical_sha256(symbolica_descriptor),
+        "serialization_abi": "symbolica-bincode2-v1",
+        "license": "Symbolica proprietary",
+    }
+    assert payloads["dependency:symjit"] == {
+        "id": "dependency:symjit",
+        "name": "Symjit",
+        "version": "2.22.0",
+        "revision": symjit_descriptor["revision"],
+        "content_sha256": provenance.canonical_sha256(symjit_descriptor),
+        "serialization_abi": "symjit-application-storage-v3",
+        "license": "MIT",
+    }
+    assert "patch_sha256" not in payloads["dependency:symjit"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    (
+        ("schema_version", 2, "schema versions must be 1"),
+        ("publishable", True, "non-publishable install state"),
+    ),
+)
+def test_dependency_snapshot_rejects_invalid_compact_install_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    state = json.loads(provenance.INSTALL_STATE.read_text(encoding="utf-8"))
+    state[field] = value
+    state_path = tmp_path / "install-state.json"
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    monkeypatch.setattr(provenance, "INSTALL_STATE", state_path)
+
+    with pytest.raises(capture.CaptureError, match=message):
+        provenance.collect_dependency_snapshot(_candidate_runtime_snapshot())
+
+
+@pytest.mark.parametrize("dependency", ("symbolica", "symjit"))
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (("url", "https://example.invalid/dependency.git"), ("revision", "f" * 40)),
+)
+def test_dependency_snapshot_rejects_mismatched_installed_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    dependency: str,
+    field: str,
+    value: str,
+) -> None:
+    state = json.loads(provenance.INSTALL_STATE.read_text(encoding="utf-8"))
+    state["sources"][dependency][field] = value
+    state_path = tmp_path / "install-state.json"
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    monkeypatch.setattr(provenance, "INSTALL_STATE", state_path)
+
+    with pytest.raises(capture.CaptureError, match=r"installed .* source"):
+        provenance.collect_dependency_snapshot(_candidate_runtime_snapshot())
+
+
 def test_github_ssh_origin_is_normalized_to_https() -> None:
     assert capture.github_https_uri("git@github.com:owner/repository.git") == (
         "https://github.com/owner/repository.git"
