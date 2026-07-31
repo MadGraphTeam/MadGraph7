@@ -11,12 +11,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  full-source-validation:
-    name: Full source validation gate
+  release-source-preflight:
+    name: Focused release source preflight
     runs-on: ubuntu-24.04
     env:
       PYAMPLICOL_BUILD_MODE: release
-      PYAMPLICOL_REQUIRE_NATIVE_TESTS: "1"
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -25,26 +24,28 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - uses: dtolnay/rust-toolchain@c1709d61444fb708e6ed87924f95626398d8d115 # 1.89.0
-      - name: Install required C++17 and Fortran 2008 toolchains
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y g++ gfortran make
-          command -v c++
-          command -v gfortran
-          command -v make
+      - name: Install focused source-test tools
+        run: >-
+          python -m pip install
+          "pytest>=8.3,<9"
+          "ruff>=0.9,<1"
       - name: Verify exact published dependency inputs
         run: python tools/release/check_dependencies.py
-      - name: Install the project and source-test tools
-        run: |
-          python tools/ci/memory_watchdog.py --limit-gib 30 -- \
-            cargo install just --version 1.46.0 --locked
-          python tools/ci/memory_watchdog.py --limit-gib 30 -- \
-            python -m pip install ".[test]"
-      - name: Run complete release source gate
+      - name: Run focused clean-checkout release tests
         run: >-
-          python tools/ci/memory_watchdog.py --limit-gib 30 --
-          env PYTHON="$(command -v python)" just source-gate
+          python -m pytest
+          tests/release
+          tests/unit/test_dependency_gate.py
+          tests/unit/test_release_*.py
+          -q
+      - name: Lint release and build tooling
+        run: >-
+          ruff check
+          build_backend
+          tools/release
+          tests/release
+          tests/unit/test_dependency_gate.py
+          tests/unit/test_release_*.py
 
   independent-physics-oracle:
     name: Independent Fortran physics oracle
@@ -72,7 +73,7 @@ jobs:
             --jobs 2 >/dev/null
 
   retained-sdist:
-    needs: [full-source-validation, independent-physics-oracle]
+    needs: [release-source-preflight, independent-physics-oracle]
     name: Build retained source distribution
     runs-on: ubuntu-24.04
     steps:

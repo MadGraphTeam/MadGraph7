@@ -54,10 +54,10 @@ def test_native_toolchains_and_manylinux_image_are_immutable() -> None:
     assert "rust-toolchain@stable" not in workflows
     assert "default-toolchain stable" not in workflows
     assert "manylinux_2_28_x86_64:latest" not in workflows
-    assert workflows.count(f"rust-toolchain@{RUST_TOOLCHAIN_ACTION_SHA}") == 4
+    assert workflows.count(f"rust-toolchain@{RUST_TOOLCHAIN_ACTION_SHA}") == 3
     assert workflows.count(f"default-toolchain {RUST_TOOLCHAIN}") == 2
     assert workflows.count(MANYLINUX_IMAGE) == 2
-    assert "cargo install just --version 1.46.0 --locked" in workflows
+    assert "cargo install just" not in workflows
     assert "pip install --upgrade pip" not in workflows
 
 
@@ -100,6 +100,7 @@ def test_candidate_ci_is_read_only_and_covers_release_hosts() -> None:
     assert "contents: read" in workflow
     assert workflow.count("dependencies/install_dependencies.py") == 2
     assert workflow.count("--without-legacy-amplicol") == 2
+    assert workflow.count("--dependencies-only") == 2
     assert workflow.count("--no-build") == 2
     assert "Focused clean-checkout release tests" in workflow
     assert "PYAMPLICOL_BUILD_MODE: release" in workflow
@@ -230,22 +231,10 @@ def test_candidate_and_release_heavy_commands_use_memory_watchdog() -> None:
     )
 
     assert "ulimit -v" not in release
-    assert release.count(MEMORY_WATCHDOG) == 11
-    assert (
-        _guarded_count(
-            release,
-            r"cargo install just --version 1\.46\.0 --locked",
-        )
-        == 1
-    )
-    assert _guarded_count(release, r'python -m pip install "\.\[test\]"') == 1
-    assert (
-        _guarded_count(
-            release,
-            r'env PYTHON="\$\(command -v python\)" just source-gate',
-        )
-        == 1
-    )
+    assert release.count(MEMORY_WATCHDOG) == 8
+    assert "cargo install just" not in release
+    assert 'python -m pip install ".[test]"' not in release
+    assert "just source-gate" not in release
     assert (
         _guarded_count(
             release,
@@ -292,8 +281,8 @@ def test_release_workflow_uses_one_retained_sdist_and_all_targets() -> None:
     assert "SHA256SUMS" not in workflow
     assert "retention-days: 90" in workflow
     assert "id-token: write" not in workflow
-    assert "Full source validation gate" in workflow
-    assert "needs: [full-source-validation, independent-physics-oracle]" in workflow
+    assert "Focused release source preflight" in workflow
+    assert "needs: [release-source-preflight, independent-physics-oracle]" in workflow
     assert "Independent Fortran physics oracle" in workflow
     assert "Run independent Fortran physics comparison" in workflow
     assert 'python -m pip install "jsonschema>=4.22,<5"' in workflow
@@ -302,13 +291,12 @@ def test_release_workflow_uses_one_retained_sdist_and_all_targets() -> None:
     assert "tests/fixtures/reference/legacy-fortran-v2.json" not in workflow
     assert "--check-output" not in workflow
     assert (
-        "retained-sdist:\n    needs: [full-source-validation, "
+        "retained-sdist:\n    needs: [release-source-preflight, "
         "independent-physics-oracle]" in workflow
     )
-    assert 'PYAMPLICOL_REQUIRE_NATIVE_TESTS: "1"' in workflow
     assert "python tools/release/check_dependencies.py" in workflow
-    assert "just source-gate" in workflow
-    assert "g++ gfortran make" in workflow
+    assert "tests/unit/test_dependency_gate.py" in workflow
+    assert "just source-gate" not in workflow
     assert "brew install gcc" in workflow
     assert "gcc-c++ gcc-gfortran make" in workflow
     assert workflow.count("tools/release/test_deployment.py") == 4

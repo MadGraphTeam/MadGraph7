@@ -1277,8 +1277,12 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
             os.environ["PATH"].split(os.pathsep)
         )
         remaps = os.environ["CARGO_ENCODED_RUSTFLAGS"].split("\x1f")
-        assert len(remaps) == 4
+        assert len(remaps) == 5
         assert all(flag.startswith("--remap-path-prefix=") for flag in remaps)
+        assert (
+            f"--remap-path-prefix={ROOT / 'dependencies' / 'checkouts'}="
+            "/pyamplicol/dependencies"
+        ) in remaps
         assert os.environ["CARGO_HOME"] == str(tmp_path / "cargo-home")
         assert os.environ["CARGO_TARGET_DIR"] == str(target)
         assert os.environ["PYAMPLICOL_BUILD_OVERLAY"] == str(overlay)
@@ -1591,6 +1595,10 @@ def test_rust_remap_flags_uses_repository_toolchain_in_clean_environment(
     assert "RUSTFLAGS" not in environment
     assert "RUSTC_WRAPPER" not in environment
     assert f"{sysroot.resolve()}=/rust/sysroot" in flags
+    assert (
+        f"{(backend.ROOT / 'dependencies' / 'checkouts').resolve()}="
+        "/pyamplicol/dependencies"
+    ) in flags
 
 
 def test_build_tool_path_does_not_expose_base_python_package_manager_tools(

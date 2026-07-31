@@ -1558,6 +1558,9 @@ def _rust_remap_flags(overlay: Path, target_dir: Path) -> str:
     )
     sysroot = Path(completed.stdout.strip()).resolve()
     mappings = {
+        (ROOT / "dependencies" / "checkouts").resolve(): (
+            "/pyamplicol/dependencies"
+        ),
         ROOT.resolve(): "/pyamplicol/checkout",
         overlay.resolve(): "/pyamplicol/source",
         target_dir.parent.resolve(): "/pyamplicol/build",

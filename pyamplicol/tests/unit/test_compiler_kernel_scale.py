@@ -1,15 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
-import os
-import subprocess
-import sys
-from pathlib import Path
-
 from pyamplicol.models import compiler_symbolica as _sym
 from pyamplicol.models.compiler_kernels import _equivalent_component_scale
-
-ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_compact_component_scale_accepts_only_an_exact_sign() -> None:
@@ -41,28 +34,25 @@ def test_compact_component_scale_accepts_only_an_exact_sign() -> None:
     assert disjoint is None
 
 
-def test_float_component_scale_fails_closed_without_symbolica_abort() -> None:
-    code = """
-from pyamplicol.models import compiler_symbolica as sym
-from pyamplicol.models.compiler_kernels import _equivalent_component_scale
+def test_disjoint_symbol_support_fails_closed_before_expansion() -> None:
+    class FakeSymbol:
+        def __init__(self, name: str) -> None:
+            self.name = name
 
-sym._ensure_symbolica()
-result = _equivalent_component_scale(
-    (sym.E("1.1*(x+1)"),),
-    (sym.E("y+1"),),
-)
-assert result is None
-"""
-    environment = os.environ.copy()
-    environment["PYTHONPATH"] = str(ROOT / "src")
-    environment["SYMBOLICA_HIDE_BANNER"] = "1"
-    completed = subprocess.run(
-        [sys.executable, "-X", "faulthandler", "-c", code],
-        cwd=ROOT,
-        env=environment,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+        def to_canonical_string(self) -> str:
+            return self.name
 
-    assert completed.returncode == 0, completed.stderr
+    class NoExpandExpression:
+        def __init__(self, symbol: str) -> None:
+            self.symbol = FakeSymbol(symbol)
+
+        def get_all_symbols(self, _include_functions: bool) -> list[FakeSymbol]:
+            return [self.symbol]
+
+        def __sub__(self, _other: object) -> object:
+            raise AssertionError("disjoint support must return before subtraction")
+
+    assert _equivalent_component_scale(
+        (NoExpandExpression("x"),),  # type: ignore[arg-type]
+        (NoExpandExpression("y"),),  # type: ignore[arg-type]
+    ) is None

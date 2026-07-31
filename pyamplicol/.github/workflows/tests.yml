@@ -144,6 +144,7 @@ jobs:
             tests/unit/test_api_requests.py \
             tests/unit/test_api_bundle.py \
             tests/unit/test_benchmarking.py \
+            tests/unit/test_compiler_kernel_scale.py \
             tests/unit/test_config_models.py \
             tests/unit/test_config_resolution.py \
             tests/unit/test_dag_model_independence.py \

@@ -305,7 +305,7 @@ def test_based_on_record_must_belong_to_same_cell(tmp_path: Path) -> None:
 
 def test_named_filesystem_lock_times_out_across_processes(tmp_path: Path) -> None:
     store = _store(tmp_path)
-    context = multiprocessing.get_context("fork")
+    context = multiprocessing.get_context("spawn")
     queue: multiprocessing.Queue[str] = context.Queue()
     with store.named_lock("prepared-ufo"):
         process = context.Process(
