@@ -15,6 +15,11 @@ all-flow-union captures with pinned legacy AmpliCol evidence.
 Authoritative lane timing is the median and raw MAD of seven independently
 warmed, identity-verified subprocess measurements per mode/batch cell.
 
+For a developer-only comparison, set
+``PYAMPLICOL_RECURRENCE_Z6G_SOURCE_CHECKOUT`` to an absolute clean worktree
+inside this driver's workspace. The frozen driver remains the executable
+script while source and installed-runtime provenance bind to that worktree.
+
 Example::
 
     .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
@@ -46,7 +51,69 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any, Literal, cast
 
-ROOT = Path(__file__).resolve().parents[2]
+
+class HarnessError(RuntimeError):
+    """Raised when the benchmark contract cannot be completed."""
+
+
+SOURCE_CHECKOUT_OVERRIDE_ENV = "PYAMPLICOL_RECURRENCE_Z6G_SOURCE_CHECKOUT"
+DRIVER_PATH = Path(__file__).resolve()
+DRIVER_ROOT = DRIVER_PATH.parents[2]
+_SOURCE_CHECKOUT_FILE_MARKERS = (
+    Path("Cargo.toml"),
+    Path("pyproject.toml"),
+    Path("src/pyamplicol/__init__.py"),
+    Path("tools/developer/recurrence_z6g_benchmark.py"),
+)
+
+
+def _resolve_source_checkout_root(
+    *,
+    driver_root: Path = DRIVER_ROOT,
+    environment: Mapping[str, str] = os.environ,
+) -> Path:
+    """Resolve the optional measured-checkout override, failing closed."""
+
+    workspace_root = driver_root.resolve(strict=True)
+    raw_override = environment.get(SOURCE_CHECKOUT_OVERRIDE_ENV)
+    if raw_override is None:
+        return workspace_root
+    if not raw_override:
+        raise HarnessError(
+            f"{SOURCE_CHECKOUT_OVERRIDE_ENV} must name an absolute source checkout"
+        )
+    override = Path(raw_override)
+    if not override.is_absolute():
+        raise HarnessError(f"{SOURCE_CHECKOUT_OVERRIDE_ENV} must be an absolute path")
+    try:
+        checkout = override.resolve(strict=True)
+    except OSError as error:
+        raise HarnessError(
+            f"{SOURCE_CHECKOUT_OVERRIDE_ENV} source checkout is unavailable"
+        ) from error
+    if not checkout.is_dir():
+        raise HarnessError(f"{SOURCE_CHECKOUT_OVERRIDE_ENV} does not name a directory")
+    if checkout != workspace_root and workspace_root not in checkout.parents:
+        raise HarnessError(
+            f"{SOURCE_CHECKOUT_OVERRIDE_ENV} must stay inside the driver workspace"
+        )
+    git_marker = checkout / ".git"
+    missing = [
+        marker.as_posix()
+        for marker in _SOURCE_CHECKOUT_FILE_MARKERS
+        if not (checkout / marker).is_file()
+    ]
+    if not git_marker.exists() or missing:
+        if not git_marker.exists():
+            missing.insert(0, ".git")
+        raise HarnessError(
+            f"{SOURCE_CHECKOUT_OVERRIDE_ENV} is not a pyAmpliCol source checkout; "
+            f"missing {', '.join(missing)}"
+        )
+    return checkout
+
+
+ROOT = _resolve_source_checkout_root()
 PREPARED_MODEL_ID = "built-in-sm-jit-o2"
 PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL = 2
 DEFAULT_BATCH_SIZES = (1, 128, 1024)
@@ -74,10 +141,6 @@ M0_ACCEPTANCE_SCHEMA = 4
 _WORKER_MARKER = "PYAMPLICOL_RECURRENCE_Z6G_WORKER_RESULT="
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 _REVISION_PATTERN = re.compile(r"[0-9a-f]{40}")
-
-
-class HarnessError(RuntimeError):
-    """Raised when the benchmark contract cannot be completed."""
 
 
 def _process(gluon_count: int) -> str:
@@ -3495,7 +3558,7 @@ def _run_worker(
     phase: str,
     timeout_seconds: float,
 ) -> dict[str, Any]:
-    command = (sys.executable, str(Path(__file__).resolve()), "_worker", *arguments)
+    command = (sys.executable, str(DRIVER_PATH), "_worker", *arguments)
     expected_operation = arguments[0] if arguments else None
     environment = os.environ.copy()
     environment.setdefault("SYMBOLICA_HIDE_BANNER", "1")
@@ -6452,9 +6515,7 @@ def run(arguments: argparse.Namespace) -> dict[str, object]:
     finished_at = _utc_now()
     driver_command = getattr(arguments, "driver_command", None)
     if not isinstance(driver_command, Mapping):
-        driver_command = _command_identity(
-            (sys.executable, str(Path(__file__).resolve()))
-        )
+        driver_command = _command_identity((sys.executable, str(DRIVER_PATH)))
     payload: dict[str, object] = {
         "kind": RESULT_KIND,
         "schema_version": RESULT_SCHEMA,
@@ -6712,7 +6773,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         arguments.modes = _normalize_modes(arguments)
         arguments.batch_size = _normalize_batch_sizes(arguments)
         arguments.driver_command = _command_identity(
-            (sys.executable, str(Path(__file__).resolve()), *values)
+            (sys.executable, str(DRIVER_PATH), *values)
         )
         if arguments.warmup_runs < 0:
             raise HarnessError("warmup runs must be non-negative")

@@ -95,7 +95,7 @@ def test_command_wraps_each_capture_and_runtime_workers_in_watchdog(
         "--",
         str(variant.python),
     ]
-    assert str(checkout / ladder.HARNESS_RELATIVE_PATH) in generation_command
+    assert str(ladder.ROOT / ladder.HARNESS_RELATIVE_PATH) in generation_command
     assert generation_command.count("--mode") == 1
     assert "recurrence" in generation_command
     assert "--generation-only" in generation_command
@@ -134,6 +134,12 @@ def test_command_wraps_each_capture_and_runtime_workers_in_watchdog(
         ladder.RunnerSettings(allow_diagnostic_incomplete_success=True),
     )
     assert "--allow-diagnostic-incomplete-success" in scouting_command
+
+    _, overrides = ladder._sample_environment(
+        variant,
+        tmp_path / "sample-environment",
+    )
+    assert overrides[ladder.HARNESS_SOURCE_CHECKOUT_ENV] == str(checkout)
 
 
 def test_incomplete_diagnostic_capture_is_never_classified_as_passed() -> None:
@@ -377,6 +383,158 @@ def test_harness_result_parser_extracts_phase_and_runtime_telemetry(
     measurement = summary["runtime_profile"]["measurements"][0]
     assert measurement["batch_size"] == 128
     assert measurement["subprocess_samples"][0]["worker_wall_seconds"] == 5.0
+
+
+def test_generation_only_result_has_an_independent_fail_closed_acceptance(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact"
+    execution = artifact / "processes" / "process" / "execution.json"
+    _write_json(
+        execution,
+        {
+            "kind": ladder.EXECUTION_KIND,
+            "schema_version": ladder.EXECUTION_SCHEMA_VERSION,
+            "plan": {
+                "inspection_summary": {
+                    "generation_timings_seconds": {
+                        "python_extraction": 1.0,
+                        "direct_lowering": 2.0,
+                        "native_total": 3.5,
+                    }
+                }
+            },
+        },
+    )
+    relative_execution = execution.relative_to(artifact).as_posix()
+    payload_entry = {
+        "path": relative_execution,
+        "role": "evaluator-manifest",
+        "process_id": "process",
+        "sha256": ladder._sha256_file(execution),
+        "size_bytes": execution.stat().st_size,
+    }
+    artifact_id = "3" * 64
+    manifest_path = artifact / "artifact.json"
+    _write_json(
+        manifest_path,
+        {
+            "artifact_id": artifact_id,
+            "payloads": [payload_entry],
+        },
+    )
+    signature = {
+        "kind": "pyamplicol-benchmark-generation-signature",
+        "schema_version": 1,
+        "mode": "recurrence",
+        "lc_flow_layout": "all-flow-union",
+        "validation": {
+            "enabled": True,
+            "post_build_validation": True,
+            "samples": 10,
+        },
+    }
+    semantic_identity = {
+        "coverage": {
+            "complete_physical_axes": True,
+            "color": "complete",
+            "helicities": "complete",
+        },
+        "execution_reduction_coverage": {
+            "complete": True,
+            "errors": [],
+        },
+    }
+    evidence = {
+        "kind": "pyamplicol-preserved-worker-result-evidence",
+        "schema_version": 1,
+        "payload": {
+            "mode": "recurrence",
+            "generation_reused": False,
+            "generation_wall_seconds": 9.0,
+        },
+        "worker_result_record": {},
+    }
+    evidence["content_sha256"] = ladder._canonical_sha256(evidence)
+    result_path = tmp_path / "generation-only-result.json"
+    _write_json(
+        result_path,
+        {
+            "kind": ladder.HARNESS_KIND,
+            "schema_version": ladder.HARNESS_SCHEMA_VERSION,
+            "complete": False,
+            "passes": None,
+            "process": "d d~ > Z g",
+            "configuration": {
+                "generation_only": True,
+                "lc_flow_layout": "all-flow-union",
+                "validation_samples": 10,
+            },
+            "source": {"git_revision": "1" * 40},
+            "runtime_provenance": {"extension_sha256": "2" * 64},
+            "provenance": {"wall_seconds": 12.0},
+            "generation": {
+                "recurrence": {
+                    "mode": "recurrence",
+                    "artifact": str(artifact),
+                    "artifact_identity": {
+                        "artifact_id": artifact_id,
+                        "path": str(artifact.resolve()),
+                        "manifest": {
+                            "resolved_path": str(manifest_path.resolve()),
+                            "sha256": ladder._sha256_file(manifest_path),
+                            "size_bytes": manifest_path.stat().st_size,
+                        },
+                        "payloads": [payload_entry],
+                    },
+                    "artifact_semantic_identity": semantic_identity,
+                    "artifact_semantic_identity_sha256": (
+                        ladder._canonical_sha256(semantic_identity)
+                    ),
+                    "semantic_generation_signature": signature,
+                    "semantic_generation_signature_sha256": (
+                        ladder._canonical_sha256(signature)
+                    ),
+                    "generation_worker_result_evidence": evidence,
+                    "generation_reused": False,
+                    "generation_wall_seconds": 9.0,
+                    "worker_process_record": {"wall_seconds": 8.0},
+                    "peak_rss": {"observed_lower_bound_bytes": 1234},
+                    "phase_timings_seconds": {
+                        "model-loading": 1.5,
+                        "recurrence-construction": 6.0,
+                    },
+                    "phase_total_seconds": 7.5,
+                }
+            },
+            "profiles": {},
+        },
+    )
+
+    summary = ladder.parse_harness_result(result_path)
+    acceptance = summary["generation_only_acceptance"]
+    assert acceptance["passes"] is True
+    assert acceptance["payload_count"] == 1
+    assert acceptance["post_build_validation_samples"] == 10
+    assert (
+        ladder._sample_status(
+            ladder.ProcessOutcome(
+                exit_code=0,
+                timed_out=False,
+                wall_seconds=12.0,
+                error=None,
+            ),
+            watchdog={"terminal_record": "command-finished"},
+            result_error=None,
+            harness_summary=summary,
+            allow_diagnostic_incomplete_success=True,
+        )
+        == "passed"
+    )
+
+    execution.write_text(execution.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    with pytest.raises(ladder.LadderError, match="payload identity differs"):
+        ladder.parse_harness_result(result_path)
 
 
 def test_runtime_n_must_be_selected_in_generation_ladder() -> None:

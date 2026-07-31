@@ -39,6 +39,7 @@ ALLOWED_OUTPUT_PARENT = ROOT / ".artifacts" / "recurrence-generation-opt"
 CAMPAIGN_PARENT = ALLOWED_OUTPUT_PARENT / "benchmark-campaigns"
 HARNESS_RELATIVE_PATH = Path("tools/developer/recurrence_z6g_benchmark.py")
 WATCHDOG_RELATIVE_PATH = Path("tools/ci/memory_watchdog.py")
+HARNESS_SOURCE_CHECKOUT_ENV = "PYAMPLICOL_RECURRENCE_Z6G_SOURCE_CHECKOUT"
 
 CAMPAIGN_KIND = "pyamplicol-recurrence-generation-ab-ladder"
 CAMPAIGN_SCHEMA_VERSION = 1
@@ -54,6 +55,7 @@ WATCHDOG_LIMIT_GIB = 30.0
 GIB = 1024**3
 
 _CAMPAIGN_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+_SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _WATCHDOG_FINISHED_RE = re.compile(
     r"memory-watchdog: command finished"
     r" exit=(?P<exit>\d+)"
@@ -282,7 +284,7 @@ def build_sample_command(
     # variants so a frozen baseline remains pristine and benefits from
     # fail-closed platform fixes made after that baseline was captured.
     watchdog = ROOT / WATCHDOG_RELATIVE_PATH
-    harness = variant.checkout / HARNESS_RELATIVE_PATH
+    harness = ROOT / HARNESS_RELATIVE_PATH
     harness_output = sample_root / "harness"
     result_json = sample_root / "harness-result.json"
     generation_timeout = generation_timeout_seconds(
@@ -355,6 +357,7 @@ def _sample_environment(
         path.mkdir(parents=True, exist_ok=False)
 
     overrides = {
+        HARNESS_SOURCE_CHECKOUT_ENV: str(variant.checkout),
         "MPLCONFIGDIR": str(matplotlib_root),
         "PYTHONHASHSEED": "0",
         "PYTHONNOUSERSITE": "1",
@@ -561,6 +564,237 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _canonical_sha256(value: object) -> str:
+    encoded = json.dumps(
+        value,
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _positive_finite_number(value: object) -> bool:
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, (float, int))
+        and math.isfinite(float(value))
+        and float(value) > 0.0
+    )
+
+
+def _verify_artifact_payload_inventory(
+    artifact: Path,
+    artifact_identity: Mapping[str, Any],
+) -> dict[str, int]:
+    """Authenticate every payload used by a generation-only capture."""
+
+    identity_path = artifact_identity.get("path")
+    if not isinstance(identity_path, str) or Path(identity_path).resolve() != artifact:
+        raise LadderError("generation artifact identity path does not match")
+    manifest_identity = _required_mapping(
+        artifact_identity.get("manifest"),
+        description="generation artifact manifest identity",
+    )
+    manifest_path = artifact / "artifact.json"
+    recorded_manifest_path = manifest_identity.get("resolved_path")
+    if (
+        not isinstance(recorded_manifest_path, str)
+        or Path(recorded_manifest_path).resolve() != manifest_path
+        or manifest_identity.get("sha256") != _sha256_file(manifest_path)
+        or manifest_identity.get("size_bytes") != manifest_path.stat().st_size
+    ):
+        raise LadderError("generation artifact manifest identity does not match")
+    manifest = _json_object(
+        manifest_path,
+        description="generation artifact manifest",
+    )
+    if manifest.get("artifact_id") != artifact_identity.get("artifact_id"):
+        raise LadderError("generation artifact ID does not match its manifest")
+    raw_payloads = manifest.get("payloads")
+    identity_payloads = artifact_identity.get("payloads")
+    if not isinstance(raw_payloads, list) or not isinstance(identity_payloads, list):
+        raise LadderError("generation artifact payload inventories do not match")
+    identity_by_path: dict[str, Mapping[str, Any]] = {}
+    for raw_identity_entry in identity_payloads:
+        identity_entry = _required_mapping(
+            raw_identity_entry,
+            description="generation artifact identity payload entry",
+        )
+        identity_relative = identity_entry.get("path")
+        if (
+            not isinstance(identity_relative, str)
+            or not identity_relative
+            or identity_relative in identity_by_path
+        ):
+            raise LadderError("generation artifact identity payload entry is invalid")
+        identity_by_path[identity_relative] = identity_entry
+    if len(identity_by_path) != len(raw_payloads):
+        raise LadderError("generation artifact payload inventories do not match")
+    root = artifact.resolve()
+    total_bytes = 0
+    seen_paths: set[str] = set()
+    for raw_entry in raw_payloads:
+        entry = _required_mapping(
+            raw_entry,
+            description="generation artifact payload entry",
+        )
+        relative = entry.get("path")
+        expected_sha256 = entry.get("sha256")
+        expected_size = entry.get("size_bytes")
+        if (
+            not isinstance(relative, str)
+            or not relative
+            or relative in seen_paths
+            or not isinstance(expected_sha256, str)
+            or _SHA256_RE.fullmatch(expected_sha256) is None
+            or isinstance(expected_size, bool)
+            or not isinstance(expected_size, int)
+            or expected_size < 0
+        ):
+            raise LadderError("generation artifact payload entry is invalid")
+        seen_paths.add(relative)
+        identity_entry = identity_by_path.get(relative)
+        if identity_entry is None or any(
+            identity_entry.get(key) != entry.get(key)
+            for key in ("path", "role", "sha256", "size_bytes")
+        ):
+            raise LadderError("generation artifact payload inventories do not match")
+        if identity_entry.get("process_id") != entry.get("process_id"):
+            raise LadderError("generation artifact payload inventories do not match")
+        try:
+            payload_path = (artifact / relative).resolve(strict=True)
+            payload_path.relative_to(root)
+        except (OSError, ValueError) as error:
+            raise LadderError(
+                f"generation artifact payload escapes or is missing: {relative!r}"
+            ) from error
+        if (
+            not payload_path.is_file()
+            or payload_path.stat().st_size != expected_size
+            or _sha256_file(payload_path) != expected_sha256
+        ):
+            raise LadderError(
+                f"generation artifact payload identity differs: {relative!r}"
+            )
+        total_bytes += expected_size
+    return {
+        "payload_count": len(raw_payloads),
+        "payload_bytes": total_bytes,
+    }
+
+
+def _generation_only_acceptance(
+    result: Mapping[str, Any],
+    recurrence: Mapping[str, Any],
+    *,
+    artifact: Path,
+) -> dict[str, Any] | None:
+    """Validate a recurrence generation capture independently of runtime lanes."""
+
+    configuration = _required_mapping(
+        result.get("configuration"),
+        description="benchmark configuration",
+    )
+    if configuration.get("generation_only") is not True:
+        return None
+    if result.get("profiles") != {}:
+        raise LadderError("generation-only benchmark unexpectedly contains profiles")
+    if recurrence.get("mode") != "recurrence":
+        raise LadderError("generation-only capture is not recurrence mode")
+    if recurrence.get("generation_reused") is not False:
+        raise LadderError("generation-only capture did not use a cold generation")
+    if not _positive_finite_number(recurrence.get("generation_wall_seconds")):
+        raise LadderError("generation-only capture has invalid wall timing")
+
+    signature = _required_mapping(
+        recurrence.get("semantic_generation_signature"),
+        description="semantic generation signature",
+    )
+    signature_sha256 = recurrence.get("semantic_generation_signature_sha256")
+    validation = _required_mapping(
+        signature.get("validation"),
+        description="generation validation contract",
+    )
+    configured_samples = configuration.get("validation_samples")
+    if (
+        signature.get("kind") != "pyamplicol-benchmark-generation-signature"
+        or signature.get("schema_version") != 1
+        or signature.get("mode") != "recurrence"
+        or signature.get("lc_flow_layout") != configuration.get("lc_flow_layout")
+        or signature_sha256 != _canonical_sha256(signature)
+        or validation.get("enabled") is not True
+        or validation.get("post_build_validation") is not True
+        or isinstance(configured_samples, bool)
+        or not isinstance(configured_samples, int)
+        or configured_samples <= 0
+        or validation.get("samples") != configured_samples
+    ):
+        raise LadderError("generation validation signature is incomplete")
+
+    semantic_identity = _required_mapping(
+        recurrence.get("artifact_semantic_identity"),
+        description="artifact semantic identity",
+    )
+    coverage = _required_mapping(
+        semantic_identity.get("coverage"),
+        description="artifact semantic coverage",
+    )
+    reduction_coverage = _required_mapping(
+        semantic_identity.get("execution_reduction_coverage"),
+        description="artifact reduction coverage",
+    )
+    if (
+        recurrence.get("artifact_semantic_identity_sha256")
+        != _canonical_sha256(semantic_identity)
+        or coverage.get("complete_physical_axes") is not True
+        or coverage.get("color") != "complete"
+        or coverage.get("helicities") != "complete"
+        or reduction_coverage.get("complete") is not True
+        or reduction_coverage.get("errors") != []
+    ):
+        raise LadderError("generation artifact semantic coverage is incomplete")
+
+    worker_evidence = _required_mapping(
+        recurrence.get("generation_worker_result_evidence"),
+        description="generation worker evidence",
+    )
+    evidence_without_digest = dict(worker_evidence)
+    evidence_sha256 = evidence_without_digest.pop("content_sha256", None)
+    worker_payload = _required_mapping(
+        worker_evidence.get("payload"),
+        description="generation worker evidence payload",
+    )
+    if (
+        worker_evidence.get("kind") != "pyamplicol-preserved-worker-result-evidence"
+        or worker_evidence.get("schema_version") != 1
+        or evidence_sha256 != _canonical_sha256(evidence_without_digest)
+        or worker_payload.get("mode") != "recurrence"
+        or worker_payload.get("generation_reused") is not False
+        or worker_payload.get("generation_wall_seconds")
+        != recurrence.get("generation_wall_seconds")
+    ):
+        raise LadderError("generation worker evidence failed authentication")
+
+    artifact_identity = _required_mapping(
+        recurrence.get("artifact_identity"),
+        description="generation artifact identity",
+    )
+    inventory = _verify_artifact_payload_inventory(artifact, artifact_identity)
+    return {
+        "kind": "pyamplicol-recurrence-generation-only-acceptance",
+        "schema_version": 1,
+        "passes": True,
+        "post_build_validation_samples": configured_samples,
+        "semantic_generation_signature_sha256": signature_sha256,
+        "artifact_semantic_identity_sha256": recurrence.get(
+            "artifact_semantic_identity_sha256"
+        ),
+        **inventory,
+    }
+
+
 def _runtime_profile_summary(value: object) -> dict[str, Any] | None:
     if value is None:
         return None
@@ -697,6 +931,11 @@ def parse_harness_result(path: Path) -> dict[str, Any]:
     driver_wall_seconds = (
         provenance.get("wall_seconds") if isinstance(provenance, Mapping) else None
     )
+    generation_only_acceptance = _generation_only_acceptance(
+        result,
+        recurrence,
+        artifact=artifact,
+    )
     return {
         "harness_result_sha256": _sha256_file(path),
         "process": result.get("process"),
@@ -721,6 +960,7 @@ def parse_harness_result(path: Path) -> dict[str, Any]:
         "native_generation_timings_seconds": dict(native_timings),
         "native_inspection_summary": dict(inspection),
         "runtime_profile": _runtime_profile_summary(profiles.get("recurrence")),
+        "generation_only_acceptance": generation_only_acceptance,
         "complete": result.get("complete"),
         "passes": result.get("passes"),
     }
@@ -751,6 +991,28 @@ def _variant_payload(variant: Variant) -> dict[str, str | None]:
         "pythonpath": (None if variant.pythonpath is None else str(variant.pythonpath)),
         "prepared_model": (
             None if variant.prepared_model is None else str(variant.prepared_model)
+        ),
+    }
+
+
+def _measurement_driver_payload() -> dict[str, Any]:
+    files = {}
+    for relative in (
+        Path(__file__).resolve().relative_to(ROOT),
+        HARNESS_RELATIVE_PATH,
+        WATCHDOG_RELATIVE_PATH,
+    ):
+        path = ROOT / relative
+        files[relative.as_posix()] = {
+            "sha256": _sha256_file(path),
+            "size_bytes": path.stat().st_size,
+        }
+    return {
+        "root": str(ROOT.resolve()),
+        "files": files,
+        "source_checkout_override_environment": HARNESS_SOURCE_CHECKOUT_ENV,
+        "shared_driver_policy": (
+            "one-content-hashed-driver-with-variant-source-runtime-binding-v1"
         ),
     }
 
@@ -892,6 +1154,12 @@ def _sample_status(
     complete = harness_summary.get("complete")
     passes = harness_summary.get("passes")
     if complete is True and passes is True:
+        return "passed"
+    generation_acceptance = harness_summary.get("generation_only_acceptance")
+    if (
+        isinstance(generation_acceptance, Mapping)
+        and generation_acceptance.get("passes") is True
+    ):
         return "passed"
     if allow_diagnostic_incomplete_success and complete is not True and passes is None:
         return "censored"
@@ -1207,6 +1475,7 @@ def run(arguments: argparse.Namespace) -> dict[str, Any]:
             "cold_cache_policy": "unique-roots-per-outer-sample-v1",
             "ordering_policy": "alternating-baseline-candidate-pairs-v1",
             "watchdog_policy": "outer-process-tree-guard-covers-all-workers-v1",
+            "measurement_driver": _measurement_driver_payload(),
         },
         "variants": {
             name: _variant_payload(variant) for name, variant in variants.items()

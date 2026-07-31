@@ -1975,6 +1975,84 @@ def test_profile_schedule_rejects_reordered_noninterleaved_lanes() -> None:
     assert any("interleaved" in error for error in contract["errors"])
 
 
+def _write_source_checkout_markers(checkout: Path) -> None:
+    (checkout / ".git").mkdir(parents=True)
+    for marker in benchmark._SOURCE_CHECKOUT_FILE_MARKERS:
+        path = checkout / marker
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"fixture for {marker.as_posix()}\n", encoding="utf-8")
+
+
+def test_source_checkout_override_defaults_to_frozen_driver_root(
+    tmp_path: Path,
+) -> None:
+    driver_root = tmp_path / "workspace"
+    driver_root.mkdir()
+    assert (
+        benchmark._resolve_source_checkout_root(
+            driver_root=driver_root,
+            environment={},
+        )
+        == driver_root.resolve()
+    )
+
+
+def test_source_checkout_override_accepts_a_nested_source_worktree(
+    tmp_path: Path,
+) -> None:
+    driver_root = tmp_path / "workspace"
+    checkout = driver_root / ".artifacts" / "baseline" / "source-test"
+    driver_root.mkdir()
+    _write_source_checkout_markers(checkout)
+    assert (
+        benchmark._resolve_source_checkout_root(
+            driver_root=driver_root,
+            environment={
+                benchmark.SOURCE_CHECKOUT_OVERRIDE_ENV: str(checkout.resolve()),
+            },
+        )
+        == checkout.resolve()
+    )
+
+
+def test_source_checkout_override_fails_closed(
+    tmp_path: Path,
+) -> None:
+    driver_root = tmp_path / "workspace"
+    driver_root.mkdir()
+
+    with pytest.raises(benchmark.HarnessError, match="absolute source checkout"):
+        benchmark._resolve_source_checkout_root(
+            driver_root=driver_root,
+            environment={benchmark.SOURCE_CHECKOUT_OVERRIDE_ENV: ""},
+        )
+    with pytest.raises(benchmark.HarnessError, match="absolute path"):
+        benchmark._resolve_source_checkout_root(
+            driver_root=driver_root,
+            environment={benchmark.SOURCE_CHECKOUT_OVERRIDE_ENV: "baseline"},
+        )
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    with pytest.raises(benchmark.HarnessError, match="inside the driver workspace"):
+        benchmark._resolve_source_checkout_root(
+            driver_root=driver_root,
+            environment={
+                benchmark.SOURCE_CHECKOUT_OVERRIDE_ENV: str(outside.resolve()),
+            },
+        )
+
+    incomplete = driver_root / "incomplete"
+    incomplete.mkdir()
+    with pytest.raises(benchmark.HarnessError, match="not a pyAmpliCol source"):
+        benchmark._resolve_source_checkout_root(
+            driver_root=driver_root,
+            environment={
+                benchmark.SOURCE_CHECKOUT_OVERRIDE_ENV: str(incomplete.resolve()),
+            },
+        )
+
+
 @pytest.mark.parametrize("status", (" M tracked.py\n", "?? scratch.py\n"))
 def test_source_identity_fails_closed_on_tracked_and_untracked_changes(
     monkeypatch: pytest.MonkeyPatch,
@@ -2021,6 +2099,75 @@ def test_source_identity_accepts_only_a_full_clean_revision(
     assert identity["revision"] == "a" * 40
     assert identity["dirty"] is False
     assert identity["untracked_files_checked"] is True
+
+
+def test_source_identity_uses_the_selected_checkout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout = tmp_path / "selected"
+    checkout.mkdir()
+    calls: list[tuple[tuple[str, ...], Path]] = []
+    results = iter(
+        (
+            SimpleNamespace(returncode=0, stdout="a" * 40 + "\n"),
+            SimpleNamespace(returncode=0, stdout=""),
+        )
+    )
+
+    def run(command: tuple[str, ...], **kwargs: object) -> object:
+        cwd = kwargs.get("cwd")
+        assert isinstance(cwd, Path)
+        calls.append((command, cwd))
+        return next(results)
+
+    monkeypatch.setattr(benchmark, "ROOT", checkout)
+    monkeypatch.setattr(benchmark.subprocess, "run", run)
+    identity = benchmark._git_source_identity()
+
+    assert identity["checkout"] == str(checkout.resolve())
+    assert [cwd for _command, cwd in calls] == [checkout, checkout]
+
+
+def test_worker_keeps_frozen_driver_and_inherits_checkout_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkout = tmp_path / "selected"
+    checkout.mkdir()
+    override = str(checkout.resolve())
+    captured: dict[str, object] = {}
+
+    def run(command: tuple[str, ...], **kwargs: object) -> object:
+        captured["command"] = command
+        captured.update(kwargs)
+        return SimpleNamespace(returncode=0, stdout="", stderr=None)
+
+    monkeypatch.setattr(benchmark, "ROOT", checkout)
+    monkeypatch.setenv(benchmark.SOURCE_CHECKOUT_OVERRIDE_ENV, override)
+    monkeypatch.setattr(benchmark.subprocess, "run", run)
+    with pytest.raises(benchmark.HarnessError, match="did not emit a JSON result"):
+        benchmark._run_worker(
+            ("generate",),
+            mode="recurrence",
+            phase="generation",
+            timeout_seconds=1.0,
+        )
+
+    command = captured["command"]
+    environment = captured["env"]
+    assert isinstance(command, tuple)
+    assert isinstance(environment, dict)
+    assert command[:3] == (
+        sys.executable,
+        str(benchmark.DRIVER_PATH),
+        "_worker",
+    )
+    assert command[1] != str(
+        checkout / "tools" / "developer" / "recurrence_z6g_benchmark.py"
+    )
+    assert captured["cwd"] == checkout
+    assert environment[benchmark.SOURCE_CHECKOUT_OVERRIDE_ENV] == override
 
 
 def test_path_state_identity_records_optional_absence(tmp_path: Path) -> None:
