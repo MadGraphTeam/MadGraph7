@@ -21,6 +21,7 @@ import shlex
 import shutil
 import statistics
 import struct
+import subprocess
 import sys
 import tempfile
 import textwrap
@@ -83,6 +84,19 @@ DEFAULT_WARMUP_RUNS = 2
 DEFAULT_MINIMUM_SAMPLES = 5
 DEFAULT_WORKER_STALE_SECONDS = 15.0
 DEFAULT_MANUAL_EXPECTED_PAGE_COUNT = 59
+_ORIGINAL_AMPLICOL_REQUIRED_FILES = (
+    "makefile",
+    "process_list.py",
+    "amplicol_color_probe.f03",
+    "amplicol_color_library_probe.f03",
+    "amplicol_library_benchmark.f03",
+)
+_ORIGINAL_AMPLICOL_REQUIRED_MAKE_TARGETS = (
+    "amplicol_generate_library",
+    "amplicol_library_benchmark",
+    "amplicol_color_probe",
+    "amplicol_color_library_probe",
+)
 MAX_TAIL_READ_BYTES = 64 * 1024
 MAX_LOG_TAIL_LINES = 8
 MANUAL_STATE_SCHEMA = "pyamplicol-manual-campaign-state-v1"
@@ -608,22 +622,13 @@ def selection_from_arguments(
 
 
 def _model_cli_source(cell: CellSpec, repo_root: Path) -> str:
+    from .runner import _model_source_path
+
     model = cell.measurement.model
-    if model is ModelKey.BUILTIN_SM:
-        return "built-in-sm"
-    mapping = {
-        ModelKey.UFO_SM: repo_root / "src/pyamplicol/assets/models/json/sm/sm.json",
-        ModelKey.SCALAR_CONTACT: (
-            repo_root / "src/pyamplicol/assets/models/json/scalars/scalars.json"
-        ),
-        ModelKey.SCALAR_GRAVITY: (
-            repo_root
-            / "src/pyamplicol/assets/models/json/scalar_gravity/scalar_gravity.json"
-        ),
-    }
     if model is None:
         return "<legacy-AmpliCol-has-no-pyamplicol-model>"
-    return os.fspath(mapping[model])
+    source = _model_source_path(repo_root, model)
+    return "built-in-sm" if source is None else os.fspath(source)
 
 
 def _reproduction_root(repo_root: Path, cell: CellSpec) -> Path:
@@ -639,12 +644,14 @@ def _reproduction_root(repo_root: Path, cell: CellSpec) -> Path:
 def _pyamplicol_cli(repo_root: Path) -> tuple[str, ...]:
     """Return a cwd-independent source CLI prefix for contributor installs."""
 
+    source_package = repo_root / "src/pyamplicol"
+    executable = repo_root / ".venv/bin/pyamplicol"
+    if not source_package.is_dir() or not executable.is_file():
+        return (sys.executable, "-m", "pyamplicol")
     return (
         "env",
         f"PYTHONPATH={os.fspath((repo_root / 'src').resolve(strict=False))}",
-        os.fspath(
-            (repo_root / ".venv/bin/pyamplicol").expanduser().resolve(strict=False)
-        ),
+        os.fspath(executable.expanduser().resolve(strict=False)),
     )
 
 
@@ -1230,6 +1237,24 @@ def lightweight_source_identity(repo_root: Path) -> ReportSourceIdentity:
         _commit_tree_marker(repo_root, revision),
         _index_metadata_dirty_paths(repo_root),
     )
+
+
+def installed_source_identity() -> ReportSourceIdentity:
+    """Bind a copied campaign to the source revision recorded by its wheel."""
+
+    from pyamplicol._internal.versions import active_source_revision
+
+    revision = active_source_revision()
+    if revision is None:
+        raise ManualCampaignError(
+            "installed pyAmpliCol has no source revision in its build info; "
+            "reinstall a release wheel that retains build provenance"
+        )
+    tree = hashlib.sha1(
+        f"pyamplicol-installed-report-tree-v1:{revision}".encode("ascii"),
+        usedforsecurity=False,
+    ).hexdigest()
+    return ReportSourceIdentity(revision, tree, ())
 
 
 @dataclass(frozen=True, slots=True)
@@ -4414,7 +4439,67 @@ def _campaign_settings(
         manual_terminal_censors=True,
         discard_cancelled_attempts=True,
         report_profile=None,
+        original_amplicol_repository=arguments.original_amplicol,
+        original_amplicol_revision=arguments.original_amplicol_revision,
     )
+
+
+def _validated_original_amplicol_checkout(path: Path) -> tuple[Path, str]:
+    """Return one clean checkout exposing the maintained profiling interface."""
+
+    repository = path.expanduser().resolve(strict=True)
+    missing = tuple(
+        name
+        for name in _ORIGINAL_AMPLICOL_REQUIRED_FILES
+        if not (repository / name).is_file() or (repository / name).is_symlink()
+    )
+    if missing:
+        raise ManualCampaignError(
+            "--original-amplicol is not a complete patched checkout; missing "
+            + ", ".join(missing)
+        )
+    makefile = (repository / "makefile").read_text(
+        encoding="utf-8",
+        errors="replace",
+    )
+    missing_targets = tuple(
+        target
+        for target in _ORIGINAL_AMPLICOL_REQUIRED_MAKE_TARGETS
+        if re.search(rf"(?m)^{re.escape(target)}\s*:", makefile) is None
+    )
+    if missing_targets:
+        raise ManualCampaignError(
+            "--original-amplicol lacks required Make targets: "
+            + ", ".join(missing_targets)
+        )
+    head = subprocess.run(
+        ("git", "rev-parse", "HEAD"),
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    revision = head.stdout.strip()
+    if (
+        head.returncode != 0
+        or re.fullmatch(r"[0-9a-f]{40}", revision) is None
+    ):
+        raise ManualCampaignError(
+            "--original-amplicol must be a Git checkout with a concrete HEAD"
+        )
+    status = subprocess.run(
+        ("git", "status", "--porcelain=v1", "--untracked-files=all"),
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if status.returncode != 0 or status.stdout:
+        raise ManualCampaignError(
+            "--original-amplicol must be a clean checkout; commit, remove, "
+            "or relocate local changes and build products first"
+        )
+    return repository, revision
 
 
 def _dry_run_rows(
@@ -4771,6 +4856,19 @@ def _run_campaign(
             print()
             print(block)
         return 0
+
+    if (
+        preliminary_settings.original_amplicol_repository is None
+        and any(
+            item.cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+            for item in planned
+        )
+    ):
+        raise ManualCampaignError(
+            "this campaign selection requires original AmpliCol; pass "
+            "--original-amplicol PATH_TO_COMPLETE_CHECKOUT containing the "
+            "profiling interface from AmpliCol PR #12"
+        )
 
     require_measurement_ready(source)
     update_source_marker(service, source)
@@ -5526,6 +5624,17 @@ def build_parser() -> argparse.ArgumentParser:
             "serializes it."
         ),
     )
+    resources.add_argument(
+        "--original-amplicol",
+        type=Path,
+        metavar="PATH_TO_COMPLETE_CHECKOUT",
+        help=(
+            "Clean, complete original-AmpliCol checkout containing the profiling "
+            "interface from PR #12 (currently amplicol_with_patches; compatible "
+            "upstream revisions are accepted after merge). Required only when "
+            "the selected campaign closure contains original-AmpliCol cells."
+        ),
+    )
     profiling = run.add_argument_group("profiling hyperparameters")
     profiling.add_argument(
         "--target-measurement-duration",
@@ -5726,6 +5835,8 @@ def main(
     *,
     repo_root: Path | None = None,
     profile: str = PROFILE,
+    docs_dir: Path | None = None,
+    installed: bool = False,
 ) -> int:
     global _ACTIVE_PROFILE
 
@@ -5738,6 +5849,25 @@ def main(
         if repo_root is None
         else repo_root.expanduser().resolve(strict=False)
     )
+    destination = (
+        None if docs_dir is None else docs_dir.expanduser().resolve(strict=False)
+    )
+    if installed and destination is None:
+        raise ValueError("installed campaign mode requires its destination directory")
+
+    def report_paths() -> ReportPaths:
+        if destination is None:
+            return ReportPaths.from_repo(root, profile=selected_profile)
+        local_state = destination / ".artifacts"
+        return ReportPaths.from_repo(
+            root,
+            docs_dir=destination,
+            artifact_root=local_state / "performance-report" / selected_profile,
+            coordination_root=(
+                local_state / "performance-report-coordination" / selected_profile
+            ),
+        )
+
     json_output = arguments.command == "inspect" and arguments.format == "json"
     palette = Palette(_color_enabled(arguments, json_output=json_output))
     try:
@@ -5746,10 +5876,7 @@ def main(
                 raise ManualCampaignError("--instance requires --live")
             state = (
                 _live_dashboard_snapshot(
-                    ReportPaths.from_repo(
-                        root,
-                        profile=selected_profile,
-                    ).coordination_root,
+                    report_paths().coordination_root,
                     instance=arguments.instance,
                     stale_after_seconds=arguments.stale_after,
                 )
@@ -5770,12 +5897,29 @@ def main(
                 print(result)
             return 0
 
-        service = ReportService(
-            ReportPaths.from_repo(root, profile=selected_profile)
-        )
+        service = ReportService(report_paths())
         service.bind_measurement_lineage(None)
         service.bind_original_amplicol_seed(None)
-        source = lightweight_source_identity(root)
+        source = (
+            installed_source_identity()
+            if installed
+            else lightweight_source_identity(root)
+        )
+
+        if arguments.command == "run":
+            original = arguments.original_amplicol
+            if original is None and not installed:
+                default_original = root / "dependencies/checkouts/legacy-amplicol"
+                if default_original.is_dir():
+                    original = default_original
+            if original is None:
+                arguments.original_amplicol = None
+                arguments.original_amplicol_revision = None
+            else:
+                (
+                    arguments.original_amplicol,
+                    arguments.original_amplicol_revision,
+                ) = _validated_original_amplicol_checkout(original)
 
         if arguments.command == "refresh-pdf":
             return _refresh_pdf(

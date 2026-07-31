@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -148,6 +149,8 @@ class CampaignSettings:
     report_profile: str | None = None
     study_contract_sha256: str | None = None
     reuse_cross_source_comparison_dependencies: bool = False
+    original_amplicol_repository: Path | None = None
+    original_amplicol_revision: str | None = None
 
     def __post_init__(self) -> None:
         if self.workers < 1 or self.cell_cores < 1:
@@ -187,6 +190,16 @@ class CampaignSettings:
             raise ValueError("campaign_max_rss_bytes must be positive")
         if self.missing_only and self.rerun:
             raise ValueError("--missing-only and --rerun are mutually exclusive")
+        if (self.original_amplicol_repository is None) != (
+            self.original_amplicol_revision is None
+        ):
+            raise ValueError(
+                "original AmpliCol repository and revision must be specified together"
+            )
+        if self.original_amplicol_revision is not None and re.fullmatch(
+            r"[0-9a-f]{40}", self.original_amplicol_revision
+        ) is None:
+            raise ValueError("original AmpliCol revision must be lowercase 40-hex")
         profile = self.report_profile or ""
         if self.campaign_policy is not STRICT_POLICY or self.report_profile is not None:
             validate_policy_profile(self.campaign_policy, profile)
@@ -1031,6 +1044,7 @@ class CampaignScheduler:
                 strict=True
             )
             self.worker_entrypoint = self.worker_wrapper_root / POLICY_ENTRYPOINT
+            self.worker_module: str | None = None
             if (
                 self.worker_entrypoint.is_symlink()
                 or not self.worker_entrypoint.is_file()
@@ -1048,9 +1062,13 @@ class CampaignScheduler:
                 )
             self.study_contract = None
             self.worker_wrapper_root = service.paths.repo_root
-            self.worker_entrypoint = (
-                service.paths.repo_root / CANONICAL_REPORT_ENTRYPOINT
-            )
+            source_entrypoint = service.paths.repo_root / CANONICAL_REPORT_ENTRYPOINT
+            if __package__.startswith("pyamplicol."):
+                self.worker_entrypoint: Path | None = None
+                self.worker_module = "pyamplicol._performance_report"
+            else:
+                self.worker_entrypoint = source_entrypoint
+                self.worker_module = None
             self.worker_harness_identity = None
         self.measurement_lineage = (
             measurement_lineage
@@ -1269,7 +1287,11 @@ class CampaignScheduler:
         from .legacy import MaintainedLegacyApi
 
         api = MaintainedLegacyApi()
-        source = api.default_repository.expanduser().resolve(strict=True)
+        source = (
+            api.default_repository
+            if self.settings.original_amplicol_repository is None
+            else self.settings.original_amplicol_repository
+        ).expanduser().resolve(strict=True)
         destination = (
             self.service.paths.artifact_root / "legacy-workspaces" / attempt_id
         )
@@ -1335,6 +1357,25 @@ class CampaignScheduler:
             os.fspath(paths.artifact_root),
             "--coordination-root",
             os.fspath(paths.coordination_root),
+        )
+
+    def _worker_invocation(self) -> tuple[str, ...]:
+        if self.worker_module is not None:
+            return (
+                sys.executable,
+                "-I",
+                "-B",
+                "-m",
+                self.worker_module,
+            )
+        if self.worker_entrypoint is None:
+            raise RuntimeError("performance-report worker entrypoint is unavailable")
+        return (
+            sys.executable,
+            "-I",
+            "-S",
+            "-B",
+            os.fspath(self.worker_entrypoint),
         )
 
     def _worker_harness_arguments(self) -> tuple[str, ...]:
@@ -1406,11 +1447,7 @@ class CampaignScheduler:
             )
             progress_path = result_path.with_suffix(".progress.jsonl")
             command = (
-                sys.executable,
-                "-I",
-                "-S",
-                "-B",
-                os.fspath(self.worker_entrypoint),
+                *self._worker_invocation(),
                 "--repo-root",
                 os.fspath(self.service.paths.repo_root),
                 *self._service_path_arguments(),
@@ -1774,11 +1811,7 @@ class CampaignScheduler:
                     )
                 )
                 command = [
-                    sys.executable,
-                    "-I",
-                    "-S",
-                    "-B",
-                    os.fspath(self.worker_entrypoint),
+                    *self._worker_invocation(),
                     "--repo-root",
                     os.fspath(self.service.paths.repo_root),
                     *self._service_path_arguments(),
@@ -1853,6 +1886,13 @@ class CampaignScheduler:
                     command.extend(
                         ("--legacy-repository", os.fspath(legacy_repository))
                     )
+                    if self.settings.original_amplicol_revision is not None:
+                        command.extend(
+                            (
+                                "--legacy-source-revision",
+                                self.settings.original_amplicol_revision,
+                            )
+                        )
                 reusable_record = (
                     decision.current
                     if (

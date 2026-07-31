@@ -13,21 +13,16 @@ import shutil
 import stat
 import subprocess
 import sys
-import tarfile
 import tomllib
-import urllib.request
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, TypeVar
 
 import maturin  # type: ignore[import-untyped]
 from native_build_identity import (
     canonical_candidate_cargo_config_bytes as _canonical_candidate_cargo_config_bytes,
-)
-from native_build_identity import (
-    canonical_release_cargo_lock_bytes as _canonical_release_cargo_lock_bytes,
 )
 from native_build_identity import (
     native_build_inputs_digest as _native_build_inputs_digest,
@@ -98,40 +93,6 @@ def _runtime_artifact_id(manifest: Mapping[str, object]) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
-def _declared_release_symjit_patches(root: Path) -> tuple[Path, ...]:
-    try:
-        with (root / "dependencies/release-lock.toml").open("rb") as stream:
-            entries = tomllib.load(stream)["symjit"]["patches"]
-    except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
-        raise RuntimeError(
-            f"release SymJIT patch inventory is invalid: {error}"
-        ) from error
-    if not isinstance(entries, list) or not entries:
-        raise RuntimeError("release SymJIT patch inventory must be nonempty")
-    paths: list[Path] = []
-    for entry in entries:
-        relative = entry.get("path") if isinstance(entry, dict) else None
-        if not isinstance(relative, str):
-            raise RuntimeError("release SymJIT patch inventory is malformed")
-        pure = PurePosixPath(relative)
-        if (
-            pure.is_absolute()
-            or not pure.parts
-            or pure.parent != PurePosixPath("patches/symjit/upstream")
-            or pure.suffix != ".patch"
-            or any(part in {"", ".", ".."} for part in pure.parts)
-        ):
-            raise RuntimeError("release SymJIT patch inventory has an unsafe path")
-        paths.append(Path("dependencies").joinpath(*pure.parts))
-    if len(set(paths)) != len(paths):
-        raise RuntimeError("release SymJIT patch inventory contains duplicates")
-    return tuple(paths)
-
-
-_RELEASE_SYMJIT_PATCHES = _declared_release_symjit_patches(ROOT)
-# Compatibility name for callers that inspect the first ordered patch.
-_RELEASE_SYMJIT_PATCH = _RELEASE_SYMJIT_PATCHES[0]
-_RELEASE_SYMJIT_STAGE = Path(".pyamplicol-build-dependencies/symjit")
 ALLOWLIST = (
     ".gitattributes",
     "Cargo.lock",
@@ -153,10 +114,51 @@ ALLOWLIST = (
     "schemas",
     "src",
     "tests",
+    "tools/ci/__init__.py",
+    "tools/ci/memory_watchdog.py",
     "tools/developer",
+    "tools/performance_report",
     "tools/release",
     "tools/typing",
 )
+_PROFILING_CAMPAIGN_SOURCE = Path("docs/performance_reports/macbook_M3_manual")
+_PROFILING_CAMPAIGN_REQUIRED_FILES = (
+    Path("README.md"),
+    Path("TABLE_FILLING.md"),
+    Path("build_pdf.py"),
+    Path("pyAmpliCol.tex"),
+    Path("report-workspace.json"),
+    Path("report_environment.json"),
+    Path("report_environment.tex"),
+    Path("result_tables.py"),
+    Path("result_validation_summary.tex"),
+    Path("steer_performance_campaign.py"),
+)
+_PROFILING_CAMPAIGN_GLOBS = (
+    "result_*_table.tex",
+    "section_*.tex",
+    "results/*.json",
+)
+_PROFILING_CAMPAIGN_FILE_COUNT = 55
+_RELEASE_BUILD_INFO_FIELDS = {
+    "publishable",
+    "schema_version",
+    "selftest_fixture_bootstrap",
+    "source_revision",
+    "version",
+}
+_PERFORMANCE_REPORT_REQUIRED_MODULES = {
+    "__init__.py",
+    "cli.py",
+    "manual_campaign.py",
+    "scheduler.py",
+}
+_LEGACY_ORACLE_REQUIRED_MODULES = {
+    "__init__.py",
+    "checkout.py",
+    "model.py",
+    "probe.py",
+}
 IGNORED_NAMES = {
     "__pycache__",
     ".agent-work",
@@ -179,6 +181,7 @@ IGNORED_NAMES = {
     "venv",
 }
 _EXCLUDED_TREES = (
+    Path("dependencies/patches"),
     Path("docs/.result_outputs"),
     Path("docs/archive"),
     Path("outputs"),
@@ -233,38 +236,6 @@ _CANDIDATE_SOURCES = {
     "symbolica-community",
     "symjit",
 }
-_SOURCE_TREE_EXCLUDES = {
-    ".git",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".venv",
-    "__pycache__",
-    "build",
-    "dist",
-    "target",
-}
-_RELEASE_SYMJIT_KEYS = {
-    "version",
-    "repository",
-    "revision",
-    "source_url",
-    "archive_prefix",
-    "archive_sha256",
-    "source_tree_sha256",
-    "configured_tree_sha256",
-    "release_cargo_lock_sha256",
-    "patches",
-}
-_RELEASE_SYMJIT_PATCH_KEYS = {
-    "name",
-    "target",
-    "path",
-    "sha256",
-    "applies_to_revision",
-}
-_SHA256_RE = re.compile(r"[0-9a-f]{64}")
-_GIT_REVISION_RE = re.compile(r"[0-9a-f]{40}")
 _INJECTION_ENVIRONMENT_NAMES = {
     "AR",
     "CARGO",
@@ -500,11 +471,6 @@ def _check_dependencies(mode: str) -> None:
 
 
 def _is_excluded(relative: Path) -> bool:
-    if relative.is_relative_to(Path("dependencies/patches")):
-        return not any(
-            relative == patch or relative in patch.parents
-            for patch in _RELEASE_SYMJIT_PATCHES
-        )
     if any(
         part in IGNORED_NAMES or part.endswith(".egg-info") for part in relative.parts
     ):
@@ -659,6 +625,83 @@ def _stage_packaged_examples(overlay: Path) -> None:
     if target.exists():
         raise RuntimeError("wheel overlay already contains packaged examples")
     shutil.copytree(source, target, ignore=_copy_ignore(overlay))
+
+
+def _profiling_campaign_inventory(source: Path) -> tuple[Path, ...]:
+    selected = set(_PROFILING_CAMPAIGN_REQUIRED_FILES)
+    for pattern in _PROFILING_CAMPAIGN_GLOBS:
+        selected.update(path.relative_to(source) for path in source.glob(pattern))
+    missing = tuple(
+        relative
+        for relative in _PROFILING_CAMPAIGN_REQUIRED_FILES
+        if not (source / relative).is_file()
+    )
+    if missing or len(selected) != _PROFILING_CAMPAIGN_FILE_COUNT:
+        detail = ", ".join(path.as_posix() for path in missing)
+        raise RuntimeError(
+            "wheel profiling campaign has an invalid inventory"
+            + (f": missing {detail}" if detail else "")
+        )
+    for relative in selected:
+        path = source / relative
+        if path.is_symlink() or not path.is_file():
+            raise RuntimeError(
+                f"wheel profiling campaign has an unsafe member: {relative}"
+            )
+    return tuple(sorted(selected, key=lambda path: path.as_posix()))
+
+
+def _stage_packaged_profiling_campaign(overlay: Path) -> None:
+    source = overlay / _PROFILING_CAMPAIGN_SOURCE
+    target = overlay / "src" / "pyamplicol" / "_profiling_campaign"
+    if not source.is_dir():
+        raise RuntimeError("wheel build input has no profiling campaign directory")
+    if target.exists():
+        raise RuntimeError("wheel overlay already contains a profiling campaign")
+    target.mkdir(parents=True)
+    for relative in _profiling_campaign_inventory(source):
+        destination = target / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source / relative, destination)
+
+    performance_source = overlay / "tools" / "performance_report"
+    watchdog_source = overlay / "tools" / "ci" / "memory_watchdog.py"
+    legacy_source = overlay / "tools" / "developer" / "legacy_amplicol.py"
+    oracle_source = overlay / "tools" / "developer" / "legacy_oracle"
+    runtime_target = overlay / "src" / "pyamplicol" / "_performance_report"
+    performance_modules = tuple(sorted(performance_source.glob("*.py")))
+    oracle_modules = tuple(sorted(oracle_source.glob("*.py")))
+    if (
+        not _PERFORMANCE_REPORT_REQUIRED_MODULES.issubset(
+            {path.name for path in performance_modules}
+        )
+        or not _LEGACY_ORACLE_REQUIRED_MODULES.issubset(
+            {path.name for path in oracle_modules}
+        )
+        or not watchdog_source.is_file()
+        or not legacy_source.is_file()
+    ):
+        raise RuntimeError("wheel build input has incomplete profiling runtime sources")
+    for path in (*performance_modules, watchdog_source, legacy_source, *oracle_modules):
+        if path.is_symlink() or not path.is_file():
+            raise RuntimeError(f"wheel profiling runtime has an unsafe member: {path}")
+    if runtime_target.exists():
+        raise RuntimeError("wheel overlay already contains a profiling runtime")
+    runtime_target.mkdir(parents=True)
+    for path in performance_modules:
+        shutil.copy2(path, runtime_target / path.name)
+    shutil.copy2(watchdog_source, runtime_target / "_memory_watchdog.py")
+    developer_target = runtime_target / "_developer"
+    developer_target.mkdir()
+    (developer_target / "__init__.py").write_text(
+        "# SPDX-License-Identifier: 0BSD\n",
+        encoding="utf-8",
+    )
+    shutil.copy2(legacy_source, developer_target / legacy_source.name)
+    oracle_target = developer_target / "legacy_oracle"
+    oracle_target.mkdir()
+    for path in oracle_modules:
+        shutil.copy2(path, oracle_target / path.name)
 
 
 def _stage_python_stub(overlay: Path) -> None:
@@ -952,11 +995,13 @@ def _candidate_state(
         raise RuntimeError("candidate Cargo inputs are incomplete")
     with (ROOT / _CONTRIBUTOR_LOCK).open("rb") as stream:
         contributor = tomllib.load(stream)
+    with (ROOT / "dependencies" / "release-lock.toml").open("rb") as stream:
+        release = tomllib.load(stream)
     expected_revisions = {
         "gammaloop": str(contributor["gammaloop_candidate"]["revision"]),
         "symbolica": str(contributor["symbolica"]["candidate_revision"]),
         "symbolica-community": str(contributor["symbolica"]["community_revision"]),
-        "symjit": str(contributor["symjit"]["candidate_revision"]),
+        "symjit": str(release["symjit"]["revision"]),
     }
     sources = payload.get("sources")
     if not isinstance(sources, dict) or not set(sources) >= _CANDIDATE_SOURCES:
@@ -1001,7 +1046,13 @@ def _candidate_digest(
         _digest_item(
             digest,
             f"source/{name}",
-            str(entry["revision"]).encode(),
+            json.dumps(
+                entry,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+                allow_nan=False,
+            ).encode("utf-8"),
         )
     return digest.hexdigest()[:12]
 
@@ -1014,6 +1065,8 @@ def _canonical_candidate_config(candidate_config: Path) -> bytes:
     except OSError as error:
         raise RuntimeError(f"invalid candidate Cargo config: {error}") from error
     return _canonical_candidate_cargo_config_bytes(data)
+
+
 def _mark_candidate(
     overlay: Path,
     base_version: str,
@@ -1129,6 +1182,49 @@ def _mark_release_prepared_model_bootstrap(
     )
 
 
+def _stage_release_build_info(overlay: Path, version: str) -> None:
+    """Create or retain the minimal provenance marker for a published release."""
+
+    path = overlay / "src" / "pyamplicol" / "_build_info.json"
+    if (ROOT / ".git").exists():
+        revision = _clean_source_revision()
+        if revision is None:
+            raise RuntimeError(
+                "publishable release artifacts require a clean Git source revision"
+            )
+        payload: dict[str, object] = {
+            "schema_version": 1,
+            "publishable": True,
+            "selftest_fixture_bootstrap": False,
+            "source_revision": revision,
+            "version": version,
+        }
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
+            encoding="utf-8",
+        )
+        return
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError(
+            "release source archive has no retained build provenance"
+        ) from error
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != _RELEASE_BUILD_INFO_FIELDS
+        or payload.get("schema_version") != 1
+        or payload.get("publishable") is not True
+        or payload.get("selftest_fixture_bootstrap") is not False
+        or payload.get("version") != version
+        or not isinstance(payload.get("source_revision"), str)
+        or re.fullmatch(r"[0-9a-f]{40}", payload["source_revision"]) is None
+    ):
+        raise RuntimeError("release source archive has invalid build provenance")
+
+
 def _clean_source_revision() -> str | None:
     """Return the exact source revision only for a clean Git checkout.
 
@@ -1194,15 +1290,10 @@ def _rewrite_candidate_dependency_requirements(overlay: Path) -> None:
             str(release["symbolica"]["rust_version"]),
             str(contributor["symbolica"]["candidate_version"]),
         ),
-        (
-            "symjit",
-            str(release["symjit"]["version"]),
-            str(contributor["symjit"]["candidate_version"]),
-        ),
     )
     for dependency, published, candidate in projections:
         pattern = (
-            rf'(?m)^({dependency}\s*=\s*\{{\s*version\s*=\s*)'
+            rf"(?m)^({dependency}\s*=\s*\{{\s*version\s*=\s*)"
             rf'"={re.escape(published)}"'
         )
         text, count = re.subn(pattern, rf'\g<1>"={candidate}"', text, count=1)
@@ -1244,638 +1335,31 @@ def _candidate_inputs() -> tuple[Path, Path, Path]:
     return lock, config, state
 
 
-def _release_symjit_contract(root: Path) -> tuple[dict[str, Any], tuple[Path, ...]]:
-    """Load and authenticate the release-owned SymJIT source contract."""
-
-    lock_path = root / "dependencies" / "release-lock.toml"
-    try:
-        with lock_path.open("rb") as stream:
-            payload = tomllib.load(stream)
-        symjit = payload["symjit"]
-    except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
-        raise RuntimeError(
-            f"invalid release SymJIT source contract: {error}"
-        ) from error
-    if not isinstance(symjit, dict) or set(symjit) != _RELEASE_SYMJIT_KEYS:
-        raise RuntimeError("release SymJIT source contract has an invalid field set")
-    required_strings = _RELEASE_SYMJIT_KEYS - {"patches"}
-    if not all(
-        isinstance(symjit.get(key), str) and str(symjit[key])
-        for key in required_strings
-    ):
-        raise RuntimeError("release SymJIT source fields must be nonempty strings")
-    revision = str(symjit["revision"])
-    if _GIT_REVISION_RE.fullmatch(revision) is None:
-        raise RuntimeError("release SymJIT revision must be an immutable full revision")
-    for key in (
-        "archive_sha256",
-        "source_tree_sha256",
-        "configured_tree_sha256",
-        "release_cargo_lock_sha256",
-    ):
-        if _SHA256_RE.fullmatch(str(symjit[key])) is None:
-            raise RuntimeError(f"release SymJIT {key} must be a SHA-256 digest")
-    raw_patches = symjit["patches"]
-    if not isinstance(raw_patches, list) or not raw_patches:
-        raise RuntimeError("release SymJIT patch closure must be a nonempty list")
-    dependency_root = (root / "dependencies").resolve()
-    paths: list[Path] = []
-    names: set[str] = set()
-    relatives: set[str] = set()
-    for index, entry in enumerate(raw_patches):
-        if not isinstance(entry, dict) or set(entry) != _RELEASE_SYMJIT_PATCH_KEYS:
-            raise RuntimeError(
-                f"release SymJIT patch {index} has an invalid field set"
-            )
-        if not all(
-            isinstance(entry.get(key), str) and str(entry[key])
-            for key in _RELEASE_SYMJIT_PATCH_KEYS
-        ):
-            raise RuntimeError(
-                f"release SymJIT patch {index} fields must be nonempty strings"
-            )
-        name = str(entry["name"])
-        relative = str(entry["path"])
-        pure = PurePosixPath(relative)
-        if (
-            name in names
-            or relative in relatives
-            or entry["target"] != "symjit"
-            or entry["applies_to_revision"] != revision
-            or _SHA256_RE.fullmatch(str(entry["sha256"])) is None
-            or pure.is_absolute()
-            or not pure.parts
-            or pure.parent != PurePosixPath("patches/symjit/upstream")
-            or pure.suffix != ".patch"
-            or any(part in {"", ".", ".."} for part in pure.parts)
-        ):
-            raise RuntimeError(
-                f"release SymJIT patch {name!r} has an invalid identity"
-            )
-        path = root / "dependencies" / Path(*pure.parts)
-        try:
-            resolved = path.resolve(strict=True)
-            resolved.relative_to(dependency_root)
-        except (OSError, ValueError) as error:
-            raise RuntimeError(
-                f"release SymJIT patch {name!r} is missing or unsafe"
-            ) from error
-        current = root / "dependencies"
-        for part in pure.parts:
-            current /= part
-            if current.is_symlink():
-                raise RuntimeError(f"release SymJIT patch {name!r} uses a symlink")
-        if not resolved.is_file():
-            raise RuntimeError(
-                f"release SymJIT patch {name!r} is not a regular file"
-            )
-        actual = hashlib.sha256(resolved.read_bytes()).hexdigest()
-        if actual != entry["sha256"]:
-            raise RuntimeError(
-                f"release SymJIT patch {name!r} failed SHA-256 authentication"
-            )
-        names.add(name)
-        relatives.add(relative)
-        paths.append(resolved)
-    return symjit, tuple(paths)
-
-
-def _release_symjit_tree_sha256(root: Path) -> str:
-    """Hash a source tree exactly like the contributor dependency installer."""
-
-    digest = hashlib.sha256()
-    for raw_directory, raw_directories, raw_files in os.walk(root, topdown=True):
-        directory = Path(raw_directory)
-        directories = sorted(
-            name for name in raw_directories if name not in _SOURCE_TREE_EXCLUDES
-        )
-        raw_directories[:] = [
-            name for name in directories if not (directory / name).is_symlink()
-        ]
-        entries = [
-            *(
-                directory / name
-                for name in directories
-                if (directory / name).is_symlink()
-            ),
-            *(
-                directory / name
-                for name in sorted(raw_files)
-                if name not in _SOURCE_TREE_EXCLUDES
-                and not name.endswith((".pyc", ".pyo"))
-            ),
-        ]
-        for path in entries:
-            relative = path.relative_to(root).as_posix().encode("utf-8")
-            mode = path.lstat().st_mode & 0o111
-            digest.update(len(relative).to_bytes(8, "big"))
-            digest.update(relative)
-            digest.update(mode.to_bytes(2, "big"))
-            if path.is_symlink():
-                target = os.readlink(path).encode("utf-8")
-                digest.update(b"L")
-                digest.update(len(target).to_bytes(8, "big"))
-                digest.update(target)
-            elif path.is_file():
-                digest.update(b"F")
-                with path.open("rb") as stream:
-                    while block := stream.read(1024 * 1024):
-                        digest.update(block)
-            else:
-                digest.update(b"O")
-    return digest.hexdigest()
-
-
-def _require_release_symjit_manifest(path: Path, version: str) -> None:
-    try:
-        with path.open("rb") as stream:
-            manifest = tomllib.load(stream)
-    except (OSError, tomllib.TOMLDecodeError) as error:
-        raise RuntimeError(f"invalid staged SymJIT manifest: {error}") from error
-    package = manifest.get("package")
-    library = manifest.get("lib")
-    if (
-        not isinstance(package, dict)
-        or package.get("name") != "symjit"
-        or package.get("version") != version
-        or not isinstance(library, dict)
-        or library.get("crate-type") != ["rlib"]
-    ):
-        raise RuntimeError(
-            "staged SymJIT must be the locked version and expose an rlib-only library"
-        )
-
-
-def _extract_release_symjit_archive(
-    archive: Path,
-    destination: Path,
-    *,
-    prefix: str,
-) -> None:
-    destination.mkdir(parents=True)
-    with tarfile.open(archive, "r:gz") as source:
-        for member in source.getmembers():
-            path = PurePosixPath(member.name)
-            if (
-                path.is_absolute()
-                or not path.parts
-                or path.parts[0] != prefix
-                or any(part in {"", ".", ".."} for part in path.parts)
-                or member.issym()
-                or member.islnk()
-            ):
-                raise RuntimeError(f"unsafe SymJIT archive member: {member.name}")
-            relative = Path(*path.parts[1:])
-            target = destination / relative
-            if member.isdir():
-                target.mkdir(parents=True, exist_ok=True)
-            elif member.isfile():
-                target.parent.mkdir(parents=True, exist_ok=True)
-                stream = source.extractfile(member)
-                if stream is None:
-                    raise RuntimeError(
-                        f"could not read SymJIT archive member: {member.name}"
-                    )
-                target.write_bytes(stream.read())
-                target.chmod(
-                    (target.stat().st_mode & ~0o111) | (member.mode & 0o111)
-                )
-            else:
-                raise RuntimeError(
-                    f"unsupported SymJIT archive member: {member.name}"
-                )
-
-
-_UNIFIED_DIFF_HEADER_RE = re.compile(
-    r"^diff --git a/([^ \t\r\n]+) b/([^ \t\r\n]+)\r?\n?$"
-)
-_UNIFIED_FILE_HEADER_RE = re.compile(
-    r"^(---|\+\+\+) ([ab])/([^ \t\r\n]+)\r?\n?$"
-)
-_UNIFIED_HUNK_HEADER_RE = re.compile(
-    r"^@@ -([0-9]+)(?:,([0-9]+))? "
-    r"\+([0-9]+)(?:,([0-9]+))? @@(?: .*)?\r?\n?$"
-)
-_UNIFIED_INDEX_RE = re.compile(
-    r"^index [0-9a-f]+\.\.[0-9a-f]+(?: [0-7]{6})?\r?\n?$"
-)
-_UNIFIED_MAIL_VERSION_RE = re.compile(r"^[0-9]+(?:\.[0-9]+)+\r?\n?$")
-_UNIFIED_FORBIDDEN_PREFIXES = (
-    "new file mode ",
-    "deleted file mode ",
-    "old mode ",
-    "new mode ",
-    "similarity index ",
-    "dissimilarity index ",
-    "rename from ",
-    "rename to ",
-    "copy from ",
-    "copy to ",
-    "GIT binary patch",
-    "Binary files ",
-)
-
-
-def _safe_unified_patch_path(raw: str, *, patch: Path) -> PurePosixPath:
-    path = PurePosixPath(raw)
-    if (
-        path.is_absolute()
-        or not path.parts
-        or path.as_posix() != raw
-        or any(part in {"", ".", ".."} for part in path.parts)
-    ):
-        raise RuntimeError(
-            f"authenticated SymJIT patch {patch.name!r} has an unsafe target path"
-        )
-    return path
-
-
-def _parse_unified_patch(
-    patch: Path,
-) -> tuple[
-    tuple[
-        PurePosixPath,
-        tuple[tuple[int, int, int, int, tuple[str, ...]], ...],
-    ],
-    ...,
-]:
-    """Parse the safe existing-text-file subset of a unified Git patch."""
-
-    try:
-        lines = patch.read_bytes().decode("utf-8").splitlines(keepends=True)
-    except UnicodeDecodeError as error:
-        raise RuntimeError(
-            f"authenticated SymJIT patch {patch.name!r} is not UTF-8 text"
-        ) from error
-    starts = [
-        index
-        for index, line in enumerate(lines)
-        if line.startswith("diff --git ")
-    ]
-    if not starts:
-        raise RuntimeError(
-            f"authenticated SymJIT patch {patch.name!r} has no unified diff"
-        )
-
-    parsed: list[
-        tuple[
-            PurePosixPath,
-            tuple[tuple[int, int, int, int, tuple[str, ...]], ...],
-        ]
-    ] = []
-    seen: set[PurePosixPath] = set()
-    for block_index, start in enumerate(starts):
-        end = starts[block_index + 1] if block_index + 1 < len(starts) else len(lines)
-        block = lines[start:end]
-        header = _UNIFIED_DIFF_HEADER_RE.fullmatch(block[0])
-        if header is None or header.group(1) != header.group(2):
-            raise RuntimeError(
-                f"authenticated SymJIT patch {patch.name!r} must only modify "
-                "existing files in place"
-            )
-        path = _safe_unified_patch_path(header.group(1), patch=patch)
-        if path in seen:
-            raise RuntimeError(
-                f"authenticated SymJIT patch {patch.name!r} repeats target "
-                f"{path.as_posix()!r}"
-            )
-        if any(
-            line.startswith(_UNIFIED_FORBIDDEN_PREFIXES)
-            for line in block[1:]
-        ):
-            raise RuntimeError(
-                f"authenticated SymJIT patch {patch.name!r} contains an "
-                "unsupported file operation"
-            )
-
-        cursor = 1
-        if cursor < len(block) and _UNIFIED_INDEX_RE.fullmatch(block[cursor]):
-            cursor += 1
-        if cursor + 1 >= len(block):
-            raise RuntimeError(
-                f"authenticated SymJIT patch {patch.name!r} has no file headers"
-            )
-        old_header = _UNIFIED_FILE_HEADER_RE.fullmatch(block[cursor])
-        new_header = _UNIFIED_FILE_HEADER_RE.fullmatch(block[cursor + 1])
-        if (
-            old_header is None
-            or new_header is None
-            or old_header.group(1) != "---"
-            or old_header.group(2) != "a"
-            or new_header.group(1) != "+++"
-            or new_header.group(2) != "b"
-            or old_header.group(3) != path.as_posix()
-            or new_header.group(3) != path.as_posix()
-        ):
-            raise RuntimeError(
-                f"authenticated SymJIT patch {patch.name!r} has inconsistent "
-                f"headers for {path.as_posix()!r}"
-            )
-        cursor += 2
-
-        hunks: list[tuple[int, int, int, int, tuple[str, ...]]] = []
-        while cursor < len(block):
-            match = _UNIFIED_HUNK_HEADER_RE.fullmatch(block[cursor])
-            if match is None:
-                if (
-                    block_index + 1 == len(starts)
-                    and block[cursor] in {"-- \n", "-- \r\n"}
-                    and cursor + 2 == len(block)
-                    and _UNIFIED_MAIL_VERSION_RE.fullmatch(block[cursor + 1])
-                ):
-                    cursor = len(block)
-                    break
-                raise RuntimeError(
-                    f"authenticated SymJIT patch {patch.name!r} has unsupported "
-                    f"content for {path.as_posix()!r}"
-                )
-            old_start = int(match.group(1))
-            old_count = int(match.group(2) or "1")
-            new_start = int(match.group(3))
-            new_count = int(match.group(4) or "1")
-            cursor += 1
-            old_seen = 0
-            new_seen = 0
-            body: list[str] = []
-            while old_seen < old_count or new_seen < new_count:
-                if cursor >= len(block):
-                    raise RuntimeError(
-                        f"authenticated SymJIT patch {patch.name!r} has a "
-                        f"truncated hunk for {path.as_posix()!r}"
-                    )
-                line = block[cursor]
-                if not line or line[0] not in {" ", "-", "+"}:
-                    raise RuntimeError(
-                        f"authenticated SymJIT patch {patch.name!r} has an "
-                        f"invalid hunk line for {path.as_posix()!r}"
-                    )
-                if line[0] in {" ", "-"}:
-                    old_seen += 1
-                if line[0] in {" ", "+"}:
-                    new_seen += 1
-                if old_seen > old_count or new_seen > new_count:
-                    raise RuntimeError(
-                        f"authenticated SymJIT patch {patch.name!r} has "
-                        f"inconsistent hunk counts for {path.as_posix()!r}"
-                    )
-                body.append(line)
-                cursor += 1
-            hunks.append(
-                (
-                    old_start,
-                    old_count,
-                    new_start,
-                    new_count,
-                    tuple(body),
-                )
-            )
-        if not hunks:
-            raise RuntimeError(
-                f"authenticated SymJIT patch {patch.name!r} has no hunks for "
-                f"{path.as_posix()!r}"
-            )
-        parsed.append((path, tuple(hunks)))
-        seen.add(path)
-    return tuple(parsed)
-
-
-def _apply_unified_hunks(
-    source: tuple[str, ...],
-    hunks: tuple[tuple[int, int, int, int, tuple[str, ...]], ...],
-    *,
-    reverse: bool,
-    patch: Path,
-    relative: PurePosixPath,
-) -> tuple[str, ...]:
-    output: list[str] = []
-    source_cursor = 0
-    for old_start, old_count, new_start, new_count, body in hunks:
-        start = new_start if reverse else old_start
-        count = new_count if reverse else old_count
-        hunk_cursor = start if count == 0 else start - 1
-        if hunk_cursor < source_cursor or hunk_cursor > len(source):
-            raise RuntimeError(
-                f"authenticated SymJIT patch {patch.name!r} has an invalid "
-                f"hunk offset for {relative.as_posix()!r}"
-            )
-        output.extend(source[source_cursor:hunk_cursor])
-        source_cursor = hunk_cursor
-        consumed = 0
-        for raw_line in body:
-            marker = raw_line[0]
-            if reverse:
-                marker = {"-": "+", "+": "-"}.get(marker, marker)
-            content = raw_line[1:]
-            if marker in {" ", "-"}:
-                if source_cursor >= len(source) or source[source_cursor] != content:
-                    raise RuntimeError(
-                        f"authenticated SymJIT patch {patch.name!r} does not "
-                        f"apply exactly to {relative.as_posix()!r}"
-                    )
-                source_cursor += 1
-                consumed += 1
-            if marker in {" ", "+"}:
-                output.append(content)
-        if consumed != count:
-            raise RuntimeError(
-                f"authenticated SymJIT patch {patch.name!r} has inconsistent "
-                f"source counts for {relative.as_posix()!r}"
-            )
-    output.extend(source[source_cursor:])
-    return tuple(output)
-
-
-def _apply_authenticated_unified_patch(root: Path, patch: Path) -> None:
-    """Apply and reverse-check an authenticated patch without a system Git."""
-
-    parsed = _parse_unified_patch(patch)
-    root_resolved = root.resolve(strict=True)
-    writes: list[tuple[Path, bytes]] = []
-    for relative, hunks in parsed:
-        target = root.joinpath(*relative.parts)
-        current = root
-        for part in relative.parts:
-            current /= part
-            if current.is_symlink():
-                raise RuntimeError(
-                    f"authenticated SymJIT patch {patch.name!r} targets a symlink"
-                )
-        try:
-            resolved = target.resolve(strict=True)
-            resolved.relative_to(root_resolved)
-        except (OSError, ValueError) as error:
-            raise RuntimeError(
-                f"authenticated SymJIT patch {patch.name!r} targets a missing "
-                "or escaped file"
-            ) from error
-        if not resolved.is_file():
-            raise RuntimeError(
-                f"authenticated SymJIT patch {patch.name!r} target is not a "
-                "regular file"
-            )
-        try:
-            before = tuple(
-                resolved.read_bytes().decode("utf-8").splitlines(keepends=True)
-            )
-        except UnicodeDecodeError as error:
-            raise RuntimeError(
-                f"authenticated SymJIT patch {patch.name!r} target is not UTF-8"
-            ) from error
-        after = _apply_unified_hunks(
-            before,
-            hunks,
-            reverse=False,
-            patch=patch,
-            relative=relative,
-        )
-        restored = _apply_unified_hunks(
-            after,
-            hunks,
-            reverse=True,
-            patch=patch,
-            relative=relative,
-        )
-        if restored != before:
-            raise RuntimeError(
-                f"authenticated SymJIT patch {patch.name!r} failed its reverse "
-                f"applicability check for {relative.as_posix()!r}"
-            )
-        writes.append((resolved, "".join(after).encode("utf-8")))
-    for target, content in writes:
-        target.write_bytes(content)
-
-
-def _stage_release_symjit_source(overlay: Path) -> None:
-    """Stage the verified patched SymJIT tree and its generated Cargo override."""
-
-    symjit, source_patches = _release_symjit_contract(ROOT)
-    overlay_lock = overlay / "dependencies" / "release-lock.toml"
-    try:
-        with overlay_lock.open("rb") as stream:
-            overlay_symjit = tomllib.load(stream)["symjit"]
-    except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
-        raise RuntimeError(
-            f"build overlay has no release SymJIT source contract: {error}"
-        ) from error
-    if overlay_symjit != symjit:
-        raise RuntimeError("build overlay changed the release SymJIT source contract")
-
-    overlay_patches: list[Path] = []
-    for entry, source in zip(symjit["patches"], source_patches, strict=True):
-        relative = Path("dependencies") / Path(*PurePosixPath(entry["path"]).parts)
-        target = overlay / relative
-        if target.is_file():
-            if target.read_bytes() != source.read_bytes():
-                raise RuntimeError(
-                    "build overlay changed an authenticated SymJIT patch"
-                )
-        else:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(source, target)
-        overlay_patches.append(target.resolve())
-
-    destination = overlay / _RELEASE_SYMJIT_STAGE
-    if destination.exists():
-        raise RuntimeError("release SymJIT staging destination already exists")
-    managed = ROOT / "dependencies" / "checkouts" / "symjit"
-    expected_tree = str(symjit["configured_tree_sha256"])
-    if (
-        managed.is_dir()
-        and not managed.is_symlink()
-        and _release_symjit_tree_sha256(managed) == expected_tree
-    ):
-        shutil.copytree(
-            managed,
-            destination,
-            ignore=shutil.ignore_patterns(*sorted(_SOURCE_TREE_EXCLUDES)),
-        )
-    else:
-        archive = overlay / _RELEASE_SYMJIT_STAGE.parent / "symjit-source.tar.gz"
-        archive.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            with urllib.request.urlopen(
-                str(symjit["source_url"]),
-                timeout=60,
-            ) as response:
-                archive.write_bytes(response.read())
-            actual_archive = hashlib.sha256(archive.read_bytes()).hexdigest()
-            if actual_archive != symjit["archive_sha256"]:
-                raise RuntimeError(
-                    "SymJIT release archive digest mismatch: "
-                    f"expected {symjit['archive_sha256']}, got {actual_archive}"
-                )
-            _extract_release_symjit_archive(
-                archive,
-                destination,
-                prefix=str(symjit["archive_prefix"]),
-            )
-        finally:
-            archive.unlink(missing_ok=True)
-        actual_source = _release_symjit_tree_sha256(destination)
-        if actual_source != symjit["source_tree_sha256"]:
-            raise RuntimeError(
-                "pristine SymJIT release tree digest mismatch: "
-                f"expected {symjit['source_tree_sha256']}, got {actual_source}"
-            )
-        for patch in overlay_patches:
-            _apply_authenticated_unified_patch(destination, patch)
-    actual_tree = _release_symjit_tree_sha256(destination)
-    if actual_tree != expected_tree:
-        raise RuntimeError(
-            "configured SymJIT release tree digest mismatch: "
-            f"expected {expected_tree}, got {actual_tree}"
-        )
-    _require_release_symjit_manifest(
-        destination / "Cargo.toml",
-        str(symjit["version"]),
-    )
-    config = overlay / ".cargo" / "config.toml"
-    if config.exists():
-        raise RuntimeError("release build overlay contains an ambient Cargo config")
-    config.parent.mkdir(parents=True)
-    config.write_text(
-        "# Generated from the authenticated release SymJIT source contract.\n"
-        "[patch.crates-io]\n"
-        f"symjit = {{ path = {json.dumps(str(destination.resolve()))} }}\n",
-        encoding="utf-8",
-    )
-
-
 def _stage_cargo_inputs(
     overlay: Path,
     mode: str,
     *,
     native_build_inputs_sha256: str | None,
 ) -> None:
-    """Keep release and contributor Cargo resolution physically separate."""
+    """Apply managed path overrides only to contributor builds."""
 
     if mode not in {"candidate", "release"}:
         raise RuntimeError(f"unsupported Cargo input mode: {mode}")
     lock = overlay / "Cargo.lock"
     if not lock.is_file():
         raise RuntimeError("build overlay has no canonical Cargo.lock")
-    base_version = canonical_package_version(overlay)
     config = overlay / ".cargo" / "config.toml"
     if mode == "release":
         if config.exists():
             raise RuntimeError(
                 "release build overlay contains an ambient Cargo patch configuration"
             )
-        _symjit, _patches = _release_symjit_contract(ROOT)
-        lock.write_bytes(
-            _canonical_release_cargo_lock_bytes(ROOT, lock.read_bytes())
-        )
-        _stage_release_symjit_source(overlay)
-        if not config.is_file():
-            raise RuntimeError(
-                "release build overlay has no authenticated SymJIT Cargo override"
-            )
         return
     if native_build_inputs_sha256 is None:
         raise RuntimeError("candidate build has no native source identity")
     _mark_candidate(
         overlay,
-        base_version,
+        canonical_package_version(overlay),
         native_build_inputs_sha256=native_build_inputs_sha256,
     )
     if not config.is_file():
@@ -1928,10 +1412,13 @@ def _overlay(
                 canonical_package_version(source),
                 native_build_inputs_sha256=native_build_inputs_sha256,
             )
-        yield source, (
-            root / "cargo-target"
-            if cargo_target_directory is None
-            else cargo_target_directory
+        yield (
+            source,
+            (
+                root / "cargo-target"
+                if cargo_target_directory is None
+                else cargo_target_directory
+            ),
         )
 
 
@@ -2115,6 +1602,7 @@ def _from_overlay(
     *args: Any,
     with_sdk: bool,
     validate_prepared_models: bool = False,
+    retain_release_build_info: bool = False,
     release_prepared_model_bootstrap_context: str | None = None,
     **kwargs: Any,
 ) -> _Result:
@@ -2143,6 +1631,11 @@ def _from_overlay(
         else:
             overlay_context = _overlay(mode)
         with overlay_context as (overlay, target_dir):
+            if retain_release_build_info and mode == "release":
+                _stage_release_build_info(
+                    overlay,
+                    canonical_package_version(overlay),
+                )
             prepared_model_recovery = (
                 prepared_model_bootstrap or release_prepared_model_bootstrap
             )
@@ -2157,13 +1650,24 @@ def _from_overlay(
             if build_info_path.is_file():
                 try:
                     build_info = json.loads(build_info_path.read_text(encoding="utf-8"))
-                    environment["PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256"] = str(
-                        build_info["native_build_inputs_sha256"]
-                    )
-                except (KeyError, OSError, TypeError, ValueError) as error:
+                    native_digest = build_info.get("native_build_inputs_sha256")
+                except (OSError, TypeError, ValueError) as error:
                     raise RuntimeError(
-                        "candidate native provenance could not be exported to Rust"
+                        "build provenance could not be exported to Rust"
                     ) from error
+                if native_digest is not None:
+                    if not isinstance(native_digest, str) or not native_digest:
+                        raise RuntimeError(
+                            "build provenance contains an invalid native identity"
+                        )
+                    environment["PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256"] = native_digest
+                else:
+                    environment["PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256"] = (
+                        _native_build_inputs_digest(
+                            ROOT,
+                            normalize_release_cargo_lock=mode == "release",
+                        )
+                    )
             else:
                 environment["PYAMPLICOL_NATIVE_BUILD_INPUTS_SHA256"] = (
                     _native_build_inputs_digest(
@@ -2177,6 +1681,7 @@ def _from_overlay(
                     stage_packaged_prepared_models(overlay, mode)
                 if with_sdk:
                     _stage_packaged_examples(overlay)
+                    _stage_packaged_profiling_campaign(overlay)
                     _stage_python_stub(overlay)
                     _stage_runtime_resources(overlay)
                     if prepared_model_recovery:
@@ -2211,6 +1716,7 @@ def build_wheel(
         config_settings,
         metadata_directory,
         with_sdk=True,
+        retain_release_build_info=True,
     )
     return filename
 
@@ -2247,6 +1753,7 @@ def build_sdist(
         config_settings,
         with_sdk=False,
         validate_prepared_models=True,
+        retain_release_build_info=True,
     )
 
 

@@ -165,6 +165,7 @@ def measure_cell(
     reused_measurement_json: Path | None = None,
     phase_reporter: WorkerPhaseReporter | None = None,
     legacy_repository: Path | None = None,
+    legacy_source_revision: str | None = None,
     catalog: ReportCatalog = REPORT_CATALOG,
 ) -> dict[str, object]:
     cell = catalog.cell(cell_id)
@@ -205,6 +206,7 @@ def measure_cell(
                 jobs=worker_cores,
                 repository=legacy_repository,
                 validate_checkout=manual_source_revision is None,
+                source_revision=legacy_source_revision,
             ),
             phase_reporter=phase_reporter,
         )

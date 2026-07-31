@@ -30,7 +30,9 @@ _MODEL_ACTIONS: dict[str, Action] = {
     "compile": Action.MODEL_COMPILE,
     "processes": Action.MODEL_PROCESSES,
 }
-_UTILITY_COMMANDS = frozenset({"config", "examples", "doctor", "self-test"})
+_UTILITY_COMMANDS = frozenset(
+    {"config", "examples", "profiling-campaign", "doctor", "self-test"}
+)
 _DIRECT_COMMANDS = frozenset(
     {
         *(action.value for action in ACTIONS if not action.value.startswith("model-")),
@@ -702,6 +704,7 @@ def build_parser() -> argparse.ArgumentParser:
     for name, help_text in (
         ("config", "Create or resolve run configuration."),
         ("examples", "List, copy, or run packaged examples."),
+        ("profiling-campaign", "Copy the packaged profiling campaign."),
         ("doctor", "Diagnose the installed pyAmpliCol environment."),
         ("self-test", "Run the installed-package self-test."),
     ):

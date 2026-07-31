@@ -57,15 +57,29 @@ def source_only_bytecode_policy() -> dict[str, object]:
 
     prefix_value = sys.pycache_prefix
     isolated, no_site, ignore_environment = _isolated_startup_flags()
-    if not (isolated and no_site and ignore_environment):
+    if not (isolated and ignore_environment):
         raise RuntimeEvidenceError(
-            "exact runtime evidence requires isolated Python startup (-I -S)"
+            "exact runtime evidence requires isolated Python startup (-I)"
         )
     if not sys.dont_write_bytecode:
         raise RuntimeEvidenceError(
             "exact runtime evidence requires Python -B "
             "(sys.dont_write_bytecode must be true)"
         )
+    if not no_site:
+        if prefix_value is not None:
+            raise RuntimeEvidenceError(
+                "installed runtime evidence requires no external bytecode prefix"
+            )
+        return {
+            "kind": "pyamplicol-installed-bytecode-policy-v1",
+            "dont_write_bytecode": True,
+            "external_pycache_prefix": False,
+            "package_local_bytecode_eligible": False,
+            "isolated_startup": True,
+            "site_initialization": True,
+            "python_environment_ignored_at_startup": True,
+        }
     if not isinstance(prefix_value, str) or not prefix_value:
         raise RuntimeEvidenceError(
             "exact runtime evidence requires an absent external "
@@ -480,7 +494,9 @@ def loaded_pyamplicol_origin_policy(
         (int(record["root_index"]), str(record["path"])): record
         for record in member_records
     }
-    prefix = Path(str(sys.pycache_prefix))
+    prefix = (
+        None if sys.pycache_prefix is None else Path(str(sys.pycache_prefix))
+    )
     observed = 0
     observations: list[dict[str, object]] = []
     for name, module in tuple(sys.modules.items()):
@@ -601,11 +617,16 @@ def loaded_pyamplicol_origin_policy(
         cached_value = getattr(module, "__cached__", None)
         if isinstance(cached_value, str) and cached_value:
             cached = Path(cached_value).expanduser()
-            try:
-                cached.relative_to(prefix)
-                under_prefix = True
-            except ValueError:
-                under_prefix = False
+            if prefix is None:
+                under_prefix = any(
+                    cached.is_relative_to(root) for root in roots
+                ) and "__pycache__" in cached.parts
+            else:
+                try:
+                    cached.relative_to(prefix)
+                    under_prefix = True
+                except ValueError:
+                    under_prefix = False
             if not cached.is_absolute() or not under_prefix or cached.exists():
                 raise RuntimeEvidenceError(
                     "loaded pyamplicol module exposes an eligible bytecode cache: "

@@ -102,23 +102,14 @@ def test_contributor_and_release_locks_share_symjit_plane_abi(
         package_version.check_contributor_lock_consistency(root)
 
 
-def test_contributor_and_release_locks_share_patched_symjit_source(
-    tmp_path: Path,
-) -> None:
-    root = _copy_version_contract(tmp_path)
-    package_version.check_contributor_lock_consistency(root)
-    lock = root / "dependencies" / "contributor-lock.toml"
-    lock.write_text(
-        lock.read_text(encoding="utf-8").replace(
-            "4b4b791b0f2bbef33a7dbd2936d20dc722f7301e2e9e986b65b2a8b94d220b31",
-            "0" * 64,
-            1,
-        ),
-        encoding="utf-8",
+def test_contributor_lock_has_no_local_symjit_source_or_patch_inventory() -> None:
+    contributor = (ROOT / "dependencies/contributor-lock.toml").read_text(
+        encoding="utf-8"
     )
 
-    with pytest.raises(RuntimeError, match="authenticated SymJIT source"):
-        package_version.check_contributor_lock_consistency(root)
+    assert "\n[symjit]\n" not in contributor
+    assert "\npatches =" not in contributor
+    assert not tuple((ROOT / "dependencies/patches/symjit").rglob("*.patch"))
 
 
 def test_nix_shell_provides_python_build_frontend() -> None:

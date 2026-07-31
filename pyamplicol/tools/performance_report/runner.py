@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import importlib.resources
 import io
 import json
 import math
 import os
 import platform
+import re
 import stat
 import statistics
 import time
@@ -345,16 +347,32 @@ def _real_nonnegative(value: object) -> float:
 def _model_source_path(repo_root: Path, model: ModelKey) -> Path | None:
     if model is ModelKey.BUILTIN_SM:
         return None
-    if model is ModelKey.UFO_SM:
-        return repo_root / "src/pyamplicol/assets/models/json/sm/sm.json"
-    if model is ModelKey.SCALAR_CONTACT:
-        return repo_root / "src/pyamplicol/assets/models/json/scalars/scalars.json"
-    if model is ModelKey.SCALAR_GRAVITY:
-        return (
-            repo_root
-            / "src/pyamplicol/assets/models/json/scalar_gravity/scalar_gravity.json"
+    relative = {
+        ModelKey.UFO_SM: Path("sm/sm.json"),
+        ModelKey.SCALAR_CONTACT: Path("scalars/scalars.json"),
+        ModelKey.SCALAR_GRAVITY: Path("scalar_gravity/scalar_gravity.json"),
+    }.get(model)
+    if relative is None:
+        raise RunnerError(
+            f"model {model.value!r} is not supported by process matrices"
         )
-    raise RunnerError(f"model {model.value!r} is not supported by process matrices")
+    source_path = repo_root / "src/pyamplicol/assets/models/json" / relative
+    if source_path.is_file():
+        return source_path
+    resource = importlib.resources.files("pyamplicol").joinpath(
+        "assets",
+        "models",
+        "json",
+        *relative.parts,
+    )
+    if not isinstance(resource, os.PathLike):
+        raise RunnerError("installed model resources are not filesystem-backed")
+    try:
+        return Path(os.fspath(resource)).resolve(strict=True)
+    except OSError as error:
+        raise RunnerError(
+            f"installed model resource is unavailable: {relative.as_posix()}"
+        ) from error
 
 
 def config_values(
@@ -666,59 +684,97 @@ def runtime_identity_payload(
     target = native.target_info()
     build_info = _active_build_info()
     if not isinstance(build_info, Mapping):
-        raise RunnerError("report runtime has no exact candidate build identity")
-    build_identity_fields = (
-        "schema_version",
-        "version",
-        "candidate_fingerprint",
-        "source_revision",
-        "source_checkout",
-        "native_build_inputs_sha256",
-        "publishable",
-    )
-    candidate_build_identity = {
-        field: build_info.get(field) for field in build_identity_fields
-    }
+        raise RunnerError("report runtime has no exact wheel build identity")
+    publishable = build_info.get("publishable")
+    if publishable is False:
+        build_identity_fields = (
+            "schema_version",
+            "version",
+            "candidate_fingerprint",
+            "source_revision",
+            "source_checkout",
+            "native_build_inputs_sha256",
+            "publishable",
+        )
+        candidate_build_identity = {
+            field: build_info.get(field) for field in build_identity_fields
+        }
+        if (
+            candidate_build_identity["native_build_inputs_sha256"] != native_digest
+            or not all(
+                candidate_build_identity[field] is not None
+                for field in build_identity_fields
+            )
+        ):
+            raise RunnerError(
+                "report runtime is not a complete compatible non-publishable "
+                "candidate build"
+            )
+    elif publishable is True:
+        build_identity_fields = (
+            "schema_version",
+            "version",
+            "source_revision",
+            "publishable",
+            "selftest_fixture_bootstrap",
+        )
+        candidate_build_identity = {
+            field: build_info.get(field) for field in build_identity_fields
+        }
+        if (
+            candidate_build_identity["source_revision"]
+            != expected_source_revision
+            or candidate_build_identity["selftest_fixture_bootstrap"] is not False
+            or not all(
+                candidate_build_identity[field] is not None
+                for field in build_identity_fields
+                if field != "selftest_fixture_bootstrap"
+            )
+        ):
+            raise RunnerError(
+                "report runtime is not a complete compatible release-wheel build"
+            )
+    else:
+        raise RunnerError("report runtime build kind is unavailable")
     if (
-        candidate_build_identity["native_build_inputs_sha256"] != native_digest
-        or candidate_build_identity["publishable"] is not False
-        or not all(
-            candidate_build_identity[field] is not None
-            for field in build_identity_fields
-        )
+        not isinstance(native_digest, str)
+        or re.fullmatch(r"[0-9a-f]{64}", native_digest) is None
     ):
-        raise RunnerError(
-            "report runtime is not a complete compatible non-publishable "
-            "candidate build"
-        )
-    if not isinstance(native_digest, str) or len(native_digest) != 64:
         raise RunnerError("native runtime build-input identity is invalid")
     native_path = Path(str(native.__file__)).resolve(strict=True)
     native_extension_sha256 = _sha256_file(native_path)
     package_roots = tuple(Path(str(path)) for path in pyamplicol.__path__)
     try:
-        preimport_identity = established_preimport_runtime_identity()
-        expected_package_tree = preimport_identity.get("python_package_tree")
-        expected_native_identity = preimport_identity.get("native_extension")
-        if (
-            preimport_identity.get("kind") != "pyamplicol-preimport-runtime-identity-v1"
-            or not isinstance(expected_package_tree, Mapping)
-            or not isinstance(expected_native_identity, Mapping)
-        ):
-            raise RuntimeEvidenceError(
-                "preimport runtime identity has an invalid contract"
+        if __package__.startswith("pyamplicol."):
+            package_tree = python_package_tree_identity(package_roots)
+            loaded_origin_policy = loaded_pyamplicol_origin_policy(
+                package_roots,
+                native_extension=native_path,
             )
-        package_tree = python_package_tree_identity(package_roots)
-        if dict(package_tree) != dict(expected_package_tree):
-            raise RuntimeEvidenceError(
-                "report runtime package tree differs from its preimport identity"
+        else:
+            preimport_identity = established_preimport_runtime_identity()
+            expected_package_tree = preimport_identity.get("python_package_tree")
+            expected_native_identity = preimport_identity.get("native_extension")
+            if (
+                preimport_identity.get("kind")
+                != "pyamplicol-preimport-runtime-identity-v1"
+                or not isinstance(expected_package_tree, Mapping)
+                or not isinstance(expected_native_identity, Mapping)
+            ):
+                raise RuntimeEvidenceError(
+                    "preimport runtime identity has an invalid contract"
+                )
+            package_tree = python_package_tree_identity(package_roots)
+            if dict(package_tree) != dict(expected_package_tree):
+                raise RuntimeEvidenceError(
+                    "report runtime package tree differs from its preimport identity"
+                )
+            loaded_origin_policy = loaded_pyamplicol_origin_policy(
+                package_roots,
+                native_extension=native_path,
+                expected_package_identity=dict(expected_package_tree),
+                expected_native_identity=dict(expected_native_identity),
             )
-        loaded_origin_policy = loaded_pyamplicol_origin_policy(
-            package_roots,
-            native_extension=native_path,
-            expected_package_identity=dict(expected_package_tree),
-            expected_native_identity=dict(expected_native_identity),
-        )
     except RuntimeEvidenceError as error:
         raise RunnerError(
             "report runtime Python namespace cannot be authenticated"

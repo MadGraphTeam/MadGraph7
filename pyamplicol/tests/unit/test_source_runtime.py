@@ -53,7 +53,6 @@ def _write_candidate_native_inputs(
     root: Path,
     *,
     checkout_root: Path | None = None,
-    created_utc: str = "2026-07-30T00:00:00+00:00",
     include_legacy: bool = False,
 ) -> Path:
     dependencies = root / "dependencies"
@@ -70,56 +69,33 @@ def _write_candidate_native_inputs(
         encoding="utf-8",
     )
     lock_paths = {
-        "candidate_lock_sha256": dependencies / "candidate-Cargo.lock",
-        "contributor_lock_sha256": dependencies / "contributor-lock.toml",
-        "python_runtime_lock_sha256": dependencies / "python-runtime-lock.toml",
-        "release_lock_sha256": dependencies / "release-lock.toml",
+        "candidate": dependencies / "candidate-Cargo.lock",
+        "contributor": dependencies / "contributor-lock.toml",
+        "python-runtime": dependencies / "python-runtime-lock.toml",
+        "release": dependencies / "release-lock.toml",
     }
     for index, path in enumerate(lock_paths.values()):
         path.write_text(f"lock {index}\n", encoding="utf-8")
-    patch_path = dependencies / "patches/symjit/upstream/generic.patch"
-    patch_path.parent.mkdir(parents=True)
-    patch_path.write_text("generic test patch\n", encoding="utf-8")
-    patches = [
-        {
-            "applies_to_revision": "4" * 40,
-            "name": "generic-raw-plane-descriptor",
-            "path": "patches/symjit/upstream/generic.patch",
-            "sha256": hashlib.sha256(patch_path.read_bytes()).hexdigest(),
-            "target": "symjit",
-        }
-    ]
-    patch_closure = hashlib.sha256(
-        json.dumps(
-            patches,
-            ensure_ascii=True,
-            separators=(",", ":"),
-            sort_keys=True,
-        ).encode("utf-8")
-    ).hexdigest()
     sources: dict[str, dict[str, str]] = {
         "gammaloop": {
             "revision": "1" * 40,
             "url": "https://example.invalid/gammaloop.git",
-            "worktree_sha256": "1" * 64,
+        },
+        "ratatui-ffi": {
+            "revision": "5" * 40,
+            "url": "https://example.invalid/ratatui-ffi.git",
         },
         "symbolica": {
             "revision": "2" * 40,
             "url": "https://example.invalid/symbolica.git",
-            "worktree_sha256": "2" * 64,
         },
         "symbolica-community": {
             "revision": "3" * 40,
             "url": "https://example.invalid/symbolica-community.git",
-            "worktree_sha256": "3" * 64,
         },
         "symjit": {
-            "archive_sha256": "4" * 64,
-            "patch_sha256": patch_closure,
             "revision": "4" * 40,
-            "url": "https://example.invalid/symjit-crate.tar.gz",
-            "version": "2.22.0",
-            "worktree_sha256": "6" * 64,
+            "url": "https://example.invalid/symjit-crate.git",
         },
     }
     if include_legacy:
@@ -127,57 +103,13 @@ def _write_candidate_native_inputs(
             "branch": "historical",
             "revision": "7" * 40,
             "url": "https://example.invalid/AmpliCol.git",
-            "worktree_sha256": "7" * 64,
         }
-    lock_paths["contributor_lock_sha256"].write_text(
-        "schema_version = 1\n"
-        "patches = [\n"
-        "  { "
-        + ", ".join(
-            f'{key} = "{patches[0][key]}"'
-            for key in (
-                "name",
-                "target",
-                "path",
-                "sha256",
-                "applies_to_revision",
-            )
-        )
-        + " },\n"
-        "]\n\n"
-        "[symbolica]\n"
-        f'source_url = "{sources["symbolica"]["url"]}"\n'
-        f'candidate_revision = "{sources["symbolica"]["revision"]}"\n'
-        f'community_url = "{sources["symbolica-community"]["url"]}"\n'
-        f'community_revision = "{sources["symbolica-community"]["revision"]}"\n\n'
-        "[symjit]\n"
-        f'source_url = "{sources["symjit"]["url"]}"\n'
-        f'candidate_version = "{sources["symjit"]["version"]}"\n'
-        f'archive_sha256 = "{sources["symjit"]["archive_sha256"]}"\n'
-        f'candidate_revision = "{sources["symjit"]["revision"]}"\n'
-        f'candidate_tree_sha256 = "{sources["symjit"]["worktree_sha256"]}"\n\n'
-        "[gammaloop_candidate]\n"
-        f'source_url = "{sources["gammaloop"]["url"]}"\n'
-        f'revision = "{sources["gammaloop"]["revision"]}"\n',
+    lock_paths["contributor"].write_text(
+        "schema_version = 1\n",
         encoding="utf-8",
     )
     state = {
-        "candidate_lock_sha256": hashlib.sha256(
-            lock_paths["candidate_lock_sha256"].read_bytes()
-        ).hexdigest(),
-        "cargo_config_sha256": hashlib.sha256(config.read_bytes()).hexdigest(),
-        "contributor_lock_sha256": hashlib.sha256(
-            lock_paths["contributor_lock_sha256"].read_bytes()
-        ).hexdigest(),
-        "created_utc": created_utc,
-        "patches": patches,
         "publishable": False,
-        "python_runtime_lock_sha256": hashlib.sha256(
-            lock_paths["python_runtime_lock_sha256"].read_bytes()
-        ).hexdigest(),
-        "release_lock_sha256": hashlib.sha256(
-            lock_paths["release_lock_sha256"].read_bytes()
-        ).hexdigest(),
         "schema_version": 1,
         "sources": sources,
     }
@@ -654,15 +586,14 @@ def test_native_provenance_digest_implementations_match(tmp_path: Path) -> None:
     source_root = _source_root(tmp_path)
 
     before = module._native_build_inputs_digest(source_root)
-    patch = source_root / "dependencies/patches/symjit/fix.patch"
-    patch.parent.mkdir(parents=True)
-    patch.write_text("first patch\n", encoding="utf-8")
+    native_source = source_root / "rust/crates/example/src/lib.rs"
+    native_source.write_text("pub fn value() -> u32 { 2 }\n", encoding="utf-8")
     expected = module._native_build_inputs_digest(source_root)
     assert expected != before
     assert backend._native_build_inputs_digest(source_root) == expected
     assert versions._native_build_inputs_digest(source_root) == expected
 
-    patch.write_text("second patch\n", encoding="utf-8")
+    native_source.write_text("pub fn value() -> u32 { 3 }\n", encoding="utf-8")
     changed = module._native_build_inputs_digest(source_root)
     assert changed != expected
     assert backend._native_build_inputs_digest(source_root) == changed
@@ -676,13 +607,12 @@ def test_candidate_native_digest_is_stable_across_install_and_relocation(
     staging = _module()
     first = _source_root(tmp_path / "first")
     second = _source_root(tmp_path / "second")
-    first_state = _write_candidate_native_inputs(first)
+    _write_candidate_native_inputs(first)
     _write_candidate_native_inputs(
         second,
         checkout_root=(
             tmp_path / "relocated" / "dependencies" / "checkouts"
         ),
-        created_utc="2026-07-31T12:34:56+00:00",
         include_legacy=True,
     )
 
@@ -692,35 +622,22 @@ def test_candidate_native_digest_is_stable_across_install_and_relocation(
     assert versions._native_build_inputs_digest(second) == expected
     assert staging._native_build_inputs_digest(first) == expected
 
-    state = json.loads(first_state.read_text(encoding="utf-8"))
-    state["created_utc"] = "2030-01-01T00:00:00+00:00"
-    first_state.write_text(
-        json.dumps(state, indent=4) + "\n",
-        encoding="utf-8",
-    )
-    assert identity.native_build_inputs_digest(first) == expected
-
     config = first / "dependencies/candidate-cargo-config.toml"
     config.write_text(
         "# a repeat install may alter comments and formatting\n"
         + config.read_text(encoding="utf-8"),
         encoding="utf-8",
     )
-    state["cargo_config_sha256"] = hashlib.sha256(config.read_bytes()).hexdigest()
-    first_state.write_text(
-        json.dumps(state, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
     assert identity.native_build_inputs_digest(first) == expected
 
 
-def test_candidate_native_digest_detects_semantic_and_attestation_drift(
+def test_candidate_native_digest_requires_the_minimal_install_state_schema(
     tmp_path: Path,
 ) -> None:
     identity = _native_build_identity_module()
     source_root = _source_root(tmp_path)
     state_path = _write_candidate_native_inputs(source_root)
-    identity.native_build_inputs_digest(source_root)
+    expected = identity.native_build_inputs_digest(source_root)
 
     state = json.loads(state_path.read_text(encoding="utf-8"))
     state["sources"]["symjit"]["worktree_sha256"] = "9" * 64
@@ -732,41 +649,36 @@ def test_candidate_native_digest_detects_semantic_and_attestation_drift(
         identity.native_build_inputs_digest,
         versions._native_build_inputs_digest,
     ):
-        with pytest.raises(RuntimeError, match="source symjit"):
+        with pytest.raises(RuntimeError, match="optional branch only"):
             digest(source_root)
 
-    state["sources"]["symjit"]["worktree_sha256"] = "6" * 64
-    config = source_root / "dependencies/candidate-cargo-config.toml"
-    config.write_text(
-        config.read_text(encoding="utf-8") + "# unattested rewrite\n",
-        encoding="utf-8",
-    )
+    del state["sources"]["symjit"]["worktree_sha256"]
     state_path.write_text(
         json.dumps(state, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    config = source_root / "dependencies/candidate-cargo-config.toml"
+    config.write_text(
+        config.read_text(encoding="utf-8") + "# formatting-only rewrite\n",
         encoding="utf-8",
     )
     for digest in (
         identity.native_build_inputs_digest,
         versions._native_build_inputs_digest,
     ):
-        with pytest.raises(RuntimeError, match="candidate-cargo-config.toml"):
-            digest(source_root)
+        assert digest(source_root) == expected
 
 
 def test_candidate_native_digest_rejects_wrong_patch_target(tmp_path: Path) -> None:
     identity = _native_build_identity_module()
     source_root = _source_root(tmp_path)
-    state_path = _write_candidate_native_inputs(source_root)
+    _write_candidate_native_inputs(source_root)
     config = source_root / "dependencies/candidate-cargo-config.toml"
     text = config.read_text(encoding="utf-8").replace(
         "dependencies/checkouts/symjit",
         "dependencies/checkouts/symbolica",
     )
     config.write_text(text, encoding="utf-8")
-    state = json.loads(state_path.read_text(encoding="utf-8"))
-    state["cargo_config_sha256"] = hashlib.sha256(config.read_bytes()).hexdigest()
-    state_path.write_text(json.dumps(state) + "\n", encoding="utf-8")
-
     for digest in (
         identity.native_build_inputs_digest,
         versions._native_build_inputs_digest,
@@ -775,35 +687,32 @@ def test_candidate_native_digest_rejects_wrong_patch_target(tmp_path: Path) -> N
             digest(source_root)
 
 
-def test_candidate_native_digest_rejects_stale_lock_attestation(
+def test_candidate_native_digest_hashes_lock_content_without_state_attestation(
     tmp_path: Path,
 ) -> None:
     identity = _native_build_identity_module()
     source_root = _source_root(tmp_path)
     _write_candidate_native_inputs(source_root)
+    expected = identity.native_build_inputs_digest(source_root)
     lock = source_root / "dependencies/contributor-lock.toml"
     lock.write_text("changed lock\n", encoding="utf-8")
 
-    for digest in (
-        identity.native_build_inputs_digest,
-        versions._native_build_inputs_digest,
-    ):
-        with pytest.raises(RuntimeError, match="contributor-lock.toml"):
-            digest(source_root)
+    changed = identity.native_build_inputs_digest(source_root)
+    assert changed != expected
+    assert versions._native_build_inputs_digest(source_root) == changed
 
 
-def test_release_native_digest_normalizes_authenticated_cargo_lock_forms(
+def test_release_native_digest_hashes_the_git_cargo_lock_verbatim(
     tmp_path: Path,
 ) -> None:
     identity = _native_build_identity_module()
     source_root = _source_root(tmp_path)
-    release_lock = ROOT / "dependencies/release-lock.toml"
-    lock = tomllib.loads(release_lock.read_text(encoding="utf-8"))
+    lock = tomllib.loads(
+        (ROOT / "dependencies/release-lock.toml").read_text(encoding="utf-8")
+    )
     symjit = lock["symjit"]
     revision = symjit["revision"]
-    source = (
-        f"git+{symjit['repository']}?rev={revision}#{revision}"
-    )
+    source = f"git+{symjit['repository']}?rev={revision}#{revision}"
     marker = (
         "[[package]]\n"
         'name = "symjit"\n'
@@ -818,28 +727,6 @@ def test_release_native_digest_normalizes_authenticated_cargo_lock_forms(
     git_lock = (ROOT / "Cargo.lock").read_text(encoding="utf-8")
     assert git_lock.count(marker) == 1
     projected_lock = git_lock.replace(marker, replacement, 1).encode("utf-8")
-    assert (
-        hashlib.sha256(projected_lock).hexdigest()
-        == symjit["release_cargo_lock_sha256"]
-    )
-    dependency_root = source_root / "dependencies"
-    dependency_root.mkdir(exist_ok=True)
-    state_path = _write_candidate_native_inputs(source_root)
-    (dependency_root / "release-lock.toml").write_bytes(release_lock.read_bytes())
-    state = json.loads(state_path.read_text(encoding="utf-8"))
-    state["release_lock_sha256"] = hashlib.sha256(
-        release_lock.read_bytes()
-    ).hexdigest()
-    state_path.write_text(
-        json.dumps(state, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    backend_root = source_root / "build_backend"
-    backend_root.mkdir()
-    (backend_root / "python_lock.py").write_text(
-        "candidate_python_lock = True\n",
-        encoding="utf-8",
-    )
     cargo_lock = source_root / "Cargo.lock"
 
     cargo_lock.write_text(git_lock, encoding="utf-8")
@@ -851,7 +738,11 @@ def test_release_native_digest_normalizes_authenticated_cargo_lock_forms(
         source_root,
         normalize_release_cargo_lock=True,
     )
-    candidate_git = identity.native_build_inputs_digest(source_root)
+    assert git_runtime == git_shared
+    assert identity.canonical_release_cargo_lock_bytes(
+        source_root,
+        git_lock.encode("utf-8"),
+    ) == git_lock.encode("utf-8")
 
     cargo_lock.write_bytes(projected_lock)
     projected_shared = identity.native_build_inputs_digest(
@@ -863,90 +754,5 @@ def test_release_native_digest_normalizes_authenticated_cargo_lock_forms(
         normalize_release_cargo_lock=True,
     )
 
-    assert projected_shared == git_shared
-    assert projected_runtime == git_runtime == git_shared
-    assert identity.native_build_inputs_digest(source_root) != candidate_git
-
-    for relative in (
-        "build_backend/python_lock.py",
-        "dependencies/candidate-Cargo.lock",
-        "dependencies/candidate-cargo-config.toml",
-        "dependencies/contributor-lock.toml",
-        "dependencies/install-state.json",
-        "dependencies/python-runtime-lock.toml",
-    ):
-        (source_root / relative).unlink()
-
-    assert (
-        identity.native_build_inputs_digest(
-            source_root,
-            normalize_release_cargo_lock=True,
-        )
-        == git_shared
-    )
-    assert (
-        versions._native_build_inputs_digest(
-            source_root,
-            normalize_release_cargo_lock=True,
-        )
-        == git_shared
-    )
-
-
-@pytest.mark.parametrize(
-    "mutation",
-    ("git-revision", "projected-content", "release-lock-digest"),
-)
-def test_release_native_digest_rejects_unauthenticated_cargo_lock_mutations(
-    tmp_path: Path,
-    mutation: str,
-) -> None:
-    identity = _native_build_identity_module()
-    source_root = _source_root(tmp_path)
-    release_lock = ROOT / "dependencies/release-lock.toml"
-    release_text = release_lock.read_text(encoding="utf-8")
-    lock = tomllib.loads(release_text)
-    symjit = lock["symjit"]
-    revision = symjit["revision"]
-    source = (
-        f"git+{symjit['repository']}?rev={revision}#{revision}"
-    )
-    marker = (
-        "[[package]]\n"
-        'name = "symjit"\n'
-        f'version = "{symjit["version"]}"\n'
-        f'source = "{source}"\n'
-    )
-    replacement = (
-        "[[package]]\n"
-        'name = "symjit"\n'
-        f'version = "{symjit["version"]}"\n'
-    )
-    git_lock = (ROOT / "Cargo.lock").read_text(encoding="utf-8")
-    projected_lock = git_lock.replace(marker, replacement, 1)
-    if mutation == "git-revision":
-        cargo_text = git_lock.replace(revision, "0" * 40, 1)
-    else:
-        cargo_text = projected_lock
-    if mutation == "projected-content":
-        cargo_text += "# unauthenticated mutation\n"
-    if mutation == "release-lock-digest":
-        release_text = release_text.replace(
-            symjit["release_cargo_lock_sha256"],
-            "0" * 64,
-            1,
-        )
-    dependency_root = source_root / "dependencies"
-    dependency_root.mkdir(exist_ok=True)
-    (dependency_root / "release-lock.toml").write_text(
-        release_text,
-        encoding="utf-8",
-    )
-    (source_root / "Cargo.lock").write_text(cargo_text, encoding="utf-8")
-
-    for digest in (
-        identity.native_build_inputs_digest,
-        versions._native_build_inputs_digest,
-    ):
-        with pytest.raises(RuntimeError, match="release Cargo.lock"):
-            digest(source_root, normalize_release_cargo_lock=True)
+    assert projected_shared != git_shared
+    assert projected_runtime == projected_shared

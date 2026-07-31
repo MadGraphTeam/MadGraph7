@@ -61,6 +61,7 @@ REQUIRED_SDIST_MEMBERS = frozenset(
         "schemas/runtime-physics-v1.schema.json",
         "src/pyamplicol/assets/api_templates/rust/Makefile",
         "src/pyamplicol/assets/api_templates/rust/check_standalone.rs",
+        "src/pyamplicol/_build_info.json",
         *PREPARED_MODEL_SDIST_MEMBERS,
         "src/pyamplicol/assets/selftest/portable-64le/expected.json",
         "src/pyamplicol/assets/selftest/portable-64le/artifact/artifact.json",

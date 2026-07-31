@@ -17,16 +17,30 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
-from tools.ci.memory_watchdog import (
-    DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON,
-    DARWIN_PHYSICAL_FOOTPRINT_PROBE_REASON,
-    MEMORY_PROBE_REASON,
-    RSS_LIMIT_REASON,
-    DarwinPhysicalFootprintProbe,
-)
-from tools.ci.memory_watchdog import (
-    ProbeError as WatchdogProbeError,
-)
+try:
+    from tools.ci.memory_watchdog import (
+        DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON,
+        DARWIN_PHYSICAL_FOOTPRINT_PROBE_REASON,
+        MEMORY_PROBE_REASON,
+        RSS_LIMIT_REASON,
+        DarwinPhysicalFootprintProbe,
+    )
+    from tools.ci.memory_watchdog import (
+        ProbeError as WatchdogProbeError,
+    )
+except ModuleNotFoundError as error:
+    if error.name not in {"tools", "tools.ci", "tools.ci.memory_watchdog"}:
+        raise
+    from ._memory_watchdog import (
+        DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON,
+        DARWIN_PHYSICAL_FOOTPRINT_PROBE_REASON,
+        MEMORY_PROBE_REASON,
+        RSS_LIMIT_REASON,
+        DarwinPhysicalFootprintProbe,
+    )
+    from ._memory_watchdog import (
+        ProbeError as WatchdogProbeError,
+    )
 
 from .phase_state import (
     WORKER_PHASE_STATE_ABI,

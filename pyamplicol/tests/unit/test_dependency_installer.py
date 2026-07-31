@@ -7,7 +7,6 @@ import io
 import os
 import subprocess
 import sys
-import tarfile
 from pathlib import Path
 
 import pytest
@@ -32,6 +31,7 @@ def test_source_inventory_is_exact_and_legacy_is_optional() -> None:
     without_legacy = module._sources(payload, with_legacy=False)
 
     assert {item.key for item in without_legacy} == {
+        "symjit",
         "symbolica",
         "symbolica-community",
         "gammaloop",
@@ -77,13 +77,13 @@ def test_ufo_loader_uses_the_verified_published_wheel_without_local_patch() -> N
         "803ae28141ec4be3189cc62469b88da17ca33907791fe99774c2fe756a45edf7"
     )
     assert loader["release_status"] == "verified"
-    assert all(patch["target"] != "ufo_model_loader" for patch in payload["patches"])
+    assert "patches" not in payload
 
 
 def test_legacy_oracle_uses_the_pinned_remote_branch_without_local_patches() -> None:
     module = _module()
     payload = module._lock()
-    assert all(patch["target"] != "legacy_amplicol" for patch in payload["patches"])
+    assert "patches" not in payload
     assert not tuple(
         (module.DEPENDENCIES / "patches" / "legacy-amplicol").glob("*.patch")
     )
@@ -102,322 +102,129 @@ def test_venv_reset_bootstraps_with_the_unmoved_base_interpreter(
     assert module._venv_bootstrap_python() == base_python
 
 
-def test_upstream_symjit_revision_archive_and_generic_patch_are_pinned() -> None:
+def test_official_symjit_git_revision_is_pinned_without_local_patches() -> None:
     module = _module()
     payload = module._lock()
     symjit = payload["symjit"]
 
-    assert payload["patches"] == [
-        {
-            "name": "symjit-raw-plane-descriptor-v1",
-            "target": "symjit",
-            "path": (
-                "patches/symjit/upstream/"
-                "0001-Expose-a-stable-raw-P-kernel-plane-descriptor.patch"
-            ),
-            "sha256": (
-                "70012117436d77265b349c013b0df8c4fe72a04ced972090ba3ac069721b436d"
-            ),
-            "applies_to_revision": (
-                "77789ff0f78232b1ea4608aceb397058df50b06d"
-            ),
-        }
-    ]
-    assert {
-        path.relative_to(module.DEPENDENCIES).as_posix()
-        for path in (module.DEPENDENCIES / "patches" / "symjit").rglob("*.patch")
-    } == {payload["patches"][0]["path"]}
-    assert symjit["candidate_version"] == "2.22.0"
-    assert symjit["repository"] == "https://github.com/siravan/symjit-crate.git"
-    assert symjit["candidate_revision"] == (
-        "77789ff0f78232b1ea4608aceb397058df50b06d"
+    assert symjit == {
+        "version": "2.22.0",
+        "repository": "https://github.com/siravan/symjit-crate.git",
+        "revision": "d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7",
+    }
+    source = next(
+        item
+        for item in module._sources(payload, with_legacy=False)
+        if item.key == "symjit"
     )
-    assert symjit["archive_sha256"] == (
-        "b3cb6451eff299b27709115053caed579bc266bbd46923a70066b5ac554dd0ac"
+    assert (source.url, source.revision, source.branch) == (
+        symjit["repository"],
+        symjit["revision"],
+        None,
     )
-    assert symjit["source_tree_sha256"] == (
-        "88aa6a50ec7ad120d3d832f4d98e3efe89ea259e925c9ed139904b8dd7607453"
-    )
-    assert symjit["candidate_tree_sha256"] == (
-        "4b4b791b0f2bbef33a7dbd2936d20dc722f7301e2e9e986b65b2a8b94d220b31"
-    )
-    assert symjit["candidate_tree_sha256"] != symjit["source_tree_sha256"]
-    assert hashlib.sha256(b"[]").hexdigest() == module._EMPTY_PATCH_CLOSURE_SHA256
-    assert (
-        symjit["release_status"]
-        == "upstream-git-candidate-with-generic-raw-plane-patch"
-    )
+    assert "patches" not in payload
+    assert not tuple((module.DEPENDENCIES / "patches" / "symjit").rglob("*.patch"))
 
 
-def test_contributor_lock_authenticates_the_ordered_generic_patch_closure() -> None:
-    module = _module()
-    payload = module._lock()
-
-    patches = module._contributor_patches(payload)
-    assert [patch.name for patch in patches] == [
-        "symjit-raw-plane-descriptor-v1"
-    ]
-    assert module._patch_state(patches) == payload["patches"]
-    assert module._patch_closure_sha256(patches) != hashlib.sha256(b"[]").hexdigest()
-
-
-def test_generic_contributor_patch_is_authenticated_applied_and_idempotent(
+def test_symjit_checkout_uses_exact_git_revision_and_accepts_matching_head(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     module = _module()
-    dependencies = tmp_path / "dependencies"
-    checkout = dependencies / "checkouts" / "symjit"
-    patch_path = dependencies / "patches" / "symjit" / "generic.patch"
-    checkout.mkdir(parents=True)
-    patch_path.parent.mkdir(parents=True)
-    source = checkout / "input.txt"
-    source.write_text("before\n", encoding="utf-8")
-    patch = (
-        b"diff --git a/input.txt b/input.txt\n"
-        b"--- a/input.txt\n"
-        b"+++ b/input.txt\n"
-        b"@@ -1 +1 @@\n"
-        b"-before\n"
-        b"+after\n"
+    checkouts = tmp_path / "workspace" / "dependencies" / "checkouts"
+    monkeypatch.setattr(module, "CHECKOUTS", checkouts)
+    source = module.Source(
+        "symjit",
+        "https://github.com/siravan/symjit-crate.git",
+        "d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7",
     )
-    patch_path.write_bytes(patch)
-    revision = "77789ff0f78232b1ea4608aceb397058df50b06d"
-    source_tree = module._source_tree_sha256(checkout)
-    source.write_text("after\n", encoding="utf-8")
-    candidate_tree = module._source_tree_sha256(checkout)
-    source.write_text("before\n", encoding="utf-8")
-    payload = {
-        "patches": [
-            {
-                "name": "generic-plane-descriptor",
-                "target": "symjit",
-                "path": "patches/symjit/generic.patch",
-                "sha256": hashlib.sha256(patch).hexdigest(),
-                "applies_to_revision": revision,
-            }
-        ],
-        "symjit": {
-            "candidate_revision": revision,
-            "source_tree_sha256": source_tree,
-            "candidate_tree_sha256": candidate_tree,
+    calls: list[tuple[list[str], Path | None, bool]] = []
+
+    class FakeRunner:
+        dry_run = False
+
+        def run(self, command, *, cwd=None, capture=False, **_kwargs):
+            rendered = [str(item) for item in command]
+            calls.append((rendered, cwd, capture))
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                source.revision + "\n" if rendered[1:] == ["rev-parse", "HEAD"] else "",
+                "",
+            )
+
+    module._checkout(FakeRunner(), source, update=False)
+    destination = checkouts / "symjit"
+    assert calls == [
+        (
+            [
+                "git",
+                "clone",
+                "--filter=blob:none",
+                "--no-checkout",
+                source.url,
+                str(destination),
+            ],
+            None,
+            False,
+        ),
+        (["git", "checkout", "--detach", source.revision], destination, False),
+    ]
+
+    destination.mkdir(parents=True)
+    (destination / ".git").mkdir()
+    calls.clear()
+    module._checkout(FakeRunner(), source, update=False)
+    assert calls == [(["git", "rev-parse", "HEAD"], destination, True)]
+
+
+def test_compact_install_state_records_only_git_sources(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _module()
+    checkouts = tmp_path / "workspace" / "dependencies" / "checkouts"
+    state_path = checkouts.parent / "install-state.json"
+    sources = (
+        module.Source("symjit", "https://example.invalid/symjit.git", "1" * 40),
+        module.Source(
+            "legacy-amplicol",
+            "https://example.invalid/legacy.git",
+            "2" * 40,
+            "stable",
+        ),
+    )
+    for source in sources:
+        (checkouts / source.key).mkdir(parents=True)
+    monkeypatch.setattr(module, "CHECKOUTS", checkouts)
+    monkeypatch.setattr(module, "STATE", state_path)
+
+    class FakeRunner:
+        dry_run = False
+
+        def run(self, command, *, cwd=None, capture=False, **_kwargs):
+            assert command == ["git", "rev-parse", "HEAD"]
+            assert cwd is not None and capture is True
+            revision = next(item.revision for item in sources if item.key == cwd.name)
+            return subprocess.CompletedProcess(command, 0, revision + "\n", "")
+
+    module._write_state(FakeRunner(), sources)
+
+    assert module.json.loads(state_path.read_text(encoding="utf-8")) == {
+        "schema_version": 1,
+        "publishable": False,
+        "sources": {
+            "symjit": {
+                "url": "https://example.invalid/symjit.git",
+                "revision": "1" * 40,
+            },
+            "legacy-amplicol": {
+                "url": "https://example.invalid/legacy.git",
+                "revision": "2" * 40,
+                "branch": "stable",
+            },
         },
     }
-    monkeypatch.setattr(module, "DEPENDENCIES", dependencies)
-    monkeypatch.setattr(module, "CHECKOUTS", dependencies / "checkouts")
-
-    patches = module._contributor_patches(payload)
-    assert [item.name for item in patches] == ["generic-plane-descriptor"]
-    assert module._patch_closure_sha256(patches) != module._EMPTY_PATCH_CLOSURE_SHA256
-    runner = module.Runner(dry_run=False)
-    module._apply_contributor_patches(runner, payload)
-    module._apply_contributor_patches(runner, payload)
-
-    assert source.read_text(encoding="utf-8") == "after\n"
-    assert module._verify_symjit_tree(runner, payload) == candidate_tree
-
-
-def test_symjit_materialization_rejects_symlinked_checkout_root_outside_workspace(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    module = _module()
-    workspace = tmp_path / "workspace"
-    outside = tmp_path / "outside-pristine"
-    outside_symjit = outside / "symjit"
-    outside_symjit.mkdir(parents=True)
-    manifest = outside_symjit / "Cargo.toml"
-    manifest.write_text(
-        '[package]\nname = "symjit"\nversion = "2.22.0"\n\n'
-        '[lib]\ncrate-type = ["rlib"]\n',
-        encoding="utf-8",
-    )
-    checkouts = workspace / "dependencies" / "checkouts"
-    checkouts.parent.mkdir(parents=True)
-    checkouts.symlink_to(outside, target_is_directory=True)
-    monkeypatch.setattr(module, "CHECKOUTS", checkouts)
-    downloads: list[str] = []
-    monkeypatch.setattr(
-        module.urllib.request,
-        "urlopen",
-        lambda url: downloads.append(str(url)),
-    )
-
-    payload = {
-        "symjit": {
-            "candidate_version": "2.22.0",
-            "source_url": "https://example.invalid/symjit.tar.gz",
-            "archive_sha256": "0" * 64,
-            "archive_prefix": "symjit-test-revision",
-            "source_tree_sha256": "0" * 64,
-            "candidate_tree_sha256": "0" * 64,
-        }
-    }
-    before = manifest.read_bytes()
-
-    with pytest.raises(module.SetupError, match="must not be a symbolic link"):
-        module._materialize_symjit(module.Runner(dry_run=False), payload)
-
-    assert downloads == []
-    assert manifest.read_bytes() == before
-
-
-def test_symjit_materialization_rejects_symlinked_dependencies_ancestor(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    module = _module()
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    outside_dependencies = tmp_path / "outside-dependencies"
-    outside_symjit = outside_dependencies / "checkouts" / "symjit"
-    outside_symjit.mkdir(parents=True)
-    manifest = outside_symjit / "Cargo.toml"
-    manifest.write_text(
-        '[package]\nname = "symjit"\nversion = "2.22.0"\n\n'
-        '[lib]\ncrate-type = ["rlib"]\n',
-        encoding="utf-8",
-    )
-    (workspace / "dependencies").symlink_to(
-        outside_dependencies,
-        target_is_directory=True,
-    )
-    checkouts = workspace / "dependencies" / "checkouts"
-    monkeypatch.setattr(module, "CHECKOUTS", checkouts)
-    downloads: list[str] = []
-    monkeypatch.setattr(
-        module.urllib.request,
-        "urlopen",
-        lambda url: downloads.append(str(url)),
-    )
-
-    payload = {
-        "symjit": {
-            "candidate_version": "2.22.0",
-            "source_url": "https://example.invalid/symjit.tar.gz",
-            "archive_sha256": "0" * 64,
-            "archive_prefix": "symjit-test-revision",
-            "source_tree_sha256": "0" * 64,
-            "candidate_tree_sha256": "0" * 64,
-        }
-    }
-    before = manifest.read_bytes()
-
-    with pytest.raises(module.SetupError, match="must not be a symbolic link"):
-        module._materialize_symjit(module.Runner(dry_run=False), payload)
-
-    assert downloads == []
-    assert manifest.read_bytes() == before
-
-
-def test_symjit_repin_rejects_symlinked_workspace_trash(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    module = _module()
-    workspace = tmp_path / "workspace"
-    checkout = workspace / "dependencies" / "checkouts" / "symjit"
-    checkout.mkdir(parents=True)
-    manifest = checkout / "Cargo.toml"
-    manifest.write_text(
-        '[package]\nname = "symjit"\nversion = "2.22.0"\n\n'
-        '[lib]\ncrate-type = ["rlib"]\n',
-        encoding="utf-8",
-    )
-    outside = tmp_path / "outside-trash"
-    outside.mkdir()
-    trash = workspace / ".trash"
-    trash.symlink_to(outside, target_is_directory=True)
-    monkeypatch.setattr(module, "CHECKOUTS", checkout.parent)
-    monkeypatch.setattr(module, "TRASH", trash)
-    payload = {
-        "symjit": {
-            "candidate_version": "2.22.0",
-            "source_url": "https://example.invalid/symjit.tar.gz",
-            "archive_sha256": "0" * 64,
-            "archive_prefix": "symjit-test-revision",
-            "source_tree_sha256": "0" * 64,
-            "candidate_tree_sha256": "1" * 64,
-        }
-    }
-
-    with pytest.raises(
-        module.SetupError,
-        match="workspace and trash must not be symbolic links",
-    ):
-        module._materialize_symjit(module.Runner(dry_run=False), payload)
-
-    assert manifest.is_file()
-    assert tuple(outside.iterdir()) == ()
-
-
-def test_configured_symjit_symlink_outside_workspace_is_rejected_everywhere(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    module = _module()
-    workspace = tmp_path / "workspace"
-    outside = tmp_path / "outside-configured"
-    outside.mkdir()
-    manifest = outside / "Cargo.toml"
-    manifest.write_text(
-        '[package]\nname = "symjit"\nversion = "2.22.0"\n\n'
-        '[lib]\ncrate-type = ["rlib"]\n',
-        encoding="utf-8",
-    )
-    marker = outside / "configured.txt"
-    marker.write_text("configured\n", encoding="utf-8")
-    dependencies = workspace / "dependencies"
-    checkouts = dependencies / "checkouts"
-    checkouts.mkdir(parents=True)
-    (checkouts / "symjit").symlink_to(outside, target_is_directory=True)
-    monkeypatch.setattr(module, "DEPENDENCIES", dependencies)
-    monkeypatch.setattr(module, "CHECKOUTS", checkouts)
-    for attribute, name in (
-        ("RELEASE_LOCK", "release-lock.toml"),
-        ("CONTRIBUTOR_LOCK", "contributor-lock.toml"),
-        ("PYTHON_LOCK", "python-runtime-lock.toml"),
-        ("CANDIDATE_LOCK", "candidate-Cargo.lock"),
-        ("CARGO_CONFIG", "candidate-cargo-config.toml"),
-    ):
-        path = dependencies / name
-        path.write_text("test input\n", encoding="utf-8")
-        monkeypatch.setattr(module, attribute, path)
-    monkeypatch.setattr(module, "STATE", dependencies / "install-state.json")
-    payload = {
-        "patches": [],
-        "symjit": {
-            "source_tree_sha256": "0" * 64,
-            "candidate_tree_sha256": "0" * 64,
-            "source_url": "https://example.invalid/symjit.tar.gz",
-            "candidate_revision": "77789ff0f78232b1ea4608aceb397058df50b06d",
-            "candidate_version": "2.22.0",
-            "archive_sha256": "0" * 64,
-        },
-    }
-    runner = module.Runner(dry_run=False)
-    operations = (
-        lambda: module._apply_contributor_patches(runner, payload),
-        lambda: module._verify_symjit_tree(runner, payload),
-        lambda: module._configure_source_manifests(runner),
-        lambda: module._write_cargo_config(runner),
-        lambda: module._write_state(runner, payload, ()),
-    )
-    before = {
-        path.name: path.read_bytes()
-        for path in outside.iterdir()
-        if path.is_file()
-    }
-
-    for operation in operations:
-        with pytest.raises(module.SetupError, match="must not be a symbolic link"):
-            operation()
-
-    assert {
-        path.name: path.read_bytes()
-        for path in outside.iterdir()
-        if path.is_file()
-    } == before
 
 
 @pytest.mark.parametrize(
@@ -605,6 +412,10 @@ def test_ratatui_build_uses_verified_sdist_and_pinned_local_ffi(
     wheelhouse = tmp_path / "wheelhouse"
     ffi_source = checkouts / "ratatui-ffi"
     ffi_source.mkdir(parents=True)
+    (ffi_source / "Cargo.toml").write_text(
+        '[package]\nname = "ratatui-ffi"\nversion = "0.1.0"\n',
+        encoding="utf-8",
+    )
     sdist = wheelhouse / "ratatui" / "ratatui-0.4.2.tar.gz"
     sdist.parent.mkdir(parents=True)
     sdist.touch()
@@ -755,15 +566,13 @@ def test_dependency_only_cli_skips_the_project_wheel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = _module()
-    payload: dict[str, object] = {"patches": []}
+    payload: dict[str, object] = {}
     monkeypatch.setattr(module, "_lock", lambda: payload)
     monkeypatch.setattr(module, "_sources", lambda *_args, **_kwargs: ())
     for name in (
         "_ensure_just",
         "_ensure_venv",
-        "_materialize_symjit",
         "_configure_sources",
-        "_verify_symjit_tree",
         "_write_cargo_config",
         "_write_candidate_lock",
         "_write_state",
@@ -830,85 +639,6 @@ def test_symjit_rlib_manifest_validation_does_not_rewrite_source(
         )
 
 
-def test_symjit_archive_materialization_preserves_the_pristine_tree(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    module = _module()
-    prefix = "symjit-test-revision"
-    files = {
-        "Cargo.toml": (
-            b'[package]\nname = "symjit"\nversion = "2.22.0"\n\n'
-            b'[lib]\ncrate-type = ["rlib"]\n'
-        ),
-        "rust/direct.rs": b"pub fn direct() {}\n",
-    }
-    archive_stream = io.BytesIO()
-    with tarfile.open(fileobj=archive_stream, mode="w:gz") as archive:
-        for relative, content in files.items():
-            entry = tarfile.TarInfo(f"{prefix}/{relative}")
-            entry.size = len(content)
-            entry.mode = 0o755 if relative == "rust/direct.rs" else 0o644
-            archive.addfile(entry, io.BytesIO(content))
-    archive_bytes = archive_stream.getvalue()
-
-    expected = tmp_path / "expected"
-    for relative, content in files.items():
-        path = expected / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(content)
-        if relative == "rust/direct.rs":
-            path.chmod(0o755)
-    tree_sha256 = module._source_tree_sha256(expected)
-    payload = {
-        "symjit": {
-            "candidate_version": "2.22.0",
-            "source_url": "https://example.invalid/symjit.tar.gz",
-            "archive_sha256": hashlib.sha256(archive_bytes).hexdigest(),
-            "archive_prefix": prefix,
-            "source_tree_sha256": tree_sha256,
-            "candidate_tree_sha256": tree_sha256,
-        }
-    }
-    checkouts = tmp_path / "checkouts"
-    stale = checkouts / "symjit"
-    stale.mkdir(parents=True)
-    (stale / "Cargo.toml").write_bytes(files["Cargo.toml"])
-    (stale / "stale-revision.txt").write_text("superseded\n", encoding="utf-8")
-    trash = tmp_path / "trash"
-    monkeypatch.setattr(module, "CHECKOUTS", checkouts)
-    monkeypatch.setattr(module, "TRASH", trash)
-    monkeypatch.setattr(
-        module.urllib.request,
-        "urlopen",
-        lambda _url: io.BytesIO(archive_bytes),
-    )
-
-    module._materialize_symjit(module.Runner(dry_run=False), payload)
-
-    installed = module.CHECKOUTS / "symjit"
-    assert module._source_tree_sha256(installed) == tree_sha256
-    assert {
-        path.relative_to(installed).as_posix(): path.read_bytes()
-        for path in installed.rglob("*")
-        if path.is_file()
-    } == files
-    assert (installed / "rust/direct.rs").stat().st_mode & 0o111 == 0o111
-    assert (installed / "Cargo.toml").stat().st_mode & 0o111 == 0
-    archived = tuple(trash.glob("symjit-source-*"))
-    assert len(archived) == 1
-    assert (archived[0] / "stale-revision.txt").read_text(encoding="utf-8") == (
-        "superseded\n"
-    )
-
-    def unexpected_download(_url: str) -> io.BytesIO:
-        raise AssertionError("authenticated repeat materialization downloaded again")
-
-    monkeypatch.setattr(module.urllib.request, "urlopen", unexpected_download)
-    module._materialize_symjit(module.Runner(dry_run=False), payload)
-    assert tuple(trash.glob("symjit-source-*")) == archived
-
-
 def test_candidate_community_lock_is_resolved_from_the_upstream_lock(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -948,24 +678,6 @@ def test_candidate_community_lock_is_resolved_from_the_upstream_lock(
         ["cargo", "metadata", "--locked", "--format-version", "1"],
     ]
     assert lock.read_text(encoding="utf-8") == "path-resolved lock\n"
-
-
-def test_installer_tree_fingerprint_matches_content_and_ignores_build_cache(
-    tmp_path: Path,
-) -> None:
-    module = _module()
-    source = tmp_path / "source"
-    source.mkdir()
-    payload = source / "input.txt"
-    payload.write_text("first\n", encoding="utf-8")
-    first = module._source_tree_sha256(source)
-    payload.write_text("second\n", encoding="utf-8")
-    second = module._source_tree_sha256(source)
-    assert first != second
-    target = source / "target"
-    target.mkdir()
-    (target / "output").write_text("build\n", encoding="utf-8")
-    assert module._source_tree_sha256(source) == second
 
 
 def test_canonical_release_lock_has_no_candidate_path_packages() -> None:
@@ -1052,17 +764,11 @@ def test_candidate_dependency_projection_rewrites_only_the_isolated_manifest(
                 "rust_version": "2.1.0",
                 "candidate_version": "2.2.0",
             },
-            "symjit": {"candidate_version": "2.22.1"},
         },
-    )
-    monkeypatch.setattr(
-        module,
-        "_release_lock",
-        lambda: {"symjit": {"version": "2.22.0"}},
     )
 
     module._rewrite_candidate_requirements(tmp_path)
 
     projected = manifest.read_text(encoding="utf-8")
     assert 'symbolica = { version = "=2.2.0"' in projected
-    assert 'symjit = { version = "=2.22.1"' in projected
+    assert 'symjit = { version = "=2.22.0"' in projected

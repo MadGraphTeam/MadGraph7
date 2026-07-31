@@ -23,9 +23,29 @@ UtilityKind = Literal[
     "examples-list",
     "examples-copy",
     "examples-run",
+    "profiling-campaign-copy",
     "doctor",
     "self-test",
 ]
+
+_PROFILING_CAMPAIGN_REQUIRED_FILES = (
+    Path("README.md"),
+    Path("TABLE_FILLING.md"),
+    Path("build_pdf.py"),
+    Path("pyAmpliCol.tex"),
+    Path("report-workspace.json"),
+    Path("report_environment.json"),
+    Path("report_environment.tex"),
+    Path("result_tables.py"),
+    Path("result_validation_summary.tex"),
+    Path("steer_performance_campaign.py"),
+)
+_PROFILING_CAMPAIGN_GLOBS = (
+    "result_*_table.tex",
+    "section_*.tex",
+    "results/*.json",
+)
+_PROFILING_CAMPAIGN_FILE_COUNT = 55
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +91,14 @@ def _utility_parser() -> argparse.ArgumentParser:
     run.add_argument("--set", dest="overrides", action="append", default=[])
     run.add_argument("--format", choices=("human", "json"), default="human")
 
+    profiling_campaign = commands.add_parser("profiling-campaign")
+    profiling_commands = profiling_campaign.add_subparsers(
+        dest="profiling_campaign_command", required=True
+    )
+    campaign_copy = profiling_commands.add_parser("copy")
+    campaign_copy.add_argument("destination", type=Path)
+    campaign_copy.add_argument("--force", action="store_true")
+
     for name in ("doctor", "self-test"):
         command = commands.add_parser(name)
         command.add_argument("--format", choices=("human", "json"), default="human")
@@ -107,6 +135,12 @@ def parse_utility(argv: Sequence[str]) -> UtilityInvocation:
             name=namespace.name,
             overrides=tuple(namespace.overrides),
         )
+    if namespace.utility == "profiling-campaign":
+        return UtilityInvocation(
+            "profiling-campaign-copy",
+            path=namespace.destination,
+            force=bool(namespace.force),
+        )
     return UtilityInvocation(namespace.utility, output_format=namespace.format)
 
 
@@ -128,6 +162,50 @@ def examples_root() -> Path:
     return _source_examples_root()
 
 
+def _profiling_campaign_inventory(source: Path) -> tuple[Path, ...]:
+    selected = set(_PROFILING_CAMPAIGN_REQUIRED_FILES)
+    for pattern in _PROFILING_CAMPAIGN_GLOBS:
+        selected.update(path.relative_to(source) for path in source.glob(pattern))
+    missing = tuple(
+        relative
+        for relative in _PROFILING_CAMPAIGN_REQUIRED_FILES
+        if not (source / relative).is_file()
+    )
+    if missing or len(selected) != _PROFILING_CAMPAIGN_FILE_COUNT:
+        detail = ", ".join(path.as_posix() for path in missing)
+        raise ConfigurationError(
+            "packaged profiling campaign has an invalid inventory"
+            + (f": missing {detail}" if detail else "")
+        )
+    for relative in selected:
+        path = source / relative
+        if path.is_symlink() or not path.is_file():
+            raise ConfigurationError(
+                f"packaged profiling campaign has an unsafe member: {relative}"
+            )
+    return tuple(sorted(selected, key=lambda path: path.as_posix()))
+
+
+def _source_profiling_campaign_root() -> Path:
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "docs" / "performance_reports" / "macbook_M3_manual"
+        if (candidate / "steer_performance_campaign.py").is_file():
+            _profiling_campaign_inventory(candidate)
+            return candidate
+    raise ConfigurationError("packaged profiling campaign is unavailable")
+
+
+def profiling_campaign_root() -> Path:
+    packaged = resources.files("pyamplicol").joinpath("_profiling_campaign")
+    if not isinstance(packaged, os.PathLike):
+        return _source_profiling_campaign_root()
+    path = Path(os.fspath(packaged))
+    if (path / "steer_performance_campaign.py").is_file():
+        _profiling_campaign_inventory(path)
+        return path.resolve()
+    return _source_profiling_campaign_root()
+
+
 def _copy_tree(source: Path, destination: Path, *, force: bool) -> Path:
     target = destination.expanduser().resolve(strict=False)
     if target.exists():
@@ -139,6 +217,24 @@ def _copy_tree(source: Path, destination: Path, *, force: bool) -> Path:
             )
     target.mkdir(parents=True, exist_ok=True)
     shutil.copytree(source, target, dirs_exist_ok=True)
+    return target
+
+
+def _copy_profiling_campaign(destination: Path, *, force: bool) -> Path:
+    source = profiling_campaign_root()
+    target = destination.expanduser().resolve(strict=False)
+    if target.exists():
+        if not target.is_dir():
+            raise ConfigurationError(f"destination is not a directory: {target}")
+        if any(target.iterdir()) and not force:
+            raise ConfigurationError(
+                f"destination is not empty: {target}; pass --force to merge"
+            )
+    target.mkdir(parents=True, exist_ok=True)
+    for relative in _profiling_campaign_inventory(source):
+        output = target / relative
+        output.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source / relative, output)
     return target
 
 
@@ -232,6 +328,9 @@ def execute_utility(invocation: UtilityInvocation) -> object:
         )
         _copy_packaged_models(destination / "models")
         return str(destination)
+    if invocation.kind == "profiling-campaign-copy":
+        assert invocation.path is not None
+        return str(_copy_profiling_campaign(invocation.path, force=invocation.force))
     if invocation.kind == "doctor":
         return run_doctor()
     if invocation.kind == "self-test":
@@ -247,4 +346,5 @@ __all__ = [
     "execute_utility",
     "list_examples",
     "parse_utility",
+    "profiling_campaign_root",
 ]

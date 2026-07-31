@@ -20,7 +20,7 @@ import subprocess
 import sys
 import tomllib
 import zipfile
-from collections.abc import Collection, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from email import policy
 from email.parser import BytesParser
@@ -190,6 +190,7 @@ _REQUIRED_PREPARED_MODEL_WHEEL_MEMBERS = prepared_model_asset_members(
 )
 _REQUIRED_WHEEL_PACKAGE_MEMBERS = {
     "pyamplicol/__init__.py",
+    "pyamplicol/_build_info.json",
     "pyamplicol/_rusticol.pyi",
     "pyamplicol/py.typed",
     *_REQUIRED_API_TEMPLATE_MEMBERS,
@@ -223,30 +224,23 @@ _FORBIDDEN_SDIST_MEMBERS = {
     "dependencies/install_dependencies.py",
     "dependencies/python-runtime-lock.toml",
     "dependencies/symbolica_patches.tar.gz",
-    "src/pyamplicol/_build_info.json",
 }
 _FORBIDDEN_SDIST_PREFIXES = (
     "dependencies/checkouts/",
+    "dependencies/patches/",
     "release_assets/",
 )
 _RELEASE_SYMJIT_FIELDS = {
     "version",
     "repository",
     "revision",
-    "source_url",
-    "archive_prefix",
-    "archive_sha256",
-    "source_tree_sha256",
-    "configured_tree_sha256",
-    "release_cargo_lock_sha256",
-    "patches",
 }
-_RELEASE_SYMJIT_PATCH_FIELDS = {
-    "name",
-    "target",
-    "path",
-    "sha256",
-    "applies_to_revision",
+_RELEASE_BUILD_INFO_FIELDS = {
+    "publishable",
+    "schema_version",
+    "selftest_fixture_bootstrap",
+    "source_revision",
+    "version",
 }
 
 
@@ -501,94 +495,7 @@ def _locked_python_dependencies(lock: dict[str, Any]) -> dict[str, str]:
     return dependencies
 
 
-def _authenticated_candidate_patches(
-    contributor: dict[str, Any],
-    contributor_path: Path,
-) -> list[dict[str, str]]:
-    raw_patches = contributor.get("patches")
-    if not isinstance(raw_patches, list):
-        raise ArtifactError("candidate dependency provenance has an invalid patch list")
-    allowed_keys = {
-        "name",
-        "target",
-        "path",
-        "sha256",
-        "applies_to_revision",
-    }
-    symjit = contributor.get("symjit")
-    revision = symjit.get("candidate_revision") if isinstance(symjit, dict) else None
-    dependency_root = contributor_path.parent.resolve()
-    state: list[dict[str, str]] = []
-    seen_names: set[str] = set()
-    seen_paths: set[str] = set()
-    for index, entry in enumerate(raw_patches):
-        if (
-            not isinstance(entry, dict)
-            or set(entry) != allowed_keys
-            or not all(
-                isinstance(entry[key], str) and entry[key] for key in allowed_keys
-            )
-        ):
-            raise ArtifactError(
-                f"candidate dependency patch {index} has an invalid schema"
-            )
-        normalized = {key: str(entry[key]) for key in allowed_keys}
-        name = normalized["name"]
-        relative = normalized["path"]
-        pure = PurePosixPath(relative)
-        if (
-            name in seen_names
-            or relative in seen_paths
-            or normalized["target"] != "symjit"
-            or normalized["applies_to_revision"] != revision
-            or re.fullmatch(r"[0-9a-f]{64}", normalized["sha256"]) is None
-            or pure.is_absolute()
-            or not pure.parts
-            or pure.parts[0] != "patches"
-            or pure.suffix != ".patch"
-            or any(part in {"", ".", ".."} for part in pure.parts)
-        ):
-            raise ArtifactError(
-                f"candidate dependency patch {name!r} has an invalid identity"
-            )
-        patch_path = dependency_root.joinpath(*pure.parts)
-        try:
-            resolved = patch_path.resolve(strict=True)
-            resolved.relative_to(dependency_root)
-        except (OSError, ValueError) as error:
-            raise ArtifactError(
-                f"candidate dependency patch {name!r} is missing or unsafe"
-            ) from error
-        current = dependency_root
-        for part in pure.parts:
-            current /= part
-            if current.is_symlink():
-                raise ArtifactError(
-                    f"candidate dependency patch {name!r} may not use symlinks"
-                )
-        if (
-            not resolved.is_file()
-            or hashlib.sha256(resolved.read_bytes()).hexdigest() != normalized["sha256"]
-        ):
-            raise ArtifactError(
-                f"candidate dependency patch {name!r} failed authentication"
-            )
-        seen_names.add(name)
-        seen_paths.add(relative)
-        state.append(
-            {
-                "name": name,
-                "target": normalized["target"],
-                "path": pure.as_posix(),
-                "sha256": normalized["sha256"],
-                "applies_to_revision": normalized["applies_to_revision"],
-            }
-        )
-    return state
-
-
 def _candidate_dependency_overrides() -> dict[str, str]:
-    release_path = ROOT / _CANONICAL_DEPENDENCY_LOCK
     contributor_path = ROOT / _CONTRIBUTOR_DEPENDENCY_LOCK
     state_path = ROOT / _CANDIDATE_INSTALL_STATE
     missing = [path for path in (contributor_path, state_path) if not path.is_file()]
@@ -609,27 +516,34 @@ def _candidate_dependency_overrides() -> dict[str, str]:
         raise ArtifactError(
             "candidate dependency provenance has an unsupported contributor lock"
         )
-    patches = _authenticated_candidate_patches(contributor, contributor_path)
     if (
         not isinstance(state, dict)
+        or set(state) != {"schema_version", "publishable", "sources"}
         or state.get("schema_version") != 1
         or state.get("publishable") is not False
-        or state.get("patches") != patches
     ):
         raise ArtifactError(
             "candidate dependency provenance requires a non-publishable schema-v1 "
-            "installer state matching the authenticated patch contract"
+            "installer state containing only its source revisions"
         )
-    expected_digests = {
-        "release_lock_sha256": hashlib.sha256(release_path.read_bytes()).hexdigest(),
-        "contributor_lock_sha256": hashlib.sha256(
-            contributor_path.read_bytes()
-        ).hexdigest(),
-    }
-    if any(state.get(key) != value for key, value in expected_digests.items()):
-        raise ArtifactError(
-            "candidate dependency provenance is not bound to the current locks"
-        )
+    sources = state["sources"]
+    if not isinstance(sources, dict) or not sources:
+        raise ArtifactError("candidate dependency provenance has no source map")
+    for source_name, source in sources.items():
+        allowed = {"url", "revision"}
+        if isinstance(source, dict) and "branch" in source:
+            allowed.add("branch")
+        if (
+            not isinstance(source_name, str)
+            or not source_name
+            or not isinstance(source, dict)
+            or set(source) != allowed
+            or not all(isinstance(source[key], str) and source[key] for key in allowed)
+            or re.fullmatch(r"[0-9a-f]{40}", source["revision"]) is None
+        ):
+            raise ArtifactError(
+                f"candidate dependency source {source_name!r} has an invalid descriptor"
+            )
 
     release = _dependency_lock()
     dependencies = _locked_python_dependencies(release)
@@ -669,8 +583,7 @@ def _candidate_dependency_overrides() -> dict[str, str]:
         raise ArtifactError(
             "release dependency inventory disagrees with its Symbolica contract"
         )
-    sources = state.get("sources")
-    source = sources.get("symbolica") if isinstance(sources, dict) else None
+    source = sources.get("symbolica")
     if (
         not isinstance(source, dict)
         or source.get("revision") != candidate_revision
@@ -1373,8 +1286,6 @@ def _validate_wheel_inventory(
     )
     expected = set(_REQUIRED_WHEEL_PACKAGE_MEMBERS)
     expected.add(extension_name)
-    if mode == "candidate":
-        expected.add("pyamplicol/_build_info.json")
     selftest_root = f"pyamplicol/assets/selftest/{rust_target}/"
     expected.update(name for name in entries if name.startswith(selftest_root))
 
@@ -1731,13 +1642,13 @@ def audit_wheel(
     if str(metadata.get("Requires-Python", "")) != ">=3.11":
         raise ArtifactError("wheel metadata must require Python >=3.11")
 
-    candidate_info = [name for name in entries if name.endswith("/_build_info.json")]
+    build_info_names = [name for name in entries if name.endswith("/_build_info.json")]
     if mode == "candidate":
         if not re.fullmatch(r"0\.1\.0\.dev0\+candidate\.[0-9a-f]{12}", version):
             raise ArtifactError(f"candidate wheel has invalid version: {version}")
-        if candidate_info != ["pyamplicol/_build_info.json"]:
+        if build_info_names != ["pyamplicol/_build_info.json"]:
             raise ArtifactError("candidate wheel must contain one _build_info.json")
-        build_info = _json_object(entries, candidate_info[0])
+        build_info = _json_object(entries, build_info_names[0])
         if build_info.get("selftest_fixture_bootstrap") is not False:
             raise ArtifactError(
                 "candidate self-test fixture bootstrap wheels are not deployable"
@@ -1750,7 +1661,21 @@ def audit_wheel(
     else:
         if version != EXPECTED_RELEASE_VERSION:
             raise ArtifactError(f"release wheel has invalid version: {version}")
-        if candidate_info or b"candidate" in entries[metadata_name].lower():
+        if build_info_names != ["pyamplicol/_build_info.json"]:
+            raise ArtifactError("release wheel must contain one _build_info.json")
+        build_info = _json_object(entries, build_info_names[0])
+        source_revision = build_info.get("source_revision")
+        if (
+            set(build_info) != _RELEASE_BUILD_INFO_FIELDS
+            or build_info.get("schema_version") != 1
+            or build_info.get("publishable") is not True
+            or build_info.get("selftest_fixture_bootstrap") is not False
+            or build_info.get("version") != version
+            or not isinstance(source_revision, str)
+            or re.fullmatch(r"[0-9a-f]{40}", source_revision) is None
+        ):
+            raise ArtifactError("release build marker is missing or inconsistent")
+        if b"candidate" in entries[metadata_name].lower():
             raise ArtifactError("release wheel contains candidate markers")
 
     wheel_metadata = _message(entries[wheel_name], "WHEEL")
@@ -1821,16 +1746,8 @@ def audit_wheel(
     )
 
 
-def _validate_sdist_inventory(
-    members: set[str],
-    *,
-    release_symjit_patches: Collection[str],
-) -> None:
-    required = {
-        *REQUIRED_SDIST_MEMBERS,
-        *release_symjit_patches,
-        "PKG-INFO",
-    }
+def _validate_sdist_inventory(members: set[str]) -> None:
+    required = {*REQUIRED_SDIST_MEMBERS, "PKG-INFO"}
     missing = sorted(required - members)
     if missing:
         raise ArtifactError("sdist is missing required files: " + ", ".join(missing))
@@ -1839,10 +1756,6 @@ def _validate_sdist_inventory(
         for name in members
         if name in _FORBIDDEN_SDIST_MEMBERS
         or name.startswith(_FORBIDDEN_SDIST_PREFIXES)
-        or (
-            name.startswith("dependencies/patches/")
-            and name not in release_symjit_patches
-        )
     )
     if forbidden:
         raise ArtifactError(
@@ -1852,7 +1765,9 @@ def _validate_sdist_inventory(
 
 def _release_sdist_symjit_contract(
     relative_files: Mapping[str, Path],
-) -> tuple[dict[str, Any], set[str]]:
+) -> dict[str, str]:
+    """Validate the small immutable SymJIT Git dependency contract."""
+
     lock_member = "dependencies/release-lock.toml"
     try:
         with relative_files[lock_member].open("rb") as stream:
@@ -1862,82 +1777,41 @@ def _release_sdist_symjit_contract(
         raise ArtifactError(
             f"sdist has an invalid release SymJIT source contract: {error}"
         ) from error
-    if not isinstance(symjit, dict) or set(symjit) != _RELEASE_SYMJIT_FIELDS:
-        raise ArtifactError("sdist SymJIT source contract has an invalid field set")
-    strings = _RELEASE_SYMJIT_FIELDS - {"patches"}
-    if not all(
-        isinstance(symjit.get(field), str) and symjit[field]
-        for field in strings
-    ):
-        raise ArtifactError("sdist SymJIT source fields must be nonempty strings")
-    revision = symjit["revision"]
     if (
-        symjit["version"] != "2.22.0"
-        or re.fullmatch(r"[0-9a-f]{40}", revision) is None
-    ):
-        raise ArtifactError("sdist has an invalid immutable SymJIT revision")
-    for field in (
-        "archive_sha256",
-        "source_tree_sha256",
-        "configured_tree_sha256",
-        "release_cargo_lock_sha256",
-    ):
-        if re.fullmatch(r"[0-9a-f]{64}", symjit[field]) is None:
-            raise ArtifactError(f"sdist SymJIT {field} is not a SHA-256 digest")
-
-    raw_patches = symjit["patches"]
-    if not isinstance(raw_patches, list) or not raw_patches:
-        raise ArtifactError("sdist has no authenticated release SymJIT patch")
-    members: set[str] = set()
-    names: set[str] = set()
-    for index, raw_patch in enumerate(raw_patches):
-        if (
-            not isinstance(raw_patch, dict)
-            or set(raw_patch) != _RELEASE_SYMJIT_PATCH_FIELDS
-            or not all(
-                isinstance(raw_patch.get(field), str) and raw_patch[field]
-                for field in _RELEASE_SYMJIT_PATCH_FIELDS
-            )
-        ):
-            raise ArtifactError(
-                f"sdist SymJIT patch {index} has an invalid field set"
-            )
-        patch = {field: raw_patch[field] for field in _RELEASE_SYMJIT_PATCH_FIELDS}
-        pure = PurePosixPath(patch["path"])
-        member = f"dependencies/{patch['path']}"
-        if (
-            patch["name"] in names
-            or member in members
-            or patch["target"] != "symjit"
-            or patch["applies_to_revision"] != revision
-            or re.fullmatch(r"[0-9a-f]{64}", patch["sha256"]) is None
-            or pure.is_absolute()
-            or pure.parent != PurePosixPath("patches/symjit/upstream")
-            or pure.suffix != ".patch"
-            or any(part in {"", ".", ".."} for part in pure.parts)
-        ):
-            raise ArtifactError(
-                f"sdist SymJIT patch {patch['name']!r} has an invalid identity"
-            )
-        patch_path = relative_files.get(member)
-        if patch_path is None:
-            raise ArtifactError(f"sdist is missing locked SymJIT patch: {member}")
-        if hashlib.sha256(patch_path.read_bytes()).hexdigest() != patch["sha256"]:
-            raise ArtifactError("sdist SymJIT patch digest does not match its lock")
-        names.add(patch["name"])
-        members.add(member)
-    try:
-        with (ROOT / lock_member).open("rb") as stream:
-            canonical_symjit = tomllib.load(stream)["symjit"]
-    except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
-        raise ArtifactError(
-            f"canonical release SymJIT contract is unavailable: {error}"
-        ) from error
-    if symjit != canonical_symjit:
-        raise ArtifactError(
-            "sdist SymJIT source contract differs from the canonical checkout"
+        not isinstance(symjit, dict)
+        or set(symjit) != _RELEASE_SYMJIT_FIELDS
+        or not all(
+            isinstance(symjit.get(field), str) and symjit[field]
+            for field in _RELEASE_SYMJIT_FIELDS
         )
-    return symjit, members
+        or symjit["version"] != "2.22.0"
+        or re.fullmatch(r"[0-9a-f]{40}", symjit["revision"]) is None
+    ):
+        raise ArtifactError("sdist has an invalid immutable SymJIT source contract")
+
+    expected_source = (
+        f"git+{symjit['repository']}?rev={symjit['revision']}#{symjit['revision']}"
+    )
+    try:
+        with relative_files["Cargo.lock"].open("rb") as stream:
+            cargo_lock = tomllib.load(stream)
+        packages = cargo_lock["package"]
+    except (KeyError, OSError, TypeError, tomllib.TOMLDecodeError) as error:
+        raise ArtifactError(f"sdist has an invalid Cargo.lock: {error}") from error
+    matches = [
+        package
+        for package in packages
+        if isinstance(package, dict) and package.get("name") == "symjit"
+    ]
+    if (
+        len(matches) != 1
+        or matches[0].get("version") != symjit["version"]
+        or matches[0].get("source") != expected_source
+    ):
+        raise ArtifactError(
+            "sdist Cargo.lock does not use the immutable SymJIT Git dependency"
+        )
+    return {field: str(symjit[field]) for field in _RELEASE_SYMJIT_FIELDS}
 
 
 def audit_sdist(path: Path, *, mode: str) -> SdistReport:
@@ -1953,26 +1827,13 @@ def audit_sdist(path: Path, *, mode: str) -> SdistReport:
             for item in source.rglob("*")
             if item.is_file()
         }
-        symjit, release_symjit_patches = (
-            _release_sdist_symjit_contract(relative_files)
-        )
-        _validate_sdist_inventory(
-            set(relative_files),
-            release_symjit_patches=release_symjit_patches,
-        )
+        _release_sdist_symjit_contract(relative_files)
+        _validate_sdist_inventory(set(relative_files))
         _validate_prepared_model_assets(
             {name: item.read_bytes() for name, item in relative_files.items()},
             prefix=_PREPARED_MODEL_SDIST_PREFIX,
             mode="release",
         )
-        cargo_lock_sha256 = hashlib.sha256(
-            relative_files["Cargo.lock"].read_bytes()
-        ).hexdigest()
-        if cargo_lock_sha256 != symjit.get("release_cargo_lock_sha256"):
-            raise ArtifactError(
-                "sdist Cargo.lock does not use the authenticated patched SymJIT "
-                "resolution"
-            )
         cargo = relative_files["Cargo.toml"].read_text(encoding="utf-8")
         match = re.search(r'(?m)^version = "([^"]+)"$', cargo)
         if match is None:
@@ -1981,6 +1842,29 @@ def audit_sdist(path: Path, *, mode: str) -> SdistReport:
         if cargo_version != EXPECTED_RELEASE_VERSION:
             raise ArtifactError("release sdist contains a non-release version")
         version = EXPECTED_RELEASE_VERSION
+
+        try:
+            build_info = json.loads(
+                relative_files["src/pyamplicol/_build_info.json"].read_text(
+                    encoding="utf-8"
+                )
+            )
+        except (OSError, TypeError, ValueError) as error:
+            raise ArtifactError("release sdist build marker is unreadable") from error
+        source_revision = (
+            build_info.get("source_revision") if isinstance(build_info, dict) else None
+        )
+        if (
+            not isinstance(build_info, dict)
+            or set(build_info) != _RELEASE_BUILD_INFO_FIELDS
+            or build_info.get("schema_version") != 1
+            or build_info.get("publishable") is not True
+            or build_info.get("selftest_fixture_bootstrap") is not False
+            or build_info.get("version") != version
+            or not isinstance(source_revision, str)
+            or re.fullmatch(r"[0-9a-f]{40}", source_revision) is None
+        ):
+            raise ArtifactError("release sdist build marker is missing or inconsistent")
 
         pyproject = relative_files["pyproject.toml"].read_text(encoding="utf-8")
         try:

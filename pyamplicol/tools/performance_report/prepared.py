@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 from .artifacts import ArtifactStore
 from .models import ModelKey
+from .runner import _model_source_path
 
 PREPARED_RECORD_SCHEMA = "pyamplicol-report-prepared-model-v1"
 PUBLIC_MODEL_COMPILE_COMMAND_PATH = "pyamplicol-model-compile-parse-resolve-dispatch-v1"
@@ -350,9 +351,9 @@ def ensure_report_prepared_model(
         digest = hashlib.sha256(f"built-in-sm:{revision}".encode("ascii")).hexdigest()
         stem = "built-in-sm"
     elif model is ModelKey.UFO_SM:
-        source_path = (
-            repo_root / "src/pyamplicol/assets/models/json/sm/sm.json"
-        ).resolve()
+        source_path = _model_source_path(repo_root, model)
+        if source_path is None:
+            raise PreparedModelError("UFO-SM model resource is unavailable")
         source = _PublicCliModelCompiler(os.fspath(source_path), progress=progress)
         digest = _sha256(source_path)
         stem = "ufo-sm"

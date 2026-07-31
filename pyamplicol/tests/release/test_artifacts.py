@@ -171,26 +171,12 @@ def candidate_dependency_provenance(
     state_path = tmp_path / "install-state.json"
     contributor_data = (ROOT / "dependencies" / "contributor-lock.toml").read_bytes()
     contributor_path.write_bytes(contributor_data)
-    contributor = tomllib.loads(contributor_data.decode("utf-8"))
-    patch_state: list[dict[str, str]] = []
-    for raw_patch in contributor["patches"]:
-        patch = {key: str(value) for key, value in raw_patch.items()}
-        relative = Path(patch["path"])
-        destination = tmp_path / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes((ROOT / "dependencies" / relative).read_bytes())
-        patch_state.append(patch)
     symbolica = _CONTRIBUTOR_LOCK["symbolica"]
     state_path.write_text(
         json.dumps(
             {
                 "schema_version": 1,
                 "publishable": False,
-                "release_lock_sha256": hashlib.sha256(
-                    (ROOT / "dependencies" / "release-lock.toml").read_bytes()
-                ).hexdigest(),
-                "contributor_lock_sha256": hashlib.sha256(contributor_data).hexdigest(),
-                "patches": patch_state,
                 "sources": {
                     "symbolica": {
                         "url": symbolica["source_url"],
@@ -865,6 +851,16 @@ def _wheel(
                 "version": version,
             }
         ).encode()
+    else:
+        files["pyamplicol/_build_info.json"] = json.dumps(
+            {
+                "schema_version": 1,
+                "publishable": True,
+                "selftest_fixture_bootstrap": False,
+                "source_revision": "a" * 40,
+                "version": version,
+            }
+        ).encode()
     if extra_files is not None:
         files.update(extra_files)
     if omitted_member is not None:
@@ -903,27 +899,7 @@ def _sdist(
 ) -> Path:
     python_version = version.replace("-dev.0", ".dev0")
     root = f"pyamplicol-{python_version}"
-    symjit = _LOCK["symjit"]
-    symjit_source = (
-        f"git+{symjit['repository']}?rev={symjit['revision']}#{symjit['revision']}"
-    )
-    lock_text = (ROOT / "Cargo.lock").read_text(encoding="utf-8")
-    marker = (
-        "[[package]]\n"
-        'name = "symjit"\n'
-        f'version = "{symjit["version"]}"\n'
-        f'source = "{symjit_source}"\n'
-    )
-    replacement = (
-        "[[package]]\n"
-        'name = "symjit"\n'
-        f'version = "{symjit["version"]}"\n'
-    )
-    assert lock_text.count(marker) == 1
-    release_cargo_lock = lock_text.replace(marker, replacement, 1).encode()
-    assert hashlib.sha256(release_cargo_lock).hexdigest() == (
-        symjit["release_cargo_lock_sha256"]
-    )
+    release_cargo_lock = (ROOT / "Cargo.lock").read_bytes()
     files = {
         name: b"synthetic required sdist member\n"
         for name in {*REQUIRED_SDIST_MEMBERS, "PKG-INFO"}
@@ -957,9 +933,6 @@ def _sdist(
             "tools/release/test_deployment.py": b"",
         }
     )
-    for patch in symjit["patches"]:
-        member = f"dependencies/{patch['path']}"
-        files[member] = (ROOT / member).read_bytes()
     files.update(
         {
             f"src/{name}": data
@@ -972,6 +945,16 @@ def _sdist(
             {
                 "schema_version": 1,
                 "publishable": False,
+                "version": python_version,
+            }
+        ).encode()
+    else:
+        files["src/pyamplicol/_build_info.json"] = json.dumps(
+            {
+                "schema_version": 1,
+                "publishable": True,
+                "selftest_fixture_bootstrap": False,
+                "source_revision": "a" * 40,
                 "version": python_version,
             }
         ).encode()
@@ -1132,6 +1115,34 @@ def test_release_and_candidate_wheels_are_distinct_and_audited(
         audit_wheel(candidate, mode="release", native_scan=False)
 
 
+def test_release_wheel_requires_the_minimal_build_marker(tmp_path: Path) -> None:
+    missing = _wheel(
+        tmp_path,
+        omitted_member="pyamplicol/_build_info.json",
+    )
+    with pytest.raises(ArtifactError, match="one _build_info"):
+        audit_wheel(missing, mode="release", native_scan=False)
+
+    missing.unlink()
+    invalid = _wheel(
+        tmp_path,
+        extra_files={
+            "pyamplicol/_build_info.json": json.dumps(
+                {
+                    "schema_version": 1,
+                    "publishable": True,
+                    "selftest_fixture_bootstrap": False,
+                    "source_revision": "a" * 40,
+                    "source_checkout": "/private/source",
+                    "version": "0.1.0",
+                }
+            ).encode()
+        },
+    )
+    with pytest.raises(ArtifactError, match="release build marker"):
+        audit_wheel(invalid, mode="release", native_scan=False)
+
+
 def test_candidate_and_release_symbolica_wheel_pins_can_match(
     tmp_path: Path,
     candidate_dependency_provenance: None,
@@ -1163,13 +1174,21 @@ def test_candidate_and_release_symbolica_wheel_pins_can_match(
     assert release_report.version == _LOCK["project"]["version"]
 
 
-def test_candidate_dependency_provenance_fails_closed(
+def test_candidate_dependency_provenance_uses_compact_source_map(
+    candidate_dependency_provenance: None,
+) -> None:
+    assert artifacts._candidate_dependency_overrides() == {
+        "symbolica": _CONTRIBUTOR_LOCK["symbolica"]["candidate_version"]
+    }
+
+
+def test_candidate_dependency_provenance_rejects_extra_attestations(
     tmp_path: Path,
     candidate_dependency_provenance: None,
 ) -> None:
     state_path = artifacts.ROOT / artifacts._CANDIDATE_INSTALL_STATE
     state = json.loads(state_path.read_text(encoding="utf-8"))
-    state["contributor_lock_sha256"] = "0" * 64
+    state["created_utc"] = "2026-07-31T00:00:00Z"
     state_path.write_text(json.dumps(state) + "\n", encoding="utf-8")
     candidate = _wheel(
         tmp_path,
@@ -1177,17 +1196,17 @@ def test_candidate_dependency_provenance_fails_closed(
         candidate=True,
     )
 
-    with pytest.raises(ArtifactError, match="not bound to the current locks"):
+    with pytest.raises(ArtifactError, match="only its source revisions"):
         audit_wheel(candidate, mode="candidate", native_scan=False)
 
 
-def test_candidate_dependency_provenance_rejects_unmatched_patch_state(
+def test_candidate_dependency_provenance_rejects_heavy_source_attestations(
     tmp_path: Path,
     candidate_dependency_provenance: None,
 ) -> None:
     state_path = artifacts.ROOT / artifacts._CANDIDATE_INSTALL_STATE
     state = json.loads(state_path.read_text(encoding="utf-8"))
-    state["patches"] = [{"target": "symjit"}]
+    state["sources"]["symbolica"]["worktree_sha256"] = "0" * 64
     state_path.write_text(json.dumps(state) + "\n", encoding="utf-8")
     candidate = _wheel(
         tmp_path,
@@ -1195,7 +1214,7 @@ def test_candidate_dependency_provenance_rejects_unmatched_patch_state(
         candidate=True,
     )
 
-    with pytest.raises(ArtifactError, match="matching the authenticated patch"):
+    with pytest.raises(ArtifactError, match="invalid descriptor"):
         audit_wheel(candidate, mode="candidate", native_scan=False)
 
 
@@ -1857,6 +1876,33 @@ def test_release_sdist_identity_and_path_scan(tmp_path: Path) -> None:
         audit_sdist(fixture_leak, mode="release")
 
 
+def test_release_sdist_requires_the_minimal_build_marker(tmp_path: Path) -> None:
+    missing = _sdist(
+        tmp_path,
+        omitted_member="src/pyamplicol/_build_info.json",
+    )
+    with pytest.raises(ArtifactError, match="missing required files"):
+        audit_sdist(missing, mode="release")
+
+    missing.unlink()
+    invalid = _sdist(
+        tmp_path,
+        extra_files={
+            "src/pyamplicol/_build_info.json": json.dumps(
+                {
+                    "schema_version": 1,
+                    "publishable": True,
+                    "selftest_fixture_bootstrap": False,
+                    "source_revision": "not-a-revision",
+                    "version": "0.1.0",
+                }
+            ).encode()
+        },
+    )
+    with pytest.raises(ArtifactError, match="release sdist build marker"):
+        audit_sdist(invalid, mode="release")
+
+
 @pytest.mark.parametrize(
     "missing_member",
     sorted(
@@ -1949,7 +1995,6 @@ def test_sdist_accepts_prepared_payload_compiler_edits(tmp_path: Path) -> None:
         "dependencies/patches/symbolica/fix.patch",
         "dependencies/python-runtime-lock.toml",
         "release_assets/prepared_models/built-in-sm-jit-o2-aarch64.metadata.json",
-        "src/pyamplicol/_build_info.json",
     ],
 )
 def test_sdist_rejects_contributor_dependency_material(
@@ -1963,58 +2008,44 @@ def test_sdist_rejects_contributor_dependency_material(
         audit_sdist(sdist, mode="release")
 
 
-def test_sdist_rejects_tampered_release_symjit_patch(tmp_path: Path) -> None:
-    patch = f"dependencies/{_LOCK['symjit']['patches'][0]['path']}"
-    sdist = _sdist(tmp_path, extra_files={patch: b"tampered patch\n"})
+def test_sdist_rejects_extra_symjit_source_ceremony(tmp_path: Path) -> None:
+    lock_member = "dependencies/release-lock.toml"
+    lock_text = (ROOT / lock_member).read_text(encoding="utf-8")
+    symjit = _LOCK["symjit"]
+    contract = (
+        "[symjit]\n"
+        f'version = "{symjit["version"]}"\n'
+        f'repository = "{symjit["repository"]}"\n'
+        f'revision = "{symjit["revision"]}"\n'
+    )
+    replacement = contract + 'source_url = "https://example.invalid/archive.tar.gz"\n'
+    assert lock_text.count(contract) == 1
+    sdist = _sdist(
+        tmp_path,
+        extra_files={lock_member: lock_text.replace(contract, replacement).encode()},
+    )
 
-    with pytest.raises(ArtifactError, match="patch digest"):
+    with pytest.raises(ArtifactError, match="immutable SymJIT source contract"):
         audit_sdist(sdist, mode="release")
 
 
-def test_sdist_rejects_malformed_release_symjit_patch_contract(
-    tmp_path: Path,
-) -> None:
-    lock_member = "dependencies/release-lock.toml"
-    lock_text = (ROOT / lock_member).read_text(encoding="utf-8")
-    malformed = lock_text.replace(
-        'target = "symjit"',
-        'target = "symbolica"',
-        1,
+def test_sdist_rejects_mismatched_symjit_cargo_source(tmp_path: Path) -> None:
+    symjit = _LOCK["symjit"]
+    cargo_lock = (ROOT / "Cargo.lock").read_text(encoding="utf-8")
+    expected = (
+        f"git+{symjit['repository']}?rev={symjit['revision']}#{symjit['revision']}"
     )
-    assert malformed != lock_text
+    assert cargo_lock.count(expected) == 1
+    mismatched = cargo_lock.replace(
+        expected,
+        expected.replace(symjit["revision"], "1" * 40),
+    )
     sdist = _sdist(
         tmp_path,
-        extra_files={lock_member: malformed.encode("utf-8")},
+        extra_files={"Cargo.lock": mismatched.encode("utf-8")},
     )
 
-    with pytest.raises(ArtifactError, match="invalid identity"):
-        audit_sdist(sdist, mode="release")
-
-
-def test_sdist_rejects_coherently_rewritten_symjit_patch_contract(
-    tmp_path: Path,
-) -> None:
-    lock_member = "dependencies/release-lock.toml"
-    patch_contract = _LOCK["symjit"]["patches"][0]
-    patch_member = f"dependencies/{patch_contract['path']}"
-    rewritten_patch = b"coherently rewritten generic patch\n"
-    rewritten_sha256 = hashlib.sha256(rewritten_patch).hexdigest()
-    lock_text = (ROOT / lock_member).read_text(encoding="utf-8")
-    rewritten_lock = lock_text.replace(
-        patch_contract["sha256"],
-        rewritten_sha256,
-        1,
-    )
-    assert rewritten_lock != lock_text
-    sdist = _sdist(
-        tmp_path,
-        extra_files={
-            lock_member: rewritten_lock.encode("utf-8"),
-            patch_member: rewritten_patch,
-        },
-    )
-
-    with pytest.raises(ArtifactError, match="canonical checkout"):
+    with pytest.raises(ArtifactError, match="immutable SymJIT Git dependency"):
         audit_sdist(sdist, mode="release")
 
 
@@ -2023,10 +2054,6 @@ def test_sdist_rejects_coherently_rewritten_symjit_patch_contract(
     [
         "build_backend/_pyamplicol_build.py",
         "build_backend/sdk.py",
-        *[
-            f"dependencies/{patch['path']}"
-            for patch in _LOCK["symjit"]["patches"]
-        ],
         "docs/user/installation.md",
         "examples/data/pp_zjj_momenta.json",
         "examples/python/typed_generation.py",

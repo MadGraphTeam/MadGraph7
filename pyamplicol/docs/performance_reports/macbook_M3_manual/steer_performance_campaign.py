@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import sys
+from importlib import import_module
 from pathlib import Path
 
 
@@ -65,14 +66,28 @@ def _reexecute_with_repository_python(repo_root: Path) -> None:
 
 def main() -> int:
     entrypoint = Path(__file__).resolve()
-    repo_root = _repository_root(entrypoint)
-    profile = _embedded_profile(entrypoint, repo_root)
+    profile = entrypoint.parent.name
+    try:
+        repo_root = _repository_root(entrypoint)
+        source_profile = _embedded_profile(entrypoint, repo_root)
+    except RuntimeError:
+        installed = import_module(
+            "pyamplicol._performance_report.manual_campaign"
+        )
+        return installed.main(
+            sys.argv[1:],
+            repo_root=entrypoint.parent,
+            profile=profile,
+            docs_dir=entrypoint.parent,
+            installed=True,
+        )
+
     _reexecute_with_repository_python(repo_root)
     sys.path.insert(0, os.fspath(repo_root))
     sys.path.insert(0, os.fspath(repo_root / "src"))
     from tools.performance_report.manual_campaign import main as campaign_main
 
-    return campaign_main(sys.argv[1:], repo_root=repo_root, profile=profile)
+    return campaign_main(sys.argv[1:], repo_root=repo_root, profile=source_profile)
 
 
 if __name__ == "__main__":

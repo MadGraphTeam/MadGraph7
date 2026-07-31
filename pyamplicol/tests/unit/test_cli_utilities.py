@@ -46,6 +46,45 @@ def test_examples_copy_requires_force_for_nonempty_destination(
     assert run_cli(("examples", "copy", str(destination), "--force")) == 0
 
 
+def test_profiling_campaign_copy_is_reset_and_requires_force(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "profiling-campaign"
+    invocation = parse_cli(("profiling-campaign", "copy", str(destination)))
+    assert isinstance(invocation, UtilityInvocation)
+    assert invocation.kind == "profiling-campaign-copy"
+    assert invocation.path == destination
+    assert invocation.force is False
+
+    assert run_cli(("profiling-campaign", "copy", str(destination))) == 0
+    copied = tuple(path for path in destination.rglob("*") if path.is_file())
+    assert len(copied) == 55
+    assert (destination / "steer_performance_campaign.py").is_file()
+    assert (destination / "TABLE_FILLING.md").is_file()
+    assert (destination / "results/report-cache.schema.json").is_file()
+    assert not (destination / "pyAmpliCol.pdf").exists()
+    assert not (destination / ".artifacts").exists()
+    workspace = json.loads(
+        (destination / "report-workspace.json").read_text(encoding="utf-8")
+    )
+    assert workspace["measurement_state"] == "reset"
+    for path in sorted((destination / "results").glob("*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        for entry in payload.get("entries", ()):
+            assert entry["measurement"]["status"] == "not_available"
+
+    stderr = io.StringIO()
+    assert (
+        run_cli(
+            ("profiling-campaign", "copy", str(destination)),
+            stderr=stderr,
+        )
+        == 2
+    )
+    assert "not empty" in stderr.getvalue()
+    assert run_cli(("profiling-campaign", "copy", str(destination), "--force")) == 0
+
+
 def test_config_template_and_resolve(tmp_path: Path) -> None:
     target = tmp_path / "all.toml"
     assert run_cli(("config", "template", str(target))) == 0

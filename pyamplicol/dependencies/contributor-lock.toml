@@ -1,9 +1,6 @@
 # SPDX-License-Identifier: 0BSD
 # Source-checkout-only dependency inputs for non-publishable contributor builds.
 schema_version = 1
-patches = [
-  { name = "symjit-raw-plane-descriptor-v1", target = "symjit", path = "patches/symjit/upstream/0001-Expose-a-stable-raw-P-kernel-plane-descriptor.patch", sha256 = "70012117436d77265b349c013b0df8c4fe72a04ced972090ba3ac069721b436d", applies_to_revision = "77789ff0f78232b1ea4608aceb397058df50b06d" },
-]
 
 [abis]
 symbolica_serialization = "symbolica-bincode2-v1"
@@ -17,19 +14,6 @@ candidate_revision = "77c137481904b8a5531ede86e3ef36b82beed7fd"
 community_url = "https://github.com/symbolica-dev/symbolica-community.git"
 community_revision = "0deaa0f1484ec5c24f5f109176fa66f0d30134ca"
 release_status = "merged-main-candidate"
-
-[symjit]
-candidate_version = "2.22.0"
-repository = "https://github.com/siravan/symjit-crate.git"
-source_url = "https://github.com/siravan/symjit-crate/archive/77789ff0f78232b1ea4608aceb397058df50b06d.tar.gz"
-archive_prefix = "symjit-crate-77789ff0f78232b1ea4608aceb397058df50b06d"
-archive_sha256 = "b3cb6451eff299b27709115053caed579bc266bbd46923a70066b5ac554dd0ac"
-candidate_revision = "77789ff0f78232b1ea4608aceb397058df50b06d"
-application_storage_version = 3
-source_tree_sha256 = "88aa6a50ec7ad120d3d832f4d98e3efe89ea259e925c9ed139904b8dd7607453"
-candidate_tree_sha256 = "4b4b791b0f2bbef33a7dbd2936d20dc722f7301e2e9e986b65b2a8b94d220b31"
-release_status = "upstream-git-candidate-with-generic-raw-plane-patch"
-license = "MIT"
 
 [gammaloop_candidate]
 source_url = "https://github.com/alphal00p/gammaloop.git"

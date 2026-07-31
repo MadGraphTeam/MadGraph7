@@ -15,6 +15,21 @@ keyboard-control reference:
 ./docs/performance_reports/macbook_M3_manual/steer_performance_campaign.py --help
 ```
 
+An installed pyAmpliCol wheel can create a portable reset copy without a
+source checkout:
+
+```console
+pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
+./pyamplicol-profiling-campaign/steer_performance_campaign.py --help
+```
+
+Dry runs and measurement selections whose planned closure contains only
+pyAmpliCol need no legacy source. If the planned closure includes an original
+AmpliCol comparison, pass `run --original-amplicol PATH`, where `PATH` is a
+clean, complete checkout exposing the color-probe sources and Make targets
+from PR #12. The `amplicol_with_patches` branch works now; a compatible
+upstream revision will work unchanged after the PR is merged.
+
 Rebuild every table and the PDF from one stable current-result snapshot with:
 
 ```console
@@ -48,7 +63,9 @@ source checkout with:
 python3 docs/arxiv/result_tables.py   export-profile macbook_M3_manual /absolute/output/path
 ```
 
-The copied entry point selects this profile automatically. Measurements still
-require the exact pyAmpliCol source checkout and authenticated native runtime.
-Never commit evaluator artifacts, candidate wheels, prepared models, attempts,
-logs, locks, coordination state, page images, or LaTeX auxiliary files.
+The copied entry point selects this profile automatically. A copy made from an
+installed wheel uses that wheel's recorded source revision and installed
+runtime; a copy inside a contributor checkout retains the exact-source
+workflow. Never commit evaluator artifacts, candidate wheels, prepared models,
+attempts, logs, locks, coordination state, page images, or LaTeX auxiliary
+files.

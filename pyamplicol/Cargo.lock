@@ -1032,7 +1032,7 @@ dependencies = [
 [[package]]
 name = "symjit"
 version = "2.22.0"
-source = "git+https://github.com/siravan/symjit-crate.git?rev=77789ff0f78232b1ea4608aceb397058df50b06d#77789ff0f78232b1ea4608aceb397058df50b06d"
+source = "git+https://github.com/siravan/symjit-crate.git?rev=d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7#d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7"
 dependencies = [
  "ahash",
  "anyhow",

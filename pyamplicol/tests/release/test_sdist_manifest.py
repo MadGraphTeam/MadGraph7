@@ -29,11 +29,8 @@ def test_maturin_recursively_includes_every_sdist_source_tree() -> None:
         "tools/release/**/*",
         "tools/typing/**/*",
     } <= includes
-    assert {
-        "justfile",
-        "rust-toolchain.toml",
-        "dependencies/patches/symjit/upstream/*.patch",
-    } <= includes
+    assert {"justfile", "rust-toolchain.toml"} <= includes
+    assert not {path for path in includes if path.startswith("dependencies/patches/")}
     assert not {path for path in includes if path.endswith("/**")}
 
     excludes = set(pyproject["tool"]["maturin"]["exclude"])

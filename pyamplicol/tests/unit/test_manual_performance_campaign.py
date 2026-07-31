@@ -1875,14 +1875,13 @@ def test_executable_reexecutes_from_base_python_into_repository_venv() -> None:
     assert "Manual MacBook M3 campaign" in completed.stdout
 
 
-def test_controller_sources_never_invoke_shell_git_or_package_install() -> None:
+def test_controller_sources_only_use_read_only_git_for_external_checkout() -> None:
     sources = (PROFILE / "steer_performance_campaign.py").read_text(
         encoding="utf-8"
     ) + (ROOT / "tools/performance_report/manual_campaign.py").read_text(
         encoding="utf-8"
     )
     for forbidden in (
-        "subprocess.run(",
         "subprocess.Popen(",
         "os.system(",
         "shell=True",
@@ -1891,6 +1890,9 @@ def test_controller_sources_never_invoke_shell_git_or_package_install() -> None:
         "git fetch",
     ):
         assert forbidden not in sources
+    assert sources.count("subprocess.run(") == 2
+    assert '("git", "rev-parse", "HEAD")' in sources
+    assert '("git", "status", "--porcelain=v1", "--untracked-files=all")' in sources
     assert os.access(PROFILE / "steer_performance_campaign.py", os.X_OK)
 
 

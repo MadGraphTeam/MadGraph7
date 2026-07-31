@@ -37,13 +37,12 @@ shipped in pyAmpliCol release artifacts.
 ## SymJIT
 
 SymJIT is a separate Rust dependency used by Symbolica's JIT functionality.
-The upstream `siravan/symjit-crate` 2.22.0 source pinned at
-`77789ff0f78232b1ea4608aceb397058df50b06d` is distributed under the MIT
+The official `siravan/symjit-crate` 2.22.0 source pinned at
+`d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7` is distributed under the MIT
 License, not the Symbolica proprietary license. Its copyright notice and
 complete MIT License are reproduced in `licenses/SymJIT.txt`.
-pyAmpliCol release and contributor builds apply the same authenticated generic
-patch exposing an unsafe raw P-kernel plane-descriptor callable. The patch does
-not alter generated kernels and remains covered by SymJIT's MIT license.
+The generic unsafe raw P-kernel plane-descriptor callable was merged upstream
+in `siravan/symjit-crate#1`; it does not alter generated kernels.
 
 ## Native Runtime Feature Boundary
 

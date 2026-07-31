@@ -66,10 +66,10 @@ gate and a fresh numerical comparison against the pinned independent Fortran
 implementation, retains one source distribution, builds the three target
 wheels from that source distribution, tests installed wheels on CPython 3.11
 and 3.14, and collects the unchanged package files. The
-dependency contract pins `siravan/symjit-crate` 2.22.0 to immutable revision
-`77789ff0f78232b1ea4608aceb397058df50b06d`. Contributor and release builds
-authenticate the same upstream archive and apply the same minimal, generic
-raw-plane-descriptor patch. Exact release-mode prepared-model packs are checked
+dependency contract pins official `siravan/symjit-crate` 2.22.0 to immutable
+revision `d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7`. The minimal generic
+raw-plane-descriptor change is upstream; no local patch application is
+required. Exact release-mode prepared-model packs are checked
 in under `release_assets/prepared_models` and projected into release builds.
 The pinned P2 contract uses actual row indices for scalar and SIMD calls;
 pyAmpliCol keeps the upstream parameter-scaled output option disabled and
@@ -123,17 +123,14 @@ artifact validation gate.
 
 ## Publication Gates
 
-- The exact Symbolica 2.2.0 Python/Rust combination and immutable
-  `siravan/symjit-crate` 2.22.0 revision are pinned in the release dependency
-  contract. The single authenticated SymJIT patch exposes a generic raw
-  P-kernel plane descriptor; it does not contain pyAmpliCol scheduling or
-  operation policy.
-- The checked-in built-in-SM release packs carry the exact release dependency
-  identity and pass the schema, ABI, target, content-integrity, and load checks
-  when projected from `release_assets/prepared_models`. Exact producer
-  fingerprints bind the model compiler, model source, prepared-pack compiler,
-  canonical native build-input closure, and configured SymJIT tree/patch
-  closure; drift in those build-relevant inputs requires pack regeneration.
+- The exact Symbolica 2.2.0 Python/Rust combination and immutable SymJIT
+  2.22.0 upstream revision are pinned in the release dependency contract. The
+  generic raw P-kernel plane descriptor does not contain pyAmpliCol
+  scheduling or operation policy.
+- The checked-in built-in-SM release packs pass schema, ABI, target,
+  content-integrity, compiler/model-source, and load checks when projected from
+  `release_assets/prepared_models`. Dependency checkout fingerprints are not
+  duplicated into the portable-pack compatibility contract.
 - `ufo-model-loader==0.1.7` is the pinned published loader input.
 - Every supported wheel target must complete clean installation, Python
   self-test, generated Python/Rust/C++/Fortran driver tests, and native SDK

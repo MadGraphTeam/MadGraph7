@@ -3,13 +3,11 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
-import io
 import json
 import os
 import shutil
 import subprocess
 import sys
-import tarfile
 import tomllib
 from pathlib import Path
 
@@ -255,6 +253,9 @@ def test_candidate_bootstrap_wheel_strips_stale_generated_assets(
     monkeypatch.setattr(backend, "_check_dependencies", lambda _mode: None)
     monkeypatch.setattr(backend, "_rust_remap_flags", lambda *_args: "")
     monkeypatch.setattr(backend, "_stage_packaged_examples", lambda _path: None)
+    monkeypatch.setattr(
+        backend, "_stage_packaged_profiling_campaign", lambda _path: None
+    )
     monkeypatch.setattr(backend, "_stage_python_stub", lambda _path: None)
     monkeypatch.setattr(backend, "_stage_runtime_resources", lambda _path: None)
     monkeypatch.setattr(
@@ -331,7 +332,21 @@ def test_ordinary_wheel_build_rejects_prepared_model_digest_drift(
     monkeypatch.setattr(backend, "_overlay", fake_overlay)
     monkeypatch.setattr(backend, "_check_dependencies", lambda _mode: None)
     monkeypatch.setattr(backend, "_rust_remap_flags", lambda *_args: "")
+    monkeypatch.setattr(backend, "_stage_release_build_info", lambda *_args: None)
+    monkeypatch.setattr(
+        backend,
+        "_native_build_inputs_digest",
+        lambda *_args, **_kwargs: "d" * 64,
+    )
+    monkeypatch.setattr(
+        backend,
+        "canonical_package_version",
+        lambda _path: "0.1.0",
+    )
     monkeypatch.setattr(backend, "_stage_packaged_examples", lambda _path: None)
+    monkeypatch.setattr(
+        backend, "_stage_packaged_profiling_campaign", lambda _path: None
+    )
     monkeypatch.setattr(backend, "_stage_python_stub", lambda _path: None)
     monkeypatch.setattr(backend, "_stage_runtime_resources", lambda _path: None)
     monkeypatch.setattr(
@@ -368,13 +383,30 @@ def _candidate_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
     )
     with (ROOT / "dependencies" / "contributor-lock.toml").open("rb") as stream:
         contributor = tomllib.load(stream)
-    revisions = {
-        "gammaloop": contributor["gammaloop_candidate"]["revision"],
-        "symbolica": contributor["symbolica"]["candidate_revision"],
-        "symbolica-community": contributor["symbolica"]["community_revision"],
-        "symjit": contributor["symjit"]["candidate_revision"],
+    with (ROOT / "dependencies" / "release-lock.toml").open("rb") as stream:
+        release = tomllib.load(stream)
+    sources = {
+        "gammaloop": {
+            "url": contributor["gammaloop_candidate"]["source_url"],
+            "revision": contributor["gammaloop_candidate"]["revision"],
+        },
+        "ratatui-ffi": {
+            "url": contributor["ratatui"]["ffi_repository"],
+            "revision": contributor["ratatui"]["ffi_revision"],
+        },
+        "symbolica": {
+            "url": contributor["symbolica"]["source_url"],
+            "revision": contributor["symbolica"]["candidate_revision"],
+        },
+        "symbolica-community": {
+            "url": contributor["symbolica"]["community_url"],
+            "revision": contributor["symbolica"]["community_revision"],
+        },
+        "symjit": {
+            "url": release["symjit"]["repository"],
+            "revision": release["symjit"]["revision"],
+        },
     }
-    sources = {name: {"revision": revision} for name, revision in revisions.items()}
     installer_state.write_text(
         json.dumps(
             {
@@ -427,12 +459,13 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
         ).read_text(encoding="utf-8")
         with (ROOT / "dependencies" / "contributor-lock.toml").open("rb") as stream:
             contributor = tomllib.load(stream)
-        candidate_symjit = contributor["symjit"]["candidate_version"]
         candidate_symbolica = contributor["symbolica"]["candidate_version"]
-        assert f'symjit = {{ version = "={candidate_symjit}"' in candidate_core
-        candidate_pyproject = (overlay / "pyproject.toml").read_text(
-            encoding="utf-8"
+        with (ROOT / "dependencies" / "release-lock.toml").open("rb") as stream:
+            release = tomllib.load(stream)
+        assert (
+            f'symjit = {{ version = "={release["symjit"]["version"]}"' in candidate_core
         )
+        candidate_pyproject = (overlay / "pyproject.toml").read_text(encoding="utf-8")
         assert f'"symbolica=={candidate_symbolica}"' in candidate_pyproject
         build_info = json.loads(
             (overlay / "src" / "pyamplicol" / "_build_info.json").read_text(
@@ -535,139 +568,13 @@ def test_candidate_overlay_is_versioned_without_mutating_source(
     ).read_bytes() == source_core
 
 
-def test_release_overlay_uses_authenticated_patched_symjit_resolution() -> None:
+def test_release_overlay_uses_canonical_git_locked_resolution() -> None:
+    source_lock = (ROOT / "Cargo.lock").read_bytes()
     with backend._overlay("release") as (overlay, _target):
-        with (overlay / "dependencies/release-lock.toml").open("rb") as stream:
-            symjit = tomllib.load(stream)["symjit"]
-        assert hashlib.sha256((overlay / "Cargo.lock").read_bytes()).hexdigest() == (
-            symjit["release_cargo_lock_sha256"]
-        )
-        config = tomllib.loads(
-            (overlay / ".cargo" / "config.toml").read_text(encoding="utf-8")
-        )
-        staged = overlay / backend._RELEASE_SYMJIT_STAGE
-        assert Path(config["patch"]["crates-io"]["symjit"]["path"]) == staged
-        assert backend._release_symjit_tree_sha256(staged) == (
-            symjit["configured_tree_sha256"]
-        )
-        assert all(
-            (overlay / patch).is_file()
-            for patch in backend._RELEASE_SYMJIT_PATCHES
-        )
+        assert (overlay / "Cargo.lock").read_bytes() == source_lock
+        assert not (overlay / ".cargo" / "config.toml").exists()
+        assert not (overlay / ".pyamplicol-build-dependencies").exists()
         assert not (overlay / "dependencies" / "candidate-Cargo.lock").exists()
-
-
-def test_release_symjit_download_is_verified_patched_and_path_staged(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    revision = "1" * 40
-    root = tmp_path / "source"
-    pristine = tmp_path / "pristine"
-    configured = tmp_path / "configured"
-    for source in (pristine, configured):
-        (source / "src").mkdir(parents=True)
-        (source / "Cargo.toml").write_text(
-            '[package]\nname = "symjit"\nversion = "2.22.0"\n\n'
-            '[lib]\npath = "src/lib.rs"\ncrate-type = ["rlib"]\n',
-            encoding="utf-8",
-        )
-        (source / "Cargo.toml").chmod(0o755)
-        (source / "src/lib.rs").write_text(
-            "pub fn plane_descriptor() -> u8 { 1 }\n",
-            encoding="utf-8",
-        )
-    (configured / "src/lib.rs").write_text(
-        "pub fn plane_descriptor() -> u8 { 2 }\n",
-        encoding="utf-8",
-    )
-    patch_one = (
-        root
-        / "dependencies/patches/symjit/upstream/"
-        "0001-first-generic-change.patch"
-    )
-    patch_two = patch_one.with_name("0002-second-generic-change.patch")
-    patch_one.parent.mkdir(parents=True)
-    patch_one.write_text(
-        "diff --git a/src/lib.rs b/src/lib.rs\n"
-        "--- a/src/lib.rs\n"
-        "+++ b/src/lib.rs\n"
-        "@@ -1 +1 @@\n"
-        "-pub fn plane_descriptor() -> u8 { 1 }\n"
-        "+pub fn plane_descriptor() -> u8 { 7 }\n",
-        encoding="utf-8",
-    )
-    patch_two.write_text(
-        "diff --git a/src/lib.rs b/src/lib.rs\n"
-        "--- a/src/lib.rs\n"
-        "+++ b/src/lib.rs\n"
-        "@@ -1 +1 @@\n"
-        "-pub fn plane_descriptor() -> u8 { 7 }\n"
-        "+pub fn plane_descriptor() -> u8 { 2 }\n",
-        encoding="utf-8",
-    )
-    archive = tmp_path / "symjit.tar.gz"
-    prefix = f"symjit-crate-{revision}"
-    with tarfile.open(archive, "w:gz") as stream:
-        stream.add(pristine, arcname=prefix)
-    release_lock = root / "dependencies/release-lock.toml"
-    release_lock.parent.mkdir(parents=True, exist_ok=True)
-    release_lock.write_text(
-        "[symjit]\n"
-        'version = "2.22.0"\n'
-        'repository = "https://github.com/example/symjit.git"\n'
-        f'revision = "{revision}"\n'
-        f'source_url = "https://example.invalid/{revision}.tar.gz"\n'
-        f'archive_prefix = "{prefix}"\n'
-        f'archive_sha256 = "{hashlib.sha256(archive.read_bytes()).hexdigest()}"\n'
-        f'source_tree_sha256 = "{backend._release_symjit_tree_sha256(pristine)}"\n'
-        "configured_tree_sha256 = "
-        f'"{backend._release_symjit_tree_sha256(configured)}"\n'
-        f'release_cargo_lock_sha256 = "{"0" * 64}"\n'
-        "patches = [\n"
-        "  { name = \"first-generic-change\", target = \"symjit\", "
-        f'path = "{patch_one.relative_to(root / "dependencies").as_posix()}", '
-        f'sha256 = "{hashlib.sha256(patch_one.read_bytes()).hexdigest()}", '
-        f'applies_to_revision = "{revision}" }},\n'
-        "  { name = \"second-generic-change\", target = \"symjit\", "
-        f'path = "{patch_two.relative_to(root / "dependencies").as_posix()}", '
-        f'sha256 = "{hashlib.sha256(patch_two.read_bytes()).hexdigest()}", '
-        f'applies_to_revision = "{revision}" }},\n'
-        "]\n",
-        encoding="utf-8",
-    )
-    overlay = tmp_path / "overlay"
-    shutil.copytree(root, overlay)
-    calls: list[str] = []
-
-    def open_archive(url: str, *, timeout: int) -> io.BytesIO:
-        calls.append(url)
-        assert timeout == 60
-        return io.BytesIO(archive.read_bytes())
-
-    def unexpected_subprocess(*_args, **_kwargs):
-        raise AssertionError(
-            "release SymJIT staging from an sdist must not require system Git"
-        )
-
-    monkeypatch.setattr(backend, "ROOT", root)
-    monkeypatch.setattr(backend.urllib.request, "urlopen", open_archive)
-    monkeypatch.setattr(backend.subprocess, "run", unexpected_subprocess)
-
-    backend._stage_release_symjit_source(overlay)
-
-    staged = overlay / backend._RELEASE_SYMJIT_STAGE
-    assert (staged / "src/lib.rs").read_text(encoding="utf-8").endswith("{ 2 }\n")
-    assert (staged / "Cargo.toml").stat().st_mode & 0o111 == 0o111
-    assert (staged / "src/lib.rs").stat().st_mode & 0o111 == 0
-    assert backend._release_symjit_tree_sha256(staged) == (
-        backend._release_symjit_tree_sha256(configured)
-    )
-    config = tomllib.loads(
-        (overlay / ".cargo/config.toml").read_text(encoding="utf-8")
-    )
-    assert Path(config["patch"]["crates-io"]["symjit"]["path"]) == staged
-    assert calls == [f"https://example.invalid/{revision}.tar.gz"]
 
 
 def test_release_overlay_skips_contributor_native_digest(monkeypatch) -> None:
@@ -734,7 +641,12 @@ def test_release_overlay_reuses_canonical_assets_from_source_archive(
 def test_release_prepared_model_bootstrap_overlay_is_non_publishable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(backend, "_native_build_inputs_digest", lambda _root: "c" * 64)
+    monkeypatch.setattr(
+        backend,
+        "_native_build_inputs_digest",
+        lambda _root, **_kwargs: "c" * 64,
+    )
+    source_lock = (ROOT / "Cargo.lock").read_bytes()
 
     with backend._overlay(
         "release",
@@ -754,12 +666,8 @@ def test_release_prepared_model_bootstrap_overlay_is_non_publishable(
             "source_checkout": str(ROOT.resolve()),
             "version": "0.1.0",
         }
-        with (overlay / "dependencies/release-lock.toml").open("rb") as stream:
-            symjit = tomllib.load(stream)["symjit"]
-        assert hashlib.sha256((overlay / "Cargo.lock").read_bytes()).hexdigest() == (
-            symjit["release_cargo_lock_sha256"]
-        )
-        assert (overlay / ".cargo/config.toml").is_file()
+        assert (overlay / "Cargo.lock").read_bytes() == source_lock
+        assert not (overlay / ".cargo/config.toml").exists()
 
 
 def test_release_prepared_model_bootstrap_does_not_require_git_identity(
@@ -780,6 +688,68 @@ def test_release_prepared_model_bootstrap_does_not_require_git_identity(
         )
     assert "source_revision" not in build_info
     assert build_info["native_build_inputs_sha256"] == "c" * 64
+
+
+def test_release_build_info_is_minimal_and_retained_from_sdist(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    checkout = tmp_path / "checkout"
+    (checkout / ".git").mkdir(parents=True)
+    overlay = tmp_path / "checkout-overlay"
+    monkeypatch.setattr(backend, "ROOT", checkout)
+    monkeypatch.setattr(backend, "_clean_source_revision", lambda: "a" * 40)
+
+    backend._stage_release_build_info(overlay, "0.1.0")
+    marker = overlay / "src/pyamplicol/_build_info.json"
+    expected = {
+        "schema_version": 1,
+        "publishable": True,
+        "selftest_fixture_bootstrap": False,
+        "source_revision": "a" * 40,
+        "version": "0.1.0",
+    }
+    assert json.loads(marker.read_text(encoding="utf-8")) == expected
+    retained = marker.read_bytes()
+
+    source_archive = tmp_path / "source-archive"
+    source_archive.mkdir()
+    archive_overlay = tmp_path / "archive-overlay"
+    archive_marker = archive_overlay / "src/pyamplicol/_build_info.json"
+    archive_marker.parent.mkdir(parents=True)
+    archive_marker.write_bytes(retained)
+    monkeypatch.setattr(backend, "ROOT", source_archive)
+
+    backend._stage_release_build_info(archive_overlay, "0.1.0")
+    assert archive_marker.read_bytes() == retained
+
+
+def test_release_build_info_rejects_an_expanded_archive_marker(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source_archive = tmp_path / "source-archive"
+    source_archive.mkdir()
+    overlay = tmp_path / "overlay"
+    marker = overlay / "src/pyamplicol/_build_info.json"
+    marker.parent.mkdir(parents=True)
+    marker.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "publishable": True,
+                "selftest_fixture_bootstrap": False,
+                "source_revision": "a" * 40,
+                "source_checkout": "/private/checkout",
+                "version": "0.1.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(backend, "ROOT", source_archive)
+
+    with pytest.raises(RuntimeError, match="invalid build provenance"):
+        backend._stage_release_build_info(overlay, "0.1.0")
 
 
 def test_selftest_staging_rejects_an_unavailable_target() -> None:
@@ -879,17 +849,7 @@ def test_overlay_excludes_managed_dependencies_and_includes_licenses() -> None:
         assert not (overlay / "dependencies" / "contributor-lock.toml").exists()
         assert not (overlay / "dependencies" / "install_dependencies.py").exists()
         assert not (overlay / "dependencies" / "install-state.json").exists()
-        assert all(
-            (overlay / patch).is_file()
-            for patch in backend._RELEASE_SYMJIT_PATCHES
-        )
-        assert {
-            path.relative_to(overlay / "dependencies/patches")
-            for path in (overlay / "dependencies/patches").rglob("*.patch")
-        } == {
-            patch.relative_to("dependencies/patches")
-            for patch in backend._RELEASE_SYMJIT_PATCHES
-        }
+        assert not (overlay / "dependencies" / "patches").exists()
         assert not (overlay / "dependencies" / "python-runtime-lock.toml").exists()
         assert not (overlay / "build_backend" / "python_lock.py").exists()
 
@@ -909,6 +869,60 @@ def test_wheel_examples_are_staged_from_the_single_canonical_tree() -> None:
         ).read_bytes()
         with pytest.raises(RuntimeError, match="already contains"):
             backend._stage_packaged_examples(overlay)
+
+
+def test_wheel_profiling_campaign_is_a_bounded_reset_template() -> None:
+    with backend._overlay("release") as (overlay, _target):
+        source = overlay / backend._PROFILING_CAMPAIGN_SOURCE
+        for relative in (
+            Path("pyAmpliCol.pdf"),
+            Path("pyAmpliCol.log"),
+            Path("pyAmpliCol.aux"),
+            Path(".artifacts/attempts/result.json"),
+        ):
+            path = source / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("excluded\n", encoding="utf-8")
+
+        packaged = overlay / "src/pyamplicol/_profiling_campaign"
+        assert not packaged.exists()
+        backend._stage_packaged_profiling_campaign(overlay)
+        copied = {
+            path.relative_to(packaged) for path in packaged.rglob("*") if path.is_file()
+        }
+        assert copied == set(backend._profiling_campaign_inventory(source))
+        assert len(copied) == 55
+        assert Path("steer_performance_campaign.py") in copied
+        assert Path("results/report-cache.schema.json") in copied
+        assert Path("pyAmpliCol.pdf") not in copied
+        assert Path("pyAmpliCol.log") not in copied
+        assert Path("pyAmpliCol.aux") not in copied
+        assert not any(".artifacts" in path.parts for path in copied)
+        assert (packaged / "steer_performance_campaign.py").read_bytes() == (
+            source / "steer_performance_campaign.py"
+        ).read_bytes()
+        runtime = overlay / "src/pyamplicol/_performance_report"
+        assert {path.name for path in runtime.glob("*.py")} == {
+            path.name for path in (overlay / "tools/performance_report").glob("*.py")
+        } | {"_memory_watchdog.py"}
+        assert (runtime / "manual_campaign.py").read_bytes() == (
+            overlay / "tools/performance_report/manual_campaign.py"
+        ).read_bytes()
+        assert (runtime / "_memory_watchdog.py").read_bytes() == (
+            overlay / "tools/ci/memory_watchdog.py"
+        ).read_bytes()
+        assert (runtime / "_developer/__init__.py").is_file()
+        assert (runtime / "_developer/legacy_amplicol.py").read_bytes() == (
+            overlay / "tools/developer/legacy_amplicol.py"
+        ).read_bytes()
+        oracle = runtime / "_developer/legacy_oracle"
+        assert {path.name for path in oracle.glob("*.py")} == {
+            path.name
+            for path in (overlay / "tools/developer/legacy_oracle").glob("*.py")
+        }
+        assert (oracle / "__init__.py").is_file()
+        with pytest.raises(RuntimeError, match="already contains"):
+            backend._stage_packaged_profiling_campaign(overlay)
 
 
 def test_wheel_stages_the_single_maintained_rusticol_stub() -> None:
@@ -1024,12 +1038,6 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
         Path("src/pyamplicol/_sdk/config.py"): "maintained SDK config\n",
         Path("tests/fixtures/candidate-Cargo.lock"): "fixture lock\n",
     }
-    retained.update(
-        {
-            patch: f"authenticated release patch {index}\n"
-            for index, patch in enumerate(backend._RELEASE_SYMJIT_PATCHES)
-        }
-    )
     excluded = (
         Path("dependencies/candidate-Cargo.lock"),
         Path("dependencies/candidate-cargo-config.toml"),
@@ -1089,16 +1097,19 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
     ) == {"lib", "metadata.json"}
 
 
-def test_candidate_digest_covers_only_contributor_dependency_inputs(
+def test_candidate_digest_covers_minimal_dependency_inputs(
     tmp_path: Path,
 ) -> None:
     inputs = _candidate_inputs(tmp_path)
     first = backend._candidate_digest(*inputs)
 
     state = json.loads(inputs[2].read_text(encoding="utf-8"))
-    state["sources"]["symbolica"]["worktree_sha256"] = "f" * 64
+    state["sources"]["symbolica"]["url"] = "https://example.invalid/symbolica.git"
     inputs[2].write_text(json.dumps(state), encoding="utf-8")
-    assert backend._candidate_digest(*inputs) == first
+    assert backend._candidate_digest(*inputs) != first
+    state["sources"]["symbolica"]["url"] = tomllib.loads(
+        (ROOT / "dependencies" / "contributor-lock.toml").read_text(encoding="utf-8")
+    )["symbolica"]["source_url"]
 
     state["sources"]["symbolica"]["revision"] = "0" * 40
     inputs[2].write_text(json.dumps(state), encoding="utf-8")
@@ -1282,7 +1293,21 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
 
     monkeypatch.setattr(backend, "_overlay", fake_overlay)
     monkeypatch.setattr(backend, "_check_dependencies", gates.append)
+    build_info_stages: list[tuple[Path, str]] = []
+    monkeypatch.setattr(
+        backend,
+        "_stage_release_build_info",
+        lambda path, version: build_info_stages.append((path, version)),
+    )
+    monkeypatch.setattr(
+        backend,
+        "canonical_package_version",
+        lambda _path: "0.1.0",
+    )
     monkeypatch.setattr(backend, "_stage_packaged_examples", lambda path: None)
+    monkeypatch.setattr(
+        backend, "_stage_packaged_profiling_campaign", lambda path: None
+    )
     monkeypatch.setattr(backend, "_stage_python_stub", lambda path: None)
     monkeypatch.setattr(backend, "_stage_runtime_resources", lambda path: None)
     monkeypatch.setattr(
@@ -1305,6 +1330,9 @@ def test_retained_pep517_hooks_use_gate_overlay_and_clean_environment(
     assert selftest_stages == ([(overlay, "aarch64-apple-darwin")] if with_sdk else [])
     assert prepared_model_stages == (
         [(overlay, "release")] if with_sdk or hook == "build_sdist" else []
+    )
+    assert build_info_stages == (
+        [(overlay, "0.1.0")] if hook in {"build_wheel", "build_sdist"} else []
     )
     for name, value in injected.items():
         assert os.environ[name] == value

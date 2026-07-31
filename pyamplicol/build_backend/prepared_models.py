@@ -12,19 +12,13 @@ import shutil
 import sys
 import tomllib
 from collections.abc import Mapping, Sequence
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from types import ModuleType
 from typing import Any, cast
-
-from native_build_identity import (
-    canonical_release_cargo_lock_bytes,
-    native_build_inputs_digest,
-)
 
 _ASSET_DIRECTORY = Path("src/pyamplicol/assets/prepared_models")
 _RELEASE_STORE_CONTAINER = Path("release_assets")
 _RELEASE_STORE_DIRECTORY = _RELEASE_STORE_CONTAINER / "prepared_models"
-_SOURCE_ROOT = Path(__file__).resolve().parents[1]
 _EXPECTED_ARCHITECTURES = ("aarch64", "x86_64")
 _METADATA_KEYS = frozenset(
     {
@@ -51,14 +45,9 @@ _PRODUCER_KEYS = frozenset(
         "model_compiler_sha256",
         "model_compiler_version",
         "model_source_digest",
-        "native_build_inputs_sha256",
         "package_version",
         "prepared_pack_compiler_sha256",
     }
-)
-_SYMJIT_SOURCE_KEYS = frozenset({"configured_tree_sha256", "patches"})
-_SYMJIT_PATCH_KEYS = frozenset(
-    {"applies_to_revision", "name", "path", "sha256", "target"}
 )
 _EXPECTED_ID = "built-in-sm-jit-o2"
 
@@ -193,10 +182,6 @@ def stage_packaged_prepared_models(
         )
 
     contract = _load_prepared_contract(package_root / "models" / "prepared.py")
-    native_build_inputs_sha256 = native_build_inputs_digest(
-        _SOURCE_ROOT if source_root is None else source_root,
-        normalize_release_cargo_lock=mode == "release",
-    )
     for architecture in _EXPECTED_ARCHITECTURES:
         metadata_name, expected_bundle_name = _asset_names(architecture)
         metadata = _load_json(
@@ -242,7 +227,6 @@ def stage_packaged_prepared_models(
             package_root=package_root,
             overlay=overlay,
             mode=mode,
-            native_build_inputs_sha256=native_build_inputs_sha256,
         )
 
 
@@ -366,17 +350,6 @@ def _write_packaged_prepared_model_asset(
     model_compiler_digest = _model_compiler_digest(package_root)
     prepared_pack_compiler_digest = _prepared_pack_compiler_digest(package_root)
     source_digest = _built_in_source_digest(package_root)
-    native_build_inputs_sha256 = native_build_inputs_digest(
-        overlay,
-        normalize_release_cargo_lock=mode == "release",
-    )
-    if (
-        pack.producer.get("native_build_inputs_sha256")
-        != native_build_inputs_sha256
-    ):
-        raise RuntimeError(
-            "prepared kernel-pack native build inputs SHA-256 is stale"
-        )
     expected_compiled = {
         "compiled_model_schema_version": compiled_schema,
         "model_compiler_sha256": model_compiler_digest,
@@ -404,7 +377,7 @@ def _write_packaged_prepared_model_asset(
     if mode == "candidate":
         assert contributor is not None
         symbolica_version = str(contributor["symbolica"]["candidate_version"])
-        symjit_version = str(contributor["symjit"]["candidate_version"])
+        symjit_version = str(release["symjit"]["version"])
     else:
         symbolica_version = _cargo_package_version(overlay, "symbolica")
         symjit_version = _symjit_version(overlay)
@@ -435,27 +408,10 @@ def _write_packaged_prepared_model_asset(
         if pack.dependency_abis.get(key) != expected:
             raise RuntimeError(f"prepared kernel-pack dependency {key} is stale")
 
-    if mode == "candidate":
-        assert contributor is not None
-        sources = _candidate_sources(contributor)
-    else:
-        sources = _release_sources(overlay, release)
-    symjit_source = _symjit_source_identity(
-        overlay,
-        mode=mode,
-        release=release,
-        contributor=contributor,
-    )
-
     metadata_name, bundle_name = _asset_names(architecture)
     metadata: dict[str, object] = {
         "backend": "jit",
-        "build_contract": {
-            "candidate_fingerprint": candidate_fingerprint,
-            "mode": mode,
-            "sources": sources,
-            "symjit_source": symjit_source,
-        },
+        "build_contract": {"mode": mode},
         "bundle": bundle_name,
         "bundle_sha256": hashlib.sha256(bundle_bytes).hexdigest(),
         "bundle_size": len(bundle_bytes),
@@ -476,7 +432,6 @@ def _write_packaged_prepared_model_asset(
             "model_compiler_sha256": model_compiler_digest,
             "model_compiler_version": model_compiler_version,
             "model_source_digest": source_digest,
-            "native_build_inputs_sha256": native_build_inputs_sha256,
             "package_version": package_version,
             "prepared_pack_compiler_sha256": prepared_pack_compiler_digest,
         },
@@ -511,7 +466,6 @@ def _validate_bundle(
     package_root: Path,
     overlay: Path,
     mode: str,
-    native_build_inputs_sha256: str,
 ) -> None:
     pack = bundle.kernel_pack
     if bundle.backend != "jit" or metadata.get("backend") != "jit":
@@ -554,9 +508,7 @@ def _validate_bundle(
     build_contract = _mapping(metadata.get("build_contract"), "metadata.build_contract")
     _require_exact_keys(
         build_contract,
-        frozenset(
-            {"candidate_fingerprint", "mode", "sources", "symjit_source"}
-        ),
+        frozenset({"mode"}),
         "metadata.build_contract",
     )
     if build_contract.get("mode") != mode:
@@ -565,58 +517,6 @@ def _validate_bundle(
             f"{build_contract.get('mode')!r}, not the active {mode!r} dependency mode; "
             "regenerate it with the active exact dependency lock"
         )
-    expected_fingerprint: str | None = None
-    if mode == "candidate":
-        info = _load_json(
-            package_root / "_build_info.json", "candidate package build info"
-        )
-        expected_fingerprint = _required_string(
-            info.get("candidate_fingerprint"),
-            "candidate package build info fingerprint",
-        )
-    if build_contract.get("candidate_fingerprint") != expected_fingerprint:
-        raise RuntimeError(
-            "packaged prepared model does not match the active exact dependency lock; "
-            "regenerate the built-in portable JIT O2 prepared-model asset"
-        )
-    sources = _mapping(build_contract.get("sources"), "metadata.build_contract.sources")
-    with (overlay / "dependencies" / "release-lock.toml").open("rb") as stream:
-        release = tomllib.load(stream)
-    contributor: Mapping[str, Any] | None = None
-    if mode == "candidate":
-        with (overlay / "dependencies" / "contributor-lock.toml").open(
-            "rb"
-        ) as stream:
-            contributor = tomllib.load(stream)
-        expected_sources = _candidate_sources(contributor)
-    else:
-        expected_sources = _release_sources(overlay, release)
-    if dict(sources) != expected_sources:
-        raise RuntimeError(
-            "packaged prepared model source identity is stale; "
-            f"regenerate it with the active {mode} lock"
-        )
-    symjit_source = _mapping(
-        build_contract.get("symjit_source"),
-        "metadata.build_contract.symjit_source",
-    )
-    _require_exact_keys(
-        symjit_source,
-        _SYMJIT_SOURCE_KEYS,
-        "metadata.build_contract.symjit_source",
-    )
-    expected_symjit_source = _symjit_source_identity(
-        overlay,
-        mode=mode,
-        release=release,
-        contributor=contributor,
-    )
-    if _plain_json(symjit_source) != expected_symjit_source:
-        raise RuntimeError(
-            "packaged prepared model SymJIT configured source identity is stale; "
-            f"regenerate it with the active {mode} lock and patch closure"
-        )
-
     compiled = dict(bundle.compiled_model)
     producer = _mapping(compiled.get("producer"), "compiled_model.producer")
     source = _mapping(compiled.get("source"), "compiled_model.source")
@@ -645,7 +545,6 @@ def _validate_bundle(
         "model_compiler_sha256": model_compiler_sha256,
         "model_compiler_version": compiler_version,
         "model_source_digest": model_source_digest,
-        "native_build_inputs_sha256": native_build_inputs_sha256,
         "package_version": _expected_package_version(overlay, mode),
         "prepared_pack_compiler_sha256": prepared_pack_compiler_sha256,
     }
@@ -671,13 +570,6 @@ def _validate_bundle(
         raise RuntimeError("prepared kernel-pack compiled-model schema is stale")
     if pack.producer.get("model_compiler_version") != compiler_version:
         raise RuntimeError("prepared kernel-pack model compiler version is stale")
-    if (
-        pack.producer.get("native_build_inputs_sha256")
-        != native_build_inputs_sha256
-    ):
-        raise RuntimeError(
-            "prepared kernel-pack native build inputs SHA-256 is stale"
-        )
     if pack.provenance.get("model_name") != "built-in-sm":
         raise RuntimeError("prepared kernel-pack model provenance is invalid")
     if pack.provenance.get("compiled_model_digest") != model_source_digest:
@@ -795,198 +687,6 @@ def _release_package_version(
             "release package version differs between Cargo.toml and release-lock.toml"
         )
     return cargo_version
-
-
-def _candidate_sources(contributor: Mapping[str, Any]) -> dict[str, str]:
-    """Return the contributor-lock source revisions used by candidate packs."""
-
-    try:
-        symbolica = _mapping(
-            contributor["symbolica"],
-            "contributor-lock Symbolica source",
-        )
-        symjit = _mapping(
-            contributor["symjit"],
-            "contributor-lock SymJIT source",
-        )
-    except KeyError as error:
-        raise RuntimeError("contributor-lock source identity is incomplete") from error
-    return {
-        "symbolica": _required_string(
-            symbolica.get("candidate_revision"),
-            "contributor-lock Symbolica revision",
-        ),
-        "symbolica-community": _required_string(
-            symbolica.get("community_revision"),
-            "contributor-lock Symbolica community revision",
-        ),
-        "symjit": _required_string(
-            symjit.get("candidate_revision"),
-            "contributor-lock SymJIT revision",
-        ),
-    }
-
-
-def _symjit_source_identity(
-    overlay: Path,
-    *,
-    mode: str,
-    release: Mapping[str, Any],
-    contributor: Mapping[str, Any] | None,
-) -> dict[str, object]:
-    """Return and authenticate the configured tree and ordered patch closure."""
-
-    try:
-        if mode == "candidate":
-            if contributor is None:
-                raise RuntimeError(
-                    "candidate prepared-model identity has no contributor lock"
-                )
-            symjit = _mapping(
-                contributor["symjit"],
-                "contributor-lock SymJIT source",
-            )
-            revision = _required_string(
-                symjit.get("candidate_revision"),
-                "contributor-lock SymJIT revision",
-            )
-            configured_tree = _required_sha256(
-                symjit.get("candidate_tree_sha256"),
-                "contributor-lock SymJIT configured tree",
-            )
-            raw_patches = contributor.get("patches")
-        else:
-            symjit = _mapping(release["symjit"], "release-lock SymJIT source")
-            revision = _required_string(
-                symjit.get("revision"),
-                "release-lock SymJIT revision",
-            )
-            configured_tree = _required_sha256(
-                symjit.get("configured_tree_sha256"),
-                "release-lock SymJIT configured tree",
-            )
-            raw_patches = symjit.get("patches")
-    except KeyError as error:
-        raise RuntimeError(f"{mode} SymJIT source identity is incomplete") from error
-
-    if not isinstance(raw_patches, list) or not raw_patches:
-        raise RuntimeError(f"{mode} SymJIT patch closure must be a nonempty list")
-    dependency_root = (overlay / "dependencies").resolve()
-    patches: list[dict[str, str]] = []
-    names: set[str] = set()
-    relatives: set[str] = set()
-    for index, raw_patch in enumerate(raw_patches):
-        patch = _mapping(raw_patch, f"{mode} SymJIT patch {index}")
-        _require_exact_keys(
-            patch,
-            _SYMJIT_PATCH_KEYS,
-            f"{mode} SymJIT patch {index}",
-        )
-        normalized = {
-            key: _required_string(
-                patch.get(key),
-                f"{mode} SymJIT patch {index}.{key}",
-            )
-            for key in sorted(_SYMJIT_PATCH_KEYS)
-        }
-        relative = normalized["path"]
-        pure = PurePosixPath(relative)
-        if (
-            normalized["name"] in names
-            or relative in relatives
-            or normalized["target"] != "symjit"
-            or normalized["applies_to_revision"] != revision
-            or pure.is_absolute()
-            or not pure.parts
-            or pure.parts[0] != "patches"
-            or pure.suffix != ".patch"
-            or any(part in {"", ".", ".."} for part in pure.parts)
-        ):
-            raise RuntimeError(
-                f"{mode} SymJIT patch {index} has an invalid identity"
-            )
-        _required_sha256(
-            normalized["sha256"],
-            f"{mode} SymJIT patch {index} digest",
-        )
-        patch_path = overlay / "dependencies" / Path(*pure.parts)
-        try:
-            resolved = patch_path.resolve(strict=True)
-            resolved.relative_to(dependency_root)
-        except (OSError, ValueError) as error:
-            raise RuntimeError(
-                f"{mode} SymJIT patch {index} is missing or unsafe"
-            ) from error
-        current = overlay / "dependencies"
-        for part in pure.parts:
-            current /= part
-            if current.is_symlink():
-                raise RuntimeError(
-                    f"{mode} SymJIT patch {index} uses a symlink"
-                )
-        if not resolved.is_file():
-            raise RuntimeError(f"{mode} SymJIT patch {index} is not a regular file")
-        if hashlib.sha256(resolved.read_bytes()).hexdigest() != normalized["sha256"]:
-            raise RuntimeError(
-                f"{mode} SymJIT patch {index} content does not match its lock digest"
-            )
-        names.add(normalized["name"])
-        relatives.add(relative)
-        patches.append(normalized)
-    return {
-        "configured_tree_sha256": configured_tree,
-        "patches": patches,
-    }
-
-
-def _release_sources(
-    overlay: Path, release: Mapping[str, Any] | None = None
-) -> dict[str, str]:
-    """Return the release source identity without consulting contributor state."""
-
-    if release is None:
-        with (overlay / "dependencies" / "release-lock.toml").open("rb") as stream:
-            release = tomllib.load(stream)
-    symbolica = _required_string(
-        release["symbolica"]["rust_version"], "release-lock Symbolica version"
-    )
-    symjit_version = _required_string(
-        release["symjit"]["version"], "release-lock SymJIT version"
-    )
-    symjit_revision = _required_string(
-        release["symjit"]["revision"], "release-lock SymJIT revision"
-    )
-    if _cargo_package_version(overlay, "symbolica") != symbolica:
-        raise RuntimeError(
-            "Cargo.lock Symbolica version differs from release-lock.toml"
-        )
-    if _cargo_package_version(overlay, "symjit") != symjit_version:
-        raise RuntimeError("Cargo.lock SymJIT version differs from release-lock.toml")
-    cargo_lock_path = overlay / "Cargo.lock"
-    cargo_lock_bytes = cargo_lock_path.read_bytes()
-    canonical_release_cargo_lock_bytes(overlay, cargo_lock_bytes)
-    cargo_lock = tomllib.loads(cargo_lock_bytes.decode("utf-8"))
-    packages = cargo_lock.get("package")
-    if not isinstance(packages, list):
-        raise RuntimeError("Cargo.lock has no package array")
-    symjit_packages = [
-        package
-        for package in packages
-        if isinstance(package, dict) and package.get("name") == "symjit"
-    ]
-    if len(symjit_packages) != 1:
-        raise RuntimeError("Cargo.lock must contain exactly one symjit package")
-    source = symjit_packages[0].get("source")
-    expected_source = (
-        f"git+{release['symjit']['repository']}?rev={symjit_revision}"
-        f"#{symjit_revision}"
-    )
-    if source not in {None, expected_source}:
-        raise RuntimeError("Cargo.lock SymJIT source differs from release-lock.toml")
-    return {
-        "symbolica": symbolica,
-        "symjit": symjit_revision,
-    }
 
 
 def _cargo_package_version(overlay: Path, package_name: str) -> str:

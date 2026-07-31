@@ -463,6 +463,7 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument("--prepared-model", type=Path)
     worker.add_argument("--reused-measurement-json", type=Path)
     worker.add_argument("--legacy-repository", type=Path, help=argparse.SUPPRESS)
+    worker.add_argument("--legacy-source-revision", help=argparse.SUPPRESS)
     worker.add_argument(
         "--target-runtime",
         type=float,
@@ -1495,6 +1496,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             phase_state_run_id=args.phase_state_run_id,
             phase_state_authentication_key=args.phase_state_authentication_key,
             legacy_repository=args.legacy_repository,
+            legacy_source_revision=args.legacy_source_revision,
             log_path=args.log_path,
             worker_harness=worker_harness,
         )

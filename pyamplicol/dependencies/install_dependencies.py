@@ -13,14 +13,13 @@ import shlex
 import shutil
 import subprocess
 import sys
-import tarfile
 import tempfile
 import tomllib
 import urllib.request
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,17 +41,6 @@ TRASH = ROOT / ".trash"
 sys.path.insert(0, str(ROOT / "build_backend"))
 from python_lock import load_python_runtime_lock  # noqa: E402
 
-_SOURCE_TREE_EXCLUDES = {
-    ".git",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    ".venv",
-    "__pycache__",
-    "build",
-    "dist",
-    "target",
-}
 _WORKSPACE_CRATES = frozenset(
     {
         "rusticol-capi",
@@ -70,7 +58,6 @@ _CANDIDATE_PATH_CRATES = frozenset(
 )
 _CRATES_IO_SOURCE = "registry+https://github.com/rust-lang/crates.io-index"
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
-_EMPTY_PATCH_CLOSURE_SHA256 = hashlib.sha256(b"[]").hexdigest()
 
 
 class SetupError(RuntimeError):
@@ -87,16 +74,6 @@ class Source:
     @property
     def path(self) -> Path:
         return CHECKOUTS / self.key
-
-
-@dataclass(frozen=True)
-class ContributorPatch:
-    name: str
-    target: str
-    relative_path: str
-    path: Path
-    sha256: str
-    applies_to_revision: str
 
 
 class Runner:
@@ -168,8 +145,14 @@ def _lock() -> dict[str, Any]:
 
 def _sources(payload: dict[str, Any], *, with_legacy: bool) -> tuple[Source, ...]:
     symbolica = payload["symbolica"]
+    symjit = payload["symjit"]
     gammaloop = payload["gammaloop_candidate"]
     sources = [
+        Source(
+            "symjit",
+            str(symjit["repository"]),
+            str(symjit["revision"]),
+        ),
         Source(
             "symbolica",
             str(symbolica["source_url"]),
@@ -298,176 +281,6 @@ def _git_head(runner: Runner, path: Path) -> str:
     return completed.stdout.strip()
 
 
-def _source_tree_sha256(root: Path) -> str:
-    """Hash every candidate source byte outside deterministic build caches."""
-
-    digest = hashlib.sha256()
-    for raw_directory, raw_directories, raw_files in os.walk(root, topdown=True):
-        directory = Path(raw_directory)
-        directories = sorted(
-            name for name in raw_directories if name not in _SOURCE_TREE_EXCLUDES
-        )
-        raw_directories[:] = [
-            name for name in directories if not (directory / name).is_symlink()
-        ]
-        entries = [
-            *(
-                directory / name
-                for name in directories
-                if (directory / name).is_symlink()
-            ),
-            *(
-                directory / name
-                for name in sorted(raw_files)
-                if name not in _SOURCE_TREE_EXCLUDES
-                and not name.endswith((".pyc", ".pyo"))
-            ),
-        ]
-        for path in entries:
-            relative = path.relative_to(root).as_posix().encode("utf-8")
-            mode = path.lstat().st_mode & 0o111
-            digest.update(len(relative).to_bytes(8, "big"))
-            digest.update(relative)
-            digest.update(mode.to_bytes(2, "big"))
-            if path.is_symlink():
-                target = os.readlink(path).encode("utf-8")
-                digest.update(b"L")
-                digest.update(len(target).to_bytes(8, "big"))
-                digest.update(target)
-            elif path.is_file():
-                digest.update(b"F")
-                with path.open("rb") as stream:
-                    while block := stream.read(1024 * 1024):
-                        digest.update(block)
-            else:
-                digest.update(b"O")
-    return digest.hexdigest()
-
-
-def _contributor_patches(
-    payload: dict[str, Any],
-) -> tuple[ContributorPatch, ...]:
-    """Load and authenticate the ordered generic contributor patch series."""
-
-    raw_patches = payload.get("patches")
-    if not isinstance(raw_patches, list):
-        raise SetupError("contributor lock patches must be a list")
-    allowed_keys = {
-        "name",
-        "target",
-        "path",
-        "sha256",
-        "applies_to_revision",
-    }
-    dependency_root = DEPENDENCIES.resolve()
-    patches: list[ContributorPatch] = []
-    seen_names: set[str] = set()
-    seen_paths: set[str] = set()
-    for index, entry in enumerate(raw_patches):
-        if not isinstance(entry, dict) or set(entry) != allowed_keys:
-            raise SetupError(
-                f"contributor patch {index} must contain only "
-                + "/".join(sorted(allowed_keys))
-            )
-        values = {key: entry[key] for key in allowed_keys}
-        if not all(isinstance(value, str) and value for value in values.values()):
-            raise SetupError(
-                f"contributor patch {index} fields must be nonempty strings"
-            )
-        name = str(entry["name"])
-        target = str(entry["target"])
-        relative = str(entry["path"])
-        expected_sha256 = str(entry["sha256"])
-        revision = str(entry["applies_to_revision"])
-        if name in seen_names:
-            raise SetupError(f"contributor patch name is repeated: {name}")
-        if relative in seen_paths:
-            raise SetupError(f"contributor patch path is repeated: {relative}")
-        if target != "symjit":
-            raise SetupError(f"unsupported contributor patch target: {target}")
-        target_revision = str(payload["symjit"]["candidate_revision"])
-        if revision != target_revision:
-            raise SetupError(
-                f"contributor patch {name} targets revision {revision}, "
-                f"expected {target_revision}"
-            )
-        if _SHA256_PATTERN.fullmatch(expected_sha256) is None:
-            raise SetupError(f"contributor patch {name} has an invalid SHA-256")
-        pure = PurePosixPath(relative)
-        if (
-            pure.is_absolute()
-            or not pure.parts
-            or pure.parts[0] != "patches"
-            or pure.suffix != ".patch"
-            or any(part in {"", ".", ".."} for part in pure.parts)
-        ):
-            raise SetupError(
-                f"contributor patch {name} has an unsafe dependency path: {relative}"
-            )
-        path = DEPENDENCIES.joinpath(*pure.parts)
-        try:
-            resolved = path.resolve(strict=True)
-            resolved.relative_to(dependency_root)
-        except (OSError, ValueError) as error:
-            raise SetupError(
-                f"contributor patch {name} is missing or escapes dependencies: "
-                f"{relative}"
-            ) from error
-        current = DEPENDENCIES
-        for part in pure.parts:
-            current /= part
-            if current.is_symlink():
-                raise SetupError(f"contributor patch {name} may not use symlinks")
-        if not resolved.is_file():
-            raise SetupError(f"contributor patch {name} is not a regular file")
-        actual_sha256 = hashlib.sha256(resolved.read_bytes()).hexdigest()
-        if actual_sha256 != expected_sha256:
-            raise SetupError(
-                f"contributor patch {name} digest mismatch: "
-                f"expected {expected_sha256}, got {actual_sha256}"
-            )
-        patches.append(
-            ContributorPatch(
-                name=name,
-                target=target,
-                relative_path=pure.as_posix(),
-                path=resolved,
-                sha256=expected_sha256,
-                applies_to_revision=revision,
-            )
-        )
-        seen_names.add(name)
-        seen_paths.add(relative)
-    return tuple(patches)
-
-
-def _patch_state(
-    patches: Sequence[ContributorPatch],
-) -> list[dict[str, str]]:
-    return [
-        {
-            "name": patch.name,
-            "target": patch.target,
-            "path": patch.relative_path,
-            "sha256": patch.sha256,
-            "applies_to_revision": patch.applies_to_revision,
-        }
-        for patch in patches
-    ]
-
-
-def _patch_closure_sha256(patches: Sequence[ContributorPatch]) -> str:
-    """Hash the complete ordered patch contract for compact provenance."""
-
-    encoded = json.dumps(
-        _patch_state(patches),
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
-
-
 def _managed_checkout(name: str) -> Path:
     """Return one exact managed checkout child that cannot escape by symlink."""
 
@@ -521,129 +334,21 @@ def _managed_symjit_checkout() -> Path:
     return _managed_checkout("symjit")
 
 
-def _apply_contributor_patches(
-    runner: Runner,
-    payload: dict[str, Any],
-) -> None:
-    """Apply each authenticated patch once, or verify it is already applied."""
-
-    destination = _managed_symjit_checkout()
-    patches = _contributor_patches(payload)
-    if not patches:
-        return
-    if runner.dry_run:
-        for patch in patches:
-            print(
-                f"# verify/apply {patch.name} to {patch.target} "
-                f"at {patch.applies_to_revision}"
-            )
-        return
-    if not destination.is_dir():
-        raise SetupError("contributor patch target is missing: symjit")
-    expected = str(payload["symjit"]["candidate_tree_sha256"])
-    if _source_tree_sha256(destination) == expected:
-        return
-
-    patch_environment = dict(os.environ)
-    for name in ("GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE"):
-        patch_environment.pop(name, None)
-    # The archive is not a Git checkout. Prevent Git from adopting the parent
-    # pyAmpliCol repository, where the managed checkout is ignored.
-    patch_environment["GIT_CEILING_DIRECTORIES"] = str(
-        destination.parent.resolve()
-    )
-    for patch in patches:
-        forward = [
-            "git",
-            "apply",
-            "--check",
-            "--whitespace=nowarn",
-            patch.path,
-        ]
-        reverse = [
-            "git",
-            "apply",
-            "--check",
-            "--reverse",
-            "--whitespace=nowarn",
-            patch.path,
-        ]
-        can_apply = runner.run(
-            forward,
-            cwd=destination,
-            env=patch_environment,
-            capture=True,
-            check=False,
-        )
-        is_applied = runner.run(
-            reverse,
-            cwd=destination,
-            env=patch_environment,
-            capture=True,
-            check=False,
-        )
-        if can_apply.returncode == 0 and is_applied.returncode == 0:
-            raise SetupError(
-                f"contributor patch {patch.name} has ambiguous apply state"
-            )
-        if can_apply.returncode == 0:
-            runner.run(
-                ["git", "apply", "--whitespace=nowarn", patch.path],
-                cwd=destination,
-                env=patch_environment,
-                capture=True,
-            )
-            is_applied = runner.run(
-                reverse,
-                cwd=destination,
-                env=patch_environment,
-                capture=True,
-                check=False,
-            )
-        if is_applied.returncode != 0:
-            detail = (
-                can_apply.stderr.strip()
-                or is_applied.stderr.strip()
-                or "patch does not match the managed source"
-            )
-            raise SetupError(
-                f"contributor patch {patch.name} is neither cleanly applicable "
-                f"nor fully applied; rerun with --reset: {detail}"
-            )
-
-
-def _verify_symjit_tree(runner: Runner, payload: dict[str, Any]) -> str | None:
-    """Verify the final configured SymJIT source-tree identity."""
-
-    destination = _managed_symjit_checkout()
-    symjit = payload["symjit"]
-    source = symjit.get("source_tree_sha256")
-    expected = symjit.get("candidate_tree_sha256")
-    if (
-        not isinstance(source, str)
-        or _SHA256_PATTERN.fullmatch(source) is None
-        or not isinstance(expected, str)
-        or _SHA256_PATTERN.fullmatch(expected) is None
-    ):
-        raise SetupError("contributor lock has no valid SymJIT source-tree SHA-256")
-    if not payload.get("patches") and expected != source:
-        raise SetupError(
-            "patchless SymJIT source and candidate tree identities must match"
-        )
-    if runner.dry_run:
-        print(f"# verify configured SymJIT tree at sha256:{expected}")
-        return None
-    actual = _source_tree_sha256(destination)
-    if actual != expected:
-        raise SetupError(
-            "configured SymJIT source tree digest mismatch: "
-            f"expected {expected}, got {actual}; rerun with --reset"
-        )
-    return actual
-
-
 def _checkout(runner: Runner, source: Source, *, update: bool) -> None:
     destination = _managed_checkout(source.key)
+    if destination.exists() and not (destination / ".git").exists():
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        archived = _managed_trash_destination(
+            f"superseded-{source.key}-{stamp}",
+            workspace_root=ROOT,
+        )
+        print(
+            f"$ mv {shlex.quote(str(destination))} "
+            f"{shlex.quote(str(archived))}"
+        )
+        if not runner.dry_run:
+            archived.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(destination), str(archived))
     if not destination.exists():
         destination.parent.mkdir(parents=True, exist_ok=True)
         clone_command = [
@@ -677,108 +382,6 @@ def _checkout(runner: Runner, source: Source, *, update: bool) -> None:
         ["git", "checkout", "--detach", source.revision],
         cwd=destination,
     )
-
-
-def _materialize_symjit(runner: Runner, payload: dict[str, Any]) -> None:
-    """Materialize the exact checksummed SymJIT source archive."""
-
-    destination = _managed_symjit_checkout()
-    symjit = payload["symjit"]
-    version = str(symjit["candidate_version"])
-    expected_sha256 = str(symjit["archive_sha256"])
-    archive_prefix = str(symjit["archive_prefix"])
-    if runner.dry_run:
-        print(
-            f"# download and verify SymJIT {version} from {symjit['source_url']} "
-            f"at sha256:{expected_sha256}"
-        )
-        return
-
-    manifest = destination / "Cargo.toml"
-    if destination.is_dir():
-        source_tree = str(symjit["source_tree_sha256"])
-        candidate_tree = str(symjit["candidate_tree_sha256"])
-        installed_tree = _source_tree_sha256(destination)
-        if installed_tree in {source_tree, candidate_tree}:
-            _require_symjit_rlib_manifest(
-                manifest,
-                expected_version=version,
-            )
-            return
-        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-        archived = _managed_trash_destination(
-            f"symjit-source-{stamp}-{installed_tree[:12]}",
-            workspace_root=CHECKOUTS.parent.parent,
-        )
-        print(
-            f"$ mv {shlex.quote(str(destination))} "
-            f"{shlex.quote(str(archived))}"
-        )
-        archived.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(destination), str(archived))
-    elif destination.exists():
-        raise SetupError(f"invalid managed SymJIT source at {destination}")
-
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(
-        prefix="symjit-source-", dir=destination.parent
-    ) as raw:
-        temporary = Path(raw)
-        archive = temporary / f"symjit-{version}.crate"
-        with urllib.request.urlopen(str(symjit["source_url"])) as response:
-            archive.write_bytes(response.read())
-        actual_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
-        if actual_sha256 != expected_sha256:
-            raise SetupError(
-                "SymJIT source archive digest mismatch: "
-                f"expected {expected_sha256}, got {actual_sha256}"
-            )
-        extracted = temporary / "extracted"
-        extracted.mkdir()
-        prefix = archive_prefix
-        with tarfile.open(archive, "r:gz") as source:
-            for member in source.getmembers():
-                path = Path(member.name)
-                if (
-                    path.is_absolute()
-                    or not path.parts
-                    or path.parts[0] != prefix
-                    or any(part in {"", ".", ".."} for part in path.parts)
-                    or member.issym()
-                    or member.islnk()
-                ):
-                    raise SetupError(f"unsafe SymJIT archive member: {member.name}")
-                relative = Path(*path.parts[1:])
-                target = extracted / relative
-                if member.isdir():
-                    target.mkdir(parents=True, exist_ok=True)
-                elif member.isfile():
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    stream = source.extractfile(member)
-                    if stream is None:
-                        raise SetupError(
-                            f"could not read SymJIT archive member: {member.name}"
-                        )
-                    target.write_bytes(stream.read())
-                    target.chmod(
-                        (target.stat().st_mode & ~0o111) | (member.mode & 0o111)
-                    )
-                else:
-                    raise SetupError(
-                        f"unsupported SymJIT archive member: {member.name}"
-                    )
-        expected_tree = str(symjit["source_tree_sha256"])
-        actual_tree = _source_tree_sha256(extracted)
-        if actual_tree != expected_tree:
-            raise SetupError(
-                "pristine SymJIT source tree digest mismatch: "
-                f"expected {expected_tree}, got {actual_tree}"
-            )
-        _require_symjit_rlib_manifest(
-            extracted / "Cargo.toml",
-            expected_version=version,
-        )
-        os.replace(extracted, destination)
 
 
 def _replace_section(text: str, name: str, body: str) -> str:
@@ -826,11 +429,13 @@ def _configure_source_manifests(runner: Runner) -> None:
     gammaloop = _managed_checkout("gammaloop")
     if runner.dry_run:
         print(
-            "# configure candidate Cargo manifests to pinned local paths; "
-            "verify the configured SymJIT tree remains authenticated"
+            "# configure candidate Cargo manifests to pinned local paths"
         )
         return
-    _require_symjit_rlib_manifest(symjit / "Cargo.toml")
+    _require_symjit_rlib_manifest(
+        symjit / "Cargo.toml",
+        expected_version=str(_release_lock()["symjit"]["version"]),
+    )
 
     symbolica_cargo = symbolica / "Cargo.toml"
     text = symbolica_cargo.read_text(encoding="utf-8")
@@ -1124,7 +729,6 @@ def _rewrite_candidate_requirements(root: Path) -> None:
     """Project published release pins onto the pinned candidate sources."""
 
     lock = _lock()
-    release = _release_lock()
     manifest = root / "rust" / "crates" / "rusticol-core" / "Cargo.toml"
     text = manifest.read_text(encoding="utf-8")
     projections = (
@@ -1132,11 +736,6 @@ def _rewrite_candidate_requirements(root: Path) -> None:
             "symbolica",
             str(lock["symbolica"]["rust_version"]),
             str(lock["symbolica"]["candidate_version"]),
-        ),
-        (
-            "symjit",
-            str(release["symjit"]["version"]),
-            str(lock["symjit"]["candidate_version"]),
         ),
     )
     for dependency, published, candidate in projections:
@@ -1548,14 +1147,11 @@ def _build_candidate_wheels(
 
 def _write_state(
     runner: Runner,
-    payload: dict[str, Any],
     sources: tuple[Source, ...],
 ) -> None:
-    symjit_checkout = _managed_symjit_checkout()
     source_checkouts = {
         source.key: _managed_checkout(source.key) for source in sources
     }
-    patches = _contributor_patches(payload)
     if runner.dry_run:
         print(f"# write {STATE}")
         return
@@ -1566,36 +1162,13 @@ def _write_state(
         source_state[source.key] = {
             "url": source.url,
             "revision": head,
-            "worktree_sha256": _source_tree_sha256(checkout),
         }
         if source.branch is not None:
             source_state[source.key]["branch"] = source.branch
     state = {
         "schema_version": 1,
-        "created_utc": datetime.now(UTC).isoformat(),
         "publishable": False,
-        "release_lock_sha256": hashlib.sha256(RELEASE_LOCK.read_bytes()).hexdigest(),
-        "contributor_lock_sha256": hashlib.sha256(
-            CONTRIBUTOR_LOCK.read_bytes()
-        ).hexdigest(),
-        "python_runtime_lock_sha256": hashlib.sha256(
-            PYTHON_LOCK.read_bytes()
-        ).hexdigest(),
-        "candidate_lock_sha256": hashlib.sha256(
-            CANDIDATE_LOCK.read_bytes()
-        ).hexdigest(),
-        "cargo_config_sha256": hashlib.sha256(CARGO_CONFIG.read_bytes()).hexdigest(),
         "sources": source_state,
-        "patches": _patch_state(patches),
-    }
-    symjit = payload["symjit"]
-    source_state["symjit"] = {
-        "url": str(symjit["source_url"]),
-        "revision": str(symjit["candidate_revision"]),
-        "version": str(symjit["candidate_version"]),
-        "archive_sha256": str(symjit["archive_sha256"]),
-        "patch_sha256": _patch_closure_sha256(patches),
-        "worktree_sha256": _source_tree_sha256(symjit_checkout),
     }
     STATE.write_text(
         json.dumps(state, indent=2, sort_keys=True) + "\n",
@@ -1622,7 +1195,6 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     payload = _lock()
-    _contributor_patches(payload)
     runner = Runner(dry_run=args.dry_run)
     if args.reset:
         _archive_managed_state(runner)
@@ -1636,13 +1208,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     _ensure_venv(runner, payload)
     for source in sources:
         _checkout(runner, source, update=args.update)
-    _materialize_symjit(runner, payload)
-    _apply_contributor_patches(runner, payload)
     _configure_sources(runner)
-    _verify_symjit_tree(runner, payload)
     _write_cargo_config(runner)
     _write_candidate_lock(runner)
-    _write_state(runner, payload, sources)
+    _write_state(runner, sources)
     if args.dependencies_only:
         _build_candidate_dependency_wheels(runner, payload)
     elif not args.no_build:

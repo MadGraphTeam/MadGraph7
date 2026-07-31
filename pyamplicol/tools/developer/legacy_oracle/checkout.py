@@ -15,6 +15,9 @@ from typing import Any, cast
 
 from .model import (
     LOCK,
+    PINNED_REFERENCE_BRANCH,
+    PINNED_REFERENCE_REVISION,
+    PINNED_SOURCE_URL,
     CompilerProvenance,
     LegacyOracleError,
 )
@@ -45,8 +48,20 @@ def _run(
 
 
 def _contributor_lock(*, lock_path: Path = LOCK) -> dict[str, Any]:
-    with lock_path.open("rb") as stream:
-        return tomllib.load(stream)
+    try:
+        with lock_path.open("rb") as stream:
+            return tomllib.load(stream)
+    except FileNotFoundError:
+        # Published profiling runtimes do not redistribute contributor locks.
+        # Manual campaigns inject the capability checkout's actual revision;
+        # this record retains a usable reference for standalone oracle helpers.
+        return {
+            "legacy_amplicol": {
+                "branch": PINNED_REFERENCE_BRANCH,
+                "revision": PINNED_REFERENCE_REVISION,
+                "source_url": PINNED_SOURCE_URL,
+            }
+        }
 
 
 def expected_revision(*, lock: Mapping[str, Any] | None = None) -> str:

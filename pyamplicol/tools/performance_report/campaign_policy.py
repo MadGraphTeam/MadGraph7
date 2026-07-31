@@ -11,12 +11,22 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
-from tools.ci.memory_watchdog import (
-    DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON,
-    DARWIN_PHYSICAL_FOOTPRINT_PROBE_REASON,
-    MEMORY_PROBE_REASON,
-    RSS_LIMIT_REASON,
-)
+try:
+    from tools.ci.memory_watchdog import (
+        DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON,
+        DARWIN_PHYSICAL_FOOTPRINT_PROBE_REASON,
+        MEMORY_PROBE_REASON,
+        RSS_LIMIT_REASON,
+    )
+except ModuleNotFoundError as error:
+    if error.name not in {"tools", "tools.ci", "tools.ci.memory_watchdog"}:
+        raise
+    from ._memory_watchdog import (
+        DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON,
+        DARWIN_PHYSICAL_FOOTPRINT_PROBE_REASON,
+        MEMORY_PROBE_REASON,
+        RSS_LIMIT_REASON,
+    )
 
 from .cache import empty_measurement
 from .models import Accuracy, CellSpec, ExecutionMode, ResultStatus, Workload

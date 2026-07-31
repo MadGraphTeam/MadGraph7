@@ -4,29 +4,22 @@
 
 pyAmpliCol uses
 [`siravan/symjit-crate`](https://github.com/siravan/symjit-crate) 2.22.0 at
-the immutable revision
-`77789ff0f78232b1ea4608aceb397058df50b06d`. Contributor and release
-dependency policy both authenticate that repository and revision. Contributor
-installation downloads the checksummed archive into
-`dependencies/checkouts/symjit`, verifies the pristine source tree, applies
-the ordered generic patch set, verifies the resulting tree, and path-patches
-both pyAmpliCol and Symbolica to that single checkout.
+immutable revision `d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7`.
+The generic `#[repr(C)]` raw plane descriptor and scalar/SIMD P-kernel
+accessors were merged upstream in
+[`siravan/symjit-crate#1`](https://github.com/siravan/symjit-crate/pull/1).
 
-There is one generic local patch:
+Contributor installation clones the exact upstream revision into
+`dependencies/checkouts/symjit`, checks its package/version/`rlib` manifest,
+and path-patches both pyAmpliCol and Symbolica to that checkout. Release builds
+let Cargo resolve the same immutable Git commit directly. pyAmpliCol no longer
+downloads a separate source archive, applies a local patch, fingerprints a
+source tree, or stages a release-only path dependency.
 
-```text
-dependencies/patches/symjit/upstream/
-  0001-Expose-a-stable-raw-P-kernel-plane-descriptor.patch
-```
-
-Its revision, SHA-256, and patched-tree identity are authoritative in
-`dependencies/contributor-lock.toml`. The patch adds a `#[repr(C)]` raw plane
-descriptor and scalar/SIMD P-kernel accessors. It does not change generated
-kernel bodies, add pyAmpliCol concepts, or encode amplitude schedules,
-operations, factors, or fanout. The patch exists because Rust mutable-slice
-descriptors cannot soundly express duplicate inputs or intentional
-input/output aliases. It is intended to be submitted upstream as a generally
-useful SymJIT interface.
+The generic change does not alter generated kernel bodies, add pyAmpliCol
+concepts, or encode amplitude schedules, operations, factors, or fanout. It is
+needed because Rust mutable-slice descriptors cannot soundly express duplicate
+inputs or intentional input/output aliases.
 
 This boundary supersedes the former private-fork DirectApplication and
 DirectTable design. The complete migration and acceptance gates are recorded
@@ -67,7 +60,7 @@ scalar-only kernel remains a supported fallback.
 | Concern | Owner |
 | --- | --- |
 | Structured instruction translation, P-kernel compilation, portable application storage, and scalar/SIMD machine code | SymJIT |
-| Stable raw plane-descriptor type and raw P-kernel accessors | Generic SymJIT patch |
+| Stable raw plane-descriptor type and raw P-kernel accessors | SymJIT upstream |
 | Deterministic compiler configuration and plane-binding metadata | pyAmpliCol |
 | Arena allocation, persistent broadcast and scratch planes, and descriptor lifetimes | Rusticol |
 | Schedule order, recurrence roles, eager row orchestration, fanout, and hazard rejection | Rusticol |
@@ -129,7 +122,7 @@ actual-row contract. There is no compatibility loader which rewrites either
 executable format.
 
 The dependency gate and `cargo tree` must show one SymJIT 2.22.0 source from
-`siravan/symjit-crate`. Historical performance captures may retain their
+the immutable upstream commit. Historical performance captures may retain their
 original dependency identities as provenance, but no active build,
 configuration, generated asset, or runtime adapter may depend on the former
 private fork.

@@ -37,7 +37,7 @@ thiserror = "2.0"
 wide = "1.3"
 
 [patch.crates-io]
-symjit = { git = "https://github.com/siravan/symjit-crate.git", rev = "77789ff0f78232b1ea4608aceb397058df50b06d" }
+symjit = { git = "https://github.com/siravan/symjit-crate.git", rev = "d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7" }
 
 [profile.release]
 codegen-units = 1

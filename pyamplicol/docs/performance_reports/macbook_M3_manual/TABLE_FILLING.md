@@ -7,9 +7,26 @@ The executable controller is the authoritative campaign interface:
 ./docs/performance_reports/macbook_M3_manual/steer_performance_campaign.py --help
 ```
 
-It re-executes with the repository `.venv`, reuses compatible same-source
-currents by default, supervises each process tree, and keeps attempts and large
-artifacts outside this publication directory.
+For an installed release wheel, first copy a fresh reset campaign and invoke
+the controller from that destination:
+
+```console
+pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
+./pyamplicol-profiling-campaign/steer_performance_campaign.py \
+  dashboard-snapshot
+```
+
+PyAmpliCol-only dry runs and measurements do not need a legacy checkout.
+Selections whose planned dependency closure includes original AmpliCol require
+`run --original-amplicol PATH`; `PATH` must be a clean, complete checkout
+exposing the PR #12 probe sources and Make targets. The
+`amplicol_with_patches` branch works now, and a compatible upstream revision
+will work unchanged after the PR is merged.
+
+Inside a contributor checkout it re-executes with the repository `.venv`; an
+installed copy uses the wheel's Python runtime. Both modes reuse compatible
+same-source currents by default, supervise each process tree, and keep attempts
+and large artifacts outside this publication directory.
 
 Preview selections before launching workers:
 

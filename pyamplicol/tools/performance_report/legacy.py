@@ -14,6 +14,7 @@ import json
 import math
 import os
 import platform
+import re
 import shutil
 import statistics
 import subprocess
@@ -71,6 +72,7 @@ class LegacySettings:
     jobs: int = 1
     repository: Path | None = None
     validate_checkout: bool = True
+    source_revision: str | None = None
 
     def __post_init__(self) -> None:
         if self.target_runtime_seconds <= 0.0:
@@ -91,6 +93,10 @@ class LegacySettings:
             )
         if self.jobs < 1:
             raise ValueError("jobs must be positive")
+        if self.source_revision is not None and re.fullmatch(
+            r"[0-9a-f]{40}", self.source_revision
+        ) is None:
+            raise ValueError("source_revision must be lowercase 40-hex")
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,7 +237,12 @@ class MaintainedLegacyApi:
     """Thin adapter over ``tools.developer.legacy_amplicol``."""
 
     def __init__(self) -> None:
-        from tools.developer import legacy_amplicol
+        try:
+            from tools.developer import legacy_amplicol
+        except ModuleNotFoundError as error:
+            if error.name not in {"tools", "tools.developer"}:
+                raise
+            from ._developer import legacy_amplicol
 
         self._api = legacy_amplicol
         self.default_repository = legacy_amplicol.DEFAULT_REPOSITORY
@@ -791,7 +802,7 @@ class LegacyMeasurementAdapter:
                 )
 
                 artifact_path.mkdir(parents=True, exist_ok=True)
-                revision = self.api.expected_revision()
+                revision = settings.source_revision or self.api.expected_revision()
                 proof = emit_legacy_scope_unavailable_proof(
                     cell,
                     artifact_path=artifact_path,
@@ -943,7 +954,7 @@ class LegacyMeasurementAdapter:
                 "status": "unavailable",
                 "error": str(error),
             }
-        revision = self.api.expected_revision()
+        revision = settings.source_revision or self.api.expected_revision()
         result["provenance"] = {
             **dict(result.get("provenance") or {}),
             "method": "original-amplicol-generated-library",

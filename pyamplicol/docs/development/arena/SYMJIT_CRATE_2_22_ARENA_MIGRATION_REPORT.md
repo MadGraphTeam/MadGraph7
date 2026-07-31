@@ -8,11 +8,15 @@ old private SymJIT fork and its fork-specific SymJIT direct-application and
 direct-table implementations are no longer active dependencies. Native C++ and
 assembly direct-table lanes remain supported and unchanged.
 
-One narrowly scoped, generic SymJIT patch is required. It exposes a sound raw
-plane-descriptor callable for P-kernels. No pyAmpliCol schedule, factor,
-operation, or table concept is added to SymJIT, and the generated kernel body
-is unchanged. No need for a second mixed plane/scalar or output-operation patch
-has been identified so far: pyAmpliCol owns persistent broadcast planes, safe
+One narrowly scoped, generic SymJIT change was needed: a sound raw
+plane-descriptor callable for P-kernels. It was submitted as
+[`siravan/symjit-crate#1`](https://github.com/siravan/symjit-crate/pull/1),
+accepted upstream, and is part of immutable upstream revision
+`d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7`. pyAmpliCol therefore carries no
+SymJIT patch and has no private-fork dependency. No pyAmpliCol schedule,
+factor, operation, or table concept was added to SymJIT, and the generated
+kernel body is unchanged. No second mixed plane/scalar or output-operation
+change was needed: pyAmpliCol owns persistent broadcast planes, safe
 direct-output classification, persistent scratch, and allocation-free complex
 epilogues. The wider performance and release-readiness campaigns were
 explicitly deferred by the user to a later combined release pass; they are not
@@ -59,9 +63,9 @@ The integrated source through `7c1f17c` produced candidate fingerprint
 `34f4013080a1`. Fresh active AArch64 and x86_64 portable prepared-model bundles
 were generated from the same storage-v3 MIR and have identical SHA-256
 `86509430038002698d39eea9f0c4b104e3390194cbd58469de7e3c161862080a`.
-Their metadata pins SymJIT
-`77789ff0f78232b1ea4608aceb397058df50b06d` and declares
-`pyamplicol-symjit-plane-application-v2`.
+They declare `pyamplicol-symjit-plane-application-v2`; dependency source
+provenance is intentionally kept in the build locks instead of being repeated
+inside prepared-pack metadata.
 
 The tracked `portable-64le` self-test was also regenerated from the integrated
 runtime. It contains only the v2 plane-application ABI, requires the current
@@ -78,46 +82,30 @@ numbers to actual row numbers. The saved plan remains verbatim as the
 historical directive; the implementation, dependency contracts, and this
 report use the superseding immutable revision below.
 
-The authenticated SymJIT source is:
+The active SymJIT source is:
 
 - repository: `https://github.com/siravan/symjit-crate`
 - version: `2.22.0`
 - immutable revision:
-  `77789ff0f78232b1ea4608aceb397058df50b06d`
-- archive SHA-256:
-  `b3cb6451eff299b27709115053caed579bc266bbd46923a70066b5ac554dd0ac`
-- pristine tree SHA-256:
-  `88aa6a50ec7ad120d3d832f4d98e3efe89ea259e925c9ed139904b8dd7607453`
-- configured tree SHA-256:
-  `4b4b791b0f2bbef33a7dbd2936d20dc722f7301e2e9e986b65b2a8b94d220b31`
-- ordered patch-closure SHA-256:
-  `01b486a472d14f89d43be3c658407166b2793190fa3f79fa15175e49d4788474`
+  `d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7`
+- upstream integration:
+  [`siravan/symjit-crate#1`](https://github.com/siravan/symjit-crate/pull/1)
 
-The authenticated dependency identities are:
+The compact dependency identities after upstream integration are:
 
 - canonical `Cargo.lock` SHA-256:
-  `1d368c76fd51aa5ab30aaf59fb31c89eb9ae3aaa8ac3e1768934566c6265476c`
-- authenticated release-local Cargo lock projection SHA-256:
-  `acc74268440a3913efcbfdff031d23abc2fc956b522b054996543a4576f9edd3`
+  `c726ae93f4508de45631b81ff0cf5f269c28a906622ae469aaec839e6dc57403`
 - contributor lock SHA-256:
-  `1a7ed087f2263b066619818df60cf40f14e2db4200d74b00623a256495ded9ff`
+  `9955fc97521e1eb7780c078877a433d73b84db64892720e99fe98131bdd72653`
 - release policy lock SHA-256:
-  `a590b7b88e48789b01ac34ee96d93dd9d9c8c9456ae13137cf9bde7eb9481bcd`
+  `4e9554bf54911e5f25e27214564f10ac58ec3a526e999712fc6dc2a194f4868e`
 - saved migration plan SHA-256:
   `bd94f5df5f58fc7a98b90ce6ff4febd0c7fbf8b1acbce247986fef57d2ceb40e`
 
 All dependency caches, checkout materialization, build outputs, probes, and
 benchmark captures used for this migration live under the workspace.
 
-## Generic SymJIT patch
-
-The only upstream patch is:
-
-- identity: `symjit-raw-plane-descriptor-v1`
-- file:
-  `dependencies/patches/symjit/upstream/0001-Expose-a-stable-raw-P-kernel-plane-descriptor.patch`
-- SHA-256:
-  `70012117436d77265b349c013b0df8c4fe72a04ced972090ba3ac069721b436d`
+## Generic SymJIT upstream change
 
 The unpatched P-kernel callable exposes a plane table through
 `*const &mut [T]`. That representation cannot soundly describe duplicate input
@@ -125,7 +113,7 @@ planes or exact input/output aliases because constructing the table would
 create overlapping mutable Rust references. Those layouts are required by a
 generic arena consumer and are valid for the generated P-kernel contract.
 
-The patch adds:
+The upstream change adds:
 
 - a `#[repr(C)] PlaneDescriptor<T>` containing a raw plane pointer and length;
 - an unsafe generic compiled-plane callable preserving SymJIT's existing
@@ -139,11 +127,11 @@ validate that the application is an indirect P-kernel, keep every descriptor
 and backing plane alive, and satisfy the scalar/SIMD range contract.
 pyAmpliCol enforces those requirements before obtaining or invoking a
 callable. The function pointer follows SymJIT's existing native
-`CompiledFunc` Rust calling convention; the patch stabilizes the `#[repr(C)]`
+`CompiledFunc` Rust calling convention; the change stabilizes the `#[repr(C)]`
 descriptor layout without transmuting across calling conventions and does not
 create a new public C ABI.
 
-The patch has no pyAmpliCol names, schedules, factors, operation catalogs,
+The change has no pyAmpliCol names, schedules, factors, operation catalogs,
 `DirectApplication`, or `DirectTable` concepts. It does not alter the generated
 prologue, body, or epilogue.
 
@@ -152,12 +140,13 @@ ordinary real/complex P- and B-kernel cases, scalar and SIMD P-kernels, and the
 added raw duplicate plane plus input/output alias case. Its retained execution
 log has SHA-256
 `39f398a8f90d337a39d9e60eb800fde3cc587bdf38fc6a9537268c5db9f542c9`.
-The rebased patch makes that test configuration explicit, enables identity
-outputs, and directly executes the raw SIMD accessor with lane-aligned actual
-row indices. Its replacement full-gate execution log is deferred to the
-release-readiness pass.
+The accepted upstream implementation makes that test configuration explicit,
+enables identity outputs, and directly executes the raw SIMD accessor with
+lane-aligned actual row indices. Before submission, `cargo test --lib` passed
+all four library tests and `cargo run --bin kernels` passed the kernel example
+suite. The later full pyAmpliCol release gate remains deferred.
 
-No second patch has been added. Point-independent literals and couplings use
+No second upstream change was needed. Point-independent literals and couplings use
 persistent broadcast planes, mutable model-parameter planes refresh only when
 their source bits change, structural zeros share the existing zero plane, and
 nontrivial output policies are handled in Rust-owned persistent scratch and
@@ -173,55 +162,16 @@ patchless experiment will use this upstream coefficient mode for the safe
 nonidentity-overwrite subset. Only evidence remaining after that experiment
 could warrant the saved plan's narrowly allowed mixed plane/scalar extension.
 
-Contributor and release locks authenticate the final patch bytes and configured
-source tree. Both candidate and release prepared-pack metadata now bind the
-configured SymJIT tree and the exact ordered patch records directly under
-`build_contract.symjit_source`; the producer additionally binds the canonical
-native source closure through `native_build_inputs_sha256`. Candidate and
-release validation rehash the patch files and reject any tree, order, path,
-revision, or byte drift. Release builds canonicalize only the two authenticated
-forms of `Cargo.lock`—the immutable Git source form and the exact installer
-path projection—so those representations have one release native-build
-identity without accepting a general path dependency. Before submitting
-upstream, the mechanically generated `git format-patch` should be replayed onto
-a named upstream branch so the proposed change has a stable reviewer-visible
-commit identity. An accepted upstream revision would then require an
-intentional dependency-lock refresh.
-
-Source-runtime staging records whether its native identity uses the candidate
-or release projection. Verification recomputes that exact projection, requires
-the top-level and source-runtime digests to agree, and checks the staged
-extension's exported build ID even for a publishable release build. Class-C
-bridges retain the historical absent-mode candidate interpretation, while an
-explicit release marker avoids materializing contributor-only checkouts and
-state in the ancestor worktree.
-
-Candidate native identity is likewise semantic rather than installation-path
-dependent. It validates the installer-recorded hashes for the candidate Cargo,
-contributor, Python-runtime, and release locks plus the raw generated Cargo
-config, then hashes an exact canonical Cargo patch table and a stable installer
-projection. That projection retains the ordered generic patch contract and the
-four build-relevant source revisions and tree digests, while excluding
-`created_utc`, absolute checkout paths, and the optional legacy AmpliCol
-checkout. Consequently relocation, JSON/TOML formatting, and an otherwise
-identical repeat `just dev-install` do not invalidate packs, while lock, source
-tree, patch, or Cargo-mapping drift still fails closed. Release/sdist patch
-inventory is derived from the authenticated ordered patch list rather than a
-hard-coded filename. Wheel builds from an unpacked sdist do not require a
-system Git executable: the release backend applies the authenticated
-existing-text-file unified-diff subset itself, requires exact hunk matches,
-rejects file creation/deletion/rename, binary changes, unsafe paths, and
-symlinks, and verifies reverse applicability before writing. Its final
-configured-tree hash remains authoritative. Contributor installation likewise
-rejects a symlinked managed SymJIT checkout root or target before reading,
-patching, hashing, configuring, or recording that tree.
-Both secure archive extractors preserve only the authenticated executable bits
-which participate in the source-tree digest; this is required by the pinned
-GitHub archive and avoids importing unrelated archive permissions. A managed
-checkout whose tree matches neither the pristine nor configured lock identity
-is moved recoverably into the workspace-local `.trash` store and replaced.
-Thus an ordinary `just dev-install` can repin two immutable revisions carrying
-the same crate version without requiring a broad reset.
+Contributor installation now treats SymJIT like the other exact Git sources:
+it clones the official repository, checks out the locked revision, verifies
+the package name/version and rlib-only manifest, and path-patches the local
+Cargo build to that checkout. Release builds use the ordinary immutable Git
+entry in `Cargo.lock`. There is no SymJIT archive extractor, local patch
+inventory, source-tree hash, patch-closure hash, or release-only Cargo-lock
+projection. Candidate install state records only source URL, revision, and an
+optional branch. This smaller contract keeps dependency failures actionable
+without coupling prepared artifacts to checkout formatting or installer
+ceremony.
 
 ## Runtime architecture
 
@@ -611,5 +561,15 @@ Pending.
 
 ## Final conclusion
 
-Pending completion of the clean full gates and authenticated performance
-campaign.
+The arena implementation migration and upstream dependency cutover are
+complete: all active compiled, recurrence, and eager JIT arena paths use
+standard SymJIT 2.22.0 P-kernels from official immutable revision
+`d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7`, and the required generic raw-plane
+interface is upstream. No private fork or local SymJIT patch remains.
+
+Per the user's shortened finalization instruction, the multi-hour alternating
+performance campaign, full multilanguage gate, and publication-pack
+regeneration were not run. Their sections remain explicit deferred release
+evidence rather than implied passes; publication staging continues to fail
+closed on the stale release-only prepared packs until that separate release
+step is performed.
