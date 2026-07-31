@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from tools.performance_report import manual_campaign
 from tools.performance_report.artifacts import (
     ATTEMPT_SCHEMA,
     CURRENT_SCHEMA,
@@ -236,6 +237,121 @@ def test_lightweight_current_rejects_attempt_and_measurement_schema_errors(
     assert not wrong_measurement_schema.complete
     assert not wrong_measurement_schema.reusable
     assert wrong_measurement_schema.reason == "invalid measurement schema"
+
+
+def test_historical_current_reuse_requires_explicit_continuation(
+    tmp_path: Path,
+) -> None:
+    historical_revision = "a" * 40
+    active_revision = "b" * 40
+    service = ReportService(
+        ReportPaths.from_repo(
+            ROOT,
+            profile="macbook_M3_manual",
+            artifact_root=tmp_path / "artifacts",
+            coordination_root=tmp_path / "coordination",
+        )
+    )
+    cell = _amplicol_leaf_cell()
+    _write_lightweight_terminal_current(
+        service,
+        cell,
+        revision=historical_revision,
+    )
+
+    strict = lightweight_current(
+        service.store,
+        cell,
+        source_revision=active_revision,
+    )
+    continued = lightweight_current(
+        service.store,
+        cell,
+        source_revision=active_revision,
+        accept_historical_source=True,
+    )
+
+    assert strict is not None and strict.complete and not strict.reusable
+    assert strict.reason == "source mismatch"
+    assert continued is not None and continued.reusable
+    assert continued.reason == "historical resource-capped terminal"
+
+    inspected = manual_campaign._inspect_payload(
+        service,
+        (cell,),
+        source_revision=active_revision,
+        renderer_revision=active_revision,
+        accept_historical_source=True,
+    )
+    assert inspected["source_policy"] == "continue_across_revisions"
+    assert inspected["source_cohorts"] == {historical_revision: 1}
+    assert inspected["reusable_count"] == 1
+
+
+def test_continuation_keeps_direct_history_but_not_dependency_resolution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    historical_revision = "a" * 40
+    active_revision = "b" * 40
+    service = ReportService(
+        ReportPaths.from_repo(
+            ROOT,
+            profile="macbook_M3_manual",
+            artifact_root=tmp_path / "artifacts",
+            coordination_root=tmp_path / "coordination",
+        )
+    )
+    historical = _amplicol_leaf_cell()
+    missing = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+        and cell.workload is Workload.SELECTED_FLOW
+        and cell.cell_id != historical.cell_id
+    )
+    _write_lightweight_terminal_current(
+        service,
+        historical,
+        revision=historical_revision,
+    )
+    observed_requested: list[str] = []
+
+    def observe_plan(
+        requested: tuple[CellSpec, ...],
+        **kwargs: object,
+    ) -> tuple[object, ...]:
+        observed_requested.extend(cell.cell_id for cell in requested)
+        resolver = kwargs["current_resolver"]
+        assert callable(resolver)
+        assert resolver(historical) is None
+        return ()
+
+    monkeypatch.setattr(manual_campaign, "plan_campaign", observe_plan)
+    arguments = build_parser().parse_args(
+        (
+            "run",
+            "--dry-run",
+            "--no-color",
+            "--continue-across-revisions",
+        )
+    )
+
+    result = _run_campaign(
+        arguments,
+        repo_root=ROOT,
+        service=service,
+        source=ReportSourceIdentity(active_revision, "c" * 40, ()),
+        cells=(historical, missing),
+        palette=Palette(False),
+    )
+
+    assert result == 0
+    assert observed_requested == [missing.cell_id]
+    output = capsys.readouterr().out
+    assert "Cross-revision continuation is enabled" in output
+    assert historical_revision in output
 
 
 def test_manual_dry_run_plans_only_from_lightweight_metadata(

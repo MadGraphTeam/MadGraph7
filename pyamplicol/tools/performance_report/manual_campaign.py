@@ -1309,6 +1309,14 @@ class LightweightCurrent:
     record: CurrentRecord | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class RecordedSourcePolicy:
+    """The active measurement revision and persisted read-only reuse policy."""
+
+    source_revision: str
+    continue_across_revisions: bool = False
+
+
 def _read_object(path: Path) -> dict[str, object] | None:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -1356,11 +1364,27 @@ def _required_result_artifact_exists(result: Mapping[str, object]) -> bool:
     return isinstance(raw_path, str) and Path(raw_path).exists()
 
 
+def _measurement_source_revision(result: Mapping[str, object]) -> str | None:
+    provenance = result.get("provenance")
+    revision = (
+        provenance.get("report_source_revision")
+        if isinstance(provenance, Mapping)
+        else None
+    )
+    return (
+        revision
+        if isinstance(revision, str)
+        and _FULL_SOURCE_REVISION.fullmatch(revision) is not None
+        else None
+    )
+
+
 def lightweight_current(
     store: ArtifactStore,
     cell: CellSpec,
     *,
     source_revision: str,
+    accept_historical_source: bool = False,
 ) -> LightweightCurrent | None:
     """Read only the pointer, manifest metadata, and result required for reuse."""
 
@@ -1471,12 +1495,8 @@ def lightweight_current(
             False,
             "result unreadable",
         )
-    provenance = result.get("provenance")
-    revision = (
-        provenance.get("report_source_revision")
-        if isinstance(provenance, Mapping)
-        else None
-    )
+    revision = _measurement_source_revision(result)
+    revision_valid = revision is not None
     status = str(result.get("status", ""))
     complete = status in {
         ResultStatus.OK.value,
@@ -1494,9 +1514,10 @@ def lightweight_current(
     complete = complete and measurement_valid
     cell_match = _result_matches_cell(result, cell)
     artifact_exists = _required_result_artifact_exists(result)
-    reusable = (
-        complete and revision == source_revision and cell_match and artifact_exists
+    source_accepted = revision == source_revision or (
+        accept_historical_source and revision_valid
     )
+    reusable = complete and source_accepted and cell_match and artifact_exists
     if status not in {
         ResultStatus.OK.value,
         ResultStatus.TIMEOUT.value,
@@ -1505,14 +1526,22 @@ def lightweight_current(
         reason = "incomplete status"
     elif not measurement_valid:
         reason = "invalid measurement schema"
-    elif revision != source_revision:
+    elif not revision_valid:
+        reason = "invalid source revision"
+    elif revision != source_revision and not accept_historical_source:
         reason = "source mismatch"
     elif not cell_match:
         reason = "cell metadata mismatch"
     elif not artifact_exists:
         reason = "required artifact missing"
     elif status in {ResultStatus.TIMEOUT.value, ResultStatus.MEMORY_LIMIT.value}:
-        reason = "resource-capped terminal"
+        reason = (
+            "historical resource-capped terminal"
+            if revision != source_revision
+            else "resource-capped terminal"
+        )
+    elif revision != source_revision:
+        reason = "historical source current"
     else:
         reason = "reusable"
     record = (
@@ -1546,6 +1575,7 @@ def lightweight_currents(
     cells: Sequence[CellSpec],
     *,
     source_revision: str,
+    accept_historical_source: bool = False,
 ) -> dict[str, LightweightCurrent]:
     result: dict[str, LightweightCurrent] = {}
     for cell in cells:
@@ -1553,10 +1583,34 @@ def lightweight_currents(
             service.store,
             cell,
             source_revision=source_revision,
+            accept_historical_source=accept_historical_source,
         )
         if current is not None:
             result[cell.cell_id] = current
     return result
+
+
+def _source_cohort_counts(
+    currents: Mapping[str, LightweightCurrent],
+    *,
+    cell_ids: set[str] | None = None,
+) -> dict[str, int]:
+    counts: Counter[str] = Counter()
+    for cell_id, current in currents.items():
+        if cell_ids is not None and cell_id not in cell_ids:
+            continue
+        if not current.reusable:
+            continue
+        revision = _measurement_source_revision(current.result)
+        if revision is not None:
+            counts[revision] += 1
+    return dict(sorted(counts.items()))
+
+
+def _format_source_cohorts(cohorts: Mapping[str, int]) -> str:
+    return ", ".join(
+        f"{revision}={count}" for revision, count in cohorts.items()
+    ) or "none"
 
 
 def _lightweight_current_resolver(
@@ -1635,38 +1689,47 @@ def _source_marker_path(service: ReportService) -> Path:
 def update_source_marker(
     service: ReportService,
     source: ReportSourceIdentity,
+    *,
+    continue_across_revisions: bool = False,
 ) -> bool:
-    """Record the active source once under a small lock; never inspect history."""
+    """Record the active source and lightweight publication policy once."""
 
     path = _source_marker_path(service)
     with service.store.named_lock("manual-source-marker"):
         previous = _read_object(path)
         changed = (
-            previous is not None and previous.get("source_revision") != source.revision
+            previous is not None
+            and (
+                previous.get("source_revision") != source.revision
+                or previous.get("continue_across_revisions", False)
+                != continue_across_revisions
+            )
         )
         _atomic_json(
             path,
             {
                 "schema": SOURCE_MARKER_SCHEMA,
                 "source_revision": source.revision,
+                "continue_across_revisions": continue_across_revisions,
                 "recorded_at_utc": _utc_now(),
             },
         )
     return changed
 
 
-def recorded_measurement_source_revision(
+def recorded_measurement_source_policy(
     service: ReportService,
     *,
     checkout_revision: str,
-) -> str:
-    """Select one recorded measurement epoch for read-only report views.
+) -> RecordedSourcePolicy:
+    """Read the recorded measurement epoch and its lightweight reuse policy.
 
     Renderer-only commits must not make already published measurements vanish.
     Real campaign runs update this marker only after the checkout and installed
-    runtime have passed the strict measurement-readiness checks.  Reading the
-    marker therefore keeps refresh/inspect on one coherent source cohort while
-    leaving run-time reuse tied to the active checkout revision.
+    runtime have passed the strict measurement-readiness checks.  The optional
+    continuation policy lets read-only views merge per-cell currents from more
+    than one valid recorded source revision without weakening active-revision
+    dependency planning.
     """
 
     path = _source_marker_path(service)
@@ -1679,18 +1742,33 @@ def recorded_measurement_source_revision(
                 f"campaign source marker is unreadable: {path}; refusing to "
                 "guess which measurement cohort to publish"
             )
-        return checkout_revision
+        return RecordedSourcePolicy(checkout_revision)
     revision = marker.get("source_revision")
+    continue_across_revisions = marker.get("continue_across_revisions", False)
     if (
         marker.get("schema") != SOURCE_MARKER_SCHEMA
         or not isinstance(revision, str)
         or _FULL_SOURCE_REVISION.fullmatch(revision) is None
+        or not isinstance(continue_across_revisions, bool)
     ):
         raise ManualCampaignError(
             f"campaign source marker is malformed: {path}; refusing to guess "
             "which measurement cohort to publish"
         )
-    return revision
+    return RecordedSourcePolicy(revision, continue_across_revisions)
+
+
+def recorded_measurement_source_revision(
+    service: ReportService,
+    *,
+    checkout_revision: str,
+) -> str:
+    """Return the active recorded measurement revision for compatibility."""
+
+    return recorded_measurement_source_policy(
+        service,
+        checkout_revision=checkout_revision,
+    ).source_revision
 
 
 @dataclass(slots=True)
@@ -4711,6 +4789,7 @@ def _inspect_payload(
     *,
     source_revision: str,
     renderer_revision: str,
+    accept_historical_source: bool = False,
 ) -> dict[str, object]:
     required = {cell.cell_id: cell for cell in cells}
     for cell in cells:
@@ -4721,6 +4800,7 @@ def _inspect_payload(
         service,
         tuple(required.values()),
         source_revision=source_revision,
+        accept_historical_source=accept_historical_source,
     )
     statuses: Counter[str] = Counter()
     for cell in cells:
@@ -4780,6 +4860,12 @@ def _inspect_payload(
         "profile": _ACTIVE_PROFILE,
         "source_revision": source_revision,
         "renderer_source_revision": renderer_revision,
+        "source_policy": (
+            "continue_across_revisions"
+            if accept_historical_source
+            else "strict_same_source"
+        ),
+        "source_cohorts": _source_cohort_counts(currents),
         "selection_count": len(cells),
         "reusable_count": sum(
             bool(current.reusable)
@@ -4826,9 +4912,20 @@ def _format_seconds_per_point(value: object) -> str:
 def _print_inspect(payload: Mapping[str, object], palette: Palette) -> None:
     source_revision = str(payload["source_revision"])
     renderer_revision = str(payload["renderer_source_revision"])
+    source_cohorts = payload["source_cohorts"]
+    if not isinstance(source_cohorts, Mapping):
+        raise ManualCampaignError("inspect source cohort summary is malformed")
+    rendered_source_cohorts = _format_source_cohorts(
+        {str(revision): int(count) for revision, count in source_cohorts.items()}
+    )
     identity_rows: list[tuple[object, object]] = [
         (palette.key("profile"), payload["profile"]),
-        (palette.key("measurement source"), source_revision[:12]),
+        (palette.key("source policy"), payload["source_policy"]),
+        (palette.key("active measurement build"), source_revision),
+        (
+            palette.key("measurement source cohorts"),
+            rendered_source_cohorts,
+        ),
     ]
     if renderer_revision != source_revision:
         identity_rows.append((palette.key("renderer checkout"), renderer_revision[:12]))
@@ -5473,19 +5570,43 @@ def _run_campaign(
             )
         )
         return 0
-    lightweight = lightweight_currents(
+    active_lightweight = lightweight_currents(
         service,
         measurable,
         source_revision=source.revision,
+    )
+    continue_across_revisions = bool(
+        getattr(arguments, "continue_across_revisions", False)
+    )
+    lightweight = (
+        lightweight_currents(
+            service,
+            measurable,
+            source_revision=source.revision,
+            accept_historical_source=True,
+        )
+        if continue_across_revisions
+        else active_lightweight
     )
     recycled = {
         cell_id
         for cell_id, current in lightweight.items()
         if current.reusable and not arguments.force_refresh
     }
+    historical_recycled = {
+        cell_id
+        for cell_id in recycled
+        if _measurement_source_revision(lightweight[cell_id].result)
+        != source.revision
+    }
+    requested_for_plan = tuple(
+        cell
+        for cell in measurable
+        if arguments.force_refresh or cell.cell_id not in historical_recycled
+    )
     preliminary_settings = _campaign_settings(arguments, source)
     planned = plan_campaign(
-        measurable,
+        requested_for_plan,
         store=service.store,
         settings=preliminary_settings,
         expected_revision=source.revision,
@@ -5493,9 +5614,25 @@ def _run_campaign(
         current_resolver=_lightweight_current_resolver(
             service,
             source_revision=source.revision,
-            initial=lightweight,
+            initial=active_lightweight,
         ),
     )
+    # A historical cell can still be required as an active-source dependency
+    # of a newly measured cell.  In that case it is work, not recycled work.
+    recycled.difference_update(item.cell.cell_id for item in planned)
+    selected_cohorts = _source_cohort_counts(
+        lightweight,
+        cell_ids=recycled,
+    )
+    if continue_across_revisions:
+        print(
+            palette.warning(
+                "Cross-revision continuation is enabled: completed selected "
+                "currents are kept per cell; dependencies needed by new work "
+                "still require the active source revision. Recycled cohorts: "
+                f"{_format_source_cohorts(selected_cohorts)}"
+            )
+        )
     if arguments.dry_run:
         terminal_width = max(
             80,
@@ -5508,8 +5645,20 @@ def _run_campaign(
                     (palette.key("direct entries"), len(cells)),
                     (palette.key("static N/A"), len(static_na)),
                     (palette.key("recycled"), len(recycled)),
+                    (
+                        palette.key("historical recycled"),
+                        len(recycled & historical_recycled),
+                    ),
                     (palette.key("planned with dependencies"), len(planned)),
                     (palette.key("source"), source.revision),
+                    (
+                        palette.key("source policy"),
+                        (
+                            "continue across revisions"
+                            if continue_across_revisions
+                            else "strict same-source"
+                        ),
+                    ),
                 ),
             )
         )
@@ -5564,7 +5713,14 @@ def _run_campaign(
         )
 
     require_measurement_ready(source)
-    update_source_marker(service, source)
+    if continue_across_revisions:
+        update_source_marker(
+            service,
+            source,
+            continue_across_revisions=True,
+        )
+    else:
+        update_source_marker(service, source)
     measurable_ids = {cell.cell_id for cell in measurable}
     if not planned and measurable_ids <= recycled:
         print(
@@ -5744,6 +5900,7 @@ def _capture_lightweight_snapshot(
     service: ReportService,
     *,
     source_revision: str,
+    accept_historical_source: bool = False,
 ) -> tuple[dict[str, LightweightCurrent], tuple[tuple[str, str], ...]]:
     cells = tuple(service.catalog.measurement_cells())
     for _attempt in range(3):
@@ -5751,6 +5908,7 @@ def _capture_lightweight_snapshot(
             service,
             cells,
             source_revision=source_revision,
+            accept_historical_source=accept_historical_source,
         )
         identity = tuple(
             sorted(
@@ -5763,6 +5921,7 @@ def _capture_lightweight_snapshot(
             service,
             cells,
             source_revision=source_revision,
+            accept_historical_source=accept_historical_source,
         )
         confirmed_identity = tuple(
             sorted(
@@ -5937,14 +6096,16 @@ def _refresh_pdf(
     source: ReportSourceIdentity,
     palette: Palette,
 ) -> int:
-    measurement_revision = recorded_measurement_source_revision(
+    source_policy = recorded_measurement_source_policy(
         service,
         checkout_revision=source.revision,
     )
     currents, snapshot = _capture_lightweight_snapshot(
         service,
-        source_revision=measurement_revision,
+        source_revision=source_policy.source_revision,
+        accept_historical_source=source_policy.continue_across_revisions,
     )
+    source_cohorts = _source_cohort_counts(currents)
     caches, merged = _merge_lightweight_snapshot(service, currents)
     build_root = service.paths.artifact_root / "manual-publication-builds"
     build_root.mkdir(parents=True, exist_ok=True)
@@ -5987,7 +6148,18 @@ def _refresh_pdf(
         _table(
             ("key", "value"),
             (
-                (palette.key("measurement source"), measurement_revision),
+                (
+                    palette.key("source policy"),
+                    (
+                        "continue across revisions"
+                        if source_policy.continue_across_revisions
+                        else "strict same-source"
+                    ),
+                ),
+                (
+                    palette.key("measurement source cohorts"),
+                    _format_source_cohorts(source_cohorts),
+                ),
                 (palette.key("renderer checkout"), source.revision),
                 (palette.key("current snapshot"), len(snapshot)),
                 (palette.key("measurements merged"), merged),
@@ -6104,6 +6276,10 @@ Common recipes
 
   Recompute instead of reusing same-source currents:
     steer_performance_campaign.py run --force-refresh --table z_table
+
+  Keep completed cells while complementing them with a new clean build:
+    steer_performance_campaign.py run --continue-across-revisions \\
+      --table z_table
 
   Inspect recurrence and compiled LC rows:
     steer_performance_campaign.py inspect --color-approximation lc \\
@@ -6257,8 +6433,10 @@ def build_parser() -> argparse.ArgumentParser:
         parents=[selectors, output],
         help="Select cells, preview dependencies, or run supervised workers.",
         description=(
-            "Select report cells, reuse matching same-source currents, plan "
-            "dependencies, and execute resource-supervised workers."
+            "Select report cells, reuse matching same-source currents by "
+            "default, plan dependencies, and execute resource-supervised "
+            "workers. Cross-revision continuation is explicit and keeps "
+            "active-build dependency planning strict."
         ),
         epilog=STEERING_GUIDE,
         formatter_class=HelpFormatter,
@@ -6373,7 +6551,21 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Create a fresh generation+measurement attempt even when a "
-            "complete same-source current exists; history is retained."
+            "complete current exists (including one accepted through "
+            "--continue-across-revisions); history is retained."
+        ),
+    )
+    behavior.add_argument(
+        "--continue-across-revisions",
+        action="store_true",
+        help=(
+            "Explicitly keep structurally valid completed selected cells from "
+            "older pyAmpliCol source revisions while filling missing cells "
+            "with this clean active build. Historical currents never satisfy "
+            "dependencies required by newly run cells: those dependencies are "
+            "planned again at the active revision. The policy is persisted so "
+            "later inspect and refresh-pdf commands automatically merge the "
+            "per-cell currents and report every exact source cohort/count."
         ),
     )
     behavior.add_argument(
@@ -6399,7 +6591,9 @@ def build_parser() -> argparse.ArgumentParser:
             "AmpliCol generation and outer-wall runtime multipliers. Dedicated "
             "evaluator-total multipliers are emitted only when both sides "
             "expose that clock; original AmpliCol normally does not. "
-            "Recurrence core is reported separately as an absolute statistic."
+            "Recurrence core is reported separately as an absolute statistic. "
+            "If the latest real run enabled cross-revision continuation, the "
+            "persisted mixed current set and its exact source cohorts are used."
         ),
         epilog=(
             "Lower multipliers are better. The weighted average is exactly "
@@ -6422,13 +6616,15 @@ def build_parser() -> argparse.ArgumentParser:
         parents=[output],
         help="Rebuild every table and atomically replace the report PDF.",
         description=(
-            "Capture one stable same-source current snapshot, rebuild every "
+            "Capture one stable current snapshot, rebuild every "
             "result JSON and TeX table, compile in a fresh directory, and "
             "atomically install pyAmpliCol.pdf. Overfull-box diagnostics are "
             "reported by LaTeX but are non-fatal here; compilation errors and "
             "unresolved references remain fatal. Compilation output streams "
             "live by default; --quiet suppresses it. The final absolute PDF "
-            "path is printed on success."
+            "path is printed on success. A prior real run with "
+            "--continue-across-revisions automatically publishes the mixed "
+            "per-cell current set and reports every exact source cohort/count."
         ),
         epilog=STEERING_GUIDE,
         formatter_class=HelpFormatter,
@@ -6649,15 +6845,18 @@ def main(
 
         _selection, cells = selection_from_arguments(arguments)
         if arguments.command == "inspect":
-            measurement_revision = recorded_measurement_source_revision(
+            source_policy = recorded_measurement_source_policy(
                 service,
                 checkout_revision=source.revision,
             )
             payload = _inspect_payload(
                 service,
                 cells,
-                source_revision=measurement_revision,
+                source_revision=source_policy.source_revision,
                 renderer_revision=source.revision,
+                accept_historical_source=(
+                    source_policy.continue_across_revisions
+                ),
             )
             if arguments.format == "json":
                 json.dump(payload, sys.stdout, indent=2, sort_keys=True)

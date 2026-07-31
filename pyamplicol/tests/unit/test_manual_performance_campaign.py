@@ -184,6 +184,7 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
         "Keyboard controls",
         "current/contribution counts",
         "process-tree current/peak usage",
+        "--continue-across-revisions",
     ):
         assert fragment in help_text
     arguments = _parse("run", "--dry-run")
@@ -194,6 +195,8 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
     assert arguments.worker_wall_limit is None
     assert arguments.no_color is False
     assert arguments.force_refresh is False
+    assert arguments.continue_across_revisions is False
+    assert _parse("run", "--continue-across-revisions").continue_across_revisions
     refresh = _parse("refresh-pdf")
     assert refresh.expected_page_count is None
     assert refresh.quiet is False
@@ -1259,14 +1262,15 @@ def test_read_only_views_use_recorded_measurement_source_epoch(
         == measurement_revision
     )
 
-    observed: list[str] = []
+    observed: list[tuple[str, bool]] = []
 
     def stop_after_source_selection(
         _service: ReportService,
         *,
         source_revision: str,
+        accept_historical_source: bool = False,
     ) -> object:
-        observed.append(source_revision)
+        observed.append((source_revision, accept_historical_source))
         raise RuntimeError("snapshot stopped after source selection")
 
     monkeypatch.setattr(
@@ -1286,7 +1290,67 @@ def test_read_only_views_use_recorded_measurement_source_epoch(
             source=source,
             palette=manual_campaign.Palette(False),
         )
-    assert observed == [measurement_revision]
+    assert observed == [(measurement_revision, False)]
+
+
+def test_cross_revision_policy_persists_for_inspect_and_refresh(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _manual_service(tmp_path)
+    source = manual_campaign.ReportSourceIdentity(
+        "a" * 40,
+        "c" * 40,
+        (),
+    )
+
+    manual_campaign.update_source_marker(
+        service,
+        source,
+        continue_across_revisions=True,
+    )
+    policy = manual_campaign.recorded_measurement_source_policy(
+        service,
+        checkout_revision="b" * 40,
+    )
+
+    assert policy.source_revision == source.revision
+    assert policy.continue_across_revisions
+    marker = json.loads(
+        (service.paths.coordination_root / "manual-source.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert marker["continue_across_revisions"] is True
+
+    observed: list[tuple[str, bool]] = []
+
+    def stop_after_source_selection(
+        _service: ReportService,
+        *,
+        source_revision: str,
+        accept_historical_source: bool = False,
+    ) -> object:
+        observed.append((source_revision, accept_historical_source))
+        raise RuntimeError("mixed snapshot selected")
+
+    monkeypatch.setattr(
+        manual_campaign,
+        "_capture_lightweight_snapshot",
+        stop_after_source_selection,
+    )
+    with pytest.raises(RuntimeError, match="mixed snapshot selected"):
+        manual_campaign._refresh_pdf(
+            _parse("refresh-pdf", "--quiet"),
+            service=service,
+            source=manual_campaign.ReportSourceIdentity(
+                "b" * 40,
+                "d" * 40,
+                (),
+            ),
+            palette=manual_campaign.Palette(False),
+        )
+    assert observed == [(source.revision, True)]
 
 
 def test_malformed_measurement_source_marker_is_not_guessed(tmp_path: Path) -> None:
