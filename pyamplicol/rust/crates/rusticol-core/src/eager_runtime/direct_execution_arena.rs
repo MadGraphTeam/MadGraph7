@@ -131,6 +131,11 @@ pub(crate) struct EagerDirectExecutionRuntime {
     momentum_ranges: Box<[ComponentRange]>,
     reduction_groups: Vec<EagerComplex64>,
     reduced_tile: Vec<f64>,
+    broadcast_parameter_bits: Box<[[u64; 2]]>,
+    broadcasts_initialized: bool,
+    shared_zero_plane_index: Option<u32>,
+    elide_structural_zero_fills: bool,
+    internal_broadcast_bytes: u64,
     workspace_bytes: usize,
 }
 
@@ -151,12 +156,60 @@ impl EagerDirectExecutionRuntime {
         let requested_tile = u32::try_from(options.point_tile_size)
             .map_err(|_| invalid("eager direct point tile size exceeds u32"))?
             .min(DIRECT_ARENA_LOCALITY_POINT_CAP);
+
+        let applications = load_applications(&plan, prepared)?;
+        let shared_zero_plane_index =
+            shared_zero_plane_index(sections, catalog, &layout, &applications)?;
+        let elide_structural_zero_fills = shared_zero_plane_index.is_some()
+            && applications
+                .values()
+                .all(|application| application.is_symjit());
+        let full_schedule = build_direct_schedule(
+            &plan,
+            catalog,
+            &layout,
+            &applications,
+            shared_zero_plane_index,
+            None,
+        )?;
+        let factor_capacity = full_schedule.factor_specs.len().max(1);
+        let (symjit_descriptor_capacity, symjit_scratch_plane_count) = applications
+            .values()
+            .filter_map(|application| application.symjit_workspace_shape())
+            .fold((0usize, 0usize), |maximum, shape| {
+                (maximum.0.max(shape.0), maximum.1.max(shape.1))
+            });
+        let broadcast_cache_bytes = plan
+            .parameter_count
+            .checked_mul(std::mem::size_of::<[u64; 2]>())
+            .ok_or_else(|| invalid("eager direct broadcast cache size overflows"))?;
+        let descriptor_bytes =
+            EagerDirectTableWorkspace::symjit_descriptor_storage_bytes(symjit_descriptor_capacity)?;
+        let factor_bytes = factor_capacity
+            .checked_mul(2 * size_of::<f64>())
+            .ok_or_else(|| invalid("eager direct factor workspace size overflows"))?;
+        let fixed_workspace_bytes = broadcast_cache_bytes
+            .checked_add(descriptor_bytes)
+            .and_then(|bytes| bytes.checked_add(factor_bytes))
+            .ok_or_else(|| invalid("eager direct fixed workspace size overflows"))?;
+        let arena_workspace_budget = options
+            .workspace_bytes
+            .checked_sub(fixed_workspace_bytes)
+            .ok_or_else(|| {
+                invalid(format!(
+                    "eager Direct-Arena needs at least {fixed_workspace_bytes} fixed bytes for its \
+                     descriptors, factors, and persistent parameter cache, exceeding its \
+                     {}-byte budget",
+                    options.workspace_bytes
+                ))
+            })?;
         let tile_capacity = direct_tile_capacity(
             requested_tile,
-            options.workspace_bytes,
+            arena_workspace_budget,
             layout.component_count(),
             count_u32(plan.amplitude_count, "amplitude planes")?,
             count_u32(plan.reduction_groups.len(), "reduction groups")?,
+            symjit_scratch_plane_count,
         )?;
 
         let value_ranges = (0..sections.values.len())
@@ -182,32 +235,38 @@ impl EagerDirectExecutionRuntime {
             .collect::<Vec<_>>()
             .into_boxed_slice();
 
-        let applications = load_applications(&plan, prepared)?;
-        let full_schedule = build_direct_schedule(&plan, catalog, &layout, &applications, None)?;
-        let factor_capacity = full_schedule.factor_specs.len().max(1);
         let plane_bindings = plane_bindings(&layout, plan.amplitude_count)?;
         let mut workspace = EagerDirectTableWorkspace::new(
             layout.component_count(),
             count_u32(plan.amplitude_count, "amplitude planes")?,
             tile_capacity,
             &plane_bindings,
+            shared_zero_plane_index,
             Vec::new(),
             vec![0.0; factor_capacity],
             vec![0.0; factor_capacity],
         )?;
         workspace.begin_tile(tile_capacity)?;
-        validate_schedule_calls(&full_schedule, &workspace, tile_capacity)?;
+        validate_schedule_calls(
+            &full_schedule,
+            &mut workspace,
+            shared_zero_plane_index,
+            tile_capacity,
+        )?;
 
         let stride = workspace.arena().point_stride() as usize;
         let reduction_groups =
             vec![EagerComplex64::new(0.0, 0.0); plan.reduction_groups.len() * stride];
         let reduced_tile = vec![0.0; stride];
+        let broadcast_parameter_bits = vec![[0, 0]; plan.parameter_count].into_boxed_slice();
         let workspace_bytes = direct_workspace_bytes(
             &workspace,
             reduction_groups.len(),
             reduced_tile.len(),
             factor_capacity,
-        )?;
+        )?
+        .checked_add(broadcast_cache_bytes)
+        .ok_or_else(|| invalid("eager direct workspace byte accounting overflows"))?;
         if workspace_bytes > options.workspace_bytes {
             return Err(invalid(format!(
                 "eager Direct-Arena needs {workspace_bytes} bytes, exceeding its {}-byte budget",
@@ -229,6 +288,11 @@ impl EagerDirectExecutionRuntime {
             momentum_ranges,
             reduction_groups,
             reduced_tile,
+            broadcast_parameter_bits,
+            broadcasts_initialized: false,
+            shared_zero_plane_index,
+            elide_structural_zero_fills,
+            internal_broadcast_bytes: 0,
             workspace_bytes,
         })
     }
@@ -243,6 +307,127 @@ impl EagerDirectExecutionRuntime {
 
     pub(crate) const fn workspace_bytes(&self) -> usize {
         self.workspace_bytes
+    }
+
+    pub(crate) const fn internal_scratch_bytes(&self) -> u64 {
+        self.workspace.internal_scratch_bytes()
+    }
+
+    pub(crate) const fn internal_broadcast_bytes(&self) -> u64 {
+        self.internal_broadcast_bytes
+    }
+
+    fn refresh_broadcast_planes(
+        &mut self,
+        model_parameters: &[EagerComplex64],
+    ) -> RusticolResult<()> {
+        fn parameter_changed(
+            cached: &[[u64; 2]],
+            parameters: &[EagerComplex64],
+            parameter: usize,
+        ) -> bool {
+            let value = parameters[parameter];
+            cached[parameter] != [value.re.to_bits(), value.im.to_bits()]
+        }
+
+        let initializing = !self.broadcasts_initialized;
+        if !initializing
+            && !(0..model_parameters.len()).any(|parameter| {
+                parameter_changed(&self.broadcast_parameter_bits, model_parameters, parameter)
+            })
+        {
+            return Ok(());
+        }
+
+        let stride = self.workspace.arena().point_stride() as usize;
+        let (real, imaginary, _, _) = self.workspace.split_arena_slices_mut();
+        let mut written_planes = 0_u64;
+        for (coupling_id, row) in self.plan.couplings.iter().copied().enumerate() {
+            let coupling_changed = initializing
+                || (row.real_parameter_id != MISSING_U32
+                    && parameter_changed(
+                        &self.broadcast_parameter_bits,
+                        model_parameters,
+                        row.real_parameter_id as usize,
+                    ))
+                || (row.imag_parameter_id != MISSING_U32
+                    && parameter_changed(
+                        &self.broadcast_parameter_bits,
+                        model_parameters,
+                        row.imag_parameter_id as usize,
+                    ));
+            if !coupling_changed {
+                continue;
+            }
+            let coupling = resolve_coupling(row, model_parameters);
+            let real_component = assigned_component(
+                &self.layout,
+                self.catalog
+                    .coupling_real(count_u32(coupling_id, "coupling")?)?,
+                0,
+            )?;
+            let imaginary_component = assigned_component(
+                &self.layout,
+                self.catalog
+                    .coupling_imag(count_u32(coupling_id, "coupling")?)?,
+                0,
+            )?;
+            if self.elide_structural_zero_fills {
+                fill_real_input_plane(real, stride, real_component, stride, coupling.re);
+                fill_real_input_plane(real, stride, imaginary_component, stride, coupling.im);
+                written_planes = written_planes.saturating_add(2);
+            } else {
+                fill_input_plane(
+                    real,
+                    imaginary,
+                    stride,
+                    real_component,
+                    stride,
+                    coupling.re,
+                    0.0,
+                );
+                fill_input_plane(
+                    real,
+                    imaginary,
+                    stride,
+                    imaginary_component,
+                    stride,
+                    coupling.im,
+                    0.0,
+                );
+                written_planes = written_planes.saturating_add(4);
+            }
+        }
+        for (parameter, value) in model_parameters.iter().copied().enumerate() {
+            if !initializing
+                && !parameter_changed(&self.broadcast_parameter_bits, model_parameters, parameter)
+            {
+                continue;
+            }
+            fill_input_plane(
+                real,
+                imaginary,
+                stride,
+                assigned_component(
+                    &self.layout,
+                    self.catalog
+                        .parameter(count_u32(parameter, "model parameter")?)?,
+                    0,
+                )?,
+                stride,
+                value.re,
+                value.im,
+            );
+            written_planes = written_planes.saturating_add(2);
+            self.broadcast_parameter_bits[parameter] = [value.re.to_bits(), value.im.to_bits()];
+        }
+        self.broadcasts_initialized = true;
+        self.internal_broadcast_bytes = self.internal_broadcast_bytes.saturating_add(
+            written_planes
+                .saturating_mul(stride as u64)
+                .saturating_mul(std::mem::size_of::<f64>() as u64),
+        );
+        Ok(())
     }
 
     /// Execute and reduce directly from arena amplitude planes without
@@ -265,6 +450,7 @@ impl EagerDirectExecutionRuntime {
             None,
             Some(reduced),
         )?;
+        self.refresh_broadcast_planes(model_parameters)?;
         let tile_capacity = self.effective_point_tile_size();
         let mut tile_start = 0usize;
         while tile_start < point_count {
@@ -277,6 +463,7 @@ impl EagerDirectExecutionRuntime {
                 &self.initial_value_slots,
                 &self.value_ranges,
                 &self.momentum_ranges,
+                self.elide_structural_zero_fills,
                 &self.full_schedule,
                 &mut self.reduction_groups,
                 point_count,
@@ -319,6 +506,7 @@ impl EagerDirectExecutionRuntime {
             Some(amplitudes),
             Some(reduced),
         )?;
+        self.refresh_broadcast_planes(model_parameters)?;
         let tile_capacity = self.effective_point_tile_size();
         let mut tile_start = 0usize;
         while tile_start < point_count {
@@ -331,6 +519,7 @@ impl EagerDirectExecutionRuntime {
                 &self.initial_value_slots,
                 &self.value_ranges,
                 &self.momentum_ranges,
+                self.elide_structural_zero_fills,
                 &self.full_schedule,
                 &mut self.reduction_groups,
                 point_count,
@@ -382,7 +571,12 @@ impl EagerDirectExecutionRuntime {
             Some(reduced),
         )?;
         let total_start = Instant::now();
+        let internal_scratch_before = self.workspace.internal_scratch_bytes();
+        let internal_broadcast_before = self.internal_broadcast_bytes;
         let mut profile = super::EagerExecutionProfile::default();
+        let phase = Instant::now();
+        self.refresh_broadcast_planes(model_parameters)?;
+        profile.gather += phase.elapsed();
         let tile_capacity = self.effective_point_tile_size();
         let mut tile_start = 0usize;
         while tile_start < point_count {
@@ -404,6 +598,7 @@ impl EagerDirectExecutionRuntime {
                 &self.initial_value_slots,
                 &self.value_ranges,
                 &self.momentum_ranges,
+                self.elide_structural_zero_fills,
                 point_count,
                 tile_start,
                 tile_points,
@@ -452,6 +647,13 @@ impl EagerDirectExecutionRuntime {
             tile_start += tile_points;
         }
         profile.total = total_start.elapsed();
+        profile.internal_scratch_bytes = self
+            .workspace
+            .internal_scratch_bytes()
+            .saturating_sub(internal_scratch_before);
+        profile.internal_broadcast_bytes = self
+            .internal_broadcast_bytes
+            .saturating_sub(internal_broadcast_before);
         Ok(profile)
     }
 
@@ -574,8 +776,11 @@ impl EagerDirectExecutionRuntime {
             None,
         )?;
         let total_start = Instant::now();
+        let internal_scratch_before = self.workspace.internal_scratch_bytes();
+        let internal_broadcast_before = self.internal_broadcast_bytes;
         let phase = Instant::now();
         self.prepare_selected_schedule(active_groups)?;
+        self.refresh_broadcast_planes(model_parameters)?;
         let mut profile = super::EagerExecutionProfile {
             initialize: phase.elapsed(),
             ..super::EagerExecutionProfile::default()
@@ -605,6 +810,7 @@ impl EagerDirectExecutionRuntime {
                 &self.initial_value_slots,
                 &self.value_ranges,
                 &self.momentum_ranges,
+                self.elide_structural_zero_fills,
                 point_count,
                 tile_start,
                 tile_points,
@@ -641,6 +847,13 @@ impl EagerDirectExecutionRuntime {
             tile_start += tile_points;
         }
         profile.total = total_start.elapsed();
+        profile.internal_scratch_bytes = self
+            .workspace
+            .internal_scratch_bytes()
+            .saturating_sub(internal_scratch_before);
+        profile.internal_broadcast_bytes = self
+            .internal_broadcast_bytes
+            .saturating_sub(internal_broadcast_before);
         Ok(profile)
     }
 
@@ -664,6 +877,7 @@ impl EagerDirectExecutionRuntime {
             None,
         )?;
         self.prepare_selected_schedule(active_groups)?;
+        self.refresh_broadcast_planes(model_parameters)?;
         let selected = self
             .selected_schedule
             .as_ref()
@@ -680,6 +894,7 @@ impl EagerDirectExecutionRuntime {
                 &self.initial_value_slots,
                 &self.value_ranges,
                 &self.momentum_ranges,
+                self.elide_structural_zero_fills,
                 &selected.schedule,
                 &mut self.reduction_groups,
                 point_count,
@@ -731,6 +946,7 @@ impl EagerDirectExecutionRuntime {
             point_count,
         )?;
         self.prepare_point_selected_schedules(group_offsets, active_groups)?;
+        self.refresh_broadcast_planes(model_parameters)?;
         reduced.fill(0.0);
 
         let tile_capacity = self.workspace.arena().tile_capacity() as usize;
@@ -757,6 +973,7 @@ impl EagerDirectExecutionRuntime {
                     &self.initial_value_slots,
                     &self.value_ranges,
                     &self.momentum_ranges,
+                    self.elide_structural_zero_fills,
                     schedule,
                     &mut self.reduction_groups,
                     point_count,
@@ -798,14 +1015,16 @@ impl EagerDirectExecutionRuntime {
             self.catalog,
             &self.layout,
             &self.applications,
+            self.shared_zero_plane_index,
             Some(active_groups),
         )?;
         let tile_capacity = self.workspace.arena().tile_capacity();
         self.workspace.begin_tile(tile_capacity)?;
         validate_schedule_calls(
             &schedule,
-            &self.workspace,
-            self.workspace.arena().tile_capacity(),
+            &mut self.workspace,
+            self.shared_zero_plane_index,
+            tile_capacity,
         )?;
         self.selected_schedule = Some(SelectedSchedule {
             active_groups: active_groups.into(),
@@ -851,14 +1070,16 @@ impl EagerDirectExecutionRuntime {
                     self.catalog,
                     &self.layout,
                     &self.applications,
+                    self.shared_zero_plane_index,
                     Some(selected),
                 )?;
                 let tile_capacity = self.workspace.arena().tile_capacity();
                 self.workspace.begin_tile(tile_capacity)?;
                 validate_schedule_calls(
                     &schedule,
-                    &self.workspace,
-                    self.workspace.arena().tile_capacity(),
+                    &mut self.workspace,
+                    self.shared_zero_plane_index,
+                    tile_capacity,
                 )?;
                 self.point_selected.schedules.push(SelectedSchedule {
                     active_groups: selected.into(),
@@ -939,6 +1160,8 @@ fn load_applications(
             EagerDirectPreparedApplication::Symjit {
                 source_application,
                 descriptor,
+                expected_optimization_level,
+                expected_compression,
             } => LoadedSymjitEagerDirectTable::load_prepared_application_bytes(
                 source_application,
                 descriptor,
@@ -946,6 +1169,8 @@ fn load_applications(
                 EAGER_DIRECT_SOURCE_APPLICATION_ABI,
                 EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
                 EAGER_DIRECT_TABLE_BINDING_ABI,
+                *expected_optimization_level,
+                *expected_compression,
             )?,
             EagerDirectPreparedApplication::Native {
                 library,
@@ -999,11 +1224,60 @@ fn plane_bindings(
     Ok(bindings)
 }
 
+/// Reuse one already-allocated, event-pinned imaginary plane as the structural
+/// zero required by real-only complex P-kernel inputs.
+///
+/// `derive_event_layout` pins momenta, couplings, and parameters through the
+/// final event. Momentum and split coupling semantics are real-only, so their
+/// imaginary halves are initialized to zero and are never legal destinations.
+/// No extra plane or artifact-ABI entry is required.
+fn shared_zero_plane_index(
+    sections: EagerPlanV3Sections<'_>,
+    catalog: SemanticCatalog,
+    layout: &DirectArenaLayout,
+    applications: &BTreeMap<u32, Arc<LoadedSymjitEagerDirectTable>>,
+) -> RusticolResult<Option<u32>> {
+    if !applications
+        .values()
+        .any(|application| application.is_symjit())
+    {
+        return Ok(None);
+    }
+    let physical_component = if let Some(momentum) = sections
+        .momenta
+        .iter()
+        .find(|momentum| momentum.component_count != 0)
+    {
+        Some(assigned_component(
+            layout,
+            catalog.momentum(momentum.momentum_slot_id)?,
+            0,
+        )?)
+    } else if let Some(coupling) = sections.couplings.first() {
+        Some(assigned_component(
+            layout,
+            catalog.coupling_real(coupling.coupling_id)?,
+            0,
+        )?)
+    } else {
+        None
+    };
+    physical_component
+        .map(|component| {
+            component
+                .checked_mul(2)
+                .and_then(|plane| plane.checked_add(1))
+                .ok_or_else(|| invalid("eager direct shared-zero plane id overflows"))
+        })
+        .transpose()
+}
+
 fn build_direct_schedule(
     plan: &EagerExecutionPlan,
     catalog: SemanticCatalog,
     layout: &DirectArenaLayout,
     applications: &BTreeMap<u32, Arc<LoadedSymjitEagerDirectTable>>,
+    shared_zero_plane_index: Option<u32>,
     active_groups: Option<&[u32]>,
 ) -> RusticolResult<DirectSchedule> {
     validate_active_groups(plan, active_groups)?;
@@ -1016,6 +1290,7 @@ fn build_direct_schedule(
             catalog,
             layout,
             applications,
+            shared_zero_plane_index,
             active_groups,
             &mut factor_specs,
         )?);
@@ -1025,6 +1300,7 @@ fn build_direct_schedule(
         catalog,
         layout,
         applications,
+        shared_zero_plane_index,
         active_groups,
         &mut factor_specs,
     )?;
@@ -1053,6 +1329,7 @@ fn build_direct_stage(
     catalog: SemanticCatalog,
     layout: &DirectArenaLayout,
     applications: &BTreeMap<u32, Arc<LoadedSymjitEagerDirectTable>>,
+    shared_zero_plane_index: Option<u32>,
     active_groups: Option<&[u32]>,
     factor_specs: &mut Vec<DirectFactorSpec>,
 ) -> RusticolResult<DirectStage> {
@@ -1062,6 +1339,7 @@ fn build_direct_stage(
         catalog,
         layout,
         applications,
+        shared_zero_plane_index,
         active_groups,
         factor_specs,
     )?;
@@ -1086,6 +1364,7 @@ fn build_direct_stage(
         catalog,
         layout,
         applications,
+        shared_zero_plane_index,
         active_groups,
         factor_specs,
     )?;
@@ -1126,6 +1405,7 @@ fn build_invocation_calls(
     catalog: SemanticCatalog,
     layout: &DirectArenaLayout,
     applications: &BTreeMap<u32, Arc<LoadedSymjitEagerDirectTable>>,
+    shared_zero_plane_index: Option<u32>,
     active_groups: Option<&[u32]>,
     factor_specs: &mut Vec<DirectFactorSpec>,
 ) -> RusticolResult<Vec<DirectCall>> {
@@ -1141,6 +1421,11 @@ fn build_invocation_calls(
         let kernel = plan.kernels.get(&kernel_id).ok_or_else(|| {
             RusticolError::internal(format!("eager direct schedule lost kernel {kernel_id}"))
         })?;
+        let kernel_shared_zero_plane_index = shared_zero_plane_index.filter(|_| {
+            applications
+                .get(&kernel_id)
+                .is_some_and(|application| application.is_symjit())
+        });
         let mut invocation_bytes = Vec::new();
         let mut attachment_bytes = Vec::new();
         let mut local_attachment_count = 0_u32;
@@ -1162,6 +1447,7 @@ fn build_invocation_calls(
                 &kernel.inputs,
                 catalog,
                 layout,
+                kernel_shared_zero_plane_index,
             )?;
             push_u32(&mut invocation_bytes, local_attachment_count);
             push_u32(
@@ -1221,6 +1507,7 @@ fn build_finalization_calls(
     catalog: SemanticCatalog,
     layout: &DirectArenaLayout,
     applications: &BTreeMap<u32, Arc<LoadedSymjitEagerDirectTable>>,
+    shared_zero_plane_index: Option<u32>,
     active_groups: Option<&[u32]>,
     factor_specs: &mut Vec<DirectFactorSpec>,
 ) -> RusticolResult<Vec<DirectCall>> {
@@ -1241,6 +1528,11 @@ fn build_finalization_calls(
                 kernel.role
             )));
         }
+        let kernel_shared_zero_plane_index = shared_zero_plane_index.filter(|_| {
+            applications
+                .get(&kernel_id)
+                .is_some_and(|application| application.is_symjit())
+        });
         let mut invocation_bytes = Vec::new();
         let mut attachment_bytes = Vec::new();
         let mut attachment_count = 0_u32;
@@ -1254,6 +1546,7 @@ fn build_finalization_calls(
                 &kernel.inputs,
                 catalog,
                 layout,
+                kernel_shared_zero_plane_index,
             )?;
             push_u32(&mut invocation_bytes, attachment_count);
             push_u32(&mut invocation_bytes, 1);
@@ -1299,6 +1592,7 @@ fn build_direct_closures(
     catalog: SemanticCatalog,
     layout: &DirectArenaLayout,
     applications: &BTreeMap<u32, Arc<LoadedSymjitEagerDirectTable>>,
+    shared_zero_plane_index: Option<u32>,
     active_groups: Option<&[u32]>,
     factor_specs: &mut Vec<DirectFactorSpec>,
 ) -> RusticolResult<(Vec<DirectCall>, Vec<DirectCoefficientClosure>)> {
@@ -1320,6 +1614,11 @@ fn build_direct_closures(
                 kernel.role
             )));
         }
+        let kernel_shared_zero_plane_index = shared_zero_plane_index.filter(|_| {
+            applications
+                .get(&kernel_id)
+                .is_some_and(|application| application.is_symjit())
+        });
         let mut invocation_bytes = Vec::new();
         let mut attachment_bytes = Vec::new();
         let mut attachment_count = 0_u32;
@@ -1327,7 +1626,14 @@ fn build_direct_closures(
             if !row_active(plan, item.selector_domain_id, active_groups)? {
                 continue;
             }
-            encode_closure_inputs(&mut invocation_bytes, item, &kernel.inputs, catalog, layout)?;
+            encode_closure_inputs(
+                &mut invocation_bytes,
+                item,
+                &kernel.inputs,
+                catalog,
+                layout,
+                kernel_shared_zero_plane_index,
+            )?;
             push_u32(&mut invocation_bytes, attachment_count);
             push_u32(&mut invocation_bytes, 1);
             encode_amplitude_destination(
@@ -1407,6 +1713,7 @@ fn encode_invocation_inputs(
     descriptors: &[EagerKernelInput],
     catalog: SemanticCatalog,
     layout: &DirectArenaLayout,
+    shared_zero_plane_index: Option<u32>,
 ) -> RusticolResult<()> {
     encode_inputs(
         output,
@@ -1415,28 +1722,39 @@ fn encode_invocation_inputs(
             EagerKernelInput::FirstCurrentComponent(component) => Ok((
                 catalog.value(invocation.row.left_value_slot_id)?,
                 *component,
+                false,
             )),
             EagerKernelInput::SecondCurrentComponent(component) => Ok((
                 catalog.value(invocation.row.right_value_slot_id)?,
                 *component,
+                false,
             )),
             EagerKernelInput::FirstMomentumComponent(component) => Ok((
                 catalog.momentum(invocation.row.left_momentum_slot_id)?,
                 *component,
+                true,
             )),
             EagerKernelInput::SecondMomentumComponent(component) => Ok((
                 catalog.momentum(invocation.row.right_momentum_slot_id)?,
                 *component,
+                true,
             )),
-            EagerKernelInput::CouplingReal => {
-                Ok((catalog.coupling_real(invocation.row.coupling_slot_id)?, 0))
+            EagerKernelInput::CouplingReal => Ok((
+                catalog.coupling_real(invocation.row.coupling_slot_id)?,
+                0,
+                true,
+            )),
+            EagerKernelInput::CouplingImag => Ok((
+                catalog.coupling_imag(invocation.row.coupling_slot_id)?,
+                0,
+                true,
+            )),
+            EagerKernelInput::ModelParameter(parameter) => {
+                Ok((catalog.parameter(*parameter)?, 0, false))
             }
-            EagerKernelInput::CouplingImag => {
-                Ok((catalog.coupling_imag(invocation.row.coupling_slot_id)?, 0))
-            }
-            EagerKernelInput::ModelParameter(parameter) => Ok((catalog.parameter(*parameter)?, 0)),
         },
         layout,
+        shared_zero_plane_index,
     )
 }
 
@@ -1446,23 +1764,29 @@ fn encode_finalization_inputs(
     descriptors: &[EagerKernelInput],
     catalog: SemanticCatalog,
     layout: &DirectArenaLayout,
+    shared_zero_plane_index: Option<u32>,
 ) -> RusticolResult<()> {
     encode_inputs(
         output,
         descriptors,
         |descriptor| match descriptor {
             EagerKernelInput::FirstCurrentComponent(component) => {
-                Ok((catalog.current(item.row.current_id)?, *component))
+                Ok((catalog.current(item.row.current_id)?, *component, false))
             }
-            EagerKernelInput::FirstMomentumComponent(component) => {
-                Ok((catalog.momentum(item.row.momentum_slot_id)?, *component))
+            EagerKernelInput::FirstMomentumComponent(component) => Ok((
+                catalog.momentum(item.row.momentum_slot_id)?,
+                *component,
+                true,
+            )),
+            EagerKernelInput::ModelParameter(parameter) => {
+                Ok((catalog.parameter(*parameter)?, 0, false))
             }
-            EagerKernelInput::ModelParameter(parameter) => Ok((catalog.parameter(*parameter)?, 0)),
             _ => Err(RusticolError::integrity(
                 "eager direct finalization has an invalid semantic input",
             )),
         },
         layout,
+        shared_zero_plane_index,
     )
 }
 
@@ -1472,42 +1796,55 @@ fn encode_closure_inputs(
     descriptors: &[EagerKernelInput],
     catalog: SemanticCatalog,
     layout: &DirectArenaLayout,
+    shared_zero_plane_index: Option<u32>,
 ) -> RusticolResult<()> {
     encode_inputs(
         output,
         descriptors,
         |descriptor| match descriptor {
-            EagerKernelInput::FirstCurrentComponent(component) => {
-                Ok((catalog.value(item.row.left_value_slot_id)?, *component))
-            }
-            EagerKernelInput::SecondCurrentComponent(component) => {
-                Ok((catalog.value(item.row.right_value_slot_id)?, *component))
-            }
+            EagerKernelInput::FirstCurrentComponent(component) => Ok((
+                catalog.value(item.row.left_value_slot_id)?,
+                *component,
+                false,
+            )),
+            EagerKernelInput::SecondCurrentComponent(component) => Ok((
+                catalog.value(item.row.right_value_slot_id)?,
+                *component,
+                false,
+            )),
             EagerKernelInput::CouplingReal => {
-                Ok((catalog.coupling_real(item.row.coupling_slot_id)?, 0))
+                Ok((catalog.coupling_real(item.row.coupling_slot_id)?, 0, true))
             }
             EagerKernelInput::CouplingImag => {
-                Ok((catalog.coupling_imag(item.row.coupling_slot_id)?, 0))
+                Ok((catalog.coupling_imag(item.row.coupling_slot_id)?, 0, true))
             }
-            EagerKernelInput::ModelParameter(parameter) => Ok((catalog.parameter(*parameter)?, 0)),
+            EagerKernelInput::ModelParameter(parameter) => {
+                Ok((catalog.parameter(*parameter)?, 0, false))
+            }
             _ => Err(RusticolError::integrity(
                 "eager direct closure has an invalid semantic input",
             )),
         },
         layout,
+        shared_zero_plane_index,
     )
 }
 
 fn encode_inputs(
     output: &mut Vec<u8>,
     descriptors: &[EagerKernelInput],
-    mut resolve: impl FnMut(&EagerKernelInput) -> RusticolResult<(u32, u32)>,
+    mut resolve: impl FnMut(&EagerKernelInput) -> RusticolResult<(u32, u32, bool)>,
     layout: &DirectArenaLayout,
+    shared_zero_plane_index: Option<u32>,
 ) -> RusticolResult<()> {
     for descriptor in descriptors {
-        let (semantic, component) = resolve(descriptor)?;
+        let (semantic, component, real_only) = resolve(descriptor)?;
         let physical = assigned_component(layout, semantic, component)?;
-        push_current_plane_pair(output, physical)?;
+        if let Some(zero_plane) = shared_zero_plane_index.filter(|_| real_only) {
+            push_current_real_with_zero(output, physical, zero_plane)?;
+        } else {
+            push_current_plane_pair(output, physical)?;
+        }
     }
     Ok(())
 }
@@ -1578,6 +1915,19 @@ fn push_current_plane_pair(output: &mut Vec<u8>, component: u32) -> RusticolResu
     Ok(())
 }
 
+fn push_current_real_with_zero(
+    output: &mut Vec<u8>,
+    component: u32,
+    zero_plane: u32,
+) -> RusticolResult<()> {
+    let real = component
+        .checked_mul(2)
+        .ok_or_else(|| invalid("eager direct current plane id overflows"))?;
+    push_u32(output, real);
+    push_u32(output, zero_plane);
+    Ok(())
+}
+
 #[allow(clippy::type_complexity)]
 fn selected_reduction_metadata(
     plan: &EagerExecutionPlan,
@@ -1629,9 +1979,27 @@ fn selected_reduction_metadata(
 
 fn validate_schedule_calls(
     schedule: &DirectSchedule,
-    workspace: &EagerDirectTableWorkspace,
+    workspace: &mut EagerDirectTableWorkspace,
+    shared_zero_plane_index: Option<u32>,
     point_count: u32,
 ) -> RusticolResult<()> {
+    if let Some(zero_component) = shared_zero_plane_index.map(|plane| plane / 2) {
+        for stage in &schedule.stages {
+            for copy in &stage.unpropagated_copies {
+                let destination_stop = copy
+                    .destination_component_base
+                    .checked_add(copy.component_count)
+                    .ok_or_else(|| invalid("eager direct copy destination range overflows"))?;
+                if (copy.destination_component_base..destination_stop).contains(&zero_component) {
+                    return Err(RusticolError::integrity(format!(
+                        "eager direct copy destination range {}..{destination_stop} overlaps \
+                         read-only shared-zero component {zero_component}",
+                        copy.destination_component_base
+                    )));
+                }
+            }
+        }
+    }
     for stage in &schedule.stages {
         for call in stage
             .invocation_calls
@@ -1658,6 +2026,7 @@ fn execute_contiguous_tile(
     initial_value_slots: &[u32],
     value_ranges: &[ComponentRange],
     momentum_ranges: &[ComponentRange],
+    elide_structural_zero_fills: bool,
     schedule: &DirectSchedule,
     closure_scratch: &mut [EagerComplex64],
     source_point_count: usize,
@@ -1675,6 +2044,7 @@ fn execute_contiguous_tile(
         initial_value_slots,
         value_ranges,
         momentum_ranges,
+        elide_structural_zero_fills,
         schedule,
         closure_scratch,
         source_point_count,
@@ -1695,6 +2065,7 @@ fn execute_indexed_tile(
     initial_value_slots: &[u32],
     value_ranges: &[ComponentRange],
     momentum_ranges: &[ComponentRange],
+    elide_structural_zero_fills: bool,
     schedule: &DirectSchedule,
     closure_scratch: &mut [EagerComplex64],
     source_point_count: usize,
@@ -1711,6 +2082,7 @@ fn execute_indexed_tile(
         initial_value_slots,
         value_ranges,
         momentum_ranges,
+        elide_structural_zero_fills,
         schedule,
         closure_scratch,
         source_point_count,
@@ -1731,6 +2103,7 @@ fn execute_tile(
     initial_value_slots: &[u32],
     value_ranges: &[ComponentRange],
     momentum_ranges: &[ComponentRange],
+    elide_structural_zero_fills: bool,
     schedule: &DirectSchedule,
     closure_scratch: &mut [EagerComplex64],
     source_point_count: usize,
@@ -1751,6 +2124,7 @@ fn execute_tile(
         initial_value_slots,
         value_ranges,
         momentum_ranges,
+        elide_structural_zero_fills,
         source_point_count,
         tile_points,
         initial_values,
@@ -1771,6 +2145,7 @@ fn fill_contiguous_tile_inputs(
     initial_value_slots: &[u32],
     value_ranges: &[ComponentRange],
     momentum_ranges: &[ComponentRange],
+    elide_structural_zero_fills: bool,
     source_point_count: usize,
     tile_start: usize,
     tile_points: usize,
@@ -1786,6 +2161,7 @@ fn fill_contiguous_tile_inputs(
         initial_value_slots,
         value_ranges,
         momentum_ranges,
+        elide_structural_zero_fills,
         source_point_count,
         tile_points,
         initial_values,
@@ -1797,18 +2173,19 @@ fn fill_contiguous_tile_inputs(
 
 #[allow(clippy::too_many_arguments)]
 fn fill_tile_inputs(
-    plan: &EagerExecutionPlan,
+    _plan: &EagerExecutionPlan,
     catalog: SemanticCatalog,
     layout: &DirectArenaLayout,
     workspace: &mut EagerDirectTableWorkspace,
     initial_value_slots: &[u32],
     value_ranges: &[ComponentRange],
     momentum_ranges: &[ComponentRange],
+    elide_structural_zero_fills: bool,
     source_point_count: usize,
     tile_points: usize,
     initial_values: &[EagerComplex64],
     momenta: &[f64],
-    model_parameters: &[EagerComplex64],
+    _model_parameters: &[EagerComplex64],
     source_point: impl Fn(usize) -> usize,
 ) -> RusticolResult<()> {
     let stride = workspace.arena().point_stride() as usize;
@@ -1844,53 +2221,11 @@ fn fill_tile_inputs(
                 let source = (range.start + component) * source_point_count;
                 for point in 0..tile_points {
                     real[target + point] = momenta[source + source_point(point)];
-                    imaginary[target + point] = 0.0;
+                }
+                if !elide_structural_zero_fills {
+                    imaginary[target..target + tile_points].fill(0.0);
                 }
             }
-        }
-        for (coupling_id, row) in plan.couplings.iter().copied().enumerate() {
-            let coupling = resolve_coupling(row, model_parameters);
-            fill_input_plane(
-                real,
-                imaginary,
-                stride,
-                assigned_component(
-                    layout,
-                    catalog.coupling_real(count_u32(coupling_id, "coupling")?)?,
-                    0,
-                )?,
-                tile_points,
-                coupling.re,
-                0.0,
-            );
-            fill_input_plane(
-                real,
-                imaginary,
-                stride,
-                assigned_component(
-                    layout,
-                    catalog.coupling_imag(count_u32(coupling_id, "coupling")?)?,
-                    0,
-                )?,
-                tile_points,
-                coupling.im,
-                0.0,
-            );
-        }
-        for (parameter, value) in model_parameters.iter().copied().enumerate() {
-            fill_input_plane(
-                real,
-                imaginary,
-                stride,
-                assigned_component(
-                    layout,
-                    catalog.parameter(count_u32(parameter, "model parameter")?)?,
-                    0,
-                )?,
-                tile_points,
-                value.re,
-                value.im,
-            );
         }
     }
     Ok(())
@@ -1908,6 +2243,17 @@ fn fill_input_plane(
     let start = component as usize * stride;
     real[start..start + points].fill(value_re);
     imaginary[start..start + points].fill(value_im);
+}
+
+fn fill_real_input_plane(
+    real: &mut [f64],
+    stride: usize,
+    component: u32,
+    points: usize,
+    value: f64,
+) {
+    let start = component as usize * stride;
+    real[start..start + points].fill(value);
 }
 
 fn fill_schedule_factors(
@@ -2369,6 +2715,7 @@ fn direct_tile_capacity(
     current_planes: u32,
     amplitude_planes: u32,
     reduction_groups: u32,
+    symjit_scratch_planes: usize,
 ) -> RusticolResult<u32> {
     for candidate in (1..=requested).rev() {
         let stride = crate::direct_arena::checked_aligned_point_stride(candidate)? as usize;
@@ -2378,7 +2725,9 @@ fn direct_tile_capacity(
                 .and_then(|count| count.checked_mul(2))
                 .ok_or_else(|| invalid("eager direct workspace planes overflow"))?,
         )
-        .map_err(|_| invalid("eager direct workspace plane count exceeds usize"))?;
+        .map_err(|_| invalid("eager direct workspace plane count exceeds usize"))?
+        .checked_add(symjit_scratch_planes)
+        .ok_or_else(|| invalid("eager direct scratch plane count overflows"))?;
         let bytes = scalar_planes
             .checked_mul(stride)
             .and_then(|count| count.checked_mul(size_of::<f64>()))
@@ -2409,6 +2758,7 @@ fn direct_workspace_bytes(
     reduced_count: usize,
     factor_count: usize,
 ) -> RusticolResult<usize> {
+    let symjit_workspace_bytes = workspace.symjit_workspace_bytes()?;
     usize::try_from(workspace.arena().allocation_counters().requested_bytes)
         .ok()
         .and_then(|arena| {
@@ -2426,43 +2776,37 @@ fn direct_workspace_bytes(
                 .checked_mul(2 * size_of::<f64>())
                 .and_then(|factors| bytes.checked_add(factors))
         })
+        .and_then(|bytes| bytes.checked_add(symjit_workspace_bytes))
         .ok_or_else(|| invalid("eager direct workspace byte accounting overflows"))
 }
 
-#[cfg(all(test, target_arch = "aarch64"))]
+#[cfg(all(test, feature = "f64-symjit", target_arch = "aarch64"))]
 mod tests {
     use std::path::PathBuf;
 
-    use symjit::{Application, Compiler, Config, Expr, Storage};
-
     use super::super::plan_v3_tests::Fixture;
     use super::*;
+    use crate::engine::compile_symbolica_program_to_plane_application_bytes;
     use crate::engine::count_allocations;
-    use crate::engine::symjit_eager_direct::eager_direct_table_metadata;
-
-    fn source_application() -> Application {
-        let mut config = Config::default();
-        config.set_opt_level(2);
-        config.set_complex(true);
-        config.set_symbolica(true);
-        config.set_simd(true);
-        config.set_fast_complex(false);
-        let x = Expr::var("x");
-        let y = Expr::var("y");
-        let coupling = Expr::var("coupling");
-        Compiler::with_config(config)
-            .compile_params(&[], &[&x + &y], &[x, y, coupling])
-            .expect("compile eager whole-plan test application")
-    }
+    use crate::engine::symjit_eager_direct::eager_direct_descriptor_for_source_application_bytes;
 
     fn source_and_descriptor() -> (Vec<u8>, Vec<u8>) {
-        let source = source_application();
-        let descriptor = eager_direct_table_metadata(3, 1)
-            .expect("table metadata")
-            .encode_descriptor(&source)
-            .expect("encode table descriptor");
-        let mut bytes = Vec::new();
-        source.save(&mut bytes).expect("save source application");
+        let bytes = compile_symbolica_program_to_plane_application_bytes(
+            "([('add', ('temp', 0), [('param', 0), ('param', 1)], 0), \
+              ('assign', ('out', 0), ('temp', 0))], 3, [])",
+            3,
+            1,
+            2,
+            false,
+        )
+        .expect("compile eager whole-plan P-kernel");
+        let descriptor = eager_direct_descriptor_for_source_application_bytes(
+            &bytes,
+            3,
+            1,
+            std::path::Path::new("eager-whole-plan-test.symjit"),
+        )
+        .expect("encode table descriptor");
         (bytes, descriptor)
     }
 
@@ -2490,6 +2834,8 @@ mod tests {
                 application: EagerDirectPreparedApplication::Symjit {
                     source_application: source,
                     descriptor,
+                    expected_optimization_level: 2,
+                    expected_compression: true,
                 },
                 display_path: PathBuf::from("whole-plan-vertex.symjit"),
             },
@@ -2501,6 +2847,8 @@ mod tests {
                 application: EagerDirectPreparedApplication::Symjit {
                     source_application: source,
                     descriptor,
+                    expected_optimization_level: 2,
+                    expected_compression: true,
                 },
                 display_path: PathBuf::from("whole-plan-closure.symjit"),
             },
@@ -2602,6 +2950,20 @@ mod tests {
                 &mut full_reduced,
             )
             .expect("evaluate full eager selector reference");
+        let profiled = direct
+            .evaluate_profile_into(
+                points,
+                &values,
+                &momenta,
+                &[],
+                &mut full_amplitudes,
+                &mut full_reduced,
+            )
+            .expect("profile full eager selector reference");
+        assert!(
+            profiled.internal_scratch_bytes > 0,
+            "profile must expose eager P-kernel scratch traffic separately"
+        );
 
         let mut selected_amplitudes = vec![EagerComplex64::new(-13.0, 29.0); points];
         direct
@@ -2659,6 +3021,114 @@ mod tests {
         let (source, descriptor) = source_and_descriptor();
         let direct = runtime_with_point_tile(&fixture, &source, &descriptor, 32);
         assert_eq!(direct.effective_point_tile_size(), 32);
+    }
+
+    #[test]
+    fn broadcast_planes_refresh_once_and_only_for_changed_parameters() {
+        let mut fixture = Fixture::new();
+        fixture.prepared_parameter_count = 1;
+        let (source, descriptor) = source_and_descriptor();
+        let mut direct = runtime(&fixture, &source, &descriptor);
+        let points = 7;
+        let (values, momenta) = inputs(points);
+        let mut amplitudes = vec![EagerComplex64::new(0.0, 0.0); points];
+        let mut reduced = vec![0.0; points];
+        let parameter = [EagerComplex64::new(2.0, -3.0)];
+
+        let first = direct
+            .evaluate_profile_into(
+                points,
+                &values,
+                &momenta,
+                &parameter,
+                &mut amplitudes,
+                &mut reduced,
+            )
+            .expect("initialize eager broadcast planes");
+        assert!(direct.elide_structural_zero_fills);
+        let zero_plane = direct
+            .shared_zero_plane_index
+            .expect("SymJIT eager execution must reserve a shared-zero plane");
+        assert_eq!(zero_plane % 2, 1);
+        let zero_component = (zero_plane / 2) as usize;
+        let point_stride = direct.workspace.arena().point_stride() as usize;
+        let (_, current_imaginary) = direct.workspace.arena().current_slices();
+        assert!(
+            current_imaginary[zero_component * point_stride..(zero_component + 1) * point_stride]
+                .iter()
+                .all(|value| *value == 0.0),
+            "shared-zero plane changed during eager execution"
+        );
+        let stride = direct.effective_point_tile_size() as u64;
+        assert_eq!(
+            first.internal_broadcast_bytes,
+            4 * stride * std::mem::size_of::<f64>() as u64,
+            "initial refresh must fill the two real coupling planes and the split-complex parameter"
+        );
+        for point in 0..points {
+            let (expected_amplitude, expected_reduced) = expected(&values, points, point);
+            assert_close(
+                amplitudes[point].re,
+                expected_amplitude.re,
+                "parameter-cache amplitude real",
+            );
+            assert_close(
+                amplitudes[point].im,
+                expected_amplitude.im,
+                "parameter-cache amplitude imaginary",
+            );
+            assert_close(
+                reduced[point],
+                expected_reduced,
+                "parameter-cache reduced total",
+            );
+        }
+
+        let unchanged = direct
+            .evaluate_profile_into(
+                points,
+                &values,
+                &momenta,
+                &parameter,
+                &mut amplitudes,
+                &mut reduced,
+            )
+            .expect("reuse eager broadcast planes");
+        assert_eq!(unchanged.internal_broadcast_bytes, 0);
+
+        let changed_parameter = [EagerComplex64::new(5.0, -3.0)];
+        let changed = direct
+            .evaluate_profile_into(
+                points,
+                &values,
+                &momenta,
+                &changed_parameter,
+                &mut amplitudes,
+                &mut reduced,
+            )
+            .expect("refresh changed eager parameter plane");
+        assert_eq!(
+            changed.internal_broadcast_bytes,
+            2 * stride * std::mem::size_of::<f64>() as u64,
+            "a changed unused parameter must not rewrite stationary coupling planes"
+        );
+
+        let (result, allocations, bytes) = count_allocations(|| {
+            direct.evaluate_into(
+                points,
+                &values,
+                &momenta,
+                &changed_parameter,
+                &mut amplitudes,
+                &mut reduced,
+            )
+        });
+        result.expect("repeat eager evaluation with cached parameter");
+        assert_eq!(
+            (allocations, bytes),
+            (0, 0),
+            "cached eager broadcast execution allocated"
+        );
     }
 
     #[test]

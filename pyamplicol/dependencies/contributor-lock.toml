@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: 0BSD
 # Source-checkout-only dependency inputs for non-publishable contributor builds.
 schema_version = 1
-patches = []
+patches = [
+  { name = "symjit-raw-plane-descriptor-v1", target = "symjit", path = "patches/symjit/upstream/0001-Expose-a-stable-raw-P-kernel-plane-descriptor.patch", sha256 = "70012117436d77265b349c013b0df8c4fe72a04ced972090ba3ac069721b436d", applies_to_revision = "77789ff0f78232b1ea4608aceb397058df50b06d" },
+]
 
 [abis]
 symbolica_serialization = "symbolica-bincode2-v1"
 symjit_application = "symjit-application-storage-v3"
-symjit_direct_application = "symjit-direct-application-storage-v1"
-symjit_direct_table_binding = "symjit-direct-table-binding-v1"
-symjit_direct_table_descriptor = "symjit-direct-table-descriptor-v1"
+symjit_plane_application = "pyamplicol-symjit-plane-application-v2"
 
 [symbolica]
 source_url = "https://github.com/symbolica-dev/symbolica.git"
@@ -19,18 +19,16 @@ community_revision = "0deaa0f1484ec5c24f5f109176fa66f0d30134ca"
 release_status = "merged-main-candidate"
 
 [symjit]
-candidate_version = "2.21.1"
-repository = "https://github.com/ValentinHirschi/symjit_changes_for_pyamplicol.git"
-branch = "pyamplicol-generic-direct-apis"
-source_url = "https://github.com/ValentinHirschi/symjit_changes_for_pyamplicol/archive/60a9d66fbfb2181d36a5747c389714eccc187244.tar.gz"
-archive_prefix = "symjit_changes_for_pyamplicol-60a9d66fbfb2181d36a5747c389714eccc187244"
-archive_sha256 = "a1db9882368c18e3db349181889304f47a8fb1af186ee5722b06690568f374ba"
-candidate_revision = "60a9d66fbfb2181d36a5747c389714eccc187244"
+candidate_version = "2.22.0"
+repository = "https://github.com/siravan/symjit-crate.git"
+source_url = "https://github.com/siravan/symjit-crate/archive/77789ff0f78232b1ea4608aceb397058df50b06d.tar.gz"
+archive_prefix = "symjit-crate-77789ff0f78232b1ea4608aceb397058df50b06d"
+archive_sha256 = "b3cb6451eff299b27709115053caed579bc266bbd46923a70066b5ac554dd0ac"
+candidate_revision = "77789ff0f78232b1ea4608aceb397058df50b06d"
 application_storage_version = 3
-source_tree_sha256 = "feb5e65bd48df88dff37ee6e3e981226a9d507e554114b77035fe51951d51387"
-candidate_tree_sha256 = "feb5e65bd48df88dff37ee6e3e981226a9d507e554114b77035fe51951d51387"
-upstream_pr = "https://github.com/siravan/symjit/pull/12"
-release_status = "fork-pr-candidate"
+source_tree_sha256 = "88aa6a50ec7ad120d3d832f4d98e3efe89ea259e925c9ed139904b8dd7607453"
+candidate_tree_sha256 = "4b4b791b0f2bbef33a7dbd2936d20dc722f7301e2e9e986b65b2a8b94d220b31"
+release_status = "upstream-git-candidate-with-generic-raw-plane-patch"
 license = "MIT"
 
 [gammaloop_candidate]
@@ -49,8 +47,10 @@ release_status = "developer-build-input-only"
 license = "MIT"
 
 [ufo_model_loader]
+latest_verified_published_version = "0.1.7"
 published_revision = "f3fda32c5e6a673075c345d74a11f12b83c00015"
 wheel_sha256 = "803ae28141ec4be3189cc62469b88da17ca33907791fe99774c2fe756a45edf7"
+release_status = "verified"
 license = "MIT"
 
 [legacy_amplicol]

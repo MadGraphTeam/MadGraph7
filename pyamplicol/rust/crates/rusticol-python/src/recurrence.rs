@@ -51,7 +51,7 @@ const DIRECT_LOWERING_RESULT_KIND: &str = "pyamplicol-recurrence-direct-lowering
 const DIRECT_LOWERING_RESULT_SCHEMA_VERSION: u32 = 2;
 const DIRECT_CANONICALIZATION_ABI: &str = "pyamplicol-canonical-json-v1";
 const DIRECT_BACKEND_ABI: &str = "rusticol.recurrence-direct-backend.v1";
-const DIRECT_PAYLOAD_BINDING_ABI: &str = "pyamplicol-recurrence-direct-payload-binding-v1";
+const DIRECT_PAYLOAD_BINDING_ABI: &str = "pyamplicol-recurrence-plane-binding-v2";
 const DIRECT_IDENTITY_FINALIZER: &str = "rusticol.identity-finalize-in-place.v1";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

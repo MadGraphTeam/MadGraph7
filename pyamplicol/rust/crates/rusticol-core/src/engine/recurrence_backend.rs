@@ -13,7 +13,8 @@ use super::evaluator::recurrence_source_direct::{
 };
 #[cfg(feature = "f64-symjit")]
 use super::evaluator::symjit_direct::{
-    LoadedSymjitDirectExecutor, SymjitDirectPlaneProjection, SymjitDirectScalarProjection,
+    LoadedSymjitDirectExecutor, SymjitDirectParameterBinding, SymjitDirectPlaneProjection,
+    SymjitDirectScalarProjection,
 };
 use super::{PreparedKernelManifest, PreparedKernelPackManifest};
 use crate::artifact::EvaluatorPayloadStore;
@@ -27,11 +28,6 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 #[cfg(feature = "f64-symjit")]
 use std::path::PathBuf;
-#[cfg(feature = "f64-symjit")]
-use symjit::{
-    DirectApplicationMetadata, DirectDestinationOperation as SymjitDestinationOperation,
-    DirectInputBinding, DirectInputSnapshot as SymjitInputSnapshot, DirectOutputScale,
-};
 
 #[cfg(feature = "f64-symjit")]
 use super::eager_manifest::RecurrenceDirectPlaneProjectionManifest;
@@ -158,7 +154,7 @@ impl NativeRecurrenceDirectExecutorBackend {
                     "jit" => {
                         #[cfg(feature = "f64-symjit")]
                         {
-                            let loaded = load_symjit_executor(template, payloads)?;
+                            let loaded = load_symjit_executor(template, &pack, payloads)?;
                             let handle = loaded.handle();
                             symjit.push(loaded);
                             handle
@@ -244,6 +240,28 @@ impl NativeRecurrenceDirectExecutorBackend {
 impl NativeRecurrenceDirectExecutorOwners {
     pub(super) fn summary(&self) -> &NativeRecurrenceDirectBackendSummary {
         &self.summary
+    }
+
+    pub(super) fn internal_traffic_bytes(&self) -> (u64, u64) {
+        #[cfg(feature = "f64-symjit")]
+        {
+            self._symjit
+                .iter()
+                .map(LoadedSymjitDirectExecutor::internal_traffic_bytes)
+                .fold(
+                    (0_u64, 0_u64),
+                    |(scratch, broadcast), (next_scratch, next_broadcast)| {
+                        (
+                            scratch.saturating_add(next_scratch),
+                            broadcast.saturating_add(next_broadcast),
+                        )
+                    },
+                )
+        }
+        #[cfg(not(feature = "f64-symjit"))]
+        {
+            (0, 0)
+        }
     }
 
     pub(super) fn union_source_dispatch(&self) -> RusticolResult<DirectUnionSourceDispatchHandle> {
@@ -462,9 +480,11 @@ fn load_intrinsic_handle(
 #[cfg(feature = "f64-symjit")]
 fn load_symjit_executor(
     template: &RecurrenceDirectTemplateManifest,
+    pack: &PreparedKernelPackManifest,
     payloads: &EvaluatorPayloadStore,
 ) -> RusticolResult<LoadedSymjitDirectExecutor> {
     let binding = &template.payload_binding;
+    let expected_compression = symjit_plane_compression(binding, pack)?;
     let source_path = binding.source_application_path.as_deref().ok_or_else(|| {
         RusticolError::artifact("Direct-Arena prepared call has no source application")
     })?;
@@ -482,35 +502,19 @@ fn load_symjit_executor(
         )));
     }
     let role = direct_role(&template.role)?;
-    let (operation, input_snapshot) = direct_destination_policy(&template.destination_operation)?;
+    validate_direct_destination_policy(role, &template.destination_operation)?;
     let parameter_bindings = binding
         .parameter_bindings
         .iter()
         .map(|binding| match *binding {
             RecurrenceDirectParameterBindingManifest::Plane { index } => {
-                DirectInputBinding::Plane(index)
+                SymjitDirectParameterBinding::Plane { index }
             }
             RecurrenceDirectParameterBindingManifest::Scalar { index } => {
-                DirectInputBinding::Scalar(index)
+                SymjitDirectParameterBinding::Broadcast { index }
             }
         })
-        .collect();
-    let metadata = DirectApplicationMetadata::new(
-        operation,
-        input_snapshot,
-        DirectOutputScale::ComplexScalar,
-        binding.state_plane_indices.clone(),
-        parameter_bindings,
-        binding.input_plane_count,
-        binding.scalar_input_count,
-        binding.output_alias_inputs.clone(),
-    )
-    .map_err(|error| {
-        RusticolError::integrity(format!(
-            "invalid Direct-Arena SymJIT metadata for executor {}: {error}",
-            template.direct_executor_id
-        ))
-    })?;
+        .collect::<Vec<_>>();
     let input_planes = binding
         .input_plane_projections
         .iter()
@@ -530,11 +534,45 @@ fn load_symjit_executor(
             .source_application_abi
             .as_deref()
             .unwrap_or_default(),
+        template.optimization_level,
+        expected_compression,
         role,
-        metadata,
+        parameter_bindings,
         input_planes,
         scalars,
+        binding.output_alias_inputs.clone(),
     )
+}
+
+#[cfg(feature = "f64-symjit")]
+fn symjit_plane_compression(
+    binding: &super::eager_manifest::RecurrenceDirectPayloadBindingManifest,
+    pack: &PreparedKernelPackManifest,
+) -> RusticolResult<bool> {
+    let prepared_kernel_id = binding
+        .prepared_kernel_id
+        .ok_or_else(|| RusticolError::artifact("Direct-Arena prepared call has no kernel ID"))?;
+    let kernel = pack
+        .kernels
+        .iter()
+        .find(|kernel| kernel.kernel_id == prepared_kernel_id)
+        .ok_or_else(|| {
+            RusticolError::integrity(format!(
+                "Direct-Arena prepared kernel {prepared_kernel_id} is absent"
+            ))
+        })?;
+    kernel
+        .f64_evaluator_manifest
+        .get("plane_application")
+        .and_then(serde_json::Value::as_object)
+        .and_then(|plane| plane.get("compression"))
+        .and_then(serde_json::Value::as_bool)
+        .ok_or_else(|| {
+            RusticolError::compatibility(format!(
+                "Direct-Arena prepared JIT kernel {prepared_kernel_id} has no authenticated \
+                 SymJIT compression setting; regenerate the prepared model"
+            ))
+        })
 }
 
 #[cfg(feature = "f64-symjit")]
@@ -615,29 +653,19 @@ fn direct_role(role: &str) -> RusticolResult<DirectExecutorRole> {
 }
 
 #[cfg(feature = "f64-symjit")]
-fn direct_destination_policy(
-    value: &str,
-) -> RusticolResult<(SymjitDestinationOperation, SymjitInputSnapshot)> {
-    match value {
-        "initialize" => Ok((
-            SymjitDestinationOperation::Overwrite,
-            SymjitInputSnapshot::Live,
-        )),
-        "add" => Ok((
-            SymjitDestinationOperation::Accumulate,
-            SymjitInputSnapshot::Live,
-        )),
-        "finalize-in-place" => Ok((
-            SymjitDestinationOperation::Overwrite,
-            SymjitInputSnapshot::BeforeWrite,
-        )),
-        "closure-add" => Ok((
-            SymjitDestinationOperation::Accumulate,
-            SymjitInputSnapshot::BeforeWrite,
-        )),
-        other => Err(RusticolError::compatibility(format!(
-            "unsupported Direct-Arena destination operation {other:?}"
-        ))),
+fn validate_direct_destination_policy(role: DirectExecutorRole, value: &str) -> RusticolResult<()> {
+    let expected = match role {
+        DirectExecutorRole::Source => "initialize",
+        DirectExecutorRole::Contribution => "add",
+        DirectExecutorRole::Finalization => "finalize-in-place",
+        DirectExecutorRole::Closure => "closure-add",
+    };
+    if value == expected {
+        Ok(())
+    } else {
+        Err(RusticolError::integrity(format!(
+            "Direct-Arena destination operation {value:?} does not match role {role:?}; expected {expected:?}"
+        )))
     }
 }
 

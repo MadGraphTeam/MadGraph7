@@ -1,5 +1,13 @@
 # SymJIT ARM64 Direct-Arena Scalar Return-Status MRE
 
+> **Archived historical reproducer.** The defect documented here was fixed
+> upstream before SymJIT 2.22.0. The private-fork DirectApplication API is no
+> longer an active pyAmpliCol dependency, so the standalone Cargo crate and
+> its stale lock were retired. Its exact Rust source is preserved as
+> [`main.rs.txt`](../../archive/symjit-arm64-direct-arena-scalar-status-mre/main.rs.txt).
+> Commands and dependency paths below describe the original investigation and
+> are not current developer instructions.
+
 ## Summary
 
 On macOS arm64, a successful scalar Direct-Arena application can report a

@@ -17,7 +17,8 @@ SCRIPT = ROOT / "tools/release/prepare_selftest_fixture.py"
 FIXTURE = ROOT / "src/pyamplicol/assets/selftest/portable-64le"
 ARENA_CAPABILITY = "compiled-plane-arena-v1"
 SOURCE_APPLICATION_ABI = "symjit-application-storage-v3"
-DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v1"
+PLANE_APPLICATION_ABI = "pyamplicol-symjit-plane-application-v2"
+DIRECT_APPLICATION_ABI = "pyamplicol-compiled-plane-kernel-v2"
 SYMJIT_CAPABILITY = "symjit.application.complex-f64.v1"
 
 
@@ -37,6 +38,10 @@ def _portable_stage(
     application_path = (
         "evaluators/amplitude.symjit" if amplitude else "evaluators/current.symjit"
     )
+    plane_application_path = application_path.replace(
+        ".symjit",
+        ".plane.symjit",
+    )
     arena = "amplitude" if amplitude else "current"
     output_component = 0 if amplitude else 2
     evaluator = {
@@ -44,6 +49,31 @@ def _portable_stage(
         "runtime_capability": SYMJIT_CAPABILITY,
         "application_abi": SOURCE_APPLICATION_ABI,
         "application_path": application_path,
+        "plane_application": {
+            "application_path": plane_application_path,
+            "application_abi": PLANE_APPLICATION_ABI,
+            "storage_abi": SOURCE_APPLICATION_ABI,
+            "element_layout": "split-complex-plane-major",
+            "descriptor_order": "inputs-re-im-then-outputs-re-im",
+            "input_complex_count": 1,
+            "output_complex_count": 1,
+            "input_plane_count": 2,
+            "output_plane_count": 2,
+            "compiler_type": "native",
+            "translation_mode": "symbolica-structured-instructions",
+            "optimization_level": optimization_level,
+            "simd": True,
+            "complex": True,
+            "fast_math": True,
+            "fast_complex": False,
+            "compression": False,
+            "threading": False,
+            "direct_arena": True,
+            "source_digest": hashlib.sha256(
+                f"instructions:{arena}".encode()
+            ).hexdigest(),
+            "target": {"word_bits": 64, "endianness": "little"},
+        },
         "compiler_type": "native",
         "translation_mode": "indirect",
         "optimization_level": optimization_level,
@@ -78,7 +108,7 @@ def _portable_stage(
             "schema_version": 1,
             "kind": "compiled-plane-arena-stage",
             "application_abi": DIRECT_APPLICATION_ABI,
-            "source_application_abi": SOURCE_APPLICATION_ABI,
+            "source_application_abi": PLANE_APPLICATION_ABI,
             "element_layout": "split-complex-component-major",
             "output_operation": "overwrite",
             "output_factor": "identity",
@@ -94,10 +124,10 @@ def _portable_stage(
             ],
             "leaves": [
                 {
-                    "application_path": application_path,
-                    "source_application_abi": SOURCE_APPLICATION_ABI,
+                    "application_path": plane_application_path,
+                    "source_application_abi": PLANE_APPLICATION_ABI,
                     "optimization_level": optimization_level,
-                    "direct_codegen_optimization_level": 3,
+                    "direct_codegen_optimization_level": optimization_level,
                     "input_len": 1,
                     "output_len": 1,
                     "input_indices": [0],
@@ -255,9 +285,7 @@ def test_source_selftest_fixture_is_one_portable_64bit_template() -> None:
         for payload in manifest["payloads"]
         if "target" in payload
     } == {module.PORTABLE_TEMPLATE}
-    content = dict(manifest)
-    claimed = content.pop("artifact_id")
-    assert claimed == hashlib.sha256(module._canonical_json(content)).hexdigest()
+    assert manifest["artifact_id"] == module._artifact_id(manifest)
     assert (
         module.validate_portable_artifact_capabilities(
             manifest,
@@ -379,16 +407,18 @@ def test_portable_fixture_rejects_incomplete_arena_bindings(tmp_path: Path) -> N
         module._validate_portable_evaluator_configuration(tmp_path, manifest)
 
 
-def test_portable_fixture_requires_o3_arena_direct_codegen(tmp_path: Path) -> None:
+def test_portable_fixture_requires_plane_codegen_optimization_match(
+    tmp_path: Path,
+) -> None:
     module = _module()
     execution = _portable_execution()
     descriptor = execution["compiled"]["stage_evaluators"]["amplitude_stage"][
         "compiled_plane_arena"
     ]
-    descriptor["leaves"][0]["direct_codegen_optimization_level"] = 2
+    descriptor["leaves"][0]["direct_codegen_optimization_level"] = 3
     manifest = _write_portable_execution(tmp_path, execution)
 
-    with pytest.raises(RuntimeError, match=r"direct codegen.*optimization level 3"):
+    with pytest.raises(RuntimeError, match=r"direct codegen optimization.*plane"):
         module._validate_portable_evaluator_configuration(tmp_path, manifest)
 
 
@@ -414,11 +444,11 @@ def test_portable_fixture_validates_nested_selector_executions(
     descriptor = nested["compiled"]["stage_evaluators"]["amplitude_stage"][
         "compiled_plane_arena"
     ]
-    descriptor["leaves"][0]["direct_codegen_optimization_level"] = 1
+    descriptor["leaves"][0]["direct_codegen_optimization_level"] = 3
     execution["helicity_sum_execution"] = nested
     manifest = _write_portable_execution(tmp_path, execution)
 
-    with pytest.raises(RuntimeError, match=r"direct codegen.*optimization level 3"):
+    with pytest.raises(RuntimeError, match=r"direct codegen optimization.*plane"):
         module._validate_portable_evaluator_configuration(tmp_path, manifest)
 
 

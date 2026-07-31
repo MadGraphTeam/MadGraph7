@@ -40,6 +40,8 @@ pub(crate) enum EagerDirectPreparedApplication<'a> {
     Symjit {
         source_application: &'a [u8],
         descriptor: &'a [u8],
+        expected_optimization_level: u32,
+        expected_compression: bool,
     },
     Native {
         library: &'a Arc<PinnedNativeLibrary>,
@@ -289,6 +291,8 @@ impl EagerDirectInvocationPrototype {
                 EagerDirectPreparedApplication::Symjit {
                     source_application,
                     descriptor,
+                    expected_optimization_level,
+                    expected_compression,
                 } => LoadedSymjitEagerDirectTable::load_prepared_application_bytes(
                     source_application,
                     descriptor,
@@ -296,6 +300,8 @@ impl EagerDirectInvocationPrototype {
                     EAGER_DIRECT_SOURCE_APPLICATION_ABI,
                     EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
                     EAGER_DIRECT_TABLE_BINDING_ABI,
+                    *expected_optimization_level,
+                    *expected_compression,
                 )?,
                 EagerDirectPreparedApplication::Native {
                     library,
@@ -425,6 +431,7 @@ impl EagerDirectInvocationPrototype {
             count_u32(plan.amplitude_count, "amplitude planes")?,
             tile_capacity,
             &plane_bindings,
+            None,
             Vec::new(),
             vec![0.0; factor_len],
             vec![0.0; factor_len],
@@ -432,7 +439,7 @@ impl EagerDirectInvocationPrototype {
         workspace.begin_tile(tile_capacity)?;
         for call in &calls {
             call.application
-                .validate_call(&call.rows, &workspace, 0, tile_capacity)?;
+                .validate_call(&call.rows, &mut workspace, 0, tile_capacity)?;
         }
 
         Ok(Self {
@@ -1959,17 +1966,18 @@ pub(super) fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(message)
 }
 
-#[cfg(all(test, target_arch = "aarch64"))]
+#[cfg(all(test, feature = "f64-symjit", target_arch = "aarch64"))]
 mod tests {
     use std::hint::black_box;
     use std::time::Instant;
 
-    use symjit::{Applet, Application, Compiler, Config, Expr, Storage};
+    use symjit::{Applet, Application, Compiler, Config, Expr};
 
     use super::super::plan_v3_tests::Fixture;
     use super::*;
+    use crate::engine::compile_symbolica_program_to_plane_application_bytes;
     use crate::engine::count_allocations;
-    use crate::engine::symjit_eager_direct::eager_direct_table_metadata;
+    use crate::engine::symjit_eager_direct::eager_direct_descriptor_for_source_application_bytes;
 
     fn source_application() -> Application {
         let mut config = Config::default();
@@ -1993,13 +2001,22 @@ mod tests {
     }
 
     fn source_and_descriptor() -> (Vec<u8>, Vec<u8>) {
-        let source = source_application();
-        let descriptor = eager_direct_table_metadata(3, 1)
-            .unwrap()
-            .encode_descriptor(&source)
-            .unwrap();
-        let mut bytes = Vec::new();
-        source.save(&mut bytes).unwrap();
+        let bytes = compile_symbolica_program_to_plane_application_bytes(
+            "([('add', ('temp', 0), [('param', 0), ('param', 1)], 0), \
+              ('assign', ('out', 0), ('temp', 0))], 3, [])",
+            3,
+            1,
+            2,
+            false,
+        )
+        .unwrap();
+        let descriptor = eager_direct_descriptor_for_source_application_bytes(
+            &bytes,
+            3,
+            1,
+            std::path::Path::new("eager-invocation-test.symjit"),
+        )
+        .unwrap();
         (bytes, descriptor)
     }
 
@@ -2108,6 +2125,8 @@ mod tests {
             application: EagerDirectPreparedApplication::Symjit {
                 source_application: source,
                 descriptor,
+                expected_optimization_level: 2,
+                expected_compression: true,
             },
             display_path: PathBuf::from("real-plan-v3-eager-k10.symjit"),
         };
@@ -2246,6 +2265,8 @@ mod tests {
             application: EagerDirectPreparedApplication::Symjit {
                 source_application: &source,
                 descriptor: &descriptor,
+                expected_optimization_level: 2,
+                expected_compression: true,
             },
             display_path: PathBuf::from("wrong-semantic-identity.symjit"),
         };

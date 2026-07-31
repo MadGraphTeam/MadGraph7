@@ -32,6 +32,7 @@ def test_maturin_recursively_includes_every_sdist_source_tree() -> None:
     assert {
         "justfile",
         "rust-toolchain.toml",
+        "dependencies/patches/symjit/upstream/*.patch",
     } <= includes
     assert not {path for path in includes if path.endswith("/**")}
 

@@ -1,4 +1,12 @@
 // SPDX-License-Identifier: 0BSD
+
+// HISTORICAL SOURCE ONLY.
+//
+// This reproducer targets the retired private-fork DirectApplication API. It
+// is retained as evidence for the AArch64 return-status defect fixed upstream
+// before SymJIT 2.22.0. It is not expected to compile against the active
+// standard P-kernel dependency.
+
 use std::ptr;
 
 use symjit::{

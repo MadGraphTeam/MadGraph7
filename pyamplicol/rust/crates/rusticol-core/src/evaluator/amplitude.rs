@@ -47,6 +47,47 @@ impl AmplitudeSamples for RowMajorAmplitudeSamples<'_> {
     }
 }
 
+#[derive(Clone, Copy)]
+struct EagerRowMajorAmplitudeSamples<'a> {
+    values: &'a [crate::EagerComplex64],
+    point_count: usize,
+    output_length: usize,
+}
+
+impl<'a> EagerRowMajorAmplitudeSamples<'a> {
+    fn new(
+        values: &'a [crate::EagerComplex64],
+        point_count: usize,
+        output_length: usize,
+    ) -> RusticolResult<Self> {
+        let expected = point_count.checked_mul(output_length).ok_or_else(|| {
+            RusticolError::invalid_argument("eager amplitude output dimensions overflow")
+        })?;
+        if values.len() != expected {
+            return Err(RusticolError::invalid_argument(format!(
+                "eager amplitude output buffer has length {}, expected {expected}",
+                values.len()
+            )));
+        }
+        Ok(Self {
+            values,
+            point_count,
+            output_length,
+        })
+    }
+}
+
+impl AmplitudeSamples for EagerRowMajorAmplitudeSamples<'_> {
+    #[inline(always)]
+    fn value(self, row: usize, output: usize, output_length: usize) -> Complex<f64> {
+        debug_assert_eq!(output_length, self.output_length);
+        debug_assert!(row < self.point_count);
+        debug_assert!(output < self.output_length);
+        let value = self.values[row * self.output_length + output];
+        c64(value.re, value.im)
+    }
+}
+
 impl AmplitudeSamples for crate::direct_arena::DirectAmplitudePlanes<'_> {
     #[inline(always)]
     fn value(self, row: usize, output: usize, _output_length: usize) -> Complex<f64> {
@@ -449,11 +490,12 @@ impl AmplitudeRuntime {
 
     pub(in crate::engine) fn gather_color_topology_replay_row_major(
         &mut self,
-        amplitudes: &[Complex<f64>],
+        amplitudes: &[crate::EagerComplex64],
         batch_size: usize,
         mapping_index: usize,
     ) -> RusticolResult<()> {
-        let samples = RowMajorAmplitudeSamples::new(amplitudes, batch_size, self.output_length)?;
+        let samples =
+            EagerRowMajorAmplitudeSamples::new(amplitudes, batch_size, self.output_length)?;
         self.gather_color_topology_replay_samples(samples, batch_size, 0, mapping_index)
     }
 
@@ -3231,6 +3273,7 @@ impl AmplitudeRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn evaluate_materialized_helicity_generic<T>(
         &mut self,
         batch_size: usize,
@@ -3301,7 +3344,7 @@ impl AmplitudeRuntime {
                         .any(|index| root_factors[*index].is_some());
             }
             let mut group_values = vec![complex_zero::<T>(); batch_size * contraction.group_count];
-            for row in 0..batch_size {
+            for (row, full_value) in full_values.iter_mut().enumerate() {
                 let row_offset = row * self.output_length;
                 let group_row = row * contraction.group_count;
                 for (group_index, group) in self.raw_sum_groups.iter().enumerate() {
@@ -3330,7 +3373,7 @@ impl AmplitudeRuntime {
                         left.re.clone() * right.re.clone() + left.im.clone() * right.im.clone();
                     let product_im =
                         left.im.clone() * right.re.clone() - left.re.clone() * right.im.clone();
-                    full_values[row] += T::from(normalization_factor * entry.symmetry_factor)
+                    *full_value += T::from(normalization_factor * entry.symmetry_factor)
                         * (T::from(entry.weight_re) * product_re
                             - T::from(entry.weight_im) * product_im);
                 }
@@ -3567,6 +3610,7 @@ impl AmplitudeRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn evaluate_resolved_generic<T>(
         &mut self,
         batch_size: usize,

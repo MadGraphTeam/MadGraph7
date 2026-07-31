@@ -42,17 +42,7 @@ def _write_payload(root: Path, relative: str, data: bytes) -> None:
 
 def _rewrite_authenticated_manifest(root: Path, manifest: dict[str, object]) -> None:
     manifest.pop("artifact_id", None)
-    manifest["artifact_id"] = hashlib.sha256(
-        (
-            json.dumps(
-                manifest,
-                allow_nan=False,
-                separators=(",", ":"),
-                sort_keys=True,
-            )
-            + "\n"
-        ).encode()
-    ).hexdigest()
+    manifest["artifact_id"] = compare._runtime_artifact_id(manifest)
     _write_json(root / "artifact.json", manifest)
 
 
@@ -476,17 +466,7 @@ def _artifact(
                 "schema_version": 1,
             }
         }
-    manifest["artifact_id"] = hashlib.sha256(
-        (
-            json.dumps(
-                manifest,
-                allow_nan=False,
-                separators=(",", ":"),
-                sort_keys=True,
-            )
-            + "\n"
-        ).encode()
-    ).hexdigest()
+    manifest["artifact_id"] = compare._runtime_artifact_id(manifest)
     _write_json(root / "artifact.json", manifest)
     return root
 

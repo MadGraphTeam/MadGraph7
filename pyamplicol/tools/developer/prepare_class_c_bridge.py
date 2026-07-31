@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
+import inspect
 import json
 import os
 import re
@@ -26,7 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 _PROFILE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
 _NATIVE_EXTENSION_SUFFIXES = (".dylib", ".pyd", ".so")
-_NATIVE_BUILD_INPUT_FILES = (
+_LEGACY_NATIVE_BUILD_INPUT_FILES = (
     Path("Cargo.lock"),
     Path("Cargo.toml"),
     Path("pyproject.toml"),
@@ -37,12 +39,12 @@ _NATIVE_BUILD_INPUT_FILES = (
     Path("dependencies/install-state.json"),
     Path("dependencies/release-lock.toml"),
 )
-_NATIVE_BUILD_INPUT_TREES = (
+_LEGACY_NATIVE_BUILD_INPUT_TREES = (
     Path("build_backend"),
     Path("dependencies/patches"),
     Path("rust"),
 )
-_NATIVE_BUILD_INPUT_SUFFIXES = {
+_LEGACY_NATIVE_BUILD_INPUT_SUFFIXES = {
     ".f90",
     ".h",
     ".hpp",
@@ -104,9 +106,65 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _native_build_inputs_digest(root: Path) -> str:
-    paths = [root / relative for relative in _NATIVE_BUILD_INPUT_FILES]
-    for relative in _NATIVE_BUILD_INPUT_TREES:
+def _native_build_inputs_digest(
+    root: Path,
+    *,
+    normalize_release_cargo_lock: bool = False,
+) -> str:
+    identity_path = root / "build_backend/native_build_identity.py"
+    if identity_path.is_file():
+        identity_name = hashlib.sha256(
+            str(root.resolve()).encode("utf-8")
+        ).hexdigest()[:12]
+        spec = importlib.util.spec_from_file_location(
+            f"_pyamplicol_ancestor_native_identity_{identity_name}",
+            identity_path,
+        )
+        if spec is None or spec.loader is None:
+            raise ClassCPrepareBootstrapError(
+                "ancestor native-build identity module is unavailable"
+            )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        digest = getattr(module, "native_build_inputs_digest", None)
+        if not callable(digest):
+            raise ClassCPrepareBootstrapError(
+                "ancestor native-build identity module has no digest callable"
+            )
+        try:
+            parameters = inspect.signature(digest).parameters.values()
+        except (TypeError, ValueError) as error:
+            raise ClassCPrepareBootstrapError(
+                "ancestor native-build identity callable cannot be inspected"
+            ) from error
+        supports_release_projection = any(
+            parameter.name == "normalize_release_cargo_lock"
+            or parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters
+        )
+        if normalize_release_cargo_lock and not supports_release_projection:
+            raise ClassCPrepareBootstrapError(
+                "ancestor native-build identity cannot verify a release-mode "
+                "source runtime"
+            )
+        if supports_release_projection:
+            return str(
+                digest(
+                    root,
+                    normalize_release_cargo_lock=normalize_release_cargo_lock,
+                )
+            )
+        return str(digest(root))
+
+    if normalize_release_cargo_lock:
+        raise ClassCPrepareBootstrapError(
+            "legacy ancestor native-build identity cannot verify a release-mode "
+            "source runtime"
+        )
+    paths = [
+        root / relative for relative in _LEGACY_NATIVE_BUILD_INPUT_FILES
+    ]
+    for relative in _LEGACY_NATIVE_BUILD_INPUT_TREES:
         tree = root / relative
         if not tree.is_dir():
             continue
@@ -117,7 +175,7 @@ def _native_build_inputs_digest(root: Path) -> str:
             and not {"__pycache__", "target"}.intersection(
                 path.relative_to(tree).parts
             )
-            and path.suffix in _NATIVE_BUILD_INPUT_SUFFIXES
+            and path.suffix in _LEGACY_NATIVE_BUILD_INPUT_SUFFIXES
         )
     digest = hashlib.sha256()
     for path in sorted(set(paths)):
@@ -235,6 +293,34 @@ def _bind_ancestor_runtime(
         raise ClassCPrepareBootstrapError(
             "retained source-runtime contract is missing"
         )
+    raw_mode = contract.get("mode")
+    if raw_mode is None:
+        # Historical source-runtime markers predate the explicit identity mode
+        # and always used the raw candidate/source-checkout projection.
+        runtime_mode = "candidate"
+    elif raw_mode in {"candidate", "release"}:
+        runtime_mode = str(raw_mode)
+        valid_build_mode = (
+            runtime_mode == "candidate"
+            and build_info.get("publishable") is False
+        ) or (
+            runtime_mode == "release"
+            and (
+                build_info.get("publishable") is True
+                or (
+                    build_info.get("publishable") is False
+                    and build_info.get("release_prepared_model_bootstrap") is True
+                )
+            )
+        )
+        if not valid_build_mode:
+            raise ClassCPrepareBootstrapError(
+                "retained source-runtime identity mode conflicts with build info"
+            )
+    else:
+        raise ClassCPrepareBootstrapError(
+            "retained source-runtime identity mode is invalid"
+        )
     extension_sha256 = _sha256(extension)
     if (
         contract.get("extension_name") != extension.name
@@ -287,27 +373,31 @@ def _bind_ancestor_runtime(
         ancestor_artifacts / "source-runtime",
         target_is_directory=True,
     )
-    dependencies = ancestor_root / "dependencies"
-    checkouts = (live_root / "dependencies/checkouts").resolve(strict=True)
-    if not checkouts.is_dir():
-        raise ClassCPrepareBootstrapError(
-            "retained managed dependency checkout root is unavailable"
-        )
-    os.symlink(checkouts, dependencies / "checkouts", target_is_directory=True)
-    for relative in _IGNORED_NATIVE_INPUTS:
-        source = (live_root / relative).resolve(strict=True)
-        if not source.is_file():
+    if runtime_mode == "candidate":
+        dependencies = ancestor_root / "dependencies"
+        checkouts = (live_root / "dependencies/checkouts").resolve(strict=True)
+        if not checkouts.is_dir():
             raise ClassCPrepareBootstrapError(
-                f"retained native input is unavailable: {relative}"
+                "retained managed dependency checkout root is unavailable"
             )
-        destination = ancestor_root / relative
-        if destination.exists() or destination.is_symlink():
-            raise ClassCPrepareBootstrapError(
-                f"ancestor native input unexpectedly exists: {relative}"
-            )
-        os.symlink(source, destination)
+        os.symlink(checkouts, dependencies / "checkouts", target_is_directory=True)
+        for relative in _IGNORED_NATIVE_INPUTS:
+            source = (live_root / relative).resolve(strict=True)
+            if not source.is_file():
+                raise ClassCPrepareBootstrapError(
+                    f"retained native input is unavailable: {relative}"
+                )
+            destination = ancestor_root / relative
+            if destination.exists() or destination.is_symlink():
+                raise ClassCPrepareBootstrapError(
+                    f"ancestor native input unexpectedly exists: {relative}"
+                )
+            os.symlink(source, destination)
 
-    observed_native_digest = _native_build_inputs_digest(ancestor_root)
+    observed_native_digest = _native_build_inputs_digest(
+        ancestor_root,
+        normalize_release_cargo_lock=runtime_mode == "release",
+    )
     expected_native_digest = contract.get("native_build_inputs_sha256")
     if (
         not isinstance(expected_native_digest, str)

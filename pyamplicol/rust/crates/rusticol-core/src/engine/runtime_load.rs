@@ -47,7 +47,7 @@ fn validate_compiled_plane_arena_contract(manifest: &ExecutionManifest) -> Rusti
     if !declared_execution && !declared_stage && direct_count == 0 {
         return Err(RusticolError::compatibility(
             "this compiled f64 artifact predates compiled-plane-arena-v1; regenerate it with \
-             `pyamplicol generate-process` using the current pyAmpliCol build",
+             `pyamplicol generate` using the current pyAmpliCol build",
         ));
     }
     if !declared_execution
@@ -99,7 +99,7 @@ fn validate_compiled_plane_arena_stage(
         || direct.output_output_aliasing != "forbidden"
     {
         return Err(RusticolError::compatibility(format!(
-            "compiled plane-arena stage {:?} has an incompatible direct ABI",
+            "compiled plane-arena stage {:?} has an incompatible direct ABI; regenerate the artifact",
             stage.evaluator_label
         )));
     }
@@ -243,20 +243,28 @@ fn validate_compiled_plane_arena_stage(
             supported_optimization_level,
         ) = match canonical.evaluator {
             EvaluatorManifest::SymjitApplication {
-                application_path,
-                application_abi,
                 input_len,
                 output_len,
                 optimization_level,
+                plane_application,
                 ..
-            } => (
-                application_path.as_str(),
-                application_abi.as_str(),
-                *input_len,
-                *output_len,
-                *optimization_level,
-                *optimization_level <= 3,
-            ),
+            } => {
+                let plane_application = plane_application.as_ref().ok_or_else(|| {
+                    RusticolError::compatibility(
+                        "compiled SymJIT leaf predates the standard plane application ABI; \
+                         regenerate the artifact",
+                    )
+                })?;
+                plane_application.validate(*input_len, *output_len, *optimization_level)?;
+                (
+                    plane_application.application_path.as_str(),
+                    plane_application.application_abi.as_str(),
+                    *input_len,
+                    *output_len,
+                    *optimization_level,
+                    *optimization_level <= 3,
+                )
+            }
             EvaluatorManifest::CompiledComplex {
                 function_name,
                 input_len,
@@ -290,9 +298,10 @@ fn validate_compiled_plane_arena_stage(
                 "compiled plane-arena leaf optimization level disagrees with its source payload",
             ));
         }
-        if binding.direct_codegen_optimization_level != 3 {
+        if binding.direct_codegen_optimization_level != optimization_level {
             return Err(RusticolError::compatibility(
-                "compiled plane-arena leaf requires authenticated O3 direct code generation",
+                "compiled plane-arena leaf direct code generation must match its standard \
+                 P-kernel optimization level",
             ));
         }
         if binding.application_path != application_path
@@ -4081,6 +4090,32 @@ mod compiled_plane_arena_contract_tests {
         stage["parameter_layout"] = json!("stage-local-value-momentum");
         stage["input_components"] = Value::Array((0..14).map(source_binding).collect());
         stage["evaluator"]["optimization_level"] = json!(optimization_level);
+        stage["evaluator"]["plane_application"] = json!({
+            "application_path": "evaluators/direct.plane.symjit",
+            "application_abi": SYMJIT_PLANE_APPLICATION_ABI,
+            "storage_abi": SYMJIT_APPLICATION_STORAGE_ABI,
+            "element_layout": "split-complex-plane-major",
+            "descriptor_order": "inputs-re-im-then-outputs-re-im",
+            "input_complex_count": 14,
+            "output_complex_count": 1,
+            "input_plane_count": 28,
+            "output_plane_count": 2,
+            "compiler_type": "native",
+            "translation_mode": "symbolica-structured-instructions",
+            "optimization_level": optimization_level,
+            "simd": true,
+            "complex": true,
+            "fast_math": true,
+            "fast_complex": false,
+            "compression": true,
+            "threading": false,
+            "direct_arena": true,
+            "source_digest": "00".repeat(32),
+            "target": {
+                "triple": "test-native",
+                "cpu_features": [],
+            },
+        });
         stage["compiled_plane_arena"] = json!({
             "schema_version": 1,
             "kind": "compiled-plane-arena-stage",
@@ -4098,10 +4133,10 @@ mod compiled_plane_arena_contract_tests {
                 "component": 0,
             }],
             "leaves": [{
-                "application_path": "evaluators/direct.symjit",
+                "application_path": "evaluators/direct.plane.symjit",
                 "source_application_abi": COMPILED_PLANE_SOURCE_APPLICATION_ABI,
                 "optimization_level": optimization_level,
-                "direct_codegen_optimization_level": 3,
+                "direct_codegen_optimization_level": optimization_level,
                 "input_len": 14,
                 "output_len": 1,
                 "input_indices": (0..14).collect::<Vec<_>>(),
@@ -4140,9 +4175,10 @@ mod compiled_plane_arena_contract_tests {
         let error = validate_compiled_plane_arena_contract(&manifest)
             .expect_err("pre-arena compiled f64 must fail closed");
 
+        let message = error.to_string();
         assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
-        assert!(error.to_string().contains("compiled-plane-arena-v1"));
-        assert!(error.to_string().contains("generate-process"));
+        assert!(message.contains("compiled-plane-arena-v1"));
+        assert!(message.contains("`pyamplicol generate`"));
     }
 
     #[test]
@@ -4162,6 +4198,28 @@ mod compiled_plane_arena_contract_tests {
             .expect_err("pre-arena non-O3 compiled f64 must fail closed");
         assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
         assert!(error.to_string().contains("compiled-plane-arena-v1"));
+    }
+
+    #[test]
+    fn compiled_plane_contract_rejects_predecessor_binding_abi() {
+        let mut manifest = arena_manifest();
+        manifest
+            .compiled
+            .stage_evaluators
+            .as_mut()
+            .unwrap()
+            .amplitude_stage
+            .compiled_plane_arena
+            .as_mut()
+            .unwrap()
+            .application_abi = concat!("symjit-direct-", "application-storage-v1").to_string();
+
+        let error = validate_compiled_plane_arena_contract(&manifest)
+            .expect_err("the predecessor compiled-plane ABI must fail closed");
+
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+        assert!(error.to_string().contains("incompatible direct ABI"));
+        assert!(error.to_string().contains("regenerate"));
     }
 
     #[test]
@@ -4233,13 +4291,18 @@ mod compiled_plane_arena_contract_tests {
             .unwrap()
             .amplitude_stage;
         let EvaluatorManifest::SymjitApplication {
-            optimization_level, ..
+            optimization_level,
+            plane_application,
+            ..
         } = &mut stage.evaluator
         else {
             panic!("compiled plane fixture must use one SymJIT evaluator");
         };
         *optimization_level = 4;
-        stage.compiled_plane_arena.as_mut().unwrap().leaves[0].optimization_level = 4;
+        plane_application.as_mut().unwrap().optimization_level = 4;
+        let leaf = &mut stage.compiled_plane_arena.as_mut().unwrap().leaves[0];
+        leaf.optimization_level = 4;
+        leaf.direct_codegen_optimization_level = 4;
 
         let error = validate_compiled_plane_arena_contract(&manifest).unwrap_err();
         assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);

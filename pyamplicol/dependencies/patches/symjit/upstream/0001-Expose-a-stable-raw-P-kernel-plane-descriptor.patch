@@ -1,0 +1,242 @@
+From 8ba5df57661cebd4bef429d1a51470ce14cad3ef Mon Sep 17 00:00:00 2001
+From: SymJIT contributors <devnull@example.invalid>
+Date: Fri, 31 Jul 2026 00:00:00 +0000
+Subject: [PATCH] Expose a stable raw P-kernel plane descriptor
+
+The existing P-kernel entry point accepts a pointer to Rust mutable-slice
+fat pointers. That cannot soundly represent duplicate input planes or
+intentional input/output aliases because constructing the corresponding
+overlapping `&mut` references is undefined behavior.
+
+Add a generic `#[repr(C)]` descriptor and scalar/SIMD Applet accessors with
+an unsafe callable that preserves the existing compiled-function ABI. The
+generated kernel body is unchanged. Exercise duplicate inputs, an aliased
+output, nonzero SIMD rows, and scalar execution in the kernel example.
+---
+ src/kernels.rs       | 75 +++++++++++++++++++++++++++++++++++++++++++-
+ src/lib.rs           |  4 +--
+ src/symjit/applet.rs | 34 ++++++++++++++++++++
+ src/symjit/mod.rs    |  2 +-
+ src/symjit/utils.rs  | 36 +++++++++++++++++++++
+ 5 files changed, 147 insertions(+), 4 deletions(-)
+
+diff --git a/src/kernels.rs b/src/kernels.rs
+index e09a56f..ac63798 100644
+--- a/src/kernels.rs
++++ b/src/kernels.rs
+@@ -1,6 +1,6 @@
+ use anyhow::Result;
+ pub use num_complex::{Complex, ComplexFloat};
+-use symjit::{Compiler, Config};
++use symjit::{Compiled, Compiler, Config, PlaneDescriptor};
+ use wide::{f64x2, f64x4};
+ 
+ const MODEL: &str = "
+@@ -217,6 +217,76 @@ fn kernel_p2_simd_complex_coef() -> Result<()> {
+     Ok(())
+ }
+ 
++fn kernel_p2_raw_duplicate_and_alias() -> Result<()> {
++    let mut config = Config::new(symjit::CompilerType::Native, 0)?;
++    config.set_symbolica(true);
++    config.set_direct_arena(true);
++    config.set_direct_arena_operation(0);
++    config.set_direct_arena_identity_output(true);
++    config.set_simd(true);
++    let mut compiler = Compiler::with_config(config);
++    let mut application = compiler.translate(MODEL.into(), 0)?;
++    application.prepare_simd();
++    let app = application.seal()?;
++
++    let mut values = [2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
++    let values_descriptor =
++        unsafe { PlaneDescriptor::from_raw_parts(values.as_mut_ptr(), values.len()) };
++    let descriptors = [values_descriptor, values_descriptor, values_descriptor];
++
++    let simd_lanes = app.compiled_simd.as_ref().unwrap().count_lanes();
++    assert!(simd_lanes == 2 || simd_lanes == 4);
++    let simd = app.simd_plane_kernel().unwrap();
++    let _ = unsafe {
++        simd(
++            std::ptr::null(),
++            descriptors.as_ptr(),
++            0,
++            std::ptr::null(),
++        )
++    };
++    let _ = unsafe {
++        simd(
++            std::ptr::null(),
++            descriptors.as_ptr(),
++            simd_lanes,
++            std::ptr::null(),
++        )
++    };
++    assert!(values[simd_lanes - 1] == {
++        let input = (simd_lanes + 1) as f64;
++        input * input + input
++    });
++    assert!(values[2 * simd_lanes - 1] == {
++        let input = (2 * simd_lanes + 1) as f64;
++        input * input + input
++    });
++
++    let mut scalar_values = [2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
++    let scalar_descriptor = unsafe {
++        PlaneDescriptor::from_raw_parts(scalar_values.as_mut_ptr(), scalar_values.len())
++    };
++    let scalar_descriptors = [scalar_descriptor, scalar_descriptor, scalar_descriptor];
++    let scalar = app.scalar_plane_kernel().unwrap();
++    let _ = unsafe {
++        scalar(
++            std::ptr::null(),
++            scalar_descriptors.as_ptr(),
++            6,
++            std::ptr::null(),
++        )
++    };
++    assert!(scalar_values[6] == 72.0);
++
++    let ordinary_config = Config::new(symjit::CompilerType::Native, 0)?;
++    let ordinary = Compiler::with_config(ordinary_config)
++        .translate(MODEL.into(), 0)?
++        .seal()?;
++    assert!(ordinary.scalar_plane_kernel().is_none());
++    assert!(ordinary.simd_plane_kernel().is_none());
++    Ok(())
++}
++
+ fn kernel_b1_scalar_real() -> Result<()> {
+     let mut compiler = Compiler::new();
+     let app = compiler.translate(MODEL.into(), 0)?.seal()?;
+@@ -459,6 +529,9 @@ pub fn main() -> Result<()> {
+     kernel_p2_simd_complex_coef()?;
+     pass("Kernel P2 simd complex with coefficients");
+ 
++    kernel_p2_raw_duplicate_and_alias()?;
++    pass("Kernel P2 raw duplicate and alias");
++
+     kernel_b1_scalar_real()?;
+     pass("Kernel B1 real");
+ 
+diff --git a/src/lib.rs b/src/lib.rs
+index ee7e954..9abaffe 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -297,6 +297,6 @@ pub use num_complex::{Complex, ComplexFloat};
+ 
+ pub use symjit::{
+     double, int, var, Applet, Application, BuiltinSymbol, Compiled, Compiler, CompilerType,
+-    Composer, Config, Defuns, ElemType, Element, Expr, FastFunc, Instruction, Matrix, MirWriter,
+-    Slot, Storage, SymbolicaModel, Translator,
++    CompiledPlaneFunc, Composer, Config, Defuns, ElemType, Element, Expr, FastFunc, Instruction,
++    Matrix, MirWriter, PlaneDescriptor, Slot, Storage, SymbolicaModel, Translator,
+ };
+diff --git a/src/symjit/applet.rs b/src/symjit/applet.rs
+index c77a0be..edce36a 100644
+--- a/src/symjit/applet.rs
++++ b/src/symjit/applet.rs
+@@ -393,6 +393,40 @@ impl Applet {
+             None
+         }
+     }
++
++    /// Returns the scalar indirect direct-arena P-kernel with a stable raw
++    /// plane descriptor.
++    ///
++    /// This supports arenas which bind an allocation more than once. The
++    /// returned function performs no validation; the `Applet` and its
++    /// executable mapping must outlive every invocation.
++    pub fn scalar_plane_kernel(&self) -> Option<CompiledPlaneFunc<f64>> {
++        let compiled = self.compiled.as_ref()?;
++        if !self.config.direct_arena() || !compiled.support_indirect() {
++            return None;
++        }
++        let kernel = compiled.func();
++        Some(unsafe {
++            std::mem::transmute::<CompiledFunc<f64>, CompiledPlaneFunc<f64>>(kernel)
++        })
++    }
++
++    /// Returns the SIMD indirect direct-arena P-kernel with a stable raw plane
++    /// descriptor.
++    ///
++    /// SIMD indices are actual, lane-aligned row indices whose full lane-width
++    /// range must be valid. The `Applet` and executable mapping must outlive
++    /// every invocation; compiled code reports the lane width.
++    pub fn simd_plane_kernel(&self) -> Option<CompiledPlaneFunc<f64>> {
++        let compiled = self.compiled_simd.as_ref()?;
++        if !self.config.direct_arena() || !compiled.support_indirect() {
++            return None;
++        }
++        let kernel = compiled.func();
++        Some(unsafe {
++            std::mem::transmute::<CompiledFunc<f64>, CompiledPlaneFunc<f64>>(kernel)
++        })
++    }
+ }
+ 
+ pub fn recast_as_f64<T>(v: &[T]) -> &[f64]
+diff --git a/src/symjit/mod.rs b/src/symjit/mod.rs
+index e9ee03c..2ae0c1c 100644
+--- a/src/symjit/mod.rs
++++ b/src/symjit/mod.rs
+@@ -343,7 +343,7 @@ pub use matrix::Matrix;
+ pub use runnable::{Application, CompilerType};
+ pub use serializer::MirWriter;
+ pub use types::{ElemType, Element};
+-pub use utils::{Compiled, Storage};
++pub use utils::{Compiled, CompiledPlaneFunc, PlaneDescriptor, Storage};
+ 
+ #[derive(Debug, Clone, Copy)]
+ pub enum CompilerStatus {
+diff --git a/src/symjit/utils.rs b/src/symjit/utils.rs
+index c2b33cf..744c9a8 100644
+--- a/src/symjit/utils.rs
++++ b/src/symjit/utils.rs
+@@ -7,6 +7,42 @@ use super::machine::MachineCode;
+ 
+ pub type CompiledFunc<T> = fn(*const T, *const &mut [T], usize, *const T) -> i32;
+ 
++/// Stable raw descriptor for one column-first P-kernel state plane.
++///
++/// Unlike `&mut [T]`, this representation can describe duplicate inputs and
++/// intentional input/output aliases without creating overlapping Rust
++/// references. Callers remain responsible for keeping the allocation alive
++/// and for synchronizing every access while a kernel is executing.
++#[derive(Clone, Copy, Debug)]
++#[repr(C)]
++pub struct PlaneDescriptor<T> {
++    pub data: *mut T,
++    pub len: usize,
++}
++
++impl<T> PlaneDescriptor<T> {
++    /// Constructs a descriptor from raw allocation metadata.
++    ///
++    /// # Safety
++    ///
++    /// `data` must remain valid and suitably aligned for `len` consecutive
++    /// values throughout every kernel call which receives this descriptor.
++    pub const unsafe fn from_raw_parts(data: *mut T, len: usize) -> Self {
++        Self { data, len }
++    }
++}
++
++/// Raw-descriptor variant of a compiled kernel entry point.
++///
++/// The machine-code ABI is identical to [`CompiledFunc`], whose second
++/// argument is already consumed as an array of `(data, len)` descriptors.
++///
++/// Calling the function is unsafe because the generated code dereferences
++/// descriptors and parameters without validating their lifetimes, lengths,
++/// alignment, alias synchronization, or mutability.
++pub type CompiledPlaneFunc<T> =
++    unsafe fn(*const T, *const PlaneDescriptor<T>, usize, *const T) -> i32;
++
+ pub trait Compiled<T: Sized + Copy + Default> {
+     fn exec(&mut self, params: &[T]);
+     fn evaluate(&mut self, args: &[T], outs: &mut [T]);
+-- 
+2.46.2
+

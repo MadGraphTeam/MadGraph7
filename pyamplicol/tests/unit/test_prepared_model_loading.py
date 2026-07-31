@@ -83,7 +83,10 @@ def _prepared_builtin_sm(
         backend="jit",
         optimization_settings=optimization_settings,
         producer={"distribution": "pyamplicol", "version": "test"},
-        dependency_abis={"symjit_application": SYMJIT_STORAGE_V3_ABI},
+        dependency_abis={
+            "symjit_application": SYMJIT_STORAGE_V3_ABI,
+            "symjit_plane_application": "pyamplicol-symjit-plane-application-v2",
+        },
         provenance={"compiled_model": "test"},
         target=symjit_storage_v3_target(machine=machine),
         resolver_manifest={
@@ -253,9 +256,9 @@ def test_eager_plan_accepts_prepared_model(
     assert plan.effective_settings.evaluator.backend == "jit"
     assert plan.effective_settings.evaluator.jit.optimization_level == 2
     assert plan.effective_settings.evaluator.jit.compress is True
-    assert {
-        adjustment.path for adjustment in plan.adjustments
-    } >= {"evaluator.optimization.collect_factors"}
+    assert {adjustment.path for adjustment in plan.adjustments} >= {
+        "evaluator.optimization.collect_factors"
+    }
 
 
 def test_eager_prepared_pack_settings_are_authoritative(
@@ -304,6 +307,7 @@ def test_legacy_prepared_jit_pack_defaults_compression_to_false(
     assert plan.requested_settings.evaluator.jit.compress is True
     assert plan.effective_settings.evaluator.jit.compress is False
     by_path = {adjustment.path: adjustment for adjustment in plan.adjustments}
-    assert "prepared eager kernel pack is authoritative" in by_path[
-        "evaluator.jit.compress"
-    ].reason
+    assert (
+        "prepared eager kernel pack is authoritative"
+        in by_path["evaluator.jit.compress"].reason
+    )

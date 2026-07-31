@@ -17,7 +17,7 @@ use std::fmt::Write as _;
 pub(super) const EAGER_EXECUTION_KIND: &str = "pyamplicol-runtime-eager-execution";
 pub(super) const MAX_EAGER_POINT_TILE_SIZE: usize = 1_048_576;
 pub(super) const MAX_EAGER_WORKSPACE_MIB: usize = 4096;
-const PREPARED_KERNEL_VARIANT_ABI: &str = "pyamplicol-prepared-kernel-variant-v1";
+const PREPARED_KERNEL_VARIANT_ABI: &str = "pyamplicol-prepared-kernel-variant-v2";
 const PREPARED_INDEPENDENT_BLOCK_VARIANT_ID: &str = "independent-block-4";
 const PREPARED_INDEPENDENT_BLOCK_PROOF: &str = "prepared-kernel-independent-current-block-v1";
 const SYMJIT_APPLICATION_STORAGE_V3_ABI: &str = "symjit-application-storage-v3";
@@ -26,9 +26,8 @@ const PREPARED_JIT_PORTABLE_TARGET: &str = "symjit-storage-v3-portable";
 const RECURRENCE_DIRECT_TEMPLATE_ABI_V1: &str = "pyamplicol-recurrence-direct-template-v1";
 const RECURRENCE_DIRECT_BACKEND_ABI_V1: &str = "rusticol.recurrence-direct-backend.v1";
 const RECURRENCE_DIRECT_CANONICALIZATION_ABI_V1: &str = "pyamplicol-canonical-json-v1";
-const RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI_V1: &str =
-    "pyamplicol-recurrence-direct-payload-binding-v1";
-const SYMJIT_DIRECT_APPLICATION_STORAGE_V1_ABI: &str = "symjit-direct-application-storage-v1";
+const RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI_V2: &str = "pyamplicol-recurrence-plane-binding-v2";
+const SYMJIT_PLANE_APPLICATION_V2_ABI: &str = "pyamplicol-symjit-plane-application-v2";
 const NATIVE_DIRECT_APPLICATION_V1_ABI: &str = "pyamplicol-recurrence-native-direct-library-v1";
 
 #[derive(Clone, Debug, Deserialize)]
@@ -704,6 +703,16 @@ impl PreparedKernelPackManifest {
                     "prepared JIT kernels declare an unsupported SymJIT application ABI",
                 ));
             }
+            if self
+                .dependency_abis
+                .get("symjit_plane_application")
+                .and_then(Value::as_str)
+                != Some(SYMJIT_PLANE_APPLICATION_V2_ABI)
+            {
+                return Err(RusticolError::compatibility(
+                    "prepared JIT kernels declare an unsupported SymJIT plane-application ABI; regenerate the prepared model",
+                ));
+            }
             if !self.target.portable
                 || self.target.target_triple != PREPARED_JIT_PORTABLE_TARGET
                 || !self.target.cpu_features.is_empty()
@@ -1123,10 +1132,11 @@ impl RecurrenceDirectPayloadBindingManifest {
         raw: Option<&Value>,
         kernels: &BTreeMap<u32, &PreparedKernelManifest>,
     ) -> RusticolResult<()> {
-        if self.abi != RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI_V1 {
-            return Err(RusticolError::compatibility(
-                "Direct-Arena payload binding has an unsupported ABI",
-            ));
+        if self.abi != RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI_V2 {
+            return Err(RusticolError::compatibility(format!(
+                "Direct-Arena payload binding ABI {:?} is unsupported; regenerate the prepared model with this pyAmpliCol version",
+                self.abi
+            )));
         }
         validate_sha256_text(&self.payload_digest, "Direct-Arena payload digest")?;
         if !matches!(
@@ -1258,20 +1268,33 @@ impl RecurrenceDirectPayloadBindingManifest {
                 })?;
                 match template.backend.as_str() {
                     "jit" => {
+                        let plane = evaluator
+                            .get("plane_application")
+                            .and_then(Value::as_object)
+                            .ok_or_else(|| {
+                                RusticolError::artifact(
+                                    "prepared JIT kernel has no SymJIT plane application",
+                                )
+                            })?;
                         if self.direct_application_abi.as_deref()
-                            != Some(SYMJIT_DIRECT_APPLICATION_STORAGE_V1_ABI)
+                            != Some(SYMJIT_PLANE_APPLICATION_V2_ABI)
                             || self.source_application_abi.as_deref()
-                                != Some(SYMJIT_APPLICATION_STORAGE_V3_ABI)
+                                != Some(SYMJIT_PLANE_APPLICATION_V2_ABI)
                             || self.native_entry_point.is_some()
-                            || evaluator.get("application_path").and_then(Value::as_str)
+                            || plane.get("application_path").and_then(Value::as_str)
                                 != Some(source_path)
-                            || evaluator.get("application_abi").and_then(Value::as_str)
+                            || plane.get("application_abi").and_then(Value::as_str)
                                 != self.source_application_abi.as_deref()
-                            || evaluator.get("optimization_level").and_then(Value::as_u64)
+                            || plane.get("storage_abi").and_then(Value::as_str)
+                                != Some(SYMJIT_APPLICATION_STORAGE_V3_ABI)
+                            || plane.get("optimization_level").and_then(Value::as_u64)
                                 != Some(PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL)
+                            || !self.state_plane_indices.is_empty()
+                            || !self.parameter_bindings.len().is_multiple_of(2)
+                            || !self.output_alias_inputs.len().is_multiple_of(2)
                         {
                             return Err(RusticolError::integrity(
-                                "Direct-Arena callable source does not match its portable O2 prepared kernel",
+                                "Direct-Arena callable source does not match its portable O2 SymJIT plane kernel",
                             ));
                         }
                     }
@@ -1560,7 +1583,8 @@ impl PreparedKernelManifest {
             || direct.binding_abi != crate::eager_layout::EAGER_DIRECT_TABLE_BINDING_ABI
         {
             return Err(RusticolError::compatibility(format!(
-                "prepared eager kernel {} has an unsupported DirectTable ABI contract",
+                "prepared eager kernel {} has an unsupported DirectTable ABI contract; \
+                 regenerate the artifact with the current `pyamplicol generate`",
                 self.kernel_id
             )));
         }
@@ -1682,6 +1706,15 @@ impl PreparedKernelManifest {
                 self.kernel_id
             )));
         }
+        if kind == "symjit-application-evaluator" {
+            validate_prepared_symjit_plane_application(
+                self.kernel_id,
+                object,
+                self.input_arity,
+                usize::try_from(self.output_arity).unwrap_or(usize::MAX),
+                PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL as u8,
+            )?;
+        }
         let runtime = self.runtime_evaluator_manifest()?;
         let capabilities = evaluator_runtime_capabilities(&runtime)?;
         if capabilities != BTreeSet::from([expected_capability.to_string()]) {
@@ -1732,7 +1765,38 @@ impl PreparedKernelManifest {
                     )));
                 }
                 if object.contains_key("direct_table") {
-                    self.eager_direct_table_manifest()?;
+                    let direct = self.eager_direct_table_manifest()?;
+                    let plane = object
+                        .get("plane_application")
+                        .and_then(Value::as_object)
+                        .ok_or_else(|| {
+                            RusticolError::compatibility(format!(
+                                "prepared eager JIT kernel {} predates the SymJIT plane-application ABI; regenerate the prepared model",
+                                self.kernel_id
+                            ))
+                        })?;
+                    if direct.source_application_abi
+                        != crate::eager_layout::EAGER_DIRECT_SOURCE_APPLICATION_ABI
+                        || plane.get("application_abi").and_then(Value::as_str)
+                            != Some(crate::eager_layout::EAGER_DIRECT_SOURCE_APPLICATION_ABI)
+                        || plane.get("storage_abi").and_then(Value::as_str)
+                            != Some(SYMJIT_APPLICATION_STORAGE_V3_ABI)
+                        || plane
+                            .get("application_path")
+                            .and_then(Value::as_str)
+                            .is_none_or(str::is_empty)
+                        || plane.get("input_complex_count").and_then(Value::as_u64)
+                            != u64::try_from(self.input_arity).ok()
+                        || plane.get("output_complex_count").and_then(Value::as_u64)
+                            != Some(u64::from(self.output_arity))
+                        || plane.get("optimization_level").and_then(Value::as_u64)
+                            != Some(PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL)
+                    {
+                        return Err(RusticolError::compatibility(format!(
+                            "prepared eager JIT kernel {} has an incompatible SymJIT plane application",
+                            self.kernel_id
+                        )));
+                    }
                 }
             }
             "compiled-complex-evaluator" => {
@@ -1825,7 +1889,8 @@ impl PreparedKernelVariantManifest {
             || self.lane_layout != "lane-major"
         {
             return Err(RusticolError::compatibility(format!(
-                "prepared kernel {} has unsupported block variant metadata",
+                "prepared kernel {} has unsupported block variant metadata; \
+                 regenerate the artifact with the current `pyamplicol generate`",
                 self.base_kernel_id
             )));
         }
@@ -1958,6 +2023,13 @@ impl PreparedKernelVariantManifest {
         }
         required_nonempty_string(object, "label", self.base_kernel_id)?;
         required_nonempty_string(object, "evaluator_state_path", self.base_kernel_id)?;
+        validate_prepared_symjit_plane_application(
+            self.base_kernel_id,
+            object,
+            self.input_arity,
+            self.output_arity,
+            PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL as u8,
+        )?;
         let application_abi =
             required_nonempty_string(object, "application_abi", self.base_kernel_id)?;
         if pack
@@ -2084,6 +2156,12 @@ fn validate_prepared_evaluator_keys(
     kind: &str,
     object: &serde_json::Map<String, Value>,
 ) -> RusticolResult<()> {
+    if kind == "symjit-application-evaluator" && !object.contains_key("plane_application") {
+        return Err(RusticolError::compatibility(format!(
+            "prepared JIT kernel {kernel_id} predates the SymJIT plane-application ABI; \
+             regenerate the prepared model"
+        )));
+    }
     let expected = match kind {
         "symjit-application-evaluator" => [
             "application_abi",
@@ -2102,6 +2180,7 @@ fn validate_prepared_evaluator_keys(
             "label",
             "optimization_level",
             "output_len",
+            "plane_application",
             "required_defuns",
             "runtime_capability",
             "settings",
@@ -2144,6 +2223,29 @@ fn validate_prepared_evaluator_keys(
         )));
     }
     Ok(())
+}
+
+fn validate_prepared_symjit_plane_application(
+    kernel_id: u32,
+    object: &serde_json::Map<String, Value>,
+    input_len: usize,
+    output_len: usize,
+    optimization_level: u8,
+) -> RusticolResult<()> {
+    let raw = object.get("plane_application").ok_or_else(|| {
+        RusticolError::compatibility(format!(
+            "prepared JIT kernel {kernel_id} predates the SymJIT plane-application ABI; \
+             regenerate the prepared model"
+        ))
+    })?;
+    let plane: SymjitPlaneApplicationManifest =
+        serde_json::from_value(raw.clone()).map_err(|error| {
+            RusticolError::compatibility(format!(
+                "prepared JIT kernel {kernel_id} has invalid SymJIT plane-application metadata; \
+                 regenerate the prepared model: {error}"
+            ))
+        })?;
+    plane.validate(input_len, output_len, optimization_level)
 }
 
 fn required_nonempty_string<'a>(

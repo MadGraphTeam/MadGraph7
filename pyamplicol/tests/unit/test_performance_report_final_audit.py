@@ -203,12 +203,13 @@ def _refresh_recurrence_source_catalog(
 def _recurrence_source_fixture(
     source_sha256: str,
 ) -> tuple[dict[str, object], dict[str, object]]:
-    source_path = "kernels/000000/application-0.symjit"
+    ordinary_source_path = "kernels/000000/application-0.symjit"
+    source_path = "kernels/000000/application-0.plane.symjit"
     binding: dict[str, object] = {
-        "abi": "pyamplicol-recurrence-direct-payload-binding-v1",
+        "abi": "pyamplicol-recurrence-plane-binding-v2",
         "contribution_parent_permutation": [0, 1],
         "destination_operation": "finalize-in-place",
-        "direct_application_abi": "symjit-direct-application-storage-v1",
+        "direct_application_abi": "pyamplicol-symjit-plane-application-v2",
         "exact_factor_scalar_slots": [0, 1],
         "input_plane_count": 1,
         "input_plane_projections": [{"kind": "destination-current"}],
@@ -227,7 +228,7 @@ def _recurrence_source_fixture(
             {"imaginary": False, "kind": "exact-factor"},
             {"imaginary": True, "kind": "exact-factor"},
         ],
-        "source_application_abi": "symjit-application-storage-v3",
+        "source_application_abi": "pyamplicol-symjit-plane-application-v2",
         "source_application_path": source_path,
         "source_application_sha256": source_sha256,
         "state_plane_indices": [],
@@ -325,8 +326,21 @@ def _recurrence_source_fixture(
                     "backend": "jit",
                     "runtime_capability": "symjit.application.complex-f64.v1",
                     "application_abi": "symjit-application-storage-v3",
-                    "application_path": source_path,
+                    "application_path": ordinary_source_path,
                     "optimization_level": 2,
+                    "plane_application": {
+                        "application_path": source_path,
+                        "application_abi": (
+                            "pyamplicol-symjit-plane-application-v2"
+                        ),
+                        "storage_abi": "symjit-application-storage-v3",
+                        "translation_mode": (
+                            "symbolica-structured-instructions"
+                        ),
+                        "optimization_level": 2,
+                        "direct_arena": True,
+                        "source_digest": "1" * 64,
+                    },
                 },
             }
         ],
@@ -404,20 +418,32 @@ def _compiled_stage(
     backend: str = "jit",
 ) -> dict[str, object]:
     source_application_abi = (
-        "symjit-application-storage-v3"
+        "pyamplicol-symjit-plane-application-v2"
         if backend == "jit"
         else "pyamplicol-native-compiled-direct-application-v1"
     )
     application_abi = (
-        "symjit-direct-application-storage-v1"
+        "pyamplicol-compiled-plane-kernel-v2"
         if backend == "jit"
         else "pyamplicol-native-compiled-direct-application-v1"
     )
     evaluator = (
         {
             "kind": "symjit-application-evaluator",
+            "backend": "jit",
             "runtime_capability": "symjit.application.complex-f64.v1",
+            "application_abi": "symjit-application-storage-v3",
+            "application_path": "evaluators/stage.symjit",
             "optimization_level": optimization_level,
+            "plane_application": {
+                "application_path": "evaluators/stage.plane.symjit",
+                "application_abi": "pyamplicol-symjit-plane-application-v2",
+                "storage_abi": "symjit-application-storage-v3",
+                "translation_mode": "symbolica-structured-instructions",
+                "optimization_level": optimization_level,
+                "direct_arena": True,
+                "source_digest": "1" * 64,
+            },
         }
         if backend == "jit"
         else {
@@ -443,9 +469,14 @@ def _compiled_stage(
             "output_bindings": [{"output_index": 0}],
             "leaves": [
                 {
+                    "application_path": (
+                        "evaluators/stage.plane.symjit"
+                        if backend == "jit"
+                        else "evaluators/stage.direct"
+                    ),
                     "source_application_abi": source_application_abi,
                     "optimization_level": optimization_level,
-                    "direct_codegen_optimization_level": 3,
+                    "direct_codegen_optimization_level": optimization_level,
                 }
             ],
         },
@@ -475,7 +506,11 @@ def test_compiled_arena_audits_fused_stages_and_parameter_exclusion() -> None:
         jit_o1["compiled"]["stage_evaluators"]["amplitude_stage"],  # type: ignore[index]
     ):
         stage["compiled_plane_arena"]["leaves"][0]["optimization_level"] = 1
+        stage["compiled_plane_arena"]["leaves"][0][
+            "direct_codegen_optimization_level"
+        ] = 1
         stage["evaluator"]["optimization_level"] = 1
+        stage["evaluator"]["plane_application"]["optimization_level"] = 1
     assert _audit_compiled_execution(
         jit_o1,
         _cell(ExecutionMode.COMPILED, optimization_level=1),
@@ -627,13 +662,35 @@ def test_eager_and_recurrence_arena_abis_are_audited(tmp_path: Path) -> None:
                 "contract_kind": "vertex",
                 "f64_evaluator_manifest": {
                     "kind": "symjit-application-evaluator",
+                    "backend": "jit",
                     "runtime_capability": "symjit.application.complex-f64.v1",
+                    "application_abi": "symjit-application-storage-v3",
+                    "application_path": "kernels/000000/application.symjit",
                     "optimization_level": 2,
+                    "plane_application": {
+                        "application_path": (
+                            "kernels/000000/application.plane.symjit"
+                        ),
+                        "application_abi": (
+                            "pyamplicol-symjit-plane-application-v2"
+                        ),
+                        "storage_abi": "symjit-application-storage-v3",
+                        "translation_mode": (
+                            "symbolica-structured-instructions"
+                        ),
+                        "optimization_level": 2,
+                        "direct_arena": True,
+                        "source_digest": "1" * 64,
+                    },
                     "direct_table": {
                         "capability": "eager-direct-arena-v1",
-                        "descriptor_abi": ("symjit-direct-table-descriptor-v1"),
-                        "binding_abi": "symjit-direct-table-binding-v1",
-                        "source_application_abi": ("symjit-application-storage-v3"),
+                        "descriptor_abi": (
+                            "pyamplicol-eager-plane-table-descriptor-v1"
+                        ),
+                        "binding_abi": "pyamplicol-eager-plane-table-binding-v2",
+                        "source_application_abi": (
+                            "pyamplicol-symjit-plane-application-v2"
+                        ),
                     },
                 },
             },
@@ -715,8 +772,8 @@ def test_eager_and_recurrence_arena_abis_are_audited(tmp_path: Path) -> None:
     for nested_corruption in (
         {"nested": [{"direct_table": None}]},
         {"nested": {"capability": "eager-direct-arena-v1"}},
-        {"nested": {"descriptor_abi": "symjit-direct-table-descriptor-v1"}},
-        {"nested": {"binding_abi": "symjit-direct-table-binding-v1"}},
+        {"nested": {"descriptor_abi": "pyamplicol-eager-plane-table-descriptor-v1"}},
+        {"nested": {"binding_abi": "pyamplicol-eager-plane-table-binding-v2"}},
         {"nested": {"application_abi": "pyamplicol-eager-native-direct-table-v1"}},
     ):
         corrupted = deepcopy(pack_payload)
@@ -743,7 +800,9 @@ def test_eager_and_recurrence_arena_abis_are_audited(tmp_path: Path) -> None:
             eager,
             _cell(ExecutionMode.EAGER, optimization_level=2),
         )
-    source_relative = "model/eager-kernels/kernels/000000/application-0.symjit"
+    source_relative = (
+        "model/eager-kernels/kernels/000000/application-0.plane.symjit"
+    )
     source_data = b"authenticated-symjit-application"
     source_sha256 = hashlib.sha256(source_data).hexdigest()
     recurrence, recurrence_pack = _recurrence_source_fixture(source_sha256)
@@ -782,8 +841,8 @@ def test_eager_and_recurrence_arena_abis_are_audited(tmp_path: Path) -> None:
         "direct_template_count": 1,
         "prepared_direct_template_count": 1,
         "source_evaluator_leaf_count": 1,
-        "source_application_abi": "symjit-application-storage-v3",
-        "direct_application_abi": "symjit-direct-application-storage-v1",
+        "source_application_abi": "pyamplicol-symjit-plane-application-v2",
+        "direct_application_abi": "pyamplicol-symjit-plane-application-v2",
         "prepared_kernel_pack_digest": "a" * 64,
         "direct_template_catalog_digest": recurrence["direct_template_catalog_digest"],
         "execution_manifest_path": "processes/d_dbar_to_z/execution.json",
@@ -837,6 +896,12 @@ def test_eager_and_recurrence_arena_abis_are_audited(tmp_path: Path) -> None:
         ("source_leaf_runtime_capability", "runtime_capability"),
         ("source_leaf_application_abi", "application_abi"),
         ("source_leaf_optimization", "optimization_level"),
+        ("source_leaf_plane_abi", "plane_application.application_abi"),
+        ("source_leaf_plane_digest", "plane_application.source_digest"),
+        (
+            "source_leaf_plane_optimization",
+            "plane_application.optimization_level",
+        ),
         ("source_leaf_path", "payload is missing"),
         ("source_payload_digest_link", "not bound to its prepared kernel"),
     ),
@@ -847,7 +912,9 @@ def test_final_audit_recurrence_source_pack_rejects_every_broken_link(
     message: str,
 ) -> None:
     pack_relative = "model/eager-kernel-pack.json"
-    source_relative = "model/eager-kernels/kernels/000000/application-0.symjit"
+    source_relative = (
+        "model/eager-kernels/kernels/000000/application-0.plane.symjit"
+    )
     source_data = b"authenticated-symjit-application"
     source_sha256 = hashlib.sha256(source_data).hexdigest()
     execution, pack = _recurrence_source_fixture(source_sha256)
@@ -919,8 +986,16 @@ def test_final_audit_recurrence_source_pack_rejects_every_broken_link(
         source_leaf["application_abi"] = "wrong"
     elif corruption == "source_leaf_optimization":
         source_leaf["optimization_level"] = 1
+    elif corruption == "source_leaf_plane_abi":
+        source_leaf["plane_application"]["application_abi"] = "wrong"
+    elif corruption == "source_leaf_plane_digest":
+        source_leaf["plane_application"]["source_digest"] = "wrong"
+    elif corruption == "source_leaf_plane_optimization":
+        source_leaf["plane_application"]["optimization_level"] = 1
     elif corruption == "source_leaf_path":
-        source_leaf["application_path"] = "kernels/000000/missing.symjit"
+        source_leaf["plane_application"][
+            "application_path"
+        ] = "kernels/000000/missing.plane.symjit"
     elif corruption == "source_payload_digest_link":
         binding["source_application_sha256"] = "0" * 64
         refresh_catalog = True
@@ -1515,7 +1590,9 @@ def _candidate_measurement(artifact: Path) -> dict[str, object]:
         "backend": "jit",
         "required_arena_capability": _CAPABILITY,
         "expected_evaluator_abi": "pyamplicol-recurrence-runtime-layout-v2",
-        "expected_source_evaluator_abi": "symjit-application-storage-v3",
+        "expected_source_evaluator_abi": (
+            "pyamplicol-symjit-plane-application-v2"
+        ),
         "expected_source_evaluator_runtime_capability": (
             "symjit.application.complex-f64.v1"
         ),
@@ -1526,8 +1603,10 @@ def _candidate_measurement(artifact: Path) -> dict[str, object]:
             "direct_template_count": 4,
             "prepared_direct_template_count": 3,
             "source_evaluator_leaf_count": 5,
-            "source_application_abi": "symjit-application-storage-v3",
-            "direct_application_abi": "symjit-direct-application-storage-v1",
+            "source_application_abi": (
+                "pyamplicol-symjit-plane-application-v2"
+            ),
+            "direct_application_abi": "pyamplicol-symjit-plane-application-v2",
             "prepared_kernel_pack_digest": "7" * 64,
             "direct_template_catalog_digest": "8" * 64,
             "execution_manifest_path": "processes/d_dbar_to_z/execution.json",
@@ -2210,13 +2289,15 @@ def test_runtime_identity_audit_distinguishes_source_and_direct_codegen_levels(
             "execution_mode": "compiled",
             "loaded_execution_mode": "compiled",
             "required_arena_capability": "compiled-plane-arena-v1",
-            "expected_evaluator_abi": "symjit-direct-application-storage-v1",
-            "expected_source_evaluator_abi": "symjit-application-storage-v3",
+            "expected_evaluator_abi": "pyamplicol-compiled-plane-kernel-v2",
+            "expected_source_evaluator_abi": (
+                "pyamplicol-symjit-plane-application-v2"
+            ),
             "source_jit_optimization_level": 1,
-            "direct_codegen_optimization_level": 3,
+            "direct_codegen_optimization_level": 1,
             "direct_codegen_identity": {
                 "kind": "authenticated-compiled-plane-arena-direct-codegen-v1",
-                "optimization_level": 3,
+                "optimization_level": 1,
                 "source_optimization_level": 1,
                 "leaf_count": 2,
                 "execution_manifest_path": "execution.json",

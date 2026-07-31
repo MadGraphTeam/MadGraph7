@@ -194,6 +194,7 @@ def _validate_bundle(
         COMPILED_MODEL_SCHEMA_VERSION,
         SYMBOLICA_SERIALIZATION_ABI,
         SYMJIT_APPLICATION_ABI,
+        SYMJIT_PLANE_APPLICATION_ABI,
         package_version,
     )
     from pyamplicol.models.loading import MODEL_COMPILER_VERSION, compiler_fingerprint
@@ -254,6 +255,7 @@ def _validate_bundle(
         "ufo_model_loader_version": fingerprint["ufo_model_loader"],
         "symbolica_serialization_abi": SYMBOLICA_SERIALIZATION_ABI,
         "symjit_application_abi": SYMJIT_APPLICATION_ABI,
+        "symjit_plane_application_abi": SYMJIT_PLANE_APPLICATION_ABI,
     }
     for key, value in dependency_expected.items():
         if dependencies.get(key) != value:
@@ -264,6 +266,7 @@ def _validate_bundle(
         "symbolica_version": dependencies["symbolica_version"],
         "symbolica_serialization": dependencies["symbolica_serialization_abi"],
         "symjit_application": dependencies["symjit_application_abi"],
+        "symjit_plane_application": dependencies["symjit_plane_application_abi"],
     }
     for key, value in pack_dependencies.items():
         if pack.dependency_abis.get(key) != value:
@@ -311,10 +314,7 @@ def _metadata(value: object, *, bundle_name: str) -> Mapping[str, object]:
         )
     if metadata.get("id") != BUILTIN_SM_JIT_O2:
         raise PackagedPreparedModelError("packaged prepared-model identity is invalid")
-    if (
-        metadata.get("model") != "built-in-sm"
-        or metadata.get("bundle") != bundle_name
-    ):
+    if metadata.get("model") != "built-in-sm" or metadata.get("bundle") != bundle_name:
         raise PackagedPreparedModelError("packaged prepared-model resource is invalid")
     return metadata
 

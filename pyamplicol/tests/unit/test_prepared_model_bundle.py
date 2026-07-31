@@ -20,6 +20,7 @@ from pyamplicol.models.prepared import (
     PREPARED_MODEL_COMPILED_MODEL_PATH,
     PREPARED_MODEL_MANIFEST_PATH,
     PreparedKernelPack,
+    PreparedKernelPackIdentity,
     PreparedKernelRecord,
     PreparedKernelVariantRecord,
     PreparedModelBundleError,
@@ -105,6 +106,7 @@ def _pack(
         dependency_abis={
             "symbolica_serialization": "symbolica-community-v1",
             "symjit_application": "symjit-application-complex-f64-v1",
+            "symjit_plane_application": "pyamplicol-symjit-plane-application-v2",
         },
         provenance={
             "model_content_sha256": "1" * 64,
@@ -458,6 +460,26 @@ def test_prepared_model_bundle_round_trip_and_payload_copy(tmp_path: Path) -> No
     }
 
 
+def test_prepared_jit_pack_requires_plane_application_dependency_abi() -> None:
+    pack = _pack(_kernel())
+    stale_dependencies = dict(pack.dependency_abis)
+    stale_dependencies.pop("symjit_plane_application")
+
+    with pytest.raises(
+        PreparedModelBundleError,
+        match="authenticate SymJIT plane-application ABI",
+    ):
+        replace(pack, dependency_abis=stale_dependencies)
+
+    predecessor_dependencies = dict(pack.dependency_abis)
+    predecessor_dependencies["symjit_plane_application"] = (
+        "pyamplicol-symjit-plane-application-" + "v1"
+    )
+
+    with pytest.raises(PreparedModelBundleError, match="regenerate"):
+        replace(pack, dependency_abis=predecessor_dependencies)
+
+
 def test_prepared_model_bundle_round_trips_optional_recurrence_template(
     tmp_path: Path,
 ) -> None:
@@ -717,6 +739,43 @@ def test_prepared_block_variant_round_trip_and_payload_index(tmp_path: Path) -> 
     assert loaded.read_payload(
         "kernels/0/variants/independent-block-4/application.symjit"
     ).startswith(b"variant:0:")
+
+
+def test_reader_rejects_private_fork_prepared_variant_with_regeneration_message(
+    tmp_path: Path,
+) -> None:
+    kernel = _kernel(signature="a" * 64)
+    variant = _block_variant(kernel)
+    path = write_prepared_model_bundle(
+        tmp_path / "old-variant",
+        compiled_model=_compiled_model(),
+        kernel_pack=_pack(kernel, kernel_variants=(variant,)),
+        payloads={**_payloads(kernel), **_variant_payloads(variant)},
+    )
+
+    def restore_old_variant_abi(manifest: dict[str, object]) -> None:
+        pack = manifest["kernel_pack"]
+        assert isinstance(pack, dict)
+        variants = pack["kernel_variants"]
+        assert isinstance(variants, list)
+        variant_manifest = variants[0]
+        assert isinstance(variant_manifest, dict)
+        variant_manifest["variant_abi"] = "pyamplicol-prepared-kernel-" + "variant-v1"
+
+    _mutate_manifest(path, restore_old_variant_abi)
+
+    with pytest.raises(PreparedModelBundleError, match="regenerate"):
+        load_prepared_model_bundle(path)
+
+
+def test_prepared_pack_identity_rejects_predecessor_abi() -> None:
+    with pytest.raises(PreparedModelBundleError, match="regenerate"):
+        PreparedKernelPackIdentity(
+            contract_digest="a" * 64,
+            payload_digest="b" * 64,
+            pack_digest="c" * 64,
+            abi="pyamplicol-prepared-kernel-pack-" + "identity-v1",
+        )
 
 
 def test_reader_accepts_legacy_pack_without_kernel_variants(tmp_path: Path) -> None:

@@ -1,5 +1,10 @@
 # Compiled-DAG O3 non-union DirectTable microkernels
 
+> Historical milestone record. Its retired dependency and v1 internal ABIs
+> are not current pyAmpliCol inputs. The active dependency and arena design are
+> defined by
+> [`SYMJIT_CRATE_2_22_ARENA_MIGRATION_PLAN.md`](SYMJIT_CRATE_2_22_ARENA_MIGRATION_PLAN.md).
+
 ## Objective and immutable inputs
 
 This feature targets the compiled JIT O3 non-union execution lane. It must
@@ -7,27 +12,11 @@ improve the complete-artifact, runtime-selected `u u~ > Z+6g` workload by at
 least 10% at both batch 128 and batch 1024 without turning the compiled DAG
 into recurrence execution.
 
-The implementation starts from pyAmpliCol
-`f4606fa9be52355b4a66efcfa2b7072d489205eb`. Its dependency contract is:
-
-- SymJIT repository:
-  `https://github.com/ValentinHirschi/symjit_changes_for_pyamplicol.git`;
-- branch: `pyamplicol-generic-direct-apis`;
-- revision: `89efdb806e7fcd9ac68a9d38f3f2880adf1987d2`;
-- archive SHA-256:
-  `070ff7fc04d5cdc5ab769d7a47b3da04cbc2b97d87136d303180c95b9eb380cd`;
-- source-tree SHA-256:
-  `e42d648d995c61881e560aefc50f80a995e86fb24a67ed9b0f0b5a80d6773fcf`;
-- configured candidate-tree SHA-256:
-  `820675246517cd49198495936327768da7a7a1d25f8bf20749c21aad1c2f56da`;
-- DirectApplication storage ABI: `symjit-direct-application-storage-v1`;
-- DirectTable binding ABI: `symjit-direct-table-binding-v1`;
-- DirectTable descriptor ABI: `symjit-direct-table-descriptor-v1`.
-
-The contributor build applies no local SymJIT patches. This feature may use
-the pinned DirectApplication and DirectTable APIs but must not add a SymJIT
-patch. If those APIs cannot represent the required kernel without changing
-the fork, the feature stops rather than expanding the dependency delta.
+The implementation started from pyAmpliCol
+`f4606fa9be52355b4a66efcfa2b7072d489205eb` and a retired private SymJIT
+prototype. Exact fork and v1 ABI identities have been removed from active
+documentation; they remain recoverable from repository history. The current
+implementation uses standard SymJIT P-kernels and pyAmpliCol-owned v2 bindings.
 
 The historical same-host complete-artifact selected-flow reference is
 `54.024 +/- 0.226 us/point` at batch 128 and

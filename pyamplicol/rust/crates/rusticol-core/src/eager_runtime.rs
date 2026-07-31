@@ -182,6 +182,12 @@ pub(crate) struct EagerExecutionProfile {
     pub(crate) copy_out: Duration,
     pub(crate) total: Duration,
     pub(crate) backend_call_count: u64,
+    /// P-kernel output scratch reads and writes wholly inside the eager arena.
+    /// This is diagnostic traffic, never arena-boundary materialization.
+    pub(crate) internal_scratch_bytes: u64,
+    /// Point-independent coupling and parameter plane refreshes inside the
+    /// persistent eager arena. This is not arena-boundary traffic.
+    pub(crate) internal_broadcast_bytes: u64,
 }
 
 impl EagerExecutionProfile {

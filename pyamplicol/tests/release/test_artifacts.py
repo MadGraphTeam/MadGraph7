@@ -47,6 +47,15 @@ _LEGAL_FILES = (
 _COMPILED_MODEL_KIND = "pyamplicol-compiled-model"
 _BUILTIN_MODEL_SOURCE_KIND = "built-in-sm"
 _MODEL_COMPILER_VERSION = 11
+_RUNTIME_ARTIFACT_ID_PAYLOAD_ROLES = frozenset(
+    {
+        "compiled-model",
+        "evaluator-manifest",
+        "evaluator-state",
+        "model-parameters",
+        "runtime-physics",
+    }
+)
 _MODEL_COMPILER_SOURCE_FILES = {
     "pyamplicol/models/__init__.py": b'"""Synthetic model package."""\n',
     "pyamplicol/models/compiler.py": b"def compile_model():\n    return 'compiled'\n",
@@ -160,10 +169,17 @@ def candidate_dependency_provenance(
 ) -> None:
     contributor_path = tmp_path / "contributor-lock.toml"
     state_path = tmp_path / "install-state.json"
-    contributor_data = (
-        ROOT / "dependencies" / "contributor-lock.toml"
-    ).read_bytes()
+    contributor_data = (ROOT / "dependencies" / "contributor-lock.toml").read_bytes()
     contributor_path.write_bytes(contributor_data)
+    contributor = tomllib.loads(contributor_data.decode("utf-8"))
+    patch_state: list[dict[str, str]] = []
+    for raw_patch in contributor["patches"]:
+        patch = {key: str(value) for key, value in raw_patch.items()}
+        relative = Path(patch["path"])
+        destination = tmp_path / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes((ROOT / "dependencies" / relative).read_bytes())
+        patch_state.append(patch)
     symbolica = _CONTRIBUTOR_LOCK["symbolica"]
     state_path.write_text(
         json.dumps(
@@ -173,10 +189,8 @@ def candidate_dependency_provenance(
                 "release_lock_sha256": hashlib.sha256(
                     (ROOT / "dependencies" / "release-lock.toml").read_bytes()
                 ).hexdigest(),
-                "contributor_lock_sha256": hashlib.sha256(
-                    contributor_data
-                ).hexdigest(),
-                "patches": [],
+                "contributor_lock_sha256": hashlib.sha256(contributor_data).hexdigest(),
+                "patches": patch_state,
                 "sources": {
                     "symbolica": {
                         "url": symbolica["source_url"],
@@ -228,12 +242,13 @@ def _prepared_model_files(
             "dependencies": {
                 "symbolica_serialization_abi": "symbolica-bincode2-v1",
                 "symjit_application_abi": "symjit-application-storage-v3",
+                "symjit_plane_application_abi": (
+                    "pyamplicol-symjit-plane-application-v2"
+                ),
             },
             "build_contract": {"candidate_fingerprint": None, "mode": mode},
             "producer": {
-                "prepared_pack_compiler_sha256": (
-                    _prepared_pack_compiler_digest()
-                )
+                "prepared_pack_compiler_sha256": (_prepared_pack_compiler_digest())
             },
             "target": {
                 "portable": True,
@@ -274,6 +289,7 @@ def _selftest_arena_stage(
     direct_codegen_optimization_level: int,
 ) -> dict[str, object]:
     application_path = "evaluator.symjit"
+    plane_application_path = "evaluator.plane.symjit"
     arena = "amplitude" if amplitude else "current"
     output_component = 0 if amplitude else 2
     input_component = {
@@ -289,6 +305,31 @@ def _selftest_arena_stage(
         "runtime_capability": "symjit.application.complex-f64.v1",
         "application_abi": "symjit-application-storage-v3",
         "application_path": application_path,
+        "plane_application": {
+            "application_path": plane_application_path,
+            "application_abi": "pyamplicol-symjit-plane-application-v2",
+            "storage_abi": "symjit-application-storage-v3",
+            "element_layout": "split-complex-plane-major",
+            "descriptor_order": "inputs-re-im-then-outputs-re-im",
+            "input_complex_count": 1,
+            "output_complex_count": 1,
+            "input_plane_count": 2,
+            "output_plane_count": 2,
+            "compiler_type": "native",
+            "translation_mode": "symbolica-structured-instructions",
+            "optimization_level": 2,
+            "simd": True,
+            "complex": True,
+            "fast_math": True,
+            "fast_complex": False,
+            "compression": False,
+            "threading": False,
+            "direct_arena": True,
+            "source_digest": hashlib.sha256(
+                b"synthetic structured instructions"
+            ).hexdigest(),
+            "target": {"word_bits": 64, "endianness": "little"},
+        },
         "compiler_type": "native",
         "translation_mode": "indirect",
         "optimization_level": 2,
@@ -315,8 +356,8 @@ def _selftest_arena_stage(
         "compiled_plane_arena": {
             "schema_version": 1,
             "kind": "compiled-plane-arena-stage",
-            "application_abi": "symjit-direct-application-storage-v1",
-            "source_application_abi": "symjit-application-storage-v3",
+            "application_abi": "pyamplicol-compiled-plane-kernel-v2",
+            "source_application_abi": "pyamplicol-symjit-plane-application-v2",
             "element_layout": "split-complex-component-major",
             "output_operation": "overwrite",
             "output_factor": "identity",
@@ -332,8 +373,10 @@ def _selftest_arena_stage(
             ],
             "leaves": [
                 {
-                    "application_path": application_path,
-                    "source_application_abi": "symjit-application-storage-v3",
+                    "application_path": plane_application_path,
+                    "source_application_abi": (
+                        "pyamplicol-symjit-plane-application-v2"
+                    ),
                     "optimization_level": 2,
                     "direct_codegen_optimization_level": (
                         direct_codegen_optimization_level
@@ -353,7 +396,7 @@ def _selftest_execution(
     *,
     missing_arena_capability: str | None = None,
     missing_symjit_capability: str | None = None,
-    direct_codegen_optimization_level: int = 3,
+    direct_codegen_optimization_level: int = 2,
 ) -> dict[str, object]:
     arena_capability = "compiled-plane-arena-v1"
     symjit_capability = "symjit.application.complex-f64.v1"
@@ -412,10 +455,12 @@ def _selftest_files(
     omitted_api_payload: str | None = None,
     missing_arena_capability: str | None = None,
     missing_symjit_capability: str | None = None,
-    direct_codegen_optimization_level: int = 3,
+    direct_codegen_optimization_level: int = 2,
 ) -> dict[str, bytes]:
     payload_path = "processes/smoke/evaluator.symjit"
     payload = b"synthetic trusted SymJIT application"
+    plane_payload_path = "processes/smoke/evaluator.plane.symjit"
+    plane_payload = b"synthetic trusted SymJIT plane application"
     execution_path = "processes/smoke/execution.json"
     execution = (
         json.dumps(
@@ -583,6 +628,14 @@ def _selftest_files(
                 "target": {"triple": rust_target, "cpu_features": []},
             },
             {
+                "path": plane_payload_path,
+                "role": "evaluator-state",
+                "media_type": "application/vnd.symjit.application",
+                "size_bytes": len(plane_payload),
+                "sha256": hashlib.sha256(plane_payload).hexdigest(),
+                "target": {"triple": rust_target, "cpu_features": []},
+            },
+            {
                 "path": execution_path,
                 "role": "evaluator-manifest",
                 "media_type": "application/json",
@@ -601,10 +654,23 @@ def _selftest_files(
             ],
         ],
     }
-    identity = dict(manifest)
-    identity.pop("artifact_id")
+    runtime_payloads = [
+        dict(payload)
+        for payload in manifest["payloads"]
+        if payload.get("role") in _RUNTIME_ARTIFACT_ID_PAYLOAD_ROLES
+    ]
+    runtime_payloads.sort(key=lambda payload: str(payload.get("path", "")))
     canonical = (
-        json.dumps(identity, sort_keys=True, separators=(",", ":")) + "\n"
+        json.dumps(
+            {
+                "kind": "pyamplicol-runtime-payload-identity",
+                "schema_version": 1,
+                "payloads": runtime_payloads,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
     ).encode()
     manifest["artifact_id"] = hashlib.sha256(canonical).hexdigest()
     prefix = f"pyamplicol/assets/selftest/{rust_target}"
@@ -621,6 +687,7 @@ def _selftest_files(
         ).encode(),
         f"{prefix}/artifact/{compiled_model_path}": compiled_model,
         f"{prefix}/artifact/{payload_path}": payload,
+        f"{prefix}/artifact/{plane_payload_path}": plane_payload,
         f"{prefix}/artifact/{execution_path}": execution,
     }
     files.update(
@@ -663,7 +730,7 @@ def _wheel(
     omitted_selftest_api_payload: str | None = None,
     selftest_missing_arena_capability: str | None = None,
     selftest_missing_symjit_capability: str | None = None,
-    selftest_direct_codegen_optimization_level: int = 3,
+    selftest_direct_codegen_optimization_level: int = 2,
     selftest_fixture_bootstrap: bool = False,
 ) -> Path:
     if requirement is not None and requirements is not None:
@@ -672,9 +739,7 @@ def _wheel(
         [requirement]
         if requirement is not None
         else list(
-            (
-                _CANDIDATE_REQUIREMENTS if candidate else _DEFAULT_REQUIREMENTS
-            )
+            (_CANDIDATE_REQUIREMENTS if candidate else _DEFAULT_REQUIREMENTS)
             if requirements is None
             else requirements
         )
@@ -838,13 +903,34 @@ def _sdist(
 ) -> Path:
     python_version = version.replace("-dev.0", ".dev0")
     root = f"pyamplicol-{python_version}"
+    symjit = _LOCK["symjit"]
+    symjit_source = (
+        f"git+{symjit['repository']}?rev={symjit['revision']}#{symjit['revision']}"
+    )
+    lock_text = (ROOT / "Cargo.lock").read_text(encoding="utf-8")
+    marker = (
+        "[[package]]\n"
+        'name = "symjit"\n'
+        f'version = "{symjit["version"]}"\n'
+        f'source = "{symjit_source}"\n'
+    )
+    replacement = (
+        "[[package]]\n"
+        'name = "symjit"\n'
+        f'version = "{symjit["version"]}"\n'
+    )
+    assert lock_text.count(marker) == 1
+    release_cargo_lock = lock_text.replace(marker, replacement, 1).encode()
+    assert hashlib.sha256(release_cargo_lock).hexdigest() == (
+        symjit["release_cargo_lock_sha256"]
+    )
     files = {
         name: b"synthetic required sdist member\n"
         for name in {*REQUIRED_SDIST_MEMBERS, "PKG-INFO"}
     }
     files.update(
         {
-            "Cargo.lock": b"version = 4\n",
+            "Cargo.lock": release_cargo_lock,
             "Cargo.toml": f'[workspace.package]\nversion = "{version}"\n'.encode(),
             "LICENSE": b"0BSD\n",
             "README.md": b"pyamplicol\n",
@@ -871,6 +957,9 @@ def _sdist(
             "tools/release/test_deployment.py": b"",
         }
     )
+    for patch in symjit["patches"]:
+        member = f"dependencies/{patch['path']}"
+        files[member] = (ROOT / member).read_bytes()
     files.update(
         {
             f"src/{name}": data
@@ -922,9 +1011,10 @@ def test_required_sdist_keeps_the_portable_source_selftest() -> None:
 
 
 def test_required_sdist_keeps_both_prepared_model_architectures() -> None:
-    assert prepared_model_asset_members(
-        "src/pyamplicol/assets/prepared_models"
-    ) <= REQUIRED_SDIST_MEMBERS
+    assert (
+        prepared_model_asset_members("src/pyamplicol/assets/prepared_models")
+        <= REQUIRED_SDIST_MEMBERS
+    )
 
 
 @pytest.mark.parametrize(
@@ -1091,7 +1181,7 @@ def test_candidate_dependency_provenance_fails_closed(
         audit_wheel(candidate, mode="candidate", native_scan=False)
 
 
-def test_candidate_dependency_provenance_rejects_local_patch_state(
+def test_candidate_dependency_provenance_rejects_unmatched_patch_state(
     tmp_path: Path,
     candidate_dependency_provenance: None,
 ) -> None:
@@ -1105,7 +1195,7 @@ def test_candidate_dependency_provenance_rejects_local_patch_state(
         candidate=True,
     )
 
-    with pytest.raises(ArtifactError, match="patchless"):
+    with pytest.raises(ArtifactError, match="matching the authenticated patch"):
         audit_wheel(candidate, mode="candidate", native_scan=False)
 
 
@@ -1372,15 +1462,17 @@ def test_wheel_selftest_requires_complete_symjit_capability(
         audit_wheel(wheel, mode="release", native_scan=False)
 
 
-def test_wheel_selftest_requires_o3_arena_direct_codegen(tmp_path: Path) -> None:
+def test_wheel_selftest_requires_plane_codegen_optimization_match(
+    tmp_path: Path,
+) -> None:
     wheel = _wheel(
         tmp_path,
-        selftest_direct_codegen_optimization_level=2,
+        selftest_direct_codegen_optimization_level=3,
     )
 
     with pytest.raises(
         ArtifactError,
-        match=r"Arena execution contract.*direct codegen.*optimization level 3",
+        match=r"Arena execution contract.*direct codegen optimization.*plane",
     ):
         audit_wheel(wheel, mode="release", native_scan=False)
 
@@ -1841,9 +1933,7 @@ def test_sdist_rejects_candidate_prepared_model_assets(tmp_path: Path) -> None:
 def test_sdist_accepts_prepared_payload_compiler_edits(tmp_path: Path) -> None:
     sdist = _sdist(
         tmp_path,
-        extra_files={
-            "src/pyamplicol/evaluators/symbolica_compile.py": b"# drift\n"
-        },
+        extra_files={"src/pyamplicol/evaluators/symbolica_compile.py": b"# drift\n"},
     )
 
     assert audit_sdist(sdist, mode="release").version == "0.1.0"
@@ -1873,11 +1963,70 @@ def test_sdist_rejects_contributor_dependency_material(
         audit_sdist(sdist, mode="release")
 
 
+def test_sdist_rejects_tampered_release_symjit_patch(tmp_path: Path) -> None:
+    patch = f"dependencies/{_LOCK['symjit']['patches'][0]['path']}"
+    sdist = _sdist(tmp_path, extra_files={patch: b"tampered patch\n"})
+
+    with pytest.raises(ArtifactError, match="patch digest"):
+        audit_sdist(sdist, mode="release")
+
+
+def test_sdist_rejects_malformed_release_symjit_patch_contract(
+    tmp_path: Path,
+) -> None:
+    lock_member = "dependencies/release-lock.toml"
+    lock_text = (ROOT / lock_member).read_text(encoding="utf-8")
+    malformed = lock_text.replace(
+        'target = "symjit"',
+        'target = "symbolica"',
+        1,
+    )
+    assert malformed != lock_text
+    sdist = _sdist(
+        tmp_path,
+        extra_files={lock_member: malformed.encode("utf-8")},
+    )
+
+    with pytest.raises(ArtifactError, match="invalid identity"):
+        audit_sdist(sdist, mode="release")
+
+
+def test_sdist_rejects_coherently_rewritten_symjit_patch_contract(
+    tmp_path: Path,
+) -> None:
+    lock_member = "dependencies/release-lock.toml"
+    patch_contract = _LOCK["symjit"]["patches"][0]
+    patch_member = f"dependencies/{patch_contract['path']}"
+    rewritten_patch = b"coherently rewritten generic patch\n"
+    rewritten_sha256 = hashlib.sha256(rewritten_patch).hexdigest()
+    lock_text = (ROOT / lock_member).read_text(encoding="utf-8")
+    rewritten_lock = lock_text.replace(
+        patch_contract["sha256"],
+        rewritten_sha256,
+        1,
+    )
+    assert rewritten_lock != lock_text
+    sdist = _sdist(
+        tmp_path,
+        extra_files={
+            lock_member: rewritten_lock.encode("utf-8"),
+            patch_member: rewritten_patch,
+        },
+    )
+
+    with pytest.raises(ArtifactError, match="canonical checkout"):
+        audit_sdist(sdist, mode="release")
+
+
 @pytest.mark.parametrize(
     "missing_member",
     [
         "build_backend/_pyamplicol_build.py",
         "build_backend/sdk.py",
+        *[
+            f"dependencies/{patch['path']}"
+            for patch in _LOCK["symjit"]["patches"]
+        ],
         "docs/user/installation.md",
         "examples/data/pp_zjj_momenta.json",
         "examples/python/typed_generation.py",

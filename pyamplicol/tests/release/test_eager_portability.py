@@ -29,6 +29,7 @@ def contracts() -> portability.RuntimeContracts:
         compiled_model_schema_version=9,
         symbolica_serialization_abi="symbolica-bincode2-v1",
         symjit_application_abi="symjit-application-storage-v3",
+        symjit_plane_application_abi="pyamplicol-symjit-plane-application-v2",
         symjit_runtime_capability="symjit.application.complex-f64.v1",
         eager_runtime_capability="rusticol.eager-runtime-layout.complex-f64.v1",
         package_version="0.1.0.dev0+candidate.portability",
@@ -47,10 +48,12 @@ def _write_bundle(
     mutate: Callable[[dict[str, object], dict[str, bytes]], None] | None = None,
 ) -> Path:
     application_path = "kernels/000000/application-0.symjit"
+    plane_application_path = "kernels/000000/application-0.plane.symjit"
     state_path = "kernels/000000/evaluator-state-0.evaluator.bin"
     model_path = "model/model.pyAmplicol-model.json"
     payloads = {
         application_path: b"portable-symjit-storage-v3-fixture\x00\x01",
+        plane_application_path: b"portable-symjit-plane-storage-v3-fixture\x00\x03",
         state_path: b"architecture-neutral-symbolica-state-fixture\x00\x02",
         model_path: json.dumps(
             {
@@ -69,8 +72,36 @@ def _write_bundle(
         "element_layout": "complex-f64",
         "endianness": "little",
         "evaluator_state_path": state_path,
+        "input_len": 1,
         "kind": "symjit-application-evaluator",
         "optimization_level": 2,
+        "output_len": 1,
+        "plane_application": {
+            "application_abi": contracts.symjit_plane_application_abi,
+            "application_path": plane_application_path,
+            "complex": True,
+            "compression": False,
+            "compiler_type": "native",
+            "descriptor_order": "inputs-re-im-then-outputs-re-im",
+            "direct_arena": True,
+            "element_layout": "split-complex-plane-major",
+            "fast_complex": False,
+            "fast_math": True,
+            "input_complex_count": 1,
+            "input_plane_count": 2,
+            "optimization_level": 2,
+            "output_complex_count": 1,
+            "output_plane_count": 2,
+            "simd": True,
+            "source_digest": _sha256(b"synthetic structured instructions"),
+            "storage_abi": contracts.symjit_application_abi,
+            "target": {
+                "endianness": "little",
+                "word_bits": 64,
+            },
+            "threading": False,
+            "translation_mode": "symbolica-structured-instructions",
+        },
         "required_defuns": [],
         "runtime_capability": contracts.symjit_runtime_capability,
         "settings": {
@@ -91,6 +122,7 @@ def _write_bundle(
             "dependency_abis": {
                 "symbolica_serialization": contracts.symbolica_serialization_abi,
                 "symjit_application": contracts.symjit_application_abi,
+                "symjit_plane_application": contracts.symjit_plane_application_abi,
             },
             "kernels": [
                 {
@@ -195,6 +227,9 @@ def _write_packed_consumer_artifact(
     artifact: Path,
     bundle: Path,
     contracts: portability.RuntimeContracts,
+    *,
+    include_plane_payload: bool = True,
+    plane_payload_override: bytes | None = None,
 ) -> Path:
     from pyamplicol.generation.evaluator_container import (
         PacbinMemberKind,
@@ -229,17 +264,37 @@ def _write_packed_consumer_artifact(
         encoding="utf-8",
     )
 
+    plane = f64["plane_application"]
+    assert isinstance(plane, dict)
+    packed_payloads: list[tuple[str, PacbinMemberKind, bytes | None]] = [
+        (
+            str(f64["application_path"]),
+            PacbinMemberKind.SYMJIT_APPLICATION,
+            None,
+        ),
+        (
+            str(f64["evaluator_state_path"]),
+            PacbinMemberKind.SYMBOLICA_EXACT_STATE,
+            None,
+        ),
+    ]
+    if include_plane_payload:
+        packed_payloads.append(
+            (
+                str(plane["application_path"]),
+                PacbinMemberKind.SYMJIT_APPLICATION,
+                plane_payload_override,
+            )
+        )
     packed_sources = []
-    for field, kind in (
-        ("application_path", PacbinMemberKind.SYMJIT_APPLICATION),
-        ("evaluator_state_path", PacbinMemberKind.SYMBOLICA_EXACT_STATE),
-    ):
-        source_path = str(f64[field])
+    for source_path, kind, override in packed_payloads:
         packed_sources.append(
             PacbinMemberSource(
                 f"model/eager-kernels/{source_path}",
                 kind,
-                io.BytesIO(bundle_payloads[source_path]),
+                io.BytesIO(
+                    bundle_payloads[source_path] if override is None else override
+                ),
             )
         )
     container_path = artifact / "evaluators.pacbin"
@@ -317,6 +372,7 @@ def test_architecture_jit_bundle_audit_accepts_portable_storage_v3_pack(
     assert result["backend"] == "jit"
     assert result["kernel_count"] == 1
     assert result["symjit_application_count"] == 1
+    assert result["symjit_plane_application_count"] == 1
     assert result["exact_state_count"] == 1
     assert result["architecture_class"] == "portable"
     assert result["target"] == symjit_storage_v3_target(architecture)
@@ -342,6 +398,107 @@ def test_architecture_jit_bundle_audit_rejects_wrong_storage_abi(
     with pytest.raises(
         portability.PortabilityError,
         match="application storage ABI mismatch",
+    ):
+        portability.audit_architecture_jit_bundle(bundle, contracts=contracts)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("application_abi", "pyamplicol-symjit-plane-application-v999"),
+        ("storage_abi", "symjit-application-storage-v999"),
+    ),
+)
+def test_architecture_jit_bundle_audit_rejects_wrong_plane_application_abi(
+    tmp_path: Path,
+    contracts: portability.RuntimeContracts,
+    field: str,
+    value: str,
+) -> None:
+    def mutate(manifest: dict[str, object], _payloads: dict[str, bytes]) -> None:
+        pack = manifest["kernel_pack"]
+        assert isinstance(pack, dict)
+        kernels = pack["kernels"]
+        assert isinstance(kernels, list)
+        kernel = kernels[0]
+        assert isinstance(kernel, dict)
+        f64 = kernel["f64_evaluator_manifest"]
+        assert isinstance(f64, dict)
+        plane = f64["plane_application"]
+        assert isinstance(plane, dict)
+        plane[field] = value
+
+    bundle = _write_bundle(
+        tmp_path / "wrong-plane-abi.pyamplicol-model",
+        contracts,
+        mutate=mutate,
+    )
+
+    with pytest.raises(
+        portability.PortabilityError,
+        match=rf"incompatible plane-application {field!r}",
+    ):
+        portability.audit_architecture_jit_bundle(bundle, contracts=contracts)
+
+
+def test_architecture_jit_bundle_audit_rejects_missing_plane_payload(
+    tmp_path: Path,
+    contracts: portability.RuntimeContracts,
+) -> None:
+    def mutate(_manifest: dict[str, object], payloads: dict[str, bytes]) -> None:
+        payloads.pop("kernels/000000/application-0.plane.symjit")
+
+    bundle = _write_bundle(
+        tmp_path / "missing-plane.pyamplicol-model",
+        contracts,
+        mutate=mutate,
+    )
+
+    with pytest.raises(
+        portability.PortabilityError,
+        match="omits referenced plane-application payload",
+    ):
+        portability.audit_architecture_jit_bundle(bundle, contracts=contracts)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("input_plane_count", 1),
+        ("output_plane_count", 3),
+        ("descriptor_order", "outputs-then-inputs"),
+        ("direct_arena", False),
+        ("optimization_level", 3),
+    ),
+)
+def test_architecture_jit_bundle_audit_rejects_wrong_plane_descriptor_contract(
+    tmp_path: Path,
+    contracts: portability.RuntimeContracts,
+    field: str,
+    value: object,
+) -> None:
+    def mutate(manifest: dict[str, object], _payloads: dict[str, bytes]) -> None:
+        pack = manifest["kernel_pack"]
+        assert isinstance(pack, dict)
+        kernels = pack["kernels"]
+        assert isinstance(kernels, list)
+        kernel = kernels[0]
+        assert isinstance(kernel, dict)
+        f64 = kernel["f64_evaluator_manifest"]
+        assert isinstance(f64, dict)
+        plane = f64["plane_application"]
+        assert isinstance(plane, dict)
+        plane[field] = value
+
+    bundle = _write_bundle(
+        tmp_path / "wrong-plane-descriptor.pyamplicol-model",
+        contracts,
+        mutate=mutate,
+    )
+
+    with pytest.raises(
+        portability.PortabilityError,
+        match=rf"incompatible plane-application {field!r}",
     ):
         portability.audit_architecture_jit_bundle(bundle, contracts=contracts)
 
@@ -497,9 +654,57 @@ def test_consumer_verifier_accepts_byte_identical_packed_kernel_payloads(
         bundle_audit={"kernel_count": 1},
     )
 
-    assert result["copied_kernel_payload_count"] == 2
+    assert result["copied_kernel_payload_count"] == 3
     assert result["filtered_kernel_count"] == 1
     assert result["filtered_kernel_variant_count"] == 0
+
+
+def test_consumer_verifier_rejects_missing_packed_plane_payload(
+    tmp_path: Path,
+    contracts: portability.RuntimeContracts,
+) -> None:
+    bundle = _write_bundle(tmp_path / "model.pyamplicol-model", contracts)
+    artifact = _write_packed_consumer_artifact(
+        tmp_path / "artifact",
+        bundle,
+        contracts,
+        include_plane_payload=False,
+    )
+
+    with pytest.raises(
+        portability.PortabilityError,
+        match=r"omitted transferred kernel payload.*plane\.symjit",
+    ):
+        portability.verify_consumer_artifact(
+            artifact,
+            bundle,
+            contracts=contracts,
+            bundle_audit={"kernel_count": 1},
+        )
+
+
+def test_consumer_verifier_rejects_changed_packed_plane_payload(
+    tmp_path: Path,
+    contracts: portability.RuntimeContracts,
+) -> None:
+    bundle = _write_bundle(tmp_path / "model.pyamplicol-model", contracts)
+    artifact = _write_packed_consumer_artifact(
+        tmp_path / "artifact",
+        bundle,
+        contracts,
+        plane_payload_override=b"changed-plane-application",
+    )
+
+    with pytest.raises(
+        portability.PortabilityError,
+        match=r"rebuilt or changed kernel payload.*plane\.symjit",
+    ):
+        portability.verify_consumer_artifact(
+            artifact,
+            bundle,
+            contracts=contracts,
+            bundle_audit={"kernel_count": 1},
+        )
 
 
 def test_python_executable_preserves_virtual_environment_symlink(
@@ -735,6 +940,15 @@ def test_portability_workflow_transfers_portable_packs() -> None:
     assert "rust/crates/rusticol-core/src/eager_runtime/**" in trigger
     assert "rust/crates/rusticol-core/src/engine/**" in trigger
     assert "rust/crates/rusticol-core/src/evaluator/symjit.rs" in trigger
+    for adapter in (
+        "symjit_plane.rs",
+        "symjit_direct.rs",
+        "symjit_eager_direct.rs",
+        "symjit_compiled_direct.rs",
+    ):
+        assert (
+            workflow.count(f"rust/crates/rusticol-core/src/evaluator/{adapter}") == 2
+        )
     assert "dependencies/contributor-lock.toml" in trigger
     assert "src/pyamplicol/evaluators/symbolica*.py" in trigger
     assert workflow.count("eager_portability.py produce") == 1

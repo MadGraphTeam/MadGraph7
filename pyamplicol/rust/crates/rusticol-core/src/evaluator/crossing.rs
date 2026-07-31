@@ -106,9 +106,8 @@ where
         let mut mapped = vec![std::array::from_fn(|_| T::new_zero()); expected_legs];
         for entry in map {
             let source = &point[entry.source_index];
-            for component in 0..4 {
-                mapped[entry.target_index][component] =
-                    T::from(entry.sign) * source[component].clone();
+            for (target, source_component) in mapped[entry.target_index].iter_mut().zip(source) {
+                *target = T::from(entry.sign) * source_component.clone();
             }
         }
         mapped_batch.push(mapped);

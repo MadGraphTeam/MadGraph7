@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: 0BSD
 
-//! Context-owning SymJIT adapter for Direct-Arena recurrence executors.
+//! Recurrence adapter for standard SymJIT direct-arena P-kernels.
 //!
-//! This module is intentionally disjoint from the recurrence plan/runtime. It
-//! proves the prepared-call boundary: model-fixed projections are resolved
-//! once at load, hot calls build only pointer descriptors on the stack, and
-//! generated O2 code mutates persistent arena destinations directly.
+//! The adapter deliberately owns the recurrence policy which used to live in
+//! pyAmpliCol's SymJIT fork. Proven-disjoint identity overwrites bind ordinary
+//! P-kernel outputs directly to their arena destinations. Every accumulation,
+//! non-identity factor, and before-write alias instead evaluates once into
+//! persistent split-complex scratch planes, after which Rusticol applies the
+//! exact complex factor and role-specific overwrite/add policy. Inputs which
+//! are scalar at recurrence runtime are represented by persistent broadcast
+//! planes and refreshed only when their value changes.
 
-#[cfg(test)]
-use super::recurrence_intrinsic_direct::execute_identity_finalization_rows;
+use super::symjit_plane::{
+    PlaneDescriptor, SymjitPlaneKernel, SymjitPlaneLayout, SymjitPlaneTable,
+};
 use crate::recurrence::direct_backend::{
     DIRECT_STATUS_OK, DirectArenaView, DirectClosureExecutor, DirectContributionExecutor,
     DirectExecutorHandle, DirectFactorView, DirectFinalizationExecutor, DirectMomentumView,
@@ -19,33 +24,30 @@ use crate::recurrence::{
     DirectFinalizationRow,
 };
 use crate::{RusticolError, RusticolResult};
-use std::any::Any;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::ffi::{c_int, c_void};
 use std::mem::size_of;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::ptr;
-use symjit::{
-    Config, DIRECT_COMPLEX_SCALE_IMAG_SCALAR, DIRECT_COMPLEX_SCALE_REAL_SCALAR, DIRECT_NO_ALIAS,
-    DIRECT_STATUS_EXECUTION_FAILED, DIRECT_STATUS_INVALID_ARGUMENT, DIRECT_STATUS_INVALID_CONTEXT,
-    Defuns, DirectApplication, DirectApplicationMetadata, DirectCallable,
-    DirectDestinationOperation as SymjitDestinationOperation, DirectInputBinding,
-    DirectInputSnapshot as SymjitInputSnapshot, DirectOutputScale, DirectPlane, DirectScalar,
-};
-#[cfg(test)]
-use symjit::{DIRECT_APPLICATION_STORAGE_ABI, Storage};
+#[cfg(target_arch = "aarch64")]
+use wide::f64x2;
+#[cfg(target_arch = "x86_64")]
+use wide::f64x4;
+
+pub(crate) const SYMJIT_RECURRENCE_PLANE_APPLICATION_ABI: &str =
+    "pyamplicol-symjit-plane-application-v2";
 
 const MAX_DIRECT_PLANES: usize = 512;
 const MAX_DIRECT_SCALARS: usize = 256;
-const STATUS_BOUNDS: c_int = 4;
-const STATUS_ROLE_MISMATCH: c_int = 5;
-const STATUS_DESCRIPTOR_IDENTITY_MISMATCH: c_int = 6;
-const STATUS_DESCRIPTOR_CACHE_CAPACITY: c_int = 7;
+const STATUS_INVALID_CONTEXT: c_int = 1;
+const STATUS_INVALID_ARGUMENT: c_int = 2;
+const STATUS_ROLE_MISMATCH: c_int = 3;
+const STATUS_EXECUTION_FAILED: c_int = 4;
 const MAX_DESCRIPTOR_CACHE_ROW_GROUPS: usize = 4_096;
 const MAX_DESCRIPTOR_CACHE_BYTES: usize = 256 * 1024 * 1024;
 
-/// One model-fixed input-plane projection.
+/// One model-fixed arena-plane projection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SymjitDirectPlaneProjection {
     ParentCurrent {
@@ -67,15 +69,19 @@ pub(crate) enum SymjitDirectPlaneProjection {
     },
 }
 
-/// One model-fixed scalar projection.
-///
-/// Couplings use `Parameter`: their runtime slots are fixed by the prepared
-/// model rather than copied into a per-call parameter buffer.
+/// One model-fixed scalar projection used to fill a broadcast plane.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum SymjitDirectScalarProjection {
     Parameter { index: u32, imaginary: bool },
     ExactFactor { imaginary: bool },
     Literal(f64),
+}
+
+/// Maps one split source-input plane in the P-kernel to recurrence storage.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SymjitDirectParameterBinding {
+    Plane { index: u32 },
+    Broadcast { index: u32 },
 }
 
 /// Owns the context addressed by a [`DirectExecutorHandle`].
@@ -85,19 +91,18 @@ pub(crate) struct LoadedSymjitDirectExecutor {
 
 struct SymjitDirectExecutorContext {
     role: DirectExecutorRole,
-    callable: DirectCallable,
-    #[cfg(test)]
-    simd_lane_width: usize,
+    kernel: SymjitPlaneKernel,
+    parameter_bindings: Box<[SymjitDirectParameterBinding]>,
     input_planes: Box<[SymjitDirectPlaneProjection]>,
     scalars: Box<[SymjitDirectScalarProjection]>,
-    display_path: PathBuf,
-    descriptor_cache: RefCell<DescriptorCache>,
+    output_destinations: Box<[u32]>,
+    broadcast_slot_by_binding: Box<[Option<u32>]>,
+    broadcast_scalar_by_slot: Box<[u32]>,
+    workspace: RefCell<PlaneWorkspace>,
+    internal_scratch_bytes: Cell<u64>,
+    internal_broadcast_bytes: Cell<u64>,
 }
 
-// Direct descriptors borrow persistent runtime storage through raw FFI
-// pointers. An entry is usable only after this complete identity is matched;
-// the owning runtime keeps these buffers fixed behind its exclusive `&mut`
-// evaluation API.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct DescriptorStorageIdentity {
     current_re: usize,
@@ -106,27 +111,15 @@ struct DescriptorStorageIdentity {
     amplitude_re: usize,
     amplitude_im: usize,
     amplitude_scalar_len: u64,
-    arena_point_stride: u32,
+    point_stride: u32,
     momenta: usize,
     momentum_scalar_len: u64,
     momentum_form_count: u32,
     momentum_lorentz_component_count: u16,
-    momentum_point_stride: u32,
-    parameter_re: usize,
-    parameter_im: usize,
-    parameter_count: u32,
-    factor_re: usize,
-    factor_im: usize,
-    factor_count: u32,
 }
 
 impl DescriptorStorageIdentity {
-    fn new(
-        arena: DirectArenaView,
-        momenta: DirectMomentumView,
-        parameters: DirectParameterView,
-        factors: DirectFactorView,
-    ) -> Self {
+    fn new(arena: DirectArenaView, momenta: DirectMomentumView) -> Self {
         Self {
             current_re: arena.current_re.addr(),
             current_im: arena.current_im.addr(),
@@ -134,18 +127,11 @@ impl DescriptorStorageIdentity {
             amplitude_re: arena.amplitude_re.addr(),
             amplitude_im: arena.amplitude_im.addr(),
             amplitude_scalar_len: arena.amplitude_scalar_len,
-            arena_point_stride: arena.point_stride,
+            point_stride: arena.point_stride,
             momenta: momenta.values.addr(),
             momentum_scalar_len: momenta.scalar_len,
             momentum_form_count: momenta.form_count,
             momentum_lorentz_component_count: momenta.lorentz_component_count,
-            momentum_point_stride: momenta.point_stride,
-            parameter_re: parameters.values_re.addr(),
-            parameter_im: parameters.values_im.addr(),
-            parameter_count: parameters.value_count,
-            factor_re: factors.values_re.addr(),
-            factor_im: factors.values_im.addr(),
-            factor_count: factors.value_count,
         }
     }
 }
@@ -157,177 +143,228 @@ struct RowTableIdentity {
     row_count: u32,
 }
 
-struct CachedRowGroupDescriptors {
-    table: RowTableIdentity,
-    planes_per_row: usize,
-    scalars_per_row: usize,
-    planes: Box<[DirectPlane]>,
-    scalars: Box<[DirectScalar]>,
-}
-
-impl CachedRowGroupDescriptors {
-    fn planes(&self, row: usize) -> &[DirectPlane] {
-        let start = row * self.planes_per_row;
-        &self.planes[start..start + self.planes_per_row]
-    }
-
-    fn scalars(&self, row: usize) -> &[DirectScalar] {
-        let start = row * self.scalars_per_row;
-        &self.scalars[start..start + self.scalars_per_row]
-    }
-
-    fn descriptor_bytes(&self) -> usize {
-        self.planes.len() * size_of::<DirectPlane>()
-            + self.scalars.len() * size_of::<DirectScalar>()
-    }
-}
-
-#[derive(Default)]
-struct DescriptorCache {
-    storage: Option<DescriptorStorageIdentity>,
-    row_groups: Vec<CachedRowGroupDescriptors>,
+struct CachedRowGroup {
+    identity: RowTableIdentity,
+    rows: Vec<CachedRowTables>,
     descriptor_bytes: usize,
-    #[cfg(test)]
-    build_count: usize,
+}
+
+struct CachedRowTables {
+    scratch: SymjitPlaneTable<'static>,
+    direct: Option<SymjitPlaneTable<'static>>,
+}
+
+/// Hot storage owned by one loaded recurrence executor.
+///
+/// Every cached table contains only the generic raw descriptors exposed by the
+/// SymJIT patch. Multiple tables may therefore name the same persistent
+/// scratch/broadcast planes without constructing overlapping Rust references;
+/// the executor calls them strictly sequentially.
+#[derive(Default)]
+struct PlaneWorkspace {
+    storage: Option<DescriptorStorageIdentity>,
+    row_groups: Vec<CachedRowGroup>,
+    descriptor_bytes: usize,
+    scratch: Vec<f64>,
+    broadcasts: Vec<f64>,
+    broadcast_value_bits: Vec<Option<u64>>,
+    point_stride: usize,
+}
+
+impl PlaneWorkspace {
+    fn prepare(
+        &mut self,
+        point_stride: usize,
+        input_plane_count: usize,
+        output_plane_count: usize,
+        broadcast_plane_count: usize,
+    ) -> RusticolResult<()> {
+        let descriptor_count = input_plane_count
+            .checked_add(output_plane_count)
+            .ok_or_else(|| RusticolError::internal("recurrence descriptor count overflows"))?;
+        let expected_scratch = output_plane_count
+            .checked_mul(point_stride)
+            .ok_or_else(|| RusticolError::internal("recurrence scratch size overflows"))?;
+        let expected_broadcasts = broadcast_plane_count
+            .checked_mul(point_stride)
+            .ok_or_else(|| RusticolError::internal("recurrence broadcast size overflows"))?;
+        if self.point_stride == point_stride
+            && self.scratch.len() == expected_scratch
+            && self.broadcasts.len() == expected_broadcasts
+        {
+            return Ok(());
+        }
+
+        // Drop every raw table before replacing its backing storage.
+        self.row_groups.clear();
+        self.storage = None;
+        self.descriptor_bytes = 0;
+        self.scratch = vec![0.0; expected_scratch];
+        self.broadcasts = vec![0.0; expected_broadcasts];
+        self.broadcast_value_bits = vec![None; broadcast_plane_count];
+        self.point_stride = point_stride;
+        debug_assert_eq!(descriptor_count, input_plane_count + output_plane_count);
+        Ok(())
+    }
+
+    fn broadcast_pointer(&mut self, slot: usize, value: f64) -> RusticolResult<(*mut f64, bool)> {
+        let start = slot
+            .checked_mul(self.point_stride)
+            .ok_or_else(|| RusticolError::internal("broadcast plane offset overflows"))?;
+        let end = start
+            .checked_add(self.point_stride)
+            .ok_or_else(|| RusticolError::internal("broadcast plane range overflows"))?;
+        let plane = self.broadcasts.get_mut(start..end).ok_or_else(|| {
+            RusticolError::internal("broadcast plane is outside its persistent workspace")
+        })?;
+        let bits = value.to_bits();
+        let cached = self.broadcast_value_bits.get_mut(slot).ok_or_else(|| {
+            RusticolError::internal("broadcast cache slot is outside its workspace")
+        })?;
+        let refreshed = *cached != Some(bits);
+        if refreshed {
+            plane.fill(value);
+            *cached = Some(bits);
+        }
+        Ok((plane.as_mut_ptr(), refreshed))
+    }
+
+    fn scratch_pointer(&mut self, plane: usize) -> RusticolResult<*mut f64> {
+        let start = plane
+            .checked_mul(self.point_stride)
+            .ok_or_else(|| RusticolError::internal("scratch plane offset overflows"))?;
+        let end = start
+            .checked_add(self.point_stride)
+            .ok_or_else(|| RusticolError::internal("scratch plane range overflows"))?;
+        self.scratch
+            .get_mut(start..end)
+            .map(<[f64]>::as_mut_ptr)
+            .ok_or_else(|| RusticolError::internal("scratch plane is outside its workspace"))
+    }
+
+    fn broadcast_plane_pointer(&mut self, slot: usize) -> RusticolResult<*mut f64> {
+        let start = slot
+            .checked_mul(self.point_stride)
+            .ok_or_else(|| RusticolError::internal("broadcast plane offset overflows"))?;
+        let end = start
+            .checked_add(self.point_stride)
+            .ok_or_else(|| RusticolError::internal("broadcast plane range overflows"))?;
+        self.broadcasts
+            .get_mut(start..end)
+            .map(<[f64]>::as_mut_ptr)
+            .ok_or_else(|| RusticolError::internal("broadcast plane is outside its workspace"))
+    }
 }
 
 impl LoadedSymjitDirectExecutor {
-    #[cfg(test)]
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn load_bytes(
-        bytes: &[u8],
-        display_path: PathBuf,
-        application_abi: &str,
-        role: DirectExecutorRole,
-        input_planes: Vec<SymjitDirectPlaneProjection>,
-        scalars: Vec<SymjitDirectScalarProjection>,
-    ) -> RusticolResult<Self> {
-        if role == DirectExecutorRole::Source {
-            return Err(RusticolError::compatibility(
-                "recurrence source executors are Rusticol SourceIR intrinsics, not SymJIT direct applications",
-            ));
-        }
-        if application_abi != DIRECT_APPLICATION_STORAGE_ABI {
-            return Err(RusticolError::compatibility(format!(
-                "unsupported SymJIT direct application ABI {application_abi:?}; expected {DIRECT_APPLICATION_STORAGE_ABI:?}"
-            )));
-        }
-
-        let mut loader_config = Config::default();
-        loader_config.set_defuns(Defuns::new());
-        let mut input = bytes;
-        let mut application = guard_symjit_panic(
-            || DirectApplication::load(&mut input, &loader_config),
-            &display_path,
-            "load",
-        )?
-        .map_err(|error| {
-            RusticolError::compatibility(format!(
-                "could not load SymJIT direct application {}: {error}",
-                display_path.display()
-            ))
-        })?;
-        if !input.is_empty() {
-            return Err(RusticolError::integrity(format!(
-                "SymJIT direct application {} has {} trailing bytes",
-                display_path.display(),
-                input.len()
-            )));
-        }
-
-        validate_projections(&application, role, &input_planes, &scalars)?;
-        application.prepare_simd();
-        let applet =
-            guard_symjit_panic(|| application.seal(), &display_path, "seal")?.map_err(|error| {
-                RusticolError::evaluation(format!(
-                    "could not seal SymJIT direct application {}: {error}",
-                    display_path.display()
-                ))
-            })?;
-        #[cfg(test)]
-        let simd_lane_width = applet.simd_lane_width();
-        Ok(Self {
-            context: Box::new(SymjitDirectExecutorContext {
-                role,
-                callable: applet.into_callable(),
-                #[cfg(test)]
-                simd_lane_width,
-                input_planes: input_planes.into_boxed_slice(),
-                scalars: scalars.into_boxed_slice(),
-                display_path,
-                descriptor_cache: RefCell::new(DescriptorCache::default()),
-            }),
-        })
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn load_prepared_application_bytes(
         bytes: &[u8],
         display_path: PathBuf,
-        source_application_abi: &str,
+        application_abi: &str,
+        expected_optimization_level: u32,
+        expected_compression: bool,
         role: DirectExecutorRole,
-        direct_metadata: DirectApplicationMetadata,
+        parameter_bindings: Vec<SymjitDirectParameterBinding>,
         input_planes: Vec<SymjitDirectPlaneProjection>,
         scalars: Vec<SymjitDirectScalarProjection>,
+        output_destinations: Vec<u32>,
     ) -> RusticolResult<Self> {
         if role == DirectExecutorRole::Source {
             return Err(RusticolError::compatibility(
-                "recurrence source executors are Rusticol SourceIR intrinsics, not SymJIT direct applications",
+                "recurrence source executors are Rusticol SourceIR intrinsics, not SymJIT plane applications",
             ));
         }
-        if source_application_abi != "symjit-application-storage-v3" {
+        if application_abi != SYMJIT_RECURRENCE_PLANE_APPLICATION_ABI {
             return Err(RusticolError::compatibility(format!(
-                "unsupported prepared SymJIT source application ABI {source_application_abi:?}"
+                "unsupported recurrence SymJIT plane-application ABI {application_abi:?}; regenerate the prepared model with this pyAmpliCol version"
             )));
         }
-        let mut loader_config = Config::default();
-        loader_config.set_defuns(Defuns::new());
-        let mut input = bytes;
-        let mut application = guard_symjit_panic(
-            || {
-                DirectApplication::from_source_storage(
-                    &mut input,
-                    &loader_config,
-                    direct_metadata,
-                )
-            },
-            &display_path,
-            "transform",
-        )?
-        .map_err(|error| {
-            RusticolError::compatibility(format!(
-                "could not transform prepared SymJIT application {} into a direct application: {error}",
-                display_path.display()
-            ))
-        })?;
-        if !input.is_empty() {
+        if !parameter_bindings.len().is_multiple_of(2)
+            || !output_destinations.len().is_multiple_of(2)
+        {
+            return Err(RusticolError::integrity(
+                "recurrence SymJIT split-complex binding has an odd plane count",
+            ));
+        }
+        let layout =
+            SymjitPlaneLayout::complex(parameter_bindings.len() / 2, output_destinations.len() / 2);
+        let kernel = SymjitPlaneKernel::load_bytes(bytes, display_path.clone(), layout)?;
+        if u32::from(kernel.optimization_level()) != expected_optimization_level {
             return Err(RusticolError::integrity(format!(
-                "prepared SymJIT application {} has {} trailing bytes",
+                "recurrence SymJIT plane application {} stores optimization level {}, but its \
+                 authenticated template declares optimization level \
+                 {expected_optimization_level}; regenerate the prepared model",
                 display_path.display(),
-                input.len()
+                kernel.optimization_level(),
             )));
         }
-        validate_projections(&application, role, &input_planes, &scalars)?;
-        application.prepare_simd();
-        let applet = guard_symjit_panic(|| application.seal(), &display_path, "seal transformed")?
+        if kernel.compression() != expected_compression {
+            return Err(RusticolError::integrity(format!(
+                "recurrence SymJIT plane application {} stores compression {}, but its \
+                 authenticated prepared-kernel manifest declares compression \
+                 {expected_compression}; regenerate the prepared model",
+                display_path.display(),
+                kernel.compression(),
+            )));
+        }
+        validate_binding(
+            &kernel,
+            role,
+            &parameter_bindings,
+            &input_planes,
+            &scalars,
+            &output_destinations,
+        )?;
+
+        // A structured evaluator may bind one scalar projection to several
+        // source planes (most commonly the shared structural-zero projection).
+        // Intern those occurrences on the cold path so duplicate descriptors
+        // address one persistent broadcast plane.
+        let mut slot_by_scalar = vec![None; scalars.len()];
+        let mut broadcast_scalar_by_slot = Vec::new();
+        let mut broadcast_slot_by_binding = Vec::new();
+        broadcast_slot_by_binding
+            .try_reserve_exact(parameter_bindings.len())
             .map_err(|error| {
-                RusticolError::evaluation(format!(
-                    "could not seal transformed SymJIT direct application {}: {error}",
-                    display_path.display()
+                RusticolError::internal(format!(
+                    "could not allocate recurrence broadcast binding map: {error}"
                 ))
             })?;
-        #[cfg(test)]
-        let simd_lane_width = applet.simd_lane_width();
+        for binding in &parameter_bindings {
+            let SymjitDirectParameterBinding::Broadcast { index } = *binding else {
+                broadcast_slot_by_binding.push(None);
+                continue;
+            };
+            let scalar_index = index as usize;
+            let slot = if let Some(slot) = slot_by_scalar[scalar_index] {
+                slot
+            } else {
+                let slot = u32::try_from(broadcast_scalar_by_slot.len()).map_err(|_| {
+                    RusticolError::integrity(
+                        "recurrence persistent broadcast plane count exceeds u32",
+                    )
+                })?;
+                slot_by_scalar[scalar_index] = Some(slot);
+                broadcast_scalar_by_slot.push(index);
+                slot
+            };
+            broadcast_slot_by_binding.push(Some(slot));
+        }
+
         Ok(Self {
             context: Box::new(SymjitDirectExecutorContext {
                 role,
-                callable: applet.into_callable(),
-                #[cfg(test)]
-                simd_lane_width,
+                kernel,
+                parameter_bindings: parameter_bindings.into_boxed_slice(),
                 input_planes: input_planes.into_boxed_slice(),
                 scalars: scalars.into_boxed_slice(),
-                display_path,
-                descriptor_cache: RefCell::new(DescriptorCache::default()),
+                output_destinations: output_destinations.into_boxed_slice(),
+                broadcast_slot_by_binding: broadcast_slot_by_binding.into_boxed_slice(),
+                broadcast_scalar_by_slot: broadcast_scalar_by_slot.into_boxed_slice(),
+                workspace: RefCell::new(PlaneWorkspace::default()),
+                internal_scratch_bytes: Cell::new(0),
+                internal_broadcast_bytes: Cell::new(0),
             }),
         })
     }
@@ -348,169 +385,158 @@ impl LoadedSymjitDirectExecutor {
                 context,
             },
             DirectExecutorRole::Source => {
-                unreachable!("source roles are rejected while loading a SymJIT direct executor")
+                unreachable!("source roles are rejected while loading a SymJIT plane executor")
             }
         }
     }
 
-    #[cfg(test)]
-    fn context_address(&self) -> *const c_void {
-        ptr::from_ref(self.context.as_ref()).cast()
+    pub(crate) fn internal_traffic_bytes(&self) -> (u64, u64) {
+        (
+            self.context.internal_scratch_bytes.get(),
+            self.context.internal_broadcast_bytes.get(),
+        )
     }
 
     #[cfg(test)]
     fn simd_lane_width(&self) -> usize {
-        self.context.simd_lane_width
+        self.context.kernel.simd_lanes()
     }
 
     #[cfg(test)]
-    fn descriptor_cache_snapshot(&self) -> DescriptorCacheSnapshot {
-        let cache = self.context.descriptor_cache.borrow();
-        let first = cache.row_groups.first();
-        DescriptorCacheSnapshot {
-            row_group_count: cache.row_groups.len(),
-            build_count: cache.build_count,
-            descriptor_bytes: cache.descriptor_bytes,
-            first_plane_address: first.map_or(0, |entry| entry.planes.as_ptr().addr()),
-            first_scalar_address: first.map_or(0, |entry| entry.scalars.as_ptr().addr()),
-        }
+    fn cached_direct_table_count(&self) -> usize {
+        self.context
+            .workspace
+            .borrow()
+            .row_groups
+            .iter()
+            .flat_map(|group| &group.rows)
+            .filter(|row| row.direct.is_some())
+            .count()
+    }
+
+    #[cfg(test)]
+    fn broadcast_plane_count(&self) -> usize {
+        self.context.broadcast_scalar_by_slot.len()
     }
 }
 
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct DescriptorCacheSnapshot {
-    row_group_count: usize,
-    build_count: usize,
-    descriptor_bytes: usize,
-    first_plane_address: usize,
-    first_scalar_address: usize,
-}
-
-fn validate_projections(
-    application: &DirectApplication,
+fn validate_binding(
+    kernel: &SymjitPlaneKernel,
     role: DirectExecutorRole,
+    parameter_bindings: &[SymjitDirectParameterBinding],
     input_planes: &[SymjitDirectPlaneProjection],
     scalars: &[SymjitDirectScalarProjection],
+    output_destinations: &[u32],
 ) -> RusticolResult<()> {
-    let metadata = application.metadata();
-    if input_planes.len() != metadata.input_plane_count as usize {
-        return Err(RusticolError::integrity(format!(
-            "SymJIT direct input-plane projection has {} entries, expected {}",
-            input_planes.len(),
-            metadata.input_plane_count
-        )));
-    }
-    if scalars.len() != metadata.scalar_input_count as usize {
-        return Err(RusticolError::integrity(format!(
-            "SymJIT direct scalar projection has {} entries, expected {}",
-            scalars.len(),
-            metadata.scalar_input_count
-        )));
-    }
-    if scalars.get(DIRECT_COMPLEX_SCALE_REAL_SCALAR as usize)
-        != Some(&SymjitDirectScalarProjection::ExactFactor { imaginary: false })
-        || scalars.get(DIRECT_COMPLEX_SCALE_IMAG_SCALAR as usize)
-            != Some(&SymjitDirectScalarProjection::ExactFactor { imaginary: true })
+    if parameter_bindings.len() != kernel.input_plane_count()
+        || output_destinations.len() != kernel.output_plane_count()
     {
         return Err(RusticolError::integrity(
-            "SymJIT direct scalar slots 0 and 1 must project the exact factor real and imaginary values",
+            "recurrence plane binding shape does not match its SymJIT P-kernel",
         ));
     }
-
-    let (expected_operation, expected_snapshot) = match role {
-        DirectExecutorRole::Contribution => (
-            SymjitDestinationOperation::Accumulate,
-            SymjitInputSnapshot::Live,
-        ),
-        DirectExecutorRole::Finalization => (
-            SymjitDestinationOperation::Overwrite,
-            SymjitInputSnapshot::BeforeWrite,
-        ),
-        DirectExecutorRole::Closure => (
-            SymjitDestinationOperation::Accumulate,
-            SymjitInputSnapshot::BeforeWrite,
-        ),
-        DirectExecutorRole::Source => {
-            return Err(RusticolError::compatibility(
-                "recurrence source executors are Rusticol SourceIR intrinsics",
-            ));
-        }
-    };
-    if metadata.destination_operation != expected_operation {
-        return Err(RusticolError::integrity(format!(
-            "SymJIT direct destination operation {:?} does not match executor role {role:?}",
-            metadata.destination_operation
-        )));
-    }
-    if metadata.input_snapshot != expected_snapshot {
-        return Err(RusticolError::integrity(format!(
-            "SymJIT direct input snapshot {:?} does not match executor role {role:?}",
-            metadata.input_snapshot
-        )));
-    }
-    if metadata.output_scale != DirectOutputScale::ComplexScalar {
-        return Err(RusticolError::integrity(
-            "recurrence SymJIT direct applications must use complex-scalar output scaling",
-        ));
-    }
-    let total_plane_count = input_planes
+    if parameter_bindings
         .len()
-        .checked_add(metadata.output_alias_inputs.len())
-        .ok_or_else(|| RusticolError::integrity("SymJIT direct plane count overflows"))?;
-    if total_plane_count > MAX_DIRECT_PLANES || scalars.len() > MAX_DIRECT_SCALARS {
+        .checked_add(output_destinations.len())
+        .is_none_or(|count| count > MAX_DIRECT_PLANES)
+        || scalars.len() > MAX_DIRECT_SCALARS
+    {
         return Err(RusticolError::compatibility(format!(
-            "SymJIT direct template needs {total_plane_count} planes and {} scalars; adapter limits are {MAX_DIRECT_PLANES} and {MAX_DIRECT_SCALARS}",
-            scalars.len()
+            "recurrence plane binding exceeds the adapter limits of {MAX_DIRECT_PLANES} planes and {MAX_DIRECT_SCALARS} scalar sources"
         )));
     }
-
-    for binding in &metadata.parameter_bindings {
+    if scalars.first() != Some(&SymjitDirectScalarProjection::ExactFactor { imaginary: false })
+        || scalars.get(1) != Some(&SymjitDirectScalarProjection::ExactFactor { imaginary: true })
+    {
+        return Err(RusticolError::integrity(
+            "recurrence scalar sources 0 and 1 must be the exact factor real and imaginary values",
+        ));
+    }
+    for binding in parameter_bindings {
         match *binding {
-            DirectInputBinding::Plane(index) if index as usize >= input_planes.len() => {
+            SymjitDirectParameterBinding::Plane { index }
+                if index as usize >= input_planes.len() =>
+            {
                 return Err(RusticolError::integrity(
-                    "SymJIT direct parameter plane is absent from its fixed projection",
+                    "recurrence P-kernel input plane projection is out of bounds",
                 ));
             }
-            DirectInputBinding::Scalar(index) if index as usize >= scalars.len() => {
+            SymjitDirectParameterBinding::Broadcast { index }
+                if index as usize >= scalars.len() =>
+            {
                 return Err(RusticolError::integrity(
-                    "SymJIT direct parameter scalar is absent from its fixed projection",
+                    "recurrence P-kernel broadcast projection is out of bounds",
                 ));
             }
             _ => {}
         }
     }
-
-    let expected_destination = |projection: SymjitDirectPlaneProjection| match role {
-        DirectExecutorRole::Contribution | DirectExecutorRole::Finalization => {
-            matches!(
-                projection,
-                SymjitDirectPlaneProjection::DestinationCurrent { .. }
+    for (output, &destination) in output_destinations.iter().enumerate() {
+        let projection = input_planes
+            .get(destination as usize)
+            .copied()
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "recurrence P-kernel destination projection is out of bounds",
+                )
+            })?;
+        let expected_imaginary = output % 2 == 1;
+        let valid = match (role, projection) {
+            (
+                DirectExecutorRole::Contribution | DirectExecutorRole::Finalization,
+                SymjitDirectPlaneProjection::DestinationCurrent { imaginary, .. },
             )
-        }
-        DirectExecutorRole::Closure => matches!(
-            projection,
-            SymjitDirectPlaneProjection::DestinationAmplitude { .. }
-        ),
-        DirectExecutorRole::Source => false,
-    };
-    for &alias in &metadata.output_alias_inputs {
-        if alias == DIRECT_NO_ALIAS {
-            return Err(RusticolError::compatibility(
-                "recurrence direct applications must alias every output into a persistent destination plane",
+            | (
+                DirectExecutorRole::Closure,
+                SymjitDirectPlaneProjection::DestinationAmplitude { imaginary, .. },
+            ) => imaginary == expected_imaginary,
+            _ => false,
+        };
+        if !valid {
+            return Err(RusticolError::integrity(
+                "recurrence P-kernel output does not map to the expected split-complex destination",
             ));
         }
-        let projection = input_planes
-            .get(alias as usize)
-            .copied()
-            .ok_or_else(|| RusticolError::integrity("direct output alias is out of bounds"))?;
-        if !expected_destination(projection) {
+    }
+    for pair in output_destinations.chunks_exact(2) {
+        let real = input_planes[pair[0] as usize];
+        let imaginary = input_planes[pair[1] as usize];
+        if !matching_split_destination(real, imaginary) {
             return Err(RusticolError::integrity(
-                "SymJIT direct output does not alias a destination projection for its executor role",
+                "recurrence P-kernel output pair maps to different destination components",
             ));
         }
     }
     Ok(())
+}
+
+fn matching_split_destination(
+    real: SymjitDirectPlaneProjection,
+    imaginary: SymjitDirectPlaneProjection,
+) -> bool {
+    match (real, imaginary) {
+        (
+            SymjitDirectPlaneProjection::DestinationCurrent {
+                component: left,
+                imaginary: false,
+            },
+            SymjitDirectPlaneProjection::DestinationCurrent {
+                component: right,
+                imaginary: true,
+            },
+        )
+        | (
+            SymjitDirectPlaneProjection::DestinationAmplitude {
+                component: left,
+                imaginary: false,
+            },
+            SymjitDirectPlaneProjection::DestinationAmplitude {
+                component: right,
+                imaginary: true,
+            },
+        ) => left == right,
+        _ => false,
+    }
 }
 
 unsafe extern "C" fn execute_contribution_rows(
@@ -591,27 +617,23 @@ fn invoke_typed_rows<T: DirectTypedRow>(
     point_count: u32,
 ) -> c_int {
     if context.is_null() {
-        return DIRECT_STATUS_INVALID_CONTEXT;
+        return STATUS_INVALID_CONTEXT;
     }
-    if row_count == 0 || point_count == 0 || rows.is_null() {
-        return DIRECT_STATUS_INVALID_ARGUMENT;
+    if rows.is_null() || row_count == 0 || point_count == 0 {
+        return STATUS_INVALID_ARGUMENT;
     }
-    let result = catch_unwind(AssertUnwindSafe(|| {
+    catch_unwind(AssertUnwindSafe(|| {
         let context = unsafe { &*context.cast::<SymjitDirectExecutorContext>() };
         if context.role != T::ROLE {
             return STATUS_ROLE_MISMATCH;
         }
-        context.execute_rows(
-            arena,
-            momenta,
-            parameters,
-            factors,
-            rows,
-            row_count,
-            point_count,
-        )
-    }));
-    result.unwrap_or(DIRECT_STATUS_EXECUTION_FAILED)
+        let rows = unsafe { std::slice::from_raw_parts(rows, row_count as usize) };
+        match context.execute_rows(arena, momenta, parameters, factors, rows, point_count) {
+            Ok(()) => DIRECT_STATUS_OK,
+            Err(_) => STATUS_EXECUTION_FAILED,
+        }
+    }))
+    .unwrap_or(STATUS_EXECUTION_FAILED)
 }
 
 enum DirectRowRef<'a> {
@@ -622,7 +644,6 @@ enum DirectRowRef<'a> {
 
 trait DirectTypedRow {
     const ROLE: DirectExecutorRole;
-
     fn direct_row_ref(&self) -> DirectRowRef<'_>;
 }
 
@@ -714,388 +735,767 @@ impl DirectRowRef<'_> {
 }
 
 impl SymjitDirectExecutorContext {
-    #[allow(clippy::too_many_arguments)]
     fn execute_rows<T: DirectTypedRow>(
         &self,
         arena: DirectArenaView,
         momenta: DirectMomentumView,
         parameters: DirectParameterView,
         factors: DirectFactorView,
-        rows: *const T,
-        row_count: u32,
+        rows: &[T],
         point_count: u32,
-    ) -> c_int {
-        if point_count == 0 || arena.point_stride == 0 || point_count > arena.point_stride {
-            return DIRECT_STATUS_INVALID_ARGUMENT;
+    ) -> RusticolResult<()> {
+        if arena.point_stride == 0
+            || point_count > arena.point_stride
+            || arena.point_stride != momenta.point_stride
+        {
+            return Err(RusticolError::invalid_argument(
+                "recurrence SymJIT point range or momentum stride is invalid",
+            ));
         }
-        if arena.point_stride != momenta.point_stride {
-            return DIRECT_STATUS_INVALID_ARGUMENT;
-        }
+        let point_stride = arena.point_stride as usize;
+        let broadcast_count = self.broadcast_scalar_by_slot.len();
+        let mut workspace = self.workspace.borrow_mut();
+        workspace.prepare(
+            point_stride,
+            self.parameter_bindings.len(),
+            self.output_destinations.len(),
+            broadcast_count,
+        )?;
 
-        let storage = DescriptorStorageIdentity::new(arena, momenta, parameters, factors);
-        let table = RowTableIdentity {
+        let storage = DescriptorStorageIdentity::new(arena, momenta);
+        if workspace.storage.is_some_and(|cached| cached != storage) {
+            workspace.row_groups.clear();
+            workspace.descriptor_bytes = 0;
+        }
+        workspace.storage = Some(storage);
+        let row_count = u32::try_from(rows.len())
+            .map_err(|_| RusticolError::integrity("recurrence row count exceeds u32"))?;
+        let identity = RowTableIdentity {
             role: T::ROLE,
-            address: rows.addr(),
+            address: rows.as_ptr().addr(),
             row_count,
         };
-        let mut cache = self.descriptor_cache.borrow_mut();
-        if cache
-            .storage
-            .is_some_and(|cached_storage| cached_storage != storage)
-        {
-            return STATUS_DESCRIPTOR_IDENTITY_MISMATCH;
-        }
-        if let Some(entry) = cache
+        let group_index = if let Some((index, cached)) = workspace
             .row_groups
             .iter()
-            .find(|entry| entry.table.address == table.address)
+            .enumerate()
+            .find(|(_, cached)| cached.identity.address == identity.address)
         {
-            if entry.table != table {
-                return STATUS_DESCRIPTOR_IDENTITY_MISMATCH;
+            if cached.identity != identity {
+                return Err(RusticolError::integrity(
+                    "recurrence row table identity changed after its descriptors were bound",
+                ));
             }
-            return self.invoke_cached_rows(entry, point_count);
-        }
+            index
+        } else {
+            if workspace.row_groups.len() >= MAX_DESCRIPTOR_CACHE_ROW_GROUPS {
+                return Err(RusticolError::compatibility(
+                    "recurrence SymJIT descriptor cache exceeds its row-group limit",
+                ));
+            }
+            let cached =
+                self.build_cached_row_group(&mut workspace, identity, rows, arena, momenta)?;
+            let total_bytes = workspace
+                .descriptor_bytes
+                .checked_add(cached.descriptor_bytes)
+                .ok_or_else(|| {
+                    RusticolError::compatibility(
+                        "recurrence SymJIT descriptor cache size overflows",
+                    )
+                })?;
+            if total_bytes > MAX_DESCRIPTOR_CACHE_BYTES {
+                return Err(RusticolError::compatibility(
+                    "recurrence SymJIT descriptor cache exceeds its byte limit",
+                ));
+            }
+            workspace.descriptor_bytes = total_bytes;
+            workspace.row_groups.push(cached);
+            workspace.row_groups.len() - 1
+        };
 
-        if cache.row_groups.len() >= MAX_DESCRIPTOR_CACHE_ROW_GROUPS {
-            return STATUS_DESCRIPTOR_CACHE_CAPACITY;
+        for (row_index, typed_row) in rows.iter().enumerate() {
+            let row = typed_row.direct_row_ref();
+            let refresh_bytes =
+                self.refresh_broadcasts(&mut workspace, &row, parameters, factors)?;
+            self.record_internal_broadcast_bytes(refresh_bytes);
+            let (factor_re, factor_im) = exact_factor(&row, factors)?;
+            let use_direct = is_identity_factor(factor_re, factor_im)
+                && workspace
+                    .row_groups
+                    .get(group_index)
+                    .and_then(|group| group.rows.get(row_index))
+                    .is_some_and(|tables| tables.direct.is_some());
+            {
+                let tables = workspace
+                    .row_groups
+                    .get_mut(group_index)
+                    .and_then(|group| group.rows.get_mut(row_index))
+                    .ok_or_else(|| {
+                        RusticolError::internal(
+                            "recurrence cached descriptor table is out of bounds",
+                        )
+                    })?;
+                let table = if use_direct {
+                    tables.direct.as_mut().ok_or_else(|| {
+                        RusticolError::internal(
+                            "recurrence direct-output table disappeared after selection",
+                        )
+                    })?
+                } else {
+                    &mut tables.scratch
+                };
+                self.kernel.execute_table(table, 0, point_count as usize)?;
+            }
+            if !use_direct {
+                apply_outputs(
+                    self.role,
+                    &self.input_planes,
+                    &self.output_destinations,
+                    &workspace.scratch,
+                    point_stride,
+                    point_count as usize,
+                    factor_re,
+                    factor_im,
+                    &row,
+                    arena,
+                    momenta,
+                )?;
+                let scratch_one_way = internal_plane_bytes(
+                    self.output_destinations.len(),
+                    point_count as usize,
+                    "recurrence scratch traffic",
+                )?;
+                self.record_internal_scratch_bytes(scratch_one_way.saturating_mul(2));
+            }
+            self.record_internal_broadcast_bytes(internal_plane_bytes(
+                broadcast_count,
+                point_count as usize,
+                "recurrence broadcast traffic",
+            )?);
         }
-        let metadata = self.callable.metadata();
-        let planes_per_row = self.input_planes.len() + metadata.output_alias_inputs.len();
-        let scalars_per_row = self.scalars.len();
-        let Some(descriptor_bytes) =
-            descriptor_cache_entry_bytes(row_count, planes_per_row, scalars_per_row)
-        else {
-            return STATUS_DESCRIPTOR_CACHE_CAPACITY;
-        };
-        if cache
-            .descriptor_bytes
-            .checked_add(descriptor_bytes)
-            .is_none_or(|total| total > MAX_DESCRIPTOR_CACHE_BYTES)
-        {
-            return STATUS_DESCRIPTOR_CACHE_CAPACITY;
-        }
-        let rows = unsafe { std::slice::from_raw_parts(rows, row_count as usize) };
-        let entry = match self.build_cached_row_group(
-            table,
-            rows,
-            arena,
-            momenta,
-            parameters,
-            factors,
-            planes_per_row,
-            scalars_per_row,
-        ) {
-            Ok(entry) => entry,
-            Err(status) => return status,
-        };
-        debug_assert_eq!(entry.descriptor_bytes(), descriptor_bytes);
-        cache.storage.get_or_insert(storage);
-        cache.descriptor_bytes += descriptor_bytes;
-        #[cfg(test)]
-        {
-            cache.build_count += 1;
-        }
-        cache.row_groups.push(entry);
-        self.invoke_cached_rows(
-            cache
-                .row_groups
-                .last()
-                .expect("descriptor cache entry was just appended"),
-            point_count,
-        )
+        Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn build_cached_row_group<T: DirectTypedRow>(
         &self,
-        table: RowTableIdentity,
+        workspace: &mut PlaneWorkspace,
+        identity: RowTableIdentity,
         rows: &[T],
         arena: DirectArenaView,
         momenta: DirectMomentumView,
-        parameters: DirectParameterView,
-        factors: DirectFactorView,
-        planes_per_row: usize,
-        scalars_per_row: usize,
-    ) -> Result<CachedRowGroupDescriptors, c_int> {
-        let Some(plane_count) = rows.len().checked_mul(planes_per_row) else {
-            return Err(STATUS_DESCRIPTOR_CACHE_CAPACITY);
-        };
-        let Some(scalar_count) = rows.len().checked_mul(scalars_per_row) else {
-            return Err(STATUS_DESCRIPTOR_CACHE_CAPACITY);
-        };
-        let mut planes = Vec::new();
-        let mut scalars = Vec::new();
-        if planes.try_reserve_exact(plane_count).is_err()
-            || scalars.try_reserve_exact(scalar_count).is_err()
-        {
-            return Err(STATUS_DESCRIPTOR_CACHE_CAPACITY);
-        }
-
-        let metadata = self.callable.metadata();
+    ) -> RusticolResult<CachedRowGroup> {
+        let descriptor_count = self
+            .parameter_bindings
+            .len()
+            .checked_add(self.output_destinations.len())
+            .ok_or_else(|| RusticolError::integrity("recurrence descriptor count overflows"))?;
+        let bytes_per_table = descriptor_count
+            .checked_mul(size_of::<PlaneDescriptor<'static>>())
+            .ok_or_else(|| {
+                RusticolError::compatibility("recurrence descriptor cache size overflows")
+            })?;
+        let mut descriptor_bytes = 0_usize;
+        let mut cached_rows: Vec<CachedRowTables> = Vec::new();
+        cached_rows.try_reserve_exact(rows.len()).map_err(|_| {
+            RusticolError::compatibility("could not reserve recurrence descriptor tables")
+        })?;
         for typed_row in rows {
             let row = typed_row.direct_row_ref();
-            let row_plane_start = planes.len();
-            for projection in self.input_planes.iter().copied() {
-                let Some(plane) = resolve_plane(projection, &row, arena, momenta) else {
-                    return Err(STATUS_BOUNDS);
+            let mut input_pointers = Vec::new();
+            input_pointers
+                .try_reserve_exact(self.parameter_bindings.len())
+                .map_err(|_| {
+                    RusticolError::compatibility(
+                        "could not reserve recurrence input plane pointers",
+                    )
+                })?;
+            for (binding_index, binding) in self.parameter_bindings.iter().enumerate() {
+                let pointer = match *binding {
+                    SymjitDirectParameterBinding::Plane { index } => resolve_plane_pointer(
+                        *self.input_planes.get(index as usize).ok_or_else(|| {
+                            RusticolError::integrity("recurrence input projection is out of bounds")
+                        })?,
+                        &row,
+                        arena,
+                        momenta,
+                    )?,
+                    SymjitDirectParameterBinding::Broadcast { .. } => {
+                        let slot =
+                            self.broadcast_slot_by_binding[binding_index].ok_or_else(|| {
+                                RusticolError::internal(
+                                    "recurrence broadcast binding has no persistent slot",
+                                )
+                            })? as usize;
+                        workspace.broadcast_plane_pointer(slot)?
+                    }
                 };
-                planes.push(plane);
+                input_pointers.push(pointer);
             }
-            for &alias in &metadata.output_alias_inputs {
-                let Some(source) = planes.get(row_plane_start + alias as usize).copied() else {
-                    return Err(STATUS_BOUNDS);
-                };
-                planes.push(source);
+            let mut output_pointers = Vec::new();
+            output_pointers
+                .try_reserve_exact(self.output_destinations.len())
+                .map_err(|_| {
+                    RusticolError::compatibility(
+                        "could not reserve recurrence output plane pointers",
+                    )
+                })?;
+            for &destination in self.output_destinations.iter() {
+                output_pointers.push(resolve_plane_pointer(
+                    *self.input_planes.get(destination as usize).ok_or_else(|| {
+                        RusticolError::integrity("recurrence output projection is out of bounds")
+                    })?,
+                    &row,
+                    arena,
+                    momenta,
+                )?);
             }
-            for projection in self.scalars.iter() {
-                let Some(scalar) = resolve_scalar(projection, &row, parameters, factors) else {
-                    return Err(STATUS_BOUNDS);
-                };
-                scalars.push(scalar);
+            let mut scratch_pointers = Vec::new();
+            scratch_pointers
+                .try_reserve_exact(self.output_destinations.len())
+                .map_err(|_| {
+                    RusticolError::compatibility(
+                        "could not reserve recurrence scratch plane pointers",
+                    )
+                })?;
+            for output in 0..self.output_destinations.len() {
+                scratch_pointers.push(workspace.scratch_pointer(output)?);
             }
+            let scratch = build_plane_table(
+                &self.kernel,
+                &input_pointers,
+                &scratch_pointers,
+                workspace.point_stride,
+            )?;
+            descriptor_bytes = descriptor_bytes
+                .checked_add(bytes_per_table)
+                .ok_or_else(|| {
+                    RusticolError::compatibility("recurrence descriptor cache size overflows")
+                })?;
+            let direct = if direct_outputs_are_structurally_safe(
+                self.role,
+                &input_pointers,
+                &output_pointers,
+                workspace.point_stride,
+            )? {
+                descriptor_bytes =
+                    descriptor_bytes
+                        .checked_add(bytes_per_table)
+                        .ok_or_else(|| {
+                            RusticolError::compatibility(
+                                "recurrence descriptor cache size overflows",
+                            )
+                        })?;
+                Some(build_plane_table(
+                    &self.kernel,
+                    &input_pointers,
+                    &output_pointers,
+                    workspace.point_stride,
+                )?)
+            } else {
+                None
+            };
+            cached_rows.push(CachedRowTables { scratch, direct });
         }
-        debug_assert_eq!(planes.len(), plane_count);
-        debug_assert_eq!(scalars.len(), scalar_count);
-        Ok(CachedRowGroupDescriptors {
-            table,
-            planes_per_row,
-            scalars_per_row,
-            planes: planes.into_boxed_slice(),
-            scalars: scalars.into_boxed_slice(),
+        Ok(CachedRowGroup {
+            identity,
+            rows: cached_rows,
+            descriptor_bytes,
         })
     }
 
-    fn invoke_cached_rows(&self, entry: &CachedRowGroupDescriptors, point_count: u32) -> c_int {
-        for row in 0..entry.table.row_count as usize {
-            let status = unsafe {
-                self.callable.invoke_unchecked(
-                    entry.planes(row),
-                    entry.scalars(row),
-                    0,
-                    point_count as usize,
-                )
-            };
-            if status != DIRECT_STATUS_OK {
-                if status == DIRECT_STATUS_EXECUTION_FAILED {
-                    let _ = &self.display_path;
-                }
-                return status;
+    fn refresh_broadcasts(
+        &self,
+        workspace: &mut PlaneWorkspace,
+        row: &DirectRowRef<'_>,
+        parameters: DirectParameterView,
+        factors: DirectFactorView,
+    ) -> RusticolResult<u64> {
+        let mut refresh_bytes = 0_u64;
+        for (slot, &index) in self.broadcast_scalar_by_slot.iter().enumerate() {
+            let value = resolve_scalar_value(
+                self.scalars.get(index as usize).ok_or_else(|| {
+                    RusticolError::integrity("recurrence scalar projection is out of bounds")
+                })?,
+                row,
+                parameters,
+                factors,
+            )?;
+            let (_, refreshed) = workspace.broadcast_pointer(slot, value)?;
+            if refreshed {
+                refresh_bytes = refresh_bytes.saturating_add(internal_plane_bytes(
+                    1,
+                    workspace.point_stride,
+                    "recurrence broadcast refresh traffic",
+                )?);
             }
         }
-        DIRECT_STATUS_OK
+        Ok(refresh_bytes)
+    }
+
+    fn record_internal_scratch_bytes(&self, bytes: u64) {
+        self.internal_scratch_bytes
+            .set(self.internal_scratch_bytes.get().saturating_add(bytes));
+    }
+
+    fn record_internal_broadcast_bytes(&self, bytes: u64) {
+        self.internal_broadcast_bytes
+            .set(self.internal_broadcast_bytes.get().saturating_add(bytes));
     }
 }
 
-fn descriptor_cache_entry_bytes(
-    row_count: u32,
-    planes_per_row: usize,
-    scalars_per_row: usize,
-) -> Option<usize> {
-    let row_count = row_count as usize;
-    let plane_bytes = row_count
-        .checked_mul(planes_per_row)?
-        .checked_mul(size_of::<DirectPlane>())?;
-    let scalar_bytes = row_count
-        .checked_mul(scalars_per_row)?
-        .checked_mul(size_of::<DirectScalar>())?;
-    plane_bytes.checked_add(scalar_bytes)
+fn build_plane_table(
+    kernel: &SymjitPlaneKernel,
+    input_pointers: &[*mut f64],
+    output_pointers: &[*mut f64],
+    point_stride: usize,
+) -> RusticolResult<SymjitPlaneTable<'static>> {
+    let descriptor_count = input_pointers
+        .len()
+        .checked_add(output_pointers.len())
+        .ok_or_else(|| RusticolError::integrity("recurrence descriptor count overflows"))?;
+    let mut descriptors: Vec<PlaneDescriptor<'static>> = Vec::new();
+    descriptors
+        .try_reserve_exact(descriptor_count)
+        .map_err(|_| {
+            RusticolError::compatibility("could not reserve recurrence plane descriptors")
+        })?;
+    for &pointer in input_pointers.iter().chain(output_pointers) {
+        descriptors.push(unsafe { PlaneDescriptor::from_cached_raw_parts(pointer, point_stride)? });
+    }
+    kernel.build_raw_table(descriptors)
 }
 
-fn resolve_plane(
-    projection: SymjitDirectPlaneProjection,
+fn direct_outputs_are_structurally_safe(
+    role: DirectExecutorRole,
+    input_pointers: &[*mut f64],
+    output_pointers: &[*mut f64],
+    point_stride: usize,
+) -> RusticolResult<bool> {
+    if role != DirectExecutorRole::Finalization {
+        return Ok(false);
+    }
+    for (output_index, &pointer) in output_pointers.iter().enumerate() {
+        let output = PlaneAddressRange::new(pointer, point_stride)?;
+        for &input in input_pointers {
+            if output.overlaps(PlaneAddressRange::new(input, point_stride)?) {
+                return Ok(false);
+            }
+        }
+        for &prior in &output_pointers[..output_index] {
+            if output.overlaps(PlaneAddressRange::new(prior, point_stride)?) {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
+#[derive(Clone, Copy)]
+struct PlaneAddressRange {
+    start: usize,
+    end: usize,
+}
+
+impl PlaneAddressRange {
+    fn new(pointer: *mut f64, point_stride: usize) -> RusticolResult<Self> {
+        if pointer.is_null() || point_stride == 0 {
+            return Err(RusticolError::integrity(
+                "recurrence direct-output plane has a null pointer or zero stride",
+            ));
+        }
+        let bytes = point_stride
+            .checked_mul(size_of::<f64>())
+            .ok_or_else(|| RusticolError::integrity("recurrence plane byte range overflows"))?;
+        let start = pointer.addr();
+        let end = start
+            .checked_add(bytes)
+            .ok_or_else(|| RusticolError::integrity("recurrence plane address range overflows"))?;
+        Ok(Self { start, end })
+    }
+
+    fn overlaps(self, other: Self) -> bool {
+        self.start < other.end && other.start < self.end
+    }
+}
+
+fn is_identity_factor(real: f64, imaginary: f64) -> bool {
+    real.to_bits() == 1.0_f64.to_bits() && imaginary.to_bits() == 0.0_f64.to_bits()
+}
+
+fn internal_plane_bytes(
+    plane_count: usize,
+    point_count: usize,
+    description: &str,
+) -> RusticolResult<u64> {
+    let bytes = plane_count
+        .checked_mul(point_count)
+        .and_then(|count| count.checked_mul(size_of::<f64>()))
+        .ok_or_else(|| RusticolError::integrity(format!("{description} overflows usize")))?;
+    u64::try_from(bytes).map_err(|_| RusticolError::integrity(format!("{description} exceeds u64")))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_outputs(
+    role: DirectExecutorRole,
+    projections: &[SymjitDirectPlaneProjection],
+    output_destinations: &[u32],
+    scratch: &[f64],
+    point_stride: usize,
+    point_count: usize,
+    factor_re: f64,
+    factor_im: f64,
     row: &DirectRowRef<'_>,
     arena: DirectArenaView,
     momenta: DirectMomentumView,
-) -> Option<DirectPlane> {
-    match projection {
-        SymjitDirectPlaneProjection::ParentCurrent {
-            parent,
-            component,
-            imaginary,
-        } => {
-            let base = row.parent_component_base(parent)?;
-            current_plane(arena, base, component, imaginary)
-        }
-        SymjitDirectPlaneProjection::Momentum {
-            operand,
-            lorentz_component,
-        } => {
-            let form = row.momentum_form_id(operand)?;
-            momentum_plane(momenta, form, lorentz_component)
-        }
-        SymjitDirectPlaneProjection::DestinationCurrent {
-            component,
-            imaginary,
-        } => {
-            let base = row.destination_current_base()?;
-            current_plane(arena, base, component, imaginary)
-        }
-        SymjitDirectPlaneProjection::DestinationAmplitude {
-            component,
-            imaginary,
-        } => {
-            let base = row.destination_amplitude_base()?;
-            amplitude_plane(arena, base, component, imaginary)
-        }
+) -> RusticolResult<()> {
+    for (component, destination_pair) in output_destinations.chunks_exact(2).enumerate() {
+        let scratch_re_start = component
+            .checked_mul(2)
+            .and_then(|plane| plane.checked_mul(point_stride))
+            .ok_or_else(|| RusticolError::internal("recurrence scratch range overflows"))?;
+        let scratch_im_start = scratch_re_start
+            .checked_add(point_stride)
+            .ok_or_else(|| RusticolError::internal("recurrence scratch range overflows"))?;
+        let scratch_re = scratch
+            .get(scratch_re_start..scratch_re_start + point_count)
+            .ok_or_else(|| RusticolError::internal("recurrence real scratch is out of bounds"))?;
+        let scratch_im = scratch
+            .get(scratch_im_start..scratch_im_start + point_count)
+            .ok_or_else(|| {
+                RusticolError::internal("recurrence imaginary scratch is out of bounds")
+            })?;
+        let destination_re = resolve_plane_pointer(
+            projections[destination_pair[0] as usize],
+            row,
+            arena,
+            momenta,
+        )?;
+        let destination_im = resolve_plane_pointer(
+            projections[destination_pair[1] as usize],
+            row,
+            arena,
+            momenta,
+        )?;
+        let destination_re = unsafe { std::slice::from_raw_parts_mut(destination_re, point_count) };
+        let destination_im = unsafe { std::slice::from_raw_parts_mut(destination_im, point_count) };
+        apply_complex_scaled(
+            destination_re,
+            destination_im,
+            scratch_re,
+            scratch_im,
+            factor_re,
+            factor_im,
+            role != DirectExecutorRole::Finalization,
+        );
     }
+    Ok(())
 }
 
-fn current_plane(
-    arena: DirectArenaView,
-    base: u32,
-    component: u16,
-    imaginary: bool,
-) -> Option<DirectPlane> {
-    let component = u64::from(base).checked_add(u64::from(component))?;
-    let pointer = if imaginary {
-        arena.current_im
+#[inline]
+fn apply_complex_scaled(
+    destination_re: &mut [f64],
+    destination_im: &mut [f64],
+    source_re: &[f64],
+    source_im: &[f64],
+    factor_re: f64,
+    factor_im: f64,
+    accumulate: bool,
+) {
+    debug_assert_eq!(destination_re.len(), destination_im.len());
+    debug_assert_eq!(destination_re.len(), source_re.len());
+    debug_assert_eq!(destination_re.len(), source_im.len());
+    #[cfg(target_arch = "x86_64")]
+    let mut point = apply_complex_scaled_x86_64(
+        destination_re,
+        destination_im,
+        source_re,
+        source_im,
+        factor_re,
+        factor_im,
+        accumulate,
+    );
+    #[cfg(target_arch = "aarch64")]
+    let mut point = apply_complex_scaled_aarch64(
+        destination_re,
+        destination_im,
+        source_re,
+        source_im,
+        factor_re,
+        factor_im,
+        accumulate,
+    );
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    let mut point = 0;
+    if accumulate {
+        while point < destination_re.len() {
+            let re = source_re[point];
+            let im = source_im[point];
+            destination_re[point] += re * factor_re - im * factor_im;
+            destination_im[point] += re * factor_im + im * factor_re;
+            point += 1;
+        }
     } else {
-        arena.current_re
-    };
-    plane_from_arena(
-        pointer,
-        arena.current_scalar_len,
-        component,
-        arena.point_stride,
-    )
-}
-
-fn amplitude_plane(
-    arena: DirectArenaView,
-    base: u32,
-    component: u16,
-    imaginary: bool,
-) -> Option<DirectPlane> {
-    let component = u64::from(base).checked_add(u64::from(component))?;
-    let pointer = if imaginary {
-        arena.amplitude_im
-    } else {
-        arena.amplitude_re
-    };
-    plane_from_arena(
-        pointer,
-        arena.amplitude_scalar_len,
-        component,
-        arena.point_stride,
-    )
-}
-
-fn momentum_plane(
-    momenta: DirectMomentumView,
-    form: u32,
-    lorentz_component: u16,
-) -> Option<DirectPlane> {
-    if form >= momenta.form_count || lorentz_component >= momenta.lorentz_component_count {
-        return None;
+        while point < destination_re.len() {
+            let re = source_re[point];
+            let im = source_im[point];
+            destination_re[point] = re * factor_re - im * factor_im;
+            destination_im[point] = re * factor_im + im * factor_re;
+            point += 1;
+        }
     }
-    let plane = u64::from(form)
-        .checked_mul(u64::from(momenta.lorentz_component_count))?
-        .checked_add(u64::from(lorentz_component))?;
-    // Generated code never writes a momentum input. The descriptor is mutable
-    // only because it shares SymJIT's indirect plane ABI with aliased outputs.
-    plane_from_arena(
-        momenta.values.cast_mut(),
-        momenta.scalar_len,
-        plane,
-        momenta.point_stride,
-    )
 }
 
-fn plane_from_arena(
-    pointer: *mut f64,
-    scalar_len: u64,
-    plane: u64,
-    point_stride: u32,
-) -> Option<DirectPlane> {
-    if pointer.is_null() || point_stride == 0 {
-        return None;
+#[cfg(target_arch = "x86_64")]
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn apply_complex_scaled_x86_64(
+    destination_re: &mut [f64],
+    destination_im: &mut [f64],
+    source_re: &[f64],
+    source_im: &[f64],
+    factor_re: f64,
+    factor_im: f64,
+    accumulate: bool,
+) -> usize {
+    let factor_re = f64x4::new([factor_re; 4]);
+    let factor_im = f64x4::new([factor_im; 4]);
+    let mut point = 0;
+    while destination_re.len() - point >= 4 {
+        let re = f64x4::new([
+            source_re[point],
+            source_re[point + 1],
+            source_re[point + 2],
+            source_re[point + 3],
+        ]);
+        let im = f64x4::new([
+            source_im[point],
+            source_im[point + 1],
+            source_im[point + 2],
+            source_im[point + 3],
+        ]);
+        let mut scaled_re = re * factor_re - im * factor_im;
+        let mut scaled_im = re * factor_im + im * factor_re;
+        if accumulate {
+            scaled_re += f64x4::new([
+                destination_re[point],
+                destination_re[point + 1],
+                destination_re[point + 2],
+                destination_re[point + 3],
+            ]);
+            scaled_im += f64x4::new([
+                destination_im[point],
+                destination_im[point + 1],
+                destination_im[point + 2],
+                destination_im[point + 3],
+            ]);
+        }
+        destination_re[point..point + 4].copy_from_slice(&scaled_re.to_array());
+        destination_im[point..point + 4].copy_from_slice(&scaled_im.to_array());
+        point += 4;
     }
-    let offset = plane.checked_mul(u64::from(point_stride))?;
-    let end = offset.checked_add(u64::from(point_stride))?;
-    if end > scalar_len {
-        return None;
-    }
-    let offset = usize::try_from(offset).ok()?;
-    Some(unsafe { DirectPlane::from_raw_parts(pointer.add(offset), point_stride as usize) })
+    point
 }
 
-fn resolve_scalar(
+#[cfg(target_arch = "aarch64")]
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn apply_complex_scaled_aarch64(
+    destination_re: &mut [f64],
+    destination_im: &mut [f64],
+    source_re: &[f64],
+    source_im: &[f64],
+    factor_re: f64,
+    factor_im: f64,
+    accumulate: bool,
+) -> usize {
+    let factor_re = f64x2::new([factor_re; 2]);
+    let factor_im = f64x2::new([factor_im; 2]);
+    let mut point = 0;
+    while destination_re.len() - point >= 2 {
+        let re = f64x2::new([source_re[point], source_re[point + 1]]);
+        let im = f64x2::new([source_im[point], source_im[point + 1]]);
+        let mut scaled_re = re * factor_re - im * factor_im;
+        let mut scaled_im = re * factor_im + im * factor_re;
+        if accumulate {
+            scaled_re += f64x2::new([destination_re[point], destination_re[point + 1]]);
+            scaled_im += f64x2::new([destination_im[point], destination_im[point + 1]]);
+        }
+        destination_re[point..point + 2].copy_from_slice(&scaled_re.to_array());
+        destination_im[point..point + 2].copy_from_slice(&scaled_im.to_array());
+        point += 2;
+    }
+    point
+}
+
+fn exact_factor(row: &DirectRowRef<'_>, factors: DirectFactorView) -> RusticolResult<(f64, f64)> {
+    let index = row.exact_factor_id();
+    if index >= factors.value_count || factors.values_re.is_null() || factors.values_im.is_null() {
+        return Err(RusticolError::integrity(
+            "recurrence exact factor is outside its split-complex catalog",
+        ));
+    }
+    Ok(unsafe {
+        (
+            *factors.values_re.add(index as usize),
+            *factors.values_im.add(index as usize),
+        )
+    })
+}
+
+fn resolve_scalar_value(
     projection: &SymjitDirectScalarProjection,
     row: &DirectRowRef<'_>,
     parameters: DirectParameterView,
     factors: DirectFactorView,
-) -> Option<DirectScalar> {
-    let pointer = match projection {
+) -> RusticolResult<f64> {
+    match *projection {
+        SymjitDirectScalarProjection::Literal(value) => Ok(value),
         SymjitDirectScalarProjection::Parameter { index, imaginary } => {
-            if *index >= parameters.value_count {
-                return None;
+            if index >= parameters.value_count {
+                return Err(RusticolError::integrity(
+                    "recurrence model parameter is outside its split-complex catalog",
+                ));
             }
-            let base = if *imaginary {
+            let base = if imaginary {
                 parameters.values_im
             } else {
                 parameters.values_re
             };
             if base.is_null() {
-                return None;
+                return Err(RusticolError::integrity(
+                    "recurrence model parameter catalog has a null pointer",
+                ));
             }
-            unsafe { base.add(*index as usize) }
+            Ok(unsafe { *base.add(index as usize) })
         }
         SymjitDirectScalarProjection::ExactFactor { imaginary } => {
-            let index = row.exact_factor_id();
-            if index >= factors.value_count {
-                return None;
-            }
-            let base = if *imaginary {
-                factors.values_im
-            } else {
-                factors.values_re
-            };
-            if base.is_null() {
-                return None;
-            }
-            unsafe { base.add(index as usize) }
+            let (real, imag) = exact_factor(row, factors)?;
+            Ok(if imaginary { imag } else { real })
         }
-        SymjitDirectScalarProjection::Literal(value) => ptr::from_ref(value),
-    };
-    Some(unsafe { DirectScalar::from_raw(pointer) })
-}
-
-fn guard_symjit_panic<T>(
-    operation: impl FnOnce() -> T,
-    path: &std::path::Path,
-    action: &str,
-) -> RusticolResult<T> {
-    catch_unwind(AssertUnwindSafe(operation)).map_err(|payload| {
-        RusticolError::compatibility(format!(
-            "SymJIT panicked while trying to {action} direct application {}: {}",
-            path.display(),
-            panic_detail(payload)
-        ))
-    })
-}
-
-fn panic_detail(payload: Box<dyn Any + Send>) -> String {
-    if let Some(message) = payload.downcast_ref::<&str>() {
-        (*message).to_string()
-    } else if let Some(message) = payload.downcast_ref::<String>() {
-        message.clone()
-    } else {
-        "non-string panic payload".to_string()
     }
+}
+
+fn resolve_plane_pointer(
+    projection: SymjitDirectPlaneProjection,
+    row: &DirectRowRef<'_>,
+    arena: DirectArenaView,
+    momenta: DirectMomentumView,
+) -> RusticolResult<*mut f64> {
+    let pointer = match projection {
+        SymjitDirectPlaneProjection::ParentCurrent {
+            parent,
+            component,
+            imaginary,
+        } => {
+            let base = row.parent_component_base(parent).ok_or_else(|| {
+                RusticolError::integrity("recurrence row has no requested parent")
+            })?;
+            arena_plane_pointer(
+                if imaginary {
+                    arena.current_im
+                } else {
+                    arena.current_re
+                },
+                arena.current_scalar_len,
+                u64::from(base) + u64::from(component),
+                arena.point_stride,
+            )
+        }
+        SymjitDirectPlaneProjection::Momentum {
+            operand,
+            lorentz_component,
+        } => {
+            let form = row.momentum_form_id(operand).ok_or_else(|| {
+                RusticolError::integrity("recurrence row has no requested momentum operand")
+            })?;
+            if form >= momenta.form_count || lorentz_component >= momenta.lorentz_component_count {
+                return Err(RusticolError::integrity(
+                    "recurrence momentum projection is out of bounds",
+                ));
+            }
+            let plane = u64::from(form)
+                .checked_mul(u64::from(momenta.lorentz_component_count))
+                .and_then(|base| base.checked_add(u64::from(lorentz_component)))
+                .ok_or_else(|| RusticolError::integrity("momentum plane index overflows"))?;
+            arena_plane_pointer(
+                momenta.values.cast_mut(),
+                momenta.scalar_len,
+                plane,
+                momenta.point_stride,
+            )
+        }
+        SymjitDirectPlaneProjection::DestinationCurrent {
+            component,
+            imaginary,
+        } => {
+            let base = row.destination_current_base().ok_or_else(|| {
+                RusticolError::integrity("recurrence row has no current destination")
+            })?;
+            arena_plane_pointer(
+                if imaginary {
+                    arena.current_im
+                } else {
+                    arena.current_re
+                },
+                arena.current_scalar_len,
+                u64::from(base) + u64::from(component),
+                arena.point_stride,
+            )
+        }
+        SymjitDirectPlaneProjection::DestinationAmplitude {
+            component,
+            imaginary,
+        } => {
+            let base = row.destination_amplitude_base().ok_or_else(|| {
+                RusticolError::integrity("recurrence row has no amplitude destination")
+            })?;
+            arena_plane_pointer(
+                if imaginary {
+                    arena.amplitude_im
+                } else {
+                    arena.amplitude_re
+                },
+                arena.amplitude_scalar_len,
+                u64::from(base) + u64::from(component),
+                arena.point_stride,
+            )
+        }
+    }?;
+    Ok(pointer)
+}
+
+fn arena_plane_pointer(
+    pointer: *mut f64,
+    scalar_len: u64,
+    plane: u64,
+    point_stride: u32,
+) -> RusticolResult<*mut f64> {
+    if pointer.is_null() || point_stride == 0 {
+        return Err(RusticolError::integrity(
+            "recurrence plane storage has a null pointer or zero stride",
+        ));
+    }
+    let offset = plane
+        .checked_mul(u64::from(point_stride))
+        .ok_or_else(|| RusticolError::integrity("recurrence plane offset overflows"))?;
+    let end = offset
+        .checked_add(u64::from(point_stride))
+        .ok_or_else(|| RusticolError::integrity("recurrence plane range overflows"))?;
+    if end > scalar_len {
+        return Err(RusticolError::integrity(
+            "recurrence plane projection is outside its arena",
+        ));
+    }
+    let offset = usize::try_from(offset)
+        .map_err(|_| RusticolError::integrity("recurrence plane offset exceeds usize"))?;
+    Ok(unsafe { pointer.add(offset) })
 }
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use super::super::symjit_plane::compile_symbolica_program_to_plane_application_bytes;
     use super::*;
-    use crate::recurrence::direct_backend::{
-        DirectFactorView, DirectMomentumView, DirectParameterView,
-    };
     use std::alloc::{GlobalAlloc, Layout, System};
-    use std::cell::Cell;
-    use symjit::{
-        Compiler, DirectApplication, DirectApplicationMetadata,
-        DirectDestinationOperation as SymjitDestinationOperation, DirectInputBinding, Expr,
-    };
 
     thread_local! {
         static TRACK_ALLOCATIONS: Cell<bool> = const { Cell::new(false) };
@@ -1148,898 +1548,875 @@ pub(crate) mod tests {
         (result, count, bytes)
     }
 
-    fn direct_contribution_bytes() -> Vec<u8> {
-        let mut config = Config::default();
-        config.set_opt_level(2);
-        config.set_complex(true);
-        config.set_symbolica(true);
-        config.set_simd(true);
-        config.set_fast_complex(false);
-        let parent = Expr::var("parent");
-        let coupling = Expr::var("coupling");
-        let expression = &coupling * &parent;
-        let source = Compiler::with_config(config)
-            .compile_params(&[], &[expression], &[parent, coupling])
-            .unwrap();
-        let metadata = DirectApplicationMetadata::new(
-            SymjitDestinationOperation::Accumulate,
-            SymjitInputSnapshot::Live,
-            DirectOutputScale::ComplexScalar,
-            vec![],
-            vec![
-                DirectInputBinding::Plane(0),
-                DirectInputBinding::Plane(1),
-                DirectInputBinding::Scalar(2),
-                DirectInputBinding::Scalar(3),
+    const IDENTITY_PROGRAM: &str = "([('assign', ('out', 0), ('param', 0))], 1, [])";
+    const DOUBLE_PROGRAM: &str = "
+([('add', ('temp', 0), [('param', 0), ('param', 1)], 0),
+  ('assign', ('out', 0), ('temp', 0))],
+ 2,
+ [])
+";
+    const LENGTHS: &[usize] = &[1, 2, 3, 7, 8, 127, 128, 129, 1023, 1024, 1025];
+
+    fn identity_executor(role: DirectExecutorRole) -> LoadedSymjitDirectExecutor {
+        try_identity_executor(role, 2, false).unwrap()
+    }
+
+    fn try_identity_executor(
+        role: DirectExecutorRole,
+        expected_optimization_level: u32,
+        expected_compression: bool,
+    ) -> RusticolResult<LoadedSymjitDirectExecutor> {
+        try_identity_executor_with_abi(
+            role,
+            expected_optimization_level,
+            expected_compression,
+            SYMJIT_RECURRENCE_PLANE_APPLICATION_ABI,
+        )
+    }
+
+    fn try_identity_executor_with_abi(
+        role: DirectExecutorRole,
+        expected_optimization_level: u32,
+        expected_compression: bool,
+        application_abi: &str,
+    ) -> RusticolResult<LoadedSymjitDirectExecutor> {
+        let bytes =
+            compile_symbolica_program_to_plane_application_bytes(IDENTITY_PROGRAM, 1, 1, 2, false)
+                .unwrap();
+        let destination = match role {
+            DirectExecutorRole::Closure => [
+                SymjitDirectPlaneProjection::DestinationAmplitude {
+                    component: 0,
+                    imaginary: false,
+                },
+                SymjitDirectPlaneProjection::DestinationAmplitude {
+                    component: 0,
+                    imaginary: true,
+                },
             ],
-            4,
-            4,
-            vec![2, 3],
-        )
-        .unwrap();
-        let application = DirectApplication::new(source, metadata).unwrap();
-        let mut bytes = Vec::new();
-        application.save(&mut bytes).unwrap();
-        bytes
-    }
-
-    fn direct_closure_bytes() -> Vec<u8> {
-        let mut config = Config::default();
-        config.set_opt_level(2);
-        config.set_complex(true);
-        config.set_symbolica(true);
-        config.set_simd(true);
-        config.set_fast_complex(false);
-        let parent = Expr::var("parent");
-        let coupling = Expr::var("coupling");
-        let expression = &coupling * &parent;
-        let source = Compiler::with_config(config)
-            .compile_params(&[], &[expression], &[parent, coupling])
-            .unwrap();
-        let metadata = DirectApplicationMetadata::new(
-            SymjitDestinationOperation::Accumulate,
-            SymjitInputSnapshot::BeforeWrite,
-            DirectOutputScale::ComplexScalar,
-            vec![],
-            vec![
-                DirectInputBinding::Plane(0),
-                DirectInputBinding::Plane(1),
-                DirectInputBinding::Scalar(2),
-                DirectInputBinding::Scalar(3),
+            _ => [
+                SymjitDirectPlaneProjection::DestinationCurrent {
+                    component: 0,
+                    imaginary: false,
+                },
+                SymjitDirectPlaneProjection::DestinationCurrent {
+                    component: 0,
+                    imaginary: true,
+                },
             ],
-            4,
-            4,
-            vec![2, 3],
-        )
-        .unwrap();
-        let application = DirectApplication::new(source, metadata).unwrap();
-        let mut bytes = Vec::new();
-        application.save(&mut bytes).unwrap();
-        bytes
-    }
-
-    fn prepared_contribution_bytes() -> (Vec<u8>, DirectApplicationMetadata) {
-        let mut config = Config::default();
-        config.set_opt_level(2);
-        config.set_complex(true);
-        config.set_symbolica(true);
-        config.set_simd(true);
-        config.set_fast_complex(false);
-        let parent = Expr::var("parent");
-        let coupling = Expr::var("coupling");
-        let expression = &coupling * &parent;
-        let source = Compiler::with_config(config)
-            .compile_params(&[], &[expression], &[parent, coupling])
-            .unwrap();
-        let metadata = DirectApplicationMetadata::new(
-            SymjitDestinationOperation::Accumulate,
-            SymjitInputSnapshot::Live,
-            DirectOutputScale::ComplexScalar,
-            vec![],
-            vec![
-                DirectInputBinding::Plane(0),
-                DirectInputBinding::Plane(1),
-                DirectInputBinding::Scalar(2),
-                DirectInputBinding::Scalar(3),
-            ],
-            4,
-            4,
-            vec![2, 3],
-        )
-        .unwrap();
-        let mut bytes = Vec::new();
-        source.save(&mut bytes).unwrap();
-        (bytes, metadata)
-    }
-
-    fn prepared_in_place_finalization_bytes() -> (Vec<u8>, DirectApplicationMetadata) {
-        let mut config = Config::default();
-        config.set_opt_level(2);
-        config.set_complex(true);
-        config.set_symbolica(true);
-        config.set_simd(true);
-        config.set_fast_complex(false);
-        let current_names = ["current_0", "current_1", "current_2", "current_3"];
-        let current = current_names.map(Expr::var);
-        let source = Compiler::with_config(config)
-            .compile_params(
-                &[],
-                &[
-                    current[2].clone(),
-                    current[3].clone(),
-                    current[0].clone(),
-                    current[1].clone(),
-                ],
-                &current,
-            )
-            .unwrap();
-        let parameter_bindings = (0..8).map(DirectInputBinding::Plane).collect::<Vec<_>>();
-        let metadata = DirectApplicationMetadata::new(
-            SymjitDestinationOperation::Overwrite,
-            SymjitInputSnapshot::BeforeWrite,
-            DirectOutputScale::ComplexScalar,
-            vec![],
-            parameter_bindings,
-            16,
-            2,
-            (8..16).collect(),
-        )
-        .unwrap();
-        let mut bytes = Vec::new();
-        source.save(&mut bytes).unwrap();
-        (bytes, metadata)
-    }
-
-    fn plane_projections() -> Vec<SymjitDirectPlaneProjection> {
-        vec![
-            SymjitDirectPlaneProjection::ParentCurrent {
-                parent: 0,
-                component: 0,
-                imaginary: false,
-            },
-            SymjitDirectPlaneProjection::ParentCurrent {
-                parent: 0,
-                component: 0,
-                imaginary: true,
-            },
-            SymjitDirectPlaneProjection::DestinationCurrent {
-                component: 0,
-                imaginary: false,
-            },
-            SymjitDirectPlaneProjection::DestinationCurrent {
-                component: 0,
-                imaginary: true,
-            },
-        ]
-    }
-
-    fn scalar_projections() -> Vec<SymjitDirectScalarProjection> {
-        vec![
-            SymjitDirectScalarProjection::ExactFactor { imaginary: false },
-            SymjitDirectScalarProjection::ExactFactor { imaginary: true },
-            SymjitDirectScalarProjection::Parameter {
-                index: 0,
-                imaginary: false,
-            },
-            SymjitDirectScalarProjection::Parameter {
-                index: 0,
-                imaginary: true,
-            },
-        ]
-    }
-
-    fn closure_plane_projections() -> Vec<SymjitDirectPlaneProjection> {
-        vec![
-            SymjitDirectPlaneProjection::ParentCurrent {
-                parent: 0,
-                component: 0,
-                imaginary: false,
-            },
-            SymjitDirectPlaneProjection::ParentCurrent {
-                parent: 0,
-                component: 0,
-                imaginary: true,
-            },
-            SymjitDirectPlaneProjection::DestinationAmplitude {
-                component: 0,
-                imaginary: false,
-            },
-            SymjitDirectPlaneProjection::DestinationAmplitude {
-                component: 0,
-                imaginary: true,
-            },
-        ]
-    }
-
-    fn contribution_executor() -> LoadedSymjitDirectExecutor {
-        LoadedSymjitDirectExecutor::load_bytes(
-            &direct_contribution_bytes(),
-            PathBuf::from("synthetic-direct.symjit"),
-            DIRECT_APPLICATION_STORAGE_ABI,
-            DirectExecutorRole::Contribution,
-            plane_projections(),
-            scalar_projections(),
-        )
-        .unwrap()
-    }
-
-    fn closure_executor() -> LoadedSymjitDirectExecutor {
-        LoadedSymjitDirectExecutor::load_bytes(
-            &direct_closure_bytes(),
-            PathBuf::from("synthetic-closure-direct.symjit"),
-            DIRECT_APPLICATION_STORAGE_ABI,
-            DirectExecutorRole::Closure,
-            closure_plane_projections(),
-            scalar_projections(),
-        )
-        .unwrap()
-    }
-
-    #[test]
-    fn existing_portable_o2_payload_is_transformed_at_load_without_duplication() {
-        let (bytes, metadata) = prepared_contribution_bytes();
-        let executor = LoadedSymjitDirectExecutor::load_prepared_application_bytes(
+        };
+        LoadedSymjitDirectExecutor::load_prepared_application_bytes(
             &bytes,
-            PathBuf::from("kernels/7/application.symjit"),
-            "symjit-application-storage-v3",
-            DirectExecutorRole::Contribution,
-            metadata,
-            plane_projections(),
-            scalar_projections(),
-        )
-        .unwrap();
-        assert_eq!(executor.handle().role(), DirectExecutorRole::Contribution);
-        assert!(
-            executor.simd_lane_width() > 1,
-            "loaded Direct-Arena O2 applications must retain a SIMD callable"
-        );
-    }
-
-    #[test]
-    fn loaded_o2_executor_uses_owned_context_and_mutates_destination_arena() {
-        let executor = contribution_executor();
-        let handle = executor.handle();
-        assert_eq!(handle.role(), DirectExecutorRole::Contribution);
-        let DirectExecutorHandle::Contribution { call, context } = handle else {
-            unreachable!()
-        };
-        assert_eq!(context, executor.context_address());
-        assert!(!context.is_null());
-
-        let point_stride = 5_u32;
-        let mut current_re = vec![0.0; 2 * point_stride as usize];
-        let mut current_im = vec![0.0; 2 * point_stride as usize];
-        current_re[..5].copy_from_slice(&[1.0, 2.0, 3.0, 4.0, 5.0]);
-        current_im[..5].copy_from_slice(&[0.5, -0.5, 1.0, -1.0, 0.25]);
-        current_re[5..].fill(10.0);
-        current_im[5..].fill(-3.0);
-        let original_re = current_re[5..].to_vec();
-        let original_im = current_im[5..].to_vec();
-        let mut amplitude_re = vec![0.0; point_stride as usize];
-        let mut amplitude_im = vec![0.0; point_stride as usize];
-        let momenta = vec![0.0; 4 * point_stride as usize];
-        let parameter_re = [0.25];
-        let parameter_im = [-0.5];
-        let factor_re = [2.0];
-        let factor_im = [0.125];
-        let arena = DirectArenaView {
-            current_re: current_re.as_mut_ptr(),
-            current_im: current_im.as_mut_ptr(),
-            current_scalar_len: current_re.len() as u64,
-            amplitude_re: amplitude_re.as_mut_ptr(),
-            amplitude_im: amplitude_im.as_mut_ptr(),
-            amplitude_scalar_len: amplitude_re.len() as u64,
-            point_stride,
-        };
-        let momentum_view = DirectMomentumView {
-            values: momenta.as_ptr(),
-            scalar_len: momenta.len() as u64,
-            form_count: 1,
-            lorentz_component_count: 4,
-            point_stride,
-        };
-        let parameter_view = DirectParameterView {
-            values_re: parameter_re.as_ptr(),
-            values_im: parameter_im.as_ptr(),
-            value_count: 1,
-        };
-        let factor_view = DirectFactorView {
-            values_re: factor_re.as_ptr(),
-            values_im: factor_im.as_ptr(),
-            value_count: 1,
-        };
-        let row = DirectContributionRow {
-            parent0_component_base: 0,
-            parent1_component_base_or_sentinel: DIRECT_NONE_U32,
-            parent0_momentum_form_id: 0,
-            parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
-            destination_component_base: 1,
-            exact_factor_id: 0,
-            selector_domain_id: 0,
-            flags: 0,
-        };
-
-        let status = unsafe {
-            call(
-                context,
-                arena,
-                momentum_view,
-                parameter_view,
-                factor_view,
-                ptr::from_ref(&row),
-                1,
-                point_stride,
-            )
-        };
-        assert_eq!(status, DIRECT_STATUS_OK);
-        let warmed_cache = executor.descriptor_cache_snapshot();
-        assert_eq!(warmed_cache.row_group_count, 1);
-        assert_eq!(warmed_cache.build_count, 1);
-        assert!(warmed_cache.descriptor_bytes > 0);
-        assert_ne!(warmed_cache.first_plane_address, 0);
-        assert_ne!(warmed_cache.first_scalar_address, 0);
-
-        current_re[5..].copy_from_slice(&original_re);
-        current_im[5..].copy_from_slice(&original_im);
-        let (status, allocation_count, allocated_bytes) = count_allocations(|| unsafe {
-            call(
-                context,
-                arena,
-                momentum_view,
-                parameter_view,
-                factor_view,
-                ptr::from_ref(&row),
-                1,
-                point_stride,
-            )
-        });
-        assert_eq!(status, DIRECT_STATUS_OK);
-        assert_eq!(allocation_count, 0, "warmed descriptor call allocated");
-        assert_eq!(allocated_bytes, 0, "warmed descriptor call allocated bytes");
-        assert_eq!(executor.descriptor_cache_snapshot(), warmed_cache);
-
-        let scale_re = factor_re[0] * parameter_re[0] - factor_im[0] * parameter_im[0];
-        let scale_im = factor_re[0] * parameter_im[0] + factor_im[0] * parameter_re[0];
-        for point in 0..point_stride as usize {
-            let parent_re = current_re[point];
-            let parent_im = current_im[point];
-            let expected_re = original_re[point] + scale_re * parent_re - scale_im * parent_im;
-            let expected_im = original_im[point] + scale_re * parent_im + scale_im * parent_re;
-            assert!((current_re[5 + point] - expected_re).abs() < 1.0e-12);
-            assert!((current_im[5 + point] - expected_im).abs() < 1.0e-12);
-        }
-    }
-
-    #[test]
-    fn descriptor_storage_identity_covers_every_pointer_length_and_stride() {
-        let mut current_re = [0.0; 8];
-        let mut current_im = [0.0; 8];
-        let mut amplitude_re = [0.0; 4];
-        let mut amplitude_im = [0.0; 4];
-        let momenta = [0.0; 16];
-        let parameter_re = [0.0; 2];
-        let parameter_im = [0.0; 2];
-        let factor_re = [0.0; 2];
-        let factor_im = [0.0; 2];
-        let mut alternate_mut = [0.0; 8];
-        let alternate = [0.0; 16];
-        let arena = DirectArenaView {
-            current_re: current_re.as_mut_ptr(),
-            current_im: current_im.as_mut_ptr(),
-            current_scalar_len: current_re.len() as u64,
-            amplitude_re: amplitude_re.as_mut_ptr(),
-            amplitude_im: amplitude_im.as_mut_ptr(),
-            amplitude_scalar_len: amplitude_re.len() as u64,
-            point_stride: 4,
-        };
-        let momenta_view = DirectMomentumView {
-            values: momenta.as_ptr(),
-            scalar_len: momenta.len() as u64,
-            form_count: 1,
-            lorentz_component_count: 4,
-            point_stride: 4,
-        };
-        let parameter_view = DirectParameterView {
-            values_re: parameter_re.as_ptr(),
-            values_im: parameter_im.as_ptr(),
-            value_count: 2,
-        };
-        let factor_view = DirectFactorView {
-            values_re: factor_re.as_ptr(),
-            values_im: factor_im.as_ptr(),
-            value_count: 2,
-        };
-        let identity =
-            DescriptorStorageIdentity::new(arena, momenta_view, parameter_view, factor_view);
-
-        macro_rules! assert_identity_change {
-            ($arena:expr, $momenta:expr, $parameters:expr, $factors:expr) => {
-                assert_ne!(
-                    identity,
-                    DescriptorStorageIdentity::new($arena, $momenta, $parameters, $factors)
-                )
-            };
-        }
-
-        let mut changed = arena;
-        changed.current_re = alternate_mut.as_mut_ptr();
-        assert_identity_change!(changed, momenta_view, parameter_view, factor_view);
-        let mut changed = arena;
-        changed.current_im = alternate_mut.as_mut_ptr();
-        assert_identity_change!(changed, momenta_view, parameter_view, factor_view);
-        let mut changed = arena;
-        changed.current_scalar_len += 1;
-        assert_identity_change!(changed, momenta_view, parameter_view, factor_view);
-        let mut changed = arena;
-        changed.amplitude_re = alternate_mut.as_mut_ptr();
-        assert_identity_change!(changed, momenta_view, parameter_view, factor_view);
-        let mut changed = arena;
-        changed.amplitude_im = alternate_mut.as_mut_ptr();
-        assert_identity_change!(changed, momenta_view, parameter_view, factor_view);
-        let mut changed = arena;
-        changed.amplitude_scalar_len += 1;
-        assert_identity_change!(changed, momenta_view, parameter_view, factor_view);
-        let mut changed = arena;
-        changed.point_stride += 1;
-        assert_identity_change!(changed, momenta_view, parameter_view, factor_view);
-
-        let mut changed = momenta_view;
-        changed.values = alternate.as_ptr();
-        assert_identity_change!(arena, changed, parameter_view, factor_view);
-        let mut changed = momenta_view;
-        changed.scalar_len += 1;
-        assert_identity_change!(arena, changed, parameter_view, factor_view);
-        let mut changed = momenta_view;
-        changed.form_count += 1;
-        assert_identity_change!(arena, changed, parameter_view, factor_view);
-        let mut changed = momenta_view;
-        changed.lorentz_component_count += 1;
-        assert_identity_change!(arena, changed, parameter_view, factor_view);
-        let mut changed = momenta_view;
-        changed.point_stride += 1;
-        assert_identity_change!(arena, changed, parameter_view, factor_view);
-
-        let mut changed = parameter_view;
-        changed.values_re = alternate.as_ptr();
-        assert_identity_change!(arena, momenta_view, changed, factor_view);
-        let mut changed = parameter_view;
-        changed.values_im = alternate.as_ptr();
-        assert_identity_change!(arena, momenta_view, changed, factor_view);
-        let mut changed = parameter_view;
-        changed.value_count += 1;
-        assert_identity_change!(arena, momenta_view, changed, factor_view);
-
-        let mut changed = factor_view;
-        changed.values_re = alternate.as_ptr();
-        assert_identity_change!(arena, momenta_view, parameter_view, changed);
-        let mut changed = factor_view;
-        changed.values_im = alternate.as_ptr();
-        assert_identity_change!(arena, momenta_view, parameter_view, changed);
-        let mut changed = factor_view;
-        changed.value_count += 1;
-        assert_identity_change!(arena, momenta_view, parameter_view, changed);
-    }
-
-    #[test]
-    fn descriptor_cache_rejects_stale_storage_and_row_table_identities() {
-        let executor = contribution_executor();
-        let DirectExecutorHandle::Contribution { call, context } = executor.handle() else {
-            unreachable!()
-        };
-        let point_stride = 2_u32;
-        let mut current_re = [1.0, 2.0, 0.0, 0.0];
-        let mut current_im = [0.0; 4];
-        let mut amplitude_re = [0.0; 2];
-        let mut amplitude_im = [0.0; 2];
-        let momenta = [0.0; 8];
-        let parameter_re = [1.0];
-        let parameter_im = [0.0];
-        let factor_re = [1.0];
-        let factor_im = [0.0];
-        let arena = DirectArenaView {
-            current_re: current_re.as_mut_ptr(),
-            current_im: current_im.as_mut_ptr(),
-            current_scalar_len: current_re.len() as u64,
-            amplitude_re: amplitude_re.as_mut_ptr(),
-            amplitude_im: amplitude_im.as_mut_ptr(),
-            amplitude_scalar_len: amplitude_re.len() as u64,
-            point_stride,
-        };
-        let momenta_view = DirectMomentumView {
-            values: momenta.as_ptr(),
-            scalar_len: momenta.len() as u64,
-            form_count: 1,
-            lorentz_component_count: 4,
-            point_stride,
-        };
-        let parameter_view = DirectParameterView {
-            values_re: parameter_re.as_ptr(),
-            values_im: parameter_im.as_ptr(),
-            value_count: 1,
-        };
-        let factor_view = DirectFactorView {
-            values_re: factor_re.as_ptr(),
-            values_im: factor_im.as_ptr(),
-            value_count: 1,
-        };
-        let row = DirectContributionRow {
-            parent0_component_base: 0,
-            parent1_component_base_or_sentinel: DIRECT_NONE_U32,
-            parent0_momentum_form_id: 0,
-            parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
-            destination_component_base: 1,
-            exact_factor_id: 0,
-            selector_domain_id: 0,
-            flags: 0,
-        };
-        let warmup_status = unsafe {
-            call(
-                context,
-                arena,
-                momenta_view,
-                parameter_view,
-                factor_view,
-                ptr::from_ref(&row),
-                1,
-                point_stride,
-            )
-        };
-        assert_eq!(warmup_status, DIRECT_STATUS_OK);
-        let warmed_cache = executor.descriptor_cache_snapshot();
-
-        let mut changed_factors = factor_view;
-        changed_factors.value_count += 1;
-        let stale_storage_status = unsafe {
-            call(
-                context,
-                arena,
-                momenta_view,
-                parameter_view,
-                changed_factors,
-                ptr::from_ref(&row),
-                1,
-                point_stride,
-            )
-        };
-        assert_eq!(stale_storage_status, STATUS_DESCRIPTOR_IDENTITY_MISMATCH);
-        assert_eq!(executor.descriptor_cache_snapshot(), warmed_cache);
-
-        let stale_table_status = unsafe {
-            call(
-                context,
-                arena,
-                momenta_view,
-                parameter_view,
-                factor_view,
-                ptr::from_ref(&row),
-                2,
-                point_stride,
-            )
-        };
-        assert_eq!(stale_table_status, STATUS_DESCRIPTOR_IDENTITY_MISMATCH);
-        assert_eq!(executor.descriptor_cache_snapshot(), warmed_cache);
-    }
-
-    #[test]
-    fn prepared_o2_finalization_reads_all_components_before_in_place_writes() {
-        let (bytes, metadata) = prepared_in_place_finalization_bytes();
-        let mut projections = Vec::new();
-        for destination in [false, true] {
-            for component in 0..4 {
-                for imaginary in [false, true] {
-                    projections.push(if destination {
-                        SymjitDirectPlaneProjection::DestinationCurrent {
-                            component,
-                            imaginary,
-                        }
-                    } else {
-                        SymjitDirectPlaneProjection::ParentCurrent {
-                            parent: 0,
-                            component,
-                            imaginary,
-                        }
-                    });
-                }
-            }
-        }
-        let executor = LoadedSymjitDirectExecutor::load_prepared_application_bytes(
-            &bytes,
-            PathBuf::from("prepared-in-place-finalization.symjit"),
-            "symjit-application-storage-v3",
-            DirectExecutorRole::Finalization,
-            metadata,
-            projections,
+            PathBuf::from("identity-recurrence-plane.symjit"),
+            application_abi,
+            expected_optimization_level,
+            expected_compression,
+            role,
+            vec![
+                SymjitDirectParameterBinding::Plane { index: 0 },
+                SymjitDirectParameterBinding::Plane { index: 1 },
+            ],
+            vec![
+                SymjitDirectPlaneProjection::ParentCurrent {
+                    parent: 0,
+                    component: 0,
+                    imaginary: false,
+                },
+                SymjitDirectPlaneProjection::ParentCurrent {
+                    parent: 0,
+                    component: 0,
+                    imaginary: true,
+                },
+                destination[0],
+                destination[1],
+            ],
             vec![
                 SymjitDirectScalarProjection::ExactFactor { imaginary: false },
                 SymjitDirectScalarProjection::ExactFactor { imaginary: true },
             ],
+            vec![2, 3],
         )
-        .unwrap();
-        let DirectExecutorHandle::Finalization { call, context } = executor.handle() else {
+    }
+
+    #[test]
+    fn predecessor_plane_application_abi_fails_closed_with_regeneration_message() {
+        let error = try_identity_executor_with_abi(
+            DirectExecutorRole::Contribution,
+            2,
+            false,
+            "pyamplicol-symjit-plane-application-v1",
+        )
+        .err()
+        .expect("the predecessor recurrence plane-application ABI must fail closed");
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+        assert!(error.message().contains("regenerate"));
+    }
+
+    #[test]
+    fn authenticated_template_optimization_level_mismatch_fails_closed() {
+        let error = try_identity_executor(DirectExecutorRole::Contribution, 3, false)
+            .err()
+            .expect("a template/application optimization mismatch must fail closed");
+        assert!(error.message().contains("optimization level"));
+        assert!(error.message().contains("authenticated template"));
+        assert!(error.message().contains("regenerate"));
+    }
+
+    #[test]
+    fn authenticated_manifest_compression_mismatch_fails_closed() {
+        let error = try_identity_executor(DirectExecutorRole::Contribution, 2, true)
+            .err()
+            .expect("a manifest/application compression mismatch must fail closed");
+        assert!(error.message().contains("compression"));
+        assert!(error.message().contains("regenerate"));
+    }
+
+    fn parameter_broadcast_executor(role: DirectExecutorRole) -> LoadedSymjitDirectExecutor {
+        let bytes =
+            compile_symbolica_program_to_plane_application_bytes(IDENTITY_PROGRAM, 1, 1, 2, false)
+                .unwrap();
+        let destination = match role {
+            DirectExecutorRole::Closure => [
+                SymjitDirectPlaneProjection::DestinationAmplitude {
+                    component: 0,
+                    imaginary: false,
+                },
+                SymjitDirectPlaneProjection::DestinationAmplitude {
+                    component: 0,
+                    imaginary: true,
+                },
+            ],
+            _ => [
+                SymjitDirectPlaneProjection::DestinationCurrent {
+                    component: 0,
+                    imaginary: false,
+                },
+                SymjitDirectPlaneProjection::DestinationCurrent {
+                    component: 0,
+                    imaginary: true,
+                },
+            ],
+        };
+        LoadedSymjitDirectExecutor::load_prepared_application_bytes(
+            &bytes,
+            PathBuf::from("parameter-recurrence-plane.symjit"),
+            SYMJIT_RECURRENCE_PLANE_APPLICATION_ABI,
+            2,
+            false,
+            role,
+            vec![
+                SymjitDirectParameterBinding::Broadcast { index: 2 },
+                SymjitDirectParameterBinding::Broadcast { index: 3 },
+            ],
+            vec![destination[0], destination[1]],
+            vec![
+                SymjitDirectScalarProjection::ExactFactor { imaginary: false },
+                SymjitDirectScalarProjection::ExactFactor { imaginary: true },
+                SymjitDirectScalarProjection::Parameter {
+                    index: 0,
+                    imaginary: false,
+                },
+                SymjitDirectScalarProjection::Parameter {
+                    index: 0,
+                    imaginary: true,
+                },
+            ],
+            vec![0, 1],
+        )
+        .unwrap()
+    }
+
+    fn repeated_parameter_and_zero_broadcast_executor() -> LoadedSymjitDirectExecutor {
+        let bytes =
+            compile_symbolica_program_to_plane_application_bytes(DOUBLE_PROGRAM, 2, 1, 2, false)
+                .unwrap();
+        LoadedSymjitDirectExecutor::load_prepared_application_bytes(
+            &bytes,
+            PathBuf::from("shared-recurrence-broadcasts.symjit"),
+            SYMJIT_RECURRENCE_PLANE_APPLICATION_ABI,
+            2,
+            false,
+            DirectExecutorRole::Contribution,
+            vec![
+                SymjitDirectParameterBinding::Broadcast { index: 2 },
+                SymjitDirectParameterBinding::Broadcast { index: 3 },
+                SymjitDirectParameterBinding::Broadcast { index: 2 },
+                SymjitDirectParameterBinding::Broadcast { index: 3 },
+            ],
+            vec![
+                SymjitDirectPlaneProjection::DestinationCurrent {
+                    component: 0,
+                    imaginary: false,
+                },
+                SymjitDirectPlaneProjection::DestinationCurrent {
+                    component: 0,
+                    imaginary: true,
+                },
+            ],
+            vec![
+                SymjitDirectScalarProjection::ExactFactor { imaginary: false },
+                SymjitDirectScalarProjection::ExactFactor { imaginary: true },
+                SymjitDirectScalarProjection::Parameter {
+                    index: 0,
+                    imaginary: false,
+                },
+                SymjitDirectScalarProjection::Literal(0.0),
+            ],
+            vec![0, 1],
+        )
+        .unwrap()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn views(
+        current_re: &mut [f64],
+        current_im: &mut [f64],
+        amplitude_re: &mut [f64],
+        amplitude_im: &mut [f64],
+        parameters_re: &[f64],
+        parameters_im: &[f64],
+        factors_re: &[f64],
+        factors_im: &[f64],
+        stride: usize,
+    ) -> (
+        DirectArenaView,
+        DirectMomentumView,
+        DirectParameterView,
+        DirectFactorView,
+    ) {
+        (
+            DirectArenaView {
+                current_re: current_re.as_mut_ptr(),
+                current_im: current_im.as_mut_ptr(),
+                current_scalar_len: current_re.len() as u64,
+                amplitude_re: amplitude_re.as_mut_ptr(),
+                amplitude_im: amplitude_im.as_mut_ptr(),
+                amplitude_scalar_len: amplitude_re.len() as u64,
+                point_stride: stride as u32,
+            },
+            DirectMomentumView {
+                values: ptr::NonNull::<f64>::dangling().as_ptr(),
+                scalar_len: 0,
+                form_count: 0,
+                lorentz_component_count: 4,
+                point_stride: stride as u32,
+            },
+            DirectParameterView {
+                values_re: parameters_re.as_ptr(),
+                values_im: parameters_im.as_ptr(),
+                value_count: parameters_re.len() as u32,
+            },
+            DirectFactorView {
+                values_re: factors_re.as_ptr(),
+                values_im: factors_im.as_ptr(),
+                value_count: factors_re.len() as u32,
+            },
+        )
+    }
+
+    #[test]
+    fn direct_output_classifier_requires_finalization_and_disjoint_planes() {
+        let mut inputs = vec![0.0; 32];
+        let mut output_re = vec![0.0; 32];
+        let mut output_im = vec![0.0; 32];
+        let input_pointers = [inputs.as_mut_ptr()];
+        let disjoint_outputs = [output_re.as_mut_ptr(), output_im.as_mut_ptr()];
+        assert!(
+            direct_outputs_are_structurally_safe(
+                DirectExecutorRole::Finalization,
+                &input_pointers,
+                &disjoint_outputs,
+                32,
+            )
+            .unwrap()
+        );
+        assert!(
+            !direct_outputs_are_structurally_safe(
+                DirectExecutorRole::Contribution,
+                &input_pointers,
+                &disjoint_outputs,
+                32,
+            )
+            .unwrap()
+        );
+        assert!(
+            !direct_outputs_are_structurally_safe(
+                DirectExecutorRole::Finalization,
+                &input_pointers,
+                &[inputs.as_mut_ptr()],
+                32,
+            )
+            .unwrap()
+        );
+        assert!(
+            !direct_outputs_are_structurally_safe(
+                DirectExecutorRole::Finalization,
+                &input_pointers,
+                &[output_re.as_mut_ptr(), output_re.as_mut_ptr()],
+                32,
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn contribution_scalar_simd_tails_apply_complex_scale_and_accumulate() {
+        let loaded = identity_executor(DirectExecutorRole::Contribution);
+        assert!(matches!(loaded.simd_lane_width(), 1 | 2 | 4));
+        let DirectExecutorHandle::Contribution { call, context } = loaded.handle() else {
             unreachable!()
         };
-        let point_stride = 2_u32;
-        let mut current_re = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
-        let mut current_im = vec![-1.0, -2.0, -3.0, -4.0, -5.0, -6.0, -7.0, -8.0];
-        let original_re = current_re.clone();
-        let original_im = current_im.clone();
-        let mut amplitude_re = [0.0; 2];
-        let mut amplitude_im = [0.0; 2];
-        let momenta = [0.0; 8];
-        let factors_re = [1.0];
-        let factors_im = [0.0];
+        for &len in LENGTHS {
+            let mut current_re = vec![0.0; len * 2];
+            let mut current_im = vec![0.0; len * 2];
+            for point in 0..len {
+                current_re[point] = point as f64 + 0.25;
+                current_im[point] = 0.5 - point as f64 * 0.125;
+                current_re[len + point] = 7.0;
+                current_im[len + point] = -2.0;
+            }
+            let mut amplitude_re = vec![0.0; len];
+            let mut amplitude_im = vec![0.0; len];
+            let factors_re = [2.0];
+            let factors_im = [-0.5];
+            let (arena, momenta, parameters, factors) = views(
+                &mut current_re,
+                &mut current_im,
+                &mut amplitude_re,
+                &mut amplitude_im,
+                &[],
+                &[],
+                &factors_re,
+                &factors_im,
+                len,
+            );
+            let row = DirectContributionRow {
+                parent0_component_base: 0,
+                parent1_component_base_or_sentinel: DIRECT_NONE_U32,
+                parent0_momentum_form_id: 0,
+                parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+                destination_component_base: 1,
+                exact_factor_id: 0,
+                selector_domain_id: 0,
+                flags: 0,
+            };
+            assert_eq!(
+                unsafe {
+                    call(
+                        context, arena, momenta, parameters, factors, &row, 1, len as u32,
+                    )
+                },
+                DIRECT_STATUS_OK
+            );
+            for point in 0..len {
+                let re = point as f64 + 0.25;
+                let im = 0.5 - point as f64 * 0.125;
+                assert_eq!(current_re[len + point], 7.0 + re * 2.0 + im * 0.5);
+                assert_eq!(current_im[len + point], -2.0 - re * 0.5 + im * 2.0);
+            }
+        }
+    }
+
+    #[test]
+    fn disjoint_identity_finalization_uses_direct_outputs_for_odd_tails() {
+        let loaded = parameter_broadcast_executor(DirectExecutorRole::Finalization);
+        assert!(matches!(loaded.simd_lane_width(), 1 | 2 | 4));
+        let DirectExecutorHandle::Finalization { call, context } = loaded.handle() else {
+            unreachable!()
+        };
         let row = DirectFinalizationRow {
             component_base: 0,
-            component_count: 4,
+            component_count: 1,
             momentum_form_id: 0,
             exact_factor_id: 0,
             selector_domain_id: 0,
             flags: 0,
         };
-        let status = unsafe {
-            call(
-                context,
-                DirectArenaView {
-                    current_re: current_re.as_mut_ptr(),
-                    current_im: current_im.as_mut_ptr(),
-                    current_scalar_len: current_re.len() as u64,
-                    amplitude_re: amplitude_re.as_mut_ptr(),
-                    amplitude_im: amplitude_im.as_mut_ptr(),
-                    amplitude_scalar_len: amplitude_re.len() as u64,
-                    point_stride,
+        let parameters_re = [2.5];
+        let parameters_im = [-0.75];
+        let factors_re = [1.0];
+        let factors_im = [0.0];
+        for &len in &[127, 129, 1023, 1025] {
+            let mut current_re = vec![f64::NAN; len];
+            let mut current_im = vec![f64::NAN; len];
+            let mut amplitude_re = vec![0.0; len];
+            let mut amplitude_im = vec![0.0; len];
+            let (arena, momenta, parameters, factors) = views(
+                &mut current_re,
+                &mut current_im,
+                &mut amplitude_re,
+                &mut amplitude_im,
+                &parameters_re,
+                &parameters_im,
+                &factors_re,
+                &factors_im,
+                len,
+            );
+            assert_eq!(
+                unsafe {
+                    call(
+                        context, arena, momenta, parameters, factors, &row, 1, len as u32,
+                    )
                 },
-                DirectMomentumView {
-                    values: momenta.as_ptr(),
-                    scalar_len: momenta.len() as u64,
-                    form_count: 1,
-                    lorentz_component_count: 4,
-                    point_stride,
-                },
-                DirectParameterView {
-                    values_re: ptr::null(),
-                    values_im: ptr::null(),
-                    value_count: 0,
-                },
-                DirectFactorView {
-                    values_re: factors_re.as_ptr(),
-                    values_im: factors_im.as_ptr(),
-                    value_count: 1,
-                },
-                ptr::from_ref(&row),
-                1,
-                point_stride,
-            )
-        };
-        assert_eq!(status, DIRECT_STATUS_OK);
-        assert_eq!(&current_re[0..2], &original_re[4..6]);
-        assert_eq!(&current_re[2..4], &original_re[6..8]);
-        assert_eq!(&current_re[4..6], &original_re[0..2]);
-        assert_eq!(&current_re[6..8], &original_re[2..4]);
-        assert_eq!(&current_im[0..2], &original_im[4..6]);
-        assert_eq!(&current_im[2..4], &original_im[6..8]);
-        assert_eq!(&current_im[4..6], &original_im[0..2]);
-        assert_eq!(&current_im[6..8], &original_im[2..4]);
+                DIRECT_STATUS_OK
+            );
+            assert_eq!(loaded.cached_direct_table_count(), 1);
+            assert!(current_re.iter().all(|&value| value == parameters_re[0]));
+            assert!(current_im.iter().all(|&value| value == parameters_im[0]));
+
+            current_re.fill(f64::NAN);
+            current_im.fill(f64::NAN);
+            let (status, allocations, bytes) = count_allocations(|| unsafe {
+                call(
+                    context, arena, momenta, parameters, factors, &row, 1, len as u32,
+                )
+            });
+            assert_eq!(status, DIRECT_STATUS_OK);
+            assert_eq!((allocations, bytes), (0, 0));
+            assert!(current_re.iter().all(|&value| value == parameters_re[0]));
+            assert!(current_im.iter().all(|&value| value == parameters_im[0]));
+        }
+        assert_eq!(loaded.internal_traffic_bytes().0, 0);
     }
 
     #[test]
-    fn closure_rows_accumulate_nonunit_complex_factors_into_amplitude_arena() {
-        let executor = closure_executor();
-        let DirectExecutorHandle::Closure { call, context } = executor.handle() else {
+    fn disjoint_nonidentity_finalization_uses_scratch_and_tracks_traffic() {
+        let loaded = parameter_broadcast_executor(DirectExecutorRole::Finalization);
+        let DirectExecutorHandle::Finalization { call, context } = loaded.handle() else {
             unreachable!()
         };
-
-        let point_stride = 4_u32;
-        let current_re = [1.0, -2.0, 0.5, 3.0];
-        let current_im = [0.25, 1.0, -0.75, 2.0];
-        let mut current_re_storage = current_re;
-        let mut current_im_storage = current_im;
-        let mut amplitude_re = [4.0, -1.0, 2.5, 0.0];
-        let mut amplitude_im = [-2.0, 3.0, 0.5, 1.0];
-        let original_re = amplitude_re;
-        let original_im = amplitude_im;
-        let momenta = [0.0; 16];
-        let parameter_re = [0.5];
-        let parameter_im = [-0.25];
-        let factor_re = [2.0, -0.5];
-        let factor_im = [0.75, 1.25];
-        let arena = DirectArenaView {
-            current_re: current_re_storage.as_mut_ptr(),
-            current_im: current_im_storage.as_mut_ptr(),
-            current_scalar_len: current_re_storage.len() as u64,
-            amplitude_re: amplitude_re.as_mut_ptr(),
-            amplitude_im: amplitude_im.as_mut_ptr(),
-            amplitude_scalar_len: amplitude_re.len() as u64,
-            point_stride,
+        let len = 129;
+        let mut current_re = vec![f64::NAN; len];
+        let mut current_im = vec![f64::NAN; len];
+        let mut amplitude_re = vec![0.0; len];
+        let mut amplitude_im = vec![0.0; len];
+        let parameters_re = [2.5];
+        let parameters_im = [-0.75];
+        let factors_re = [0.5];
+        let factors_im = [-0.25];
+        let (arena, momenta, parameters, factors) = views(
+            &mut current_re,
+            &mut current_im,
+            &mut amplitude_re,
+            &mut amplitude_im,
+            &parameters_re,
+            &parameters_im,
+            &factors_re,
+            &factors_im,
+            len,
+        );
+        let row = DirectFinalizationRow {
+            component_base: 0,
+            component_count: 1,
+            momentum_form_id: 0,
+            exact_factor_id: 0,
+            selector_domain_id: 0,
+            flags: 0,
         };
-        let momentum_view = DirectMomentumView {
-            values: momenta.as_ptr(),
-            scalar_len: momenta.len() as u64,
-            form_count: 1,
-            lorentz_component_count: 4,
-            point_stride,
-        };
-        let parameter_view = DirectParameterView {
-            values_re: parameter_re.as_ptr(),
-            values_im: parameter_im.as_ptr(),
-            value_count: 1,
-        };
-        let factor_view = DirectFactorView {
-            values_re: factor_re.as_ptr(),
-            values_im: factor_im.as_ptr(),
-            value_count: 2,
-        };
-        let rows = [
-            DirectClosureRow {
-                parent0_component_base: 0,
-                parent1_component_base_or_sentinel: DIRECT_NONE_U32,
-                parent0_momentum_form_id: 0,
-                parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
-                amplitude_destination_id: 0,
-                exact_factor_id: 0,
-                component_factor_start: 0,
-                component_count: 1,
-                selector_domain_id: 0,
-                flags: 0,
+        assert_eq!(
+            unsafe {
+                call(
+                    context, arena, momenta, parameters, factors, &row, 1, len as u32,
+                )
             },
-            DirectClosureRow {
-                parent0_component_base: 0,
-                parent1_component_base_or_sentinel: DIRECT_NONE_U32,
-                parent0_momentum_form_id: 0,
-                parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
-                amplitude_destination_id: 0,
-                exact_factor_id: 1,
-                component_factor_start: 0,
-                component_count: 1,
-                selector_domain_id: 0,
-                flags: 0,
-            },
-        ];
-
-        let status = unsafe {
-            call(
-                context,
-                arena,
-                momentum_view,
-                parameter_view,
-                factor_view,
-                rows.as_ptr(),
-                rows.len() as u32,
-                point_stride,
-            )
-        };
-        assert_eq!(status, DIRECT_STATUS_OK);
-
-        let factor_sum_re = factor_re.iter().sum::<f64>();
-        let factor_sum_im = factor_im.iter().sum::<f64>();
-        let scale_re = factor_sum_re * parameter_re[0] - factor_sum_im * parameter_im[0];
-        let scale_im = factor_sum_re * parameter_im[0] + factor_sum_im * parameter_re[0];
-        for point in 0..point_stride as usize {
-            let expected_re =
-                original_re[point] + scale_re * current_re[point] - scale_im * current_im[point];
-            let expected_im =
-                original_im[point] + scale_re * current_im[point] + scale_im * current_re[point];
-            assert!((amplitude_re[point] - expected_re).abs() < 1.0e-12);
-            assert!((amplitude_im[point] - expected_im).abs() < 1.0e-12);
-        }
+            DIRECT_STATUS_OK
+        );
+        assert_eq!(loaded.cached_direct_table_count(), 1);
+        let expected_re = parameters_re[0] * factors_re[0] - parameters_im[0] * factors_im[0];
+        let expected_im = parameters_re[0] * factors_im[0] + parameters_im[0] * factors_re[0];
+        assert!(current_re.iter().all(|&value| value == expected_re));
+        assert!(current_im.iter().all(|&value| value == expected_im));
+        let scratch_one_way = internal_plane_bytes(2, len, "test scratch traffic").unwrap();
+        assert_eq!(
+            loaded.internal_traffic_bytes().0,
+            scratch_one_way.saturating_mul(2)
+        );
     }
 
     #[test]
-    fn one_identity_finalizer_handles_different_row_component_counts() {
-        let point_stride = 3_u32;
-        let mut current_re = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
-        let mut current_im = vec![0.5; current_re.len()];
-        let mut amplitude_re = vec![0.0; point_stride as usize];
-        let mut amplitude_im = vec![0.0; point_stride as usize];
-        let momenta = vec![0.0; 4 * point_stride as usize];
-        let parameters = [0.0];
-        let factors_re = [2.0, -1.0];
-        let factors_im = [0.0, 1.0];
-        let arena = DirectArenaView {
-            current_re: current_re.as_mut_ptr(),
-            current_im: current_im.as_mut_ptr(),
-            current_scalar_len: current_re.len() as u64,
-            amplitude_re: amplitude_re.as_mut_ptr(),
-            amplitude_im: amplitude_im.as_mut_ptr(),
-            amplitude_scalar_len: amplitude_re.len() as u64,
-            point_stride,
+    fn aliased_identity_finalization_stays_on_scratch() {
+        let loaded = identity_executor(DirectExecutorRole::Finalization);
+        let DirectExecutorHandle::Finalization { call, context } = loaded.handle() else {
+            unreachable!()
         };
-        let momentum_view = DirectMomentumView {
-            values: momenta.as_ptr(),
-            scalar_len: momenta.len() as u64,
-            form_count: 1,
-            lorentz_component_count: 4,
-            point_stride,
+        let len = 129;
+        let mut current_re = (0..len).map(|point| point as f64 + 1.0).collect::<Vec<_>>();
+        let mut current_im = (0..len).map(|point| 3.0 - point as f64).collect::<Vec<_>>();
+        let expected_re = current_re.clone();
+        let expected_im = current_im.clone();
+        let mut amplitude_re = vec![0.0; len];
+        let mut amplitude_im = vec![0.0; len];
+        let factors_re = [1.0];
+        let factors_im = [0.0];
+        let (arena, momenta, parameters, factors) = views(
+            &mut current_re,
+            &mut current_im,
+            &mut amplitude_re,
+            &mut amplitude_im,
+            &[],
+            &[],
+            &factors_re,
+            &factors_im,
+            len,
+        );
+        let row = DirectFinalizationRow {
+            component_base: 0,
+            component_count: 1,
+            momentum_form_id: 0,
+            exact_factor_id: 0,
+            selector_domain_id: 0,
+            flags: 0,
         };
-        let parameter_view = DirectParameterView {
-            values_re: parameters.as_ptr(),
-            values_im: parameters.as_ptr(),
-            value_count: 1,
-        };
-        let factor_view = DirectFactorView {
-            values_re: factors_re.as_ptr(),
-            values_im: factors_im.as_ptr(),
-            value_count: 2,
-        };
-        let rows = [
-            DirectFinalizationRow {
-                component_base: 0,
-                component_count: 1,
-                momentum_form_id: 0,
-                exact_factor_id: 0,
-                selector_domain_id: 0,
-                flags: 0,
+        assert_eq!(
+            unsafe {
+                call(
+                    context, arena, momenta, parameters, factors, &row, 1, len as u32,
+                )
             },
-            DirectFinalizationRow {
-                component_base: 1,
-                component_count: 2,
-                momentum_form_id: 0,
-                exact_factor_id: 1,
-                selector_domain_id: 0,
-                flags: 0,
-            },
-        ];
-        let status = unsafe {
-            execute_identity_finalization_rows(
-                ptr::null(),
-                arena,
-                momentum_view,
-                parameter_view,
-                factor_view,
-                rows.as_ptr(),
-                rows.len() as u32,
-                point_stride,
-            )
+            DIRECT_STATUS_OK
+        );
+        assert_eq!(loaded.cached_direct_table_count(), 0);
+        assert_eq!(current_re, expected_re);
+        assert_eq!(current_im, expected_im);
+        let scratch_one_way = internal_plane_bytes(2, len, "test scratch traffic").unwrap();
+        assert_eq!(
+            loaded.internal_traffic_bytes().0,
+            scratch_one_way.saturating_mul(2)
+        );
+    }
+
+    #[test]
+    fn finalization_snapshots_input_before_overwrite() {
+        let loaded = identity_executor(DirectExecutorRole::Finalization);
+        let DirectExecutorHandle::Finalization { call, context } = loaded.handle() else {
+            unreachable!()
         };
-        assert_eq!(status, DIRECT_STATUS_OK);
-        assert_eq!(&current_re[0..3], &[2.0, 4.0, 6.0]);
-        assert_eq!(&current_im[0..3], &[1.0, 1.0, 1.0]);
-        assert_eq!(&current_re[3..], &[-4.5, -5.5, -6.5, -7.5, -8.5, -9.5]);
-        assert_eq!(&current_im[3..], &[3.5, 4.5, 5.5, 6.5, 7.5, 8.5]);
-    }
-
-    #[test]
-    fn source_roles_remain_typed_source_ir_intrinsics() {
-        let error = LoadedSymjitDirectExecutor::load_bytes(
-            &direct_contribution_bytes(),
-            PathBuf::from("source.symjit"),
-            DIRECT_APPLICATION_STORAGE_ABI,
-            DirectExecutorRole::Source,
-            Vec::new(),
-            Vec::new(),
-        )
-        .err()
-        .unwrap();
-        assert!(error.to_string().contains("SourceIR"));
-    }
-
-    #[test]
-    fn destination_snapshot_policy_must_match_executor_role() {
-        let error = LoadedSymjitDirectExecutor::load_bytes(
-            &direct_closure_bytes(),
-            PathBuf::from("closure-as-contribution.symjit"),
-            DIRECT_APPLICATION_STORAGE_ABI,
-            DirectExecutorRole::Contribution,
-            closure_plane_projections(),
-            scalar_projections(),
-        )
-        .err()
-        .unwrap();
-        assert!(error.to_string().contains("input snapshot"));
-    }
-
-    #[test]
-    fn prepared_direct_calls_do_not_use_packed_batch_evaluation() {
-        let source = include_str!("symjit_direct.rs");
-        let forbidden = [
-            ["Eager", "KernelInput"].concat(),
-            ["evaluate", "_batch("].concat(),
-            ["scatter", "_outputs"].concat(),
-        ];
-        for name in forbidden {
-            assert!(
-                !source.contains(&name),
-                "direct SymJIT adapter must not contain {name}"
+        let len = 129;
+        let mut current_re = (0..len).map(|point| point as f64 + 1.0).collect::<Vec<_>>();
+        let mut current_im = (0..len).map(|point| 3.0 - point as f64).collect::<Vec<_>>();
+        let original_re = current_re.clone();
+        let original_im = current_im.clone();
+        let mut amplitude_re = vec![0.0; len];
+        let mut amplitude_im = vec![0.0; len];
+        let factors_re = [0.25];
+        let factors_im = [0.75];
+        let (arena, momenta, parameters, factors) = views(
+            &mut current_re,
+            &mut current_im,
+            &mut amplitude_re,
+            &mut amplitude_im,
+            &[],
+            &[],
+            &factors_re,
+            &factors_im,
+            len,
+        );
+        let row = DirectFinalizationRow {
+            component_base: 0,
+            component_count: 1,
+            momentum_form_id: 0,
+            exact_factor_id: 0,
+            selector_domain_id: 0,
+            flags: 0,
+        };
+        assert_eq!(
+            unsafe {
+                call(
+                    context, arena, momenta, parameters, factors, &row, 1, len as u32,
+                )
+            },
+            DIRECT_STATUS_OK
+        );
+        for point in 0..len {
+            assert_eq!(
+                current_re[point],
+                original_re[point] * 0.25 - original_im[point] * 0.75
+            );
+            assert_eq!(
+                current_im[point],
+                original_re[point] * 0.75 + original_im[point] * 0.25
             );
         }
+    }
+
+    #[test]
+    fn cached_row_group_reuses_one_scratch_set_sequentially() {
+        let loaded = identity_executor(DirectExecutorRole::Contribution);
+        let DirectExecutorHandle::Contribution { call, context } = loaded.handle() else {
+            unreachable!()
+        };
+        let len = 7;
+        let mut current_re = vec![0.0; len * 4];
+        let mut current_im = vec![0.0; len * 4];
+        for point in 0..len {
+            current_re[point] = point as f64 + 1.0;
+            current_im[point] = 0.25;
+            current_re[2 * len + point] = 10.0 + point as f64;
+            current_im[2 * len + point] = -0.5;
+        }
+        let mut amplitude_re = vec![0.0; len];
+        let mut amplitude_im = vec![0.0; len];
+        let factors_re = [1.0];
+        let factors_im = [0.0];
+        let (arena, momenta, parameters, factors) = views(
+            &mut current_re,
+            &mut current_im,
+            &mut amplitude_re,
+            &mut amplitude_im,
+            &[],
+            &[],
+            &factors_re,
+            &factors_im,
+            len,
+        );
+        let rows = [
+            DirectContributionRow {
+                parent0_component_base: 0,
+                parent1_component_base_or_sentinel: DIRECT_NONE_U32,
+                parent0_momentum_form_id: 0,
+                parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+                destination_component_base: 1,
+                exact_factor_id: 0,
+                selector_domain_id: 0,
+                flags: 0,
+            },
+            DirectContributionRow {
+                parent0_component_base: 2,
+                parent1_component_base_or_sentinel: DIRECT_NONE_U32,
+                parent0_momentum_form_id: 0,
+                parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+                destination_component_base: 3,
+                exact_factor_id: 0,
+                selector_domain_id: 0,
+                flags: 0,
+            },
+        ];
+        assert_eq!(
+            unsafe {
+                call(
+                    context,
+                    arena,
+                    momenta,
+                    parameters,
+                    factors,
+                    rows.as_ptr(),
+                    rows.len() as u32,
+                    len as u32,
+                )
+            },
+            DIRECT_STATUS_OK
+        );
+        for point in 0..len {
+            assert_eq!(current_re[len + point], point as f64 + 1.0);
+            assert_eq!(current_im[len + point], 0.25);
+            assert_eq!(current_re[3 * len + point], 10.0 + point as f64);
+            assert_eq!(current_im[3 * len + point], -0.5);
+        }
+    }
+
+    #[test]
+    fn model_parameter_broadcast_planes_refresh_without_reloading_kernel() {
+        let loaded = parameter_broadcast_executor(DirectExecutorRole::Contribution);
+        let DirectExecutorHandle::Contribution { call, context } = loaded.handle() else {
+            unreachable!()
+        };
+        let len = 17;
+        let mut current_re = vec![0.0; len];
+        let mut current_im = vec![0.0; len];
+        let mut amplitude_re = vec![0.0; len];
+        let mut amplitude_im = vec![0.0; len];
+        let factors_re = [1.0];
+        let factors_im = [0.0];
+        let row = DirectContributionRow {
+            parent0_component_base: 0,
+            parent1_component_base_or_sentinel: DIRECT_NONE_U32,
+            parent0_momentum_form_id: 0,
+            parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+            destination_component_base: 0,
+            exact_factor_id: 0,
+            selector_domain_id: 0,
+            flags: 0,
+        };
+        let mut expected_re = 0.0;
+        let mut expected_im = 0.0;
+        for (iteration, (parameter_re, parameter_im)) in [(2.5, -0.75), (-4.0, 1.25), (-4.0, 1.25)]
+            .into_iter()
+            .enumerate()
+        {
+            expected_re += parameter_re;
+            expected_im += parameter_im;
+            let parameters_re = [parameter_re];
+            let parameters_im = [parameter_im];
+            let (arena, momenta, parameters, factors) = views(
+                &mut current_re,
+                &mut current_im,
+                &mut amplitude_re,
+                &mut amplitude_im,
+                &parameters_re,
+                &parameters_im,
+                &factors_re,
+                &factors_im,
+                len,
+            );
+            let invoke = || unsafe {
+                call(
+                    context, arena, momenta, parameters, factors, &row, 1, len as u32,
+                )
+            };
+            let status = if iteration == 0 {
+                invoke()
+            } else {
+                let (status, allocations, bytes) = count_allocations(invoke);
+                assert_eq!((allocations, bytes), (0, 0));
+                status
+            };
+            assert_eq!(status, DIRECT_STATUS_OK);
+            for point in 0..len {
+                assert_eq!(current_re[point], expected_re);
+                assert_eq!(current_im[point], expected_im);
+            }
+        }
+        let active_plane_bytes = 2 * len as u64 * size_of::<f64>() as u64;
+        assert_eq!(
+            loaded.internal_traffic_bytes(),
+            (
+                3 * 2 * active_plane_bytes,
+                3 * active_plane_bytes + 2 * active_plane_bytes,
+            )
+        );
+    }
+
+    #[test]
+    fn migration_contract_interns_repeated_parameter_and_zero_broadcasts() {
+        let loaded = repeated_parameter_and_zero_broadcast_executor();
+        assert_eq!(loaded.broadcast_plane_count(), 2);
+        assert_eq!(
+            loaded.context.broadcast_slot_by_binding.as_ref(),
+            [Some(0), Some(1), Some(0), Some(1)]
+        );
+        let DirectExecutorHandle::Contribution { call, context } = loaded.handle() else {
+            unreachable!()
+        };
+        let len = 129;
+        let mut current_re = vec![1.0; len];
+        let mut current_im = vec![-2.0; len];
+        let mut amplitude_re = vec![0.0; len];
+        let mut amplitude_im = vec![0.0; len];
+        let factors_re = [1.0];
+        let factors_im = [0.0];
+        let row = DirectContributionRow {
+            parent0_component_base: 0,
+            parent1_component_base_or_sentinel: DIRECT_NONE_U32,
+            parent0_momentum_form_id: 0,
+            parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+            destination_component_base: 0,
+            exact_factor_id: 0,
+            selector_domain_id: 0,
+            flags: 0,
+        };
+        let mut expected_re = 1.0;
+        for (iteration, parameter_re) in [2.5, 2.5, -4.0].into_iter().enumerate() {
+            expected_re += 2.0 * parameter_re;
+            let parameters_re = [parameter_re];
+            let parameters_im = [123.0];
+            let (arena, momenta, parameters, factors) = views(
+                &mut current_re,
+                &mut current_im,
+                &mut amplitude_re,
+                &mut amplitude_im,
+                &parameters_re,
+                &parameters_im,
+                &factors_re,
+                &factors_im,
+                len,
+            );
+            let invoke = || unsafe {
+                call(
+                    context, arena, momenta, parameters, factors, &row, 1, len as u32,
+                )
+            };
+            let status = if iteration == 0 {
+                invoke()
+            } else {
+                let (status, allocations, bytes) = count_allocations(invoke);
+                assert_eq!((allocations, bytes), (0, 0));
+                status
+            };
+            assert_eq!(status, DIRECT_STATUS_OK);
+            assert!(current_re.iter().all(|&value| value == expected_re));
+            assert!(current_im.iter().all(|&value| value == -2.0));
+        }
+        assert_eq!(loaded.context.workspace.borrow().broadcasts.len(), 2 * len);
+        let plane_bytes = len as u64 * size_of::<f64>() as u64;
+        assert_eq!(
+            loaded.internal_traffic_bytes(),
+            (
+                3 * 4 * plane_bytes,
+                // Two shared planes are read on each call. Both are filled
+                // once, and only the parameter plane changes on the last call.
+                3 * 2 * plane_bytes + 3 * plane_bytes,
+            )
+        );
+    }
+
+    #[test]
+    fn warmed_recurrence_plane_call_allocates_nothing() {
+        let loaded = identity_executor(DirectExecutorRole::Contribution);
+        let DirectExecutorHandle::Contribution { call, context } = loaded.handle() else {
+            unreachable!()
+        };
+        let mut expected_scratch_bytes = 0;
+        for &len in &[127, 129, 1023, 1025] {
+            let mut current_re = vec![1.0; len * 2];
+            let mut current_im = vec![0.5; len * 2];
+            let mut amplitude_re = vec![0.0; len];
+            let mut amplitude_im = vec![0.0; len];
+            let factors_re = [1.0];
+            let factors_im = [0.0];
+            let (arena, momenta, parameters, factors) = views(
+                &mut current_re,
+                &mut current_im,
+                &mut amplitude_re,
+                &mut amplitude_im,
+                &[],
+                &[],
+                &factors_re,
+                &factors_im,
+                len,
+            );
+            let row = DirectContributionRow {
+                parent0_component_base: 0,
+                parent1_component_base_or_sentinel: DIRECT_NONE_U32,
+                parent0_momentum_form_id: 0,
+                parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+                destination_component_base: 1,
+                exact_factor_id: 0,
+                selector_domain_id: 0,
+                flags: 0,
+            };
+            assert_eq!(
+                unsafe {
+                    call(
+                        context, arena, momenta, parameters, factors, &row, 1, len as u32,
+                    )
+                },
+                DIRECT_STATUS_OK
+            );
+            let (status, allocations, bytes) = count_allocations(|| unsafe {
+                call(
+                    context, arena, momenta, parameters, factors, &row, 1, len as u32,
+                )
+            });
+            assert_eq!(status, DIRECT_STATUS_OK);
+            assert_eq!(
+                (allocations, bytes),
+                (0, 0),
+                "warmed recurrence call allocated for {len} points"
+            );
+            let scratch_one_way = internal_plane_bytes(2, len, "test scratch traffic").unwrap();
+            expected_scratch_bytes += scratch_one_way.saturating_mul(4);
+        }
+        assert_eq!(loaded.cached_direct_table_count(), 0);
+        assert_eq!(loaded.internal_traffic_bytes().0, expected_scratch_bytes);
     }
 }

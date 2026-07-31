@@ -23,9 +23,14 @@ def test_checked_file_identity_rejects_a_symlink(tmp_path: Path) -> None:
         gate._regular_file_identity(link)
 
 
-def _source_leaf(optimization_level: int) -> dict[str, object]:
-    return {
+def _source_leaf(
+    optimization_level: int,
+    *,
+    include_plane: bool = True,
+) -> dict[str, object]:
+    leaf: dict[str, object] = {
         "kind": "symjit-application-evaluator",
+        "backend": "jit",
         "runtime_capability": gate.SYMJIT_RUNTIME_CAPABILITY,
         "input_len": 1,
         "output_len": 1,
@@ -33,10 +38,23 @@ def _source_leaf(optimization_level: int) -> dict[str, object]:
         "application_abi": gate.SYMJIT_APPLICATION_ABI,
         "optimization_level": optimization_level,
     }
+    if include_plane:
+        leaf["plane_application"] = {
+            "application_path": (
+                f"evaluators/stage-o{optimization_level}.plane.symjit"
+            ),
+            "application_abi": gate.SYMJIT_PLANE_APPLICATION_ABI,
+            "storage_abi": gate.SYMJIT_APPLICATION_ABI,
+            "translation_mode": "symbolica-structured-instructions",
+            "optimization_level": optimization_level,
+            "direct_arena": True,
+            "source_digest": f"{optimization_level}" * 64,
+        }
+    return leaf
 
 
 def _stage(optimization_level: int) -> dict[str, object]:
-    path = f"evaluators/stage-o{optimization_level}.symjit"
+    path = f"evaluators/stage-o{optimization_level}.plane.symjit"
     return {
         "stage_kind": "amplitude-roots",
         "output_length": 1,
@@ -45,7 +63,7 @@ def _stage(optimization_level: int) -> dict[str, object]:
             "kind": "compiled-plane-arena-stage",
             "schema_version": 1,
             "application_abi": gate.COMPILED_PLANE_DIRECT_APPLICATION_ABI,
-            "source_application_abi": gate.SYMJIT_APPLICATION_ABI,
+            "source_application_abi": gate.SYMJIT_PLANE_APPLICATION_ABI,
             "element_layout": "split-complex-component-major",
             "input_output_aliasing": "forbidden",
             "output_output_aliasing": "forbidden",
@@ -65,9 +83,9 @@ def _stage(optimization_level: int) -> dict[str, object]:
             "leaves": [
                 {
                     "application_path": path,
-                    "source_application_abi": gate.SYMJIT_APPLICATION_ABI,
+                    "source_application_abi": gate.SYMJIT_PLANE_APPLICATION_ABI,
                     "optimization_level": optimization_level,
-                    "direct_codegen_optimization_level": 3,
+                    "direct_codegen_optimization_level": optimization_level,
                     "input_indices": [0],
                     "input_len": 1,
                     "output_len": 1,
@@ -102,7 +120,10 @@ def _execution_payload(optimization_level: int) -> dict[str, object]:
         "compiled": {
             "model_parameter_evaluator": {
                 "kind": "model-parameter-evaluator",
-                "evaluator": _source_leaf(optimization_level),
+                "evaluator": _source_leaf(
+                    optimization_level,
+                    include_plane=False,
+                ),
             },
             "stage_evaluators": _stage_set(optimization_level),
         },
@@ -182,7 +203,7 @@ def test_recursive_audit_accepts_every_jit_level(
             lambda payload: payload["compiled"]["stage_evaluators"]["amplitude_stage"][
                 "compiled_plane_arena"
             ]["leaves"][0].update({"direct_codegen_optimization_level": 2}),
-            "fixed O3",
+            "does not match.*plane",
         ),
         (
             lambda payload: payload["helicity_sum_execution"]["runtime_schema"][

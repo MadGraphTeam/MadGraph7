@@ -38,6 +38,34 @@ def _git_output(repo_root: Path, *arguments: str) -> bytes:
     return completed.stdout
 
 
+def _require_repository_root(repo_root: Path) -> Path:
+    """Reject a nested path that Git would silently bind to a parent checkout."""
+
+    try:
+        root = repo_root.expanduser().resolve(strict=True)
+    except OSError as error:
+        raise ReportSourceIdentityError(
+            f"report source root is unavailable: {repo_root}"
+        ) from error
+    raw = _git_output(root, "rev-parse", "--show-toplevel")
+    rendered = os.fsdecode(raw).strip()
+    if not rendered:
+        raise ReportSourceIdentityError(
+            f"git returned an empty repository root for {root}"
+        )
+    try:
+        discovered = Path(rendered).resolve(strict=True)
+    except (OSError, ValueError) as error:
+        raise ReportSourceIdentityError(
+            f"git returned an invalid repository root for {root}"
+        ) from error
+    if discovered != root:
+        raise ReportSourceIdentityError(
+            f"report source is not the repository root: {root} (Git root {discovered})"
+        )
+    return root
+
+
 def _git_commit(repo_root: Path, revision: str) -> str:
     commit = (
         _git_output(repo_root, "rev-parse", "--verify", f"{revision}^{{commit}}")
@@ -301,7 +329,7 @@ class ReportPublicationIdentity:
 def inspect_report_source(repo_root: Path) -> ReportSourceIdentity:
     """Inspect the current Git commit and fail-relevant working-tree changes."""
 
-    root = repo_root.expanduser().resolve(strict=False)
+    root = _require_repository_root(repo_root)
     revision = _git_commit(root, "HEAD")
     tree = _git_tree(root, revision)
     changed = {
@@ -350,7 +378,7 @@ def inspect_report_publication(
         or ".." in profile
     ):
         raise ValueError("report profile must be one safe path component")
-    root = repo_root.expanduser().resolve(strict=False)
+    root = _require_repository_root(repo_root)
     measured = _git_commit(root, measured_revision)
     publication = _git_commit(root, publication_revision)
     try:

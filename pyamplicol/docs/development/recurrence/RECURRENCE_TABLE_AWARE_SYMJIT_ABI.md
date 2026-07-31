@@ -1,5 +1,17 @@
 # Recurrence Table-Aware SymJIT Direct-Arena ABI
 
+> **Superseded historical proposal.** This document records the investigation
+> which motivated a generated row-table extension for the former SymJIT
+> Direct-Arena interface. It is not an active ABI or implementation plan.
+> The SymJIT 2.22.0 migration instead uses standard P-kernels and keeps row
+> scheduling, factors, ordered overwrite/add operations, snapshots, and
+> fanout in allocation-free Rusticol orchestration. See
+> [`SYMJIT_CRATE_2_22_ARENA_MIGRATION_PLAN.md`](../arena/SYMJIT_CRATE_2_22_ARENA_MIGRATION_PLAN.md)
+> and
+> [`SYMJIT_UPSTREAM_SEPARATION.md`](../arena/SYMJIT_UPSTREAM_SEPARATION.md).
+> DirectApplication, DirectTable, and proposed ABI names below are retained
+> only to preserve the original measurements and design reasoning.
+
 ## Decision
 
 The current SymJIT Direct-Arena ABI cannot execute a homogeneous recurrence
@@ -141,8 +153,8 @@ particle identities, process names, or model-specific logic.
 Suggested public identities are:
 
 ```text
-symjit-direct-table-descriptor-v1
-symjit-direct-table-binding-v1
+pyamplicol-eager-plane-table-descriptor-v1
+pyamplicol-eager-plane-table-binding-v1
 ```
 
 The existing Direct-Arena API remains available to accepted recurrence

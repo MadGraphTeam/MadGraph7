@@ -74,6 +74,8 @@ pub(crate) struct CompiledDirectPrototypeTraffic {
     pub(crate) momentum_fill_bytes: u64,
     /// Point-independent model-scalar writes.
     pub(crate) parameter_fill_bytes: u64,
+    /// Internal persistent P-kernel broadcast-plane refresh traffic.
+    pub(crate) scalar_broadcast_fill_bytes: u64,
     /// Stale-safety clears of amplitude planes not overwritten by a schedule.
     pub(crate) amplitude_clear_bytes: u64,
     /// Developer-oracle row-major to arena boundary traffic.
@@ -93,8 +95,12 @@ struct DirectLeafPlan {
     output_current_components: Box<[usize]>,
     output_amplitude_components: Box<[usize]>,
     scalar_values_per_point: usize,
+    persistent_scalar_values_per_point: usize,
 }
 
+// Leaves are cold-built and kept inline to avoid a separate allocation and
+// indirection for each warmed stage call.
+#[allow(clippy::large_enum_variant)]
 enum LoadedCompiledDirectLeaf {
     #[cfg(feature = "f64-symjit")]
     Symjit(LoadedSymjitCompiledDirectStage),
@@ -102,6 +108,7 @@ enum LoadedCompiledDirectLeaf {
     Native(LoadedNativeCompiledDirectStage),
 }
 
+#[allow(clippy::large_enum_variant)]
 enum BoundCompiledDirectLeaf {
     #[cfg(feature = "f64-symjit")]
     Symjit(BoundSymjitCompiledDirectStage),
@@ -110,6 +117,15 @@ enum BoundCompiledDirectLeaf {
 }
 
 impl LoadedCompiledDirectLeaf {
+    fn persistent_scalar_values_per_point(&self) -> usize {
+        match self {
+            #[cfg(feature = "f64-symjit")]
+            Self::Symjit(leaf) => leaf.broadcast_plane_count(),
+            #[cfg(feature = "f64-compiled")]
+            Self::Native(_) => 0,
+        }
+    }
+
     unsafe fn bind(
         self,
         arena: crate::direct_arena::DirectArenaView,
@@ -146,12 +162,24 @@ impl LoadedCompiledDirectLeaf {
 }
 
 impl BoundCompiledDirectLeaf {
-    fn evaluate(&self, point_start: u32, point_count: u32) -> RusticolResult<()> {
+    fn allocation_counters(&self) -> DirectArenaAllocationCounters {
+        match self {
+            #[cfg(feature = "f64-symjit")]
+            Self::Symjit(leaf) => leaf.allocation_counters(),
+            #[cfg(feature = "f64-compiled")]
+            Self::Native(_) => DirectArenaAllocationCounters::default(),
+        }
+    }
+
+    fn evaluate(&mut self, point_start: u32, point_count: u32) -> RusticolResult<u64> {
         match self {
             #[cfg(feature = "f64-symjit")]
             Self::Symjit(leaf) => leaf.evaluate(point_start, point_count),
             #[cfg(feature = "f64-compiled")]
-            Self::Native(leaf) => leaf.evaluate(point_start, point_count),
+            Self::Native(leaf) => {
+                leaf.evaluate(point_start, point_count)?;
+                Ok(0)
+            }
         }
     }
 }
@@ -229,6 +257,7 @@ pub(crate) struct CompiledDirectTileSizing {
     pub(crate) effective_tile_capacity: usize,
     pub(crate) reduction_tile_capacity: usize,
     pub(crate) physical_scalar_values_per_point: usize,
+    pub(crate) persistent_scalar_values_per_point: usize,
     pub(crate) hot_scalar_values_per_point: usize,
     pub(crate) source_scalar_values_per_point: usize,
     pub(crate) reduction_scalar_values_per_point: usize,
@@ -261,6 +290,19 @@ fn compiled_direct_tile_sizing(
     reduction_footprint: CompiledDirectReductionFootprint,
     layout_policy: CompiledDirectCurrentLayoutPolicy,
 ) -> RusticolResult<CompiledDirectTileSizing> {
+    let persistent_scalar_values_per_point = stages
+        .iter()
+        .flat_map(|stage| stage.leaf_plans.iter())
+        .chain(amplitude.leaf_plans.iter())
+        .try_fold(0usize, |total, leaf| {
+            total
+                .checked_add(leaf.persistent_scalar_values_per_point)
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "compiled Direct-Arena persistent scalar footprint overflows",
+                    )
+                })
+        })?;
     let physical_scalar_values_per_point = usize::try_from(current_layout.physical_component_count)
         .ok()
         .and_then(|value| value.checked_mul(2))
@@ -273,6 +315,7 @@ fn compiled_direct_tile_sizing(
         // The shared zero plane is point-pitched even though every leaf
         // aliases the same immutable storage.
         .and_then(|value| value.checked_add(1))
+        .and_then(|value| value.checked_add(persistent_scalar_values_per_point))
         .ok_or_else(|| {
             RusticolError::integrity("compiled Direct-Arena physical per-point shape overflows")
         })?;
@@ -348,6 +391,7 @@ fn compiled_direct_tile_sizing(
         effective_tile_capacity,
         reduction_tile_capacity,
         physical_scalar_values_per_point,
+        persistent_scalar_values_per_point,
         hot_scalar_values_per_point,
         source_scalar_values_per_point,
         reduction_scalar_values_per_point: authenticated_reduction_scalar_values_per_point
@@ -628,6 +672,13 @@ impl CompiledDirectEnginePrototype {
             DirectArenaAllocationCounters::default(),
             |total, counters| total.checked_add(counters),
         )?;
+        let allocation_counters = stages
+            .iter()
+            .flat_map(|stage| stage.leaves.iter())
+            .chain(amplitude.leaves.iter())
+            .try_fold(allocation_counters, |total, leaf| {
+                total.checked_add(leaf.allocation_counters())
+            })?;
 
         Ok(Self {
             stages,
@@ -1064,11 +1115,11 @@ impl CompiledDirectEnginePrototype {
     /// scatter, remap, or allocation occurs in this method.
     pub(crate) fn evaluate_all(&mut self, point_count: usize) -> RusticolResult<()> {
         evaluate_validated_schedule(
-            &self.stages,
-            &self.amplitude,
+            &mut self.stages,
+            &mut self.amplitude,
             &self.full_schedule,
             point_count_u32(point_count, self.arena.active_point_count())?,
-            &mut self.traffic.leaf,
+            &mut self.traffic,
         )
     }
 
@@ -1115,11 +1166,11 @@ impl CompiledDirectEnginePrototype {
     ) -> RusticolResult<()> {
         self.clear_inactive_amplitude_components(schedule)?;
         evaluate_validated_schedule(
-            &self.stages,
-            &self.amplitude,
+            &mut self.stages,
+            &mut self.amplitude,
             schedule,
             point_count_u32(point_count, self.arena.active_point_count())?,
-            &mut self.traffic.leaf,
+            &mut self.traffic,
         )
     }
 
@@ -1652,14 +1703,20 @@ fn point_count_u32(point_count: usize, active: u32) -> RusticolResult<u32> {
 }
 
 fn evaluate_bound_stage_leaves(
-    stage: &BoundStage,
+    stage: &mut BoundStage,
     point_count: u32,
     selected: &[usize],
-    traffic: &mut DirectArenaTrafficCounters,
+    traffic: &mut CompiledDirectPrototypeTraffic,
 ) -> RusticolResult<()> {
     for &leaf_index in selected {
-        stage.leaves[leaf_index].evaluate(0, point_count)?;
-        traffic.record_call(1, point_count);
+        let broadcast_bytes = stage.leaves[leaf_index].evaluate(0, point_count)?;
+        traffic.scalar_broadcast_fill_bytes = traffic
+            .scalar_broadcast_fill_bytes
+            .checked_add(broadcast_bytes)
+            .ok_or_else(|| {
+                RusticolError::internal("compiled scalar broadcast traffic counter overflows u64")
+            })?;
+        traffic.leaf.record_call(1, point_count);
     }
     Ok(())
 }
@@ -1792,13 +1849,13 @@ fn validate_sorted_leaf_indices(
 }
 
 fn evaluate_validated_schedule(
-    stages: &[BoundStage],
-    amplitude: &BoundStage,
+    stages: &mut [BoundStage],
+    amplitude: &mut BoundStage,
     schedule: &CompiledDirectValidatedSchedule,
     point_count: u32,
-    traffic: &mut DirectArenaTrafficCounters,
+    traffic: &mut CompiledDirectPrototypeTraffic,
 ) -> RusticolResult<()> {
-    for (stage, selected) in stages.iter().zip(&schedule.active_stage_leaves) {
+    for (stage, selected) in stages.iter_mut().zip(&schedule.active_stage_leaves) {
         evaluate_bound_stage_leaves(stage, point_count, selected, traffic)?;
     }
     evaluate_bound_stage_leaves(
@@ -1807,7 +1864,7 @@ fn evaluate_validated_schedule(
         &schedule.active_amplitude_leaves,
         traffic,
     )?;
-    traffic.validate_direct()
+    traffic.leaf.validate_direct()
 }
 
 fn load_stage(
@@ -1987,7 +2044,6 @@ fn load_stage(
             #[cfg(feature = "f64-symjit")]
             EvaluatorManifest::SymjitApplication {
                 runtime_capability,
-                application_path,
                 application_abi,
                 element_layout,
                 batch_layout,
@@ -1997,6 +2053,7 @@ fn load_stage(
                 word_bits,
                 endianness,
                 required_defuns,
+                plane_application,
                 ..
             } => {
                 if *optimization_level > 3 {
@@ -2019,11 +2076,20 @@ fn load_stage(
                     endianness,
                     required_defuns,
                 })?;
-                if direct_leaf.application_path != *application_path
-                    || direct_leaf.source_application_abi != *application_abi
+                let plane_application = plane_application.as_ref().ok_or_else(|| {
+                    RusticolError::compatibility(
+                        "compiled SymJIT leaf predates the standard plane \
+                         application ABI; regenerate the artifact",
+                    )
+                })?;
+                plane_application.validate(input_len, output_len, *optimization_level)?;
+                if direct_leaf.application_path != plane_application.application_path
+                    || direct_leaf.source_application_abi != plane_application.application_abi
                     || direct_leaf.source_application_abi != direct.source_application_abi
+                    || direct.source_application_abi != SYMJIT_PLANE_APPLICATION_ABI
+                    || direct.application_abi != COMPILED_PLANE_DIRECT_APPLICATION_ABI
                     || direct_leaf.optimization_level != *optimization_level
-                    || direct_leaf.direct_codegen_optimization_level != 3
+                    || direct_leaf.direct_codegen_optimization_level != *optimization_level
                 {
                     return Err(RusticolError::integrity(
                         "compiled SymJIT Direct-Arena leaf identity is inconsistent",
@@ -2044,7 +2110,7 @@ fn load_stage(
                     )?;
                 }
                 let outputs = symjit_output_bindings(&canonical_outputs)?;
-                let source = payloads.source(application_path)?;
+                let source = payloads.source(&plane_application.application_path)?;
                 let bytes = source.read()?;
                 LoadedCompiledDirectLeaf::Symjit(
                     LoadedSymjitCompiledDirectStage::load_source_bytes(
@@ -2052,6 +2118,7 @@ fn load_stage(
                         PathBuf::from(source.display_name()),
                         &direct_leaf.source_application_abi,
                         direct_leaf.optimization_level,
+                        plane_application.compression,
                         source_inputs,
                         plane_bindings,
                         scalar_bindings,
@@ -2129,6 +2196,7 @@ fn load_stage(
                 )));
             }
         };
+        let persistent_scalar_values_per_point = loaded_leaf.persistent_scalar_values_per_point();
         loaded.push(loaded_leaf);
         leaf_plans.push(DirectLeafPlan {
             input_current_components: input_currents
@@ -2154,6 +2222,7 @@ fn load_stage(
                 Box::new([])
             },
             scalar_values_per_point,
+            persistent_scalar_values_per_point,
         });
         output_cursor = output_stop;
     }
@@ -2412,6 +2481,7 @@ fn append_component_bindings(
 mod tests {
     use super::super::evaluator::count_test_allocations;
     use super::*;
+    use sha2::{Digest, Sha256};
     use std::fs;
     use std::process::Command;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -2426,6 +2496,7 @@ mod tests {
             output_current_components: outputs.to_vec().into_boxed_slice(),
             output_amplitude_components: Box::new([]),
             scalar_values_per_point: 1,
+            persistent_scalar_values_per_point: 0,
         }
     }
 
@@ -2527,7 +2598,13 @@ mod tests {
         bytes
     }
 
-    fn evaluator(path: &str, input_len: usize, output_len: usize) -> EvaluatorManifest {
+    fn evaluator(
+        path: &str,
+        plane_path: &str,
+        plane_program: &str,
+        input_len: usize,
+        output_len: usize,
+    ) -> EvaluatorManifest {
         EvaluatorManifest::SymjitApplication {
             runtime_capability: SYMJIT_APPLICATION_RUNTIME_CAPABILITY.to_string(),
             application_path: path.to_string(),
@@ -2542,6 +2619,32 @@ mod tests {
             word_bits: 64,
             endianness: "little".to_string(),
             required_defuns: Vec::new(),
+            plane_application: Some(SymjitPlaneApplicationManifest {
+                application_path: plane_path.to_string(),
+                application_abi: SYMJIT_PLANE_APPLICATION_ABI.to_string(),
+                storage_abi: SYMJIT_APPLICATION_STORAGE_ABI.to_string(),
+                element_layout: "split-complex-plane-major".to_string(),
+                descriptor_order: "inputs-re-im-then-outputs-re-im".to_string(),
+                input_complex_count: input_len,
+                output_complex_count: output_len,
+                input_plane_count: input_len * 2,
+                output_plane_count: output_len * 2,
+                compiler_type: "native".to_string(),
+                translation_mode: "symbolica-structured-instructions".to_string(),
+                optimization_level: 3,
+                simd: true,
+                complex: true,
+                fast_math: true,
+                fast_complex: false,
+                compression: true,
+                threading: false,
+                direct_arena: true,
+                source_digest: format!("{:x}", Sha256::digest(plane_program.as_bytes())),
+                target: serde_json::json!({
+                    "triple": "test-native",
+                    "cpu_features": [],
+                }),
+            }),
             evaluator_state_path: None,
             evaluator_state_runtime_capability: None,
         }
@@ -2700,15 +2803,14 @@ extern "C" int native_direct_leaf_direct_application_v1(
                 let (application_path, application_abi, optimization_level, input_len, output_len) =
                     match leaf.evaluator {
                         EvaluatorManifest::SymjitApplication {
-                            application_path,
-                            application_abi,
+                            plane_application: Some(plane_application),
                             optimization_level,
                             input_len,
                             output_len,
                             ..
                         } => (
-                            application_path,
-                            application_abi,
+                            &plane_application.application_path,
+                            &plane_application.application_abi,
                             *optimization_level,
                             *input_len,
                             *output_len,
@@ -2734,7 +2836,7 @@ extern "C" int native_direct_leaf_direct_application_v1(
                 };
                 if direct_application_abi.is_none() {
                     direct_application_abi =
-                        Some(if application_abi == SYMJIT_APPLICATION_STORAGE_ABI {
+                        Some(if application_abi == SYMJIT_PLANE_APPLICATION_ABI {
                             COMPILED_PLANE_DIRECT_APPLICATION_ABI.to_string()
                         } else {
                             application_abi.clone()
@@ -2744,7 +2846,7 @@ extern "C" int native_direct_leaf_direct_application_v1(
                     application_path: application_path.clone(),
                     source_application_abi: application_abi.clone(),
                     optimization_level,
-                    direct_codegen_optimization_level: 3,
+                    direct_codegen_optimization_level: optimization_level,
                     input_len,
                     output_len,
                     input_indices: leaf.input_indices.clone(),
@@ -3099,6 +3201,7 @@ extern "C" int native_direct_leaf_direct_application_v1(
     fn compiled_direct_tile_policy_uses_authenticated_phase_local_footprints() {
         let mut leaf = liveness_leaf(&[0], &[1]);
         leaf.scalar_values_per_point = 4_320;
+        leaf.persistent_scalar_values_per_point = 17;
         let stages = vec![liveness_stage(vec![leaf])];
         let amplitude = liveness_stage(vec![liveness_leaf(&[1], &[])]);
         let layout = CompiledDirectCurrentLayout::identity(100_000).unwrap();
@@ -3120,10 +3223,11 @@ extern "C" int native_direct_leaf_direct_application_v1(
         assert_eq!(expected.hot_scalar_values_per_point, 4_320);
         assert_eq!(expected.source_scalar_values_per_point, 33);
         assert_eq!(expected.reduction_scalar_values_per_point, 4_096);
+        assert_eq!(expected.persistent_scalar_values_per_point, 17);
         assert_eq!(
             expected.physical_scalar_values_per_point,
-            200_000 + 24 + 16_384 + 1,
-            "the hard footprint contains only tile-controlled Direct storage"
+            200_000 + 24 + 16_384 + 1 + 17,
+            "the hard footprint includes every persistent point-pitched scalar plane"
         );
         let expected_stride =
             checked_aligned_point_stride(expected.effective_tile_capacity as u32).unwrap();
@@ -3305,6 +3409,10 @@ extern "C" int native_direct_leaf_direct_application_v1(
         const MOMENTUM_COMPONENTS: usize = 4;
         const MODEL_PARAMETERS: usize = 1;
         const GLOBAL_PARAMETERS: usize = VALUE_COMPONENTS + MOMENTUM_COMPONENTS + MODEL_PARAMETERS;
+        const PRODUCT_PROGRAM: &str =
+            "([('mul', ('out', 0), [('param', 0), ('param', 1)], 0)], 2, [])";
+        const SHIFTED_PROGRAM: &str =
+            "([('add', ('out', 0), [('param', 0), ('param', 1)], 0)], 2, [])";
 
         let payload_root = test_payload_directory();
         fs::create_dir_all(&payload_root).unwrap();
@@ -3327,14 +3435,38 @@ extern "C" int native_direct_leaf_direct_application_v1(
         let amplitude_bytes =
             source_application(&[left, right], std::slice::from_ref(&amplitude_value));
         fs::write(payload_root.join("amplitude.symjit"), &amplitude_bytes).unwrap();
+        for (path, program) in [
+            ("product.plane.symjit", PRODUCT_PROGRAM),
+            ("shifted.plane.symjit", SHIFTED_PROGRAM),
+            ("amplitude.plane.symjit", PRODUCT_PROGRAM),
+        ] {
+            fs::write(
+                payload_root.join(path),
+                compile_symbolica_program_to_plane_application_bytes(program, 2, 1, 3, true)
+                    .unwrap(),
+            )
+            .unwrap();
+        }
 
         let chunked = EvaluatorManifest::Chunked {
             required_runtime_capabilities: vec![SYMJIT_APPLICATION_RUNTIME_CAPABILITY.to_string()],
             input_len: Some(3),
             chunk_input_indices: Some(vec![vec![0, 1], vec![0, 2]]),
             chunks: vec![
-                evaluator("product.symjit", 2, 1),
-                evaluator("shifted.symjit", 2, 1),
+                evaluator(
+                    "product.symjit",
+                    "product.plane.symjit",
+                    PRODUCT_PROGRAM,
+                    2,
+                    1,
+                ),
+                evaluator(
+                    "shifted.symjit",
+                    "shifted.plane.symjit",
+                    SHIFTED_PROGRAM,
+                    2,
+                    1,
+                ),
             ],
         };
         let stage = stage_manifest(
@@ -3362,7 +3494,13 @@ extern "C" int native_direct_leaf_direct_application_v1(
                 input_component("value", 2, 0, 2, 1, false),
             ],
             &[0],
-            evaluator("amplitude.symjit", 2, 1),
+            evaluator(
+                "amplitude.symjit",
+                "amplitude.plane.symjit",
+                PRODUCT_PROGRAM,
+                2,
+                1,
+            ),
             true,
         );
         let legacy_amplitude = stage_manifest(
@@ -3372,7 +3510,13 @@ extern "C" int native_direct_leaf_direct_application_v1(
                 input_component("value", 2, 0, 2, 1, false),
             ],
             &[3],
-            evaluator("amplitude.symjit", 2, 1),
+            evaluator(
+                "amplitude.symjit",
+                "amplitude.plane.symjit",
+                PRODUCT_PROGRAM,
+                2,
+                1,
+            ),
             false,
         );
         let payloads = EvaluatorPayloadStore::directory(&payload_root);

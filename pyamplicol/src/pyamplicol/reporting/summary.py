@@ -1458,9 +1458,7 @@ def _artifact_inspection_summary(
                 )
             )
             if process.get("recurrence_color_storage") is not None:
-                factorization = process.get(
-                    "recurrence_color_factorization_kind"
-                )
+                factorization = process.get("recurrence_color_factorization_kind")
                 factorization_text = (
                     "none"
                     if factorization is None

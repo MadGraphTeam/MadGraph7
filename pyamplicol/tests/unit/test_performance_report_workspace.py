@@ -742,6 +742,7 @@ def test_export_holds_source_writer_lock_while_copying(
 
     def checking_copy(source: Path, destination: Path) -> None:
         nonlocal observed_lock
+
         context = multiprocessing.get_context("fork")
         outcomes = context.Queue()
         process = context.Process(

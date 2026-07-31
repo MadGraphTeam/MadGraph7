@@ -75,10 +75,12 @@ _RECURRENCE_DIRECT_TEMPLATE_ABI = "pyamplicol-recurrence-direct-template-v1"
 _RECURRENCE_DIRECT_BACKEND_ABI = "rusticol.recurrence-direct-backend.v1"
 _RECURRENCE_DIRECT_CANONICALIZATION_ABI = "pyamplicol-canonical-json-v1"
 _RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI = (
-    "pyamplicol-recurrence-direct-payload-binding-v1"
+    "pyamplicol-recurrence-plane-binding-v2"
 )
-_RECURRENCE_JIT_SOURCE_APPLICATION_ABI = "symjit-application-storage-v3"
-_RECURRENCE_JIT_DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v1"
+_SYMJIT_APPLICATION_ABI = "symjit-application-storage-v3"
+_SYMJIT_PLANE_APPLICATION_ABI = "pyamplicol-symjit-plane-application-v2"
+_RECURRENCE_JIT_SOURCE_APPLICATION_ABI = _SYMJIT_PLANE_APPLICATION_ABI
+_RECURRENCE_JIT_DIRECT_APPLICATION_ABI = "pyamplicol-symjit-plane-application-v2"
 _RECURRENCE_JIT_SOURCE_RUNTIME_CAPABILITY = "symjit.application.complex-f64.v1"
 
 # These labels make the public-command boundary, and its two report-only
@@ -91,7 +93,6 @@ PAIRED_ARENA_PROFILE_COMMAND_PATH = "pyamplicol-report-private-paired-arena-prof
 PRECOMPILED_GENERATION_COMMAND_PATH = (
     "pyamplicol-generate-precompiled-model-injection-v1"
 )
-
 
 class RunnerError(RuntimeError):
     """Raised when a cell cannot satisfy the report measurement contract."""
@@ -575,8 +576,8 @@ def runtime_identity_payload(
         RECURRENCE_RUNTIME_LAYOUT_ABI,
         SYMBOLICA_ASM_RUNTIME_CAPABILITY,
         SYMBOLICA_CPP_RUNTIME_CAPABILITY,
-        SYMJIT_APPLICATION_ABI,
         SYMJIT_F64_RUNTIME_CAPABILITY,
+        SYMJIT_PLANE_APPLICATION_ABI,
         _active_build_info,
         verify_native_module,
     )
@@ -616,13 +617,13 @@ def runtime_identity_payload(
         ExecutionMode.EAGER: (
             EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
             EAGER_DIRECT_TABLE_BINDING_ABI,
-            SYMJIT_APPLICATION_ABI,
+            SYMJIT_PLANE_APPLICATION_ABI,
         ),
         ExecutionMode.RECURRENCE: (
             RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
             RECURRENCE_RUNTIME_LAYOUT_ABI,
             (
-                SYMJIT_APPLICATION_ABI
+                SYMJIT_PLANE_APPLICATION_ABI
                 if cell.measurement.backend == "jit"
                 else {
                     "cpp": SYMBOLICA_CPP_RUNTIME_CAPABILITY,
@@ -640,7 +641,7 @@ def runtime_identity_payload(
                 else NATIVE_COMPILED_DIRECT_APPLICATION_ABI
             ),
             (
-                SYMJIT_APPLICATION_ABI
+                SYMJIT_PLANE_APPLICATION_ABI
                 if cell.measurement.backend == "jit"
                 else NATIVE_COMPILED_DIRECT_APPLICATION_ABI
             ),
@@ -877,13 +878,75 @@ def _authenticated_process_execution(
     return execution, execution_relative, actual_sha256, root, payloads
 
 
+def _authenticated_symjit_plane_leaves(
+    value: object,
+    *,
+    source_optimization_level: int,
+    context: str,
+) -> list[tuple[str, str]]:
+    if not isinstance(value, Mapping):
+        raise RunnerError(f"{context} source evaluator is not an object")
+    if value.get("kind") == "chunked-symbolica-evaluator":
+        chunks = value.get("chunks")
+        if (
+            isinstance(chunks, (str, bytes))
+            or not isinstance(chunks, Sequence)
+            or not chunks
+        ):
+            raise RunnerError(f"{context} chunked source evaluator has no leaves")
+        leaves: list[tuple[str, str]] = []
+        for index, chunk in enumerate(chunks):
+            leaves.extend(
+                _authenticated_symjit_plane_leaves(
+                    chunk,
+                    source_optimization_level=source_optimization_level,
+                    context=f"{context}.chunks[{index}]",
+                )
+            )
+        return leaves
+    if (
+        value.get("kind") != "symjit-application-evaluator"
+        or value.get("backend") != "jit"
+        or value.get("runtime_capability")
+        != _RECURRENCE_JIT_SOURCE_RUNTIME_CAPABILITY
+        or value.get("application_abi") != _SYMJIT_APPLICATION_ABI
+        or value.get("optimization_level") != source_optimization_level
+    ):
+        raise RunnerError(f"{context} source evaluator leaf contract drifted")
+    _canonical_recurrence_path(
+        value.get("application_path"),
+        f"{context} ordinary source evaluator application",
+    )
+    plane = value.get("plane_application")
+    if not isinstance(plane, Mapping):
+        raise RunnerError(f"{context} source evaluator has no plane application")
+    if (
+        plane.get("application_abi") != _SYMJIT_PLANE_APPLICATION_ABI
+        or plane.get("storage_abi") != _SYMJIT_APPLICATION_ABI
+        or plane.get("translation_mode")
+        != "symbolica-structured-instructions"
+        or plane.get("direct_arena") is not True
+        or plane.get("optimization_level") != source_optimization_level
+    ):
+        raise RunnerError(f"{context} plane application contract drifted")
+    plane_path = _canonical_recurrence_path(
+        plane.get("application_path"),
+        f"{context} plane application",
+    )
+    source_digest = _lowercase_sha256(
+        plane.get("source_digest"),
+        f"{context} plane source digest",
+    )
+    return [(plane_path, source_digest)]
+
+
 def _authenticated_direct_codegen_identity(
     manifest: object,
     *,
     process_id: str,
     source_optimization_level: int,
 ) -> dict[str, object]:
-    """Observe fixed O3 lowering in one artifact-ID-bound process payload."""
+    """Authenticate P-kernel lowering in one artifact-ID-bound process payload."""
 
     execution, execution_relative, actual_sha256, _, _ = (
         _authenticated_process_execution(manifest, process_id=process_id)
@@ -896,6 +959,11 @@ def _authenticated_direct_codegen_identity(
         if isinstance(value, Mapping):
             arena = value.get("compiled_plane_arena")
             if isinstance(arena, Mapping):
+                source_leaves = _authenticated_symjit_plane_leaves(
+                    value.get("evaluator"),
+                    source_optimization_level=source_optimization_level,
+                    context="compiled plane-Arena evaluator",
+                )
                 leaves = arena.get("leaves")
                 if (
                     isinstance(leaves, (str, bytes))
@@ -905,14 +973,28 @@ def _authenticated_direct_codegen_identity(
                     raise RunnerError(
                         "compiled plane-Arena descriptor has no authenticated leaves"
                     )
-                for raw_leaf in leaves:
+                if len(leaves) != len(source_leaves):
+                    raise RunnerError(
+                        "compiled plane-Arena descriptor does not cover its "
+                        "authenticated plane applications"
+                    )
+                for raw_leaf, (plane_path, _source_digest) in zip(
+                    leaves,
+                    source_leaves,
+                    strict=True,
+                ):
                     if not isinstance(raw_leaf, Mapping):
                         raise RunnerError(
                             "compiled plane-Arena descriptor has an invalid leaf"
                         )
                     if (
-                        raw_leaf.get("optimization_level") != source_optimization_level
-                        or raw_leaf.get("direct_codegen_optimization_level") != 3
+                        raw_leaf.get("application_path") != plane_path
+                        or raw_leaf.get("source_application_abi")
+                        != _SYMJIT_PLANE_APPLICATION_ABI
+                        or raw_leaf.get("optimization_level")
+                        != source_optimization_level
+                        or raw_leaf.get("direct_codegen_optimization_level")
+                        != source_optimization_level
                     ):
                         raise RunnerError(
                             "compiled plane-Arena leaf optimization identity drifted"
@@ -929,7 +1011,7 @@ def _authenticated_direct_codegen_identity(
         raise RunnerError("execution payload contains no compiled plane-Arena leaves")
     return {
         "kind": "authenticated-compiled-plane-arena-direct-codegen-v1",
-        "optimization_level": 3,
+        "optimization_level": source_optimization_level,
         "source_optimization_level": source_optimization_level,
         "leaf_count": leaf_count,
         "execution_manifest_path": execution_relative,
@@ -1391,52 +1473,26 @@ def _authenticated_recurrence_source_leaves(
     authenticate_payload: object,
     context: str,
 ) -> list[tuple[str, str]]:
-    if not isinstance(value, Mapping):
-        raise RunnerError(f"{context} source evaluator is not an object")
-    if value.get("kind") == "chunked-symbolica-evaluator":
-        chunks = value.get("chunks")
-        if (
-            isinstance(chunks, (str, bytes))
-            or not isinstance(chunks, Sequence)
-            or not chunks
-        ):
-            raise RunnerError(f"{context} chunked source evaluator has no leaves")
-        leaves: list[tuple[str, str]] = []
-        for index, chunk in enumerate(chunks):
-            leaves.extend(
-                _authenticated_recurrence_source_leaves(
-                    chunk,
-                    source_optimization_level=source_optimization_level,
-                    payload_root=payload_root,
-                    authenticate_payload=authenticate_payload,
-                    context=f"{context}.chunks[{index}]",
-                )
-            )
-        return leaves
-    if (
-        value.get("kind") != "symjit-application-evaluator"
-        or value.get("backend") != "jit"
-        or value.get("runtime_capability") != _RECURRENCE_JIT_SOURCE_RUNTIME_CAPABILITY
-        or value.get("application_abi") != _RECURRENCE_JIT_SOURCE_APPLICATION_ABI
-        or value.get("optimization_level") != source_optimization_level
-    ):
-        raise RunnerError(f"{context} source evaluator leaf contract drifted")
-    application_path = _canonical_recurrence_path(
-        value.get("application_path"),
-        f"{context} source evaluator application",
+    plane_leaves = _authenticated_symjit_plane_leaves(
+        value,
+        source_optimization_level=source_optimization_level,
+        context=context,
     )
-    payload_path = (
-        PurePosixPath(payload_root) / PurePosixPath(application_path)
-    ).as_posix()
     if not callable(authenticate_payload):
         raise RunnerError("recurrence source payload authenticator is invalid")
-    sha256 = authenticate_payload(  # type: ignore[operator]
-        payload_path,
-        label=f"{context} source evaluator application",
-    )
-    if not isinstance(sha256, str):
-        raise RunnerError(f"{context} source evaluator digest is invalid")
-    return [(application_path, sha256)]
+    result: list[tuple[str, str]] = []
+    for application_path, _source_digest in plane_leaves:
+        payload_path = (
+            PurePosixPath(payload_root) / PurePosixPath(application_path)
+        ).as_posix()
+        sha256 = authenticate_payload(  # type: ignore[operator]
+            payload_path,
+            label=f"{context} plane application",
+        )
+        if not isinstance(sha256, str):
+            raise RunnerError(f"{context} plane application digest is invalid")
+        result.append((application_path, sha256))
+    return result
 
 
 def _authenticated_json_payload(

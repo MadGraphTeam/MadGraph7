@@ -13,6 +13,9 @@ repository.workspace = true
 default = ["f64-compiled", "f64-symjit"]
 f64-compiled = ["dep:libloading", "dep:num-complex", "dep:symjit"]
 f64-symjit = ["dep:num-complex", "dep:symjit"]
+# Unstable cross-crate bridge used only by the private PyO3 extension during
+# artifact generation. It is intentionally absent from the default feature set.
+python-generation-bridge = ["f64-symjit"]
 symbolica-runtime = ["dep:symbolica"]
 
 [dependencies]
@@ -24,6 +27,6 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 symbolica = { version = "=2.2.0", default-features = false, features = ["bincode", "gmp"], optional = true }
-symjit = { version = "=2.21.1", default-features = false, optional = true }
+symjit = { version = "=2.22.0", default-features = false, optional = true }
 thiserror.workspace = true
 wide.workspace = true

@@ -310,7 +310,7 @@ def test_slow_compiled_capture_fails_performance_gate(
     assert all(cell["passes"] is False for cell in failed["performance_cells"])
 
 
-def test_zero_paired_ratio_uncertainty_fails_closed(
+def test_zero_paired_ratio_uncertainty_is_accepted_when_below_ceiling(
     evidence: tuple[Path, dict[str, Path]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -337,7 +337,11 @@ def test_zero_paired_ratio_uncertainty_fails_closed(
     result = _audit((manifest, captures), monkeypatch)
     cells = result["captures"]["builtin-topology"]["performance_cells"]
     assert all(cell["ratio_statistics"]["raw_mad"] == 0.0 for cell in cells)
-    assert all(cell["passes"] is False for cell in cells)
+    assert all(cell["ratio_statistics"]["median"] == 1.0 for cell in cells)
+    assert all(
+        cell["ratio_statistics"]["upper_three_raw_mad"] == 1.0 for cell in cells
+    )
+    assert all(cell["passes"] is True for cell in cells)
 
 
 @pytest.mark.parametrize(

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -22,6 +23,7 @@ from pyamplicol._internal.versions import (
     SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
     SYMJIT_APPLICATION_ABI,
     SYMJIT_F64_RUNTIME_CAPABILITY,
+    SYMJIT_PLANE_APPLICATION_ABI,
 )
 from pyamplicol.api import ModelSource, ProcessRequest
 from pyamplicol.artifacts import load_manifest
@@ -87,9 +89,14 @@ def _symjit_stage_manifest(root: Path, *, label: str) -> dict[str, object]:
     evaluator_dir = root / "evaluators"
     evaluator_dir.mkdir(parents=True, exist_ok=True)
     application = evaluator_dir / f"{label}.symjit"
+    plane_application = evaluator_dir / f"{label}.plane.symjit"
     state = evaluator_dir / f"{label}.evaluator.bin"
     application.write_bytes(f"application:{label}".encode())
+    plane_application.write_bytes(f"plane-application:{label}".encode())
     state.write_bytes(f"state:{label}".encode())
+    plane_source_digest = hashlib.sha256(
+        f"instructions:{label}".encode()
+    ).hexdigest()
     evaluator = {
         "kind": "symjit-application-evaluator",
         "runtime_capability": SYMJIT_F64_RUNTIME_CAPABILITY,
@@ -97,6 +104,29 @@ def _symjit_stage_manifest(root: Path, *, label: str) -> dict[str, object]:
         "output_len": 1,
         "application_path": application.relative_to(root).as_posix(),
         "application_abi": SYMJIT_APPLICATION_ABI,
+        "plane_application": {
+            "application_path": plane_application.relative_to(root).as_posix(),
+            "application_abi": SYMJIT_PLANE_APPLICATION_ABI,
+            "storage_abi": SYMJIT_APPLICATION_ABI,
+            "element_layout": "split-complex-plane-major",
+            "descriptor_order": "inputs-re-im-then-outputs-re-im",
+            "input_complex_count": 1,
+            "output_complex_count": 1,
+            "input_plane_count": 2,
+            "output_plane_count": 2,
+            "compiler_type": "native",
+            "translation_mode": "symbolica-structured-instructions",
+            "optimization_level": 3,
+            "simd": True,
+            "complex": True,
+            "fast_math": True,
+            "fast_complex": False,
+            "compression": False,
+            "threading": False,
+            "direct_arena": True,
+            "source_digest": plane_source_digest,
+            "target": {"word_bits": 64, "endianness": "little"},
+        },
         "element_layout": "complex-f64",
         "batch_layout": "row-major",
         "compiler_type": "native",
@@ -275,12 +305,16 @@ def test_mock_symjit_manifest_preserves_the_compiled_arena_invariant(
     assert isinstance(direct, dict)
     leaves = direct["leaves"]
     assert isinstance(leaves, list)
+    plane_application = evaluator["plane_application"]
+    assert isinstance(plane_application, dict)
     assert leaves == [
         {
-            "application_path": evaluator["application_path"],
-            "source_application_abi": evaluator["application_abi"],
-            "optimization_level": evaluator["optimization_level"],
-            "direct_codegen_optimization_level": 3,
+            "application_path": plane_application["application_path"],
+            "source_application_abi": plane_application["application_abi"],
+            "optimization_level": plane_application["optimization_level"],
+            "direct_codegen_optimization_level": plane_application[
+                "optimization_level"
+            ],
             "input_len": evaluator["input_len"],
             "output_len": evaluator["output_len"],
             "input_indices": [0],

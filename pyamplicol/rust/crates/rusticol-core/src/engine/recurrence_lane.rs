@@ -4,6 +4,7 @@
 
 use super::recurrence_backend::NativeRecurrenceDirectExecutorOwners;
 use super::*;
+use crate::direct_arena::DirectArenaTrafficCounters;
 use crate::recurrence::direct_backend::{
     DirectExecutionCounters, DirectExecutionRoleTimings, DirectExecutorCatalog,
 };
@@ -623,7 +624,7 @@ impl RecurrenceNativeRuntime {
         self.validate_public_axes(&physics, &helicity_indices, &color_indices)?;
 
         let mut values = vec![0.0; batch.len()];
-        let profile_before = DirectProfileSnapshot::capture(&self.scheduler);
+        let profile_before = DirectProfileSnapshot::capture(&self.scheduler, &self._backend_owner);
         let parameter_started = Instant::now();
         self.prepare_parameters(common)?;
         let parameter_setup = parameter_started.elapsed();
@@ -736,7 +737,7 @@ impl RecurrenceNativeRuntime {
                 external_momentum_flatten,
                 reduction,
                 profile_before,
-                DirectProfileSnapshot::capture(&self.scheduler),
+                DirectProfileSnapshot::capture(&self.scheduler, &self._backend_owner),
             ),
         ))
     }
@@ -796,7 +797,7 @@ impl RecurrenceNativeRuntime {
             helicity_position[index] = Some(position);
         }
 
-        let profile_before = DirectProfileSnapshot::capture(&self.scheduler);
+        let profile_before = DirectProfileSnapshot::capture(&self.scheduler, &self._backend_owner);
         let parameter_started = Instant::now();
         self.prepare_parameters(common)?;
         let parameter_setup = parameter_started.elapsed();
@@ -916,7 +917,7 @@ impl RecurrenceNativeRuntime {
                 external_momentum_flatten,
                 reduction,
                 profile_before,
-                DirectProfileSnapshot::capture(&self.scheduler),
+                DirectProfileSnapshot::capture(&self.scheduler, &self._backend_owner),
             ),
         ))
     }
@@ -941,7 +942,7 @@ impl RecurrenceNativeRuntime {
         let helicity_indices = physics.selected_helicity_indices(selected_helicities)?;
         self.validate_public_axes(&physics, &helicity_indices, &[0])?;
         let mut values = vec![0.0; batch.len()];
-        let profile_before = DirectProfileSnapshot::capture(&self.scheduler);
+        let profile_before = DirectProfileSnapshot::capture(&self.scheduler, &self._backend_owner);
         let parameter_started = Instant::now();
         self.prepare_parameters(common)?;
         let parameter_setup = parameter_started.elapsed();
@@ -975,7 +976,7 @@ impl RecurrenceNativeRuntime {
                 external_momentum_flatten,
                 reduction,
                 profile_before,
-                DirectProfileSnapshot::capture(&self.scheduler),
+                DirectProfileSnapshot::capture(&self.scheduler, &self._backend_owner),
             ),
         ))
     }
@@ -1010,7 +1011,7 @@ impl RecurrenceNativeRuntime {
                 RusticolError::invalid_argument("recurrence resolved output overflows")
             })?
         ];
-        let profile_before = DirectProfileSnapshot::capture(&self.scheduler);
+        let profile_before = DirectProfileSnapshot::capture(&self.scheduler, &self._backend_owner);
         let parameter_started = Instant::now();
         self.prepare_parameters(common)?;
         let parameter_setup = parameter_started.elapsed();
@@ -1053,7 +1054,7 @@ impl RecurrenceNativeRuntime {
                 external_momentum_flatten,
                 reduction,
                 profile_before,
-                DirectProfileSnapshot::capture(&self.scheduler),
+                DirectProfileSnapshot::capture(&self.scheduler, &self._backend_owner),
             ),
         ))
     }
@@ -1084,7 +1085,7 @@ impl RecurrenceNativeRuntime {
             .collect::<RusticolResult<Vec<_>>>()?;
 
         let mut values = vec![0.0; batch.len()];
-        let profile_before = DirectProfileSnapshot::capture(&self.scheduler);
+        let profile_before = DirectProfileSnapshot::capture(&self.scheduler, &self._backend_owner);
         let parameter_started = Instant::now();
         self.prepare_parameters(common)?;
         let parameter_setup = parameter_started.elapsed();
@@ -1153,7 +1154,7 @@ impl RecurrenceNativeRuntime {
                 external_momentum_flatten,
                 reduction,
                 profile_before,
-                DirectProfileSnapshot::capture(&self.scheduler),
+                DirectProfileSnapshot::capture(&self.scheduler, &self._backend_owner),
             ),
         ))
     }
@@ -1202,7 +1203,7 @@ impl RecurrenceNativeRuntime {
             })?
         ];
 
-        let profile_before = DirectProfileSnapshot::capture(&self.scheduler);
+        let profile_before = DirectProfileSnapshot::capture(&self.scheduler, &self._backend_owner);
         let parameter_started = Instant::now();
         self.prepare_parameters(common)?;
         let parameter_setup = parameter_started.elapsed();
@@ -1281,7 +1282,7 @@ impl RecurrenceNativeRuntime {
                 external_momentum_flatten,
                 reduction,
                 profile_before,
-                DirectProfileSnapshot::capture(&self.scheduler),
+                DirectProfileSnapshot::capture(&self.scheduler, &self._backend_owner),
             ),
         ))
     }
@@ -2321,16 +2322,26 @@ struct DirectProfileSnapshot {
     phases: DirectRuntimePhaseTimings,
     roles: DirectExecutionRoleTimings,
     execution: DirectExecutionCounters,
+    traffic: DirectArenaTrafficCounters,
     activity: DirectRuntimeActivityCounters,
+    internal_scratch_bytes: u64,
+    internal_broadcast_bytes: u64,
 }
 
 impl DirectProfileSnapshot {
-    fn capture(runtime: &DirectRecurrenceExecutionRuntime) -> Self {
+    fn capture(
+        runtime: &DirectRecurrenceExecutionRuntime,
+        owners: &NativeRecurrenceDirectExecutorOwners,
+    ) -> Self {
+        let (internal_scratch_bytes, internal_broadcast_bytes) = owners.internal_traffic_bytes();
         Self {
             phases: runtime.phase_timings(),
             roles: runtime.role_timings(),
             execution: runtime.counters(),
+            traffic: runtime.traffic_counters(),
             activity: runtime.activity_counters(),
+            internal_scratch_bytes,
+            internal_broadcast_bytes,
         }
     }
 }
@@ -2415,6 +2426,37 @@ fn direct_profile(
             .scatter_bytes
             .saturating_sub(before.execution.scatter_bytes),
     };
+    let traffic = DirectArenaTrafficCounters {
+        calls: after.traffic.calls.saturating_sub(before.traffic.calls),
+        rows: after.traffic.rows.saturating_sub(before.traffic.rows),
+        points: after.traffic.points.saturating_sub(before.traffic.points),
+        packet_input_bytes: after
+            .traffic
+            .packet_input_bytes
+            .saturating_sub(before.traffic.packet_input_bytes),
+        packet_output_bytes: after
+            .traffic
+            .packet_output_bytes
+            .saturating_sub(before.traffic.packet_output_bytes),
+        gather_bytes: after
+            .traffic
+            .gather_bytes
+            .saturating_sub(before.traffic.gather_bytes),
+        scatter_bytes: after
+            .traffic
+            .scatter_bytes
+            .saturating_sub(before.traffic.scatter_bytes),
+        remap_bytes: after
+            .traffic
+            .remap_bytes
+            .saturating_sub(before.traffic.remap_bytes),
+    };
+    let internal_scratch_bytes = after
+        .internal_scratch_bytes
+        .saturating_sub(before.internal_scratch_bytes);
+    let internal_broadcast_bytes = after
+        .internal_broadcast_bytes
+        .saturating_sub(before.internal_broadcast_bytes);
     let activity = DirectRuntimeActivityCounters {
         momentum_fill_calls: after
             .activity
@@ -2485,6 +2527,16 @@ fn direct_profile(
         recurrence_finalization_row_count: execution.finalization_rows,
         recurrence_closure_call_count: execution.closure_calls,
         recurrence_closure_row_count: execution.closure_rows,
+        recurrence_direct_packed_input_bytes: execution.packed_input_bytes,
+        recurrence_direct_packed_output_bytes: execution.packed_output_bytes,
+        recurrence_direct_scatter_bytes: execution.scatter_bytes,
+        recurrence_direct_packet_input_bytes: traffic.packet_input_bytes,
+        recurrence_direct_packet_output_bytes: traffic.packet_output_bytes,
+        recurrence_direct_gather_bytes: traffic.gather_bytes,
+        recurrence_direct_traffic_scatter_bytes: traffic.scatter_bytes,
+        recurrence_direct_remap_bytes: traffic.remap_bytes,
+        recurrence_internal_scratch_bytes: internal_scratch_bytes,
+        recurrence_internal_broadcast_bytes: internal_broadcast_bytes,
         reduction_s: profile_duration_seconds(reduction),
         total_s: profile_duration_seconds(total),
         ..RuntimeProfile::default()

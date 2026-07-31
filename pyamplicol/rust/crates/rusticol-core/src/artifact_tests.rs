@@ -307,6 +307,9 @@ fn add_test_evaluator_container(artifact: &mut TestArtifact) {
 }
 
 #[cfg(feature = "f64-symjit")]
+const DIRECT_SYMJIT_PROGRAM: &str = r#"[[{"Add":[{"Out":0},[{"Param":0},{"Param":1}],0]}],1,[]]"#;
+
+#[cfg(feature = "f64-symjit")]
 fn direct_symjit_application_bytes(input_len: usize) -> Vec<u8> {
     use symjit::{Compiler, CompilerType, Config, Storage};
 
@@ -316,15 +319,26 @@ fn direct_symjit_application_bytes(input_len: usize) -> Vec<u8> {
     config.set_opt_level(3);
     config.set_simd(true);
     let mut compiler = Compiler::with_config(config);
-    let instructions = r#"[[{"Add":[{"Out":0},[{"Param":0},{"Param":1}],0]}],1,[]]"#;
     let application = compiler
-        .translate(instructions.to_string(), input_len)
+        .translate(DIRECT_SYMJIT_PROGRAM.to_string(), input_len)
         .expect("translate direct SymJIT test application");
     let mut bytes = Vec::new();
     application
         .save(&mut bytes)
         .expect("serialize direct SymJIT test application");
     bytes
+}
+
+#[cfg(feature = "f64-symjit")]
+fn direct_symjit_plane_application_bytes(input_len: usize) -> Vec<u8> {
+    crate::engine::compile_symbolica_program_to_plane_application_bytes(
+        DIRECT_SYMJIT_PROGRAM,
+        input_len,
+        1,
+        3,
+        false,
+    )
+    .expect("translate direct SymJIT test plane application")
 }
 
 #[cfg(feature = "f64-symjit")]
@@ -1199,6 +1213,7 @@ fn mixed_backend_runtime_artifact() -> TestArtifact {
         json!([ARENA, ASM, CPP, DIRECT]);
 
     let direct_application = direct_symjit_application_bytes(14);
+    let direct_plane_application = direct_symjit_plane_application_bytes(14);
     let mut direct_execution = minimal_execution_manifest(
         "direct",
         "a b > c",
@@ -1230,6 +1245,35 @@ fn mixed_backend_runtime_artifact() -> TestArtifact {
     let direct_stage = &mut direct_execution["compiled"]["stage_evaluators"]["amplitude_stage"];
     direct_stage["parameter_layout"] = json!("stage-local-value-momentum");
     direct_stage["input_components"] = json!(input_bindings);
+    direct_stage["evaluator"]["plane_application"] = json!({
+        "application_path": "evaluators/direct.plane.symjit",
+        "application_abi": crate::engine::SYMJIT_PLANE_APPLICATION_ABI,
+        "storage_abi": crate::engine::SYMJIT_APPLICATION_STORAGE_ABI,
+        "element_layout": "split-complex-plane-major",
+        "descriptor_order": "inputs-re-im-then-outputs-re-im",
+        "input_complex_count": 14,
+        "output_complex_count": 1,
+        "input_plane_count": 28,
+        "output_plane_count": 2,
+        "compiler_type": "native",
+        "translation_mode": "symbolica-structured-instructions",
+        "optimization_level": 3,
+        "simd": true,
+        "complex": true,
+        "fast_math": true,
+        "fast_complex": false,
+        "compression": false,
+        "threading": false,
+        "direct_arena": true,
+        "source_digest": sha256(DIRECT_SYMJIT_PROGRAM.as_bytes()),
+        "target": {
+            "triple": "test-native",
+            "cpu_features": [],
+        },
+    });
+    direct_stage["evaluator"]["evaluator_state_path"] = json!("evaluators/direct.exact.symbolica");
+    direct_stage["evaluator"]["evaluator_state_runtime_capability"] =
+        json!(crate::engine::SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY);
     direct_stage["compiled_plane_arena"] = json!({
         "schema_version": 1,
         "kind": "compiled-plane-arena-stage",
@@ -1247,7 +1291,7 @@ fn mixed_backend_runtime_artifact() -> TestArtifact {
             "component": 0,
         }],
         "leaves": [{
-            "application_path": "evaluators/direct.symjit",
+            "application_path": "evaluators/direct.plane.symjit",
             "source_application_abi": crate::engine::COMPILED_PLANE_SOURCE_APPLICATION_ABI,
             "optimization_level": 3,
             "direct_codegen_optimization_level": 3,
@@ -1354,6 +1398,22 @@ fn mixed_backend_runtime_artifact() -> TestArtifact {
         "processes/direct/evaluators/direct.symjit",
         "evaluator-state",
         &direct_application,
+        Some("direct"),
+        true,
+    );
+    add_test_payload(
+        &mut artifact,
+        "processes/direct/evaluators/direct.plane.symjit",
+        "evaluator-state",
+        &direct_plane_application,
+        Some("direct"),
+        true,
+    );
+    add_test_payload(
+        &mut artifact,
+        "processes/direct/evaluators/direct.exact.symbolica",
+        "evaluator-state",
+        b"deferred exact-evaluator test state",
         Some("direct"),
         true,
     );

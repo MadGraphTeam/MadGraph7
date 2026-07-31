@@ -24,6 +24,7 @@ from pyamplicol.models.recurrence_direct_template import (
     RECURRENCE_DIRECT_BACKEND_ABI,
     RECURRENCE_DIRECT_IDENTITY_FINALIZER,
     RECURRENCE_DIRECT_TEMPLATE_ABI,
+    SYMJIT_DIRECT_APPLICATION_ABI,
     PreparedJitDirectSourceV1,
     PreparedNativeDirectCallableSpecV1,
     PreparedNativeDirectSourceV1,
@@ -234,6 +235,14 @@ def test_pending_binding_cannot_claim_direct_payload_paths() -> None:
         )
 
 
+def test_payload_binding_rejects_predecessor_abi_with_regeneration_message() -> None:
+    payload = _payload_binding().to_dict()
+    payload["abi"] = "pyamplicol-recurrence-direct-" + "payload-binding-v1"
+
+    with pytest.raises(RecurrenceDirectTemplateError, match="regenerate"):
+        RecurrenceDirectPayloadBindingV1.from_dict(payload)
+
+
 def test_certified_intrinsic_parent_permutation_round_trips_and_is_authenticated() -> (
     None
 ):
@@ -333,9 +342,9 @@ def test_direct_jit_binding_complexifies_real_inputs_with_shared_zero() -> None:
     )
     source = PreparedJitDirectSourceV1(
         prepared_kernel_id=7,
-        source_application_path="kernels/000007/application.symjit",
+        source_application_path="kernels/000007/application.plane.symjit",
         source_application_sha256=_DIGEST_A,
-        source_application_abi="symjit-application-storage-v3",
+        source_application_abi=SYMJIT_DIRECT_APPLICATION_ABI,
         input_contracts=tuple(
             json.dumps(
                 contract,
@@ -438,8 +447,7 @@ def test_direct_catalog_is_model_generic_and_covers_identity_finalizers(
     )
     assert native_specs
     assert all(
-        kernel_id == spec.prepared_kernel_id
-        for kernel_id, spec in native_specs.items()
+        kernel_id == spec.prepared_kernel_id for kernel_id, spec in native_specs.items()
     )
     assert all(spec.role != "source" for spec in native_specs.values())
     assert all(
@@ -484,12 +492,12 @@ def test_direct_catalog_is_model_generic_and_covers_identity_finalizers(
             kernel.kernel_id: PreparedJitDirectSourceV1(
                 prepared_kernel_id=kernel.kernel_id,
                 source_application_path=(
-                    f"kernels/{kernel.kernel_id:06d}/application.symjit"
+                    f"kernels/{kernel.kernel_id:06d}/application.plane.symjit"
                 ),
                 source_application_sha256=hashlib.sha256(
                     f"application:{kernel.kernel_id}".encode()
                 ).hexdigest(),
-                source_application_abi="symjit-application-storage-v3",
+                source_application_abi=SYMJIT_DIRECT_APPLICATION_ABI,
                 input_contracts=tuple(
                     json.dumps(
                         item.to_dict(),
@@ -578,12 +586,11 @@ def test_direct_catalog_is_model_generic_and_covers_identity_finalizers(
     )
     assert all(item.payload_binding.executable for item in prepared_templates)
     assert all(
-        item.payload_binding.source_application_abi == "symjit-application-storage-v3"
+        item.payload_binding.source_application_abi == SYMJIT_DIRECT_APPLICATION_ABI
         for item in prepared_templates
     )
     assert all(
-        item.payload_binding.direct_application_abi
-        == "symjit-direct-application-storage-v1"
+        item.payload_binding.direct_application_abi == SYMJIT_DIRECT_APPLICATION_ABI
         for item in prepared_templates
     )
     assert all(
@@ -666,8 +673,7 @@ def test_direct_catalog_is_model_generic_and_covers_identity_finalizers(
     assert native_prepared
     assert all(
         item.payload_binding.kind == "prepared-direct-call"
-        and item.payload_binding.direct_application_abi
-        == NATIVE_DIRECT_APPLICATION_ABI
+        and item.payload_binding.direct_application_abi == NATIVE_DIRECT_APPLICATION_ABI
         and item.payload_binding.native_entry_point
         == native_direct_entry_point(
             item.role,
@@ -709,9 +715,7 @@ def test_native_direct_specs_merge_shapes_but_reject_semantic_conflicts() -> Non
         parent_component_shapes=((4, 2),),
         destination_component_counts=(2, 4),
     )
-    merged = direct_template._merge_prepared_native_direct_callable_specs(
-        narrow, wide
-    )
+    merged = direct_template._merge_prepared_native_direct_callable_specs(narrow, wide)
 
     assert merged.parent_component_shapes == ((2, 2), (4, 2))
     assert merged.destination_component_counts == (2, 4)

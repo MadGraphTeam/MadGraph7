@@ -94,3 +94,16 @@ def test_container_root_checkout_does_not_treat_filesystem_root_as_workspace(
     monkeypatch.setattr(_common, "ROOT", Path("/io"))
     assert _common.containing_workspace() == Path("/io")
     assert not _common.is_relative_to(Path("/tmp/release-build"), Path("/io"))
+
+
+def test_release_temporary_path_accepts_only_external_or_artifact_scratch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(_common, "ROOT", Path("/io/pyamplicol"))
+    assert _common._release_temporary_path_is_isolated(
+        Path("/io/pyamplicol/.artifacts/migration/tmp/build")
+    )
+    assert _common._release_temporary_path_is_isolated(Path("/tmp/release-build"))
+    assert not _common._release_temporary_path_is_isolated(
+        Path("/io/other-checkout/release-build")
+    )

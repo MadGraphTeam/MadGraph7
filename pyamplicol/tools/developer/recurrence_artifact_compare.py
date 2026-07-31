@@ -75,6 +75,15 @@ STRUCTURAL_PROOF_ALLOWED_METADATA_PATHS = (
 
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _GIT_REVISION_RE = re.compile(r"[0-9a-f]{40}")
+_RUNTIME_ARTIFACT_ID_PAYLOAD_ROLES = frozenset(
+    {
+        "compiled-model",
+        "evaluator-manifest",
+        "evaluator-state",
+        "model-parameters",
+        "runtime-physics",
+    }
+)
 _EXECUTION_PATH_RE = re.compile(r"processes/([^/]+)/execution[.]json")
 _STRUCTURAL_PROOF_PATH_RE = re.compile(
     r"processes/([^/]+)/structural-source-proof[.]json"
@@ -304,6 +313,28 @@ def _canonical_json_bytes(value: object) -> bytes:
         )
         + "\n"
     ).encode("utf-8")
+
+
+def _runtime_artifact_id(manifest: Mapping[str, Any]) -> str:
+    payloads = manifest.get("payloads")
+    if not isinstance(payloads, list):
+        raise ComparisonError("artifact payload inventory is invalid")
+    records = [
+        dict(payload)
+        for payload in payloads
+        if isinstance(payload, Mapping)
+        and payload.get("role") in _RUNTIME_ARTIFACT_ID_PAYLOAD_ROLES
+    ]
+    records.sort(key=lambda payload: str(payload.get("path", "")))
+    return hashlib.sha256(
+        _canonical_json_bytes(
+            {
+                "kind": "pyamplicol-runtime-payload-identity",
+                "schema_version": 1,
+                "payloads": records,
+            }
+        )
+    ).hexdigest()
 
 
 def _json_object(path: Path, *, description: str) -> dict[str, Any]:
@@ -1140,9 +1171,7 @@ def _validate_manifest_metadata(manifest: Mapping[str, Any]) -> None:
     if manifest.get("schema_version") != 3:
         raise ComparisonError("artifact manifest does not use schema version 3")
     artifact_id = _sha256(manifest.get("artifact_id"), description="artifact_id")
-    addressed = dict(manifest)
-    addressed.pop("artifact_id", None)
-    expected_artifact_id = hashlib.sha256(_canonical_json_bytes(addressed)).hexdigest()
+    expected_artifact_id = _runtime_artifact_id(manifest)
     if artifact_id != expected_artifact_id:
         raise ComparisonError("artifact_id does not authenticate the manifest")
     _utc_timestamp(manifest.get("created_utc"), description="created_utc")

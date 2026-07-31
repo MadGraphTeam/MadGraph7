@@ -636,6 +636,7 @@ fn legacy_flat_momentum_access_round_trips_every_padded_plane_in_place() {
 #[test]
 fn high_footprint_runtime_uses_a_power_of_two_cache_tile() {
     let mut parts = crate::recurrence::direct_plan::tests::valid_parts();
+    parts.strategy = RecurrenceStrategy::ContractedColorUnion;
     parts.point_tile_size = 1024;
     parts.workspace_mib = 256;
     parts.current_arena_components = 4_000;
@@ -665,7 +666,7 @@ fn cache_target_never_rejects_a_point_that_fits_the_workspace_limit() {
     )
     .unwrap();
     let runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 4).unwrap();
-    assert_eq!(runtime.point_tile_size(), 1);
+    assert_eq!(runtime.point_tile_size(), 8);
     assert_eq!(runtime.point_stride(), 8);
 }
 
@@ -1129,7 +1130,7 @@ fn replay_selector_executes_only_its_dependency_closed_rows() {
         direct_executor_handles(),
     )
     .unwrap();
-    let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 1).unwrap();
+    let mut runtime = DirectRecurrenceExecutionRuntime::new(plan, executors, 4).unwrap();
     runtime.set_parameters(&[3.0], &[1.0]).unwrap();
     let selector = runtime.prepare_replay_selector(0).unwrap();
 

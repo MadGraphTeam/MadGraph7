@@ -209,9 +209,9 @@ fn generated_eager_artifact_loads_and_evaluates_through_the_c_abi() {
     assert_eq!(status, RUSTICOL_STATUS_OK, "{}", last_error());
     assert!(resolved.iter().all(|value| value.is_finite()));
     let resolved_sum = resolved.iter().sum::<f64>();
-    let scale = output[0].abs().max(1.0);
+    let tolerance = 1.0e-15 + 1.0e-12 * output[0].abs();
     assert!(
-        (resolved_sum - output[0]).abs() <= 1.0e-12 * scale,
+        (resolved_sum - output[0]).abs() <= tolerance,
         "resolved sum {resolved_sum:.17e} does not reproduce total {:.17e}",
         output[0],
     );

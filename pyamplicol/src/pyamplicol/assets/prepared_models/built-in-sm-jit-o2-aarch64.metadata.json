@@ -1,22 +1,23 @@
 {
   "backend": "jit",
   "build_contract": {
-    "candidate_fingerprint": "66c1787b2565",
+    "candidate_fingerprint": "a38cc68d0520",
     "mode": "candidate",
     "sources": {
       "symbolica": "77c137481904b8a5531ede86e3ef36b82beed7fd",
       "symbolica-community": "0deaa0f1484ec5c24f5f109176fa66f0d30134ca",
-      "symjit": "60a9d66fbfb2181d36a5747c389714eccc187244"
+      "symjit": "4e288ce5f3132b05e2a81eb6452c011b9e2bb936"
     }
   },
   "bundle": "built-in-sm-jit-o2-aarch64.pyamplicol-model",
-  "bundle_sha256": "772ead40a64bc01f37725ad3173a6126765b3f2be70396acbac64bbfa100cf86",
-  "bundle_size": 7342317,
+  "bundle_sha256": "33c9f762362d9c0136db154e57dc666dc221386b5000cbdae8b34f848c59d5ef",
+  "bundle_size": 7536825,
   "dependencies": {
     "symbolica_serialization_abi": "symbolica-bincode2-v1",
     "symbolica_version": "2.2.0",
     "symjit_application_abi": "symjit-application-storage-v3",
-    "symjit_version": "2.21.1",
+    "symjit_plane_application_abi": "pyamplicol-symjit-plane-application-v1",
+    "symjit_version": "2.22.0",
     "ufo_model_loader_version": "0.1.7"
   },
   "eager_kernel_abi": "pyamplicol-eager-kernel-v1",
@@ -27,11 +28,11 @@
   "prepared_model_bundle_schema": 1,
   "producer": {
     "compiled_model_schema": 9,
-    "model_compiler_sha256": "ebf9a8b2dbaf0e1ebc9f7090ef9ca7c3db7f177e428936399fa2617152a3c7e3",
+    "model_compiler_sha256": "f1fc69b68d585e5c4f85068c8b7e86820822d0cf9dbccde9d0bd78fc317497e6",
     "model_compiler_version": 13,
     "model_source_digest": "7f6fc84e6d7c4eda6c531b9901ab891abd67c3c0e2ad9d492b30ece760352ba8",
-    "package_version": "0.1.0.dev0+candidate.66c1787b2565",
-    "prepared_pack_compiler_sha256": "a313da7045c35f3271dc388ce132efacdcbc91062c1aa42f010d14500e52718e"
+    "package_version": "0.1.0.dev0+candidate.a38cc68d0520",
+    "prepared_pack_compiler_sha256": "d6c1b0757cf81a7bc5e794cb8a494082dfd6bb97a12b92886e5b838cf3c624ee"
   },
   "schema_version": 1,
   "target": {

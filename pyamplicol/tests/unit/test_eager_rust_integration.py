@@ -383,7 +383,7 @@ def test_eager_direct_descriptor_is_serialized_into_kernel_metadata(
     class Bundle:
         @staticmethod
         def read_payload(path: str) -> bytes:
-            assert path == "kernels/17/application.symjit"
+            assert path == "kernels/17/plane-application.symjit"
             return source
 
     monkeypatch.setattr(
@@ -400,6 +400,13 @@ def test_eager_direct_descriptor_is_serialized_into_kernel_metadata(
             "kind": "symjit-application-evaluator",
             "application_path": "kernels/17/application.symjit",
             "application_abi": artifact_writer.SYMJIT_APPLICATION_ABI,
+            "plane_application": {
+                "application_path": "kernels/17/plane-application.symjit",
+                "application_abi": artifact_writer.SYMJIT_PLANE_APPLICATION_ABI,
+                "storage_abi": artifact_writer.SYMJIT_APPLICATION_ABI,
+                "input_complex_count": 3,
+                "output_complex_count": 2,
+            },
             "build_timing": {"jit_materialize_s": 0.5},
         },
     )
@@ -410,7 +417,7 @@ def test_eager_direct_descriptor_is_serialized_into_kernel_metadata(
     assert manifest["build_timing"]["eager_direct_descriptor_s"] >= 0.0
     assert manifest["direct_table"] == {
         "capability": EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY,
-        "source_application_abi": artifact_writer.SYMJIT_APPLICATION_ABI,
+        "source_application_abi": artifact_writer.SYMJIT_PLANE_APPLICATION_ABI,
         "descriptor_abi": artifact_writer.EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
         "binding_abi": artifact_writer.EAGER_DIRECT_TABLE_BINDING_ABI,
         "descriptor_path": path,
@@ -434,7 +441,7 @@ def test_eager_direct_descriptor_rejects_non_symjit_source() -> None:
                 "incompatible metadata must fail before payload access"
             )
 
-    with pytest.raises(ValueError, match="incompatible source ABI"):
+    with pytest.raises(ValueError, match="plane-application ABI"):
         artifact_writer._eager_direct_evaluator_manifest(
             bundle=Bundle(),
             kernel_id=17,

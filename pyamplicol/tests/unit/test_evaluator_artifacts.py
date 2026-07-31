@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from typing import Any
 import numpy as np
 import pytest
 
+import pyamplicol.evaluators.symbolica_adapters as symbolica_adapters
 from pyamplicol._internal.physics.types import NativeEvaluationError
 from pyamplicol._internal.versions import (
     SYMBOLICA_ASM_RUNTIME_CAPABILITY,
@@ -17,6 +19,7 @@ from pyamplicol._internal.versions import (
     SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
     SYMJIT_APPLICATION_ABI,
     SYMJIT_F64_RUNTIME_CAPABILITY,
+    SYMJIT_PLANE_APPLICATION_ABI,
 )
 from pyamplicol.evaluators.execution_schema import evaluator_runtime_capabilities
 from pyamplicol.evaluators.symbolica_adapters import (
@@ -50,6 +53,37 @@ class _FakeJITEvaluator:
 
     def save(self) -> bytes:
         return b"symbolica-evaluator-state"
+
+    def get_instructions(self) -> tuple[list[object], int, list[object]]:
+        return ([("assign", ("out", 0), ("param", 0))], 1, [])
+
+
+class _FakeRusticol:
+    @staticmethod
+    def _compile_symjit_plane_application_v2(
+        program: str,
+        input_len: int,
+        output_len: int,
+        optimization_level: int,
+        compress: bool,
+    ) -> bytes:
+        assert program
+        assert input_len >= 1
+        assert output_len >= 1
+        assert optimization_level in {0, 1, 2, 3}
+        assert isinstance(compress, bool)
+        return b"symjit-plane-application-v2"
+
+
+@pytest.fixture(autouse=True)
+def _fake_plane_compiler(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _FakeRusticol()
+    monkeypatch.setitem(sys.modules, "pyamplicol._rusticol", fake)
+    monkeypatch.setattr(
+        symbolica_adapters,
+        "verify_native_module",
+        lambda _module: None,
+    )
 
 
 class _MappedEvaluator:
@@ -115,6 +149,12 @@ def test_jit_artifact_persists_direct_application_and_precision_fallback(
     assert (tmp_path / str(manifest["application_path"])).read_bytes() == (
         b"symjit-application-v3"
     )
+    plane = manifest["plane_application"]
+    assert isinstance(plane, dict)
+    assert plane["application_abi"] == SYMJIT_PLANE_APPLICATION_ABI
+    assert (
+        tmp_path / str(plane["application_path"])
+    ).read_bytes() == b"symjit-plane-application-v2"
     assert (tmp_path / str(manifest["evaluator_state_path"])).read_bytes() == (
         b"symbolica-evaluator-state"
     )
@@ -296,6 +336,7 @@ def test_artifact_writer_preserves_direct_symjit_contract(tmp_path: Path) -> Non
         "kind",
         "optimization_level",
         "output_len",
+        "plane_application",
         "required_defuns",
         "runtime_capability",
         "translation_mode",

@@ -1,5 +1,11 @@
 # Eager/Compiled Direct-Arena ABI Prototype
 
+> Historical milestone record. The dependency, patches, and v1 binding
+> identities below describe the superseded prototype, not the current build.
+> See
+> [`SYMJIT_CRATE_2_22_ARENA_MIGRATION_PLAN.md`](SYMJIT_CRATE_2_22_ARENA_MIGRATION_PLAN.md)
+> for the active SymJIT 2.22.0 P-kernel design.
+
 This milestone pins the risk-first SymJIT substrate needed by the independent
 eager and compiled execution lanes. It is not yet an end-to-end runtime
 performance claim.
@@ -24,10 +30,10 @@ performance claim.
 ## Frozen internal contracts
 
 - Ordinary source application: `symjit-application-storage-v3`.
-- Compiled fused-stage application:
-  `symjit-direct-application-storage-v1`.
-- Eager table descriptor: `symjit-direct-table-descriptor-v1`.
-- Eager table binding: `symjit-direct-table-binding-v1`.
+- Compiled fused-stage plane kernel:
+  `pyamplicol-compiled-plane-kernel-v1`.
+- Eager table descriptor: `pyamplicol-eager-plane-table-descriptor-v1`.
+- Eager table binding: `pyamplicol-eager-plane-table-binding-v1`.
 
 Compiled applications retain O3 compressed funclets, use identity overwrite
 with no output factor, reject input/output and output/output aliasing, support

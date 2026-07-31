@@ -32,10 +32,10 @@ RESULT_SCHEMA_VERSION = 1
 STAGE_PLAN_KIND = "compiled-stage-plan"
 STAGE_PLAN_SCHEMA_VERSION = 2
 
-DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v1"
-SOURCE_APPLICATION_ABI = "symjit-application-storage-v3"
-DIRECT_TABLE_BINDING_ABI = "symjit-direct-table-binding-v1"
-DIRECT_TABLE_DESCRIPTOR_ABI = "symjit-direct-table-descriptor-v1"
+DIRECT_APPLICATION_ABI = "pyamplicol-compiled-plane-kernel-v2"
+SOURCE_APPLICATION_ABI = "pyamplicol-symjit-plane-application-v2"
+DIRECT_TABLE_BINDING_ABI = "pyamplicol-eager-plane-table-binding-v2"
+DIRECT_TABLE_DESCRIPTOR_ABI = "pyamplicol-eager-plane-table-descriptor-v1"
 
 _ROOT = Path(__file__).resolve().parents[2]
 with (_ROOT / "dependencies" / "contributor-lock.toml").open("rb") as _stream:

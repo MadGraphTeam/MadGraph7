@@ -17,8 +17,9 @@ runtime_physics = 1
 c_abi = 1
 symbolica_serialization = "symbolica-bincode2-v1"
 symjit_application = "symjit-application-storage-v3"
+symjit_plane_application = "pyamplicol-symjit-plane-application-v2"
 prepared_model_bundle = 1
-prepared_kernel_variant = "pyamplicol-prepared-kernel-variant-v1"
+prepared_kernel_variant = "pyamplicol-prepared-kernel-variant-v2"
 eager_kernel = "pyamplicol-eager-kernel-v1"
 eager_plan = "pyamplicol-eager-plan-v2"
 eager_selector_domains = "pyamplicol-eager-selector-domains-v1"
@@ -89,9 +90,18 @@ rust_version = "2.2.0"
 serialization_abi = "symbolica-bincode2-v1"
 
 [symjit]
-version = "2.21.1"
-repository = "https://github.com/ValentinHirschi/symjit_changes_for_pyamplicol.git"
-revision = "60a9d66fbfb2181d36a5747c389714eccc187244"
+version = "2.22.0"
+repository = "https://github.com/siravan/symjit-crate.git"
+revision = "77789ff0f78232b1ea4608aceb397058df50b06d"
+source_url = "https://github.com/siravan/symjit-crate/archive/77789ff0f78232b1ea4608aceb397058df50b06d.tar.gz"
+archive_prefix = "symjit-crate-77789ff0f78232b1ea4608aceb397058df50b06d"
+archive_sha256 = "b3cb6451eff299b27709115053caed579bc266bbd46923a70066b5ac554dd0ac"
+source_tree_sha256 = "88aa6a50ec7ad120d3d832f4d98e3efe89ea259e925c9ed139904b8dd7607453"
+configured_tree_sha256 = "4b4b791b0f2bbef33a7dbd2936d20dc722f7301e2e9e986b65b2a8b94d220b31"
+release_cargo_lock_sha256 = "acc74268440a3913efcbfdff031d23abc2fc956b522b054996543a4576f9edd3"
+patches = [
+  { name = "symjit-raw-plane-descriptor-v1", target = "symjit", path = "patches/symjit/upstream/0001-Expose-a-stable-raw-P-kernel-plane-descriptor.patch", sha256 = "70012117436d77265b349c013b0df8c4fe72a04ced972090ba3ac069721b436d", applies_to_revision = "77789ff0f78232b1ea4608aceb397058df50b06d" },
+]
 
 [ufo_model_loader]
 python_distribution = "ufo-model-loader"

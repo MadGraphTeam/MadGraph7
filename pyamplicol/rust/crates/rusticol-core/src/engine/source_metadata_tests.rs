@@ -578,11 +578,11 @@ fn high_precision_sources_use_typed_orientation_crossing_and_phase() {
     let phase = c_generic(DoubleFloat::from(0.5), DoubleFloat::from(-0.25));
     let expected = ext_antiquark_weyl_generic(&momentum, 1, -1)
         .into_iter()
-        .map(|component| component * &phase)
+        .map(|component| component * phase)
         .collect::<Vec<_>>();
     let unexpected = ext_quark_weyl_generic(&momentum, 1, -1)
         .into_iter()
-        .map(|component| component * &phase)
+        .map(|component| component * phase)
         .collect::<Vec<_>>();
     assert_eq!(output, expected);
     assert_ne!(output, unexpected);

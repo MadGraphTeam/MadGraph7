@@ -75,6 +75,7 @@ pub struct RecurrenceRelationDiscoveryOptions {
 }
 
 impl RecurrenceRelationDiscoveryOptions {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         mode: RecurrenceRelationDiscoveryMode,
         precision_digits: u32,

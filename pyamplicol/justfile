@@ -6,6 +6,7 @@ build_mode := env_var_or_default("PYAMPLICOL_BUILD_MODE", "release")
 eager_builtin_pack := env_var_or_default("PYAMPLICOL_EAGER_BUILTIN_PACK", ".artifacts/eager-models/builtin-sm-jit-o3.pyamplicol-model")
 eager_ufo_pack := env_var_or_default("PYAMPLICOL_EAGER_UFO_SM_PACK", ".artifacts/eager-models/ufo-sm-jit-o3.pyamplicol-model")
 eager_ufo_source := env_var_or_default("PYAMPLICOL_EAGER_UFO_SM_SOURCE", "src/pyamplicol/assets/models/json/sm/sm.json")
+dev_cache := ".artifacts/dev-install"
 
 default:
     @just --list
@@ -116,8 +117,9 @@ install-wheel PYTHON_ARG="":
     {{python}} tools/release/install_wheel.py --python "$selected"
 
 dev-install: _source-checkout
-    {{python}} dependencies/install_dependencies.py
-    PYAMPLICOL_BUILD_MODE=candidate {{python}} tools/developer/prepare_source_runtime.py --candidate --wheel-directory .artifacts/candidate
+    mkdir -p {{dev_cache}}/tmp {{dev_cache}}/cargo-home {{dev_cache}}/cargo-target {{dev_cache}}/pip-cache {{dev_cache}}/xdg-cache {{dev_cache}}/python-cache
+    TMPDIR="$PWD/{{dev_cache}}/tmp" CARGO_HOME="$PWD/{{dev_cache}}/cargo-home" CARGO_TARGET_DIR="$PWD/{{dev_cache}}/cargo-target" PIP_CACHE_DIR="$PWD/{{dev_cache}}/pip-cache" XDG_CACHE_HOME="$PWD/{{dev_cache}}/xdg-cache" PYTHONPYCACHEPREFIX="$PWD/{{dev_cache}}/python-cache" {{python}} dependencies/install_dependencies.py
+    TMPDIR="$PWD/{{dev_cache}}/tmp" CARGO_HOME="$PWD/{{dev_cache}}/cargo-home" CARGO_TARGET_DIR="$PWD/{{dev_cache}}/cargo-target" PIP_CACHE_DIR="$PWD/{{dev_cache}}/pip-cache" XDG_CACHE_HOME="$PWD/{{dev_cache}}/xdg-cache" PYTHONPYCACHEPREFIX="$PWD/{{dev_cache}}/python-cache" PYAMPLICOL_BUILD_MODE=candidate {{python}} tools/developer/prepare_source_runtime.py --candidate --wheel-directory .artifacts/candidate
 
 # Report/campaign prerequisite. pyAmpliCol is not released yet, so this keeps
 # the explicit build entrypoint tied to the pinned dev-install environment.

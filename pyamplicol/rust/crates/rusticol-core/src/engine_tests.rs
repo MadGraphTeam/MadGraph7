@@ -5,6 +5,69 @@ use super::physics::certifies_lc_direct_total_source;
 use super::*;
 use serde_json::json;
 
+fn symjit_plane_application_manifest(target: Value) -> SymjitPlaneApplicationManifest {
+    serde_json::from_value(json!({
+        "application_path": "evaluators/kernel.plane.symjit",
+        "application_abi": SYMJIT_PLANE_APPLICATION_ABI,
+        "storage_abi": SYMJIT_APPLICATION_STORAGE_ABI,
+        "element_layout": "split-complex-plane-major",
+        "descriptor_order": "inputs-re-im-then-outputs-re-im",
+        "input_complex_count": 2,
+        "output_complex_count": 1,
+        "input_plane_count": 4,
+        "output_plane_count": 2,
+        "compiler_type": "native",
+        "translation_mode": "symbolica-structured-instructions",
+        "optimization_level": 2,
+        "simd": true,
+        "complex": true,
+        "fast_math": true,
+        "fast_complex": false,
+        "compression": false,
+        "threading": false,
+        "direct_arena": true,
+        "source_digest": "a".repeat(64),
+        "target": target,
+    }))
+    .unwrap()
+}
+
+#[test]
+fn symjit_plane_application_manifest_authenticates_target_shape() {
+    for target in [
+        json!({"word_bits": 64, "endianness": "little"}),
+        json!({
+            "word_bits": 64,
+            "endianness": "little",
+            "triple": "aarch64-apple-darwin",
+            "cpu_features": ["aes", "neon"],
+        }),
+    ] {
+        symjit_plane_application_manifest(target)
+            .validate(2, 1, 2)
+            .unwrap();
+    }
+
+    for target in [
+        json!({"word_bits": 32, "endianness": "little"}),
+        json!({"word_bits": 64, "endianness": "big"}),
+        json!({"word_bits": 64, "endianness": "little", "triple": ""}),
+        json!({"word_bits": 64, "endianness": "little", "cpu_features": "neon"}),
+        json!({
+            "word_bits": 64,
+            "endianness": "little",
+            "cpu_features": ["neon", "neon"],
+        }),
+        json!({"word_bits": 64, "endianness": "little", "unexpected": true}),
+    ] {
+        let error = symjit_plane_application_manifest(target)
+            .validate(2, 1, 2)
+            .unwrap_err();
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+        assert!(error.message().contains("regenerate"));
+    }
+}
+
 fn native_compiled_direct_application() -> NativeCompiledDirectApplicationManifest {
     NativeCompiledDirectApplicationManifest {
         application_abi: "pyamplicol-native-compiled-direct-application-v1".to_string(),

@@ -191,20 +191,21 @@ _ARENA_CAPABILITY = {
     ExecutionMode.EAGER: "eager-direct-arena-v1",
     ExecutionMode.RECURRENCE: ("rusticol.recurrence-direct-arena.complex-f64.v1"),
 }
-_COMPILED_DIRECT_ABI = "symjit-direct-application-storage-v1"
+_COMPILED_DIRECT_ABI = "pyamplicol-compiled-plane-kernel-v2"
 _NATIVE_COMPILED_DIRECT_ABI = "pyamplicol-native-compiled-direct-application-v1"
 _SYMJIT_APPLICATION_ABI = "symjit-application-storage-v3"
+_SYMJIT_PLANE_APPLICATION_ABI = "pyamplicol-symjit-plane-application-v2"
 _EAGER_NATIVE_APPLICATION_ABI = "pyamplicol-eager-native-direct-table-v1"
 _EAGER_DIRECT_CAPABILITY = "eager-direct-arena-v1"
-_EAGER_DIRECT_DESCRIPTOR_ABI = "symjit-direct-table-descriptor-v1"
-_EAGER_DIRECT_BINDING_ABI = "symjit-direct-table-binding-v1"
+_EAGER_DIRECT_DESCRIPTOR_ABI = "pyamplicol-eager-plane-table-descriptor-v1"
+_EAGER_DIRECT_BINDING_ABI = "pyamplicol-eager-plane-table-binding-v2"
 _RECURRENCE_DIRECT_TEMPLATE_ABI = "pyamplicol-recurrence-direct-template-v1"
 _RECURRENCE_DIRECT_BACKEND_ABI = "rusticol.recurrence-direct-backend.v1"
 _RECURRENCE_DIRECT_CANONICALIZATION_ABI = "pyamplicol-canonical-json-v1"
 _RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI = (
-    "pyamplicol-recurrence-direct-payload-binding-v1"
+    "pyamplicol-recurrence-plane-binding-v2"
 )
-_RECURRENCE_JIT_DIRECT_APPLICATION_ABI = "symjit-direct-application-storage-v1"
+_RECURRENCE_JIT_DIRECT_APPLICATION_ABI = "pyamplicol-symjit-plane-application-v2"
 _SOURCE_RUNTIME_CAPABILITY = {
     "jit": "symjit.application.complex-f64.v1",
     "cpp": "symbolica.compiled-cpp.complex-f64.v1",
@@ -1884,17 +1885,17 @@ def _audit_pdf(service: ReportService) -> dict[str, object]:
 def _expected_evaluator_abis(cell: CellSpec) -> tuple[str, str]:
     if cell.measurement.execution_mode is ExecutionMode.COMPILED:
         if cell.measurement.backend == "jit":
-            return _COMPILED_DIRECT_ABI, _SYMJIT_APPLICATION_ABI
+            return _COMPILED_DIRECT_ABI, _SYMJIT_PLANE_APPLICATION_ABI
         return _NATIVE_COMPILED_DIRECT_ABI, _NATIVE_COMPILED_DIRECT_ABI
     if cell.measurement.execution_mode is ExecutionMode.EAGER:
         source = (
-            _SYMJIT_APPLICATION_ABI
+            _SYMJIT_PLANE_APPLICATION_ABI
             if cell.measurement.backend == "jit"
             else _EAGER_NATIVE_APPLICATION_ABI
         )
-        return "symjit-direct-table-binding-v1", source
+        return _EAGER_DIRECT_BINDING_ABI, source
     source = (
-        _SYMJIT_APPLICATION_ABI
+        _SYMJIT_PLANE_APPLICATION_ABI
         if cell.measurement.backend == "jit"
         else _SOURCE_RUNTIME_CAPABILITY[cell.measurement.backend]
     )
@@ -1981,7 +1982,10 @@ def _audit_runtime_identity(
         and cell.measurement.backend == "jit"
     ):
         direct_level = identity.get(direct_level_field)
-        if type(direct_level) is not int or direct_level != 3:
+        if (
+            type(direct_level) is not int
+            or direct_level != cell.measurement.jit_optimization_level
+        ):
             mismatches.append(direct_level_field)
         direct_identity = _mapping(
             identity.get("direct_codegen_identity"),
@@ -1990,7 +1994,8 @@ def _audit_runtime_identity(
         if (
             direct_identity.get("kind")
             != "authenticated-compiled-plane-arena-direct-codegen-v1"
-            or direct_identity.get("optimization_level") != 3
+            or direct_identity.get("optimization_level")
+            != cell.measurement.jit_optimization_level
             or direct_identity.get("source_optimization_level")
             != cell.measurement.jit_optimization_level
             or type(direct_identity.get("leaf_count")) is not int
@@ -2029,7 +2034,7 @@ def _audit_runtime_identity(
             or type(source_jit_identity.get("source_evaluator_leaf_count")) is not int
             or int(source_jit_identity["source_evaluator_leaf_count"]) <= 0
             or source_jit_identity.get("source_application_abi")
-            != _SYMJIT_APPLICATION_ABI
+            != _SYMJIT_PLANE_APPLICATION_ABI
             or source_jit_identity.get("direct_application_abi")
             != _RECURRENCE_JIT_DIRECT_APPLICATION_ABI
             or _SHA256_RE.fullmatch(
@@ -2750,12 +2755,94 @@ def _walk_compiled_lanes(
     return result
 
 
+def _audit_symjit_plane_evaluator_leaves(
+    value: object,
+    *,
+    optimization_level: int,
+    context: str,
+) -> list[tuple[str, str]]:
+    evaluator = _mapping(value, context)
+    if evaluator.get("kind") == "chunked-symbolica-evaluator":
+        chunks = _sequence(evaluator.get("chunks"), f"{context}.chunks")
+        if not chunks:
+            raise FinalAuditError(f"{context} has no source-evaluator leaves")
+        leaves: list[tuple[str, str]] = []
+        for index, chunk in enumerate(chunks):
+            leaves.extend(
+                _audit_symjit_plane_evaluator_leaves(
+                    chunk,
+                    optimization_level=optimization_level,
+                    context=f"{context}.chunks[{index}]",
+                )
+            )
+        return leaves
+    mismatches: list[str] = []
+    if evaluator.get("kind") != "symjit-application-evaluator":
+        mismatches.append("kind")
+    if evaluator.get("backend") != "jit":
+        mismatches.append("backend")
+    if evaluator.get("runtime_capability") != _SOURCE_RUNTIME_CAPABILITY["jit"]:
+        mismatches.append("runtime_capability")
+    if evaluator.get("application_abi") != _SYMJIT_APPLICATION_ABI:
+        mismatches.append("application_abi")
+    if evaluator.get("optimization_level") != optimization_level:
+        mismatches.append("optimization_level")
+    _canonical_relative_path(
+        evaluator.get("application_path"),
+        f"{context}.ordinary_application",
+    )
+    plane = _mapping(
+        evaluator.get("plane_application"),
+        f"{context}.plane_application",
+    )
+    if plane.get("application_abi") != _SYMJIT_PLANE_APPLICATION_ABI:
+        mismatches.append("plane_application.application_abi")
+    if plane.get("storage_abi") != _SYMJIT_APPLICATION_ABI:
+        mismatches.append("plane_application.storage_abi")
+    if (
+        plane.get("translation_mode")
+        != "symbolica-structured-instructions"
+    ):
+        mismatches.append("plane_application.translation_mode")
+    if plane.get("direct_arena") is not True:
+        mismatches.append("plane_application.direct_arena")
+    if plane.get("optimization_level") != optimization_level:
+        mismatches.append("plane_application.optimization_level")
+    plane_path = _canonical_relative_path(
+        plane.get("application_path"),
+        f"{context}.plane_application.application",
+    ).as_posix()
+    source_digest = _require_sha256(
+        plane.get("source_digest"),
+        f"{context}.plane_application.source_digest",
+    )
+    if mismatches:
+        raise FinalAuditError(
+            f"{context} differs from the JIT plane source evaluator contract: "
+            + ", ".join(mismatches)
+        )
+    return [(plane_path, source_digest)]
+
+
 def _audit_source_evaluator(
     value: object,
     cell: CellSpec,
     *,
     context: str,
 ) -> int:
+    if cell.measurement.backend == "jit":
+        level = cell.measurement.jit_optimization_level
+        if isinstance(level, bool) or not isinstance(level, int):
+            raise FinalAuditError(
+                f"{context} has no authenticated JIT optimization level"
+            )
+        return len(
+            _audit_symjit_plane_evaluator_leaves(
+                value,
+                optimization_level=level,
+                context=context,
+            )
+        )
     evaluator = _mapping(value, context)
     kind = evaluator.get("kind")
     if kind == "chunked-symbolica-evaluator":
@@ -2770,11 +2857,7 @@ def _audit_source_evaluator(
             )
             for index, chunk in enumerate(chunks)
         )
-    expected_kind = (
-        "symjit-application-evaluator"
-        if cell.measurement.backend == "jit"
-        else "compiled-complex-evaluator"
-    )
+    expected_kind = "compiled-complex-evaluator"
     expected_capability = _SOURCE_RUNTIME_CAPABILITY.get(cell.measurement.backend)
     if expected_capability is None:
         raise FinalAuditError(
@@ -2786,12 +2869,6 @@ def _audit_source_evaluator(
         mismatches.append("kind")
     if evaluator.get("runtime_capability") != expected_capability:
         mismatches.append("runtime_capability")
-    if (
-        cell.measurement.backend == "jit"
-        and evaluator.get("optimization_level")
-        != cell.measurement.jit_optimization_level
-    ):
-        mismatches.append("optimization_level")
     if mismatches:
         raise FinalAuditError(
             f"{context} differs from the {cell.measurement.backend} source "
@@ -2860,14 +2937,31 @@ def _audit_compiled_execution(
                 mismatches.append("output_bindings")
             if not leaves:
                 mismatches.append("leaves")
-            source_leaf_count = _audit_source_evaluator(
-                stage.get("evaluator"),
-                cell,
-                context=f"{lane_path}.stage[{index}].evaluator",
-            )
+            source_planes: list[tuple[str, str]] = []
+            if cell.measurement.backend == "jit":
+                source_level = cell.measurement.jit_optimization_level
+                if isinstance(source_level, bool) or not isinstance(
+                    source_level,
+                    int,
+                ):
+                    raise FinalAuditError(
+                        f"{lane_path}.stage[{index}] has no JIT optimization level"
+                    )
+                source_planes = _audit_symjit_plane_evaluator_leaves(
+                    stage.get("evaluator"),
+                    optimization_level=source_level,
+                    context=f"{lane_path}.stage[{index}].evaluator",
+                )
+                source_leaf_count = len(source_planes)
+            else:
+                source_leaf_count = _audit_source_evaluator(
+                    stage.get("evaluator"),
+                    cell,
+                    context=f"{lane_path}.stage[{index}].evaluator",
+                )
             if source_leaf_count != len(leaves):
                 mismatches.append("source_evaluator_leaf_count")
-            for leaf in leaves:
+            for leaf_index, leaf in enumerate(leaves):
                 leaf_record = _mapping(leaf, f"{lane_path}.arena.leaf")
                 if leaf_record.get("source_application_abi") != expected_source:
                     mismatches.append("leaf.source_application_abi")
@@ -2877,7 +2971,22 @@ def _audit_compiled_execution(
                     != cell.measurement.jit_optimization_level
                 ):
                     mismatches.append("leaf.optimization_level")
-                if leaf_record.get("direct_codegen_optimization_level") != 3:
+                if (
+                    cell.measurement.backend == "jit"
+                    and leaf_index < len(source_planes)
+                    and leaf_record.get("application_path")
+                    != source_planes[leaf_index][0]
+                ):
+                    mismatches.append("leaf.application_path")
+                expected_direct_level = (
+                    cell.measurement.jit_optimization_level
+                    if cell.measurement.backend == "jit"
+                    else 3
+                )
+                if (
+                    leaf_record.get("direct_codegen_optimization_level")
+                    != expected_direct_level
+                ):
                     mismatches.append("leaf.direct_codegen_optimization_level")
             if mismatches:
                 raise FinalAuditError(
@@ -3309,7 +3418,8 @@ def _audit_recurrence_source_pack(
         )
         prepared_kernel_id = binding.get("prepared_kernel_id")
         if (
-            binding.get("source_application_abi") != _SYMJIT_APPLICATION_ABI
+            binding.get("source_application_abi")
+            != _SYMJIT_PLANE_APPLICATION_ABI
             or binding.get("direct_application_abi")
             != _RECURRENCE_JIT_DIRECT_APPLICATION_ABI
             or binding.get("payload_paths") != [source_path]
@@ -3333,7 +3443,7 @@ def _audit_recurrence_source_pack(
         "direct_template_count": len(templates),
         "prepared_direct_template_count": prepared_direct_template_count,
         "source_evaluator_leaf_count": source_evaluator_leaf_count,
-        "source_application_abi": _SYMJIT_APPLICATION_ABI,
+        "source_application_abi": _SYMJIT_PLANE_APPLICATION_ABI,
         "direct_application_abi": _RECURRENCE_JIT_DIRECT_APPLICATION_ABI,
         "prepared_kernel_pack_digest": prepared_kernel_pack_digest,
         "direct_template_catalog_digest": direct_template_catalog_digest,
@@ -3504,50 +3614,22 @@ def _audit_recurrence_source_evaluator_leaves(
     authenticate_payload: Callable[..., str],
     context: str,
 ) -> list[tuple[str, str]]:
-    evaluator = _mapping(value, context)
-    if evaluator.get("kind") == "chunked-symbolica-evaluator":
-        chunks = _sequence(evaluator.get("chunks"), f"{context}.chunks")
-        if not chunks:
-            raise FinalAuditError(f"{context} has no source-evaluator leaves")
-        leaves: list[tuple[str, str]] = []
-        for index, chunk in enumerate(chunks):
-            leaves.extend(
-                _audit_recurrence_source_evaluator_leaves(
-                    chunk,
-                    payload_root=payload_root,
-                    authenticate_payload=authenticate_payload,
-                    context=f"{context}.chunks[{index}]",
-                )
-            )
-        return leaves
-    mismatches = []
-    if evaluator.get("kind") != "symjit-application-evaluator":
-        mismatches.append("kind")
-    if evaluator.get("backend") != "jit":
-        mismatches.append("backend")
-    if evaluator.get("runtime_capability") != _SOURCE_RUNTIME_CAPABILITY["jit"]:
-        mismatches.append("runtime_capability")
-    if evaluator.get("application_abi") != _SYMJIT_APPLICATION_ABI:
-        mismatches.append("application_abi")
-    if evaluator.get("optimization_level") != 2:
-        mismatches.append("optimization_level")
-    if mismatches:
-        raise FinalAuditError(
-            f"{context} differs from the JIT O2 source evaluator contract: "
-            + ", ".join(mismatches)
-        )
-    application_path = _canonical_relative_path(
-        evaluator.get("application_path"),
-        f"{context}.application",
-    ).as_posix()
-    payload_path = (
-        PurePosixPath(payload_root) / PurePosixPath(application_path)
-    ).as_posix()
-    sha256 = authenticate_payload(
-        payload_path,
-        context=f"{context}.application",
+    plane_leaves = _audit_symjit_plane_evaluator_leaves(
+        value,
+        optimization_level=2,
+        context=context,
     )
-    return [(application_path, sha256)]
+    result: list[tuple[str, str]] = []
+    for application_path, _source_digest in plane_leaves:
+        payload_path = (
+            PurePosixPath(payload_root) / PurePosixPath(application_path)
+        ).as_posix()
+        sha256 = authenticate_payload(
+            payload_path,
+            context=f"{context}.plane_application",
+        )
+        result.append((application_path, sha256))
+    return result
 
 
 def _audit_recurrence_execution(

@@ -28,6 +28,10 @@ mod symjit;
 #[cfg(feature = "f64-symjit")]
 pub(crate) use symjit::*;
 
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[path = "evaluator/symjit_plane.rs"]
+pub(crate) mod symjit_plane;
+
 #[cfg(feature = "f64-symjit")]
 #[path = "evaluator/symjit_direct.rs"]
 pub(crate) mod symjit_direct;

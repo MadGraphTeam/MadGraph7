@@ -320,6 +320,32 @@ impl EagerNativeRuntime {
         }
     }
 
+    fn direct_internal_scratch_bytes(&self) -> u64 {
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        {
+            self.direct_scheduler
+                .as_ref()
+                .map_or(0, |scheduler| scheduler.internal_scratch_bytes())
+        }
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
+        {
+            0
+        }
+    }
+
+    fn direct_internal_broadcast_bytes(&self) -> u64 {
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        {
+            self.direct_scheduler
+                .as_ref()
+                .map_or(0, |scheduler| scheduler.internal_broadcast_bytes())
+        }
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
+        {
+            0
+        }
+    }
+
     pub(super) fn backend_name(&self) -> &str {
         &self.backend_name
     }
@@ -1153,6 +1179,8 @@ impl EagerNativeRuntime {
                 eager_closure_s: eager.closure.as_secs_f64(),
                 eager_reduction_s: eager.reduction.as_secs_f64(),
                 eager_copy_out_s: eager.copy_out.as_secs_f64(),
+                eager_internal_scratch_bytes: eager.internal_scratch_bytes,
+                eager_internal_broadcast_bytes: eager.internal_broadcast_bytes,
                 evaluator_backend_call_count: eager.backend_call_count,
                 ..RuntimeProfile::default()
             },
@@ -1405,6 +1433,8 @@ impl EagerNativeRuntime {
                 eager_closure_s: eager.closure.as_secs_f64(),
                 eager_reduction_s: reduction.as_secs_f64(),
                 eager_copy_out_s: eager.copy_out.as_secs_f64(),
+                eager_internal_scratch_bytes: eager.internal_scratch_bytes,
+                eager_internal_broadcast_bytes: eager.internal_broadcast_bytes,
                 evaluator_backend_call_count: eager.backend_call_count,
                 ..RuntimeProfile::default()
             },
@@ -1426,6 +1456,8 @@ impl EagerNativeRuntime {
             ));
         }
         let total_start = Instant::now();
+        let eager_internal_scratch_before = self.direct_internal_scratch_bytes();
+        let eager_internal_broadcast_before = self.direct_internal_broadcast_bytes();
         let point_count = batch.len();
         let physics = common.physics.clone().ok_or_else(|| {
             RusticolError::artifact(
@@ -1501,6 +1533,12 @@ impl EagerNativeRuntime {
                 selected_color_ids,
             )?;
             let reduction_s = reduction_start.elapsed().as_secs_f64();
+            let eager_internal_scratch_bytes = self
+                .direct_internal_scratch_bytes()
+                .saturating_sub(eager_internal_scratch_before);
+            let eager_internal_broadcast_bytes = self
+                .direct_internal_broadcast_bytes()
+                .saturating_sub(eager_internal_broadcast_before);
             Ok((
                 resolved,
                 RuntimeProfile {
@@ -1511,6 +1549,8 @@ impl EagerNativeRuntime {
                     stage_evaluator_s: evaluator_s,
                     reduction_s,
                     eager_reduction_s: reduction_s,
+                    eager_internal_scratch_bytes,
+                    eager_internal_broadcast_bytes,
                     total_s: total_start.elapsed().as_secs_f64(),
                     evaluator_backend_call_count: u64::try_from(mappings.len()).map_err(|_| {
                         RusticolError::invalid_argument(

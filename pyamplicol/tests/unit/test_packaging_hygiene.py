@@ -83,6 +83,44 @@ def test_contributor_and_release_locks_share_compatibility_abi(
         package_version.check_contributor_lock_consistency(root)
 
 
+def test_contributor_and_release_locks_share_symjit_plane_abi(
+    tmp_path: Path,
+) -> None:
+    root = _copy_version_contract(tmp_path)
+    package_version.check_contributor_lock_consistency(root)
+    lock = root / "dependencies" / "contributor-lock.toml"
+    lock.write_text(
+        lock.read_text(encoding="utf-8").replace(
+            'symjit_plane_application = "pyamplicol-symjit-plane-application-v2"',
+            'symjit_plane_application = "incompatible-test-abi"',
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="plane-application ABI"):
+        package_version.check_contributor_lock_consistency(root)
+
+
+def test_contributor_and_release_locks_share_patched_symjit_source(
+    tmp_path: Path,
+) -> None:
+    root = _copy_version_contract(tmp_path)
+    package_version.check_contributor_lock_consistency(root)
+    lock = root / "dependencies" / "contributor-lock.toml"
+    lock.write_text(
+        lock.read_text(encoding="utf-8").replace(
+            "4b4b791b0f2bbef33a7dbd2936d20dc722f7301e2e9e986b65b2a8b94d220b31",
+            "0" * 64,
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="authenticated SymJIT source"):
+        package_version.check_contributor_lock_consistency(root)
+
+
 def test_nix_shell_provides_python_build_frontend() -> None:
     flake = (ROOT / "flake.nix").read_text(encoding="utf-8")
     match = re.search(
@@ -92,6 +130,26 @@ def test_nix_shell_provides_python_build_frontend() -> None:
     )
     assert match is not None
     assert re.search(r"(?m)^\s+build\s*$", match.group(1)) is not None
+
+
+def test_dev_install_keeps_all_build_caches_inside_the_workspace() -> None:
+    justfile = (ROOT / "justfile").read_text(encoding="utf-8")
+    match = re.search(
+        r"(?ms)^dev-install:.*?(?=^[A-Za-z0-9_-]+(?: [^:\n]+)?:|\Z)",
+        justfile,
+    )
+    assert match is not None
+    recipe = match.group(0)
+    assert 'dev_cache := ".artifacts/dev-install"' in justfile
+    for variable in (
+        "TMPDIR",
+        "CARGO_HOME",
+        "CARGO_TARGET_DIR",
+        "PIP_CACHE_DIR",
+        "XDG_CACHE_HOME",
+        "PYTHONPYCACHEPREFIX",
+    ):
+        assert recipe.count(f'{variable}="$PWD/{{{{dev_cache}}}}/') == 2
 
 
 @pytest.mark.parametrize(

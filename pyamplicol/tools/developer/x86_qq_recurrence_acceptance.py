@@ -542,7 +542,12 @@ def _paired_cell_evidence(
     ratio_mad = statistics.median(abs(value - ratio_median) for value in ratios)
     upper = ratio_median + 3.0 * ratio_mad
     passes = (
-        ratio_mad > 0.0
+        math.isfinite(ratio_median)
+        and ratio_median >= 0.0
+        and math.isfinite(ratio_mad)
+        and ratio_mad >= 0.0
+        and math.isfinite(upper)
+        and upper >= 0.0
         and ratio_median <= ceiling
         and upper <= ceiling
     )

@@ -6,6 +6,7 @@ import copy
 import hashlib
 import importlib.util
 import json
+import math
 import statistics
 import sys
 from pathlib import Path
@@ -76,6 +77,55 @@ def test_default_batches_cover_milestone_zero_and_explicit_values_replace() -> N
     )
     with pytest.raises(benchmark.HarnessError, match="must be unique"):
         benchmark._normalize_batch_sizes(duplicate)
+
+
+def test_paired_migration_capture_requires_exactly_two_warmups() -> None:
+    arguments = _arguments(
+        "--paired-profile-coordination-dir",
+        "coordination",
+        "--paired-profile-role",
+        "candidate",
+        "--paired-profile-session-id",
+        "session",
+        "--warmup-runs",
+        "3",
+    )
+
+    with pytest.raises(benchmark.HarnessError, match="exactly two warmup"):
+        benchmark.run(arguments)
+
+
+def test_migration_process_request_expands_without_changing_default_route() -> None:
+    default = benchmark.parser().parse_args([])
+    assert benchmark._selected_process(default) == "u u~ > Z g g g g g g"
+    assert benchmark._selected_process_name(default) == "uubar_Z_6g"
+    assert benchmark._authoritative_process_family(default)
+
+    migration = benchmark.parser().parse_args(
+        ["--process-expression", "d d~ > z + 6*g"]
+    )
+    assert benchmark._selected_process(migration) == "d d~ > Z g g g g g g"
+    assert benchmark._selected_process_name(migration) == "ddbar_Z_6g"
+    assert benchmark._authoritative_process_family(migration)
+
+    custom = benchmark.parser().parse_args(["--process-expression", "g g > t t~"])
+    assert benchmark._selected_process_name(custom) == "custom_process"
+    assert not benchmark._authoritative_process_family(custom)
+
+
+def test_benchmark_source_root_can_select_an_immutable_external_checkout(
+    tmp_path: Path,
+) -> None:
+    assert (
+        benchmark._resolve_benchmark_source_root(str(ROOT), script_path=SCRIPT) == ROOT
+    )
+    with pytest.raises(RuntimeError, match="must be an absolute path"):
+        benchmark._resolve_benchmark_source_root(
+            "relative/checkout",
+            script_path=SCRIPT,
+        )
+    with pytest.raises(RuntimeError, match="not a pyAmpliCol source checkout"):
+        benchmark._resolve_benchmark_source_root(str(tmp_path), script_path=SCRIPT)
 
 
 def test_incomplete_capture_requires_explicit_diagnostic_success() -> None:
@@ -159,10 +209,15 @@ def _artifact_semantic_identity(
     model_content_sha256: str = "c" * 64,
     color_id: str = "flow:2,1",
     color_word: tuple[int, ...] = (2, 1),
+    color_count: int = 1,
     helicity_id: str = "h:-1,+1",
     helicity_values: tuple[int, ...] = (-1, 1),
+    secondary_helicity_structural_zero: bool = False,
 ) -> dict[str, object]:
-    color_ids = [color_id]
+    color_ids = [
+        color_id,
+        *(f"flow:{index + 3},2,1" for index in range(color_count - 1)),
+    ]
     opposite_helicity_values = tuple(-value for value in helicity_values)
     opposite_helicity_id = "h:" + ",".join(
         f"{value:+d}" for value in opposite_helicity_values
@@ -170,15 +225,16 @@ def _artifact_semantic_identity(
     helicity_ids = [helicity_id, opposite_helicity_id]
     color_entries = [
         {
-            "index": 0,
-            "id": color_id,
+            "index": index,
+            "id": identifier,
             "kind": "lc-flow",
-            "word": list(color_word),
-            "representative_id": color_id,
+            "word": (list(color_word) if index == 0 else [index + 3, 2, 1]),
+            "representative_id": identifier,
             "computed": True,
             "coefficient": 1.0,
             "structural_zero": None,
         }
+        for index, identifier in enumerate(color_ids)
     ]
     helicity_entries = [
         {
@@ -194,10 +250,14 @@ def _artifact_semantic_identity(
             "index": 1,
             "id": opposite_helicity_id,
             "values": list(opposite_helicity_values),
-            "representative_id": helicity_id,
+            "representative_id": (
+                opposite_helicity_id
+                if secondary_helicity_structural_zero
+                else helicity_id
+            ),
             "computed": False,
-            "coefficient": 1.0,
-            "structural_zero": False,
+            "coefficient": (0.0 if secondary_helicity_structural_zero else 1.0),
+            "structural_zero": secondary_helicity_structural_zero,
         },
     ]
     normalization = {"average_factor": 36, "color_factor": 3}
@@ -253,12 +313,17 @@ def _artifact_semantic_identity(
         "kind": "lc-diagonal",
         "ordered_groups": [
             {
-                "id": "reduction:0",
-                "physical_color_ids": color_ids,
-                "physical_helicity_ids": helicity_ids,
-                "representative_color_id": color_ids[0],
+                "id": f"reduction:{index}",
+                "physical_color_ids": [identifier],
+                "physical_helicity_ids": (
+                    [helicity_ids[0]]
+                    if secondary_helicity_structural_zero
+                    else helicity_ids
+                ),
+                "representative_color_id": identifier,
                 "representative_helicity_id": helicity_ids[0],
             }
+            for index, identifier in enumerate(color_ids)
         ],
     }
     execution_color_axis = benchmark._ordered_physical_axis(
@@ -414,7 +479,7 @@ def _passing_schedule(
         invocation = {
             "started_at_utc": "2026-07-24T00:00:00+00:00",
             "finished_at_utc": "2026-07-24T00:00:01+00:00",
-            "wall_seconds": 1.0,
+            "wall_seconds": 12.0,
             "command": command,
         }
         invocation["content_sha256"] = benchmark._canonical_sha256(invocation)
@@ -447,9 +512,15 @@ def _raw_native_wall_blocks(
     wall_seconds_per_point: float,
     batch_size: int,
     fixture_points_sha256: str,
-    repetitions_per_block: int = 1,
+    repetitions_per_block: int | None = None,
     block_count: int = benchmark.MIN_AUTHORITATIVE_SAMPLES,
+    minimum_native_wall_seconds: float = 5.0,
 ) -> dict[str, object]:
+    if repetitions_per_block is None:
+        repetitions_per_block = math.ceil(
+            (minimum_native_wall_seconds * 1.02)
+            / (block_count * wall_seconds_per_point * batch_size)
+        )
     blocks: list[dict[str, object]] = []
     for block_index in range(block_count):
         block = {
@@ -470,11 +541,36 @@ def _raw_native_wall_blocks(
         }
         block["content_sha256"] = benchmark._canonical_sha256(block)
         blocks.append(block)
+    observed_native_wall_seconds = sum(
+        float(block["native_wall_seconds"]) for block in blocks
+    )
+    observed_caller_elapsed_seconds = sum(
+        float(block["caller_elapsed_seconds"]) for block in blocks
+    )
     return {
-        "kind": "pyamplicol-raw-native-wall-blocks",
-        "schema_version": 1,
+        "kind": benchmark.RAW_NATIVE_WALL_BLOCK_KIND,
+        "schema_version": benchmark.RAW_NATIVE_WALL_BLOCK_SCHEMA,
+        "measurement_contract": benchmark.RAW_NATIVE_WALL_MEASUREMENT_CONTRACT,
         "source": "runtime._benchmark_f64_wall_time",
         "fixture_points_sha256": fixture_points_sha256,
+        "minimum_native_wall_seconds": minimum_native_wall_seconds,
+        "observed_native_wall_seconds": observed_native_wall_seconds,
+        "observed_caller_elapsed_seconds": observed_caller_elapsed_seconds,
+        "minimum_duration_satisfied": (
+            observed_native_wall_seconds >= minimum_native_wall_seconds
+        ),
+        "calibration": {
+            "kind": "benchmark-runner-wall-rate-calibration",
+            "schema_version": 1,
+            "benchmark_runner_sample_count": 20,
+            "benchmark_runner_repetitions_per_sample": 1,
+            "benchmark_runner_total_repetitions": 20,
+            "benchmark_runner_wall_seconds_per_point": wall_seconds_per_point,
+            "requested_minimum_block_count": block_count,
+            "preceded_by_benchmark_runner_warmup_runs": 2,
+            "duration_headroom_factor": 1.02,
+            "scaled_repetitions_per_block": repetitions_per_block,
+        },
         "block_count": block_count,
         "repetitions_per_block": repetitions_per_block,
         "evaluation_count": block_count * repetitions_per_block,
@@ -596,7 +692,7 @@ def _profile(
             process_record = {
                 "started_at_utc": "2026-07-24T00:00:00+00:00",
                 "finished_at_utc": "2026-07-24T00:00:01+00:00",
-                "wall_seconds": 1.0,
+                "wall_seconds": 12.0,
                 "process_id": 1000 + int(entry["schedule_index"]),
                 "operation": "profile",
                 "mode": mode,
@@ -617,14 +713,17 @@ def _profile(
             }
             worker_measurement = {
                 "batch_size": batch_size,
-                "sample_count": benchmark.MIN_AUTHORITATIVE_SAMPLES,
-                "repetitions_per_sample": 1,
-                "evaluation_count": benchmark.MIN_AUTHORITATIVE_SAMPLES,
-                "evaluated_point_count": (
-                    benchmark.MIN_AUTHORITATIVE_SAMPLES * batch_size
-                ),
+                "sample_count": raw_blocks["block_count"],
+                "repetitions_per_sample": raw_blocks["repetitions_per_block"],
+                "evaluation_count": raw_blocks["evaluation_count"],
+                "evaluated_point_count": raw_blocks["evaluated_point_count"],
                 "wall_seconds_per_point": wall,
                 "inner_native_wall_blocks": raw_blocks,
+                "benchmark_runner_sample_count": 20,
+                "benchmark_runner_repetitions_per_sample": 1,
+                "benchmark_runner_evaluation_count": 20,
+                "benchmark_runner_evaluated_point_count": 20 * batch_size,
+                "benchmark_runner_wall_seconds_per_point": wall,
                 "timing_sources": timing_sources,
                 "environment": environment,
                 "interrupted": False,
@@ -647,6 +746,21 @@ def _profile(
                     "loaded_artifact_id": "a" * 64,
                     "passes": True,
                 },
+                "cold_load_seconds": 0.01 + 0.001 * int(entry["round"]),
+                "peak_rss_after_cold_load": {
+                    "source": "resource.getrusage",
+                    "self_peak_bytes": 1024,
+                    "maximum_child_peak_bytes": 0,
+                    "observed_lower_bound_bytes": 1024,
+                    "semantics": "test high-water mark",
+                },
+                "peak_rss_after_profile": {
+                    "source": "resource.getrusage",
+                    "self_peak_bytes": 2048,
+                    "maximum_child_peak_bytes": 0,
+                    "observed_lower_bound_bytes": 2048,
+                    "semantics": "test high-water mark",
+                },
                 "lane_contract_sha256": lane_contract_sha256,
                 "timing_configuration": {
                     "minimum_internal_samples": (benchmark.MIN_AUTHORITATIVE_SAMPLES),
@@ -654,12 +768,10 @@ def _profile(
                     "target_runtime_seconds": 5.0,
                 },
                 "worker_measurement": worker_measurement,
-                "internal_sample_count": benchmark.MIN_AUTHORITATIVE_SAMPLES,
-                "repetitions_per_sample": 1,
-                "evaluation_count": benchmark.MIN_AUTHORITATIVE_SAMPLES,
-                "evaluated_point_count": (
-                    benchmark.MIN_AUTHORITATIVE_SAMPLES * batch_size
-                ),
+                "internal_sample_count": raw_blocks["block_count"],
+                "repetitions_per_sample": raw_blocks["repetitions_per_block"],
+                "evaluation_count": raw_blocks["evaluation_count"],
+                "evaluated_point_count": raw_blocks["evaluated_point_count"],
                 "wall_seconds_per_point": wall,
                 "inner_native_wall_blocks": raw_blocks,
                 "timing_sources": timing_sources,
@@ -739,6 +851,39 @@ def _passing_profiles(
             fixture=fixture,
         ),
     }
+
+
+def _selected_union_profiles() -> dict[str, dict[str, Any]]:
+    schedule = _passing_schedule(modes=("compiled", "recurrence"))
+    selector_common = {
+        "color_flow_request": "1",
+        "resolved_color_flow_id": None,
+        "helicity_request": benchmark.MIGRATION_UNION_SELECTED_HELICITY_ID,
+        "resolved_helicity_id": benchmark.MIGRATION_UNION_SELECTED_HELICITY_ID,
+        "color_flow_count": benchmark.MIGRATION_UNION_PHYSICAL_COLOR_COUNT,
+        "helicity_count": 2,
+        "workload": "all-flows/runtime-selected-single-helicity",
+    }
+    profiles: dict[str, dict[str, Any]] = {}
+    for mode, secondary_zero in (("compiled", True), ("recurrence", False)):
+        semantic_identity = _artifact_semantic_identity(
+            color_count=benchmark.MIGRATION_UNION_PHYSICAL_COLOR_COUNT,
+            helicity_id=benchmark.MIGRATION_UNION_SELECTED_HELICITY_ID,
+            helicity_values=benchmark.MIGRATION_UNION_SELECTED_HELICITY_VALUES,
+            secondary_helicity_structural_zero=secondary_zero,
+        )
+        profiles[mode] = _profile(
+            mode,
+            (1.0e-20 + 2.0e-21j, 3.0e-20 + 4.0e-21j),
+            schedule=schedule,
+            semantic_identity=semantic_identity,
+            selector_contract={
+                **selector_common,
+                "structural_zero_helicity_count": int(secondary_zero),
+            },
+            process_expression=benchmark.MIGRATION_PROCESS_CANONICAL,
+        )
+    return profiles
 
 
 def _rebind_sample_result(
@@ -847,6 +992,232 @@ def test_pairwise_validation_includes_eager_and_every_point() -> None:
     assert summary["lane_validation_passes"]
     assert summary["pairwise_validation_passes"]
     assert summary["passes"]
+
+
+def test_numerical_tolerance_is_additive_not_absolute_or_relative() -> None:
+    expected = 1.0e-3
+    actual = expected + 1.5e-15
+    absolute = abs(actual - expected)
+    old_relative = absolute / max(abs(actual), abs(expected), 1.0e-300)
+
+    assert absolute > benchmark.ATOL
+    assert old_relative > benchmark.RTOL
+    assert benchmark._within_numerical_tolerance(actual, expected)
+    assert not benchmark._within_numerical_tolerance(2.0 * benchmark.ATOL, 0.0)
+
+    comparison = benchmark._comparison(
+        "actual",
+        [[actual, 0.0]],
+        "expected",
+        [[expected, 0.0]],
+    )
+    assert comparison["point_comparisons"][0]["relative_difference"] == old_relative
+    assert comparison["passes"]
+
+
+def test_lane_evidence_recomputation_uses_additive_tolerance() -> None:
+    expected = 1.0e-3
+    actual = expected + 1.5e-15
+    profiles = {
+        mode: _profile(mode, (complex(expected), 2.0e-3 + 0.0j))
+        for mode in ("compiled", "eager", "recurrence")
+    }
+    absolute = abs(actual - expected)
+    relative = absolute / max(abs(actual), abs(expected), 1.0e-300)
+    for profile in profiles.values():
+        validation = profile["validation"]
+        validation["selected_totals"][0] = [actual, 0.0]
+        comparison = validation["point_comparisons"][0]
+        comparison["selected_total"] = [actual, 0.0]
+        comparison["absolute_difference"] = absolute
+        comparison["relative_difference"] = relative
+        comparison["passes"] = True
+        validation["maximum_absolute_difference"] = absolute
+        validation["maximum_relative_difference"] = relative
+
+    summary = benchmark._pairwise_profile_validation(profiles)
+    assert summary["lane_validation_passes"]
+    assert summary["pairwise_validation_passes"]
+    assert summary["passes"]
+
+
+def test_component_sum_and_pairwise_components_use_additive_tolerance() -> None:
+    expected = 1.0e-3
+    actual = expected + 1.5e-15
+    profiles = {
+        mode: _profile(mode, (complex(expected), 2.0e-3 + 0.0j))
+        for mode in ("compiled", "eager", "recurrence")
+    }
+    profiles["eager"]["validation"]["resolved_components"][0][0] = [actual, 0.0]
+
+    summary = benchmark._pairwise_profile_validation(profiles)
+    assert summary["lane_validation_passes"]
+    assert summary["resolved_component_comparisons"]["compiled__eager"]["passes"]
+    assert summary["resolved_component_comparisons"]["eager__recurrence"]["passes"]
+    assert summary["pairwise_validation_passes"]
+    assert summary["passes"]
+
+
+def test_selected_union_projection_permits_only_nonselected_zero_metadata() -> None:
+    arguments = _arguments(
+        "--process-expression",
+        benchmark.MIGRATION_PROCESS_REQUEST,
+        "--lc-flow-layout",
+        "all-flow-union",
+        "--helicity",
+        benchmark.MIGRATION_UNION_SELECTED_HELICITY_ID,
+    )
+    profiles = _selected_union_profiles()
+
+    strict_semantics = benchmark._profile_artifact_semantic_contract(profiles)
+    strict_numerical = benchmark._pairwise_profile_validation(profiles)
+    assert strict_semantics["lanes_match"] is False
+    assert strict_numerical["selectors_match"] is False
+
+    semantics = benchmark._profile_artifact_semantic_contract(
+        profiles,
+        arguments=arguments,
+    )
+    numerical = benchmark._pairwise_profile_validation(
+        profiles,
+        arguments=arguments,
+    )
+    preflight = benchmark._validation_preflight_contract(arguments, profiles)
+
+    assert semantics["comparison_policy"].endswith("selected-helicity-v1")
+    assert semantics["passes"]
+    assert semantics["lanes_match"]
+    assert numerical["selector_comparison_policy"].endswith("selected-helicity-v1")
+    assert numerical["selectors_match"]
+    assert numerical["pairwise_validation_passes"]
+    assert preflight["passes"]
+
+
+@pytest.mark.parametrize(
+    ("argument", "value"),
+    (
+        ("--process-expression", "u u~ > Z g g g g g g"),
+        ("--lc-flow-layout", "topology-replay"),
+        ("--helicity", "1"),
+    ),
+)
+def test_selected_union_projection_is_not_used_outside_exact_route(
+    argument: str,
+    value: str,
+) -> None:
+    values = [
+        "--process-expression",
+        benchmark.MIGRATION_PROCESS_REQUEST,
+        "--lc-flow-layout",
+        "all-flow-union",
+        "--helicity",
+        benchmark.MIGRATION_UNION_SELECTED_HELICITY_ID,
+    ]
+    option_index = values.index(argument)
+    values[option_index + 1] = value
+    arguments = _arguments(*values)
+    profiles = _selected_union_profiles()
+
+    semantics = benchmark._profile_artifact_semantic_contract(
+        profiles,
+        arguments=arguments,
+    )
+    numerical = benchmark._pairwise_profile_validation(
+        profiles,
+        arguments=arguments,
+    )
+
+    assert semantics["comparison_policy"] == "strict-exact-v1"
+    assert semantics["lanes_match"] is False
+    assert numerical["selector_comparison_policy"] == "strict-exact-v1"
+    assert numerical["selectors_match"] is False
+
+
+def test_selected_union_projection_rejects_nonselected_helicity_values() -> None:
+    arguments = _arguments(
+        "--process-expression",
+        benchmark.MIGRATION_PROCESS_REQUEST,
+        "--lc-flow-layout",
+        "all-flow-union",
+        "--helicity",
+        benchmark.MIGRATION_UNION_SELECTED_HELICITY_ID,
+    )
+    profiles = _selected_union_profiles()
+    recurrence = profiles["recurrence"]
+    identity = recurrence["artifact_semantic_identity"]
+    helicities = identity["physical_helicities"]
+    entries = copy.deepcopy(helicities["ordered_entries"])
+    entries[1]["values"][0] = 7
+    helicities["ordered_entries"] = entries
+    helicities["ordered_entries_sha256"] = benchmark._canonical_sha256(entries)
+    recurrence["artifact_semantic_identity_sha256"] = benchmark._canonical_sha256(
+        identity
+    )
+
+    semantics = benchmark._profile_artifact_semantic_contract(
+        profiles,
+        arguments=arguments,
+    )
+
+    assert semantics["passes"] is False
+    assert semantics["lanes_match"] is False
+    assert semantics["errors"]
+
+
+def test_selected_union_projection_rejects_selected_coefficient_mismatch() -> None:
+    arguments = _arguments(
+        "--process-expression",
+        benchmark.MIGRATION_PROCESS_REQUEST,
+        "--lc-flow-layout",
+        "all-flow-union",
+        "--helicity",
+        benchmark.MIGRATION_UNION_SELECTED_HELICITY_ID,
+    )
+    profiles = _selected_union_profiles()
+    recurrence = profiles["recurrence"]
+    identity = recurrence["artifact_semantic_identity"]
+    helicities = identity["physical_helicities"]
+    entries = copy.deepcopy(helicities["ordered_entries"])
+    selected = next(
+        entry
+        for entry in entries
+        if entry["id"] == benchmark.MIGRATION_UNION_SELECTED_HELICITY_ID
+    )
+    selected["coefficient"] = 2.0
+    helicities["ordered_entries"] = entries
+    helicities["ordered_entries_sha256"] = benchmark._canonical_sha256(entries)
+    recurrence["artifact_semantic_identity_sha256"] = benchmark._canonical_sha256(
+        identity
+    )
+
+    semantics = benchmark._profile_artifact_semantic_contract(
+        profiles,
+        arguments=arguments,
+    )
+
+    assert semantics["passes"] is False
+    assert semantics["lanes_match"] is False
+
+
+def test_selected_union_preflight_rejects_resolved_component_drift() -> None:
+    arguments = _arguments(
+        "--process-expression",
+        benchmark.MIGRATION_PROCESS_REQUEST,
+        "--lc-flow-layout",
+        "all-flow-union",
+        "--helicity",
+        benchmark.MIGRATION_UNION_SELECTED_HELICITY_ID,
+    )
+    profiles = _selected_union_profiles()
+    components = profiles["recurrence"]["validation"]["resolved_components"]
+    assert isinstance(components, list)
+    components[0][0] = [9.0, 0.0]
+
+    with pytest.raises(
+        benchmark.HarnessError,
+        match="failed before timing",
+    ):
+        benchmark._require_validation_preflight(arguments, profiles)
 
 
 def test_pairwise_validation_fails_when_only_a_later_eager_point_differs() -> None:
@@ -987,7 +1358,8 @@ def test_partial_lane_capture_never_vacuously_passes() -> None:
     )
     assert not capture["complete"]
     assert capture["passes"] is None
-    assert capture["missing_modes"] == ["compiled", "eager"]
+    assert capture["missing_modes"] == ["compiled"]
+    assert capture["eager_diagnostic"]["requested"] is False
 
 
 def _recurrence_runtime_acceptance_fixture(
@@ -1362,7 +1734,7 @@ def test_generation_specialized_axes_are_not_authoritative() -> None:
     }
 
 
-def test_cross_lane_physical_or_normalization_identity_mismatch_is_ineligible() -> None:
+def test_eager_normalization_mismatch_is_diagnostic_only() -> None:
     arguments = _arguments()
     schedule = _passing_schedule()
     profiles = _passing_profiles(schedule)
@@ -1381,9 +1753,13 @@ def test_cross_lane_physical_or_normalization_identity_mismatch_is_ineligible() 
         summary,
         profile_schedule=schedule,
     )
-    assert not capture["authoritative_eligible"]
-    assert not capture["artifact_semantic_contract"]["lanes_match"]
-    assert not capture["complete"]
+    assert capture["authoritative_eligible"]
+    assert capture["artifact_semantic_contract"]["lanes_match"]
+    assert capture["complete"]
+    diagnostic = capture["eager_diagnostic"]
+    assert diagnostic["complete"] is False
+    assert diagnostic["passes"] is None
+    assert diagnostic["artifact_semantic_contract"]["lanes_match"] is False
 
 
 def test_profile_semantic_identity_digest_is_required() -> None:
@@ -1508,7 +1884,7 @@ def test_profile_selector_reconciles_with_semantic_axes(
     )
 
 
-def test_profile_root_process_must_match_semantic_process() -> None:
+def test_eager_root_process_mismatch_is_diagnostic_only() -> None:
     arguments = _arguments()
     schedule = _passing_schedule()
     profiles = _passing_profiles(schedule)
@@ -1521,8 +1897,10 @@ def test_profile_root_process_must_match_semantic_process() -> None:
         summary,
         profile_schedule=schedule,
     )
-    assert capture["complete"] is False
-    assert capture["measurement_contract"]["root_processes_match"] is False
+    assert capture["complete"] is True
+    assert capture["measurement_contract"]["root_processes_match"] is True
+    assert capture["eager_diagnostic"]["complete"] is False
+    assert capture["eager_diagnostic"]["passes"] is None
 
 
 def test_runtime_selector_contract_version_rejects_boolean() -> None:
@@ -1578,7 +1956,7 @@ def test_missing_reduction_order_identity_is_ineligible() -> None:
     assert not capture["complete"]
 
 
-def test_manifest_model_identity_is_cross_compared() -> None:
+def test_eager_manifest_model_identity_mismatch_is_diagnostic_only() -> None:
     arguments = _arguments()
     schedule = _passing_schedule()
     profiles = _passing_profiles(schedule)
@@ -1611,12 +1989,14 @@ def test_manifest_model_identity_is_cross_compared() -> None:
         summary,
         profile_schedule=schedule,
     )
-    assert capture["artifact_semantic_contract"]["passes"] is False
-    assert capture["artifact_semantic_contract"]["lanes_match"] is False
-    assert capture["authoritative_eligible"] is False
+    assert capture["artifact_semantic_contract"]["passes"] is True
+    assert capture["authoritative_eligible"] is True
+    eager_contract = capture["eager_diagnostic"]["artifact_semantic_contract"]
+    assert eager_contract["passes"] is False
+    assert eager_contract["lanes_match"] is False
 
 
-def test_structural_zero_entry_mismatch_is_ineligible() -> None:
+def test_eager_structural_zero_entry_mismatch_is_diagnostic_only() -> None:
     arguments = _arguments()
     schedule = _passing_schedule()
     profiles = _passing_profiles(schedule)
@@ -1638,11 +2018,12 @@ def test_structural_zero_entry_mismatch_is_ineligible() -> None:
         summary,
         profile_schedule=schedule,
     )
-    assert capture["artifact_semantic_contract"]["passes"] is False
-    assert capture["authoritative_eligible"] is False
+    assert capture["artifact_semantic_contract"]["passes"] is True
+    assert capture["authoritative_eligible"] is True
+    assert capture["eager_diagnostic"]["artifact_semantic_contract"]["passes"] is False
 
 
-def test_reduction_order_mismatch_is_ineligible() -> None:
+def test_eager_reduction_order_mismatch_is_diagnostic_only() -> None:
     arguments = _arguments()
     schedule = _passing_schedule()
     profiles = _passing_profiles(schedule)
@@ -1663,9 +2044,12 @@ def test_reduction_order_mismatch_is_ineligible() -> None:
         summary,
         profile_schedule=schedule,
     )
-    assert capture["artifact_semantic_contract"]["passes"] is False
-    assert capture["artifact_semantic_contract"]["lanes_match"] is False
-    assert capture["authoritative_eligible"] is False
+    assert capture["artifact_semantic_contract"]["passes"] is True
+    assert capture["artifact_semantic_contract"]["lanes_match"] is True
+    assert capture["authoritative_eligible"] is True
+    eager_contract = capture["eager_diagnostic"]["artifact_semantic_contract"]
+    assert eager_contract["passes"] is False
+    assert eager_contract["lanes_match"] is False
 
 
 def test_reduction_members_must_map_to_the_group_representative() -> None:
@@ -1771,7 +2155,7 @@ def test_helicity_axis_rejects_invalid_mapping_states(
         )
 
 
-def test_execution_reduction_coverage_is_required() -> None:
+def test_eager_execution_reduction_coverage_is_diagnostic_only() -> None:
     arguments = _arguments()
     schedule = _passing_schedule()
     profiles = _passing_profiles(schedule)
@@ -1792,12 +2176,14 @@ def test_execution_reduction_coverage_is_required() -> None:
         summary,
         profile_schedule=schedule,
     )
-    assert capture["artifact_semantic_contract"]["passes"] is False
+    assert capture["artifact_semantic_contract"]["passes"] is True
+    eager_contract = capture["eager_diagnostic"]["artifact_semantic_contract"]
+    assert eager_contract["passes"] is False
     assert any(
         "model/selector/reduction semantic identity is invalid" in error
-        for error in capture["artifact_semantic_contract"]["errors"]
+        for error in eager_contract["errors"]
     )
-    assert capture["authoritative_eligible"] is False
+    assert capture["authoritative_eligible"] is True
 
 
 def test_execution_reduction_summary_is_revalidated() -> None:
@@ -1858,8 +2244,9 @@ def test_capture_rejects_missing_or_interrupted_timing_measurements() -> None:
     assert not capture["complete"]
     assert capture["passes"] is None
     contract = capture["measurement_contract"]["lanes"]
-    assert contract["eager"]["missing_batch_sizes"] == [1]
     assert not contract["recurrence"]["passes"]
+    eager_contract = capture["eager_diagnostic"]["measurement_contract"]["lanes"]
+    assert eager_contract["eager"]["missing_batch_sizes"] == [1]
 
 
 def test_single_worker_five_sample_timing_cannot_pass_authoritative_capture() -> None:
@@ -2053,6 +2440,55 @@ def test_raw_inventory_mad_rejects_boolean_when_readdressed() -> None:
         summary,
         profile_schedule=schedule,
     )
+    assert capture["complete"] is False
+    assert any(
+        "raw native-wall inventory is invalid" in error
+        for error in capture["measurement_contract"]["lanes"]["compiled"]["errors"]
+    )
+
+
+def test_retained_native_wall_duration_below_target_fails_when_readdressed() -> None:
+    arguments = _arguments()
+    schedule = _passing_schedule()
+    profiles = _passing_profiles(schedule)
+    sample = profiles["compiled"]["profiles"][0]["subprocess_samples"][0]
+    raw_blocks = sample["inner_native_wall_blocks"]
+    raw_blocks["observed_native_wall_seconds"] = 4.999
+    raw_blocks["minimum_duration_satisfied"] = True
+    _rebind_sample_result(schedule, sample)
+
+    summary = benchmark._pairwise_profile_validation(profiles)
+    capture = benchmark._capture_acceptance(
+        arguments,
+        profiles,
+        summary,
+        profile_schedule=schedule,
+    )
+
+    assert capture["complete"] is False
+    assert any(
+        "raw native-wall inventory is invalid" in error
+        for error in capture["measurement_contract"]["lanes"]["compiled"]["errors"]
+    )
+
+
+def test_retained_raw_calibration_tampering_fails_when_readdressed() -> None:
+    arguments = _arguments()
+    schedule = _passing_schedule()
+    profiles = _passing_profiles(schedule)
+    sample = profiles["compiled"]["profiles"][0]["subprocess_samples"][0]
+    raw_blocks = sample["inner_native_wall_blocks"]
+    raw_blocks["calibration"]["duration_headroom_factor"] = 1.01
+    _rebind_sample_result(schedule, sample)
+
+    summary = benchmark._pairwise_profile_validation(profiles)
+    capture = benchmark._capture_acceptance(
+        arguments,
+        profiles,
+        summary,
+        profile_schedule=schedule,
+    )
+
     assert capture["complete"] is False
     assert any(
         "raw native-wall inventory is invalid" in error
@@ -2584,6 +3020,43 @@ def test_runtime_binding_rejects_a_different_checkout(
             source,
             _build_info(other_checkout),
             native_build_inputs_sha256="b" * 64,
+        )
+
+
+def test_expected_runtime_identity_is_externally_pinned() -> None:
+    source = {"revision": "a" * 40}
+    runtime = {
+        "native_extension": {
+            "build_inputs_sha256": "b" * 64,
+        }
+    }
+    benchmark._validate_expected_runtime_identity(
+        source,
+        runtime,
+        expected_source_revision="a" * 40,
+        expected_native_build_inputs_sha256="b" * 64,
+    )
+
+    with pytest.raises(benchmark.HarnessError, match="provided together"):
+        benchmark._validate_expected_runtime_identity(
+            source,
+            runtime,
+            expected_source_revision="a" * 40,
+            expected_native_build_inputs_sha256=None,
+        )
+    with pytest.raises(benchmark.HarnessError, match="externally pinned revision"):
+        benchmark._validate_expected_runtime_identity(
+            source,
+            runtime,
+            expected_source_revision="c" * 40,
+            expected_native_build_inputs_sha256="b" * 64,
+        )
+    with pytest.raises(benchmark.HarnessError, match="externally pinned build-input"):
+        benchmark._validate_expected_runtime_identity(
+            source,
+            runtime,
+            expected_source_revision="a" * 40,
+            expected_native_build_inputs_sha256="d" * 64,
         )
 
 
@@ -3484,9 +3957,28 @@ def test_semantic_signature_covers_generation_configuration() -> None:
     )
     assert default_signature["point_tile_size"] == 1024
     assert changed_signature["point_tile_size"] == 2048
+    assert default_signature["validation"]["relative_tolerance"] == benchmark.RTOL
+    assert default_signature["validation"]["absolute_tolerance"] == benchmark.ATOL
+    assert benchmark.RTOL == 1.0e-12
+    assert benchmark.ATOL == 1.0e-15
     assert benchmark._canonical_sha256(default_signature) != (
         benchmark._canonical_sha256(changed_signature)
     )
+
+
+def test_generation_config_uses_additive_validation_tolerances() -> None:
+    config = benchmark._generation_config(
+        "recurrence",
+        validation_samples=3,
+        lc_flow_layout="topology-replay",
+        point_tile_size=1024,
+        jit_optimization_level=2,
+    )
+
+    validation = config.generation.validation
+    assert validation.relative_tolerance == benchmark.RTOL
+    assert validation.absolute_tolerance == benchmark.ATOL
+    assert validation.absolute_tolerance == 1.0e-15
 
 
 def test_validation_fixture_records_raw_and_semantic_digests(
@@ -3686,3 +4178,11 @@ def test_profile_worker_evaluates_every_validation_point(
         == (result["validation"]["fixture"]["points_sha256"])
     )
     assert len(raw_blocks["blocks"]) == benchmark.MIN_AUTHORITATIVE_SAMPLES
+    assert raw_blocks["observed_native_wall_seconds"] >= arguments.target_runtime
+    assert raw_blocks["minimum_native_wall_seconds"] == arguments.target_runtime
+    assert raw_blocks["minimum_duration_satisfied"] is True
+    assert raw_blocks["repetitions_per_block"] > 1
+    assert (
+        result["profiles"][0]["repetitions_per_sample"]
+        == raw_blocks["repetitions_per_block"]
+    )
