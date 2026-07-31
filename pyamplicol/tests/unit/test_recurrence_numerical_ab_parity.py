@@ -582,13 +582,30 @@ def test_capture_digest_tampering_and_incomplete_semantics_fail_closed() -> None
         )
 
 
-def test_capture_rejects_partial_sample_inventory_and_truncated_provenance() -> None:
-    partial = _capture("baseline")
-    partial["generation_request"]["validation_samples"] = 2
-    partial = _readdress(partial)
-    with pytest.raises(parity.ParityError, match="fixture or selector"):
+def test_capture_distinguishes_generation_validation_from_persisted_fixture() -> None:
+    capture = _capture("baseline")
+    capture["generation_request"]["validation_samples"] = 10
+    capture = _readdress(capture)
+
+    assert (
         parity._validate_capture(
-            partial,
+            capture,
+            expected_variant="baseline",
+            expected_process_key=PROCESS_KEY,
+            expected_process=PROCESS_EXPRESSION,
+            expected_layout="topology-replay",
+        )["generation_request"]["validation_samples"]
+        == 10
+    )
+
+
+def test_capture_rejects_invalid_generation_request_and_truncated_provenance() -> None:
+    invalid_request = _capture("baseline")
+    invalid_request["generation_request"]["validation_samples"] = 0
+    invalid_request = _readdress(invalid_request)
+    with pytest.raises(parity.ParityError, match="capture is inconsistent"):
+        parity._validate_capture(
+            invalid_request,
             expected_variant="baseline",
             expected_process_key=PROCESS_KEY,
             expected_process=PROCESS_EXPRESSION,

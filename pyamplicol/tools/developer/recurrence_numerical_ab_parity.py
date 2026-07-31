@@ -1160,7 +1160,6 @@ def _validate_capture(
         or isinstance(fixture.get("point_count"), bool)
         or not isinstance(fixture.get("point_count"), int)
         or fixture.get("point_count") != len(fixture["points"])
-        or fixture.get("point_count") != generation_request["validation_samples"]
         or not fixture["points"]
         or fixture.get("points_sha256") != _canonical_sha256(normalized_points)
         or fixture.get("points_sha256") != _canonical_sha256(fixture.get("points"))
