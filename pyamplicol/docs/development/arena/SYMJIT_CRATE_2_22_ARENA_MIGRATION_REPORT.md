@@ -18,9 +18,11 @@ factor, operation, or table concept was added to SymJIT, and the generated
 kernel body is unchanged. No second mixed plane/scalar or output-operation
 change was needed: pyAmpliCol owns persistent broadcast planes, safe
 direct-output classification, persistent scratch, and allocation-free complex
-epilogues. The wider performance and release-readiness campaigns were
-explicitly deferred by the user to a later combined release pass; they are not
-part of this short implementation finalization.
+epilogues. The migration implementation originally closed through a
+user-directed short finalization. A combined publication-readiness pass is now
+in progress; regenerated prepared packs and fresh/repeat installation evidence
+are recorded below, while unfinished local, cross-platform, and performance
+gates remain explicitly pending.
 
 The implementation preserves the Python and CLI source contracts and the public
 C ABI v1 plus generated C++, Fortran, and Rust SDK source interfaces. Final
@@ -37,9 +39,9 @@ Internal generated-artifact ABIs were bumped and predecessor artifacts fail
 closed with an instruction to regenerate.
 
 The acceptance commands below preserve the originally planned release gate for
-reference. The implementation round closed with focused contract checks and
-fresh active runtime assets; the full-gate and paired-performance tables are
-intentionally left for the later release-readiness pass.
+reference. Focused contract checks, fresh active runtime assets, release assets,
+and local installation checks are complete. The full-gate and
+paired-performance tables remain open until their current-source runs finish.
 
 ## Reproducible identities
 
@@ -59,20 +61,22 @@ hardening landed afterward:
 - snapshot directory:
   `.artifacts/symjit-2.22-migration/clean-snapshots/candidate-prepack-final-20260731T051631Z`
 
-The integrated source through `7c1f17c` produced candidate fingerprint
-`34f4013080a1`. Fresh active AArch64 and x86_64 portable prepared-model bundles
-were generated from the same storage-v3 MIR and have identical SHA-256
-`86509430038002698d39eea9f0c4b104e3390194cbd58469de7e3c161862080a`.
-They declare `pyamplicol-symjit-plane-application-v2`; dependency source
-provenance is intentionally kept in the build locks instead of being repeated
-inside prepared-pack metadata.
+The current candidate and release prepared packs were produced by GitHub
+workflows at source revision
+`906a660b9b87c2f36827180031d566cb060f6b49` and integrated by
+`d25907546d89154f90cb281d0811b48657d2d90a`. They use storage-v3 MIR and
+`pyamplicol-symjit-plane-application-v2`; their exact bundle and metadata
+hashes are recorded in the Prepared artifacts section. Dependency source
+identity remains in the compact build locks rather than being duplicated in
+prepared-pack metadata.
 
-The tracked `portable-64le` self-test was also regenerated from the integrated
-runtime. It contains only the v2 plane-application ABI, requires the current
-`pyamplicol-runtime-payload-identity` marker, and records the new default of two
-post-build validation samples. Publication-only prepared packs under
-`release_assets/` were deliberately not regenerated in this implementation
-round; release staging rejects them fail-closed until the later release pass.
+The tracked `portable-64le` self-test is a retained v2 fixture produced at
+source revision `7c1f17c00c297352563228a0816324768cbc14bc`. It contains only
+the v2 plane-application ABI and records the default of two post-build
+validation samples, but predates the current
+`pyamplicol-runtime-payload-identity` marker. Its fail-closed release-test
+rejection is the reason for the current generated-fixture refresh; it is not
+presented as the producer identity of the current prepared packs.
 
 The saved migration plan originally pinned SymJIT 2.22.0 revision
 `4e288ce5f3132b05e2a81eb6452c011b9e2bb936`. After that plan was approved,
@@ -144,7 +148,8 @@ The accepted upstream implementation makes that test configuration explicit,
 enables identity outputs, and directly executes the raw SIMD accessor with
 lane-aligned actual row indices. Before submission, `cargo test --lib` passed
 all four library tests and `cargo run --bin kernels` passed the kernel example
-suite. The later full pyAmpliCol release gate remains deferred.
+suite. These are upstream-change checks; the current pyAmpliCol release gates
+are tracked separately below.
 
 No second upstream change was needed. Point-independent literals and couplings use
 persistent broadcast planes, mutable model-parameter planes refresh only when
@@ -187,12 +192,12 @@ application is sealed and serialized.
 
 The persisted plane binding records split-complex plane order, logical inputs
 and outputs, scalar sources, optimization settings, target requirements, and
-the structured source digest. At load time the adapter authenticates SymJIT
-storage and validates binding shape, while the enclosing artifact
-authentication protects the recorded binding bytes. The inner validator
+the structured source digest. At load time the adapter validates SymJIT
+storage and binding shape, while the enclosing artifact manifest integrity
+checks cover the recorded binding bytes. The inner validator
 requires the serialized compiler target and every option bit to match one of
 the canonical explicit configurations. All three runtime lanes also compare
-the serialized application's actual compression bit with the authenticated
+the serialized application's actual compression bit with the recorded
 plane manifest, so metadata cannot misattribute payload size or load/runtime
 performance. The validator rejects malformed word-size, endianness,
 target-triple, and CPU-feature records. It shape-checks the source digest but
@@ -317,7 +322,7 @@ dependency-policy suite reported 31 passed, and focused Rust predecessor tests
 reported 2 passed. These development results are supporting evidence; the
 final clean-snapshot gate results below supersede them.
 
-### Short implementation finalization
+### Historical short implementation finalization
 
 The user-directed short finalization ran five focused Python contract tests
 (artifact identity, required prepared-record fields, and the tracked portable
@@ -328,16 +333,20 @@ which treated the stored scalar function pointer as a method. `cargo fmt
 --all --check`, Ruff lint, and `git diff --check` also passed. No broad test,
 performance, installer, or release campaign was run.
 
-### Deferred release-readiness gates
+### Current release-readiness gates
 
-These commands are intentionally deferred by the user's short-finalization
-directive:
+The combined publication-readiness pass resumed these commands. The first
+current-source `just dev-test` invocation established a clean 3,663-test unit
+result, then reached the release suite and failed 34 tests for one shared
+fail-closed reason: the tracked portable self-test predated the current
+artifact-identity marker. That generated fixture is being refreshed before the
+clean rerun; the failure did not implicate arena arithmetic or runtime code.
 
-| Gate | Result | Peak guard | Authenticated log |
+| Gate | Result | Peak guard | Retained log SHA-256 |
 |---|---:|---:|---|
 | `just rust-test` | pending | pending | pending |
-| `just source-gate` | pending | pending | pending |
-| `just dev-test` | pending | pending | pending |
+| `just source-gate` | unit phase passed; release phase stopped on stale self-test fixture | 3.335 GiB | `c7a5292a182fd19cd0dad563f47915743ba346f3afa68cd14924722c54ad7a43` |
+| `just dev-test` | clean rerun pending after self-test refresh | 3.335 GiB | `c7a5292a182fd19cd0dad563f47915743ba346f3afa68cd14924722c54ad7a43` |
 | local x86/Rosetta core and C API | pending | pending | pending |
 
 The deployment gate is run with native-language tests required so C, C++,
@@ -347,7 +356,7 @@ tests are run with their fixture environment variables set and retained in the
 gate log, rather than relying on their fixture-absent skip path. The migration
 `symjit_2_22_generated_fixture_gate.py` runner first validates five distinct,
 workspace-local artifact directories and fail-closed JSON manifests. Every
-manifest must bind the authenticated candidate source revision and native-build
+manifest must bind the exact candidate source revision and native-build
 digest to one exact candidate-version pyAmpliCol producer and the sole exact
 process `d d~ > z g g g g g g` with external PDGs
 `[1,-1,23,21,21,21,21,21,21]`. Before Cargo starts, the runner stages one
@@ -366,74 +375,81 @@ must report zero exposed boundary traffic, while a crate-private genuine
 recurrence profile separately requires all three legacy and all five
 lane-neutral packet/gather/scatter/remap counters to remain zero for
 topology-replay and all-flow-union at every odd-tail size. Eager,
-topology-replay, and all-flow-union profiles must also authenticate activity in
+topology-replay, and all-flow-union profiles must also demonstrate activity in
 the requested lane. The terminal watchdog report supplies the exit and memory
-attestation; the captured Cargo log supplies the named markers.
+record; the captured Cargo log supplies the named markers.
 
 ## Prepared artifacts
 
-The following candidate prepared packs predate the final patch-provenance
-refresh and are retained as supporting payload-size evidence only:
+The current tracked candidate packs were produced by the two producer jobs in
+[workflow 30631372557](https://github.com/mg5amcnlo/pyamplicol/actions/runs/30631372557)
+at exact source revision `906a660b9b87c2f36827180031d566cb060f6b49`:
 
-| Target | SHA-256 | Bytes |
-|---|---|---:|
-| AArch64 | `33c9f762362d9c0136db154e57dc666dc221386b5000cbdae8b34f848c59d5ef` | 7,536,825 |
-| x86_64 | `781fd7fee8d6cc3d63ed4a59b5468065b8aa143edecb4edb5e81d672a3ebf3c5` | 7,533,028 |
+| Target | Bundle SHA-256 | Bytes | Metadata SHA-256 |
+|---|---|---:|---|
+| AArch64 | `8857181f6877984d0df954c856e5165fc20d9d2be3d29b4f7544099f1ef26d1c` | 7,536,998 | `4f993aa9a7b73807ecd5d44e22e58c958902548c9a9a790a76cfd3384f19ab42` |
+| x86_64 | `4c647c6252c406281d3ab9aa98e74f77b38a9d65881beccacf560f7b2a0fa740` | 7,533,092 | `5e4f6af76607d84d6db2705ad981c6b829fe3fc6ee88103671186024805f7dc0` |
 
-Their corresponding release copies are:
+The publication-mode packs were produced successfully by both jobs in
+[workflow 30631374216](https://github.com/mg5amcnlo/pyamplicol/actions/runs/30631374216)
+at the same exact source revision:
 
-| Target | SHA-256 | Bytes |
-|---|---|---:|
-| AArch64 | `32c492690c02c59c166fc4c6c5849965f36b0df85647575a826fb964d2c2439c` | 7,537,351 |
-| x86_64 | `339d88e7c058337093ee5393e002f9079b29ccfcb0e7ef918891fe9040173c0c` | 7,533,318 |
+| Target | Bundle SHA-256 | Bytes | Metadata SHA-256 |
+|---|---|---:|---|
+| AArch64 | `6461fb4931e7da0a9fae3e51c227dc93f080d569b911d5ba451649b7dd8256b4` | 7,537,253 | `a212de9b2ce8f230cf12fcb1183ecc0340f61045c334b317054c654e5aba72b1` |
+| x86_64 | `ba97c30576a11cfbf7045ee934abc00405b8cb4b5d3e024f9cae7e085c862fb0` | 7,533,401 | `87f6f81c57104074b81830029404522a1693d941bf35d8645b265a92c3e121c6` |
 
-Each supporting pack contains 59 base kernels, 36 variants, and 95 P-kernel
-plane applications. Candidate payload growth against the private-fork pack is
-2.649137% for AArch64 and 2.694938% for x86_64, inside the 3% threshold. Final
-candidate packs carrying the final post-repin fingerprint and refreshed
-release copies will replace these before the acceptance campaign. All four
-candidate/release and AArch64/x86_64 bundle/metadata pairs must be regenerated:
-the current binaries predate the kernel-pack
-`native_build_inputs_sha256` field, while the final metadata requires exact
-producer compiler/source/native identities and the direct
-`build_contract.symjit_source` tree/patch closure. A temporary unit-test shim
-which projects those future values onto the stale binary fixtures will be
-removed immediately after the real regenerated assets are copied into the
-tracked stores.
+Each pack contains 59 base kernels, 36 variants, and 95 storage-v3 P-kernel
+plane applications. All metadata declares SymJIT 2.22.0,
+`pyamplicol-symjit-plane-application-v2`, model source digest
+`7f6fc84e6d7c4eda6c531b9901ab891abd67c3c0e2ad9d492b30ece760352ba8`,
+model-compiler digest
+`24e1af18b5bae66bf00be47b7a6bbd2b8c26a66e0748aa82035de4e856e5d209`,
+and prepared-pack compiler digest
+`4539e9b34af5924354f0372ecbab897a355a7b6128a06093af4513e0593f54f5`.
+The candidate producer version is
+`0.1.0.dev0+candidate.72aea6cff06d`; the release producer version is `0.1.0`.
 
-An earlier supporting AArch64 pack check found an absolute numerical difference
-of `1.7053025658242404e-13` for a result near 142.1, within
-`rtol=1e-12`, `atol=1e-15`. That check consumed an earlier candidate bundle
-rather than either exact tracked bundle in the tables above. Earlier
-three-platform portability and release workflows also passed at synthetic
-revision `a344ef55…`; both results are supporting rather than final-pack or
-final-tree evidence.
+The producer transfer records validate the complete 95-application bundle and
+the `d d~ > z` numerical check at `rtol=1e-12`, `atol=1e-15`. The complete
+five-job portability workflow finished successfully: both pack producers and
+the AArch64, macOS x86_64, and Linux x86_64 consumers passed. Earlier pack-size
+and numerical checks remain historical development evidence, but these current
+tracked hashes supersede their binary identities.
 
 ## Installation and dependency provenance
 
-The superseded pre-hardening clean candidate passed both contributor
+The current official-upstream dependency configuration passed both contributor
 installation modes under the 30 GiB watchdog:
 
 | Install | Exit | Peak guard | Log SHA-256 |
 |---|---:|---:|---|
-| fresh cache | 0 | 18.946 GiB | `4d778a372e9896e17c8eb0acf84cbfa0ce12d1c5e9a40fa3101f4938628ad8d6` |
-| repeat | 0 | 3.376 GiB | `80b914f8df0e5b9eaa0b52ea3639c794196aa4086b354334587642636da71d34` |
+| fresh cache | 0 | 19.049 GiB | `b668565a9c55654c86a3bddbc92dfb700f10bc526f39cba8d8484ebc92bdeb41` |
+| repeat | 0 | 3.395 GiB | `9e785fc91ea9cb6d5f165612ab8c429f6e936bb2a27e24e2da85f597ba713327` |
 
-Both supporting runs authenticated the then-current release and candidate
-dependency projections, materialized the immutable SymJIT archive, verified
-pristine and post-patch trees, applied the single ordered patch automatically,
-built Symbolica against the same checkout, and built/installed candidate
-pyAmpliCol with the superseded fingerprint `a38cc68d0520`. Fresh and repeat
-installs for the final patch digest, configured tree, and fingerprint are
-deferred to the combined release-readiness pass.
+Both runs cloned the official SymJIT repository at `d8abfeeb…`, validated its
+package name, version, and rlib manifest, built the contributor environment,
+and installed candidate version `0.1.0.dev0+candidate.72aea6cff06d`. No local
+SymJIT patch was applied. A separate dependency-postcondition capture exited
+zero with 0.099 GiB peak guard and log SHA-256
+`6da77bf143cacaea2bd900a420768c3577a68caa8117af7c1cfb7881787b456a`;
+its Cargo tree contains one `symjit v2.22.0` source, the official immutable Git
+revision `d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7`.
 
-The final authenticated `cargo tree` capture and tracked-tree scans will be
-recorded after the final snapshot. Current scans contain no private-fork URL,
-branch, or revision in the tracked tree and no retired ABI in active
-source/policy/artifact roots. Immutable JSON captures under
+For historical comparison, a superseded pre-upstream-integration candidate
+also passed fresh/repeat installation with peaks 18.946/3.376 GiB and log
+hashes `4d778a372e9896e17c8eb0acf84cbfa0ce12d1c5e9a40fa3101f4938628ad8d6`
+and `80b914f8df0e5b9eaa0b52ea3639c794196aa4086b354334587642636da71d34`.
+Those runs exercised the former local-patch machinery and fingerprint
+`a38cc68d0520`; they are retained only as migration history and are not the
+active dependency contract.
+
+Current tracked-tree scans contain no private-fork URL, branch, or revision and
+no retired ABI in active source, policy, or artifact roots. Immutable JSON
+captures under
 `docs/performance_reports/**/results/` retain their historical runtime ABI
 metadata. The x86 performance-runtime reconstruction helper likewise embeds an
-authenticated SymJIT 2.21.1 baseline identity so the candidate workflow can
+exact SymJIT 2.21.1 baseline identity so the candidate workflow can
 reproduce the pre-migration comparison. Both are frozen baseline evidence, not
 active dependency inputs or loadable generated artifacts.
 
@@ -498,7 +514,7 @@ distinct.
 
 ## Performance campaign
 
-The authenticated alternating campaign uses the exact process
+The exact-bound alternating campaign uses the process
 `d d~ > Z g g g g g g`, with two warmups and seven independent alternating
 subprocess pairs per cell. It covers topology replay with selected runtime flow
 and helicity sum, all-flow union with all flows and a nonzero alternating
@@ -538,18 +554,18 @@ validates that watchdog report.
 
 The campaign's content-addressed manifest, four capture hashes, watchdog
 report, medians, raw MADs, paired compiled/recurrence ratios, eager results,
-generation results, and payload/load/RSS results will be inserted here after
-the explicit host-free handoff. Final evidence also records all eight
-regenerated bundle/metadata hashes, the canonical native-build identity, the
-direct SymJIT tree/patch contracts, fresh/repeat install watchdog reports,
-patched upstream-kernel and generated-fixture logs, all nineteen required
-fixture markers, and a fail-closed manifest/overlay preflight binding all five
-generated fixtures and the staged candidate build to the exact candidate source
-revision, native-build-input digest, full candidate version/fingerprint, and
-sole `d d~ > z g g g g g g` process with external PDGs
-`[1,-1,23,21,21,21,21,21,21]`. It will also include authenticated
-`cargo tree`, private-fork scans, and schema-7 built-in/UFO portability captures
-with schema-6 capture-acceptance metadata.
+generation results, and payload/load/RSS results will be inserted here only
+after that campaign completes. The current bundle/metadata hashes and
+fresh/repeat install results are already recorded above. Remaining final
+evidence includes the generated-fixture log and all nineteen required markers;
+the manifest/overlay preflight binds all five generated fixtures and the staged
+candidate build to one exact source revision, native-build-input digest,
+candidate version/fingerprint, and the sole
+`d d~ > z g g g g g g` process with external PDGs
+`[1,-1,23,21,21,21,21,21,21]`. It also includes the compact one-source Cargo
+tree, private-fork scans, and schema-7 built-in/UFO portability captures with
+schema-6 capture-acceptance metadata. There is no active SymJIT patch or
+source-tree attestation to reproduce.
 
 ### Runtime acceptance
 
@@ -567,9 +583,11 @@ standard SymJIT 2.22.0 P-kernels from official immutable revision
 `d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7`, and the required generic raw-plane
 interface is upstream. No private fork or local SymJIT patch remains.
 
-Per the user's shortened finalization instruction, the multi-hour alternating
-performance campaign, full multilanguage gate, and publication-pack
-regeneration were not run. Their sections remain explicit deferred release
-evidence rather than implied passes; publication staging continues to fail
-closed on the stale release-only prepared packs until that separate release
-step is performed.
+Candidate and publication-mode prepared packs have now been regenerated for
+AArch64 and x86_64, the three cross-architecture consumers pass, and
+fresh/repeat contributor installation plus the compact official-source
+dependency check pass. The current-source unit suite passes all 3,663 tests;
+portable self-test regeneration, the clean full multilanguage rerun, the
+multi-hour alternating performance campaign, and final wheel/sdist publication
+workflows are still pending in the combined release-readiness pass. They remain
+explicit open evidence rather than implied passes.
