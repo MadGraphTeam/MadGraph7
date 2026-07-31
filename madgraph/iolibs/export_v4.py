@@ -8527,11 +8527,33 @@ C       so this also stays correct for split-order processes.
         # matrix_orig.f is routed through FortranWriter so long DATA/JAMP/helas
         # lines get the fixed-form continuations hel_recycle reads back verbatim.
         writers.FortranWriter(orig_path).writelines(open(orig_tmpl).read() % rd)
+        # The recycled driver only replaces SMATRIX/SMATRIXHEL/MATRIX. Every
+        # other entry point (the per-helicity GET_AMP/GET_JAMP, the density and
+        # interference stack, GET_value, the encoder/decoder, the crossing
+        # routines, BROKEN_SYM and the flavor helpers) is appended verbatim
+        # from the standard template, so the recycled output exposes the same
+        # API and the two cannot drift apart. The density path keeps using the
+        # plain GET_AMP: it evaluates arbitrary helicity configurations, which
+        # the recycled table -- baked at generation time, dead rows dropped --
+        # cannot serve.
+        shared_anchor = ('      SUBROUTINE %(proc_prefix)sGET_NHEL('
+                         'IDEN_STAR,NHEL_STAR)' % replace_dict)
+        standard = open(pjoin(tmpl_dir, self.matrix_template)).read()
+        if shared_anchor.replace('%(proc_prefix)s', rd['proc_prefix']) \
+                not in standard % rd:
+            raise MadGraph5Error(
+                'hel_recycling: cannot find the shared-routine anchor in %s'
+                % self.matrix_template)
+        rendered = standard % rd
+        tail = rendered[rendered.index(
+            shared_anchor.replace('%(proc_prefix)s', rd['proc_prefix'])):]
+
         # template_matrix.f: %()s keys filled now; ${...} slots left to hel_recycle.
         # FortranWriter is still used (to split long color DATA lines), but it
         # upper-cases everything, including the ${...} slot names -- hel_recycle's
         # string.Template keys are lower-case, so restore their case afterwards.
-        writers.FortranWriter(driver_path).writelines(open(driver_tmpl).read() % rd)
+        writers.FortranWriter(driver_path).writelines(
+            (open(driver_tmpl).read() % rd) + '\n\n\n' + tail)
         driver_txt = open(driver_path).read()
         driver_txt = re.sub(r'\$\{(\w+)\}',
                             lambda m: '${%s}' % m.group(1).lower(), driver_txt)

@@ -255,30 +255,15 @@ ${csym_reuse}
       END
 
 
-%(broken_sym_function)s
-
-
-%(flavor_index_function)s
-
-
-%(flavor_array_function)s
-
-
-%(flavor_pdg_function)s
-
-
-%(crossing_routines)s
-
-
-      SUBROUTINE %(proc_prefix)sGET_DENSITY(P, POS, N_CHANGING, ALLOW_HEL,
-     $  N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)
-C     Spin-density-matrix mode is not supported with --hel_recycling yet. This
-C     stub only satisfies the driver's link-time reference to GET_DENSITY; it
-C     aborts if actually called.
-      IMPLICIT NONE
-      REAL*8 P(*), ALPHAS, SCALE2
-      INTEGER POS(*), N_CHANGING, ALLOW_HEL(*), N_COMB, FLAVOR(*)
-      COMPLEX*16 INTER(*)
-      WRITE(*,*) 'GET_DENSITY is not available with --hel_recycling'
-      STOP 1
-      END
+C     Everything below this point -- the per-helicity GET_AMP/GET_JAMP, the
+C     density and interference stack, GET_value, the helicity encoder/decoder,
+C     the crossing routines and the flavor/BROKEN_SYM helpers -- is appended
+C     verbatim from matrix_standalone_v4.inc by _write_hel_recycling_matrix, so
+C     the recycled output offers exactly the same entry points as the standard
+C     one and the two cannot drift apart.
+C
+C     Only SMATRIX/SMATRIXHEL take the recycled path. The density machinery
+C     evaluates arbitrary helicity configurations (GET_ALL_INTER_CROSSED
+C     substitutes helicities at the POS slots), which the recycled table cannot
+C     serve: its rows are baked at generation time and the dead ones dropped.
+C     It therefore keeps using the plain per-helicity GET_AMP.

@@ -209,6 +209,50 @@ class TestStandaloneHelRecyclingConsistency(StandaloneHelRecyclingConsistency):
         for flip, rep in reuse:
             self.assertNotEqual(flip, rep)
 
+    def test_full_entry_point_api_is_emitted(self):
+        """Only SMATRIX/SMATRIXHEL/MATRIX take the recycled path; every other
+        entry point is appended from the standard template, so the recycled
+        output must expose the same API (the density stack in particular, which
+        evaluates arbitrary helicity rows the recycled table cannot serve)."""
+        _, hr_subdirs = self._generate_pair('p p > e+ e-')
+        with open(pjoin(hr_subdirs[0], 'matrix.f')) as fsock:
+            recycled = fsock.read().upper()
+        for routine in ('GET_AMP', 'GET_JAMP', 'GET_MATRIX', 'GET_INTER',
+                        'GET_DENSITY', 'GET_DENSITY_IDX', 'GET_ALL_INTER',
+                        'GET_ALL_INTER_IDX', 'GET_VALUE', 'GET_VALUE_IDX',
+                        'GET_NHEL', 'GET_NHEL_IDX', 'FILL_NHEL',
+                        'DECODE_HEL', 'ENCODE_HEL'):
+            self.assertTrue(
+                re.search(r'SUBROUTINE\s+%s\s*\(' % routine, recycled),
+                '%s missing from the recycled output' % routine)
+        # ... and no leftover stub refusing to compute the density
+        self.assertNotIn('NOT AVAILABLE WITH --HEL_RECYCLING', recycled)
+
+    def test_density_does_not_use_the_c_parity_reuse(self):
+        """The C-parity de-duplication is only valid for the helicity-summed
+        |M|^2: it asserts |M(h)|^2 == |M(-h)|^2, which says nothing about the
+        interference terms JAMP_i JAMP_j* the density matrix is built from.
+
+        The reuse therefore has to stay confined to TS, which only SMATRIX and
+        SMATRIXHEL read; the density stack must keep going through the plain
+        per-helicity GET_AMP/GET_JAMP/GET_INTER.
+        """
+        _, hr_subdirs = self._generate_pair('g g > t t~')
+        with open(pjoin(hr_subdirs[0], 'matrix.f')) as fsock:
+            source = fsock.read()
+        # the reuse is emitted for this process (no 0-helicity state)
+        self.assertTrue(re.findall(r'TS\((\d+)\)\s*=\s*TS\((\d+)\)', source),
+                        'expected C-parity reuse for g g > t t~')
+        # every routine of the density stack must be TS-free
+        routines = re.split(r'\n(?=\s*(?:SUBROUTINE|DOUBLE PRECISION FUNCTION'
+                            r'|INTEGER FUNCTION|REAL\*8 FUNCTION))', source)
+        for body in routines:
+            head = body.strip().split('\n')[0].upper()
+            if re.search(r'\b(GET_DENSITY|GET_ALL_INTER|GET_INTER|GET_JAMP'
+                         r'|GET_AMP|GET_MATRIX)\w*\s*\(', head):
+                self.assertNotIn('TS(', body.upper(),
+                                 'the C-parity reuse must not reach %s' % head)
+
     def test_zero_helicity_state_disables_the_reuse(self):
         """u u~ > w+ w- has 0-helicity rows that are their own C-parity
         partner, which makes the all-or-nothing reuse inapplicable."""
