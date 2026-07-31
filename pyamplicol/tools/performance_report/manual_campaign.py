@@ -10,9 +10,11 @@ compilation remain owned by the existing performance-report and public
 from __future__ import annotations
 
 import argparse
+import base64
 import copy
 import difflib
 import hashlib
+import importlib
 import json
 import math
 import os
@@ -31,7 +33,7 @@ import uuid
 import zlib
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -83,7 +85,7 @@ DEFAULT_BATCH_SIZE = 128
 DEFAULT_WARMUP_RUNS = 2
 DEFAULT_MINIMUM_SAMPLES = 5
 DEFAULT_WORKER_STALE_SECONDS = 15.0
-DEFAULT_MANUAL_EXPECTED_PAGE_COUNT = 59
+DEFAULT_MANUAL_EXPECTED_PAGE_COUNT = 60
 _ORIGINAL_AMPLICOL_REQUIRED_FILES = (
     "makefile",
     "process_list.py",
@@ -117,10 +119,46 @@ _ACTIVE_WORKER_STATUSES = frozenset({"queued", "preparing", "running"})
 _RECYCLED_SUCCESS_STATUSES = frozenset({"recycled", "reused", "skipped-current"})
 _COMPLETED_WORKER_STATUSES = frozenset({"ok", *_RECYCLED_SUCCESS_STATUSES})
 _PHASE_TIMELINE_SCHEMA = "pyamplicol-manual-campaign-phase-timeline-v1"
+_REPRODUCTION_STAGES = ("prepare", "generate", "profile")
 
 
 class ManualCampaignError(RuntimeError):
     """One concise, user-facing steering error."""
+
+
+def _missing_ratatui_bindings() -> tuple[str, ...]:
+    missing: list[str] = []
+    for module_name in ("ratatui", "ratatui_py"):
+        try:
+            importlib.import_module(module_name)
+        except Exception:
+            missing.append(module_name)
+    return tuple(missing)
+
+
+def _configure_dashboard_capability(
+    arguments: argparse.Namespace,
+    *,
+    installed: bool,
+) -> bool:
+    """Apply the release-wheel fallback and report whether it changed a run."""
+
+    if not installed or arguments.command not in {"dashboard-snapshot", "run"}:
+        return False
+    missing = _missing_ratatui_bindings()
+    if not missing:
+        return False
+    if arguments.command == "dashboard-snapshot":
+        missing_text = ", ".join(f"{name!r}" for name in missing)
+        raise ManualCampaignError(
+            "dashboard rendering is a contributor feature unless the optional "
+            f"ratatui bindings are installed (missing: {missing_text}); use "
+            "`run --no-dashboard` with a release wheel, or run from a contributor "
+            "checkout built with `just dev-install`"
+        )
+    changed = not arguments.no_dashboard
+    arguments.no_dashboard = True
+    return changed
 
 
 def _manual_static_na_reason(cell: CellSpec) -> str | None:
@@ -1715,6 +1753,11 @@ class DashboardState:
     show_completed: bool = False
     show_errors: bool = True
     show_help: bool = False
+    command_stage: str | None = None
+    command_scroll: int = 0
+    command_notice: str | None = None
+    pending_clipboard: tuple[str, str] | None = None
+    pending_print: tuple[str, str] | None = None
     started_at: float = field(default_factory=time.time)
     interrupted: bool = False
     counter_snapshot: dict[str, int] | None = None
@@ -1723,10 +1766,27 @@ class DashboardState:
 
     @property
     def active(self) -> tuple[WorkerView, ...]:
+        """Return active work owned by this invocation only.
+
+        Peer leases are rendered to make cross-process activity observable, but
+        they must not inflate the primary ``Active`` counter for this runner.
+        """
+
         return tuple(
             worker
             for worker in self.workers.values()
-            if worker.status in _ACTIVE_WORKER_STATUSES
+            if worker.peer_instance is None and worker.status in _ACTIVE_WORKER_STATUSES
+        )
+
+    @property
+    def peer_active(self) -> tuple[WorkerView, ...]:
+        """Return visible active work owned by concurrent peer invocations."""
+
+        return tuple(
+            worker
+            for worker in self.workers.values()
+            if worker.peer_instance is not None
+            and worker.status in _ACTIVE_WORKER_STATUSES
         )
 
     def visible_workers(self) -> tuple[WorkerView, ...]:
@@ -1858,6 +1918,13 @@ class LeaseManager:
         event = str(payload.get("event", "update"))
         with self._guard:
             if self._closed:
+                return
+            if event == "preflight-finished":
+                attempt_id = str(payload.get("attempt_id") or "")
+                worker = self.state.workers.get(cell_id)
+                if worker is not None and worker.attempt_id == attempt_id:
+                    del self.state.workers[cell_id]
+                self._write()
                 return
             worker = self.state.workers.setdefault(cell_id, WorkerView(cell_id))
             worker.updated_at = time.time()
@@ -2583,6 +2650,46 @@ def _worker_enforcement_memory(worker: WorkerView, *, peak: bool = False) -> int
     return guard if guard > 0 else rss
 
 
+def _reproduction_command(worker: WorkerView | None, stage: str | None) -> str | None:
+    """Return one exact persisted command without regenerating or normalizing it."""
+
+    if worker is None or stage not in _REPRODUCTION_STAGES:
+        return None
+    value = getattr(worker, f"reproduce_{stage}")
+    return value if isinstance(value, str) and value else None
+
+
+def _available_reproduction_stages(worker: WorkerView | None) -> tuple[str, ...]:
+    return tuple(
+        stage
+        for stage in _REPRODUCTION_STAGES
+        if _reproduction_command(worker, stage) is not None
+    )
+
+
+def _cycle_reproduction_stage(state: DashboardState, step: int = 1) -> None:
+    available = _available_reproduction_stages(state.selected_worker())
+    if not available:
+        state.command_stage = None
+        state.command_notice = "No public CLI reproduction is available"
+        state.command_scroll = 0
+        return
+    try:
+        index = available.index(state.command_stage or "")
+    except ValueError:
+        index = -1 if step >= 0 else 0
+    state.command_stage = available[(index + step) % len(available)]
+    state.command_scroll = 0
+    state.command_notice = None
+
+
+def _osc52_clipboard_sequence(value: str) -> str:
+    """Encode an explicitly requested clipboard copy without a subprocess."""
+
+    encoded = base64.b64encode(value.encode("utf-8")).decode("ascii")
+    return f"\x1b]52;c;{encoded}\x07"
+
+
 def _phase_timeline_lines(
     rows: Sequence[PhaseTimelineRow],
     *,
@@ -2598,9 +2705,10 @@ def _phase_timeline_lines(
             if row.wall_seconds is None
             else _human_phase_duration(row.wall_seconds)
         )
-        outcome = " · ".join(
-            value for value in (row.status, row.detail) if value
-        ) or "recorded"
+        outcome = (
+            " · ".join(value for value in (row.status, row.detail) if value)
+            or "recorded"
+        )
         if compact:
             rendered.append(f"{row.phase[:20]} · {wall} · {outcome}")
             continue
@@ -3094,6 +3202,46 @@ def _append_dashboard_line(
     paragraph.line_break()
 
 
+def _fit_dashboard_field(value: object, width: int) -> str:
+    text = str(value)
+    if width <= 0:
+        return ""
+    if len(text) > width:
+        text = text[: max(0, width - 1)] + "…"
+    return text.ljust(width)
+
+
+def _append_detail_fields(
+    paragraph: Any,
+    fields: Sequence[tuple[str, object, object]],
+    *,
+    width: int,
+    compact: bool,
+    key_style: object,
+) -> None:
+    """Render fixed detail columns so keys and values retain vertical anchors."""
+
+    content_width = max(20, width - 4)
+    gutter = 1 if compact else 3
+    group_width = max(20, (content_width - gutter) // 2)
+    key_width = min(16 if compact else 18, max(12, group_width // 2))
+    value_width = max(1, group_width - key_width)
+    for offset in range(0, len(fields), 2):
+        spans: list[tuple[str, object]] = []
+        for local_index, (key, value, value_style) in enumerate(
+            fields[offset : offset + 2]
+        ):
+            if local_index:
+                spans.append((" " * gutter, key_style))
+            spans.extend(
+                (
+                    (f"{key:<{key_width}}", key_style),
+                    (_fit_dashboard_field(value, value_width), value_style),
+                )
+            )
+        _append_dashboard_line(paragraph, spans)
+
+
 def _ratatui_commands(
     state: DashboardState,
     *,
@@ -3102,7 +3250,7 @@ def _ratatui_commands(
     color: bool = True,
 ) -> list[object]:
     try:
-        from ratatui import Color, DrawCmd, Gauge, Paragraph, Table
+        from ratatui import Color, DrawCmd, Gauge, Paragraph
         from ratatui import Style as RStyle
     except ImportError as error:
         raise ManualCampaignError(
@@ -3110,6 +3258,7 @@ def _ratatui_commands(
         ) from error
 
     counters = state.counters()
+    peer_active_count = len(state.peer_active)
     compact = width < 105 or height < 30
     overview_height = 5 if compact else 7
     table_height = max(7, min(13, height // 3))
@@ -3124,6 +3273,11 @@ def _ratatui_commands(
         warning_style = RStyle(fg=Color.Yellow)
         failure_style = RStyle(fg=Color.Red)
         neutral_style = RStyle(fg=Color.White)
+        muted_style = RStyle(fg=Color.DarkGray).dim()
+        metric_style = RStyle(fg=Color.LightCyan)
+        memory_style = RStyle(fg=Color.LightMagenta)
+        table_header_style = RStyle(fg=Color.LightCyan).bold().underlined()
+        summary_style = RStyle(fg=Color.LightCyan, bg=Color.DarkGray).bold()
         highlight_style = RStyle(fg=Color.Black, bg=Color.Cyan).bold()
         gauge_label_style = RStyle(fg=Color.White).bold()
         gauge_value_style = RStyle(fg=Color.Green, bg=Color.Black).bold()
@@ -3134,9 +3288,52 @@ def _ratatui_commands(
         warning_style = RStyle()
         failure_style = RStyle()
         neutral_style = RStyle()
+        muted_style = RStyle()
+        metric_style = RStyle()
+        memory_style = RStyle()
+        table_header_style = RStyle()
+        summary_style = RStyle()
         highlight_style = RStyle()
         gauge_label_style = RStyle()
         gauge_value_style = RStyle()
+
+    def status_style(status: str) -> object:
+        if status in {"error", "failed"}:
+            return failure_style
+        if status in {"generation_limit", "memory_limit", "timeout", "cancelled"}:
+            return warning_style
+        if status in _COMPLETED_WORKER_STATUSES:
+            return success_style
+        if status in _ACTIVE_WORKER_STATUSES:
+            return warning_style
+        return muted_style
+
+    def phase_style(phase: str) -> object:
+        normalized = phase.casefold().replace("_", "-")
+        if "profil" in normalized:
+            return metric_style
+        if "generat" in normalized or "post-generation" in normalized:
+            return memory_style
+        if normalized in {"complete", "completed"}:
+            return success_style
+        if "prepar" in normalized:
+            return warning_style
+        return neutral_style
+
+    def outcome_style(status: str | None) -> object:
+        normalized = (status or "").casefold()
+        if any(value in normalized for value in ("error", "failed")):
+            return failure_style
+        if any(value in normalized for value in ("limit", "capped", "timeout")):
+            return warning_style
+        if any(
+            value in normalized
+            for value in ("measured", "completed", "reused", "observed")
+        ):
+            return success_style
+        if any(value in normalized for value in ("unavailable", "not_applicable")):
+            return muted_style
+        return neutral_style
 
     overview = Paragraph.new_empty()
     overview.set_block_title(
@@ -3154,6 +3351,13 @@ def _ratatui_commands(
         ("   Errors ", key_style),
         (str(counters["failed"]), failure_style),
     ]
+    if compact and peer_active_count:
+        first.extend(
+            (
+                ("   Peer active ", key_style),
+                (str(peer_active_count), metric_style),
+            )
+        )
     if not compact:
         first.extend(
             (
@@ -3184,6 +3388,14 @@ def _ratatui_commands(
             (str(counters["capped"]), warning_style),
             ("   Dependency-only ", key_style),
             (str(counters["dependency_only"]), neutral_style),
+            *(
+                (
+                    ("   Peer active ", key_style),
+                    (str(peer_active_count), metric_style),
+                )
+                if peer_active_count and not compact
+                else ()
+            ),
         ],
     )
     _append_dashboard_line(
@@ -3255,7 +3467,7 @@ def _ratatui_commands(
         )
     viewport = workers[viewport_start : viewport_start + viewport_capacity]
     viewport_end = viewport_start + len(viewport)
-    worker_table = Table()
+    worker_table = Paragraph.new_empty()
     worker_table.set_block_title(
         " Workers ↑/↓"
         f" · {viewport_start + 1 if viewport else 0}-{viewport_end}/{len(workers)}"
@@ -3263,53 +3475,98 @@ def _ratatui_commands(
         f" · e errors:{'on' if state.show_errors else 'off'} "
     )
     if compact:
-        worker_table.set_headers(
-            [
-                " ",
-                "cell",
-                "status",
-                "phase / step",
-                "progress",
-                "runtime",
-                "cap guard",
-            ]
-        )
-        worker_table.set_widths_percentages([3, 25, 10, 24, 16, 10, 12])
+        headers = [
+            " ",
+            "cell",
+            "status",
+            "phase / step",
+            "progress",
+            "runtime",
+            "cap guard",
+        ]
+        percentages = [3, 25, 10, 24, 16, 10, 12]
     else:
-        worker_table.set_headers(
-            [
-                " ",
-                "cell",
-                "status",
-                "phase / step",
-                "progress",
-                "runtime",
-                "cap guard",
-                "PID tree",
-            ]
+        headers = [
+            " ",
+            "cell",
+            "status",
+            "phase / step",
+            "progress",
+            "runtime",
+            "cap guard",
+            "PID tree",
+        ]
+        percentages = [3, 23, 9, 22, 13, 8, 12, 10]
+    table_content_width = max(len(headers), width - 2)
+    spacing_width = len(headers) - 1
+    distributable_width = max(len(headers), table_content_width - spacing_width)
+    column_widths = [
+        max(1, distributable_width * percentage // 100) for percentage in percentages
+    ]
+    column_widths[-1] += max(
+        0,
+        distributable_width - sum(column_widths),
+    )
+    header_spans: list[tuple[str, object]] = []
+    for header_index, (header, column_width) in enumerate(
+        zip(headers, column_widths, strict=True)
+    ):
+        if header_index:
+            header_spans.append((" ", table_header_style))
+        header_spans.append(
+            (_fit_dashboard_field(header, column_width), table_header_style)
         )
-        worker_table.set_widths_percentages([3, 23, 9, 22, 13, 8, 12, 10])
+    _append_dashboard_line(worker_table, header_spans)
     for local_index, worker in enumerate(viewport):
         index = viewport_start + local_index
         marker = "▶" if index == selected_index else " "
-        row = [
+        enforcement = _worker_enforcement_memory(worker)
+        guard_style = (
+            failure_style
+            if enforcement > state.memory_limit_bytes
+            else (
+                warning_style
+                if enforcement >= int(0.8 * state.memory_limit_bytes)
+                else muted_style
+            )
+        )
+        row_values = [
             marker,
             worker.cell_id,
             worker.status,
             worker.step,
             _worker_progress_indicator(worker, compact=compact),
             _human_duration(worker.wall_seconds),
-            _human_bytes(_worker_enforcement_memory(worker)),
+            _human_bytes(enforcement),
+        ]
+        row_styles = [
+            title_style,
+            title_style if index == selected_index else neutral_style,
+            status_style(worker.status),
+            phase_style(worker.phase),
+            status_style(worker.status),
+            metric_style,
+            guard_style,
         ]
         if not compact:
-            row.append(
+            row_values.append(
                 "—"
                 if worker.pid is None
                 else f"{worker.pid}+{max(0, len(worker.member_pids) - 1)}"
             )
-        worker_table.append_row(row)
-    worker_table.set_selected(None if not viewport else selected_index - viewport_start)
-    worker_table.set_row_highlight_style(highlight_style)
+            row_styles.append(muted_style)
+        row_spans: list[tuple[str, object]] = []
+        for column_index, (value, value_style, column_width) in enumerate(
+            zip(row_values, row_styles, column_widths, strict=True)
+        ):
+            rendered_style = highlight_style if index == selected_index else value_style
+            if column_index:
+                row_spans.append((" ", rendered_style))
+            row_spans.append(
+                (_fit_dashboard_field(value, column_width), rendered_style)
+            )
+        _append_dashboard_line(worker_table, row_spans)
+    worker_table.set_wrap(False)
 
     selected = state.selected_worker()
     details = Paragraph.new_empty()
@@ -3336,6 +3593,20 @@ def _ratatui_commands(
             [
                 ("e ", key_style),
                 ("show/hide errors, caps, and recycled attention rows", neutral_style),
+            ],
+        )
+        _append_dashboard_line(
+            details,
+            [
+                ("1/2/3 ", key_style),
+                ("open full prepare/generate/profile command", neutral_style),
+            ],
+        )
+        _append_dashboard_line(
+            details,
+            [
+                ("y / p ", key_style),
+                ("copy exact command / print it for terminal selection", neutral_style),
             ],
         )
         _append_dashboard_line(
@@ -3375,18 +3646,27 @@ def _ratatui_commands(
                 ),
             ],
         )
-        _append_dashboard_line(
-            details,
-            [
-                ("Phase ", key_style),
-                (selected.phase, warning_style),
-                ("   Step ", key_style),
-                (selected.step, neutral_style),
-            ],
-        )
         persisted_summary = (
             selected.status in _COMPLETED_WORKER_STATUSES or selected.recycled
         )
+        _append_detail_fields(
+            details,
+            (
+                ("Phase", selected.phase, phase_style(selected.phase)),
+                ("Step", selected.step, neutral_style),
+            ),
+            width=width,
+            compact=compact,
+            key_style=key_style,
+        )
+        if compact and selected.log_tail and not persisted_summary:
+            _append_dashboard_line(
+                details,
+                [
+                    ("Recent log ", key_style),
+                    (selected.log_tail[-1], neutral_style),
+                ],
+            )
         if persisted_summary:
             if selected.recycled:
                 _append_dashboard_line(
@@ -3416,31 +3696,125 @@ def _ratatui_commands(
                 ],
             )
             if selected.phase_timeline:
+                timeline_phase_width = 38 if width >= 150 else 28
                 _append_dashboard_line(
                     details,
-                    [
-                        ("Phase timeline ", key_style),
-                        (
-                            (
-                                "phase · wall · outcome"
-                                if compact
-                                else (
-                                    f"{'phase':<20}  {'wall':>11}  "
-                                    f"{'CPU':>11}  {'peak RAM':>11}  outcome"
-                                )
-                            ),
-                            neutral_style,
-                        ),
-                    ],
+                    [("Phase timeline", key_style)],
                 )
-                for line in _phase_timeline_lines(
-                    selected.phase_timeline,
-                    compact=compact,
-                    limit=len(selected.phase_timeline),
-                ):
+                if compact:
                     _append_dashboard_line(
                         details,
-                        [("  ", key_style), (line, neutral_style)],
+                        [
+                            ("  phase", table_header_style),
+                            (" · wall · outcome", table_header_style),
+                        ],
+                    )
+                else:
+                    _append_dashboard_line(
+                        details,
+                        [
+                            (
+                                f"  {'phase':<{timeline_phase_width}}",
+                                table_header_style,
+                            ),
+                            (f"{'wall':>12}  ", table_header_style),
+                            (f"{'CPU':>12}  ", table_header_style),
+                            (f"{'peak RAM':>12}  ", table_header_style),
+                            ("outcome", table_header_style),
+                        ],
+                    )
+                for timeline_row in selected.phase_timeline:
+                    wall = (
+                        "unavailable"
+                        if timeline_row.wall_seconds is None
+                        else _human_phase_duration(timeline_row.wall_seconds)
+                    )
+                    outcome = (
+                        " · ".join(
+                            value
+                            for value in (timeline_row.status, timeline_row.detail)
+                            if value
+                        )
+                        or "recorded"
+                    )
+                    is_summary = timeline_row.phase.casefold() == "worker supervision"
+                    if compact:
+                        row_style = summary_style if is_summary else neutral_style
+                        _append_dashboard_line(
+                            details,
+                            [
+                                ("Σ " if is_summary else "  ", row_style),
+                                (timeline_row.phase, row_style),
+                                (" · ", row_style),
+                                (
+                                    wall,
+                                    summary_style
+                                    if is_summary
+                                    else (
+                                        muted_style
+                                        if timeline_row.wall_seconds is None
+                                        else metric_style
+                                    ),
+                                ),
+                                (" · ", row_style),
+                                (
+                                    outcome,
+                                    summary_style
+                                    if is_summary
+                                    else outcome_style(timeline_row.status),
+                                ),
+                            ],
+                        )
+                        continue
+                    cpu = (
+                        "unavailable"
+                        if timeline_row.cpu_seconds is None
+                        else _human_phase_duration(timeline_row.cpu_seconds)
+                    )
+                    peak = (
+                        "unavailable"
+                        if timeline_row.peak_memory_bytes is None
+                        else _human_bytes(timeline_row.peak_memory_bytes)
+                    )
+                    row_style = summary_style if is_summary else neutral_style
+                    metric_row_style = summary_style if is_summary else metric_style
+                    unavailable_row_style = summary_style if is_summary else muted_style
+                    _append_dashboard_line(
+                        details,
+                        [
+                            ("Σ " if is_summary else "  ", row_style),
+                            (
+                                _fit_dashboard_field(
+                                    timeline_row.phase,
+                                    timeline_phase_width,
+                                ),
+                                row_style,
+                            ),
+                            (
+                                f"{wall:>12}  ",
+                                unavailable_row_style
+                                if timeline_row.wall_seconds is None
+                                else metric_row_style,
+                            ),
+                            (
+                                f"{cpu:>12}  ",
+                                unavailable_row_style
+                                if timeline_row.cpu_seconds is None
+                                else (summary_style if is_summary else title_style),
+                            ),
+                            (
+                                f"{peak:>12}  ",
+                                unavailable_row_style
+                                if timeline_row.peak_memory_bytes is None
+                                else (summary_style if is_summary else memory_style),
+                            ),
+                            (
+                                outcome,
+                                summary_style
+                                if is_summary
+                                else outcome_style(timeline_row.status),
+                            ),
+                        ],
                     )
             else:
                 _append_dashboard_line(
@@ -3450,30 +3824,37 @@ def _ratatui_commands(
                         ("unavailable (older result)", warning_style),
                     ],
                 )
-        _append_dashboard_line(
+        _append_detail_fields(
             details,
-            [
-                ("Wall ", key_style),
-                (_human_duration(selected.wall_seconds), neutral_style),
-                ("   CPU ", key_style),
+            (
                 (
+                    "Wall",
+                    _human_phase_duration(selected.wall_seconds),
+                    metric_style,
+                ),
+                (
+                    "CPU",
                     (
                         "unavailable"
                         if selected.cpu_seconds is None
-                        else _human_duration(selected.cpu_seconds)
+                        else _human_phase_duration(selected.cpu_seconds)
                     ),
-                    neutral_style,
+                    muted_style if selected.cpu_seconds is None else metric_style,
                 ),
-            ],
+            ),
+            width=width,
+            compact=compact,
+            key_style=key_style,
         )
-        _append_dashboard_line(
+        _append_detail_fields(
             details,
-            [
-                ("RSS current ", key_style),
-                (_human_bytes(selected.current_rss_bytes), neutral_style),
-                ("   RSS peak ", key_style),
-                (_human_bytes(selected.peak_rss_bytes), neutral_style),
-            ],
+            (
+                ("RSS current", _human_bytes(selected.current_rss_bytes), memory_style),
+                ("RSS peak", _human_bytes(selected.peak_rss_bytes), memory_style),
+            ),
+            width=width,
+            compact=compact,
+            key_style=key_style,
         )
         enforcement_current = _worker_enforcement_memory(selected)
         enforcement_peak = _worker_enforcement_memory(selected, peak=True)
@@ -3488,48 +3869,62 @@ def _ratatui_commands(
                 if selected.peak_physical_footprint_bytes is not None
                 else selected.current_physical_footprint_bytes
             )
-            _append_dashboard_line(
+            _append_detail_fields(
                 details,
-                [
-                    ("Physical current ", key_style),
+                (
                     (
+                        "Physical current",
                         _human_bytes(selected.current_physical_footprint_bytes),
-                        neutral_style,
+                        memory_style,
                     ),
-                    ("   Physical peak ", key_style),
-                    (_human_bytes(physical_peak), neutral_style),
-                ],
-            )
-        _append_dashboard_line(
-            details,
-            [
-                ("Enforcement guard ", key_style),
-                (_human_bytes(enforcement_current), enforcement_style),
-                ("   Peak ", key_style),
-                (_human_bytes(enforcement_peak), enforcement_style),
-                ("   Cap ", key_style),
-                (_human_bytes(state.memory_limit_bytes), warning_style),
-                *(
-                    (
-                        ("   Physical ", key_style),
-                        (
-                            _human_bytes(selected.current_physical_footprint_bytes),
-                            neutral_style,
-                        ),
-                    )
-                    if compact and selected.current_physical_footprint_bytes is not None
-                    else ()
+                    ("Physical peak", _human_bytes(physical_peak), memory_style),
                 ),
-            ],
-        )
-        if compact and selected.log_tail and not persisted_summary:
-            _append_dashboard_line(
-                details,
-                [
-                    ("Recent log ", key_style),
-                    (selected.log_tail[-1], neutral_style),
-                ],
+                width=width,
+                compact=compact,
+                key_style=key_style,
             )
+        _append_detail_fields(
+            details,
+            (
+                (
+                    "Guard current",
+                    _human_bytes(enforcement_current),
+                    enforcement_style,
+                ),
+                ("Guard peak", _human_bytes(enforcement_peak), enforcement_style),
+                ("RAM cap", _human_bytes(state.memory_limit_bytes), warning_style),
+                (
+                    "Physical current" if compact else "Worker wall cap",
+                    (
+                        (
+                            "unavailable"
+                            if selected.current_physical_footprint_bytes is None
+                            else _human_bytes(selected.current_physical_footprint_bytes)
+                        )
+                        if compact
+                        else (
+                            "disabled"
+                            if state.worker_wall_limit_seconds is None
+                            else _human_duration(state.worker_wall_limit_seconds)
+                        )
+                    ),
+                    (
+                        muted_style
+                        if (
+                            (
+                                compact
+                                and selected.current_physical_footprint_bytes is None
+                            )
+                            or (not compact and state.worker_wall_limit_seconds is None)
+                        )
+                        else (memory_style if compact else warning_style)
+                    ),
+                ),
+            ),
+            width=width,
+            compact=compact,
+            key_style=key_style,
+        )
         evaluator_total = selected.published_evaluator_total_seconds_per_point
         recurrence_core = selected.published_recurrence_core_seconds_per_point
         missing_published = (
@@ -3547,39 +3942,56 @@ def _ratatui_commands(
             and selected.generation_engine != ExecutionMode.RECURRENCE.value
             else missing_published
         )
-        _append_dashboard_line(
-            details,
-            [
-                ("Outer wall ", key_style),
-                (
-                    missing_published
-                    if selected.published_wall_seconds_per_point is None
-                    else (
-                        f"{selected.published_wall_seconds_per_point * 1.0e6:.6g} μs/pt"
-                    ),
-                    neutral_style,
-                ),
-                ("   Evaluator total ", key_style),
-                (
-                    missing_published
-                    if evaluator_total is None
-                    else f"{evaluator_total * 1.0e6:.6g} μs/pt",
-                    neutral_style,
-                ),
-            ],
+        outer_wall_value = (
+            missing_published
+            if selected.published_wall_seconds_per_point is None
+            else f"{selected.published_wall_seconds_per_point * 1.0e6:.6g} μs/pt"
         )
-        _append_dashboard_line(
+        evaluator_total_value = (
+            missing_published
+            if evaluator_total is None
+            else f"{evaluator_total * 1.0e6:.6g} μs/pt"
+        )
+        _append_detail_fields(
             details,
-            [
-                ("Recurrence core ", key_style),
+            (
                 (
-                    missing_recurrence_core
-                    if recurrence_core is None
-                    else f"{recurrence_core * 1.0e6:.6g} μs/pt",
-                    neutral_style,
+                    "Outer wall",
+                    outer_wall_value,
+                    (
+                        muted_style
+                        if selected.published_wall_seconds_per_point is None
+                        else metric_style
+                    ),
                 ),
-                ("   Independent narrow attribution", neutral_style),
-            ],
+                (
+                    "Evaluator total",
+                    evaluator_total_value,
+                    muted_style if evaluator_total is None else metric_style,
+                ),
+            ),
+            width=width,
+            compact=compact,
+            key_style=key_style,
+        )
+        recurrence_value = (
+            missing_recurrence_core
+            if recurrence_core is None
+            else f"{recurrence_core * 1.0e6:.6g} μs/pt"
+        )
+        _append_detail_fields(
+            details,
+            (
+                (
+                    "Recurrence core",
+                    recurrence_value,
+                    muted_style if recurrence_core is None else metric_style,
+                ),
+                ("Attribution", "independent narrow clock", muted_style),
+            ),
+            width=width,
+            compact=compact,
+            key_style=key_style,
         )
         if not compact:
             progress_details = _progress_detail_summary(selected.progress_details)
@@ -3591,17 +4003,19 @@ def _ratatui_commands(
                         (progress_details, neutral_style),
                     ],
                 )
-            _append_dashboard_line(
+            _append_detail_fields(
                 details,
-                [
-                    ("PID tree ", key_style),
+                (
                     (
+                        "PID tree",
                         ", ".join(str(value) for value in selected.member_pids) or "—",
-                        neutral_style,
+                        metric_style,
                     ),
-                    ("   Attempt ", key_style),
-                    (selected.attempt_id or "—", neutral_style),
-                ],
+                    ("Attempt", selected.attempt_id or "—", neutral_style),
+                ),
+                width=width,
+                compact=compact,
+                key_style=key_style,
             )
         if selected.log_tail and not compact and not persisted_summary:
             for index, line in enumerate(selected.log_tail[-3:]):
@@ -3620,35 +4034,137 @@ def _ratatui_commands(
                         details,
                         [("• ", key_style), (event, neutral_style)],
                     )
-            if detail_height >= 10 and selected.reproduce_prepare:
+            available_commands = _available_reproduction_stages(selected)
+            if available_commands:
                 _append_dashboard_line(
                     details,
                     [
-                        ("CLI prepare ", key_style),
-                        (selected.reproduce_prepare, neutral_style),
+                        ("Commands ", key_style),
+                        *(
+                            span
+                            for stage in available_commands
+                            for span in (
+                                (
+                                    f"{_REPRODUCTION_STAGES.index(stage) + 1} ",
+                                    key_style,
+                                ),
+                                (stage, success_style),
+                                ("   ", neutral_style),
+                            )
+                        ),
+                        ("open full command · y copies there", muted_style),
                     ],
                 )
-            if detail_height >= 11 and selected.reproduce_generate:
+            elif selected.generation_engine == ExecutionMode.AMPLICOL.value:
                 _append_dashboard_line(
                     details,
                     [
-                        ("CLI generate ", key_style),
-                        (selected.reproduce_generate, neutral_style),
-                    ],
-                )
-            if detail_height >= 12 and selected.reproduce_profile:
-                _append_dashboard_line(
-                    details,
-                    [
-                        ("CLI profile ", key_style),
-                        (selected.reproduce_profile, neutral_style),
+                        ("Commands ", key_style),
+                        (
+                            "original AmpliCol uses the report adapter; "
+                            "no public CLI reproduction is available",
+                            muted_style,
+                        ),
                     ],
                 )
         ratio = _worker_progress_ratio(selected)
         gauge_label = (
             selected.progress_message or f"{selected.phase} {round(100.0 * ratio):d}%"
         )
-    details.set_scroll(state.detail_scroll)
+    if selected is not None and state.command_stage is not None:
+        stage = state.command_stage
+        command = _reproduction_command(selected, stage)
+        command_details = Paragraph.new_empty()
+        command_details.set_block_title(
+            f" Reproduction command · {stage} · {selected.cell_id} "
+        )
+        _append_dashboard_line(
+            command_details,
+            [
+                ("Stage ", key_style),
+                (stage, success_style if command is not None else warning_style),
+                ("   1 prepare  2 generate  3 profile  Tab/←/→ cycle", muted_style),
+            ],
+        )
+        _append_dashboard_line(
+            command_details,
+            [
+                ("Copy ", key_style),
+                ("y exact clipboard", success_style),
+                ("   Print ", key_style),
+                ("p normal terminal", metric_style),
+                *(
+                    ()
+                    if compact
+                    else (("   Scroll PgUp/PgDn   Close Esc", muted_style),)
+                ),
+            ],
+        )
+        if compact:
+            _append_dashboard_line(
+                command_details,
+                [("Scroll PgUp/PgDn   Close Esc", muted_style)],
+            )
+        if state.command_notice:
+            _append_dashboard_line(
+                command_details,
+                [
+                    ("Status ", key_style),
+                    (
+                        state.command_notice,
+                        warning_style
+                        if "unavailable" in state.command_notice.casefold()
+                        else success_style,
+                    ),
+                ],
+            )
+        if command is None:
+            _append_dashboard_line(
+                command_details,
+                [
+                    ("Unavailable ", warning_style),
+                    (
+                        "this worker does not expose that public CLI stage",
+                        muted_style,
+                    ),
+                ],
+            )
+        else:
+            wrapped = textwrap.wrap(
+                command,
+                width=max(24, width - 6),
+                break_long_words=True,
+                break_on_hyphens=False,
+                replace_whitespace=False,
+                drop_whitespace=True,
+            ) or [command]
+            header_lines = (4 if compact else 3) + bool(state.command_notice)
+            command_capacity = max(1, detail_height - 4 - header_lines)
+            command_start = min(
+                max(0, state.command_scroll),
+                max(0, len(wrapped) - command_capacity),
+            )
+            command_end = min(len(wrapped), command_start + command_capacity)
+            _append_dashboard_line(
+                command_details,
+                [
+                    ("Exact command ", key_style),
+                    (
+                        f"{len(command):,} characters · wrapped lines "
+                        f"{command_start + 1}-{command_end}/{len(wrapped)}",
+                        muted_style,
+                    ),
+                ],
+            )
+            for line in wrapped[command_start:command_end]:
+                _append_dashboard_line(
+                    command_details,
+                    [("  ", key_style), (line, neutral_style)],
+                )
+        command_details.set_wrap(False)
+        details = command_details
+    else:
+        details.set_scroll(state.detail_scroll)
 
     gauge = Gauge().ratio(ratio).label(gauge_label)
     gauge.set_styles(
@@ -3656,18 +4172,32 @@ def _ratatui_commands(
         gauge_label_style,
         gauge_value_style,
     )
-    footer = Paragraph.from_text(
-        " ↑/↓ select  d done  e errors  ? help  Ctrl-C stop safely "
-        if compact
-        else (
-            " ↑/↓ select  d completed  e errors  PgUp/PgDn details"
-            "  ? help  Ctrl-C stop safely "
+    if state.command_stage is not None:
+        footer_text = (
+            (
+                " 1/2/3 stage  Tab cycle  Pg scroll  y copy"
+                "  p print  Esc close  Ctrl-C stop "
+            )
+            if compact
+            else (
+                " 1/2/3 stage  Tab/←/→ cycle  PgUp/PgDn scroll"
+                "  y copy  p print  Esc close  Ctrl-C stop "
+            )
         )
-    )
+    elif compact:
+        footer_text = (
+            " ↑/↓ select  d done  e errors  1/2/3 command  ? help  Ctrl-C stop safely "
+        )
+    else:
+        footer_text = (
+            " ↑/↓ select  d completed  e errors  1/2/3 command"
+            "  PgUp/PgDn details  ? help  Ctrl-C stop safely "
+        )
+    footer = Paragraph.from_text(footer_text)
 
     return [
         DrawCmd.paragraph(overview, (0, 0, width, overview_height)),
-        DrawCmd.table(worker_table, (0, overview_height, width, table_height)),
+        DrawCmd.paragraph(worker_table, (0, overview_height, width, table_height)),
         DrawCmd.paragraph(details, (0, detail_y, width, detail_height - 2)),
         DrawCmd.gauge(gauge, (0, height - 3, width, 2)),
         DrawCmd.paragraph(footer, (0, height - 1, width, footer_height)),
@@ -3733,26 +4263,69 @@ def _handle_dashboard_key(
     code = event.get("code")
     ch = event.get("ch")
     mods = _optional_int(event.get("mods")) or 0
-    if code == KeyCode.Up or (code == KeyCode.Char and ch == ord("k")):
+    if code == KeyCode.Char and ch in {ord("c"), ord("C")} and mods & int(KeyMods.CTRL):
+        state.interrupted = True
+        cancellation.set()
+        return True
+    if code == KeyCode.Esc and state.command_stage is not None:
+        state.command_stage = None
+        state.command_scroll = 0
+        state.command_notice = None
+        state.pending_clipboard = None
+        state.pending_print = None
+    elif code == KeyCode.Up or (code == KeyCode.Char and ch == ord("k")):
         state.selected_index -= 1
         state.detail_scroll = 0
+        state.command_scroll = 0
+        state.command_notice = None
     elif code == KeyCode.Down or (code == KeyCode.Char and ch == ord("j")):
         state.selected_index += 1
         state.detail_scroll = 0
+        state.command_scroll = 0
+        state.command_notice = None
     elif code == KeyCode.PageUp:
-        state.detail_scroll = max(0, state.detail_scroll - 3)
+        if state.command_stage is None:
+            state.detail_scroll = max(0, state.detail_scroll - 3)
+        else:
+            state.command_scroll = max(0, state.command_scroll - 3)
     elif code == KeyCode.PageDown:
-        state.detail_scroll += 3
+        if state.command_stage is None:
+            state.detail_scroll += 3
+        else:
+            state.command_scroll += 3
+    elif code == KeyCode.Char and ch in {ord("1"), ord("2"), ord("3")}:
+        assert isinstance(ch, int)
+        state.command_stage = _REPRODUCTION_STAGES[ch - ord("1")]
+        state.command_scroll = 0
+        state.command_notice = None
+        state.show_help = False
+    elif code == KeyCode.Tab or code == KeyCode.Right:
+        _cycle_reproduction_stage(state, 1)
+        state.show_help = False
+    elif code == KeyCode.Left:
+        _cycle_reproduction_stage(state, -1)
+        state.show_help = False
+    elif code == KeyCode.Char and ch in {ord("y"), ord("Y")}:
+        command = _reproduction_command(state.selected_worker(), state.command_stage)
+        if command is None or state.command_stage is None:
+            state.command_notice = "Selected command is unavailable"
+        else:
+            state.pending_clipboard = (state.command_stage, command)
+    elif code == KeyCode.Char and ch in {ord("p"), ord("P")}:
+        command = _reproduction_command(state.selected_worker(), state.command_stage)
+        if command is None or state.command_stage is None:
+            state.command_notice = "Selected command is unavailable"
+        else:
+            state.pending_print = (state.command_stage, command)
     elif code == KeyCode.Char and ch in {ord("d"), ord("D")}:
         _toggle_worker_filter(state, "show_completed")
     elif code == KeyCode.Char and ch in {ord("e"), ord("E")}:
         _toggle_worker_filter(state, "show_errors")
     elif code == KeyCode.Char and ch == ord("?"):
         state.show_help = not state.show_help
+        state.command_stage = None
         state.detail_scroll = 0
-    elif code == KeyCode.Esc or (
-        code == KeyCode.Char and ch in {ord("c"), ord("C")} and mods & int(KeyMods.CTRL)
-    ):
+    elif code == KeyCode.Esc:
         state.interrupted = True
         cancellation.set()
         return True
@@ -3809,23 +4382,52 @@ def _run_live_dashboard(
     *,
     color: bool = True,
 ) -> None:
-    with _ratatui_terminal_session() as terminal:
-        while not finished.is_set():
-            display_state = lease.dashboard_snapshot()
-            width, height = terminal.size()
-            terminal.draw_frame(
-                _ratatui_commands(
-                    display_state,
-                    width=width,
-                    height=height,
-                    color=color,
+    while not finished.is_set():
+        print_request: tuple[str, str] | None = None
+        with _ratatui_terminal_session() as terminal:
+            while not finished.is_set():
+                display_state = lease.dashboard_snapshot()
+                width, height = terminal.size()
+                terminal.draw_frame(
+                    _ratatui_commands(
+                        display_state,
+                        width=width,
+                        height=height,
+                        color=color,
+                    )
                 )
-            )
-            event = terminal.next_event(timeout_ms=150)
-            if event is None:
-                continue
-            if _handle_dashboard_key(state, event, cancellation):
-                break
+                event = terminal.next_event(timeout_ms=150)
+                if event is None:
+                    continue
+                if _handle_dashboard_key(state, event, cancellation):
+                    return
+                if state.pending_clipboard is not None:
+                    stage, command = state.pending_clipboard
+                    state.pending_clipboard = None
+                    try:
+                        sys.stdout.write(_osc52_clipboard_sequence(command))
+                        sys.stdout.flush()
+                    except OSError:
+                        state.command_notice = (
+                            "Clipboard unavailable; press p to print the command"
+                        )
+                    else:
+                        state.command_notice = (
+                            f"Copied full {stage} command ({len(command):,} characters)"
+                        )
+                if state.pending_print is not None:
+                    print_request = state.pending_print
+                    state.pending_print = None
+                    break
+        if print_request is None:
+            continue
+        stage, command = print_request
+        print(f"\nFull {stage} command ({len(command):,} characters):\n")
+        print(command)
+        print()
+        with suppress(EOFError):
+            input("Press Enter to return to the dashboard… ")
+        state.command_notice = f"Returned from printed {stage} command"
 
 
 def _manual_baseline(
@@ -5424,7 +6026,11 @@ Keyboard controls
   ↑/↓ or j/k  select a worker     PgUp/PgDn  scroll worker details
   d           show/hide completed successful workers (hidden by default)
   e           show/hide errors, caps, and recycled non-success rows
-  ?           show help           Ctrl-C/Esc stop safely and discard partial attempts
+  1/2/3       open the complete prepare/generate/profile command drawer
+  Tab or ←/→  cycle available commands       y  copy the exact command
+  p           print the exact command outside the dashboard for selection
+  Esc         close the command drawer        ?  show dashboard help
+  Ctrl-C      stop safely and discard partial attempts
 
 The selected-worker panel preserves typed engine details when available,
 including recurrence stages, current/contribution counts, relation counts,
@@ -5871,6 +6477,22 @@ def main(
     json_output = arguments.command == "inspect" and arguments.format == "json"
     palette = Palette(_color_enabled(arguments, json_output=json_output))
     try:
+        dashboard_disabled = _configure_dashboard_capability(
+            arguments,
+            installed=installed,
+        )
+        if (
+            dashboard_disabled
+            and bool(getattr(sys.stdin, "isatty", lambda: False)())
+            and bool(getattr(sys.stdout, "isatty", lambda: False)())
+        ):
+            print(
+                palette.warning(
+                    "Optional Ratatui bindings are unavailable; continuing with "
+                    "--no-dashboard."
+                ),
+                file=sys.stderr,
+            )
         if arguments.command == "dashboard-snapshot":
             if arguments.instance is not None and not arguments.live:
                 raise ManualCampaignError("--instance requires --live")

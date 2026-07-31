@@ -408,11 +408,17 @@ def test_all_twelve_matrices_render_in_catalog_order(reset_caches) -> None:
         if dataset.candidate.accuracy is Accuracy.NLC
     )
     assert r"\textbf{ID} & \textbf{base process} & \textbf{metric}" in lc_tex
-    assert r"\multicolumn{6}{@{\hspace{0.06in}}c}{\textbf{n=1}}" in lc_tex
+    assert r"\multicolumn{8}{@{\hspace{0.06in}}c}{\textbf{n=1}}" in lc_tex
+    assert r"\multicolumn{8}{:@{\hspace{0.06in}}c}{\textbf{n=2}}" in lc_tex
     assert r"\multicolumn{3}{@{\hspace{0.06in}}c}{\textbf{n=1}}" in contracted_tex
-    assert r"\textcolor{ReportMuted}{\scriptsize generation [s]}" in lc_tex
+    assert r"\multicolumn{3}{:@{\hspace{0.06in}}c}{\textbf{n=2}}" in contracted_tex
+    assert r"\makebox[\linewidth][c]{%" in lc_tex
+    assert r"\rowcolor{refblue}" in lc_tex
+    assert lc_tex.count(r"\multicolumn{8}{:@{\hspace{0.06in}}l}") >= 4
+    assert r"\texttt{abs }" not in lc_tex
+    assert r"\textcolor{ReportMuted}{\scriptsize gen. [s]}" in lc_tex
     assert (
-        r"\textcolor{ReportMuted}{\scriptsize runtime "
+        r"\textcolor{ReportMuted}{\scriptsize run "
         r"[\(\mu\mathrm{s}/\mathrm{pt}\)]}"
     ) in lc_tex
     assert r"\matrixcolumnheading" not in lc_tex
@@ -482,14 +488,15 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
         line
         for line in tex.splitlines()
         if line.startswith(
-            r" &  & \textcolor{ReportMuted}{\scriptsize runtime"
+            r" &  & \textcolor{ReportMuted}{\scriptsize run"
         )
     )
     assert (
-        r"\textcolor{ReportMuted}{\scriptsize generation [s]}"
-        r" & \texttt{10.0} & \texttt{10.0} &  & "
+        r"\textcolor{ReportMuted}{\scriptsize gen. [s]}"
+        r" & \texttt{10.0} & \matrixpunct{|} & \texttt{10.0} &  & "
         r"\bestmoderatio{ReportGreen}{0.400} & "
-        r"\bestmodencprefix{\texttt{5.00}} & \bestmodenclabel"
+        r"\matrixpunct{|} & \bestmodencprefix{\texttt{5.00}} & "
+        r"\bestmodenclabel"
     ) in row
     assert (
         runtime_row.count(
@@ -503,7 +510,7 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
         r">{\matrixentryfontlc}l"
     ) in tex
     assert (
-        r"\textbf{metric} & \multicolumn{6}"
+        r"\textbf{metric} & \multicolumn{8}"
         r"{@{\hspace{0.06in}}c}{\textbf{n=1}}"
     ) in tex
     assert r"\matrixcolumnheading" not in tex
@@ -517,15 +524,102 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
         if r"\textbf{summary: generation}" in line
     )
     assert (
-        r"\providecommand{\bestmodesummarypair}[3]{"
-        r"\begin{tabular}[t]{@{}l@{\hspace{0.04in}}l@{}}"
-        r"#1&#2\\[-0.16em]\multicolumn{2}{@{}l@{}}{#3}\end{tabular}}"
+        r"\providecommand{\bestmodesummarystats}[2]{"
+        r"\begin{tabular}[t]{@{}l@{}}"
+        r"#1\\[-0.12em]#2\end{tabular}}"
     ) in tex
-    assert r"\bestmodesummarypair{" in generation_summary
+    assert r"\bestmodesummarystats{\matrixsummarystats{" in generation_summary
     assert r"}{\bestmodemix{A:0|B:1|C:0}}" in generation_summary
-    assert r"}{\bestmodemix{A:0|B:0|C:1}}" in generation_summary
-    assert r"\matrixratio{ReportGreen}{0.400}\bestmodemix" not in generation_summary
-    assert r"\matrixratio{ReportGreen}{0.500}\bestmodemix" not in generation_summary
+    assert r"A:0|B:0|C:1" not in generation_summary
+    assert generation_summary.count(
+        r"\matrixsummaryratio{ReportGreen}{0.400}"
+    ) == 5
+    assert r"\texttt{10.0}" not in generation_summary
+    assert r"\texttt{5.00}" not in generation_summary
+
+
+def test_ratio_summary_reports_five_exact_statistics_without_absolute_times() -> None:
+    summary = report_render._ratio_statistics_tex(
+        ((1.0, 1.0), (3.0, 9.0))
+    )
+
+    assert summary == (
+        r"\matrixsummarystats{"
+        r"\matrixsummaryratio{ReportOrange}{1.00}}{"
+        r"\matrixsummaryratio{ReportRed}{3.00}}{"
+        r"\matrixsummaryratio{ReportRed}{2.00}}{"
+        r"\matrixsummaryratio{ReportRed}{2.00}}{"
+        r"\matrixsummaryratio{ReportRed}{2.50}}"
+    )
+    assert r"\texttt{" not in summary
+
+
+def test_lc_summaries_omit_union_generation_and_keep_both_wall_workloads(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    baseline = _cache_by_dataset(
+        caches,
+        "matrix_recurrence_builtin_sm_lc",
+    )
+    candidate = _cache_by_dataset(
+        caches,
+        "matrix_compiled_builtin_sm_lc",
+    )
+    selected_pairs = ((1.0, 1.0), (3.0, 9.0))
+    union_pairs = ((2.0, 20.0), (4.0, 80.0))
+    for process_key, selected, union in zip(
+        ("dd_z_jets", "ud_w_jets"),
+        selected_pairs,
+        union_pairs,
+        strict=True,
+    ):
+        for workload, (baseline_value, candidate_value) in (
+            (Workload.SELECTED_FLOW, selected),
+            (Workload.ALL_FLOW, union),
+        ):
+            _set_ok(
+                baseline,
+                process_key=process_key,
+                n_final=1,
+                workload=workload,
+                generation=baseline_value,
+                wall=baseline_value,
+                execution=baseline_value,
+            )
+            _set_ok(
+                candidate,
+                process_key=process_key,
+                n_final=1,
+                workload=workload,
+                generation=candidate_value,
+                wall=candidate_value,
+                execution=candidate_value,
+            )
+
+    tex = render_matrix_table(
+        REPORT_CATALOG.dataset("matrix_compiled_builtin_sm_lc"),
+        caches,
+    )
+    generation_summary = next(
+        line
+        for line in tex.splitlines()
+        if r"\textbf{summary: generation}" in line
+    )
+    wall_summary = next(
+        line for line in tex.splitlines() if r"\textbf{summary: wall}" in line
+    )
+    selected_stats = report_render._ratio_statistics_tex(selected_pairs)
+    union_stats = report_render._ratio_statistics_tex(union_pairs)
+
+    assert selected_stats in generation_summary
+    assert union_stats not in generation_summary
+    assert r"\matrixsummaryworkloads" not in generation_summary
+    assert rf"\matrixsummaryworkloads{{{selected_stats}}}{{{union_stats}}}" in (
+        wall_summary
+    )
+    assert r"\matrixsummarypair" not in generation_summary
+    assert r"\matrixsummarypair" not in wall_summary
 
 
 def test_best_mode_summary_tie_breaks_in_documented_mode_order(reset_caches) -> None:
@@ -640,7 +734,7 @@ def test_best_mode_renders_mixed_policy_censors_without_a_winner_code(
         line
         for line in tex.splitlines()
         if line.startswith(
-            r" &  & \textcolor{ReportMuted}{\scriptsize runtime"
+            r" &  & \textcolor{ReportMuted}{\scriptsize run"
         )
     )
 
@@ -826,8 +920,8 @@ def test_matrix_tables_are_fixed_nonsplittable_blocks(reset_caches) -> None:
         assert tex.count(r"\clearpage") == tex.count(r"\begin{minipage}{\linewidth}")
         assert r"\begin{tabular}" in tex
         assert r"\fontsize{6.5pt}{7.5pt}\selectfont" in tex
-        assert r"\begingroup\matrixentryfontlc" in tex
-        assert r"\hspace{0.03in}" in tex
+        assert r"\begingroup\matrixsummaryfont" in tex
+        assert r"\hspace{0.014in}" in tex
         assert tex.index(r"\clearpage") < tex.index(r"\subsection{")
         assert tex.index(r"\subsection{") < tex.index(
             r"\noindent\begin{minipage}{\linewidth}"
@@ -1611,7 +1705,13 @@ def test_amplicol_all_flow_setup_generation_ratio_is_not_comparable(
         caches,
     )
 
-    assert tex.count(r"\matrixncabsolute{\texttt{10}}") >= 2
+    assert tex.count(r"\matrixncabsolute{\texttt{10}}") == 1
+    generation_summary = next(
+        line
+        for line in tex.splitlines()
+        if r"\textbf{summary: generation}" in line
+    )
+    assert r"\texttt{10}" not in generation_summary
     assert r"\matrixratio{ReportRed}{1e+05}" not in tex
     assert "n.c. (not comparable)" in tex
 
@@ -1812,7 +1912,7 @@ def test_scalar_timing_marks_unavailable_arena_attribution_not_exposed(
 
     tex = render_scalar_ladder(dataset, caches)
 
-    assert r"evaluator total [$\mu$s/pt]" in tex
+    assert r"evaluator total [\(\mu\mathrm{s}/\mathrm{pt}\)]" in tex
     assert r"\matrixnotexposed{ReportMuted}" in tex
     assert "successful wall measurement" in tex
 
@@ -1853,18 +1953,22 @@ def test_scalar_timing_uses_dedicated_evaluator_total_not_wall(
 
     tex = render_scalar_ladder(dataset, caches)
     wall_row = next(
-        line for line in tex.splitlines() if line.startswith(r"wall [$\mu$s/pt]")
+        line
+        for line in tex.splitlines()
+        if line.startswith(r"wall [\(\mu\mathrm{s}/\mathrm{pt}\)]")
     )
     total_row = next(
         line
         for line in tex.splitlines()
-        if line.startswith(r"evaluator total [$\mu$s/pt]")
+        if line.startswith(
+            r"evaluator total [\(\mu\mathrm{s}/\mathrm{pt}\)]"
+        )
     )
 
     assert r"\texttt{218.105}" in wall_row
     assert r"\texttt{217.812}" in total_row
     assert r"\texttt{218.105}" not in total_row
-    assert r"execution [$\mu$s/pt]" not in tex
+    assert r"execution [\(\mu\mathrm{s}/\mathrm{pt}\)]" not in tex
     assert "never copied from or derived from wall time" in tex
 
 

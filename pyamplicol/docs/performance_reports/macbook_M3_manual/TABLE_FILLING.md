@@ -13,8 +13,15 @@ the controller from that destination:
 ```console
 pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
 ./pyamplicol-profiling-campaign/steer_performance_campaign.py \
-  dashboard-snapshot
+  run --dry-run --table scalar_contact --multiplicity 2 \
+  --generation-engine compiled --no-dashboard
 ```
+
+Release wheels omit the optional `ratatui` and `ratatui_py` dashboard
+bindings. Installed runs automatically continue headlessly as though
+`--no-dashboard` had been supplied. `dashboard-snapshot` remains available
+when those bindings are present, notably in a contributor checkout prepared
+with `just dev-install`; without them it exits with an actionable instruction.
 
 PyAmpliCol-only dry runs and measurements do not need a legacy checkout.
 Selections whose planned dependency closure includes original AmpliCol require

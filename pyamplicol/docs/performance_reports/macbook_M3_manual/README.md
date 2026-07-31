@@ -21,7 +21,16 @@ source checkout:
 ```console
 pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
 ./pyamplicol-profiling-campaign/steer_performance_campaign.py --help
+./pyamplicol-profiling-campaign/steer_performance_campaign.py run \
+  --dry-run --table scalar_contact --multiplicity 2 \
+  --generation-engine compiled --no-dashboard
 ```
+
+Release wheels do not include the optional `ratatui` and `ratatui_py`
+dashboard bindings. Installed campaign runs therefore continue headlessly as
+if `--no-dashboard` were supplied. `dashboard-snapshot` is available when
+those bindings are present, including in a contributor checkout prepared with
+`just dev-install`; otherwise it exits with the corresponding instruction.
 
 Dry runs and measurement selections whose planned closure contains only
 pyAmpliCol need no legacy source. If the planned closure includes an original

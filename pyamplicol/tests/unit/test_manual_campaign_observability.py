@@ -169,14 +169,14 @@ def test_dashboard_uses_guard_memory_and_incremental_progress_and_log_tails(
     for frame in (wide, compact):
         assert "progress" in frame
         assert "▰" in frame
-        assert "Enforcement guard" in frame
+        assert "Guard current" in frame
         assert "1.20 kB" in frame
         assert "Recent log" in frame
         assert "profiling batch 3" in frame
-    assert "RSS current 800 B" in wide
-    assert "RSS peak 900 B" in wide
-    assert "Physical current 1.20 kB" in wide
-    assert "Cap 1.00 kB" in wide
+    assert "RSS current" in wide and "800 B" in wide
+    assert "RSS peak" in wide and "900 B" in wide
+    assert "Physical current" in wide and "1.20 kB" in wide
+    assert "RAM cap" in wide and "1.00 kB" in wide
 
 
 @pytest.mark.parametrize(
@@ -280,7 +280,8 @@ def test_dashboard_preserves_and_displays_three_independent_recurrence_clocks() 
         if "matrix-compiled-" in worker.cell_id
     )
     compiled_frame = render_dashboard_frame(state, width=120, height=36)
-    assert "Recurrence core not applicable" in compiled_frame
+    assert "Recurrence core" in compiled_frame
+    assert "not applicable" in compiled_frame
 
 
 def test_ratatui_terminal_session_uses_native_lifecycle_and_restores_environment(

@@ -1433,6 +1433,7 @@ class CampaignScheduler:
         }
         for model in sorted(models, key=lambda item: item.value):  # type: ignore[union-attr]
             assert model is not None
+            preflight_attempt_id = f"prepared-model-{model.value}"
             representative = next(
                 item
                 for item in planned
@@ -1486,7 +1487,7 @@ class CampaignScheduler:
             self._observe(
                 "worker",
                 representative.cell,
-                attempt_id=f"prepared-model-{model.value}",
+                attempt_id=preflight_attempt_id,
                 progress_path=os.fspath(progress_path),
             )
 
@@ -1494,7 +1495,7 @@ class CampaignScheduler:
                 observation: WorkerObservation,
                 *,
                 cell: CellSpec = representative.cell,
-                attempt_id: str = f"prepared-model-{model.value}",
+                attempt_id: str = preflight_attempt_id,
             ) -> None:
                 self._observe(
                     "resource",
@@ -1519,26 +1520,26 @@ class CampaignScheduler:
                     child_count=observation.usage.child_count,
                 )
 
-            supervised = supervise_worker(
-                command,
-                timeout_seconds=preflight_timeout,
-                max_rss_bytes=self._effective_cell_rss_limit(),
-                interval_seconds=(self.settings.resource_sample_interval_seconds),
-                termination_grace_seconds=self.settings.termination_grace_seconds,
-                cancellation_requested=self.settings.cancellation_requested,
-                observation_callback=observe_preflight_resources,
-                environment_overrides=_worker_environment_overrides(
-                    self.settings,
-                    self.service.paths.coordination_root,
-                ),
-                scrub_import_environment=(self.worker_harness_identity is not None),
-                working_directory=(
-                    self.service.paths.repo_root
-                    if self.worker_harness_identity is not None
-                    else None
-                ),
-            )
             try:
+                supervised = supervise_worker(
+                    command,
+                    timeout_seconds=preflight_timeout,
+                    max_rss_bytes=self._effective_cell_rss_limit(),
+                    interval_seconds=(self.settings.resource_sample_interval_seconds),
+                    termination_grace_seconds=self.settings.termination_grace_seconds,
+                    cancellation_requested=self.settings.cancellation_requested,
+                    observation_callback=observe_preflight_resources,
+                    environment_overrides=_worker_environment_overrides(
+                        self.settings,
+                        self.service.paths.coordination_root,
+                    ),
+                    scrub_import_environment=(self.worker_harness_identity is not None),
+                    working_directory=(
+                        self.service.paths.repo_root
+                        if self.worker_harness_identity is not None
+                        else None
+                    ),
+                )
                 if (
                     supervised.reason != "completed"
                     or supervised.returncode != 0
@@ -1571,6 +1572,11 @@ class CampaignScheduler:
                 path = Path(str(payload["path"])).resolve(strict=True)
                 self._prepared_model_paths[model] = path
             finally:
+                self._observe(
+                    "preflight-finished",
+                    representative.cell,
+                    attempt_id=preflight_attempt_id,
+                )
                 result_path.unlink(missing_ok=True)
                 progress_path.unlink(missing_ok=True)
 
@@ -1773,9 +1779,7 @@ class CampaignScheduler:
                 dependency_currents[dependency.cell_id] = current_dependency
             baseline_record, peer_records, terminal_dependencies = (
                 _partition_dependency_records(
-                    baseline_cell_id=(
-                        None if baseline is None else baseline.cell_id
-                    ),
+                    baseline_cell_id=(None if baseline is None else baseline.cell_id),
                     comparison_peer_ids=planned.comparison_peer_ids,
                     currents=dependency_currents,
                 )

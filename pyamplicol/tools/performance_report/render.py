@@ -506,7 +506,7 @@ def _best_mode_ratio_color(value: float) -> str:
 
 
 def _metric_group_span(accuracy: Accuracy) -> int:
-    return 6 if accuracy is Accuracy.LC else 3
+    return 8 if accuracy is Accuracy.LC else 3
 
 
 def _metric_group_column_spec(accuracy: Accuracy) -> str:
@@ -520,11 +520,11 @@ def _metric_group_column_spec(accuracy: Accuracy) -> str:
     if accuracy is Accuracy.LC:
         return (
             rf"@{{\hspace{{0.06in}}}}>{{{font}}}l"
-            r"@{\hspace{0.018in}\matrixpunct{|}\hspace{0.018in}}"
+            rf">{{{font}}}c"
             rf">{{{font}}}l"
             rf"@{{\hspace{{0.050in}}}}>{{{font}}}r"
             rf"@{{\hspace{{0.08em}}}}>{{{font}}}l"
-            r"@{\hspace{0.018in}\matrixpunct{|}\hspace{0.018in}}"
+            rf">{{{font}}}c"
             rf">{{{font}}}r"
             rf"@{{\hspace{{0.08em}}}}>{{{font}}}l"
         )
@@ -539,9 +539,13 @@ def _metric_table_column_spec(
     accuracy: Accuracy,
     multiplicity_count: int,
 ) -> str:
+    multiplicity_groups = ":".join(
+        _metric_group_column_spec(accuracy)
+        for _ in range(multiplicity_count)
+    )
     return (
         r"@{}r@{\hspace{0.04in}}L{1.45in}@{\hspace{0.04in}}l"
-        + _metric_group_column_spec(accuracy) * multiplicity_count
+        + multiplicity_groups
         + r"@{}"
     )
 
@@ -549,19 +553,21 @@ def _metric_table_column_spec(
 def _metric_group_cell(
     content: str,
     accuracy: Accuracy,
+    *,
+    separated: bool = False,
+    alignment: str = "c",
 ) -> str:
+    if alignment not in {"c", "l", "r"}:
+        raise ValueError(f"unsupported metric-group alignment: {alignment}")
+    boundary = ":" if separated else ""
     return (
         rf"\multicolumn{{{_metric_group_span(accuracy)}}}"
-        rf"{{@{{\hspace{{0.06in}}}}c}}{{{content}}}"
+        rf"{{{boundary}@{{\hspace{{0.06in}}}}{alignment}}}{{{content}}}"
     )
 
 
 def _metric_row_label(*, runtime: bool) -> str:
-    label = (
-        r"runtime [\(\mu\mathrm{s}/\mathrm{pt}\)]"
-        if runtime
-        else r"generation [s]"
-    )
+    label = r"run [\(\mu\mathrm{s}/\mathrm{pt}\)]" if runtime else r"gen. [s]"
     return rf"\textcolor{{ReportMuted}}{{\scriptsize {label}}}"
 
 
@@ -826,6 +832,7 @@ def _matrix_macros() -> list[str]:
     return [
         r"\providecommand{\matrixentryfont}{\fontsize{6.8pt}{7.8pt}\selectfont}",
         r"\providecommand{\matrixentryfontlc}{\fontsize{6.5pt}{7.5pt}\selectfont}",
+        r"\providecommand{\matrixsummaryfont}{\fontsize{4.1pt}{4.9pt}\selectfont}",
         r"\providecommand{\matrixpunct}[1]{\textcolor{black}{\texttt{#1}}}",
         (
             r"\providecommand{\matrixratio}[2]{\matrixpunct{(}"
@@ -880,8 +887,25 @@ def _matrix_macros() -> list[str]:
         r"\providecommand{\matrixstatus}[2]{\textcolor{#1}{\textsc{#2}}}",
         (
             r"\providecommand{\matrixncabsolute}[1]{"
-            r"\textcolor{ReportBlue}{\texttt{abs }}#1"
-            r"\matrixpunct{; }\matrixstatus{ReportMuted}{n.c.}}"
+            r"#1\matrixpunct{; }\matrixstatus{ReportMuted}{n.c.}}"
+        ),
+        (
+            r"\providecommand{\matrixsummaryratio}[2]{"
+            r"\textcolor{#1}{\texttt{x#2}}}"
+        ),
+        (
+            r"\providecommand{\matrixsummarystats}[5]{"
+            r"\begingroup\matrixsummaryfont"
+            r"\begin{tabular}[t]{@{}r"
+            r"@{\hspace{0.014in}\matrixpunct{|}\hspace{0.014in}}r"
+            r"@{\hspace{0.014in}\matrixpunct{|}\hspace{0.014in}}r"
+            r"@{\hspace{0.014in}\matrixpunct{|}\hspace{0.014in}}r"
+            r"@{\hspace{0.014in}\matrixpunct{|}\hspace{0.014in}}r@{}}"
+            r"#1&#2&#3&#4&#5\end{tabular}\endgroup}"
+        ),
+        (
+            r"\providecommand{\matrixsummaryworkloads}[2]{"
+            r"\begin{tabular}[t]{@{}l@{}}#1\\[-0.10em]#2\end{tabular}}"
         ),
     ]
 
@@ -1015,17 +1039,21 @@ def _lc_cell(
     return _MatrixCellRows(
         generation=(
             selected_baseline_generation,
+            r"\matrixpunct{|}",
             all_flow_baseline_generation,
             "",
             selected_generation_ratio,
+            r"\matrixpunct{|}",
             "",
             all_flow_generation_ratio,
         ),
         runtime=(
             selected_runtime,
+            r"\matrixpunct{|}",
             all_flow_runtime,
             "",
             selected_ratio,
+            r"\matrixpunct{|}",
             "",
             all_flow_ratio,
         ),
@@ -1078,9 +1106,6 @@ def _summary_pair(
     views: Sequence[JoinedMatrixCell],
     workload: Workload,
     field: str,
-    *,
-    microseconds: bool = False,
-    comparable: bool = True,
 ) -> str:
     joined = [
         next(item for item in view.workloads if item.workload is workload)
@@ -1096,6 +1121,10 @@ def _summary_pair(
         and item.candidate.get(field) is not None
         and unavailable_execution_timing_record(item.baseline, field) is None
         and unavailable_execution_timing_record(item.candidate, field) is None
+        and math.isfinite(float(item.baseline[field]))
+        and math.isfinite(float(item.candidate[field]))
+        and float(item.baseline[field]) > 0.0
+        and float(item.candidate[field]) >= 0.0
     ]
     if not valid:
         if field == "execution_seconds_per_point" and any(
@@ -1110,30 +1139,44 @@ def _summary_pair(
             if not _ok(item.baseline) and policy_status_label(item.baseline):
                 return _status(item.baseline)
         return r"\matrixna{ReportMuted}"
-    baseline_sum = sum(float(item.baseline[field]) for item in valid)
-    candidate_sum = sum(float(item.candidate[field]) for item in valid)
-    baseline_mean = baseline_sum / len(valid)
-    baseline_text = _time(baseline_mean, microseconds=microseconds)
-    if not comparable:
-        candidate_mean = candidate_sum / len(valid)
-        candidate_text = _time(candidate_mean, microseconds=microseconds)
-        return (
-            rf"\matrixsummarypair{{{baseline_text}}}"
-            rf"{{\matrixncabsolute{{{candidate_text}}}}}"
+    return _ratio_statistics_tex(
+        tuple(
+            (float(item.baseline[field]), float(item.candidate[field]))
+            for item in valid
         )
-    ratio = candidate_sum / baseline_sum if baseline_sum > 0.0 else math.nan
-    if not math.isfinite(ratio):
-        ratio_text = r"\matrixnaratio{ReportMuted}"
-    else:
-        color = (
-            "ReportGreen"
-            if ratio < 1.0
-            else "ReportOrange"
-            if ratio < 2.0
-            else "ReportRed"
-        )
-        ratio_text = rf"\matrixratio{{{color}}}{{{_compact(ratio)}}}"
-    return rf"\matrixsummarypair{{{baseline_text}}}{{{ratio_text}}}"
+    )
+
+
+def _ratio_statistics_tex(
+    timings: Sequence[tuple[float, float]],
+) -> str:
+    """Render min/max/median/mean/ratio-of-sums for timing pairs."""
+
+    ratios = tuple(candidate / baseline for baseline, candidate in timings)
+    ordered = tuple(sorted(ratios))
+    middle = len(ordered) // 2
+    median = (
+        ordered[middle]
+        if len(ordered) % 2
+        else (ordered[middle - 1] + ordered[middle]) / 2.0
+    )
+    average = math.fsum(ratios) / len(ratios)
+    baseline_sum = math.fsum(baseline for baseline, _candidate in timings)
+    candidate_sum = math.fsum(candidate for _baseline, candidate in timings)
+    weighted_average = candidate_sum / baseline_sum
+    statistics = (
+        ordered[0],
+        ordered[-1],
+        median,
+        average,
+        weighted_average,
+    )
+    rendered = (
+        rf"\matrixsummaryratio{{{_best_mode_ratio_color(value)}}}"
+        rf"{{{_best_mode_value(value)}}}"
+        for value in statistics
+    )
+    return r"\matrixsummarystats{" + "}{".join(rendered) + "}"
 
 
 def _matrix_block(
@@ -1169,7 +1212,11 @@ def _matrix_block(
         r"\centering",
         r"\footnotesize",
         r"\setlength{\tabcolsep}{2.1pt}",
+        r"\setlength{\dashlinedash}{1.4pt}",
+        r"\setlength{\dashlinegap}{1.4pt}",
+        r"\arrayrulecolor{ReportRule}",
         r"\renewcommand{\arraystretch}{1.10}",
+        r"\makebox[\linewidth][c]{%",
         rf"\begin{{tabular}}{{{column_spec}}}",
         r"\toprule",
         (
@@ -1178,8 +1225,9 @@ def _matrix_block(
                 _metric_group_cell(
                     rf"\textbf{{n={n_final}}}",
                     accuracy,
+                    separated=multiplicity_index > 0,
                 )
-                for n_final in multiplicities
+                for multiplicity_index, n_final in enumerate(multiplicities)
             )
             + r" \\"
         ),
@@ -1195,14 +1243,24 @@ def _matrix_block(
             _metric_row_label(runtime=False),
         ]
         runtime_row = ["", "", _metric_row_label(runtime=True)]
-        for n_final in multiplicities:
+        for multiplicity_index, n_final in enumerate(multiplicities):
             view = adapter.matrix_cell(dataset, family, n_final)
             views_by_n[n_final].append(view)
             if not view.applicable:
                 generation_row.append(
-                    _metric_group_cell(_not_applicable(), accuracy)
+                    _metric_group_cell(
+                        _not_applicable(),
+                        accuracy,
+                        separated=multiplicity_index > 0,
+                    )
                 )
-                runtime_row.append(_metric_group_cell("", accuracy))
+                runtime_row.append(
+                    _metric_group_cell(
+                        "",
+                        accuracy,
+                        separated=multiplicity_index > 0,
+                    )
+                )
             elif accuracy is Accuracy.LC:
                 rendered = _lc_cell(view, catalog=adapter.catalog)
                 generation_row.extend(rendered.generation)
@@ -1230,8 +1288,10 @@ def _matrix_block(
                             dataset,
                         ),
                         accuracy,
+                        separated=multiplicity_index > 0,
+                        alignment="l",
                     )
-                    for n_final in multiplicities
+                    for multiplicity_index, n_final in enumerate(multiplicities)
                 )
                 + r" \\"
             ),
@@ -1245,13 +1305,16 @@ def _matrix_block(
                             accuracy,
                         ),
                         accuracy,
+                        separated=multiplicity_index > 0,
+                        alignment="l",
                     )
-                    for n_final in multiplicities
+                    for multiplicity_index, n_final in enumerate(multiplicities)
                 )
                 + r" \\"
             ),
             r"\bottomrule",
             r"\end{tabular}",
+            r"}",
             r"\endgroup",
             _matrix_legend(dataset),
             r"\end{minipage}",
@@ -1265,21 +1328,11 @@ def _matrix_generation_summary(
     dataset: MatrixDataset,
 ) -> str:
     if dataset.candidate.accuracy is Accuracy.LC:
-        selected = _summary_pair(
+        return _summary_pair(
             views,
             Workload.SELECTED_FLOW,
             "generation_seconds",
         )
-        all_flow = _summary_pair(
-            views,
-            Workload.ALL_FLOW,
-            "generation_seconds",
-            comparable=not (
-                dataset.candidate.execution_mode is ExecutionMode.RECURRENCE
-                and dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
-            ),
-        )
-        return rf"\matrixpair{{{selected}}}{{{all_flow}}}"
     return _summary_pair(views, Workload.CONTRACTED, "generation_seconds")
 
 
@@ -1292,20 +1345,17 @@ def _matrix_wall_summary(
             views,
             Workload.SELECTED_FLOW,
             "wall_seconds_per_point",
-            microseconds=True,
         )
         all_flow = _summary_pair(
             views,
             Workload.ALL_FLOW,
             "wall_seconds_per_point",
-            microseconds=True,
         )
-        return rf"\matrixpair{{{selected}}}{{{all_flow}}}"
+        return rf"\matrixsummaryworkloads{{{selected}}}{{{all_flow}}}"
     return _summary_pair(
         views,
         Workload.CONTRACTED,
         "wall_seconds_per_point",
-        microseconds=True,
     )
 
 
@@ -1366,6 +1416,17 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         if dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
         else ""
     )
+    summary_detail = (
+        " Summary rows contain multipliers only in min, max, median, average, "
+        "and weighted-average order; the weighted average is the ratio of "
+        "timing sums. LC generation uses selected flow only, while LC runtime "
+        "shows separate selected-flow and all-flow wall-only lines."
+        if dataset.candidate.accuracy is Accuracy.LC
+        else
+        " Summary rows contain multipliers only in min, max, median, average, "
+        "and weighted-average order; the weighted average is the ratio of "
+        "timing sums, and runtime statistics use wall time only."
+    )
     return (
         r"\ReportTableNote{Baseline: "
         + _tex_escape(baseline)
@@ -1375,6 +1436,7 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         + _tex_escape(detail)
         + _tex_escape(clock_detail)
         + _tex_escape(legacy_scope_detail)
+        + _tex_escape(summary_detail)
         + " "
         + _tex_escape(
             "Not applicable marks a process/multiplicity combination outside "
@@ -1406,10 +1468,6 @@ def render_matrix_table(
             r"\begin{tabular}[t]{@{}r@{\hspace{0.025in}"
             r"\matrixpunct{|}\hspace{0.025in}}r@{}}"
             r"#1&#2\end{tabular}}"
-        ),
-        (
-            r"\providecommand{\matrixsummarypair}[2]{"
-            r"\begin{tabular}[t]{@{}r@{\hspace{0.04in}}l@{}}#1&#2\end{tabular}}"
         ),
         r"\clearpage",
         rf"\subsection{{{_tex_escape(dataset.title)}}}",
@@ -1728,14 +1786,18 @@ def _best_mode_lc_cell(
     return _BestModeCellRows(
         generation=(
             selected_baseline_generation,
+            r"\matrixpunct{|}",
             all_flow_baseline_generation,
             *_best_mode_comparison_columns(selected_generation),
+            r"\matrixpunct{|}",
             *_best_mode_comparison_columns(all_flow_generation),
         ),
         runtime=(
             selected_baseline_runtime,
+            r"\matrixpunct{|}",
             all_flow_baseline_runtime,
             *_best_mode_comparison_columns(selected_runtime),
+            r"\matrixpunct{|}",
             *_best_mode_comparison_columns(all_flow_runtime),
         ),
     )
@@ -1793,9 +1855,7 @@ def _best_mode_summary_pair(
     workload: Workload,
     field: str,
     *,
-    microseconds: bool = False,
     show_mode_mix: bool = False,
-    comparable: bool = True,
 ) -> str:
     joined = tuple(
         next(item for item in view.workloads if item.workload is workload)
@@ -1812,6 +1872,10 @@ def _best_mode_summary_pair(
         and item.candidate.get(field) is not None
         and unavailable_execution_timing_record(item.baseline, field) is None
         and unavailable_execution_timing_record(item.candidate, field) is None
+        and math.isfinite(float(item.baseline[field]))
+        and math.isfinite(float(item.candidate[field]))
+        and float(item.baseline[field]) > 0.0
+        and float(item.candidate[field]) >= 0.0
     )
     if not valid:
         if field == "execution_seconds_per_point" and any(
@@ -1833,39 +1897,20 @@ def _best_mode_summary_pair(
                 + "}"
             )
         return r"\matrixna{ReportMuted}"
-    baseline_sum = math.fsum(float(item.baseline[field]) for item in valid)
-    candidate_sum = math.fsum(float(item.candidate[field]) for item in valid)
-    baseline_mean = baseline_sum / len(valid)
-    baseline_text = _best_mode_time(
-        baseline_mean,
-        microseconds=microseconds,
-    )
-    if not comparable:
-        candidate_mean = candidate_sum / len(valid)
-        candidate_text = _best_mode_time(
-            candidate_mean,
-            microseconds=microseconds,
+    statistics = _ratio_statistics_tex(
+        tuple(
+            (float(item.baseline[field]), float(item.candidate[field]))
+            for item in valid
         )
-        ratio_text = rf"\matrixncabsolute{{{candidate_text}}}"
-    else:
-        ratio = candidate_sum / baseline_sum if baseline_sum > 0.0 else math.nan
-        if not math.isfinite(ratio):
-            ratio_text = r"\matrixnaratio{ReportMuted}"
-        else:
-            ratio_text = (
-                rf"\matrixratio{{{_best_mode_ratio_color(ratio)}}}"
-                rf"{{{_best_mode_value(ratio)}}}"
-            )
+    )
     if show_mode_mix:
         counts = {
             mode: sum(item.mode is mode for item in valid)
             for mode in _BEST_MODE_ORDER
         }
         return (
-            r"\bestmodesummarypair{"
-            + baseline_text
-            + "}{"
-            + ratio_text
+            r"\bestmodesummarystats{"
+            + statistics
             + r"}{\bestmodemix{"
             + "|".join(
                 f"{_BEST_MODE_CODES[mode]}:{counts[mode]}"
@@ -1873,7 +1918,7 @@ def _best_mode_summary_pair(
             )
             + "}}"
         )
-    return rf"\matrixsummarypair{{{baseline_text}}}{{{ratio_text}}}"
+    return statistics
 
 
 def _best_mode_generation_summary(
@@ -1881,21 +1926,11 @@ def _best_mode_generation_summary(
     accuracy: Accuracy,
 ) -> str:
     if accuracy is Accuracy.LC:
-        selected = _best_mode_summary_pair(
+        return _best_mode_summary_pair(
             views,
             Workload.SELECTED_FLOW,
             "generation_seconds",
             show_mode_mix=True,
-        )
-        all_flow = _best_mode_summary_pair(
-            views,
-            Workload.ALL_FLOW,
-            "generation_seconds",
-            show_mode_mix=True,
-            comparable=False,
-        )
-        return (
-            rf"\matrixpair{{{selected}}}{{{all_flow}}}"
         )
     return _best_mode_summary_pair(
         views,
@@ -1914,22 +1949,17 @@ def _best_mode_wall_summary(
             views,
             Workload.SELECTED_FLOW,
             "wall_seconds_per_point",
-            microseconds=True,
         )
         all_flow = _best_mode_summary_pair(
             views,
             Workload.ALL_FLOW,
             "wall_seconds_per_point",
-            microseconds=True,
         )
-        return (
-            rf"\matrixpair{{{selected}}}{{{all_flow}}}"
-        )
+        return rf"\matrixsummaryworkloads{{{selected}}}{{{all_flow}}}"
     return _best_mode_summary_pair(
         views,
         Workload.CONTRACTED,
         "wall_seconds_per_point",
-        microseconds=True,
     )
 
 
@@ -1971,7 +2001,11 @@ def _best_mode_block(
         r"\centering",
         r"\footnotesize",
         r"\setlength{\tabcolsep}{2.1pt}",
+        r"\setlength{\dashlinedash}{1.4pt}",
+        r"\setlength{\dashlinegap}{1.4pt}",
+        r"\arrayrulecolor{ReportRule}",
         r"\renewcommand{\arraystretch}{1.10}",
+        r"\makebox[\linewidth][c]{%",
         rf"\begin{{tabular}}{{{column_spec}}}",
         r"\toprule",
         (
@@ -1980,8 +2014,9 @@ def _best_mode_block(
                 _metric_group_cell(
                     rf"\textbf{{n={n_final}}}",
                     accuracy,
+                    separated=multiplicity_index > 0,
                 )
-                for n_final in multiplicities
+                for multiplicity_index, n_final in enumerate(multiplicities)
             )
             + r" \\"
         ),
@@ -1997,14 +2032,24 @@ def _best_mode_block(
             _metric_row_label(runtime=False),
         ]
         runtime_row = ["", "", _metric_row_label(runtime=True)]
-        for n_final in multiplicities:
+        for multiplicity_index, n_final in enumerate(multiplicities):
             view = adapter.best_mode_cell(accuracy, family, n_final)
             views_by_n[n_final].append(view)
             if not view.applicable:
                 generation_row.append(
-                    _metric_group_cell(_not_applicable(), accuracy)
+                    _metric_group_cell(
+                        _not_applicable(),
+                        accuracy,
+                        separated=multiplicity_index > 0,
+                    )
                 )
-                runtime_row.append(_metric_group_cell("", accuracy))
+                runtime_row.append(
+                    _metric_group_cell(
+                        "",
+                        accuracy,
+                        separated=multiplicity_index > 0,
+                    )
+                )
             elif accuracy is Accuracy.LC:
                 rendered = _best_mode_lc_cell(
                     view,
@@ -2046,8 +2091,10 @@ def _best_mode_block(
                             accuracy,
                         ),
                         accuracy,
+                        separated=multiplicity_index > 0,
+                        alignment="l",
                     )
-                    for n_final in multiplicities
+                    for multiplicity_index, n_final in enumerate(multiplicities)
                 )
                 + r" \\"
             ),
@@ -2061,13 +2108,16 @@ def _best_mode_block(
                             accuracy,
                         ),
                         accuracy,
+                        separated=multiplicity_index > 0,
+                        alignment="l",
                     )
-                    for n_final in multiplicities
+                    for multiplicity_index, n_final in enumerate(multiplicities)
                 )
                 + r" \\"
             ),
             r"\bottomrule",
             r"\end{tabular}",
+            r"}",
             r"\endgroup",
             (
                 r"\ReportTableNote{The candidate is selected independently in "
@@ -2088,8 +2138,13 @@ def _best_mode_block(
                 r"static N/A entries; their candidates are marked n.c. and "
                 r"excluded from ratio summaries."
                 + boundary_note
-                + r" Summary mode counts use A|B|C for recurrence JIT O2, "
-                r"compiled JIT O3, and eager-DAG JIT O2, respectively.}"
+                + r" Summary rows contain multipliers only in min, max, "
+                r"median, average, and weighted-average order; the weighted "
+                r"average is the ratio of timing sums. LC generation uses "
+                r"non-union flow only, while LC runtime keeps separate "
+                r"non-union and union wall-only lines. Summary mode counts "
+                r"use A|B|C for recurrence JIT O2, compiled JIT O3, and "
+                r"eager-DAG JIT O2, respectively.}"
             ),
             r"\end{minipage}",
         ]
@@ -2124,10 +2179,6 @@ def render_best_mode_table(
             r"#1&#2\end{tabular}}"
         ),
         (
-            r"\providecommand{\matrixsummarypair}[2]{"
-            r"\begin{tabular}[t]{@{}r@{\hspace{0.04in}}l@{}}#1&#2\end{tabular}}"
-        ),
-        (
             r"\providecommand{\bestmoderatio}[2]{"
             r"\textcolor{#1}{\texttt{x#2}}}"
         ),
@@ -2153,7 +2204,7 @@ def render_best_mode_table(
         ),
         (
             r"\providecommand{\bestmodencprefix}[1]{"
-            r"\textcolor{ReportBlue}{\texttt{abs }}#1\matrixpunct{; }}"
+            r"#1\matrixpunct{; }}"
         ),
         (
             r"\providecommand{\bestmodenclabel}{"
@@ -2164,9 +2215,9 @@ def render_best_mode_table(
             r"\textcolor{ReportBlue}{\texttt{[#1]}}}"
         ),
         (
-            r"\providecommand{\bestmodesummarypair}[3]{"
-            r"\begin{tabular}[t]{@{}l@{\hspace{0.04in}}l@{}}"
-            r"#1&#2\\[-0.16em]\multicolumn{2}{@{}l@{}}{#3}\end{tabular}}"
+            r"\providecommand{\bestmodesummarystats}[2]{"
+            r"\begin{tabular}[t]{@{}l@{}}"
+            r"#1\\[-0.12em]#2\end{tabular}}"
         ),
         r"\clearpage",
         (
