@@ -510,7 +510,13 @@ def _metric_group_span(accuracy: Accuracy) -> int:
 
 
 def _metric_group_column_spec(accuracy: Accuracy) -> str:
-    """Physical value columns shared by detailed and best-mode tables."""
+    """Physical value columns shared by detailed and best-mode tables.
+
+    Ordinary inter-column padding is intentional: ``colortbl`` paints it as
+    part of a coloured row.  Non-zero ``@{...}`` inserts leave unpainted seams
+    through alternating row bands, so ``@{}`` is used only where two fragments
+    form one visually continuous value.
+    """
 
     font = (
         r"\matrixentryfontlc"
@@ -519,19 +525,22 @@ def _metric_group_column_spec(accuracy: Accuracy) -> str:
     )
     if accuracy is Accuracy.LC:
         return (
-            rf"@{{\hspace{{0.06in}}}}>{{{font}}}l"
+            rf">{{{font}}}l"
             rf">{{{font}}}c"
             rf">{{{font}}}l"
-            rf"@{{\hspace{{0.050in}}}}>{{{font}}}r"
-            rf"@{{\hspace{{0.08em}}}}>{{{font}}}l"
+            rf">{{{font}}}r"
+            r"@{}"
+            rf">{{{font}}}l"
             rf">{{{font}}}c"
             rf">{{{font}}}r"
-            rf"@{{\hspace{{0.08em}}}}>{{{font}}}l"
+            r"@{}"
+            rf">{{{font}}}l"
         )
     return (
-        rf"@{{\hspace{{0.06in}}}}>{{{font}}}l"
-        rf"@{{\hspace{{0.050in}}}}>{{{font}}}r"
-        rf"@{{\hspace{{0.08em}}}}>{{{font}}}l"
+        rf">{{{font}}}l"
+        rf">{{{font}}}r"
+        r"@{}"
+        rf">{{{font}}}l"
     )
 
 
@@ -539,12 +548,12 @@ def _metric_table_column_spec(
     accuracy: Accuracy,
     multiplicity_count: int,
 ) -> str:
-    multiplicity_groups = ":".join(
+    multiplicity_groups = "".join(
         _metric_group_column_spec(accuracy)
         for _ in range(multiplicity_count)
     )
     return (
-        r"@{}r@{\hspace{0.04in}}L{1.45in}@{\hspace{0.04in}}l"
+        r"@{}rL{1.45in}l"
         + multiplicity_groups
         + r"@{}"
     )
@@ -554,15 +563,13 @@ def _metric_group_cell(
     content: str,
     accuracy: Accuracy,
     *,
-    separated: bool = False,
     alignment: str = "c",
 ) -> str:
     if alignment not in {"c", "l", "r"}:
         raise ValueError(f"unsupported metric-group alignment: {alignment}")
-    boundary = ":" if separated else ""
     return (
         rf"\multicolumn{{{_metric_group_span(accuracy)}}}"
-        rf"{{{boundary}@{{\hspace{{0.06in}}}}{alignment}}}{{{content}}}"
+        rf"{{{alignment}}}{{{content}}}"
     )
 
 
@@ -1212,9 +1219,6 @@ def _matrix_block(
         r"\centering",
         r"\footnotesize",
         r"\setlength{\tabcolsep}{2.1pt}",
-        r"\setlength{\dashlinedash}{1.4pt}",
-        r"\setlength{\dashlinegap}{1.4pt}",
-        r"\arrayrulecolor{ReportRule}",
         r"\renewcommand{\arraystretch}{1.10}",
         r"\makebox[\linewidth][c]{%",
         rf"\begin{{tabular}}{{{column_spec}}}",
@@ -1225,9 +1229,8 @@ def _matrix_block(
                 _metric_group_cell(
                     rf"\textbf{{n={n_final}}}",
                     accuracy,
-                    separated=multiplicity_index > 0,
                 )
-                for multiplicity_index, n_final in enumerate(multiplicities)
+                for n_final in multiplicities
             )
             + r" \\"
         ),
@@ -1243,7 +1246,7 @@ def _matrix_block(
             _metric_row_label(runtime=False),
         ]
         runtime_row = ["", "", _metric_row_label(runtime=True)]
-        for multiplicity_index, n_final in enumerate(multiplicities):
+        for n_final in multiplicities:
             view = adapter.matrix_cell(dataset, family, n_final)
             views_by_n[n_final].append(view)
             if not view.applicable:
@@ -1251,14 +1254,12 @@ def _matrix_block(
                     _metric_group_cell(
                         _not_applicable(),
                         accuracy,
-                        separated=multiplicity_index > 0,
                     )
                 )
                 runtime_row.append(
                     _metric_group_cell(
                         "",
                         accuracy,
-                        separated=multiplicity_index > 0,
                     )
                 )
             elif accuracy is Accuracy.LC:
@@ -1288,10 +1289,9 @@ def _matrix_block(
                             dataset,
                         ),
                         accuracy,
-                        separated=multiplicity_index > 0,
                         alignment="l",
                     )
-                    for multiplicity_index, n_final in enumerate(multiplicities)
+                    for n_final in multiplicities
                 )
                 + r" \\"
             ),
@@ -1305,10 +1305,9 @@ def _matrix_block(
                             accuracy,
                         ),
                         accuracy,
-                        separated=multiplicity_index > 0,
                         alignment="l",
                     )
-                    for multiplicity_index, n_final in enumerate(multiplicities)
+                    for n_final in multiplicities
                 )
                 + r" \\"
             ),
@@ -2001,9 +2000,6 @@ def _best_mode_block(
         r"\centering",
         r"\footnotesize",
         r"\setlength{\tabcolsep}{2.1pt}",
-        r"\setlength{\dashlinedash}{1.4pt}",
-        r"\setlength{\dashlinegap}{1.4pt}",
-        r"\arrayrulecolor{ReportRule}",
         r"\renewcommand{\arraystretch}{1.10}",
         r"\makebox[\linewidth][c]{%",
         rf"\begin{{tabular}}{{{column_spec}}}",
@@ -2014,9 +2010,8 @@ def _best_mode_block(
                 _metric_group_cell(
                     rf"\textbf{{n={n_final}}}",
                     accuracy,
-                    separated=multiplicity_index > 0,
                 )
-                for multiplicity_index, n_final in enumerate(multiplicities)
+                for n_final in multiplicities
             )
             + r" \\"
         ),
@@ -2032,7 +2027,7 @@ def _best_mode_block(
             _metric_row_label(runtime=False),
         ]
         runtime_row = ["", "", _metric_row_label(runtime=True)]
-        for multiplicity_index, n_final in enumerate(multiplicities):
+        for n_final in multiplicities:
             view = adapter.best_mode_cell(accuracy, family, n_final)
             views_by_n[n_final].append(view)
             if not view.applicable:
@@ -2040,14 +2035,12 @@ def _best_mode_block(
                     _metric_group_cell(
                         _not_applicable(),
                         accuracy,
-                        separated=multiplicity_index > 0,
                     )
                 )
                 runtime_row.append(
                     _metric_group_cell(
                         "",
                         accuracy,
-                        separated=multiplicity_index > 0,
                     )
                 )
             elif accuracy is Accuracy.LC:
@@ -2091,10 +2084,9 @@ def _best_mode_block(
                             accuracy,
                         ),
                         accuracy,
-                        separated=multiplicity_index > 0,
                         alignment="l",
                     )
-                    for multiplicity_index, n_final in enumerate(multiplicities)
+                    for n_final in multiplicities
                 )
                 + r" \\"
             ),
@@ -2108,10 +2100,9 @@ def _best_mode_block(
                             accuracy,
                         ),
                         accuracy,
-                        separated=multiplicity_index > 0,
                         alignment="l",
                     )
-                    for multiplicity_index, n_final in enumerate(multiplicities)
+                    for n_final in multiplicities
                 )
                 + r" \\"
             ),
