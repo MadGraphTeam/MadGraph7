@@ -10871,7 +10871,12 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
             wanted_lorentz = self._curr_matrix_elements.get_used_lorentz()
             wanted_couplings = self._curr_matrix_elements.get_used_couplings()
 
-            if self._export_format == 'madevent' and not 'no_helrecycling' in flaglist and \
+            # Standalone --hel_recycling reuses the madevent recycling machinery,
+            # which needs the P1N (amplitude-split) variant of every used routine.
+            sa_hel_recycling = str(getattr(self._curr_exporter, 'cmd_options', {}).get(
+                    'hel_recycling', False)).lower() in ('true', '1', 'yes')
+            if (self._export_format == 'madevent' or sa_hel_recycling) and \
+                not 'no_helrecycling' in flaglist and \
                 not isinstance(self._curr_amps[0], loop_diagram_generation.LoopAmplitude):
                 for (name, flag, out) in wanted_lorentz[:]:
                     if out == 0:

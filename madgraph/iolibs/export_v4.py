@@ -7006,12 +7006,17 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         self.compiler_choice(compiler)
         self.make()
 
+        # Standalone helicity recycling: now that libdhelas/libmodel are built,
+        # run the good-helicity / zero-amplitude warm-up probes and re-optimize
+        # each matrix.f (no-op unless --hel_recycling was requested).
+        self._run_hel_recycling_warmups(compiler.get('fortran'))
+
         # Write command history as proc_card_mg5
         if history and os.path.isdir(pjoin(self.dir_path, 'Cards')):
             output_file = pjoin(self.dir_path, 'Cards', 'proc_card_mg5.dat')
             history.write(output_file)
-        
-        ProcessExporterFortran.finalize(self, matrix_elements, 
+
+        ProcessExporterFortran.finalize(self, matrix_elements,
                                              history, mg5options, flaglist)
         open(pjoin(self.dir_path,'__init__.py'),'w')
         open(pjoin(self.dir_path,'SubProcesses','__init__.py'),'w')
@@ -7640,9 +7645,14 @@ C       so this also stays correct for split-order processes.
         ])
         return (decl, setup)
 
-    def _get_flavor_mask_blocks(self, matrix_element):
+    def _get_flavor_mask_blocks(self, matrix_element, append_amp_init=True):
         """Build the Fortran declaration / setup blocks injected into GET_AMP
         (or the monolithic MATRIX) for the always-on flavor machinery.
+
+        append_amp_init controls whether the setup block emits its own
+        rank-1 AMP zero-initialisation. The default standalone template relies
+        on it; the --hel_recycling templates zero AMP themselves (the recycled
+        driver's AMP is 2-D), so they pass append_amp_init=False.
 
         The blocks *always* rebuild FLAVOR(NEXTERNAL) from the threaded FLAV_IDX
         via FLAV_TABLE, giving a uniform API (every matrix function takes
@@ -7708,7 +7718,7 @@ C       so this also stays correct for split-order processes.
             thread_flav_idx=True)
         setup_block = self._format_flavor_mask_setup(
             leading_comment='C     Rebuild FLAVOR and select the per-flavor masks.',
-            append_amp_init=True, thread_flav_idx=True)
+            append_amp_init=append_amp_init, thread_flav_idx=True)
 
         return (decl_block, setup_block, n_flavors, active_flavor_mask)
 
@@ -7740,11 +7750,24 @@ C       so this also stays correct for split-order processes.
         if 'use_crossing' not in self.opt:
             self.opt['use_crossing']=True
 
+        # Helicity-recycling standalone (--hel_recycling): reuse the madevent
+        # DAG rewriter. The helas_calls / jamp_lines are produced in the
+        # *standard* (scalar, aloha-object) format that hel_recycle.py parses,
+        # so no special writer is needed here; the recycled matrix.f is produced
+        # at write time by _write_hel_recycling_matrix from the orig + driver
+        # templates.
+        hel_recycling = str(self.cmd_options.get('hel_recycling', False)).lower() \
+                       in ('true', '1', 'yes')
+
         # ... and gated off per matrix element for processes whose definition
         # pins a specific s-channel, which no crossing of them preserves. This
         # is decided here rather than in the interface so that one constrained
         # `add process` does not disable crossing for the unconstrained ones.
-        use_crossing = self.opt['use_crossing'] and \
+        # The recycled MATRIX bakes its helicity rows and takes no IC, so it
+        # cannot serve a crossed FLAV_IDX yet: crossing is turned off for it
+        # (the crossed subprocesses are then generated as separate matrix
+        # elements, exactly as with --use_crossing=False).
+        use_crossing = self.opt['use_crossing'] and not hel_recycling and \
             not any(self.breaks_crossing_symmetry(proc)
                     for proc in matrix_element.get('processes'))
 
@@ -7767,7 +7790,8 @@ C       so this also stays correct for split-order processes.
         # HELAS IAND guards. The try/finally ensures we never leak the writer
         # state into the next matrix element.
         mask_decl, mask_setup, n_mask, active_flavor_mask = \
-                self._get_flavor_mask_blocks(matrix_element)
+                self._get_flavor_mask_blocks(matrix_element,
+                                             append_amp_init=not hel_recycling)
         replace_dict['flavor_mask_decl'] = mask_decl
         replace_dict['flavor_mask_setup'] = mask_setup
 
@@ -7780,8 +7804,11 @@ C       so this also stays correct for split-order processes.
         # splitOrders) have no IC to read and must keep the bare flag. Mirror
         # the template choice made further down; split_orders is only fetched
         # again here, which is side-effect free.
+        # --hel_recycling writes its own templates (no IC argument reaches the
+        # recycled MATRIX yet), so it keeps the bare NSF/NSV flag.
         fortran_model.use_crossing_ic = (
             use_crossing
+            and not hel_recycling
             and self.matrix_template == 'matrix_standalone_v4.inc'
             and self.opt['export_format'] not in ('standalone_msP',
                                                   'standalone_msF',
@@ -8180,6 +8207,15 @@ C       so this also stays correct for split-order processes.
         replace_dict['template_file'] = pjoin(_file_path, 'iolibs', 'template_files', matrix_template)
         replace_dict['template_file2'] = pjoin(_file_path, \
                                    'iolibs/template_files/split_orders_helping_functions.inc')
+        if write and writer and hel_recycling:
+            # Standalone helicity recycling: produce matrix.f via the madevent
+            # DAG rewriter instead of a single template substitution.
+            self._write_hel_recycling_matrix(writer, replace_dict, matrix_element)
+            if return_replace_dict:
+                replace_dict['return_value'] = len([call for call in helas_calls if call.find('#') != 0])
+                return replace_dict
+            else:
+                return len([call for call in helas_calls if call.find('#') != 0])
         if write and writer:
             path = replace_dict['template_file']
             content = open(path).read()
@@ -8201,7 +8237,196 @@ C       so this also stays correct for split-order processes.
             return replace_dict # for subclass update
 
     #===========================================================================
-    # write_check_sa   
+    # helicity recycling (--hel_recycling)
+    #===========================================================================
+    def _run_hel_recycle(self, orig_path, driver_path, out_path,
+                         good_hels, bad_amps, bad_amps_perhel, gauge):
+        """Run the madevent DAG rewriter to turn matrix_orig.f + template_matrix.f
+        into the recycled matrix.f at out_path. good_hels/bad_amps/bad_amps_perhel
+        are string lists in the gen_ximprove format; all empty bad_* + good_hels =
+        1..NCOMB reproduces the compute-all (exact) matrix element."""
+        import madgraph.madevent.hel_recycle as hel_recycle
+        recycler = hel_recycle.HelicityRecycler(good_hels, bad_amps,
+                                                bad_amps_perhel, gauge=gauge)
+        recycler.hel_filt = True     # drop helicity combinations not in good_hels
+        recycler.amp_splt = True     # P1N amplitude split (the speed-up)
+        recycler.amp_filt = bool(bad_amps) or bool(bad_amps_perhel)
+        recycler.set_input(orig_path)
+        recycler.set_output(out_path)
+        recycler.set_template(driver_path)
+        recycler.generate_output_file()
+
+    def _write_hel_recycling_matrix(self, writer, replace_dict, matrix_element):
+        """Standalone helicity recycling (--hel_recycling): write matrix_orig.f
+        (the madevent single-MATRIX layout), template_matrix.f (the standalone
+        SMATRIX/MATRIX driver with ${...} slots) and hel_warmup.f (the good-hel /
+        zero-amp probe), then run the madevent DAG rewriter (hel_recycle) to
+        produce a first, compute-all matrix.f in place.
+
+        This first pass keeps every helicity combination (good_elements =
+        1..NCOMB), so the directory is already valid + correct. finalize() (once
+        the Source libraries are built) compiles + runs hel_warmup.f and re-runs
+        the rewriter with the measured good-helicity / zero-amplitude lists to
+        drop the dead work -- matching what madevent does at run time.
+        """
+        tmpl_dir = pjoin(_file_path, 'iolibs', 'template_files')
+        orig_tmpl = pjoin(tmpl_dir, 'matrix_standalone_hel_orig_v4.inc')
+        driver_tmpl = pjoin(tmpl_dir, 'matrix_standalone_hel_v4.inc')
+        warmup_tmpl = pjoin(tmpl_dir, 'hel_warmup_v4.inc')
+
+        rd = dict(replace_dict)
+        # Raw storage for the recycled P1N current wavefunction: the split
+        # amplitude calls hand TMP to CombineAmp as a type(aloha) scratch.
+        rd.setdefault('wavefunctionsize', 18)
+
+        out_path = writer.name
+        dirpath = os.path.dirname(out_path)
+        orig_path = pjoin(dirpath, 'matrix_orig.f')
+        driver_path = pjoin(dirpath, 'template_matrix.f')
+        warmup_path = pjoin(dirpath, 'hel_warmup.f')
+
+        # matrix_orig.f is routed through FortranWriter so long DATA/JAMP/helas
+        # lines get the fixed-form continuations hel_recycle reads back verbatim.
+        writers.FortranWriter(orig_path).writelines(open(orig_tmpl).read() % rd)
+        # template_matrix.f: %()s keys filled now; ${...} slots left to hel_recycle.
+        # FortranWriter is still used (to split long color DATA lines), but it
+        # upper-cases everything, including the ${...} slot names -- hel_recycle's
+        # string.Template keys are lower-case, so restore their case afterwards.
+        writers.FortranWriter(driver_path).writelines(open(driver_tmpl).read() % rd)
+        driver_txt = open(driver_path).read()
+        driver_txt = re.sub(r'\$\{(\w+)\}',
+                            lambda m: '${%s}' % m.group(1).lower(), driver_txt)
+        open(driver_path, 'w').write(driver_txt)
+        # hel_warmup.f: standalone probe program (compiled + run in finalize).
+        # Written raw (not via FortranWriter) -- it is hand-authored fixed-form
+        # with numbered/shared DO labels and IMPLICIT typing that the MG line
+        # formatter would mangle; it is compiled with -ffixed-line-length-132.
+        open(warmup_path, 'w').write(open(warmup_tmpl).read() % rd)
+
+        gauge = 'U'
+        try:
+            if self.proc_characteristic['gauge']:
+                gauge = self.proc_characteristic['gauge']
+        except Exception:
+            pass
+
+        # Release the (empty) matrix.f handle the caller opened before overwriting.
+        try:
+            writer.close()
+        except Exception:
+            pass
+
+        # First pass: keep every helicity combination (compute-all, exact).
+        ncomb = matrix_element.get_helicity_combinations()
+        good_hels = [str(i) for i in range(1, ncomb + 1)]
+        self._run_hel_recycle(orig_path, driver_path, out_path,
+                              good_hels, [], [], gauge)
+
+        # Register for the finalize() warm-up + re-optimization pass.
+        if not hasattr(self, '_hr_warmup'):
+            self._hr_warmup = []
+        self._hr_warmup.append({'dirpath': dirpath, 'orig_path': orig_path,
+                                'driver_path': driver_path, 'out_path': out_path,
+                                'ncomb': ncomb, 'gauge': gauge})
+
+    @staticmethod
+    def _parse_hel_warmup(stdout):
+        """Parse the hel_warmup stdout into (good_hels, bad_amps,
+        bad_amps_perhel) using the same rules as gen_ximprove.py."""
+        all_hel = set()
+        all_zamp = set()
+        all_zampperhel = set()
+        for line in stdout.splitlines():
+            if "=" not in line and ":" not in line:
+                continue
+            if 'Matrix Element/Good Helicity:' in line:
+                all_hel.add(tuple(line.split()[3:5]))
+            if 'Amplitude/ZEROAMP:' in line:
+                all_zamp.add(tuple(line.split()[1:3]))
+            if 'HEL/ZEROAMP:' in line:
+                nb_mat, nb_hel, nb_amp = line.split()[1:4]
+                if (nb_mat, nb_hel) not in all_hel:
+                    continue
+                if (nb_mat, nb_amp) in all_zamp:
+                    continue
+                all_zampperhel.add(tuple(line.split()[1:4]))
+        good_hels = [str(x) for x in sorted(int(h) for _, h in all_hel)]
+        bad_amps = [str(x) for x in sorted(int(a) for _, a in all_zamp)]
+        bad_amps_perhel = sorted((int(h), int(a)) for _, h, a in all_zampperhel)
+        return good_hels, bad_amps, bad_amps_perhel
+
+    def _run_hel_recycling_warmups(self, fortran_compiler=None):
+        """After the Source libraries are built, compile + run each hel_warmup.f
+        probe and re-run the DAG rewriter with the measured good-helicity /
+        zero-amplitude lists, so the final matrix.f only computes the helicities
+        that contribute (the same information madevent gathers at run time).
+
+        On any failure the compute-all matrix.f written at generation time is
+        left in place, so the output stays valid + correct regardless."""
+        warmups = getattr(self, '_hr_warmup', None)
+        if not warmups:
+            return
+        fc = fortran_compiler or 'gfortran'
+        source = pjoin(self.dir_path, 'Source')
+        libdir = pjoin(self.dir_path, 'lib')
+        inc = ['-I%s' % pjoin(source, 'DHELAS'), '-I%s' % pjoin(source, 'MODEL')]
+
+        # Make sure the two libraries the probe links against are present. The
+        # default Source make target is model-dependent and does not always build
+        # them, so build them explicitly here (idempotent).
+        for lib in ('libdhelas.a', 'libmodel.a'):
+            if not os.path.exists(pjoin(libdir, lib)):
+                try:
+                    misc.compile(arg=[pjoin('..', 'lib', lib)], cwd=source,
+                                 mode='fortran')
+                except Exception:
+                    pass
+        for info in warmups:
+            dirpath = info['dirpath']
+            exe = pjoin(dirpath, 'hel_warmup')
+            cmd = [fc, '-w', '-fPIC', '-ffixed-line-length-132'] + inc + \
+                  ['-I%s' % dirpath, '-o', exe,
+                   pjoin(dirpath, 'matrix_orig.f'), pjoin(dirpath, 'hel_warmup.f'),
+                   '-L%s' % libdir, '-ldhelas', '-lmodel']
+            try:
+                p = subprocess.run(cmd, cwd=dirpath, stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT)
+                if p.returncode != 0:
+                    logger.warning('hel_recycling warm-up compile failed in %s; '
+                        'keeping the compute-all matrix.f.\n%s', dirpath,
+                        p.stdout.decode(errors='replace')[-1500:])
+                    continue
+                r = subprocess.run([exe], cwd=dirpath, stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT)
+                stdout = r.stdout.decode(errors='replace')
+                if r.returncode != 0:
+                    logger.warning('hel_recycling warm-up run failed in %s; '
+                        'keeping the compute-all matrix.f.', dirpath)
+                    continue
+            except Exception as err:
+                logger.warning('hel_recycling warm-up error in %s (%s); keeping '
+                    'the compute-all matrix.f.', dirpath, err)
+                continue
+
+            good_hels, bad_amps, bad_amps_perhel = self._parse_hel_warmup(stdout)
+            if not good_hels:
+                continue  # nothing measured -> keep the compute-all version
+
+            self._run_hel_recycle(info['orig_path'], info['driver_path'],
+                                  info['out_path'], good_hels, bad_amps,
+                                  bad_amps_perhel, info['gauge'])
+            logger.info('hel_recycling: %s/%s good helicities, %s dead amplitudes '
+                'in %s', len(good_hels), info['ncomb'], len(bad_amps),
+                os.path.basename(dirpath))
+            # tidy up the probe binary + intermediate objects.
+            for f in ('hel_warmup', 'matrix_orig.o', 'hel_warmup.o'):
+                try:
+                    os.remove(pjoin(dirpath, f))
+                except OSError:
+                    pass
+
+    #===========================================================================
+    # write_check_sa
     #===========================================================================
     def _recorded_crossing_matches(self, matrix_element):
         """(matches, complete): the reachable crossing each RECORDED crossed
