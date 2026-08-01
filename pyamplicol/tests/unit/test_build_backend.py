@@ -869,6 +869,78 @@ def test_candidate_source_revision_ignores_only_generated_report_outputs(
 
 
 @pytest.mark.parametrize(
+    "destination",
+    (Path("x86_epyc_manual"), Path("scratch/campaigns/x86_epyc_manual")),
+)
+def test_candidate_source_revision_ignores_untracked_copied_campaign_anywhere(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    destination: Path,
+) -> None:
+    checkout = _source_identity_checkout(tmp_path)
+    copied = checkout / destination
+    (copied / "results").mkdir(parents=True)
+    (copied / "README.md").write_text("# copied campaign\n", encoding="utf-8")
+    (copied / "steer_performance_campaign.py").write_text(
+        "#!/usr/bin/env python3\n",
+        encoding="utf-8",
+    )
+    (copied / "report-workspace.json").write_text("{}\n", encoding="utf-8")
+    (copied / "pyAmpliCol.tex").write_text("% copied template\n", encoding="utf-8")
+    (copied / "results/cache.json").write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(backend, "ROOT", checkout)
+
+    assert backend._clean_source_revision() is None
+    assert backend._clean_source_revision(allow_generated_report_outputs=True) == _git(
+        checkout, "rev-parse", "HEAD"
+    )
+    assert not any(
+        path == destination or destination in path.parents
+        for path in backend._git_inventory() or ()
+    )
+
+    tracked = checkout / "src/runtime.py"
+    tracked.write_text("VALUE = 2\n", encoding="utf-8")
+    assert (
+        backend._clean_source_revision(allow_generated_report_outputs=True) is None
+    )
+
+
+def test_candidate_source_revision_rejects_incomplete_untracked_campaign(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    checkout = _source_identity_checkout(tmp_path)
+    copied = checkout / "scratch/incomplete"
+    copied.mkdir(parents=True)
+    (copied / "report-workspace.json").write_text("{}\n", encoding="utf-8")
+    (copied / "README.md").write_text("# incomplete\n", encoding="utf-8")
+    monkeypatch.setattr(backend, "ROOT", checkout)
+
+    assert backend._clean_source_revision(allow_generated_report_outputs=True) is None
+
+
+def test_candidate_source_revision_rejects_campaign_markers_in_tracked_tree(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    checkout = _source_identity_checkout(tmp_path)
+    tracked_tree = checkout / "src"
+    (tracked_tree / "report-workspace.json").write_text("{}\n", encoding="utf-8")
+    (tracked_tree / "steer_performance_campaign.py").write_text(
+        "#!/usr/bin/env python3\n",
+        encoding="utf-8",
+    )
+    (tracked_tree / "rogue_runtime.py").write_text(
+        "VALUE = 'untracked'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(backend, "ROOT", checkout)
+
+    assert backend._clean_source_revision(allow_generated_report_outputs=True) is None
+
+
+@pytest.mark.parametrize(
     "relative",
     (
         "src/runtime.py",

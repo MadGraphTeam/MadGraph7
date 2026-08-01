@@ -337,6 +337,11 @@ def measure_cell(
             load_measurement(reused_measurement_json)
         )
     )
+    selector_provider = _selector_provider_measurement(
+        cell.cell_id,
+        peers,
+        catalog=catalog,
+    )
     if cell.measurement.execution_mode is ExecutionMode.AMPLICOL:
         from .legacy import LegacyMeasurementAdapter, LegacySettings
 
@@ -363,13 +368,9 @@ def measure_cell(
                     ),
                 ),
                 phase_reporter=phase_reporter,
+                selector_provider=selector_provider,
             )
     else:
-        selector_provider = _selector_provider_measurement(
-            cell.cell_id,
-            peers,
-            catalog=catalog,
-        )
         result = measure_pyamplicol_cell(
             cell,
             artifact_path=attempt_root / "artifact",

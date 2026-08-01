@@ -339,7 +339,7 @@ def test_legacy_worker_threads_generation_phase_reporter_to_adapter(
             events.append("complete")
 
     reporter = Reporter()
-    observed: list[object] = []
+    observed: list[tuple[object, object]] = []
 
     class SourceIdentity:
         def provenance(self) -> dict[str, object]:
@@ -348,7 +348,12 @@ def test_legacy_worker_threads_generation_phase_reporter_to_adapter(
     class Adapter:
         def measure(self, *_args: object, **kwargs: object) -> dict[str, object]:
             events.append("adapter")
-            observed.append(kwargs.get("phase_reporter"))
+            observed.append(
+                (
+                    kwargs.get("phase_reporter"),
+                    kwargs.get("selector_provider"),
+                )
+            )
             return {
                 "status": "ok",
                 "validation": {"status": "ok"},
@@ -381,5 +386,58 @@ def test_legacy_worker_threads_generation_phase_reporter_to_adapter(
     )
 
     assert result["status"] == "ok"
-    assert observed == [reporter]
+    assert observed == [(reporter, None)]
     assert events == ["adapter", "agreements", "complete"]
+
+
+def test_legacy_all_flow_worker_passes_selected_flow_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cell = REPORT_CATALOG.cell("reference-amplicol-lc-n1-dd-z-jets-all-flow")
+    provider = {"status": "ok", "selector_contract": {"fixture": True}}
+    observed: list[object] = []
+
+    class SourceIdentity:
+        def provenance(self) -> dict[str, object]:
+            return {}
+
+    class Adapter:
+        def measure(self, *_args: object, **kwargs: object) -> dict[str, object]:
+            observed.append(kwargs.get("selector_provider"))
+            return {
+                "status": "ok",
+                "validation": {"status": "ok"},
+                "provenance": {},
+            }
+
+    identity = SourceIdentity()
+    monkeypatch.setattr(
+        "tools.performance_report.worker.require_eligible_report_source",
+        lambda _root: identity,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.worker._selector_provider_measurement",
+        lambda *_args, **_kwargs: provider,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.legacy.LegacyMeasurementAdapter",
+        Adapter,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.worker.attach_direct_agreements",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = measure_cell(
+        cell.cell_id,
+        repo_root=tmp_path,
+        attempt_root=tmp_path / "attempt",
+        target_runtime_seconds=1.0,
+        batch_size=1,
+        worker_cores=1,
+        legacy_repository=tmp_path / "legacy",
+    )
+
+    assert result["status"] == "ok"
+    assert observed == [provider]

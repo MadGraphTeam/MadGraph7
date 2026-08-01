@@ -17,7 +17,7 @@ import sys
 import tomllib
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from tempfile import TemporaryDirectory
 from typing import Any, TypeVar
 
@@ -539,7 +539,7 @@ def _is_allowlisted(relative: Path) -> bool:
     )
 
 
-def _git_inventory() -> list[Path] | None:
+def _git_inventory(*, build_inputs_only: bool = True) -> list[Path] | None:
     if not os.path.lexists(ROOT / ".git"):
         return None
     completed = subprocess.run(
@@ -566,7 +566,9 @@ def _git_inventory() -> list[Path] | None:
     for relative in files:
         if relative.is_absolute() or ".." in relative.parts:
             raise RuntimeError(f"Git reported an unsafe build input: {relative}")
-        if _is_allowlisted(relative) and not _is_excluded(relative):
+        if not build_inputs_only or (
+            _is_allowlisted(relative) and not _is_excluded(relative)
+        ):
             inventory.append(relative)
     return sorted(set(inventory), key=lambda path: path.as_posix())
 
@@ -1248,7 +1250,10 @@ def _generated_report_status_only(status: bytes) -> bool:
         or not all(len(record) >= 4 and record[2:3] == b" " for record in records[:-1])
     ):
         return False
-    paths = tuple(os.fsdecode(record[3:]) for record in records[:-1])
+    entries = tuple(
+        (record[:2], os.fsdecode(record[3:])) for record in records[:-1]
+    )
+    paths = tuple(path for _state, path in entries)
     classifier_path = Path("tools/performance_report/source_identity.py")
     if classifier_path.as_posix() in paths:
         return False
@@ -1260,9 +1265,71 @@ def _generated_report_status_only(status: bytes) -> bool:
     if not callable(classifier):
         return False
     try:
-        return all(classifier(path) is True for path in paths)
+        tracked = _git_inventory(build_inputs_only=False)
+        if tracked is None:
+            return False
+        copied_campaign_roots = _untracked_profiling_campaign_roots(
+            entries,
+            tracked=tracked,
+        )
+        return all(
+            classifier(path) is True
+            or (
+                state == b"??"
+                and any(
+                    len(PurePosixPath(path).parts) > len(root)
+                    and PurePosixPath(path).parts[: len(root)] == root
+                    for root in copied_campaign_roots
+                )
+            )
+            for state, path in entries
+        )
     except (OSError, RuntimeError, TypeError, ValueError):
         return False
+
+
+def _untracked_profiling_campaign_roots(
+    entries: tuple[tuple[bytes, str], ...],
+    *,
+    tracked: list[Path],
+) -> set[tuple[str, ...]]:
+    """Recognize roots of user-owned untracked copied report campaigns.
+
+    ``pyamplicol profiling-campaign copy`` is intentionally useful inside a
+    contributor checkout.  Its files are trusted steering inputs and outputs,
+    but the candidate overlay is built exclusively from Git-tracked inventory,
+    so they cannot alter its Python or native runtime.  This exception is
+    applied only to ``??`` status records; edits to tracked report sources
+    remain source dirt.
+    """
+
+    markers: dict[tuple[str, ...], set[str]] = {}
+    for state, value in entries:
+        path = PurePosixPath(value)
+        parts = path.parts
+        if (
+            state != b"??"
+            or path.is_absolute()
+            or len(parts) < 2
+            or any(part in {"", ".", ".."} for part in parts)
+            or parts[-1]
+            not in {"report-workspace.json", "steer_performance_campaign.py"}
+        ):
+            continue
+        markers.setdefault(parts[:-1], set()).add(parts[-1])
+    required = {"report-workspace.json", "steer_performance_campaign.py"}
+    tracked_parts = tuple(
+        PurePosixPath(path.as_posix()).parts for path in tracked
+    )
+    return {
+        root
+        for root, names in markers.items()
+        if required <= names
+        and not any(
+            len(parts) >= len(root) and parts[: len(root)] == root
+            for parts in tracked_parts
+        )
+    }
 
 
 def _clean_source_revision(

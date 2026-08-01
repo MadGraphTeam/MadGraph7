@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import builtins
 import hashlib
 import json
 import os
@@ -69,6 +70,17 @@ def _amplicol_leaf_cell() -> CellSpec:
         for cell in REPORT_CATALOG.measurement_cells()
         if cell.measurement.execution_mode is ExecutionMode.AMPLICOL
         and cell.workload is Workload.SELECTED_FLOW
+        and cell.n_final == 1
+    )
+
+
+def _amplicol_contracted_cell() -> CellSpec:
+    return next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+        and cell.measurement.accuracy is Accuracy.NLC
+        and cell.workload is Workload.CONTRACTED
         and cell.n_final == 1
     )
 
@@ -312,6 +324,59 @@ def test_lightweight_source_identity_accepts_clean_packed_head(
     )
 
 
+def test_measurement_readiness_distinguishes_absent_runtime_revision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = ReportSourceIdentity("a" * 40, "b" * 40, ())
+    monkeypatch.setattr(
+        manual_campaign,
+        "_installed_source_revision",
+        lambda: None,
+    )
+
+    with pytest.raises(
+        manual_campaign.ManualCampaignError,
+        match="runtime contains no clean source revision",
+    ):
+        manual_campaign.require_measurement_ready(source)
+
+
+def test_measurement_readiness_reports_runtime_revision_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = ReportSourceIdentity("a" * 40, "b" * 40, ())
+    monkeypatch.setattr(
+        manual_campaign,
+        "_installed_source_revision",
+        lambda: "c" * 40,
+    )
+
+    with pytest.raises(
+        manual_campaign.ManualCampaignError,
+        match=r"checkout=a{40}, installed=c{40}",
+    ):
+        manual_campaign.require_measurement_ready(source)
+
+
+def test_installed_source_revision_wraps_package_import_provenance_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_import = builtins.__import__
+
+    def failing_import(name: str, *args: object, **kwargs: object) -> object:
+        if name == "pyamplicol._internal.versions":
+            raise RuntimeError("stale native build inputs")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", failing_import)
+
+    with pytest.raises(
+        manual_campaign.ManualCampaignError,
+        match="runtime provenance cannot be loaded: stale native build inputs",
+    ):
+        manual_campaign._installed_source_revision()
+
+
 def test_lightweight_current_rejects_attempt_and_measurement_schema_errors(
     tmp_path: Path,
 ) -> None:
@@ -417,6 +482,82 @@ def test_historical_current_reuse_requires_explicit_continuation(
     assert inspected["source_policy"] == "continue_across_revisions"
     assert inspected["source_cohorts"] == {historical_revision: 1}
     assert inspected["reusable_count"] == 1
+
+
+def test_successful_legacy_current_requires_corrected_numerical_authority(
+    tmp_path: Path,
+) -> None:
+    from tools.performance_report.legacy import (
+        LEGACY_NUMERICAL_AUTHORITY_ABI,
+        LEGACY_NUMERICAL_AUTHORITY_FIELD,
+    )
+
+    revision = "a" * 40
+    service = ReportService(
+        ReportPaths.from_repo(
+            ROOT,
+            profile="macbook_M3_manual",
+            artifact_root=tmp_path / "artifacts",
+            coordination_root=tmp_path / "coordination",
+        )
+    )
+    cell = _amplicol_contracted_cell()
+    _manifest_path, result_path = _write_lightweight_success_current(
+        service,
+        cell,
+        revision=revision,
+        numerical_relation_correctness={},
+    )
+
+    stale = lightweight_current(service.store, cell, source_revision=revision)
+    assert stale is not None and stale.complete and not stale.reusable
+    assert stale.reason == "legacy numerical authority requires refresh"
+
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    result["validation"][LEGACY_NUMERICAL_AUTHORITY_FIELD] = {
+        "abi": LEGACY_NUMERICAL_AUTHORITY_ABI,
+        "source": "contracted-generated-library",
+    }
+    result_path.write_text(json.dumps(result), encoding="utf-8")
+
+    corrected = lightweight_current(service.store, cell, source_revision=revision)
+    assert corrected is not None and corrected.complete and corrected.reusable
+
+
+@pytest.mark.parametrize(
+    ("workload", "generation_source", "expected_compatible"),
+    (
+        (Workload.SELECTED_FLOW, "generated-library-create-mode-1", True),
+        (Workload.ALL_FLOW, "direct-imode2-generation-setup", False),
+        (Workload.CONTRACTED, "generated-library-create-raw", False),
+        (
+            Workload.CONTRACTED,
+            "direct-imode2-three-quark-line-setup",
+            True,
+        ),
+    ),
+)
+def test_pre_authority_legacy_compatibility_is_narrowly_path_based(
+    workload: Workload,
+    generation_source: str,
+    expected_compatible: bool,
+) -> None:
+    cell = next(
+        candidate
+        for candidate in REPORT_CATALOG.measurement_cells()
+        if candidate.measurement.execution_mode is ExecutionMode.AMPLICOL
+        and candidate.workload is workload
+    )
+    result = {
+        "status": ResultStatus.OK.value,
+        "validation": {},
+        "provenance": {"generation_source": generation_source},
+    }
+
+    assert (
+        manual_campaign._legacy_numerical_authority_compatible(cell, result)
+        is expected_compatible
+    )
 
 
 @pytest.mark.parametrize(

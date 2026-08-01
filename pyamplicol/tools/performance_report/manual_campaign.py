@@ -1544,6 +1544,66 @@ def _historical_numerical_relation_compatible(
     return isinstance(relation, Mapping) and relation.get("mode") == "off"
 
 
+def _legacy_numerical_authority_compatible(
+    cell: CellSpec,
+    result: Mapping[str, object],
+) -> bool:
+    """Require the corrected legacy numerical path for affected currents.
+
+    Older selected-flow measurements already used the generated library as
+    their numerical authority, and the special three-quark-line contracted
+    path remains a direct ``imode2`` measurement.  Retain those inexpensive
+    metadata-identifiable currents while refreshing only the paths whose
+    authority changed.
+    """
+
+    if (
+        cell.measurement.execution_mode is not ExecutionMode.AMPLICOL
+        or result.get("status") != ResultStatus.OK.value
+    ):
+        return True
+    from .legacy import (
+        LEGACY_NUMERICAL_AUTHORITY_ABI,
+        LEGACY_NUMERICAL_AUTHORITY_FIELD,
+    )
+
+    validation = result.get("validation")
+    authority = (
+        validation.get(LEGACY_NUMERICAL_AUTHORITY_FIELD)
+        if isinstance(validation, Mapping)
+        else None
+    )
+    expected_sources = {
+        Workload.SELECTED_FLOW: {"selected-flow-generated-library"},
+        Workload.ALL_FLOW: {"all-flow-selected-provider-replay"},
+        Workload.CONTRACTED: {
+            "contracted-generated-library",
+            "direct-imode2-three-quark-line",
+        },
+    }
+    if authority is not None:
+        return (
+            isinstance(authority, Mapping)
+            and authority.get("abi") == LEGACY_NUMERICAL_AUTHORITY_ABI
+            and authority.get("source")
+            in expected_sources.get(cell.workload, set())
+        )
+
+    provenance = result.get("provenance")
+    generation_source = (
+        provenance.get("generation_source")
+        if isinstance(provenance, Mapping)
+        else None
+    )
+    return (
+        cell.workload is Workload.SELECTED_FLOW
+        and generation_source == "generated-library-create-mode-1"
+    ) or (
+        cell.workload is Workload.CONTRACTED
+        and generation_source == "direct-imode2-three-quark-line-setup"
+    )
+
+
 def lightweight_current(
     store: ArtifactStore,
     cell: CellSpec,
@@ -1684,10 +1744,20 @@ def lightweight_current(
         or not revision_valid
         or _historical_numerical_relation_compatible(cell, result)
     )
+    legacy_authority_compatible = _legacy_numerical_authority_compatible(
+        cell,
+        result,
+    )
     source_accepted = revision == source_revision or (
         accept_historical_source and revision_valid and historical_relation_compatible
     )
-    reusable = complete and source_accepted and cell_match and artifact_exists
+    reusable = (
+        complete
+        and source_accepted
+        and cell_match
+        and artifact_exists
+        and legacy_authority_compatible
+    )
     if status not in {
         ResultStatus.OK.value,
         ResultStatus.TIMEOUT.value,
@@ -1702,6 +1772,8 @@ def lightweight_current(
         reason = "source mismatch"
     elif revision != source_revision and not historical_relation_compatible:
         reason = "historical numerical-relation policy is not reusable"
+    elif not legacy_authority_compatible:
+        reason = "legacy numerical authority requires refresh"
     elif not cell_match:
         reason = "cell metadata mismatch"
     elif not artifact_exists:
@@ -1823,11 +1895,18 @@ def _installed_source_revision() -> str | None:
             active_source_revision,
             package_version,
         )
-
+    except (ImportError, RuntimeError, ValueError) as error:
+        raise ManualCampaignError(
+            f"measurement runtime provenance cannot be loaded: {error}; rerun "
+            "`just dev-install`"
+        ) from error
+    try:
         package_version()
         return active_source_revision()
-    except (ImportError, RuntimeError, ValueError):
-        return None
+    except (RuntimeError, ValueError) as error:
+        raise ManualCampaignError(
+            f"measurement runtime provenance check failed: {error}"
+        ) from error
 
 
 def require_measurement_ready(source: ReportSourceIdentity) -> None:
@@ -1841,11 +1920,17 @@ def require_measurement_ready(source: ReportSourceIdentity) -> None:
             "rebuild before running measurements"
         )
     installed = _installed_source_revision()
+    if installed is None:
+        raise ManualCampaignError(
+            "measurement runtime contains no clean source revision for this "
+            f"checkout ({source.revision}); rebuild it with `just dev-install` "
+            "after committing evaluator-source changes. Copied profiling "
+            "campaigns and generated report outputs do not invalidate the build."
+        )
     if installed != source.revision:
-        observed = "null/unavailable" if installed is None else installed
         raise ManualCampaignError(
             "measurement runtime is not a clean build of this checkout: "
-            f"checkout={source.revision}, installed={observed}. Commit the "
+            f"checkout={source.revision}, installed={installed}. Commit the "
             "implementation, ensure the worktree is clean, then run "
             "`just dev-install`; dirty-build evidence is never reusable."
         )

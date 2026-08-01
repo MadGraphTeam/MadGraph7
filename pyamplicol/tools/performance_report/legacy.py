@@ -31,6 +31,7 @@ from .agreements import (
     DIRECT_AGREEMENT_FIELD,
     LC_COMMON_COMPONENT_FIELD,
     legacy_lc_common_component,
+    validate_lc_common_component,
 )
 from .cache import empty_measurement
 from .catalog import REPORT_CATALOG
@@ -44,10 +45,13 @@ from .models import (
 )
 from .phase_state import WorkerPhaseReporter
 from .runner import (
+    ABSOLUTE_TOLERANCE,
     DEFAULT_TARGET_RUNTIME_SECONDS,
+    RELATIVE_TOLERANCE,
     ProfilingTimeLimitError,
     SelectorContract,
     point_digest,
+    pointwise_validation,
 )
 
 DEFAULT_WARMUP_POINTS = 100
@@ -56,6 +60,11 @@ DEFAULT_MAX_POINTS = 10_000_000
 DEFAULT_MIN_PROFILE_CHUNKS = 5
 DEFAULT_MAX_PROFILE_CHUNKS = 512
 MAX_OPEN_QUARK_LINES = LEGACY_AMPLICOL_MAX_OPEN_QUARK_LINES
+LEGACY_IMODE2_DIAGNOSTIC_FIELD = "legacy_imode2_diagnostic"
+LEGACY_IMODE2_DIAGNOSTIC_ABI = "pyamplicol-report-legacy-imode2-diagnostic-v1"
+LEGACY_NUMERICAL_AUTHORITY_FIELD = "legacy_numerical_authority"
+LEGACY_NUMERICAL_AUTHORITY_ABI = "pyamplicol-report-legacy-numerical-authority-v1"
+LEGACY_IMODE2_DIAGNOSTIC_MAX_COLOR_ORDERS = 5_000
 
 
 class LegacyAdapterError(RuntimeError):
@@ -467,6 +476,46 @@ class _SelectedFlowMeasurement:
     fixed_helicity_value: float
 
 
+@dataclass(frozen=True, slots=True)
+class _ContractedMeasurement:
+    measurement: dict[str, object]
+    imode2_diagnostic: dict[str, object] | None
+
+
+def _imode2_diagnostic(
+    *,
+    authoritative_source: str,
+    authoritative_value: float,
+    imode2_value: float,
+) -> dict[str, object]:
+    absolute = abs(authoritative_value - imode2_value)
+    return {
+        "abi": LEGACY_IMODE2_DIAGNOSTIC_ABI,
+        "certifying": False,
+        "authoritative_source": authoritative_source,
+        "authoritative_value": authoritative_value,
+        "imode2_value": imode2_value,
+        "absolute_difference": absolute,
+        "relative_difference": absolute / max(abs(authoritative_value), 1.0e-300),
+    }
+
+
+def _imode2_component_diagnostic_supported(source_pdgs: Sequence[int]) -> bool:
+    """Return whether the optional direct fixed-flow diagnostic is bounded."""
+
+    if _quark_line_count(source_pdgs) != MAX_OPEN_QUARK_LINES:
+        return True
+    singlets = sum(
+        not (1 <= abs(int(pdg)) <= 6 or abs(int(pdg)) == 21)
+        for pdg in source_pdgs
+    )
+    if singlets:
+        return False
+    gluons = sum(abs(int(pdg)) == 21 for pdg in source_pdgs)
+    color_orders = 3 * math.factorial(gluons) * (gluons + 1) * (gluons + 2)
+    return color_orders <= LEGACY_IMODE2_DIAGNOSTIC_MAX_COLOR_ORDERS
+
+
 def _initial_state_count(process: str) -> int:
     initial, separator, final = process.partition(">")
     initial_count = len(initial.split())
@@ -799,9 +848,17 @@ class LegacyMeasurementAdapter:
         artifact_path: Path,
         settings: LegacySettings,
         phase_reporter: WorkerPhaseReporter | None = None,
+        selector_provider: Mapping[str, object] | None = None,
     ) -> dict[str, object]:
         if cell.measurement.execution_mode is not ExecutionMode.AMPLICOL:
             raise LegacyAdapterError("legacy adapter requires an AmpliCol cell")
+        if selector_provider is not None and not (
+            cell.measurement.accuracy is Accuracy.LC
+            and cell.workload is Workload.ALL_FLOW
+        ):
+            raise LegacyAdapterError(
+                "selector_provider is only valid for LC all-flow AmpliCol cells"
+            )
         source_pdgs = self.api.process_pdgs(cell.process)
         if _quark_line_count(source_pdgs) > MAX_OPEN_QUARK_LINES:
             if phase_reporter is not None:
@@ -867,6 +924,7 @@ class LegacyMeasurementAdapter:
                     settings=settings,
                     instrumentation=instrumentation,
                     phase_reporter=phase_reporter,
+                    selector_provider=selector_provider,
                 )
 
     def _measure_supported(
@@ -878,6 +936,7 @@ class LegacyMeasurementAdapter:
         settings: LegacySettings,
         instrumentation: object | None,
         phase_reporter: WorkerPhaseReporter | None,
+        selector_provider: Mapping[str, object] | None,
     ) -> dict[str, object]:
         log_path = artifact_path / "legacy.log"
         commands: list[dict[str, object]] = []
@@ -888,6 +947,18 @@ class LegacyMeasurementAdapter:
             commands=commands,
             log_path=log_path,
         )
+        provided_common_component = (
+            None
+            if selector_provider is None
+            else self._selector_provider_common_component(
+                cell,
+                context=context,
+                selector_provider=selector_provider,
+                commands=commands,
+                log_path=log_path,
+            )
+        )
+        contracted: _ContractedMeasurement | None = None
         if cell.measurement.accuracy is Accuracy.LC:
             if cell.workload is Workload.SELECTED_FLOW:
                 selected = self._measure_selected_flow(
@@ -915,7 +986,7 @@ class LegacyMeasurementAdapter:
             else:
                 raise LegacyAdapterError("LC AmpliCol cell requires an LC workload")
         elif cell.workload is Workload.CONTRACTED:
-            result = self._measure_contracted(
+            contracted = self._measure_contracted(
                 cell,
                 context=context,
                 repository=repository,
@@ -925,6 +996,7 @@ class LegacyMeasurementAdapter:
                 log_path=log_path,
                 phase_reporter=phase_reporter,
             )
+            result = contracted.measurement
         else:
             raise LegacyAdapterError("NLC/full AmpliCol cells must be contracted")
 
@@ -947,22 +1019,63 @@ class LegacyMeasurementAdapter:
             "point_digest": context.selector_contract.point_digest,
             DIRECT_AGREEMENT_FIELD: [],
         }
+        authority_source: str | None = None
+        if cell.workload is Workload.SELECTED_FLOW:
+            authority_source = "selected-flow-generated-library"
+        elif (
+            cell.workload is Workload.ALL_FLOW
+            and provided_common_component is not None
+        ):
+            authority_source = "all-flow-selected-provider-replay"
+        elif contracted is not None:
+            authority_source = (
+                "contracted-generated-library"
+                if contracted.imode2_diagnostic is not None
+                else "direct-imode2-three-quark-line"
+            )
+        if authority_source is not None:
+            result["validation"][LEGACY_NUMERICAL_AUTHORITY_FIELD] = {
+                "abi": LEGACY_NUMERICAL_AUTHORITY_ABI,
+                "source": authority_source,
+            }
+        if contracted is not None and contracted.imode2_diagnostic is not None:
+            result["validation"][LEGACY_IMODE2_DIAGNOSTIC_FIELD] = (
+                contracted.imode2_diagnostic
+            )
         if cell.measurement.accuracy is Accuracy.LC:
-            common_component = (
-                legacy_lc_common_component(
+            if cell.workload is Workload.SELECTED_FLOW:
+                common_component = legacy_lc_common_component(
                     cell,
                     context.selector_contract,
                     selected.fixed_helicity_value,
                 )
-                if cell.workload is Workload.SELECTED_FLOW
-                else self._measure_lc_common_component(
+            elif provided_common_component is None:
+                common_component = self._measure_lc_common_component(
                     cell,
                     context=context,
                     repository=repository,
                     commands=commands,
                     log_path=log_path,
                 )
-            )
+            else:
+                common_component = provided_common_component
+                if _imode2_component_diagnostic_supported(context.source_pdgs):
+                    direct_common_component = self._measure_lc_common_component(
+                        cell,
+                        context=context,
+                        repository=repository,
+                        commands=commands,
+                        log_path=log_path,
+                    )
+                    result["validation"][LEGACY_IMODE2_DIAGNOSTIC_FIELD] = (
+                        _imode2_diagnostic(
+                            authoritative_source=(
+                                "selected-flow-generated-library-component"
+                            ),
+                            authoritative_value=float(common_component["value"]),
+                            imode2_value=float(direct_common_component["value"]),
+                        )
+                    )
             result["validation"][LC_COMMON_COMPONENT_FIELD] = common_component
             if cell.workload is Workload.ALL_FLOW and (
                 float(result["matrix_element"]) <= 0.0
@@ -1022,8 +1135,167 @@ class LegacyMeasurementAdapter:
                 instrumentation=instrumentation,
             )
             result["artifact"]["legacy_structural_proof"] = os.fspath(proof)
-        result["failure"] = None
+        if result["status"] == ResultStatus.OK.value:
+            result["failure"] = None
         return result
+
+    def _selector_provider_common_component(
+        self,
+        cell: CellSpec,
+        *,
+        context: _ProcessContext,
+        selector_provider: Mapping[str, object],
+        commands: list[dict[str, object]],
+        log_path: Path,
+    ) -> dict[str, object]:
+        if selector_provider.get("status") != ResultStatus.OK.value:
+            raise LegacyAdapterError(
+                "LC all-flow selector provider is not a successful measurement"
+            )
+        raw_contract = selector_provider.get("selector_contract")
+        if not isinstance(raw_contract, Mapping):
+            raise LegacyAdapterError(
+                "LC all-flow selector provider has no selector contract"
+            )
+        try:
+            provider_contract = SelectorContract.from_mapping(raw_contract)
+        except (TypeError, ValueError) as error:
+            raise LegacyAdapterError(
+                "LC all-flow selector provider has an invalid selector contract"
+            ) from error
+        if provider_contract != context.selector_contract:
+            raise LegacyAdapterError(
+                "LC all-flow selector provider contract does not match the cell"
+            )
+        raw_validation = selector_provider.get("validation")
+        if (
+            not isinstance(raw_validation, Mapping)
+            or raw_validation.get("status") != ResultStatus.OK.value
+        ):
+            raise LegacyAdapterError(
+                "LC all-flow selector provider has no successful validation"
+            )
+        raw_component = raw_validation.get(LC_COMMON_COMPONENT_FIELD)
+        try:
+            validate_lc_common_component(
+                raw_component,
+                selector_contract=raw_contract,
+            )
+        except ValueError as error:
+            raise LegacyAdapterError(
+                "LC all-flow selector provider has an invalid common component"
+            ) from error
+        assert isinstance(raw_component, Mapping)
+        raw_value = raw_component.get("value")
+        if (
+            isinstance(raw_value, bool)
+            or not isinstance(raw_value, (int, float))
+            or not math.isfinite(float(raw_value))
+        ):
+            raise LegacyAdapterError(
+                "LC all-flow selector provider common component is not finite"
+            )
+        raw_artifact = selector_provider.get("artifact")
+        raw_artifact_path = (
+            raw_artifact.get("path") if isinstance(raw_artifact, Mapping) else None
+        )
+        if not isinstance(raw_artifact_path, str) or not raw_artifact_path:
+            raise LegacyAdapterError(
+                "LC all-flow selector provider has no artifact path"
+            )
+        generated = Path(raw_artifact_path) / "selected-flow-generated-library"
+        required_paths = (
+            generated / "amplicol_library_benchmark",
+            generated / "processes.txt",
+            generated / "Library",
+        )
+        if (
+            not required_paths[0].is_file()
+            or not os.access(required_paths[0], os.X_OK)
+            or not required_paths[1].is_file()
+            or not required_paths[2].is_dir()
+        ):
+            raise LegacyAdapterError(
+                "LC all-flow selector provider generated-library artifact is incomplete"
+            )
+        provider_entries = self.api.parse_process_file(required_paths[1])
+        provider_entry, _provider_matches = self.api.select_generated_process_entry(
+            provider_entries,
+            generated_process=cell.process,
+            wanted_pdgs=context.source_pdgs,
+        )
+        provider_word = _canonical_mapped_color_word(
+            context.source_pdgs,
+            self.api.source_mapped_color_order(
+                provider_entry,
+                source_pdgs=context.source_pdgs,
+            ),
+            initial_state_count=_initial_state_count(cell.process),
+        )
+        if provider_word != context.selector_contract.selected_color_words[0]:
+            raise LegacyAdapterError(
+                "LC all-flow selector provider artifact row does not match its "
+                "selector contract"
+            )
+        fixed_helicities = tuple(
+            value
+            for _label, value in context.selector_contract.all_flow_source_helicities
+        )
+        probe_args = (
+            "legacy_amplicol.run_selected_flow_library_probe",
+            os.fspath(generated),
+            "points=1",
+            "helicities=" + ",".join(f"{value:+d}" for value in fixed_helicities),
+        )
+        record_index, probe_started = self._record_api_launch(
+            probe_args,
+            cwd=generated,
+            commands=commands,
+            log_path=log_path,
+            intended_points=1,
+        )
+        with _temporary_environment(_library_environment(generated)):
+            probe = self.api.run_selected_flow_probe(
+                generated,
+                entry=provider_entry,
+                source_pdgs=context.source_pdgs,
+                momenta=context.momenta,
+                helicities=fixed_helicities,
+                points=1,
+            )
+        self._finish_api_launch(
+            record_index,
+            probe_args,
+            cwd=generated,
+            commands=commands,
+            started=probe_started,
+        )
+        fresh_value = getattr(probe, "fixed_helicity_value", None)
+        if (
+            isinstance(fresh_value, bool)
+            or not isinstance(fresh_value, (int, float))
+            or not math.isfinite(float(fresh_value))
+        ):
+            raise LegacyAdapterError(
+                "LC all-flow selector provider replay emitted no finite fixed-"
+                "helicity component"
+            )
+        replay = pointwise_validation(
+            float(fresh_value),
+            float(raw_value),
+            relative_tolerance=RELATIVE_TOLERANCE,
+            absolute_tolerance=ABSOLUTE_TOLERANCE,
+        )
+        if replay["status"] != ResultStatus.OK.value:
+            raise LegacyAdapterError(
+                "LC all-flow selector provider replay disagrees with its recorded "
+                "common component"
+            )
+        return legacy_lc_common_component(
+            cell,
+            context.selector_contract,
+            float(fresh_value),
+        )
 
     def _measure_lc_common_component(
         self,
@@ -1612,17 +1884,20 @@ class LegacyMeasurementAdapter:
         commands: list[dict[str, object]],
         log_path: Path,
         phase_reporter: WorkerPhaseReporter | None,
-    ) -> dict[str, object]:
+    ) -> _ContractedMeasurement:
         if _quark_line_count(context.source_pdgs) == MAX_OPEN_QUARK_LINES:
-            return self._measure_direct_contracted(
-                cell,
-                context=context,
-                repository=repository,
-                artifact_path=artifact_path,
-                settings=settings,
-                commands=commands,
-                log_path=log_path,
-                phase_reporter=phase_reporter,
+            return _ContractedMeasurement(
+                measurement=self._measure_direct_contracted(
+                    cell,
+                    context=context,
+                    repository=repository,
+                    artifact_path=artifact_path,
+                    settings=settings,
+                    commands=commands,
+                    log_path=log_path,
+                    phase_reporter=phase_reporter,
+                ),
+                imode2_diagnostic=None,
             )
         generation_seconds = self._generate_library(
             context=context,
@@ -1686,6 +1961,30 @@ class LegacyMeasurementAdapter:
         )
         if phase_reporter is not None:
             phase_reporter.validation_started()
+        _library_result, _library_rows, library_probe = self._invoke_probe_command(
+            (
+                "./amplicol_color_library_probe",
+                "1",
+                str(context.entry.group),
+                str(context.entry.integral),
+                cell.measurement.accuracy.value,
+                momenta_path.name,
+            ),
+            cwd=generated,
+            environment=environment,
+            commands=commands,
+            log_path=log_path,
+        )
+        raw_library_value = getattr(library_probe, "value", None)
+        if (
+            isinstance(raw_library_value, bool)
+            or not isinstance(raw_library_value, (int, float))
+            or not math.isfinite(float(raw_library_value))
+        ):
+            raise LegacyAdapterError(
+                "contracted generated-library validation probe emitted no finite value"
+            )
+        library_value = float(raw_library_value)
         if self.structural_proof:
             from .legacy_structure import (
                 STRUCTURAL_PROBE_ENVIRONMENT,
@@ -1744,11 +2043,28 @@ class LegacyMeasurementAdapter:
             commands=commands,
             started=probe_started,
         )
-        return self._success_measurement(
-            generation_seconds=generation_seconds,
-            profile=profile,
-            matrix_element=float(probe.value),
-            generation_source="generated-library-create-raw",
+        raw_direct_value = getattr(probe, "value", None)
+        if (
+            isinstance(raw_direct_value, bool)
+            or not isinstance(raw_direct_value, (int, float))
+            or not math.isfinite(float(raw_direct_value))
+        ):
+            raise LegacyAdapterError(
+                "contracted direct recursive probe emitted no finite value"
+            )
+        direct_value = float(raw_direct_value)
+        return _ContractedMeasurement(
+            measurement=self._success_measurement(
+                generation_seconds=generation_seconds,
+                profile=profile,
+                matrix_element=library_value,
+                generation_source="generated-library-create-raw",
+            ),
+            imode2_diagnostic=_imode2_diagnostic(
+                authoritative_source="dedicated-generated-library-probe",
+                authoritative_value=library_value,
+                imode2_value=direct_value,
+            ),
         )
 
     def _measure_direct_contracted(

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import copy
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +12,10 @@ import pytest
 from tools.performance_report.cache import validate_measurement
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.legacy import (
+    LEGACY_IMODE2_DIAGNOSTIC_ABI,
+    LEGACY_IMODE2_DIAGNOSTIC_FIELD,
+    LEGACY_NUMERICAL_AUTHORITY_ABI,
+    LEGACY_NUMERICAL_AUTHORITY_FIELD,
     CommandResult,
     LegacyAdapterError,
     LegacyMeasurementAdapter,
@@ -57,6 +62,11 @@ class FakeApi:
         self.selected_calls: list[tuple[int, tuple[int, ...]]] = []
         self.color_calls: list[tuple[str, tuple[int, ...] | None]] = []
         self.lc_probe_result: object | None = None
+        self.generated_library_probe_value = 9.75
+        self.direct_color_probe_value = 9.75
+        self.selected_flow_value = 3.25
+        self.selected_flow_fixed_helicity_value = 2.5
+        self.parsed_probe_count = 0
 
     def expected_revision(self) -> str:
         return "a" * 40
@@ -107,11 +117,22 @@ class FakeApi:
         return tuple(range(len(source_pdgs)))
 
     def parse_probe_output(self, output: str) -> object:
-        return SimpleNamespace(value=12.5)
+        self.parsed_probe_count += 1
+        marker = "FAKE_PROBE_VALUE "
+        values = [
+            float(line.removeprefix(marker))
+            for line in output.splitlines()
+            if line.startswith(marker)
+        ]
+        assert len(values) == 1
+        return SimpleNamespace(value=values[0])
 
     def run_selected_flow_probe(self, repository: Path, **kwargs: object) -> object:
         self.selected_calls.append((int(kwargs["points"]), tuple(kwargs["helicities"])))
-        return SimpleNamespace(value=3.25, fixed_helicity_value=2.5)
+        return SimpleNamespace(
+            value=self.selected_flow_value,
+            fixed_helicity_value=self.selected_flow_fixed_helicity_value,
+        )
 
     def run_color_probe(self, repository: Path, **kwargs: object) -> object:
         accuracy = str(kwargs["color_accuracy"])
@@ -121,7 +142,11 @@ class FakeApi:
         )
         if accuracy == Accuracy.LC.value and self.lc_probe_result is not None:
             return self.lc_probe_result
-        aggregate = 2.5 if accuracy == Accuracy.LC.value else 9.75
+        aggregate = (
+            2.5
+            if accuracy == Accuracy.LC.value
+            else self.direct_color_probe_value
+        )
         return SimpleNamespace(
             value=aggregate,
             lc_row_partitions=(
@@ -132,7 +157,12 @@ class FakeApi:
 
 
 class FakeExecutor:
-    def __init__(self, phase_reporter: FakePhaseReporter | None = None) -> None:
+    def __init__(
+        self,
+        api: FakeApi,
+        phase_reporter: FakePhaseReporter | None = None,
+    ) -> None:
+        self.api = api
         self.commands: list[tuple[str, ...]] = []
         self.command_generation_phase: list[bool] = []
         self.profile_calls = 0
@@ -193,6 +223,12 @@ class FakeExecutor:
             "generation setup 2.5\n"
             f"amplitude evaluation {evaluation}\n"
             f"total {evaluation * 1.1}\n"
+            "FAKE_PROBE_VALUE "
+            + (
+                f"{self.api.generated_library_probe_value}\n"
+                if rendered and rendered[0] == "./amplicol_color_library_probe"
+                else "12.5\n"
+            )
         )
         elapsed = 0.25 if rendered and rendered[0] != "make" else 0.1
         return CommandResult(
@@ -216,6 +252,11 @@ class FakeSnapshotter:
         process_file: Path,
     ) -> Path:
         destination.mkdir(parents=True, exist_ok=True)
+        (destination / "Library").mkdir(exist_ok=True)
+        (destination / "processes.txt").write_text("fake\n", encoding="utf-8")
+        for executable in executables:
+            (destination / executable).touch()
+            (destination / executable).chmod(0o755)
         return destination
 
 
@@ -286,7 +327,7 @@ def _adapter(
     phase_reporter: FakePhaseReporter | None = None,
 ):
     fake_api = FakeApi() if api is None else api
-    executor = FakeExecutor(phase_reporter)
+    executor = FakeExecutor(fake_api, phase_reporter)
     return (
         LegacyMeasurementAdapter(
             api=fake_api,
@@ -627,6 +668,10 @@ def test_selected_flow_uses_generated_mode_one_and_compact_contract(
     assert api.color_calls == []
     common = measurement["validation"]["lc_common_component"]
     assert common["value"] == 2.5
+    assert measurement["validation"][LEGACY_NUMERICAL_AUTHORITY_FIELD] == {
+        "abi": LEGACY_NUMERICAL_AUTHORITY_ABI,
+        "source": "selected-flow-generated-library",
+    }
     flattened = [" ".join(command) for command in executor.commands]
     assert any("--library=create" in command for command in flattened)
     assert any("--amplicol_momenta_probe=10" in command for command in flattened)
@@ -804,6 +849,7 @@ def test_all_flow_uses_direct_fixed_helicity_and_its_own_generation_setup(
     assert measurement["wall_seconds_per_point"] == pytest.approx(1.0e-3)
     common = measurement["validation"]["lc_common_component"]
     assert common["value"] == 2.5
+    assert LEGACY_NUMERICAL_AUTHORITY_FIELD not in measurement["validation"]
     provenance = measurement["provenance"]
     assert provenance["generation_timing_is_workload_specific"] is True
     assert provenance["raw_mapped_color_order"] == [2, 4, 1, 3]
@@ -817,6 +863,193 @@ def test_all_flow_uses_direct_fixed_helicity_and_its_own_generation_setup(
     flattened = [" ".join(command) for command in executor.commands]
     assert not any("--library=create" in command for command in flattened)
     assert any(command.endswith("amplicol_color_probe") for command in flattened)
+
+
+def test_all_flow_replays_selected_flow_provider_as_authoritative_component(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter, api, _executor = _adapter()
+    monkeypatch.setattr(
+        "tools.performance_report.legacy._shared_point",
+        lambda _process: (
+            api.pdgs,
+            tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),
+            (tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),),
+        ),
+    )
+    provider = adapter.measure(
+        _cell(Accuracy.LC, Workload.SELECTED_FLOW),
+        artifact_path=tmp_path / "selected",
+        settings=_settings(tmp_path / "repository"),
+    )
+    api.lc_probe_result = SimpleNamespace(
+        value=2.75,
+        lc_row_partitions=(
+            SimpleNamespace(row=1, value=2.75, permutation=(2, 4, 1)),
+        ),
+        lc_partition_sum=2.75,
+    )
+
+    measurement = adapter.measure(
+        _cell(Accuracy.LC, Workload.ALL_FLOW),
+        artifact_path=tmp_path / "all",
+        settings=_settings(tmp_path / "repository"),
+        selector_provider=provider,
+    )
+
+    validate_measurement(measurement)
+    assert measurement["status"] == "ok"
+    assert measurement["matrix_element"] == 12.5
+    assert measurement["validation"]["lc_common_component"]["value"] == 2.5
+    assert measurement["validation"][LEGACY_NUMERICAL_AUTHORITY_FIELD] == {
+        "abi": LEGACY_NUMERICAL_AUTHORITY_ABI,
+        "source": "all-flow-selected-provider-replay",
+    }
+    diagnostic = measurement["validation"][LEGACY_IMODE2_DIAGNOSTIC_FIELD]
+    assert diagnostic == {
+        "abi": LEGACY_IMODE2_DIAGNOSTIC_ABI,
+        "certifying": False,
+        "authoritative_source": "selected-flow-generated-library-component",
+        "authoritative_value": 2.5,
+        "imode2_value": 2.75,
+        "absolute_difference": 0.25,
+        "relative_difference": 0.1,
+    }
+    assert api.selected_calls == [
+        (1, (-1, 1, -1, 1)),
+        (1, (-1, 1, -1, 1)),
+    ]
+
+
+def test_high_flow_provider_omits_out_of_scope_imode2_component_diagnostic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pdgs = (1, -1, 2, -2, 3, -3, 21, 21, 21, 21, 21)
+    api = FakeApi(pdgs)
+    adapter, _api, _executor = _adapter(api)
+    monkeypatch.setattr(
+        "tools.performance_report.legacy._shared_point",
+        lambda _process: (
+            pdgs,
+            tuple((1.0, 0.0, 0.0, 0.0) for _ in pdgs),
+            (tuple((1.0, 0.0, 0.0, 0.0) for _ in pdgs),),
+        ),
+    )
+    provider = adapter.measure(
+        _cell(
+            Accuracy.LC,
+            Workload.SELECTED_FLOW,
+            process_key="dd_3q_lines",
+            n_final=9,
+        ),
+        artifact_path=tmp_path / "selected",
+        settings=_settings(tmp_path / "repository"),
+    )
+
+    measurement = adapter.measure(
+        _cell(
+            Accuracy.LC,
+            Workload.ALL_FLOW,
+            process_key="dd_3q_lines",
+            n_final=9,
+        ),
+        artifact_path=tmp_path / "all",
+        settings=_settings(tmp_path / "repository"),
+        selector_provider=provider,
+    )
+
+    validate_measurement(measurement)
+    assert measurement["status"] == "ok"
+    assert measurement["validation"]["lc_common_component"]["value"] == 2.5
+    assert measurement["validation"][LEGACY_NUMERICAL_AUTHORITY_FIELD] == {
+        "abi": LEGACY_NUMERICAL_AUTHORITY_ABI,
+        "source": "all-flow-selected-provider-replay",
+    }
+    assert LEGACY_IMODE2_DIAGNOSTIC_FIELD not in measurement["validation"]
+    assert api.color_calls == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    (
+        ("status", "not a successful measurement"),
+        ("selector", "contract does not match"),
+        ("component", "invalid common component"),
+    ),
+)
+def test_all_flow_rejects_invalid_selected_flow_provider_before_measurement(
+    mutation: str,
+    match: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter, api, executor = _adapter()
+    monkeypatch.setattr(
+        "tools.performance_report.legacy._shared_point",
+        lambda _process: (
+            api.pdgs,
+            tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),
+            (tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),),
+        ),
+    )
+    provider = adapter.measure(
+        _cell(Accuracy.LC, Workload.SELECTED_FLOW),
+        artifact_path=tmp_path / "selected",
+        settings=_settings(tmp_path / "repository"),
+    )
+    provider = copy.deepcopy(provider)
+    if mutation == "status":
+        provider["status"] = "validation_failed"
+    elif mutation == "selector":
+        provider["selector_contract"]["point_digest"] = "b" * 64
+    else:
+        provider["validation"]["lc_common_component"]["value"] = float("nan")
+    commands_before = len(executor.commands)
+
+    with pytest.raises(LegacyAdapterError, match=match):
+        adapter.measure(
+            _cell(Accuracy.LC, Workload.ALL_FLOW),
+            artifact_path=tmp_path / "all",
+            settings=_settings(tmp_path / "repository"),
+            selector_provider=provider,
+        )
+
+    new_commands = executor.commands[commands_before:]
+    assert not any(
+        command and command[0].endswith("amplicol_color_probe")
+        for command in new_commands
+    )
+
+
+def test_all_flow_rejects_provider_replay_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter, api, _executor = _adapter()
+    monkeypatch.setattr(
+        "tools.performance_report.legacy._shared_point",
+        lambda _process: (
+            api.pdgs,
+            tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),
+            (tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),),
+        ),
+    )
+    provider = adapter.measure(
+        _cell(Accuracy.LC, Workload.SELECTED_FLOW),
+        artifact_path=tmp_path / "selected",
+        settings=_settings(tmp_path / "repository"),
+    )
+    api.selected_flow_fixed_helicity_value = 2.5001
+
+    with pytest.raises(LegacyAdapterError, match="replay disagrees"):
+        adapter.measure(
+            _cell(Accuracy.LC, Workload.ALL_FLOW),
+            artifact_path=tmp_path / "all",
+            settings=_settings(tmp_path / "repository"),
+            selector_provider=provider,
+        )
 
 
 @pytest.mark.parametrize(
@@ -984,7 +1217,7 @@ def test_lc_common_probe_authenticates_partition_sum_and_aggregate(
 
 
 @pytest.mark.parametrize("accuracy", [Accuracy.NLC, Accuracy.FULL])
-def test_contracted_uses_raw_library_and_direct_oracle_value(
+def test_contracted_publishes_dedicated_library_probe_with_imode2_diagnostic(
     accuracy: Accuracy,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1005,6 +1238,7 @@ def test_contracted_uses_raw_library_and_direct_oracle_value(
     )
 
     validate_measurement(measurement)
+    assert measurement["status"] == "ok"
     assert measurement["matrix_element"] == 9.75
     assert measurement["selector_contract"] is None
     assert api.color_calls == [(accuracy.value, None)]
@@ -1022,6 +1256,56 @@ def test_contracted_uses_raw_library_and_direct_oracle_value(
         for index, command in enumerate(executor.commands)
         if command[0] == "./amplicol_color_library_probe"
     )
+    assert api.parsed_probe_count == 1
+    diagnostic = measurement["validation"][LEGACY_IMODE2_DIAGNOSTIC_FIELD]
+    assert diagnostic == {
+        "abi": LEGACY_IMODE2_DIAGNOSTIC_ABI,
+        "certifying": False,
+        "authoritative_source": "dedicated-generated-library-probe",
+        "authoritative_value": 9.75,
+        "imode2_value": 9.75,
+        "absolute_difference": 0.0,
+        "relative_difference": 0.0,
+    }
+    assert measurement["validation"][LEGACY_NUMERICAL_AUTHORITY_FIELD] == {
+        "abi": LEGACY_NUMERICAL_AUTHORITY_ABI,
+        "source": "contracted-generated-library",
+    }
+
+
+@pytest.mark.parametrize("accuracy", [Accuracy.NLC, Accuracy.FULL])
+def test_contracted_keeps_known_imode2_mismatch_non_certifying(
+    accuracy: Accuracy,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter, api, _executor = _adapter()
+    api.direct_color_probe_value = 10.0
+    monkeypatch.setattr(
+        "tools.performance_report.legacy._shared_point",
+        lambda _process: (
+            api.pdgs,
+            tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),
+            (tuple((1.0, 0.0, 0.0, 0.0) for _ in api.pdgs),),
+        ),
+    )
+
+    measurement = adapter.measure(
+        _cell(accuracy, Workload.CONTRACTED),
+        artifact_path=tmp_path / accuracy.value,
+        settings=_settings(tmp_path / "repository"),
+    )
+
+    validate_measurement(measurement)
+    assert measurement["status"] == "ok"
+    assert measurement["matrix_element"] == 9.75
+    assert measurement["failure"] is None
+    diagnostic = measurement["validation"][LEGACY_IMODE2_DIAGNOSTIC_FIELD]
+    assert diagnostic["certifying"] is False
+    assert diagnostic["authoritative_value"] == 9.75
+    assert diagnostic["imode2_value"] == 10.0
+    assert diagnostic["absolute_difference"] == 0.25
+    assert diagnostic["relative_difference"] == pytest.approx(0.25 / 9.75)
 
 
 @pytest.mark.parametrize("accuracy", (Accuracy.NLC, Accuracy.FULL))
@@ -1064,6 +1348,10 @@ def test_three_quark_line_contracted_uses_exact_direct_probe(
         measurement["provenance"]["generation_source"]
         == "direct-imode2-three-quark-line-setup"
     )
+    assert measurement["validation"][LEGACY_NUMERICAL_AUTHORITY_FIELD] == {
+        "abi": LEGACY_NUMERICAL_AUTHORITY_ABI,
+        "source": "direct-imode2-three-quark-line",
+    }
     flattened = [" ".join(command) for command in executor.commands]
     assert any("amplicol_color_probe" in command for command in flattened)
     assert not any("amplicol_generate" in command for command in flattened)
