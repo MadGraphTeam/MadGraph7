@@ -718,6 +718,7 @@ class ProcessExporterFortran(VirtualExporter):
 
         calls = 0
         self._crossgroup = {}   # (group_idx, me_idx) -> base info; Track B below
+        self._router_base_mes = set()  # id(me) of the within-group (Track A) bases
         self._crossgroup_dirs = []  # (dependent_dir, base_dir) for the parallel makefile
         self._crossgroup_helperms = {}  # base_dir -> {base_proc_id -> [hel perms]}
         if isinstance(matrix_elements, group_subprocs.SubProcessGroupList):
@@ -8116,14 +8117,20 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                         'flavor_mask_decl':'',
                         'flavor_mask_setup':''}
 
-        # Cross-group (Track B) colour selection: an ME that serves as a base for a
-        # crossed dependent publishes its per-flow JAMP2 (in its own flow order) so
-        # the dependent can reselect colour natively (see _dsig_crossgroup_fills /
-        # XG_SELCOL). Emitted only for those bases -- every other madevent ME keeps
-        # both holes empty and is byte-identical.
-        if id(matrix_element) in getattr(self, '_crossgroup_base_mes', set()):
+        # Crossing colour selection: an ME that serves as a base for a crossed
+        # dependent publishes its per-flow JAMP2 (in its own flow order) so the
+        # dependent can reselect colour natively instead of relabelling the base's
+        # own selection -- which was masked with the BASE's ICOLAMP row and can
+        # name a flow the dependent's own SELECT_COLOR would never pick. Both
+        # crossing paths need it: the cross-group dependent (Track B,
+        # _dsig_crossgroup_fills) and the within-group router (Track A,
+        # write_matrix_router_file), each calling XG_SELCOL with its OWN IPROC.
+        # Emitted only for those bases -- every other madevent ME keeps both holes
+        # empty and is byte-identical.
+        if (id(matrix_element) in getattr(self, '_crossgroup_base_mes', set())
+                or id(matrix_element) in getattr(self, '_router_base_mes', set())):
             replace_dict['xg_jamp2_decl'] = (
-                'C     Cross-group (Track B): publish this ME\'s per-flow JAMP2 so a'
+                'C     Crossing base: publish this ME\'s per-flow JAMP2 so a'
                 '\nC     crossed dependent can reselect colour in its own flow space.'
                 '\n      DOUBLE PRECISION XG_JAMP2(0:MAXFLOW,VECSIZE_MEMMAX)'
                 '\n      COMMON/TO_XG_JAMP2/XG_JAMP2')
@@ -8812,16 +8819,26 @@ class ProcessExporterFortranME(ProcessExporterFortran):
                 + col_vec_call),
         }
 
-    def _crossgroup_colsel_helper(self, proc_id, ncol, nflav, col_flat):
-        """Emit XG_SELCOL<proc_id>, the cross-group (Track B) colour-selection
-        helper for a dependent subprocess. It permutes the base ME's published
-        per-flow JAMP2 (COMMON/TO_XG_JAMP2, base flow order) into this
-        subprocess's flow order via DSIG_XGCOL (base flow -> dep flow) and runs
-        this subprocess's own SELECT_COLOR (its ICOLAMP + the live ICONFIG), so
-        the returned flow is native to this subprocess -- consistent with its
-        ICOLUP and its sampled config, unlike a bare base->dep index relabel of
-        the base's own (mismatched) selection. The DATA is column-major (flow
-        fastest, then flavor); the writer wraps the long line."""
+    def _crossgroup_colsel_helper(self, proc_id, ncol, nflav, col_flat,
+                                  iproc=1):
+        """Emit XG_SELCOL<proc_id>, the crossing colour-selection helper for a
+        subprocess that gets its matrix element from a crossed base. It permutes
+        the base ME's published per-flow JAMP2 (COMMON/TO_XG_JAMP2, base flow
+        order) into this subprocess's flow order via DSIG_XGCOL (base flow ->
+        dep flow) and runs this subprocess's own SELECT_COLOR (its ICOLAMP row +
+        the live ICONFIG), so the returned flow is native to this subprocess --
+        consistent with its ICOLUP and its sampled config, unlike a bare
+        base->dep index relabel of the base's own (mismatched) selection. The
+        DATA is column-major (flow fastest, then flavor); the writer wraps the
+        long line.
+
+        ``iproc`` is SELECT_COLOR's matrix-element index, i.e. the ICOLAMP row to
+        mask with, and must be THIS subprocess's own. A cross-group dependent
+        (Track B) is alone in its P directory and is always 1; a within-group
+        router (Track A) shares the directory with its base and passes its own
+        proc_id -- the base's row is a different subprocess's and generally
+        allows a different set of flows at the same ICONFIG.
+        """
         return '\n'.join([
             '      SUBROUTINE XG_SELCOL%s(RCOL, IFLAV, IVEC, ICOL)' % proc_id,
             '      IMPLICIT NONE',
@@ -8840,11 +8857,18 @@ class ProcessExporterFortranME(ProcessExporterFortran):
             '      DOUBLE PRECISION JD(0:MAXFLOW)',
             '      INTEGER DSIG_XGCOL(%d,%d)' % (ncol, nflav),
             '      DATA DSIG_XGCOL /%s/' % col_flat,
+            # DSIG_XGCOL is normally a bijection onto 1..ncol, so every slot
+            # below JD(0) is written; zero first anyway, so a map that misses a
+            # flow degrades to "that flow has no weight" rather than feeding
+            # SELECT_COLOR an uninitialised one.
+            '      DO I=1,%d' % ncol,
+            '        JD(I) = 0D0',
+            '      ENDDO',
             '      JD(0) = XG_JAMP2(0,IVEC)',
             '      DO I=1,%d' % ncol,
             '        JD(DSIG_XGCOL(I,IFLAV)) = XG_JAMP2(I,IVEC)',
             '      ENDDO',
-            '      CALL SELECT_COLOR(RCOL, JD, ICONFIG, 1, ICOL, IVEC)',
+            '      CALL SELECT_COLOR(RCOL, JD, ICONFIG, %s, ICOL, IVEC)' % iproc,
             '      END',
         ])
 
@@ -10347,14 +10371,26 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
         crossed FLAV_IDX from partition_crossing_classes; the heavy MATRIX<i> is
         not emitted. get_nhel<i> lives in auto_dsig<i>.f, so it is unaffected.
 
-        The base returns the selected colour flow in the base's flow order,
-        which must be translated to this subprocess's so the event's ICOLUP is
-        right. That goes through the canonical colour-flow CODE: decode the
+        Colour is NOT taken from the base's own selection. The base SMATRIX picks
+        its flow with SELECT_COLOR masked by the BASE's ICOLAMP row -- a different
+        subprocess's row, which at the live ICONFIG generally allows a different
+        set of flows -- so relabelling that index into this subprocess's flow
+        order (whatever the relabel) can hand the event a topology this
+        subprocess's own SELECT_COLOR would never pick, and the crossing-off
+        build never produces. Reselect natively instead, exactly as the
+        cross-group path does: permute the base's published per-flow JAMP2
+        (COMMON/TO_XG_JAMP2, base flow order -- crossing-covariant, so these are
+        this subprocess's own per-flow weights) into this subprocess's flow order
+        and run SELECT_COLOR with THIS subprocess's proc_id as IPROC
+        (_crossgroup_colsel_helper, emitted into this file as XG_SELCOL<i>).
+
+        The base flow -> this subprocess's flow permutation is _router_colmap;
+        when it is not a usable bijection the reselect is skipped and the old
+        index relabel through the canonical colour-flow CODE is kept (decode the
         base's code, relabel the legs with the crossing permutation, re-encode
-        and look the result up in this subprocess's own code table (see
-        _color_flow_code). The tables are per-ME and shared by every crossing of
-        the same base, and the same code is what _router_colmap computes at
-        generation time -- kept as the fallback for an ME with no usable code.
+        and look it up in this subprocess's own code table, see _color_flow_code),
+        with the explicit COLMAP array as the last resort.
+
         Momenta, PDGs and the helicity index already come out in this
         subprocess's own convention."""
         # Reuse the full builder (writer=None) to get the flavor table and the
@@ -10416,11 +10452,38 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                         % (chan_name, ngraphs, len(configmap)))
             decl.append('      DATA %s /%s/' % (
                 chan_name, ','.join(str(x) for col in configmap for x in col)))
+        # Per-flavor base-flow -> this-subprocess-flow permutation, and whether it
+        # supports the native colour reselect (see the docstring). It does when
+        # every flavor's map is a bijection of the shared colour basis, which also
+        # says the two flow spaces have the same size -- so the base's published
+        # JAMP2 fills this subprocess's JD exactly. Anything else (a flow that is
+        # not a clean colour<->anticolour bijection, an unmatchable topology, a
+        # colourless ME with no flows at all) keeps the historical index relabel.
+        ncol_dep = max(1, len(matrix_element.get('color_basis')))
+        colmaps = []
+        col_native = bool(routing)
+        for (base_index, iflav) in routing:
+            base_me = matrix_elements[base_index]
+            cm = self._router_colmap(
+                matrix_element, base_me,
+                (iflav - 1) // len(base_me.get_external_flavors_with_iden()))
+            colmaps.append(cm)
+            if len(cm) != ncol_dep \
+                    or ncol_dep != max(1, len(base_me.get('color_basis'))) \
+                    or sorted(cm) != list(range(1, ncol_dep + 1)):
+                col_native = False
+        if col_native:
+            # One helper for the whole router; the DATA is column-major (base flow
+            # fastest, then flavor), matching _crossgroup_colsel_helper.
+            replace_dict['smatrix_router_helper'] = self._crossgroup_colsel_helper(
+                proc_id, ncol_dep, len(colmaps),
+                ','.join(str(x) for cm in colmaps for x in cm),
+                iproc=proc_id)
         for flav0, (base_index, iflav) in enumerate(routing):
             base_me = matrix_elements[base_index]
             nflav_base = len(base_me.get_external_flavors_with_iden())
             cross = (iflav - 1) // nflav_base
-            colmap = self._router_colmap(matrix_element, base_me, cross)
+            colmap = colmaps[flav0]
             kw = 'IF' if flav0 == 0 else 'ELSE IF'
             dispatch.append('      %s (IFLAV.EQ.%d) THEN' % (kw, flav0 + 1))
             chan = 'channel'
@@ -10465,8 +10528,20 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                     '        ENDDO',
                     '        IHEL = IHEL + 1',
                 ]
-            # The base's flow index has to be translated to this subprocess's;
-            # skip it when the orders already agree (identity map).
+            if col_native:
+                # Discard the base's ICOL entirely and reselect in this
+                # subprocess's own flow space, with its own ICOLAMP row -- the
+                # base's pick was masked with the base's row and can name a flow
+                # this subprocess would never emit. Unconditional: an identity
+                # colmap only says the two flow ORDERS agree, it says nothing
+                # about the two masks, and it is precisely the identity-colmap
+                # routers whose masks were found to disagree.
+                dispatch.append('        CALL XG_SELCOL%s(RCOL, %d, IVEC, ICOL)'
+                                % (proc_id, flav0 + 1))
+                continue
+            # Fallback: no usable per-flavor bijection, so keep the historical
+            # index relabel of the base's own selection. Skip it when the orders
+            # already agree (identity map).
             if not (colmap and colmap != list(range(1, len(colmap) + 1))):
                 continue
             base_col = self._color_code_tables(base_me)
@@ -10543,6 +10618,7 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
                     '      INTEGER XBDIG(NEXTERNAL), XHR, XHK'] + decl
         replace_dict['smatrix_router_decl'] = '\n'.join(decl)
         replace_dict['smatrix_router_dispatch'] = '\n'.join(dispatch)
+        replace_dict.setdefault('smatrix_router_helper', '')
         tpl = open(pjoin(_file_path, 'iolibs', 'template_files',
                          'matrix_madevent_group_router_v4.inc')).read()
         writer.writelines(misc.apply_template(tpl, replace_dict))
@@ -10637,6 +10713,22 @@ class ProcessExporterFortranMEGroup(ProcessExporterFortranME):
             crossing_bases, crossing_routing = \
                 self.partition_crossing_classes(matrix_elements)
             crossing_bases = set(crossing_bases)
+            # A base that actually serves a router must publish its per-flow JAMP2
+            # (COMMON/TO_XG_JAMP2), so the router can reselect colour with its OWN
+            # ICOLAMP row instead of relabelling the base's masked pick -- see the
+            # XG_SELCOL call in write_matrix_router_file. Recorded before the write
+            # loop below, since a base can be written before or after its routers.
+            # Deliberately NOT merged into _crossgroup_base_mes: that set also
+            # drives the Track-B-only XGROW multi-channel row, which a within-group
+            # base must not get.
+            router_bases = getattr(self, '_router_base_mes', None)
+            if router_bases is None:
+                router_bases = self._router_base_mes = set()
+            for idep, route in enumerate(crossing_routing or []):
+                if route is None or idep in crossing_bases:
+                    continue
+                for (base_index, _iflav) in route:
+                    router_bases.add(id(matrix_elements[base_index]))
             # Flag the run interface that this output relies on crossing: a shared
             # matrix element is reused across physically distinct (crossed) initial
             # states. That is fine for the unpolarised proton PDFs, but it is NOT

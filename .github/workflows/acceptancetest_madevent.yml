@@ -1005,8 +1005,9 @@ jobs:
   acceptancetest_crossing_madevent_labels:
     # The event LABELS a crossed subprocess writes to the LHE: the W+ helicity of
     # p p > w+ j (the crossed leg is a massive vector, so a bad relabel scrambles
-    # it) and the colour flow of u u~ > u u~ (98/2 asymmetric, so a swapped flow
-    # label is detectable).
+    # it), the colour flow of u u~ > u u~ (98/2 asymmetric, so a swapped flow
+    # label is detectable), and the colour flow a within-group router CHOOSES
+    # (which mask it selects with, not just which label it writes).
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
     steps:
@@ -1018,6 +1019,18 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py -pA TestMadeventCrossingHelicity TestMadeventColorFlowRatio -t0 -l INFO
+
+      # Separate step (and ~4 minutes of its own): a within-group router must
+      # RESELECT the colour flow with its own colour-config mask rather than
+      # relabel the one its base picked. Only an event-level comparison sees
+      # this -- the cross section agreed to 0.02% while ~10% of the affected
+      # flavour class carried a flow the --use_crossing=False build never picks
+      # -- so this integrates the process twice and compares the colour-topology
+      # distribution class by class.
+      - name: within-group router colour selection
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -pA TestMadeventRouterColorSelection -t0 -l INFO
 
 
   acceptancetest_crossing_madevent_xsec:

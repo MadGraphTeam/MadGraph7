@@ -52,6 +52,7 @@ it crosses into and can be compared directly against the other code.
 
 from __future__ import absolute_import
 
+import itertools
 import json
 import math
 import os
@@ -3105,3 +3106,381 @@ class TestMadeventColorFlowRatio(unittest.TestCase):
                         'the crossing colour topology should be present but '
                         'strongly suppressed (measured ~0.02), got %.4f'
                         % cross)
+
+
+class TestMadeventRouterColorSelection(unittest.TestCase):
+    """A within-group (Track A) router must RESELECT the colour flow, with its
+    OWN colour-config mask -- not relabel the flow its base picked.
+
+    A router has no matrix element of its own: it calls the base SMATRIX with a
+    crossed FLAV_IDX. That base runs SELECT_COLOR before it returns, masking its
+    JAMP2 with the BASE's ICOLAMP row. ICOLAMP is indexed by (flow, config,
+    SUBPROCESS), and two subprocesses of one group do not have the same row: in
+    ``g u > g u`` / ``g u~ > g u~`` the rows for configs 2 and 3 are swapped, so
+    at the same live ICONFIG the base allows exactly the flow the router's own
+    SELECT_COLOR forbids. Whatever the router then does with that index -- even
+    the identity, which is what a crossing-covariant flow ORDER gives -- the
+    event carries a colour topology the module would never have chosen.
+
+    The fix is to discard the base's choice and reselect: permute the base's
+    published per-flow JAMP2 (COMMON/TO_XG_JAMP2) into this subprocess's flow
+    order and call SELECT_COLOR with the ROUTER's proc_id (XG_SELCOL<i>). This
+    is the same thing the cross-group path (Track B) already does.
+
+    Checked twice over.  test_router_reselects_colour_with_its_own_mask is the
+    structural half: it reads the generated fortran, and -- crucially -- asserts
+    that some router really does have a different ICOLAMP row from its base, so
+    the guard cannot go vacuous if the diagram numbering ever becomes
+    crossing-covariant.  test_router_colour_topology_matches_no_crossing is the
+    behavioural half, and the only kind of check that catches this class of bug:
+    the cross section agreed to 0.02% while ~10% of the affected class carried
+    the wrong flow, and per-point SMATRIX probes run before the good-helicity
+    state warms up, a regime production never reaches.  So it compares the
+    COLOUR TOPOLOGY DISTRIBUTION of two full event samples, one routed and one
+    built with --use_crossing=False.
+
+    ``g u u~`` dijets rather than ``p p > j j``: same subprocess groups, same
+    routers, one quark flavour instead of four, so a generation takes seconds.
+    """
+
+    DEFINE = 'define q1 = g u u~'
+    PROCESS = 'q1 q1 > q1 q1'
+    NEVENTS = 400000
+    SEED = 777
+    # A flavour class needs this many reference events before its topology
+    # fractions are compared. At 5000 the statistical error on a fraction is
+    # 0.7%, an order of magnitude below the shift being looked for.
+    MIN_CLASS = 5000
+    # The class the within-group router serves here: u~ g > u~ g, evaluated by
+    # the u g > u g matrix element under a crossing. Named explicitly because it
+    # is the only class in this process whose colour selection the router
+    # decides, and g g > g g outnumbers it many times over -- a comparison that
+    # quietly stopped reaching it would pass no matter what the router did.
+    ROUTED_CLASS = ((-2, 21), (-2, 21))
+    # Tolerated shift of a topology fraction, on top of a 4 sigma statistical
+    # allowance. The defect this guards moves it by ~3 points (0.403 -> 0.435 on
+    # u~ g > u~ g at these beams, 8 sigma); the fix leaves it inside 1 sigma.
+    MAX_SHIFT = 0.015
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='cross_router_col_')
+
+    def tearDown(self):
+        if os.path.isdir(self.tmpdir):
+            shutil.rmtree(self.tmpdir)
+
+    def _generate(self, options, name, launch=False):
+        """Generate (and optionally integrate) the process; return its outdir."""
+        from madgraph import MG5DIR
+        outdir = pjoin(self.tmpdir, name)
+        card = pjoin(self.tmpdir, 'cmd_%s.txt' % name)
+        lines = ['%s\n' % self.DEFINE,
+                 'generate %s %s\n' % (self.PROCESS, options),
+                 'output madevent %s -f -nojpeg\n' % outdir]
+        if launch:
+            lines += ['launch\n',
+                      'set nevents %d\n' % self.NEVENTS,
+                      'set iseed %d\n' % self.SEED,
+                      # a broken local lhapdf kills the systematics step, and
+                      # this test has no use for the reweighting anyway
+                      'set use_syst False\n',
+                      # Beam 2 an ANTIproton: the routed subprocess is
+                      # g u~ > g u~, so on p p it is a sea channel and gets ~4%
+                      # of the events. Against an antiproton the u~ is valence
+                      # and the class doubles, which is what buys the routed
+                      # class the statistics to resolve the shift without
+                      # doubling the runtime. Nothing else about the test
+                      # depends on the beams.
+                      'set lpp2 -1\n']
+        with open(card, 'w') as fsock:
+            fsock.writelines(lines)
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'), card])
+        self.assertTrue(os.path.isdir(pjoin(outdir, 'SubProcesses')),
+                        'madevent produced no output for %r' % (options or
+                                                                'the default'))
+        return outdir
+
+    @staticmethod
+    def _flat(path):
+        """The file's code with comments, continuations and all whitespace gone,
+        so a pattern can be matched without caring how the writer wrapped it."""
+        out = []
+        with open(path) as fsock:
+            for line in fsock:
+                if not line.strip() or line[0] in 'Cc*!':
+                    continue
+                body = line[6:] if len(line) > 6 else ''
+                if len(line) > 5 and line[5] not in ' \t':
+                    out.append(body)        # continuation of the previous line
+                else:
+                    out.append('\n' + body)
+        return re.sub(r'[ \t]', '', ''.join(out))
+
+    @classmethod
+    def _routers(cls, outdir):
+        """{P directory: {router proc_id: base proc_id}} for every Track A router."""
+        subproc = pjoin(outdir, 'SubProcesses')
+        found = {}
+        for name in sorted(os.listdir(subproc)):
+            pdir = pjoin(subproc, name)
+            if not name.startswith('P') or not os.path.isdir(pdir):
+                continue
+            for entry in sorted(os.listdir(pdir)):
+                match = re.match(r'matrix(\d+)_router\.f$', entry)
+                if not match:
+                    continue
+                bases = set(re.findall(r'CALLSMATRIX(\d+)\(',
+                                       cls._flat(pjoin(pdir, entry))))
+                # partition_crossing_classes only ever routes a module to a
+                # single base, so this is one entry per router.
+                found.setdefault(name, {})[int(match.group(1))] = \
+                    int(bases.pop()) if len(bases) == 1 else None
+        return found
+
+    @staticmethod
+    def _icolamp(pdir):
+        """{proc_id: {config: (flow allowed, ...)}} out of coloramps.inc.
+
+        Configs the file does not list are forbidden for every flow, which is
+        exactly how the fortran DATA leaves them.
+        """
+        rows = {}
+        text = ''
+        with open(pjoin(pdir, 'coloramps.inc')) as fsock:
+            for line in fsock:
+                if len(line) > 5 and line[5] not in ' \t':
+                    text += line[6:]
+                else:
+                    text += '\n' + line[6:] if len(line) > 6 else '\n'
+        for stmt in text.split('\n'):
+            match = re.match(r'\s*DATA\s*\(\s*ICOLAMP\(I,(\d+),(\d+)\)\s*,'
+                             r'\s*I\s*=\s*1\s*,\s*(\d+)\s*\)\s*/(.*)/\s*$',
+                             stmt.replace(' ', ''))
+            if not match:
+                continue
+            iconfig, iproc = int(match.group(1)), int(match.group(2))
+            vals = tuple(v.strip().upper().startswith('.T')
+                         for v in match.group(4).split(','))
+            rows.setdefault(iproc, {})[iconfig] = vals
+        return rows
+
+    @classmethod
+    def _mismatched_masks(cls, outdir):
+        """(P dir, router, base) for every router whose ICOLAMP row differs from
+        its base's -- i.e. every router the base's colour choice would mislead."""
+        out = []
+        for pname, pairs in cls._routers(outdir).items():
+            rows = cls._icolamp(pjoin(outdir, 'SubProcesses', pname))
+            for router, base in sorted(pairs.items()):
+                if base is None:
+                    continue
+                if rows.get(router, {}) != rows.get(base, {}):
+                    out.append((pname, router, base))
+        return out
+
+    def test_router_reselects_colour_with_its_own_mask(self):
+        outdir = self._generate('', 'struct')
+        routers = self._routers(outdir)
+        self.assertTrue(routers,
+                        '%s produced no within-group crossing router, so this '
+                        'test would check nothing' % self.PROCESS)
+
+        # The premise: at least one router really is masked differently from its
+        # base. Without this the whole comparison is between two ways of writing
+        # the same answer and could never fail.
+        mismatched = self._mismatched_masks(outdir)
+        self.assertTrue(
+            mismatched,
+            'no router has an ICOLAMP row different from its base\'s, so '
+            'reselecting colour could not change any event -- the guard below '
+            'has become vacuous and needs a process where it bites (routers '
+            'found: %s)' % routers)
+
+        for pname, pairs in sorted(routers.items()):
+            pdir = pjoin(outdir, 'SubProcesses', pname)
+            for router, base in sorted(pairs.items()):
+                self.assertIsNotNone(
+                    base, 'matrix%d_router.f in %s dispatches to more than one '
+                    'base SMATRIX' % (router, pname))
+                code = self._flat(pjoin(pdir, 'matrix%d_router.f' % router))
+                # (1) the helper exists and masks with the ROUTER's own proc_id
+                self.assertIn('SUBROUTINEXG_SELCOL%d(RCOL,IFLAV,IVEC,ICOL)'
+                              % router, code,
+                              'matrix%d_router.f (%s) has no colour-reselection '
+                              'helper' % (router, pname))
+                self.assertIn('CALLSELECT_COLOR(RCOL,JD,ICONFIG,%d,ICOL,IVEC)'
+                              % router, code,
+                              'XG_SELCOL%d (%s) does not run SELECT_COLOR with '
+                              'its own subprocess index as IPROC, so it masks '
+                              'the flows with another subprocess\'s ICOLAMP row'
+                              % (router, pname))
+                # (2) every dispatched flavour goes through it -- an identity
+                # flow order is NOT a reason to keep the base's pick
+                ncall = len(re.findall(r'CALLSMATRIX%d\(' % base, code))
+                nsel = len(re.findall(r'CALLXG_SELCOL%d\(' % router, code))
+                self.assertEqual(
+                    nsel, ncall,
+                    'matrix%d_router.f (%s) reselects colour for %d of its %d '
+                    'routed flavours' % (router, pname, nsel, ncall))
+                # (3) nothing relabels the base's own selection any more
+                self.assertNotIn('ICOL=COLMAP_', code,
+                                 'matrix%d_router.f (%s) still relabels the '
+                                 'base\'s colour index' % (router, pname))
+                self.assertNotIn('IF(XDCD(XCK).EQ.XCNEW)ICOL=XCK', code,
+                                 'matrix%d_router.f (%s) still translates the '
+                                 'base\'s colour index through the flow code'
+                                 % (router, pname))
+                # (4) the base has to publish the per-flow JAMP2 the helper reads
+                candidates = [pjoin(pdir, 'matrix%d_orig.f' % base),
+                              pjoin(pdir, 'matrix%d.f' % base)]
+                bfile = [c for c in candidates if os.path.isfile(c)]
+                self.assertTrue(bfile, 'no source for base SMATRIX%d in %s'
+                                % (base, pname))
+                bcode = self._flat(bfile[0])
+                self.assertIn('COMMON/TO_XG_JAMP2/XG_JAMP2', bcode,
+                              '%s does not publish its per-flow JAMP2, so '
+                              'XG_SELCOL%d has nothing to reselect from'
+                              % (os.path.basename(bfile[0]), router))
+                self.assertIn('XG_JAMP2(I,IVEC)=JAMP2(I)', bcode,
+                              '%s declares TO_XG_JAMP2 but never fills it'
+                              % os.path.basename(bfile[0]))
+
+    def test_router_colour_topology_matches_no_crossing(self):
+        from madgraph.various import lhe_parser
+
+        routed = self._generate('', 'on', launch=True)
+        plain = self._generate('--use_crossing=False', 'off', launch=True)
+
+        self.assertTrue(
+            self._mismatched_masks(routed),
+            'the routed build has no router masked differently from its base, '
+            'so this comparison cannot fail')
+        self.assertEqual(self._routers(plain), {},
+                         '--use_crossing=False still emitted a crossing router')
+
+        ref = self._topologies(plain, lhe_parser)
+        got = self._topologies(routed, lhe_parser)
+        nall = sum(sum(c.values()) for c in ref.values())
+        self.assertGreater(nall, 0,
+                           'the --use_crossing=False build produced no events')
+        # The launch has to have honoured `set nevents`: at the run_card default
+        # the routed class falls below MIN_CLASS, every class but g g > g g is
+        # skipped and the comparison silently checks nothing.
+        self.assertGreaterEqual(
+            nall, 0.9 * self.NEVENTS,
+            'the --use_crossing=False build wrote %d events, not the %d asked '
+            'for -- the per-class statistics this test needs are not there'
+            % (nall, self.NEVENTS))
+
+        compared = []
+        for flav in sorted(ref):
+            nref = sum(ref[flav].values())
+            ngot = sum(got.get(flav, {}).values())
+            logger.info('  %-18s %7d ref %7d routed   %s', self._fmt(flav),
+                        nref, ngot,
+                        ' '.join('%.4f/%.4f' % (
+                            got.get(flav, {}).get(t, 0) / float(ngot or 1),
+                            ref[flav][t] / float(nref))
+                            for t in sorted(ref[flav])))
+            if nref < self.MIN_CLASS or not ngot:
+                continue
+            compared.append(flav)
+            # (a) as specified: no topology the reference never produces
+            extra = [t for t in got[flav]
+                     if t not in ref[flav]
+                     and nref * got[flav][t] / float(ngot) >= 5.0]
+            self.assertFalse(
+                extra,
+                '%s: the routed build writes %d colour topology(ies) the '
+                '--use_crossing=False build never produces (%s)'
+                % (self._fmt(flav), len(extra),
+                   ', '.join('%d events' % got[flav][t] for t in extra)))
+            # (b) and, strictly stronger, the same MIX of them: a wrong ICOLAMP
+            # row moves weight between topologies both builds can produce, so
+            # (a) alone does not see it.
+            for topo in set(list(ref[flav]) + list(got[flav])):
+                pref = ref[flav].get(topo, 0) / float(nref)
+                pgot = got[flav].get(topo, 0) / float(ngot)
+                sigma = math.sqrt(pref * (1 - pref) / nref
+                                  + pgot * (1 - pgot) / ngot)
+                self.assertLessEqual(
+                    abs(pgot - pref), max(self.MAX_SHIFT, 4.0 * sigma),
+                    '%s: colour topology %s carries %.4f of the class in the '
+                    'routed build but %.4f in the --use_crossing=False build '
+                    '(%d vs %d events, %.1f sigma) -- the router is not '
+                    'choosing the flow the module itself would'
+                    % (self._fmt(flav), topo, pgot, pref, got[flav].get(topo, 0),
+                       ref[flav].get(topo, 0),
+                       abs(pgot - pref) / sigma if sigma else 0.0))
+        # The comparison is only worth anything if it reached the class the
+        # router actually serves; without this it degrades to g g > g g, which
+        # no router touches, and passes whatever the routers do.
+        self.assertIn(
+            self.ROUTED_CLASS, compared,
+            '%s -- the class the within-group router serves -- was not among '
+            'the %d compared (%s), so this test checked nothing about the '
+            'router' % (self._fmt(self.ROUTED_CLASS), len(compared),
+                        ', '.join(self._fmt(f) for f in compared)))
+
+    @staticmethod
+    def _fmt(flav):
+        return '%s > %s' % (' '.join(str(p) for p in flav[0]),
+                            ' '.join(str(p) for p in flav[1]))
+
+    @classmethod
+    def _topologies(cls, outdir, lhe_parser):
+        """{flavour class: {canonical colour topology: events}} from the LHE."""
+        lhe = pjoin(outdir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
+        out = {}
+        cache = {}
+        for event in lhe_parser.EventFile(lhe):
+            parts = [(int(p.status), int(p.pid), int(p.color1), int(p.color2))
+                     for p in event]
+            key = tuple(parts)
+            if key not in cache:
+                flav = (tuple(sorted(p[1] for p in parts if p[0] == -1)),
+                        tuple(sorted(p[1] for p in parts if p[0] == 1)))
+                cache[key] = (flav, cls._canon_topology(parts))
+            flav, topo = cache[key]
+            bucket = out.setdefault(flav, {})
+            bucket[topo] = bucket.get(topo, 0) + 1
+        return out
+
+    @staticmethod
+    def _canon_topology(parts):
+        """Colour topology of one event, free of the leg-ordering convention.
+
+        The connections are (leg holding a colour, leg holding the matching
+        anticolour) with initial-state legs swapping the two roles -- the LHE
+        runs an initial colour line 'through' the event, so without the swap a
+        label sits in the same slot on two legs and the flow is not a bijection
+        (the same canonical form _color_flow_canon uses in the exporter). The
+        result is then minimised over every relabelling of the legs, so two
+        modules that write the same physical flow in a different leg order give
+        the same answer.
+        """
+        col, anti = {}, {}
+        for i, (status, _pid, c, a) in enumerate(parts):
+            if status == -1:
+                c, a = a, c
+            if c:
+                col.setdefault(c, []).append(i)
+            if a:
+                anti.setdefault(a, []).append(i)
+        conns = set()
+        for label in set(list(col) + list(anti)):
+            for cc, aa in zip(sorted(col.get(label, [])),
+                              sorted(anti.get(label, []))):
+                conns.add((cc, aa))
+        types = [(p[0], p[1]) for p in parts]
+        nleg = len(parts)
+        best = None
+        for perm in itertools.permutations(range(nleg)):
+            inv = [0] * nleg
+            for new, old in enumerate(perm):
+                inv[old] = new
+            cand = (tuple(types[old] for old in perm),
+                    tuple(sorted((inv[i], inv[j]) for (i, j) in conns)))
+            if best is None or cand < best:
+                best = cand
+        return best

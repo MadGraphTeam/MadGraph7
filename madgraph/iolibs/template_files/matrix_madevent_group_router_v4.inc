@@ -19,13 +19,13 @@ C
       REAL*8 P(0:3,NEXTERNAL), ANS
       DOUBLE PRECISION RHEL, RCOL
       INTEGER channel, IVEC, IFLAV, IHEL, ICOL
-C     Per-flavor colour-flow remap: the base returns the selected colour flow in
-C     its own basis, but events are written through this subprocess's leshouche
-C     ICOLUP, whose flows can be ordered differently (the crossed colour reps
-C     decompose the shared colour basis in another order). COLMAP sends the base
-C     flow index to the local flow with the same colour topology. (The helicity
-C     index needs no such map: this subprocess's get_nhel already enumerates the
-C     crossed helicities in the base's order.)
+C     Colour is reselected here, not taken from the base: the base's SELECT_COLOR
+C     masked its JAMP2 with the BASE's ICOLAMP row, which at the same ICONFIG can
+C     allow a different set of flows than this subprocess's own, so its pick may
+C     be a topology this subprocess never emits. XG_SELCOL below permutes the
+C     base's published per-flow JAMP2 into this subprocess's flow order and runs
+C     SELECT_COLOR with THIS subprocess's IPROC. (The helicity index needs no
+C     such treatment: it is a relabel of a choice made in a shared space.)
 %(smatrix_router_decl)s
       ANS = 0D0
       IHEL = 1
@@ -51,3 +51,5 @@ C     Returns the flavor array for a given flavor index IFLAV
       I = 1
       RETURN
       END
+
+%(smatrix_router_helper)s
