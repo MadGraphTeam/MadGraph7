@@ -1132,8 +1132,13 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
         
 
 
-        question_instance = obj(question, allow_arg=choices, default=default, 
+        # cleared so a construction failure can't leak a stale instance
+        self._last_ask_instance = None
+        question_instance = obj(question, allow_arg=choices, default=default,
                                                    mother_interface=self, **opt)
+        # stashed before the blocking input below, so callers can recover it
+        # if ask() is interrupted (ctrl-C) instead of returning normally
+        self._last_ask_instance = question_instance
         if fct_timeout is None:
             fct_timeout = lambda x: question_instance.postcmd(x, default) if x and default else False
         if first_cmd:
