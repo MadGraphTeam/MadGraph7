@@ -3380,9 +3380,9 @@ class ControlSwitch(SmartQuestion):
         f3 = 0 #formatting for hidden line
         
         text = \
-        ["The following switches determine which programs are run:",
+        ["\033[92m The following switches determine which programs are run\033[0m:",
          upper_line
-        ]                     
+        ]
 
 
         

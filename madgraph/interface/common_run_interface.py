@@ -8566,7 +8566,7 @@ class AskforEditCardWithSwitch(object):
             for number, label, card in to_show:
                 question += '│ %-77s│\n' % (fmt % (number, label, card))
             question += '└' + '─' * 60 + '┘\n'
-            question += ' you can also\n'
+            question += '\033[92m you can also\033[0m\n'
             question += '   - enter the path to a valid card or banner.\n'
             question += '   - use the \'set\' command to modify a parameter directly.\n'
 
