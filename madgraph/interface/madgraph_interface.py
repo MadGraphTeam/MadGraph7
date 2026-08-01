@@ -3266,7 +3266,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         """Initializing before starting the main loop"""
 
         #self.prompt = 'MG5_aMC>'
-        self.prompt = " 🚀 "
+        self.prompt = "\001\033[1;94m\002MG7> \001\033[0m\002"
         if madgraph.ReadWrite: # prevent on read-only disk
             self.do_install('update --mode=mg5_start')
 
