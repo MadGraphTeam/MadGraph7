@@ -2,8 +2,8 @@
 # pyAmpliCol profiling campaign template
 
 This packaged directory is the authoritative reset template for a
-self-contained profiling campaign. Create a working copy with a name that
-identifies its measurement environment:
+self-contained profiling campaign. Create it in a new or empty destination
+whose name identifies its measurement environment:
 
 ```console
 pyamplicol profiling-campaign copy ./my-profiling-campaign
@@ -74,3 +74,8 @@ PDFs use independent roots. A copy made from an installed wheel uses that
 wheel's recorded source revision and installed runtime. Never commit evaluator
 artifacts, candidate wheels, prepared models, attempts, logs, locks,
 coordination state, page images, or LaTeX auxiliary files.
+
+When the launcher runs from a source checkout, it checks the checkout index
+and worktree before measuring. It reads ordinary Git metadata directly and,
+if HEAD is packed, uses one read-only `git rev-parse` query for the committed
+tree. Installed-wheel campaigns do not need a Git checkout.

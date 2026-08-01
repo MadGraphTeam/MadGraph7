@@ -11,11 +11,11 @@ Python, C11, C++17, Fortran 2008, and Rust 2021 interfaces.
 
 ## Release status
 
-Version `0.1.0` has been tagged as an immutable source snapshot but has not yet
-been uploaded to PyPI or TestPyPI. The exact-source
-[Validated release artifacts run](https://github.com/mg5amcnlo/pyamplicol/actions/runs/30673372972)
-completed successfully for one source distribution and three `cp311-abi3`
-wheels:
+Version `0.1.0` has been tagged as an immutable archival source snapshot but
+has not yet been uploaded to PyPI or TestPyPI. The
+[validated release-artifacts workflow](https://github.com/mg5amcnlo/pyamplicol/actions/workflows/release-artifacts.yml)
+produces one source distribution and three `cp311-abi3` wheels; publication
+uses a successful run whose head SHA is the intended release source:
 
 - macOS 11 or newer on Apple silicon;
 - macOS 11 or newer on x86-64;
@@ -138,11 +138,14 @@ by the wheel-owned static Rusticol SDK.
 
 ## Profiling campaigns
 
-An installed wheel can create a fresh, empty campaign workspace:
+An installed wheel can populate a new or empty campaign workspace:
 
 ```console
 pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
 ```
+
+`--force` replaces the template members but does not delete unrelated files in
+an existing destination; use a new destination when a clean reset is required.
 
 All pyAmpliCol backends work from installed resources. The optional original
 AmpliCol reference backend additionally requires

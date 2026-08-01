@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import struct
+import subprocess
 import uuid
 import zlib
 from collections.abc import Mapping
@@ -165,9 +166,7 @@ def _write_lightweight_success_current(
             "provenance": {
                 "report_source_revision": revision,
                 "manual_campaign": {"cell_identity": _cell_identity(cell)},
-                "numerical_relation_correctness": dict(
-                    numerical_relation_correctness
-                ),
+                "numerical_relation_correctness": dict(numerical_relation_correctness),
             },
         }
     )
@@ -211,6 +210,17 @@ def _git_object(git_dir: Path, kind: bytes, body: bytes) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(zlib.compress(payload))
     return digest
+
+
+def _git(repo: Path, *arguments: str) -> str:
+    completed = subprocess.run(
+        ("git", *arguments),
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return completed.stdout.strip()
 
 
 def _write_index(repo: Path, relative: str, object_id: str) -> None:
@@ -266,6 +276,38 @@ def test_index_vs_head_detects_staged_content_with_matching_stat_metadata(
     _write_index(tmp_path, "tracked.py", staged_blob)
 
     assert _index_metadata_dirty_paths(tmp_path) == (
+        "<staged index differs from HEAD>",
+    )
+
+
+def test_lightweight_source_identity_accepts_clean_packed_head(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "campaign@example.invalid")
+    _git(repo, "config", "user.name", "Campaign Test")
+    (repo / "tracked.py").write_text("value = 1\n", encoding="utf-8")
+    _git(repo, "add", "tracked.py")
+    _git(repo, "commit", "-q", "-m", "fixture")
+    revision = _git(repo, "rev-parse", "HEAD")
+    tree = _git(repo, "rev-parse", "HEAD^{tree}")
+
+    _git(repo, "gc", "--prune=now")
+    loose_commit = repo / ".git" / "objects" / revision[:2] / revision[2:]
+    assert not loose_commit.exists()
+
+    identity = manual_campaign.lightweight_source_identity(repo)
+
+    assert identity.revision == revision
+    assert identity.tree == tree
+    assert identity.dirty_paths == ()
+
+    (repo / "tracked.py").write_text("value = 2\n", encoding="utf-8")
+    _git(repo, "add", "tracked.py")
+
+    assert manual_campaign.lightweight_source_identity(repo).dirty_paths == (
         "<staged index differs from HEAD>",
     )
 

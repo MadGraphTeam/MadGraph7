@@ -35,7 +35,7 @@ def test_atomic_worker_result_is_canonical_and_complete(tmp_path: Path) -> None:
     assert not list(path.parent.glob("*.tmp"))
 
 
-def test_manual_source_identity_is_git_free_and_validated(
+def test_worker_source_identity_uses_controller_values_without_git(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

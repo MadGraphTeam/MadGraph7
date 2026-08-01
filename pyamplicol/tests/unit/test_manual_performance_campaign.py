@@ -323,9 +323,7 @@ def test_reproduction_recipe_exposes_authenticated_reuse_off_fallback() -> None:
         reproduction_recipe(
             candidate,
             repo_root=ROOT,
-            measurement={
-                "provenance": {"numerical_relation_fallback": malformed}
-            },
+            measurement={"provenance": {"numerical_relation_fallback": malformed}},
         )
 
 
@@ -2153,22 +2151,71 @@ def test_installed_campaign_uses_copied_local_amplicol_and_explicit_override(
         validate,
     )
 
-    arguments = _parse("run", "--dry-run")
-    assert manual_campaign._resolve_original_amplicol(
+    legacy = next(
+        candidate
+        for candidate in REPORT_CATALOG.measurement_cells()
+        if candidate.measurement.execution_mode is ExecutionMode.AMPLICOL
+    )
+    planned = (manual_campaign.PlannedCell(legacy, False, None, 0),)
+    arguments = _parse("run")
+    manual_campaign._bind_original_amplicol_if_required(
         arguments,
+        planned,
         installed=True,
         root=tmp_path,
         docs_dir=docs_dir,
-    ) == (configured, "a" * 40)
+    )
+    assert arguments.original_amplicol == configured
+    assert arguments.original_amplicol_revision == "a" * 40
 
     arguments.original_amplicol = override
-    assert manual_campaign._resolve_original_amplicol(
+    manual_campaign._bind_original_amplicol_if_required(
         arguments,
+        planned,
         installed=True,
         root=tmp_path,
         docs_dir=docs_dir,
-    ) == (override, "a" * 40)
+    )
+    assert arguments.original_amplicol == override
+    assert arguments.original_amplicol_revision == "a" * 40
     assert observed == [configured, override]
+
+
+def test_saved_local_amplicol_is_not_validated_for_pyamplicol_only_work(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    docs_dir = tmp_path / "campaign"
+    docs_dir.mkdir()
+    missing = (tmp_path / "missing-amplicol").resolve()
+    (docs_dir / ".pyamplicol-original-amplicol").write_text(
+        f"{missing}\n",
+        encoding="utf-8",
+    )
+    cell = next(
+        candidate
+        for candidate in REPORT_CATALOG.measurement_cells()
+        if candidate.measurement.execution_mode is ExecutionMode.RECURRENCE
+    )
+    planned = (manual_campaign.PlannedCell(cell, False, None, 1),)
+
+    monkeypatch.setattr(
+        manual_campaign,
+        "_validated_original_amplicol_checkout",
+        lambda _path: pytest.fail("unused legacy checkout was validated"),
+    )
+    arguments = _parse("run")
+
+    manual_campaign._bind_original_amplicol_if_required(
+        arguments,
+        planned,
+        installed=True,
+        root=tmp_path,
+        docs_dir=docs_dir,
+    )
+
+    assert arguments.original_amplicol is None
+    assert arguments.original_amplicol_revision is None
 
 
 def test_source_run_does_not_probe_or_change_dashboard_capability(

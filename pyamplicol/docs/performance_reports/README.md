@@ -13,11 +13,14 @@ These PDFs are historical measurements, not release-CI results. Raw JSON,
 generated TeX, build workspaces, attempts, logs, locks, and coordination state
 are not kept in the source tree.
 
-Create a fresh, empty campaign from any installed wheel with:
+Populate a new or empty campaign from any installed wheel with:
 
 ```console
 pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
 ```
+
+`--force` replaces template members but preserves unrelated files already in
+the destination; use a new destination for a clean reset.
 
 All pyAmpliCol backends use installed resources. Measuring the optional
 original-AmpliCol reference additionally requires

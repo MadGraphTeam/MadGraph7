@@ -1185,13 +1185,30 @@ def _repo_head(repo_root: Path) -> str:
 
 
 def _commit_tree_marker(repo_root: Path, revision: str) -> str:
-    """Read a loose commit's real tree or use an explicit revision-only marker."""
+    """Read HEAD's tree, using one Git query only when the commit is packed."""
 
     common_dir = _git_common_directory(_git_directory(repo_root))
     object_path = common_dir / "objects" / revision[:2] / revision[2:]
     try:
         raw = zlib.decompress(object_path.read_bytes())
     except (OSError, zlib.error):
+        # Ordinary clones and repositories after ``git gc`` store commits in
+        # pack files.  Parsing Git's pack format here would duplicate Git and
+        # be substantially more fragile than this single read-only fallback.
+        try:
+            completed = subprocess.run(
+                ("git", "rev-parse", "--verify", f"{revision}^{{tree}}"),
+                cwd=repo_root,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return f"manual-revision:{revision}"
+        tree = completed.stdout.strip()
+        if completed.returncode == 0 and _FULL_SOURCE_REVISION.fullmatch(tree):
+            return tree
         return f"manual-revision:{revision}"
     _header, separator, body = raw.partition(b"\0")
     if not separator:
@@ -1269,8 +1286,12 @@ def _index_tree_marker(
     return encode_tree(root).hex()
 
 
-def _index_metadata_dirty_paths(repo_root: Path) -> tuple[str, ...]:
-    """Check index/worktree metadata and index-vs-HEAD; never run Git."""
+def _index_metadata_dirty_paths(
+    repo_root: Path,
+    *,
+    committed_tree: str | None = None,
+) -> tuple[str, ...]:
+    """Check index/worktree metadata and index-vs-HEAD with a packed-HEAD fallback."""
 
     index_path = _git_directory(repo_root) / "index"
     try:
@@ -1347,15 +1368,17 @@ def _index_metadata_dirty_paths(repo_root: Path) -> tuple[str, ...]:
         )
         if metadata != expected:
             dirty.append(relative)
-    try:
-        revision = _repo_head(repo_root)
-    except (ManualCampaignError, OSError):
-        # Keep the metadata helper usable for deliberately minimal test
-        # indexes.  lightweight_source_identity() resolves HEAD first and
-        # therefore never takes this compatibility path.
-        revision = None
-    if revision is not None:
-        committed_tree = _commit_tree_marker(repo_root, revision)
+    if committed_tree is None:
+        try:
+            revision = _repo_head(repo_root)
+        except (ManualCampaignError, OSError):
+            # Keep the metadata helper usable for deliberately minimal test
+            # indexes.  lightweight_source_identity() resolves HEAD first and
+            # therefore never takes this compatibility path.
+            revision = None
+        if revision is not None:
+            committed_tree = _commit_tree_marker(repo_root, revision)
+    if committed_tree is not None:
         if unmerged:
             dirty.append("<unmerged Git index>")
         elif committed_tree.startswith("manual-revision:"):
@@ -1376,10 +1399,11 @@ def _index_metadata_dirty_paths(repo_root: Path) -> tuple[str, ...]:
 
 def lightweight_source_identity(repo_root: Path) -> ReportSourceIdentity:
     revision = _repo_head(repo_root)
+    tree = _commit_tree_marker(repo_root, revision)
     return ReportSourceIdentity(
         revision,
-        _commit_tree_marker(repo_root, revision),
-        _index_metadata_dirty_paths(repo_root),
+        tree,
+        _index_metadata_dirty_paths(repo_root, committed_tree=tree),
     )
 
 
@@ -5573,6 +5597,39 @@ def _resolve_original_amplicol(
     return _validated_original_amplicol_checkout(original)
 
 
+def _bind_original_amplicol_if_required(
+    arguments: argparse.Namespace,
+    planned: Sequence[PlannedCell],
+    *,
+    installed: bool,
+    root: Path,
+    docs_dir: Path,
+) -> None:
+    """Validate the optional legacy checkout only for work that will use it."""
+
+    if not any(
+        item.cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+        for item in planned
+    ):
+        arguments.original_amplicol = None
+        arguments.original_amplicol_revision = None
+        return
+    repository, revision = _resolve_original_amplicol(
+        arguments,
+        installed=installed,
+        root=root,
+        docs_dir=docs_dir,
+    )
+    if repository is None:
+        raise ManualCampaignError(
+            "this campaign selection requires original AmpliCol; pass "
+            "--original-amplicol PATH_TO_COMPLETE_CHECKOUT containing the "
+            "profiling interface from AmpliCol PR #12"
+        )
+    arguments.original_amplicol = repository
+    arguments.original_amplicol_revision = revision
+
+
 def _dry_run_rows(
     direct: Sequence[CellSpec],
     planned: Sequence[PlannedCell],
@@ -5853,6 +5910,7 @@ def _run_campaign(
     source: ReportSourceIdentity,
     cells: Sequence[CellSpec],
     palette: Palette,
+    installed: bool = False,
 ) -> int:
     measurable = tuple(cell for cell in cells if _manual_static_na_reason(cell) is None)
     static_na = {
@@ -6001,17 +6059,13 @@ def _run_campaign(
             print(block)
         return 0
 
-    if getattr(
-        preliminary_settings, "original_amplicol_repository", None
-    ) is None and any(
-        item.cell.measurement.execution_mode is ExecutionMode.AMPLICOL
-        for item in planned
-    ):
-        raise ManualCampaignError(
-            "this campaign selection requires original AmpliCol; pass "
-            "--original-amplicol PATH_TO_COMPLETE_CHECKOUT containing the "
-            "profiling interface from AmpliCol PR #12"
-        )
+    _bind_original_amplicol_if_required(
+        arguments,
+        planned,
+        installed=installed,
+        root=repo_root,
+        docs_dir=service.paths.docs_dir,
+    )
 
     require_measurement_ready(source)
     if continue_across_revisions:
@@ -7129,17 +7183,6 @@ def main(
             else lightweight_source_identity(root)
         )
 
-        if arguments.command == "run":
-            (
-                arguments.original_amplicol,
-                arguments.original_amplicol_revision,
-            ) = _resolve_original_amplicol(
-                arguments,
-                installed=installed,
-                root=root,
-                docs_dir=service.paths.docs_dir,
-            )
-
         if arguments.command == "refresh-pdf":
             return _refresh_pdf(
                 arguments,
@@ -7175,6 +7218,7 @@ def main(
                 source=source,
                 cells=cells,
                 palette=palette,
+                installed=installed,
             )
         parser.error(f"unsupported command {arguments.command!r}")
     except KeyboardInterrupt:

@@ -337,7 +337,8 @@ fields.
 the same flags and output. Existing run cards remain valid and continue to use
 `action = "benchmark"`; no `action = "profile"` card value is introduced.
 
-For the complete reproducible measurement workspace, run
+For the complete reproducible measurement workspace, use a new or empty
+destination and run
 `pyamplicol profiling-campaign copy DEST --force`. The copied launcher resolves
 runtime resources from the installed package and automatically continues
 headlessly if the optional Ratatui bindings are unavailable. It asks for
@@ -345,6 +346,7 @@ an original-AmpliCol checkout only when selected cells use that reference
 backend. Pass `copy DEST --local-amplicol PATH_TO_CLEAN_COMPLETE_CHECKOUT` to
 record a destination-local default, or override it later with
 `run --original-amplicol PATH`; pyAmpliCol backends need no such checkout.
+`--force` replaces template members but preserves unrelated destination files.
 
 ## Artifact Trust
 

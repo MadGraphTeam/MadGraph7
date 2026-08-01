@@ -10,8 +10,8 @@ cd ./my-profiling-campaign
 ./steer_performance_campaign.py --help
 ```
 
-For an installed release wheel, first copy a fresh reset campaign and invoke
-the controller from that destination:
+For an installed release wheel, first copy the reset campaign into a new or
+empty destination and invoke the controller there:
 
 ```console
 pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
