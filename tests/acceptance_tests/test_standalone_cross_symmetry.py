@@ -3633,3 +3633,190 @@ class TestMadeventRouterColorSelection(unittest.TestCase):
             if best is None or cand < best:
                 best = cand
         return best
+
+
+class TestMadeventCrossingFinalLegSplit(unittest.TestCase):
+    """MG_SPLIT_CROSSING peels the one flavor class that keeps a merged module
+    compiled, into a sibling GENERATED with its final legs the other way round.
+
+    ``Q Q~ > Q Q~`` bundles three coupling classes and drops its own matrix
+    element only if EVERY one of them routes. Two do; the flavour-changing
+    annihilation ``q q~ > q' q~'`` does not, because the crossing that reaches
+    it off ``Q Q > Q Q`` (I=0/J=5) delivers the two light legs as ``(q~', q')``
+    while the module lists ``(q', q~')``. A module cannot list one class
+    differently -- its leg pattern is shared by every row -- so the class is
+    peeled into a sibling with the swapped pattern and the two modules are given
+    COMPLEMENTARY halves of the flavors.
+
+    ``q q > q q`` with ``q = u d u~ d~`` rather than ``p p > j j``: same group,
+    same peel, no gluon subprocesses, so a generation takes seconds.
+
+    What is pinned here is what fails SILENTLY:
+
+    * the halves must partition the flavors -- no combination covered twice (a
+      double count, wrong by a factor 2) and none dropped. This is the assertion
+      that catches IdentifyMETag re-merging the two modules: that tag identifies
+      processes agreeing up to a LEG PERMUTATION, which is exactly what the two
+      halves are, and merging them relabels one into the other's leg order and
+      undoes the split with nothing to show for it.
+    * the peel must actually eliminate a compiled matrix element, or the whole
+      feature is cost without benefit.
+    * it must not fire for an exporter that cannot consume a split pattern; mg7
+      builds one module per leg pattern and dies with "no valid flavor
+      configurations found for diagram 2" on the half that no longer has them.
+
+    The colour/helicity correctness of the routed events is NOT checked here --
+    that needs event samples, and TestMadeventRouterColorSelection is where that
+    kind of comparison lives.
+    """
+
+    DEFINE = 'define q = u d u~ d~'
+    PROCESS = 'q q > q q'
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='cross_split_')
+
+    def tearDown(self):
+        if os.path.isdir(self.tmpdir):
+            shutil.rmtree(self.tmpdir)
+
+    def _generate(self, name, split, fmt='madevent', options=''):
+        from madgraph import MG5DIR
+        outdir = pjoin(self.tmpdir, name)
+        card = pjoin(self.tmpdir, 'cmd_%s.txt' % name)
+        with open(card, 'w') as fsock:
+            fsock.writelines(['%s\n' % self.DEFINE,
+                              'generate %s %s\n' % (self.PROCESS, options),
+                              'output %s %s -f -nojpeg\n' % (fmt, outdir)])
+        env = dict(os.environ)
+        env['MG_SPLIT_CROSSING'] = 'on' if split else ''
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'), card],
+                        env=env)
+        return outdir
+
+    @staticmethod
+    def _counts(pdir):
+        """(compiled matrix elements, crossing routers) in a P directory."""
+        entries = os.listdir(pdir)
+        return (len([e for e in entries
+                     if re.match(r'matrix\d+(_orig)?\.f$', e)]),
+                len([e for e in entries if re.match(r'matrix\d+_router\.f$', e)]))
+
+    @staticmethod
+    def _leshouche(pdir):
+        """{subprocess: [IDUP row, ...]} out of leshouche.inc."""
+        rows = {}
+        with open(pjoin(pdir, 'leshouche.inc')) as fsock:
+            for line in fsock:
+                match = re.match(r'\s*DATA\s*\(IDUP\(I,(\d+),(\d+)\)\s*,'
+                                 r'\s*I\s*=\s*1\s*,\s*(\d+)\s*\)\s*/([^/]*)/',
+                                 line.replace(' ', ''))
+                if match:
+                    rows.setdefault(int(match.group(2)), []).append(
+                        tuple(int(v) for v in match.group(4).split(',')))
+        return rows
+
+    @classmethod
+    def _physical(cls, pdir, nini=2):
+        """Counter of the PHYSICAL (initial, final) flavor combinations the
+        directory covers, blind to the order the legs are listed in -- which is
+        precisely what the two halves disagree about on purpose."""
+        seen = {}
+        for rows in cls._leshouche(pdir).values():
+            for row in rows:
+                key = (tuple(sorted(row[:nini])), tuple(sorted(row[nini:])))
+                seen[key] = seen.get(key, 0) + 1
+        return seen
+
+    def test_split_partitions_the_flavors_and_frees_a_matrix_element(self):
+        plain = self._generate('plain', split=False,
+                               options='--use_crossing=False')
+        split = self._generate('split', split=True)
+
+        pdir_plain = pjoin(plain, 'SubProcesses', 'P1_qq_qq')
+        pdir_split = pjoin(split, 'SubProcesses', 'P1_qq_qq')
+        # Generation has to have COMPLETED for both, not merely made the
+        # directory: a split the exporter cannot digest leaves the P directory
+        # behind without its flavor tables, and every assertion below would
+        # then fail on a missing file rather than on what it means to check.
+        for pdir in (pdir_plain, pdir_split):
+            self.assertTrue(os.path.isdir(pdir),
+                            '%s was not generated' % pdir)
+            self.assertTrue(
+                os.path.isfile(pjoin(pdir, 'leshouche.inc')),
+                '%s has no leshouche.inc -- the generation did not finish'
+                % pdir)
+
+        # (1) the peel really happened: an extra subprocess, and it is a ROUTER
+        sub_plain = self._leshouche(pdir_plain)
+        sub_split = self._leshouche(pdir_split)
+        self.assertEqual(len(sub_split), len(sub_plain) + 1,
+                         'the split did not add a subprocess to the group '
+                         '(%d vs %d) -- MG_SPLIT_CROSSING did not fire'
+                         % (len(sub_split), len(sub_plain)))
+
+        # (2) and it PAYS: fewer compiled matrix elements than crossing-off
+        n_plain, r_plain = self._counts(pdir_plain)
+        n_split, r_split = self._counts(pdir_split)
+        self.assertEqual(r_plain, 0,
+                         '--use_crossing=False emitted %d router(s)' % r_plain)
+        self.assertLess(n_split, n_plain,
+                        'the split compiles %d matrix element(s), no better '
+                        'than the %d of --use_crossing=False -- the peel costs '
+                        'a subprocess and buys nothing' % (n_split, n_plain))
+        self.assertEqual(r_split, len(sub_split) - n_split,
+                         'every subprocess of the split group that is not a '
+                         'compiled matrix element should be a router')
+
+        # (3) the halves PARTITION the flavors. Both directions matter: a
+        # combination covered twice is double counted, one covered by neither
+        # is silently missing from the cross section.
+        want = self._physical(pdir_plain)
+        got = self._physical(pdir_split)
+        self.assertEqual(
+            sorted(got), sorted(want),
+            'the split changed which physical flavor combinations the group '
+            'covers (%d missing, %d new)'
+            % (len(set(want) - set(got)), len(set(got) - set(want))))
+        doubled = sorted(k for k, v in got.items() if v > 1)
+        self.assertFalse(
+            doubled,
+            'the split covers %d flavor combination(s) TWICE, so they are '
+            'double counted -- the two halves were re-identified into one '
+            'pattern instead of staying complementary (e.g. %s)'
+            % (len(doubled), doubled[:3]))
+
+        # (4) the peeled sibling really is listed the OTHER way round -- that is
+        # the whole reason it exists. Its rows are the flavour-changing
+        # annihilation, and where the crossing-off build lists that class as
+        # (q', q~') the sibling lists it as (q~', q'). Without this the test
+        # would still pass if the peel produced a sibling identical to the
+        # module it came from.
+        peeled = sub_split[max(sub_split)]
+        self.assertTrue(
+            all(row[2] < 0 < row[3] for row in peeled),
+            'the peeled subprocess does not list its final legs as '
+            '(antiparticle, particle): %s' % (peeled[:3],))
+        native = [row for rows in self._leshouche(pdir_plain).values()
+                  for row in rows
+                  if (tuple(sorted(row[:2])), tuple(sorted(row[2:])))
+                  in set((tuple(sorted(r[:2])), tuple(sorted(r[2:])))
+                         for r in peeled)]
+        self.assertTrue(native, 'the crossing-off build has no counterpart for '
+                                'the peeled class')
+        self.assertTrue(
+            all(row[3] < 0 < row[2] for row in native),
+            'the crossing-off build already lists that class as '
+            '(antiparticle, particle), so the peel swapped nothing: %s'
+            % (native[:3],))
+
+    def test_split_does_not_fire_for_an_exporter_that_cannot_take_it(self):
+        """mg7 builds one module per leg pattern; handed a pattern split across
+        two modules it raises "no valid flavor configurations found". The peel
+        is a grouped-madevent optimisation and must stay off elsewhere."""
+        outdir = self._generate('mg7', split=True, fmt='')
+        self.assertTrue(
+            os.path.isdir(outdir),
+            'the default (mg7) export produced nothing with '
+            'MG_SPLIT_CROSSING=on -- the split fired for a backend that '
+            'cannot consume it')

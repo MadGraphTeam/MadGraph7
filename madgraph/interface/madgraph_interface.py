@@ -9990,6 +9990,113 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         return any(amp.get('crossed_processes') for amp in amps
                    if 'crossed_processes' in amp)
 
+    def _split_reorder_blocked(self, amps):
+        """Peel the flavor classes that keep a module compiled for no good reason.
+
+        A merged module drops its own matrix element only when EVERY one of its
+        flavors is a crossing of some base's, so one stubborn class keeps the
+        whole thing alive -- always the same shape: a class the crossing reaches
+        only with two same-side legs the other way round (q q~ > q' q~' off
+        Q Q > Q Q, which I=0/J=5 delivers as (q~', q')).
+
+        Peel it into a sibling GENERATED with those legs swapped and give the two
+        modules complementary halves of the flavors, so nothing is covered twice
+        and both halves match a crossing by exact signature -- no permutation at
+        run time, and so nothing to compose into the colour, helicity and
+        multi-channel maps coming back from the base.
+
+        Opt-in (MG_SPLIT_CROSSING): it changes which subprocesses exist.
+        """
+        import madgraph.iolibs.group_subprocs as group_subprocs
+        import madgraph.iolibs.export_v4 as export_v4
+
+        exporter = export_v4.ProcessExporterFortranMEGroup()
+        groups = group_subprocs.SubProcessGroup.group_amplitudes(amps, 'madevent')
+        by_legs = {}
+        for amp in amps:
+            by_legs.setdefault(
+                tuple(l.get('id') for l in amp.get('process').get('legs')), amp)
+
+        def physical(rows, nini):
+            return set((tuple(p[:nini]), tuple(sorted(p[nini:]))) for p in rows)
+
+        extra = []
+        for group in groups:
+            group.generate_matrix_elements()
+            mes = group.get('matrix_elements')
+            try:
+                candidates = exporter.find_reorder_candidates(mes)
+            except Exception as err:
+                logger.debug('crossing split: detection failed (%s)' % err)
+                continue
+            for ime, peel in candidates.items():
+                me = mes[ime]
+                _nx, nini = me.get_nexternal_ninitial()
+                key = tuple(l.get('id') for l in
+                            me.get('processes')[0].get('legs'))
+                amp = by_legs.get(key)
+                if amp is None:
+                    continue
+                classes, class_pdgs = \
+                    me.get_external_flavors_with_iden(return_pdgs=True)
+                classes, class_pdgs = list(classes), list(class_pdgs)
+                for flav0, sigma, _b, _iflav in peel:
+                    sib = self._reordered_sibling(amp, sigma)
+                    if sib is None:
+                        continue
+                    want = physical([tuple(p) for p in class_pdgs[flav0]], nini)
+                    sib_me = helas_objects.HelasMultiProcess(
+                        diagram_generation.AmplitudeList([sib]))\
+                        .get_matrix_elements()[0]
+                    sib_cls, sib_pdgs = \
+                        sib_me.get_external_flavors_with_iden(return_pdgs=True)
+                    sib_cls, sib_pdgs = list(sib_cls), list(sib_pdgs)
+                    keep = [k for k in range(len(sib_cls))
+                            if physical([tuple(p) for p in sib_pdgs[k]],
+                                        nini) == want]
+                    if len(keep) != 1:
+                        logger.debug('crossing split: no unique matching class')
+                        continue
+                    me.set_excluded_flavors(classes[flav0])
+                    sib_me.set_excluded_flavors(
+                        [f for k, cls in enumerate(sib_cls) if k != keep[0]
+                         for f in cls])
+                    extra.append(sib)
+                    logger.info('crossing split: peeled class %d of %s'
+                                % (flav0 + 1, key))
+        if not extra:
+            return amps
+        return diagram_generation.AmplitudeList(list(amps) + extra)
+
+    def _reordered_sibling(self, amp, sigma):
+        """`amp` with its final legs permuted by `sigma`, diagrams regenerated.
+
+        legs_with_decays is a CACHE of the flattened leg list and a copied
+        process brings the old one with it, so it has to be dropped: leave it and
+        the process reports the original order to everything that asks -- the
+        flavor tables and the crossed signatures included -- while the legs
+        themselves are reordered, and the two disagree silently.
+        """
+        proc = copy.copy(amp.get('process'))
+        legs = proc.get('legs')
+        try:
+            new_legs = base_objects.LegList(
+                [copy.copy(legs[sigma[k]]) for k in range(len(legs))])
+        except IndexError:
+            return None
+        for i, leg in enumerate(new_legs):
+            leg.set('number', i + 1)
+        proc.set('legs', new_legs)
+        proc.set('legs_with_decays', base_objects.LegList())
+        sib = diagram_generation.Amplitude({'process': proc})
+        sib.generate_diagrams()
+        if not sib.get('diagrams'):
+            return None
+        sib.set('has_mirror_process', amp.get('has_mirror_process'))
+        if 'crossed_processes' in sib:
+            sib.set('crossed_processes', [])
+        return sib
+
     def _expand_recorded_crossings(self, amps):
         """Expand each amplitude's recorded crossings back into separate
         (mirror-folded) amplitudes, reproducing a merge_crossing=False
@@ -10208,6 +10315,22 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
                         if self._crossing_needs_expansion(non_dc_amps):
                             non_dc_amps = \
                                 self._expand_recorded_crossings(non_dc_amps)
+
+                        # Opt-in: peel the flavor classes that keep a module
+                        # compiled only because the crossing reaches them with
+                        # two same-side legs the other way round.
+                        # madevent only: the peeled sibling pays off through the
+                        # grouped-subprocess router (it is detected with
+                        # ProcessExporterFortranMEGroup over a 'madevent'
+                        # grouping), and the exporters that build one module per
+                        # leg pattern cannot consume a pattern split in two --
+                        # mg7 raises "no valid flavor configurations found for
+                        # diagram 2" on the half that no longer carries them.
+                        if self._export_format == 'madevent' and \
+                                os.environ.get('MG_SPLIT_CROSSING', '').lower() \
+                                in ('on', '1', 'true'):
+                            non_dc_amps = \
+                                self._split_reorder_blocked(non_dc_amps)
 
                         # Decay chains: the crossing dedup (folding the crossed
                         # decay-chain subprocesses into the base's crossing-aware

@@ -125,6 +125,16 @@ class IdentifyMETag(diagram_generation.DiagramTag):
                 process.get('is_decay_chain'),
                 identical_particle_factor,
                 dc,
+                # Two modules told to cover DIFFERENT halves of a pattern's
+                # flavors (set_excluded_flavors) must not be identified, however
+                # alike their diagrams: this tag deliberately identifies
+                # processes that agree up to a leg permutation, and the split
+                # that lets a crossing serve q q~ > q' q~' is exactly such a
+                # pair. Merging them would relabel one to the other's leg order
+                # (reorder_process below) and undo the split silently. Empty for
+                # every process that was never told anything, so ordinary
+                # flavor combination is untouched.
+                getattr(process, '_excluded_flavors', ()),
                 perms,
                 sorted_tags]
 
