@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections import Counter
 from copy import deepcopy
+from dataclasses import replace
 
 import pytest
 
@@ -381,6 +382,22 @@ def test_contracted_n6_catalog_impact_is_scoped_to_multi_quark_families() -> Non
     assert len(REPORT_CATALOG.reference_cells()) == 296
     assert len(cells) == 20
     assert {cell.process_key for cell in cells} == {"dd_3q_lines", "dd_4q_lines"}
+
+
+def test_measurement_cells_reuses_one_immutable_catalog_materialization() -> None:
+    fresh = replace(REPORT_CATALOG)
+    cold_repr = repr(fresh)
+
+    assert fresh._measurement_cells_cache is None
+
+    first = fresh.measurement_cells()
+    second = fresh.measurement_cells()
+
+    assert second is first
+    assert fresh._measurement_cells_cache is first
+    assert isinstance(first, tuple)
+    assert repr(fresh) == cold_repr
+    assert "_measurement_cells_cache" not in repr(fresh)
 
 
 def test_contracted_n6_rows_are_canonical_reset_cache_entries() -> None:

@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .models import (
     LEGACY_AMPLICOL_MAX_OPEN_QUARK_LINES,
@@ -337,6 +337,13 @@ class ReportCatalog:
     matrix_datasets: tuple[MatrixDataset, ...]
     scalar_datasets: tuple[ScalarDataset, ...]
     z_variants: tuple[ZVariant, ...]
+    _measurement_cells_cache: tuple[CellSpec, ...] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+        hash=False,
+    )
 
     def dataset(self, dataset_id: str) -> MatrixDataset:
         matches = [
@@ -455,12 +462,16 @@ class ReportCatalog:
         return tuple(cells)
 
     def measurement_cells(self) -> tuple[CellSpec, ...]:
-        return (
-            *self.reference_cells(),
-            *self.matrix_cells(),
-            *self.scalar_cells(),
-            *self.z_cells(),
-        )
+        cached = self._measurement_cells_cache
+        if cached is None:
+            cached = (
+                *self.reference_cells(),
+                *self.matrix_cells(),
+                *self.scalar_cells(),
+                *self.z_cells(),
+            )
+            object.__setattr__(self, "_measurement_cells_cache", cached)
+        return cached
 
     def cell(self, cell_id: str) -> CellSpec:
         matches = [
