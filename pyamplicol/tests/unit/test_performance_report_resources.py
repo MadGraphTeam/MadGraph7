@@ -265,10 +265,60 @@ def test_supervisor_enforces_timeout_on_worker_process_group() -> None:
     )
 
     assert popen_calls == [(("worker", "--cell", "one"), True)]
-    assert result.reason == "timeout"
+    assert result.reason == "worker_timeout"
     assert result.returncode == -signal.SIGTERM
     assert result.usage.wall_seconds == 2.0
     assert signals == [(100, (100, 101), signal.SIGTERM)]
+
+
+def test_completed_root_cannot_leave_a_known_descendant_running() -> None:
+    clock = FakeClock()
+    process = FakeProcess()
+    child_alive = True
+    signals: list[tuple[int, tuple[int, ...], int]] = []
+
+    def snapshot() -> dict[int, ProcessRecord]:
+        records = (
+            {} if process.returncode is not None else {100: ProcessRecord(100, 1, 100)}
+        )
+        if child_alive:
+            records[101] = ProcessRecord(
+                101,
+                100 if process.returncode is None else 1,
+                50,
+            )
+        return records
+
+    def sleep(duration: float) -> None:
+        clock.now += duration
+        process.returncode = 0
+
+    def signal_tree(pgid: int, members: object, selected_signal: int) -> None:
+        nonlocal child_alive
+        signals.append(
+            (pgid, tuple(sorted(members)), selected_signal)  # type: ignore[arg-type]
+        )
+        if selected_signal == signal.SIGKILL:
+            child_alive = False
+
+    result = supervise_worker(
+        ("worker",),
+        interval_seconds=0.1,
+        termination_grace_seconds=0.1,
+        snapshotter=snapshot,
+        popen_factory=lambda *_args, **_kwargs: process,
+        clock=clock,
+        sleeper=sleep,
+        signaler=signal_tree,
+    )
+
+    assert result.reason == "completed"
+    assert result.returncode == 0
+    assert not child_alive
+    assert signals == [
+        (100, (101,), signal.SIGTERM),
+        (100, (101,), signal.SIGKILL),
+    ]
 
 
 def test_supervisor_propagates_symbolica_license_to_worker_environment(
@@ -647,7 +697,7 @@ def test_defaults_and_invalid_limits() -> None:
         supervise_worker(("worker",), max_rss_bytes=0)
     with pytest.raises(ValueError, match="generation_timeout_seconds"):
         supervise_worker(("worker",), generation_timeout_seconds=0)
-    with pytest.raises(ValueError, match="specified together"):
+    with pytest.raises(ValueError, match="authenticated phase_channel"):
         supervise_worker(("worker",), generation_timeout_seconds=1)
     with pytest.raises(ValueError, match="environment override"):
         supervise_worker(
@@ -708,6 +758,193 @@ def test_generation_limit_excludes_preparation_and_post_generation(
     assert result.generation_phase.supervisor_reason == "completed"
     assert result.generation_phase.final_phase == "post-generation"
     assert result.generation_phase.generation_elapsed_seconds == 1.0
+
+
+def test_manual_generation_guard_includes_worker_preparation(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock()
+    process = FakeProcess()
+    channel = WorkerPhaseChannel.create(tmp_path / "phase.json")
+    WorkerPhaseReporter(
+        channel,
+        worker_pid=process.pid,
+        clock_ns=lambda: int(clock.now * 1_000_000_000),
+    )
+
+    def signal_tree(_pgid: int, _members: object, selected_signal: int) -> None:
+        process.returncode = -selected_signal
+
+    result = supervise_worker(
+        ("worker",),
+        generation_timeout_seconds=2.0,
+        generation_guard_includes_preparation=True,
+        phase_channel=channel,
+        interval_seconds=1.0,
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 100)},
+        popen_factory=lambda *_args, **_kwargs: process,
+        clock=clock,
+        sleeper=clock.sleep,
+        signaler=signal_tree,
+    )
+
+    assert result.reason == "generation_timeout"
+    assert result.usage.wall_seconds == 2.0
+    assert result.generation_phase is not None
+    assert result.generation_phase.final_phase == "pre-generation"
+    assert result.generation_phase.generation_elapsed_seconds == 2.0
+
+
+@pytest.mark.parametrize(
+    ("stage", "expected_reason"),
+    (
+        ("profiling", "profiling_timeout"),
+        ("validation", "validation_timeout"),
+    ),
+)
+def test_supervisor_enforces_authenticated_post_generation_stage_budget(
+    tmp_path: Path,
+    stage: str,
+    expected_reason: str,
+) -> None:
+    clock = FakeClock()
+    process = FakeProcess()
+    channel = WorkerPhaseChannel.create(tmp_path / f"{stage}.json")
+    reporter = WorkerPhaseReporter(
+        channel,
+        worker_pid=process.pid,
+        clock_ns=lambda: int(clock.now * 1_000_000_000),
+        track_post_generation_stages=True,
+    )
+    with reporter.generation():
+        pass
+    reporter.profiling_started()
+    if stage == "validation":
+        reporter.validation_started()
+
+    def signal_tree(_pgid: int, _members: object, selected_signal: int) -> None:
+        process.returncode = -selected_signal
+
+    result = supervise_worker(
+        ("worker",),
+        timeout_seconds=30.0,
+        generation_timeout_seconds=10.0,
+        profiling_timeout_seconds=2.0,
+        validation_timeout_seconds=2.0,
+        phase_channel=channel,
+        interval_seconds=1.0,
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 100)},
+        popen_factory=lambda *_args, **_kwargs: process,
+        clock=clock,
+        sleeper=clock.sleep,
+        signaler=signal_tree,
+    )
+
+    assert result.reason == expected_reason
+    assert result.returncode == -signal.SIGTERM
+    assert result.usage.wall_seconds == 2.0
+
+
+def test_supervisor_allows_authenticated_stage_budget_without_generation_limit(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock()
+    process = FakeProcess()
+    channel = WorkerPhaseChannel.create(tmp_path / "profiling-only.json")
+    reporter = WorkerPhaseReporter(
+        channel,
+        worker_pid=process.pid,
+        clock_ns=lambda: int(clock.now * 1_000_000_000),
+        track_post_generation_stages=True,
+    )
+    with reporter.generation():
+        pass
+    reporter.profiling_started()
+
+    def signal_tree(_pgid: int, _members: object, selected_signal: int) -> None:
+        process.returncode = -selected_signal
+
+    result = supervise_worker(
+        ("worker",),
+        profiling_timeout_seconds=2.0,
+        phase_channel=channel,
+        interval_seconds=1.0,
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 100)},
+        popen_factory=lambda *_args, **_kwargs: process,
+        clock=clock,
+        sleeper=clock.sleep,
+        signaler=signal_tree,
+    )
+
+    assert result.reason == "profiling_timeout"
+    assert result.generation_phase is None
+
+
+@pytest.mark.parametrize(
+    ("boundaries", "expected_reason"),
+    (
+        ((0.0, 3.0, 3.5, 4.0), "generation_timeout"),
+        ((0.0, 1.0, 4.0, 4.5), "profiling_timeout"),
+        ((0.0, 1.0, 1.5, 4.0), "validation_timeout"),
+        # Deterministic timeline precedence chooses the earlier profiling
+        # overrun when both closed stages crossed their limits between polls.
+        ((0.0, 1.0, 4.0, 7.0), "profiling_timeout"),
+    ),
+)
+def test_supervisor_enforces_closed_stage_boundaries_between_samples(
+    tmp_path: Path,
+    boundaries: tuple[float, float, float, float],
+    expected_reason: str,
+) -> None:
+    clock = FakeClock()
+    process = FakeProcess()
+    channel = WorkerPhaseChannel.create(tmp_path / f"{expected_reason}.json")
+    reporter = WorkerPhaseReporter(
+        channel,
+        worker_pid=process.pid,
+        clock_ns=lambda: int(clock.now * 1_000_000_000),
+        track_post_generation_stages=True,
+    )
+    transitioned = False
+
+    def cross_all_boundaries(_duration: float) -> None:
+        nonlocal transitioned
+        if transitioned:
+            clock.now += 1.0
+            return
+        transitioned = True
+        generation_start, generation_end, validation_start, complete = boundaries
+        clock.now = generation_start
+        generation = reporter.generation()
+        generation.__enter__()
+        clock.now = generation_end
+        generation.__exit__(None, None, None)
+        reporter.profiling_started()
+        clock.now = validation_start
+        reporter.validation_started()
+        clock.now = complete
+        reporter.complete()
+
+    def signal_tree(_pgid: int, _members: object, selected_signal: int) -> None:
+        process.returncode = -selected_signal
+
+    result = supervise_worker(
+        ("worker",),
+        timeout_seconds=30.0,
+        generation_timeout_seconds=2.0,
+        profiling_timeout_seconds=2.0,
+        validation_timeout_seconds=2.0,
+        phase_channel=channel,
+        interval_seconds=1.0,
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 100)},
+        popen_factory=lambda *_args, **_kwargs: process,
+        clock=clock,
+        sleeper=cross_all_boundaries,
+        signaler=signal_tree,
+    )
+
+    assert result.reason == expected_reason
+    assert result.returncode == -signal.SIGTERM
 
 
 @pytest.mark.parametrize(

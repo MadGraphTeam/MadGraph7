@@ -128,9 +128,7 @@ def _partition_stage(
         stage_kind="current-combine",
         subset_size=2,
         output_length=(
-            slots[-1].output_stop
-            if output_length is None and slots
-            else output_length
+            slots[-1].output_stop if output_length is None and slots else output_length
         ),
         output_slots=slots,
         output_value_slot_ids=tuple(slot.value_slot_id for slot in slots),
@@ -153,8 +151,8 @@ def test_current_output_partition_policy_is_exhaustive_and_identity_bound() -> N
         ),
     )
 
-    partitions, contract = (
-        numerical_current_warmup._current_capture_output_partitions(stage)
+    partitions, contract = numerical_current_warmup._current_capture_output_partitions(
+        stage
     )
     repeated_partitions, repeated_digest = (
         numerical_current_warmup._current_capture_partition_plan((stage,))
@@ -298,9 +296,7 @@ def test_partitioned_high_precision_replay_preserves_order_and_width() -> None:
             outputs: tuple[tuple[Decimal, Decimal], ...],
         ) -> None:
             self.outputs = outputs
-            self.calls: list[
-                tuple[tuple[tuple[Decimal, Decimal], ...], int]
-            ] = []
+            self.calls: list[tuple[tuple[tuple[Decimal, Decimal], ...], int]] = []
 
         def evaluate_complex_with_prec(
             self,
@@ -322,17 +318,15 @@ def test_partitioned_high_precision_replay_preserves_order_and_width() -> None:
         )
     )
     second_source = ExactSource(((Decimal(3), Decimal(0)),))
-    evaluator = (
-        numerical_current_warmup._PartitionedCurrentCaptureStageEvaluator(
-            evaluators=(
-                ExactLeaf(2, first_source),
-                ExactLeaf(1, second_source),
-            ),
-            chunk_input_indices=((0, 2), (1,)),
-            output_partitions=((0, 2), (2, 3)),
-            input_len=3,
-            output_len=3,
-        )
+    evaluator = numerical_current_warmup._PartitionedCurrentCaptureStageEvaluator(
+        evaluators=(
+            ExactLeaf(2, first_source),
+            ExactLeaf(1, second_source),
+        ),
+        chunk_input_indices=((0, 2), (1,)),
+        output_partitions=((0, 2), (2, 3)),
+        input_len=3,
+        output_len=3,
     )
     values = (
         (Decimal(10), Decimal(0)),
@@ -372,13 +366,11 @@ def test_application_validation_uses_configured_precision_at_tolerance_boundary(
     with localcontext() as context:
         context.prec = ambient_precision
         if accepted:
-            result = (
-                numerical_current_warmup._validate_applied_current_observations(
-                    reference,
-                    applied,
-                    relative_tolerance=0.0,
-                    absolute_tolerance=0.125,
-                )
+            result = numerical_current_warmup._validate_applied_current_observations(
+                reference,
+                applied,
+                relative_tolerance=0.0,
+                absolute_tolerance=0.125,
             )
             assert result["status"] == "verified"
             assert Decimal(str(result["maximum_tolerance_ratio"])) <= 1
@@ -431,10 +423,7 @@ def test_capture_uses_only_interpreted_high_precision_stage_replay(
         output_partitions = tuple(kwargs["output_partitions"])
         assert output_partitions
         assert output_partitions[0][0] == 0
-        assert all(
-            left[1] == right[0]
-            for left, right in pairwise(output_partitions)
-        )
+        assert all(left[1] == right[0] for left, right in pairwise(output_partitions))
         assert output_partitions[-1][1] == len(args[0])
         settings = kwargs["symbolica_settings"]
         assert settings.direct_translation is False
@@ -460,9 +449,7 @@ def test_capture_uses_only_interpreted_high_precision_stage_replay(
     assert capture.point_count == 4
     assert capture.current_count == len(dag.currents)
     assert len(set(capture.kinematic_sha256s)) == 4
-    assert set(capture.observations) == {
-        current.id for current in dag.currents
-    }
+    assert set(capture.observations) == {current.id for current in dag.currents}
     for current in dag.currents:
         values = capture.observations[current.id]
         assert len(values) == capture.point_count * current.dimension
@@ -481,9 +468,7 @@ def test_capture_uses_only_interpreted_high_precision_stage_replay(
         "sha256": capture.evaluator_output_partition_sha256,
     }
     assert len(capture.evaluator_output_partition_sha256) == 64
-    assert provenance["points"] == [
-        point.to_mapping() for point in candidate
-    ]
+    assert provenance["points"] == [point.to_mapping() for point in candidate]
 
 
 def test_transaction_reuses_one_baseline_capture_session(
@@ -571,23 +556,24 @@ def test_real_capture_drives_authenticated_discovery_and_application(
         )
     )
     for parameter_index in range(parameter_count):
-        assert len(
-            {
-                context[parameter_index]
-                for context in (
-                    *candidate.parameter_contexts,
-                    *verification.parameter_contexts,
-                )
-            }
-        ) > 1
+        assert (
+            len(
+                {
+                    context[parameter_index]
+                    for context in (
+                        *candidate.parameter_contexts,
+                        *verification.parameter_contexts,
+                    )
+                }
+            )
+            > 1
+        )
 
     application = result.application
     if discovery.certificates:
         assert application.report.state == "authenticated-numerical-applied"
         assert application.report.warning_required
-        assert application.report.applied_relation_count == len(
-            discovery.certificates
-        )
+        assert application.report.applied_relation_count == len(discovery.certificates)
     else:
         assert (
             discovery.report.state
@@ -610,6 +596,10 @@ def test_real_capture_drives_authenticated_discovery_and_application(
     assert payload["candidate_capture"]["points"]
     assert payload["verification_capture"]["points"]
     assert payload["warning"]["required"] is result.warning_required
+    assert payload["effective_mode"] == "certified-reuse"
+    assert payload["relation_correctness"]["applied_relation_count"] == (
+        result.application.report.applied_relation_count
+    )
 
 
 @pytest.mark.parametrize("execution_mode", ("compiled", "eager"))
@@ -631,12 +621,41 @@ def test_public_opt_out_records_disabled_unoptimized_path_without_capture(
     assert report["application_validation"]["status"] == "disabled-by-user"
     assert report["certified_relation_count"] == 0
     assert report["applied_relation_count"] == 0
+    assert report["effective_mode"] == "off"
+    assert report["relation_correctness"] == {
+        "abi": "pyamplicol-numerical-current-relation-correctness-v1",
+        "state": "no-applied-relations",
+        "applied_relation_count": 0,
+    }
     assert report["warning"] == {
         "required": False,
         "emit": "never",
         "code": None,
         "message": None,
     }
+
+
+def test_generic_application_scope_contains_unsafe_relation_kinds() -> None:
+    equal = SimpleNamespace(relation_kind="equal")
+    opposite = SimpleNamespace(relation_kind="opposite")
+    zero = SimpleNamespace(relation_kind="zero")
+
+    contracted = numerical_current_warmup._application_scoped_certificates(
+        (equal, opposite, zero),  # type: ignore[arg-type]
+        allowed_relation_kinds=("zero", "equal"),
+    )
+    multi_helicity = numerical_current_warmup._application_scoped_certificates(
+        (equal, opposite, zero),  # type: ignore[arg-type]
+        allowed_relation_kinds=(),
+    )
+
+    assert contracted == (equal, zero)
+    assert multi_helicity == ()
+    with pytest.raises(ValueError, match="relation kind is invalid"):
+        numerical_current_warmup._application_scoped_certificates(
+            (SimpleNamespace(relation_kind="projective"),),  # type: ignore[arg-type]
+            allowed_relation_kinds=("equal",),
+        )
 
 
 @pytest.mark.parametrize("execution_mode", ("compiled", "eager"))
@@ -671,9 +690,10 @@ def test_certified_zero_currents_are_applied_and_revalidated_by_default(
     for certificate in result.discovery.certificates:
         assert certificate.candidate_probe_count == 4
         assert certificate.verification_probe_count == 4
-        assert certificate.current_dimension == dag.currents[
-            certificate.current_id
-        ].dimension
+        assert (
+            certificate.current_dimension
+            == dag.currents[certificate.current_id].dimension
+        )
     assert result.application.report.applied_relation_count == len(
         result.discovery.certificates
     )
@@ -687,9 +707,7 @@ def test_certified_zero_currents_are_applied_and_revalidated_by_default(
         result.verification_capture.parameter_contexts
     )
     assert result.application_validation["status"] == "verified"
-    assert result.application_validation["checked_current_count"] == len(
-        dag.currents
-    )
+    assert result.application_validation["checked_current_count"] == len(dag.currents)
     assert Decimal(
         str(result.application_validation["maximum_tolerance_ratio"])
     ) <= Decimal(1)

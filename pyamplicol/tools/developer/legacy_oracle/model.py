@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[3]
 LOCK = ROOT / "dependencies" / "contributor-lock.toml"
 DEFAULT_REPOSITORY = ROOT / "dependencies" / "checkouts" / "legacy-amplicol"
 DEFAULT_FIXTURE = ROOT / "tests" / "fixtures" / "reference" / "physics-v2.json"
-PINNED_REFERENCE_REVISION = "79c96cecf2a722e50c3d2030b6894d755f96518a"
+PINNED_REFERENCE_REVISION = "07f16be4fee70c2bd624eee76822c0bb322cb595"
 PINNED_REFERENCE_BRANCH = "amplicol_with_patches"
 PINNED_SOURCE_URL = "https://github.com/rikkert-frederix/AmpliCol.git"
 
@@ -86,3 +86,9 @@ class SelectedFlowProbeResult:
     normalization: float
     value_decimal: Decimal = field(compare=False)
     normalization_decimal: Decimal = field(compare=False)
+    helicities: tuple[int, ...] = ()
+    fixed_helicity_value: float | None = None
+    fixed_helicity_value_decimal: Decimal | None = field(
+        default=None,
+        compare=False,
+    )

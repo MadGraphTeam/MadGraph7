@@ -109,6 +109,17 @@ _RECURRENCE_CERTIFICATE_ALGORITHM = (
 _MAX_REJECTED_DIAGNOSTICS = 32
 _MAX_RAW_NUMERICAL_HYPOTHESES = 1_000_000
 _CANDIDATE_INDEX_ALGORITHM = "complete-contract-anchor-tolerance-window-v1"
+_APPLICATION_SCOPE_ABI = "pyamplicol-recurrence-numerical-relation-application-scope-v1"
+NUMERICAL_RELATION_CORRECTNESS_ABI = (
+    "pyamplicol-numerical-current-relation-correctness-v1"
+)
+NUMERICAL_RELATION_FALLBACK_ABI = "pyamplicol-numerical-current-reuse-fallback-v1"
+EVIDENCE_ENVELOPE_FALLBACK_REASON = "evidence-envelope-fallback"
+EVIDENCE_ENVELOPE_FALLBACK_WARNING = (
+    "Numerical-current reuse was disabled because its optional evidence "
+    "geometry exceeds the bounded memory envelope; recurrence generation "
+    "continues without numerical relations."
+)
 
 _RelationKind = Literal["equal", "opposite", "zero"]
 _Mode = Literal["diagnostic", "certified-reuse"]
@@ -127,6 +138,122 @@ class _RawEvidenceStorageGeometry:
     canonical_byte_limit: int
     encoding: _EvidenceEncoding
     producer_resident_upper_bound: int
+
+
+@dataclass(frozen=True, slots=True)
+class RecurrenceNumericalEvidenceGeometry:
+    """Allocation-free shape of one optional numerical-evidence capture."""
+
+    current_count: int
+    component_count: int
+    candidate_probe_count: int
+    verification_probe_count: int
+    runtime_parameter_count: int
+    scalar_count: int
+    row_count: int
+
+    @classmethod
+    def from_counts(
+        cls,
+        *,
+        current_count: int,
+        component_count: int,
+        candidate_probe_count: int,
+        verification_probe_count: int,
+        runtime_parameter_count: int,
+    ) -> RecurrenceNumericalEvidenceGeometry:
+        values = (
+            current_count,
+            component_count,
+            candidate_probe_count,
+            verification_probe_count,
+            runtime_parameter_count,
+        )
+        if (
+            any(type(value) is not int or value < 0 for value in values)
+            or candidate_probe_count == 0
+            or verification_probe_count == 0
+        ):
+            raise ValueError("recurrence raw-evidence probe geometry is invalid")
+        point_count = candidate_probe_count + verification_probe_count
+        return cls(
+            current_count=current_count,
+            component_count=component_count,
+            candidate_probe_count=candidate_probe_count,
+            verification_probe_count=verification_probe_count,
+            runtime_parameter_count=runtime_parameter_count,
+            scalar_count=(
+                2 * component_count * point_count
+                + runtime_parameter_count * point_count
+            ),
+            row_count=current_count * 2 + runtime_parameter_count,
+        )
+
+    def to_json_dict(self) -> dict[str, int]:
+        return {
+            "current_count": self.current_count,
+            "component_count": self.component_count,
+            "candidate_probe_count": self.candidate_probe_count,
+            "verification_probe_count": self.verification_probe_count,
+            "runtime_parameter_count": self.runtime_parameter_count,
+            "scalar_count": self.scalar_count,
+            "row_count": self.row_count,
+        }
+
+    def spooled_producer_resident_upper_bound(self) -> int:
+        """Recompute the sequential-spool producer bound for this geometry."""
+
+        return _spooled_capture_memory_upper_bound(
+            current_count=self.current_count,
+            component_count=self.component_count,
+            maximum_probe_count=max(
+                self.candidate_probe_count,
+                self.verification_probe_count,
+            ),
+            runtime_parameter_count=self.runtime_parameter_count,
+        )
+
+
+class RecurrenceNumericalEvidenceEnvelopeExceeded(ValueError):
+    """Optional recurrence evidence cannot fit its authenticated envelope."""
+
+    def __init__(
+        self,
+        geometry: RecurrenceNumericalEvidenceGeometry,
+        *,
+        memory_envelope_bytes: int,
+        spooled_producer_resident_bytes: int,
+        raw_reason: str,
+    ) -> None:
+        self.geometry = geometry
+        self.memory_envelope_bytes = memory_envelope_bytes
+        self.spooled_producer_resident_bytes = spooled_producer_resident_bytes
+        self.raw_reason = raw_reason
+        values = geometry.to_json_dict()
+        super().__init__(
+            "recurrence raw-evidence capture geometry exceeds both the "
+            "resident raw-wire and sequential-spool memory envelopes "
+            f"(currents={values['current_count']}, "
+            f"components={values['component_count']}, "
+            f"candidate_points={values['candidate_probe_count']}, "
+            f"verification_points={values['verification_probe_count']}, "
+            f"runtime_parameters={values['runtime_parameter_count']}, "
+            f"scalars={values['scalar_count']}, rows={values['row_count']}, "
+            "spooled_producer_resident="
+            f"{spooled_producer_resident_bytes}, raw_reason={raw_reason})"
+        )
+
+    def to_json_dict(self) -> dict[str, object]:
+        return {
+            "reason": EVIDENCE_ENVELOPE_FALLBACK_REASON,
+            "memory_envelope_bytes": self.memory_envelope_bytes,
+            "spooled_producer_resident_bytes": (self.spooled_producer_resident_bytes),
+            "geometry": self.geometry.to_json_dict(),
+        }
+
+
+class _RawEvidenceWireEnvelopeExceeded(ValueError):
+    """The validated raw-wire shape cannot fit its bounded envelope."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -586,6 +713,7 @@ class RecurrenceNumericalCurrentWarmupResult:
     """One unpublished-baseline discovery transaction."""
 
     requested_mode: _Mode
+    effective_mode: _Mode
     color_accuracy: str
     source_semantics_sha256: str
     runtime_parameter_schema: Mapping[str, object]
@@ -606,11 +734,30 @@ class RecurrenceNumericalCurrentWarmupResult:
 
     @property
     def applied_relation_count(self) -> int:
-        return len(self.certificates) if self.requested_mode == "certified-reuse" else 0
+        return len(self.certificates) if self.effective_mode == "certified-reuse" else 0
 
     @property
     def warning_required(self) -> bool:
         return self.applied_relation_count > 0
+
+    @property
+    def effective_mode_reason(self) -> str | None:
+        """Explain a conservative requested-to-effective mode downgrade."""
+
+        if self.effective_mode == self.requested_mode:
+            return None
+        application_scope = cast(
+            Mapping[str, object],
+            self.discovery_report["application_scope"],
+        )
+        if cast(Sequence[int], application_scope["suppressed_selector_domain_ids"]):
+            return "multi-helicity-all-flow-member-scope-unproven"
+        if any(
+            certificate.relation_kind == "opposite"
+            for certificate in self.certificates
+        ):
+            return "contracted-opposite-binary64-disabled"
+        raise AssertionError("recurrence numerical mode changed without a reason")
 
     def with_application_validation(
         self,
@@ -635,11 +782,14 @@ class RecurrenceNumericalCurrentWarmupResult:
     def to_json_dict(self) -> dict[str, object]:
         if not self.certificates:
             state = "no_certified_numerical_relation"
-        elif self.requested_mode == "certified-reuse":
+        elif self.effective_mode == "certified-reuse":
             state = "authenticated-numerical-applied"
         else:
             state = "authenticated-numerical-diagnostic-only"
         warning = _warning_payload(self.warning_required)
+        relation_correctness = numerical_relation_correctness_payload(
+            self.applied_relation_count
+        )
         applied_current_ids = (
             tuple(
                 current_id
@@ -650,7 +800,7 @@ class RecurrenceNumericalCurrentWarmupResult:
                 )
                 if current_id is not None
             )
-            if self.requested_mode == "certified-reuse"
+            if self.effective_mode == "certified-reuse"
             else ()
         )
         persisted_evidence = {
@@ -716,10 +866,25 @@ class RecurrenceNumericalCurrentWarmupResult:
             byte_limit=_MAX_PERSISTED_EVIDENCE_BYTES,
             label="recurrence persisted numerical evidence",
         )
+        application_scope = dict(
+            cast(
+                Mapping[str, object],
+                self.discovery_report["application_scope"],
+            )
+        )
+        application_scope["effective_mode_reason"] = self.effective_mode_reason
         return {
             "schema_version": 1,
             "abi": _WARMUP_ABI,
             "requested_mode": self.requested_mode,
+            "effective_mode": self.effective_mode,
+            "effective_mode_reason": self.effective_mode_reason,
+            "effective_reuse_state": (
+                "enabled"
+                if self.effective_mode == "certified-reuse"
+                or self.requested_mode == "diagnostic"
+                else "disabled"
+            ),
             "state": state,
             "scope": {
                 "execution_mode": "recurrence",
@@ -736,12 +901,14 @@ class RecurrenceNumericalCurrentWarmupResult:
                 self.application_validation.get("application_capture")
             ),
             "application_validation": dict(self.application_validation),
+            "application_scope": application_scope,
             "persisted_numerical_evidence": persisted_evidence,
             "discovery": dict(self.discovery_report),
             "application": {
                 "schema_version": 1,
                 "abi": _RELATION_SET_ABI,
                 "requested_mode": self.requested_mode,
+                "effective_mode": self.effective_mode,
                 "state": state,
                 "certificate_replay": {
                     "algorithm": _RECURRENCE_CERTIFICATE_ALGORITHM,
@@ -773,6 +940,7 @@ class RecurrenceNumericalCurrentWarmupResult:
             },
             "certified_relation_count": len(self.certificates),
             "applied_relation_count": self.applied_relation_count,
+            "relation_correctness": relation_correctness,
             "warning": warning,
         }
 
@@ -946,9 +1114,14 @@ def run_recurrence_numerical_current_warmup(
             time.perf_counter() - discovery_started
         )
         evidence_payload_started = time.perf_counter()
+        effective_mode = _effective_numerical_relation_mode(
+            plan.sections,
+            requested_mode=mode,
+            certificates=certificates,
+        )
         evidence = _evidence_payload(
             plan.sections,
-            mode=mode,
+            mode=effective_mode,
             source_semantics=static_context.source_semantics,
             source_semantics_sha256=source_digest,
             certificates=certificates,
@@ -1004,7 +1177,7 @@ def run_recurrence_numerical_current_warmup(
                 )
                 if current_id is not None
             )
-            if mode == "certified-reuse"
+            if effective_mode == "certified-reuse"
             else ()
         )
         if geometry.encoding == _RAW_EVIDENCE_ENCODING:
@@ -1029,6 +1202,7 @@ def run_recurrence_numerical_current_warmup(
             )
         return RecurrenceNumericalCurrentWarmupResult(
             requested_mode=mode,
+            effective_mode=effective_mode,
             color_accuracy=color_accuracy,
             source_semantics_sha256=source_digest,
             runtime_parameter_schema=runtime_parameter_schema,
@@ -1043,7 +1217,7 @@ def run_recurrence_numerical_current_warmup(
             application_validation={
                 "status": (
                     "pending-second-pass-validation"
-                    if mode == "certified-reuse" and certificates
+                    if effective_mode == "certified-reuse" and certificates
                     else "not-required-no-applied-relations"
                 ),
                 "checked_current_count": 0,
@@ -1228,6 +1402,8 @@ def recurrence_numerical_current_opt_out_report(
         "schema_version": 1,
         "abi": _WARMUP_ABI,
         "requested_mode": "off",
+        "effective_mode": "off",
+        "effective_reuse_state": "disabled",
         "state": "disabled-by-user",
         "scope": {
             "execution_mode": "recurrence",
@@ -1250,11 +1426,84 @@ def recurrence_numerical_current_opt_out_report(
             "maximum_tolerance_ratio": None,
             "application_capture": None,
         },
+        "application_scope": {
+            "abi": _APPLICATION_SCOPE_ABI,
+            "policy": "disabled-by-user",
+            "layout": sections.strategy,
+            "suppressed_selector_domain_ids": [],
+            "contracted_opposite_application": "not-applicable",
+            "suppressed_current_count": 0,
+        },
         "discovery": None,
         "application": None,
         "certified_relation_count": 0,
         "applied_relation_count": 0,
+        "relation_correctness": numerical_relation_correctness_payload(0),
         "warning": _warning_payload(False),
+    }
+
+
+def recurrence_numerical_current_envelope_fallback_report(
+    sections: _RecurrenceExactSectionsV1,
+    *,
+    color_accuracy: str,
+    requested_mode: _Mode,
+    outcome: RecurrenceNumericalEvidenceEnvelopeExceeded,
+) -> dict[str, object]:
+    """Publish the explicit reuse-off result of one safe geometry fallback."""
+
+    if requested_mode != "certified-reuse":
+        raise ValueError("the evidence-envelope fallback is limited to certified reuse")
+    fallback = outcome.to_json_dict()
+    warning = {
+        "required": True,
+        "emit": "once-per-generated-artifact",
+        "code": EVIDENCE_ENVELOPE_FALLBACK_REASON,
+        "message": EVIDENCE_ENVELOPE_FALLBACK_WARNING,
+    }
+    return {
+        "schema_version": 1,
+        "abi": _WARMUP_ABI,
+        "requested_mode": requested_mode,
+        "effective_mode": "off",
+        "effective_reuse_state": "disabled",
+        "state": "disabled-evidence-envelope-fallback",
+        "fallback": fallback,
+        "scope": {
+            "execution_mode": "recurrence",
+            "color_accuracy": color_accuracy,
+            "representation": "recurrence-direct-plan-v2",
+        },
+        "source_semantics": {
+            "abi": _SOURCE_ABI,
+            "sha256": recurrence_numerical_source_semantics_sha256(sections),
+        },
+        "candidate_capture": None,
+        "verification_capture": None,
+        "application_capture": None,
+        "application_validation": {
+            "status": "not-required-reuse-disabled",
+            "checked_current_count": 0,
+            "checked_component_count": 0,
+            "maximum_absolute_residual": None,
+            "maximum_relative_residual": None,
+            "maximum_tolerance_ratio": None,
+            "application_capture": None,
+        },
+        "application_scope": {
+            "abi": _APPLICATION_SCOPE_ABI,
+            "policy": "evidence-envelope-fallback",
+            "layout": sections.strategy,
+            "suppressed_selector_domain_ids": [],
+            "contracted_opposite_application": "not-applicable",
+            "suppressed_current_count": 0,
+        },
+        "discovery": None,
+        "application": None,
+        "certified_relation_count": 0,
+        "applied_relation_count": 0,
+        "relation_correctness": numerical_relation_correctness_payload(0),
+        "warning": warning,
     }
 
 
@@ -1730,6 +1979,60 @@ def _build_candidate_indexes(
     }
 
 
+def _numerical_relation_application_scope(
+    sections: _RecurrenceExactSectionsV1,
+) -> dict[str, object]:
+    """Return the narrow execution members eligible for numerical reuse."""
+
+    helicities_by_domain: dict[int, int] = defaultdict(int)
+    for helicity in sections.resolved_helicities:
+        helicities_by_domain[helicity.selector_domain_id] += 1
+    unsafe_all_flow_domains = (
+        tuple(
+            domain_id
+            for domain_id, member_count in sorted(helicities_by_domain.items())
+            if member_count > 1
+        )
+        if sections.strategy == "all-flow-union"
+        else ()
+    )
+    return {
+        "abi": _APPLICATION_SCOPE_ABI,
+        "policy": "exact-physical-selector-member-set-v1",
+        "layout": sections.strategy,
+        "multi_helicity_all_flow_domain_ids": list(unsafe_all_flow_domains),
+        "multi_helicity_all_flow_application": (
+            "disabled" if unsafe_all_flow_domains else "not-applicable"
+        ),
+        "suppressed_selector_domain_ids": list(unsafe_all_flow_domains),
+        "contracted_opposite_application": (
+            "disabled"
+            if sections.strategy == "contracted-color-union"
+            else "not-applicable"
+        ),
+    }
+
+
+def _effective_numerical_relation_mode(
+    sections: _RecurrenceExactSectionsV1,
+    *,
+    requested_mode: _Mode,
+    certificates: Sequence[RecurrenceNumericalCurrentCertificate],
+) -> _Mode:
+    """Contain relations that the native mapper cannot apply member-wise."""
+
+    if requested_mode != "certified-reuse":
+        return requested_mode
+    scope = _numerical_relation_application_scope(sections)
+    if cast(Sequence[int], scope["suppressed_selector_domain_ids"]):
+        return "diagnostic"
+    if sections.strategy == "contracted-color-union" and any(
+        certificate.relation_kind == "opposite" for certificate in certificates
+    ):
+        return "diagnostic"
+    return requested_mode
+
+
 def _discover_relations(
     sections: _RecurrenceExactSectionsV1,
     candidate: RecurrenceCurrentObservationCapture,
@@ -1757,6 +2060,13 @@ def _discover_relations(
     )
     relative_fraction = Fraction(relative)
     absolute_fraction = Fraction(absolute)
+    application_scope = _numerical_relation_application_scope(sections)
+    unsafe_selector_domains = frozenset(
+        cast(
+            Sequence[int],
+            application_scope["suppressed_selector_domain_ids"],
+        )
+    )
     if contracts is None:
         contracts = _current_contracts(sections)
     if candidate_indexes is None:
@@ -1783,6 +2093,7 @@ def _discover_relations(
     candidates = 0
     verification_rejected = 0
     rejected_hypotheses = 0
+    scope_suppressed_current_count = 0
     decision_chain = _canonical_sha256(
         {
             "abi": _DECISION_CHAIN_ABI,
@@ -1896,6 +2207,8 @@ def _discover_relations(
         if current.source_row != DIRECT_NONE_U32:
             prior.append(current.semantic_id)
             continue
+        if current.selector_domain_id in unsafe_selector_domains:
+            scope_suppressed_current_count += 1
         candidate_current_observations = candidate.observations[current.semantic_id]
         equal_representatives = set(
             _raw_numerical_tolerance_window_ids(
@@ -2116,6 +2429,10 @@ def _discover_relations(
             "color_accuracy": color_accuracy,
             "representation": "recurrence-direct-plan-v2",
             "lc_flow_layout": sections.strategy,
+        },
+        "application_scope": {
+            **application_scope,
+            "suppressed_current_count": scope_suppressed_current_count,
         },
         "source_semantics": {
             "abi": _SOURCE_ABI,
@@ -2989,6 +3306,168 @@ def _warning_payload(required: bool) -> dict[str, object]:
     )
 
 
+def numerical_relation_correctness_payload(
+    applied_relation_count: int,
+) -> dict[str, object]:
+    if type(applied_relation_count) is not int or applied_relation_count < 0:
+        raise ValueError("numerical relation application count is invalid")
+    return {
+        "abi": NUMERICAL_RELATION_CORRECTNESS_ABI,
+        "state": (
+            "member-scoped-v1" if applied_relation_count else "no-applied-relations"
+        ),
+        "applied_relation_count": applied_relation_count,
+    }
+
+
+def recurrence_numerical_relation_correctness_summary(
+    report: Mapping[str, object],
+) -> dict[str, object]:
+    """Extract the compact metadata needed for lightweight result reuse."""
+
+    value = report.get("relation_correctness")
+    if not isinstance(value, Mapping):
+        raise ValueError(
+            "recurrence numerical relation report has no correctness state"
+        )
+    applied = report.get("applied_relation_count")
+    if type(applied) is not int or applied < 0:
+        raise ValueError(
+            "recurrence numerical relation report has an invalid applied count"
+        )
+    expected = numerical_relation_correctness_payload(applied)
+    if any(value.get(key) != expected[key] for key in expected):
+        raise ValueError(
+            "recurrence numerical relation correctness state is inconsistent"
+        )
+    return dict(expected)
+
+
+def validate_recurrence_numerical_evidence_fallback(
+    value: object,
+) -> dict[str, object]:
+    """Validate one full evidence-envelope fallback payload."""
+
+    required_fields = {
+        "reason",
+        "memory_envelope_bytes",
+        "spooled_producer_resident_bytes",
+        "geometry",
+    }
+    if not isinstance(value, Mapping) or set(value) != required_fields:
+        raise ValueError("recurrence numerical current fallback provenance is invalid")
+    if value.get("reason") != EVIDENCE_ENVELOPE_FALLBACK_REASON:
+        raise ValueError("recurrence numerical current fallback reason is invalid")
+
+    def required_integer(
+        raw: object,
+        *,
+        name: str,
+        minimum: int,
+    ) -> int:
+        if type(raw) is not int or raw < minimum:
+            raise ValueError(f"recurrence numerical fallback {name} is invalid")
+        return raw
+
+    memory_envelope_bytes = required_integer(
+        value.get("memory_envelope_bytes"),
+        name="memory envelope",
+        minimum=1,
+    )
+    if memory_envelope_bytes > _MAX_RAW_EVIDENCE_MEMORY_BYTES:
+        raise ValueError(
+            "recurrence numerical fallback memory envelope exceeds its fixed bound"
+        )
+    producer_resident_bytes = required_integer(
+        value.get("spooled_producer_resident_bytes"),
+        name="producer resident bound",
+        minimum=1,
+    )
+    raw_geometry = value.get("geometry")
+    geometry_fields = {
+        "current_count",
+        "component_count",
+        "candidate_probe_count",
+        "verification_probe_count",
+        "runtime_parameter_count",
+        "scalar_count",
+        "row_count",
+    }
+    if not isinstance(raw_geometry, Mapping) or set(raw_geometry) != geometry_fields:
+        raise ValueError("recurrence numerical current fallback geometry is invalid")
+    counts = {
+        key: required_integer(
+            raw_geometry.get(key),
+            name=f"geometry {key}",
+            minimum=(
+                1 if key in {"candidate_probe_count", "verification_probe_count"} else 0
+            ),
+        )
+        for key in geometry_fields
+    }
+    geometry = RecurrenceNumericalEvidenceGeometry.from_counts(
+        current_count=counts["current_count"],
+        component_count=counts["component_count"],
+        candidate_probe_count=counts["candidate_probe_count"],
+        verification_probe_count=counts["verification_probe_count"],
+        runtime_parameter_count=counts["runtime_parameter_count"],
+    )
+    expected_geometry = geometry.to_json_dict()
+    expected_producer_resident_bytes = geometry.spooled_producer_resident_upper_bound()
+    if (
+        counts != expected_geometry
+        or producer_resident_bytes != expected_producer_resident_bytes
+        or producer_resident_bytes <= memory_envelope_bytes
+    ):
+        raise ValueError(
+            "recurrence numerical current fallback geometry is inconsistent"
+        )
+    return {
+        "reason": EVIDENCE_ENVELOPE_FALLBACK_REASON,
+        "memory_envelope_bytes": memory_envelope_bytes,
+        "spooled_producer_resident_bytes": producer_resident_bytes,
+        "geometry": expected_geometry,
+    }
+
+
+def recurrence_numerical_relation_fallback_summary(
+    report: Mapping[str, object],
+) -> dict[str, object] | None:
+    """Extract lightweight fallback provenance without expanding correctness ABI."""
+
+    fallback = report.get("fallback")
+    if fallback is None:
+        if (
+            report.get("requested_mode") == "certified-reuse"
+            and report.get("effective_mode") == "off"
+        ):
+            raise ValueError(
+                "recurrence numerical relation fallback provenance is absent"
+            )
+        return None
+    certified = _required_report_integer(report, "certified_relation_count")
+    applied = _required_report_integer(report, "applied_relation_count")
+    if (
+        report.get("requested_mode") != "certified-reuse"
+        or report.get("effective_mode") != "off"
+        or report.get("effective_reuse_state") != "disabled"
+        or certified != 0
+        or applied != 0
+    ):
+        raise ValueError("recurrence numerical relation fallback state is inconsistent")
+    validated = validate_recurrence_numerical_evidence_fallback(fallback)
+    return {
+        "abi": NUMERICAL_RELATION_FALLBACK_ABI,
+        "requested_mode": "certified-reuse",
+        "effective_mode": "off",
+        "effective_reuse_state": "disabled",
+        "reason": EVIDENCE_ENVELOPE_FALLBACK_REASON,
+        "geometry": dict(cast(Mapping[str, int], validated["geometry"])),
+        "certified_relation_count": 0,
+        "applied_relation_count": 0,
+    }
+
+
 def _decimal_string(value: Decimal) -> str:
     if not value.is_finite():
         raise ValueError("non-finite Decimal cannot be canonicalized")
@@ -3278,10 +3757,17 @@ def _raw_evidence_wire_byte_limit(
     *,
     scalar_count: int,
     row_count: int,
+    memory_envelope_bytes: int = _MAX_RAW_EVIDENCE_MEMORY_BYTES,
 ) -> int:
     """Return the per-shape wire ceiling inside the combined 1 GiB envelope."""
 
-    if scalar_count < 0 or row_count < 0:
+    if (
+        scalar_count < 0
+        or row_count < 0
+        or type(memory_envelope_bytes) is not int
+        or memory_envelope_bytes <= 0
+        or memory_envelope_bytes > _MAX_RAW_EVIDENCE_MEMORY_BYTES
+    ):
         raise ValueError("recurrence raw-evidence memory geometry is invalid")
     resident_without_wire = _raw_evidence_memory_upper_bound(
         0,
@@ -3291,17 +3777,17 @@ def _raw_evidence_wire_byte_limit(
     minimum_resident = resident_without_wire + (
         _MIN_RAW_EVIDENCE_WIRE_BYTES * _RAW_EVIDENCE_WIRE_PEAK_COPIES
     )
-    if minimum_resident > _MAX_RAW_EVIDENCE_MEMORY_BYTES:
-        raise ValueError(
+    if minimum_resident > memory_envelope_bytes:
+        raise _RawEvidenceWireEnvelopeExceeded(
             "recurrence raw-evidence capture geometry leaves less than the "
             f"required {_MIN_RAW_EVIDENCE_WIRE_BYTES}-byte canonical wire "
-            f"reserve inside its {_MAX_RAW_EVIDENCE_MEMORY_BYTES}-byte memory "
+            f"reserve inside its {memory_envelope_bytes}-byte memory "
             f"envelope (scalars={scalar_count}, rows={row_count}, "
             f"resident_without_wire={resident_without_wire})"
         )
     return min(
         _MAX_RAW_EVIDENCE_BYTES,
-        (_MAX_RAW_EVIDENCE_MEMORY_BYTES - resident_without_wire)
+        (memory_envelope_bytes - resident_without_wire)
         // _RAW_EVIDENCE_WIRE_PEAK_COPIES,
     )
 
@@ -3319,14 +3805,19 @@ def _raw_evidence_geometry_counts(
         or runtime_parameter_count < 0
     ):
         raise ValueError("recurrence raw-evidence probe geometry is invalid")
-    current_count = len(sections.currents)
-    component_count = sum(current.component_count for current in sections.currents)
-    point_count = candidate_probe_count + verification_probe_count
-    row_count = current_count * 2 + runtime_parameter_count
-    scalar_count = (
-        2 * component_count * point_count + runtime_parameter_count * point_count
+    geometry = RecurrenceNumericalEvidenceGeometry.from_counts(
+        current_count=len(sections.currents),
+        component_count=sum(current.component_count for current in sections.currents),
+        candidate_probe_count=candidate_probe_count,
+        verification_probe_count=verification_probe_count,
+        runtime_parameter_count=runtime_parameter_count,
     )
-    return current_count, component_count, scalar_count, row_count
+    return (
+        geometry.current_count,
+        geometry.component_count,
+        geometry.scalar_count,
+        geometry.row_count,
+    )
 
 
 def _spooled_capture_memory_upper_bound(
@@ -3372,57 +3863,68 @@ def _select_raw_evidence_storage_geometry(
     verification_probe_count: int,
     runtime_parameter_count: int,
 ) -> _RawEvidenceStorageGeometry:
-    current_count, component_count, scalar_count, row_count = (
-        _raw_evidence_geometry_counts(
-            sections,
-            candidate_probe_count=candidate_probe_count,
-            verification_probe_count=verification_probe_count,
-            runtime_parameter_count=runtime_parameter_count,
-        )
+    geometry = RecurrenceNumericalEvidenceGeometry.from_counts(
+        current_count=len(sections.currents),
+        component_count=sum(current.component_count for current in sections.currents),
+        candidate_probe_count=candidate_probe_count,
+        verification_probe_count=verification_probe_count,
+        runtime_parameter_count=runtime_parameter_count,
     )
+    return _select_raw_evidence_storage_geometry_for_counts(geometry)
+
+
+def _select_raw_evidence_storage_geometry_for_counts(
+    geometry: RecurrenceNumericalEvidenceGeometry,
+    *,
+    memory_envelope_bytes: int = _MAX_RAW_EVIDENCE_MEMORY_BYTES,
+) -> _RawEvidenceStorageGeometry:
+    """Select storage from scalar geometry before allocating observations."""
+
+    if (
+        type(memory_envelope_bytes) is not int
+        or memory_envelope_bytes <= 0
+        or memory_envelope_bytes > _MAX_RAW_EVIDENCE_MEMORY_BYTES
+    ):
+        raise ValueError("recurrence raw-evidence memory envelope is invalid")
     try:
         byte_limit = _raw_evidence_wire_byte_limit(
-            scalar_count=scalar_count,
-            row_count=row_count,
+            scalar_count=geometry.scalar_count,
+            row_count=geometry.row_count,
+            memory_envelope_bytes=memory_envelope_bytes,
         )
-    except ValueError as raw_error:
+    except _RawEvidenceWireEnvelopeExceeded as raw_error:
         producer_bound = _spooled_capture_memory_upper_bound(
-            current_count=current_count,
-            component_count=component_count,
+            current_count=geometry.current_count,
+            component_count=geometry.component_count,
             maximum_probe_count=max(
-                candidate_probe_count,
-                verification_probe_count,
+                geometry.candidate_probe_count,
+                geometry.verification_probe_count,
             ),
-            runtime_parameter_count=runtime_parameter_count,
+            runtime_parameter_count=geometry.runtime_parameter_count,
         )
-        if producer_bound > _MAX_RAW_EVIDENCE_MEMORY_BYTES:
-            raise ValueError(
-                "recurrence raw-evidence capture geometry exceeds both the "
-                "resident raw-wire and sequential-spool memory envelopes "
-                f"(currents={current_count}, components={component_count}, "
-                f"candidate_points={candidate_probe_count}, "
-                f"verification_points={verification_probe_count}, "
-                f"runtime_parameters={runtime_parameter_count}, "
-                f"scalars={scalar_count}, rows={row_count}, "
-                f"spooled_producer_resident={producer_bound}, "
-                f"raw_reason={raw_error})"
+        if producer_bound > memory_envelope_bytes:
+            raise RecurrenceNumericalEvidenceEnvelopeExceeded(
+                geometry,
+                memory_envelope_bytes=memory_envelope_bytes,
+                spooled_producer_resident_bytes=producer_bound,
+                raw_reason=str(raw_error),
             ) from raw_error
         return _RawEvidenceStorageGeometry(
-            scalar_count=scalar_count,
-            row_count=row_count,
+            scalar_count=geometry.scalar_count,
+            row_count=geometry.row_count,
             canonical_byte_limit=_MAX_DECOMPRESSED_EVIDENCE_BYTES,
             encoding=_COMPRESSED_EVIDENCE_ENCODING,
             producer_resident_upper_bound=producer_bound,
         )
     return _RawEvidenceStorageGeometry(
-        scalar_count=scalar_count,
-        row_count=row_count,
+        scalar_count=geometry.scalar_count,
+        row_count=geometry.row_count,
         canonical_byte_limit=byte_limit,
         encoding=_RAW_EVIDENCE_ENCODING,
         producer_resident_upper_bound=_raw_evidence_memory_upper_bound(
             _MIN_RAW_EVIDENCE_WIRE_BYTES,
-            scalar_count=scalar_count,
-            row_count=row_count,
+            scalar_count=geometry.scalar_count,
+            row_count=geometry.row_count,
         ),
     )
 
@@ -3657,13 +4159,24 @@ def _synthetic_raw_evidence_bytes_by_dimension_counts(
 
 
 __all__ = [
+    "EVIDENCE_ENVELOPE_FALLBACK_REASON",
+    "EVIDENCE_ENVELOPE_FALLBACK_WARNING",
+    "NUMERICAL_RELATION_CORRECTNESS_ABI",
+    "NUMERICAL_RELATION_FALLBACK_ABI",
     "RecurrenceCurrentObservationCapture",
     "RecurrenceNumericalCurrentCertificate",
     "RecurrenceNumericalCurrentWarmupResult",
+    "RecurrenceNumericalEvidenceEnvelopeExceeded",
+    "RecurrenceNumericalEvidenceGeometry",
     "build_recurrence_numerical_current_probe_points",
     "capture_recurrence_current_observations",
+    "numerical_relation_correctness_payload",
+    "recurrence_numerical_current_envelope_fallback_report",
     "recurrence_numerical_current_opt_out_report",
+    "recurrence_numerical_relation_correctness_summary",
+    "recurrence_numerical_relation_fallback_summary",
     "recurrence_numerical_source_semantics_sha256",
     "run_recurrence_numerical_current_warmup",
     "validate_recurrence_numerical_current_application",
+    "validate_recurrence_numerical_evidence_fallback",
 ]

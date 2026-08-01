@@ -564,6 +564,39 @@ def test_benchmark_calibrates_blocks_and_repetitions_toward_target(
     assert ProgressStart("runtime-benchmark", "Profiling runtime", 4) in events
 
 
+def test_benchmark_chunk_guard_runs_before_the_next_calibrated_call() -> None:
+    runtime = _RuntimeWithValidation()
+    runtime.calls = 0
+    calls: list[tuple[float | None, str]] = []
+
+    class StageBudgetReached(RuntimeError):
+        pass
+
+    def guard(estimated_seconds: float | None, description: str) -> None:
+        calls.append((estimated_seconds, description))
+        if estimated_seconds is not None:
+            raise StageBudgetReached
+
+    backend = BenchmarkBackend(
+        BenchmarkConfig(
+            target_runtime=0.005,
+            batch_size=1,
+            warmup_runs=0,
+            minimum_samples=5,
+        ),
+        None,
+    )
+    backend.set_chunk_guard(guard)
+
+    with pytest.raises(StageBudgetReached):
+        backend.run(runtime)
+
+    assert calls[0] == (None, "runtime evaluator timing chunk")
+    assert calls[1][0] is not None
+    assert calls[1][1] == "runtime evaluator timing chunk"
+    assert runtime.calls == 1
+
+
 def test_benchmark_extends_complete_blocks_when_calibration_undershoots(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

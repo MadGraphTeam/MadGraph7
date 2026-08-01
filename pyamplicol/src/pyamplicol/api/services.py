@@ -4,7 +4,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import os
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -548,19 +548,31 @@ class BenchmarkRunner:
         self,
         config: BenchmarkConfig | RunConfig | None = None,
         progress: ProgressSink | None = None,
+        *,
+        _chunk_guard: Callable[[float | None, str], None] | None = None,
     ) -> None:
         if config is not None and not isinstance(config, (BenchmarkConfig, RunConfig)):
             raise TypeError(
                 "BenchmarkRunner config must be BenchmarkConfig, RunConfig, or null"
             )
         _validate_progress(progress)
+        if _chunk_guard is not None and not callable(_chunk_guard):
+            raise TypeError("BenchmarkRunner chunk guard must be callable")
         self._config = config
         self._progress = progress
+        self._chunk_guard = _chunk_guard
         self._backend: BenchmarkBackend | None = None
 
     def _implementation(self) -> BenchmarkBackend:
         if self._backend is None:
             self._backend = _get_benchmark_factory()(self._config, self._progress)
+            if self._chunk_guard is not None:
+                setter = getattr(self._backend, "set_chunk_guard", None)
+                if not callable(setter):
+                    raise EvaluationError(
+                        "benchmark backend does not support a profiling chunk guard"
+                    )
+                setter(self._chunk_guard)
         return self._backend
 
     def run(

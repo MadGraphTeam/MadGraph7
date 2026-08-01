@@ -11,7 +11,7 @@ import secrets
 import tempfile
 import time
 from collections.abc import Callable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
@@ -19,7 +19,14 @@ from typing import Literal, cast
 WORKER_PHASE_STATE_ABI = "pyamplicol-report-worker-phase-state-v1"
 WORKER_PHASE_AUTHENTICATION = "hmac-sha256"
 
-WorkerPhase = Literal["pre-generation", "generation", "post-generation"]
+WorkerPhase = Literal[
+    "pre-generation",
+    "generation",
+    "post-generation",
+    "profiling",
+    "validation",
+    "complete",
+]
 
 _PHASE_FIELDS = frozenset(
     {
@@ -31,6 +38,10 @@ _PHASE_FIELDS = frozenset(
         "transition_monotonic_ns",
         "generation_started_monotonic_ns",
         "generation_finished_monotonic_ns",
+        "profiling_started_monotonic_ns",
+        "profiling_finished_monotonic_ns",
+        "validation_started_monotonic_ns",
+        "validation_finished_monotonic_ns",
     }
 )
 _STATE_FIELDS = _PHASE_FIELDS | {"authentication"}
@@ -84,6 +95,10 @@ class WorkerPhaseState:
     transition_monotonic_ns: int
     generation_started_monotonic_ns: int | None
     generation_finished_monotonic_ns: int | None
+    profiling_started_monotonic_ns: int | None
+    profiling_finished_monotonic_ns: int | None
+    validation_started_monotonic_ns: int | None
+    validation_finished_monotonic_ns: int | None
     sha256: str
 
     def generation_elapsed_seconds(self, *, now_seconds: float) -> float | None:
@@ -98,6 +113,29 @@ class WorkerPhaseState:
                 self.generation_started_monotonic_ns,
             )
         return (stop_ns - self.generation_started_monotonic_ns) / 1_000_000_000
+
+    def stage_elapsed_seconds(
+        self,
+        stage: Literal["profiling", "validation"],
+        *,
+        now_seconds: float,
+    ) -> float | None:
+        """Return an active or closed stage duration from authenticated bounds."""
+
+        if stage == "profiling":
+            started_ns = self.profiling_started_monotonic_ns
+            finished_ns = self.profiling_finished_monotonic_ns
+        else:
+            started_ns = self.validation_started_monotonic_ns
+            finished_ns = self.validation_finished_monotonic_ns
+        if started_ns is None:
+            return None
+        stop_ns = (
+            max(int(now_seconds * 1_000_000_000), started_ns)
+            if finished_ns is None
+            else finished_ns
+        )
+        return (stop_ns - started_ns) / 1_000_000_000
 
 
 def _canonical_json(payload: Mapping[str, object]) -> bytes:
@@ -148,6 +186,10 @@ def _unsigned_state(
     transition_monotonic_ns: int,
     generation_started_monotonic_ns: int | None,
     generation_finished_monotonic_ns: int | None,
+    profiling_started_monotonic_ns: int | None,
+    profiling_finished_monotonic_ns: int | None,
+    validation_started_monotonic_ns: int | None,
+    validation_finished_monotonic_ns: int | None,
 ) -> dict[str, object]:
     return {
         "abi": WORKER_PHASE_STATE_ABI,
@@ -158,6 +200,10 @@ def _unsigned_state(
         "transition_monotonic_ns": transition_monotonic_ns,
         "generation_started_monotonic_ns": generation_started_monotonic_ns,
         "generation_finished_monotonic_ns": generation_finished_monotonic_ns,
+        "profiling_started_monotonic_ns": profiling_started_monotonic_ns,
+        "profiling_finished_monotonic_ns": profiling_finished_monotonic_ns,
+        "validation_started_monotonic_ns": validation_started_monotonic_ns,
+        "validation_finished_monotonic_ns": validation_finished_monotonic_ns,
     }
 
 
@@ -170,16 +216,26 @@ class WorkerPhaseReporter:
         *,
         worker_pid: int | None = None,
         clock_ns: Callable[[], int] = time.monotonic_ns,
+        track_post_generation_stages: bool = False,
+        generation_gate: Callable[[], AbstractContextManager[None]] | None = None,
     ) -> None:
         self.channel = channel
         self.worker_pid = os.getpid() if worker_pid is None else worker_pid
         if self.worker_pid <= 0:
             raise ValueError("worker phase-state PID must be positive")
         self._clock_ns = clock_ns
+        self._track_post_generation_stages = track_post_generation_stages
+        self._generation_gate = generation_gate
         self._phase: WorkerPhase = "pre-generation"
         self._sequence = 0
         self._generation_started_ns: int | None = None
-        self._write(self._clock())
+        self._generation_finished_ns: int | None = None
+        self._profiling_started_ns: int | None = None
+        self._profiling_finished_ns: int | None = None
+        self._validation_started_ns: int | None = None
+        self._validation_finished_ns: int | None = None
+        self._last_transition_ns = self._clock()
+        self._write(self._last_transition_ns)
 
     @property
     def phase(self) -> WorkerPhase:
@@ -194,7 +250,6 @@ class WorkerPhaseReporter:
         return value
 
     def _write(self, transition_ns: int) -> None:
-        finished_ns = transition_ns if self._phase == "post-generation" else None
         unsigned = _unsigned_state(
             channel=self.channel,
             worker_pid=self.worker_pid,
@@ -202,7 +257,11 @@ class WorkerPhaseReporter:
             phase=self._phase,
             transition_monotonic_ns=transition_ns,
             generation_started_monotonic_ns=self._generation_started_ns,
-            generation_finished_monotonic_ns=finished_ns,
+            generation_finished_monotonic_ns=self._generation_finished_ns,
+            profiling_started_monotonic_ns=self._profiling_started_ns,
+            profiling_finished_monotonic_ns=self._profiling_finished_ns,
+            validation_started_monotonic_ns=self._validation_started_ns,
+            validation_finished_monotonic_ns=self._validation_finished_ns,
         )
         _atomic_json(
             self.channel.path,
@@ -226,22 +285,89 @@ class WorkerPhaseReporter:
         artifact generated by an earlier measurement.
         """
 
-        if self._phase != "pre-generation":
+        gate = (
+            nullcontext() if self._generation_gate is None else self._generation_gate()
+        )
+        with gate:
+            if self._phase != "pre-generation":
+                raise WorkerPhaseStateError(
+                    "worker phase reporter permits exactly one generation interval"
+                )
+            started_ns = max(self._clock(), self._last_transition_ns)
+            self._phase = "generation"
+            self._sequence = 1
+            self._generation_started_ns = started_ns
+            self._last_transition_ns = started_ns
+            self._write(started_ns)
+            try:
+                yield
+            finally:
+                finished_ns = max(self._clock(), started_ns)
+                self._generation_finished_ns = finished_ns
+                self._phase = "post-generation"
+                self._sequence = 2
+                self._last_transition_ns = finished_ns
+                self._write(finished_ns)
+
+    def profiling_started(self) -> None:
+        """Close the generation guard and start the profiling-stage clock."""
+
+        if not self._track_post_generation_stages:
+            return
+        self._transition(
+            expected="post-generation",
+            phase="profiling",
+            sequence=3,
+        )
+
+    def validation_started(self) -> None:
+        """Close profiling and start the post-profile validation-stage clock."""
+
+        if not self._track_post_generation_stages:
+            return
+        self._transition(
+            expected="profiling",
+            phase="validation",
+            sequence=4,
+        )
+
+    def complete(self) -> None:
+        """Mark successful completion of all supervised worker stages."""
+
+        if not self._track_post_generation_stages:
+            return
+        self._transition(
+            expected="validation",
+            phase="complete",
+            sequence=5,
+        )
+
+    def _transition(
+        self,
+        *,
+        expected: WorkerPhase,
+        phase: WorkerPhase,
+        sequence: int,
+    ) -> None:
+        if self._phase != expected:
             raise WorkerPhaseStateError(
-                "worker phase reporter permits exactly one generation interval"
+                f"worker phase transition expected {expected!r}, observed "
+                f"{self._phase!r}"
             )
-        started_ns = self._clock()
-        self._phase = "generation"
-        self._sequence = 1
-        self._generation_started_ns = started_ns
-        self._write(started_ns)
-        try:
-            yield
-        finally:
-            finished_ns = max(self._clock(), started_ns)
-            self._phase = "post-generation"
-            self._sequence = 2
-            self._write(finished_ns)
+        transition_ns = max(self._clock(), self._last_transition_ns)
+        if self._generation_finished_ns is not None:
+            transition_ns = max(transition_ns, self._generation_finished_ns)
+        if phase == "profiling":
+            self._profiling_started_ns = transition_ns
+        elif phase == "validation":
+            self._profiling_finished_ns = transition_ns
+            self._validation_started_ns = transition_ns
+        elif phase == "complete":
+            self._validation_finished_ns = transition_ns
+        self._phase = phase
+        self._sequence = sequence
+        self._last_transition_ns = transition_ns
+        self._write(transition_ns)
 
 
 def _required_int(value: object, name: str) -> int:
@@ -250,11 +376,32 @@ def _required_int(value: object, name: str) -> int:
     return value
 
 
+def _optional_timestamp(payload: Mapping[str, object], name: str) -> int | None:
+    value = payload.get(name)
+    return None if value is None else _required_int(value, name)
+
+
 def _validated_timing(
     payload: Mapping[str, object],
-) -> tuple[WorkerPhase, int, int | None, int | None]:
+) -> tuple[
+    WorkerPhase,
+    int,
+    int | None,
+    int | None,
+    int | None,
+    int | None,
+    int | None,
+    int | None,
+]:
     raw_phase = payload.get("phase")
-    if raw_phase not in {"pre-generation", "generation", "post-generation"}:
+    if raw_phase not in {
+        "pre-generation",
+        "generation",
+        "post-generation",
+        "profiling",
+        "validation",
+        "complete",
+    }:
         raise WorkerPhaseStateError("worker phase-state phase is unsupported")
     phase = cast(WorkerPhase, raw_phase)
     sequence = _required_int(payload.get("sequence"), "sequence")
@@ -274,30 +421,125 @@ def _validated_timing(
         if finished_raw is None
         else _required_int(finished_raw, "generation_finished_monotonic_ns")
     )
+    profiling_started_ns = _optional_timestamp(
+        payload,
+        "profiling_started_monotonic_ns",
+    )
+    profiling_finished_ns = _optional_timestamp(
+        payload,
+        "profiling_finished_monotonic_ns",
+    )
+    validation_started_ns = _optional_timestamp(
+        payload,
+        "validation_started_monotonic_ns",
+    )
+    validation_finished_ns = _optional_timestamp(
+        payload,
+        "validation_finished_monotonic_ns",
+    )
     expected_sequence = {
         "pre-generation": 0,
         "generation": 1,
         "post-generation": 2,
+        "profiling": 3,
+        "validation": 4,
+        "complete": 5,
     }[phase]
     if sequence != expected_sequence:
         raise WorkerPhaseStateError(
             "worker phase-state phase and sequence are inconsistent"
         )
     if phase == "pre-generation":
-        if started_ns is not None or finished_ns is not None:
+        if any(
+            timestamp is not None
+            for timestamp in (
+                started_ns,
+                finished_ns,
+                profiling_started_ns,
+                profiling_finished_ns,
+                validation_started_ns,
+                validation_finished_ns,
+            )
+        ):
             raise WorkerPhaseStateError(
                 "pre-generation state cannot contain generation timestamps"
             )
     elif phase == "generation":
-        if started_ns != transition_ns or finished_ns is not None:
+        if (
+            started_ns != transition_ns
+            or finished_ns is not None
+            or any(
+                timestamp is not None
+                for timestamp in (
+                    profiling_started_ns,
+                    profiling_finished_ns,
+                    validation_started_ns,
+                    validation_finished_ns,
+                )
+            )
+        ):
             raise WorkerPhaseStateError(
                 "generation state has inconsistent generation timestamps"
             )
-    elif started_ns is None or finished_ns != transition_ns or finished_ns < started_ns:
+    elif (
+        started_ns is None
+        or finished_ns is None
+        or finished_ns < started_ns
+        or finished_ns > transition_ns
+        or (phase == "post-generation" and finished_ns != transition_ns)
+    ):
         raise WorkerPhaseStateError(
             "post-generation state has inconsistent generation timestamps"
         )
-    return phase, transition_ns, started_ns, finished_ns
+    if phase == "post-generation":
+        stage_timestamps = (
+            profiling_started_ns,
+            profiling_finished_ns,
+            validation_started_ns,
+            validation_finished_ns,
+        )
+        valid_stages = all(timestamp is None for timestamp in stage_timestamps)
+    elif phase == "profiling":
+        valid_stages = (
+            profiling_started_ns == transition_ns
+            and profiling_finished_ns is None
+            and validation_started_ns is None
+            and validation_finished_ns is None
+        )
+    elif phase == "validation":
+        valid_stages = (
+            profiling_started_ns is not None
+            and profiling_finished_ns is not None
+            and profiling_started_ns <= profiling_finished_ns
+            and profiling_finished_ns == transition_ns
+            and validation_started_ns == transition_ns
+            and validation_finished_ns is None
+        )
+    elif phase == "complete":
+        valid_stages = (
+            profiling_started_ns is not None
+            and profiling_finished_ns is not None
+            and profiling_started_ns <= profiling_finished_ns
+            and validation_started_ns == profiling_finished_ns
+            and validation_finished_ns == transition_ns
+            and validation_started_ns <= validation_finished_ns
+        )
+    else:
+        valid_stages = True
+    if not valid_stages:
+        raise WorkerPhaseStateError(
+            "worker phase-state has inconsistent profiling/validation timestamps"
+        )
+    return (
+        phase,
+        transition_ns,
+        started_ns,
+        finished_ns,
+        profiling_started_ns,
+        profiling_finished_ns,
+        validation_started_ns,
+        validation_finished_ns,
+    )
 
 
 def read_worker_phase_state(
@@ -351,7 +593,16 @@ def read_worker_phase_state(
         raise WorkerPhaseStateError(
             "worker phase-state PID does not match supervised worker"
         )
-    phase, transition_ns, started_ns, finished_ns = _validated_timing(decoded)
+    (
+        phase,
+        transition_ns,
+        started_ns,
+        finished_ns,
+        profiling_started_ns,
+        profiling_finished_ns,
+        validation_started_ns,
+        validation_finished_ns,
+    ) = _validated_timing(decoded)
     return WorkerPhaseState(
         run_id=channel.run_id,
         worker_pid=worker_pid,
@@ -360,6 +611,10 @@ def read_worker_phase_state(
         transition_monotonic_ns=transition_ns,
         generation_started_monotonic_ns=started_ns,
         generation_finished_monotonic_ns=finished_ns,
+        profiling_started_monotonic_ns=profiling_started_ns,
+        profiling_finished_monotonic_ns=profiling_finished_ns,
+        validation_started_monotonic_ns=validation_started_ns,
+        validation_finished_monotonic_ns=validation_finished_ns,
         sha256=hashlib.sha256(raw).hexdigest(),
     )
 

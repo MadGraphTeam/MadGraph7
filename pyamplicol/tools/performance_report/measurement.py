@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import time
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -116,6 +117,39 @@ def _baseline_selector_contract(
     return SelectorContract.from_mapping(raw)
 
 
+def _measurement_selector_contract(
+    cell: CellSpec,
+    baseline: Mapping[str, object] | None,
+    selector_provider: Mapping[str, object] | None,
+) -> SelectorContract | None:
+    """Choose one canonical LC selector before candidate work starts."""
+
+    if cell.measurement.accuracy is not Accuracy.LC:
+        return None
+    baseline_contract = _baseline_selector_contract(baseline)
+    provider_contract: SelectorContract | None = None
+    if selector_provider is not None:
+        if selector_provider.get("status") != ResultStatus.OK.value:
+            raise RunnerError("LC selector provider is not a successful measurement")
+        try:
+            provider_contract = _baseline_selector_contract(selector_provider)
+        except (TypeError, ValueError) as error:
+            raise RunnerError("LC selector provider has an invalid contract") from error
+        if provider_contract is None:
+            raise RunnerError("LC selector provider has no selector_contract")
+    if (
+        baseline_contract is not None
+        and provider_contract is not None
+        and baseline_contract != provider_contract
+    ):
+        raise RunnerError(
+            "LC validation baseline and selected-flow selector provider disagree"
+        )
+    if baseline_contract is not None:
+        return baseline_contract
+    return provider_contract
+
+
 def _baseline_matrix_element(
     baseline: Mapping[str, object] | None,
 ) -> float | None:
@@ -183,6 +217,8 @@ def generated_artifact_from_measurement(
     preparation_seconds = provenance.get("model_preparation_seconds", 0.0)
     preparation_reused = provenance.get("model_preparation_reused", True)
     generation_command_path = provenance.get("generation_command_path")
+    numerical_relation_correctness = provenance.get("numerical_relation_correctness")
+    numerical_relation_fallback = provenance.get("numerical_relation_fallback")
     if (
         not isinstance(path, str)
         or not isinstance(process_id, str)
@@ -194,6 +230,14 @@ def generated_artifact_from_measurement(
         or (
             generation_command_path is not None
             and not isinstance(generation_command_path, str)
+        )
+        or (
+            numerical_relation_correctness is not None
+            and not isinstance(numerical_relation_correctness, Mapping)
+        )
+        or (
+            numerical_relation_fallback is not None
+            and not isinstance(numerical_relation_fallback, Mapping)
         )
     ):
         raise RunnerError("measurement reusable artifact metadata is malformed")
@@ -209,6 +253,16 @@ def generated_artifact_from_measurement(
         requested_config=dict(requested),
         effective_config=dict(effective),
         generation_command_path=generation_command_path,
+        numerical_relation_correctness=(
+            None
+            if numerical_relation_correctness is None
+            else dict(numerical_relation_correctness)
+        ),
+        numerical_relation_fallback=(
+            None
+            if numerical_relation_fallback is None
+            else dict(numerical_relation_fallback)
+        ),
     )
 
 
@@ -337,6 +391,7 @@ def measure_pyamplicol_cell(
     settings: RunnerSettings,
     repo_root: Path,
     baseline: Mapping[str, object] | None,
+    selector_provider: Mapping[str, object] | None = None,
     prepared_model_path: Path | None = None,
     reused_artifact: GeneratedArtifact | None = None,
     phase_reporter: WorkerPhaseReporter | None = None,
@@ -344,6 +399,7 @@ def measure_pyamplicol_cell(
     """Generate or retime one complete-coverage pyAmpliCol artifact."""
 
     _require_nonzero_lc_all_flow_baseline(cell, baseline)
+    contract = _measurement_selector_contract(cell, baseline, selector_provider)
     generated = (
         generate_artifact(
             cell,
@@ -378,15 +434,24 @@ def measure_pyamplicol_cell(
         if cell.measurement.model in {ModelKey.SCALAR_CONTACT, ModelKey.SCALAR_GRAVITY}
         else shared_validation_points(cell.process)
     )
-    contract = (
-        _baseline_selector_contract(baseline)
-        if cell.measurement.accuracy is Accuracy.LC
-        else None
-    )
     if cell.measurement.accuracy is Accuracy.LC and contract is None:
         from .runner import derive_selector_contract
 
         contract = derive_selector_contract(runtime, points)
+    if phase_reporter is not None:
+        phase_reporter.profiling_started()
+    profiling_deadlines = tuple(
+        deadline
+        for deadline in (
+            settings.worker_deadline_monotonic,
+            (
+                None
+                if settings.profiling_time_limit_seconds is None
+                else time.monotonic() + settings.profiling_time_limit_seconds
+            ),
+        )
+        if deadline is not None
+    )
     profile = profile_runtime(
         runtime,
         points,
@@ -394,11 +459,16 @@ def measure_pyamplicol_cell(
         benchmark_config=_resolution_benchmark_config(generated.effective_config),
         selector_contract=contract,
         progress=settings.progress,
+        profiling_deadline_monotonic=(
+            min(profiling_deadlines) if profiling_deadlines else None
+        ),
     )
     execution_timing = profile.pop("execution_timing")
     evaluator_total_timing = profile.pop("evaluator_total_timing", None)
     arena_profile_evidence = profile.pop("arena_profile_evidence")
     benchmark_evidence = profile.pop("benchmark_evidence")
+    if phase_reporter is not None:
+        phase_reporter.validation_started()
     validation: dict[str, object] = {
         "resolved_sum": profile.pop("resolved_sum_validation"),
         DIRECT_AGREEMENT_FIELD: [],
@@ -508,6 +578,24 @@ def measure_pyamplicol_cell(
                 "model_preparation_reused": generated.model_preparation_reused,
                 "generation_timer_excludes_model_preparation": True,
                 "generation_command_path": generated.generation_command_path,
+                **(
+                    {
+                        "numerical_relation_correctness": dict(
+                            generated.numerical_relation_correctness
+                        )
+                    }
+                    if generated.numerical_relation_correctness is not None
+                    else {}
+                ),
+                **(
+                    {
+                        "numerical_relation_fallback": dict(
+                            generated.numerical_relation_fallback
+                        )
+                    }
+                    if generated.numerical_relation_fallback is not None
+                    else {}
+                ),
                 "report_momenta": _reproduction_momenta(points),
                 "runtime_profile": benchmark_evidence,
                 "execution_timing": execution_timing,

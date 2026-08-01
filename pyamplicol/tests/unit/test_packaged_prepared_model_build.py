@@ -392,9 +392,47 @@ def test_candidate_wheel_staging_ignores_legacy_build_info_fingerprint(
     build_info_path = overlay / "src" / "pyamplicol" / "_build_info.json"
     build_info = json.loads(build_info_path.read_text(encoding="utf-8"))
     build_info["candidate_fingerprint"] = "0" * 12
+    version = str(build_info["version"])
+    build_info["version"] = version.rsplit("+candidate.", maxsplit=1)[0] + (
+        "+candidate." + "0" * 12
+    )
     build_info_path.write_text(json.dumps(build_info), encoding="utf-8")
 
     stage_packaged_prepared_models(overlay, "candidate")
+
+
+def test_candidate_wheel_staging_rejects_internal_producer_version_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    overlay = _overlay(tmp_path)
+    original_contract = prepared_models_module._load_prepared_contract(
+        overlay / "src/pyamplicol/models/prepared.py"
+    )
+
+    def load_with_mismatched_producer(path: Path) -> object:
+        bundle = original_contract.load_prepared_model_bundle(path)
+        compiled_model = dict(bundle.compiled_model)
+        producer = dict(compiled_model["producer"])
+        producer["pyamplicol"] = "0.1.0.dev0+candidate.000000000000"
+        compiled_model["producer"] = producer
+        return SimpleNamespace(
+            backend=bundle.backend,
+            compiled_model=compiled_model,
+            kernel_pack=bundle.kernel_pack,
+            manifest=bundle.manifest,
+        )
+
+    monkeypatch.setattr(
+        prepared_models_module,
+        "_load_prepared_contract",
+        lambda _path: SimpleNamespace(
+            load_prepared_model_bundle=load_with_mismatched_producer
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="package version disagrees with metadata"):
+        stage_packaged_prepared_models(overlay, "candidate")
 
 
 def test_wheel_staging_accepts_metadata_without_native_build_identity(

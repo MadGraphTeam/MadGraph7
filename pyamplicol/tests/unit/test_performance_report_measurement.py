@@ -11,6 +11,7 @@ from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.measurement import (
     _baseline_matrix_element,
     _baseline_selector_contract,
+    _measurement_selector_contract,
     _require_nonzero_lc_all_flow_baseline,
     _reuse_artifact_for_measurement,
     _stable_runtime_identity,
@@ -59,6 +60,122 @@ def test_baseline_contract_and_matrix_element_are_strict() -> None:
         _baseline_matrix_element({"status": "error"})
     with pytest.raises(RunnerError, match="no matrix element"):
         _baseline_matrix_element({"status": "ok", "matrix_element": None})
+
+
+def test_lc_selector_uses_baseline_then_selected_flow_provider() -> None:
+    cell = REPORT_CATALOG.cell(
+        "matrix-recurrence-builtin-sm-lc-n7-dd-4q-lines-all-flow"
+    )
+    baseline_contract = _contract()
+    provider_contract = SelectorContract(
+        selected_color_flow_ids=("flow:3,2,1",),
+        selected_color_words=((3, 2, 1),),
+        all_flow_helicity_ids=("h:+1,-1,+1",),
+        all_flow_source_helicities=((1, 1), (2, -1), (3, 1)),
+        point_digest="b" * 64,
+    )
+    baseline = {"selector_contract": baseline_contract.as_dict()}
+    matching_provider = {
+        "status": ResultStatus.OK.value,
+        "selector_contract": baseline_contract.as_dict(),
+    }
+    provider = {
+        "status": ResultStatus.OK.value,
+        "selector_contract": provider_contract.as_dict(),
+    }
+
+    assert _measurement_selector_contract(cell, baseline, matching_provider) == (
+        baseline_contract
+    )
+    assert _measurement_selector_contract(cell, None, provider) == provider_contract
+
+
+@pytest.mark.parametrize(
+    "provider",
+    (
+        {"status": ResultStatus.ERROR.value},
+        {"status": ResultStatus.OK.value},
+        {
+            "status": ResultStatus.OK.value,
+            "selector_contract": {"selected_color_flow_ids": []},
+        },
+    ),
+)
+def test_invalid_lc_selector_provider_fails_before_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    provider: dict[str, object],
+) -> None:
+    import tools.performance_report.measurement as report_measurement
+
+    cell = REPORT_CATALOG.cell(
+        "matrix-recurrence-builtin-sm-lc-n7-dd-4q-lines-all-flow"
+    )
+    generation_called = False
+
+    def unexpected_generation(*_args: object, **_kwargs: object) -> None:
+        nonlocal generation_called
+        generation_called = True
+
+    monkeypatch.setattr(report_measurement, "generate_artifact", unexpected_generation)
+
+    with pytest.raises((RunnerError, ValueError)):
+        measure_pyamplicol_cell(
+            cell,
+            artifact_path=tmp_path / "artifact",
+            settings=RunnerSettings(),
+            repo_root=tmp_path,
+            baseline=None,
+            selector_provider=provider,
+        )
+
+    assert not generation_called
+
+
+def test_differing_baseline_and_peer_selectors_fail_before_generation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import tools.performance_report.measurement as report_measurement
+
+    cell = REPORT_CATALOG.cell(
+        "matrix-compiled-builtin-sm-lc-n2-ud-epve-jets-all-flow"
+    )
+    provider_contract = SelectorContract(
+        selected_color_flow_ids=("flow:3,2,1",),
+        selected_color_words=((3, 2, 1),),
+        all_flow_helicity_ids=("h:+1,-1,+1",),
+        all_flow_source_helicities=((1, 1), (2, -1), (3, 1)),
+        point_digest="b" * 64,
+    )
+    baseline = {
+        "status": ResultStatus.OK.value,
+        "selector_contract": _contract().as_dict(),
+        "validation": {"lc_common_component": {"value": 1.0}},
+    }
+    provider = {
+        "status": ResultStatus.OK.value,
+        "selector_contract": provider_contract.as_dict(),
+    }
+    generation_called = False
+
+    def unexpected_generation(*_args: object, **_kwargs: object) -> None:
+        nonlocal generation_called
+        generation_called = True
+
+    monkeypatch.setattr(report_measurement, "generate_artifact", unexpected_generation)
+
+    with pytest.raises(RunnerError, match=r"baseline and selected-flow.*disagree"):
+        measure_pyamplicol_cell(
+            cell,
+            artifact_path=tmp_path / "artifact",
+            settings=RunnerSettings(),
+            repo_root=tmp_path,
+            baseline=baseline,
+            selector_provider=provider,
+        )
+
+    assert not generation_called
 
 
 def test_lc_all_flow_baseline_must_authenticate_nonzero_common_component() -> None:
@@ -199,18 +316,53 @@ def test_reusable_artifact_retains_generation_command_path(tmp_path: Path) -> No
             "model_preparation_seconds": 0.25,
             "model_preparation_reused": True,
             "generation_command_path": PUBLIC_CLI_COMMAND_PATH,
+            "numerical_relation_correctness": {
+                "abi": "pyamplicol-numerical-current-relation-correctness-v1",
+                "state": "no-applied-relations",
+                "applied_relation_count": 0,
+            },
+            "numerical_relation_fallback": {
+                "abi": "pyamplicol-numerical-current-reuse-fallback-v1",
+                "requested_mode": "certified-reuse",
+                "effective_mode": "off",
+                "effective_reuse_state": "disabled",
+                "reason": "evidence-envelope-fallback",
+                "geometry": {"current_count": 4},
+                "certified_relation_count": 0,
+                "applied_relation_count": 0,
+            },
         },
     }
 
     artifact = generated_artifact_from_measurement(measurement)
 
     assert artifact.generation_command_path == PUBLIC_CLI_COMMAND_PATH
+    assert artifact.numerical_relation_correctness == {
+        "abi": "pyamplicol-numerical-current-relation-correctness-v1",
+        "state": "no-applied-relations",
+        "applied_relation_count": 0,
+    }
+    assert artifact.numerical_relation_fallback == {
+        "abi": "pyamplicol-numerical-current-reuse-fallback-v1",
+        "requested_mode": "certified-reuse",
+        "effective_mode": "off",
+        "effective_reuse_state": "disabled",
+        "reason": "evidence-envelope-fallback",
+        "geometry": {"current_count": 4},
+        "certified_relation_count": 0,
+        "applied_relation_count": 0,
+    }
 
     del measurement["provenance"]["generation_command_path"]
     legacy = generated_artifact_from_measurement(measurement)
     assert legacy.generation_command_path is None
 
     measurement["provenance"]["generation_command_path"] = 42
+    with pytest.raises(RunnerError, match="reusable artifact metadata is malformed"):
+        generated_artifact_from_measurement(measurement)
+
+    measurement["provenance"]["generation_command_path"] = PUBLIC_CLI_COMMAND_PATH
+    measurement["provenance"]["numerical_relation_fallback"] = 42
     with pytest.raises(RunnerError, match="reusable artifact metadata is malformed"):
         generated_artifact_from_measurement(measurement)
 
@@ -237,6 +389,21 @@ def test_measurement_persists_generation_and_runtime_command_paths(
         requested_config={},
         effective_config={},
         generation_command_path=PUBLIC_CLI_COMMAND_PATH,
+        numerical_relation_correctness={
+            "abi": "pyamplicol-numerical-current-relation-correctness-v1",
+            "state": "no-applied-relations",
+            "applied_relation_count": 0,
+        },
+        numerical_relation_fallback={
+            "abi": "pyamplicol-numerical-current-reuse-fallback-v1",
+            "requested_mode": "certified-reuse",
+            "effective_mode": "off",
+            "effective_reuse_state": "disabled",
+            "reason": "evidence-envelope-fallback",
+            "geometry": {"current_count": 4},
+            "certified_relation_count": 0,
+            "applied_relation_count": 0,
+        },
     )
 
     class Runtime:
@@ -309,6 +476,9 @@ def test_measurement_persists_generation_and_runtime_command_paths(
 
     provenance = measurement["provenance"]
     assert provenance["generation_command_path"] == PUBLIC_CLI_COMMAND_PATH
+    assert provenance["numerical_relation_fallback"]["reason"] == (
+        "evidence-envelope-fallback"
+    )
     assert provenance["report_momenta"] == [[1.0]]
     assert (
         provenance["runtime_profile"]["report_command_path"]

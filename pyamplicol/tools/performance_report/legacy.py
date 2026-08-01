@@ -45,6 +45,7 @@ from .models import (
 from .phase_state import WorkerPhaseReporter
 from .runner import (
     DEFAULT_TARGET_RUNTIME_SECONDS,
+    ProfilingTimeLimitError,
     SelectorContract,
     point_digest,
 )
@@ -73,6 +74,8 @@ class LegacySettings:
     repository: Path | None = None
     validate_checkout: bool = True
     source_revision: str | None = None
+    profiling_time_limit_seconds: float | None = None
+    worker_deadline_monotonic: float | None = None
 
     def __post_init__(self) -> None:
         if self.target_runtime_seconds <= 0.0:
@@ -97,6 +100,12 @@ class LegacySettings:
             r"[0-9a-f]{40}", self.source_revision
         ) is None:
             raise ValueError("source_revision must be lowercase 40-hex")
+        for name, value in (
+            ("profiling_time_limit_seconds", self.profiling_time_limit_seconds),
+            ("worker_deadline_monotonic", self.worker_deadline_monotonic),
+        ):
+            if value is not None and (not math.isfinite(value) or value <= 0.0):
+                raise ValueError(f"{name} must be finite and positive when specified")
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,6 +226,7 @@ class LegacyApi(Protocol):
         entry: object,
         source_pdgs: Sequence[int],
         momenta: Sequence[Sequence[float]],
+        helicities: Sequence[int],
         points: int,
     ) -> object: ...
 
@@ -320,6 +330,7 @@ class MaintainedLegacyApi:
         entry: object,
         source_pdgs: Sequence[int],
         momenta: Sequence[Sequence[float]],
+        helicities: Sequence[int],
         points: int,
     ) -> object:
         return self._api.run_selected_flow_library_probe(
@@ -327,6 +338,7 @@ class MaintainedLegacyApi:
             entry=entry,
             source_pdgs=source_pdgs,
             momenta=momenta,
+            helicities=helicities,
             points=points,
         )
 
@@ -447,6 +459,12 @@ class _ProcessContext:
     points: tuple[tuple[tuple[float, ...], ...], ...]
     mapped_color_order: tuple[int, ...]
     selector_contract: SelectorContract
+
+
+@dataclass(frozen=True, slots=True)
+class _SelectedFlowMeasurement:
+    measurement: dict[str, object]
+    fixed_helicity_value: float
 
 
 def _initial_state_count(process: str) -> int:
@@ -818,6 +836,9 @@ class LegacyMeasurementAdapter:
                     "method": "original-amplicol-scope-boundary",
                     "revision": revision,
                 }
+            if phase_reporter is not None:
+                phase_reporter.profiling_started()
+                phase_reporter.validation_started()
             return result
 
         repository = settings.repository or self.api.default_repository
@@ -869,7 +890,7 @@ class LegacyMeasurementAdapter:
         )
         if cell.measurement.accuracy is Accuracy.LC:
             if cell.workload is Workload.SELECTED_FLOW:
-                result = self._measure_selected_flow(
+                selected = self._measure_selected_flow(
                     cell,
                     context=context,
                     repository=repository,
@@ -879,6 +900,7 @@ class LegacyMeasurementAdapter:
                     log_path=log_path,
                     phase_reporter=phase_reporter,
                 )
+                result = selected.measurement
             elif cell.workload is Workload.ALL_FLOW:
                 result = self._measure_all_flow(
                     cell,
@@ -926,12 +948,20 @@ class LegacyMeasurementAdapter:
             DIRECT_AGREEMENT_FIELD: [],
         }
         if cell.measurement.accuracy is Accuracy.LC:
-            common_component = self._measure_lc_common_component(
-                cell,
-                context=context,
-                repository=repository,
-                commands=commands,
-                log_path=log_path,
+            common_component = (
+                legacy_lc_common_component(
+                    cell,
+                    context.selector_contract,
+                    selected.fixed_helicity_value,
+                )
+                if cell.workload is Workload.SELECTED_FLOW
+                else self._measure_lc_common_component(
+                    cell,
+                    context=context,
+                    repository=repository,
+                    commands=commands,
+                    log_path=log_path,
+                )
             )
             result["validation"][LC_COMMON_COMPONENT_FIELD] = common_component
             if cell.workload is Workload.ALL_FLOW and (
@@ -1007,17 +1037,27 @@ class LegacyMeasurementAdapter:
         """Probe the fixed-helicity/fixed-flow component common to both lanes."""
 
         if cell.workload is Workload.SELECTED_FLOW:
-            self._run(
-                ("make", "amplicol_color_probe"),
-                cwd=repository,
-                commands=commands,
-                log_path=log_path,
+            raise LegacyAdapterError(
+                "selected-flow LC common components must come from the generated "
+                "library probe"
             )
         helicities = tuple(
             value
             for _label, value in (context.selector_contract.all_flow_source_helicities)
         )
-        started = time.perf_counter()
+        probe_args = (
+            "legacy_amplicol.run_color_probe",
+            Accuracy.LC.value,
+            "fixed-helicity",
+            "points=1",
+        )
+        record_index, started = self._record_api_launch(
+            probe_args,
+            cwd=repository,
+            commands=commands,
+            log_path=log_path,
+            intended_points=1,
+        )
         probe = self.api.run_color_probe(
             repository,
             process_file=context.process_file,
@@ -1027,18 +1067,12 @@ class LegacyMeasurementAdapter:
             color_accuracy=Accuracy.LC.value,
             helicities=helicities,
         )
-        commands.append(
-            {
-                "args": [
-                    "legacy_amplicol.run_color_probe",
-                    Accuracy.LC.value,
-                    "fixed-helicity",
-                    "points=1",
-                ],
-                "cwd": os.fspath(repository),
-                "elapsed_seconds": time.perf_counter() - started,
-                "returncode": 0,
-            }
+        self._finish_api_launch(
+            record_index,
+            probe_args,
+            cwd=repository,
+            commands=commands,
+            started=started,
         )
         partitions = tuple(getattr(probe, "lc_row_partitions", ()))
         if not partitions:
@@ -1340,7 +1374,7 @@ class LegacyMeasurementAdapter:
         commands: list[dict[str, object]],
         log_path: Path,
         phase_reporter: WorkerPhaseReporter | None,
-    ) -> dict[str, object]:
+    ) -> _SelectedFlowMeasurement:
         generation_seconds = self._generate_library(
             context=context,
             repository=repository,
@@ -1378,32 +1412,63 @@ class LegacyMeasurementAdapter:
             ),
             settings=settings,
             timing_labels=("amplitude evaluation", "total"),
+            phase_reporter=phase_reporter,
         )
+        if phase_reporter is not None:
+            phase_reporter.validation_started()
         with _temporary_environment(environment):
-            probe_started = time.perf_counter()
+            fixed_helicities = tuple(
+                value
+                for _label, value in (
+                    context.selector_contract.all_flow_source_helicities
+                )
+            )
+            probe_args = (
+                "legacy_amplicol.run_selected_flow_library_probe",
+                os.fspath(generated),
+                "points=1",
+                "helicities=" + ",".join(f"{value:+d}" for value in fixed_helicities),
+            )
+            record_index, probe_started = self._record_api_launch(
+                probe_args,
+                cwd=generated,
+                commands=commands,
+                log_path=log_path,
+                intended_points=1,
+            )
             probe = self.api.run_selected_flow_probe(
                 generated,
                 entry=context.entry,
                 source_pdgs=context.source_pdgs,
                 momenta=context.momenta,
+                helicities=fixed_helicities,
                 points=1,
             )
-            probe_record = {
-                "args": [
-                    "legacy_amplicol.run_selected_flow_library_probe",
-                    os.fspath(generated),
-                    "points=1",
-                ],
-                "cwd": os.fspath(generated),
-                "elapsed_seconds": time.perf_counter() - probe_started,
-                "returncode": 0,
-            }
-            commands.append(probe_record)
-        return self._success_measurement(
-            generation_seconds=generation_seconds,
-            profile=profile,
-            matrix_element=float(probe.value),
-            generation_source="generated-library-create-mode-1",
+            self._finish_api_launch(
+                record_index,
+                probe_args,
+                cwd=generated,
+                commands=commands,
+                started=probe_started,
+            )
+        fixed_helicity_value = getattr(probe, "fixed_helicity_value", None)
+        if (
+            isinstance(fixed_helicity_value, bool)
+            or not isinstance(fixed_helicity_value, (int, float))
+            or not math.isfinite(float(fixed_helicity_value))
+        ):
+            raise LegacyAdapterError(
+                "selected-flow generated-library probe emitted no finite "
+                "fixed-helicity component"
+            )
+        return _SelectedFlowMeasurement(
+            measurement=self._success_measurement(
+                generation_seconds=generation_seconds,
+                profile=profile,
+                matrix_element=float(probe.value),
+                generation_source="generated-library-create-mode-1",
+            ),
+            fixed_helicity_value=float(fixed_helicity_value),
         )
 
     def _measure_all_flow(
@@ -1489,7 +1554,10 @@ class LegacyMeasurementAdapter:
                 ),
                 settings=settings,
                 timing_labels=("amplitude evaluation", "total"),
+                phase_reporter=phase_reporter,
             )
+            if phase_reporter is not None:
+                phase_reporter.validation_started()
             if phase_reporter is None:
                 # Preserve the unsupervised adapter's historical single-profile
                 # behavior.  Campaign workers always supply a reporter and use
@@ -1614,7 +1682,10 @@ class LegacyMeasurementAdapter:
             ),
             settings=settings,
             timing_labels=("total",),
+            phase_reporter=phase_reporter,
         )
+        if phase_reporter is not None:
+            phase_reporter.validation_started()
         if self.structural_proof:
             from .legacy_structure import (
                 STRUCTURAL_PROBE_ENVIRONMENT,
@@ -1645,7 +1716,18 @@ class LegacyMeasurementAdapter:
                 stdout=structural.stdout,
                 stderr=structural.stderr,
             )
-        probe_started = time.perf_counter()
+        probe_args = (
+            "legacy_amplicol.run_color_probe",
+            cell.measurement.accuracy.value,
+            "points=1",
+        )
+        record_index, probe_started = self._record_api_launch(
+            probe_args,
+            cwd=repository,
+            commands=commands,
+            log_path=log_path,
+            intended_points=1,
+        )
         probe = self.api.run_color_probe(
             repository,
             process_file=context.process_file,
@@ -1655,17 +1737,12 @@ class LegacyMeasurementAdapter:
             color_accuracy=cell.measurement.accuracy.value,
             helicities=None,
         )
-        commands.append(
-            {
-                "args": [
-                    "legacy_amplicol.run_color_probe",
-                    cell.measurement.accuracy.value,
-                    "points=1",
-                ],
-                "cwd": os.fspath(repository),
-                "elapsed_seconds": time.perf_counter() - probe_started,
-                "returncode": 0,
-            }
+        self._finish_api_launch(
+            record_index,
+            probe_args,
+            cwd=repository,
+            commands=commands,
+            started=probe_started,
         )
         return self._success_measurement(
             generation_seconds=generation_seconds,
@@ -1748,7 +1825,10 @@ class LegacyMeasurementAdapter:
                 ),
                 settings=settings,
                 timing_labels=("total",),
+                phase_reporter=phase_reporter,
             )
+            if phase_reporter is not None:
+                phase_reporter.validation_started()
             if phase_reporter is None:
                 generation_rows = profile.rows
                 generation_probe = profile.probe
@@ -1803,8 +1883,47 @@ class LegacyMeasurementAdapter:
         *,
         settings: LegacySettings,
         timing_labels: Sequence[str],
+        phase_reporter: WorkerPhaseReporter | None = None,
     ) -> ProfileResult:
-        warmup_result, warmup_rows, _warmup_probe = invoke(settings.warmup_points)
+        if phase_reporter is not None:
+            phase_reporter.profiling_started()
+        deadlines = tuple(
+            deadline
+            for deadline in (
+                settings.worker_deadline_monotonic,
+                (
+                    None
+                    if settings.profiling_time_limit_seconds is None
+                    else time.monotonic() + settings.profiling_time_limit_seconds
+                ),
+            )
+            if deadline is not None
+        )
+        profiling_deadline = min(deadlines) if deadlines else None
+
+        def require_chunk_budget(estimated_seconds: float | None, points: int) -> None:
+            if profiling_deadline is None:
+                return
+            remaining = profiling_deadline - time.monotonic()
+            if remaining <= 0.0 or (
+                estimated_seconds is not None and estimated_seconds > remaining
+            ):
+                estimate = (
+                    "unknown"
+                    if estimated_seconds is None
+                    else f"{estimated_seconds:.6g}s"
+                )
+                raise ProfilingTimeLimitError(
+                    "profiling stage has insufficient remaining budget for "
+                    f"legacy {points}-point chunk: "
+                    f"remaining={max(remaining, 0.0):.6g}s, estimated={estimate}"
+                )
+        # Calibrate with the smallest valid request.  A fixed 100-point first
+        # call can itself run far beyond the intended stage budget for a large
+        # original-AmpliCol process.
+        calibration_points = 1
+        require_chunk_budget(None, calibration_points)
+        warmup_result, warmup_rows, _warmup_probe = invoke(calibration_points)
         warmup_seconds = _timing_seconds(warmup_rows, *timing_labels)
         if warmup_seconds is None or warmup_seconds <= 0.0:
             warmup_seconds = warmup_result.elapsed_seconds
@@ -1815,12 +1934,14 @@ class LegacyMeasurementAdapter:
             target_runtime_seconds=(
                 settings.target_runtime_seconds / settings.minimum_profile_chunks
             ),
-            warmup_points=settings.warmup_points,
+            warmup_points=calibration_points,
             minimum_points=settings.minimum_points,
             maximum_points=settings.maximum_points,
         )
         measured_seconds = 0.0
+        estimated_seconds = warmup_seconds * points / calibration_points
         for _index in range(settings.maximum_profile_chunks):
+            require_chunk_budget(estimated_seconds, points)
             result, rows, probe = invoke(points)
             seconds = _timing_seconds(rows, *timing_labels)
             if seconds is None or seconds <= 0.0:
@@ -1864,6 +1985,7 @@ class LegacyMeasurementAdapter:
                 settings.minimum_points,
                 min(settings.maximum_points, int(estimated)),
             )
+            estimated_seconds = seconds * points / chunks[-1].points
         else:
             raise LegacyAdapterError(
                 "legacy timing did not reach its target, minimum sample "
@@ -1981,10 +2103,29 @@ class LegacyMeasurementAdapter:
         log_path: Path,
         environment: Mapping[str, str] | None = None,
     ) -> CommandResult:
-        result = self.executor.run(args, cwd=cwd, environment=environment)
-        commands.append(result.as_record())
+        rendered = tuple(os.fspath(item) for item in args)
+        launch_record: dict[str, object] = {
+            "args": list(rendered),
+            "cwd": os.fspath(cwd.resolve(strict=False)),
+            "environment": {} if environment is None else dict(environment),
+            "status": "launching",
+        }
+        try:
+            intended_points = int(rendered[1])
+        except (IndexError, ValueError):
+            intended_points = None
+        if intended_points is not None and intended_points > 0:
+            launch_record["intended_points"] = intended_points
+        record_index = len(commands)
+        commands.append(launch_record)
         with log_path.open("a", encoding="utf-8") as stream:
-            stream.write(f"$ {' '.join(result.args)}\n")
+            stream.write(f"$ {' '.join(rendered)}\n")
+            if intended_points is not None and intended_points > 0:
+                stream.write(f"[launch] intended_points={intended_points}\n")
+            stream.flush()
+        result = self.executor.run(rendered, cwd=cwd, environment=environment)
+        commands[record_index] = result.as_record()
+        with log_path.open("a", encoding="utf-8") as stream:
             stream.write(result.stdout)
             if result.stdout and not result.stdout.endswith("\n"):
                 stream.write("\n")
@@ -1992,6 +2133,47 @@ class LegacyMeasurementAdapter:
             if result.stderr and not result.stderr.endswith("\n"):
                 stream.write("\n")
         return result
+
+    @staticmethod
+    def _record_api_launch(
+        args: Sequence[str | os.PathLike[str]],
+        *,
+        cwd: Path,
+        commands: list[dict[str, object]],
+        log_path: Path,
+        intended_points: int,
+    ) -> tuple[int, float]:
+        rendered = tuple(os.fspath(item) for item in args)
+        record_index = len(commands)
+        commands.append(
+            {
+                "args": list(rendered),
+                "cwd": os.fspath(cwd.resolve(strict=False)),
+                "intended_points": intended_points,
+                "status": "launching",
+            }
+        )
+        with log_path.open("a", encoding="utf-8") as stream:
+            stream.write(f"$ {' '.join(rendered)}\n")
+            stream.write(f"[launch] intended_points={intended_points}\n")
+            stream.flush()
+        return record_index, time.perf_counter()
+
+    @staticmethod
+    def _finish_api_launch(
+        record_index: int,
+        args: Sequence[str | os.PathLike[str]],
+        *,
+        cwd: Path,
+        commands: list[dict[str, object]],
+        started: float,
+    ) -> None:
+        commands[record_index] = {
+            "args": [os.fspath(item) for item in args],
+            "cwd": os.fspath(cwd.resolve(strict=False)),
+            "elapsed_seconds": time.perf_counter() - started,
+            "returncode": 0,
+        }
 
     @staticmethod
     def _success_measurement(

@@ -197,6 +197,17 @@ class BenchmarkBackend:
             else config or BenchmarkConfig()
         )
         self._progress = progress
+        self._chunk_guard: Callable[[float | None, str], None] | None = None
+
+    def set_chunk_guard(
+        self,
+        guard: Callable[[float | None, str], None],
+    ) -> None:
+        """Install a report-owned guard called before every profiling chunk."""
+
+        if not callable(guard):
+            raise TypeError("benchmark chunk guard must be callable")
+        self._chunk_guard = guard
 
     def run(
         self,
@@ -244,6 +255,18 @@ class BenchmarkBackend:
         native_wall_timer = (
             _native_wall_timer(runtime) if self._config.precision == 16 else None
         )
+        timer_seconds_per_repetition: float | None = None
+        profiler_seconds_per_repetition: float | None = None
+        chunk_guard_failure: Exception | None = None
+
+        def guard_chunk(estimated_seconds: float | None, description: str) -> None:
+            nonlocal chunk_guard_failure
+            if self._chunk_guard is not None:
+                try:
+                    self._chunk_guard(estimated_seconds, description)
+                except Exception as error:
+                    chunk_guard_failure = error
+                    raise
 
         def evaluate_once() -> object:
             return runtime.evaluate(
@@ -254,15 +277,73 @@ class BenchmarkBackend:
             )
 
         def measure_repetitions(repetitions: int) -> float:
+            nonlocal timer_seconds_per_repetition
+            estimate = (
+                None
+                if timer_seconds_per_repetition is None
+                else timer_seconds_per_repetition * repetitions
+            )
+            guard_chunk(estimate, "runtime evaluator timing chunk")
             if native_wall_timer is not None:
-                return native_wall_timer(
+                observed = native_wall_timer(
                     batch,
                     repetitions,
                     helicities=helicities,
                     color_flows=color_flows,
                     precision=self._config.precision,
                 )
-            return _timed_repetitions(evaluate_once, repetitions)
+            else:
+                observed = _timed_repetitions(evaluate_once, repetitions)
+            timer_seconds_per_repetition = observed / repetitions
+            return observed
+
+        def profile_repetitions(
+            repetitions: int,
+            *,
+            measure_elapsed: bool = True,
+        ) -> tuple[object, float]:
+            nonlocal profiler_seconds_per_repetition
+            estimated_per_repetition = (
+                profiler_seconds_per_repetition
+                if profiler_seconds_per_repetition is not None
+                else timer_seconds_per_repetition
+            )
+            estimate = (
+                None
+                if estimated_per_repetition is None
+                else estimated_per_repetition * repetitions
+            )
+            guard_chunk(estimate, "runtime attribution chunk")
+            started = time.perf_counter() if measure_elapsed else None
+            if repeated_profiler is not None:
+                result = repeated_profiler(
+                    batch,
+                    repetitions,
+                    helicities=helicities,
+                    color_flows=color_flows,
+                    precision=self._config.precision,
+                    include_values=False,
+                )
+                divisor = repetitions
+            elif profiler is not None:
+                result = profiler(
+                    batch,
+                    helicities=helicities,
+                    color_flows=color_flows,
+                    precision=self._config.precision,
+                    include_values=False,
+                )
+                divisor = 1
+            else:  # pragma: no cover - caller checks profiler availability.
+                raise EvaluationError("runtime profiler is unavailable")
+            elapsed_seconds = (
+                (time.perf_counter() - started)
+                if started is not None
+                else (estimate or 0.0)
+            )
+            if elapsed_seconds > 0.0:
+                profiler_seconds_per_repetition = elapsed_seconds / divisor
+            return result, elapsed_seconds
 
         task_id = "runtime-benchmark"
         calibration_task_id = "runtime-profile-calibration"
@@ -293,23 +374,8 @@ class BenchmarkBackend:
             for warmup_index in range(self._config.warmup_runs):
                 warmup_started = time.perf_counter()
                 last_warmup_seconds = measure_repetitions(1)
-                if repeated_profiler is not None:
-                    repeated_profiler(
-                        batch,
-                        1,
-                        helicities=helicities,
-                        color_flows=color_flows,
-                        precision=self._config.precision,
-                        include_values=False,
-                    )
-                elif profiler is not None:
-                    profiler(
-                        batch,
-                        helicities=helicities,
-                        color_flows=color_flows,
-                        precision=self._config.precision,
-                        include_values=False,
-                    )
+                if repeated_profiler is not None or profiler is not None:
+                    profile_repetitions(1, measure_elapsed=False)
                 warmup_elapsed += time.perf_counter() - warmup_started
                 if self._progress is not None:
                     self._progress.emit(
@@ -328,9 +394,7 @@ class BenchmarkBackend:
                 initial_seconds=last_warmup_seconds,
                 timer=measure_repetitions,
             )
-            calibration_outer_elapsed = (
-                time.perf_counter() - calibration_outer_started
-            )
+            calibration_outer_elapsed = time.perf_counter() - calibration_outer_started
             if self._progress is not None:
                 self._progress.emit(
                     ProgressEnd(
@@ -381,16 +445,7 @@ class BenchmarkBackend:
                         repetitions * len(batch)
                     )
                     if repeated_profiler is not None:
-                        profile_started = time.perf_counter()
-                        profile = repeated_profiler(
-                            batch,
-                            repetitions,
-                            helicities=helicities,
-                            color_flows=color_flows,
-                            precision=self._config.precision,
-                            include_values=False,
-                        )
-                        profile_duration = time.perf_counter() - profile_started
+                        profile, profile_duration = profile_repetitions(repetitions)
                         native_sample = _native_profile_sample(
                             profile,
                             len(batch) * repetitions,
@@ -406,15 +461,7 @@ class BenchmarkBackend:
                         and native_profile_samples is not None
                         and sample_index < native_profile_sample_limit
                     ):
-                        profile_started = time.perf_counter()
-                        profile = profiler(
-                            batch,
-                            helicities=helicities,
-                            color_flows=color_flows,
-                            precision=self._config.precision,
-                            include_values=False,
-                        )
-                        profile_duration = time.perf_counter() - profile_started
+                        profile, profile_duration = profile_repetitions(1)
                         native_sample = _native_profile_sample(profile, len(batch))
 
                     samples.append(sample_seconds_per_point)
@@ -520,6 +567,8 @@ class BenchmarkBackend:
                     ProgressEnd(active_task_id, success=False, message=str(exc))
                 )
             if isinstance(exc, EvaluationError):
+                raise
+            if exc is chunk_guard_failure:
                 raise
             raise EvaluationError(f"runtime benchmark failed: {exc}") from exc
         if self._progress is not None and not interrupted:

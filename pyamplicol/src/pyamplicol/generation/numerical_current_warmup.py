@@ -26,12 +26,16 @@ from .dag_equivalence import (
     NUMERICAL_CURRENT_CAPTURE_OUTPUT_PARTITION_ABI,
     NumericalCurrentObservationDiscoveryResult,
     NumericalCurrentRelationApplicationResult,
+    NumericalCurrentRelationCertificate,
     apply_numerical_current_relation_certificates,
     discover_generic_dag_numerical_current_relations,
     generic_dag_numerical_capture_output_partition_sha256,
     generic_dag_numerical_source_semantics_sha256,
 )
 from .dag_types import GenericDAG
+from .recurrence_numerical_current_warmup import (
+    numerical_relation_correctness_payload,
+)
 from .runtime_schema import build_runtime_expression_schema
 from .stage_planning import build_generic_stage_compiler_blueprint
 from .stage_types import GenericCompiledStageBlueprint
@@ -44,9 +48,7 @@ from .validation import (
 _ComplexDecimal = tuple[Decimal, Decimal]
 _CAPTURE_ABI = NUMERICAL_CURRENT_CAPTURE_ABI
 _WARMUP_ABI = "pyamplicol-generic-dag-numerical-current-warmup-v1"
-_CAPTURE_OUTPUT_PARTITION_ABI = (
-    NUMERICAL_CURRENT_CAPTURE_OUTPUT_PARTITION_ABI
-)
+_CAPTURE_OUTPUT_PARTITION_ABI = NUMERICAL_CURRENT_CAPTURE_OUTPUT_PARTITION_ABI
 _NUMERICAL_DECIMAL_GUARD_DIGITS = 16
 
 
@@ -89,14 +91,10 @@ class GenericDAGCurrentObservationCapture:
                 [_decimal_string(value) for value in context]
                 for context in self.parameter_contexts
             ],
-            "parameter_context_sha256s": list(
-                self.parameter_context_sha256s
-            ),
+            "parameter_context_sha256s": list(self.parameter_context_sha256s),
             "current_count": self.current_count,
             "runtime_schema_sha256": self.runtime_schema_sha256,
-            "model_parameter_schema_sha256": (
-                self.model_parameter_schema_sha256
-            ),
+            "model_parameter_schema_sha256": (self.model_parameter_schema_sha256),
             "source_dag_sha256": self.source_dag_sha256,
             "evaluator_output_partition": {
                 "abi": self.evaluator_output_partition_abi,
@@ -131,9 +129,7 @@ class _PartitionedCurrentCaptureStageEvaluator:
             or len(self.evaluators) != len(self.output_partitions)
             or not self.evaluators
         ):
-            raise ValueError(
-                "numerical current partitioned evaluator shape is invalid"
-            )
+            raise ValueError("numerical current partitioned evaluator shape is invalid")
         expected_output_start = 0
         for evaluator, indices, partition in zip(
             self.evaluators,
@@ -147,15 +143,10 @@ class _PartitionedCurrentCaptureStageEvaluator:
                 or stop <= start
                 or stop > self.output_len
                 or any(
-                    type(index) is not int
-                    or index < 0
-                    or index >= self.input_len
+                    type(index) is not int or index < 0 or index >= self.input_len
                     for index in indices
                 )
-                or any(
-                    left >= right
-                    for left, right in pairwise(indices)
-                )
+                or any(left >= right for left, right in pairwise(indices))
                 or getattr(evaluator, "input_len", None) != len(indices)
             ):
                 raise ValueError(
@@ -164,8 +155,7 @@ class _PartitionedCurrentCaptureStageEvaluator:
             expected_output_start = stop
         if expected_output_start != self.output_len:
             raise ValueError(
-                "numerical current partitioned evaluator outputs are not "
-                "exhaustive"
+                "numerical current partitioned evaluator outputs are not exhaustive"
             )
 
     def evaluate_complex_with_prec(
@@ -240,16 +230,20 @@ class GenericDAGNumericalCurrentWarmupResult:
     application_validation: Mapping[str, object]
     discovery: NumericalCurrentObservationDiscoveryResult
     application: NumericalCurrentRelationApplicationResult
+    application_scope: Mapping[str, object]
 
     @property
     def warning_required(self) -> bool:
         return self.application.report.warning_required
 
     def to_json_dict(self) -> dict[str, object]:
+        applied_relation_count = self.application.report.applied_relation_count
         return {
             "schema_version": 1,
             "abi": _WARMUP_ABI,
             "requested_mode": self.requested_mode,
+            "effective_mode": self.requested_mode,
+            "effective_reuse_state": "enabled",
             "state": self.application.report.state,
             "scope": {
                 "execution_mode": self.execution_mode,
@@ -257,33 +251,25 @@ class GenericDAGNumericalCurrentWarmupResult:
                 "representation": "generic-dag",
             },
             "source_semantics": {
-                "sha256": (
-                    self.application.report.source_semantics_sha256
-                ),
+                "sha256": (self.application.report.source_semantics_sha256),
             },
-            "candidate_capture": (
-                self.candidate_capture.to_provenance_dict()
-            ),
-            "verification_capture": (
-                self.verification_capture.to_provenance_dict()
-            ),
+            "candidate_capture": (self.candidate_capture.to_provenance_dict()),
+            "verification_capture": (self.verification_capture.to_provenance_dict()),
             "application_capture": (
                 None
                 if self.application_capture is None
                 else self.application_capture.to_provenance_dict()
             ),
             "application_validation": dict(self.application_validation),
+            "application_scope": dict(self.application_scope),
             "discovery": self.discovery.report.to_json_dict(),
             "application": self.application.report.to_json_dict(),
-            "certified_relation_count": len(
-                self.discovery.certificates
+            "certified_relation_count": len(self.discovery.certificates),
+            "applied_relation_count": applied_relation_count,
+            "relation_correctness": numerical_relation_correctness_payload(
+                applied_relation_count
             ),
-            "applied_relation_count": (
-                self.application.report.applied_relation_count
-            ),
-            "warning": (
-                self.application.report.to_json_dict()["warning"]
-            ),
+            "warning": (self.application.report.to_json_dict()["warning"]),
         }
 
 
@@ -300,6 +286,12 @@ def run_generic_dag_numerical_current_warmup(
     relative_tolerance: float,
     absolute_tolerance: float,
     seed: int,
+    application_relation_kinds: Sequence[Literal["equal", "opposite", "zero"]] = (
+        "equal",
+        "opposite",
+        "zero",
+    ),
+    application_scope_reason: str = "complete-generic-dag",
 ) -> GenericDAGNumericalCurrentWarmupResult:
     """Run the bounded default-on numerical relation transaction."""
 
@@ -308,15 +300,18 @@ def run_generic_dag_numerical_current_warmup(
             "generic-DAG numerical current warm-up requires diagnostic or "
             "certified-reuse mode"
         )
-    candidate_points, verification_points = (
-        build_numerical_current_probe_points(
-            dag,
-            model,
-            process_id=process_id,
-            seed=seed,
-            candidate_count=probe_count,
-            verification_count=verification_probe_count,
-        )
+    allowed_relation_kinds = _validated_application_relation_kinds(
+        application_relation_kinds
+    )
+    if not isinstance(application_scope_reason, str) or not application_scope_reason:
+        raise ValueError("generic-DAG numerical relation application scope is invalid")
+    candidate_points, verification_points = build_numerical_current_probe_points(
+        dag,
+        model,
+        process_id=process_id,
+        seed=seed,
+        candidate_count=probe_count,
+        verification_count=verification_probe_count,
     )
     baseline_session = _build_current_capture_session(
         dag,
@@ -368,24 +363,14 @@ def run_generic_dag_numerical_current_warmup(
         verification_point_sha256s=verification.point_sha256s,
         candidate_kinematic_sha256s=candidate.kinematic_sha256s,
         verification_kinematic_sha256s=verification.kinematic_sha256s,
-        candidate_parameter_context_sha256s=(
-            candidate.parameter_context_sha256s
-        ),
-        verification_parameter_context_sha256s=(
-            verification.parameter_context_sha256s
-        ),
+        candidate_parameter_context_sha256s=(candidate.parameter_context_sha256s),
+        verification_parameter_context_sha256s=(verification.parameter_context_sha256s),
         runtime_schema_sha256=candidate.runtime_schema_sha256,
         source_dag_sha256=candidate.source_dag_sha256,
-        evaluator_output_partition_abi=(
-            candidate.evaluator_output_partition_abi
-        ),
-        evaluator_output_partition_sha256=(
-            candidate.evaluator_output_partition_sha256
-        ),
+        evaluator_output_partition_abi=(candidate.evaluator_output_partition_abi),
+        evaluator_output_partition_sha256=(candidate.evaluator_output_partition_sha256),
         candidate_capture_sha256=candidate.capture_contract_sha256,
-        verification_capture_sha256=(
-            verification.capture_contract_sha256
-        ),
+        verification_capture_sha256=(verification.capture_contract_sha256),
         process_id=process_id,
         execution_mode=execution_mode,
         precision_digits=precision_digits,
@@ -398,10 +383,8 @@ def run_generic_dag_numerical_current_warmup(
         != candidate.observation_batch_sha256
         or discovery.report.verification_observation_batch_sha256
         != verification.observation_batch_sha256
-        or discovery.report.runtime_schema_sha256
-        != candidate.runtime_schema_sha256
-        or discovery.report.source_dag_sha256
-        != candidate.source_dag_sha256
+        or discovery.report.runtime_schema_sha256 != candidate.runtime_schema_sha256
+        or discovery.report.source_dag_sha256 != candidate.source_dag_sha256
         or discovery.report.candidate_capture_sha256
         != candidate.capture_contract_sha256
         or discovery.report.verification_capture_sha256
@@ -411,29 +394,29 @@ def run_generic_dag_numerical_current_warmup(
             "numerical current detector did not authenticate the captured "
             "observation batches"
         )
+    applicable_certificates = _application_scoped_certificates(
+        discovery.certificates,
+        allowed_relation_kinds=allowed_relation_kinds,
+    )
     application = apply_numerical_current_relation_certificates(
         dag,
         model,
-        discovery.certificates,
+        applicable_certificates,
         mode=mode,
         execution_mode=execution_mode,
         process_id=process_id,
         runtime_schema_sha256=candidate.runtime_schema_sha256,
         source_dag_sha256=candidate.source_dag_sha256,
         candidate_capture_sha256=candidate.capture_contract_sha256,
-        verification_capture_sha256=(
-            verification.capture_contract_sha256
-        ),
+        verification_capture_sha256=(verification.capture_contract_sha256),
         _structural_equivalences=discovery.structural_equivalences,
     )
     if (
-        application.report.certificates != discovery.certificates
+        application.report.certificates != applicable_certificates
         or application.report.source_semantics_sha256
         != discovery.report.source_semantics_sha256
     ):
-        raise ValueError(
-            "numerical current application replay drifted from discovery"
-        )
+        raise ValueError("numerical current application replay drifted from discovery")
     application_capture: GenericDAGCurrentObservationCapture | None = None
     if application.report.applied_relation_count:
         application_capture = capture_generic_dag_current_observations(
@@ -468,7 +451,49 @@ def run_generic_dag_numerical_current_warmup(
         application_validation=application_validation,
         discovery=discovery,
         application=application,
+        application_scope={
+            "abi": ("pyamplicol-generic-dag-numerical-relation-application-scope-v1"),
+            "policy": "exact-physical-selector-member-set-v1",
+            "reason": application_scope_reason,
+            "allowed_relation_kinds": list(allowed_relation_kinds),
+            "discovered_relation_count": len(discovery.certificates),
+            "application_eligible_relation_count": len(applicable_certificates),
+            "scope_suppressed_relation_count": (
+                len(discovery.certificates) - len(applicable_certificates)
+            ),
+        },
     )
+
+
+def _validated_application_relation_kinds(
+    values: Sequence[Literal["equal", "opposite", "zero"]],
+) -> tuple[Literal["equal", "opposite", "zero"], ...]:
+    resolved = tuple(values)
+    if len(set(resolved)) != len(resolved) or any(
+        relation_kind not in {"equal", "opposite", "zero"} for relation_kind in resolved
+    ):
+        raise ValueError("generic-DAG numerical relation application scope is invalid")
+    return resolved
+
+
+def _application_scoped_certificates(
+    certificates: Sequence[NumericalCurrentRelationCertificate],
+    *,
+    allowed_relation_kinds: Sequence[Literal["equal", "opposite", "zero"]],
+) -> tuple[NumericalCurrentRelationCertificate, ...]:
+    """Contain application without changing authenticated discovery evidence."""
+
+    allowed = frozenset(_validated_application_relation_kinds(allowed_relation_kinds))
+    result: list[NumericalCurrentRelationCertificate] = []
+    for certificate in certificates:
+        relation_kind = getattr(certificate, "relation_kind", None)
+        if relation_kind not in {"equal", "opposite", "zero"}:
+            raise ValueError(
+                "generic-DAG numerical certificate relation kind is invalid"
+            )
+        if relation_kind in allowed:
+            result.append(certificate)
+    return tuple(result)
 
 
 def generic_dag_numerical_current_opt_out_report(
@@ -482,6 +507,8 @@ def generic_dag_numerical_current_opt_out_report(
         "schema_version": 1,
         "abi": _WARMUP_ABI,
         "requested_mode": "off",
+        "effective_mode": "off",
+        "effective_reuse_state": "disabled",
         "state": "disabled-by-user",
         "scope": {
             "execution_mode": execution_mode,
@@ -505,10 +532,20 @@ def generic_dag_numerical_current_opt_out_report(
             "maximum_relative_residual": None,
             "maximum_tolerance_ratio": None,
         },
+        "application_scope": {
+            "abi": ("pyamplicol-generic-dag-numerical-relation-application-scope-v1"),
+            "policy": "disabled-by-user",
+            "reason": "explicit-opt-out",
+            "allowed_relation_kinds": [],
+            "discovered_relation_count": 0,
+            "application_eligible_relation_count": 0,
+            "scope_suppressed_relation_count": 0,
+        },
         "discovery": None,
         "application": None,
         "certified_relation_count": 0,
         "applied_relation_count": 0,
+        "relation_correctness": numerical_relation_correctness_payload(0),
         "warning": {
             "required": False,
             "emit": "never",
@@ -570,18 +607,14 @@ def build_numerical_current_probe_points(
     )
     if any(not point.available for point in (*candidate, *verification)):
         errors = tuple(
-            point.error
-            for point in (*candidate, *verification)
-            if not point.available
+            point.error for point in (*candidate, *verification) if not point.available
         )
         raise ValueError(
             "numerical current probe-point generation failed: "
             + "; ".join(str(error) for error in errors)
         )
     candidate_hashes = {_kinematic_sha256(point) for point in candidate}
-    verification_hashes = {
-        _kinematic_sha256(point) for point in verification
-    }
+    verification_hashes = {_kinematic_sha256(point) for point in verification}
     if (
         len(candidate_hashes) != len(candidate)
         or len(verification_hashes) != len(verification)
@@ -624,18 +657,14 @@ def capture_generic_dag_current_observations(
         not isinstance(point, ValidationPointRecord) or not point.available
         for point in point_records
     ):
-        raise ValueError(
-            "numerical current capture received an unavailable point"
-        )
+        raise ValueError("numerical current capture received an unavailable point")
     if any(point.process != dag.process.process for point in point_records):
         raise ValueError(
             "numerical current capture point process does not match the DAG"
         )
     process_ids = {point.process_id for point in point_records}
     if len(process_ids) != 1:
-        raise ValueError(
-            "numerical current capture points mix process identities"
-        )
+        raise ValueError("numerical current capture points mix process identities")
     process_id = next(iter(process_ids))
     session = (
         _build_current_capture_session(
@@ -660,33 +689,24 @@ def capture_generic_dag_current_observations(
         if parameter_contexts is None
         else tuple(tuple(context) for context in parameter_contexts)
     )
-    if (
-        len(resolved_parameter_contexts) != len(point_records)
+    if len(resolved_parameter_contexts) != len(point_records) or any(
+        len(context) != len(model_parameters)
         or any(
-            len(context) != len(model_parameters)
-            or any(
-                not isinstance(value, Decimal) or not value.is_finite()
-                for value in context
-            )
-            for context in resolved_parameter_contexts
+            not isinstance(value, Decimal) or not value.is_finite() for value in context
         )
+        for context in resolved_parameter_contexts
     ):
         raise ValueError(
-            "numerical current parameter-probe contexts do not match the "
-            "runtime schema"
+            "numerical current parameter-probe contexts do not match the runtime schema"
         )
-    point_hashes = tuple(
-        _validation_point_sha256(point) for point in point_records
-    )
+    point_hashes = tuple(_validation_point_sha256(point) for point in point_records)
     parameter_context_hashes = tuple(
         _canonical_sha256(
             {
                 "abi": "pyamplicol-numerical-current-parameter-context-v1",
                 "point_index": point_index,
                 "point_sha256": point_hash,
-                "values": [
-                    _decimal_string(value) for value in context
-                ],
+                "values": [_decimal_string(value) for value in context],
             }
         )
         for point_index, (point_hash, context) in enumerate(
@@ -697,13 +717,9 @@ def capture_generic_dag_current_observations(
             )
         )
     )
-    kinematic_hashes = tuple(
-        _kinematic_sha256(point) for point in point_records
-    )
+    kinematic_hashes = tuple(_kinematic_sha256(point) for point in point_records)
     if len(set(kinematic_hashes)) != len(kinematic_hashes):
-        raise ValueError(
-            "numerical current capture requires distinct physical momenta"
-        )
+        raise ValueError("numerical current capture requires distinct physical momenta")
     captured_by_current: dict[int, list[_ComplexDecimal]] = {
         current.id: [] for current in dag.currents
     }
@@ -739,17 +755,14 @@ def capture_generic_dag_current_observations(
                 captured_by_current[current.id].extend(values)
 
     observations = {
-        current_id: tuple(values)
-        for current_id, values in captured_by_current.items()
+        current_id: tuple(values) for current_id, values in captured_by_current.items()
     }
     if any(
         not real.is_finite() or not imaginary.is_finite()
         for values in observations.values()
         for real, imaginary in values
     ):
-        raise ValueError(
-            "numerical current capture produced a non-finite component"
-        )
+        raise ValueError("numerical current capture produced a non-finite component")
     observation_digest = _current_observation_batch_sha256(
         observations,
         point_sha256s=point_hashes,
@@ -763,17 +776,11 @@ def capture_generic_dag_current_observations(
             "precision_digits": precision_digits,
             "point_sha256s": list(point_hashes),
             "kinematic_sha256s": list(kinematic_hashes),
-            "parameter_context_sha256s": list(
-                parameter_context_hashes
-            ),
+            "parameter_context_sha256s": list(parameter_context_hashes),
             "runtime_schema_sha256": session.runtime_schema.sha256,
-            "model_parameter_schema_sha256": (
-                model_parameter_schema_digest
-            ),
+            "model_parameter_schema_sha256": (model_parameter_schema_digest),
             "source_dag_sha256": session.source_dag_sha256,
-            "evaluator_output_partition_abi": (
-                session.evaluator_output_partition_abi
-            ),
+            "evaluator_output_partition_abi": (session.evaluator_output_partition_abi),
             "evaluator_output_partition_sha256": (
                 session.evaluator_output_partition_sha256
             ),
@@ -791,12 +798,8 @@ def capture_generic_dag_current_observations(
         runtime_schema_sha256=session.runtime_schema.sha256,
         model_parameter_schema_sha256=model_parameter_schema_digest,
         source_dag_sha256=session.source_dag_sha256,
-        evaluator_output_partition_abi=(
-            session.evaluator_output_partition_abi
-        ),
-        evaluator_output_partition_sha256=(
-            session.evaluator_output_partition_sha256
-        ),
+        evaluator_output_partition_abi=(session.evaluator_output_partition_abi),
+        evaluator_output_partition_sha256=(session.evaluator_output_partition_sha256),
         observation_batch_sha256=observation_digest,
         capture_contract_sha256=capture_contract_digest,
     )
@@ -834,14 +837,10 @@ def _current_capture_output_partitions(
         or stage.output_length < 1
         or not stage.output_slots
     ):
-        raise ValueError(
-            "numerical current capture stage has no partitionable outputs"
-        )
+        raise ValueError("numerical current capture stage has no partitionable outputs")
     slot_ids = tuple(slot.value_slot_id for slot in stage.output_slots)
     if slot_ids != stage.output_value_slot_ids:
-        raise ValueError(
-            "numerical current capture output-slot identity drifted"
-        )
+        raise ValueError("numerical current capture output-slot identity drifted")
 
     ranges: list[tuple[int, int]] = []
     records: list[dict[str, object]] = []
@@ -854,9 +853,7 @@ def _current_capture_output_partitions(
 
     def finish_partition(stop: int) -> None:
         if current_id is None or not partition_slots or partition_start >= stop:
-            raise ValueError(
-                "numerical current capture output partition is empty"
-            )
+            raise ValueError("numerical current capture output partition is empty")
         ranges.append((partition_start, stop))
         records.append(
             {
@@ -891,13 +888,9 @@ def _current_capture_output_partitions(
             seen_current_ids.add(current_id)
         elif slot.current_id != current_id:
             finish_partition(slot.output_start)
-            if (
-                slot.current_id in seen_current_ids
-                or slot.current_id <= current_id
-            ):
+            if slot.current_id in seen_current_ids or slot.current_id <= current_id:
                 raise ValueError(
-                    "numerical current capture output-slot current order "
-                    "drifted"
+                    "numerical current capture output-slot current order drifted"
                 )
             current_id = slot.current_id
             seen_current_ids.add(current_id)
@@ -939,24 +932,17 @@ def _current_capture_partition_plan(
     stage_contracts: list[dict[str, object]] = []
     previous_stage_index: int | None = None
     for stage in stages:
-        if (
-            type(stage.stage_index) is not int
-            or (
-                previous_stage_index is not None
-                and stage.stage_index <= previous_stage_index
-            )
+        if type(stage.stage_index) is not int or (
+            previous_stage_index is not None
+            and stage.stage_index <= previous_stage_index
         ):
-            raise ValueError(
-                "numerical current capture stage order drifted"
-            )
+            raise ValueError("numerical current capture stage order drifted")
         partitions, contract = _current_capture_output_partitions(stage)
         stage_partitions.append(partitions)
         stage_contracts.append(contract)
         previous_stage_index = stage.stage_index
     if not stage_partitions:
-        raise ValueError(
-            "numerical current capture has no evaluator stages"
-        )
+        raise ValueError("numerical current capture has no evaluator stages")
     payload = {
         "abi": _CAPTURE_OUTPUT_PARTITION_ABI,
         "strategy": "one-contiguous-output-partition-per-current-id",
@@ -996,8 +982,8 @@ def _build_current_capture_session(
         output_chunk_strategy="uniform",
         compiled_chunk_compile_workers=1,
     )
-    stage_output_partitions, output_partition_digest = (
-        _current_capture_partition_plan(blueprint.stages)
+    stage_output_partitions, output_partition_digest = _current_capture_partition_plan(
+        blueprint.stages
     )
     runtime_output_partition_digest = (
         generic_dag_numerical_capture_output_partition_sha256(schema)
@@ -1042,8 +1028,7 @@ def validate_independent_current_observation_captures(
 
     if (
         candidate.precision_digits != verification.precision_digits
-        or candidate.runtime_schema_sha256
-        != verification.runtime_schema_sha256
+        or candidate.runtime_schema_sha256 != verification.runtime_schema_sha256
         or candidate.model_parameter_schema_sha256
         != verification.model_parameter_schema_sha256
         or candidate.source_dag_sha256 != verification.source_dag_sha256
@@ -1056,19 +1041,14 @@ def validate_independent_current_observation_captures(
         or verification.point_count < 2
         or len(set(candidate.point_sha256s)) != candidate.point_count
         or len(set(verification.point_sha256s)) != verification.point_count
-        or not set(candidate.point_sha256s).isdisjoint(
-            verification.point_sha256s
-        )
+        or not set(candidate.point_sha256s).isdisjoint(verification.point_sha256s)
         or len(set(candidate.kinematic_sha256s)) != candidate.point_count
-        or len(set(verification.kinematic_sha256s))
-        != verification.point_count
+        or len(set(verification.kinematic_sha256s)) != verification.point_count
         or not set(candidate.kinematic_sha256s).isdisjoint(
             verification.kinematic_sha256s
         )
-        or len(candidate.parameter_context_sha256s)
-        != candidate.point_count
-        or len(verification.parameter_context_sha256s)
-        != verification.point_count
+        or len(candidate.parameter_context_sha256s) != candidate.point_count
+        or len(verification.parameter_context_sha256s) != verification.point_count
         or not set(candidate.parameter_context_sha256s).isdisjoint(
             verification.parameter_context_sha256s
         )
@@ -1106,8 +1086,7 @@ def _validate_applied_current_observations(
         or reference.point_sha256s != applied.point_sha256s
         or reference.kinematic_sha256s != applied.kinematic_sha256s
         or reference.parameter_contexts != applied.parameter_contexts
-        or reference.parameter_context_sha256s
-        != applied.parameter_context_sha256s
+        or reference.parameter_context_sha256s != applied.parameter_context_sha256s
         or reference.model_parameter_schema_sha256
         != applied.model_parameter_schema_sha256
         or reference.evaluator_output_partition_abi
@@ -1116,13 +1095,9 @@ def _validate_applied_current_observations(
         != applied.evaluator_output_partition_sha256
         or set(reference.observations) != set(applied.observations)
     ):
-        raise ValueError(
-            "numerical current application validation provenance drifted"
-        )
+        raise ValueError("numerical current application validation provenance drifted")
     with localcontext() as context:
-        context.prec = (
-            reference.precision_digits + _NUMERICAL_DECIMAL_GUARD_DIGITS
-        )
+        context.prec = reference.precision_digits + _NUMERICAL_DECIMAL_GUARD_DIGITS
         context.rounding = ROUND_HALF_EVEN
         relative = Decimal.from_float(float(relative_tolerance))
         absolute = Decimal.from_float(float(absolute_tolerance))
@@ -1134,8 +1109,7 @@ def _validate_applied_current_observations(
             or (relative == 0 and absolute == 0)
         ):
             raise ValueError(
-                "numerical current application validation tolerances are "
-                "invalid"
+                "numerical current application validation tolerances are invalid"
             )
         maximum_absolute = Decimal(0)
         maximum_relative = Decimal(0)
@@ -1163,14 +1137,10 @@ def _validate_applied_current_observations(
                 )
                 allowed = absolute + relative * scale
                 relative_residual = (
-                    Decimal(0)
-                    if difference == 0
-                    else difference / max(scale, absolute)
+                    Decimal(0) if difference == 0 else difference / max(scale, absolute)
                 )
                 tolerance_ratio = (
-                    Decimal(0)
-                    if difference == 0
-                    else difference / allowed
+                    Decimal(0) if difference == 0 else difference / allowed
                 )
                 maximum_absolute = max(maximum_absolute, difference)
                 maximum_relative = max(
@@ -1198,15 +1168,9 @@ def _validate_applied_current_observations(
             "checked_component_count": checked_components,
             "maximum_absolute_residual": _decimal_string(maximum_absolute),
             "maximum_relative_residual": _decimal_string(maximum_relative),
-            "maximum_tolerance_ratio": _decimal_string(
-                maximum_tolerance_ratio
-            ),
-            "reference_observation_batch_sha256": (
-                reference.observation_batch_sha256
-            ),
-            "applied_observation_batch_sha256": (
-                applied.observation_batch_sha256
-            ),
+            "maximum_tolerance_ratio": _decimal_string(maximum_tolerance_ratio),
+            "reference_observation_batch_sha256": (reference.observation_batch_sha256),
+            "applied_observation_batch_sha256": (applied.observation_batch_sha256),
             "evaluator_output_partition_abi": (
                 reference.evaluator_output_partition_abi
             ),
@@ -1282,9 +1246,7 @@ def _capture_one_point(
     model_start = value_count + momentum_count
     state = [
         (Decimal(0), Decimal(0))
-        for _index in range(
-            max(flattened_count, model_start + len(model_parameters))
-        )
+        for _index in range(max(flattened_count, model_start + len(model_parameters)))
     ]
     _fill_sources(state, point, schema, model_parameters)
     _fill_momenta(state, point, schema)
@@ -1301,9 +1263,7 @@ def _capture_one_point(
         start = _integer(slot.get("component_start"))
         stop = _integer(slot.get("component_stop"))
         if current_id in captured or not 0 <= start <= stop <= len(state):
-            raise ValueError(
-                "numerical current source capture has an invalid slot"
-            )
+            raise ValueError("numerical current source capture has an invalid slot")
         captured[current_id] = tuple(state[start:stop])
 
     for stage, evaluator in zip(stages, evaluators, strict=True):
@@ -1314,16 +1274,10 @@ def _capture_one_point(
                 or not 0 <= component.global_component < len(state)
                 or inputs[component.parameter_index] is not None
             ):
-                raise ValueError(
-                    "numerical current stage input mapping is invalid"
-                )
-            inputs[component.parameter_index] = state[
-                component.global_component
-            ]
+                raise ValueError("numerical current stage input mapping is invalid")
+            inputs[component.parameter_index] = state[component.global_component]
         if any(value is None for value in inputs):
-            raise ValueError(
-                "numerical current stage input mapping is incomplete"
-            )
+            raise ValueError("numerical current stage input mapping is incomplete")
         outputs = _evaluate_interpreted_stage(
             evaluator,
             tuple(value for value in inputs if value is not None),
@@ -1338,14 +1292,9 @@ def _capture_one_point(
             if (
                 slot.current_id in captured
                 or len(values) != slot.component_stop - slot.component_start
-                or not 0
-                <= slot.component_start
-                <= slot.component_stop
-                <= len(state)
+                or not 0 <= slot.component_start <= slot.component_stop <= len(state)
             ):
-                raise ValueError(
-                    "numerical current stage output mapping is invalid"
-                )
+                raise ValueError("numerical current stage output mapping is invalid")
             state[slot.component_start : slot.component_stop] = values
             captured[slot.current_id] = values
     if set(captured) != {current.id for current in dag.currents}:
@@ -1394,19 +1343,13 @@ def _runtime_model_parameter_values(
             or ordered[index] is not None
             or "default" not in record
         ):
-            raise ValueError(
-                "numerical current model-parameter layout is invalid"
-            )
+            raise ValueError("numerical current model-parameter layout is invalid")
         value = float(record["default"])
         if not isfinite(value):
-            raise ValueError(
-                "numerical current model parameter is non-finite"
-            )
+            raise ValueError("numerical current model parameter is non-finite")
         ordered[index] = Decimal.from_float(value)
     if any(value is None for value in ordered):
-        raise ValueError(
-            "numerical current model-parameter layout is incomplete"
-        )
+        raise ValueError("numerical current model-parameter layout is incomplete")
     return tuple(value for value in ordered if value is not None)
 
 
@@ -1437,9 +1380,7 @@ def _build_parameter_probe_contexts(
         or type(count) is not int
         or count < 2
     ):
-        raise ValueError(
-            "numerical current parameter-probe contract is invalid"
-        )
+        raise ValueError("numerical current parameter-probe contract is invalid")
     working_precision = precision_digits + 16
     contexts: list[tuple[Decimal, ...]] = []
     with localcontext() as context:
@@ -1452,10 +1393,7 @@ def _build_parameter_probe_contexts(
             values: list[Decimal] = []
             for parameter_index, default in enumerate(defaults):
                 digest = hashlib.sha256(
-                    (
-                        f"{seed}:{domain}:{probe_index}:"
-                        f"{parameter_index}"
-                    ).encode("ascii")
+                    (f"{seed}:{domain}:{probe_index}:{parameter_index}").encode("ascii")
                 ).digest()
                 signed = int.from_bytes(digest[:8], "big") - (1 << 63)
                 if signed == 0:
@@ -1485,9 +1423,7 @@ def _kinematic_sha256(point: ValidationPointRecord) -> str:
 
 
 def _domain_seed(seed: int, *, domain: str, index: int) -> int:
-    digest = hashlib.sha256(
-        f"{seed}:{domain}:{index}".encode("ascii")
-    ).digest()
+    digest = hashlib.sha256(f"{seed}:{domain}:{index}".encode("ascii")).digest()
     return int.from_bytes(digest[:8], "big") & ((1 << 63) - 1)
 
 

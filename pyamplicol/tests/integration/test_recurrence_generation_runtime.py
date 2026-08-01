@@ -972,17 +972,28 @@ def test_relation_discovery_modes_preserve_recurrence_artifacts_and_values(
         ]
         native = manifest_report["native_relation_application"]
         assert isinstance(native, dict)
-        assert native["requested_mode"] == mode
+        effective_mode = lane["effective_mode"]
+        assert native["requested_mode"] == effective_mode
         assert native["exact_certified_relation_count"] == lane[
             "certified_relation_count"
         ]
-        if mode == "diagnostic":
+        if effective_mode == "diagnostic":
             assert lane["applied_relation_count"] == 0
             assert lane["warning"]["required"] is False
             assert manifest_report["warning"]["required"] is False
             assert native["applied_relation_count"] == 0
             assert native["scale_copy_row_count"] == 0
+            if mode == "certified-reuse":
+                assert lane["effective_reuse_state"] == "disabled"
+                assert lane["effective_mode_reason"] in {
+                    "multi-helicity-all-flow-member-scope-unproven",
+                    "contracted-opposite-binary64-disabled",
+                }
+                assert lane["application_scope"]["effective_mode_reason"] == (
+                    lane["effective_mode_reason"]
+                )
         else:
+            assert effective_mode == mode == "certified-reuse"
             applied = lane["applied_relation_count"]
             assert applied == lane["certified_relation_count"]
             assert native["applied_relation_count"] == applied
@@ -1180,14 +1191,14 @@ def test_no_relation_default_and_explicit_opt_out_emit_identical_recurrence_plan
 
 
 @pytest.mark.parametrize("model_source", ("builtin", "ufo"))
-def test_recurrence_numerical_audit_applies_exact_opposites_and_rejects_near_relations(
+def test_recurrence_audit_contains_all_flow_opposites_and_rejects_near_relations(
     tmp_path: Path,
     model_source: str,
     builtin_sm_recurrence_jit_o2_model: ModelSource,
     ufo_sm_recurrence_jit_o2_model: CompiledModel,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Apply exact reuse, reject near matches, and preserve both SM frontends."""
+    """Contain unsafe reuse, reject near matches, and preserve both SM frontends."""
 
     _require_native_recurrence()
     model = (
@@ -1291,30 +1302,28 @@ def test_recurrence_numerical_audit_applies_exact_opposites_and_rejects_near_rel
     assert diagnostic["certified_relation_count"] == 2
     assert diagnostic["applied_relation_count"] == 0
     assert diagnostic["warning"]["required"] is False
-    assert certified["state"] == "authenticated-numerical-applied"
+    assert certified["requested_mode"] == "certified-reuse"
+    assert certified["effective_mode"] == "diagnostic"
+    assert certified["effective_reuse_state"] == "disabled"
+    assert certified["effective_mode_reason"] == (
+        "multi-helicity-all-flow-member-scope-unproven"
+    )
+    assert certified["application_scope"]["effective_mode_reason"] == (
+        "multi-helicity-all-flow-member-scope-unproven"
+    )
+    assert certified["state"] == "authenticated-numerical-diagnostic-only"
     assert certified["certified_relation_count"] == 2
-    assert certified["applied_relation_count"] == 2
-    assert certified["warning"] == {
-        "required": True,
-        "emit": "once-per-generated-artifact",
-        "code": "proofless-numerical-current-relations-applied-v1",
-        "message": (
-            "applied authenticated numerical equal/opposite/zero current reuse "
-            "without an exact structural proof; disable with "
-            "--no-numerical-current-reuse"
-        ),
-    }
+    assert certified["applied_relation_count"] == 0
+    assert certified["warning"]["required"] is False
     assert warning_counts == {
         "off": 0,
         "diagnostic": 0,
-        "certified-reuse": 1,
+        "certified-reuse": 0,
     }
-    assert len(warning_publications) == 1
-    warning_mode, artifact_existed, warning_message = warning_publications[0]
-    assert warning_mode == "certified-reuse"
-    assert artifact_existed is True
-    assert "--no-numerical-current-reuse" in warning_message
-    assert certified["application_validation"]["status"] == "verified"
+    assert warning_publications == []
+    assert certified["application_validation"]["status"] == (
+        "not-required-no-applied-relations"
+    )
     assert (
         certified["application"]["certificate_replay"]["status"] == "verified"
     )
@@ -1384,10 +1393,8 @@ def test_recurrence_numerical_audit_applies_exact_opposites_and_rejects_near_rel
     }
     for capture_name in ("candidate_capture", "verification_capture"):
         replay_capture = persisted[capture_name]
-        assert replay_capture["certificate_current_ids"] == [31, 32, 34, 35]
-        assert [
-            row["current_id"] for row in replay_capture["observations"]
-        ] == [31, 32, 34, 35]
+        assert replay_capture["certificate_current_ids"] == []
+        assert replay_capture["observations"] == []
         assert replay_capture["full_batch_commitment"]["current_count"] == 68
 
     diagnostic_native = native_reports["diagnostic"]
@@ -1423,15 +1430,19 @@ def test_recurrence_numerical_audit_applies_exact_opposites_and_rejects_near_rel
     assert diagnostic_native["exact_certified_relation_count"] == 2
     assert diagnostic_native["applied_relation_count"] == 0
     assert diagnostic_native["scale_copy_row_count"] == 0
-    assert certified_native["state"] == "exact-certified-applied"
+    assert diagnostic_native["requested_mode"] == "diagnostic"
+    assert certified_native["requested_mode"] == "diagnostic"
+    assert certified_native["state"] == "diagnostic-only"
     assert certified_native["exact_certified_relation_count"] == 2
-    assert certified_native["applied_relation_count"] == 2
-    assert certified_native["scale_copy_row_count"] == 2
+    assert certified_native["applied_relation_count"] == 0
+    assert certified_native["scale_copy_row_count"] == 0
     assert certified_native["current_count_before"] == 68
     assert certified_native["current_count_after"] == 68
     assert certified_native["contribution_count_before"] == 132
     assert certified_native["contribution_count_after"] == 132
     assert certified_native["interaction_evaluation_count_before"] == 132
+    # Diagnostic native reports retain the projected optimization census even
+    # though zero mappings or scale-copy rows are installed.
     assert certified_native["interaction_evaluation_count_after"] == 130
     assert certified_native["interaction_evaluation_savings"] == 2
     _assert_runtime_values_match(
@@ -1440,6 +1451,29 @@ def test_recurrence_numerical_audit_applies_exact_opposites_and_rejects_near_rel
         points,
     )
     _assert_runtime_values_match(runtimes["diagnostic"], runtimes["off"], points)
+    # Binary64 is covered by the helper above.  Reuse must also preserve every
+    # resolved member and its total at the two higher precisions used by the
+    # focused numerical-current diagnosis; these are evaluations of the
+    # already-generated artifacts, not additional generation work.
+    for precision in (32, 80):
+        reference = runtimes["off"].evaluate_resolved(
+            points,
+            precision=precision,
+        )
+        candidate = runtimes["certified-reuse"].evaluate_resolved(
+            points,
+            precision=precision,
+        )
+        assert candidate.helicity_ids == reference.helicity_ids
+        assert candidate.color_ids == reference.color_ids
+        assert candidate.shape == reference.shape
+        _assert_decimal_values_match(candidate.values, reference.values, precision)
+        _assert_decimal_values_match(candidate.total(), reference.total(), precision)
+        _assert_decimal_values_match(
+            runtimes["certified-reuse"].evaluate(points, precision=precision),
+            runtimes["off"].evaluate(points, precision=precision),
+            precision,
+        )
     off_inspection = executions["off"]["plan"]["inspection_summary"]
     diagnostic_inspection = executions["diagnostic"]["plan"][
         "inspection_summary"
@@ -1451,8 +1485,8 @@ def test_recurrence_numerical_audit_applies_exact_opposites_and_rejects_near_rel
     assert (
         executions["certified-reuse"]["plan"]["inspection_summary"][
             "direct_arena"
-        ]["row_group_count"]
-        == off_inspection["direct_arena"]["row_group_count"] + 1
+        ]
+        == off_inspection["direct_arena"]
     )
     for key in (
         "schedule",

@@ -544,7 +544,6 @@ def _validate_bundle(
         "compiled_model_schema": compiled_schema,
         "model_compiler_version": compiler_version,
         "model_source_digest": model_source_digest,
-        "package_version": _expected_package_version(overlay, mode),
     }
     for key, expected in expected_producer.items():
         if packaged_producer.get(key) != expected:
@@ -552,16 +551,45 @@ def _validate_bundle(
                 f"packaged prepared-model producer {key} is stale: "
                 f"expected {expected!r}, got {packaged_producer.get(key)!r}"
             )
+    packaged_package_version = _required_string(
+        packaged_producer.get("package_version"),
+        "packaged prepared-model producer package_version",
+    )
+    active_package_version = _expected_package_version(overlay, mode)
+    if mode == "candidate":
+        packaged_base = _candidate_package_version_base(
+            packaged_package_version,
+            "packaged prepared-model producer package_version",
+        )
+        active_base = _candidate_package_version_base(
+            active_package_version,
+            "candidate package version",
+        )
+        if packaged_base != active_base:
+            raise RuntimeError(
+                "packaged prepared-model producer package version base is stale: "
+                f"expected {active_base!r}, got {packaged_base!r}"
+            )
+    elif packaged_package_version != active_package_version:
+        raise RuntimeError(
+            "packaged prepared-model producer package_version is stale: "
+            f"expected {active_package_version!r}, "
+            f"got {packaged_package_version!r}"
+        )
     if producer.get("compiled_model_schema_version") != compiled_schema:
         raise RuntimeError("prepared compiled-model schema is stale")
     if producer.get("model_compiler_version") != compiler_version:
         raise RuntimeError("prepared model compiler version is stale")
-    if producer.get("pyamplicol") != expected_producer["package_version"]:
-        raise RuntimeError("prepared compiled-model package version is stale")
+    if producer.get("pyamplicol") != packaged_package_version:
+        raise RuntimeError(
+            "prepared compiled-model package version disagrees with metadata"
+        )
     if source.get("digest") != model_source_digest:
         raise RuntimeError("prepared compiled-model source digest is stale")
-    if pack.producer.get("version") != expected_producer["package_version"]:
-        raise RuntimeError("prepared kernel-pack package version is stale")
+    if pack.producer.get("version") != packaged_package_version:
+        raise RuntimeError(
+            "prepared kernel-pack package version disagrees with metadata"
+        )
     if pack.producer.get("compiled_model_schema") != compiled_schema:
         raise RuntimeError("prepared kernel-pack compiled-model schema is stale")
     if pack.producer.get("model_compiler_version") != compiler_version:
@@ -715,6 +743,20 @@ def _expected_package_version(overlay: Path, mode: str) -> str:
     return _required_string(
         cargo["workspace"]["package"]["version"], "Cargo package version"
     )
+
+
+def _candidate_package_version_base(value: str, context: str) -> str:
+    marker = "+candidate."
+    base, separator, fingerprint = value.rpartition(marker)
+    if (
+        separator != marker
+        or not base
+        or marker in base
+        or len(fingerprint) != 12
+        or any(character not in "0123456789abcdef" for character in fingerprint)
+    ):
+        raise RuntimeError(f"{context} is not a valid candidate package version")
+    return base
 
 
 def _built_in_source_digest(package_root: Path) -> str:

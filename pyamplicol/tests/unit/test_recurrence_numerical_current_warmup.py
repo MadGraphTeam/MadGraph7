@@ -33,6 +33,8 @@ from pyamplicol.generation.recurrence_numerical_current_warmup import (
     _MAX_RAW_EVIDENCE_BYTES,
     _MAX_RAW_EVIDENCE_MEMORY_BYTES,
     _MIN_RAW_EVIDENCE_WIRE_BYTES,
+    RecurrenceNumericalEvidenceEnvelopeExceeded,
+    RecurrenceNumericalEvidenceGeometry,
     _build_candidate_indexes,
     _decimal_string,
     _discover_relations,
@@ -51,7 +53,10 @@ from pyamplicol.generation.recurrence_numerical_current_warmup import (
     _validate_raw_evidence_geometry,
     _write_compressed_canonical_evidence,
     capture_recurrence_current_observations,
+    recurrence_numerical_current_envelope_fallback_report,
     recurrence_numerical_current_opt_out_report,
+    recurrence_numerical_relation_correctness_summary,
+    recurrence_numerical_relation_fallback_summary,
     recurrence_numerical_source_semantics_sha256,
     run_recurrence_numerical_current_warmup,
     validate_recurrence_numerical_current_application,
@@ -77,6 +82,7 @@ from pyamplicol.runtime.recurrence_exact._plan_v2 import (
     _MomentumTerm,
     _RecurrenceExactSectionsV1,
     _ReplayTarget,
+    _ResolvedHelicity,
     _RowGroup,
     _Source,
 )
@@ -917,6 +923,302 @@ def test_exact_z_n8_sequential_spool_bound_includes_the_global_index() -> None:
     assert _MAX_RAW_EVIDENCE_MEMORY_BYTES - resident == 138_070_528
 
 
+def test_exact_failing_geometry_returns_typed_fallback_before_allocation() -> None:
+    geometry = RecurrenceNumericalEvidenceGeometry.from_counts(
+        current_count=116_319,
+        component_count=561_426,
+        candidate_probe_count=4,
+        verification_probe_count=4,
+        runtime_parameter_count=10,
+    )
+
+    with pytest.raises(RecurrenceNumericalEvidenceEnvelopeExceeded) as captured:
+        recurrence_warmup._select_raw_evidence_storage_geometry_for_counts(geometry)
+
+    outcome = captured.value
+    assert outcome.geometry is geometry
+    assert outcome.to_json_dict() == {
+        "reason": "evidence-envelope-fallback",
+        "memory_envelope_bytes": 1 << 30,
+        "spooled_producer_resident_bytes": 3_095_140_864,
+        "geometry": {
+            "current_count": 116_319,
+            "component_count": 561_426,
+            "candidate_probe_count": 4,
+            "verification_probe_count": 4,
+            "runtime_parameter_count": 10,
+            "scalar_count": 8_982_896,
+            "row_count": 232_648,
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    "memory_envelope_bytes",
+    (True, 0, -1, _MAX_RAW_EVIDENCE_MEMORY_BYTES + 1),
+)
+def test_invalid_injected_envelope_is_not_converted_to_geometry_fallback(
+    memory_envelope_bytes: object,
+) -> None:
+    geometry = RecurrenceNumericalEvidenceGeometry.from_counts(
+        current_count=4,
+        component_count=4,
+        candidate_probe_count=2,
+        verification_probe_count=2,
+        runtime_parameter_count=2,
+    )
+
+    with pytest.raises(ValueError, match="memory envelope is invalid") as captured:
+        recurrence_warmup._select_raw_evidence_storage_geometry_for_counts(
+            geometry,
+            memory_envelope_bytes=memory_envelope_bytes,  # type: ignore[arg-type]
+        )
+
+    assert not isinstance(
+        captured.value,
+        RecurrenceNumericalEvidenceEnvelopeExceeded,
+    )
+
+
+def test_geometry_fallback_precedes_static_context_and_current_capture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    geometry = RecurrenceNumericalEvidenceGeometry.from_counts(
+        current_count=4,
+        component_count=4,
+        candidate_probe_count=2,
+        verification_probe_count=2,
+        runtime_parameter_count=2,
+    )
+    outcome = RecurrenceNumericalEvidenceEnvelopeExceeded(
+        geometry,
+        memory_envelope_bytes=1,
+        spooled_producer_resident_bytes=2,
+        raw_reason="injected test envelope",
+    )
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_select_raw_evidence_storage_geometry",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(outcome),
+    )
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_build_warmup_static_context",
+        lambda *_args, **_kwargs: pytest.fail(
+            "static context was built after an envelope fallback"
+        ),
+    )
+
+    with pytest.raises(RecurrenceNumericalEvidenceEnvelopeExceeded) as raised:
+        run_recurrence_numerical_current_warmup(
+            _topology_replay_plan(),
+            candidate_points=_points(1),
+            verification_points=_points(101),
+            mode="certified-reuse",
+            color_accuracy="lc",
+            precision_digits=80,
+            seed=53,
+            relative_tolerance=1.0e-60,
+            absolute_tolerance=1.0e-70,
+        )
+
+    assert raised.value is outcome
+
+
+def test_envelope_fallback_has_reuse_off_runtime_and_visible_provenance() -> None:
+    geometry = RecurrenceNumericalEvidenceGeometry.from_counts(
+        current_count=4,
+        component_count=4,
+        candidate_probe_count=2,
+        verification_probe_count=2,
+        runtime_parameter_count=2,
+    )
+    with pytest.raises(RecurrenceNumericalEvidenceEnvelopeExceeded) as captured:
+        recurrence_warmup._select_raw_evidence_storage_geometry_for_counts(
+            geometry,
+            memory_envelope_bytes=1 << 20,
+        )
+    plan = _topology_replay_plan()
+    fallback = recurrence_numerical_current_envelope_fallback_report(
+        plan.sections,
+        color_accuracy="lc",
+        requested_mode="certified-reuse",
+        outcome=captured.value,
+    )
+    explicit_off = recurrence_numerical_current_opt_out_report(
+        plan.sections,
+        color_accuracy="lc",
+    )
+
+    fallback_runtime, fallback_aggregate = _recurrence_relation_reporting(
+        {},
+        mode="certified-reuse",
+        lane_report=fallback,
+    )
+    off_runtime, off_aggregate = _recurrence_relation_reporting(
+        {},
+        mode="off",
+        lane_report=explicit_off,
+    )
+
+    assert fallback_runtime == off_runtime == {}
+    assert fallback_aggregate["effective_mode"] == "off"
+    assert fallback_aggregate["effective_reuse_state"] == "disabled"
+    assert fallback_aggregate["applied_relation_count"] == 0
+    assert fallback_aggregate["fallback"]["reason"] == ("evidence-envelope-fallback")
+    assert fallback_aggregate["warning"]["required"] is True
+    assert off_aggregate["applied_relation_count"] == 0
+    assert recurrence_numerical_relation_correctness_summary(fallback_aggregate) == {
+        "abi": "pyamplicol-numerical-current-relation-correctness-v1",
+        "state": "no-applied-relations",
+        "applied_relation_count": 0,
+    }
+    assert recurrence_numerical_relation_fallback_summary(fallback_aggregate) == {
+        "abi": "pyamplicol-numerical-current-reuse-fallback-v1",
+        "requested_mode": "certified-reuse",
+        "effective_mode": "off",
+        "effective_reuse_state": "disabled",
+        "reason": "evidence-envelope-fallback",
+        "geometry": geometry.to_json_dict(),
+        "certified_relation_count": 0,
+        "applied_relation_count": 0,
+    }
+    with pytest.raises(ValueError, match="fallback provenance is absent"):
+        recurrence_numerical_relation_fallback_summary(
+            {**fallback_aggregate, "fallback": None}
+        )
+    fallback_payload = fallback["fallback"]
+    assert isinstance(fallback_payload, Mapping)
+    fallback_geometry = fallback_payload["geometry"]
+    assert isinstance(fallback_geometry, Mapping)
+
+    for mutation in (
+        {"effective_reuse_state": "enabled"},
+        {"state": "disabled-by-user"},
+        {"fallback": {"reason": "evidence-envelope-fallback"}},
+        {
+            "fallback": {
+                **fallback_payload,
+                "geometry": {
+                    **fallback_geometry,
+                    "scalar_count": 1,
+                },
+            }
+        },
+        {
+            "fallback": {
+                **fallback_payload,
+                "spooled_producer_resident_bytes": (
+                    int(fallback_payload["spooled_producer_resident_bytes"]) + 1
+                ),
+            }
+        },
+    ):
+        with pytest.raises(GenerationError):
+            _recurrence_relation_reporting(
+                {},
+                mode="certified-reuse",
+                lane_report={**fallback, **mutation},
+            )
+
+    with pytest.raises(GenerationError, match="opt-out metadata"):
+        _recurrence_relation_reporting(
+            {},
+            mode="off",
+            lane_report={**explicit_off, "effective_reuse_state": "enabled"},
+        )
+
+
+def test_service_fallback_finishes_with_reuse_off_lowering(
+    tmp_path: Path,
+) -> None:
+    geometry = RecurrenceNumericalEvidenceGeometry.from_counts(
+        current_count=4,
+        component_count=4,
+        candidate_probe_count=2,
+        verification_probe_count=2,
+        runtime_parameter_count=2,
+    )
+    outcome = RecurrenceNumericalEvidenceEnvelopeExceeded(
+        geometry,
+        memory_envelope_bytes=1,
+        spooled_producer_resident_bytes=(
+            geometry.spooled_producer_resident_upper_bound()
+        ),
+        raw_reason="injected test envelope",
+    )
+
+    def lowering_output(
+        name: str,
+        *,
+        inspection: Mapping[str, object],
+    ) -> generation_service._RustRecurrenceLoweringOutput:
+        return generation_service._RustRecurrenceLoweringOutput(
+            inspection_summary=inspection,
+            resolved_helicities=(),
+            amplitude_destinations=(),
+            exact_sections={},
+            generation_profile={"pass": name},
+            numerical_current_reuse_report=None,
+            payload_path=tmp_path / f"{name}.pacbin",
+            payload_size_bytes=1,
+            payload_sha256="a" * 64,
+            member_count=1,
+            unpacked_size_bytes=1,
+            index_sha256="b" * 64,
+        )
+
+    baseline = lowering_output("baseline", inspection={})
+    final = lowering_output("final", inspection={"runtime": "original-plan"})
+    calls: list[tuple[Path, dict[str, object]]] = []
+
+    def lower_once(
+        destination: Path,
+        **kwargs: object,
+    ) -> generation_service._RustRecurrenceLoweringOutput:
+        calls.append((destination, dict(kwargs)))
+        return final
+
+    final_schedule_path = tmp_path / "recurrence-runtime.pacbin"
+    completed = generation_service._complete_recurrence_evidence_envelope_fallback(
+        lower_once=lower_once,
+        final_schedule_path=final_schedule_path,
+        baseline=baseline,
+        baseline_plan=_topology_replay_plan(),
+        color_accuracy="lc",
+        outcome=outcome,
+    )
+
+    assert calls == [
+        (
+            final_schedule_path,
+            {
+                "mode": "off",
+                "evidence": None,
+                "report_progress": False,
+                "timing_name": "native-final-generation",
+            },
+        )
+    ]
+    assert completed.inspection_summary == {"runtime": "original-plan"}
+    assert completed.generation_profile == {
+        "schema_version": 1,
+        "native_passes": {
+            "baseline": {"pass": "baseline"},
+            "final": {"pass": "final"},
+        },
+    }
+    report = completed.numerical_current_reuse_report
+    assert isinstance(report, Mapping)
+    assert report["requested_mode"] == "certified-reuse"
+    assert report["effective_mode"] == "off"
+    assert report["effective_reuse_state"] == "disabled"
+    assert report["applied_relation_count"] == 0
+    report_fallback = report["fallback"]
+    assert isinstance(report_fallback, Mapping)
+    assert report_fallback["geometry"] == geometry.to_json_dict()
+
+
 def test_compressed_canonical_transport_round_trips_with_length_and_digest() -> None:
     value = {
         "candidate_capture": {"observations": []},
@@ -1058,6 +1360,113 @@ def test_spooled_discovery_preserves_global_equal_opposite_and_zero_relations() 
     assert {
         (certificate.current_id, certificate.relation_kind) for certificate in actual
     } >= {(3, "equal"), (4, "opposite"), (5, "zero")}
+
+
+def test_synthetic_multi_helicity_all_flow_keeps_census_but_disables_application(
+) -> None:
+    plan = _signed_relation_plan()
+    source_digest = recurrence_numerical_source_semantics_sha256(plan.sections)
+    candidate = capture_recurrence_current_observations(
+        plan,
+        _points(1),
+        precision_digits=80,
+        source_semantics_sha256=source_digest,
+        seed=67,
+        domain="candidate-current-probes-v1",
+    )
+    verification = capture_recurrence_current_observations(
+        plan,
+        _points(101),
+        precision_digits=80,
+        source_semantics_sha256=source_digest,
+        seed=67,
+        domain="independent-verification-current-probes-v1",
+    )
+    sections = replace(
+        plan.sections,
+        strategy="all-flow-union",
+        replay_targets=(),
+        resolved_helicities=(
+            _ResolvedHelicity(0, 0, 0, 0, 2, 2, 2, 0),
+            _ResolvedHelicity(2, 2, 2, 1, 2, 2, 2, 0),
+        ),
+    )
+
+    certificates, report = _discover_relations(
+        sections,
+        candidate,
+        verification,
+        source_semantics_sha256=source_digest,
+        precision_digits=80,
+        seed=67,
+        relative_tolerance=1.0e-60,
+        absolute_tolerance=1.0e-70,
+        color_accuracy="lc",
+    )
+
+    assert {certificate.relation_kind for certificate in certificates} == {
+        "equal",
+        "opposite",
+        "zero",
+    }
+    scope = report["application_scope"]
+    assert scope["multi_helicity_all_flow_domain_ids"] == [0]
+    assert scope["multi_helicity_all_flow_application"] == "disabled"
+    assert scope["suppressed_current_count"] == 4
+    assert report["tested_hypothesis_count"] > 0
+    assert recurrence_warmup._effective_numerical_relation_mode(
+        sections,
+        requested_mode="certified-reuse",
+        certificates=certificates,
+    ) == "diagnostic"
+
+
+def test_contracted_binary64_policy_keeps_census_but_contains_opposite_relations(
+) -> None:
+    plan = _signed_relation_plan()
+    source_digest = recurrence_numerical_source_semantics_sha256(plan.sections)
+    candidate = capture_recurrence_current_observations(
+        plan,
+        _points(1),
+        precision_digits=80,
+        source_semantics_sha256=source_digest,
+        seed=67,
+        domain="candidate-current-probes-v1",
+    )
+    verification = capture_recurrence_current_observations(
+        plan,
+        _points(101),
+        precision_digits=80,
+        source_semantics_sha256=source_digest,
+        seed=67,
+        domain="independent-verification-current-probes-v1",
+    )
+    sections = replace(
+        plan.sections,
+        strategy="contracted-color-union",
+        replay_targets=(),
+    )
+
+    certificates, report = _discover_relations(
+        sections,
+        candidate,
+        verification,
+        source_semantics_sha256=source_digest,
+        precision_digits=80,
+        seed=67,
+        relative_tolerance=1.0e-60,
+        absolute_tolerance=1.0e-70,
+        color_accuracy="full",
+    )
+
+    relation_kinds = {certificate.relation_kind for certificate in certificates}
+    assert relation_kinds == {"equal", "opposite", "zero"}
+    assert report["application_scope"]["contracted_opposite_application"] == "disabled"
+    assert recurrence_warmup._effective_numerical_relation_mode(
+        sections,
+        requested_mode="certified-reuse",
+        certificates=certificates,
+    ) == "diagnostic"
 
 
 def test_discovery_reads_each_candidate_current_once_and_reuses_residual_text(

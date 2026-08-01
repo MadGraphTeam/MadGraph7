@@ -119,8 +119,10 @@ class ResourceUsage:
 TerminationReason = Literal[
     "completed",
     "cancelled",
-    "timeout",
+    "worker_timeout",
     "generation_timeout",
+    "profiling_timeout",
+    "validation_timeout",
     "memory_limit",
     "memory_probe_error",
     "phase_state_error",
@@ -741,11 +743,38 @@ def _terminate_worker(
         return process.wait(timeout=max(grace_seconds, 1.0))
 
 
+def _terminate_surviving_descendants(
+    process: WorkerProcess,
+    *,
+    monitor: ResourceMonitor,
+    grace_seconds: float,
+    signaler: TreeSignaler,
+    clock: Clock,
+    sleeper: Sleeper,
+) -> None:
+    """Terminate a process group left behind after its root has exited."""
+
+    members = tuple(pid for pid in monitor.member_pids if pid != process.pid)
+    if not members:
+        return
+    signaler(process.pid, members, signal.SIGTERM)
+    deadline = clock() + grace_seconds
+    while members and clock() < deadline:
+        sleeper(min(0.05, max(deadline - clock(), 0.0)))
+        monitor.sample_once()
+        members = tuple(pid for pid in monitor.member_pids if pid != process.pid)
+    if members:
+        signaler(process.pid, members, signal.SIGKILL)
+
+
 def supervise_worker(
     command: Sequence[str],
     *,
     timeout_seconds: float | None = None,
     generation_timeout_seconds: float | None = None,
+    profiling_timeout_seconds: float | None = None,
+    validation_timeout_seconds: float | None = None,
+    generation_guard_includes_preparation: bool = False,
     phase_channel: WorkerPhaseChannel | None = None,
     max_rss_bytes: int | None = None,
     interval_seconds: float = DEFAULT_SAMPLE_INTERVAL_SECONDS,
@@ -765,7 +794,7 @@ def supervise_worker(
     observation_callback: ObservationCallback | None = None,
     cancellation_requested: CancellationCheck | None = None,
 ) -> SupervisedResult:
-    """Run a worker and enforce wall, generation-only, and memory limits.
+    """Run a worker and enforce wall, stage, and memory limits.
 
     ``generation_timeout_seconds`` requires an authenticated phase channel.
     Missing, malformed, replayed, or incomplete phase evidence terminates the
@@ -774,16 +803,32 @@ def supervise_worker(
 
     if not command:
         raise ValueError("command must not be empty")
-    if timeout_seconds is not None and timeout_seconds <= 0:
+    if timeout_seconds is not None and (
+        timeout_seconds <= 0 or not math.isfinite(timeout_seconds)
+    ):
         raise ValueError("timeout_seconds must be positive when specified")
     if generation_timeout_seconds is not None and (
         generation_timeout_seconds <= 0 or not math.isfinite(generation_timeout_seconds)
     ):
         raise ValueError("generation_timeout_seconds must be positive when specified")
-    if (generation_timeout_seconds is None) != (phase_channel is None):
+    for stage_name, stage_timeout in (
+        ("profiling_timeout_seconds", profiling_timeout_seconds),
+        ("validation_timeout_seconds", validation_timeout_seconds),
+    ):
+        if stage_timeout is not None and (
+            stage_timeout <= 0 or not math.isfinite(stage_timeout)
+        ):
+            raise ValueError(f"{stage_name} must be positive when specified")
+    if generation_timeout_seconds is not None and phase_channel is None:
         raise ValueError(
-            "generation_timeout_seconds and phase_channel must be specified together"
+            "generation_timeout_seconds requires an authenticated phase_channel"
         )
+    if (
+        profiling_timeout_seconds is not None
+        or validation_timeout_seconds is not None
+        or generation_guard_includes_preparation
+    ) and phase_channel is None:
+        raise ValueError("stage limits require an authenticated phase_channel")
     if max_rss_bytes is not None and max_rss_bytes <= 0:
         raise ValueError("max_rss_bytes must be positive when specified")
     if interval_seconds <= 0:
@@ -840,16 +885,31 @@ def supervise_worker(
     memory_limit_reason: str | None = None
     consecutive_memory_probe_failures = 0
     pending_memory_probe_reason: str | None = None
+    tree_termination_requested = False
 
     def terminate(selected_reason: TerminationReason) -> None:
-        nonlocal reason, returncode
+        nonlocal reason, returncode, tree_termination_requested
         reason = selected_reason
+        tree_termination_requested = True
         returncode = _terminate_worker(
             process,
             member_pids=monitor.member_pids,
             grace_seconds=termination_grace_seconds,
             signaler=signaler,
         )
+
+    def effective_generation_elapsed(
+        state: WorkerPhaseState,
+        *,
+        now_seconds: float,
+        wall_seconds: float,
+    ) -> float | None:
+        if not generation_guard_includes_preparation:
+            return state.generation_elapsed_seconds(now_seconds=now_seconds)
+        finished_ns = state.generation_finished_monotonic_ns
+        if finished_ns is None:
+            return wall_seconds
+        return max(finished_ns / 1_000_000_000 - phase_monitor_started, 0.0)
 
     def observe_phase(now_seconds: float) -> None:
         nonlocal phase_state, phase_error
@@ -877,6 +937,10 @@ def supervise_worker(
             observed.transition_monotonic_ns,
             observed.generation_started_monotonic_ns,
             observed.generation_finished_monotonic_ns,
+            observed.profiling_started_monotonic_ns,
+            observed.profiling_finished_monotonic_ns,
+            observed.validation_started_monotonic_ns,
+            observed.validation_finished_monotonic_ns,
         )
         if any(
             timestamp is not None
@@ -900,11 +964,21 @@ def supervise_worker(
                     "worker phase-state changed without advancing its sequence"
                 )
                 return
-            prior_start = phase_state.generation_started_monotonic_ns
-            current_start = observed.generation_started_monotonic_ns
-            if prior_start is not None and current_start != prior_start:
-                phase_error = "worker generation start timestamp changed"
-                return
+            for field in (
+                "generation_started_monotonic_ns",
+                "generation_finished_monotonic_ns",
+                "profiling_started_monotonic_ns",
+                "profiling_finished_monotonic_ns",
+                "validation_started_monotonic_ns",
+                "validation_finished_monotonic_ns",
+            ):
+                prior_timestamp = getattr(phase_state, field)
+                if (
+                    prior_timestamp is not None
+                    and getattr(observed, field) != prior_timestamp
+                ):
+                    phase_error = f"worker {field} changed"
+                    return
         phase_state = observed
 
     try:
@@ -977,18 +1051,46 @@ def supervise_worker(
                     terminate("phase_state_error")
                     break
                 if phase_state is not None:
-                    generation_elapsed = phase_state.generation_elapsed_seconds(
-                        now_seconds=now_seconds
-                    )
-                    assert generation_timeout_seconds is not None
+                    if generation_timeout_seconds is not None:
+                        generation_elapsed = effective_generation_elapsed(
+                            phase_state,
+                            now_seconds=now_seconds,
+                            wall_seconds=usage.wall_seconds,
+                        )
+                        if (
+                            generation_elapsed is not None
+                            and generation_elapsed >= generation_timeout_seconds
+                        ):
+                            terminate("generation_timeout")
+                            break
                     if (
-                        generation_elapsed is not None
-                        and generation_elapsed >= generation_timeout_seconds
+                        profiling_timeout_seconds is not None
+                        and (
+                            profiling_elapsed := phase_state.stage_elapsed_seconds(
+                                "profiling",
+                                now_seconds=now_seconds,
+                            )
+                        )
+                        is not None
+                        and profiling_elapsed >= profiling_timeout_seconds
                     ):
-                        terminate("generation_timeout")
+                        terminate("profiling_timeout")
+                        break
+                    if (
+                        validation_timeout_seconds is not None
+                        and (
+                            validation_elapsed := phase_state.stage_elapsed_seconds(
+                                "validation",
+                                now_seconds=now_seconds,
+                            )
+                        )
+                        is not None
+                        and validation_elapsed >= validation_timeout_seconds
+                    ):
+                        terminate("validation_timeout")
                         break
             if timeout_seconds is not None and usage.wall_seconds >= timeout_seconds:
-                terminate("timeout")
+                terminate("worker_timeout")
                 break
 
             returncode = process.poll()
@@ -1014,12 +1116,24 @@ def supervise_worker(
                 grace_seconds=termination_grace_seconds,
                 signaler=signaler,
             )
+        elif not tree_termination_requested:
+            # ``poll`` reaps the root, but a daemonized/reparented descendant
+            # may still survive in the worker's process group. Do not return
+            # control to the scheduler until that known tree is gone.
+            process.wait()
+            _terminate_surviving_descendants(
+                process,
+                monitor=monitor,
+                grace_seconds=termination_grace_seconds,
+                signaler=signaler,
+                clock=clock,
+                sleeper=sleeper,
+            )
 
     if returncode is None:
         returncode = process.wait()
     generation_phase = None
-    if phase_channel is not None:
-        assert generation_timeout_seconds is not None
+    if phase_channel is not None and generation_timeout_seconds is not None:
         generation_phase = GenerationPhaseEvidence(
             configured_timeout_seconds=generation_timeout_seconds,
             supervisor_reason=reason,
@@ -1041,8 +1155,10 @@ def supervise_worker(
             generation_elapsed_seconds=(
                 None
                 if phase_state is None
-                else phase_state.generation_elapsed_seconds(
+                else effective_generation_elapsed(
+                    phase_state,
                     now_seconds=clock(),
+                    wall_seconds=monitor.usage.wall_seconds,
                 )
             ),
             final_state_sha256=(None if phase_state is None else phase_state.sha256),

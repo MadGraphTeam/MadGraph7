@@ -86,6 +86,7 @@ from .runner import (
     INDEPENDENT_RELATIVE_TOLERANCE,
     RELATIVE_TOLERANCE,
     SelectorContract,
+    _valid_symjit_plane_target,
     point_digest,
     runtime_validation_points,
     validate_runtime_contract,
@@ -2788,14 +2789,57 @@ def _audit_symjit_plane_evaluator_leaves(
     mismatches: list[str] = []
     if evaluator.get("kind") != "symjit-application-evaluator":
         mismatches.append("kind")
-    if evaluator.get("backend") != "jit":
+    legacy_backend = evaluator.get("backend")
+    if "backend" in evaluator and legacy_backend != "jit":
         mismatches.append("backend")
     if evaluator.get("runtime_capability") != _SOURCE_RUNTIME_CAPABILITY["jit"]:
         mismatches.append("runtime_capability")
     if evaluator.get("application_abi") != _SYMJIT_APPLICATION_ABI:
         mismatches.append("application_abi")
+    if evaluator.get("element_layout") != "complex-f64":
+        mismatches.append("element_layout")
+    if evaluator.get("batch_layout") != "row-major":
+        mismatches.append("batch_layout")
+    if evaluator.get("compiler_type") != "native":
+        mismatches.append("compiler_type")
+    if evaluator.get("translation_mode") not in {"direct", "indirect"}:
+        mismatches.append("translation_mode")
     if evaluator.get("optimization_level") != optimization_level:
         mismatches.append("optimization_level")
+    if evaluator.get("word_bits") != 64:
+        mismatches.append("word_bits")
+    if evaluator.get("endianness") != "little":
+        mismatches.append("endianness")
+    if evaluator.get("required_defuns") != []:
+        mismatches.append("required_defuns")
+    fallback_path = evaluator.get("evaluator_state_path")
+    fallback_capability = evaluator.get("evaluator_state_runtime_capability")
+    if fallback_path is None and fallback_capability is None:
+        pass
+    elif (
+        not isinstance(fallback_path, str)
+        or fallback_capability != "symbolica.legacy-jit-container.complex-f64.v1"
+    ):
+        mismatches.append("evaluator_state_fallback")
+    else:
+        _canonical_relative_path(
+            fallback_path,
+            f"{context}.fallback_evaluator_state",
+        )
+    input_len = evaluator.get("input_len")
+    output_len = evaluator.get("output_len")
+    if (
+        isinstance(input_len, bool)
+        or not isinstance(input_len, int)
+        or input_len < 0
+    ):
+        mismatches.append("input_len")
+    if (
+        isinstance(output_len, bool)
+        or not isinstance(output_len, int)
+        or output_len < 0
+    ):
+        mismatches.append("output_len")
     _canonical_relative_path(
         evaluator.get("application_path"),
         f"{context}.ordinary_application",
@@ -2808,6 +2852,25 @@ def _audit_symjit_plane_evaluator_leaves(
         mismatches.append("plane_application.application_abi")
     if plane.get("storage_abi") != _SYMJIT_APPLICATION_ABI:
         mismatches.append("plane_application.storage_abi")
+    if plane.get("element_layout") != "split-complex-plane-major":
+        mismatches.append("plane_application.element_layout")
+    if (
+        plane.get("descriptor_order")
+        != "inputs-re-im-then-outputs-re-im"
+    ):
+        mismatches.append("plane_application.descriptor_order")
+    if isinstance(input_len, int) and not isinstance(input_len, bool):
+        if plane.get("input_complex_count") != input_len:
+            mismatches.append("plane_application.input_complex_count")
+        if plane.get("input_plane_count") != 2 * input_len:
+            mismatches.append("plane_application.input_plane_count")
+    if isinstance(output_len, int) and not isinstance(output_len, bool):
+        if plane.get("output_complex_count") != output_len:
+            mismatches.append("plane_application.output_complex_count")
+        if plane.get("output_plane_count") != 2 * output_len:
+            mismatches.append("plane_application.output_plane_count")
+    if plane.get("compiler_type") != "native":
+        mismatches.append("plane_application.compiler_type")
     if (
         plane.get("translation_mode")
         != "symbolica-structured-instructions"
@@ -2815,8 +2878,23 @@ def _audit_symjit_plane_evaluator_leaves(
         mismatches.append("plane_application.translation_mode")
     if plane.get("direct_arena") is not True:
         mismatches.append("plane_application.direct_arena")
+    if plane.get("simd") is not True:
+        mismatches.append("plane_application.simd")
+    if plane.get("complex") is not True:
+        mismatches.append("plane_application.complex")
+    if plane.get("fast_math") is not True:
+        mismatches.append("plane_application.fast_math")
+    if plane.get("fast_complex") is not False:
+        mismatches.append("plane_application.fast_complex")
+    if not isinstance(plane.get("compression"), bool):
+        mismatches.append("plane_application.compression")
+    if plane.get("threading") is not False:
+        mismatches.append("plane_application.threading")
     if plane.get("optimization_level") != optimization_level:
         mismatches.append("plane_application.optimization_level")
+    target = plane.get("target")
+    if not _valid_symjit_plane_target(target):
+        mismatches.append("plane_application.target")
     plane_path = _canonical_relative_path(
         plane.get("application_path"),
         f"{context}.plane_application.application",

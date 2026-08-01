@@ -63,6 +63,10 @@ _SELECTED_FLOW_NORMALIZATION_RE = re.compile(
     r"^AMPICOL_SELECTED_FLOW_PROBE_NORMALIZATION\s+([+\-0-9.Ee]+)$",
     re.MULTILINE,
 )
+_SELECTED_FLOW_FIXED_VALUE_RE = re.compile(
+    r"^AMPICOL_SELECTED_FLOW_PROBE_FIXED_HELICITY_VALUE\s+([+\-0-9.Ee]+)$",
+    re.MULTILINE,
+)
 _SELECTED_FLOW_INTEGER_LABELS = {
     "amplitudes": "AMPICOL_SELECTED_FLOW_PROBE_AMPLITUDES",
     "color_factor": "AMPICOL_SELECTED_FLOW_PROBE_COLOR_FACTOR",
@@ -162,10 +166,15 @@ def _parse_selected_flow_probe_output(output: str) -> SelectedFlowProbeResult:
 
     value_matches = _SELECTED_FLOW_VALUE_RE.findall(output)
     normalization_matches = _SELECTED_FLOW_NORMALIZATION_RE.findall(output)
+    fixed_value_matches = _SELECTED_FLOW_FIXED_VALUE_RE.findall(output)
     if len(value_matches) != 1 or len(normalization_matches) != 1:
         raise LegacyOracleError(
             "Fortran selected-flow probe must emit exactly one value and "
             "normalization record"
+        )
+    if len(fixed_value_matches) > 1:
+        raise LegacyOracleError(
+            "Fortran selected-flow probe emitted duplicate fixed-helicity values"
         )
     group = int(value_matches[0][0])
     integral = int(value_matches[0][1])
@@ -182,9 +191,27 @@ def _parse_selected_flow_probe_output(output: str) -> SelectedFlowProbeResult:
         output,
         "AMPICOL_SELECTED_FLOW_PROBE_COLOR_ORDER",
     )
+    has_helicity_record = "AMPICOL_SELECTED_FLOW_PROBE_HELICITIES" in output
+    if bool(fixed_value_matches) != has_helicity_record:
+        raise LegacyOracleError(
+            "Fortran selected-flow probe emitted incomplete fixed-helicity evidence"
+        )
+    helicities = (
+        _parse_counted_integer_vector(
+            output,
+            "AMPICOL_SELECTED_FLOW_PROBE_HELICITIES",
+        )
+        if has_helicity_record
+        else ()
+    )
     if len(process_pdgs) != len(color_order):
         raise LegacyOracleError(
             "Fortran selected-flow probe emitted inconsistent external metadata"
+        )
+    if helicities and len(helicities) != len(process_pdgs):
+        raise LegacyOracleError(
+            "Fortran selected-flow probe emitted a helicity vector with the "
+            "wrong external width"
         )
     expected_order = tuple(range(1, len(process_pdgs) + 1))
     if tuple(sorted(color_order)) != expected_order:
@@ -219,6 +246,14 @@ def _parse_selected_flow_probe_output(output: str) -> SelectedFlowProbeResult:
             normalization_matches[0],
             "selected-flow normalization",
         )
+        if fixed_value_matches:
+            fixed_helicity_value, fixed_helicity_value_decimal = _probe_number(
+                fixed_value_matches[0],
+                "selected-flow fixed-helicity matrix-element value",
+            )
+        else:
+            fixed_helicity_value = None
+            fixed_helicity_value_decimal = None
     except (InvalidOperation, ValueError, OverflowError) as error:
         raise LegacyOracleError(
             "Fortran selected-flow probe emitted a malformed number"
@@ -235,8 +270,11 @@ def _parse_selected_flow_probe_output(output: str) -> SelectedFlowProbeResult:
         process_pdgs=process_pdgs,
         color_order=color_order,
         normalization=normalization,
+        helicities=helicities,
+        fixed_helicity_value=fixed_helicity_value,
         value_decimal=value_decimal,
         normalization_decimal=normalization_decimal,
+        fixed_helicity_value_decimal=fixed_helicity_value_decimal,
         **integers,
     )
 

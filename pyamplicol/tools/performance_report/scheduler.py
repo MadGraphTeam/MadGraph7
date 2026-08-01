@@ -4,17 +4,18 @@
 from __future__ import annotations
 
 import hashlib
+import heapq
 import json
 import math
 import os
 import re
 import shutil
-import subprocess
 import sys
+import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from contextlib import suppress
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from contextlib import ExitStack, nullcontext, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,6 +26,7 @@ from .artifacts import (
     ArtifactStore,
     CurrentRecord,
     LockCancelledError,
+    LockTimeoutError,
 )
 from .cache import validate_measurement
 from .campaign_policy import (
@@ -39,6 +41,7 @@ from .campaign_policy import (
     dependency_reference,
     generation_limit_for_cell,
     policy_censor_measurement,
+    policy_measurement_state_hint,
     policy_status_label,
     resource_frontier_reference,
     resource_lane_identity,
@@ -65,6 +68,7 @@ from .resources import (
     DEFAULT_TERMINATION_GRACE_SECONDS,
     GenerationPhaseEvidence,
     ResourceUsage,
+    SupervisedResult,
     WorkerObservation,
     supervise_worker,
 )
@@ -132,6 +136,8 @@ class CampaignSettings:
     minimum_samples: int = 5
     timeout_seconds: float | None = None
     generation_time_limit_seconds: float | None = None
+    profiling_time_limit_seconds: float | None = None
+    validation_time_limit_seconds: float | None = None
     max_rss_bytes: int | None = None
     campaign_max_rss_bytes: int | None = None
     artifact_policy: ArtifactPolicy = ArtifactPolicy.REGENERATE
@@ -184,6 +190,12 @@ class CampaignSettings:
             or not math.isfinite(self.generation_time_limit_seconds)
         ):
             raise ValueError("generation_time_limit_seconds must be positive")
+        for field_name, value in (
+            ("profiling_time_limit_seconds", self.profiling_time_limit_seconds),
+            ("validation_time_limit_seconds", self.validation_time_limit_seconds),
+        ):
+            if value is not None and (value <= 0.0 or not math.isfinite(value)):
+                raise ValueError(f"{field_name} must be positive")
         if self.max_rss_bytes is not None and self.max_rss_bytes <= 0:
             raise ValueError("max_rss_bytes must be positive")
         if self.campaign_max_rss_bytes is not None and self.campaign_max_rss_bytes <= 0:
@@ -196,9 +208,10 @@ class CampaignSettings:
             raise ValueError(
                 "original AmpliCol repository and revision must be specified together"
             )
-        if self.original_amplicol_revision is not None and re.fullmatch(
-            r"[0-9a-f]{40}", self.original_amplicol_revision
-        ) is None:
+        if (
+            self.original_amplicol_revision is not None
+            and re.fullmatch(r"[0-9a-f]{40}", self.original_amplicol_revision) is None
+        ):
             raise ValueError("original AmpliCol revision must be lowercase 40-hex")
         profile = self.report_profile or ""
         if self.campaign_policy is not STRICT_POLICY or self.report_profile is not None:
@@ -225,6 +238,8 @@ class PlannedCell:
     rank: int
     comparison_peer_ids: tuple[str, ...] = ()
     force_recompare: bool = False
+    prerequisite_cell_ids: tuple[str, ...] = ()
+    resource_predecessor_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,6 +247,32 @@ class CellOutcome:
     cell_id: str
     status: str
     detail: str
+    prerequisite_cell_ids: tuple[str, ...] = ()
+
+
+class _CoordinationDeferred(RuntimeError):
+    """Signal that a ready cell lost a non-blocking coordination-lock race."""
+
+    def __init__(self, lock_name: str) -> None:
+        super().__init__(f"coordination lock is busy: {lock_name}")
+        self.lock_name = lock_name
+
+
+class _PreparationFailed(RuntimeError):
+    """Memoized failure of one shared prepared-model prerequisite."""
+
+    def __init__(
+        self,
+        model: ModelKey,
+        reason: str,
+        detail: str,
+        supervised: SupervisedResult | None = None,
+    ) -> None:
+        super().__init__(detail)
+        self.model = model
+        self.reason = reason
+        self.detail = detail
+        self.supervised = supervised
 
 
 def _worker_environment_overrides(
@@ -248,6 +289,20 @@ def _worker_environment_overrides(
         ),
         _NATIVE_COMPILER_GATE_SLOT_COUNT_ENV: str(X86_EPYC_NATIVE_COMPILER_SLOTS),
     }
+
+
+def _symbolica_generation_lock_path(
+    settings: CampaignSettings,
+    coordination_root: Path,
+    cell: CellSpec,
+) -> Path | None:
+    if (
+        settings.allow_symbolica_parallel
+        or cell.measurement.model is not ModelKey.UFO_SM
+        or cell.measurement.execution_mode is not ExecutionMode.COMPILED
+    ):
+        return None
+    return coordination_root.resolve() / "symbolica-ufo-compiled-generation.lock"
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,6 +322,9 @@ class CampaignResult:
                 "skipped-current",
                 PolicyMeasurementState.GENERATION_LIMIT.value,
                 PolicyMeasurementState.MEMORY_LIMIT.value,
+                PolicyMeasurementState.WORKER_TIMEOUT.value,
+                PolicyMeasurementState.PROFILING_TIMEOUT.value,
+                PolicyMeasurementState.VALIDATION_TIMEOUT.value,
                 PolicyMeasurementState.DEPENDENCY.value,
                 PolicyMeasurementState.RESOURCE_FRONTIER.value,
             }
@@ -379,11 +437,7 @@ def _policy_current(
         terminal = store.load_current(cell.cell_id, missing_ok=True)
         if terminal is None:
             return None
-        status = terminal.result.get("status")
-        state = {
-            ResultStatus.TIMEOUT.value: PolicyMeasurementState.GENERATION_LIMIT,
-            ResultStatus.MEMORY_LIMIT.value: PolicyMeasurementState.MEMORY_LIMIT,
-        }.get(status)
+        state = policy_measurement_state_hint(terminal.result)
         if state is None or policy_status_label(terminal.result) is None:
             return None
         provenance = terminal.result.get("provenance")
@@ -569,10 +623,11 @@ def _partition_dependency_records(
     dict[str, CurrentRecord],
     tuple[dict[str, object], ...],
 ]:
-    """Keep a terminal baseline blocking while omitting terminal peer checks."""
+    """Partition successful dependencies and retain every terminal blocker."""
 
     baseline_record: CurrentRecord | None = None
     terminal_required: list[dict[str, object]] = []
+    terminal_ids: set[str] = set()
     if baseline_cell_id is not None:
         record, state = currents[baseline_cell_id]
         if state is PolicyMeasurementState.SUCCESS:
@@ -581,12 +636,17 @@ def _partition_dependency_records(
             terminal_required.append(
                 dependency_reference(baseline_cell_id, record.result)
             )
-    peer_records = {
-        peer_cell_id: record
-        for peer_cell_id in comparison_peer_ids
-        for record, state in (currents[peer_cell_id],)
-        if state is PolicyMeasurementState.SUCCESS
-    }
+            terminal_ids.add(baseline_cell_id)
+    peer_records: dict[str, CurrentRecord] = {}
+    for peer_cell_id in comparison_peer_ids:
+        record, state = currents[peer_cell_id]
+        if state is PolicyMeasurementState.SUCCESS:
+            peer_records[peer_cell_id] = record
+        elif peer_cell_id not in terminal_ids:
+            terminal_required.append(
+                dependency_reference(peer_cell_id, record.result)
+            )
+            terminal_ids.add(peer_cell_id)
     return baseline_record, peer_records, tuple(terminal_required)
 
 
@@ -740,17 +800,22 @@ def plan_campaign(
             for dependency in cell_dependencies
             if dependency_currents[dependency.cell_id] is None
         )
-        terminal_dependencies = tuple(
-            dependency_reference(
-                dependency.cell_id,
-                dependency_currents[dependency.cell_id][0].result,  # type: ignore[index]
-            )
+        terminal_dependency_cells = tuple(
+            dependency
             for dependency in cell_dependencies
             if (
                 dependency_currents[dependency.cell_id] is not None
                 and dependency_currents[dependency.cell_id][1]  # type: ignore[index]
                 is not PolicyMeasurementState.SUCCESS
             )
+        )
+        terminal_dependencies = tuple(
+            dependency_reference(
+                dependency.cell_id,
+                dependency_currents[dependency.cell_id][0].result,  # type: ignore[index]
+            )
+            for dependency in terminal_dependency_cells
+            if not settings.manual_terminal_censors
         )
         current = resolve_current(cell)
         frontier_source = _resource_frontier_source(
@@ -780,7 +845,9 @@ def plan_campaign(
                     and _measurement_frontier(_record.result) == expected_frontier
                 )
             elif state is PolicyMeasurementState.SUCCESS:
-                fresh_requested = not missing_dependencies and not terminal_dependencies
+                fresh_requested = (
+                    not missing_dependencies and not terminal_dependency_cells
+                )
             elif state is PolicyMeasurementState.DEPENDENCY:
                 provenance = _record.result.get("provenance")
                 censor = (
@@ -875,6 +942,32 @@ def plan_campaign(
         baseline = catalog.validation_baseline_cell(cell)
         return None if baseline is None else baseline.cell_id
 
+    def scheduled_prerequisite_ids(cell: CellSpec) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                dependency.cell_id
+                for dependency in dependencies(cell)
+                if dependency.cell_id in needed
+            )
+        )
+
+    def resource_predecessor_ids(cell: CellSpec) -> tuple[str, ...]:
+        if not settings.campaign_policy.allow_terminal_censors:
+            return ()
+        predecessors = tuple(
+            candidate
+            for candidate in needed.values()
+            if candidate.n_final < cell.n_final
+            and _resource_lane_key(candidate) == _resource_lane_key(cell)
+        )
+        if not predecessors:
+            return ()
+        predecessor = max(
+            predecessors,
+            key=lambda item: (item.n_final, item.cell_id),
+        )
+        return (predecessor.cell_id,)
+
     return tuple(
         PlannedCell(
             cell=cell,
@@ -886,6 +979,8 @@ def plan_campaign(
                 for edge in incoming_agreement_edges(cell, catalog=catalog)
             ),
             force_recompare=cell.cell_id in force_recompare_ids,
+            prerequisite_cell_ids=scheduled_prerequisite_ids(cell),
+            resource_predecessor_ids=resource_predecessor_ids(cell),
         )
         for cell in sorted(
             needed.values(),
@@ -1090,6 +1185,7 @@ class CampaignScheduler:
         )
         self.service.bind_original_amplicol_seed(self.original_amplicol_seed)
         self._prepared_model_paths: dict[ModelKey, Path] = {}
+        self._prepared_model_failures: dict[ModelKey, _PreparationFailed] = {}
         self._resource_lanes: dict[tuple[object, ...], tuple[CellSpec, ...]] = {}
         if settings.campaign_policy.allow_terminal_censors:
             grouped: dict[tuple[object, ...], list[CellSpec]] = {}
@@ -1110,6 +1206,26 @@ class CampaignScheduler:
         # campaign result.
         with suppress(Exception):
             callback({"event": event, "cell_id": cell.cell_id, **values})
+
+    def _observe_schedule(
+        self,
+        *,
+        ready: int,
+        waiting_dependency: int,
+        waiting_coordination_lock: int,
+    ) -> None:
+        callback = self.settings.progress_observer
+        if callback is None:
+            return
+        with suppress(Exception):
+            callback(
+                {
+                    "event": "scheduler-state",
+                    "ready": ready,
+                    "waiting_dependency": waiting_dependency,
+                    "waiting_coordination_lock": waiting_coordination_lock,
+                }
+            )
 
     def _cancelled(self) -> bool:
         callback = self.settings.cancellation_requested
@@ -1165,6 +1281,12 @@ class CampaignScheduler:
                     self.settings.generation_time_limit_seconds
                 ),
                 "worker_wall_limit_seconds": self.settings.timeout_seconds,
+                "profiling_time_limit_seconds": (
+                    self.settings.profiling_time_limit_seconds
+                ),
+                "validation_time_limit_seconds": (
+                    self.settings.validation_time_limit_seconds
+                ),
                 "memory_limit_bytes": self._effective_cell_rss_limit(),
                 "workers": self.settings.workers,
                 "cores_per_worker": self.settings.cell_cores,
@@ -1198,24 +1320,12 @@ class CampaignScheduler:
         resources: Mapping[str, object],
         progress_path: Path | None = None,
     ) -> tuple[dict[str, object], PolicyMeasurementState]:
-        if reason == "generation_timeout":
-            status = ResultStatus.TIMEOUT
-            state = PolicyMeasurementState.GENERATION_LIMIT
-            censor = {
-                "kind": PolicyCensorKind.GENERATION_LIMIT.value,
-                "generation_limit_seconds": (
-                    self.settings.generation_time_limit_seconds
-                ),
-            }
-        elif reason == "memory_limit":
-            status = ResultStatus.MEMORY_LIMIT
-            state = PolicyMeasurementState.MEMORY_LIMIT
-            censor = {
-                "kind": PolicyCensorKind.MEMORY_LIMIT.value,
-                "memory_limit_bytes": self._effective_cell_rss_limit(),
-            }
-        else:
-            raise ValueError(f"unsupported manual terminal reason {reason!r}")
+        state, censor = self._manual_terminal_contract(reason)
+        status = (
+            ResultStatus.MEMORY_LIMIT
+            if reason == "memory_limit"
+            else ResultStatus.TIMEOUT
+        )
         result = failure_measurement(
             status,
             f"worker terminated by {reason}",
@@ -1228,6 +1338,55 @@ class CampaignScheduler:
             progress_path=progress_path,
         )
         return result, state
+
+    def _manual_terminal_contract(
+        self,
+        reason: str,
+    ) -> tuple[PolicyMeasurementState, dict[str, object]]:
+        if reason == "generation_timeout":
+            state = PolicyMeasurementState.GENERATION_LIMIT
+            censor = {
+                "kind": PolicyCensorKind.GENERATION_LIMIT.value,
+                "terminal_reason": reason,
+                "generation_limit_seconds": (
+                    self.settings.generation_time_limit_seconds
+                ),
+            }
+        elif reason == "memory_limit":
+            state = PolicyMeasurementState.MEMORY_LIMIT
+            censor = {
+                "kind": PolicyCensorKind.MEMORY_LIMIT.value,
+                "terminal_reason": reason,
+                "memory_limit_bytes": self._effective_cell_rss_limit(),
+            }
+        elif reason == "worker_timeout":
+            state = PolicyMeasurementState.WORKER_TIMEOUT
+            censor = {
+                "kind": PolicyCensorKind.WORKER_TIMEOUT.value,
+                "terminal_reason": reason,
+                "worker_wall_limit_seconds": self.settings.timeout_seconds,
+            }
+        elif reason == "profiling_timeout":
+            state = PolicyMeasurementState.PROFILING_TIMEOUT
+            censor = {
+                "kind": PolicyCensorKind.PROFILING_TIMEOUT.value,
+                "terminal_reason": reason,
+                "profiling_time_limit_seconds": (
+                    self.settings.profiling_time_limit_seconds
+                ),
+            }
+        elif reason == "validation_timeout":
+            state = PolicyMeasurementState.VALIDATION_TIMEOUT
+            censor = {
+                "kind": PolicyCensorKind.VALIDATION_TIMEOUT.value,
+                "terminal_reason": reason,
+                "validation_time_limit_seconds": (
+                    self.settings.validation_time_limit_seconds
+                ),
+            }
+        else:
+            raise ValueError(f"unsupported manual terminal reason {reason!r}")
+        return state, censor
 
     def _current(
         self,
@@ -1281,72 +1440,36 @@ class CampaignScheduler:
                 f"dependencies: {', '.join(sorted(missing))}"
             )
 
-    def _prepare_legacy_workspace(self, attempt_id: str) -> Path:
-        """Create one pinned writable legacy checkout for one worker only."""
+    def _legacy_workspace_paths(self, attempt_id: str) -> tuple[Path, Path]:
+        """Resolve legacy copy paths without doing controller-side work."""
 
         from .legacy import MaintainedLegacyApi
 
         api = MaintainedLegacyApi()
         source = (
-            api.default_repository
-            if self.settings.original_amplicol_repository is None
-            else self.settings.original_amplicol_repository
-        ).expanduser().resolve(strict=True)
+            (
+                api.default_repository
+                if self.settings.original_amplicol_repository is None
+                else self.settings.original_amplicol_repository
+            )
+            .expanduser()
+            .resolve(strict=True)
+        )
         destination = (
             self.service.paths.artifact_root / "legacy-workspaces" / attempt_id
         )
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        if destination.exists():
-            raise RuntimeError(f"legacy worker workspace already exists: {destination}")
-        if self.settings.source_identity_override is not None:
-            # Contributor installation already pins this managed checkout.
-            # Manual campaigns make an isolated filesystem copy and never
-            # invoke Git at runtime.
-            from .legacy_structure import legacy_structural_probe_lock
+        return source, destination
 
-            with legacy_structural_probe_lock(source):
-                shutil.copytree(
-                    source,
-                    destination,
-                    ignore=shutil.ignore_patterns(".git", ".DS_Store"),
-                )
-            return destination
-        api.validate_checkout(source)
-        commands = (
-            (
-                "git",
-                "clone",
-                "--shared",
-                "--no-checkout",
-                "--",
-                os.fspath(source),
-                os.fspath(destination),
-            ),
-            (
-                "git",
-                "-C",
-                os.fspath(destination),
-                "checkout",
-                "--detach",
-                api.expected_revision(),
-            ),
-        )
-        for command in commands:
-            completed = subprocess.run(
-                command,
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=300,
+    @staticmethod
+    def _remove_legacy_workspace(destination: Path) -> None:
+        if not destination.exists():
+            return
+        if destination.is_symlink() or not destination.is_dir():
+            raise RuntimeError(
+                "legacy worker workspace is not its canonical regular directory: "
+                f"{destination}"
             )
-            if completed.returncode != 0:
-                detail = completed.stderr.strip() or completed.stdout.strip()
-                raise RuntimeError(
-                    "cannot prepare isolated legacy worker checkout: "
-                    f"{detail or f'exit {completed.returncode}'}"
-                )
-        api.validate_checkout(destination)
-        return destination
+        shutil.rmtree(destination)
 
     def _service_path_arguments(self) -> tuple[str, ...]:
         paths = self.service.paths
@@ -1545,6 +1668,18 @@ class CampaignScheduler:
                     or supervised.returncode != 0
                     or not result_path.is_file()
                 ):
+                    effective_reason = supervised.reason
+                    if supervised.reason == "worker_timeout":
+                        generation_limit = self.settings.generation_time_limit_seconds
+                        worker_limit = self.settings.timeout_seconds
+                        effective_reason = (
+                            "generation_timeout"
+                            if generation_limit is not None
+                            and (
+                                worker_limit is None or generation_limit <= worker_limit
+                            )
+                            else "worker_timeout"
+                        )
                     detail = None
                     if result_path.is_file():
                         try:
@@ -1553,10 +1688,16 @@ class CampaignScheduler:
                             ).get("error")
                         except (AttributeError, json.JSONDecodeError, OSError):
                             detail = None
-                    raise RuntimeError(
+                    message = (
                         f"{model.value} prepared-model preflight failed: "
                         f"reason={supervised.reason}, "
                         f"exit={supervised.returncode}, detail={detail}"
+                    )
+                    raise _PreparationFailed(
+                        model,
+                        effective_reason,
+                        message,
+                        supervised,
                     )
                 payload = json.loads(result_path.read_text(encoding="ascii"))
                 if not isinstance(payload, Mapping):
@@ -1580,6 +1721,95 @@ class CampaignScheduler:
                 result_path.unlink(missing_ok=True)
                 progress_path.unlink(missing_ok=True)
 
+    def _prepare_model_for(self, planned: PlannedCell) -> None:
+        cell = planned.cell
+        model = cell.measurement.model
+        if cell.measurement.execution_mode not in {
+            ExecutionMode.EAGER,
+            ExecutionMode.RECURRENCE,
+        } or model not in {ModelKey.BUILTIN_SM, ModelKey.UFO_SM}:
+            return
+        assert model is not None
+        if model in self._prepared_model_paths:
+            return
+        failure = self._prepared_model_failures.get(model)
+        if failure is not None:
+            raise failure
+        lock_name = f"campaign-prepared-model-{model.value}"
+        try:
+            with self.service.store.named_lock(
+                lock_name,
+                timeout=0.0,
+                cancellation_requested=self.settings.cancellation_requested,
+            ):
+                if model in self._prepared_model_paths:
+                    return
+                failure = self._prepared_model_failures.get(model)
+                if failure is not None:
+                    raise failure
+                try:
+                    self._ensure_prepared_model((planned,))
+                except _PreparationFailed as error:
+                    self._prepared_model_failures[model] = error
+                    raise
+                except Exception as error:
+                    failure = _PreparationFailed(
+                        model,
+                        "error",
+                        f"{type(error).__name__}: {error}",
+                    )
+                    self._prepared_model_failures[model] = failure
+                    raise failure from error
+        except LockTimeoutError as error:
+            raise _CoordinationDeferred(lock_name) from error
+
+    def _preparation_failure_outcome(
+        self,
+        cell: CellSpec,
+        failure: _PreparationFailed,
+    ) -> CellOutcome:
+        if failure.reason == "cancelled":
+            return CellOutcome(cell.cell_id, "cancelled", failure.detail)
+        supervised = failure.supervised
+        manual_reason = {
+            "generation_timeout": "generation_timeout",
+            "worker_timeout": "worker_timeout",
+            "memory_limit": "memory_limit",
+        }.get(failure.reason)
+        if (
+            self.settings.manual_terminal_censors
+            and supervised is not None
+            and manual_reason is not None
+        ):
+            resources = _resource_payload(
+                supervised.usage,
+                None,
+                memory_limit_bytes=supervised.memory_limit_bytes,
+                memory_limit_reason=supervised.memory_limit_reason,
+            )
+            resources["terminal_reason"] = manual_reason
+            with self.service.store.new_attempt(
+                cell.cell_id,
+                self.settings.artifact_policy,
+                based_on=self.service.store.load_current(
+                    cell.cell_id,
+                    missing_ok=True,
+                ),
+            ) as attempt:
+                result, state = self._manual_terminal_result(
+                    cell=cell,
+                    reason=manual_reason,
+                    resources=resources,
+                )
+                validate_measurement(result, expected_cell=cell)
+                record = attempt.publish(result)
+                return CellOutcome(cell.cell_id, state.value, record.attempt_id)
+        return CellOutcome(
+            cell.cell_id,
+            "preparation_error",
+            failure.detail,
+        )
+
     def run(self, planned: Sequence[PlannedCell]) -> CampaignResult:
         ordered = tuple(planned)
         self._validate_z_table_f_plan(ordered)
@@ -1598,27 +1828,152 @@ class CampaignScheduler:
             )
         if self._cancelled():
             return CampaignResult(planned=ordered, outcomes=())
-        self._ensure_prepared_model(ordered)
-        outcomes: list[CellOutcome] = []
-        effective_workers = self.settings.workers
-        if not self.settings.allow_symbolica_parallel and any(
-            item.cell.measurement.model is ModelKey.UFO_SM
-            and item.cell.measurement.execution_mode is ExecutionMode.COMPILED
+        if not ordered:
+            return CampaignResult(planned=ordered, outcomes=())
+
+        by_id = {item.cell.cell_id: item for item in ordered}
+        if len(by_id) != len(ordered):
+            raise ValueError("campaign plan contains duplicate cell IDs")
+        planned_ids = frozenset(by_id)
+        prerequisites: dict[str, set[str]] = {}
+        dependents: dict[str, set[str]] = {cell_id: set() for cell_id in planned_ids}
+        for item in ordered:
+            declared = set(item.prerequisite_cell_ids) | set(
+                item.resource_predecessor_ids
+            )
+            # Hand-written/older plans did not carry explicit DAG edges. Preserve
+            # their dependency semantics while plan_campaign now records them.
+            declared.update(
+                cell_id
+                for cell_id in (
+                    item.baseline_cell_id,
+                    *item.comparison_peer_ids,
+                )
+                if cell_id is not None and cell_id in planned_ids
+            )
+            missing = declared - planned_ids
+            if missing:
+                raise ValueError(
+                    f"campaign plan for {item.cell.cell_id!r} references "
+                    f"unscheduled prerequisites: {', '.join(sorted(missing))}"
+                )
+            if item.cell.cell_id in declared:
+                raise ValueError(
+                    "campaign plan contains a self dependency for "
+                    f"{item.cell.cell_id!r}"
+                )
+            prerequisites[item.cell.cell_id] = declared
+            for predecessor_id in declared:
+                dependents[predecessor_id].add(item.cell.cell_id)
+
+        ready: list[tuple[int, str]] = [
+            (item.rank, item.cell.cell_id)
             for item in ordered
-        ):
-            effective_workers = 1
-        for rank in sorted({item.rank for item in ordered}):
-            if self._cancelled():
+            if not prerequisites[item.cell.cell_id]
+        ]
+        heapq.heapify(ready)
+        queued_ids = {cell_id for _rank_value, cell_id in ready}
+        if not ready and ordered:
+            raise ValueError("campaign plan contains a dependency cycle")
+
+        outcomes: list[CellOutcome] = []
+        futures: dict[Future[CellOutcome], PlannedCell] = {}
+        waiting_locks: dict[str, float] = {}
+        retry_delay_seconds = min(
+            0.05,
+            self.settings.resource_sample_interval_seconds,
+        )
+
+        def observe_schedule() -> None:
+            self._observe_schedule(
+                ready=len(queued_ids - waiting_locks.keys()),
+                waiting_dependency=sum(bool(value) for value in prerequisites.values()),
+                waiting_coordination_lock=len(waiting_locks),
+            )
+
+        def pop_lockable_candidate(now: float) -> PlannedCell | None:
+            deferred: list[tuple[int, str]] = []
+            selected: PlannedCell | None = None
+            while ready:
+                key = heapq.heappop(ready)
+                retry_at = waiting_locks.get(key[1])
+                if retry_at is not None and retry_at > now:
+                    deferred.append(key)
+                    continue
+                selected = by_id[key[1]]
+                queued_ids.remove(key[1])
+                waiting_locks.pop(key[1], None)
                 break
-            wave = tuple(item for item in ordered if item.rank == rank)
-            with ThreadPoolExecutor(max_workers=effective_workers) as executor:
-                futures = {executor.submit(self._run_cell, item): item for item in wave}
-                for future in as_completed(futures):
-                    outcomes.append(future.result())
+            for key in deferred:
+                heapq.heappush(ready, key)
+            return selected
+
+        observe_schedule()
+        with ThreadPoolExecutor(max_workers=self.settings.workers) as executor:
+            while futures or queued_ids:
+                cancelled = self._cancelled()
+                now = time.monotonic()
+                while not cancelled and len(futures) < self.settings.workers:
+                    item = pop_lockable_candidate(now)
+                    if item is None:
+                        break
+                    futures[executor.submit(self._run_cell, item)] = item
+                observe_schedule()
+
+                if not futures:
+                    if cancelled:
+                        break
+                    if not queued_ids:
+                        break
+                    next_retry = min(waiting_locks.values(), default=now)
+                    time.sleep(max(0.001, min(retry_delay_seconds, next_retry - now)))
+                    continue
+
+                completed, _pending = wait(
+                    tuple(futures),
+                    timeout=retry_delay_seconds,
+                    return_when=FIRST_COMPLETED,
+                )
+                for future in sorted(
+                    completed,
+                    key=lambda candidate: futures[candidate].cell.cell_id,
+                ):
+                    item = futures.pop(future)
+                    cell_id = item.cell.cell_id
+                    try:
+                        outcome = future.result()
+                    except _CoordinationDeferred:
+                        waiting_locks[cell_id] = time.monotonic() + retry_delay_seconds
+                        queued_ids.add(cell_id)
+                        heapq.heappush(ready, (item.rank, cell_id))
+                        continue
+                    outcomes.append(outcome)
+                    prerequisites.pop(cell_id, None)
+                    waiting_locks.pop(cell_id, None)
+                    for dependent_id in sorted(dependents[cell_id]):
+                        remaining = prerequisites[dependent_id]
+                        remaining.discard(cell_id)
+                        if not remaining and dependent_id not in queued_ids:
+                            dependent = by_id[dependent_id]
+                            queued_ids.add(dependent_id)
+                            heapq.heappush(ready, (dependent.rank, dependent_id))
+                if not futures and not queued_ids and prerequisites:
+                    blocked = ", ".join(sorted(prerequisites))
+                    raise ValueError(
+                        "campaign plan contains an unresolved dependency cycle: "
+                        f"{blocked}"
+                    )
+            observe_schedule()
         return CampaignResult(
             planned=ordered,
             outcomes=tuple(sorted(outcomes, key=lambda item: item.cell_id)),
         )
+
+    def _coordination_lock_names(self, cell: CellSpec) -> tuple[str, ...]:
+        names = {f"campaign-cell-{cell.cell_id}"}
+        if self.settings.campaign_policy.allow_terminal_censors:
+            names.add(_resource_lane_lock_name(cell))
+        return tuple(sorted(names))
 
     def _run_cell(self, planned: PlannedCell) -> CellOutcome:
         cell = planned.cell
@@ -1631,16 +1986,31 @@ class CampaignScheduler:
                 detail=outcome.detail,
             )
             return outcome
-        self._observe("started", cell, dependency=planned.dependency)
         try:
-            if not self.settings.campaign_policy.allow_terminal_censors:
-                outcome = self._run_cell_in_lane(planned)
-            else:
-                with self.service.store.named_lock(
-                    _resource_lane_lock_name(cell),
-                    cancellation_requested=self.settings.cancellation_requested,
-                ):
+            with ExitStack() as locks:
+                for lock_name in self._coordination_lock_names(cell):
+                    try:
+                        locks.enter_context(
+                            self.service.store.named_lock(
+                                lock_name,
+                                timeout=0.0,
+                                cancellation_requested=(
+                                    self.settings.cancellation_requested
+                                ),
+                            )
+                        )
+                    except LockTimeoutError as error:
+                        raise _CoordinationDeferred(lock_name) from error
+                try:
                     outcome = self._run_cell_in_lane(planned)
+                except _PreparationFailed as error:
+                    # Publishing the shared-preparation terminal must remain
+                    # inside the same cell/lane exclusion as ordinary results.
+                    outcome = self._preparation_failure_outcome(cell, error)
+        except _CoordinationDeferred:
+            # A lock race is scheduling state, not a worker failure. The ready
+            # queue will defer and retry this cell without emitting completion.
+            raise
         except LockCancelledError:
             outcome = CellOutcome(cell.cell_id, "cancelled", "lock wait cancelled")
         except BaseException as error:
@@ -1656,6 +2026,7 @@ class CampaignScheduler:
             cell,
             status=outcome.status,
             detail=outcome.detail,
+            prerequisite_cell_ids=outcome.prerequisite_cell_ids,
         )
         return outcome
 
@@ -1663,10 +2034,9 @@ class CampaignScheduler:
         if self.settings.campaign_policy is MACBOOK_M3_Z_TABLE_F_POLICY:
             self._validate_z_table_f_plan((planned,))
         cell = planned.cell
-        with self.service.store.named_lock(
-            f"campaign-cell-{cell.cell_id}",
-            cancellation_requested=self.settings.cancellation_requested,
-        ):
+        # Coordination locks are acquired non-blockingly by _run_cell before a
+        # worker slot performs any artifact or dependency work.
+        with nullcontext():
             fresh = self._current(cell)
             frontier_source = (
                 _resource_frontier_source(
@@ -1765,18 +2135,34 @@ class CampaignScheduler:
                 str,
                 tuple[CurrentRecord, PolicyMeasurementState],
             ] = {}
+            missing_dependency_ids: list[str] = []
             for dependency in dependency_cells.values():
                 current_dependency = self._current(
                     dependency,
                     comparison_dependency=True,
                 )
                 if current_dependency is None:
-                    return self._publish_skip(
+                    missing_dependency_ids.append(dependency.cell_id)
+                else:
+                    dependency_currents[dependency.cell_id] = current_dependency
+            if missing_dependency_ids:
+                return self._publish_blocked_dependency(
+                    cell,
+                    missing_dependency_ids,
+                    current=decision.current,
+                )
+            if self.settings.manual_terminal_censors:
+                terminal_dependency_ids = tuple(
+                    dependency_id
+                    for dependency_id, (_record, state) in dependency_currents.items()
+                    if state is not PolicyMeasurementState.SUCCESS
+                )
+                if terminal_dependency_ids:
+                    return self._publish_blocked_dependency(
                         cell,
-                        f"required dependency {dependency.cell_id!r} is unavailable",
+                        terminal_dependency_ids,
                         current=decision.current,
                     )
-                dependency_currents[dependency.cell_id] = current_dependency
             baseline_record, peer_records, terminal_dependencies = (
                 _partition_dependency_records(
                     baseline_cell_id=(None if baseline is None else baseline.cell_id),
@@ -1790,6 +2176,20 @@ class CampaignScheduler:
                     terminal_dependencies,
                     current=decision.current,
                 )
+
+            reusable_record = (
+                decision.current
+                if (
+                    decision.action is ArtifactAction.RETIME_CURRENT
+                    and decision.current is not None
+                    and current_is_fresh
+                    and not self.settings.rerun
+                )
+                else equivalent_record
+            )
+            if reusable_record is None:
+                self._prepare_model_for(planned)
+            self._observe("started", cell, dependency=planned.dependency)
 
             with self.service.store.new_attempt(
                 cell.cell_id,
@@ -1807,9 +2207,21 @@ class CampaignScheduler:
                         cell,
                     )
                 )
+                generation_lock_path = (
+                    None
+                    if reusable_record is not None
+                    else _symbolica_generation_lock_path(
+                        self.settings,
+                        self.service.paths.coordination_root,
+                        cell,
+                    )
+                )
                 phase_channel = (
                     None
                     if generation_timeout is None
+                    and self.settings.profiling_time_limit_seconds is None
+                    and self.settings.validation_time_limit_seconds is None
+                    and generation_lock_path is None
                     else WorkerPhaseChannel.create(
                         attempt.path("worker-phase-state.json")
                     )
@@ -1842,6 +2254,19 @@ class CampaignScheduler:
                     "--progress-jsonl",
                     os.fspath(worker_progress),
                 ]
+                for option, limit in (
+                    ("--worker-wall-limit", self.settings.timeout_seconds),
+                    (
+                        "--profiling-time-limit",
+                        self.settings.profiling_time_limit_seconds,
+                    ),
+                    (
+                        "--validation-time-limit",
+                        self.settings.validation_time_limit_seconds,
+                    ),
+                ):
+                    if limit is not None:
+                        command.extend((option, str(limit)))
                 if self.settings.source_identity_override is not None:
                     command.extend(
                         (
@@ -1862,6 +2287,10 @@ class CampaignScheduler:
                             phase_channel.authentication_key,
                         )
                     )
+                if generation_lock_path is not None:
+                    command.extend(
+                        ("--generation-lock-path", os.fspath(generation_lock_path))
+                    )
                 if baseline_record is not None:
                     command.extend(
                         ("--baseline-json", os.fspath(baseline_record.result_path))
@@ -1879,17 +2308,24 @@ class CampaignScheduler:
                 )
                 if prepared_model is not None:
                     command.extend(("--prepared-model", os.fspath(prepared_model)))
-                legacy_repository: Path | None = None
+                legacy_workspace: Path | None = None
                 if cell.measurement.execution_mode is ExecutionMode.AMPLICOL and (
                     self.settings.campaign_policy.allow_terminal_censors
                     or self.settings.source_identity_override is not None
                 ):
-                    legacy_repository = self._prepare_legacy_workspace(
+                    legacy_source, legacy_workspace = self._legacy_workspace_paths(
                         attempt.attempt_id
                     )
                     command.extend(
-                        ("--legacy-repository", os.fspath(legacy_repository))
+                        (
+                            "--legacy-source-repository",
+                            os.fspath(legacy_source),
+                            "--legacy-workspace",
+                            os.fspath(legacy_workspace),
+                        )
                     )
+                    if self.settings.source_identity_override is not None:
+                        command.append("--legacy-copy-source")
                     if self.settings.original_amplicol_revision is not None:
                         command.extend(
                             (
@@ -1897,16 +2333,6 @@ class CampaignScheduler:
                                 self.settings.original_amplicol_revision,
                             )
                         )
-                reusable_record = (
-                    decision.current
-                    if (
-                        decision.action is ArtifactAction.RETIME_CURRENT
-                        and decision.current is not None
-                        and current_is_fresh
-                        and not self.settings.rerun
-                    )
-                    else equivalent_record
-                )
                 if reusable_record is not None:
                     command.extend(
                         (
@@ -1953,6 +2379,13 @@ class CampaignScheduler:
                     command,
                     timeout_seconds=self.settings.timeout_seconds,
                     generation_timeout_seconds=generation_timeout,
+                    profiling_timeout_seconds=(
+                        self.settings.profiling_time_limit_seconds
+                    ),
+                    validation_timeout_seconds=(
+                        self.settings.validation_time_limit_seconds
+                    ),
+                    generation_guard_includes_preparation=True,
                     phase_channel=phase_channel,
                     max_rss_bytes=self._effective_cell_rss_limit(),
                     environment_overrides=_worker_environment_overrides(
@@ -1970,6 +2403,8 @@ class CampaignScheduler:
                     observation_callback=observe_resources,
                     cancellation_requested=self.settings.cancellation_requested,
                 )
+                if legacy_workspace is not None:
+                    self._remove_legacy_workspace(legacy_workspace)
                 generation_phase = supervised.generation_phase
                 resources = _resource_payload(
                     supervised.usage,
@@ -1979,16 +2414,6 @@ class CampaignScheduler:
                 )
                 if supervised.reason == "cancelled":
                     if self.settings.discard_cancelled_attempts:
-                        if legacy_repository is not None:
-                            if (
-                                legacy_repository.is_symlink()
-                                or not legacy_repository.is_dir()
-                            ):
-                                raise RuntimeError(
-                                    "legacy worker workspace is not its canonical "
-                                    f"regular directory: {legacy_repository}"
-                                )
-                            shutil.rmtree(legacy_repository)
                         attempt.discard()
                         detail = (
                             "incomplete attempt discarded"
@@ -2017,7 +2442,11 @@ class CampaignScheduler:
                 if self.settings.manual_terminal_censors and supervised.reason in {
                     "generation_timeout",
                     "memory_limit",
+                    "worker_timeout",
+                    "profiling_timeout",
+                    "validation_timeout",
                 }:
+                    resources["terminal_reason"] = supervised.reason
                     result, policy_state = self._manual_terminal_result(
                         cell=cell,
                         reason=supervised.reason,
@@ -2113,8 +2542,10 @@ class CampaignScheduler:
                         )
                 elif supervised.reason != "completed":
                     status = {
-                        "timeout": ResultStatus.TIMEOUT,
+                        "worker_timeout": ResultStatus.TIMEOUT,
                         "generation_timeout": ResultStatus.TIMEOUT,
+                        "profiling_timeout": ResultStatus.TIMEOUT,
+                        "validation_timeout": ResultStatus.TIMEOUT,
                         "memory_limit": ResultStatus.MEMORY_LIMIT,
                         "memory_probe_error": ResultStatus.ERROR,
                         "phase_state_error": ResultStatus.ERROR,
@@ -2135,12 +2566,41 @@ class CampaignScheduler:
                     if not isinstance(raw, Mapping):
                         raise TypeError("worker result must be a JSON object")
                     result = dict(raw)
-                    result["resources"] = resources
-                    self._attach_manual_provenance(
-                        result,
-                        cell=cell,
-                        progress_path=worker_progress,
+                    child_resources = result.get("resources")
+                    child_failure = result.get("failure")
+                    child_terminal_reason = (
+                        child_resources.get("terminal_reason")
+                        if isinstance(child_resources, Mapping)
+                        else None
                     )
+                    authenticated_child_profile_timeout = (
+                        result.get("status") == ResultStatus.TIMEOUT.value
+                        and child_terminal_reason == "profiling_timeout"
+                        and isinstance(child_failure, Mapping)
+                        and child_failure.get("kind") == "ProfilingTimeLimitError"
+                    )
+                    if authenticated_child_profile_timeout:
+                        resources["terminal_reason"] = "profiling_timeout"
+                    result["resources"] = resources
+                    if (
+                        self.settings.manual_terminal_censors
+                        and authenticated_child_profile_timeout
+                    ):
+                        policy_state, censor = self._manual_terminal_contract(
+                            "profiling_timeout"
+                        )
+                        self._attach_manual_provenance(
+                            result,
+                            cell=cell,
+                            censor=censor,
+                            progress_path=worker_progress,
+                        )
+                    else:
+                        self._attach_manual_provenance(
+                            result,
+                            cell=cell,
+                            progress_path=worker_progress,
+                        )
                     self._bind_study_result(
                         result,
                         require_existing_harness=True,
@@ -2286,6 +2746,61 @@ class CampaignScheduler:
         ]
         return min(limits) if limits else None
 
+    def _publish_blocked_dependency(
+        self,
+        cell: CellSpec,
+        prerequisite_cell_ids: str | Sequence[str],
+        *,
+        current: CurrentRecord | None,
+    ) -> CellOutcome:
+        normalized = tuple(
+            sorted(
+                {
+                    value
+                    for value in (
+                        (prerequisite_cell_ids,)
+                        if isinstance(prerequisite_cell_ids, str)
+                        else prerequisite_cell_ids
+                    )
+                    if isinstance(value, str) and value
+                }
+            )
+        )
+        if not normalized:
+            raise ValueError("blocked dependency requires a prerequisite cell ID")
+        if len(normalized) == 1:
+            message = (
+                "blocked by dependency: required prerequisite "
+                f"{normalized[0]!r} is unavailable"
+            )
+        else:
+            rendered = ", ".join(repr(value) for value in normalized)
+            message = (
+                "blocked by dependency: required prerequisites "
+                f"{rendered} are unavailable"
+            )
+        with self.service.store.new_attempt(
+            cell.cell_id,
+            self.settings.artifact_policy,
+            based_on=current,
+        ) as attempt:
+            result = failure_measurement(ResultStatus.SKIP, message)
+            result["blocked_dependency"] = {
+                "prerequisite_cell_ids": list(normalized),
+            }
+            self._bind_study_result(result)
+            attempt.write_json("worker-result.json", result)
+            attempt.mark_failed(
+                message,
+                artifact_paths=("worker-result.json",),
+            )
+            return CellOutcome(
+                cell.cell_id,
+                "blocked_dependency",
+                message,
+                normalized,
+            )
+
     def _publish_skip(
         self,
         cell: CellSpec,
@@ -2293,6 +2808,8 @@ class CampaignScheduler:
         *,
         current: CurrentRecord | None,
     ) -> CellOutcome:
+        """Retain the generic failed-attempt helper for non-dependency callers."""
+
         with self.service.store.new_attempt(
             cell.cell_id,
             self.settings.artifact_policy,
@@ -2307,7 +2824,7 @@ class CampaignScheduler:
             )
             return CellOutcome(
                 cell.cell_id,
-                "skip",
+                ResultStatus.SKIP.value,
                 (
                     attempt.attempt_id
                     if current is None

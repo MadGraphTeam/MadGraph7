@@ -179,7 +179,7 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
         "refresh-pdf",
         "matrix_recurrence_ufo_sm_lc",
         "Inspect coverage",
-        "bounded spooled/compressed numerical-current evidence",
+        "cannot fit the 1-GiB envelope",
         "C++/ASM variants above",
         "Keyboard controls",
         "current/contribution counts",
@@ -192,7 +192,7 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
     assert arguments.cores_per_worker == 1
     assert arguments.generation_time_limit == 3600.0
     assert arguments.ram_limit == 30_000_000_000
-    assert arguments.worker_wall_limit is None
+    assert arguments.worker_wall_limit == 3600.0
     assert arguments.no_color is False
     assert arguments.force_refresh is False
     assert arguments.continue_across_revisions is False
@@ -277,6 +277,56 @@ def test_reproduction_recipe_uses_public_generate_and_profile() -> None:
     assert legacy_recipe.generate is None
     assert legacy_recipe.profile is None
     assert legacy_recipe.exact is False
+
+
+def test_reproduction_recipe_exposes_authenticated_reuse_off_fallback() -> None:
+    candidate = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+    )
+    fallback = {
+        "abi": "pyamplicol-numerical-current-reuse-fallback-v1",
+        "requested_mode": "certified-reuse",
+        "effective_mode": "off",
+        "effective_reuse_state": "disabled",
+        "reason": "evidence-envelope-fallback",
+        "geometry": {
+            "current_count": 4,
+            "component_count": 8,
+            "candidate_probe_count": 2,
+            "verification_probe_count": 2,
+            "runtime_parameter_count": 3,
+            "scalar_count": 76,
+            "row_count": 11,
+        },
+        "certified_relation_count": 0,
+        "applied_relation_count": 0,
+    }
+
+    recipe = reproduction_recipe(
+        candidate,
+        repo_root=ROOT,
+        measurement={"provenance": {"numerical_relation_fallback": fallback}},
+    )
+
+    assert recipe.generate is not None
+    assert "--no-numerical-current-reuse" in recipe.generate
+    assert "--numerical-current-reuse" not in recipe.generate
+    assert "effective-reuse-off-fallback" in recipe.kind
+    assert "evidence-envelope fallback" in recipe.note
+    assert "effectively disabled" in recipe.note
+
+    malformed = json.loads(json.dumps(fallback))
+    malformed["geometry"]["scalar_count"] = 77
+    with pytest.raises(ManualCampaignError, match="fallback geometry is inconsistent"):
+        reproduction_recipe(
+            candidate,
+            repo_root=ROOT,
+            measurement={
+                "provenance": {"numerical_relation_fallback": malformed}
+            },
+        )
 
 
 def test_reproduction_cli_prefix_runs_from_an_unrelated_directory(
@@ -464,10 +514,13 @@ def test_ratatui_headless_frames_are_stable_and_informative(
     assert "Selected" in frame
     assert "Recycled" in frame
     assert "Remaining" in frame
+    assert "Ready 0" in frame
+    assert "Waiting dependency 0" in frame
+    assert "Waiting coordination lock 0" in frame
     assert "RAM" in frame
     assert "Caps Generation 01:00:00" in frame
     assert "RAM 30.00 GB" in frame
-    assert "Total wall disabled" in frame
+    assert "Total wall 01:00:00" in frame
     assert "Ctrl-C" in frame
     assert len(frame.splitlines()) == height
 
@@ -869,6 +922,12 @@ def test_recycled_resource_cap_is_available_to_error_filter(
                 "wall_seconds": 3601.0,
                 "peak_rss_bytes": 2_000_000_000,
             },
+            "provenance": {
+                "manual_campaign": {
+                    "generation_limit_seconds": 3600.0,
+                    "memory_limit_bytes": 30_000_000_000,
+                }
+            },
         },
         complete=True,
         reusable=True,
@@ -903,6 +962,40 @@ def test_recycled_resource_cap_is_available_to_error_filter(
     assert [row.cell_id for row in state.visible_workers()] == [cell.cell_id]
     state.show_errors = False
     assert state.visible_workers() == ()
+
+
+def test_recycled_legacy_manual_memory_cap_needs_no_new_censor_record(
+    tmp_path: Path,
+) -> None:
+    cell = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+        and cell.measurement.model is ModelKey.BUILTIN_SM
+    )
+    current = LightweightCurrent(
+        cell_id=cell.cell_id,
+        attempt_id="legacy-memory-cap",
+        result_path=tmp_path / "worker-result.json",
+        result={
+            "status": ResultStatus.MEMORY_LIMIT.value,
+            "provenance": {"manual_campaign": {"memory_limit_bytes": 30_000_000_000}},
+        },
+        complete=True,
+        reusable=True,
+        reason="resource-capped terminal",
+    )
+
+    worker = manual_campaign._recycled_attention_workers(
+        (cell,),
+        {cell.cell_id: current},
+        {cell.cell_id},
+        repo_root=ROOT,
+        settings=ReproductionSettings(),
+    )[cell.cell_id]
+
+    assert worker.status == "memory_limit"
+    assert worker.recycled
 
 
 def test_successful_recycled_result_uses_done_filter_and_persisted_timeline(
@@ -1585,6 +1678,75 @@ def test_preflight_completion_removes_only_matching_transient_worker(
     assert payload["workers"] == {}
 
 
+def test_scheduler_state_is_visible_and_persisted_without_creating_worker_rows(
+    tmp_path: Path,
+) -> None:
+    service = _manual_service(tmp_path)
+    state = DashboardState(
+        instance_id="scheduler-state",
+        selected_ids=("cell-a", "cell-b", "cell-c"),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        source_revision="a" * 40,
+    )
+    lease = LeaseManager(service, state)
+
+    lease.observe(
+        {
+            "event": "scheduler-state",
+            "ready": 1,
+            "waiting_dependency": 1,
+            "waiting_coordination_lock": 1,
+        }
+    )
+
+    assert state.workers == {}
+    assert (state.ready_count, state.waiting_dependency_count) == (1, 1)
+    assert state.waiting_coordination_lock_count == 1
+    frame = render_dashboard_frame(state, width=120, height=36)
+    assert "Ready 1" in frame
+    assert "Waiting dependency 1" in frame
+    assert "Waiting coordination lock 1" in frame
+    payload = json.loads(lease.path.read_text(encoding="utf-8"))
+    assert payload["scheduler"] == {
+        "ready": 1,
+        "waiting_dependency": 1,
+        "waiting_coordination_lock": 1,
+    }
+
+
+def test_blocked_dependency_dashboard_retains_exact_prerequisite_ids(
+    tmp_path: Path,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell_id = "matrix-compiled-builtin-sm-lc-n1-dd-z-jets-selected-flow"
+    prerequisite = "matrix-recurrence-builtin-sm-lc-n1-dd-z-jets-selected-flow"
+    state = DashboardState(
+        instance_id="blocked-dependency",
+        selected_ids=(cell_id,),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        source_revision="a" * 40,
+    )
+    lease = LeaseManager(service, state)
+
+    lease.observe(
+        {
+            "event": "finished",
+            "cell_id": cell_id,
+            "status": "blocked_dependency",
+            "detail": "blocked by dependency",
+            "prerequisite_cell_ids": (prerequisite,),
+        }
+    )
+
+    worker = state.workers[cell_id]
+    assert worker.blocked_prerequisite_ids == (prerequisite,)
+    assert prerequisite in render_dashboard_frame(state, width=160, height=48)
+    payload = json.loads(lease.path.read_text(encoding="utf-8"))
+    assert payload["workers"][cell_id]["blocked_prerequisite_ids"] == [prerequisite]
+
+
 def test_active_lease_recipe_uses_effective_invocation_settings(
     tmp_path: Path,
 ) -> None:
@@ -2098,6 +2260,37 @@ def test_finished_reuse_stays_recycled_while_work_and_caps_complete(
         "failed": 0,
         "dependency_only": 0,
     }
+
+
+@pytest.mark.parametrize(
+    "status",
+    ("worker_timeout", "profiling_timeout", "validation_timeout"),
+)
+def test_manual_stage_timeouts_are_addressed_caps_in_dashboard_state(
+    tmp_path: Path,
+    status: str,
+) -> None:
+    service = _manual_service(tmp_path)
+    state = DashboardState(
+        instance_id="local",
+        selected_ids=(status,),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        source_revision="a" * 40,
+    )
+    LeaseManager(service, state).observe(
+        {
+            "event": "finished",
+            "cell_id": status,
+            "status": status,
+            "detail": status,
+        }
+    )
+
+    assert state.completed_ids == {status}
+    assert state.capped_ids == {status}
+    assert state.failed_ids == set()
+    assert state.counters()["remaining"] == 0
 
 
 def test_n8_all_flow_recurrence_is_runnable_but_native_n7_stays_static_na() -> None:

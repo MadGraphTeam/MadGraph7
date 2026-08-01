@@ -192,6 +192,7 @@ def run_color_probe(
 ) -> ProbeResult:
     validate_direct_color_probe_quark_line_scope(
         entry.process_pdgs,
+        color_accuracy=color_accuracy,
         context=(
             "direct all-flow color probe "
             f"group {entry.group}, integral {entry.integral}"
@@ -243,6 +244,7 @@ def run_selected_flow_library_probe(
     entry: ProcessEntry,
     source_pdgs: Sequence[int],
     momenta: Sequence[Sequence[float]],
+    helicities: Sequence[int] | None = None,
     points: int = 1,
 ) -> SelectedFlowProbeResult:
     """Evaluate one indexed LC row through the generated-library interface.
@@ -267,6 +269,17 @@ def run_selected_flow_library_probe(
         entry.process_pdgs,
         momenta,
     )
+    permutation = _permutation(source_pdgs, entry.process_pdgs)
+    if helicities is not None and len(helicities) != len(source_pdgs):
+        raise LegacyOracleError(
+            "selected-flow fixed-helicity probe requires one helicity per "
+            "external source leg"
+        )
+    ordered_helicities = (
+        ()
+        if helicities is None
+        else tuple(int(helicities[index]) for index in permutation)
+    )
     with tempfile.TemporaryDirectory(prefix="pac-selected-flow-", dir="/tmp") as raw:
         momentum_path = Path(raw) / "momenta.dat"
         momentum_path.write_text(
@@ -283,6 +296,7 @@ def run_selected_flow_library_probe(
             str(entry.group),
             str(entry.integral),
             str(momentum_path),
+            *(str(value) for value in ordered_helicities),
         ]
         completed = _run(command, cwd=repository)
     result = _parse_selected_flow_probe_output(
@@ -299,6 +313,11 @@ def run_selected_flow_library_probe(
         raise LegacyOracleError(
             "generated-library selected-flow PDG multiset "
             f"{result.process_pdgs} does not match selected row {entry.process_pdgs}"
+        )
+    if helicities is not None and result.helicities != ordered_helicities:
+        raise LegacyOracleError(
+            "generated-library selected-flow probe returned helicities "
+            f"{result.helicities}, expected {ordered_helicities}"
         )
     return result
 

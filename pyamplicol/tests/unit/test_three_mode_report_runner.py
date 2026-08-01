@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from pyamplicol.generation.artifact_writer import _evaluator as _serialize_evaluator
 from tools.performance_report.arena_profile import (
     ARENA_PHASE_TIMING_SCOPE,
     ARENA_PROFILE_BOUNDARY,
@@ -35,12 +36,15 @@ from tools.performance_report.runner import (
     PAIRED_ARENA_PROFILE_COMMAND_PATH,
     PRECOMPILED_GENERATION_COMMAND_PATH,
     PUBLIC_CLI_COMMAND_PATH,
+    ProfilingTimeLimitError,
     RunnerError,
     RunnerSettings,
     SelectorContract,
+    _artifact_numerical_relation_metadata,
     _authenticated_direct_codegen_identity,
     _authenticated_effective_config,
     _authenticated_recurrence_source_identity,
+    _authenticated_symjit_plane_leaves,
     _benchmark_measurement,
     _real_nonnegative,
     _regular_file_identity,
@@ -52,12 +56,106 @@ from tools.performance_report.runner import (
     generate_artifact,
     point_digest,
     pointwise_validation,
+    profiling_chunk_guard,
     resolved_sum_validation,
     runtime_identity_payload,
     validate_artifact_contract,
     validate_runtime_contract,
     validate_selector_contract,
 )
+
+
+def test_profiling_chunk_guard_rejects_only_chunks_larger_than_remaining() -> None:
+    guard = profiling_chunk_guard(10.0, clock=lambda: 9.0)
+
+    assert guard is not None
+    guard(None, "one-point probe")
+    guard(1.0, "exactly fitting chunk")
+    with pytest.raises(ProfilingTimeLimitError, match=r"estimated=1\.00001s"):
+        guard(1.00001, "oversized chunk")
+
+
+def test_profiling_chunk_guard_rejects_launch_after_deadline() -> None:
+    guard = profiling_chunk_guard(10.0, clock=lambda: 10.0)
+
+    assert guard is not None
+    with pytest.raises(ProfilingTimeLimitError, match="remaining=0s"):
+        guard(None, "one-point probe")
+
+
+def test_artifact_numerical_relation_metadata_preserves_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pyamplicol.artifacts as artifacts
+    from pyamplicol.generation.recurrence_numerical_current_warmup import (
+        RecurrenceNumericalEvidenceGeometry,
+    )
+
+    geometry = RecurrenceNumericalEvidenceGeometry.from_counts(
+        current_count=4,
+        component_count=4,
+        candidate_probe_count=2,
+        verification_probe_count=2,
+        runtime_parameter_count=2,
+    )
+    relation_report = {
+        "requested_mode": "certified-reuse",
+        "effective_mode": "off",
+        "effective_reuse_state": "disabled",
+        "certified_relation_count": 0,
+        "applied_relation_count": 0,
+        "relation_correctness": {
+            "abi": "pyamplicol-numerical-current-relation-correctness-v1",
+            "state": "no-applied-relations",
+            "applied_relation_count": 0,
+        },
+        "fallback": {
+            "reason": "evidence-envelope-fallback",
+            "memory_envelope_bytes": 1,
+            "spooled_producer_resident_bytes": (
+                geometry.spooled_producer_resident_upper_bound()
+            ),
+            "geometry": geometry.to_json_dict(),
+        },
+    }
+    manifest = SimpleNamespace(
+        extensions={
+            "generation": {
+                "concrete_processes": [
+                    {
+                        "id": "process",
+                        "filters": {"relation_discovery": relation_report},
+                    }
+                ]
+            }
+        }
+    )
+    loads: list[tuple[Path, bool]] = []
+
+    def load_manifest(path: Path, *, verify_payloads: bool) -> object:
+        loads.append((path, verify_payloads))
+        return manifest
+
+    monkeypatch.setattr(artifacts, "load_manifest", load_manifest)
+
+    correctness, fallback = _artifact_numerical_relation_metadata(
+        tmp_path / "artifact",
+        "process",
+    )
+
+    assert loads == [(tmp_path / "artifact", False)]
+    assert correctness["state"] == "no-applied-relations"
+    assert fallback == {
+        "abi": "pyamplicol-numerical-current-reuse-fallback-v1",
+        "requested_mode": "certified-reuse",
+        "effective_mode": "off",
+        "effective_reuse_state": "disabled",
+        "reason": "evidence-envelope-fallback",
+        "geometry": geometry.to_json_dict(),
+        "certified_relation_count": 0,
+        "applied_relation_count": 0,
+    }
 
 
 def _raw_arena_profile(
@@ -447,18 +545,14 @@ def test_report_arena_benchmark_uses_private_profiler_without_public_fallback(
     )
     assert result.environment["measured_point_count"] == 10
     assert result.environment["warmup_elapsed_seconds"] == pytest.approx(0.2e-3)
-    assert result.environment["calibration_elapsed_seconds"] == pytest.approx(
-        0.2e-3
-    )
+    assert result.environment["calibration_elapsed_seconds"] == pytest.approx(0.2e-3)
     assert result.environment["calibration_outer_elapsed_seconds"] == pytest.approx(
         0.2e-3
     )
     assert result.environment["measurement_phase_elapsed_seconds"] == pytest.approx(
         16.0e-3
     )
-    assert result.environment["profile_total_elapsed_seconds"] == pytest.approx(
-        16.5e-3
-    )
+    assert result.environment["profile_total_elapsed_seconds"] == pytest.approx(16.5e-3)
     measurement = _benchmark_measurement(result, matrix_element=2.0)
     total_timing = measurement["evaluator_total_timing"]
     assert isinstance(total_timing, dict)
@@ -779,6 +873,205 @@ def _refresh_recurrence_catalog(
     plan["direct_template_catalog_digest"] = catalog["catalog_digest"]
 
 
+def _canonical_symjit_evaluator(
+    application_path: str,
+    plane_path: str,
+    *,
+    optimization_level: int,
+    input_len: int = 1,
+    output_len: int = 1,
+    source_digest: str = "1" * 64,
+) -> dict[str, object]:
+    return {
+        "kind": "symjit-application-evaluator",
+        "runtime_capability": "symjit.application.complex-f64.v1",
+        "input_len": input_len,
+        "output_len": output_len,
+        "application_path": application_path,
+        "application_abi": "symjit-application-storage-v3",
+        "element_layout": "complex-f64",
+        "batch_layout": "row-major",
+        "compiler_type": "native",
+        "translation_mode": "indirect",
+        "optimization_level": optimization_level,
+        "word_bits": 64,
+        "endianness": "little",
+        "required_defuns": [],
+        "evaluator_state_path": f"{application_path}.state",
+        "evaluator_state_runtime_capability": (
+            "symbolica.legacy-jit-container.complex-f64.v1"
+        ),
+        "plane_application": {
+            "application_path": plane_path,
+            "application_abi": "pyamplicol-symjit-plane-application-v2",
+            "storage_abi": "symjit-application-storage-v3",
+            "element_layout": "split-complex-plane-major",
+            "descriptor_order": "inputs-re-im-then-outputs-re-im",
+            "input_complex_count": input_len,
+            "output_complex_count": output_len,
+            "input_plane_count": 2 * input_len,
+            "output_plane_count": 2 * output_len,
+            "compiler_type": "native",
+            "translation_mode": "symbolica-structured-instructions",
+            "optimization_level": optimization_level,
+            "simd": True,
+            "complex": True,
+            "fast_math": True,
+            "fast_complex": False,
+            "compression": False,
+            "threading": False,
+            "direct_arena": True,
+            "source_digest": source_digest,
+            "target": {"word_bits": 64, "endianness": "little"},
+        },
+    }
+
+
+@pytest.mark.parametrize("optimization_level", (1, 3))
+@pytest.mark.parametrize("chunked", (False, True))
+def test_canonical_symjit_serializer_round_trips_into_report_authentication(
+    optimization_level: int,
+    chunked: bool,
+) -> None:
+    raw = _canonical_symjit_evaluator(
+        "evaluators/left.symjit",
+        "evaluators/left.plane.symjit",
+        optimization_level=optimization_level,
+    )
+    raw["backend"] = "jit"
+    if chunked:
+        right = _canonical_symjit_evaluator(
+            "evaluators/right.symjit",
+            "evaluators/right.plane.symjit",
+            optimization_level=optimization_level,
+        )
+        right["backend"] = "jit"
+        serialized = _serialize_evaluator(
+            {
+                "kind": "chunked-symbolica-evaluator",
+                "input_len": 2,
+                "chunk_input_indices": [[0], [1]],
+                "required_runtime_capabilities": ["symjit.application.complex-f64.v1"],
+                "chunks": [raw, right],
+            }
+        )
+    else:
+        serialized = _serialize_evaluator(raw)
+
+    leaves = _authenticated_symjit_plane_leaves(
+        serialized,
+        source_optimization_level=optimization_level,
+        context="serialized evaluator",
+    )
+
+    assert len(leaves) == (2 if chunked else 1)
+    for leaf in serialized["chunks"] if chunked else [serialized]:
+        assert "backend" not in leaf
+        assert leaf["compiler_type"] == "native"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("backend", "native"),
+        ("backend", None),
+        ("compiler_type", "interpreter"),
+    ),
+)
+def test_symjit_report_authentication_rejects_contradictory_identity(
+    field: str,
+    value: object,
+) -> None:
+    evaluator = _canonical_symjit_evaluator(
+        "evaluators/stage.symjit",
+        "evaluators/stage.plane.symjit",
+        optimization_level=3,
+    )
+    evaluator[field] = value
+
+    with pytest.raises(RunnerError, match="leaf contract drifted"):
+        _authenticated_symjit_plane_leaves(
+            evaluator,
+            source_optimization_level=3,
+            context="corrupt evaluator",
+        )
+
+
+def test_symjit_report_authentication_accepts_fallback_free_portable_leaf() -> None:
+    evaluator = _canonical_symjit_evaluator(
+        "evaluators/stage.symjit",
+        "evaluators/stage.plane.symjit",
+        optimization_level=3,
+    )
+    evaluator["evaluator_state_path"] = None
+    evaluator["evaluator_state_runtime_capability"] = None
+
+    assert _authenticated_symjit_plane_leaves(
+        evaluator,
+        source_optimization_level=3,
+        context="portable evaluator",
+    ) == [("evaluators/stage.plane.symjit", "1" * 64)]
+
+
+@pytest.mark.parametrize(
+    ("state_path", "capability"),
+    (
+        (None, "symbolica.legacy-jit-container.complex-f64.v1"),
+        ("evaluators/stage.state", None),
+    ),
+)
+def test_symjit_report_authentication_rejects_partial_fallback_pair(
+    state_path: str | None,
+    capability: str | None,
+) -> None:
+    evaluator = _canonical_symjit_evaluator(
+        "evaluators/stage.symjit",
+        "evaluators/stage.plane.symjit",
+        optimization_level=3,
+    )
+    evaluator["evaluator_state_path"] = state_path
+    evaluator["evaluator_state_runtime_capability"] = capability
+
+    with pytest.raises(RunnerError, match="fallback contract drifted"):
+        _authenticated_symjit_plane_leaves(
+            evaluator,
+            source_optimization_level=3,
+            context="partial fallback evaluator",
+        )
+
+
+@pytest.mark.parametrize(
+    "target",
+    (
+        {"word_bits": 64.0, "endianness": "little"},
+        {
+            "word_bits": 64,
+            "endianness": "little",
+            "cpu_features": ["z", "a"],
+        },
+        {"word_bits": 64, "endianness": "little", "unknown": True},
+    ),
+)
+def test_symjit_report_authentication_rejects_noncanonical_target(
+    target: dict[str, object],
+) -> None:
+    evaluator = _canonical_symjit_evaluator(
+        "evaluators/stage.symjit",
+        "evaluators/stage.plane.symjit",
+        optimization_level=3,
+    )
+    plane = evaluator["plane_application"]
+    assert isinstance(plane, dict)
+    plane["target"] = target
+
+    with pytest.raises(RunnerError, match="plane application contract drifted"):
+        _authenticated_symjit_plane_leaves(
+            evaluator,
+            source_optimization_level=3,
+            context="noncanonical target evaluator",
+        )
+
+
 def _recurrence_source_fixture(
     source_sha256: str,
 ) -> tuple[dict[str, object], dict[str, object]]:
@@ -937,27 +1230,11 @@ def _recurrence_source_fixture(
         "kernels": [
             {
                 "kernel_id": 0,
-                "f64_evaluator_manifest": {
-                    "kind": "symjit-application-evaluator",
-                    "backend": "jit",
-                    "runtime_capability": "symjit.application.complex-f64.v1",
-                    "application_abi": "symjit-application-storage-v3",
-                    "application_path": ordinary_source_path,
-                    "optimization_level": 2,
-                    "plane_application": {
-                        "application_path": source_path,
-                        "application_abi": (
-                            "pyamplicol-symjit-plane-application-v2"
-                        ),
-                        "storage_abi": "symjit-application-storage-v3",
-                        "translation_mode": (
-                            "symbolica-structured-instructions"
-                        ),
-                        "optimization_level": 2,
-                        "direct_arena": True,
-                        "source_digest": "1" * 64,
-                    },
-                },
+                "f64_evaluator_manifest": _canonical_symjit_evaluator(
+                    ordinary_source_path,
+                    source_path,
+                    optimization_level=2,
+                ),
             }
         ],
     }
@@ -1005,9 +1282,7 @@ def _runner_recurrence_artifact(
     index_relative = "processes/evaluators.json"
     execution_relative = f"processes/{process_id}/execution.json"
     pack_relative = "model/eager-kernel-pack.json"
-    source_relative = (
-        "model/eager-kernels/kernels/000000/application-0.plane.symjit"
-    )
+    source_relative = "model/eager-kernels/kernels/000000/application-0.plane.symjit"
     source_data = b"authenticated-symjit-application"
     source_sha256 = hashlib.sha256(source_data).hexdigest()
     execution, pack = _recurrence_source_fixture(source_sha256)
@@ -1274,6 +1549,18 @@ def test_generation_phase_watchdog_covers_preparation_and_generator_call(
         "_single_process_id",
         lambda _path, fallback: fallback,
     )
+    monkeypatch.setattr(
+        report_runner,
+        "_artifact_numerical_relation_metadata",
+        lambda _path, _process_id: (
+            {
+                "abi": "pyamplicol-numerical-current-relation-correctness-v1",
+                "state": "no-applied-relations",
+                "applied_relation_count": 0,
+            },
+            None,
+        ),
+    )
 
     generated = generate_artifact(
         _cell(ExecutionMode.COMPILED, Accuracy.LC, Workload.SELECTED_FLOW),
@@ -1377,6 +1664,18 @@ def test_prepared_generation_uses_public_cli_parser_and_default_handler(
         report_runner,
         "_single_process_id",
         lambda _path, fallback: fallback,
+    )
+    monkeypatch.setattr(
+        report_runner,
+        "_artifact_numerical_relation_metadata",
+        lambda _path, _process_id: (
+            {
+                "abi": "pyamplicol-numerical-current-relation-correctness-v1",
+                "state": "no-applied-relations",
+                "applied_relation_count": 0,
+            },
+            None,
+        ),
     )
     cell = REPORT_CATALOG.cell(
         f"matrix-{mode.value}-builtin-sm-lc-n1-dd-z-jets-selected-flow"
@@ -2080,31 +2379,11 @@ def test_direct_codegen_identity_follows_authenticated_process_index(
         "compiled": {
             "stage_evaluators": {
                 "amplitude_stage": {
-                    "evaluator": {
-                        "kind": "symjit-application-evaluator",
-                        "backend": "jit",
-                        "runtime_capability": (
-                            "symjit.application.complex-f64.v1"
-                        ),
-                        "application_abi": "symjit-application-storage-v3",
-                        "application_path": "evaluators/amplitude.symjit",
-                        "optimization_level": 1,
-                        "plane_application": {
-                            "application_path": (
-                                "evaluators/amplitude.plane.symjit"
-                            ),
-                            "application_abi": (
-                                "pyamplicol-symjit-plane-application-v2"
-                            ),
-                            "storage_abi": "symjit-application-storage-v3",
-                            "translation_mode": (
-                                "symbolica-structured-instructions"
-                            ),
-                            "optimization_level": 1,
-                            "direct_arena": True,
-                            "source_digest": "1" * 64,
-                        },
-                    },
+                    "evaluator": _canonical_symjit_evaluator(
+                        "evaluators/amplitude.symjit",
+                        "evaluators/amplitude.plane.symjit",
+                        optimization_level=1,
+                    ),
                     "compiled_plane_arena": {
                         "leaves": [
                             {
@@ -2118,7 +2397,7 @@ def test_direct_codegen_identity_follows_authenticated_process_index(
                                 "direct_codegen_optimization_level": 1,
                             }
                         ]
-                    }
+                    },
                 }
             }
         },
@@ -2199,9 +2478,7 @@ def test_recurrence_source_identity_follows_authenticated_direct_template_pack(
     index_relative = "processes/evaluators.json"
     execution_relative = f"processes/{process_id}/execution.json"
     pack_relative = "model/eager-kernel-pack.json"
-    source_relative = (
-        "model/eager-kernels/kernels/000000/application-0.plane.symjit"
-    )
+    source_relative = "model/eager-kernels/kernels/000000/application-0.plane.symjit"
     source_data = b"authenticated-symjit-application"
     source_sha256 = hashlib.sha256(source_data).hexdigest()
     execution, pack = _recurrence_source_fixture(source_sha256)

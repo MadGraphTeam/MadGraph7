@@ -145,10 +145,17 @@ from .recurrence_columnar import (
     build_recurrence_builder_input_v1,
 )
 from .recurrence_numerical_current_warmup import (
+    EVIDENCE_ENVELOPE_FALLBACK_REASON,
+    EVIDENCE_ENVELOPE_FALLBACK_WARNING,
+    RecurrenceNumericalEvidenceEnvelopeExceeded,
     build_recurrence_numerical_current_probe_points,
+    numerical_relation_correctness_payload,
+    recurrence_numerical_current_envelope_fallback_report,
     recurrence_numerical_current_opt_out_report,
+    recurrence_numerical_relation_correctness_summary,
     run_recurrence_numerical_current_warmup,
     validate_recurrence_numerical_current_application,
+    validate_recurrence_numerical_evidence_fallback,
 )
 from .recurrence_physics import (
     build_recurrence_color_contraction,
@@ -472,6 +479,17 @@ class _RustRecurrenceLoweringOutput:
     index_sha256: str
 
 
+def _validated_recurrence_evidence_fallback(
+    value: object,
+) -> dict[str, object]:
+    """Validate the one narrow recurrence evidence-fallback record."""
+
+    try:
+        return validate_recurrence_numerical_evidence_fallback(value)
+    except ValueError as exc:
+        raise GenerationError(str(exc)) from exc
+
+
 def _recurrence_relation_reporting(
     inspection: Mapping[str, object],
     *,
@@ -496,42 +514,134 @@ def _recurrence_relation_reporting(
         raise GenerationError(
             "recurrence numerical current lane mode disagrees with generation"
         )
+    effective_mode = lane_report.get("effective_mode")
+    effective_reuse_state = lane_report.get("effective_reuse_state")
+    effective_mode_reason = lane_report.get("effective_mode_reason")
+    lane_state = lane_report.get("state")
+    fallback_payload = lane_report.get("fallback")
     warning = lane_report.get("warning")
     if not isinstance(warning, Mapping):
         raise GenerationError(
             "recurrence numerical current report has no warning contract"
         )
-    warning_required = warning.get("required") is True
-    if warning_required and (
-        warning.get("code") != NUMERICAL_CURRENT_RELATION_WARNING_CODE
-        or warning.get("message") != NUMERICAL_CURRENT_RELATION_WARNING
-    ):
+    try:
+        relation_correctness = recurrence_numerical_relation_correctness_summary(
+            lane_report
+        )
+    except ValueError as exc:
+        raise GenerationError(str(exc)) from exc
+    no_warning: dict[str, object] = {
+        "required": False,
+        "emit": "never",
+        "code": None,
+        "message": None,
+    }
+    validated_fallback: dict[str, object] | None = None
+    if mode == "off":
+        if (
+            effective_mode != "off"
+            or effective_reuse_state != "disabled"
+            or lane_state != "disabled-by-user"
+            or fallback_payload is not None
+            or certified != 0
+            or applied != 0
+        ):
+            raise GenerationError(
+                "explicit recurrence numerical opt-out metadata is inconsistent"
+            )
+        aggregate_warning = no_warning
+    elif effective_mode == "off":
+        if (
+            mode != "certified-reuse"
+            or effective_reuse_state != "disabled"
+            or lane_state != "disabled-evidence-envelope-fallback"
+            or certified != 0
+            or applied != 0
+        ):
+            raise GenerationError(
+                "recurrence numerical reuse fallback metadata is inconsistent"
+            )
+        validated_fallback = _validated_recurrence_evidence_fallback(fallback_payload)
+        aggregate_warning = {
+            "required": True,
+            "emit": "once-per-generated-artifact",
+            "code": EVIDENCE_ENVELOPE_FALLBACK_REASON,
+            "message": EVIDENCE_ENVELOPE_FALLBACK_WARNING,
+        }
+    elif effective_mode in {"diagnostic", "certified-reuse"}:
+        expected_applied = certified if effective_mode == "certified-reuse" else 0
+        expected_state = (
+            "no_certified_numerical_relation"
+            if certified == 0
+            else (
+                "authenticated-numerical-applied"
+                if effective_mode == "certified-reuse"
+                else "authenticated-numerical-diagnostic-only"
+            )
+        )
+        expected_reuse_state = (
+            "enabled"
+            if effective_mode == "certified-reuse" or mode == "diagnostic"
+            else "disabled"
+        )
+        if mode == "certified-reuse" and effective_mode == "diagnostic":
+            application_scope = lane_report.get("application_scope")
+            if (
+                effective_mode_reason
+                not in {
+                    "multi-helicity-all-flow-member-scope-unproven",
+                    "contracted-opposite-binary64-disabled",
+                }
+                or not isinstance(application_scope, Mapping)
+                or application_scope.get("effective_mode_reason")
+                != effective_mode_reason
+            ):
+                raise GenerationError(
+                    "recurrence numerical diagnostic containment has no "
+                    "application-scope reason"
+                )
+        elif effective_mode_reason is not None:
+            raise GenerationError(
+                "recurrence numerical current mode has a spurious downgrade reason"
+            )
+        if (
+            (effective_mode == "certified-reuse" and mode != "certified-reuse")
+            or effective_reuse_state != expected_reuse_state
+            or lane_state != expected_state
+            or fallback_payload is not None
+            or applied != expected_applied
+        ):
+            raise GenerationError(
+                "active recurrence numerical current metadata is inconsistent"
+            )
+        aggregate_warning = (
+            {
+                "required": True,
+                "emit": "once-per-generated-artifact",
+                "code": NUMERICAL_CURRENT_RELATION_WARNING_CODE,
+                "message": NUMERICAL_CURRENT_RELATION_WARNING,
+            }
+            if applied
+            else no_warning
+        )
+    else:
+        raise GenerationError(
+            "recurrence numerical current effective mode is inconsistent"
+        )
+    if dict(warning) != aggregate_warning:
         raise GenerationError(
             "recurrence numerical current report changed its warning contract"
         )
-    aggregate_warning: dict[str, object] = (
-        {
-            "required": True,
-            "emit": "once-per-generated-artifact",
-            "code": NUMERICAL_CURRENT_RELATION_WARNING_CODE,
-            "message": NUMERICAL_CURRENT_RELATION_WARNING,
-        }
-        if warning_required
-        else {
-            "required": False,
-            "emit": "never",
-            "code": None,
-            "message": None,
-        }
-    )
+    warning_required = bool(aggregate_warning["required"])
+    warning_code = aggregate_warning["code"]
     runtime_inspection = dict(inspection)
     native = runtime_inspection.pop("relation_discovery", None)
     if native is not None and not isinstance(native, Mapping):
         raise GenerationError(
             "native recurrence relation application report is not a mapping"
         )
-    if mode == "off":
-        if native is not None or certified != 0 or applied != 0 or warning_required:
+    if effective_mode == "off":
+        if native is not None:
             raise GenerationError(
                 "disabled recurrence numerical current lane published application state"
             )
@@ -556,7 +666,7 @@ def _recurrence_relation_reporting(
             minimum=0,
         )
         if (
-            native.get("requested_mode") != mode
+            native.get("requested_mode") != effective_mode
             or native_certified != certified
             or native_applied != applied
             or native_certificate_count != certified
@@ -565,8 +675,9 @@ def _recurrence_relation_reporting(
                 "native recurrence relation counts disagree with the "
                 "authenticated warm-up"
             )
-        expected_applied = certified if mode == "certified-reuse" else 0
-        if applied != expected_applied or warning_required != (applied > 0):
+        if warning_required != (applied > 0) or (
+            warning_required and warning_code != NUMERICAL_CURRENT_RELATION_WARNING_CODE
+        ):
             raise GenerationError(
                 "recurrence numerical current application or warning state "
                 "is inconsistent"
@@ -674,17 +785,64 @@ def _recurrence_relation_reporting(
         "schema_version": 1,
         "abi": "pyamplicol-artifact-numerical-current-reuse-v1",
         "requested_mode": mode,
+        "effective_mode": effective_mode,
+        "effective_reuse_state": effective_reuse_state,
         "execution_mode": "recurrence",
         "lane_count": 1,
         "lanes": {"primary": dict(lane_report)},
         "certified_relation_count": certified,
         "applied_relation_count": applied,
+        "relation_correctness": relation_correctness,
         "structural_exact_discovery": None,
         "opt_out_flag": "--no-numerical-current-reuse",
+        "fallback": validated_fallback,
         "warning": aggregate_warning,
         "native_relation_application": (None if native is None else dict(native)),
     }
     return runtime_inspection, aggregate
+
+
+def _complete_recurrence_evidence_envelope_fallback(
+    *,
+    lower_once: Callable[..., _RustRecurrenceLoweringOutput],
+    final_schedule_path: Path,
+    baseline: _RustRecurrenceLoweringOutput,
+    baseline_plan: _RecurrenceExactPlan,
+    color_accuracy: str,
+    outcome: RecurrenceNumericalEvidenceEnvelopeExceeded,
+) -> _RustRecurrenceLoweringOutput:
+    """Finish one certified-reuse geometry fallback through the reuse-off path."""
+
+    output = lower_once(
+        final_schedule_path,
+        mode="off",
+        evidence=None,
+        report_progress=False,
+        timing_name="native-final-generation",
+    )
+    lane_report = recurrence_numerical_current_envelope_fallback_report(
+        baseline_plan.sections,
+        color_accuracy=color_accuracy,
+        requested_mode="certified-reuse",
+        outcome=outcome,
+    )
+    runtime_inspection, aggregate_report = _recurrence_relation_reporting(
+        output.inspection_summary,
+        mode="certified-reuse",
+        lane_report=lane_report,
+    )
+    return replace(
+        output,
+        inspection_summary=runtime_inspection,
+        generation_profile={
+            "schema_version": 1,
+            "native_passes": {
+                "baseline": dict(baseline.generation_profile),
+                "final": dict(output.generation_profile),
+            },
+        },
+        numerical_current_reuse_report=aggregate_report,
+    )
 
 
 def _invoke_rust_eager_lowering_v1(
@@ -2350,28 +2508,26 @@ class GenerationBackend:
                     executor.shutdown(wait=True, cancel_futures=True)
 
             artifact_processes = tuple(item.artifact for item in generated)
-            recurrence_warning_required = any(
-                isinstance(
-                    process.generation_filters.get("relation_discovery"),
-                    Mapping,
-                )
-                and isinstance(
-                    cast(
-                        Mapping[str, object],
-                        process.generation_filters["relation_discovery"],
-                    ).get("warning"),
-                    Mapping,
-                )
-                and cast(
-                    Mapping[str, object],
-                    cast(
-                        Mapping[str, object],
-                        process.generation_filters["relation_discovery"],
-                    )["warning"],
-                ).get("required")
-                is True
-                for process in artifact_processes
-            )
+            recurrence_warnings: list[tuple[str, str]] = []
+            for process in artifact_processes:
+                relation_report = process.generation_filters.get("relation_discovery")
+                if not isinstance(relation_report, Mapping):
+                    continue
+                warning = relation_report.get("warning")
+                if (
+                    not isinstance(warning, Mapping)
+                    or warning.get("required") is not True
+                ):
+                    continue
+                code = warning.get("code")
+                message = warning.get("message")
+                if not isinstance(code, str) or not isinstance(message, str):
+                    raise GenerationError(
+                        "recurrence numerical warning metadata is malformed"
+                    )
+                item = (code, message)
+                if item not in recurrence_warnings:
+                    recurrence_warnings.append(item)
             with reporter.phase(
                 "artifact-writing",
                 "Writing schema-v3 artifact",
@@ -2414,11 +2570,11 @@ class GenerationBackend:
                         "file_count": len(write_result.files),
                     },
                 )
-            if recurrence_warning_required:
+            for warning_code, warning_message in recurrence_warnings:
                 _LOGGER.warning(
                     "%s [%s]",
-                    NUMERICAL_CURRENT_RELATION_WARNING,
-                    NUMERICAL_CURRENT_RELATION_WARNING_CODE,
+                    warning_message,
+                    warning_code,
                 )
 
             validation_points_by_process = {
@@ -2723,6 +2879,17 @@ class GenerationBackend:
                     execution_mode=relation_execution_mode,
                 )
                 return lane_dag
+            if all_flow_union or lane == "helicity-selector-union":
+                application_relation_kinds: tuple[
+                    Literal["equal", "opposite", "zero"], ...
+                ] = ()
+                application_scope_reason = "multi-helicity-all-flow-selector-domain"
+            elif self._color_accuracy in {"nlc", "full"}:
+                application_relation_kinds = ("zero", "equal")
+                application_scope_reason = "contracted-binary64-opposite-contained"
+            else:
+                application_relation_kinds = ("equal", "opposite", "zero")
+                application_scope_reason = "complete-generic-dag"
             try:
                 # Symbolica evaluator construction is process-global. Keep
                 # bounded high-precision captures serial even when independent
@@ -2745,6 +2912,8 @@ class GenerationBackend:
                         relative_tolerance=relation_config.relative_tolerance,
                         absolute_tolerance=relation_config.absolute_tolerance,
                         seed=relation_config.seed,
+                        application_relation_kinds=(application_relation_kinds),
+                        application_scope_reason=application_scope_reason,
                     )
             except ValueError as exc:
                 raise GenerationError(
@@ -2794,11 +2963,18 @@ class GenerationBackend:
             "schema_version": 1,
             "abi": "pyamplicol-artifact-numerical-current-reuse-v1",
             "requested_mode": relation_mode,
+            "effective_mode": relation_mode,
+            "effective_reuse_state": (
+                "disabled" if relation_mode == "off" else "enabled"
+            ),
             "execution_mode": relation_execution_mode,
             "lane_count": len(relation_lanes),
             "lanes": relation_lanes,
             "certified_relation_count": certified_relation_count,
             "applied_relation_count": applied_relation_count,
+            "relation_correctness": numerical_relation_correctness_payload(
+                applied_relation_count
+            ),
             "structural_exact_discovery": None,
             "opt_out_flag": "--no-numerical-current-reuse",
             "warning": (
@@ -3328,6 +3504,9 @@ class GenerationBackend:
                     profile["numerical-probe-point-preparation"] = (
                         time.perf_counter() - probe_points_started
                     )
+                    envelope_fallback: (
+                        RecurrenceNumericalEvidenceEnvelopeExceeded | None
+                    ) = None
                     try:
                         with _SYMBOLICA_MATERIALIZATION_LOCK:
                             baseline_plan_started = time.perf_counter()
@@ -3373,15 +3552,54 @@ class GenerationBackend:
                                     )
                                 }
                             )
+                    except RecurrenceNumericalEvidenceEnvelopeExceeded as exc:
+                        profile["numerical-warmup-total"] = (
+                            time.perf_counter() - warmup_started
+                        )
+                        if relation_discovery_mode != "certified-reuse":
+                            raise GenerationError(
+                                f"process {process_name!r} recurrence numerical "
+                                "diagnostic evidence exceeds its memory envelope"
+                            ) from exc
+                        envelope_fallback = exc
                     except (ArtifactError, ValueError) as exc:
                         raise GenerationError(
                             f"process {process_name!r} recurrence numerical "
                             f"current warm-up failed closed: {exc}"
                         ) from exc
+                    if envelope_fallback is not None:
+                        fallback_details = envelope_fallback.to_json_dict()
+                        geometry_details = cast(
+                            Mapping[str, object],
+                            fallback_details["geometry"],
+                        )
+                        native_task.update(
+                            native_task.completed,
+                            message=EVIDENCE_ENVELOPE_FALLBACK_WARNING,
+                            details={
+                                "process": process_name,
+                                "step": "numerical-current reuse disabled",
+                                "warning_code": (EVIDENCE_ENVELOPE_FALLBACK_REASON),
+                                "current_count": int(geometry_details["current_count"]),
+                                "component_count": int(
+                                    geometry_details["component_count"]
+                                ),
+                                "scalar_count": int(geometry_details["scalar_count"]),
+                                "row_count": int(geometry_details["row_count"]),
+                            },
+                        )
+                        return _complete_recurrence_evidence_envelope_fallback(
+                            lower_once=lower_once,
+                            final_schedule_path=final_schedule_path,
+                            baseline=baseline,
+                            baseline_plan=baseline_plan,
+                            color_accuracy=str(expanded.process_ir.color_accuracy),
+                            outcome=envelope_fallback,
+                        )
                     try:
                         output = lower_once(
                             final_schedule_path,
-                            mode=relation_discovery_mode,
+                            mode=warmup.effective_mode,
                             evidence=warmup.evidence_json,
                             report_progress=False,
                             timing_name="native-final-generation",

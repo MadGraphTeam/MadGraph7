@@ -692,6 +692,7 @@ def test_direct_color_probe_supports_three_but_not_four_quark_lines() -> None:
     assert (
         module.validate_direct_color_probe_quark_line_scope(
             (1, -1, 2, -2, 3, -3),
+            color_accuracy="full",
             context="three-line direct probe",
         )
         == 3
@@ -699,16 +700,27 @@ def test_direct_color_probe_supports_three_but_not_four_quark_lines() -> None:
     with pytest.raises(module.LegacyOracleError, match="4 quark lines exceed"):
         module.validate_direct_color_probe_quark_line_scope(
             (1, -1, 2, -2, 3, -3, 4, -4),
+            color_accuracy="lc",
             context="four-line direct probe",
         )
+    assert (
+        module.validate_direct_color_probe_quark_line_scope(
+            (1, -1, 2, -2, 3, -3, 21, 21, 21, 21, 21),
+            color_accuracy="lc",
+            context="large leading-colour three-line direct probe",
+        )
+        == 3
+    )
     with pytest.raises(module.LegacyOracleError, match=r"15120.*color flows exceed"):
         module.validate_direct_color_probe_quark_line_scope(
             (1, -1, 2, -2, 3, -3, 21, 21, 21, 21, 21),
+            color_accuracy="nlc",
             context="oversized three-line direct probe",
         )
     with pytest.raises(module.LegacyOracleError, match="color singlets"):
         module.validate_direct_color_probe_quark_line_scope(
             (1, -1, 2, -2, 3, -3, 22),
+            color_accuracy="lc",
             context="three-line photon probe",
         )
 
@@ -718,7 +730,7 @@ def test_public_legacy_checkout_uses_noninteractive_https() -> None:
 
     assert module.checkout_url() == ("https://github.com/rikkert-frederix/AmpliCol.git")
     assert module.checkout_branch() == "amplicol_with_patches"
-    assert module.expected_revision() == "79c96cecf2a722e50c3d2030b6894d755f96518a"
+    assert module.expected_revision() == "07f16be4fee70c2bd624eee76822c0bb322cb595"
 
 
 def test_compiler_provenance_records_build_inputs_and_executable(
@@ -837,21 +849,30 @@ def _selected_flow_probe_output(
     *,
     pdgs: tuple[int, ...] = (1, -1, 2, -2, 3, -3),
     color_order: tuple[int, ...] = (2, 1, 3, 4, 5, 6),
+    helicities: tuple[int, ...] | None = None,
 ) -> str:
-    return "\n".join(
-        (
-            "AMPICOL_SELECTED_FLOW_PROBE_VALUE 3 1 6.3359823001718900E-10",
-            "AMPICOL_SELECTED_FLOW_PROBE_PDGS "
-            f"{len(pdgs)} {' '.join(str(value) for value in pdgs)}",
-            "AMPICOL_SELECTED_FLOW_PROBE_COLOR_ORDER "
-            f"{len(color_order)} {' '.join(str(value) for value in color_order)}",
-            "AMPICOL_SELECTED_FLOW_PROBE_AMPLITUDES 4",
-            "AMPICOL_SELECTED_FLOW_PROBE_COLOR_FACTOR 27",
-            "AMPICOL_SELECTED_FLOW_PROBE_IDENTICAL_FACTOR 36",
-            "AMPICOL_SELECTED_FLOW_PROBE_SINGLET_VERTICES 0",
-            "AMPICOL_SELECTED_FLOW_PROBE_NORMALIZATION 1.3425000000000000E-01",
+    lines = [
+        "AMPICOL_SELECTED_FLOW_PROBE_VALUE 3 1 6.3359823001718900E-10",
+        "AMPICOL_SELECTED_FLOW_PROBE_PDGS "
+        f"{len(pdgs)} {' '.join(str(value) for value in pdgs)}",
+        "AMPICOL_SELECTED_FLOW_PROBE_COLOR_ORDER "
+        f"{len(color_order)} {' '.join(str(value) for value in color_order)}",
+        "AMPICOL_SELECTED_FLOW_PROBE_AMPLITUDES 4",
+        "AMPICOL_SELECTED_FLOW_PROBE_COLOR_FACTOR 27",
+        "AMPICOL_SELECTED_FLOW_PROBE_IDENTICAL_FACTOR 36",
+        "AMPICOL_SELECTED_FLOW_PROBE_SINGLET_VERTICES 0",
+        "AMPICOL_SELECTED_FLOW_PROBE_NORMALIZATION 1.3425000000000000E-01",
+    ]
+    if helicities is not None:
+        lines.extend(
+            (
+                "AMPICOL_SELECTED_FLOW_PROBE_HELICITIES "
+                f"{len(helicities)} {' '.join(str(value) for value in helicities)}",
+                "AMPICOL_SELECTED_FLOW_PROBE_FIXED_HELICITY_VALUE "
+                "2.5000000000000000E+00",
+            )
         )
-    )
+    return "\n".join(lines)
 
 
 def test_selected_flow_probe_parser_records_generated_row_metadata() -> None:
@@ -873,6 +894,19 @@ def test_selected_flow_probe_parser_records_generated_row_metadata() -> None:
         value_decimal=Decimal("6.3359823001718900E-10"),
         normalization_decimal=Decimal("1.3425000000000000E-01"),
     )
+
+
+def test_selected_flow_probe_parser_records_fixed_physical_helicity() -> None:
+    module = _module()
+    helicities = (-1, 1, -1, 1, -1, 1)
+
+    result = module._parse_selected_flow_probe_output(
+        _selected_flow_probe_output(helicities=helicities)
+    )
+
+    assert result.helicities == helicities
+    assert result.fixed_helicity_value == 2.5
+    assert result.fixed_helicity_value_decimal == Decimal("2.5000000000000000E+00")
 
 
 def test_selected_flow_library_probe_supports_three_quark_lines_and_indexed_rows(
@@ -906,7 +940,7 @@ def test_selected_flow_library_probe_supports_three_quark_lines_and_indexed_rows
         return module.subprocess.CompletedProcess(
             command,
             0,
-            _selected_flow_probe_output(),
+            _selected_flow_probe_output(helicities=(-1, 1, -1, 1, -1, 1)),
             "",
         )
 
@@ -917,6 +951,7 @@ def test_selected_flow_library_probe_supports_three_quark_lines_and_indexed_rows
         entry=entry,
         source_pdgs=source_pdgs,
         momenta=momenta,
+        helicities=(-1, 1, -1, 1, -1, 1),
         points=7,
     )
 
@@ -925,6 +960,7 @@ def test_selected_flow_library_probe_supports_three_quark_lines_and_indexed_rows
     assert result.color_order == entry.color_order
     assert observed["cwd"] == repository
     assert observed["command"][1:4] == ("7", "3", "1")
+    assert observed["command"][5:] == ("-1", "1", "-1", "1", "-1", "1")
     assert observed["momenta"] == "\n".join(
         " ".join(format(component, ".17g") for component in vector)
         for vector in momenta
@@ -968,6 +1004,50 @@ def test_selected_flow_library_probe_accepts_canonicalized_row_metadata(
 
     assert result.process_pdgs == (2, -2, -3, 3, -1, 1)
     assert result.color_order == (1, 3, 4, 5, 6, 2)
+
+
+def test_selected_flow_library_probe_maps_source_helicity_to_generated_row(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _module()
+    repository = tmp_path / "legacy"
+    repository.mkdir()
+    source_pdgs = (1, -1, 23, 21)
+    entry = module.ProcessEntry(
+        group=3,
+        integral=1,
+        process_pdgs=(1, -1, 21, 23),
+        color_order=(2, 3, 1, 4),
+    )
+    observed: dict[str, tuple[str, ...]] = {}
+
+    def fake_run(command, *, cwd, capture=True):
+        del cwd, capture
+        observed["command"] = tuple(command)
+        return module.subprocess.CompletedProcess(
+            command,
+            0,
+            _selected_flow_probe_output(
+                pdgs=entry.process_pdgs,
+                color_order=entry.color_order,
+                helicities=(-1, 1, -1, 0),
+            ),
+            "",
+        )
+
+    monkeypatch.setattr(module, "_run", fake_run)
+
+    result = module.run_selected_flow_library_probe(
+        repository,
+        entry=entry,
+        source_pdgs=source_pdgs,
+        momenta=((1.0, 2.0, 3.0, 4.0),) * 4,
+        helicities=(-1, 1, 0, -1),
+    )
+
+    assert result.helicities == (-1, 1, -1, 0)
+    assert observed["command"][5:] == ("-1", "1", "-1", "0")
 
 
 def test_selected_flow_library_probe_rejects_generated_pdg_mismatch(

@@ -168,6 +168,64 @@ def test_packaged_prepared_model_rejects_package_version_drift(
         pass
 
 
+def test_packaged_prepared_model_accepts_candidate_fingerprint_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import pyamplicol._internal.versions as versions
+
+    metadata = _metadata()
+    producer = metadata["producer"]
+    assert isinstance(producer, dict)
+    recorded = str(producer["package_version"])
+    active = recorded.rsplit("+candidate.", maxsplit=1)[0] + (
+        "+candidate." + "0" * 12
+    )
+    monkeypatch.setattr(versions, "package_version", lambda: active)
+
+    with prepared_models.packaged_prepared_model_path(
+        prepared_models.BUILTIN_SM_JIT_O2
+    ) as path:
+        assert path.is_file()
+
+
+def test_packaged_prepared_model_rejects_internal_producer_version_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import pyamplicol._internal.versions as versions
+
+    copied = tmp_path / "prepared_models"
+    shutil.copytree(ASSET_ROOT, copied)
+    metadata = _metadata()
+    producer = metadata["producer"]
+    assert isinstance(producer, dict)
+    recorded = str(producer["package_version"])
+    producer["package_version"] = recorded.rsplit(
+        "+candidate.", maxsplit=1
+    )[0] + ("+candidate." + "0" * 12)
+    (copied / f"{ASSET_STEM}.metadata.json").write_text(
+        json.dumps(metadata),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        versions,
+        "package_version",
+        lambda: producer["package_version"],
+    )
+    monkeypatch.setattr(prepared_models.resources, "files", lambda _package: copied)
+
+    with (
+        pytest.raises(
+            prepared_models.PackagedPreparedModelError,
+            match="package version disagrees with metadata",
+        ),
+        prepared_models.packaged_prepared_model_path(
+            prepared_models.BUILTIN_SM_JIT_O2
+        ),
+    ):
+        pass
+
+
 def test_packaged_prepared_model_runtime_ignores_producer_source_fingerprints(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

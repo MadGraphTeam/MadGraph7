@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import threading
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from tools.performance_report.campaign_policy import (
     X86_EPYC_PROFILE,
     X86_EPYC_WORKERS,
     PolicyMeasurementState,
+    policy_status_label,
 )
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.measurement import failure_measurement
@@ -39,17 +41,22 @@ from tools.performance_report.models import (
 from tools.performance_report.phase_state import WorkerPhaseChannel
 from tools.performance_report.resources import ResourceUsage, SupervisedResult
 from tools.performance_report.scheduler import (
+    CampaignResult,
     CampaignScheduler,
     CampaignSettings,
     CellOutcome,
     CellSelection,
     PlannedCell,
+    _CoordinationDeferred,
     _fresh_equivalent_current,
+    _PreparationFailed,
+    _symbolica_generation_lock_path,
     _worker_environment_overrides,
     plan_campaign,
     select_cells,
 )
 from tools.performance_report.service import ReportPaths, ReportService
+from tools.performance_report.source_identity import ReportSourceIdentity
 
 
 def _store(tmp_path: Path) -> ArtifactStore:
@@ -84,6 +91,30 @@ def test_epyc_worker_environment_injects_shared_native_compiler_gate(
             tmp_path / "strict-coordination",
         )
         == {}
+    )
+
+    ufo_compiled = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.model is ModelKey.UFO_SM
+        and cell.measurement.execution_mode is ExecutionMode.COMPILED
+    )
+    strict_root = tmp_path / "strict-coordination"
+    assert (
+        _symbolica_generation_lock_path(
+            CampaignSettings(),
+            strict_root,
+            ufo_compiled,
+        )
+        == (strict_root / "symbolica-ufo-compiled-generation.lock").resolve()
+    )
+    assert (
+        _symbolica_generation_lock_path(
+            CampaignSettings(allow_symbolica_parallel=True),
+            strict_root,
+            ufo_compiled,
+        )
+        is None
     )
 
 
@@ -879,6 +910,10 @@ def _run_with_captured_worker(
         "tools.performance_report.scheduler.supervise_worker",
         fake_supervise,
     )
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler._symbolica_generation_lock_path",
+        lambda *_arguments: tmp_path / "generation.lock",
+    )
     scheduler = CampaignScheduler(
         service,
         settings=CampaignSettings(
@@ -887,6 +922,7 @@ def _run_with_captured_worker(
             target_runtime_seconds=1.0,
         ),
     )
+    monkeypatch.setattr(scheduler, "_prepare_model_for", lambda _planned: None)
     scheduler.source_revision = revision
     outcome = scheduler._run_cell(
         PlannedCell(
@@ -924,6 +960,7 @@ def test_reuse_and_retime_use_equivalent_artifact_but_target_baseline(
     )
     assert command[command.index("--artifact-root") + 1].endswith("/artifacts")
     assert command[command.index("--coordination-root") + 1].endswith("/locks")
+    assert "--generation-lock-path" not in command
 
 
 @pytest.mark.parametrize(
@@ -951,6 +988,9 @@ def test_explicit_regenerate_or_rerun_forces_generation(
 
     assert outcome.status == "ok"
     assert "--reused-measurement-json" not in command
+    assert command[command.index("--generation-lock-path") + 1].endswith(
+        "/generation.lock"
+    )
 
 
 def test_scheduler_never_publishes_first_failed_worker_result(
@@ -993,6 +1033,7 @@ def test_scheduler_never_publishes_first_failed_worker_result(
         service,
         settings=CampaignSettings(artifact_policy=ArtifactPolicy.REGENERATE),
     )
+    monkeypatch.setattr(scheduler, "_prepare_model_for", lambda _planned: None)
     scheduler.source_revision = revision
     outcome = scheduler._run_cell(
         PlannedCell(
@@ -1047,6 +1088,116 @@ def test_scheduler_never_publishes_first_skip(
     assert manifest["result_path"] is None
 
 
+def test_dependency_block_retains_exact_prerequisite_identity(
+    tmp_path: Path,
+) -> None:
+    service = _service(tmp_path)
+    cell = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+    scheduler = CampaignScheduler(service, settings=CampaignSettings())
+    prerequisite = "reference-amplicol-lc-n1-dd-z-jets-selected-flow"
+
+    outcome = scheduler._publish_blocked_dependency(
+        cell,
+        prerequisite,
+        current=None,
+    )
+
+    assert outcome.status == "blocked_dependency"
+    assert outcome.prerequisite_cell_ids == (prerequisite,)
+    assert outcome.detail == (
+        f"blocked by dependency: required prerequisite {prerequisite!r} is unavailable"
+    )
+    assert service.store.load_current(cell.cell_id, missing_ok=True) is None
+    attempts = tuple((service.store._cell_root(cell.cell_id) / "attempts").iterdir())
+    assert len(attempts) == 1
+    result = json.loads(
+        (attempts[0] / "worker-result.json").read_text(encoding="utf-8")
+    )
+    assert result["blocked_dependency"] == {
+        "prerequisite_cell_ids": [prerequisite]
+    }
+
+
+def test_dag_terminal_direct_peer_blocks_dependent_before_worker_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    prerequisite = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+    dependent = _matrix_cell("matrix_compiled_builtin_sm_lc")
+    observed: list[Mapping[str, object]] = []
+    launched: list[str] = []
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(
+            workers=1,
+            max_rss_bytes=30_000_000_000,
+            manual_terminal_censors=True,
+            source_identity_override=ReportSourceIdentity(
+                "a" * 40,
+                "b" * 40,
+                (),
+            ),
+            progress_observer=lambda payload: observed.append(dict(payload)),
+        ),
+    )
+    monkeypatch.setattr(scheduler, "_prepare_model_for", lambda _planned: None)
+
+    def fake_supervise(
+        command: Sequence[str],
+        **_arguments: object,
+    ) -> SupervisedResult:
+        cell_id = str(command[command.index("--cell-id") + 1])
+        launched.append(cell_id)
+        if cell_id != prerequisite.cell_id:
+            pytest.fail("dependency-blocked worker was launched")
+        return SupervisedResult(
+            -9,
+            "memory_limit",
+            ResourceUsage(
+                True,
+                30_000_000_001,
+                30_000_000_001,
+                0,
+                0.1,
+                0.2,
+            ),
+        )
+
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        fake_supervise,
+    )
+    planned = (
+        PlannedCell(prerequisite, dependency=True, baseline_cell_id=None, rank=0),
+        PlannedCell(
+            dependent,
+            dependency=False,
+            baseline_cell_id=None,
+            rank=1,
+            comparison_peer_ids=(prerequisite.cell_id,),
+            prerequisite_cell_ids=(prerequisite.cell_id,),
+        ),
+    )
+
+    result = scheduler.run(planned)
+
+    assert launched == [prerequisite.cell_id]
+    outcomes = {outcome.cell_id: outcome for outcome in result.outcomes}
+    assert outcomes[prerequisite.cell_id].status == "memory_limit"
+    blocked = outcomes[dependent.cell_id]
+    assert blocked.status == "blocked_dependency"
+    assert blocked.prerequisite_cell_ids == (prerequisite.cell_id,)
+    finished = [
+        payload
+        for payload in observed
+        if payload.get("event") == "finished"
+        and payload.get("cell_id") == dependent.cell_id
+    ]
+    assert len(finished) == 1
+    assert finished[0]["prerequisite_cell_ids"] == (prerequisite.cell_id,)
+
+
 def test_scheduler_plumbs_authenticated_generation_only_limit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1082,8 +1233,14 @@ def test_scheduler_plumbs_authenticated_generation_only_limit(
     )
     scheduler = CampaignScheduler(
         service,
-        settings=CampaignSettings(generation_time_limit_seconds=7200.0),
+        settings=CampaignSettings(
+            timeout_seconds=90.0,
+            generation_time_limit_seconds=7200.0,
+            profiling_time_limit_seconds=60.0,
+            validation_time_limit_seconds=30.0,
+        ),
     )
+    monkeypatch.setattr(scheduler, "_prepare_model_for", lambda _planned: None)
     scheduler.source_revision = revision
     outcome = scheduler._run_cell(
         PlannedCell(
@@ -1095,7 +1252,10 @@ def test_scheduler_plumbs_authenticated_generation_only_limit(
     )
 
     assert outcome.status == "ok"
+    assert captured["timeout_seconds"] == 90.0
     assert captured["generation_timeout_seconds"] == 7200.0
+    assert captured["profiling_timeout_seconds"] == 60.0
+    assert captured["validation_timeout_seconds"] == 30.0
     channel = captured["phase_channel"]
     assert isinstance(channel, WorkerPhaseChannel)
     command = captured["command"]
@@ -1106,6 +1266,147 @@ def test_scheduler_plumbs_authenticated_generation_only_limit(
         command[command.index("--phase-state-authentication-key") + 1]
         == channel.authentication_key
     )
+    assert command[command.index("--worker-wall-limit") + 1] == "90.0"
+    assert command[command.index("--profiling-time-limit") + 1] == "60.0"
+    assert command[command.index("--validation-time-limit") + 1] == "30.0"
+
+
+@pytest.mark.parametrize(
+    ("reason", "state", "kind", "label"),
+    (
+        ("generation_timeout", "generation_limit", "generation_limit", ">7s"),
+        ("worker_timeout", "worker_timeout", "worker_timeout", "worker >11s"),
+        (
+            "profiling_timeout",
+            "profiling_timeout",
+            "profiling_timeout",
+            "profile >5s",
+        ),
+        (
+            "validation_timeout",
+            "validation_timeout",
+            "validation_timeout",
+            "validation >3s",
+        ),
+    ),
+)
+def test_manual_stage_timeout_is_published_as_distinct_addressed_current(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reason: str,
+    state: str,
+    kind: str,
+    label: str,
+) -> None:
+    service = _service(tmp_path)
+    cell = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        lambda _command, **_arguments: SupervisedResult(
+            -15,
+            reason,
+            ResourceUsage(True, 0, 1, 0, 0.1, 11.0),
+        ),
+    )
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(
+            timeout_seconds=11.0,
+            generation_time_limit_seconds=7.0,
+            profiling_time_limit_seconds=5.0,
+            validation_time_limit_seconds=3.0,
+            manual_terminal_censors=True,
+            source_identity_override=ReportSourceIdentity(
+                "a" * 40,
+                "b" * 40,
+                (),
+            ),
+        ),
+    )
+    monkeypatch.setattr(scheduler, "_prepare_model_for", lambda _planned: None)
+
+    outcome = scheduler._run_cell(
+        PlannedCell(cell, dependency=False, baseline_cell_id=None, rank=0)
+    )
+
+    assert outcome.status == state
+    assert not CampaignResult((PlannedCell(cell, False, None, 0),), (outcome,)).failed
+    current = service.store.load_current(cell.cell_id)
+    assert current is not None
+    assert current.result["status"] == ResultStatus.TIMEOUT.value
+    assert current.result["resources"]["terminal_reason"] == reason
+    assert current.result["provenance"]["policy_censor"]["kind"] == kind
+    assert policy_status_label(current.result) == label
+    resolved = scheduler._current(cell)
+    assert resolved is not None
+    assert resolved[1].value == state
+    for timing in (
+        "generation_seconds",
+        "wall_seconds_per_point",
+        "execution_seconds_per_point",
+        "sample_count",
+    ):
+        assert current.result[timing] is None
+
+
+def test_manual_clean_child_profiling_timeout_keeps_typed_reason(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    cell = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+
+    class ProfilingTimeLimitError(RuntimeError):
+        pass
+
+    def fake_supervise(
+        command: Sequence[str],
+        **_arguments: object,
+    ) -> SupervisedResult:
+        result_path = Path(command[command.index("--result-json") + 1])
+        result = failure_measurement(
+            ResultStatus.TIMEOUT,
+            ProfilingTimeLimitError("profiling budget exhausted"),
+            resources={"terminal_reason": "profiling_timeout"},
+        )
+        result_path.write_text(json.dumps(result) + "\n", encoding="ascii")
+        return SupervisedResult(
+            0,
+            "completed",
+            ResourceUsage(True, 0, 1, 0, 0.1, 5.0),
+        )
+
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        fake_supervise,
+    )
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(
+            timeout_seconds=11.0,
+            generation_time_limit_seconds=7.0,
+            profiling_time_limit_seconds=5.0,
+            validation_time_limit_seconds=3.0,
+            manual_terminal_censors=True,
+            source_identity_override=ReportSourceIdentity(
+                "a" * 40,
+                "b" * 40,
+                (),
+            ),
+        ),
+    )
+    monkeypatch.setattr(scheduler, "_prepare_model_for", lambda _planned: None)
+
+    outcome = scheduler._run_cell(
+        PlannedCell(cell, dependency=False, baseline_cell_id=None, rank=0)
+    )
+
+    assert outcome.status == PolicyMeasurementState.PROFILING_TIMEOUT.value
+    current = service.store.load_current(cell.cell_id)
+    assert current is not None
+    assert current.result["failure"]["kind"] == "ProfilingTimeLimitError"
+    assert current.result["resources"]["terminal_reason"] == "profiling_timeout"
 
 
 def test_campaign_run_never_publishes_or_renders(
@@ -1139,6 +1440,538 @@ def test_campaign_run_never_publishes_or_renders(
 
     assert result.failed == ()
     assert result.outcomes[0].cell_id == target.cell_id
+
+
+def test_shared_model_preparation_does_not_hold_independent_ready_cell(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(workers=2),
+    )
+    recurrence = PlannedCell(
+        _matrix_cell("matrix_recurrence_builtin_sm_lc"),
+        dependency=False,
+        baseline_cell_id=None,
+        rank=0,
+    )
+    scalar = PlannedCell(
+        REPORT_CATALOG.cell("scalar-contact-n2-scalar-contact-contracted"),
+        dependency=False,
+        baseline_cell_id=None,
+        rank=0,
+    )
+    preparation_started = threading.Event()
+    independent_started = threading.Event()
+
+    def prepare(_items: Sequence[PlannedCell]) -> None:
+        preparation_started.set()
+        assert independent_started.wait(timeout=1.0)
+        scheduler._prepared_model_paths[ModelKey.BUILTIN_SM] = (
+            tmp_path / "prepared-model.bin"
+        )
+
+    def run_cell(item: PlannedCell) -> CellOutcome:
+        if item.cell.cell_id == recurrence.cell.cell_id:
+            scheduler._prepare_model_for(item)
+        else:
+            assert preparation_started.wait(timeout=1.0)
+            independent_started.set()
+        return CellOutcome(item.cell.cell_id, "ok", "complete")
+
+    monkeypatch.setattr(scheduler, "_ensure_prepared_model", prepare)
+    monkeypatch.setattr(scheduler, "_run_cell", run_cell)
+
+    result = scheduler.run((recurrence, scalar))
+
+    assert {outcome.cell_id for outcome in result.outcomes} == {
+        recurrence.cell.cell_id,
+        scalar.cell.cell_id,
+    }
+
+
+def test_failed_shared_model_preparation_is_memoized(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scheduler = CampaignScheduler(_service(tmp_path), settings=CampaignSettings())
+    planned = PlannedCell(
+        _matrix_cell("matrix_recurrence_builtin_sm_lc"),
+        dependency=False,
+        baseline_cell_id=None,
+        rank=0,
+    )
+    calls = 0
+    failure = _PreparationFailed(
+        ModelKey.BUILTIN_SM,
+        "worker_timeout",
+        "prepared model timed out",
+    )
+
+    def fail(_items: Sequence[PlannedCell]) -> None:
+        nonlocal calls
+        calls += 1
+        raise failure
+
+    monkeypatch.setattr(scheduler, "_ensure_prepared_model", fail)
+
+    with pytest.raises(_PreparationFailed):
+        scheduler._prepare_model_for(planned)
+    with pytest.raises(_PreparationFailed):
+        scheduler._prepare_model_for(planned)
+
+    assert calls == 1
+
+
+def test_preparation_failure_is_handled_while_cell_lock_is_held(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    scheduler = CampaignScheduler(service, settings=CampaignSettings())
+    cell = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+    planned = PlannedCell(
+        cell,
+        dependency=False,
+        baseline_cell_id=None,
+        rank=0,
+    )
+    held: set[str] = set()
+
+    class Lock:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def __enter__(self) -> None:
+            held.add(self.name)
+
+        def __exit__(self, *_arguments: object) -> None:
+            held.remove(self.name)
+
+    monkeypatch.setattr(
+        service.store,
+        "named_lock",
+        lambda name, **_kwargs: Lock(name),
+    )
+
+    def fail(_planned: PlannedCell) -> None:
+        raise _PreparationFailed(
+            ModelKey.BUILTIN_SM,
+            "error",
+            "preparation failed",
+        )
+
+    monkeypatch.setattr(scheduler, "_prepare_model_for", fail)
+
+    def handle(
+        _cell: CellSpec,
+        _failure: _PreparationFailed,
+    ) -> CellOutcome:
+        assert f"campaign-cell-{cell.cell_id}" in held
+        return CellOutcome(cell.cell_id, "preparation_error", "handled")
+
+    monkeypatch.setattr(scheduler, "_preparation_failure_outcome", handle)
+
+    outcome = scheduler._run_cell(planned)
+
+    assert outcome.status == "preparation_error"
+    assert held == set()
+
+
+@pytest.mark.parametrize(
+    ("worker_limit", "generation_limit", "expected_reason"),
+    (
+        (11.0, 7.0, "generation_timeout"),
+        (5.0, 7.0, "worker_timeout"),
+    ),
+)
+def test_preparation_timeout_keeps_the_effective_limit_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    worker_limit: float,
+    generation_limit: float,
+    expected_reason: str,
+) -> None:
+    scheduler = CampaignScheduler(
+        _service(tmp_path),
+        settings=CampaignSettings(
+            timeout_seconds=worker_limit,
+            generation_time_limit_seconds=generation_limit,
+        ),
+    )
+    planned = PlannedCell(
+        _matrix_cell("matrix_recurrence_builtin_sm_lc"),
+        dependency=False,
+        baseline_cell_id=None,
+        rank=0,
+    )
+    captured: dict[str, object] = {}
+
+    def timeout(_command: Sequence[str], **arguments: object) -> SupervisedResult:
+        captured.update(arguments)
+        return SupervisedResult(
+            -15,
+            "worker_timeout",
+            ResourceUsage(True, 0, 1, 0, 0.1, min(worker_limit, generation_limit)),
+        )
+
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        timeout,
+    )
+
+    with pytest.raises(_PreparationFailed) as raised:
+        scheduler._ensure_prepared_model((planned,))
+
+    assert raised.value.reason == expected_reason
+    assert captured["timeout_seconds"] == min(worker_limit, generation_limit)
+
+
+def test_manual_preparation_wall_timeout_is_generation_terminal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    cell = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+    supervised = SupervisedResult(
+        -15,
+        "worker_timeout",
+        ResourceUsage(True, 0, 1, 0, 0.1, 7.0),
+    )
+    failure = _PreparationFailed(
+        ModelKey.BUILTIN_SM,
+        "generation_timeout",
+        "prepared model timed out",
+        supervised,
+    )
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(
+            timeout_seconds=11.0,
+            generation_time_limit_seconds=7.0,
+            profiling_time_limit_seconds=5.0,
+            validation_time_limit_seconds=3.0,
+            manual_terminal_censors=True,
+            source_identity_override=ReportSourceIdentity(
+                "a" * 40,
+                "b" * 40,
+                (),
+            ),
+        ),
+    )
+
+    def fail(_planned: PlannedCell) -> None:
+        raise failure
+
+    monkeypatch.setattr(scheduler, "_prepare_model_for", fail)
+
+    outcome = scheduler._run_cell(
+        PlannedCell(cell, dependency=False, baseline_cell_id=None, rank=0)
+    )
+
+    assert outcome.status == PolicyMeasurementState.GENERATION_LIMIT.value
+    current = service.store.load_current(cell.cell_id)
+    assert current is not None
+    assert current.result["resources"]["terminal_reason"] == "generation_timeout"
+
+
+def test_ready_queue_admits_later_rank_while_an_earlier_cell_is_still_running(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    cells = tuple(
+        sorted(
+            (
+                REPORT_CATALOG.cell("scalar-contact-n2-scalar-contact-contracted"),
+                REPORT_CATALOG.cell("scalar-gravity-n2-scalar-gravity-contracted"),
+                REPORT_CATALOG.cell("scalar-contact-n3-scalar-contact-contracted"),
+            ),
+            key=lambda cell: cell.cell_id,
+        )
+    )
+    slow, quick, later = cells
+    release_slow = threading.Event()
+    later_started = threading.Event()
+    failures: list[BaseException] = []
+    results: list[object] = []
+
+    scheduler = CampaignScheduler(service, settings=CampaignSettings(workers=2))
+    monkeypatch.setattr(scheduler, "_ensure_prepared_model", lambda _items: None)
+
+    def run_cell(item: PlannedCell) -> CellOutcome:
+        if item.cell == slow:
+            assert release_slow.wait(2.0)
+        elif item.cell == later:
+            later_started.set()
+        return CellOutcome(item.cell.cell_id, "ok", "complete")
+
+    monkeypatch.setattr(scheduler, "_run_cell", run_cell)
+    planned = (
+        PlannedCell(slow, False, None, 0),
+        PlannedCell(quick, False, None, 0),
+        PlannedCell(later, False, None, 4),
+    )
+
+    def run() -> None:
+        try:
+            results.append(scheduler.run(planned))
+        except BaseException as error:  # pragma: no cover - asserted below.
+            failures.append(error)
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    assert later_started.wait(1.0), "later ready work remained behind a rank wave"
+    release_slow.set()
+    thread.join(2.0)
+
+    assert not thread.is_alive()
+    assert failures == []
+    assert len(results) == 1
+
+
+def test_ready_queue_releases_dependents_without_waiting_for_unrelated_work(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    prerequisite = REPORT_CATALOG.cell("scalar-contact-n2-scalar-contact-contracted")
+    unrelated = REPORT_CATALOG.cell("scalar-gravity-n2-scalar-gravity-contracted")
+    dependent = REPORT_CATALOG.cell("scalar-contact-n3-scalar-contact-contracted")
+    release_unrelated = threading.Event()
+    dependent_started = threading.Event()
+    failures: list[BaseException] = []
+
+    scheduler = CampaignScheduler(service, settings=CampaignSettings(workers=2))
+    monkeypatch.setattr(scheduler, "_ensure_prepared_model", lambda _items: None)
+
+    def run_cell(item: PlannedCell) -> CellOutcome:
+        if item.cell == unrelated:
+            assert release_unrelated.wait(2.0)
+        elif item.cell == dependent:
+            dependent_started.set()
+        return CellOutcome(item.cell.cell_id, "ok", "complete")
+
+    monkeypatch.setattr(scheduler, "_run_cell", run_cell)
+    planned = (
+        PlannedCell(prerequisite, False, None, 0),
+        PlannedCell(unrelated, False, None, 0),
+        PlannedCell(
+            dependent,
+            False,
+            None,
+            3,
+            prerequisite_cell_ids=(prerequisite.cell_id,),
+        ),
+    )
+
+    def run() -> None:
+        try:
+            scheduler.run(planned)
+        except BaseException as error:  # pragma: no cover - asserted below.
+            failures.append(error)
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    assert dependent_started.wait(1.0)
+    release_unrelated.set()
+    thread.join(2.0)
+
+    assert not thread.is_alive()
+    assert failures == []
+
+
+def test_busy_cell_lock_is_deferred_without_consuming_the_only_worker_slot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    cells = tuple(
+        sorted(
+            (
+                REPORT_CATALOG.cell("scalar-contact-n2-scalar-contact-contracted"),
+                REPORT_CATALOG.cell("scalar-gravity-n2-scalar-gravity-contracted"),
+            ),
+            key=lambda cell: cell.cell_id,
+        )
+    )
+    locked, available = cells
+    available_finished = threading.Event()
+    observed: list[str] = []
+    progress_events: list[Mapping[str, object]] = []
+    failures: list[BaseException] = []
+
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(
+            workers=1,
+            progress_observer=lambda payload: progress_events.append(dict(payload)),
+        ),
+    )
+    monkeypatch.setattr(scheduler, "_ensure_prepared_model", lambda _items: None)
+
+    def run_in_lane(item: PlannedCell) -> CellOutcome:
+        observed.append(item.cell.cell_id)
+        if item.cell == available:
+            available_finished.set()
+        return CellOutcome(item.cell.cell_id, "ok", "complete")
+
+    monkeypatch.setattr(scheduler, "_run_cell_in_lane", run_in_lane)
+    planned = (
+        PlannedCell(locked, False, None, 0),
+        PlannedCell(available, False, None, 0),
+    )
+
+    def run() -> None:
+        try:
+            scheduler.run(planned)
+        except BaseException as error:  # pragma: no cover - asserted below.
+            failures.append(error)
+
+    with service.store.named_lock(f"campaign-cell-{locked.cell_id}"):
+        thread = threading.Thread(target=run)
+        thread.start()
+        assert available_finished.wait(1.0)
+    thread.join(2.0)
+
+    assert not thread.is_alive()
+    assert failures == []
+    assert observed == [available.cell_id, locked.cell_id]
+    assert not any(
+        payload.get("event") == "finished"
+        and payload.get("cell_id") == locked.cell_id
+        and payload.get("status") == "error"
+        for payload in progress_events
+    )
+
+
+def test_ufo_compiled_cells_overlap_outside_the_worker_side_compiler_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(workers=2),
+    )
+    ufo_compiled = tuple(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.model is ModelKey.UFO_SM
+        and cell.measurement.execution_mode is ExecutionMode.COMPILED
+    )[:2]
+    assert len(ufo_compiled) == 2
+    generating = threading.Event()
+    profiling = threading.Event()
+
+    def run_in_lane(item: PlannedCell) -> CellOutcome:
+        if item.cell == ufo_compiled[0]:
+            generating.set()
+            assert profiling.wait(1.0)
+        else:
+            assert generating.wait(1.0)
+            profiling.set()
+        return CellOutcome(item.cell.cell_id, "ok", "complete")
+
+    monkeypatch.setattr(scheduler, "_run_cell_in_lane", run_in_lane)
+    result = scheduler.run(
+        tuple(PlannedCell(cell, False, None, 0) for cell in ufo_compiled)
+    )
+
+    assert generating.is_set() and profiling.is_set()
+    assert not result.failed
+
+    # A reusable cell does not touch the worker-side compiler gate at all.
+    monkeypatch.setattr(
+        scheduler,
+        "_run_cell_in_lane",
+        lambda item: CellOutcome(item.cell.cell_id, "reused", "current"),
+    )
+    with service.store.named_lock("campaign-symbolica-compiled-capacity-1"):
+        outcome = scheduler._run_cell(PlannedCell(ufo_compiled[0], False, None, 0))
+
+    assert outcome.status == "reused"
+    assert "campaign-symbolica-compiled-capacity-1" not in (
+        scheduler._coordination_lock_names(ufo_compiled[0])
+    )
+
+
+def test_plan_campaign_builds_a_real_resource_predecessor_chain(
+    tmp_path: Path,
+) -> None:
+    lane = tuple(
+        sorted(
+            (
+                cell
+                for cell in REPORT_CATALOG.measurement_cells()
+                if cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+                and cell.measurement.accuracy is Accuracy.LC
+                and cell.workload is Workload.SELECTED_FLOW
+                and cell.process_key == "dd_z_jets"
+                and cell.n_final in {1, 2, 3}
+            ),
+            key=lambda cell: cell.n_final,
+        )
+    )
+    assert tuple(cell.n_final for cell in lane) == (1, 2, 3)
+    settings = CampaignSettings(
+        campaign_policy=X86_EPYC_POLICY,
+        report_profile=X86_EPYC_PROFILE,
+        workers=X86_EPYC_WORKERS,
+        max_rss_bytes=X86_EPYC_MEMORY_LIMIT_BYTES,
+        allow_symbolica_parallel=True,
+    )
+    planned = plan_campaign(
+        lane,
+        store=_store(tmp_path),
+        settings=settings,
+    )
+    by_id = {item.cell.cell_id: item for item in planned}
+
+    assert by_id[lane[0].cell_id].resource_predecessor_ids == ()
+    assert by_id[lane[1].cell_id].resource_predecessor_ids == (lane[0].cell_id,)
+    assert by_id[lane[2].cell_id].resource_predecessor_ids == (lane[1].cell_id,)
+
+
+def test_same_model_preparation_lock_contention_is_deferred(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scheduler = CampaignScheduler(_service(tmp_path), settings=CampaignSettings())
+    planned = PlannedCell(
+        _matrix_cell("matrix_recurrence_builtin_sm_lc"),
+        dependency=False,
+        baseline_cell_id=None,
+        rank=0,
+    )
+    started = threading.Event()
+    release = threading.Event()
+    failures: list[BaseException] = []
+
+    def prepare(_items: Sequence[PlannedCell]) -> None:
+        started.set()
+        assert release.wait(2.0)
+
+    monkeypatch.setattr(scheduler, "_ensure_prepared_model", prepare)
+
+    def first() -> None:
+        try:
+            scheduler._prepare_model_for(planned)
+        except BaseException as error:  # pragma: no cover - asserted below.
+            failures.append(error)
+
+    thread = threading.Thread(target=first)
+    thread.start()
+    assert started.wait(1.0)
+    with pytest.raises(_CoordinationDeferred):
+        scheduler._prepare_model_for(planned)
+    release.set()
+    thread.join(2.0)
+
+    assert not thread.is_alive()
+    assert failures == []
 
 
 def test_successful_current_resume_never_duplicates_post_populate_cell(

@@ -185,6 +185,7 @@ def validate_selected_flow_quark_line_scope(
 def validate_direct_color_probe_quark_line_scope(
     pdgs: Sequence[int],
     *,
+    color_accuracy: str,
     context: str,
 ) -> int:
     """Validate the direct imode-2 probe's generic open-line color basis."""
@@ -207,7 +208,10 @@ def validate_direct_color_probe_quark_line_scope(
             )
         gluons = sum(abs(int(pdg)) == 21 for pdg in pdgs)
         color_orders = 3 * factorial(gluons) * (gluons + 1) * (gluons + 2)
-        if color_orders > MAX_DIRECT_COLOR_PROBE_COLOR_ORDERS:
+        if (
+            color_accuracy.strip().lower() != "lc"
+            and color_orders > MAX_DIRECT_COLOR_PROBE_COLOR_ORDERS
+        ):
             raise LegacyOracleError(
                 f"{context}: {color_orders} three-line color flows exceed the "
                 "direct legacy Fortran color-probe limit of "

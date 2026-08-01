@@ -16,7 +16,7 @@ import stat
 import statistics
 import time
 import tomllib
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
@@ -76,9 +76,7 @@ _ARENA_MINIMUM_TARGET_FRACTION = 0.95
 _RECURRENCE_DIRECT_TEMPLATE_ABI = "pyamplicol-recurrence-direct-template-v1"
 _RECURRENCE_DIRECT_BACKEND_ABI = "rusticol.recurrence-direct-backend.v1"
 _RECURRENCE_DIRECT_CANONICALIZATION_ABI = "pyamplicol-canonical-json-v1"
-_RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI = (
-    "pyamplicol-recurrence-plane-binding-v2"
-)
+_RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI = "pyamplicol-recurrence-plane-binding-v2"
 _SYMJIT_APPLICATION_ABI = "symjit-application-storage-v3"
 _SYMJIT_PLANE_APPLICATION_ABI = "pyamplicol-symjit-plane-application-v2"
 _RECURRENCE_JIT_SOURCE_APPLICATION_ABI = _SYMJIT_PLANE_APPLICATION_ABI
@@ -96,8 +94,52 @@ PRECOMPILED_GENERATION_COMMAND_PATH = (
     "pyamplicol-generate-precompiled-model-injection-v1"
 )
 
+
 class RunnerError(RuntimeError):
     """Raised when a cell cannot satisfy the report measurement contract."""
+
+
+class ProfilingTimeLimitError(RunnerError):
+    """Raised before a profiling chunk cannot fit its remaining stage budget."""
+
+
+ProfilingChunkGuard = Callable[[float | None, str], None]
+
+
+def profiling_chunk_guard(
+    deadline_monotonic: float | None,
+    *,
+    clock: Callable[[], float] | None = None,
+) -> ProfilingChunkGuard | None:
+    """Return a cheap pre-launch guard for one absolute profiling deadline."""
+
+    if deadline_monotonic is None:
+        return None
+    if not math.isfinite(deadline_monotonic) or deadline_monotonic <= 0.0:
+        raise ValueError("profiling deadline must be finite and positive")
+    selected_clock = time.monotonic if clock is None else clock
+
+    def guard(estimated_seconds: float | None, description: str) -> None:
+        if not isinstance(description, str) or not description:
+            raise ValueError("profiling chunk description must be non-empty")
+        if estimated_seconds is not None and (
+            not math.isfinite(estimated_seconds) or estimated_seconds < 0.0
+        ):
+            raise ValueError("profiling chunk estimate must be finite and non-negative")
+        remaining = deadline_monotonic - selected_clock()
+        if remaining <= 0.0 or (
+            estimated_seconds is not None and estimated_seconds > remaining
+        ):
+            estimate = (
+                "unknown" if estimated_seconds is None else f"{estimated_seconds:.6g}s"
+            )
+            raise ProfilingTimeLimitError(
+                "profiling stage has insufficient remaining budget for "
+                f"{description}: remaining={max(remaining, 0.0):.6g}s, "
+                f"estimated={estimate}"
+            )
+
+    return guard
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,6 +152,8 @@ class RunnerSettings:
     model_cache_dir: Path | None = None
     progress: ProgressSink | None = None
     source_revision_override: str | None = None
+    profiling_time_limit_seconds: float | None = None
+    worker_deadline_monotonic: float | None = None
 
     def __post_init__(self) -> None:
         if self.target_runtime_seconds <= 0.0:
@@ -133,6 +177,12 @@ class RunnerSettings:
             and not self.source_revision_override
         ):
             raise ValueError("source_revision_override must be non-empty")
+        for name, value in (
+            ("profiling_time_limit_seconds", self.profiling_time_limit_seconds),
+            ("worker_deadline_monotonic", self.worker_deadline_monotonic),
+        ):
+            if value is not None and (not math.isfinite(value) or value <= 0.0):
+                raise ValueError(f"{name} must be finite and positive when specified")
 
 
 @dataclass(frozen=True, slots=True)
@@ -241,6 +291,8 @@ class GeneratedArtifact:
     requested_config: Mapping[str, object]
     effective_config: Mapping[str, object]
     generation_command_path: str | None = None
+    numerical_relation_correctness: Mapping[str, object] | None = None
+    numerical_relation_fallback: Mapping[str, object] | None = None
 
 
 class RuntimeLike(Protocol):
@@ -353,9 +405,7 @@ def _model_source_path(repo_root: Path, model: ModelKey) -> Path | None:
         ModelKey.SCALAR_GRAVITY: Path("scalar_gravity/scalar_gravity.json"),
     }.get(model)
     if relative is None:
-        raise RunnerError(
-            f"model {model.value!r} is not supported by process matrices"
-        )
+        raise RunnerError(f"model {model.value!r} is not supported by process matrices")
     source_path = repo_root / "src/pyamplicol/assets/models/json" / relative
     if source_path.is_file():
         return source_path
@@ -699,12 +749,11 @@ def runtime_identity_payload(
         candidate_build_identity = {
             field: build_info.get(field) for field in build_identity_fields
         }
-        if (
-            candidate_build_identity["native_build_inputs_sha256"] != native_digest
-            or not all(
-                candidate_build_identity[field] is not None
-                for field in build_identity_fields
-            )
+        if candidate_build_identity[
+            "native_build_inputs_sha256"
+        ] != native_digest or not all(
+            candidate_build_identity[field] is not None
+            for field in build_identity_fields
         ):
             raise RunnerError(
                 "report runtime is not a complete compatible non-publishable "
@@ -722,8 +771,7 @@ def runtime_identity_payload(
             field: build_info.get(field) for field in build_identity_fields
         }
         if (
-            candidate_build_identity["source_revision"]
-            != expected_source_revision
+            candidate_build_identity["source_revision"] != expected_source_revision
             or candidate_build_identity["selftest_fixture_bootstrap"] is not False
             or not all(
                 candidate_build_identity[field] is not None
@@ -960,29 +1008,72 @@ def _authenticated_symjit_plane_leaves(
                 )
             )
         return leaves
+    legacy_backend = value.get("backend")
+    input_len = value.get("input_len")
+    output_len = value.get("output_len")
     if (
         value.get("kind") != "symjit-application-evaluator"
-        or value.get("backend") != "jit"
-        or value.get("runtime_capability")
-        != _RECURRENCE_JIT_SOURCE_RUNTIME_CAPABILITY
+        or ("backend" in value and legacy_backend != "jit")
+        or value.get("runtime_capability") != _RECURRENCE_JIT_SOURCE_RUNTIME_CAPABILITY
         or value.get("application_abi") != _SYMJIT_APPLICATION_ABI
+        or value.get("element_layout") != "complex-f64"
+        or value.get("batch_layout") != "row-major"
+        or value.get("compiler_type") != "native"
+        or value.get("translation_mode") not in {"direct", "indirect"}
         or value.get("optimization_level") != source_optimization_level
+        or value.get("word_bits") != 64
+        or value.get("endianness") != "little"
+        or value.get("required_defuns") != []
+        or isinstance(input_len, bool)
+        or not isinstance(input_len, int)
+        or input_len < 0
+        or isinstance(output_len, bool)
+        or not isinstance(output_len, int)
+        or output_len < 0
     ):
         raise RunnerError(f"{context} source evaluator leaf contract drifted")
     _canonical_recurrence_path(
         value.get("application_path"),
         f"{context} ordinary source evaluator application",
     )
+    fallback_path = value.get("evaluator_state_path")
+    fallback_capability = value.get("evaluator_state_runtime_capability")
+    if fallback_path is None and fallback_capability is None:
+        pass
+    elif (
+        not isinstance(fallback_path, str)
+        or fallback_capability != "symbolica.legacy-jit-container.complex-f64.v1"
+    ):
+        raise RunnerError(f"{context} source evaluator fallback contract drifted")
+    else:
+        _canonical_recurrence_path(
+            fallback_path,
+            f"{context} fallback source evaluator state",
+        )
     plane = value.get("plane_application")
     if not isinstance(plane, Mapping):
         raise RunnerError(f"{context} source evaluator has no plane application")
+    target = plane.get("target")
     if (
         plane.get("application_abi") != _SYMJIT_PLANE_APPLICATION_ABI
         or plane.get("storage_abi") != _SYMJIT_APPLICATION_ABI
-        or plane.get("translation_mode")
-        != "symbolica-structured-instructions"
+        or plane.get("element_layout") != "split-complex-plane-major"
+        or plane.get("descriptor_order") != "inputs-re-im-then-outputs-re-im"
+        or plane.get("input_complex_count") != input_len
+        or plane.get("output_complex_count") != output_len
+        or plane.get("input_plane_count") != 2 * input_len
+        or plane.get("output_plane_count") != 2 * output_len
+        or plane.get("compiler_type") != "native"
+        or plane.get("translation_mode") != "symbolica-structured-instructions"
+        or plane.get("simd") is not True
+        or plane.get("complex") is not True
+        or plane.get("fast_math") is not True
+        or plane.get("fast_complex") is not False
+        or not isinstance(plane.get("compression"), bool)
+        or plane.get("threading") is not False
         or plane.get("direct_arena") is not True
         or plane.get("optimization_level") != source_optimization_level
+        or not _valid_symjit_plane_target(target)
     ):
         raise RunnerError(f"{context} plane application contract drifted")
     plane_path = _canonical_recurrence_path(
@@ -994,6 +1085,44 @@ def _authenticated_symjit_plane_leaves(
         f"{context} plane source digest",
     )
     return [(plane_path, source_digest)]
+
+
+def _valid_symjit_plane_target(value: object) -> bool:
+    """Match Rusticol's canonical SymJIT plane-target object contract."""
+
+    if not isinstance(value, Mapping):
+        return False
+    allowed_fields = {"word_bits", "endianness", "triple", "cpu_features"}
+    if set(value) - allowed_fields:
+        return False
+    word_bits = value.get("word_bits")
+    if (
+        isinstance(word_bits, bool)
+        or not isinstance(word_bits, int)
+        or word_bits != 64
+    ):
+        return False
+    if value.get("endianness") != "little":
+        return False
+    if "triple" in value:
+        triple = value.get("triple")
+        if not isinstance(triple, str) or not triple or "\0" in triple:
+            return False
+    if "cpu_features" in value:
+        features = value.get("cpu_features")
+        if not isinstance(features, list):
+            return False
+        previous: str | None = None
+        for feature in features:
+            if (
+                not isinstance(feature, str)
+                or not feature
+                or "\0" in feature
+                or (previous is not None and previous >= feature)
+            ):
+                return False
+            previous = feature
+    return True
 
 
 def _authenticated_direct_codegen_identity(
@@ -1695,6 +1824,51 @@ def _authenticated_effective_config(artifact_path: Path) -> Mapping[str, object]
     return value
 
 
+def _artifact_numerical_relation_metadata(
+    artifact_path: Path,
+    process_id: str,
+) -> tuple[Mapping[str, object], Mapping[str, object] | None]:
+    """Read compact correctness and fallback state from one manifest load."""
+
+    from pyamplicol.artifacts import load_manifest
+    from pyamplicol.generation.recurrence_numerical_current_warmup import (
+        recurrence_numerical_relation_correctness_summary,
+        recurrence_numerical_relation_fallback_summary,
+    )
+
+    manifest = load_manifest(artifact_path, verify_payloads=False)
+    generation = manifest.extensions.get("generation")
+    concrete = (
+        generation.get("concrete_processes")
+        if isinstance(generation, Mapping)
+        else None
+    )
+    if not isinstance(concrete, Sequence) or isinstance(concrete, (str, bytes)):
+        raise RunnerError("generated artifact has no concrete-process metadata")
+    matches = tuple(
+        entry
+        for entry in concrete
+        if isinstance(entry, Mapping) and entry.get("id") == process_id
+    )
+    if len(matches) != 1:
+        raise RunnerError(
+            "generated artifact numerical relation process is missing or ambiguous"
+        )
+    filters = matches[0].get("filters")
+    relation_report = (
+        filters.get("relation_discovery") if isinstance(filters, Mapping) else None
+    )
+    if not isinstance(relation_report, Mapping):
+        raise RunnerError("generated artifact has no numerical relation report")
+    try:
+        return (
+            recurrence_numerical_relation_correctness_summary(relation_report),
+            recurrence_numerical_relation_fallback_summary(relation_report),
+        )
+    except ValueError as error:
+        raise RunnerError(str(error)) from error
+
+
 def _selector_kwargs(
     cell: CellSpec,
     contract: SelectorContract | None,
@@ -2014,6 +2188,7 @@ def _run_arena_benchmark(
     benchmark_config: object,
     selectors: Mapping[str, tuple[str, ...] | None],
     progress: ProgressSink | None = None,
+    chunk_guard: ProfilingChunkGuard | None = None,
 ) -> _ArenaBenchmarkResult:
     """Measure native wall time and authenticate a paired private Arena profile."""
 
@@ -2065,6 +2240,56 @@ def _run_arena_benchmark(
         "precision": 16,
     }
     profile_arguments = {**selector_arguments, "include_values": False}
+    timer_seconds_per_repetition: float | None = None
+    profiler_seconds_per_repetition: float | None = None
+
+    def guarded_timer(repetitions: int) -> float:
+        nonlocal timer_seconds_per_repetition
+        estimate = (
+            None
+            if timer_seconds_per_repetition is None
+            else timer_seconds_per_repetition * repetitions
+        )
+        if chunk_guard is not None:
+            chunk_guard(estimate, f"{execution_mode} evaluator timing chunk")
+        observed = _positive_duration(
+            timer(batch, repetitions, **selector_arguments),
+            "Arena evaluator duration",
+        )
+        timer_seconds_per_repetition = observed / repetitions
+        return observed
+
+    def guarded_profiler(
+        repetitions: int,
+        *,
+        measure_elapsed: bool = True,
+    ) -> tuple[Mapping[str, object], float]:
+        nonlocal profiler_seconds_per_repetition
+        estimated_per_repetition = (
+            profiler_seconds_per_repetition
+            if profiler_seconds_per_repetition is not None
+            else timer_seconds_per_repetition
+        )
+        estimate = (
+            None
+            if estimated_per_repetition is None
+            else estimated_per_repetition * repetitions
+        )
+        if chunk_guard is not None:
+            chunk_guard(estimate, f"{execution_mode} attribution chunk")
+        started = time.perf_counter() if measure_elapsed else None
+        raw = profiler(batch, repetitions, **profile_arguments)
+        observed = (
+            (time.perf_counter() - started)
+            if started is not None
+            else (estimate or 0.0)
+        )
+        if not isinstance(raw, Mapping):
+            raise RunnerError("native warmed Arena profile is not an object")
+        if observed > 0.0:
+            profiler_seconds_per_repetition = observed / repetitions
+        return raw, observed
+
     parent_task_id = "report-profile"
     warmup_task_id = f"{parent_task_id}:warmup"
     calibration_task_id = f"{parent_task_id}:calibration"
@@ -2098,13 +2323,11 @@ def _run_arena_benchmark(
             )
         warmup_started = time.perf_counter()
         for index in range(warmup_runs):
-            _positive_duration(
-                timer(batch, 1, **selector_arguments),
-                "Arena wall warmup duration",
+            guarded_timer(1)
+            warmup_profile, _warmup_profile_elapsed = guarded_profiler(
+                1,
+                measure_elapsed=False,
             )
-            warmup_profile = profiler(batch, 1, **profile_arguments)
-            if not isinstance(warmup_profile, Mapping):
-                raise RunnerError("native warmed Arena profile is not an object")
             try:
                 build_arena_profile_evidence(
                     (warmup_profile,),
@@ -2144,7 +2367,7 @@ def _run_arena_benchmark(
             )
         calibration_started = time.perf_counter()
         repetitions, calibration_blocks = _calibrate_arena_repetitions(
-            timer,
+            lambda _batch, repetitions, **_arguments: guarded_timer(repetitions),
             batch,
             target_runtime=target_runtime,
             sample_count=minimum_samples,
@@ -2196,10 +2419,7 @@ def _run_arena_benchmark(
                     f"within {_ARENA_MAX_SAMPLES} samples"
                 )
             headline_started = time.perf_counter()
-            evaluator_total_duration = _positive_duration(
-                timer(batch, repetitions, **selector_arguments),
-                "Arena evaluator-total duration",
-            )
+            evaluator_total_duration = guarded_timer(repetitions)
             wall_duration = _positive_duration(
                 time.perf_counter() - headline_started,
                 "Arena headline wall duration",
@@ -2207,11 +2427,8 @@ def _run_arena_benchmark(
             headline_durations.append(wall_duration)
             evaluator_total_durations.append(evaluator_total_duration)
             headline_samples.append(wall_duration / evaluated_points)
-            profile_started = time.perf_counter()
-            raw_profile = profiler(batch, repetitions, **profile_arguments)
-            profile_elapsed += time.perf_counter() - profile_started
-            if not isinstance(raw_profile, Mapping):
-                raise RunnerError("native warmed Arena profile is not an object")
+            raw_profile, raw_profile_elapsed = guarded_profiler(repetitions)
+            profile_elapsed += raw_profile_elapsed
             raw_profiles.append(raw_profile)
             if progress is not None:
                 progress.emit(
@@ -2394,6 +2611,7 @@ def _run_report_benchmark(
     benchmark_config: BenchmarkConfig,
     selectors: Mapping[str, tuple[str, ...] | None],
     progress: ProgressSink | None = None,
+    chunk_guard: ProfilingChunkGuard | None = None,
 ) -> object:
     """Select the authenticated timing command path without fallback.
 
@@ -2419,6 +2637,7 @@ def _run_report_benchmark(
             benchmark_config=benchmark_config,
             selectors=selectors,
             progress=progress,
+            chunk_guard=chunk_guard,
         )
     if execution_mode is ExecutionMode.RECURRENCE:
         from pyamplicol.api import BenchmarkRunner
@@ -2459,10 +2678,15 @@ def _run_report_benchmark(
                 command_progress: ProgressSink,
             ) -> object:
                 profile_started = time.perf_counter()
-                result = BenchmarkRunner(
-                    config,
-                    progress=command_progress,
-                ).run(runtime, points=points)
+                runner_arguments: dict[str, object] = {
+                    "progress": command_progress,
+                }
+                if chunk_guard is not None:
+                    runner_arguments["_chunk_guard"] = chunk_guard
+                result = BenchmarkRunner(config, **runner_arguments).run(
+                    runtime,
+                    points=points,
+                )
                 profile_total_elapsed = time.perf_counter() - profile_started
                 environment = getattr(result, "environment", None)
                 if not isinstance(environment, Mapping):
@@ -2813,6 +3037,7 @@ def profile_runtime(
     benchmark_config: BenchmarkConfig,
     selector_contract: SelectorContract | None,
     progress: ProgressSink | None = None,
+    profiling_deadline_monotonic: float | None = None,
 ) -> dict[str, object]:
     validate_runtime_contract(cell, runtime)
     if selector_contract is not None:
@@ -2833,6 +3058,7 @@ def profile_runtime(
         benchmark_config=selected_config,
         selectors=selectors,
         progress=progress,
+        chunk_guard=profiling_chunk_guard(profiling_deadline_monotonic),
     )
     result = _benchmark_measurement(
         benchmark,
@@ -3006,15 +3232,22 @@ def generate_artifact(
         )
         generation_seconds = time.perf_counter() - generation_started
     effective_config = _authenticated_effective_config(destination)
+    process_id = _single_process_id(destination, cell.process)
+    (
+        numerical_relation_correctness,
+        numerical_relation_fallback,
+    ) = _artifact_numerical_relation_metadata(destination, process_id)
     return GeneratedArtifact(
         path=destination,
-        process_id=_single_process_id(destination, cell.process),
+        process_id=process_id,
         generation_seconds=generation_seconds,
         model_preparation_seconds=model_seconds,
         model_preparation_reused=preparation_reused,
         requested_config=config_to_dict(resolution.requested),
         effective_config=effective_config,
         generation_command_path=generation_command_path,
+        numerical_relation_correctness=numerical_relation_correctness,
+        numerical_relation_fallback=numerical_relation_fallback,
     )
 
 
@@ -3032,6 +3265,7 @@ __all__ = [
     "INDEPENDENT_RELATIVE_TOLERANCE",
     "RELATIVE_TOLERANCE",
     "GeneratedArtifact",
+    "ProfilingTimeLimitError",
     "RunnerError",
     "RunnerSettings",
     "SelectorContract",
@@ -3041,6 +3275,7 @@ __all__ = [
     "point_digest",
     "pointwise_validation",
     "profile_runtime",
+    "profiling_chunk_guard",
     "provenance_payload",
     "resolved_sum_validation",
     "runtime_identity_payload",

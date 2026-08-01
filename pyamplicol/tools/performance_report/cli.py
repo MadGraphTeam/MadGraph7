@@ -463,6 +463,17 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument("--prepared-model", type=Path)
     worker.add_argument("--reused-measurement-json", type=Path)
     worker.add_argument("--legacy-repository", type=Path, help=argparse.SUPPRESS)
+    worker.add_argument(
+        "--legacy-source-repository",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
+    worker.add_argument("--legacy-workspace", type=Path, help=argparse.SUPPRESS)
+    worker.add_argument(
+        "--legacy-copy-source",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     worker.add_argument("--legacy-source-revision", help=argparse.SUPPRESS)
     worker.add_argument(
         "--target-runtime",
@@ -474,6 +485,18 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument("--warmup-runs", type=int, default=2)
     worker.add_argument("--minimum-samples", type=int, default=5)
     worker.add_argument("--progress-jsonl", type=Path)
+    worker.add_argument("--worker-wall-limit", type=float, help=argparse.SUPPRESS)
+    worker.add_argument(
+        "--profiling-time-limit",
+        type=float,
+        help=argparse.SUPPRESS,
+    )
+    worker.add_argument(
+        "--validation-time-limit",
+        type=float,
+        help=argparse.SUPPRESS,
+    )
+    worker.add_argument("--generation-lock-path", type=Path, help=argparse.SUPPRESS)
     worker.add_argument("--manual-source-revision", help=argparse.SUPPRESS)
     worker.add_argument("--manual-source-tree", help=argparse.SUPPRESS)
     worker.add_argument("--phase-state-path", type=Path, help=argparse.SUPPRESS)
@@ -1486,6 +1509,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             warmup_runs=args.warmup_runs,
             minimum_samples=args.minimum_samples,
             progress_jsonl=args.progress_jsonl,
+            worker_wall_limit_seconds=args.worker_wall_limit,
+            profiling_time_limit_seconds=args.profiling_time_limit,
+            validation_time_limit_seconds=args.validation_time_limit,
+            generation_lock_path=args.generation_lock_path,
             manual_source_revision=args.manual_source_revision,
             manual_source_tree=args.manual_source_tree,
             baseline_json=args.baseline_json,
@@ -1496,6 +1523,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             phase_state_run_id=args.phase_state_run_id,
             phase_state_authentication_key=args.phase_state_authentication_key,
             legacy_repository=args.legacy_repository,
+            legacy_source_repository=args.legacy_source_repository,
+            legacy_workspace=args.legacy_workspace,
+            legacy_copy_source=args.legacy_copy_source,
             legacy_source_revision=args.legacy_source_revision,
             log_path=args.log_path,
             worker_harness=worker_harness,

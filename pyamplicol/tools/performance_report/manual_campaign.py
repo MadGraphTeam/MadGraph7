@@ -44,7 +44,10 @@ from prettytable import PrettyTable
 
 from .artifacts import ATTEMPT_SCHEMA, CURRENT_SCHEMA, ArtifactStore, CurrentRecord
 from .cache import reset_entry, validate_measurement
-from .campaign_policy import PolicyMeasurementState
+from .campaign_policy import (
+    PolicyMeasurementState,
+    policy_measurement_state_hint,
+)
 from .catalog import PROCESS_FAMILIES, REPORT_CATALOG, ReportCatalog
 from .models import (
     Accuracy,
@@ -78,9 +81,13 @@ from .timing import (
 PROFILE = "macbook_M3_manual"
 _ACTIVE_PROFILE = PROFILE
 DEFAULT_GENERATION_LIMIT_SECONDS = 60.0 * 60.0
+DEFAULT_WORKER_WALL_LIMIT_SECONDS = 60.0 * 60.0
 DEFAULT_RAM_BYTES = 30_000_000_000
 DEFAULT_CORES_PER_WORKER = 1
 DEFAULT_TARGET_RUNTIME_SECONDS = 5.0
+_NUMERICAL_RELATION_CORRECTNESS_ABI = (
+    "pyamplicol-numerical-current-relation-correctness-v1"
+)
 DEFAULT_BATCH_SIZE = 128
 DEFAULT_WARMUP_RUNS = 2
 DEFAULT_MINIMUM_SAMPLES = 5
@@ -120,6 +127,15 @@ _ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _ACTIVE_WORKER_STATUSES = frozenset({"queued", "preparing", "running"})
 _RECYCLED_SUCCESS_STATUSES = frozenset({"recycled", "reused", "skipped-current"})
 _COMPLETED_WORKER_STATUSES = frozenset({"ok", *_RECYCLED_SUCCESS_STATUSES})
+_TERMINAL_CAP_STATUSES = frozenset(
+    {
+        PolicyMeasurementState.GENERATION_LIMIT.value,
+        PolicyMeasurementState.MEMORY_LIMIT.value,
+        PolicyMeasurementState.WORKER_TIMEOUT.value,
+        PolicyMeasurementState.PROFILING_TIMEOUT.value,
+        PolicyMeasurementState.VALIDATION_TIMEOUT.value,
+    }
+)
 _PHASE_TIMELINE_SCHEMA = "pyamplicol-manual-campaign-phase-timeline-v1"
 _REPRODUCTION_STAGES = ("prepare", "generate", "profile")
 
@@ -739,6 +755,78 @@ class ReproductionSettings:
     minimum_samples: int = DEFAULT_MINIMUM_SAMPLES
 
 
+def _validated_recipe_numerical_relation_fallback(
+    provenance: object,
+) -> Mapping[str, object] | None:
+    if not isinstance(provenance, Mapping):
+        return None
+    raw = provenance.get("numerical_relation_fallback")
+    if raw is None:
+        return None
+    from pyamplicol.generation.recurrence_numerical_current_warmup import (
+        EVIDENCE_ENVELOPE_FALLBACK_REASON,
+        NUMERICAL_RELATION_FALLBACK_ABI,
+        RecurrenceNumericalEvidenceGeometry,
+    )
+
+    expected_fields = {
+        "abi",
+        "requested_mode",
+        "effective_mode",
+        "effective_reuse_state",
+        "reason",
+        "geometry",
+        "certified_relation_count",
+        "applied_relation_count",
+    }
+    geometry_fields = {
+        "current_count",
+        "component_count",
+        "candidate_probe_count",
+        "verification_probe_count",
+        "runtime_parameter_count",
+        "scalar_count",
+        "row_count",
+    }
+    geometry = raw.get("geometry") if isinstance(raw, Mapping) else None
+    if (
+        not isinstance(raw, Mapping)
+        or set(raw) != expected_fields
+        or raw.get("abi") != NUMERICAL_RELATION_FALLBACK_ABI
+        or raw.get("requested_mode") != "certified-reuse"
+        or raw.get("effective_mode") != "off"
+        or raw.get("effective_reuse_state") != "disabled"
+        or raw.get("reason") != EVIDENCE_ENVELOPE_FALLBACK_REASON
+        or raw.get("certified_relation_count") != 0
+        or isinstance(raw.get("certified_relation_count"), bool)
+        or raw.get("applied_relation_count") != 0
+        or isinstance(raw.get("applied_relation_count"), bool)
+        or not isinstance(geometry, Mapping)
+        or set(geometry) != geometry_fields
+        or any(type(geometry.get(field)) is not int for field in geometry_fields)
+    ):
+        raise ManualCampaignError(
+            "measurement numerical-relation fallback provenance is malformed"
+        )
+    try:
+        expected_geometry = RecurrenceNumericalEvidenceGeometry.from_counts(
+            current_count=int(geometry["current_count"]),
+            component_count=int(geometry["component_count"]),
+            candidate_probe_count=int(geometry["candidate_probe_count"]),
+            verification_probe_count=int(geometry["verification_probe_count"]),
+            runtime_parameter_count=int(geometry["runtime_parameter_count"]),
+        ).to_json_dict()
+    except (OverflowError, TypeError, ValueError) as error:
+        raise ManualCampaignError(
+            "measurement numerical-relation fallback provenance is malformed"
+        ) from error
+    if dict(geometry) != expected_geometry:
+        raise ManualCampaignError(
+            "measurement numerical-relation fallback geometry is inconsistent"
+        )
+    return raw
+
+
 def reproduction_recipe(
     cell: CellSpec,
     *,
@@ -766,6 +854,9 @@ def reproduction_recipe(
     model_cache = _reproduction_root(repo_root, cell) / "model-cache"
     provenance = (
         measurement.get("provenance") if isinstance(measurement, Mapping) else None
+    )
+    numerical_relation_fallback = _validated_recipe_numerical_relation_fallback(
+        provenance
     )
     requested = (
         provenance.get("requested_config") if isinstance(provenance, Mapping) else None
@@ -837,6 +928,11 @@ def reproduction_recipe(
     layout = (
         "all-flow-union" if cell.workload is Workload.ALL_FLOW else "topology-replay"
     )
+    numerical_reuse_flag = (
+        "--no-numerical-current-reuse"
+        if numerical_relation_fallback is not None
+        else "--numerical-current-reuse"
+    )
     generate = (
         *cli,
         "generate",
@@ -888,7 +984,7 @@ def reproduction_recipe(
         "--absolute-tolerance",
         "1e-300",
         "--post-build-validation",
-        "--numerical-current-reuse",
+        numerical_reuse_flag,
         "--force",
         "--color",
         "always",
@@ -1003,6 +1099,14 @@ def reproduction_recipe(
             "Prepare (when shown) and generate are runnable. Profile is a "
             "template only: its stable flow/helicity selector and exact "
             "momenta are published after successful generation/measurement."
+        )
+    if numerical_relation_fallback is not None:
+        kind += "+effective-reuse-off-fallback"
+        note += (
+            " The measured generation took the authenticated "
+            "evidence-envelope fallback: numerical-current reuse was effectively "
+            "disabled, so the reproduction command uses "
+            "--no-numerical-current-reuse."
         )
     if prepare is not None:
         kind += "+model-compile-prerequisite"
@@ -1379,6 +1483,43 @@ def _measurement_source_revision(result: Mapping[str, object]) -> str | None:
     )
 
 
+def _historical_numerical_relation_compatible(
+    cell: CellSpec,
+    result: Mapping[str, object],
+) -> bool:
+    """Accept only historical results whose compact metadata proves safety."""
+
+    if cell.measurement.execution_mode is ExecutionMode.AMPLICOL:
+        return True
+    provenance = result.get("provenance")
+    if not isinstance(provenance, Mapping):
+        return False
+    correctness = provenance.get("numerical_relation_correctness")
+    if isinstance(correctness, Mapping):
+        applied = correctness.get("applied_relation_count")
+        state = correctness.get("state")
+        if (
+            correctness.get("abi") != _NUMERICAL_RELATION_CORRECTNESS_ABI
+            or isinstance(applied, bool)
+            or not isinstance(applied, int)
+            or applied < 0
+        ):
+            return False
+        if state == "no-applied-relations":
+            return applied == 0
+        if state == "member-scoped-v1":
+            return applied > 0
+        return False
+    effective = provenance.get("effective_config")
+    generation = effective.get("generation") if isinstance(effective, Mapping) else None
+    relation = (
+        generation.get("relation_discovery")
+        if isinstance(generation, Mapping)
+        else None
+    )
+    return isinstance(relation, Mapping) and relation.get("mode") == "off"
+
+
 def lightweight_current(
     store: ArtifactStore,
     cell: CellSpec,
@@ -1514,8 +1655,13 @@ def lightweight_current(
     complete = complete and measurement_valid
     cell_match = _result_matches_cell(result, cell)
     artifact_exists = _required_result_artifact_exists(result)
+    historical_relation_compatible = (
+        revision == source_revision
+        or not revision_valid
+        or _historical_numerical_relation_compatible(cell, result)
+    )
     source_accepted = revision == source_revision or (
-        accept_historical_source and revision_valid
+        accept_historical_source and revision_valid and historical_relation_compatible
     )
     reusable = complete and source_accepted and cell_match and artifact_exists
     if status not in {
@@ -1530,6 +1676,8 @@ def lightweight_current(
         reason = "invalid source revision"
     elif revision != source_revision and not accept_historical_source:
         reason = "source mismatch"
+    elif revision != source_revision and not historical_relation_compatible:
+        reason = "historical numerical-relation policy is not reusable"
     elif not cell_match:
         reason = "cell metadata mismatch"
     elif not artifact_exists:
@@ -1608,9 +1756,10 @@ def _source_cohort_counts(
 
 
 def _format_source_cohorts(cohorts: Mapping[str, int]) -> str:
-    return ", ".join(
-        f"{revision}={count}" for revision, count in cohorts.items()
-    ) or "none"
+    return (
+        ", ".join(f"{revision}={count}" for revision, count in cohorts.items())
+        or "none"
+    )
 
 
 def _lightweight_current_resolver(
@@ -1638,11 +1787,7 @@ def _lightweight_current_resolver(
         current = cache[cell.cell_id]
         if current is None or not current.reusable or current.record is None:
             return None
-        state = {
-            ResultStatus.OK.value: PolicyMeasurementState.SUCCESS,
-            ResultStatus.TIMEOUT.value: PolicyMeasurementState.GENERATION_LIMIT,
-            ResultStatus.MEMORY_LIMIT.value: PolicyMeasurementState.MEMORY_LIMIT,
-        }.get(str(current.result.get("status")))
+        state = policy_measurement_state_hint(current.result)
         return None if state is None else (current.record, state)
 
     return resolve
@@ -1697,13 +1842,10 @@ def update_source_marker(
     path = _source_marker_path(service)
     with service.store.named_lock("manual-source-marker"):
         previous = _read_object(path)
-        changed = (
-            previous is not None
-            and (
-                previous.get("source_revision") != source.revision
-                or previous.get("continue_across_revisions", False)
-                != continue_across_revisions
-            )
+        changed = previous is not None and (
+            previous.get("source_revision") != source.revision
+            or previous.get("continue_across_revisions", False)
+            != continue_across_revisions
         )
         _atomic_json(
             path,
@@ -1828,6 +1970,7 @@ class WorkerView:
     phase_timeline: tuple[PhaseTimelineRow, ...] = ()
     provenance_summary: str | None = None
     reuse_explanation: str | None = None
+    blocked_prerequisite_ids: tuple[str, ...] = ()
     recycled: bool = False
     events: list[str] = field(default_factory=list)
     log_tail: list[str] = field(default_factory=list)
@@ -1857,7 +2000,7 @@ class DashboardState:
     source_revision: str = ""
     generation_time_limit_seconds: float = DEFAULT_GENERATION_LIMIT_SECONDS
     memory_limit_bytes: int = DEFAULT_RAM_BYTES
-    worker_wall_limit_seconds: float | None = None
+    worker_wall_limit_seconds: float | None = DEFAULT_WORKER_WALL_LIMIT_SECONDS
     reproduction_settings: ReproductionSettings = field(
         default_factory=ReproductionSettings
     )
@@ -1881,6 +2024,9 @@ class DashboardState:
     counter_snapshot: dict[str, int] | None = None
     lease_updated_at: float | None = None
     live_snapshot: bool = False
+    ready_count: int = 0
+    waiting_dependency_count: int = 0
+    waiting_coordination_lock_count: int = 0
 
     @property
     def active(self) -> tuple[WorkerView, ...]:
@@ -2012,6 +2158,13 @@ class LeaseManager:
                     "memory_limit_bytes": self.state.memory_limit_bytes,
                     "worker_wall_limit_seconds": (self.state.worker_wall_limit_seconds),
                 },
+                "scheduler": {
+                    "ready": self.state.ready_count,
+                    "waiting_dependency": self.state.waiting_dependency_count,
+                    "waiting_coordination_lock": (
+                        self.state.waiting_coordination_lock_count
+                    ),
+                },
                 "workers": {
                     key: worker.as_dict()
                     for key, worker in sorted(self.state.workers.items())
@@ -2030,12 +2183,27 @@ class LeaseManager:
             return copy.deepcopy(self.state)
 
     def observe(self, payload: Mapping[str, object]) -> None:
-        cell_id = str(payload.get("cell_id", ""))
-        if not cell_id:
-            return
         event = str(payload.get("event", "update"))
         with self._guard:
             if self._closed:
+                return
+            if event == "scheduler-state":
+                self.state.ready_count = max(
+                    0,
+                    _optional_int(payload.get("ready")) or 0,
+                )
+                self.state.waiting_dependency_count = max(
+                    0,
+                    _optional_int(payload.get("waiting_dependency")) or 0,
+                )
+                self.state.waiting_coordination_lock_count = max(
+                    0,
+                    _optional_int(payload.get("waiting_coordination_lock")) or 0,
+                )
+                self._write()
+                return
+            cell_id = str(payload.get("cell_id", ""))
+            if not cell_id:
                 return
             if event == "preflight-finished":
                 attempt_id = str(payload.get("attempt_id") or "")
@@ -2125,6 +2293,20 @@ class LeaseManager:
                 if worker.recycled:
                     self.state.recycled_ids.add(cell_id)
                 worker.step = str(payload.get("detail") or worker.status)
+                raw_prerequisites = payload.get("prerequisite_cell_ids")
+                if isinstance(raw_prerequisites, Sequence) and not isinstance(
+                    raw_prerequisites,
+                    (str, bytes),
+                ):
+                    worker.blocked_prerequisite_ids = tuple(
+                        sorted(
+                            {
+                                str(value)
+                                for value in raw_prerequisites
+                                if isinstance(value, str) and value
+                            }
+                        )
+                    )
                 try:
                     cell = self.service.catalog.cell(cell_id)
                 except KeyError:
@@ -2186,11 +2368,10 @@ class LeaseManager:
                 _tail_log(worker)
                 if worker.status in {
                     "ok",
-                    "generation_limit",
-                    "memory_limit",
+                    *_TERMINAL_CAP_STATUSES,
                 }:
                     self.state.completed_ids.add(cell_id)
-                if worker.status in {"generation_limit", "memory_limit"}:
+                if worker.status in _TERMINAL_CAP_STATUSES:
                     self.state.capped_ids.add(cell_id)
                 elif worker.status not in {
                     "ok",
@@ -2926,6 +3107,18 @@ def _worker_from_lease(
         phase_timeline=_lease_phase_timeline_rows(raw.get("phase_timeline")),
         provenance_summary=optional_text("provenance_summary"),
         reuse_explanation=optional_text("reuse_explanation"),
+        blocked_prerequisite_ids=tuple(
+            sorted(
+                {
+                    str(value)
+                    for value in raw.get("blocked_prerequisite_ids", ())
+                    if isinstance(value, str) and value
+                }
+            )
+        )
+        if isinstance(raw.get("blocked_prerequisite_ids"), Sequence)
+        and not isinstance(raw.get("blocked_prerequisite_ids"), (str, bytes))
+        else (),
         recycled=recycled,
         updated_at=max(0.0, _finite_float(raw.get("updated_at"))),
     )
@@ -3042,7 +3235,7 @@ def _lease_limits(
         return (
             DEFAULT_GENERATION_LIMIT_SECONDS,
             DEFAULT_RAM_BYTES,
-            None,
+            DEFAULT_WORKER_WALL_LIMIT_SECONDS,
         )
     if not isinstance(value, Mapping):
         return None
@@ -3059,6 +3252,18 @@ def _lease_limits(
     ):
         return None
     return generation, memory, wall
+
+
+def _lease_scheduler_state(value: object) -> tuple[int, int, int]:
+    if not isinstance(value, Mapping):
+        return (0, 0, 0)
+    observed = tuple(
+        _optional_int(value.get(key))
+        for key in ("ready", "waiting_dependency", "waiting_coordination_lock")
+    )
+    if any(item is None or item < 0 for item in observed):
+        return (0, 0, 0)
+    return tuple(int(item) for item in observed)  # type: ignore[arg-type,return-value]
 
 
 def _live_dashboard_snapshot(
@@ -3152,6 +3357,9 @@ def _live_dashboard_snapshot(
     limits = _lease_limits(chosen.get("limits"))
     assert limits is not None
     generation_limit, memory_limit, wall_limit = limits
+    ready_count, waiting_dependency_count, waiting_coordination_lock_count = (
+        _lease_scheduler_state(chosen.get("scheduler"))
+    )
     state = DashboardState(
         instance_id=instance_id,
         selected_ids=(),
@@ -3165,6 +3373,9 @@ def _live_dashboard_snapshot(
         counter_snapshot=counters,
         lease_updated_at=updated_at,
         live_snapshot=True,
+        ready_count=ready_count,
+        waiting_dependency_count=waiting_dependency_count,
+        waiting_coordination_lock_count=waiting_coordination_lock_count,
     )
     raw_workers = chosen["workers"]
     assert isinstance(raw_workers, Mapping)
@@ -3378,7 +3589,7 @@ def _ratatui_commands(
     counters = state.counters()
     peer_active_count = len(state.peer_active)
     compact = width < 105 or height < 30
-    overview_height = 5 if compact else 7
+    overview_height = 6 if compact else 8
     table_height = max(7, min(13, height // 3))
     footer_height = 1
     detail_y = overview_height + table_height
@@ -3416,9 +3627,9 @@ def _ratatui_commands(
         gauge_value_style = RStyle()
 
     def status_style(status: str) -> object:
-        if status in {"error", "failed"}:
+        if status in {"error", "failed", "blocked_dependency"}:
             return failure_style
-        if status in {"generation_limit", "memory_limit", "timeout", "cancelled"}:
+        if status in {*_TERMINAL_CAP_STATUSES, "timeout", "cancelled"}:
             return warning_style
         if status in _COMPLETED_WORKER_STATUSES:
             return success_style
@@ -3514,6 +3725,17 @@ def _ratatui_commands(
                 if peer_active_count and not compact
                 else ()
             ),
+        ],
+    )
+    _append_dashboard_line(
+        overview,
+        [
+            ("Ready ", key_style),
+            (str(state.ready_count), success_style),
+            ("   Waiting dependency ", key_style),
+            (str(state.waiting_dependency_count), muted_style),
+            ("   Waiting coordination lock ", key_style),
+            (str(state.waiting_coordination_lock_count), warning_style),
         ],
     )
     _append_dashboard_line(
@@ -3651,7 +3873,11 @@ def _ratatui_commands(
         row_values = [
             marker,
             worker.cell_id,
-            worker.status,
+            (
+                "blocked by dependency"
+                if worker.status == "blocked_dependency"
+                else worker.status
+            ),
             worker.step,
             _worker_progress_indicator(worker, compact=compact),
             _human_duration(worker.wall_seconds),
@@ -3777,6 +4003,14 @@ def _ratatui_commands(
             compact=compact,
             key_style=key_style,
         )
+        if selected.blocked_prerequisite_ids:
+            _append_dashboard_line(
+                details,
+                [
+                    ("Blocked by ", key_style),
+                    (", ".join(selected.blocked_prerequisite_ids), failure_style),
+                ],
+            )
         if compact and selected.log_tail and not persisted_summary:
             _append_dashboard_line(
                 details,
@@ -3784,6 +4018,42 @@ def _ratatui_commands(
                     ("Recent log ", key_style),
                     (selected.log_tail[-1], neutral_style),
                 ],
+            )
+        enforcement_current = _worker_enforcement_memory(selected)
+        enforcement_peak = _worker_enforcement_memory(selected, peak=True)
+        enforcement_style = (
+            failure_style
+            if enforcement_current > state.memory_limit_bytes
+            else warning_style
+        )
+        if compact and not persisted_summary:
+            _append_detail_fields(
+                details,
+                (
+                    (
+                        "Guard current",
+                        _human_bytes(enforcement_current),
+                        enforcement_style,
+                    ),
+                    ("Guard peak", _human_bytes(enforcement_peak), enforcement_style),
+                    ("RAM cap", _human_bytes(state.memory_limit_bytes), warning_style),
+                    (
+                        "Physical current",
+                        (
+                            "unavailable"
+                            if selected.current_physical_footprint_bytes is None
+                            else _human_bytes(selected.current_physical_footprint_bytes)
+                        ),
+                        (
+                            muted_style
+                            if selected.current_physical_footprint_bytes is None
+                            else memory_style
+                        ),
+                    ),
+                ),
+                width=width,
+                compact=compact,
+                key_style=key_style,
             )
         if persisted_summary:
             if selected.recycled:
@@ -3974,13 +4244,6 @@ def _ratatui_commands(
             compact=compact,
             key_style=key_style,
         )
-        enforcement_current = _worker_enforcement_memory(selected)
-        enforcement_peak = _worker_enforcement_memory(selected, peak=True)
-        enforcement_style = (
-            failure_style
-            if enforcement_current > state.memory_limit_bytes
-            else warning_style
-        )
         if selected.current_physical_footprint_bytes is not None and not compact:
             physical_peak = (
                 selected.peak_physical_footprint_bytes
@@ -4001,48 +4264,55 @@ def _ratatui_commands(
                 compact=compact,
                 key_style=key_style,
             )
-        _append_detail_fields(
-            details,
-            (
+        if not (compact and not persisted_summary):
+            _append_detail_fields(
+                details,
                 (
-                    "Guard current",
-                    _human_bytes(enforcement_current),
-                    enforcement_style,
-                ),
-                ("Guard peak", _human_bytes(enforcement_peak), enforcement_style),
-                ("RAM cap", _human_bytes(state.memory_limit_bytes), warning_style),
-                (
-                    "Physical current" if compact else "Worker wall cap",
                     (
+                        "Guard current",
+                        _human_bytes(enforcement_current),
+                        enforcement_style,
+                    ),
+                    ("Guard peak", _human_bytes(enforcement_peak), enforcement_style),
+                    ("RAM cap", _human_bytes(state.memory_limit_bytes), warning_style),
+                    (
+                        "Physical current" if compact else "Worker wall cap",
                         (
-                            "unavailable"
-                            if selected.current_physical_footprint_bytes is None
-                            else _human_bytes(selected.current_physical_footprint_bytes)
-                        )
-                        if compact
-                        else (
-                            "disabled"
-                            if state.worker_wall_limit_seconds is None
-                            else _human_duration(state.worker_wall_limit_seconds)
-                        )
-                    ),
-                    (
-                        muted_style
-                        if (
                             (
-                                compact
-                                and selected.current_physical_footprint_bytes is None
+                                "unavailable"
+                                if selected.current_physical_footprint_bytes is None
+                                else _human_bytes(
+                                    selected.current_physical_footprint_bytes
+                                )
                             )
-                            or (not compact and state.worker_wall_limit_seconds is None)
-                        )
-                        else (memory_style if compact else warning_style)
+                            if compact
+                            else (
+                                "disabled"
+                                if state.worker_wall_limit_seconds is None
+                                else _human_duration(state.worker_wall_limit_seconds)
+                            )
+                        ),
+                        (
+                            muted_style
+                            if (
+                                (
+                                    compact
+                                    and selected.current_physical_footprint_bytes
+                                    is None
+                                )
+                                or (
+                                    not compact
+                                    and state.worker_wall_limit_seconds is None
+                                )
+                            )
+                            else (memory_style if compact else warning_style)
+                        ),
                     ),
                 ),
-            ),
-            width=width,
-            compact=compact,
-            key_style=key_style,
-        )
+                width=width,
+                compact=compact,
+                key_style=key_style,
+            )
         evaluator_total = selected.published_evaluator_total_seconds_per_point
         recurrence_core = selected.published_recurrence_core_seconds_per_point
         missing_published = (
@@ -5171,6 +5441,16 @@ def _campaign_settings(
         minimum_samples=int(arguments.minimum_samples),
         timeout_seconds=arguments.worker_wall_limit,
         generation_time_limit_seconds=float(arguments.generation_time_limit),
+        profiling_time_limit_seconds=(
+            None
+            if arguments.worker_wall_limit is None
+            else float(arguments.worker_wall_limit)
+        ),
+        validation_time_limit_seconds=(
+            None
+            if arguments.worker_wall_limit is None
+            else float(arguments.worker_wall_limit)
+        ),
         max_rss_bytes=int(arguments.ram_limit),
         artifact_policy=(
             ArtifactPolicy.REGENERATE
@@ -5400,16 +5680,35 @@ def _cancel_and_join_campaign_worker(
     *,
     timeout_seconds: float,
 ) -> tuple[bool, bool]:
-    """Request worker-tree cancellation and perform at most one bounded join."""
+    """Poll cancellation until the non-daemon controller has fully exited."""
 
     cancellation.set()
     interrupted = False
-    try:
-        worker.join(timeout=max(0.0, timeout_seconds))
-    except KeyboardInterrupt:
-        interrupted = True
-        cancellation.set()
-    return interrupted, worker.is_alive()
+    poll_seconds = min(max(timeout_seconds, 0.05), 0.25)
+    notice_polls = max(1, math.ceil(max(timeout_seconds, 1.0) / poll_seconds))
+    polls = 0
+    while worker.is_alive():
+        try:
+            worker.join(timeout=poll_seconds)
+        except KeyboardInterrupt:
+            interrupted = True
+            cancellation.set()
+            print(
+                "Interrupt repeated; still waiting for supervised worker-tree "
+                "cleanup...",
+                file=sys.stderr,
+                flush=True,
+            )
+        polls += 1
+        if worker.is_alive() and polls % notice_polls == 0:
+            cancellation.set()
+            print(
+                "Waiting for campaign cancellation cleanup; no leases or claims "
+                "will be released early...",
+                file=sys.stderr,
+                flush=True,
+            )
+    return interrupted, False
 
 
 def _recycled_attention_workers(
@@ -5430,13 +5729,12 @@ def _recycled_attention_workers(
         if current is None:
             continue
         result_status = str(current.result.get("status") or "")
-        status = {
-            ResultStatus.OK.value: "recycled",
-            "reused": "recycled",
-            "skipped-current": "recycled",
-            ResultStatus.TIMEOUT.value: "generation_limit",
-            ResultStatus.MEMORY_LIMIT.value: "memory_limit",
-        }.get(result_status)
+        state = policy_measurement_state_hint(current.result)
+        status = (
+            "recycled"
+            if result_status in {ResultStatus.OK.value, "reused", "skipped-current"}
+            else (None if state is None else state.value)
+        )
         if status is None:
             continue
         resources = current.result.get("resources")
@@ -5475,7 +5773,11 @@ def _recycled_attention_workers(
                 else (
                     "recycled process-tree RAM cap"
                     if status == "memory_limit"
-                    else "reused existing current"
+                    else (
+                        f"recycled {status.replace('_', ' ')}"
+                        if status in _TERMINAL_CAP_STATUSES
+                        else "reused existing current"
+                    )
                 )
             ),
             phase="recycled current",
@@ -5501,7 +5803,7 @@ def _recycled_attention_workers(
             progress_total=1,
             progress_message=(
                 "recycled capped result"
-                if status in {"generation_limit", "memory_limit"}
+                if status in _TERMINAL_CAP_STATUSES
                 else "recycled current"
             ),
             reproduce_prepare=(
@@ -5596,8 +5898,7 @@ def _run_campaign(
     historical_recycled = {
         cell_id
         for cell_id in recycled
-        if _measurement_source_revision(lightweight[cell_id].result)
-        != source.revision
+        if _measurement_source_revision(lightweight[cell_id].result) != source.revision
     }
     requested_for_plan = tuple(
         cell
@@ -5796,7 +6097,7 @@ def _run_campaign(
     state.capped_ids.update(
         cell_id
         for cell_id, worker in state.workers.items()
-        if worker.status in {"generation_limit", "memory_limit"}
+        if worker.status in _TERMINAL_CAP_STATUSES
     )
     lease = LeaseManager(service, state)
     lease.publish()
@@ -6229,9 +6530,9 @@ coordination, source-marker, result, and PDF paths.
 Resource and availability policy
 --------------------------------
 Multiplicity-eight all-flow recurrence is runnable. Current releases use
-bounded spooled/compressed numerical-current evidence, so the former manual
-1-GiB-envelope policy block no longer applies; the ordinary generation-time
-and 30-GB process-tree caps still apply. Z-table C++/ASM variants above
+bounded numerical-current evidence; a shape that cannot fit the 1-GiB envelope
+visibly falls back to reuse-off while ordinary generation continues under the
+generation-time and 30-GB process-tree caps. Z-table C++/ASM variants above
 multiplicity six remain catalog-defined static N/A and create no attempts.
 
 Canonical selector values and aliases
@@ -6474,9 +6775,13 @@ def build_parser() -> argparse.ArgumentParser:
     resources.add_argument(
         "--worker-wall-limit",
         type=_positive_finite_float,
-        default=None,
+        default=DEFAULT_WORKER_WALL_LIMIT_SECONDS,
         metavar="SECONDS",
-        help="Optional total worker wall-time cap; disabled when omitted.",
+        help=(
+            "Hard total process-tree wall-time cap per worker; defaults to "
+            "3600 seconds and bounds generation, profiling, validation, and "
+            "every descendant command."
+        ),
     )
     resources.add_argument(
         "--resource-sample-interval",
@@ -6854,9 +7159,7 @@ def main(
                 cells,
                 source_revision=source_policy.source_revision,
                 renderer_revision=source.revision,
-                accept_historical_source=(
-                    source_policy.continue_across_revisions
-                ),
+                accept_historical_source=(source_policy.continue_across_revisions),
             )
             if arguments.format == "json":
                 json.dump(payload, sys.stdout, indent=2, sort_keys=True)

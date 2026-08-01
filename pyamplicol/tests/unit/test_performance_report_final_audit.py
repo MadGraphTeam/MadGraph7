@@ -78,7 +78,7 @@ from tools.performance_report.render import VisibleCompleteness
 from tools.performance_report.service import ReportPaths, ReportService
 
 _REVISION = "a" * 40
-_LEGACY_REVISION = "79c96cecf2a722e50c3d2030b6894d755f96518a"
+_LEGACY_REVISION = "07f16be4fee70c2bd624eee76822c0bb322cb595"
 _ARTIFACT_ID = "b" * 64
 _CAPABILITY = "rusticol.recurrence-direct-arena.complex-f64.v1"
 _COLOR_CAPABILITY = "rusticol.recurrence-color.lc.v1"
@@ -198,6 +198,59 @@ def _refresh_recurrence_source_catalog(
     plan = execution["plan"]
     assert isinstance(plan, dict)
     plan["direct_template_catalog_digest"] = catalog["catalog_digest"]
+
+
+def _canonical_symjit_evaluator(
+    application_path: str,
+    plane_path: str,
+    *,
+    optimization_level: int,
+    input_len: int = 1,
+    output_len: int = 1,
+) -> dict[str, object]:
+    return {
+        "kind": "symjit-application-evaluator",
+        "runtime_capability": "symjit.application.complex-f64.v1",
+        "input_len": input_len,
+        "output_len": output_len,
+        "application_abi": "symjit-application-storage-v3",
+        "application_path": application_path,
+        "element_layout": "complex-f64",
+        "batch_layout": "row-major",
+        "compiler_type": "native",
+        "translation_mode": "indirect",
+        "optimization_level": optimization_level,
+        "word_bits": 64,
+        "endianness": "little",
+        "required_defuns": [],
+        "evaluator_state_path": f"{application_path}.state",
+        "evaluator_state_runtime_capability": (
+            "symbolica.legacy-jit-container.complex-f64.v1"
+        ),
+        "plane_application": {
+            "application_path": plane_path,
+            "application_abi": "pyamplicol-symjit-plane-application-v2",
+            "storage_abi": "symjit-application-storage-v3",
+            "element_layout": "split-complex-plane-major",
+            "descriptor_order": "inputs-re-im-then-outputs-re-im",
+            "input_complex_count": input_len,
+            "output_complex_count": output_len,
+            "input_plane_count": 2 * input_len,
+            "output_plane_count": 2 * output_len,
+            "compiler_type": "native",
+            "translation_mode": "symbolica-structured-instructions",
+            "optimization_level": optimization_level,
+            "simd": True,
+            "complex": True,
+            "fast_math": True,
+            "fast_complex": False,
+            "compression": False,
+            "threading": False,
+            "direct_arena": True,
+            "source_digest": "1" * 64,
+            "target": {"word_bits": 64, "endianness": "little"},
+        },
+    }
 
 
 def _recurrence_source_fixture(
@@ -321,27 +374,11 @@ def _recurrence_source_fixture(
         "kernels": [
             {
                 "kernel_id": 0,
-                "f64_evaluator_manifest": {
-                    "kind": "symjit-application-evaluator",
-                    "backend": "jit",
-                    "runtime_capability": "symjit.application.complex-f64.v1",
-                    "application_abi": "symjit-application-storage-v3",
-                    "application_path": ordinary_source_path,
-                    "optimization_level": 2,
-                    "plane_application": {
-                        "application_path": source_path,
-                        "application_abi": (
-                            "pyamplicol-symjit-plane-application-v2"
-                        ),
-                        "storage_abi": "symjit-application-storage-v3",
-                        "translation_mode": (
-                            "symbolica-structured-instructions"
-                        ),
-                        "optimization_level": 2,
-                        "direct_arena": True,
-                        "source_digest": "1" * 64,
-                    },
-                },
+                "f64_evaluator_manifest": _canonical_symjit_evaluator(
+                    ordinary_source_path,
+                    source_path,
+                    optimization_level=2,
+                ),
             }
         ],
     }
@@ -430,19 +467,45 @@ def _compiled_stage(
     evaluator = (
         {
             "kind": "symjit-application-evaluator",
-            "backend": "jit",
             "runtime_capability": "symjit.application.complex-f64.v1",
+            "input_len": 1,
+            "output_len": 1,
             "application_abi": "symjit-application-storage-v3",
             "application_path": "evaluators/stage.symjit",
+            "element_layout": "complex-f64",
+            "batch_layout": "row-major",
+            "compiler_type": "native",
+            "translation_mode": "indirect",
             "optimization_level": optimization_level,
+            "word_bits": 64,
+            "endianness": "little",
+            "required_defuns": [],
+            "evaluator_state_path": "evaluators/stage.symjit.state",
+            "evaluator_state_runtime_capability": (
+                "symbolica.legacy-jit-container.complex-f64.v1"
+            ),
             "plane_application": {
                 "application_path": "evaluators/stage.plane.symjit",
                 "application_abi": "pyamplicol-symjit-plane-application-v2",
                 "storage_abi": "symjit-application-storage-v3",
+                "element_layout": "split-complex-plane-major",
+                "descriptor_order": "inputs-re-im-then-outputs-re-im",
+                "input_complex_count": 1,
+                "output_complex_count": 1,
+                "input_plane_count": 2,
+                "output_plane_count": 2,
+                "compiler_type": "native",
                 "translation_mode": "symbolica-structured-instructions",
                 "optimization_level": optimization_level,
+                "simd": True,
+                "complex": True,
+                "fast_math": True,
+                "fast_complex": False,
+                "compression": False,
+                "threading": False,
                 "direct_arena": True,
                 "source_digest": "1" * 64,
+                "target": {"word_bits": 64, "endianness": "little"},
             },
         }
         if backend == "jit"
@@ -585,6 +648,121 @@ def test_compiled_arena_authenticates_source_runtime_capability(
         _audit_compiled_execution(execution, cell)
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("backend", "native"),
+        ("backend", None),
+        ("compiler_type", "interpreter"),
+    ),
+)
+def test_compiled_arena_rejects_contradictory_symjit_identity(
+    field: str,
+    value: object,
+) -> None:
+    stage = _compiled_stage()
+    stage["evaluator"][field] = value  # type: ignore[index]
+    execution = {
+        "kind": "pyamplicol-runtime-execution",
+        "compiled": {
+            "stage_evaluators": {
+                "stages": [],
+                "amplitude_stage": stage,
+            },
+        },
+    }
+
+    with pytest.raises(FinalAuditError, match=field):
+        _audit_compiled_execution(execution, _cell(ExecutionMode.COMPILED))
+
+
+def test_compiled_arena_accepts_fallback_free_portable_symjit_leaf() -> None:
+    stage = _compiled_stage()
+    evaluator = stage["evaluator"]
+    assert isinstance(evaluator, dict)
+    evaluator["evaluator_state_path"] = None
+    evaluator["evaluator_state_runtime_capability"] = None
+    execution = {
+        "kind": "pyamplicol-runtime-execution",
+        "compiled": {
+            "stage_evaluators": {
+                "stages": [],
+                "amplitude_stage": stage,
+            },
+        },
+    }
+
+    assert _audit_compiled_execution(
+        execution,
+        _cell(ExecutionMode.COMPILED),
+    ) == (1, 1)
+
+
+@pytest.mark.parametrize(
+    ("state_path", "capability"),
+    (
+        (None, "symbolica.legacy-jit-container.complex-f64.v1"),
+        ("evaluators/stage.symjit.state", None),
+    ),
+)
+def test_compiled_arena_rejects_partial_symjit_fallback_pair(
+    state_path: str | None,
+    capability: str | None,
+) -> None:
+    stage = _compiled_stage()
+    evaluator = stage["evaluator"]
+    assert isinstance(evaluator, dict)
+    evaluator["evaluator_state_path"] = state_path
+    evaluator["evaluator_state_runtime_capability"] = capability
+    execution = {
+        "kind": "pyamplicol-runtime-execution",
+        "compiled": {
+            "stage_evaluators": {
+                "stages": [],
+                "amplitude_stage": stage,
+            },
+        },
+    }
+
+    with pytest.raises(FinalAuditError, match="evaluator_state_fallback"):
+        _audit_compiled_execution(execution, _cell(ExecutionMode.COMPILED))
+
+
+@pytest.mark.parametrize(
+    "target",
+    (
+        {"word_bits": 64.0, "endianness": "little"},
+        {
+            "word_bits": 64,
+            "endianness": "little",
+            "cpu_features": ["z", "a"],
+        },
+        {"word_bits": 64, "endianness": "little", "unknown": True},
+    ),
+)
+def test_compiled_arena_rejects_noncanonical_symjit_target(
+    target: dict[str, object],
+) -> None:
+    stage = _compiled_stage()
+    evaluator = stage["evaluator"]
+    assert isinstance(evaluator, dict)
+    plane = evaluator["plane_application"]
+    assert isinstance(plane, dict)
+    plane["target"] = target
+    execution = {
+        "kind": "pyamplicol-runtime-execution",
+        "compiled": {
+            "stage_evaluators": {
+                "stages": [],
+                "amplitude_stage": stage,
+            },
+        },
+    }
+
+    with pytest.raises(FinalAuditError, match=r"plane_application\.target"):
+        _audit_compiled_execution(execution, _cell(ExecutionMode.COMPILED))
+
+
 def test_final_replay_matrix_conversion_rejects_sign_and_complex_drift() -> None:
     assert _real_nonnegative(2.0 + 0.0j, "matrix") == 2.0
     assert _real_nonnegative(-1.0e-16 + 0.0j, "matrix") == 0.0
@@ -643,6 +821,17 @@ def test_effective_toml_is_payload_authenticated_and_model_bound(
 def test_eager_and_recurrence_arena_abis_are_audited(tmp_path: Path) -> None:
     pack_path = tmp_path / "model" / "eager-kernel-pack.json"
     pack_path.parent.mkdir(parents=True)
+    vertex_evaluator = _canonical_symjit_evaluator(
+        "kernels/000000/application.symjit",
+        "kernels/000000/application.plane.symjit",
+        optimization_level=2,
+    )
+    vertex_evaluator["direct_table"] = {
+        "capability": "eager-direct-arena-v1",
+        "descriptor_abi": "pyamplicol-eager-plane-table-descriptor-v1",
+        "binding_abi": "pyamplicol-eager-plane-table-binding-v2",
+        "source_application_abi": "pyamplicol-symjit-plane-application-v2",
+    }
     pack_payload = {
         "backend": "jit",
         "optimization_settings": {
@@ -660,39 +849,7 @@ def test_eager_and_recurrence_arena_abis_are_audited(tmp_path: Path) -> None:
         "kernels": [
             {
                 "contract_kind": "vertex",
-                "f64_evaluator_manifest": {
-                    "kind": "symjit-application-evaluator",
-                    "backend": "jit",
-                    "runtime_capability": "symjit.application.complex-f64.v1",
-                    "application_abi": "symjit-application-storage-v3",
-                    "application_path": "kernels/000000/application.symjit",
-                    "optimization_level": 2,
-                    "plane_application": {
-                        "application_path": (
-                            "kernels/000000/application.plane.symjit"
-                        ),
-                        "application_abi": (
-                            "pyamplicol-symjit-plane-application-v2"
-                        ),
-                        "storage_abi": "symjit-application-storage-v3",
-                        "translation_mode": (
-                            "symbolica-structured-instructions"
-                        ),
-                        "optimization_level": 2,
-                        "direct_arena": True,
-                        "source_digest": "1" * 64,
-                    },
-                    "direct_table": {
-                        "capability": "eager-direct-arena-v1",
-                        "descriptor_abi": (
-                            "pyamplicol-eager-plane-table-descriptor-v1"
-                        ),
-                        "binding_abi": "pyamplicol-eager-plane-table-binding-v2",
-                        "source_application_abi": (
-                            "pyamplicol-symjit-plane-application-v2"
-                        ),
-                    },
-                },
+                "f64_evaluator_manifest": vertex_evaluator,
             },
             {
                 "contract_kind": "model-parameter",

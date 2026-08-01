@@ -177,6 +177,9 @@ class CampaignPolicyError(ValueError):
 class PolicyCensorKind(StrEnum):
     GENERATION_LIMIT = "generation_limit"
     MEMORY_LIMIT = "memory_limit"
+    WORKER_TIMEOUT = "worker_timeout"
+    PROFILING_TIMEOUT = "profiling_timeout"
+    VALIDATION_TIMEOUT = "validation_timeout"
     DEPENDENCY = "dependency"
     RESOURCE_FRONTIER = "resource_frontier"
 
@@ -185,6 +188,9 @@ class PolicyMeasurementState(StrEnum):
     SUCCESS = "success"
     GENERATION_LIMIT = "generation_limit"
     MEMORY_LIMIT = "memory_limit"
+    WORKER_TIMEOUT = "worker_timeout"
+    PROFILING_TIMEOUT = "profiling_timeout"
+    VALIDATION_TIMEOUT = "validation_timeout"
     DEPENDENCY = "dependency"
     RESOURCE_FRONTIER = "resource_frontier"
 
@@ -242,9 +248,7 @@ MACBOOK_M3_Z_TABLE_F_POLICY = CampaignPolicy(
     workers=MACBOOK_M3_WORKERS,
     cell_cores=MACBOOK_M3_CELL_CORES,
     target_runtime_seconds=MACBOOK_M3_TARGET_RUNTIME_SECONDS,
-    generation_limit_seconds=(
-        MACBOOK_M3_Z_TABLE_F_GENERATION_LIMIT_SECONDS
-    ),
+    generation_limit_seconds=(MACBOOK_M3_Z_TABLE_F_GENERATION_LIMIT_SECONDS),
     memory_limit_bytes=MACBOOK_M3_MEMORY_LIMIT_BYTES,
     generation_limit_all_cells=True,
 )
@@ -653,16 +657,13 @@ def _policy_record(
         if (
             not isinstance(study_contract, Mapping)
             or set(study_contract) != _STUDY_CONTRACT_BINDING_FIELDS
-            or study_contract.get("abi")
-            != "pyamplicol-z-table-f-attempt-binding-v1"
+            or study_contract.get("abi") != "pyamplicol-z-table-f-attempt-binding-v1"
             or study_contract.get("study_id") != "macbook-m3-z-table-f"
             or not isinstance(
                 study_contract.get("study_contract_sha256"),
                 str,
             )
-            or _SHA256_RE.fullmatch(
-                str(study_contract["study_contract_sha256"])
-            )
+            or _SHA256_RE.fullmatch(str(study_contract["study_contract_sha256"]))
             is None
         ):
             raise CampaignPolicyError(
@@ -708,10 +709,7 @@ def _policy_record(
         kind = PolicyCensorKind(str(raw.get("kind")))
     except ValueError as error:
         raise CampaignPolicyError("policy_censor kind is unsupported") from error
-    if (
-        policy is MACBOOK_M3_Z_TABLE_F_POLICY
-        and censor_abi != POLICY_CENSOR_ABI
-    ):
+    if policy is MACBOOK_M3_Z_TABLE_F_POLICY and censor_abi != POLICY_CENSOR_ABI:
         raise CampaignPolicyError(
             "the Z-table F policy requires policy-censor v3 evidence"
         )
@@ -857,13 +855,10 @@ def _validate_resources(
         raise CampaignPolicyError("architecture policy has no memory ceiling")
     _validate_memory_metric(resources, policy)
     if policy is MACBOOK_M3_Z_TABLE_F_POLICY:
-        current_physical = resources.get(
-            "current_physical_footprint_bytes"
-        )
+        current_physical = resources.get("current_physical_footprint_bytes")
         peak_physical = resources.get("peak_physical_footprint_bytes")
         if (
-            resources.get("memory_metric_abi")
-            != PROCESS_TREE_MEMORY_METRIC_ABI
+            resources.get("memory_metric_abi") != PROCESS_TREE_MEMORY_METRIC_ABI
             or isinstance(current_physical, bool)
             or not isinstance(current_physical, int)
             or current_physical < 0
@@ -913,6 +908,31 @@ def _validate_generation_phase(
         "generation_phase.generation_elapsed_seconds",
     )
     state_digest = value.get("final_state_sha256")
+    if expected_reason == "generation_timeout":
+        boundary_valid = (
+            sequence == 1
+            and value.get("final_phase") == "generation"
+            and isinstance(started, int)
+            and not isinstance(started, bool)
+            and started > 0
+            and finished is None
+        ) or (
+            sequence == 0
+            and value.get("final_phase") == "pre-generation"
+            and started is None
+            and finished is None
+        )
+    else:
+        boundary_valid = (
+            sequence == 2
+            and value.get("final_phase") == "post-generation"
+            and isinstance(started, int)
+            and not isinstance(started, bool)
+            and started > 0
+            and isinstance(finished, int)
+            and not isinstance(finished, bool)
+            and finished >= started
+        )
     if (
         value.get("abi") != GENERATION_PHASE_EVIDENCE_ABI
         or value.get("phase_state_abi") != WORKER_PHASE_STATE_ABI
@@ -926,25 +946,7 @@ def _validate_generation_phase(
         or worker_pid <= 0
         or isinstance(sequence, bool)
         or not isinstance(sequence, int)
-        or sequence != (1 if expected_reason == "generation_timeout" else 2)
-        or value.get("final_phase")
-        != (
-            "generation"
-            if expected_reason == "generation_timeout"
-            else "post-generation"
-        )
-        or isinstance(started, bool)
-        or not isinstance(started, int)
-        or started <= 0
-        or (expected_reason == "generation_timeout" and finished is not None)
-        or (
-            expected_reason == "completed"
-            and (
-                isinstance(finished, bool)
-                or not isinstance(finished, int)
-                or finished < started
-            )
-        )
+        or not boundary_valid
         or not isinstance(state_digest, str)
         or _SHA256_RE.fullmatch(state_digest) is None
         or value.get("error") is not None
@@ -1089,10 +1091,7 @@ def validate_policy_measurement(
 
     if kind is PolicyCensorKind.GENERATION_LIMIT:
         cell_limit = generation_limit_for_cell(policy, cell)
-        if (
-            cell_limit is None
-            or status != ResultStatus.TIMEOUT.value
-        ):
+        if cell_limit is None or status != ResultStatus.TIMEOUT.value:
             raise CampaignPolicyError(
                 "generation censor status or exemption is invalid"
             )
@@ -1281,14 +1280,112 @@ def _generation_limit_label(record: Mapping[str, object]) -> str | None:
     return f">{limit:g}s"
 
 
+def _manual_time_limit_label(
+    record: Mapping[str, object],
+    field: str,
+    prefix: str,
+) -> str | None:
+    raw_limit = record.get(field)
+    if (
+        isinstance(raw_limit, bool)
+        or not isinstance(raw_limit, (int, float))
+        or not math.isfinite(float(raw_limit))
+        or float(raw_limit) <= 0.0
+    ):
+        return None
+    limit = float(raw_limit)
+    hours = limit / 3600.0
+    rendered = f"{int(hours)}h" if hours.is_integer() else f"{limit:g}s"
+    return f"{prefix} >{rendered}"
+
+
+def policy_measurement_state_hint(
+    measurement: Mapping[str, object],
+) -> PolicyMeasurementState | None:
+    """Decode a current's status/kind pair without deeper artifact checks.
+
+    This is intentionally only a lightweight classification helper. Callers
+    remain responsible for the profile-specific validation and source checks
+    required at their publication or reuse boundary.
+    """
+
+    status = measurement.get("status")
+    if status == ResultStatus.OK.value:
+        return PolicyMeasurementState.SUCCESS
+    provenance = measurement.get("provenance")
+    censor = (
+        provenance.get("policy_censor") if isinstance(provenance, Mapping) else None
+    )
+    kind = censor.get("kind") if isinstance(censor, Mapping) else None
+    manual = (
+        provenance.get("manual_campaign") if isinstance(provenance, Mapping) else None
+    )
+    timeout_states = {
+        PolicyCensorKind.GENERATION_LIMIT.value: (
+            PolicyMeasurementState.GENERATION_LIMIT
+        ),
+        PolicyCensorKind.WORKER_TIMEOUT.value: PolicyMeasurementState.WORKER_TIMEOUT,
+        PolicyCensorKind.PROFILING_TIMEOUT.value: (
+            PolicyMeasurementState.PROFILING_TIMEOUT
+        ),
+        PolicyCensorKind.VALIDATION_TIMEOUT.value: (
+            PolicyMeasurementState.VALIDATION_TIMEOUT
+        ),
+    }
+    if status == ResultStatus.TIMEOUT.value:
+        state = timeout_states.get(kind)
+        if state is not None:
+            return state
+        if (
+            kind is None
+            and isinstance(manual, Mapping)
+            and _generation_limit_label(manual) is not None
+        ):
+            return PolicyMeasurementState.GENERATION_LIMIT
+        return None
+    if (
+        status == ResultStatus.MEMORY_LIMIT.value
+        and kind == PolicyCensorKind.MEMORY_LIMIT.value
+    ):
+        return PolicyMeasurementState.MEMORY_LIMIT
+    if (
+        status == ResultStatus.MEMORY_LIMIT.value
+        and kind is None
+        and isinstance(manual, Mapping)
+        and isinstance(manual.get("memory_limit_bytes"), int)
+        and not isinstance(manual.get("memory_limit_bytes"), bool)
+        and int(manual["memory_limit_bytes"]) > 0
+    ):
+        return PolicyMeasurementState.MEMORY_LIMIT
+    if status == ResultStatus.SKIP.value:
+        return {
+            PolicyCensorKind.DEPENDENCY.value: PolicyMeasurementState.DEPENDENCY,
+            PolicyCensorKind.RESOURCE_FRONTIER.value: (
+                PolicyMeasurementState.RESOURCE_FRONTIER
+            ),
+        }.get(kind)
+    return None
+
+
 def policy_status_label(measurement: Mapping[str, object]) -> str | None:
     provenance = measurement.get("provenance")
     if not isinstance(provenance, Mapping):
         return None
     record = provenance.get("policy_censor")
     if not isinstance(record, Mapping):
-        return None
-    kind = record.get("kind")
+        manual = provenance.get("manual_campaign")
+        if not isinstance(manual, Mapping):
+            return None
+        status = measurement.get("status")
+        if status == ResultStatus.TIMEOUT.value:
+            return _generation_limit_label(manual)
+        if status == ResultStatus.MEMORY_LIMIT.value:
+            record = manual
+            kind = PolicyCensorKind.MEMORY_LIMIT.value
+        else:
+            return None
+    else:
+        kind = record.get("kind")
     if kind == PolicyCensorKind.GENERATION_LIMIT.value:
         return _generation_limit_label(record)
     if kind == PolicyCensorKind.MEMORY_LIMIT.value:
@@ -1301,6 +1398,24 @@ def policy_status_label(measurement: Mapping[str, object]) -> str | None:
         ):
             return None
         return f">{memory_limit // 1_000_000_000}GB"
+    if kind == PolicyCensorKind.WORKER_TIMEOUT.value:
+        return _manual_time_limit_label(
+            record,
+            "worker_wall_limit_seconds",
+            "worker",
+        )
+    if kind == PolicyCensorKind.PROFILING_TIMEOUT.value:
+        return _manual_time_limit_label(
+            record,
+            "profiling_time_limit_seconds",
+            "profile",
+        )
+    if kind == PolicyCensorKind.VALIDATION_TIMEOUT.value:
+        return _manual_time_limit_label(
+            record,
+            "validation_time_limit_seconds",
+            "validation",
+        )
     if kind in {
         PolicyCensorKind.DEPENDENCY.value,
         PolicyCensorKind.RESOURCE_FRONTIER.value,
@@ -1320,9 +1435,7 @@ def policy_status_label(measurement: Mapping[str, object]) -> str | None:
                     continue
                 status = dependency.get("status")
                 if status == ResultStatus.TIMEOUT.value:
-                    labels.add(
-                        _generation_limit_label(record) or "timeout"
-                    )
+                    labels.add(_generation_limit_label(record) or "timeout")
                 elif status == ResultStatus.MEMORY_LIMIT.value:
                     memory_limit = record.get("memory_limit_bytes")
                     if (
@@ -1382,6 +1495,7 @@ __all__ = [
     "generation_limit_for_cell",
     "policy_censor_measurement",
     "policy_from_manifest",
+    "policy_measurement_state_hint",
     "policy_status_label",
     "resource_frontier_reference",
     "resource_lane_identity",

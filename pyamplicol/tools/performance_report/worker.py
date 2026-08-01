@@ -4,21 +4,29 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
+import shutil
+import subprocess
 import tempfile
 import threading
 import time
 import traceback
-from collections.abc import Mapping, Sequence
-from contextlib import redirect_stderr, redirect_stdout
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pyamplicol.reporting import ProgressEvent, ProgressSink
 
-from .agreements import attach_direct_agreements
+from .agreements import (
+    LC_CROSS_LAYOUT_COMPONENT,
+    attach_direct_agreements,
+    incoming_agreement_edges,
+)
+from .artifacts import _filesystem_lock
 from .catalog import REPORT_CATALOG, ReportCatalog
 from .measurement import (
     failure_measurement,
@@ -28,7 +36,7 @@ from .measurement import (
 )
 from .models import ExecutionMode, ResultStatus
 from .phase_state import WorkerPhaseChannel, WorkerPhaseReporter
-from .runner import RunnerSettings
+from .runner import ProfilingTimeLimitError, RunnerSettings
 from .source_identity import ReportSourceIdentity, require_eligible_report_source
 from .worker_harness import attach_worker_harness_identity
 
@@ -146,6 +154,126 @@ def _atomic_json(path: Path, payload: Mapping[str, object]) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _selector_provider_measurement(
+    cell_id: str,
+    peers: Mapping[str, Mapping[str, object]],
+    *,
+    catalog: ReportCatalog,
+) -> Mapping[str, object] | None:
+    """Return the scheduled selected-flow peer used to seed LC all-flow."""
+
+    cell = catalog.cell(cell_id)
+    providers = tuple(
+        edge.baseline.cell_id
+        for edge in incoming_agreement_edges(cell, catalog=catalog)
+        if edge.kind == LC_CROSS_LAYOUT_COMPONENT
+    )
+    if not providers:
+        return None
+    if len(providers) != 1:
+        raise ValueError(f"{cell_id}: selector provider is not unique")
+    provider_id = providers[0]
+    provider = peers.get(provider_id)
+    if provider is None:
+        raise ValueError(
+            f"{cell_id}: required selector provider {provider_id!r} is unavailable"
+        )
+    return provider
+
+
+@contextmanager
+def _worker_legacy_workspace(
+    *,
+    repository: Path | None,
+    source_repository: Path | None,
+    workspace: Path | None,
+    copy_source: bool,
+) -> Iterator[Path | None]:
+    """Prepare an isolated legacy checkout inside the supervised worker."""
+
+    if source_repository is None:
+        if workspace is not None or copy_source:
+            raise ValueError(
+                "legacy workspace/copy options require a source repository"
+            )
+        yield repository
+        return
+    if repository is not None:
+        raise ValueError(
+            "legacy repository and legacy source repository are mutually exclusive"
+        )
+    if workspace is None:
+        raise ValueError("legacy source repository requires a workspace destination")
+    source = source_repository.expanduser().resolve(strict=True)
+    destination = workspace.expanduser().resolve(strict=False)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists():
+        raise RuntimeError(f"legacy worker workspace already exists: {destination}")
+
+    from .legacy import MaintainedLegacyApi
+    from .legacy_structure import legacy_structural_probe_lock
+
+    api = MaintainedLegacyApi()
+    print(
+        f"Preparing isolated original-AmpliCol workspace {destination}",
+        flush=True,
+    )
+    if copy_source:
+        with legacy_structural_probe_lock(source):
+            shutil.copytree(
+                source,
+                destination,
+                ignore=shutil.ignore_patterns(".git", ".DS_Store"),
+            )
+    else:
+        api.validate_checkout(source)
+        commands = (
+            (
+                "git",
+                "clone",
+                "--shared",
+                "--no-checkout",
+                "--",
+                os.fspath(source),
+                os.fspath(destination),
+            ),
+            (
+                "git",
+                "-C",
+                os.fspath(destination),
+                "checkout",
+                "--detach",
+                api.expected_revision(),
+            ),
+        )
+        for command in commands:
+            print(f"Legacy workspace command: {' '.join(command)}", flush=True)
+            completed = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            if completed.returncode != 0:
+                detail = completed.stderr.strip() or completed.stdout.strip()
+                raise RuntimeError(
+                    "cannot prepare isolated legacy worker checkout: "
+                    f"{detail or f'exit {completed.returncode}'}"
+                )
+        api.validate_checkout(destination)
+    try:
+        yield destination
+    finally:
+        if destination.exists():
+            if destination.is_symlink() or not destination.is_dir():
+                raise RuntimeError(
+                    "legacy worker workspace is not its canonical regular "
+                    f"directory: {destination}"
+                )
+            shutil.rmtree(destination)
+
+
 def measure_cell(
     cell_id: str,
     *,
@@ -157,6 +285,9 @@ def measure_cell(
     warmup_runs: int = 2,
     minimum_samples: int = 5,
     progress_jsonl: Path | None = None,
+    worker_wall_limit_seconds: float | None = None,
+    profiling_time_limit_seconds: float | None = None,
+    validation_time_limit_seconds: float | None = None,
     manual_source_revision: str | None = None,
     manual_source_tree: str | None = None,
     baseline_json: Path | None = None,
@@ -165,9 +296,20 @@ def measure_cell(
     reused_measurement_json: Path | None = None,
     phase_reporter: WorkerPhaseReporter | None = None,
     legacy_repository: Path | None = None,
+    legacy_source_repository: Path | None = None,
+    legacy_workspace: Path | None = None,
+    legacy_copy_source: bool = False,
     legacy_source_revision: str | None = None,
     catalog: ReportCatalog = REPORT_CATALOG,
 ) -> dict[str, object]:
+    worker_started_monotonic = time.monotonic()
+    for name, value in (
+        ("worker_wall_limit_seconds", worker_wall_limit_seconds),
+        ("profiling_time_limit_seconds", profiling_time_limit_seconds),
+        ("validation_time_limit_seconds", validation_time_limit_seconds),
+    ):
+        if value is not None and (not math.isfinite(value) or value <= 0.0):
+            raise ValueError(f"{name} must be finite and positive")
     cell = catalog.cell(cell_id)
     static_na_reason = catalog.static_na_reason(cell)
     if static_na_reason is not None:
@@ -198,19 +340,36 @@ def measure_cell(
     if cell.measurement.execution_mode is ExecutionMode.AMPLICOL:
         from .legacy import LegacyMeasurementAdapter, LegacySettings
 
-        result = LegacyMeasurementAdapter().measure(
-            cell,
-            artifact_path=attempt_root / "artifact",
-            settings=LegacySettings(
-                target_runtime_seconds=target_runtime_seconds,
-                jobs=worker_cores,
-                repository=legacy_repository,
-                validate_checkout=manual_source_revision is None,
-                source_revision=legacy_source_revision,
-            ),
-            phase_reporter=phase_reporter,
-        )
+        with _worker_legacy_workspace(
+            repository=legacy_repository,
+            source_repository=legacy_source_repository,
+            workspace=legacy_workspace,
+            copy_source=legacy_copy_source,
+        ) as prepared_legacy_repository:
+            result = LegacyMeasurementAdapter().measure(
+                cell,
+                artifact_path=attempt_root / "artifact",
+                settings=LegacySettings(
+                    target_runtime_seconds=target_runtime_seconds,
+                    jobs=worker_cores,
+                    repository=prepared_legacy_repository,
+                    validate_checkout=manual_source_revision is None,
+                    source_revision=legacy_source_revision,
+                    profiling_time_limit_seconds=profiling_time_limit_seconds,
+                    worker_deadline_monotonic=(
+                        None
+                        if worker_wall_limit_seconds is None
+                        else worker_started_monotonic + worker_wall_limit_seconds
+                    ),
+                ),
+                phase_reporter=phase_reporter,
+            )
     else:
+        selector_provider = _selector_provider_measurement(
+            cell.cell_id,
+            peers,
+            catalog=catalog,
+        )
         result = measure_pyamplicol_cell(
             cell,
             artifact_path=attempt_root / "artifact",
@@ -225,9 +384,16 @@ def measure_cell(
                 source_revision_override=(
                     None if manual_source_revision is None else source_identity.revision
                 ),
+                profiling_time_limit_seconds=profiling_time_limit_seconds,
+                worker_deadline_monotonic=(
+                    None
+                    if worker_wall_limit_seconds is None
+                    else worker_started_monotonic + worker_wall_limit_seconds
+                ),
             ),
             repo_root=repo_root,
             baseline=baseline,
+            selector_provider=selector_provider,
             prepared_model_path=prepared_model_path,
             reused_artifact=reused_artifact,
             phase_reporter=phase_reporter,
@@ -250,6 +416,8 @@ def measure_cell(
         **({} if not isinstance(provenance, Mapping) else dict(provenance)),
         **source_identity.provenance(),
     }
+    if phase_reporter is not None:
+        phase_reporter.complete()
     return result
 
 
@@ -262,6 +430,10 @@ def write_cell_result(
     phase_state_run_id: str | None = None,
     phase_state_authentication_key: str | None = None,
     worker_harness: Mapping[str, object] | None = None,
+    worker_wall_limit_seconds: float | None = None,
+    profiling_time_limit_seconds: float | None = None,
+    validation_time_limit_seconds: float | None = None,
+    generation_lock_path: Path | None = None,
     **kwargs: object,
 ) -> dict[str, object]:
     try:
@@ -283,7 +455,20 @@ def write_cell_result(
                     path=phase_state_path.expanduser().resolve(strict=False),
                     run_id=phase_state_run_id,
                     authentication_key=phase_state_authentication_key,
-                )
+                ),
+                track_post_generation_stages=(
+                    profiling_time_limit_seconds is not None
+                    or validation_time_limit_seconds is not None
+                ),
+                generation_gate=(
+                    None
+                    if generation_lock_path is None
+                    else lambda: _filesystem_lock(
+                        generation_lock_path,
+                        timeout=None,
+                        poll_interval=0.05,
+                    )
+                ),
             )
         else:
             phase_reporter = None
@@ -291,6 +476,9 @@ def write_cell_result(
             result = measure_cell(
                 cell_id,
                 phase_reporter=phase_reporter,
+                worker_wall_limit_seconds=worker_wall_limit_seconds,
+                profiling_time_limit_seconds=profiling_time_limit_seconds,
+                validation_time_limit_seconds=validation_time_limit_seconds,
                 **kwargs,  # type: ignore[arg-type]
             )
         else:
@@ -303,8 +491,20 @@ def write_cell_result(
                 result = measure_cell(
                     cell_id,
                     phase_reporter=phase_reporter,
+                    worker_wall_limit_seconds=worker_wall_limit_seconds,
+                    profiling_time_limit_seconds=profiling_time_limit_seconds,
+                    validation_time_limit_seconds=validation_time_limit_seconds,
                     **kwargs,  # type: ignore[arg-type]
                 )
+    except ProfilingTimeLimitError as error:
+        if log_path is not None:
+            with log_path.open("a", encoding="utf-8") as stream:
+                traceback.print_exc(file=stream)
+        result = failure_measurement(
+            ResultStatus.TIMEOUT,
+            error,
+            resources={"terminal_reason": "profiling_timeout"},
+        )
     except Exception as error:
         if log_path is not None:
             with log_path.open("a", encoding="utf-8") as stream:

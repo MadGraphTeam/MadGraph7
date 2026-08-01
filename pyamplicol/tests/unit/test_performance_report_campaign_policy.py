@@ -77,6 +77,7 @@ from tools.performance_report.study_contract import (
     bind_z_table_f_attempt,
     create_z_table_f_study_contract,
 )
+from tools.performance_report.worker import _worker_legacy_workspace
 from tools.performance_report.worker_harness import (
     attach_worker_harness_identity,
     worker_harness_identity,
@@ -933,6 +934,36 @@ def test_completed_reused_artifact_accepts_zero_work_generation_phase() -> None:
     )
 
 
+def test_generation_timeout_accepts_only_authenticated_preparation_boundary() -> None:
+    phase_evidence = {
+        **_generation_phase(reason="generation_timeout", elapsed=3600.0),
+        "final_sequence": 0,
+        "final_phase": "pre-generation",
+        "generation_started_monotonic_ns": None,
+    }
+
+    assert (
+        _validate_generation_phase(
+            phase_evidence,
+            MACBOOK_M3_Z_TABLE_F_POLICY,
+            expected_reason="generation_timeout",
+        )
+        is phase_evidence
+    )
+    for field, invalid in (
+        ("final_sequence", 2),
+        ("final_phase", "post-generation"),
+        ("generation_started_monotonic_ns", 1),
+    ):
+        corrupted = {**phase_evidence, field: invalid}
+        with pytest.raises(CampaignPolicyError, match="inconsistent"):
+            _validate_generation_phase(
+                corrupted,
+                MACBOOK_M3_Z_TABLE_F_POLICY,
+                expected_reason="generation_timeout",
+            )
+
+
 def test_missing_only_reuses_exact_dependency_censor_and_rebinds_changes(
     tmp_path: Path,
 ) -> None:
@@ -1309,14 +1340,32 @@ def test_legacy_workers_receive_distinct_pinned_shared_object_clones(
     )
     scheduler = CampaignScheduler(service, settings=CampaignSettings())
 
-    first = scheduler._prepare_legacy_workspace("first")
-    second = scheduler._prepare_legacy_workspace("second")
+    first_source, first_workspace = scheduler._legacy_workspace_paths("first")
+    second_source, second_workspace = scheduler._legacy_workspace_paths("second")
 
-    assert first != second
-    assert (first / ".git").is_dir()
-    assert (second / ".git").is_dir()
-    (first / "makefile").write_text("changed\n", encoding="ascii")
-    assert (second / "makefile").read_text(encoding="ascii") == "all:\n\t@true\n"
+    assert first_source == second_source == source
+    assert first_workspace != second_workspace
+    assert not first_workspace.exists() and not second_workspace.exists()
+    with (
+        _worker_legacy_workspace(
+            repository=None,
+            source_repository=first_source,
+            workspace=first_workspace,
+            copy_source=False,
+        ) as first,
+        _worker_legacy_workspace(
+            repository=None,
+            source_repository=second_source,
+            workspace=second_workspace,
+            copy_source=False,
+        ) as second,
+    ):
+        assert first is not None and second is not None
+        assert (first / ".git").is_dir()
+        assert (second / ".git").is_dir()
+        (first / "makefile").write_text("changed\n", encoding="ascii")
+        assert (second / "makefile").read_text(encoding="ascii") == "all:\n\t@true\n"
+    assert not first_workspace.exists() and not second_workspace.exists()
 
 
 def test_legacy_generator_bootstrap_is_outside_generation_timing(
@@ -1504,8 +1553,11 @@ def test_z_table_f_scheduler_publishes_authenticated_one_hour_censor(
     )
     monkeypatch.setattr(
         CampaignScheduler,
-        "_prepare_legacy_workspace",
-        lambda _self, _attempt_id: repo,
+        "_legacy_workspace_paths",
+        lambda _self, attempt_id: (
+            repo,
+            tmp_path / "legacy-workspaces" / attempt_id,
+        ),
     )
     contract = create_z_table_f_study_contract(
         repo,
@@ -1894,7 +1946,7 @@ def test_scheduler_never_promotes_incomplete_memory_observation(
     )
 
 
-def test_terminal_comparison_peer_is_omitted_but_terminal_baseline_blocks() -> None:
+def test_terminal_comparison_peer_and_terminal_baseline_both_block() -> None:
     baseline = SimpleNamespace(result={"status": "ok"})
     selected_peer = SimpleNamespace(result={"status": "ok"})
     terminal_peer_result = _memory_censor(
@@ -1916,7 +1968,8 @@ def test_terminal_comparison_peer_is_omitted_but_terminal_baseline_blocks() -> N
 
     assert resolved_baseline is baseline
     assert peers == {"selected": selected_peer}
-    assert blockers == ()
+    assert len(blockers) == 1
+    assert blockers[0]["cell_id"] == "recurrence"
 
     _baseline, _peers, blockers = _partition_dependency_records(
         baseline_cell_id="recurrence",

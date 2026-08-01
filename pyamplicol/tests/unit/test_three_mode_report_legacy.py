@@ -23,6 +23,7 @@ from tools.performance_report.legacy import (
 )
 from tools.performance_report.models import Accuracy, ExecutionMode, Workload
 from tools.performance_report.runner import (
+    ProfilingTimeLimitError,
     RunnerError,
     SelectorContract,
     point_digest,
@@ -53,7 +54,7 @@ class FakeApi:
                 else (2, 4, 1, 3)
             ),
         )
-        self.selected_calls: list[int] = []
+        self.selected_calls: list[tuple[int, tuple[int, ...]]] = []
         self.color_calls: list[tuple[str, tuple[int, ...] | None]] = []
         self.lc_probe_result: object | None = None
 
@@ -109,8 +110,8 @@ class FakeApi:
         return SimpleNamespace(value=12.5)
 
     def run_selected_flow_probe(self, repository: Path, **kwargs: object) -> object:
-        self.selected_calls.append(int(kwargs["points"]))
-        return SimpleNamespace(value=3.25)
+        self.selected_calls.append((int(kwargs["points"]), tuple(kwargs["helicities"])))
+        return SimpleNamespace(value=3.25, fixed_helicity_value=2.5)
 
     def run_color_probe(self, repository: Path, **kwargs: object) -> object:
         accuracy = str(kwargs["color_accuracy"])
@@ -222,16 +223,36 @@ class FakePhaseReporter:
     def __init__(self) -> None:
         self.active = False
         self.interval_count = 0
+        self.phase = "pre-generation"
+        self.transitions: list[str] = []
 
     @contextmanager
     def generation(self):
         assert not self.active
+        assert self.phase == "pre-generation"
         self.interval_count += 1
         self.active = True
+        self.phase = "generation"
         try:
             yield
         finally:
             self.active = False
+            self.phase = "post-generation"
+
+    def profiling_started(self) -> None:
+        assert self.phase == "post-generation"
+        self.phase = "profiling"
+        self.transitions.append(self.phase)
+
+    def validation_started(self) -> None:
+        assert self.phase == "profiling"
+        self.phase = "validation"
+        self.transitions.append(self.phase)
+
+    def complete(self) -> None:
+        assert self.phase == "validation"
+        self.phase = "complete"
+        self.transitions.append(self.phase)
 
 
 def _cell(
@@ -321,6 +342,7 @@ def test_legacy_generation_phase_excludes_adaptive_runtime_profile(
     assert result["status"] == "ok"
     assert phase_reporter.interval_count == 1
     assert not phase_reporter.active
+    assert phase_reporter.transitions == ["profiling", "validation"]
     profiled = tuple(
         in_generation
         for command, in_generation in zip(
@@ -373,6 +395,54 @@ def test_adaptive_profile_points_are_bounded() -> None:
         warmup_points=100,
         maximum_points=1_000,
     ) == 1_000
+
+
+def test_legacy_command_is_flushed_before_launch(tmp_path: Path) -> None:
+    log_path = tmp_path / "legacy.log"
+    commands: list[dict[str, object]] = []
+
+    class InspectingExecutor:
+        def run(self, args, *, cwd: Path, environment=None) -> CommandResult:
+            assert cwd == tmp_path
+            assert environment is None
+            assert log_path.read_text(encoding="utf-8") == (
+                "$ probe 1\n[launch] intended_points=1\n"
+            )
+            assert commands == [
+                {
+                    "args": ["probe", "1"],
+                    "cwd": str(tmp_path.resolve()),
+                    "environment": {},
+                    "status": "launching",
+                    "intended_points": 1,
+                }
+            ]
+            return CommandResult(
+                args=tuple(args),
+                cwd=cwd,
+                elapsed_seconds=0.25,
+                returncode=0,
+                stdout="done\n",
+                stderr="",
+                environment={},
+            )
+
+    adapter = LegacyMeasurementAdapter(
+        api=FakeApi(),
+        executor=InspectingExecutor(),
+        snapshotter=FakeSnapshotter(),
+    )
+
+    adapter._run(
+        ("probe", "1"),
+        cwd=tmp_path,
+        commands=commands,
+        log_path=log_path,
+    )
+
+    assert commands[0]["returncode"] == 0
+    assert "status" not in commands[0]
+    assert log_path.read_text(encoding="utf-8").endswith("done\n")
 
 
 @pytest.mark.parametrize(
@@ -506,7 +576,7 @@ def test_profile_rejects_exactly_identical_bounded_chunk_rates(
             timing_labels=("amplitude evaluation",),
         )
 
-    assert calls == [10, 100, 100, 100, 100, 100, 10, 10, 10]
+    assert calls == [1, 100, 100, 100, 100, 100, 10, 10, 10]
 
 
 def test_profile_rejects_a_bound_below_five_timed_chunks(
@@ -553,13 +623,15 @@ def test_selected_flow_uses_generated_mode_one_and_compact_contract(
     contract = SelectorContract.from_mapping(measurement["selector_contract"])
     assert contract.selected_color_flow_ids == ("flow:2,4,1",)
     assert contract.all_flow_helicity_ids == ("h:-1,+1,-1,+1",)
-    assert api.selected_calls == [1]
+    assert api.selected_calls == [(1, (-1, 1, -1, 1))]
+    assert api.color_calls == []
     common = measurement["validation"]["lc_common_component"]
     assert common["value"] == 2.5
     flattened = [" ".join(command) for command in executor.commands]
     assert any("--library=create" in command for command in flattened)
     assert any("--amplicol_momenta_probe=10" in command for command in flattened)
     assert not any("--library=create-raw" in command for command in flattened)
+    assert not any("amplicol_color_probe" in command for command in flattened)
     momenta_file = (
         tmp_path / "repository/Utilities/ME_checks/momenta_1_2.txt"
     )
@@ -1111,3 +1183,44 @@ def test_fast_warmup_still_produces_five_samples_and_measured_rse(
     assert profile.seconds == pytest.approx(5.0)
     assert profile.standard_error_seconds_per_point > 0.0
     assert profile.relative_standard_error > 0.0
+
+
+def test_legacy_profile_does_not_launch_chunk_larger_than_remaining_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter, _api, _executor = _adapter()
+    calls: list[int] = []
+    clock = iter((0.0, 0.0, 0.0))
+    monkeypatch.setattr(
+        "tools.performance_report.legacy.time.monotonic",
+        lambda: next(clock),
+    )
+
+    def invoke(points: int):
+        calls.append(points)
+        result = CommandResult(
+            args=("probe", str(points)),
+            cwd=tmp_path,
+            elapsed_seconds=0.2,
+            returncode=0,
+            stdout="",
+            stderr="",
+            environment={},
+        )
+        return result, (TimingRow("total", 0.2),), None
+
+    with pytest.raises(ProfilingTimeLimitError, match="legacy 10-point chunk"):
+        adapter._profile(
+            invoke,
+            settings=LegacySettings(
+                target_runtime_seconds=1.0,
+                minimum_points=10,
+                maximum_points=100,
+                profiling_time_limit_seconds=1.0,
+                repository=tmp_path,
+            ),
+            timing_labels=("total",),
+        )
+
+    assert calls == [1]

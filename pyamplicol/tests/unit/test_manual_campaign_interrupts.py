@@ -212,23 +212,31 @@ def test_manual_legacy_cancellation_discards_isolated_attempt(
     service = _service(tmp_path)
     source = _source()
     cell = REPORT_CATALOG.cell("reference-amplicol-full-n1-dd-z-jets-contracted")
+    source_repository = tmp_path / "original-amplicol"
+    source_repository.mkdir()
     workspaces: list[Path] = []
 
-    def prepare_workspace(
+    def workspace_paths(
         _scheduler: CampaignScheduler,
         attempt_id: str,
-    ) -> Path:
+    ) -> tuple[Path, Path]:
         workspace = tmp_path / "legacy-workspaces" / attempt_id
-        workspace.mkdir(parents=True)
         workspaces.append(workspace)
-        return workspace
+        return source_repository, workspace
 
     def cancelled_worker(
         command: list[str],
         **_arguments: object,
     ) -> SupervisedResult:
-        option = command.index("--legacy-repository")
-        assert Path(command[option + 1]) == workspaces[0]
+        source_option = command.index("--legacy-source-repository")
+        workspace_option = command.index("--legacy-workspace")
+        assert Path(command[source_option + 1]) == source_repository
+        assert Path(command[workspace_option + 1]) == workspaces[0]
+        assert "--legacy-copy-source" in command
+        # Workspace preparation has moved into this supervised subprocess;
+        # the controller must not copy or lock the source before supervision.
+        assert not workspaces[0].exists()
+        workspaces[0].mkdir(parents=True)
         return SupervisedResult(
             -15,
             "cancelled",
@@ -250,8 +258,8 @@ def test_manual_legacy_cancellation_discards_isolated_attempt(
 
     monkeypatch.setattr(
         CampaignScheduler,
-        "_prepare_legacy_workspace",
-        prepare_workspace,
+        "_legacy_workspace_paths",
+        workspace_paths,
     )
     monkeypatch.setattr(
         "tools.performance_report.scheduler.supervise_worker",
@@ -317,7 +325,7 @@ def test_closed_lease_cannot_be_recreated_by_late_worker_event(
     assert not lease.path.exists()
 
 
-def test_repeated_keyboard_interrupt_during_bounded_join_still_cleans_lease(
+def test_repeated_keyboard_interrupt_waits_for_cleanup_before_closing_lease(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -342,12 +350,14 @@ def test_repeated_keyboard_interrupt_during_bounded_join_still_cleans_lease(
             return None
 
         def close(self) -> None:
+            assert threads and not threads[0].is_alive()
             self.closed = True
             events.append("lease-closed")
 
     class FakeThread:
         def __init__(self, **_arguments: object) -> None:
             self.join_timeouts: list[float | None] = []
+            self.alive = True
             threads.append(self)
 
         def start(self) -> None:
@@ -355,11 +365,17 @@ def test_repeated_keyboard_interrupt_during_bounded_join_still_cleans_lease(
 
         def join(self, timeout: float | None = None) -> None:
             self.join_timeouts.append(timeout)
-            events.append("join-interrupted")
-            raise KeyboardInterrupt
+            if len(self.join_timeouts) == 1:
+                events.append("join-interrupted")
+                raise KeyboardInterrupt
+            if len(self.join_timeouts) == 2:
+                events.append("cleanup-delayed")
+            if len(self.join_timeouts) == 22:
+                self.alive = False
+                events.append("cleanup-finished")
 
         def is_alive(self) -> bool:
-            return True
+            return self.alive
 
     class FakeScheduler:
         def __init__(self, _service: object, *, settings: object) -> None:
@@ -402,7 +418,8 @@ def test_repeated_keyboard_interrupt_during_bounded_join_still_cleans_lease(
     monkeypatch.setattr(manual_campaign, "_run_live_dashboard", dashboard)
     monkeypatch.setattr(manual_campaign.sys, "stdin", Tty())
     monkeypatch.setattr(manual_campaign.sys, "stdout", Tty())
-    monkeypatch.setattr(manual_campaign.sys, "stderr", Tty())
+    stderr = Tty()
+    monkeypatch.setattr(manual_campaign.sys, "stderr", stderr)
     arguments = SimpleNamespace(
         force_refresh=False,
         dry_run=False,
@@ -434,12 +451,16 @@ def test_repeated_keyboard_interrupt_during_bounded_join_still_cleans_lease(
     assert callable(callback) and callback()
     assert len(threads) == 1
     thread = threads[0]
-    assert thread.join_timeouts == [5.0]
+    assert thread.join_timeouts == [0.25] * 22
     assert len(leases) == 1 and leases[0].closed
     assert events == [
         "lease-published",
         "worker-started",
         "terminal-restored",
         "join-interrupted",
+        "cleanup-delayed",
+        "cleanup-finished",
         "lease-closed",
     ]
+    assert "still waiting for supervised worker-tree cleanup" in stderr.getvalue()
+    assert "no leases or claims will be released early" in stderr.getvalue()

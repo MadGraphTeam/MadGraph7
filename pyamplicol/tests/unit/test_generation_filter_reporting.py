@@ -114,8 +114,10 @@ def test_opt_in_relation_discovery_is_scoped_in_generation_filters() -> None:
     assert isinstance(discovery, dict)
     assert discovery["abi"] == "pyamplicol-artifact-numerical-current-reuse-v1"
     assert discovery["requested_mode"] == "diagnostic"
+    assert discovery["effective_mode"] == "diagnostic"
     assert discovery["execution_mode"] == "compiled"
     assert discovery["applied_relation_count"] == 0
+    assert discovery["relation_correctness"]["state"] == ("no-applied-relations")
     assert discovery["warning"]["required"] is False
     assert discovery == prepared.coverage["relation_discovery"]
 
@@ -176,6 +178,7 @@ def test_numerical_current_reuse_opt_out_skips_every_warmup_capture(
 
     discovery = prepared.filters["relation_discovery"]
     assert discovery["requested_mode"] == "off"
+    assert discovery["effective_mode"] == "off"
     assert discovery["applied_relation_count"] == 0
     assert discovery["warning"]["required"] is False
     assert discovery["lanes"]
@@ -234,11 +237,62 @@ def test_default_numerical_current_reuse_applies_on_final_materialized_dag() -> 
     assert discovery["certified_relation_count"] > 0
     assert discovery["applied_relation_count"] > 0
     assert discovery["warning"]["required"] is True
+    assert discovery["relation_correctness"] == {
+        "abi": "pyamplicol-numerical-current-relation-correctness-v1",
+        "state": "member-scoped-v1",
+        "applied_relation_count": discovery["applied_relation_count"],
+    }
+    assert all(
+        "opposite" not in report["application_scope"]["allowed_relation_kinds"]
+        for report in discovery["lanes"].values()
+    )
     assert prepared.dag.helicity_materialization is not None
     assert any(
         report["application_validation"]["status"] == "verified"
         for report in discovery["lanes"].values()
     )
+
+
+def test_n3_charged_current_all_flow_does_not_apply_generic_relations() -> None:
+    model = BuiltinSMModel()
+    config = RunConfig(
+        action="generate",
+        color=ColorConfig(accuracy="lc", lc_flow_layout="all-flow-union"),
+        generation=GenerationConfig(
+            relation_discovery=GenerationRelationDiscoveryConfig(
+                mode="certified-reuse",
+                precision_digits=80,
+                probe_count=2,
+                verification_probe_count=2,
+            )
+        ),
+        evaluator=EvaluatorConfig(execution_mode="compiled"),
+    )
+    backend = service_module.GenerationBackend(config, None)
+    process_ir = build_process_ir("u d~ > e+ ve g", color_accuracy="lc")
+    dag, coverage = backend._compile_concrete_process(process_ir, model)
+    expanded = service_module._ExpandedProcess(
+        request=ProcessRequest.parse("u d~ > e+ ve g", name="udbar_ep_ve_g"),
+        process_ir=process_ir,
+        aliases=(),
+    )
+
+    prepared = backend._prepare_warmup_process(
+        service_module._DagProcess(expanded, dag, coverage),
+        model,
+        index=0,
+        phase=PhaseHandle("test-all-flow-contained", None, 1),
+    )
+
+    discovery = prepared.filters["relation_discovery"]
+    assert prepared.dag.helicity_recurrence is not None
+    assert prepared.dag.helicity_recurrence.physical_helicity_count > 1
+    assert discovery["applied_relation_count"] == 0
+    assert discovery["relation_correctness"]["state"] == ("no-applied-relations")
+    for report in discovery["lanes"].values():
+        scope = report["application_scope"]
+        assert scope["reason"] == "multi-helicity-all-flow-selector-domain"
+        assert scope["allowed_relation_kinds"] == []
 
 
 @pytest.mark.parametrize("execution_mode", ("compiled", "eager"))

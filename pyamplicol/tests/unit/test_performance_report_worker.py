@@ -15,7 +15,9 @@ from tools.performance_report.phase_state import (
 from tools.performance_report.worker import (
     _atomic_json,
     _JsonlProgressSink,
+    _selector_provider_measurement,
     _source_identity,
+    _worker_legacy_workspace,
     measure_cell,
     write_cell_result,
 )
@@ -75,6 +77,33 @@ def test_jsonl_progress_sink_captures_compact_typed_events(tmp_path: Path) -> No
 def test_every_catalog_cell_has_unique_worker_identity() -> None:
     cells = REPORT_CATALOG.measurement_cells()
     assert len({cell.cell_id for cell in cells}) == len(cells)
+
+
+def test_no_legacy_baseline_lc_all_flow_gets_selected_flow_selector_peer() -> None:
+    cell = REPORT_CATALOG.cell(
+        "matrix-recurrence-builtin-sm-lc-n7-dd-4q-lines-all-flow"
+    )
+    peer_id = "matrix-recurrence-builtin-sm-lc-n7-dd-4q-lines-selected-flow"
+    provider = {
+        "status": "ok",
+        "selector_contract": {
+            "selected_color_flow_ids": ["flow:1"],
+            "selected_color_words": [[1]],
+            "all_flow_helicity_ids": ["h:-1"],
+            "all_flow_source_helicities": [[1, -1]],
+            "point_digest": "a" * 64,
+        },
+    }
+
+    assert REPORT_CATALOG.validation_baseline_cell(cell) is None
+    assert (
+        _selector_provider_measurement(
+            cell.cell_id,
+            {peer_id: provider},
+            catalog=REPORT_CATALOG,
+        )
+        is provider
+    )
 
 
 @pytest.mark.parametrize(
@@ -207,12 +236,109 @@ def test_worker_constructs_and_threads_parent_phase_reporter(
     assert observed == ["pre-generation"]
 
 
+def test_legacy_workspace_copy_lives_only_inside_supervised_worker_scope(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "original-amplicol"
+    source.mkdir()
+    (source / "source.f03").write_text("program fixture\n", encoding="ascii")
+    destination = tmp_path / "worker" / "legacy-workspace"
+
+    with _worker_legacy_workspace(
+        repository=None,
+        source_repository=source,
+        workspace=destination,
+        copy_source=True,
+    ) as prepared:
+        assert prepared == destination
+        assert (destination / "source.f03").read_text(encoding="ascii") == (
+            "program fixture\n"
+        )
+
+    assert not destination.exists()
+
+
+def test_worker_threads_effective_stage_budgets_and_tracks_extended_phases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    channel = WorkerPhaseChannel.create(tmp_path / "phase.json")
+    observed: dict[str, object] = {}
+
+    def measure(
+        _cell_id: str,
+        *,
+        phase_reporter: WorkerPhaseReporter | None,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        assert phase_reporter is not None
+        observed.update(kwargs)
+        with phase_reporter.generation():
+            pass
+        phase_reporter.profiling_started()
+        observed["phase"] = read_worker_phase_state(
+            channel,
+            expected_pid=phase_reporter.worker_pid,
+        ).phase
+        return {"status": "ok", "provenance": {}}
+
+    monkeypatch.setattr("tools.performance_report.worker.measure_cell", measure)
+    result = write_cell_result(
+        "cell",
+        tmp_path / "result.json",
+        phase_state_path=channel.path,
+        phase_state_run_id=channel.run_id,
+        phase_state_authentication_key=channel.authentication_key,
+        worker_wall_limit_seconds=12.0,
+        profiling_time_limit_seconds=5.0,
+        validation_time_limit_seconds=3.0,
+    )
+
+    assert result["status"] == "ok"
+    assert observed == {
+        "worker_wall_limit_seconds": 12.0,
+        "profiling_time_limit_seconds": 5.0,
+        "validation_time_limit_seconds": 3.0,
+        "phase": "profiling",
+    }
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "worker_wall_limit_seconds",
+        "profiling_time_limit_seconds",
+        "validation_time_limit_seconds",
+    ),
+)
+def test_worker_rejects_invalid_effective_stage_budget(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    with pytest.raises(ValueError, match=f"{field} must be finite and positive"):
+        measure_cell(
+            "does-not-need-to-exist",
+            repo_root=tmp_path,
+            attempt_root=tmp_path / "attempt",
+            target_runtime_seconds=1.0,
+            batch_size=1,
+            worker_cores=1,
+            **{field: float("inf")},
+        )
+
+
 def test_legacy_worker_threads_generation_phase_reporter_to_adapter(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cell = REPORT_CATALOG.cell("reference-amplicol-lc-n1-dd-z-jets-selected-flow")
-    reporter = object()
+    events: list[str] = []
+
+    class Reporter:
+        def complete(self) -> None:
+            events.append("complete")
+
+    reporter = Reporter()
     observed: list[object] = []
 
     class SourceIdentity:
@@ -221,6 +347,7 @@ def test_legacy_worker_threads_generation_phase_reporter_to_adapter(
 
     class Adapter:
         def measure(self, *_args: object, **kwargs: object) -> dict[str, object]:
+            events.append("adapter")
             observed.append(kwargs.get("phase_reporter"))
             return {
                 "status": "ok",
@@ -237,6 +364,10 @@ def test_legacy_worker_threads_generation_phase_reporter_to_adapter(
         "tools.performance_report.legacy.LegacyMeasurementAdapter",
         Adapter,
     )
+    monkeypatch.setattr(
+        "tools.performance_report.worker.attach_direct_agreements",
+        lambda *_args, **_kwargs: events.append("agreements"),
+    )
 
     result = measure_cell(
         cell.cell_id,
@@ -251,3 +382,4 @@ def test_legacy_worker_threads_generation_phase_reporter_to_adapter(
 
     assert result["status"] == "ok"
     assert observed == [reporter]
+    assert events == ["adapter", "agreements", "complete"]
