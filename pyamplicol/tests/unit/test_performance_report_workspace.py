@@ -41,7 +41,7 @@ from tools.performance_report.workspace import (
 
 
 def _seed_template(repo: Path) -> None:
-    docs = repo / "docs/arxiv"
+    docs = repo / "src/pyamplicol/_profiling_campaign"
     docs.mkdir(parents=True)
     (docs / "pyAmpliCol.tex").write_text(
         "\\documentclass{article}\\begin{document}report\\end{document}\n",

@@ -4,7 +4,7 @@
 
 ## Binary Wheel
 
-After `0.1.0` is published, install the release with:
+After `0.1.0` is uploaded to PyPI, install it with:
 
 ```console
 python -m venv .venv
@@ -12,12 +12,14 @@ python -m venv .venv
 python -m pip install pyamplicol
 ```
 
-The planned `cp311-abi3` wheels support Python 3.11 and newer on macOS arm64,
+The validated `cp311-abi3` wheels target Python 3.11 and newer on macOS arm64,
 macOS x86_64, and manylinux x86_64. Wheel users do not need Rust. A C, C++,
 Fortran, or Rust compiler is needed only when compiling that language's native
-consumer against the included Rusticol SDK.
+consumer against the included Rusticol SDK. pyAmpliCol has no LHAPDF
+dependency.
 
-`pyamplicol==0.1.0` is not published at this milestone. See
+The immutable `v0.1.0` source tag exists, but `pyamplicol==0.1.0` has not yet
+been uploaded to PyPI or TestPyPI. See
 [Release Status](release-status.md) before treating a locally built artifact
 as a release.
 
@@ -36,7 +38,7 @@ the copied launcher's `run` command with `--original-amplicol PATH`.
 ## Source Install
 
 ```console
-git clone https://github.com/mg5amcnlo/pyamplicol.git
+git clone --branch v0.1.0 --depth 1 https://github.com/mg5amcnlo/pyamplicol.git
 cd pyamplicol
 python -m pip install .
 ```
@@ -110,10 +112,14 @@ PYTHON=.venv/bin/python just dev-test
 ```
 
 The flake provides Python 3.11, Rust 1.89, C/C++ and Fortran compilers, native
-build libraries, PDF inspection utilities, and the full TeX distribution used
-to rebuild the performance report. It intentionally omits pyAmpliCol's Python
+build libraries, PDF inspection utilities, and the TeX tools used to render a
+fresh installed profiling campaign. It intentionally omits pyAmpliCol's Python
 runtime, test, and pinned candidate packages: `just dev-install` installs
 those into `.venv` from the repository's contributor locks.
+
+The first native `just dev-install` can take several minutes. Later runs reuse
+the workspace-local Cargo cache under `.artifacts/dev-install` and are normally
+substantially faster.
 
 The same command stages the candidate wheel's Rust extension and native SDK
 beside the Python source. Contributor imports verify a lightweight native-source

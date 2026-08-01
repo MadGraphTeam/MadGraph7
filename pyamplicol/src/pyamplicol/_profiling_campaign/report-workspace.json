@@ -1,0 +1,71 @@
+{
+  "artifact_root": ".artifacts/performance-report/macbook_M3_manual",
+  "campaign_policy": {
+    "allow_terminal_censors": false,
+    "cell_cores": null,
+    "generation_limit_exemptions": "none",
+    "generation_limit_seconds": null,
+    "memory_limit_bytes": null,
+    "name": "strict-complete-v1",
+    "require_symbolica_parallel": false,
+    "schema": "pyamplicol-report-campaign-policy-v1",
+    "target_runtime_seconds": 5.0,
+    "workers": null
+  },
+  "coordination_root": ".artifacts/performance-report-coordination/macbook_M3_manual",
+  "document": "pyAmpliCol.tex",
+  "environment_json": "report_environment.json",
+  "environment_tex": "report_environment.tex",
+  "excluded_content": [
+    ".artifacts evaluator attempts",
+    "worker logs",
+    "locks and coordination state",
+    "LaTeX auxiliary files"
+  ],
+  "initialized_environment": {
+    "candidate_fingerprint": "pending",
+    "machine": "pending measurement-host authentication",
+    "native_build_inputs_sha256": "pending",
+    "native_cpu_features": "pending exact-source runtime authentication",
+    "native_extension_sha256": "pending",
+    "native_target": "pending exact-source runtime authentication",
+    "numpy": "pending exact-source runtime authentication",
+    "platform": "pending measurement-host authentication",
+    "processor": "pending measurement-host authentication",
+    "profile": "macbook_M3_manual",
+    "pyamplicol": "pending exact-source runtime authentication",
+    "python": "pending measurement-host authentication",
+    "python_implementation": "pending measurement-host authentication",
+    "python_package_tree_sha256": "pending",
+    "schema": "pyamplicol-performance-report-environment-v1",
+    "source_revision": "pending",
+    "status": "pending_exact_runtime"
+  },
+  "initialized_from": "src/pyamplicol/_profiling_campaign",
+  "initialized_source_identity": {
+    "clean": false,
+    "dirty_paths": [],
+    "revision": "unknown",
+    "schema": "pyamplicol-report-source-v1",
+    "tree": "unknown"
+  },
+  "measurement_environment_contract": "refresh generated environment JSON/TeX after the exact-source clean build and before population",
+  "measurement_state": "reset",
+  "profile": "macbook_M3_manual",
+  "raw_results": "results",
+  "report_source_revision": "unknown",
+  "report_source_tree": "unknown",
+  "schema": "pyamplicol-performance-report-workspace-v4",
+  "tracked_content": [
+    "*.tex",
+    "report_environment.json",
+    "measurement_lineage.json",
+    "results/*.json",
+    "README.md",
+    "TABLE_FILLING.md",
+    "report-workspace.json",
+    "build_pdf.py",
+    "result_tables.py",
+    "pyAmpliCol.pdf (when compiled and reviewed)"
+  ]
+}

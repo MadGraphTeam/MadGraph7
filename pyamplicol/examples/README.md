@@ -240,5 +240,5 @@ native/runtime_fortran artifacts/pp_zjj p_p_to_z_j_j_4 \
 Both examples apply a direct `aS` override, evaluate the five-particle
 validation point, and verify that resolved components reproduce the total.
 
-Current publication gates are listed in
+Current release validation and upload status are listed in
 [`docs/user/release-status.md`](../docs/user/release-status.md).

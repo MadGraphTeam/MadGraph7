@@ -1077,33 +1077,26 @@ def test_wheel_examples_are_staged_from_the_single_canonical_tree() -> None:
 def test_wheel_profiling_campaign_is_a_bounded_reset_template() -> None:
     with backend._overlay("release") as (overlay, _target):
         source = overlay / backend._PROFILING_CAMPAIGN_SOURCE
-        for relative in (
-            Path("pyAmpliCol.pdf"),
-            Path("pyAmpliCol.log"),
-            Path("pyAmpliCol.aux"),
-            Path(".artifacts/attempts/result.json"),
-        ):
-            path = source / relative
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text("excluded\n", encoding="utf-8")
-
         packaged = overlay / "src/pyamplicol/_profiling_campaign"
-        assert not packaged.exists()
+        assert packaged == source
+        before = {
+            path.relative_to(packaged): path.read_bytes()
+            for path in packaged.rglob("*")
+            if path.is_file()
+        }
         backend._stage_packaged_profiling_campaign(overlay)
         copied = {
             path.relative_to(packaged) for path in packaged.rglob("*") if path.is_file()
         }
         assert copied == set(backend._profiling_campaign_inventory(source))
         assert len(copied) == 55
+        assert {
+            path.relative_to(packaged): path.read_bytes()
+            for path in packaged.rglob("*")
+            if path.is_file()
+        } == before
         assert Path("steer_performance_campaign.py") in copied
         assert Path("results/report-cache.schema.json") in copied
-        assert Path("pyAmpliCol.pdf") not in copied
-        assert Path("pyAmpliCol.log") not in copied
-        assert Path("pyAmpliCol.aux") not in copied
-        assert not any(".artifacts" in path.parts for path in copied)
-        assert (packaged / "steer_performance_campaign.py").read_bytes() == (
-            source / "steer_performance_campaign.py"
-        ).read_bytes()
         runtime = overlay / "src/pyamplicol/_performance_report"
         assert {path.name for path in runtime.glob("*.py")} == {
             path.name for path in (overlay / "tools/performance_report").glob("*.py")
@@ -1236,7 +1229,9 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
     source = tmp_path / "archive"
     retained = {
         Path("build_backend/backend.py"): "archive = True\n",
-        Path("docs/arxiv/pyAmpliCol.tex"): "maintained TeX\n",
+        Path("src/pyamplicol/_profiling_campaign/pyAmpliCol.tex"): (
+            "maintained TeX\n"
+        ),
         Path("release_assets/prepared_models/README.md"): "release store\n",
         Path("src/pyamplicol/_sdk/config.py"): "maintained SDK config\n",
         Path("tests/fixtures/candidate-Cargo.lock"): "fixture lock\n",
@@ -1252,8 +1247,8 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
         Path("build_backend/python_lock.py"),
         Path("docs/.result_outputs/cache.json"),
         Path("docs/archive/retired.md"),
-        Path("docs/arxiv/pyAmpliCol.aux"),
-        Path("docs/arxiv/pyAmpliCol.synctex.gz"),
+        Path("src/pyamplicol/_profiling_campaign/pyAmpliCol.aux"),
+        Path("src/pyamplicol/_profiling_campaign/pyAmpliCol.synctex.gz"),
         Path("docs/performance_reports/macbook_M3/pyAmpliCol.toc"),
         Path("src/pyamplicol.egg-info/PKG-INFO"),
         Path("src/pyamplicol/_rusticol.abi3.so"),

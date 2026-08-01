@@ -1219,13 +1219,12 @@ def _publication_relative_member(path: str) -> PurePosixPath | None:
         or logical.is_absolute()
         or logical.as_posix() != path
         or any(part in {"", ".", ".."} for part in logical.parts)
-        or logical.parts[0] != "docs"
     ):
         return None
     parts = logical.parts
-    if len(parts) >= 2 and parts[1] == "arxiv":
-        root_length = 2
-    elif len(parts) >= 2 and parts[1] == "performance_reports":
+    if parts[:3] == ("src", "pyamplicol", "_profiling_campaign"):
+        root_length = 3
+    elif parts[:2] == ("docs", "performance_reports"):
         if (
             len(parts) < 4
             or _REPORT_PROFILE_RE.fullmatch(parts[2]) is None
@@ -1451,7 +1450,8 @@ def _report_publication_lineage(
         "changed_paths": list(changes),
         "changed_paths_sha256": digest_json(list(changes)),
         "allowed_path_contract": (
-            "docs/arxiv or docs/performance_reports/PROFILE roots: "
+            "src/pyamplicol/_profiling_campaign or "
+            "docs/performance_reports/PROFILE roots: "
             "results/*.json, generated table TeX, report TeX/Markdown/PDF, "
             "architecture metadata, and report manifests; regular "
             "non-executable blobs only"
@@ -5201,7 +5201,8 @@ def _ensure_exact_cli_python(
         raise FinalAuditError(
             "direct tools.performance_report.final_audit was imported before "
             "source-only Python isolation; invoke "
-            "'python docs/arxiv/result_tables.py final-audit ...' or start "
+            "'python src/pyamplicol/_profiling_campaign/result_tables.py "
+            "final-audit ...' or start "
             "the module under an already isolated -I -S -B bootstrap"
         ) from error
 

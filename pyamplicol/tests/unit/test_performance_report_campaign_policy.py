@@ -113,9 +113,9 @@ def _git_repo(
     )
     (path / "README.md").write_text(marker + "\n", encoding="ascii")
     if report_wrapper:
-        (path / "docs/arxiv").mkdir(parents=True)
+        (path / "src/pyamplicol/_profiling_campaign").mkdir(parents=True)
         (path / "tools/performance_report").mkdir(parents=True)
-        (path / "docs/arxiv/result_tables.py").write_text(
+        (path / "src/pyamplicol/_profiling_campaign/result_tables.py").write_text(
             f"# {marker} policy entrypoint\n",
             encoding="ascii",
         )
@@ -1285,7 +1285,7 @@ def test_legacy_workers_receive_distinct_pinned_shared_object_clones(
         FakeLegacyApi,
     )
     repo = tmp_path / "repo"
-    (repo / "docs/arxiv").mkdir(parents=True)
+    (repo / "src/pyamplicol/_profiling_campaign").mkdir(parents=True)
     subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
     subprocess.run(
         ("git", "config", "user.email", "test@example.invalid"),
@@ -1451,7 +1451,9 @@ def test_z_table_f_scheduler_publishes_authenticated_one_hour_censor(
 
     def fake_supervise(command, **arguments):
         channel = arguments["phase_channel"]
-        assert Path(command[4]) == wrapper / "docs/arxiv/result_tables.py"
+        assert Path(command[4]) == (
+            wrapper / "src/pyamplicol/_profiling_campaign/result_tables.py"
+        )
         assert command[command.index("--repo-root") + 1] == str(repo)
         assert command[command.index("--measurement-source-root") + 1] == str(
             repo
@@ -1594,7 +1596,9 @@ def test_z_table_f_prepare_runs_authenticated_wrapper_and_returns_harness(
     prepared.mkdir()
 
     def fake_supervise(command, **arguments):
-        assert Path(command[4]) == wrapper / "docs/arxiv/result_tables.py"
+        assert Path(command[4]) == (
+            wrapper / "src/pyamplicol/_profiling_campaign/result_tables.py"
+        )
         assert "_prepare" in command
         assert arguments["scrub_import_environment"] is True
         assert arguments["working_directory"] == measured
@@ -1703,7 +1707,7 @@ def test_z_table_f_scheduler_rejects_bare_forged_sha_before_attempt(
     tmp_path: Path,
 ) -> None:
     repo = tmp_path / "repo"
-    (repo / "docs/arxiv").mkdir(parents=True)
+    (repo / "src/pyamplicol/_profiling_campaign").mkdir(parents=True)
     subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
     subprocess.run(
         ("git", "config", "user.email", "test@example.invalid"),
@@ -1741,7 +1745,7 @@ def test_scheduler_uses_mac_memory_limit_without_generation_channel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = tmp_path / "repo"
-    (repo / "docs/arxiv").mkdir(parents=True)
+    (repo / "src/pyamplicol/_profiling_campaign").mkdir(parents=True)
     subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
     subprocess.run(
         ("git", "config", "user.email", "test@example.invalid"),
@@ -1821,7 +1825,7 @@ def test_scheduler_never_promotes_incomplete_memory_observation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = tmp_path / "repo"
-    (repo / "docs/arxiv").mkdir(parents=True)
+    (repo / "src/pyamplicol/_profiling_campaign").mkdir(parents=True)
     subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
     subprocess.run(
         ("git", "config", "user.email", "test@example.invalid"),
@@ -1928,7 +1932,7 @@ def test_scheduler_frontier_censors_dependencies_but_not_explicit_cells(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repo = tmp_path / "repo"
-    (repo / "docs/arxiv").mkdir(parents=True)
+    (repo / "src/pyamplicol/_profiling_campaign").mkdir(parents=True)
     subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
     subprocess.run(
         ("git", "config", "user.email", "test@example.invalid"),

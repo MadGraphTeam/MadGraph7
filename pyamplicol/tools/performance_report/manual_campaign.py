@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: 0BSD
-"""Human-steerable MacBook M3 performance campaign.
+"""Human-steerable pyAmpliCol profiling campaign.
 
 This module is intentionally a thin controller.  Cell definition, dependency
 planning, generation, profiling, atomic attempt publication, rendering, and PDF
@@ -1260,7 +1260,7 @@ def _index_metadata_dirty_paths(repo_root: Path) -> tuple[str, ...]:
             dirty.append("<staged index differs from HEAD>")
     critical = (
         "tools/performance_report/manual_campaign.py",
-        "docs/performance_reports/macbook_M3_manual/steer_performance_campaign.py",
+        "src/pyamplicol/_profiling_campaign/steer_performance_campaign.py",
     )
     dirty.extend(
         relative
@@ -3455,9 +3455,9 @@ def _ratatui_commands(
 
     overview = Paragraph.new_empty()
     overview.set_block_title(
-        f" LIVE Manual MacBook M3 campaign · {state.instance_id[:12]} "
+        f" LIVE pyAmpliCol profiling campaign · {state.instance_id[:12]} "
         if state.live_snapshot
-        else " Manual MacBook M3 campaign "
+        else " pyAmpliCol profiling campaign "
     )
     first = [
         ("Selected ", key_style),
@@ -6221,10 +6221,10 @@ public pyamplicol subcommand exists.
 
 Campaign copies
 ---------------
-The campaign profile is the directory containing this executable beneath
-docs/performance_reports. Copy the complete manual campaign folder to another
-valid one-level name to obtain distinct artifact, coordination, source-marker,
-result, and PDF paths; the executable does not hard-code macbook_M3_manual.
+Create a complete reset campaign with
+`pyamplicol profiling-campaign copy DESTINATION`. The destination directory
+name is the profile identity, so separate copies receive distinct artifact,
+coordination, source-marker, result, and PDF paths.
 
 Resource and availability policy
 --------------------------------
@@ -6418,8 +6418,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="steer_performance_campaign.py",
         description=(
-            "Safely steer, observe, inspect, and publish the fresh manual "
-            "MacBook M3 performance campaign."
+            "Safely steer, observe, inspect, and publish a pyAmpliCol "
+            "profiling campaign."
         ),
         epilog=STEERING_GUIDE,
         formatter_class=HelpFormatter,

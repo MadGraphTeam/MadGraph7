@@ -1,22 +1,26 @@
 <!-- SPDX-License-Identifier: 0BSD -->
 # Architecture Performance Reports
 
-Each child directory is an independent, tracked publication workspace for one
-measurement environment:
+The repository retains four rendered snapshots from separate manual
+measurement campaigns:
 
-- [`macbook_M3`](macbook_M3/README.md), with its authoritative
-  [`TABLE_FILLING.md`](macbook_M3/TABLE_FILLING.md).
-- [`x86_EPYC`](x86_EPYC/README.md), with its authoritative
-  [`TABLE_FILLING.md`](x86_EPYC/TABLE_FILLING.md).
+- [Consolidated report](../arxiv/pyAmpliCol.pdf)
+- [MacBook M3 report](macbook_M3/pyAmpliCol.pdf)
+- [MacBook M3 Z-process subset](macbook_M3/z_table/z_table.pdf)
+- [x86 EPYC report](x86_EPYC/pyAmpliCol.pdf)
 
-The workspaces intentionally duplicate the report source, raw JSON schema and
-caches, generated TeX, build entry point, and PDF. This makes the two campaigns
-portable and prevents one machine from depending on or modifying the other
-machine's publication tree. Do not replace these files with links into the
-canonical [arXiv source](../arxiv/README.md).
+These PDFs are historical measurements, not release-CI results. Raw JSON,
+generated TeX, build workspaces, attempts, logs, locks, and coordination state
+are not kept in the source tree.
 
-The runbook inside each profile is the sole authority for campaign ordering,
-resource limits, approval pauses, numerical validation, visual review,
-coordination, and publication. Process artifacts, prepared models, evaluator
-attempts, logs, locks, coordination state, page images, and LaTeX auxiliary
-files remain outside the tracked profile directories.
+Create a fresh, empty campaign from any installed wheel with:
+
+```console
+pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
+```
+
+All pyAmpliCol backends use installed resources. Measuring the optional
+original-AmpliCol reference additionally requires
+`--original-amplicol PATH_TO_COMPLETE_CHECKOUT`; without that checkout only
+that backend is reported unavailable. pyAmpliCol and the supported patched
+comparison checkout have no LHAPDF dependency.

@@ -13,7 +13,7 @@ import tools.performance_report.manual_campaign as manual_campaign
 
 ROOT = Path(__file__).resolve().parents[2]
 ENTRYPOINT = (
-    ROOT / "docs/performance_reports/macbook_M3_manual/steer_performance_campaign.py"
+    ROOT / "src/pyamplicol/_profiling_campaign/steer_performance_campaign.py"
 )
 
 

@@ -13,12 +13,14 @@ from pathlib import Path
 
 import pytest
 
+REPORT_ENTRYPOINT = Path("src/pyamplicol/_profiling_campaign/result_tables.py")
+
 
 def test_report_worker_bootstrap_recovers_repository_venv_under_no_site(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     repository = Path(__file__).resolve().parents[2]
-    script = repository / "docs/arxiv/result_tables.py"
+    script = repository / REPORT_ENTRYPOINT
     namespace = runpy.run_path(
         str(script),
         run_name="result_tables_worker_bootstrap_test",
@@ -74,7 +76,7 @@ def test_report_worker_bootstrap_recovers_repository_venv_under_no_site(
 @pytest.mark.parametrize(
     "script_relative",
     (
-        Path("docs/arxiv/result_tables.py"),
+        REPORT_ENTRYPOINT,
         Path("tools/developer/compiled_all_jit_arena_gate.py"),
         Path("tools/developer/four_quark_compiled_gate.py"),
     ),
@@ -90,8 +92,8 @@ def test_direct_entrypoint_imports_repo_code_only_after_isolated_reexec(
 
     package = tmp_path / "tools" / "performance_report"
     package.mkdir(parents=True, exist_ok=True)
-    if script_relative == Path("docs/arxiv/result_tables.py"):
-        (tmp_path / "src/pyamplicol").mkdir(parents=True)
+    if script_relative == REPORT_ENTRYPOINT:
+        (tmp_path / "src/pyamplicol").mkdir(parents=True, exist_ok=True)
     sentinel = tmp_path / "repo-imports.txt"
     (package / "runtime_evidence.py").write_text(
         "\n".join(
@@ -155,12 +157,12 @@ def test_result_tables_preauthenticates_staged_source_native(
     tmp_path: Path,
 ) -> None:
     repository = Path(__file__).resolve().parents[2]
-    script = tmp_path / "docs/arxiv/result_tables.py"
+    script = tmp_path / REPORT_ENTRYPOINT
     script.parent.mkdir(parents=True)
-    shutil.copy2(repository / "docs/arxiv/result_tables.py", script)
+    shutil.copy2(repository / REPORT_ENTRYPOINT, script)
 
     source_package = tmp_path / "src/pyamplicol"
-    source_package.mkdir(parents=True)
+    source_package.mkdir(parents=True, exist_ok=True)
     native_name = f"_rusticol{EXTENSION_SUFFIXES[0]}"
     (source_package / native_name).write_bytes(b"source native")
     installed_site = tmp_path / "installed"
@@ -225,25 +227,17 @@ def test_result_tables_preauthenticates_staged_source_native(
     }
 
 
-@pytest.mark.parametrize(
-    "script_relative",
-    (
-        Path("docs/arxiv/result_tables.py"),
-        Path("docs/performance_reports/macbook_M3/result_tables.py"),
-        Path("docs/performance_reports/x86_EPYC/result_tables.py"),
-    ),
-)
 def test_class_c_prepare_uses_ancestor_package_with_descendant_tools(
     tmp_path: Path,
-    script_relative: Path,
 ) -> None:
     repository = Path(__file__).resolve().parents[2]
+    script_relative = REPORT_ENTRYPOINT
     script = tmp_path / script_relative
     script.parent.mkdir(parents=True)
     shutil.copy2(repository / script_relative, script)
 
     descendant_package = tmp_path / "src/pyamplicol"
-    descendant_package.mkdir(parents=True)
+    descendant_package.mkdir(parents=True, exist_ok=True)
     (descendant_package / "__init__.py").write_text(
         "raise RuntimeError('descendant package was imported')\n",
         encoding="ascii",
@@ -368,11 +362,11 @@ def test_class_c_prepare_uses_ancestor_package_with_descendant_tools(
 
 def test_class_c_ancestor_runtime_option_is_prepare_only(tmp_path: Path) -> None:
     repository = Path(__file__).resolve().parents[2]
-    script = tmp_path / "docs/arxiv/result_tables.py"
+    script = tmp_path / REPORT_ENTRYPOINT
     script.parent.mkdir(parents=True)
-    shutil.copy2(repository / "docs/arxiv/result_tables.py", script)
+    shutil.copy2(repository / REPORT_ENTRYPOINT, script)
     (tmp_path / "tools/performance_report").mkdir(parents=True)
-    (tmp_path / "src/pyamplicol").mkdir(parents=True)
+    (tmp_path / "src/pyamplicol").mkdir(parents=True, exist_ok=True)
     ancestor = tmp_path / "ancestor-runtime"
     (ancestor / "src/pyamplicol").mkdir(parents=True)
 
@@ -417,14 +411,14 @@ def test_split_worker_uses_wrapper_tools_and_measured_source_venv(
             check=True,
         )
 
-    wrapper_entrypoint = wrapper / "docs/arxiv/result_tables.py"
+    wrapper_entrypoint = wrapper / REPORT_ENTRYPOINT
     wrapper_entrypoint.parent.mkdir(parents=True)
     shutil.copy2(
-        repository / "docs/arxiv/result_tables.py",
+        repository / REPORT_ENTRYPOINT,
         wrapper_entrypoint,
     )
     wrapper_source = wrapper / "src/pyamplicol"
-    wrapper_source.mkdir(parents=True)
+    wrapper_source.mkdir(parents=True, exist_ok=True)
     (wrapper_source / "__init__.py").write_text(
         "raise RuntimeError('wrapper pyamplicol escaped split routing')\n",
         encoding="ascii",

@@ -29,7 +29,7 @@ from tools.performance_report.service import ReportPaths, ReportService
 
 
 def _initialize_git_repo(repo: Path) -> None:
-    (repo / "docs/arxiv/results").mkdir(parents=True)
+    (repo / "src/pyamplicol/_profiling_campaign/results").mkdir(parents=True)
     subprocess.run(("git", "init", "-q"), cwd=repo, check=True)
     subprocess.run(
         ("git", "config", "user.email", "report-tests@example.invalid"),
@@ -125,7 +125,9 @@ def test_async_publication_can_run_the_authenticated_wrapper_entrypoint(
 ) -> None:
     measured = tmp_path / "measured"
     measured.mkdir()
-    wrapper_entrypoint = tmp_path / "wrapper/docs/arxiv/result_tables.py"
+    wrapper_entrypoint = (
+        tmp_path / "wrapper/src/pyamplicol/_profiling_campaign/result_tables.py"
+    )
     wrapper_entrypoint.parent.mkdir(parents=True)
     wrapper_entrypoint.write_text("# authenticated wrapper\n", encoding="ascii")
     service = ReportService(
@@ -472,7 +474,8 @@ def test_reset_and_validate_cli_use_new_service(tmp_path: Path, capsys) -> None:
     assert main(("--repo-root", str(repo), "reset")) == 0
     reset_output = capsys.readouterr().out
     assert (
-        "docs/arxiv/result_matrix_recurrence_builtin_sm_lc_table.tex"
+        "src/pyamplicol/_profiling_campaign/"
+        "result_matrix_recurrence_builtin_sm_lc_table.tex"
         in reset_output
     )
 

@@ -14,32 +14,30 @@ from audit_sdist import (  # noqa: E402
 )
 
 
-def test_maturin_recursively_includes_every_sdist_source_tree() -> None:
+def test_maturin_includes_required_sdist_source_trees() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     includes = {entry["path"] for entry in pyproject["tool"]["maturin"]["include"]}
 
     assert {
         "build_backend/**/*",
-        "docs/**/*",
+        "docs/README.md",
+        "docs/user/**/*",
         "examples/**/*",
         "rust/**/*",
         "schemas/**/*",
         "tests/**/*",
         "tools/developer/**/*",
+        "tools/performance_report/**/*",
         "tools/release/**/*",
         "tools/typing/**/*",
     } <= includes
     assert {"justfile", "rust-toolchain.toml"} <= includes
+    assert "docs/**/*" not in includes
     assert not {path for path in includes if path.startswith("dependencies/patches/")}
     assert not {path for path in includes if path.endswith("/**")}
 
     excludes = set(pyproject["tool"]["maturin"]["exclude"])
     assert {
-        "docs/*.aux",
-        "docs/*.fdb_latexmk",
-        "docs/*.fls",
-        "docs/*.log",
-        "docs/*.toc",
         "build_backend/python_lock.py",
         "dependencies/contributor-lock.toml",
         "dependencies/install_dependencies.py",
@@ -47,6 +45,27 @@ def test_maturin_recursively_includes_every_sdist_source_tree() -> None:
         "flake.nix",
         "release_assets/**",
     } <= excludes
+
+
+def test_sdist_excludes_development_histories_and_report_payloads() -> None:
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    includes = {entry["path"] for entry in pyproject["tool"]["maturin"]["include"]}
+
+    assert {path for path in includes if path.startswith("docs/")} == {
+        "docs/README.md",
+        "docs/user/**/*",
+    }
+    assert not any(
+        member.startswith(
+            (
+                "docs/arxiv/",
+                "docs/development/",
+                "docs/performance_reports/",
+            )
+        )
+        or member.endswith(".pdf")
+        for member in REQUIRED_SDIST_MEMBERS
+    )
 
 
 def test_root_resources_are_sdist_only_and_wheel_resources_are_namespaced() -> None:
@@ -62,6 +81,8 @@ def test_root_resources_are_sdist_only_and_wheel_resources_are_namespaced() -> N
         "THIRD_PARTY_NOTICES.md",
         "licenses/**/*",
         "dependencies/release-lock.toml",
+        "docs/README.md",
+        "docs/user/**/*",
         "schemas/**/*",
     ):
         assert includes[path] == {"sdist"}

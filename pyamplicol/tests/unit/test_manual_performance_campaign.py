@@ -58,7 +58,7 @@ from tools.performance_report.publisher import _compile_pdf
 from tools.performance_report.service import ReportPaths, ReportService
 
 ROOT = Path(__file__).resolve().parents[2]
-PROFILE = ROOT / "docs/performance_reports/macbook_M3_manual"
+PROFILE = ROOT / "src/pyamplicol/_profiling_campaign"
 
 
 def _parse(*arguments: str):
@@ -460,7 +460,7 @@ def test_ratatui_headless_frames_are_stable_and_informative(
         height=height,
     )
     assert isinstance(frame, str)
-    assert "Manual MacBook M3 campaign" in frame
+    assert "pyAmpliCol profiling campaign" in frame
     assert "Selected" in frame
     assert "Recycled" in frame
     assert "Remaining" in frame
@@ -1735,7 +1735,7 @@ def test_live_dashboard_snapshot_selects_instance_and_shows_same_source_peers(
     peer = state.workers["peer:peer-81ab:scalar-peer"]
     assert peer.peer_instance == "peer-81ab"
     frame = render_dashboard_frame(state, width=160, height=48)
-    assert "LIVE Manual MacBook M3 campaign" in frame
+    assert "LIVE pyAmpliCol profiling campaign" in frame
     assert "primary-7f91" in frame
     assert "Selected 9" in frame
     assert "Recycled 3" in frame
@@ -1853,7 +1853,7 @@ def test_live_snapshot_command_is_read_only_and_lease_only(
 
     assert result == 0
     output = capsys.readouterr().out
-    assert "LIVE Manual MacBook M3 campaign" in output
+    assert "LIVE pyAmpliCol profiling campaign" in output
     assert "gravity-cell" in output
     assert {path: path.read_bytes() for path in lease_files} == before
 
@@ -1944,7 +1944,7 @@ def test_dashboard_snapshot_default_does_not_read_live_leases(
     )
     assert result == 0
     output = capsys.readouterr().out
-    assert "Manual MacBook M3 campaign" in output
+    assert "pyAmpliCol profiling campaign" in output
     assert "LIVE Manual" not in output
 
 
@@ -2376,28 +2376,6 @@ def test_copied_campaign_rebinds_private_pdf_build_profile(tmp_path: Path) -> No
     assert "{independent\\_run}" in (staging / "report_environment.tex").read_text(
         encoding="utf-8"
     )
-
-
-def test_executable_reexecutes_from_base_python_into_repository_venv() -> None:
-    base_python = getattr(sys, "_base_executable", sys.executable)
-    completed = subprocess.run(
-        (
-            base_python,
-            str(PROFILE / "steer_performance_campaign.py"),
-            "dashboard-snapshot",
-            "--width",
-            "80",
-            "--height",
-            "24",
-        ),
-        cwd=PROFILE,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    assert completed.returncode == 0, completed.stderr
-    assert "Manual MacBook M3 campaign" in completed.stdout
 
 
 def test_controller_sources_only_use_read_only_git_for_external_checkout() -> None:

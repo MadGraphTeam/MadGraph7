@@ -410,7 +410,7 @@ def _section_evidence() -> Any:
 
 def test_default_output_and_parser_require_all_evidence_pins() -> None:
     assert (
-        Path("docs/development/arena/QQ_Z6G_ARENA_COMPARISON.md")
+        Path(".artifacts/developer/qq-z6g-arena-comparison.md")
         == comparison.DEFAULT_OUTPUT
     )
     option_destinations = {

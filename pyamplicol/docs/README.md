@@ -1,17 +1,19 @@
 <!-- SPDX-License-Identifier: 0BSD -->
 # Documentation
 
-The documentation is organized by audience and purpose:
+Start with:
 
-- [User guide](user/index.md) covers installation, configuration, models,
-  runtime use, the native SDK, licensing, and release status.
-- [arXiv report](arxiv/README.md) contains the canonical methodology and
-  performance-report source, raw result caches, generated tables, and PDF.
-- [Architecture performance reports](performance_reports/README.md) contains
-  the independent `macbook_M3` and `x86_EPYC` campaign workspaces.
-- [Development documentation](development/README.md) contains normative
-  contracts, architecture records, and the Arena and recurrence audit trails.
+- the [user guide](user/index.md) for installation, configuration, generation,
+  runtime use, the native SDK, licensing, and release status;
+- the [packaged examples](../examples/README.md) for complete cards and API
+  drivers;
+- the [performance reports](performance_reports/README.md) for the four
+  retained rendered snapshots;
+- the [development contracts](development/README.md) for stable API,
+  configuration, physics-extraction, packaging, and architecture decisions.
 
-Generated process artifacts, candidate wheels, worker attempts, logs, locks,
-coordination state, rendered page images, and LaTeX auxiliary files are
-machine-local outputs and are not documentation sources.
+Only rendered report PDFs are retained in this repository. Raw measurements,
+generated report source, campaign workspaces, process artifacts, wheels, logs,
+locks, page images, and LaTeX auxiliary files are intentionally excluded. An
+installed package can create a new empty workspace with
+`pyamplicol profiling-campaign copy DEST --force`.

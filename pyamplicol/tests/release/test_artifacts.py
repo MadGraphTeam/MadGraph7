@@ -952,7 +952,7 @@ def _sdist(
             }
         ).encode()
     if manifest_path is not None:
-        files["docs/development/PORT_MANIFEST.toml"] = (
+        files["docs/development/BUILD_MANIFEST.toml"] = (
             f'repository = "{manifest_path}"\n'.encode()
         )
     if extra_files is not None:

@@ -122,7 +122,7 @@ ALLOWLIST = (
     "tools/release",
     "tools/typing",
 )
-_PROFILING_CAMPAIGN_SOURCE = Path("docs/performance_reports/macbook_M3_manual")
+_PROFILING_CAMPAIGN_SOURCE = Path("src/pyamplicol/_profiling_campaign")
 _PROFILING_CAMPAIGN_REQUIRED_FILES = (
     Path("README.md"),
     Path("TABLE_FILLING.md"),
@@ -506,9 +506,10 @@ def _is_excluded(relative: Path) -> bool:
         and relative.name.endswith(_NATIVE_EXTENSION_SUFFIXES)
     ):
         return True
-    return relative.is_relative_to(Path("docs")) and relative.name.endswith(
-        _TEX_BUILD_SUFFIXES
+    report_source = relative.is_relative_to(Path("docs")) or relative.is_relative_to(
+        _PROFILING_CAMPAIGN_SOURCE
     )
+    return report_source and relative.name.endswith(_TEX_BUILD_SUFFIXES)
 
 
 def _reject_symlinks(path: Path, relative: Path = Path()) -> None:
@@ -672,16 +673,9 @@ def _profiling_campaign_inventory(source: Path) -> tuple[Path, ...]:
 
 def _stage_packaged_profiling_campaign(overlay: Path) -> None:
     source = overlay / _PROFILING_CAMPAIGN_SOURCE
-    target = overlay / "src" / "pyamplicol" / "_profiling_campaign"
     if not source.is_dir():
         raise RuntimeError("wheel build input has no profiling campaign directory")
-    if target.exists():
-        raise RuntimeError("wheel overlay already contains a profiling campaign")
-    target.mkdir(parents=True)
-    for relative in _profiling_campaign_inventory(source):
-        destination = target / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source / relative, destination)
+    _profiling_campaign_inventory(source)
 
     performance_source = overlay / "tools" / "performance_report"
     watchdog_source = overlay / "tools" / "ci" / "memory_watchdog.py"

@@ -8,7 +8,7 @@ from collections.abc import Mapping, MutableMapping
 
 WORKER_HARNESS_ABI = "pyamplicol-report-worker-harness-v1"
 WORKER_HARNESS_PROVENANCE_FIELD = "worker_harness"
-POLICY_ENTRYPOINT = "docs/arxiv/result_tables.py"
+POLICY_ENTRYPOINT = "src/pyamplicol/_profiling_campaign/result_tables.py"
 LEGACY_ADAPTER = "tools/performance_report/legacy.py"
 
 _SHA40_RE = re.compile(r"[0-9a-f]{40}")

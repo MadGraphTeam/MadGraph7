@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: 0BSD
 """Benchmark compiled, eager, and recurrence execution for qq_Zng.
 
-This is a developer harness, independent of
-``docs/arxiv/result_tables.py``. Run the whole command behind
+This is a developer harness, independent of the publication-report tooling.
+Run the whole command behind
 ``tools/ci/memory_watchdog.py`` when generating the large artifacts.
 Generation and profiling run in isolated worker processes so each phase has a
 meaningful process-level ``resource.getrusage`` peak-RSS record.
@@ -5500,8 +5500,6 @@ def _aggregate_profile_workers(
                 "post_timing_loaded_runtime_artifact"
             ),
             "cold_load_seconds": worker.get("cold_load_seconds"),
-            "peak_rss_after_cold_load": worker.get("peak_rss_after_cold_load"),
-            "peak_rss_after_profile": worker.get("peak_rss_after_profile"),
             "lane_contract_sha256": _canonical_sha256(contract),
             "timing_configuration": worker.get("timing_configuration"),
             "worker_measurement": dict(measurement),
@@ -7944,9 +7942,7 @@ def _milestone0_acceptance_manifest(
             "A separate fail-closed orchestrator must combine content-hashed "
             "topology-replay and all-flow-union captures with pinned AmpliCol "
             "selected-flow and all-flow raw evidence containing at least seven "
-            "paired interleaved subprocess samples, as specified by "
-            "docs/development/arena/EAGER_AND_COMPILED_ARENA_M0_EVIDENCE.md, "
-            "before "
+            "paired interleaved subprocess samples before "
             "milestone 0 can be accepted."
         ),
     }

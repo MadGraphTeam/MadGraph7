@@ -200,24 +200,13 @@ def _profiling_campaign_inventory(source: Path) -> tuple[Path, ...]:
     return tuple(sorted(selected, key=lambda path: path.as_posix()))
 
 
-def _source_profiling_campaign_root() -> Path:
-    for parent in Path(__file__).resolve().parents:
-        candidate = parent / "docs" / "performance_reports" / "macbook_M3_manual"
-        if (candidate / "steer_performance_campaign.py").is_file():
-            _profiling_campaign_inventory(candidate)
-            return candidate
-    raise ConfigurationError("packaged profiling campaign is unavailable")
-
-
 def profiling_campaign_root() -> Path:
     packaged = resources.files("pyamplicol").joinpath("_profiling_campaign")
     if not isinstance(packaged, os.PathLike):
-        return _source_profiling_campaign_root()
+        raise ConfigurationError("packaged profiling campaign is unavailable")
     path = Path(os.fspath(packaged))
-    if (path / "steer_performance_campaign.py").is_file():
-        _profiling_campaign_inventory(path)
-        return path.resolve()
-    return _source_profiling_campaign_root()
+    _profiling_campaign_inventory(path)
+    return path.resolve()
 
 
 def _copy_tree(source: Path, destination: Path, *, force: bool) -> Path:

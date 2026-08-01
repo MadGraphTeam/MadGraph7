@@ -37,7 +37,7 @@ from tools.performance_report.worker_harness import attach_worker_harness_identi
 
 def _git_repo(path: Path, marker: str) -> Path:
     path.mkdir()
-    (path / "docs/arxiv").mkdir(parents=True)
+    (path / "src/pyamplicol/_profiling_campaign").mkdir(parents=True)
     (path / "tools/performance_report").mkdir(parents=True)
     subprocess.run(("git", "init", "-q"), cwd=path, check=True)
     subprocess.run(
@@ -51,7 +51,7 @@ def _git_repo(path: Path, marker: str) -> Path:
         check=True,
     )
     (path / "README.md").write_text(marker + "\n", encoding="ascii")
-    (path / "docs/arxiv/result_tables.py").write_text(
+    (path / "src/pyamplicol/_profiling_campaign/result_tables.py").write_text(
         f"# {marker} policy entrypoint\n",
         encoding="ascii",
     )
@@ -101,7 +101,7 @@ def test_study_contract_binds_source_wrapper_policy_and_exact_limits(
         "legacy_adapter_sha256",
     }
     assert loaded["policy_wrapper"]["policy_entrypoint"] == (
-        "docs/arxiv/result_tables.py"
+        "src/pyamplicol/_profiling_campaign/result_tables.py"
     )
     assert loaded["policy_wrapper"]["legacy_adapter"] == (
         "tools/performance_report/legacy.py"

@@ -28,7 +28,7 @@ from typing import Any, NoReturn
 
 SCRIPT = Path(__file__).resolve()
 DEFAULT_OUTPUT = Path(
-    "docs/development/arena/QQ_Z6G_ARENA_COMPARISON.md"
+    ".artifacts/developer/qq-z6g-arena-comparison.md"
 )
 PRE_ARENA_REQUEST_KIND = "pyamplicol-qq-z6g-pre-arena-evidence-request"
 PRE_ARENA_REQUEST_SCHEMA = 1

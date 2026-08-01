@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: 0BSD
 """Run the bounded compiled-versus-eager acceptance matrix.
 
-This driver is intentionally independent of
-``docs/arxiv/result_tables.py``. It generates one complete compiled artifact
+This driver is intentionally independent of the publication-report tooling.
+It generates one complete compiled artifact
 and one complete eager artifact per cell, then records native Rusticol wall
 timings in one machine-readable result. LC workloads additionally generate the
 conventional specialized compiled references used by the report so reusable

@@ -17,9 +17,10 @@ publication.
   version from distribution metadata.
 - Rust resolution: the committed `Cargo.lock` is authoritative.
 
-Build hooks create a temporary allowlisted source overlay, use an external
-`CARGO_TARGET_DIR`, and leave the source tree or unpacked source distribution
-unchanged.
+Release builds use a temporary allowlisted source overlay and an external
+`CARGO_TARGET_DIR`. Opted-in contributor builds use a persistent
+workspace-local cache under `.artifacts/dev-install`; neither mode rewrites
+the source inputs.
 
 ## Dependency Modes
 
@@ -117,8 +118,8 @@ build with `python -m pip install .` using release-locked published
 packages/crates plus the official immutable SymJIT Git revision and contain:
 
 - Python/Rust/build sources and lockfiles;
-- schemas, tests, examples, docs, and release tooling;
-- the README, licenses, notices, and TeX report sources.
+- schemas, tests, examples, user documentation, and release tooling;
+- the README, licenses, and third-party notices.
 
 The canonical package paths in the retained sdist contain only the validated
 release pairs. The auxiliary `release_assets` store and the candidate package
@@ -127,7 +128,8 @@ the canonical release payload without a second projection.
 
 The sdist excludes dependency checkouts, contributor setup, local candidate
 inputs, the auxiliary release source store, generated process outputs, build
-products, caches, and local environments.
+products, caches, local environments, development histories, raw campaign
+data, and rendered report PDFs.
 
 `just sdist`, `just wheel-from-sdist`, and the PEP 517 hooks exercise the same
 backend. The sdist audit checks required members and forbidden source-checkout
@@ -141,15 +143,20 @@ Release targets are:
 - macOS 11 x86_64, `cp311-abi3`;
 - manylinux 2.28 x86_64, `cp311-abi3`.
 
-Each wheel is installed on CPython 3.11 and 3.14 and tested without Rust in the
-consumer environment. Validation includes:
+Each wheel receives the full installed-package deployment on CPython 3.11,
+without Rust in the consumer environment. That deployment includes:
 
 - `twine check` and platform/native-dependency audits;
 - import, CLI, direct-JIT f64 self-test, and packaged-example checks;
 - Python total/resolved runtime behavior with Symbolica imports blocked;
 - C11, C++17, Fortran 2008, and Rust 2021 f64 driver compilation/execution;
-- model-parameter card and direct UFO-parameter override behavior;
-- the independent physics oracle and required regression gates.
+- model-parameter card and direct UFO-parameter override behavior.
+
+CPython 3.14 receives a focused abi3 installation, import, metadata, and
+direct-runtime smoke test; it does not duplicate generation or the
+multilanguage SDK deployment. The independent Fortran physics oracle runs as a
+source-level release check. Performance campaigns are intentionally separate
+from release CI.
 
 Local entry points are:
 
@@ -174,6 +181,6 @@ validated inventory, verifies the expected platforms and non-candidate version,
 and publishes through a protected TestPyPI or PyPI environment using OIDC
 Trusted Publishing. Only that final job receives `id-token: write`.
 
-Publication remains blocked until the release dependency contract marks the
-Symbolica/SymJIT combination compatible and every target passes the complete
-installed-package matrix.
+The exact-source validated-artifact workflow completed successfully at
+<https://github.com/mg5amcnlo/pyamplicol/actions/runs/30673372972>. Uploading
+the retained files is a separate manual action and has not yet been performed.

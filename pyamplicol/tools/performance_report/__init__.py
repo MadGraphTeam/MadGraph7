@@ -2,7 +2,8 @@
 """Three-mode performance-report support.
 
 The package deliberately keeps measurement, storage, scheduling, and rendering
-separate. ``docs/arxiv/result_tables.py`` is the canonical command entry point.
+separate. ``src/pyamplicol/_profiling_campaign/result_tables.py`` is the
+canonical command entry point.
 """
 
 from .catalog import REPORT_CATALOG, ReportCatalog

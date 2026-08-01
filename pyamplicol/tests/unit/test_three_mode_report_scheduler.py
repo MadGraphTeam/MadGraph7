@@ -741,7 +741,7 @@ def _matrix_cell(
 
 def _service(tmp_path: Path) -> ReportService:
     root = tmp_path / "repo"
-    (root / "docs/arxiv").mkdir(parents=True)
+    (root / "src/pyamplicol/_profiling_campaign").mkdir(parents=True)
     subprocess.run(("git", "init", "-q"), cwd=root, check=True)
     subprocess.run(
         ("git", "config", "user.email", "report-tests@example.invalid"),
@@ -919,7 +919,9 @@ def test_reuse_and_retime_use_equivalent_artifact_but_target_baseline(
     assert command[command.index("--cell-id") + 1] == (
         "matrix-recurrence-builtin-sm-lc-n1-dd-z-jets-selected-flow"
     )
-    assert command[command.index("--docs-dir") + 1].endswith("/repo/docs/arxiv")
+    assert command[command.index("--docs-dir") + 1].endswith(
+        "/repo/src/pyamplicol/_profiling_campaign"
+    )
     assert command[command.index("--artifact-root") + 1].endswith("/artifacts")
     assert command[command.index("--coordination-root") + 1].endswith("/locks")
 

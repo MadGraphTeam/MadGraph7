@@ -42,7 +42,7 @@ REQUIRED_SDIST_MEMBERS = frozenset(
         "build_backend/_pyamplicol_build.py",
         "build_backend/sdk.py",
         "dependencies/release-lock.toml",
-        "docs/arxiv/pyAmpliCol.tex",
+        "docs/README.md",
         "docs/user/installation.md",
         "examples/builtin_sm_lc.toml",
         "examples/data/pp_zjj_momenta.json",

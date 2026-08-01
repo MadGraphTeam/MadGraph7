@@ -83,6 +83,16 @@ def test_profiling_campaign_copy_is_reset_and_requires_force(
         (destination / "report-workspace.json").read_text(encoding="utf-8")
     )
     assert workspace["measurement_state"] == "reset"
+    assert workspace["initialized_from"] == "src/pyamplicol/_profiling_campaign"
+    assert workspace["report_source_revision"] == "unknown"
+    assert workspace["report_source_tree"] == "unknown"
+    assert workspace["initialized_source_identity"] == {
+        "clean": False,
+        "dirty_paths": [],
+        "revision": "unknown",
+        "schema": "pyamplicol-report-source-v1",
+        "tree": "unknown",
+    }
     for path in sorted((destination / "results").glob("*.json")):
         payload = json.loads(path.read_text(encoding="utf-8"))
         for entry in payload.get("entries", ()):

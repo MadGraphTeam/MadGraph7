@@ -38,7 +38,7 @@ class ReportServiceError(RuntimeError):
 
 
 _PROFILE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
-CANONICAL_REPORT_ROOT = Path("docs/arxiv")
+CANONICAL_REPORT_ROOT = Path("src/pyamplicol/_profiling_campaign")
 PROFILE_REPORT_ROOT = Path("docs/performance_reports")
 CANONICAL_REPORT_ENTRYPOINT = CANONICAL_REPORT_ROOT / "result_tables.py"
 

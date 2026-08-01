@@ -1173,7 +1173,9 @@ def test_direct_final_audit_cli_fails_closed_when_not_already_isolated(
     raw = ("--repo-root", str(checkout), "--expected-source-revision", _REVISION)
     with pytest.raises(
         FinalAuditError,
-        match=r"docs/arxiv/result_tables\.py final-audit",
+        match=(
+            r"src/pyamplicol/_profiling_campaign/result_tables\.py final-audit"
+        ),
     ):
         _ensure_exact_cli_python(checkout, raw)
 

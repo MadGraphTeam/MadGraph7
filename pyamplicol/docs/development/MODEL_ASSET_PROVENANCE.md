@@ -1,9 +1,9 @@
 # Model Asset Provenance
 
-Only package-owned assets from
-`pyAmpliCol/src/pyamplicol/assets/models` at the source revision recorded in
-`SOURCE_BASELINE.toml` are eligible for extraction. The duplicate top-level
-asset tree is never copied.
+Package-owned model assets live in `src/pyamplicol/assets/models`. Their exact
+upstream revisions and file checksums are recorded next to the payloads in
+`PROVENANCE.toml` and `MANIFEST.sha256`; no duplicate top-level asset tree is
+used.
 
 | Asset | Origin | Intended notice | Port status |
 |---|---|---|---|
