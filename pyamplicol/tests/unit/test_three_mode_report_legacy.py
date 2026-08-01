@@ -24,6 +24,7 @@ from tools.performance_report.legacy import (
     _canonical_mapped_color_word,
     _fixed_helicity,
     _helicity_id,
+    _parse_generated_library_color_probe_output,
     adaptive_profile_points,
 )
 from tools.performance_report.models import Accuracy, ExecutionMode, Workload
@@ -230,6 +231,14 @@ class FakeExecutor:
                 else "12.5\n"
             )
         )
+        if rendered and rendered[0] == "./amplicol_color_library_probe":
+            accuracy = rendered[4]
+            value = self.api.generated_library_probe_value
+            output += (
+                f"AMPICOL_COLOR_PROBE_COMPONENTS {value} {value} {value}\n"
+                f"AMPICOL_COLOR_PROBE_VALUE {accuracy} {rendered[2]} "
+                f"{rendered[3]} {value}\n"
+            )
         elapsed = 0.25 if rendered and rendered[0] != "make" else 0.1
         return CommandResult(
             args=rendered,
@@ -347,6 +356,54 @@ def _settings(repository: Path) -> LegacySettings:
         maximum_points=10_000,
         repository=repository,
     )
+
+
+def test_generated_library_color_probe_parser_accepts_real_counterless_stdout() -> None:
+    stdout = "\n".join(
+        (
+            " Initialising amplitude for:",
+            "    - a single polarisation/helicity configuration",
+            "    - all colour orders",
+            "AmpliCol generated-library colour probe",
+            "points 100",
+            "group 1",
+            "integral 1",
+            "color_accuracy full",
+            "color_orders 2",
+            (
+                "AMPICOL_COLOR_PROBE_COMPONENTS   4.7180245588895062E-04"
+                "   3.6371847402940423E-04   3.6371847402940423E-04"
+            ),
+            (
+                "AMPICOL_COLOR_PROBE_RAW_COMPONENTS   8.1453155359829235E-02"
+                "   6.2793266551648116E-02   6.2793266551648116E-02"
+            ),
+            "AMPICOL_COLOR_PROBE_VALUE full 1 1   3.6371847402940423E-04",
+            "------------------------------------------------------------------------------",
+            "Timing summary                           seconds    percent  note",
+            "------------------------------------------------------------------------------",
+            (
+                "amplitude evaluation                    0.000056     56.57%  "
+                "outer-loop-diagnostic"
+            ),
+            (
+                "colour contraction                      0.000031     31.31%  "
+                "outer-loop-diagnostic"
+            ),
+            "total                                   0.000099    100.00%  ",
+            "------------------------------------------------------------------------------",
+        )
+    )
+
+    value = _parse_generated_library_color_probe_output(
+        stdout,
+        expected_accuracy="full",
+        expected_group=1,
+        expected_integral=1,
+    )
+
+    assert "AMPICOL_COLOR_PROBE_CURRENTS" not in stdout
+    assert value == 3.6371847402940423e-4
 
 
 @pytest.mark.parametrize(
@@ -1256,7 +1313,7 @@ def test_contracted_publishes_dedicated_library_probe_with_imode2_diagnostic(
         for index, command in enumerate(executor.commands)
         if command[0] == "./amplicol_color_library_probe"
     )
-    assert api.parsed_probe_count == 1
+    assert api.parsed_probe_count == 0
     diagnostic = measurement["validation"][LEGACY_IMODE2_DIAGNOSTIC_FIELD]
     assert diagnostic == {
         "abi": LEGACY_IMODE2_DIAGNOSTIC_ABI,

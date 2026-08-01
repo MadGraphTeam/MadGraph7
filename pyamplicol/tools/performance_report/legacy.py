@@ -65,6 +65,16 @@ LEGACY_IMODE2_DIAGNOSTIC_ABI = "pyamplicol-report-legacy-imode2-diagnostic-v1"
 LEGACY_NUMERICAL_AUTHORITY_FIELD = "legacy_numerical_authority"
 LEGACY_NUMERICAL_AUTHORITY_ABI = "pyamplicol-report-legacy-numerical-authority-v1"
 LEGACY_IMODE2_DIAGNOSTIC_MAX_COLOR_ORDERS = 5_000
+_LIBRARY_COLOR_VALUE_RE = re.compile(
+    r"^AMPICOL_COLOR_PROBE_VALUE\s+(\S+)\s+(\d+)\s+(\d+)\s+"
+    r"([+\-0-9.EeDd]+)$",
+    re.MULTILINE,
+)
+_LIBRARY_COLOR_COMPONENTS_RE = re.compile(
+    r"^AMPICOL_COLOR_PROBE_COMPONENTS\s+"
+    r"([+\-0-9.EeDd]+)\s+([+\-0-9.EeDd]+)\s+([+\-0-9.EeDd]+)$",
+    re.MULTILINE,
+)
 
 
 class LegacyAdapterError(RuntimeError):
@@ -514,6 +524,62 @@ def _imode2_component_diagnostic_supported(source_pdgs: Sequence[int]) -> bool:
     gluons = sum(abs(int(pdg)) == 21 for pdg in source_pdgs)
     color_orders = 3 * math.factorial(gluons) * (gluons + 1) * (gluons + 2)
     return color_orders <= LEGACY_IMODE2_DIAGNOSTIC_MAX_COLOR_ORDERS
+
+
+def _parse_generated_library_color_probe_output(
+    output: str,
+    *,
+    expected_accuracy: str,
+    expected_group: int,
+    expected_integral: int,
+) -> float:
+    """Parse the compact generated-library probe wire format."""
+
+    values = _LIBRARY_COLOR_VALUE_RE.findall(output)
+    component_rows = _LIBRARY_COLOR_COMPONENTS_RE.findall(output)
+    if len(values) != 1 or len(component_rows) != 1:
+        raise LegacyAdapterError(
+            "generated-library color probe must emit exactly one VALUE and "
+            "one three-component record"
+        )
+    accuracy, raw_group, raw_integral, raw_value = values[0]
+
+    def finite_number(raw: str, *, field: str) -> float:
+        try:
+            value = float(raw.replace("D", "E").replace("d", "e"))
+        except ValueError as error:
+            raise LegacyAdapterError(
+                f"generated-library color probe {field} is malformed"
+            ) from error
+        if not math.isfinite(value):
+            raise LegacyAdapterError(
+                f"generated-library color probe {field} is not finite"
+            )
+        return value
+
+    value = finite_number(raw_value, field="VALUE")
+    components = tuple(
+        finite_number(raw, field=f"COMPONENTS[{index}]")
+        for index, raw in enumerate(component_rows[0])
+    )
+    if (
+        accuracy != expected_accuracy
+        or int(raw_group) != expected_group
+        or int(raw_integral) != expected_integral
+    ):
+        raise LegacyAdapterError(
+            "generated-library color probe identity differs from the requested row"
+        )
+    component_index = {
+        Accuracy.LC.value: 0,
+        Accuracy.NLC.value: 1,
+        Accuracy.FULL.value: 2,
+    }.get(expected_accuracy)
+    if component_index is None or value != components[component_index]:
+        raise LegacyAdapterError(
+            "generated-library color probe VALUE differs from its requested component"
+        )
+    return value
 
 
 def _initial_state_count(process: str) -> int:
@@ -1961,7 +2027,7 @@ class LegacyMeasurementAdapter:
         )
         if phase_reporter is not None:
             phase_reporter.validation_started()
-        _library_result, _library_rows, library_probe = self._invoke_probe_command(
+        library_result, _, _ = self._invoke_command(
             (
                 "./amplicol_color_library_probe",
                 "1",
@@ -1975,16 +2041,12 @@ class LegacyMeasurementAdapter:
             commands=commands,
             log_path=log_path,
         )
-        raw_library_value = getattr(library_probe, "value", None)
-        if (
-            isinstance(raw_library_value, bool)
-            or not isinstance(raw_library_value, (int, float))
-            or not math.isfinite(float(raw_library_value))
-        ):
-            raise LegacyAdapterError(
-                "contracted generated-library validation probe emitted no finite value"
-            )
-        library_value = float(raw_library_value)
+        library_value = _parse_generated_library_color_probe_output(
+            library_result.stdout + "\n" + library_result.stderr,
+            expected_accuracy=cell.measurement.accuracy.value,
+            expected_group=int(context.entry.group),
+            expected_integral=int(context.entry.integral),
+        )
         if self.structural_proof:
             from .legacy_structure import (
                 STRUCTURAL_PROBE_ENVIRONMENT,
