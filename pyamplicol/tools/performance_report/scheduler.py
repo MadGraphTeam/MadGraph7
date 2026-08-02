@@ -2135,6 +2135,8 @@ class CampaignScheduler:
                 detail=outcome.detail,
             )
             return outcome
+        completed_at_ns: int | None = None
+        completion_observed = False
         try:
             with ExitStack() as locks:
                 for lock_name in self._coordination_lock_names(cell):
@@ -2151,11 +2153,36 @@ class CampaignScheduler:
                     except LockTimeoutError as error:
                         raise _CoordinationDeferred(lock_name) from error
                 try:
-                    outcome = self._run_cell_in_lane(planned)
-                except _PreparationFailed as error:
-                    # Publishing the shared-preparation terminal must remain
-                    # inside the same cell/lane exclusion as ordinary results.
-                    outcome = self._preparation_failure_outcome(cell, error)
+                    try:
+                        outcome = self._run_cell_in_lane(planned)
+                    except _PreparationFailed as error:
+                        # Publishing the shared-preparation terminal must remain
+                        # inside the same cell/lane exclusion as ordinary results.
+                        outcome = self._preparation_failure_outcome(cell, error)
+                    completed_at_ns = time.time_ns()
+                    completion_observed = True
+                    self._observe(
+                        "finished",
+                        cell,
+                        status=outcome.status,
+                        detail=outcome.detail,
+                        prerequisite_cell_ids=outcome.prerequisite_cell_ids,
+                        completed_at_ns=completed_at_ns,
+                    )
+                except (_CoordinationDeferred, LockCancelledError):
+                    raise
+                except BaseException as error:
+                    if not completion_observed:
+                        completed_at_ns = time.time_ns()
+                        completion_observed = True
+                        self._observe(
+                            "finished",
+                            cell,
+                            status="error",
+                            detail=f"{type(error).__name__}: {error}",
+                            completed_at_ns=completed_at_ns,
+                        )
+                    raise
                 finally:
                     if self.settings.remove_heavy_attempt_artifacts:
                         try:
@@ -2176,21 +2203,27 @@ class CampaignScheduler:
             raise
         except LockCancelledError:
             outcome = CellOutcome(cell.cell_id, "cancelled", "lock wait cancelled")
+            completed_at_ns = time.time_ns()
         except BaseException as error:
+            if not completion_observed:
+                self._observe(
+                    "finished",
+                    cell,
+                    status="error",
+                    detail=f"{type(error).__name__}: {error}",
+                    completed_at_ns=(completed_at_ns or time.time_ns()),
+                )
+            raise
+        assert completed_at_ns is not None
+        if not completion_observed:
             self._observe(
                 "finished",
                 cell,
-                status="error",
-                detail=f"{type(error).__name__}: {error}",
+                status=outcome.status,
+                detail=outcome.detail,
+                prerequisite_cell_ids=outcome.prerequisite_cell_ids,
+                completed_at_ns=completed_at_ns,
             )
-            raise
-        self._observe(
-            "finished",
-            cell,
-            status=outcome.status,
-            detail=outcome.detail,
-            prerequisite_cell_ids=outcome.prerequisite_cell_ids,
-        )
         return outcome
 
     def _run_cell_in_lane(self, planned: PlannedCell) -> CellOutcome:

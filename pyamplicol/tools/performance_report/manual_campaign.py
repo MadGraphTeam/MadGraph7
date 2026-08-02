@@ -47,14 +47,17 @@ from .artifacts import (
     CURRENT_SCHEMA,
     ArtifactStore,
     CurrentRecord,
+    LockTimeoutError,
     _raise_disk_full,
 )
 from .cache import reset_entry, validate_measurement
 from .campaign_policy import (
     PolicyMeasurementState,
     policy_measurement_state_hint,
+    policy_status_label,
 )
 from .catalog import PROCESS_FAMILIES, REPORT_CATALOG, ReportCatalog
+from .measurement import failure_measurement
 from .models import (
     Accuracy,
     ArtifactPolicy,
@@ -118,7 +121,25 @@ MAX_TAIL_READ_BYTES = 64 * 1024
 MAX_LOG_TAIL_LINES = 8
 MANUAL_STATE_SCHEMA = "pyamplicol-manual-campaign-state-v1"
 SOURCE_MARKER_SCHEMA = "pyamplicol-manual-source-v1"
+PRESENTATION_OUTCOME_SCHEMA = "pyamplicol-manual-presentation-outcome-v1"
 _FULL_SOURCE_REVISION = re.compile(r"[0-9a-f]{40}")
+_SAFE_OUTCOME_SLUG = re.compile(r"[a-z][a-z0-9_-]{0,63}")
+_SAFE_OUTCOME_CELL_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,127}")
+_PRESENTATION_FAILURE_KIND_PREFIX = "ManualCampaignOutcome:"
+_MAX_PRESENTATION_COMPLETED_AT_NS = (1 << 63) - 1
+_PRESENTATION_OUTCOME_KEYS = frozenset(
+    {
+        "schema",
+        "profile",
+        "cell_id",
+        "source_revision",
+        "campaign_invocation_id",
+        "attempt_id",
+        "status",
+        "label",
+        "completed_at_ns",
+    }
+)
 _DASHBOARD_COUNTER_KEYS = (
     "selected",
     "recycled",
@@ -254,7 +275,7 @@ def _utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def _atomic_json(path: Path, payload: object) -> None:
+def _atomic_json(path: Path, payload: object, *, sync: bool = True) -> None:
     temporary: Path | None = None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -270,7 +291,8 @@ def _atomic_json(path: Path, payload: object) -> None:
             )
             stream.write("\n")
             stream.flush()
-            os.fsync(stream.fileno())
+            if sync:
+                os.fsync(stream.fileno())
         os.replace(temporary, path)
     except OSError as error:
         _raise_disk_full(error, path)
@@ -1707,12 +1729,346 @@ class RecordedSourcePolicy:
     continue_across_revisions: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class LightweightPresentationOutcome:
+    """One tiny presentation-only terminal outcome for an otherwise empty cell."""
+
+    profile: str
+    cell_id: str
+    source_revision: str
+    campaign_invocation_id: str
+    attempt_id: str | None
+    status: str
+    label: str
+    completed_at_ns: int
+
+    @property
+    def ordering_key(self) -> tuple[int, str, str, str]:
+        return (
+            self.completed_at_ns,
+            self.campaign_invocation_id,
+            self.attempt_id or "",
+            self.status,
+        )
+
+    @property
+    def successful(self) -> bool:
+        return self.status in _SUMMARY_SUCCESS_STATUSES
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "schema": PRESENTATION_OUTCOME_SCHEMA,
+            "profile": self.profile,
+            "cell_id": self.cell_id,
+            "source_revision": self.source_revision,
+            "campaign_invocation_id": self.campaign_invocation_id,
+            "attempt_id": self.attempt_id,
+            "status": self.status,
+            "label": self.label,
+            "completed_at_ns": self.completed_at_ns,
+        }
+
+
 def _read_object(path: Path) -> dict[str, object] | None:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
         return None
     return value if isinstance(value, dict) else None
+
+
+def _presentation_outcome_path(
+    service: ReportService,
+    cell_id: str,
+    *,
+    catalog_validated: bool = False,
+) -> Path:
+    if not catalog_validated:
+        service.catalog.cell(cell_id)
+    if _SAFE_OUTCOME_CELL_ID.fullmatch(cell_id) is None:
+        raise ManualCampaignError(
+            f"presentation outcome cell ID is unsafe: {cell_id!r}"
+        )
+    return (
+        service.paths.coordination_root
+        / "manual-presentation-outcomes"
+        / f"{cell_id}.json"
+    )
+
+
+def _canonical_attempt_uuid(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = uuid.UUID(value)
+    except ValueError:
+        return None
+    return value if str(parsed) == value else None
+
+
+def _humanized_outcome_label(status: str) -> str:
+    if status == "cancelled":
+        return "interrupted"
+    return " ".join(status.replace("_", " ").replace("-", " ").split())
+
+
+def _parse_presentation_outcome(
+    raw: Mapping[str, object] | None,
+    *,
+    expected_profile: str,
+    expected_cell_id: str,
+    source_revision: str,
+    accept_historical_source: bool,
+) -> LightweightPresentationOutcome | None:
+    if raw is None or set(raw) != _PRESENTATION_OUTCOME_KEYS:
+        return None
+    profile = raw.get("profile")
+    cell_id = raw.get("cell_id")
+    revision = raw.get("source_revision")
+    invocation_id = raw.get("campaign_invocation_id")
+    status = raw.get("status")
+    label = raw.get("label")
+    completed_at_ns = raw.get("completed_at_ns")
+    if (
+        raw.get("schema") != PRESENTATION_OUTCOME_SCHEMA
+        or not isinstance(profile, str)
+        or profile != expected_profile
+        or not isinstance(cell_id, str)
+        or cell_id != expected_cell_id
+        or not isinstance(revision, str)
+        or _FULL_SOURCE_REVISION.fullmatch(revision) is None
+        or (revision != source_revision and not accept_historical_source)
+        or not isinstance(invocation_id, str)
+        or not (1 <= len(invocation_id) <= 128)
+        or not invocation_id.isascii()
+        or not invocation_id.isprintable()
+        or not isinstance(status, str)
+        or _SAFE_OUTCOME_SLUG.fullmatch(status) is None
+        or not isinstance(label, str)
+        or not (1 <= len(label) <= 64)
+        or label != label.strip()
+        or not label.isascii()
+        or not label.isprintable()
+        or isinstance(completed_at_ns, bool)
+        or not isinstance(completed_at_ns, int)
+        or completed_at_ns <= 0
+        or completed_at_ns > _MAX_PRESENTATION_COMPLETED_AT_NS
+    ):
+        return None
+    raw_attempt_id = raw.get("attempt_id")
+    attempt_id = _canonical_attempt_uuid(raw_attempt_id)
+    if raw_attempt_id is not None and attempt_id is None:
+        return None
+    return LightweightPresentationOutcome(
+        profile=profile,
+        cell_id=cell_id,
+        source_revision=revision,
+        campaign_invocation_id=invocation_id,
+        attempt_id=attempt_id,
+        status=status,
+        label=label,
+        completed_at_ns=completed_at_ns,
+    )
+
+
+def lightweight_presentation_outcome(
+    service: ReportService,
+    cell: CellSpec,
+    *,
+    source_revision: str,
+    accept_historical_source: bool = False,
+) -> LightweightPresentationOutcome | None:
+    """Read one direct compact outcome, ignoring unsafe or malformed metadata."""
+
+    path = _presentation_outcome_path(
+        service,
+        cell.cell_id,
+        catalog_validated=True,
+    )
+    if path.is_symlink() or not path.is_file():
+        return None
+    return _parse_presentation_outcome(
+        _read_object(path),
+        expected_profile=_ACTIVE_PROFILE,
+        expected_cell_id=cell.cell_id,
+        source_revision=source_revision,
+        accept_historical_source=accept_historical_source,
+    )
+
+
+def lightweight_presentation_outcomes(
+    service: ReportService,
+    cells: Sequence[CellSpec],
+    *,
+    source_revision: str,
+    accept_historical_source: bool = False,
+) -> dict[str, LightweightPresentationOutcome]:
+    result: dict[str, LightweightPresentationOutcome] = {}
+    for cell in cells:
+        outcome = lightweight_presentation_outcome(
+            service,
+            cell,
+            source_revision=source_revision,
+            accept_historical_source=accept_historical_source,
+        )
+        if outcome is not None:
+            result[cell.cell_id] = outcome
+    return result
+
+
+def _replace_presentation_outcome_locked(
+    service: ReportService,
+    outcome: LightweightPresentationOutcome,
+    *,
+    accept_historical_source: bool,
+    only_if_replacing_failure: bool = False,
+    catalog_validated: bool = False,
+) -> bool:
+    """Replace one outcome while the shared presentation lock is held."""
+
+    validated = _parse_presentation_outcome(
+        outcome.as_dict(),
+        expected_profile=_ACTIVE_PROFILE,
+        expected_cell_id=outcome.cell_id,
+        source_revision=outcome.source_revision,
+        accept_historical_source=False,
+    )
+    if validated is None:
+        raise ManualCampaignError("presentation outcome metadata is invalid")
+    outcome = validated
+    path = _presentation_outcome_path(
+        service,
+        outcome.cell_id,
+        catalog_validated=catalog_validated,
+    )
+    existing = (
+        None
+        if path.is_symlink() or not path.is_file()
+        else _parse_presentation_outcome(
+            _read_object(path),
+            expected_profile=_ACTIVE_PROFILE,
+            expected_cell_id=outcome.cell_id,
+            source_revision=outcome.source_revision,
+            accept_historical_source=accept_historical_source,
+        )
+    )
+    if only_if_replacing_failure and (
+        existing is None or existing.successful
+    ):
+        return False
+    if existing is not None and existing.ordering_key > outcome.ordering_key:
+        return False
+    _atomic_json(path, outcome.as_dict(), sync=False)
+    return True
+
+
+def _publish_presentation_outcome(
+    service: ReportService,
+    outcome: LightweightPresentationOutcome,
+    *,
+    only_if_replacing_failure: bool = False,
+    catalog_validated: bool = False,
+) -> bool:
+    """Atomically retain only the deterministically latest presentation outcome."""
+
+    with service.store.named_lock("manual-source-marker"):
+        source_policy = _recorded_measurement_source_policy_locked(
+            service,
+            checkout_revision=outcome.source_revision,
+            allow_missing=False,
+        )
+        if (
+            not source_policy.continue_across_revisions
+            and source_policy.source_revision != outcome.source_revision
+        ):
+            return False
+        with service.store.named_lock(
+            f"manual-presentation-outcome-{outcome.cell_id}"
+        ):
+            return _replace_presentation_outcome_locked(
+                service,
+                outcome,
+                accept_historical_source=(
+                    source_policy.continue_across_revisions
+                ),
+                only_if_replacing_failure=only_if_replacing_failure,
+                catalog_validated=catalog_validated,
+            )
+
+
+def _publish_recycled_presentation_outcomes(
+    service: ReportService,
+    currents: Mapping[str, LightweightCurrent],
+    recycled_ids: Iterable[str],
+    *,
+    source_revision: str,
+    campaign_invocation_id: str,
+    accept_historical_source: bool = False,
+) -> tuple[str, ...]:
+    """Publish front-end recycle outcomes that bypass scheduler observers."""
+
+    cells_by_id = {
+        cell.cell_id: cell for cell in service.catalog.measurement_cells()
+    }
+    warnings: list[str] = []
+    for cell_id in sorted(set(recycled_ids)):
+        current = currents.get(cell_id)
+        if (
+            current is None
+            or not current.reusable
+            or current.result.get("status") != ResultStatus.OK.value
+        ):
+            continue
+        cell = cells_by_id[cell_id]
+        observed = lightweight_presentation_outcome(
+            service,
+            cell,
+            source_revision=source_revision,
+            accept_historical_source=accept_historical_source,
+        )
+        if observed is not None and observed.successful:
+            continue
+        try:
+            with service.store.named_lock(
+                f"campaign-cell-{cell_id}",
+                timeout=0.0,
+            ):
+                _publish_presentation_outcome(
+                    service,
+                    LightweightPresentationOutcome(
+                        profile=_ACTIVE_PROFILE,
+                        cell_id=cell_id,
+                        source_revision=source_revision,
+                        campaign_invocation_id=campaign_invocation_id,
+                        attempt_id=current.attempt_id,
+                        status="reused",
+                        label="reused",
+                        completed_at_ns=time.time_ns(),
+                    ),
+                    only_if_replacing_failure=True,
+                    catalog_validated=True,
+                )
+        except LockTimeoutError:
+            continue
+        except Exception as error:
+            warnings.append(f"{cell_id}: {type(error).__name__}: {error}")
+    return tuple(warnings)
+
+
+def _presentation_failure_measurement(
+    outcome: LightweightPresentationOutcome,
+) -> dict[str, object]:
+    try:
+        status = ResultStatus(outcome.status)
+    except ValueError:
+        status = ResultStatus.FAILED
+    if status in {ResultStatus.NOT_AVAILABLE, ResultStatus.OK}:
+        status = ResultStatus.FAILED
+    measurement = failure_measurement(status, outcome.label)
+    failure = measurement["failure"]
+    assert isinstance(failure, dict)
+    failure["kind"] = _PRESENTATION_FAILURE_KIND_PREFIX + outcome.status
+    return measurement
 
 
 def _result_matches_cell(
@@ -2245,12 +2601,27 @@ def recorded_measurement_source_policy(
     dependency planning.
     """
 
-    path = _source_marker_path(service)
     with service.store.named_lock("manual-source-marker"):
-        exists = path.exists()
-        marker = _read_object(path)
+        return _recorded_measurement_source_policy_locked(
+            service,
+            checkout_revision=checkout_revision,
+            allow_missing=True,
+        )
+
+
+def _recorded_measurement_source_policy_locked(
+    service: ReportService,
+    *,
+    checkout_revision: str,
+    allow_missing: bool,
+) -> RecordedSourcePolicy:
+    """Decode the source marker while its named lock is already held."""
+
+    path = _source_marker_path(service)
+    exists = path.exists()
+    marker = _read_object(path)
     if marker is None:
-        if exists:
+        if exists or not allow_missing:
             raise ManualCampaignError(
                 f"campaign source marker is unreadable: {path}; refusing to "
                 "guess which measurement cohort to publish"
@@ -2590,6 +2961,17 @@ class LeaseManager:
             cleanup_detail: str | None = None
             if event == "started":
                 self.state.invocation_evidence_ids.add(cell_id)
+                worker.attempt_id = None
+                worker.log_path = None
+                worker.progress_path = None
+                worker.progress_completed = None
+                worker.progress_total = None
+                worker.progress_message = ""
+                worker.progress_task_id = None
+                worker.progress_details.clear()
+                worker.log_tail.clear()
+                worker._progress_tail_state = _IncrementalTailState()
+                worker._log_tail_state = _IncrementalTailState()
                 worker.status = "preparing"
                 worker.step = "dependency preparation"
                 worker.dependency = bool(payload.get("dependency", False))
@@ -2662,6 +3044,7 @@ class LeaseManager:
             elif event == "finished":
                 reported_status = str(payload.get("status") or "unknown")
                 reported_detail = str(payload.get("detail") or "")
+                outcome_attempt_id = worker.attempt_id
                 if not (
                     reported_status == "cancelled"
                     and reported_detail in {"not started", "lock wait cancelled"}
@@ -2694,6 +3077,7 @@ class LeaseManager:
                     cell = self.service.catalog.cell(cell_id)
                 except KeyError:
                     cell = None
+                current: LightweightCurrent | None = None
                 if cell is not None:
                     worker.generation_engine = cell.measurement.execution_mode.value
                     current = lightweight_current(
@@ -2762,6 +3146,69 @@ class LeaseManager:
                     "cancelled",
                 }:
                     self.state.failed_ids.add(cell_id)
+                reported_success = reported_status in _SUMMARY_SUCCESS_STATUSES
+                successful_current = (
+                    current
+                    if reported_success
+                    and current is not None
+                    and current.reusable
+                    and current.result.get("status") == ResultStatus.OK.value
+                    else None
+                )
+                if (
+                    cell is not None
+                    and reported_status != ResultStatus.NOT_AVAILABLE.value
+                    and (not reported_success or successful_current is not None)
+                    and not (
+                        reported_status == "cancelled"
+                        and reported_detail in {"not started", "lock wait cancelled"}
+                    )
+                ):
+                    normalized_status = (
+                        reported_status
+                        if _SAFE_OUTCOME_SLUG.fullmatch(reported_status) is not None
+                        else _summary_status(reported_status)
+                    )
+                    attempt_id = _canonical_attempt_uuid(
+                        None
+                        if successful_current is None
+                        else successful_current.attempt_id
+                    )
+                    if attempt_id is None:
+                        attempt_id = _canonical_attempt_uuid(outcome_attempt_id)
+                    if attempt_id is None:
+                        attempt_id = _canonical_attempt_uuid(reported_detail)
+                    label = _humanized_outcome_label(normalized_status)
+                    if (
+                        current is not None
+                        and attempt_id is not None
+                        and current.attempt_id == attempt_id
+                    ):
+                        label = policy_status_label(current.result) or label
+                    completed_at_ns = _optional_int(
+                        payload.get("completed_at_ns")
+                    ) or time.time_ns()
+                    try:
+                        _publish_presentation_outcome(
+                            self.service,
+                            LightweightPresentationOutcome(
+                                profile=_ACTIVE_PROFILE,
+                                cell_id=cell_id,
+                                source_revision=self.state.source_revision,
+                                campaign_invocation_id=self.state.instance_id,
+                                attempt_id=attempt_id,
+                                status=normalized_status,
+                                label=label,
+                                completed_at_ns=completed_at_ns,
+                            ),
+                            only_if_replacing_failure=reported_success,
+                            catalog_validated=True,
+                        )
+                    except Exception as error:
+                        worker.events.append(
+                            "presentation outcome warning: "
+                            f"{type(error).__name__}: {error}"
+                        )
             elif event == "cleanup-warning":
                 cleanup_detail = str(payload.get("detail") or "unknown cleanup error")
                 warning = (cell_id, cleanup_detail)
@@ -6471,6 +6918,19 @@ def _run_campaign(
         )
     else:
         update_source_marker(service, source)
+    campaign_invocation_id = uuid.uuid4().hex
+    for warning in _publish_recycled_presentation_outcomes(
+        service,
+        lightweight,
+        recycled,
+        source_revision=source.revision,
+        campaign_invocation_id=campaign_invocation_id,
+        accept_historical_source=continue_across_revisions,
+    ):
+        print(
+            palette.warning(f"presentation outcome warning: {warning}"),
+            file=sys.stderr,
+        )
     if bool(getattr(arguments, "cleanup_artifacts", False)):
         cleanup_cells = tuple(
             {
@@ -6542,7 +7002,7 @@ def _run_campaign(
     cancellation = threading.Event()
     finished = threading.Event()
     state = DashboardState(
-        instance_id=uuid.uuid4().hex,
+        instance_id=campaign_invocation_id,
         selected_ids=tuple(cell.cell_id for cell in cells),
         recycled_ids=recycled,
         static_na_ids=static_na,
@@ -6715,10 +7175,20 @@ def _capture_lightweight_snapshot(
     *,
     source_revision: str,
     accept_historical_source: bool = False,
-) -> tuple[dict[str, LightweightCurrent], tuple[tuple[str, str], ...]]:
+) -> tuple[
+    dict[str, LightweightCurrent],
+    dict[str, LightweightPresentationOutcome],
+    tuple[tuple[str, str], ...],
+]:
     cells = tuple(service.catalog.measurement_cells())
     for _attempt in range(3):
         currents = lightweight_currents(
+            service,
+            cells,
+            source_revision=source_revision,
+            accept_historical_source=accept_historical_source,
+        )
+        outcomes = lightweight_presentation_outcomes(
             service,
             cells,
             source_revision=source_revision,
@@ -6731,7 +7201,19 @@ def _capture_lightweight_snapshot(
                 if current.reusable
             )
         )
+        outcome_identity = tuple(
+            sorted(
+                (cell_id, outcome.ordering_key)
+                for cell_id, outcome in outcomes.items()
+            )
+        )
         confirmed = lightweight_currents(
+            service,
+            cells,
+            source_revision=source_revision,
+            accept_historical_source=accept_historical_source,
+        )
+        confirmed_outcomes = lightweight_presentation_outcomes(
             service,
             cells,
             source_revision=source_revision,
@@ -6744,18 +7226,30 @@ def _capture_lightweight_snapshot(
                 if current.reusable
             )
         )
-        if identity == confirmed_identity:
-            return currents, identity
+        confirmed_outcome_identity = tuple(
+            sorted(
+                (cell_id, outcome.ordering_key)
+                for cell_id, outcome in confirmed_outcomes.items()
+            )
+        )
+        if (
+            identity == confirmed_identity
+            and outcome_identity == confirmed_outcome_identity
+        ):
+            return currents, outcomes, identity
     raise ManualCampaignError(
-        "current pointers changed during three snapshot reads; retry refresh-pdf"
+        "current pointers or presentation outcomes changed during three "
+        "snapshot reads; retry refresh-pdf"
     )
 
 
 def _merge_lightweight_snapshot(
     service: ReportService,
     currents: Mapping[str, LightweightCurrent],
+    outcomes: Mapping[str, LightweightPresentationOutcome] | None = None,
 ) -> tuple[dict[str, dict[str, object]], int]:
     caches = service.reset_payloads()
+    visible_outcomes = {} if outcomes is None else outcomes
     by_cell = {cell.cell_id: cell for cell in service.catalog.measurement_cells()}
     merged = 0
     for payload in caches.values():
@@ -6769,10 +7263,33 @@ def _merge_lightweight_snapshot(
                 entry["measurement"] = reset_entry(cell)["measurement"]
                 continue
             current = currents.get(cell_id)
-            if current is None or not current.reusable:
+            outcome = visible_outcomes.get(cell_id)
+            if (
+                current is not None
+                and current.reusable
+                and current.result.get("status") == ResultStatus.OK.value
+            ):
+                measurement = dict(current.result)
+            elif outcome is not None and not outcome.successful:
+                if (
+                    current is not None
+                    and current.reusable
+                    and outcome.attempt_id is not None
+                    and outcome.attempt_id == current.attempt_id
+                ):
+                    measurement = dict(current.result)
+                else:
+                    measurement = _presentation_failure_measurement(outcome)
+            elif outcome is not None and outcome.successful:
+                if current is None or not current.reusable:
+                    continue
+                measurement = dict(current.result)
+            elif current is not None and current.reusable:
+                measurement = dict(current.result)
+            else:
                 continue
-            validate_measurement(current.result, expected_cell=cell)
-            entry["measurement"] = dict(current.result)
+            validate_measurement(measurement, expected_cell=cell)
+            entry["measurement"] = measurement
             merged += 1
     service.validate_payloads(caches)
     return caches, merged
@@ -6914,13 +7431,21 @@ def _refresh_pdf(
         service,
         checkout_revision=source.revision,
     )
-    currents, snapshot = _capture_lightweight_snapshot(
+    currents, outcomes, snapshot = _capture_lightweight_snapshot(
         service,
         source_revision=source_policy.source_revision,
         accept_historical_source=source_policy.continue_across_revisions,
     )
     source_cohorts = _source_cohort_counts(currents)
-    caches, merged = _merge_lightweight_snapshot(service, currents)
+    publication_caches, merged = _merge_lightweight_snapshot(
+        service,
+        currents,
+    )
+    render_caches, _presentation_merged = _merge_lightweight_snapshot(
+        service,
+        currents,
+        outcomes,
+    )
     build_root = service.paths.artifact_root / "manual-publication-builds"
     build_root.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix="refresh-", dir=build_root))
@@ -6942,8 +7467,8 @@ def _refresh_pdf(
         )
         staging_service.bind_measurement_lineage(None)
         staging_service.bind_original_amplicol_seed(None)
-        tables = staging_service._render_tables(caches)
-        staging_service._snapshot_files(caches, tables)
+        tables = staging_service._render_tables(render_caches)
+        staging_service._snapshot_files(publication_caches, tables)
         page_count = _compile_pdf(
             staging_docs,
             expected_page_count=(

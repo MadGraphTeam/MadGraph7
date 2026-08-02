@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
@@ -11,6 +13,8 @@ from .cache import empty_measurement
 from .campaign_policy import (
     STRICT_POLICY,
     CampaignPolicy,
+    PolicyMeasurementState,
+    policy_measurement_state_hint,
     policy_status_label,
 )
 from .catalog import (
@@ -62,6 +66,48 @@ _BEST_MODE_TABLE_NAMES = {
     Accuracy.NLC: "result_matrix_best_builtin_sm_nlc_table.tex",
     Accuracy.FULL: "result_matrix_best_builtin_sm_full_table.tex",
 }
+_PRESENTATION_FAILURE_KIND_PREFIX = "ManualCampaignOutcome:"
+_SAFE_OUTCOME_SLUG = re.compile(r"[a-z][a-z0-9_-]{0,63}")
+_TIME_CAP_LABEL = re.compile(r">(?P<value>[0-9]+(?:\.[0-9]+)?)(?P<unit>h|s)")
+_RAM_CAP_LABEL = re.compile(r">(?P<value>[0-9]+)GB")
+_POLICY_PRESENTATION_OUTCOME_SLUGS = frozenset(
+    state.value
+    for state in PolicyMeasurementState
+    if state is not PolicyMeasurementState.SUCCESS
+)
+_MAX_BEST_MODE_TERMINAL_LABEL_CHARS = 48
+_TERMINAL_LABEL_DIGEST_CHARS = 6
+_KNOWN_PRESENTATION_TERMINAL_LABELS = {
+    "blocked_dependency": "blocked dependency",
+    "cancelled": "interrupted",
+    "error": "error",
+    "failed": "failed",
+    "generation_limit": "generation limit",
+    "interrupted": "interrupted",
+    "memory_limit": "memory limit",
+    "preparation_error": "preparation error",
+    "preparation_failed": "preparation failed",
+    "profiling_timeout": "profiling timeout",
+    "resource_frontier": "resource frontier",
+    "skip": "skip",
+    "static_na": "static na",
+    "unsupported": "unsupported",
+    "validation_failed": "validation failed",
+    "validation_timeout": "validation timeout",
+    "worker_timeout": "worker timeout",
+}
+_KNOWN_RESULT_TERMINAL_LABELS = frozenset(
+    {"N/A", "t/o", "RAM", "skip", "validation failed", "unsupported", "failed", "error"}
+)
+_POLICY_TERMINAL_DISPLAY_LABEL = re.compile(
+    r"(?:(?:worker|profile|validation) >[0-9]{1,4}(?:\.[0-9]{1,4})?(?:h|s)"
+    r"|>[0-9]{1,4}(?:\.[0-9]{1,4})?(?:h|s)|>[0-9]{1,4}GB"
+    r"|dependency(?: (?:>[0-9]{1,4}(?:\.[0-9]{1,4})?(?:h|s)"
+    r"|>[0-9]{1,4}GB|blocked))?)"
+)
+_COMPACT_OUTCOME_COUNT_LABEL = re.compile(
+    r"[1-9][0-9]* outcomes \[(?P<digest>[0-9a-f]{6})\]"
+)
 
 
 def _chunks(values: Sequence[int], size: int) -> tuple[tuple[int, ...], ...]:
@@ -160,12 +206,30 @@ class JoinedMatrixCell:
 
 
 @dataclass(frozen=True, slots=True)
+class _TerminalOutcome:
+    """One terminal result with identity and color kept separate from its label."""
+
+    identity: str
+    label: str
+    color: str
+
+
+@dataclass(frozen=True, slots=True)
+class _TerminalSummary:
+    """A bounded display label retaining every represented terminal outcome."""
+
+    outcomes: tuple[_TerminalOutcome, ...]
+    label: str
+    color: str
+
+
+@dataclass(frozen=True, slots=True)
 class BestModeWorkload:
     workload: Workload
     baseline: Measurement
     candidate: Measurement
     mode: ExecutionMode | None
-    terminal_label: str | None
+    terminal_label: _TerminalSummary | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -656,11 +720,64 @@ def _unavailable_time(
     return _not_exposed()
 
 
-def _status(measurement: Measurement) -> str:
+def _presentation_outcome(
+    measurement: Measurement,
+) -> tuple[str, str] | None:
+    failure = measurement.get("failure")
+    if not isinstance(failure, Mapping):
+        return None
+    kind = failure.get("kind")
+    message = failure.get("message")
+    if (
+        not isinstance(kind, str)
+        or not kind.startswith(_PRESENTATION_FAILURE_KIND_PREFIX)
+        or not isinstance(message, str)
+        or not message
+    ):
+        return None
+    slug = kind.removeprefix(_PRESENTATION_FAILURE_KIND_PREFIX)
+    if _SAFE_OUTCOME_SLUG.fullmatch(slug) is None:
+        return None
+    return slug, message
+
+
+def _visible_status(measurement: Measurement) -> _TerminalOutcome:
+    """Return a visible label whose classification does not depend on its text."""
+
     status = str(measurement.get("status", ResultStatus.NOT_AVAILABLE.value))
     policy_label = policy_status_label(measurement)
     if policy_label is not None:
-        return r"\matrixstatus{ReportOrange}{" + _tex_escape(policy_label) + "}"
+        policy_state = policy_measurement_state_hint(measurement)
+        display_label = (
+            "dependency"
+            if policy_state
+            in {
+                PolicyMeasurementState.DEPENDENCY,
+                PolicyMeasurementState.RESOURCE_FRONTIER,
+            }
+            else policy_label
+        )
+        return _TerminalOutcome(
+            identity=(
+                f"policy:{policy_state.value}"
+                if policy_state is not None
+                else f"policy-label:{policy_label}"
+            ),
+            label=display_label,
+            color="ReportOrange",
+        )
+    presentation = _presentation_outcome(measurement)
+    if presentation is not None:
+        slug, label = presentation
+        return _TerminalOutcome(
+            identity=f"presentation:{slug}",
+            label=label,
+            color=(
+                "ReportOrange"
+                if slug in _POLICY_PRESENTATION_OUTCOME_SLUGS
+                else "ReportRed"
+            ),
+        )
     labels = {
         ResultStatus.NOT_AVAILABLE.value: "N/A",
         ResultStatus.TIMEOUT.value: "t/o",
@@ -673,6 +790,79 @@ def _status(measurement: Measurement) -> str:
     }
     label = labels.get(status, status)
     color = "ReportMuted" if status == ResultStatus.NOT_AVAILABLE.value else "ReportRed"
+    return _TerminalOutcome(
+        identity=f"result:{status}",
+        label=label,
+        color=color,
+    )
+
+
+def _visible_status_label(measurement: Measurement) -> tuple[str, str]:
+    visible = _visible_status(measurement)
+    return _compact_terminal_display(visible), visible.color
+
+
+def _compact_terminal_display(outcome: _TerminalOutcome) -> str:
+    """Bound hostile/future labels while retaining one stable identity token."""
+
+    identity_kind, _, identity_value = outcome.identity.partition(":")
+    known_presentation = (
+        identity_kind == "presentation"
+        and _KNOWN_PRESENTATION_TERMINAL_LABELS.get(identity_value) == outcome.label
+    )
+    known_result = (
+        identity_kind == "result"
+        and outcome.label in _KNOWN_RESULT_TERMINAL_LABELS
+    )
+    known_policy = (
+        (
+            identity_kind in {"policy", "policy-label"}
+            or (
+                identity_kind == "presentation"
+                and identity_value in _POLICY_PRESENTATION_OUTCOME_SLUGS
+            )
+        )
+        and _POLICY_TERMINAL_DISPLAY_LABEL.fullmatch(outcome.label) is not None
+        and len(outcome.label) <= 18
+    )
+    compact_count = (
+        _COMPACT_OUTCOME_COUNT_LABEL.fullmatch(outcome.label)
+        if identity_kind == "summary"
+        else None
+    )
+    if (
+        known_presentation
+        or known_result
+        or known_policy
+    ):
+        return outcome.label
+    if compact_count is not None:
+        return f"N out.[{compact_count.group('digest')}]"
+    if identity_kind in {"policy", "presentation"} and _SAFE_OUTCOME_SLUG.fullmatch(
+        identity_value
+    ):
+        slug_words = tuple(
+            word for word in re.split(r"[_-]+", identity_value) if word
+        )
+        if len(slug_words) == 1 and len(slug_words[0]) <= 12:
+            return slug_words[0]
+        if 2 <= len(slug_words) <= 3:
+            return " ".join(word[:4] for word in slug_words)
+    digest = hashlib.sha256(
+        f"{outcome.identity}\0{outcome.label}\0{outcome.color}".encode()
+    ).hexdigest()[:_TERMINAL_LABEL_DIGEST_CHARS]
+    if " | " in outcome.label:
+        return f"N out.[{digest}]"
+    prefix = "".join(
+        character
+        for character in outcome.label
+        if character.isascii() and character.isalnum()
+    )[:4]
+    return f"{prefix or 'term'}..{digest}"
+
+
+def _status(measurement: Measurement) -> str:
+    label, color = _visible_status_label(measurement)
     return rf"\matrixstatus{{{color}}}{{{_tex_escape(label)}}}"
 
 
@@ -1693,62 +1883,127 @@ def render_all_matrix_tables(
 
 
 def _canonical_best_mode_terminal_label(
-    labels: Sequence[str | None],
-) -> str | None:
-    """Return one concise label only when every represented outcome is terminal."""
+    terminals: Sequence[_TerminalOutcome | _TerminalSummary | None],
+) -> _TerminalSummary | None:
+    """Return one deterministic, bounded label for represented terminals."""
 
-    if not labels:
+    if not terminals:
         return None
-    canonical: list[str] = []
-    for label in labels:
-        if label is None:
-            return None
-        if label.startswith("dependency"):
-            normalized = ("dependency",)
-        else:
-            normalized = tuple(
-                item.strip()
-                for item in label.replace("|", "/").split("/")
-                if item.strip()
-            )
-            if not normalized or any(
-                item not in {">2h", "dependency"}
-                and not (
-                    item.startswith(">")
-                    and item.endswith("GB")
-                    and item[1:-2].isdigit()
-                )
-                for item in normalized
+    represented: list[_TerminalOutcome] = []
+    for terminal in terminals:
+        if terminal is None:
+            continue
+        outcomes = (
+            terminal.outcomes
+            if isinstance(terminal, _TerminalSummary)
+            else (terminal,)
+        )
+        for outcome in outcomes:
+            key = (outcome.identity, outcome.label, outcome.color)
+            if all(
+                (item.identity, item.label, item.color) != key
+                for item in represented
             ):
-                return None
-        for item in normalized:
-            if item not in canonical:
-                canonical.append(item)
+                represented.append(outcome)
 
-    def order(item: str) -> tuple[int, int]:
-        if item == ">2h":
-            return (0, 0)
-        if item.endswith("GB"):
-            return (1, int(item[1:-2]))
-        return (2, 0)
+    def order(outcome: _TerminalOutcome) -> tuple[int, float, str, str]:
+        time_cap = (
+            _TIME_CAP_LABEL.fullmatch(outcome.label)
+            if outcome.color == "ReportOrange"
+            else None
+        )
+        if time_cap is not None:
+            seconds = float(time_cap.group("value")) * (
+                3600.0 if time_cap.group("unit") == "h" else 1.0
+            )
+            return (0, seconds, outcome.label, outcome.identity)
+        ram_cap = (
+            _RAM_CAP_LABEL.fullmatch(outcome.label)
+            if outcome.color == "ReportOrange"
+            else None
+        )
+        if ram_cap is not None:
+            return (1, float(ram_cap.group("value")), outcome.label, outcome.identity)
+        if outcome.color == "ReportOrange" and outcome.label == "dependency":
+            return (2, 0.0, outcome.label, outcome.identity)
+        return (3, 0.0, outcome.label, outcome.identity)
 
-    return " | ".join(sorted(canonical, key=order)) or None
+    outcomes = tuple(sorted(represented, key=order))
+    if not outcomes:
+        return None
+    labels = tuple(_compact_terminal_display(outcome) for outcome in outcomes)
+    label = " | ".join(labels)
+    if len(label) > _MAX_BEST_MODE_TERMINAL_LABEL_CHARS:
+        separators = 3 * (len(labels) - 1)
+        item_budget = max(
+            _TERMINAL_LABEL_DIGEST_CHARS + 3,
+            (_MAX_BEST_MODE_TERMINAL_LABEL_CHARS - separators) // len(labels),
+        )
+        compacted: list[str] = []
+        for outcome in outcomes:
+            if len(outcome.label) <= item_budget:
+                compacted.append(outcome.label)
+                continue
+            digest = hashlib.sha256(
+                f"{outcome.identity}\0{outcome.label}".encode()
+            ).hexdigest()[:_TERMINAL_LABEL_DIGEST_CHARS]
+            prefix_chars = item_budget - len(digest) - 2
+            compacted.append(f"{outcome.label[:prefix_chars]}..{digest}")
+        label = " | ".join(compacted)
+    if len(label) > _MAX_BEST_MODE_TERMINAL_LABEL_CHARS:
+        identity_digest = hashlib.sha256(
+            "\0".join(
+                f"{outcome.identity}\0{outcome.label}\0{outcome.color}"
+                for outcome in outcomes
+            ).encode()
+        ).hexdigest()[:_TERMINAL_LABEL_DIGEST_CHARS]
+        label = f"{len(outcomes)} outcomes [{identity_digest}]"
+    color = (
+        "ReportOrange"
+        if all(outcome.color == "ReportOrange" for outcome in outcomes)
+        else "ReportRed"
+    )
+    return _TerminalSummary(outcomes=outcomes, label=label, color=color)
+
+
+def _terminal_measurement_label(measurement: Measurement) -> _TerminalOutcome | None:
+    status = measurement.get("status")
+    if status in {ResultStatus.NOT_AVAILABLE.value, ResultStatus.OK.value}:
+        return None
+    return _visible_status(measurement)
 
 
 def _best_mode_terminal_label(
     measurements: Sequence[Measurement],
-) -> str | None:
-    """Return one fail-closed summary of an all-terminal candidate set."""
+) -> _TerminalSummary | None:
+    """Return one fail-closed summary when no candidate mode succeeded."""
 
     return _canonical_best_mode_terminal_label(
-        tuple(policy_status_label(measurement) for measurement in measurements)
+        tuple(_terminal_measurement_label(measurement) for measurement in measurements)
     )
 
 
 def _best_mode_terminal_status(joined: BestModeWorkload) -> str:
     if joined.terminal_label is None:
         return _status(joined.candidate)
-    return r"\matrixstatus{ReportOrange}{" + _tex_escape(joined.terminal_label) + "}"
+    display_label = _compact_terminal_summary_display(joined.terminal_label)
+    return (
+        rf"\matrixstatus{{{joined.terminal_label.color}}}"
+        rf"{{{_tex_escape(display_label)}}}"
+    )
+
+
+def _compact_terminal_summary_display(summary: _TerminalSummary) -> str:
+    if len(summary.outcomes) == 1:
+        return _compact_terminal_display(summary.outcomes[0])
+    return _compact_terminal_display(
+        _TerminalOutcome(
+            identity="summary:"
+            + "|".join(outcome.identity for outcome in summary.outcomes),
+            label=summary.label,
+            color=summary.color,
+        )
+    )
 
 
 def _best_mode_generation_comparison_layout(
@@ -1893,13 +2148,13 @@ def _best_mode_comparison_columns(
 
 def _best_mode_summary_terminal_label(
     joined: BestModeWorkload,
-) -> str | None:
+) -> _TerminalOutcome | _TerminalSummary | None:
     if joined.mode is None:
         return joined.terminal_label
     if not _ok(joined.baseline):
-        return policy_status_label(joined.baseline)
+        return _terminal_measurement_label(joined.baseline)
     if not _ok(joined.candidate):
-        return policy_status_label(joined.candidate)
+        return _terminal_measurement_label(joined.candidate)
     return None
 
 
@@ -2045,7 +2300,11 @@ def _best_mode_summary_pair(
             tuple(_best_mode_summary_terminal_label(item) for item in joined)
         )
         if terminal_label is not None:
-            return r"\matrixstatus{ReportOrange}{" + _tex_escape(terminal_label) + "}"
+            display_label = _compact_terminal_summary_display(terminal_label)
+            return (
+                rf"\matrixstatus{{{terminal_label.color}}}"
+                rf"{{{_tex_escape(display_label)}}}"
+            )
         return r"\matrixna{ReportMuted}"
     return _ratio_statistics_tex(
         tuple(

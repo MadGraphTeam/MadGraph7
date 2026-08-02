@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 import tools.performance_report.manual_campaign as manual_campaign
+from tools.performance_report.artifacts import LockCancelledError
 from tools.performance_report.cache import empty_measurement
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.manual_campaign import (
@@ -46,6 +47,7 @@ from tools.performance_report.manual_campaign import (
 )
 from tools.performance_report.manual_campaign import main as campaign_main
 from tools.performance_report.models import (
+    CellSpec,
     ExecutionMode,
     ModelKey,
     ResultStatus,
@@ -56,6 +58,7 @@ from tools.performance_report.publication import (
     portable_publication_value,
 )
 from tools.performance_report.publisher import _compile_pdf
+from tools.performance_report.scheduler import CellOutcome, _CoordinationDeferred
 from tools.performance_report.service import ReportPaths, ReportService
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -1312,14 +1315,1440 @@ def test_dashboard_key_aliases_clamp_scroll_ignore_noise_and_escape() -> None:
     assert state.interrupted
 
 
-def _manual_service(tmp_path: Path) -> ReportService:
-    return ReportService(
+def _manual_service(
+    tmp_path: Path,
+    *,
+    initialize_source_marker: bool = True,
+) -> ReportService:
+    service = ReportService(
         ReportPaths.from_repo(
             ROOT,
             profile="macbook_M3_manual",
             artifact_root=tmp_path / "artifacts",
             coordination_root=tmp_path / "coordination",
         )
+    )
+    if initialize_source_marker:
+        manual_campaign.update_source_marker(
+            service,
+            manual_campaign.ReportSourceIdentity("a" * 40, "b" * 40, ()),
+        )
+    return service
+
+
+def _presentation_test_cell() -> CellSpec:
+    return next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+        and cell.workload is Workload.CONTRACTED
+        and REPORT_CATALOG.static_na_reason(cell) is None
+    )
+
+
+def _presentation_outcome(
+    cell_id: str,
+    *,
+    status: str,
+    completed_at_ns: int = 1,
+    invocation_id: str = "presentation-test",
+    source_revision: str = "a" * 40,
+    profile: str = manual_campaign.PROFILE,
+    attempt_id: str | None = None,
+) -> manual_campaign.LightweightPresentationOutcome:
+    return manual_campaign.LightweightPresentationOutcome(
+        profile=profile,
+        cell_id=cell_id,
+        source_revision=source_revision,
+        campaign_invocation_id=invocation_id,
+        attempt_id=attempt_id,
+        status=status,
+        label=manual_campaign._humanized_outcome_label(status),
+        completed_at_ns=completed_at_ns,
+    )
+
+
+def _valid_presentation_current(
+    cell_id: str,
+    tmp_path: Path,
+) -> LightweightCurrent:
+    measurement = empty_measurement()
+    measurement.update(
+        {
+            "status": ResultStatus.OK.value,
+            "generation_seconds": 1.0,
+            "wall_seconds_per_point": 1.0e-6,
+            "execution_seconds_per_point": 8.0e-7,
+            "matrix_element": 1.0,
+            "sample_count": 5,
+            "standard_error_seconds_per_point": 1.0e-9,
+            "relative_standard_error": 1.0e-3,
+            "artifact": {"digest": "presentation-test"},
+            "validation": {"status": "ok", "direct_agreements": []},
+            "resources": {"peak_rss_bytes": 1},
+            "provenance": {"method": "original-amplicol-generated-library"},
+            "failure": None,
+        }
+    )
+    return LightweightCurrent(
+        cell_id=cell_id,
+        attempt_id="00000000-0000-4000-8000-000000000001",
+        result_path=tmp_path / "result.json",
+        result=measurement,
+        complete=True,
+        reusable=True,
+        reason="reusable",
+    )
+
+
+def _capped_presentation_current(
+    cell_id: str,
+    tmp_path: Path,
+) -> LightweightCurrent:
+    measurement = manual_campaign.failure_measurement(
+        ResultStatus.TIMEOUT,
+        "generation exceeded the configured limit",
+    )
+    measurement["provenance"] = {
+        "manual_campaign": {"generation_limit_seconds": 3600.0}
+    }
+    return LightweightCurrent(
+        cell_id=cell_id,
+        attempt_id="00000000-0000-4000-8000-000000000002",
+        result_path=tmp_path / "capped-result.json",
+        result=measurement,
+        complete=True,
+        reusable=True,
+        reason="reusable terminal cap",
+    )
+
+
+def _cache_measurement(
+    caches: dict[str, dict[str, object]],
+    *,
+    dataset_id: str,
+    cell_id: str,
+) -> dict[str, object]:
+    entries = caches[f"{dataset_id}.json"]["entries"]
+    assert isinstance(entries, list)
+    entry = next(item for item in entries if item["cell_id"] == cell_id)
+    measurement = entry["measurement"]
+    assert isinstance(measurement, dict)
+    return measurement
+
+
+def test_presentation_failure_overlay_never_replaces_a_valid_current(
+    tmp_path: Path,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    failure = _presentation_outcome(cell.cell_id, status="validation_failed")
+
+    failure_caches, merged = _merge_lightweight_snapshot(
+        service,
+        {},
+        {cell.cell_id: failure},
+    )
+    assert merged == 1
+    failure_measurement = _cache_measurement(
+        failure_caches,
+        dataset_id=cell.dataset_id,
+        cell_id=cell.cell_id,
+    )
+    assert failure_measurement["status"] == ResultStatus.VALIDATION_FAILED.value
+    assert failure_measurement["failure"] == {
+        "kind": "ManualCampaignOutcome:validation_failed",
+        "message": "validation failed",
+    }
+
+    current = _valid_presentation_current(cell.cell_id, tmp_path)
+    success_caches, merged = _merge_lightweight_snapshot(
+        service,
+        {cell.cell_id: current},
+        {
+            cell.cell_id: _presentation_outcome(
+                cell.cell_id,
+                status="error",
+                completed_at_ns=2,
+            )
+        },
+    )
+    assert merged == 1
+    assert (
+        _cache_measurement(
+            success_caches,
+            dataset_id=cell.dataset_id,
+            cell_id=cell.cell_id,
+        )["status"]
+        == ResultStatus.OK.value
+    )
+
+
+def test_presentation_success_tombstone_suppresses_failure_fallback(
+    tmp_path: Path,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    manual_campaign._publish_presentation_outcome(
+        service,
+        _presentation_outcome(
+            cell.cell_id,
+            status="error",
+            completed_at_ns=1,
+        ),
+    )
+    tombstone = _presentation_outcome(
+        cell.cell_id,
+        status="ok",
+        completed_at_ns=2,
+    )
+    manual_campaign._publish_presentation_outcome(service, tombstone)
+    observed = manual_campaign.lightweight_presentation_outcome(
+        service,
+        cell,
+        source_revision="a" * 40,
+    )
+    assert observed == tombstone
+
+    caches, merged = _merge_lightweight_snapshot(
+        service,
+        {},
+        {cell.cell_id: observed},
+    )
+
+    assert merged == 0
+    assert _cache_measurement(
+        caches,
+        dataset_id=cell.dataset_id,
+        cell_id=cell.cell_id,
+    ) == empty_measurement()
+
+
+def test_presentation_outcome_publication_has_deterministic_last_writer(
+    tmp_path: Path,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    later_tie_breaker = _presentation_outcome(
+        cell.cell_id,
+        status="error",
+        completed_at_ns=10,
+        invocation_id="invocation-b",
+    )
+    earlier_tie_breaker = _presentation_outcome(
+        cell.cell_id,
+        status="validation_failed",
+        completed_at_ns=10,
+        invocation_id="invocation-a",
+    )
+    oldest = _presentation_outcome(
+        cell.cell_id,
+        status="blocked_dependency",
+        completed_at_ns=9,
+        invocation_id="invocation-z",
+    )
+
+    manual_campaign._publish_presentation_outcome(service, later_tie_breaker)
+    manual_campaign._publish_presentation_outcome(service, oldest)
+    manual_campaign._publish_presentation_outcome(service, earlier_tie_breaker)
+
+    observed = manual_campaign.lightweight_presentation_outcome(
+        service,
+        cell,
+        source_revision="a" * 40,
+    )
+    assert observed == later_tie_breaker
+
+
+def test_strict_source_marker_rejects_late_old_revision_writer(
+    tmp_path: Path,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    old = _presentation_outcome(
+        cell.cell_id,
+        status="validation_failed",
+        completed_at_ns=300,
+        source_revision="a" * 40,
+    )
+    manual_campaign._publish_presentation_outcome(service, old)
+    manual_campaign.update_source_marker(
+        service,
+        manual_campaign.ReportSourceIdentity("b" * 40, "c" * 40, ()),
+    )
+    active = _presentation_outcome(
+        cell.cell_id,
+        status="error",
+        completed_at_ns=200,
+        source_revision="b" * 40,
+    )
+
+    manual_campaign._publish_presentation_outcome(service, active)
+    manual_campaign._publish_presentation_outcome(
+        service,
+        _presentation_outcome(
+            cell.cell_id,
+            status="validation_failed",
+            completed_at_ns=400,
+            source_revision="a" * 40,
+        ),
+    )
+
+    assert manual_campaign.lightweight_presentation_outcome(
+        service,
+        cell,
+        source_revision="b" * 40,
+    ) == active
+
+
+def test_cross_revision_marker_retains_global_outcome_ordering(
+    tmp_path: Path,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    manual_campaign.update_source_marker(
+        service,
+        manual_campaign.ReportSourceIdentity("b" * 40, "c" * 40, ()),
+        continue_across_revisions=True,
+    )
+    active = _presentation_outcome(
+        cell.cell_id,
+        status="error",
+        completed_at_ns=200,
+        source_revision="b" * 40,
+    )
+    historical = _presentation_outcome(
+        cell.cell_id,
+        status="validation_failed",
+        completed_at_ns=300,
+        source_revision="a" * 40,
+    )
+
+    manual_campaign._publish_presentation_outcome(service, active)
+    manual_campaign._publish_presentation_outcome(service, historical)
+
+    assert manual_campaign.lightweight_presentation_outcome(
+        service,
+        cell,
+        source_revision="b" * 40,
+        accept_historical_source=True,
+    ) == historical
+
+
+def test_presentation_publication_requires_a_readable_source_marker(
+    tmp_path: Path,
+) -> None:
+    service = _manual_service(tmp_path, initialize_source_marker=False)
+    cell = _presentation_test_cell()
+    outcome = _presentation_outcome(cell.cell_id, status="error")
+
+    with pytest.raises(ManualCampaignError, match="source marker is unreadable"):
+        manual_campaign._publish_presentation_outcome(service, outcome)
+
+    marker = service.paths.coordination_root / "manual-source.json"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("{broken", encoding="utf-8")
+    with pytest.raises(ManualCampaignError, match="source marker is unreadable"):
+        manual_campaign._publish_presentation_outcome(service, outcome)
+
+
+def test_presentation_outcome_reader_filters_source_profile_and_malformed_data(
+    tmp_path: Path,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    path = manual_campaign._presentation_outcome_path(service, cell.cell_id)
+    path.parent.mkdir(parents=True)
+    historical = _presentation_outcome(
+        cell.cell_id,
+        status="error",
+        source_revision="a" * 40,
+    )
+    path.write_text(json.dumps(historical.as_dict()), encoding="utf-8")
+
+    assert (
+        manual_campaign.lightweight_presentation_outcome(
+            service,
+            cell,
+            source_revision="b" * 40,
+        )
+        is None
+    )
+    assert (
+        manual_campaign.lightweight_presentation_outcome(
+            service,
+            cell,
+            source_revision="b" * 40,
+            accept_historical_source=True,
+        )
+        == historical
+    )
+
+    wrong_profile = historical.as_dict()
+    wrong_profile["profile"] = "some_other_profile"
+    path.write_text(json.dumps(wrong_profile), encoding="utf-8")
+    assert (
+        manual_campaign.lightweight_presentation_outcome(
+            service,
+            cell,
+            source_revision="a" * 40,
+        )
+        is None
+    )
+
+    path.write_text('{"schema":"truncated"', encoding="utf-8")
+    assert (
+        manual_campaign.lightweight_presentation_outcome(
+            service,
+            cell,
+            source_revision="a" * 40,
+        )
+        is None
+    )
+
+
+def test_presentation_outcome_reader_rejects_timestamp_above_signed_64_bit(
+    tmp_path: Path,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    path = manual_campaign._presentation_outcome_path(service, cell.cell_id)
+    path.parent.mkdir(parents=True)
+    malformed = _presentation_outcome(cell.cell_id, status="error").as_dict()
+    malformed["completed_at_ns"] = (1 << 63)
+    path.write_text(json.dumps(malformed), encoding="utf-8")
+
+    assert (
+        manual_campaign.lightweight_presentation_outcome(
+            service,
+            cell,
+            source_revision="a" * 40,
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("campaign_invocation_id", "campaign-λ"),
+        ("label", "error 🚫"),
+    ),
+)
+def test_presentation_outcome_parser_rejects_printable_non_ascii_metadata(
+    field: str,
+    value: str,
+) -> None:
+    cell = _presentation_test_cell()
+    malformed = _presentation_outcome(cell.cell_id, status="error").as_dict()
+    assert value.isprintable()
+    assert not value.isascii()
+    malformed[field] = value
+
+    assert (
+        manual_campaign._parse_presentation_outcome(
+            malformed,
+            expected_profile=manual_campaign.PROFILE,
+            expected_cell_id=cell.cell_id,
+            source_revision="a" * 40,
+            accept_historical_source=False,
+        )
+        is None
+    )
+
+
+def test_started_event_drops_stale_identity_before_generic_failure_overlay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    current = _capped_presentation_current(cell.cell_id, tmp_path)
+    worker = WorkerView(
+        cell.cell_id,
+        status="generation_limit",
+        attempt_id=current.attempt_id,
+        log_path="stale-worker.log",
+        progress_path="stale-progress.jsonl",
+        progress_completed=9,
+        progress_total=10,
+        progress_message="stale progress",
+        progress_task_id="stale-task",
+        progress_details={"stale": True},
+        log_tail=["stale cap diagnostics"],
+    )
+    state = DashboardState(
+        instance_id="new-invocation",
+        selected_ids=(cell.cell_id,),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        source_revision="a" * 40,
+        workers={cell.cell_id: worker},
+    )
+    lease = LeaseManager(service, state)
+    monkeypatch.setattr(
+        manual_campaign,
+        "lightweight_current",
+        lambda *_args, **_kwargs: current,
+    )
+
+    lease.observe({"event": "started", "cell_id": cell.cell_id})
+
+    assert worker.attempt_id is None
+    assert worker.log_path is None
+    assert worker.progress_path is None
+    assert worker.progress_completed is None
+    assert worker.progress_total is None
+    assert worker.progress_message == ""
+    assert worker.progress_task_id is None
+    assert worker.progress_details == {}
+    assert worker.log_tail == []
+
+    lease.observe(
+        {
+            "event": "finished",
+            "cell_id": cell.cell_id,
+            "status": "error",
+            "detail": "generic worker crash without attempt records",
+            "completed_at_ns": 7,
+        }
+    )
+    observed = manual_campaign.lightweight_presentation_outcome(
+        service,
+        cell,
+        source_revision="a" * 40,
+    )
+    assert observed is not None
+    assert observed.status == "error"
+    assert observed.attempt_id is None
+
+    caches, merged = _merge_lightweight_snapshot(
+        service,
+        {cell.cell_id: current},
+        {cell.cell_id: observed},
+    )
+    assert merged == 1
+    measurement = _cache_measurement(
+        caches,
+        dataset_id=cell.dataset_id,
+        cell_id=cell.cell_id,
+    )
+    assert measurement["status"] == ResultStatus.ERROR.value
+    assert measurement["failure"] == {
+        "kind": "ManualCampaignOutcome:error",
+        "message": "error",
+    }
+
+
+@pytest.mark.parametrize("recycle_status", ("reused", "skipped-current"))
+def test_non_ok_recycle_does_not_erase_newer_error_outcome(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    recycle_status: str,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    current = _capped_presentation_current(cell.cell_id, tmp_path)
+    error = _presentation_outcome(
+        cell.cell_id, status="error", completed_at_ns=2
+    )
+    manual_campaign._publish_presentation_outcome(service, error)
+    monkeypatch.setattr(
+        manual_campaign,
+        "lightweight_current",
+        lambda *_args, **_kwargs: current,
+    )
+    lease = LeaseManager(
+        service,
+        DashboardState(
+            instance_id="cap-recycle",
+            selected_ids=(cell.cell_id,),
+            recycled_ids=set(),
+            static_na_ids=set(),
+            source_revision="a" * 40,
+        ),
+    )
+
+    lease.observe(
+        {
+            "event": "finished",
+            "cell_id": cell.cell_id,
+            "status": recycle_status,
+            "detail": "ordinary terminal-current recycle",
+            "completed_at_ns": 3,
+        }
+    )
+
+    observed = manual_campaign.lightweight_presentation_outcome(
+        service,
+        cell,
+        source_revision="a" * 40,
+    )
+    assert observed == error
+
+
+@pytest.mark.parametrize("existing_success", (False, True))
+def test_front_end_ok_recycle_does_not_write_without_existing_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    existing_success: bool,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    current = _valid_presentation_current(cell.cell_id, tmp_path)
+    if existing_success:
+        manual_campaign._publish_presentation_outcome(
+            service,
+            _presentation_outcome(cell.cell_id, status="reused"),
+        )
+    writes: list[manual_campaign.LightweightPresentationOutcome] = []
+    publish = manual_campaign._publish_presentation_outcome
+
+    def capture(
+        target: ReportService,
+        outcome: manual_campaign.LightweightPresentationOutcome,
+        **kwargs: object,
+    ) -> bool:
+        written = publish(target, outcome, **kwargs)
+        if written:
+            writes.append(outcome)
+        return written
+
+    monkeypatch.setattr(manual_campaign, "_publish_presentation_outcome", capture)
+    warnings = manual_campaign._publish_recycled_presentation_outcomes(
+        service,
+        {cell.cell_id: current},
+        (cell.cell_id,),
+        source_revision="a" * 40,
+        campaign_invocation_id="passive-recycle",
+    )
+
+    assert warnings == ()
+    assert writes == []
+    observed = manual_campaign.lightweight_presentation_outcome(
+        service,
+        cell,
+        source_revision="a" * 40,
+    )
+    if existing_success:
+        assert observed is not None
+        assert observed.status == "reused"
+    else:
+        assert observed is None
+
+
+@pytest.mark.parametrize(
+    ("status", "existing_status", "expected_status", "expected_writes"),
+    (
+        ("ok", None, None, 0),
+        ("reused", "reused", "reused", 0),
+        ("skipped-current", "error", "skipped-current", 1),
+    ),
+)
+def test_lease_success_with_resolved_ok_only_suppresses_existing_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    status: str,
+    existing_status: str | None,
+    expected_status: str | None,
+    expected_writes: int,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    current = _valid_presentation_current(cell.cell_id, tmp_path)
+    if existing_status is not None:
+        manual_campaign._publish_presentation_outcome(
+            service,
+            _presentation_outcome(cell.cell_id, status=existing_status),
+        )
+    monkeypatch.setattr(
+        manual_campaign,
+        "lightweight_current",
+        lambda *_args, **_kwargs: current,
+    )
+    writes: list[manual_campaign.LightweightPresentationOutcome] = []
+    publish = manual_campaign._publish_presentation_outcome
+
+    def capture(
+        target: ReportService,
+        outcome: manual_campaign.LightweightPresentationOutcome,
+        **kwargs: object,
+    ) -> bool:
+        written = publish(target, outcome, **kwargs)
+        if written:
+            writes.append(outcome)
+        return written
+
+    monkeypatch.setattr(manual_campaign, "_publish_presentation_outcome", capture)
+    lease = LeaseManager(
+        service,
+        DashboardState(
+            instance_id="finished-ok",
+            selected_ids=(cell.cell_id,),
+            recycled_ids=set(),
+            static_na_ids=set(),
+            source_revision="a" * 40,
+        ),
+    )
+
+    lease.observe(
+        {
+            "event": "finished",
+            "cell_id": cell.cell_id,
+            "status": status,
+            "detail": "resolved reusable OK current",
+            "completed_at_ns": 2,
+        }
+    )
+
+    assert len(writes) == expected_writes
+    observed = manual_campaign.lightweight_presentation_outcome(
+        service,
+        cell,
+        source_revision="a" * 40,
+    )
+    if expected_status is None:
+        assert observed is None
+    else:
+        assert observed is not None
+        assert observed.status == expected_status
+        if expected_writes:
+            assert observed.attempt_id == current.attempt_id
+
+
+def test_cross_revision_success_tombstones_historical_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    manual_campaign._publish_presentation_outcome(
+        service,
+        _presentation_outcome(
+            cell.cell_id,
+            status="error",
+            completed_at_ns=1,
+            source_revision="a" * 40,
+        ),
+    )
+    manual_campaign.update_source_marker(
+        service,
+        manual_campaign.ReportSourceIdentity("b" * 40, "c" * 40, ()),
+        continue_across_revisions=True,
+    )
+    current = _valid_presentation_current(cell.cell_id, tmp_path)
+    monkeypatch.setattr(
+        manual_campaign,
+        "lightweight_current",
+        lambda *_args, **_kwargs: current,
+    )
+    lease = LeaseManager(
+        service,
+        DashboardState(
+            instance_id="cross-revision-success",
+            selected_ids=(cell.cell_id,),
+            recycled_ids=set(),
+            static_na_ids=set(),
+            source_revision="b" * 40,
+        ),
+    )
+
+    lease.observe(
+        {
+            "event": "finished",
+            "cell_id": cell.cell_id,
+            "status": "ok",
+            "detail": "new revision succeeded",
+            "completed_at_ns": 2,
+        }
+    )
+
+    tombstone = manual_campaign.lightweight_presentation_outcome(
+        service,
+        cell,
+        source_revision="b" * 40,
+        accept_historical_source=True,
+    )
+    assert tombstone is not None
+    assert tombstone.successful
+    assert tombstone.source_revision == "b" * 40
+    caches, merged = _merge_lightweight_snapshot(
+        service,
+        {},
+        {cell.cell_id: tombstone},
+    )
+    assert merged == 0
+    assert (
+        _cache_measurement(
+            caches,
+            dataset_id=cell.dataset_id,
+            cell_id=cell.cell_id,
+        )["status"]
+        == ResultStatus.NOT_AVAILABLE.value
+    )
+
+
+def test_front_end_ok_recycle_skips_immediately_when_cell_lock_is_busy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    current = _valid_presentation_current(cell.cell_id, tmp_path)
+    calls: list[tuple[str, float | None]] = []
+    writes: list[manual_campaign.LightweightPresentationOutcome] = []
+
+    class BusyLock:
+        def __enter__(self) -> None:
+            raise manual_campaign.LockTimeoutError("busy")
+
+        def __exit__(
+            self,
+            _error_type: object,
+            _error: object,
+            _traceback: object,
+        ) -> None:
+            return None
+
+    def busy_lock(name: str, **kwargs: object) -> BusyLock:
+        timeout = kwargs.get("timeout")
+        calls.append((name, timeout if isinstance(timeout, float) else None))
+        return BusyLock()
+
+    monkeypatch.setattr(service.store, "named_lock", busy_lock)
+    monkeypatch.setattr(
+        manual_campaign,
+        "_publish_presentation_outcome",
+        lambda _service, outcome, **_kwargs: writes.append(outcome),
+    )
+
+    warnings = manual_campaign._publish_recycled_presentation_outcomes(
+        service,
+        {cell.cell_id: current},
+        (cell.cell_id,),
+        source_revision="a" * 40,
+        campaign_invocation_id="no-ledger",
+    )
+
+    assert warnings == ()
+    assert calls == [(f"campaign-cell-{cell.cell_id}", 0.0)]
+    assert writes == []
+
+
+def test_front_end_recycle_reconciles_outcome_under_campaign_cell_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    current = _valid_presentation_current(cell.cell_id, tmp_path)
+    manual_campaign._publish_presentation_outcome(
+        service,
+        _presentation_outcome(cell.cell_id, status="error"),
+    )
+    campaign_lock = f"campaign-cell-{cell.cell_id}"
+    held: list[str] = []
+
+    class TrackingLock:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def __enter__(self) -> None:
+            held.append(self.name)
+
+        def __exit__(
+            self,
+            _error_type: object,
+            _error: object,
+            _traceback: object,
+        ) -> None:
+            assert held.pop() == self.name
+
+    monkeypatch.setattr(
+        service.store,
+        "named_lock",
+        lambda name, **_kwargs: TrackingLock(name),
+    )
+    read = manual_campaign.lightweight_presentation_outcome
+    publish = manual_campaign._publish_presentation_outcome
+    operations: list[tuple[str, bool]] = []
+
+    def tracked_read(*args: object, **kwargs: object):
+        operations.append(("read", campaign_lock in held))
+        return read(*args, **kwargs)
+
+    def tracked_publish(*args: object, **kwargs: object) -> None:
+        assert campaign_lock in held
+        operations.append(("write", True))
+        publish(*args, **kwargs)
+
+    monkeypatch.setattr(
+        manual_campaign,
+        "lightweight_presentation_outcome",
+        tracked_read,
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "_publish_presentation_outcome",
+        tracked_publish,
+    )
+
+    warnings = manual_campaign._publish_recycled_presentation_outcomes(
+        service,
+        {cell.cell_id: current},
+        (cell.cell_id,),
+        source_revision="a" * 40,
+        campaign_invocation_id="lock-order",
+    )
+
+    assert warnings == ()
+    assert operations == [("read", False), ("write", True)]
+    assert held == []
+
+
+def test_front_end_recycle_honours_marker_switch_to_continuation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    manual_campaign._publish_presentation_outcome(
+        service,
+        _presentation_outcome(
+            cell.cell_id,
+            status="error",
+            source_revision="a" * 40,
+        ),
+    )
+    source_b = manual_campaign.ReportSourceIdentity("b" * 40, "c" * 40, ())
+    manual_campaign.update_source_marker(service, source_b)
+    current = _valid_presentation_current(cell.cell_id, tmp_path)
+    read = manual_campaign.lightweight_presentation_outcome
+    switched = False
+
+    def read_then_switch(*args: object, **kwargs: object):
+        nonlocal switched
+        outcome = read(*args, **kwargs)
+        if not switched:
+            switched = True
+            manual_campaign.update_source_marker(
+                service,
+                source_b,
+                continue_across_revisions=True,
+            )
+        return outcome
+
+    monkeypatch.setattr(
+        manual_campaign,
+        "lightweight_presentation_outcome",
+        read_then_switch,
+    )
+
+    warnings = manual_campaign._publish_recycled_presentation_outcomes(
+        service,
+        {cell.cell_id: current},
+        (cell.cell_id,),
+        source_revision=source_b.revision,
+        campaign_invocation_id="marker-switch",
+        accept_historical_source=False,
+    )
+
+    assert warnings == ()
+    outcome = read(
+        service,
+        cell,
+        source_revision=source_b.revision,
+        accept_historical_source=True,
+    )
+    assert outcome is not None
+    assert outcome.successful
+    assert outcome.source_revision == source_b.revision
+
+
+def _stub_run_campaign_boundaries(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    currents: dict[str, LightweightCurrent],
+    planned: tuple[manual_campaign.PlannedCell, ...],
+    outcomes: tuple[CellOutcome, ...] = (),
+) -> None:
+    monkeypatch.setattr(
+        manual_campaign,
+        "lightweight_currents",
+        lambda *_args, **_kwargs: dict(currents),
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "plan_campaign",
+        lambda *_args, **_kwargs: planned,
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "_bind_original_amplicol_if_required",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "require_measurement_ready",
+        lambda _source: None,
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "_publish_campaign_summary_ids",
+        lambda *_args, **_kwargs: (tmp_path / "summary", {}),
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "_print_campaign_summary_ids",
+        lambda *_args, **_kwargs: None,
+    )
+
+    class StubScheduler:
+        def __init__(self, _service: ReportService, *, settings: object) -> None:
+            self.settings = settings
+
+        def run(
+            self,
+            observed: tuple[manual_campaign.PlannedCell, ...],
+        ) -> manual_campaign.CampaignResult:
+            assert tuple(observed) == planned
+            return manual_campaign.CampaignResult(tuple(observed), outcomes)
+
+    monkeypatch.setattr(manual_campaign, "CampaignScheduler", StubScheduler)
+
+
+@pytest.mark.parametrize("mixed", (False, True))
+def test_run_campaign_recycle_paths_replace_failure_with_known_ok_tombstone(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mixed: bool,
+) -> None:
+    service = _manual_service(tmp_path)
+    measurable = tuple(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if REPORT_CATALOG.static_na_reason(cell) is None
+    )
+    recycled_cell = measurable[0]
+    work_cell = measurable[1]
+    current = _valid_presentation_current(recycled_cell.cell_id, tmp_path)
+    manual_campaign._publish_presentation_outcome(
+        service,
+        _presentation_outcome(recycled_cell.cell_id, status="error"),
+    )
+    planned = (
+        (
+            manual_campaign.PlannedCell(
+                work_cell,
+                dependency=False,
+                baseline_cell_id=None,
+                rank=1,
+            ),
+        )
+        if mixed
+        else ()
+    )
+    outcomes = (
+        (CellOutcome(work_cell.cell_id, "ok", "completed"),) if mixed else ()
+    )
+    _stub_run_campaign_boundaries(
+        monkeypatch,
+        tmp_path,
+        currents={recycled_cell.cell_id: current},
+        planned=planned,
+        outcomes=outcomes,
+    )
+    arguments = _parse("run", "--no-dashboard")
+    source = manual_campaign.ReportSourceIdentity("a" * 40, "b" * 40, ())
+
+    return_code = manual_campaign._run_campaign(
+        arguments,
+        repo_root=ROOT,
+        service=service,
+        source=source,
+        cells=(recycled_cell, work_cell) if mixed else (recycled_cell,),
+        palette=manual_campaign.Palette(False),
+    )
+
+    assert return_code == 0
+    observed = manual_campaign.lightweight_presentation_outcome(
+        service,
+        recycled_cell,
+        source_revision=source.revision,
+    )
+    assert observed is not None
+    assert observed.status == "reused"
+    assert observed.attempt_id == current.attempt_id
+
+
+def test_run_campaign_recycled_cap_does_not_erase_newer_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    current = _capped_presentation_current(cell.cell_id, tmp_path)
+    error = _presentation_outcome(cell.cell_id, status="error")
+    manual_campaign._publish_presentation_outcome(service, error)
+    _stub_run_campaign_boundaries(
+        monkeypatch,
+        tmp_path,
+        currents={cell.cell_id: current},
+        planned=(),
+    )
+
+    return_code = manual_campaign._run_campaign(
+        _parse("run", "--no-dashboard"),
+        repo_root=ROOT,
+        service=service,
+        source=manual_campaign.ReportSourceIdentity("a" * 40, "b" * 40, ()),
+        cells=(cell,),
+        palette=manual_campaign.Palette(False),
+    )
+
+    assert return_code == 0
+    assert (
+        manual_campaign.lightweight_presentation_outcome(
+            service,
+            cell,
+            source_revision="a" * 40,
+        )
+        == error
+    )
+
+
+def test_catalog_static_na_takes_precedence_over_presentation_outcome(
+    tmp_path: Path,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if REPORT_CATALOG.static_na_reason(cell) is not None
+    )
+    caches, merged = _merge_lightweight_snapshot(
+        service,
+        {},
+        {cell.cell_id: _presentation_outcome(cell.cell_id, status="error")},
+    )
+
+    assert merged == 0
+    assert _cache_measurement(
+        caches,
+        dataset_id=cell.dataset_id,
+        cell_id=cell.cell_id,
+    ) == empty_measurement()
+
+
+@pytest.mark.parametrize(
+    "status",
+    (
+        "generation_limit",
+        "memory_limit",
+        "worker_timeout",
+        "profiling_timeout",
+        "validation_timeout",
+        "dependency",
+        "resource_frontier",
+        "error",
+        "validation_failed",
+        "blocked_dependency",
+        "skip",
+        "preparation_error",
+        "failed",
+        "unsupported",
+        "cancelled",
+    ),
+)
+def test_lease_manager_routes_every_started_terminal_status_to_presentation(
+    tmp_path: Path,
+    status: str,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    state = DashboardState(
+        instance_id=f"terminal-{status}",
+        selected_ids=(cell.cell_id,),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        source_revision="a" * 40,
+    )
+    lease = LeaseManager(service, state)
+
+    lease.observe(
+        {
+            "event": "finished",
+            "cell_id": cell.cell_id,
+            "status": status,
+            "detail": (
+                "worker terminated by cancellation"
+                if status == "cancelled"
+                else "terminal outcome"
+            ),
+            "completed_at_ns": 123,
+        }
+    )
+
+    observed = manual_campaign.lightweight_presentation_outcome(
+        service,
+        cell,
+        source_revision="a" * 40,
+    )
+    assert observed is not None
+    assert observed.status == status
+    assert observed.label == manual_campaign._humanized_outcome_label(status)
+    assert observed.attempt_id is None
+    assert observed.completed_at_ns == 123
+
+
+@pytest.mark.parametrize("status", ("ok", "reused", "skipped-current"))
+def test_lease_manager_does_not_publish_success_without_reusable_ok_current(
+    tmp_path: Path,
+    status: str,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    lease = LeaseManager(
+        service,
+        DashboardState(
+            instance_id=f"terminal-{status}",
+            selected_ids=(cell.cell_id,),
+            recycled_ids=set(),
+            static_na_ids=set(),
+            source_revision="a" * 40,
+        ),
+    )
+
+    lease.observe(
+        {
+            "event": "finished",
+            "cell_id": cell.cell_id,
+            "status": status,
+            "detail": "no reusable OK current exists",
+            "completed_at_ns": 123,
+        }
+    )
+
+    assert (
+        manual_campaign.lightweight_presentation_outcome(
+            service,
+            cell,
+            source_revision="a" * 40,
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("raises", (False, True))
+def test_scheduler_finished_event_has_positive_completion_timestamp_after_started(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    raises: bool,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    events: list[dict[str, object]] = []
+    campaign_lock = f"campaign-cell-{cell.cell_id}"
+    held: list[str] = []
+
+    class TrackingLock:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def __enter__(self) -> None:
+            held.append(self.name)
+
+        def __exit__(
+            self,
+            _error_type: object,
+            _error: object,
+            _traceback: object,
+        ) -> None:
+            assert held.pop() == self.name
+
+    monkeypatch.setattr(
+        service.store,
+        "named_lock",
+        lambda name, **_kwargs: TrackingLock(name),
+    )
+
+    def observe(payload: object) -> None:
+        assert isinstance(payload, dict)
+        if payload.get("event") == "finished":
+            assert campaign_lock in held
+        events.append(dict(payload))
+
+    scheduler = manual_campaign.CampaignScheduler(
+        service,
+        settings=manual_campaign.CampaignSettings(
+            source_identity_override=manual_campaign.ReportSourceIdentity(
+                "a" * 40,
+                "b" * 40,
+                (),
+            ),
+            progress_observer=observe,
+        ),
+    )
+    planned = manual_campaign.PlannedCell(
+        cell,
+        dependency=False,
+        baseline_cell_id=None,
+        rank=0,
+    )
+    def run_in_lane(_planned: manual_campaign.PlannedCell) -> CellOutcome:
+        scheduler._observe("started", cell, dependency=False)
+        if raises:
+            raise RuntimeError("synthetic worker failure")
+        return CellOutcome(cell.cell_id, "ok", "completed")
+
+    monkeypatch.setattr(scheduler, "_run_cell_in_lane", run_in_lane)
+    before = time.time_ns()
+    if raises:
+        with pytest.raises(RuntimeError, match="synthetic worker failure"):
+            scheduler._run_cell(planned)
+    else:
+        assert scheduler._run_cell(planned).status == "ok"
+    after = time.time_ns()
+
+    assert [event["event"] for event in events] == ["started", "finished"]
+    finished = events[-1]
+    assert isinstance(finished["completed_at_ns"], int)
+    assert before <= finished["completed_at_ns"] <= after
+    assert finished["status"] == ("error" if raises else "ok")
+
+
+def test_scheduler_inner_coordination_deferred_emits_no_finished_event(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[dict[str, object]] = []
+    scheduler = manual_campaign.CampaignScheduler(
+        _manual_service(tmp_path),
+        settings=manual_campaign.CampaignSettings(
+            source_identity_override=manual_campaign.ReportSourceIdentity(
+                "a" * 40, "b" * 40, ()
+            ),
+            progress_observer=lambda payload: events.append(dict(payload)),
+        ),
+    )
+    planned = manual_campaign.PlannedCell(
+        _presentation_test_cell(), False, None, 0
+    )
+    monkeypatch.setattr(scheduler, "_coordination_lock_names", lambda _cell: ())
+    monkeypatch.setattr(
+        scheduler,
+        "_run_cell_in_lane",
+        lambda _planned: (_ for _ in ()).throw(_CoordinationDeferred("inner")),
+    )
+
+    with pytest.raises(_CoordinationDeferred, match="inner"):
+        scheduler._run_cell(planned)
+
+    assert [event for event in events if event["event"] == "finished"] == []
+
+
+def test_scheduler_inner_lock_cancel_emits_one_cancelled_and_no_presentation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    events: list[dict[str, object]] = []
+    lease = LeaseManager(
+        service,
+        DashboardState(
+            instance_id="inner-lock-cancel",
+            selected_ids=(cell.cell_id,),
+            recycled_ids=set(),
+            static_na_ids=set(),
+            source_revision="a" * 40,
+        ),
+    )
+
+    def observe(payload: object) -> None:
+        assert isinstance(payload, dict)
+        events.append(dict(payload))
+        lease.observe(payload)
+
+    scheduler = manual_campaign.CampaignScheduler(
+        service,
+        settings=manual_campaign.CampaignSettings(
+            source_identity_override=manual_campaign.ReportSourceIdentity(
+                "a" * 40, "b" * 40, ()
+            ),
+            progress_observer=observe,
+        ),
+    )
+    planned = manual_campaign.PlannedCell(cell, False, None, 0)
+    monkeypatch.setattr(scheduler, "_coordination_lock_names", lambda _cell: ())
+    monkeypatch.setattr(
+        scheduler,
+        "_run_cell_in_lane",
+        lambda _planned: (_ for _ in ()).throw(LockCancelledError("cancelled")),
+    )
+
+    outcome = scheduler._run_cell(planned)
+
+    finished = [event for event in events if event["event"] == "finished"]
+    assert [(event["status"], event["detail"]) for event in finished] == [
+        ("cancelled", "lock wait cancelled")
+    ]
+    assert not any(event.get("status") == "error" for event in events)
+    assert (
+        manual_campaign.lightweight_presentation_outcome(
+            service,
+            cell,
+            source_revision="a" * 40,
+        )
+        is None
+    )
+    assert outcome == CellOutcome(cell.cell_id, "cancelled", "lock wait cancelled")
+
+
+@pytest.mark.parametrize(
+    ("status", "detail"),
+    (
+        (ResultStatus.NOT_AVAILABLE.value, "canonical reset"),
+        ("cancelled", "not started"),
+        ("cancelled", "lock wait cancelled"),
+    ),
+)
+def test_lease_manager_does_not_publish_non_attempt_outcomes(
+    tmp_path: Path,
+    status: str,
+    detail: str,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    lease = LeaseManager(
+        service,
+        DashboardState(
+            instance_id="non-attempt",
+            selected_ids=(cell.cell_id,),
+            recycled_ids=set(),
+            static_na_ids=set(),
+            source_revision="a" * 40,
+        ),
+    )
+
+    lease.observe(
+        {
+            "event": "finished",
+            "cell_id": cell.cell_id,
+            "status": status,
+            "detail": detail,
+            "completed_at_ns": 123,
+        }
+    )
+
+    assert (
+        manual_campaign.lightweight_presentation_outcome(
+            service,
+            cell,
+            source_revision="a" * 40,
+        )
+        is None
     )
 
 
@@ -1351,7 +2780,7 @@ def test_read_only_views_use_recorded_measurement_source_epoch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    service = _manual_service(tmp_path)
+    service = _manual_service(tmp_path, initialize_source_marker=False)
     checkout_revision = "b" * 40
     measurement_revision = "a" * 40
     assert (
@@ -1416,7 +2845,7 @@ def test_cross_revision_policy_persists_for_inspect_and_refresh(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    service = _manual_service(tmp_path)
+    service = _manual_service(tmp_path, initialize_source_marker=False)
     source = manual_campaign.ReportSourceIdentity(
         "a" * 40,
         "c" * 40,
@@ -1472,8 +2901,83 @@ def test_cross_revision_policy_persists_for_inspect_and_refresh(
     assert observed == [(source.revision, True)]
 
 
-def test_malformed_measurement_source_marker_is_not_guessed(tmp_path: Path) -> None:
+def test_refresh_renders_outcomes_without_serializing_them_as_results(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    outcome = _presentation_outcome(cell.cell_id, status="error")
+    observed: dict[str, str] = {}
+    original_render = ReportService._render_tables
+
+    monkeypatch.setattr(
+        manual_campaign,
+        "_capture_lightweight_snapshot",
+        lambda *_args, **_kwargs: ({}, {cell.cell_id: outcome}, ()),
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "_copy_report_sources",
+        lambda _source, destination: destination.mkdir(parents=True),
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "_stage_copied_profile_identity",
+        lambda *_args, **_kwargs: None,
+    )
+
+    def capture_render(
+        staging_service: ReportService,
+        caches: dict[str, dict[str, object]],
+    ) -> dict[str, str]:
+        observed["render_caches"] = json.dumps(caches, sort_keys=True)
+        tables = original_render(staging_service, caches)
+        observed["tables"] = "\n".join(tables.values())
+        return tables
+
+    def capture_snapshot(
+        _staging_service: ReportService,
+        caches: dict[str, dict[str, object]],
+        tables: dict[str, str],
+    ) -> tuple[Path, ...]:
+        observed["snapshot_caches"] = json.dumps(caches, sort_keys=True)
+        observed["snapshot_tables"] = "\n".join(tables.values())
+        return ()
+
+    monkeypatch.setattr(ReportService, "_render_tables", capture_render)
+    monkeypatch.setattr(ReportService, "_snapshot_files", capture_snapshot)
+    monkeypatch.setattr(manual_campaign, "_compile_pdf", lambda *_a, **_k: 59)
+    monkeypatch.setattr(
+        manual_campaign,
+        "_install_report_snapshot",
+        lambda *_args, **_kwargs: None,
+    )
+
+    assert (
+        manual_campaign._refresh_pdf(
+            _parse("refresh-pdf", "--quiet"),
+            service=service,
+            source=manual_campaign.ReportSourceIdentity(
+                "a" * 40,
+                "b" * 40,
+                (),
+            ),
+            palette=manual_campaign.Palette(False),
+        )
+        == 0
+    )
+
+    failure_kind = "ManualCampaignOutcome:error"
+    status_tex = r"\matrixstatus{ReportRed}{error}"
+    assert failure_kind in observed["render_caches"]
+    assert status_tex in observed["tables"]
+    assert failure_kind not in observed["snapshot_caches"]
+    assert status_tex in observed["snapshot_tables"]
+
+
+def test_malformed_measurement_source_marker_is_not_guessed(tmp_path: Path) -> None:
+    service = _manual_service(tmp_path, initialize_source_marker=False)
     marker = service.paths.coordination_root / "manual-source.json"
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text(

@@ -166,6 +166,59 @@ def _set_status(
     entry["measurement"] = measurement
 
 
+def _set_presentation_outcome(
+    cache: dict[str, object],
+    *,
+    process_key: str,
+    n_final: int,
+    workload: Workload,
+    outcome: str,
+    label: str | None = None,
+    variant: str | None = None,
+) -> None:
+    labels = {
+        "error": (ResultStatus.ERROR, "error"),
+        "validation_failed": (
+            ResultStatus.VALIDATION_FAILED,
+            "validation failed",
+        ),
+        "blocked_dependency": (
+            ResultStatus.FAILED,
+            "blocked dependency",
+        ),
+    }
+    status, default_label = labels.get(
+        outcome,
+        (ResultStatus.FAILED, outcome.replace("_", " ")),
+    )
+    entry = _entry(
+        cache,
+        process_key=process_key,
+        n_final=n_final,
+        workload=workload,
+        variant=variant,
+    )
+    measurement = empty_measurement()
+    measurement["status"] = status.value
+    measurement["failure"] = {
+        "kind": f"ManualCampaignOutcome:{outcome}",
+        "message": default_label if label is None else label,
+    }
+    entry["measurement"] = measurement
+
+
+def _set_best_mode_nlc_reference(caches: dict[str, dict[str, object]]) -> None:
+    _set_ok(
+        _cache_by_dataset(caches, "reference_amplicol_nlc"),
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=10.0,
+        wall=10.0e-6,
+        execution=None,
+    )
+
+
 def _mark_arena_unavailable(
     measurement: dict[str, object],
     *,
@@ -329,6 +382,7 @@ def _entry(
     process_key: str,
     n_final: int,
     workload: Workload,
+    variant: str | None = None,
 ) -> dict[str, object]:
     entries = cache["entries"]
     assert isinstance(entries, list)
@@ -338,7 +392,7 @@ def _entry(
         if item["process_key"] == process_key
         and item["n_final"] == n_final
         and item["workload"] == workload.value
-        and item["variant"] is None
+        and item["variant"] == variant
     )
 
 
@@ -986,6 +1040,442 @@ def test_best_mode_summary_tie_breaks_in_documented_mode_order(reset_caches) -> 
     ]
 
 
+@pytest.mark.parametrize(
+    ("outcome", "label"),
+    (
+        ("error", "error"),
+        ("validation_failed", "validation failed"),
+        ("blocked_dependency", "blocked dependency"),
+        ("dependency_backend_error", "dependency backend error"),
+    ),
+)
+def test_fixed_matrix_renders_generic_presentation_outcomes(
+    reset_caches,
+    outcome: str,
+    label: str,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    _set_presentation_outcome(
+        _cache_by_dataset(caches, "matrix_compiled_builtin_sm_nlc"),
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        outcome=outcome,
+    )
+
+    tex = render_matrix_table(
+        REPORT_CATALOG.dataset("matrix_compiled_builtin_sm_nlc"),
+        caches,
+    )
+    display = report_render._compact_terminal_display(
+        report_render._TerminalOutcome(
+            identity=f"presentation:{outcome}",
+            label=label,
+            color="ReportRed",
+        )
+    )
+    marker = rf"\matrixstatus{{ReportRed}}{{{display}}}"
+
+    assert tex.count(marker) == 2
+    assert "ManualCampaignOutcome" not in tex
+    if outcome == "dependency_backend_error":
+        assert display == "depe back erro"
+        assert label not in tex
+    if "_" in outcome:
+        assert outcome not in tex
+
+
+def test_fixed_matrix_keeps_policy_like_presentation_outcomes_orange(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    candidate = _cache_by_dataset(caches, "matrix_compiled_builtin_sm_nlc")
+    _set_presentation_outcome(
+        candidate,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        outcome="generation_limit",
+        label=">1h",
+    )
+    _set_presentation_outcome(
+        candidate,
+        process_key="ud_w_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        outcome="error",
+    )
+    _set_presentation_outcome(
+        candidate,
+        process_key="dd_z_jets",
+        n_final=2,
+        workload=Workload.CONTRACTED,
+        outcome="resource_frontier",
+    )
+
+    tex = render_matrix_table(
+        REPORT_CATALOG.dataset("matrix_compiled_builtin_sm_nlc"),
+        caches,
+    )
+
+    assert tex.count(r"\matrixstatus{ReportOrange}{>1h}") == 2
+    assert tex.count(r"\matrixstatus{ReportRed}{error}") == 2
+    assert tex.count(r"\matrixstatus{ReportOrange}{resource frontier}") == 2
+    assert r"\matrixstatus{ReportRed}{>1h}" not in tex
+    assert r"\matrixstatus{ReportOrange}{error}" not in tex
+
+
+@pytest.mark.parametrize(
+    "label",
+    (
+        "W" * 64,
+        "W" * 12,
+        "W" * 11 + " " + "W" * 11,
+        "w" * 12 + " " + "w" * 11,
+        "Q" * 12 + " " + "Q" * 11,
+        "O" * 12 + " " + "O" * 11,
+    ),
+)
+def test_fixed_matrix_compacts_one_worst_case_wide_future_label(
+    reset_caches,
+    label: str,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    candidate = _cache_by_dataset(caches, "matrix_compiled_builtin_sm_nlc")
+    _set_presentation_outcome(
+        candidate,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        outcome="future_wide_status",
+        label=label,
+    )
+
+    tex = render_matrix_table(
+        REPORT_CATALOG.dataset("matrix_compiled_builtin_sm_nlc"),
+        caches,
+    )
+    display = report_render._compact_terminal_display(
+        report_render._TerminalOutcome(
+            identity="presentation:future_wide_status",
+            label=label,
+            color="ReportRed",
+        )
+    )
+
+    assert display == "futu wide stat"
+    assert tex.count(rf"\matrixstatus{{ReportRed}}{{{display}}}") == 2
+    assert label not in tex
+
+
+def test_known_error_slug_does_not_exempt_a_wide_mismatched_label() -> None:
+    label = "W" * 64
+    display = report_render._compact_terminal_display(
+        report_render._TerminalOutcome(
+            identity="presentation:error",
+            label=label,
+            color="ReportRed",
+        )
+    )
+
+    assert display == "error"
+
+
+def test_policy_slug_does_not_exempt_an_unrealistically_wide_cap_label() -> None:
+    label = ">" + "9" * 60 + "GB"
+    display = report_render._compact_terminal_display(
+        report_render._TerminalOutcome(
+            identity="presentation:memory_limit",
+            label=label,
+            color="ReportOrange",
+        )
+    )
+
+    assert display == "memo limi"
+
+
+def test_policy_slug_compacts_a_too_wide_otherwise_valid_cap_label() -> None:
+    display = report_render._compact_terminal_display(
+        report_render._TerminalOutcome(
+            identity="presentation:dependency",
+            label="dependency >9999.9999s",
+            color="ReportOrange",
+        )
+    )
+
+    assert display == "dependency"
+
+
+def test_authenticated_policy_state_keeps_semantics_for_an_overwide_cap() -> None:
+    display = report_render._compact_terminal_display(
+        report_render._TerminalOutcome(
+            identity="policy:dependency",
+            label="dependency >9999.9999s",
+            color="ReportOrange",
+        )
+    )
+
+    assert display == "dependency"
+
+
+@pytest.mark.parametrize(
+    ("outcome", "label"),
+    (
+        ("error", "error"),
+        ("validation_failed", "validation failed"),
+        ("blocked_dependency", "blocked dependency"),
+        ("dependency_backend_error", "dependency backend error"),
+    ),
+)
+def test_best_mode_renders_failure_only_generic_presentation_outcomes(
+    reset_caches,
+    outcome: str,
+    label: str,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    _set_best_mode_nlc_reference(caches)
+    for mode in ExecutionMode.RECURRENCE, ExecutionMode.COMPILED, ExecutionMode.EAGER:
+        _set_presentation_outcome(
+            _cache_by_dataset(
+                caches,
+                f"matrix_{mode.value}_builtin_sm_nlc",
+            ),
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=Workload.CONTRACTED,
+            outcome=outcome,
+        )
+
+    tex = render_best_mode_table(Accuracy.NLC, caches)
+    display = report_render._compact_terminal_display(
+        report_render._TerminalOutcome(
+            identity=f"presentation:{outcome}",
+            label=label,
+            color="ReportRed",
+        )
+    )
+    marker = rf"\matrixstatus{{ReportRed}}{{{display}}}"
+
+    assert tex.count(marker) == 4
+    table_body = "\n".join(
+        line for line in tex.splitlines() if not line.startswith(r"\providecommand")
+    )
+    assert r"\bestmodecode{" not in table_body
+
+
+def test_best_mode_mixed_generic_outcomes_have_deterministic_labels(
+    reset_caches,
+) -> None:
+    assignments = (
+        ("error", "validation_failed", "blocked_dependency"),
+        ("blocked_dependency", "error", "validation_failed"),
+    )
+    rendered_tables: list[str] = []
+    for outcomes in assignments:
+        caches = copy.deepcopy(reset_caches)
+        _set_best_mode_nlc_reference(caches)
+        for mode, outcome in zip(
+            (
+                ExecutionMode.RECURRENCE,
+                ExecutionMode.COMPILED,
+                ExecutionMode.EAGER,
+            ),
+            outcomes,
+            strict=True,
+        ):
+            _set_presentation_outcome(
+                _cache_by_dataset(
+                    caches,
+                    f"matrix_{mode.value}_builtin_sm_nlc",
+                ),
+                process_key="dd_z_jets",
+                n_final=1,
+                workload=Workload.CONTRACTED,
+                outcome=outcome,
+            )
+
+        tex = render_best_mode_table(Accuracy.NLC, caches)
+        view = BaselineCandidateAdapter(caches).best_mode_cell(
+            Accuracy.NLC,
+            REPORT_CATALOG.process_families[0],
+            1,
+        )
+        terminal = view.workloads[0].terminal_label
+        assert terminal is not None
+        display = report_render._compact_terminal_summary_display(terminal)
+        marker = rf"\matrixstatus{{ReportRed}}{{{display}}}"
+
+        assert tex.count(marker) == 4
+        assert re.fullmatch(r"N out\.\[[0-9a-f]{6}\]", display)
+        rendered_tables.append(tex)
+
+    assert rendered_tables[0] == rendered_tables[1]
+
+
+def test_best_mode_compacts_three_maximum_length_future_outcomes(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    _set_best_mode_nlc_reference(caches)
+    outcomes = (
+        ("future_alpha", "alpha_" + "a" * 58),
+        ("future_bravo", "bravo&" + "b" * 58),
+        ("future_charlie", "charl%" + "c" * 58),
+    )
+    assert all(len(label) == 64 for _outcome, label in outcomes)
+    for mode, (outcome, label) in zip(
+        (
+            ExecutionMode.RECURRENCE,
+            ExecutionMode.COMPILED,
+            ExecutionMode.EAGER,
+        ),
+        outcomes,
+        strict=True,
+    ):
+        _set_presentation_outcome(
+            _cache_by_dataset(
+                caches,
+                f"matrix_{mode.value}_builtin_sm_nlc",
+            ),
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=Workload.CONTRACTED,
+            outcome=outcome,
+            label=label,
+        )
+
+    view = BaselineCandidateAdapter(caches).best_mode_cell(
+        Accuracy.NLC,
+        REPORT_CATALOG.process_families[0],
+        1,
+    )
+    terminal = view.workloads[0].terminal_label
+    assert terminal is not None
+    assert terminal.color == "ReportRed"
+    assert len(terminal.label) <= 48
+    assert terminal.label.isascii()
+    assert len(terminal.label.split(" | ")) == 3
+    assert {item.identity for item in terminal.outcomes} == {
+        "presentation:future_alpha",
+        "presentation:future_bravo",
+        "presentation:future_charlie",
+    }
+    assert terminal.label.split(" | ") == ["futu alph", "futu brav", "futu char"]
+
+    tex = render_best_mode_table(Accuracy.NLC, caches)
+    display = report_render._compact_terminal_summary_display(terminal)
+    marker = (
+        r"\matrixstatus{ReportRed}{"
+        + report_render._tex_escape(display)
+        + "}"
+    )
+    assert tex.count(marker) == 4
+    assert re.fullmatch(r"N out\.\[[0-9a-f]{6}\]", display)
+    assert all(label not in tex for _outcome, label in outcomes)
+
+
+def test_best_mode_many_unique_outcomes_have_one_hard_bounded_identity() -> None:
+    outcomes = tuple(
+        report_render._TerminalOutcome(
+            identity=f"presentation:future_{index:02d}",
+            label=f"future outcome {index:02d}",
+            color="ReportRed",
+        )
+        for index in range(12)
+    )
+
+    summary = report_render._canonical_best_mode_terminal_label(outcomes)
+    reversed_summary = report_render._canonical_best_mode_terminal_label(
+        tuple(reversed(outcomes))
+    )
+
+    assert summary is not None
+    assert reversed_summary is not None
+    assert summary.outcomes == reversed_summary.outcomes
+    assert summary.label == reversed_summary.label
+    assert len(summary.label) <= 48
+    assert re.fullmatch(r"12 outcomes \[[0-9a-f]{6}\]", summary.label)
+    assert {item.identity for item in summary.outcomes} == {
+        item.identity for item in outcomes
+    }
+    assert re.fullmatch(
+        r"N out\.\[[0-9a-f]{6}\]",
+        report_render._compact_terminal_summary_display(summary),
+    )
+
+
+@pytest.mark.parametrize("count", (12, 1796))
+def test_best_mode_outcome_count_display_has_fixed_width(count: int) -> None:
+    outcome = report_render._TerminalOutcome(
+        identity="presentation:error",
+        label="error",
+        color="ReportRed",
+    )
+    summary = report_render._TerminalSummary(
+        outcomes=(outcome, outcome),
+        label=f"{count} outcomes [abcdef]",
+        color="ReportRed",
+    )
+
+    assert report_render._compact_terminal_summary_display(summary) == (
+        "N out.[abcdef]"
+    )
+
+
+def test_best_mode_success_wins_over_generic_presentation_outcomes(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    _set_best_mode_nlc_reference(caches)
+    _set_presentation_outcome(
+        _cache_by_dataset(caches, "matrix_recurrence_builtin_sm_nlc"),
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        outcome="error",
+    )
+    _set_ok(
+        _cache_by_dataset(caches, "matrix_compiled_builtin_sm_nlc"),
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=4.0,
+        wall=1.0e-6,
+        execution=1.0e-6,
+    )
+    _set_presentation_outcome(
+        _cache_by_dataset(caches, "matrix_eager_builtin_sm_nlc"),
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        outcome="blocked_dependency",
+    )
+
+    view = BaselineCandidateAdapter(caches).best_mode_cell(
+        Accuracy.NLC,
+        REPORT_CATALOG.process_families[0],
+        1,
+    )
+    assert view.workloads[0].mode is ExecutionMode.COMPILED
+
+    tex = render_best_mode_table(Accuracy.NLC, caches)
+    generation_row = next(
+        line for line in tex.splitlines() if line.startswith(r"\texttt{1}")
+    )
+    runtime_row = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith(r" &  & \textcolor{ReportMuted}{\scriptsize run")
+    )
+
+    assert r"\bestmodecodeprefix{c}" in generation_row
+    assert r"\bestmoderatio{ReportGreen}{0.400}" in generation_row
+    assert r"\bestmodewallratio{ReportGreen}{0.100}" in runtime_row
+    assert r"\bestmodemix{r:0|c:1|e:0}" in tex
+    assert r"\matrixstatus{ReportRed}{error}" not in tex
+    assert r"\matrixstatus{ReportRed}{blocked dependency}" not in tex
+
+
 def test_best_mode_renders_mixed_policy_censors_without_a_winner_code(
     reset_caches,
 ) -> None:
@@ -1052,9 +1542,11 @@ def test_best_mode_renders_mixed_policy_censors_without_a_winner_code(
         if line.startswith(r" &  & \textcolor{ReportMuted}{\scriptsize run")
     )
 
-    marker = r"\matrixstatus{ReportOrange}{>2h | >80GB | dependency}"
-    assert row.count(marker) == 1
-    assert runtime_row.count(marker) == 1
+    marker = re.compile(
+        r"\\matrixstatus\{ReportOrange\}\{N out\.\[[0-9a-f]{6}\]\}"
+    )
+    assert len(marker.findall(row)) == 1
+    assert len(marker.findall(runtime_row)) == 1
     assert (
         r">{\matrixentryfont}l"
         r">{\matrixentryfont}r@{}"
@@ -1124,9 +1616,11 @@ def test_best_mode_mixed_terminal_summaries_are_visibly_complete(
     wall_summary = next(
         line for line in tex.splitlines() if r"\textbf{summary: wall}" in line
     )
-    marker = r"\matrixstatus{ReportOrange}{>2h | >80GB | dependency}"
-    assert generation_summary.count(marker) == 1
-    assert wall_summary.count(marker) == 1
+    marker = re.compile(
+        r"\\matrixstatus\{ReportOrange\}\{N out\.\[[0-9a-f]{6}\]\}"
+    )
+    assert len(marker.findall(generation_summary)) == 1
+    assert len(marker.findall(wall_summary)) == 1
 
     completeness = summarize_visible_completeness(
         caches,
@@ -1977,6 +2471,55 @@ def test_best_mode_uses_candidate_total_against_legacy_direct_or_wall(
     assert "uses the AmpliCol direct execution clock" in tex
 
 
+@pytest.mark.parametrize(
+    "surface",
+    ("z_builtin_sm", "scalar_contact", "scalar_gravity"),
+)
+def test_ladders_render_generic_presentation_outcomes_through_shared_status_path(
+    reset_caches,
+    surface: str,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    cache = _cache_by_dataset(caches, surface)
+    if surface == "z_builtin_sm":
+        _set_presentation_outcome(
+            cache,
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=Workload.SELECTED_FLOW,
+            outcome="dependency_backend_error",
+            variant="jit_o3",
+        )
+        tex = render_z_ladder(ModelKey.BUILTIN_SM, caches)
+    else:
+        _set_presentation_outcome(
+            cache,
+            process_key=surface,
+            n_final=2,
+            workload=Workload.CONTRACTED,
+            outcome="dependency_backend_error",
+        )
+        dataset = next(
+            item
+            for item in REPORT_CATALOG.scalar_datasets
+            if item.dataset_id == surface
+        )
+        tex = render_scalar_ladder(dataset, caches)
+
+    display = report_render._compact_terminal_display(
+        report_render._TerminalOutcome(
+            identity="presentation:dependency_backend_error",
+            label="dependency backend error",
+            color="ReportRed",
+        )
+    )
+    marker = rf"\matrixstatus{{ReportRed}}{{{display}}}"
+    assert tex.count(marker) >= 3
+    assert "dependency backend error" not in tex
+    assert r"\matrixstatus{ReportOrange}{dependency backend error}" not in tex
+    assert "dependency_backend_error" not in tex
+
+
 def test_z_ladder_prints_not_exposed_instead_of_zero(
     reset_caches,
 ) -> None:
@@ -2314,19 +2857,21 @@ def test_dense_scalar_ladder_fits_narrower_columns(reset_caches) -> None:
     assert r"\setlength{\tabcolsep}{2.2pt}" in tex
 
 
+@pytest.mark.parametrize("dataset_id", ("scalar_contact", "scalar_gravity"))
 def test_scalar_timing_marks_unavailable_arena_attribution_not_exposed(
     reset_caches,
+    dataset_id: str,
 ) -> None:
     caches = copy.deepcopy(reset_caches)
     dataset = next(
         item
         for item in REPORT_CATALOG.scalar_datasets
-        if item.dataset_id == "scalar_contact"
+        if item.dataset_id == dataset_id
     )
-    cache = _cache_by_dataset(caches, "scalar_contact")
+    cache = _cache_by_dataset(caches, dataset_id)
     _set_ok(
         cache,
-        process_key="scalar_contact",
+        process_key=dataset_id,
         n_final=2,
         workload=Workload.CONTRACTED,
         generation=1.0,
