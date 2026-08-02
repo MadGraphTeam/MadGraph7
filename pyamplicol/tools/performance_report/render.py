@@ -575,18 +575,34 @@ def _metric_summary_group_cell(
 def _metric_summary_header_row(
     multiplicities: Sequence[int],
     accuracy: Accuracy,
+    *,
+    annotations: Sequence[str] | None = None,
 ) -> str:
     """Repeat the multiplicity headings immediately above summary rows."""
+
+    if annotations is None:
+        annotations = ("",) * len(multiplicities)
+    if len(annotations) != len(multiplicities):
+        raise ValueError("summary header annotations must match multiplicities")
 
     return (
         r"\multicolumn{3}{@{}l}{} & "
         + " & ".join(
             _metric_summary_group_cell(
-                rf"\textbf{{n={n_final}}}",
+                (
+                    rf"\textbf{{n={n_final}}}"
+                    + (
+                        rf"\hspace{{0.08in}}{annotation}"
+                        if annotation
+                        else ""
+                    )
+                ),
                 accuracy,
                 group_index=group_index,
             )
-            for group_index, n_final in enumerate(multiplicities)
+            for group_index, (n_final, annotation) in enumerate(
+                zip(multiplicities, annotations, strict=True)
+            )
         )
         + r" \\"
     )
@@ -2016,9 +2032,36 @@ def _best_mode_summary_pair(
     views: Sequence[BestModeMatrixCell],
     workload: Workload,
     field: str,
-    *,
-    show_mode_mix: bool = False,
 ) -> str:
+    joined, valid = _best_mode_summary_items(views, workload, field)
+    if not valid:
+        if field == "execution_seconds_per_point" and any(
+            unavailable_execution_timing_record(measurement, field) is not None
+            for item in joined
+            for measurement in (item.baseline, item.candidate)
+        ):
+            return _not_exposed()
+        terminal_label = _canonical_best_mode_terminal_label(
+            tuple(_best_mode_summary_terminal_label(item) for item in joined)
+        )
+        if terminal_label is not None:
+            return r"\matrixstatus{ReportOrange}{" + _tex_escape(terminal_label) + "}"
+        return r"\matrixna{ReportMuted}"
+    return _ratio_statistics_tex(
+        tuple(
+            (float(item.baseline[field]), float(item.candidate[field]))
+            for item in valid
+        )
+    )
+
+
+def _best_mode_summary_items(
+    views: Sequence[BestModeMatrixCell],
+    workload: Workload,
+    field: str,
+) -> tuple[tuple[BestModeWorkload, ...], tuple[BestModeWorkload, ...]]:
+    """Return joined and ratio-eligible workloads for one summary metric."""
+
     joined = tuple(
         next(item for item in view.workloads if item.workload is workload)
         for view in views
@@ -2039,39 +2082,33 @@ def _best_mode_summary_pair(
         and float(item.baseline[field]) > 0.0
         and float(item.candidate[field]) >= 0.0
     )
-    if not valid:
-        if field == "execution_seconds_per_point" and any(
-            unavailable_execution_timing_record(measurement, field) is not None
-            for item in joined
-            for measurement in (item.baseline, item.candidate)
-        ):
-            return _not_exposed()
-        terminal_label = _canonical_best_mode_terminal_label(
-            tuple(_best_mode_summary_terminal_label(item) for item in joined)
-        )
-        if terminal_label is not None:
-            return r"\matrixstatus{ReportOrange}{" + _tex_escape(terminal_label) + "}"
-        return r"\matrixna{ReportMuted}"
-    statistics = _ratio_statistics_tex(
-        tuple(
-            (float(item.baseline[field]), float(item.candidate[field]))
-            for item in valid
-        )
+    return joined, valid
+
+
+def _best_mode_generation_mode_mix(
+    views: Sequence[BestModeMatrixCell],
+    accuracy: Accuracy,
+) -> str:
+    workload = (
+        Workload.SELECTED_FLOW if accuracy is Accuracy.LC else Workload.CONTRACTED
     )
-    if show_mode_mix:
-        counts = {
-            mode: sum(item.mode is mode for item in valid) for mode in _BEST_MODE_ORDER
-        }
-        return (
-            r"\bestmodesummarystats{"
-            + statistics
-            + r"}{\bestmodemix{"
-            + "|".join(
-                f"{_BEST_MODE_CODES[mode]}:{counts[mode]}" for mode in _BEST_MODE_ORDER
-            )
-            + "}}"
+    _joined, valid = _best_mode_summary_items(
+        views,
+        workload,
+        "generation_seconds",
+    )
+    if not valid:
+        return ""
+    counts = {
+        mode: sum(item.mode is mode for item in valid) for mode in _BEST_MODE_ORDER
+    }
+    return (
+        r"\bestmodemix{"
+        + "|".join(
+            f"{_BEST_MODE_CODES[mode]}:{counts[mode]}" for mode in _BEST_MODE_ORDER
         )
-    return statistics
+        + "}"
+    )
 
 
 def _best_mode_generation_summary(
@@ -2083,13 +2120,11 @@ def _best_mode_generation_summary(
             views,
             Workload.SELECTED_FLOW,
             "generation_seconds",
-            show_mode_mix=True,
         )
     return _best_mode_summary_pair(
         views,
         Workload.CONTRACTED,
         "generation_seconds",
-        show_mode_mix=True,
     )
 
 
@@ -2227,7 +2262,17 @@ def _best_mode_block(
     lines.extend(
         [
             r"\specialrule{1.05pt}{0.22em}{0.18em}",
-            _metric_summary_header_row(multiplicities, accuracy),
+            _metric_summary_header_row(
+                multiplicities,
+                accuracy,
+                annotations=tuple(
+                    _best_mode_generation_mode_mix(
+                        views_by_n[n_final],
+                        accuracy,
+                    )
+                    for n_final in multiplicities
+                ),
+            ),
             (
                 r"\multicolumn{3}{@{}l}{\textbf{summary: generation}} & "
                 + " & ".join(
@@ -2351,13 +2396,7 @@ def render_best_mode_table(
         ),
         (
             r"\providecommand{\bestmodemix}[1]{"
-            r"\begingroup\matrixsummaryfont"
-            r"\textcolor{ReportBlue}{\texttt{[#1]}}\endgroup}"
-        ),
-        (
-            r"\providecommand{\bestmodesummarystats}[2]{"
-            r"\begin{tabular}[t]{@{}l@{}}"
-            r"#1\\[-0.12em]#2\end{tabular}}"
+            r"\textcolor{ReportBlue}{\texttt{[#1]}}}"
         ),
         r"\clearpage",
         (

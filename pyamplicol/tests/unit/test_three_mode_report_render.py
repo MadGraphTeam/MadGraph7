@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import re
 from pathlib import Path
 
 import pytest
@@ -678,7 +679,7 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
     ) in tex
     assert (
         r"\providecommand{\bestmodemix}[1]{"
-        r"\begingroup\matrixsummaryfont"
+        r"\textcolor{ReportBlue}{\texttt{[#1]}}}"
     ) in tex
     assert (
         r"\providecommand{\matrixsummaryfont}{"
@@ -701,14 +702,20 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
     generation_summary = next(
         line for line in tex.splitlines() if r"\textbf{summary: generation}" in line
     )
+    summary_header = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith(r"\multicolumn{3}{@{}l}{} & ")
+        and r"\bestmodemix{" in line
+    )
     assert (
-        r"\providecommand{\bestmodesummarystats}[2]{"
-        r"\begin{tabular}[t]{@{}l@{}}"
-        r"#1\\[-0.12em]#2\end{tabular}}"
-    ) in tex
-    assert r"\bestmodesummarystats{\matrixsummarystats{" in generation_summary
-    assert r"}{\bestmodemix{r:0|c:1|e:0}}" in generation_summary
-    assert r"r:0|c:0|e:1" not in generation_summary
+        r"\textbf{n=1}\hspace{0.08in}\bestmodemix{r:0|c:1|e:0}"
+        in summary_header
+    )
+    assert summary_header.count(r"\bestmodemix{") == 1
+    assert r"r:0|c:0|e:1" not in summary_header
+    assert r"\bestmodemix{" not in generation_summary
+    assert r"\bestmodesummarystats" not in tex
     assert generation_summary.count(r"\matrixsummaryratio{ReportGreen}{0.400}") == 4
     assert (
         generation_summary.count(r"\matrixsummaryratiohighlight{ReportGreen}{0.400}")
@@ -716,6 +723,103 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
     )
     assert r"\texttt{10.0}" not in generation_summary
     assert r"\texttt{5.00}" not in generation_summary
+
+
+@pytest.mark.parametrize(
+    ("accuracy", "expected_mode_counts"),
+    (
+        (
+            Accuracy.LC,
+            (
+                "r:2|c:0|e:0",
+                "r:8|c:0|e:0",
+                "r:9|c:0|e:0",
+                "r:14|c:0|e:0",
+                "r:14|c:0|e:0",
+                "r:14|c:0|e:0",
+                "r:14|c:0|e:0",
+                "r:14|c:0|e:0",
+                "r:14|c:0|e:0",
+            ),
+        ),
+        (
+            Accuracy.NLC,
+            (
+                "r:2|c:0|e:0",
+                "r:8|c:0|e:0",
+                "r:9|c:0|e:0",
+                "r:14|c:0|e:0",
+                "r:14|c:0|e:0",
+                "r:2|c:0|e:0",
+            ),
+        ),
+        (
+            Accuracy.FULL,
+            (
+                "r:2|c:0|e:0",
+                "r:8|c:0|e:0",
+                "r:9|c:0|e:0",
+                "r:14|c:0|e:0",
+                "r:14|c:0|e:0",
+                "r:2|c:0|e:0",
+            ),
+        ),
+    ),
+)
+def test_best_mode_summary_headers_hold_one_exact_mode_mix_per_populated_group(
+    reset_caches: dict[str, dict[str, object]],
+    accuracy: Accuracy,
+    expected_mode_counts: tuple[str, ...],
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    _fill_visible_scope(caches, max_n_final=9)
+
+    populated_tex = render_best_mode_table(accuracy, caches)
+    populated_headers = tuple(
+        line
+        for line in populated_tex.splitlines()
+        if line.startswith(r"\multicolumn{3}{@{}l}{} & ")
+        and r"\textbf{n=" in line
+    )
+    populated_body = "\n".join(
+        line
+        for line in populated_tex.splitlines()
+        if not line.startswith(r"\providecommand")
+    )
+    assert tuple(
+        token
+        for header in populated_headers
+        for token in re.findall(r"\\bestmodemix\{([^}]*)\}", header)
+    ) == expected_mode_counts
+    assert all(
+        header.count(r"\bestmodemix{") == header.count(r"\textbf{n=")
+        for header in populated_headers
+    )
+    assert populated_body.count(r"\bestmodemix{") == len(expected_mode_counts)
+    assert all(
+        r"\bestmodemix{" not in line
+        for line in populated_tex.splitlines()
+        if r"\textbf{summary:" in line
+    )
+    assert r"\bestmodesummarystats" not in populated_tex
+
+    blank_tex = render_best_mode_table(accuracy, reset_caches)
+    blank_headers = tuple(
+        line
+        for line in blank_tex.splitlines()
+        if line.startswith(r"\multicolumn{3}{@{}l}{} & ")
+        and r"\textbf{n=" in line
+    )
+    blank_body = "\n".join(
+        line
+        for line in blank_tex.splitlines()
+        if not line.startswith(r"\providecommand")
+    )
+    assert sum(header.count(r"\textbf{n=") for header in blank_headers) == len(
+        expected_mode_counts
+    )
+    assert r"\bestmodemix{" not in blank_body
+    assert r"\bestmodesummarystats" not in blank_tex
 
 
 def test_ratio_summary_reports_five_exact_statistics_without_absolute_times() -> None:
