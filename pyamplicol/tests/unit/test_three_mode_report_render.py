@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+from pathlib import Path
 
 import pytest
 
@@ -75,6 +76,22 @@ def test_unavailable_execution_timing_is_never_ratioed() -> None:
 @pytest.fixture
 def reset_caches() -> dict[str, dict[str, object]]:
     return build_reset_caches()
+
+
+def test_packaged_blank_tables_match_canonical_reset_renderer(
+    reset_caches: dict[str, dict[str, object]],
+) -> None:
+    packaged_root = (
+        Path(__file__).resolve().parents[2]
+        / "src/pyamplicol/_profiling_campaign"
+    )
+    rendered = render_all_tables(reset_caches, catalog=REPORT_CATALOG)
+    packaged = {
+        path.name: path.read_text(encoding="utf-8")
+        for path in packaged_root.glob("result_*.tex")
+    }
+
+    assert packaged == rendered
 
 
 def _cache_by_dataset(
@@ -558,13 +575,8 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
         r"\bestmodeabsoluteprefix{\texttt{5.00}} & "
         r"\bestmodecode{e}"
     ) in row
-    assert (
-        runtime_row.count(
-            r"\bestmodeopenprefix & "
-            r"\bestmodeprimaryratio{ReportGreen}{0.100}"
-        )
-        == 2
-    )
+    assert runtime_row.count(r" &  & \bestmodewallratio{ReportGreen}{0.100}") == 2
+    assert r"\bestmodeopenprefix" not in runtime_row
     assert r"\bestmodecode" not in runtime_row
     assert (
         r"\providecommand{\bestmodecompactprefix}[1]{"
@@ -991,7 +1003,7 @@ def test_inapplicable_and_reset_cells_use_distinct_markers(reset_caches) -> None
 
     assert r"\matrixnotapplicable{ReportMuted}" in tex
     assert r"\matrixstatus{ReportMuted}{N/A}" in tex
-    assert "neither label denotes an unfilled measurement" in tex
+    assert "Fixed-engine tables intentionally omit mode letters" in tex
 
 
 def test_z_reference_execution_is_explicitly_not_exposed(reset_caches) -> None:
@@ -1086,33 +1098,27 @@ def test_z_evaluator_total_is_mode_independent_and_not_execution_attribution(
                 _mark_recurrence_core(measurement)
 
     tex = render_z_ladder(ModelKey.BUILTIN_SM, caches)
-    for _variant, mode, label, selected_total, all_total in modes:
+    for _variant, _mode, label, selected_total, all_total in modes:
         row = next(
             line
             for line in tex.splitlines()
             if line.startswith("1 & ") and label in line
         )
-        assert rf"\matrixtotalevaluator{{\texttt{{{selected_total:.0f}}}}}" in row
-        assert rf"\matrixtotalevaluator{{\texttt{{{all_total:.0f}}}}}" in row
-        assert r"\matrixtotalevaluator{\texttt{1" not in row
-        assert r"\matrixtotalevaluator{\texttt{10" not in row
-        if mode == "recurrence":
-            assert (
-                r"\matrixzrecurrenceclocks{"
-                rf"\matrixtotalevaluator{{\texttt{{{selected_total:.0f}}}}}"
-                r"}{\matrixrecurrencecore{"
-                rf"\texttt{{{70.0 + selected_total:.0f}}}}}"
-            ) in row
-            assert (
-                r"\matrixzrecurrenceclocks{"
-                rf"\matrixtotalevaluator{{\texttt{{{all_total:.0f}}}}}"
-                r"}{\matrixrecurrencecore{"
-                rf"\texttt{{{70.0 + all_total:.0f}}}}}"
-            ) in row
-    assert r"\textbf{eval total T}" in tex
-    assert r"\textbf{rec. core C}" in tex
-    assert r"\textbf{[\(\mu\mathrm{s}/\mathrm{pt}\)]}" in tex
-    assert "Neither T nor C is derived from wall time or from the other" in tex
+        assert (
+            rf"\texttt{{{selected_total:.0f}}}\,"
+            rf"\matrixratio{{ReportRed}}{{{selected_total:.0f}}}"
+        ) in row
+        assert (
+            rf"\texttt{{{all_total:.0f}}}\,"
+            rf"\matrixratio{{ReportRed}}{{{all_total:.0f}}}"
+        ) in row
+        assert r"\matrixzrecurrenceclocks" not in row
+        assert r"\matrixtotalevaluator" not in row
+        assert r"\matrixrecurrencecore" not in row
+    assert tex.count(r"\textbf{eval [\(\mu\mathrm{s}/\mathrm{pt}\)]}") == 6
+    assert r"\textbf{eval total T}" not in tex
+    assert r"\textbf{rec. core C}" not in tex
+    assert "original-AmpliCol wall measurement as denominator" in tex
 
 
 def test_z_wall_and_evaluator_total_keep_distinct_six_digit_values(
@@ -1166,8 +1172,12 @@ def test_z_wall_and_evaluator_total_keep_distinct_six_digit_values(
     )
 
     assert r"\texttt{218.105}" in row
-    assert r"\matrixtotalevaluator{\texttt{217.812}}" in row
-    assert r"\matrixrecurrencecore{\texttt{183.456}}" in row
+    assert (
+        r"\texttt{217.812}\,\matrixratio{ReportRed}{2.18}"
+        in row
+    )
+    assert r"\texttt{183.456}" not in row
+    assert r"\matrixrecurrencecore" not in row
 
 
 def test_z_historical_recurrence_without_dedicated_total_is_not_exposed(
@@ -1227,12 +1237,9 @@ def test_z_historical_recurrence_without_dedicated_total_is_not_exposed(
         if line.startswith("1 & ") and "recurrence JIT O2" in line
     )
 
-    assert (
-        r"\matrixzrecurrenceclocks{"
-        r"\matrixtotalevaluator{\matrixnotexposed{ReportMuted}}}"
-        r"{\matrixrecurrencecore{\texttt{7}}}"
-    ) in row
-    assert r"\matrixtotalevaluator{\texttt{3}}" not in row
+    assert r"\matrixnotexposed{ReportMuted}" in row
+    assert r"\texttt{7}" not in row
+    assert r"\matrixzrecurrenceclocks" not in row
 
     provenance["execution_timing"]["source"] = (
         "runtime_profile_core_evaluator_call_time"
@@ -1243,12 +1250,8 @@ def test_z_historical_recurrence_without_dedicated_total_is_not_exposed(
         for line in tex.splitlines()
         if line.startswith("1 & ") and "recurrence JIT O2" in line
     )
-    assert (
-        r"\matrixzrecurrenceclocks{"
-        r"\matrixtotalevaluator{\matrixnotexposed{ReportMuted}}}"
-        r"{\matrixrecurrencecore{\matrixnotexposed{ReportMuted}}}"
-    ) in row
-    assert r"\matrixtotalevaluator{\texttt{3}}" not in row
+    assert r"\matrixnotexposed{ReportMuted}" in row
+    assert r"\matrixzrecurrenceclocks" not in row
 
 
 def test_visible_completeness_accounts_for_every_n4_slot(reset_caches) -> None:
@@ -1409,11 +1412,11 @@ def test_adapter_joins_recurrence_baseline_without_copying_timing(
 
     assert joined.workloads[0].baseline is not joined.workloads[0].candidate
     assert joined.workloads[0].baseline["generation_seconds"] == 4.0
-    assert r"\texttt{4}" in tex
-    assert r"\matrixratio{ReportGreen}{0.5}" in tex
+    assert r"\texttt{4.00}" in tex
+    assert r"\bestmoderatio{ReportGreen}{0.500}" in tex
 
 
-def test_recurrence_matrix_cell_keeps_wall_total_and_core_distinct(
+def test_recurrence_matrix_cell_uses_compact_wall_and_core_ratios(
     reset_caches,
 ) -> None:
     caches = copy.deepcopy(reset_caches)
@@ -1462,16 +1465,15 @@ def test_recurrence_matrix_cell_keeps_wall_total_and_core_distinct(
         caches,
     )
 
-    assert (
-        r"\matrixruntimetriple{\matrixwallclock{ReportRed}{x2.18}}"
-        r"{\matrixtotalevaluator{\texttt{217.812}}}"
-        r"{\matrixrecurrencecore{\texttt{183.456}}}"
-    ) in tex
-    assert "Neither T nor C is derived from wall time or from the other" in tex
-    assert "C is never relabeled as evaluator total" in tex
+    assert r"\bestmodecompactprefix{2.04}" in tex
+    assert r"\bestmodeprimaryratio{ReportRed}{2.18}" in tex
+    assert r"\texttt{217.812}" not in tex
+    assert r"\texttt{183.456}" not in tex
+    assert r"\matrixruntimetriple{" not in tex
+    assert "An evaluator total is never divided by a recurrence core" in tex
 
 
-def test_unavailable_execution_is_not_exposed_and_has_no_zero_ratio(
+def test_unavailable_execution_keeps_only_compact_wall_ratio(
     reset_caches,
 ) -> None:
     caches = copy.deepcopy(reset_caches)
@@ -1517,16 +1519,20 @@ def test_unavailable_execution_is_not_exposed_and_has_no_zero_ratio(
         caches,
     )
 
-    assert (
-        r"\matrixruntimepair{\matrixwallclock{ReportGreen}{x0.5}}"
-        r"{\matrixtotalevaluator{\matrixnotexposed{ReportMuted}}}"
-    ) in tex
-    assert "Not exposed means that a successful wall-time measurement" in tex
+    runtime_row = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith(r" &  & \textcolor{ReportMuted}{\scriptsize run")
+    )
+    assert r"\bestmodeopenprefix" not in runtime_row
+    assert r" &  & \bestmodewallratio{ReportGreen}{0.500}" in runtime_row
+    assert r"\matrixruntimepair{" not in tex
+    assert r"\matrixtotalevaluator{" not in tex
     assert r"{x0}" not in tex
 
 
 @pytest.mark.parametrize("execution_mode", ("compiled", "eager"))
-def test_future_dag_evaluator_total_is_absolute_and_never_ratioed(
+def test_dag_matrix_never_divides_evaluator_total_by_recurrence_core(
     reset_caches,
     execution_mode: str,
 ) -> None:
@@ -1577,12 +1583,161 @@ def test_future_dag_evaluator_total_is_absolute_and_never_ratioed(
 
     tex = render_matrix_table(REPORT_CATALOG.dataset(dataset_id), caches)
 
-    assert (
-        r"\matrixruntimepair{\matrixwallclock{ReportGreen}{x0.5}}"
-        r"{\matrixtotalevaluator{\texttt{0.9}}}"
-    ) in tex
-    assert "absolute evaluator-total value marked T" in tex
-    assert r"\matrixruntimetriple{\matrixwallclock{ReportGreen}{x0.5}}" not in tex
+    runtime_row = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith(r" &  & \textcolor{ReportMuted}{\scriptsize run")
+    )
+    assert r"\bestmodeopenprefix" not in runtime_row
+    assert r" &  & \bestmodewallratio{ReportGreen}{0.500}" in runtime_row
+    assert r"\bestmodecompactprefix{0.900}" not in runtime_row
+    assert r"\texttt{0.900}" not in tex
+    assert r"\matrixtotalevaluator{" not in tex
+    assert r"\matrixruntimetriple{" not in tex
+
+
+@pytest.mark.parametrize("execution_mode", ("compiled", "eager"))
+def test_dag_matrix_prefers_authenticated_evaluator_total_pair(
+    reset_caches,
+    execution_mode: str,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    baseline = _cache_by_dataset(
+        caches,
+        "matrix_recurrence_builtin_sm_nlc",
+    )
+    dataset_id = (
+        "matrix_compiled_builtin_sm_nlc"
+        if execution_mode == "compiled"
+        else "matrix_eager_builtin_sm_nlc"
+    )
+    candidate = _cache_by_dataset(caches, dataset_id)
+    _set_ok(
+        baseline,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=4.0,
+        wall=2.0e-6,
+        execution=1.0e-6,
+    )
+    _set_ok(
+        candidate,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=2.0,
+        wall=1.0e-6,
+        execution=None,
+    )
+    baseline_measurement = next(
+        entry["measurement"]
+        for entry in baseline["entries"]
+        if entry["process_key"] == "dd_z_jets"
+        and entry["n_final"] == 1
+        and entry["workload"] == Workload.CONTRACTED.value
+    )
+    candidate_measurement = next(
+        entry["measurement"]
+        for entry in candidate["entries"]
+        if entry["process_key"] == "dd_z_jets"
+        and entry["n_final"] == 1
+        and entry["workload"] == Workload.CONTRACTED.value
+    )
+    assert isinstance(baseline_measurement, dict)
+    assert isinstance(candidate_measurement, dict)
+    _mark_evaluator_total(
+        baseline_measurement,
+        execution_mode="recurrence",
+        total=1.8e-6,
+    )
+    _mark_arena_unavailable(
+        candidate_measurement,
+        execution_mode=execution_mode,
+    )
+    _mark_evaluator_total(
+        candidate_measurement,
+        execution_mode=execution_mode,
+        total=0.9e-6,
+    )
+
+    tex = render_matrix_table(REPORT_CATALOG.dataset(dataset_id), caches)
+    runtime_row = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith(r" &  & \textcolor{ReportMuted}{\scriptsize run")
+    )
+
+    assert r"\bestmodecompactprefix{0.500}" in runtime_row
+    assert r"\bestmodeprimaryratio{ReportGreen}{0.500}" in runtime_row
+    assert r"\bestmodecompactprefix{0.900}" not in runtime_row
+    assert "evaluator-total fallback is diagnostic only" in tex
+
+
+@pytest.mark.parametrize("execution_mode", ("compiled", "eager"))
+@pytest.mark.parametrize(
+    ("legacy_execution", "expected_secondary"),
+    ((1.5e-6, "0.600"), (None, "0.450")),
+)
+def test_best_mode_uses_candidate_total_against_legacy_direct_or_wall(
+    reset_caches,
+    execution_mode: str,
+    legacy_execution: float | None,
+    expected_secondary: str,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    reference = _cache_by_dataset(caches, "reference_amplicol_nlc")
+    candidate = _cache_by_dataset(
+        caches,
+        f"matrix_{execution_mode}_builtin_sm_nlc",
+    )
+    _set_ok(
+        reference,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=4.0,
+        wall=2.0e-6,
+        execution=legacy_execution,
+    )
+    _set_ok(
+        candidate,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=2.0,
+        wall=1.0e-6,
+        execution=None,
+    )
+    candidate_measurement = next(
+        entry["measurement"]
+        for entry in candidate["entries"]
+        if entry["process_key"] == "dd_z_jets"
+        and entry["n_final"] == 1
+        and entry["workload"] == Workload.CONTRACTED.value
+    )
+    assert isinstance(candidate_measurement, dict)
+    _mark_arena_unavailable(
+        candidate_measurement,
+        execution_mode=execution_mode,
+    )
+    _mark_evaluator_total(
+        candidate_measurement,
+        execution_mode=execution_mode,
+        total=0.9e-6,
+    )
+
+    tex = render_best_mode_table(Accuracy.NLC, caches)
+    runtime_row = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith(r" &  & \textcolor{ReportMuted}{\scriptsize run")
+    )
+
+    assert rf"\bestmodecompactprefix{{{expected_secondary}}}" in runtime_row
+    assert r"\bestmodeprimaryratio{ReportGreen}{0.500}" in runtime_row
+    assert "evaluator-total fallback is diagnostic only" in tex
+    assert "uses the AmpliCol direct execution clock" in tex
 
 
 def test_z_ladder_prints_not_exposed_instead_of_zero(
@@ -1745,7 +1900,7 @@ def test_amplicol_all_flow_setup_generation_ratio_is_not_comparable(
         caches,
     )
 
-    assert tex.count(r"\matrixncabsolute{\texttt{10}}") == 1
+    assert tex.count(r"\bestmodeabsoluteprefix{\texttt{10.0}}") == 1
     generation_summary = next(
         line for line in tex.splitlines() if r"\textbf{summary: generation}" in line
     )
@@ -1782,15 +1937,10 @@ def test_four_line_recurrence_renders_absolute_values_without_legacy_oracle(
         caches,
     )
 
-    assert r"\matrixncabsolute{\texttt{4}}" in tex
-    assert r"\matrixncabsolute{\texttt{10}}" in tex
-    assert (
-        tex.count(
-            r"\matrixruntimetriple{"
-            r"\matrixncabsolute{\matrixwallabsolute{\texttt{2}}}"
-        )
-        >= 2
-    )
+    assert r"\bestmodeabsoluteprefix{\texttt{4.00}}" in tex
+    assert r"\bestmodeabsoluteprefix{\texttt{10.0}}" in tex
+    assert tex.count(r"\texttt{2.00}") >= 2
+    assert r"\matrixruntimetriple{" not in tex
     assert tex.count(r"\matrixstaticna{ReportMuted}") >= 2
     assert "absolute quantities without a baseline ratio" in tex
     assert "n.c." not in tex
@@ -1820,7 +1970,7 @@ def test_four_line_contracted_n6_renders_without_legacy_dependency(
     )
 
     assert r"\textbf{n=6}" in tex
-    assert r"\matrixncabsolute{\texttt{12}}" in tex
+    assert r"\bestmodeabsoluteprefix{\texttt{12.0}}" in tex
     assert r"\matrixstaticna{ReportMuted}" in tex
     assert "absolute quantities without a baseline ratio" in tex
     assert "n.c." not in tex
@@ -1889,7 +2039,7 @@ def test_cross_mode_all_flow_generation_ratio_remains_layout_matched(
         caches,
     )
 
-    assert r"\matrixratio{ReportGreen}{0.5}" in tex
+    assert r"\bestmoderatio{ReportGreen}{0.500}" in tex
     assert r"\matrixncabsolute{\texttt" not in tex
 
 

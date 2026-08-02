@@ -66,6 +66,10 @@ class LockCancelledError(ArtifactStoreError):
     """A caller cancelled while waiting for a filesystem lock."""
 
 
+class DiskFullError(ArtifactStoreError):
+    """A report write failed because its filesystem has no free space."""
+
+
 class ArtifactAction(StrEnum):
     """Concrete action selected from an artifact policy and current state."""
 
@@ -143,19 +147,36 @@ def _fsync_directory(path: Path) -> None:
         os.close(descriptor)
 
 
-def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.tmp-{uuid.uuid4()}")
-    data = _canonical_json_bytes(payload)
+def _raise_disk_full(error: OSError, path: Path) -> None:
+    if error.errno != errno.ENOSPC:
+        raise error
+    probe = path if path.is_dir() else path.parent
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
     try:
+        free = shutil.disk_usage(probe).free
+        detail = f"; {free} bytes available"
+    except OSError:
+        detail = ""
+    raise DiskFullError(f"disk full while writing {path}{detail}") from error
+
+
+def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f".{path.name}.tmp-{uuid.uuid4()}")
+        data = _canonical_json_bytes(payload)
         with temporary.open("xb") as stream:
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
         _fsync_directory(path.parent)
+    except OSError as error:
+        _raise_disk_full(error, path)
     finally:
-        temporary.unlink(missing_ok=True)
+        if "temporary" in locals():
+            temporary.unlink(missing_ok=True)
 
 
 def _read_json_object(path: Path, *, description: str) -> dict[str, Any]:
@@ -230,6 +251,10 @@ def _resolve_member(
 ) -> tuple[str, Path]:
     relative_path = _strict_relative_path(relative, field=field)
     candidate = root.joinpath(relative_path)
+    if candidate.is_symlink():
+        raise ManifestValidationError(
+            f"{field} is not a regular attempt file: {relative_path}"
+        )
     try:
         resolved = candidate.resolve(strict=require_file)
     except OSError as error:
@@ -317,6 +342,7 @@ class ArtifactStore:
         self.artifact_root = Path(artifact_root).expanduser().resolve(strict=False)
         self.lock_root = Path(lock_root).expanduser().resolve(strict=False)
         self.cells_root = self.artifact_root / "cells"
+        self.attempt_history_root = self.artifact_root / "attempt-history"
         self.cells_root.mkdir(parents=True, exist_ok=True)
         self.lock_root.mkdir(parents=True, exist_ok=True)
 
@@ -324,9 +350,82 @@ class ArtifactStore:
         validated = _validate_cell_id(cell_id)
         return self.cells_root / _safe_component(validated)
 
+    def _validate_cells_root(self) -> None:
+        if self.cells_root.is_symlink() or not self.cells_root.is_dir():
+            raise ManifestValidationError(
+                f"artifact cells root is not a regular directory: {self.cells_root}"
+            )
+        try:
+            resolved = self.cells_root.resolve(strict=True)
+        except OSError as error:
+            raise ManifestValidationError(
+                f"artifact cells root is unavailable: {self.cells_root}"
+            ) from error
+        if resolved != self.cells_root:
+            raise ManifestValidationError(
+                f"artifact cells root escapes its canonical path: {self.cells_root}"
+            )
+
+    def _validate_cell_root_path(
+        self,
+        cell_root: Path,
+        *,
+        missing_ok: bool,
+    ) -> Path | None:
+        self._validate_cells_root()
+        if cell_root.parent != self.cells_root:
+            raise ManifestValidationError(
+                f"cell root is outside the artifact inventory: {cell_root}"
+            )
+        if cell_root.is_symlink():
+            raise ManifestValidationError(
+                f"cell root is a symbolic link: {cell_root}"
+            )
+        if not cell_root.exists():
+            if missing_ok:
+                return None
+            raise ManifestValidationError(
+                f"artifact cell root is absent: {cell_root}"
+            )
+        if not cell_root.is_dir():
+            raise ManifestValidationError(
+                f"cell root is not a regular directory: {cell_root}"
+            )
+        try:
+            resolved = cell_root.resolve(strict=True)
+        except OSError as error:
+            raise ManifestValidationError(
+                f"cell root is unavailable: {cell_root}"
+            ) from error
+        if resolved != cell_root:
+            raise ManifestValidationError(
+                f"cell root escapes its canonical path: {cell_root}"
+            )
+        return cell_root
+
+    def _existing_cell_root(
+        self,
+        cell_id: str,
+        *,
+        missing_ok: bool,
+    ) -> Path | None:
+        return self._validate_cell_root_path(
+            self._cell_root(cell_id),
+            missing_ok=missing_ok,
+        )
+
     def _cell_lock_path(self, cell_id: str) -> Path:
         validated = _validate_cell_id(cell_id)
         return self.lock_root / "cells" / f"{_safe_component(validated)}.lock"
+
+    def _attempt_root(self, cell_id: str, attempt_id: str) -> Path:
+        validated_cell = _validate_cell_id(cell_id)
+        validated_attempt = _validate_uuid(attempt_id, field="attempt_id")
+        return self._cell_root(validated_cell) / "attempts" / validated_attempt
+
+    def _attempt_history_cell_root(self, cell_id: str) -> Path:
+        validated = _validate_cell_id(cell_id)
+        return self.attempt_history_root / _safe_component(validated)
 
     @contextmanager
     def cell_lock(
@@ -389,9 +488,16 @@ class ArtifactStore:
         if based_on is not None and based_on.cell_id != validated:
             raise ArtifactStoreError("based-on record belongs to a different cell")
         attempt_id = str(uuid.uuid4())
-        root = self._cell_root(validated) / "attempts" / attempt_id
-        root.mkdir(parents=True, exist_ok=False)
-        _fsync_directory(root.parent)
+        self._validate_cells_root()
+        cell_root = self._cell_root(validated)
+        if cell_root.exists() or cell_root.is_symlink():
+            self._validate_cell_root_path(cell_root, missing_ok=False)
+        root = cell_root / "attempts" / attempt_id
+        try:
+            root.mkdir(parents=True, exist_ok=False)
+            _fsync_directory(root.parent)
+        except OSError as error:
+            _raise_disk_full(error, root)
         return ArtifactAttempt(
             store=self,
             cell_id=validated,
@@ -418,7 +524,8 @@ class ArtifactStore:
             worker_result_sha256,
             field="worker_result_sha256",
         )
-        cell_root = self._cell_root(validated_cell)
+        cell_root = self._existing_cell_root(validated_cell, missing_ok=False)
+        assert cell_root is not None
         attempt_root = cell_root / "attempts" / validated_attempt
         with self.cell_lock(validated_cell):
             pointer_path = cell_root / "current.json"
@@ -491,12 +598,24 @@ class ArtifactStore:
         missing_ok: bool = False,
     ) -> CurrentRecord | None:
         validated = _validate_cell_id(cell_id)
-        cell_root = self._cell_root(validated)
+        cell_root = self._existing_cell_root(validated, missing_ok=True)
+        if cell_root is None:
+            if missing_ok:
+                return None
+            raise FileNotFoundError(f"no artifact cell for {validated!r}")
         pointer_path = cell_root / "current.json"
+        if pointer_path.is_symlink():
+            raise ManifestValidationError(
+                f"current pointer is a symbolic link: {pointer_path}"
+            )
         if not pointer_path.exists():
             if missing_ok:
                 return None
             raise FileNotFoundError(f"no current artifact for cell {validated!r}")
+        if not pointer_path.is_file():
+            raise ManifestValidationError(
+                f"current pointer is not a regular file: {pointer_path}"
+            )
         return self._validate_current_pointer(
             pointer_path,
             expected_cell_id=validated,
@@ -505,9 +624,9 @@ class ArtifactStore:
 
     def recover_current_records(self) -> tuple[CurrentRecord, ...]:
         records: list[CurrentRecord] = []
-        if not self.cells_root.exists():
-            return ()
+        self._validate_cells_root()
         for pointer_path in sorted(self.cells_root.glob("*/current.json")):
+            self._validate_cell_root_path(pointer_path.parent, missing_ok=False)
             records.append(
                 self._validate_current_pointer(
                     pointer_path,
@@ -520,7 +639,9 @@ class ArtifactStore:
     def cell_attempt_ids(self, cell_id: str) -> tuple[str, ...]:
         """Return the canonical immutable-attempt inventory for one cell."""
 
-        cell_root = self._cell_root(cell_id)
+        cell_root = self._existing_cell_root(cell_id, missing_ok=True)
+        if cell_root is None:
+            return ()
         attempts_root = cell_root / "attempts"
         if not attempts_root.exists():
             return ()
@@ -539,6 +660,304 @@ class ArtifactStore:
             )
         return tuple(attempt_ids)
 
+    def lightweight_current_payload(
+        self,
+        cell_id: str,
+        *,
+        missing_ok: bool = False,
+    ) -> tuple[str, Mapping[str, Any]] | None:
+        """Read authenticated pointer/manifest/result metadata without big files.
+
+        This deliberately authenticates the small manifest and result records
+        only.  It is used solely to protect live artifact owners during history
+        pruning; ordinary current loading retains full artifact validation.
+        """
+
+        validated = _validate_cell_id(cell_id)
+        cell_root = self._existing_cell_root(validated, missing_ok=True)
+        if cell_root is None:
+            if missing_ok:
+                return None
+            raise FileNotFoundError(f"no artifact cell for {validated!r}")
+        pointer_path = cell_root / "current.json"
+        if pointer_path.is_symlink():
+            raise ManifestValidationError(
+                f"current pointer is a symbolic link: {pointer_path}"
+            )
+        if not pointer_path.exists():
+            if missing_ok:
+                return None
+            raise FileNotFoundError(f"no current artifact for cell {validated!r}")
+        if not pointer_path.is_file():
+            raise ManifestValidationError(
+                f"current pointer is not a regular file: {pointer_path}"
+            )
+        pointer = _read_json_object(pointer_path, description="current pointer")
+        if set(pointer) != _CURRENT_KEYS or pointer.get("schema") != CURRENT_SCHEMA:
+            raise ManifestValidationError("current pointer has an unsupported shape")
+        if pointer.get("cell_id") != validated:
+            raise ManifestValidationError("current pointer cell_id does not match")
+        attempt_id = _validate_uuid(pointer.get("attempt_id"), field="attempt_id")
+        expected_manifest = f"attempts/{attempt_id}/manifest.json"
+        if pointer.get("manifest_path") != expected_manifest:
+            raise ManifestValidationError(
+                "current pointer manifest_path is not its canonical attempt manifest"
+            )
+        _, manifest_path = _resolve_member(
+            cell_root,
+            expected_manifest,
+            field="manifest_path",
+        )
+        expected_digest = _validate_sha256(
+            pointer.get("manifest_sha256"), field="manifest_sha256"
+        )
+        if _sha256(manifest_path) != expected_digest:
+            raise ManifestValidationError("current manifest digest mismatch")
+        manifest = _read_json_object(manifest_path, description="attempt manifest")
+        if (
+            set(manifest) != _ATTEMPT_KEYS
+            or manifest.get("schema") != ATTEMPT_SCHEMA
+            or manifest.get("cell_id") != validated
+            or manifest.get("attempt_id") != attempt_id
+            or manifest.get("status") != "ok"
+            or manifest.get("error") is not None
+        ):
+            raise ManifestValidationError("current attempt manifest is invalid")
+        try:
+            ArtifactPolicy(manifest.get("artifact_policy"))
+        except (TypeError, ValueError) as error:
+            raise ManifestValidationError(
+                "current manifest artifact policy is invalid"
+            ) from error
+        self._validate_based_on(manifest.get("based_on"))
+        result_relative = _strict_relative_path(
+            manifest.get("result_path"), field="result_path"
+        ).as_posix()
+        raw_artifacts = manifest.get("artifacts")
+        if not isinstance(raw_artifacts, list):
+            raise ManifestValidationError("current manifest artifacts are invalid")
+        artifact_paths: list[str] = []
+        for index, record in enumerate(raw_artifacts):
+            if not isinstance(record, dict) or set(record) != _FILE_KEYS:
+                raise ManifestValidationError(
+                    f"current artifact record {index} is invalid"
+                )
+            relative = _strict_relative_path(
+                record.get("path"), field=f"artifacts[{index}].path"
+            ).as_posix()
+            _validate_sha256(record.get("sha256"), field=f"artifacts[{index}].sha256")
+            size = record.get("size")
+            if not isinstance(size, int) or isinstance(size, bool) or size < 0:
+                raise ManifestValidationError(
+                    f"artifacts[{index}].size must be a non-negative integer"
+                )
+            artifact_paths.append(relative)
+        if len(set(artifact_paths)) != len(artifact_paths):
+            raise ManifestValidationError("current manifest has duplicate artifacts")
+        result_record = next(
+            (
+                record
+                for record in raw_artifacts
+                if isinstance(record, dict) and record.get("path") == result_relative
+            ),
+            None,
+        )
+        if result_record is None:
+            raise ManifestValidationError("current result is absent from manifest")
+        result_file = self._validate_artifact_file(
+            manifest_path.parent,
+            result_record,
+            index=raw_artifacts.index(result_record),
+        )
+        result = _read_json_object(result_file.path, description="attempt result")
+        return attempt_id, result
+
+    def protected_attempt_ids(
+        self,
+        cell_id: str,
+        *,
+        consumer_cell_ids: Iterable[str],
+    ) -> frozenset[str]:
+        """Return target attempts retained by live current/equivalent consumers."""
+
+        validated = _validate_cell_id(cell_id)
+        attempt_ids = self.cell_attempt_ids(validated)
+        candidate_artifacts = {
+            self._attempt_root(validated, attempt_id)
+            .joinpath("artifact")
+            .resolve(strict=False): attempt_id
+            for attempt_id in attempt_ids
+        }
+        protected: set[str] = set()
+        own = self.lightweight_current_payload(validated, missing_ok=True)
+        if own is not None:
+            protected.add(own[0])
+        consumers = {_validate_cell_id(value) for value in consumer_cell_ids}
+        for consumer_id in sorted(consumers):
+            current = self.lightweight_current_payload(consumer_id, missing_ok=True)
+            if current is None:
+                continue
+            artifact = current[1].get("artifact")
+            raw_path = artifact.get("path") if isinstance(artifact, Mapping) else None
+            if not isinstance(raw_path, str) or not raw_path:
+                continue
+            if not Path(raw_path).is_absolute():
+                raise ManifestValidationError(
+                    f"current artifact path is not absolute: {raw_path!r}"
+                )
+            referenced_artifact = Path(raw_path)
+            if referenced_artifact.is_symlink() or not referenced_artifact.is_dir():
+                raise ManifestValidationError(
+                    f"current artifact path is unavailable or unsafe: {raw_path!r}"
+                )
+            owner = candidate_artifacts.get(
+                referenced_artifact.expanduser().resolve(strict=False)
+            )
+            if owner is not None:
+                protected.add(owner)
+        return frozenset(protected)
+
+    def archive_obsolete_attempts(
+        self,
+        cell_id: str,
+        *,
+        consumer_cell_ids: Iterable[str],
+    ) -> tuple[str, ...]:
+        """Archive sealed noncurrent attempts and remove only heavy payloads.
+
+        The caller must already hold the campaign-cell lock.  Per-attempt use
+        locks are acquired non-blockingly so a concurrent equivalent reuse is
+        never disturbed.
+        """
+
+        validated = _validate_cell_id(cell_id)
+        if self.attempt_history_root.exists() and (
+            self.attempt_history_root.is_symlink()
+            or not self.attempt_history_root.is_dir()
+        ):
+            raise ArtifactStoreError(
+                "attempt history root is not a regular directory: "
+                f"{self.attempt_history_root}"
+            )
+        history_cell = self._attempt_history_cell_root(validated)
+        try:
+            self._prune_archived_payloads(history_cell)
+        except OSError as error:
+            _raise_disk_full(error, history_cell)
+        archived: list[str] = []
+        for attempt_id in self.cell_attempt_ids(validated):
+            try:
+                with self.named_lock(
+                    f"campaign-artifact-use-{attempt_id}", timeout=0.0
+                ):
+                    protected = self.protected_attempt_ids(
+                        validated,
+                        consumer_cell_ids=consumer_cell_ids,
+                    )
+                    if attempt_id in protected:
+                        continue
+                    source = self._attempt_root(validated, attempt_id)
+                    manifest = source / "manifest.json"
+                    if (
+                        source.is_symlink()
+                        or not source.is_dir()
+                        or manifest.is_symlink()
+                        or not manifest.is_file()
+                    ):
+                        continue
+                    raw = _read_json_object(manifest, description="attempt manifest")
+                    if (
+                        set(raw) != _ATTEMPT_KEYS
+                        or raw.get("schema") != ATTEMPT_SCHEMA
+                        or raw.get("cell_id") != validated
+                        or raw.get("attempt_id") != attempt_id
+                        or raw.get("status") not in {"ok", "failed", "interrupted"}
+                    ):
+                        raise ManifestValidationError(
+                            f"sealed attempt metadata is invalid: {source}"
+                        )
+                    if history_cell.exists() and (
+                        history_cell.is_symlink() or not history_cell.is_dir()
+                    ):
+                        raise ArtifactStoreError(
+                            "attempt history is not a regular directory: "
+                            f"{history_cell}"
+                        )
+                    history_cell.mkdir(parents=True, exist_ok=True)
+                    destination = history_cell / attempt_id
+                    if destination.exists() or destination.is_symlink():
+                        raise ArtifactStoreError(
+                            f"attempt history collision: {destination}"
+                        )
+                    self._validate_attempt_tree(source)
+                    os.replace(source, destination)
+                    _fsync_directory(source.parent)
+                    _fsync_directory(history_cell)
+                    self._remove_archived_artifact(destination)
+                    archived.append(attempt_id)
+            except LockTimeoutError:
+                continue
+            except OSError as error:
+                _raise_disk_full(error, history_cell)
+        return tuple(archived)
+
+    def _prune_archived_payloads(self, history_cell: Path) -> None:
+        if not history_cell.exists():
+            return
+        if history_cell.is_symlink() or not history_cell.is_dir():
+            raise ArtifactStoreError(
+                f"attempt history is not a regular directory: {history_cell}"
+            )
+        for archived in sorted(history_cell.iterdir()):
+            if archived.is_symlink() or not archived.is_dir():
+                raise ArtifactStoreError(
+                    f"attempt history contains a non-directory: {archived}"
+                )
+            _validate_uuid(archived.name, field="attempt history member")
+            self._remove_archived_artifact(archived)
+
+    @staticmethod
+    def _validate_attempt_tree(attempt: Path) -> None:
+        for root, directories, files in os.walk(attempt, topdown=True):
+            root_path = Path(root)
+            for name in (*directories, *files):
+                member = root_path / name
+                if member.is_symlink() or (
+                    not member.is_dir() and not member.is_file()
+                ):
+                    raise ArtifactStoreError(
+                        f"attempt contains an unsafe member: {member}"
+                    )
+
+    @staticmethod
+    def _validate_archived_artifact(archived_attempt: Path) -> None:
+        artifact = archived_attempt / "artifact"
+        if not artifact.exists() and not artifact.is_symlink():
+            return
+        if artifact.is_symlink() or not artifact.is_dir():
+            raise ArtifactStoreError(
+                f"archived artifact payload is not a regular directory: {artifact}"
+            )
+        for root, directories, files in os.walk(artifact, topdown=True):
+            root_path = Path(root)
+            for name in (*directories, *files):
+                member = root_path / name
+                if member.is_symlink() or (
+                    not member.is_dir() and not member.is_file()
+                ):
+                    raise ArtifactStoreError(
+                        f"archived artifact payload contains an unsafe member: {member}"
+                    )
+
+    @classmethod
+    def _remove_archived_artifact(cls, archived_attempt: Path) -> None:
+        artifact = archived_attempt / "artifact"
+        cls._validate_archived_artifact(archived_attempt)
+        if not artifact.exists():
+            return
+        shutil.rmtree(artifact)
+        _fsync_directory(archived_attempt)
+
     def _validate_current_pointer(
         self,
         pointer_path: Path,
@@ -546,6 +965,16 @@ class ArtifactStore:
         expected_cell_id: str | None,
         expected_cell_root: Path,
     ) -> CurrentRecord:
+        self._validate_cell_root_path(expected_cell_root, missing_ok=False)
+        if (
+            pointer_path.parent != expected_cell_root
+            or pointer_path.name != "current.json"
+            or pointer_path.is_symlink()
+            or not pointer_path.is_file()
+        ):
+            raise ManifestValidationError(
+                f"current pointer is not its canonical regular file: {pointer_path}"
+            )
         pointer = _read_json_object(pointer_path, description="current pointer")
         if set(pointer) != _CURRENT_KEYS:
             raise ManifestValidationError(
@@ -787,7 +1216,10 @@ class ArtifactAttempt:
             field="attempt output path",
             require_file=False,
         )
-        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as error:
+            _raise_disk_full(error, path)
         return path
 
     def write_json(
@@ -930,6 +1362,7 @@ __all__ = [
     "ArtifactStore",
     "ArtifactStoreError",
     "CurrentRecord",
+    "DiskFullError",
     "LockCancelledError",
     "LockTimeoutError",
     "ManifestValidationError",

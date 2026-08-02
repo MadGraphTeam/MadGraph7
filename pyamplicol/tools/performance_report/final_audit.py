@@ -63,7 +63,10 @@ from .catalog import (
     STATIC_NA_ORIGINAL_AMPLICOL_OPEN_QUARK_LINE_LIMIT,
     ReportCatalog,
 )
-from .measurement import shared_validation_points
+from .measurement import (
+    baseline_uses_lc_common_component_authority,
+    shared_validation_points,
+)
 from .measurement_lineage import (
     MeasurementLineage,
     MeasurementLineageError,
@@ -2659,6 +2662,17 @@ def _audit_measurement(
                 ),
                 expected_relative_tolerance=RELATIVE_TOLERANCE,
             )
+        elif baseline_uses_lc_common_component_authority(cell, baseline):
+            if "pointwise" in validation:
+                raise FinalAuditError(
+                    f"{context} compares an LC all-flow aggregate outside the "
+                    "legacy provider replay authority"
+                )
+            baseline_selector = baseline.get("selector_contract")
+            if raw_selector != baseline_selector:
+                raise FinalAuditError(
+                    f"{context} selector contract differs from canonical baseline"
+                )
         else:
             baseline_value = _finite_number(
                 baseline.get("matrix_element"),

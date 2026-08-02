@@ -67,6 +67,23 @@ The live form reads only compact lease JSON in the ignored coordination
 directory. Use `--instance ID_OR_PREFIX` to choose among concurrent runs; see
 `dashboard-snapshot --help` for staleness and styled-cell capture controls.
 
+Every completed or orderly interrupted `run` atomically replaces
+`campaign_summary_ids/` with one text file per non-success status. Each file
+contains exact canonical cell IDs and can be fed straight back to `run` or
+`inspect`:
+
+```console
+./steer_performance_campaign.py run \
+  --cell-id-file campaign_summary_ids/error.txt \
+                 campaign_summary_ids/validation_failed.txt \
+  --force-refresh
+```
+
+By default, superseded attempts keep their compact result, log, progress, and
+timeline diagnostics while obsolete heavy evaluator payloads are removed.
+Pass `run --no-artifacts-removal` only when a debugging run needs every heavy
+attempt payload.
+
 Create separately named campaigns with separate `profiling-campaign copy`
 commands. The steering entry point derives the profile name from its containing
 directory, so result artifacts, worker leases, locks, reproduction files, and

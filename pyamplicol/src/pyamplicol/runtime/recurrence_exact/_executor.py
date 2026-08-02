@@ -24,6 +24,8 @@ from pyamplicol.runtime.eager_exact._contracts import (
 )
 from pyamplicol.runtime.symbolica_exact import (
     _decimal,
+    _diagnostic_project_onshell_points,
+    _DiagnosticMassBinding,
     _prepare_points,
     _runtime_state,
     _selected_indices,
@@ -46,6 +48,87 @@ from ._plan_v2 import (
 )
 
 _ZERO = Decimal(0)
+
+
+def _diagnostic_recurrence_mass_bindings(
+    plan: _RecurrenceExactPlan,
+    prepared_parameters: Sequence[tuple[Decimal, Decimal]],
+) -> tuple[_DiagnosticMassBinding, ...]:
+    """Resolve one unambiguous authenticated mass for every external source."""
+
+    template_ids_by_slot: dict[int, set[int]] = {
+        slot: set() for slot in range(plan.sections.external_source_count)
+    }
+    if plan.sections.source_dispatch_variants:
+        for variant in plan.sections.source_dispatch_variants:
+            try:
+                source = plan.sections.sources[variant.source_row_id]
+            except IndexError as exc:
+                raise ArtifactError(
+                    "recurrence diagnostic source variant is out of range"
+                ) from exc
+            template_ids_by_slot.setdefault(source.source_slot, set()).add(
+                variant.source_template_id
+            )
+    else:
+        for source in plan.sections.sources:
+            template_ids_by_slot.setdefault(source.source_slot, set()).add(
+                source.source_template_or_dispatch_domain
+            )
+
+    if len(plan.external_source_slots) != plan.sections.external_source_count or set(
+        plan.external_source_slots
+    ) != set(range(plan.sections.external_source_count)):
+        raise ArtifactError("recurrence diagnostic external source layout is invalid")
+    by_slot: dict[int, _DiagnosticMassBinding] = {}
+    for source_slot in range(plan.sections.external_source_count):
+        candidates = set()
+        for template_id in template_ids_by_slot.get(source_slot, set()):
+            try:
+                template = plan.source_templates[template_id]
+            except KeyError as exc:
+                raise ArtifactError(
+                    "recurrence diagnostic source template is absent"
+                ) from exc
+            parameter_id = template.mass_prepared_parameter_id
+            if parameter_id is None:
+                binding = _DiagnosticMassBinding(
+                    mass=_ZERO,
+                    authority="authenticated-recurrence-static-massless-source",
+                    parameter_name=None,
+                )
+            else:
+                try:
+                    real, imaginary = prepared_parameters[parameter_id]
+                except IndexError as exc:
+                    raise ArtifactError(
+                        "recurrence diagnostic mass parameter is out of range"
+                    ) from exc
+                if imaginary != _ZERO:
+                    raise EvaluationError(
+                        "recurrence diagnostic external mass must be real"
+                    )
+                if not real.is_finite():
+                    raise EvaluationError(
+                        "recurrence diagnostic external mass must be finite"
+                    )
+                if not template.mass_parameter_name:
+                    raise ArtifactError(
+                        "recurrence diagnostic mass parameter name is absent"
+                    )
+                binding = _DiagnosticMassBinding(
+                    mass=real,
+                    authority="authenticated-current-recurrence-prepared-parameter",
+                    parameter_name=template.mass_parameter_name,
+                )
+            candidates.add(binding)
+        if len(candidates) != 1:
+            raise ArtifactError(
+                f"recurrence diagnostic source slot {source_slot} does not have "
+                "one unambiguous mass binding"
+            )
+        by_slot[source_slot] = candidates.pop()
+    return tuple(by_slot[slot] for slot in plan.external_source_slots)
 
 
 class RecurrenceExactExecutor:
@@ -125,6 +208,42 @@ class RecurrenceExactExecutor:
             self._contracted_destination_helicity = (
                 self._contracted_destination_helicity_map()
             )
+
+    def _diagnostic_project_onshell(
+        self,
+        momenta: Momenta,
+        *,
+        precision: int,
+    ) -> tuple[
+        tuple[tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...], ...],
+        dict[str, object],
+    ]:
+        """Build diagnostic-only on-shell kinematics from current parameters."""
+
+        working_precision = _working_precision(precision)
+        state = _runtime_state(self._native_runtime)
+        runtime_parameters = tuple(
+            _decimal(value, "runtime model parameter")
+            for value in state["model_parameter_values"]
+        )
+        with localcontext() as context:
+            context.prec = working_precision
+            context.rounding = ROUND_HALF_EVEN
+            parameters = self._plan.resolve_model_parameters(
+                runtime_parameters,
+                working_precision,
+            )
+            bindings = _diagnostic_recurrence_mass_bindings(
+                self._plan,
+                parameters.prepared,
+            )
+        return _diagnostic_project_onshell_points(
+            momenta,
+            physics=self._physics,
+            artifact_mass_bindings=bindings,
+            permutation=self._permutation,
+            precision=precision,
+        )
 
     def evaluate_resolved(
         self,

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import cached_property
 from itertools import permutations
@@ -13,6 +14,24 @@ from ..processes.ir import CanonicalProcessIR
 
 ColorAccuracy = Literal["lc", "nlc", "full"]
 ColorSectorKind = Literal["singlet", "open-lines", "single-trace"]
+
+
+def _canonical_open_string_product_key(
+    open_strings: Iterable[tuple[int, Iterable[int], int, Iterable[int]]],
+) -> tuple[tuple[int, tuple[int, ...], int, tuple[int, ...]], ...]:
+    """Return the unordered identity of a product of complete open strings."""
+
+    return tuple(
+        sorted(
+            (
+                int(fundamental),
+                tuple(int(label) for label in adjoints),
+                int(antifundamental),
+                tuple(int(label) for label in singlets),
+            )
+            for fundamental, adjoints, antifundamental, singlets in open_strings
+        )
+    )
 
 
 @dataclass(frozen=True)

@@ -231,8 +231,8 @@ class RecurrenceNumericalEvidenceEnvelopeExceeded(ValueError):
         self.raw_reason = raw_reason
         values = geometry.to_json_dict()
         super().__init__(
-            "recurrence raw-evidence capture geometry exceeds both the "
-            "resident raw-wire and sequential-spool memory envelopes "
+            "recurrence optional numerical evidence cannot fit its bounded "
+            "resident or transport envelope "
             f"(currents={values['current_count']}, "
             f"components={values['component_count']}, "
             f"candidate_points={values['candidate_probe_count']}, "
@@ -254,6 +254,26 @@ class RecurrenceNumericalEvidenceEnvelopeExceeded(ValueError):
 
 class _RawEvidenceWireEnvelopeExceeded(ValueError):
     """The validated raw-wire shape cannot fit its bounded envelope."""
+
+
+class _CanonicalEvidenceCapacityExceeded(ValueError):
+    """A valid optional-evidence encoding cannot fit its bounded transport."""
+
+
+_NATIVE_OPTIONAL_EVIDENCE_CAPACITY_MARKERS = (
+    "raw numerical evidence exceeds the explicit pre-metadata 1 GiB resident "
+    "memory envelope",
+    "compressed numerical evidence exceeds the explicit pre-shape 1 GiB resident "
+    "memory envelope",
+    "compressed numerical relation evidence exceeds the explicit native 1 GiB "
+    "resident memory envelope",
+    "raw numerical evidence exceeds the streaming 1 GiB resident memory envelope",
+    "raw numerical capture geometry leaves no minimum canonical wire reserve "
+    "inside the 1 GiB resident memory envelope",
+    "raw numerical sequential-spool capture geometry exceeds the explicit 1 GiB "
+    "resident memory envelope",
+    "could not reserve bounded decompressed numerical evidence",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -975,6 +995,15 @@ def run_recurrence_numerical_current_warmup(
         verification_probe_count=len(verification_points),
         runtime_parameter_count=len(plan.runtime_parameter_schema),
     )
+    evidence_geometry = RecurrenceNumericalEvidenceGeometry.from_counts(
+        current_count=len(plan.sections.currents),
+        component_count=sum(
+            current.component_count for current in plan.sections.currents
+        ),
+        candidate_probe_count=len(candidate_points),
+        verification_probe_count=len(verification_points),
+        runtime_parameter_count=len(plan.runtime_parameter_schema),
+    )
     generation_profile_timings["warmup_geometry"] = (
         time.perf_counter() - geometry_started
     )
@@ -1142,27 +1171,55 @@ def run_recurrence_numerical_current_warmup(
         _validate_raw_evidence_scalar_widths(candidate, verification)
         evidence_serialization_started = time.perf_counter()
         if geometry.encoding == _RAW_EVIDENCE_ENCODING:
-            encoded = _bounded_canonical_json_bytes(
-                evidence,
-                byte_limit=geometry.canonical_byte_limit,
-                label="recurrence numerical raw evidence",
-            )
-            canonical_byte_count = len(encoded)
-            _validate_raw_evidence_memory_upper_bound(
-                canonical_byte_count,
-                scalar_count=geometry.scalar_count,
-                row_count=geometry.row_count,
-                byte_limit=geometry.canonical_byte_limit,
-            )
+            try:
+                encoded = _bounded_canonical_json_bytes(
+                    evidence,
+                    byte_limit=geometry.canonical_byte_limit,
+                    label="recurrence numerical raw evidence",
+                )
+            except _CanonicalEvidenceCapacityExceeded as raw_error:
+                # Captures selected for raw storage are resident mappings.  A
+                # late switch to the compressed transport would retain those
+                # mappings while allocating the compressed producer state, so
+                # its peak would no longer be covered by the 1 GiB envelope.
+                # Optional certified reuse therefore falls back to mode-off;
+                # exact recurrence generation continues through the caller's
+                # existing typed-fallback path.
+                raise RecurrenceNumericalEvidenceEnvelopeExceeded(
+                    evidence_geometry,
+                    memory_envelope_bytes=_MAX_RAW_EVIDENCE_MEMORY_BYTES,
+                    spooled_producer_resident_bytes=(
+                        evidence_geometry.spooled_producer_resident_upper_bound()
+                    ),
+                    raw_reason=str(raw_error),
+                ) from raw_error
+            else:
+                canonical_byte_count = len(encoded)
+                _validate_raw_evidence_memory_upper_bound(
+                    canonical_byte_count,
+                    scalar_count=geometry.scalar_count,
+                    row_count=geometry.row_count,
+                    byte_limit=geometry.canonical_byte_limit,
+                )
         else:
             evidence_spool = tempfile.TemporaryFile(  # noqa: SIM115
                 prefix="pyamplicol-recurrence-evidence-",
             )
-            canonical_byte_count = _write_compressed_canonical_evidence(
-                evidence,
-                evidence_spool,
-                canonical_byte_limit=geometry.canonical_byte_limit,
-            )
+            try:
+                canonical_byte_count = _write_compressed_canonical_evidence(
+                    evidence,
+                    evidence_spool,
+                    canonical_byte_limit=geometry.canonical_byte_limit,
+                )
+            except _CanonicalEvidenceCapacityExceeded as compressed_error:
+                raise RecurrenceNumericalEvidenceEnvelopeExceeded(
+                    evidence_geometry,
+                    memory_envelope_bytes=_MAX_RAW_EVIDENCE_MEMORY_BYTES,
+                    spooled_producer_resident_bytes=(
+                        evidence_geometry.spooled_producer_resident_upper_bound()
+                    ),
+                    raw_reason=str(compressed_error),
+                ) from compressed_error
             encoded = b""
         generation_profile_timings["warmup_evidence_serialization"] = (
             time.perf_counter() - evidence_serialization_started
@@ -1180,7 +1237,7 @@ def run_recurrence_numerical_current_warmup(
             if effective_mode == "certified-reuse"
             else ()
         )
-        if geometry.encoding == _RAW_EVIDENCE_ENCODING:
+        if not isinstance(candidate.observations, _SpooledObservationMapping):
             candidate = candidate.detached_for_replay(replay_current_ids)
             verification = verification.detached_for_replay(replay_current_ids)
         else:
@@ -2209,6 +2266,7 @@ def _discover_relations(
             continue
         if current.selector_domain_id in unsafe_selector_domains:
             scope_suppressed_current_count += 1
+            continue
         candidate_current_observations = candidate.observations[current.semantic_id]
         equal_representatives = set(
             _raw_numerical_tolerance_window_ids(
@@ -3414,10 +3472,13 @@ def validate_recurrence_numerical_evidence_fallback(
     )
     expected_geometry = geometry.to_json_dict()
     expected_producer_resident_bytes = geometry.spooled_producer_resident_upper_bound()
+    # A fallback may occur either before capture because this producer bound
+    # exceeds the envelope, or later at a recognized canonical/native
+    # transport boundary.  In both cases the recomputed bound must be exact;
+    # it need not itself be the boundary that fired.
     if (
         counts != expected_geometry
         or producer_resident_bytes != expected_producer_resident_bytes
-        or producer_resident_bytes <= memory_envelope_bytes
     ):
         raise ValueError(
             "recurrence numerical current fallback geometry is inconsistent"
@@ -3623,7 +3684,7 @@ def _bounded_canonical_json_bytes(
     for chunk in _iter_canonical_json_chunks(value):
         next_size = len(encoded) + len(chunk)
         if next_size > byte_limit:
-            raise ValueError(
+            raise _CanonicalEvidenceCapacityExceeded(
                 f"{label} exceeds the explicit {byte_limit}-byte canonical boundary"
             )
         encoded.extend(chunk)
@@ -3642,7 +3703,7 @@ def _compressed_transport_byte_limit(canonical_byte_count: int) -> int:
         - canonical_byte_count
     )
     if available <= 2 * _COMPRESSED_EVIDENCE_HEADER.size:
-        raise ValueError(
+        raise _CanonicalEvidenceCapacityExceeded(
             "recurrence compressed evidence leaves no bounded transport "
             "resident inside its native memory envelope"
         )
@@ -3679,7 +3740,7 @@ def _write_compressed_canonical_evidence(
             return
         transport_byte_count += len(chunk)
         if transport_byte_count > _MAX_COMPRESSED_EVIDENCE_BYTES:
-            raise ValueError(
+            raise _CanonicalEvidenceCapacityExceeded(
                 "recurrence compressed evidence exceeds its explicit "
                 f"{_MAX_COMPRESSED_EVIDENCE_BYTES}-byte transport boundary"
             )
@@ -3688,7 +3749,7 @@ def _write_compressed_canonical_evidence(
     for chunk in _iter_canonical_json_chunks(value):
         canonical_byte_count += len(chunk)
         if canonical_byte_count > canonical_byte_limit:
-            raise ValueError(
+            raise _CanonicalEvidenceCapacityExceeded(
                 "recurrence numerical raw evidence exceeds the explicit "
                 f"{canonical_byte_limit}-byte decompression boundary"
             )
@@ -3697,7 +3758,7 @@ def _write_compressed_canonical_evidence(
     write_compressed(compressor.flush())
     dynamic_transport_limit = _compressed_transport_byte_limit(canonical_byte_count)
     if transport_byte_count > dynamic_transport_limit:
-        raise ValueError(
+        raise _CanonicalEvidenceCapacityExceeded(
             "recurrence compressed evidence exceeds the shape-dependent "
             f"{dynamic_transport_limit}-byte native transport boundary"
         )
@@ -3893,28 +3954,10 @@ def _select_raw_evidence_storage_geometry_for_counts(
             memory_envelope_bytes=memory_envelope_bytes,
         )
     except _RawEvidenceWireEnvelopeExceeded as raw_error:
-        producer_bound = _spooled_capture_memory_upper_bound(
-            current_count=geometry.current_count,
-            component_count=geometry.component_count,
-            maximum_probe_count=max(
-                geometry.candidate_probe_count,
-                geometry.verification_probe_count,
-            ),
-            runtime_parameter_count=geometry.runtime_parameter_count,
-        )
-        if producer_bound > memory_envelope_bytes:
-            raise RecurrenceNumericalEvidenceEnvelopeExceeded(
-                geometry,
-                memory_envelope_bytes=memory_envelope_bytes,
-                spooled_producer_resident_bytes=producer_bound,
-                raw_reason=str(raw_error),
-            ) from raw_error
-        return _RawEvidenceStorageGeometry(
-            scalar_count=geometry.scalar_count,
-            row_count=geometry.row_count,
-            canonical_byte_limit=_MAX_DECOMPRESSED_EVIDENCE_BYTES,
-            encoding=_COMPRESSED_EVIDENCE_ENCODING,
-            producer_resident_upper_bound=producer_bound,
+        return _compressed_raw_evidence_storage_geometry_for_counts(
+            geometry,
+            memory_envelope_bytes=memory_envelope_bytes,
+            raw_reason=str(raw_error),
         )
     return _RawEvidenceStorageGeometry(
         scalar_count=geometry.scalar_count,
@@ -3926,6 +3969,68 @@ def _select_raw_evidence_storage_geometry_for_counts(
             scalar_count=geometry.scalar_count,
             row_count=geometry.row_count,
         ),
+    )
+
+
+def _compressed_raw_evidence_storage_geometry_for_counts(
+    geometry: RecurrenceNumericalEvidenceGeometry,
+    *,
+    memory_envelope_bytes: int = _MAX_RAW_EVIDENCE_MEMORY_BYTES,
+    raw_reason: str,
+) -> _RawEvidenceStorageGeometry:
+    """Select the sequential compressed spool or return the typed fallback."""
+
+    producer_bound = geometry.spooled_producer_resident_upper_bound()
+    if producer_bound > memory_envelope_bytes:
+        raise RecurrenceNumericalEvidenceEnvelopeExceeded(
+            geometry,
+            memory_envelope_bytes=memory_envelope_bytes,
+            spooled_producer_resident_bytes=producer_bound,
+            raw_reason=raw_reason,
+        )
+    return _RawEvidenceStorageGeometry(
+        scalar_count=geometry.scalar_count,
+        row_count=geometry.row_count,
+        canonical_byte_limit=_MAX_DECOMPRESSED_EVIDENCE_BYTES,
+        encoding=_COMPRESSED_EVIDENCE_ENCODING,
+        producer_resident_upper_bound=producer_bound,
+    )
+
+
+def recurrence_numerical_evidence_capacity_outcome(
+    sections: _RecurrenceExactSectionsV1,
+    *,
+    candidate_probe_count: int,
+    verification_probe_count: int,
+    runtime_parameter_count: int,
+    error: BaseException,
+) -> RecurrenceNumericalEvidenceEnvelopeExceeded | None:
+    """Map only recognized native optional-evidence capacity failures.
+
+    Integrity, lexical, structural, and relation-correctness failures remain
+    fail-closed.  The native messages listed here are the bounded-memory exits
+    emitted after (or while establishing) authenticated evidence geometry.
+    """
+
+    reason = str(error)
+    if not any(
+        marker in reason for marker in _NATIVE_OPTIONAL_EVIDENCE_CAPACITY_MARKERS
+    ):
+        return None
+    geometry = RecurrenceNumericalEvidenceGeometry.from_counts(
+        current_count=len(sections.currents),
+        component_count=sum(current.component_count for current in sections.currents),
+        candidate_probe_count=candidate_probe_count,
+        verification_probe_count=verification_probe_count,
+        runtime_parameter_count=runtime_parameter_count,
+    )
+    return RecurrenceNumericalEvidenceEnvelopeExceeded(
+        geometry,
+        memory_envelope_bytes=_MAX_RAW_EVIDENCE_MEMORY_BYTES,
+        spooled_producer_resident_bytes=(
+            geometry.spooled_producer_resident_upper_bound()
+        ),
+        raw_reason=reason,
     )
 
 
@@ -4173,6 +4278,7 @@ __all__ = [
     "numerical_relation_correctness_payload",
     "recurrence_numerical_current_envelope_fallback_report",
     "recurrence_numerical_current_opt_out_report",
+    "recurrence_numerical_evidence_capacity_outcome",
     "recurrence_numerical_relation_correctness_summary",
     "recurrence_numerical_relation_fallback_summary",
     "recurrence_numerical_source_semantics_sha256",

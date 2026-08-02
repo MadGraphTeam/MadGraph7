@@ -4,7 +4,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import os
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -525,6 +525,31 @@ class Runtime:
             color_flows=color_flows,
             precision=precision,
         )
+
+    def _diagnostic_project_onshell(
+        self,
+        momenta: Momenta,
+        *,
+        precision: int,
+    ) -> tuple[object, Mapping[str, object]]:
+        """Forward the private report-only kinematic projection capability."""
+
+        precision = _validate_precision(precision)
+        operation = getattr(self._backend, "_diagnostic_project_onshell", None)
+        if not callable(operation):
+            raise EvaluationError(
+                "runtime backend does not support diagnostic on-shell projection"
+            )
+        result = operation(momenta, precision=precision)
+        if (
+            not isinstance(result, tuple)
+            or len(result) != 2
+            or not isinstance(result[1], Mapping)
+        ):
+            raise EvaluationError(
+                "runtime backend returned an invalid diagnostic on-shell projection"
+            )
+        return result[0], dict(result[1])
 
     def set_model_parameters(self, mapping: ModelParameters) -> None:
         """Validate and atomically apply a batch of runtime model parameters."""

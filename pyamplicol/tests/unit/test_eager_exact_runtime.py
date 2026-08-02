@@ -96,6 +96,49 @@ class _NativeRuntime:
         )
 
 
+def test_eager_diagnostic_projection_maps_alias_masses_to_caller_order() -> None:
+    executor = object.__new__(_EagerExactExecutor)
+    schema = {
+        "model": {
+            "particles": [
+                {"pdg": 25, "mass": 125.0, "mass_parameter": "ufo.MH"},
+                {"pdg": 21, "mass": 0.0, "mass_parameter": None},
+            ]
+        },
+        "model_parameters": [
+            {"name": "ufo.MH", "parameter_index": 0},
+        ],
+    }
+    executor._native_runtime = _NativeRuntime((3.0,))
+    executor._exact_execution = {"runtime_schema": schema}
+    executor._physics = {
+        "external_particles": [
+            {"label": 1, "pdg": 25, "role": "final"},
+            {"label": 2, "pdg": 21, "role": "initial"},
+        ]
+    }
+    # Artifact order is (H, g), while the caller provides (g, H).
+    executor._permutation = (1, 0)
+
+    projected, metadata = executor._diagnostic_project_onshell(
+        (((-4.0, 0.0, 0.0, 4.0), (4.9, 4.0, 0.0, 0.0)),),
+        precision=200,
+    )
+
+    assert projected[0][0][0] == Decimal("-4.0")
+    assert projected[0][1][0] == Decimal("5.0")
+    gluon, higgs = metadata["points"][0]["legs"]
+    assert (gluon["pdg"], gluon["mass"], gluon["projected_energy"]) == (
+        21,
+        "0.0",
+        "-4.0",
+    )
+    assert higgs["pdg"] == 25
+    assert higgs["mass"] == "3.0"
+    assert higgs["mass_parameter"] == "ufo.MH"
+    assert Decimal(higgs["shell_residual_after"]) == 0
+
+
 def _contract(role: str, component: int) -> dict[str, object]:
     return {
         "role": role,

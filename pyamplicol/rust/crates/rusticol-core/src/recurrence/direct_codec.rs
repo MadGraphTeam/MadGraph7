@@ -18,35 +18,50 @@ use super::{
     ThreeLineTraversalKindV1,
 };
 use crate::{RusticolError, RusticolResult};
+use std::io::Write;
 
 const MAGIC: &[u8; 8] = b"PACRDAP2";
 const VERSION: u32 = 2;
-const MAX_PAYLOAD_BYTES: usize = 8 * 1024 * 1024 * 1024;
 const MAX_ROWS: u64 = u32::MAX as u64;
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(format!("recurrence direct-plan codec: {}", message.into()))
 }
 
-struct Writer {
-    bytes: Vec<u8>,
+struct Writer<W> {
+    destination: W,
+    bytes_written: u64,
 }
 
-impl Writer {
-    fn new() -> Self {
-        Self { bytes: Vec::new() }
+impl<W: Write> Writer<W> {
+    fn new(destination: W) -> Self {
+        Self {
+            destination,
+            bytes_written: 0,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_bytes_written(destination: W, bytes_written: u64) -> Self {
+        Self {
+            destination,
+            bytes_written,
+        }
     }
 
     fn raw(&mut self, bytes: &[u8]) -> RusticolResult<()> {
+        let byte_count =
+            u64::try_from(bytes.len()).map_err(|_| invalid("payload write length exceeds u64"))?;
         let end = self
-            .bytes
-            .len()
-            .checked_add(bytes.len())
-            .ok_or_else(|| invalid("payload length overflows usize"))?;
-        if end > MAX_PAYLOAD_BYTES {
-            return Err(invalid("payload exceeds the 8 GiB format limit"));
-        }
-        self.bytes.extend_from_slice(bytes);
+            .bytes_written
+            .checked_add(byte_count)
+            .ok_or_else(|| invalid("payload length overflows u64"))?;
+        self.destination.write_all(bytes).map_err(|error| {
+            RusticolError::serialization(format!(
+                "could not stream recurrence direct-plan payload: {error}"
+            ))
+        })?;
+        self.bytes_written = end;
         Ok(())
     }
 
@@ -127,9 +142,6 @@ struct Reader<'a> {
 
 impl<'a> Reader<'a> {
     fn new(bytes: &'a [u8]) -> RusticolResult<Self> {
-        if bytes.len() > MAX_PAYLOAD_BYTES {
-            return Err(invalid("payload exceeds the 8 GiB format limit"));
-        }
         Ok(Self { bytes, offset: 0 })
     }
 
@@ -244,7 +256,16 @@ impl<'a> Reader<'a> {
 }
 
 pub fn encode_recurrence_direct_plan_v2(plan: &DirectRecurrencePlan) -> RusticolResult<Vec<u8>> {
-    let mut writer = Writer::new();
+    let mut payload = Vec::new();
+    encode_recurrence_direct_plan_v2_to_writer(plan, &mut payload)?;
+    Ok(payload)
+}
+
+pub(crate) fn encode_recurrence_direct_plan_v2_to_writer<W: Write>(
+    plan: &DirectRecurrencePlan,
+    destination: W,
+) -> RusticolResult<u64> {
+    let mut writer = Writer::new(destination);
     writer.raw(MAGIC)?;
     writer.u32(VERSION)?;
     writer.u32(0)?;
@@ -610,7 +631,7 @@ pub fn encode_recurrence_direct_plan_v2(plan: &DirectRecurrencePlan) -> Rusticol
         writer.u32(row.pairing_rule_id())?;
         writer.digest(row.proof_digest())?;
     }
-    Ok(writer.bytes)
+    Ok(writer.bytes_written)
 }
 
 pub fn decode_recurrence_direct_plan_v2(bytes: &[u8]) -> RusticolResult<DirectRecurrencePlan> {

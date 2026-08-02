@@ -100,6 +100,9 @@ def test_generated_report_outputs_do_not_dirty_measurement_source(
     (profile / "result_validation_summary.tex").write_text("% summary\n")
     (profile / "pyAmpliCol.pdf").write_bytes(b"%PDF-1.4\n")
     (profile / "pyAmpliCol.aux").write_text("\\relax\n")
+    summary = profile / "campaign_summary_ids"
+    summary.mkdir()
+    (summary / "error.txt").write_text("cell-a\n", encoding="utf-8")
     artifacts = repo / ".artifacts/performance-report/macbook_M3"
     artifacts.mkdir(parents=True)
     (artifacts / "attempt.bin").write_bytes(b"attempt")
@@ -120,6 +123,10 @@ def test_generated_report_outputs_do_not_dirty_measurement_source(
         "docs/performance_reports/macbook_M3/report-workspace.json",
         "docs/performance_reports/macbook_M3/arbitrary.txt",
         "docs/performance_reports/macbook_M3/results/nested/raw.json",
+        "docs/performance_reports/macbook_M3/campaign_summary_ids/nested/error.txt",
+        "docs/performance_reports/macbook_M3/campaign_summary_ids/error.json",
+        "docs/performance_reports/macbook_M3/"
+        ".campaign_summary_ids.deadbeef.tmp/error.txt",
     ),
 )
 def test_profile_scaffold_or_arbitrary_changes_dirty_measurement_source(

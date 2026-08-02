@@ -54,10 +54,16 @@ Every LC comparison contains two complete-coverage layouts:
 \end{itemize}
 Neither selection is fixed during generation. Each LC cell reports the two
 baseline generation quantities and wall times, followed by candidate
-generation entries and runtime ratios. A separately measured execution
-attribution is displayed after the wall ratio when both sides expose one;
-otherwise it is marked \textsc{not exposed}. Compiled and eager generation are
-compared with recurrence using the same layout.
+generation entries and runtime ratios. The muted supplementary ratio first
+compares separately measured execution attributions when both sides expose
+compatible boundaries; otherwise it compares authenticated evaluator totals.
+Only against original \AC{}, which has no evaluator-total clock, may a candidate
+evaluator total use the legacy direct execution clock (or wall when direct
+execution is absent) as denominator. An evaluator total is never divided by a
+recurrence core. This evaluator-total fallback is diagnostic only;
+execution/execution remains the compatible supplementary attribution. If no
+compatible supplementary clock exists, only the wall ratio is shown. Compiled
+and eager generation are compared with recurrence using the same layout.
 
 The two original-\AC{} reference workloads have different setup boundaries.
 For the selected-flow workload, the reported generation quantity is creation
@@ -72,12 +78,14 @@ followed by the candidate generation and runtime ratios. No per-flow scalar is
 defined for these contracted colour accuracies.
 
 The wall quantity is the repeated native evaluation time after caller-language
-input conversion and is the primary runtime observable. For compiled and eager
-rows it is the authenticated warmed total-evaluator boundary. A separately
-measured, narrower execution attribution is supplementary. Its ratio is shown
-only when candidate and baseline expose compatible attribution boundaries;
-otherwise it is marked \textsc{not exposed}; this label does not hide or
-invalidate the reported total-evaluator wall time.
+input conversion and is the primary runtime observable. Independent accumulated
+evaluator-total and narrower recurrence-core clocks remain in the detailed
+measurement evidence; neither is copied from wall time or from the other. The
+compact runtime notation \texttt{([xS]xW)} shows a compatible supplementary
+clock multiplier \texttt{xS} in muted brackets and the primary wall multiplier
+\texttt{xW} in its performance colour. The hierarchy above determines whether
+\texttt{xS} is execution attribution or a diagnostic evaluator-total fallback.
+If no supplementary ratio is eligible, the cell shows only \texttt{(xW)}.
 
 Preparation of reusable model-level kernels is excluded from
 process-generation time. Compiled generation still includes process-specific
@@ -108,13 +116,15 @@ LC, upper
 LC, lower
   & selected-flow \texttt{|} all-flow wall times in
     \(\mu\mathrm{s}/\mathrm{pt}\)
-  & wall ratio and, when exposed, a separate execution attribution \\
+  & compact \texttt{([xS]xW)} comparisons, or \texttt{(xW)} when only wall is
+    comparable \\
 NLC and full-colour, upper
   & contracted generation time in seconds
   & candidate generation ratio \\
 NLC and full-colour, lower
   & contracted wall time in \(\mu\mathrm{s}/\mathrm{pt}\)
-  & wall ratio and, when exposed, a separate execution attribution \\
+  & compact \texttt{([xS]xW)} comparison, or \texttt{(xW)} when only wall is
+    comparable \\
 \bottomrule
 \end{tabular}
 \end{center}

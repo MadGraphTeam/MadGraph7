@@ -26,9 +26,10 @@ from .agreements import (
     attach_direct_agreements,
     incoming_agreement_edges,
 )
-from .artifacts import _filesystem_lock
+from .artifacts import _filesystem_lock, _raise_disk_full
 from .catalog import REPORT_CATALOG, ReportCatalog
 from .measurement import (
+    attach_validation_failure_precision_diagnostic,
     failure_measurement,
     generated_artifact_from_measurement,
     load_measurement,
@@ -129,15 +130,19 @@ def _source_identity(
 
 
 def _atomic_json(path: Path, payload: Mapping[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        dir=path.parent,
-    )
-    temporary = Path(temporary_name)
+    descriptor: int | None = None
+    temporary: Path | None = None
     try:
-        with os.fdopen(descriptor, "w", encoding="ascii") as stream:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+        )
+        temporary = Path(temporary_name)
+        stream = os.fdopen(descriptor, "w", encoding="ascii")
+        descriptor = None
+        with stream:
             json.dump(
                 payload,
                 stream,
@@ -149,9 +154,14 @@ def _atomic_json(path: Path, payload: Mapping[str, object]) -> None:
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
-        temporary.replace(path)
+        os.replace(temporary, path)
+    except OSError as error:
+        _raise_disk_full(error, path)
     finally:
-        temporary.unlink(missing_ok=True)
+        if descriptor is not None:
+            os.close(descriptor)
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def _selector_provider_measurement(
@@ -394,6 +404,7 @@ def measure_cell(
             ),
             repo_root=repo_root,
             baseline=baseline,
+            validation_peers=peers,
             selector_provider=selector_provider,
             prepared_model_path=prepared_model_path,
             reused_artifact=reused_artifact,
@@ -404,6 +415,12 @@ def measure_cell(
         result,
         peers,
         catalog=catalog,
+    )
+    attach_validation_failure_precision_diagnostic(
+        cell,
+        result,
+        baseline=baseline,
+        peers=peers,
     )
     source_identity_postflight = _source_identity(
         repo_root,

@@ -14,6 +14,7 @@ from .agreements import (
     DIRECT_AGREEMENT_FIELD,
     LC_COMMON_COMPONENT_FIELD,
     evaluate_lc_common_component,
+    validate_lc_common_component,
 )
 from .cache import empty_measurement
 from .models import (
@@ -35,6 +36,7 @@ from .runner import (
     _real_nonnegative,
     _selector_kwargs,
     generate_artifact,
+    point_digest,
     pointwise_validation,
     profile_runtime,
     provenance_payload,
@@ -161,6 +163,463 @@ def _baseline_matrix_element(
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise RunnerError("candidate baseline has no matrix element")
     return float(value)
+
+
+_LEGACY_NUMERICAL_AUTHORITY_ABI = (
+    "pyamplicol-report-legacy-numerical-authority-v1"
+)
+_LEGACY_NUMERICAL_AUTHORITY_FIELD = "legacy_numerical_authority"
+_LEGACY_ALL_FLOW_COMPONENT_AUTHORITY_SOURCE = (
+    "all-flow-selected-provider-replay"
+)
+
+
+def baseline_uses_lc_common_component_authority(
+    cell: CellSpec,
+    baseline: Mapping[str, object] | None,
+) -> bool:
+    """Whether an LC all-flow baseline authenticates only its shared component."""
+
+    if (
+        baseline is None
+        or cell.measurement.accuracy is not Accuracy.LC
+        or cell.workload is not Workload.ALL_FLOW
+    ):
+        return False
+    validation = baseline.get("validation")
+    authority = (
+        validation.get(_LEGACY_NUMERICAL_AUTHORITY_FIELD)
+        if isinstance(validation, Mapping)
+        else None
+    )
+    if not (
+        isinstance(authority, Mapping)
+        and authority.get("abi") == _LEGACY_NUMERICAL_AUTHORITY_ABI
+        and authority.get("source")
+        == _LEGACY_ALL_FLOW_COMPONENT_AUTHORITY_SOURCE
+    ):
+        return False
+    if baseline.get("status") != ResultStatus.OK.value:
+        raise RunnerError("LC all-flow component authority is not successful")
+    try:
+        validate_lc_common_component(
+            validation.get(LC_COMMON_COMPONENT_FIELD),
+            selector_contract=baseline.get("selector_contract"),
+        )
+    except ValueError as error:
+        raise RunnerError(
+            "LC all-flow component authority is not bound to its selector"
+        ) from error
+    return True
+
+
+def _attach_baseline_validation(
+    cell: CellSpec,
+    validation: dict[str, object],
+    *,
+    candidate_matrix_element: float,
+    baseline: Mapping[str, object] | None,
+) -> None:
+    if baseline_uses_lc_common_component_authority(cell, baseline):
+        # The worker's direct-agreement edge compares the authenticated shared
+        # component.  Direct imode2's aggregate is diagnostic, not authority.
+        return
+    baseline_value = _baseline_matrix_element(baseline)
+    if baseline_value is not None:
+        validation["pointwise"] = pointwise_validation(
+            candidate_matrix_element,
+            baseline_value,
+            relative_tolerance=_pointwise_tolerance(cell),
+        )
+
+
+_PRECISION_DIAGNOSTIC_ABI = (
+    "pyamplicol-report-validation-failure-precision-diagnostic-v2"
+)
+_PRECISION_DIAGNOSTIC_CELL_IDS = frozenset(
+    {
+        "matrix-compiled-builtin-sm-full-n4-dd-tt-jets-contracted",
+        "matrix-compiled-builtin-sm-nlc-n4-dd-tt-jets-contracted",
+        "matrix-recurrence-builtin-sm-lc-n4-dd-tt-jets-all-flow",
+    }
+)
+
+
+def _precision_diagnostic_enabled(cell: CellSpec) -> bool:
+    return cell.cell_id in _PRECISION_DIAGNOSTIC_CELL_IDS
+
+
+def _diagnostic_number(value: object) -> dict[str, object]:
+    real = getattr(value, "real", value)
+    if callable(real):
+        real = real()
+    return {"value": str(real), "binary64": _real_nonnegative(value)}
+
+
+def _unavailable_precision_diagnostic(error: BaseException) -> dict[str, object]:
+    return {
+        "abi": _PRECISION_DIAGNOSTIC_ABI,
+        "status": "unavailable",
+        "promotes_measurement": False,
+        "error": {"kind": type(error).__name__, "message": str(error)},
+    }
+
+
+def _diagnostic_timing_context(
+    cell: CellSpec,
+    measurement: Mapping[str, object] | None,
+) -> dict[str, object]:
+    """Copy independent measured clocks without recomputing or deriving them."""
+
+    measurement = measurement or {}
+    provenance = measurement.get("provenance")
+    provenance = provenance if isinstance(provenance, Mapping) else {}
+    evaluator_total = provenance.get("evaluator_total_timing")
+    execution = provenance.get("execution_timing")
+    return {
+        "source": "copied-from-measurement",
+        "recomputed": False,
+        "outer_wall_seconds_per_point": measurement.get(
+            "wall_seconds_per_point"
+        ),
+        "evaluator_total_timing": (
+            dict(evaluator_total) if isinstance(evaluator_total, Mapping) else None
+        ),
+        "recurrence_core_timing": (
+            dict(execution)
+            if cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+            and isinstance(execution, Mapping)
+            else None
+        ),
+    }
+
+
+def _diagnostic_authorities(
+    cell: CellSpec,
+    measurements: Mapping[str, Mapping[str, object]],
+) -> list[dict[str, object]]:
+    """Extract the few already-stored values relevant to the retained canaries."""
+
+    result: list[dict[str, object]] = []
+    for label, measurement in measurements.items():
+        validation = measurement.get("validation")
+        validation = validation if isinstance(validation, Mapping) else {}
+        component_only = baseline_uses_lc_common_component_authority(
+            cell, measurement
+        )
+        legacy = validation.get(_LEGACY_NUMERICAL_AUTHORITY_FIELD)
+        source = (
+            str(legacy.get("source"))
+            if isinstance(legacy, Mapping)
+            else "stored-successful-measurement"
+        )
+
+        common = validation.get(LC_COMMON_COMPONENT_FIELD)
+        imode2 = validation.get("legacy_imode2_diagnostic")
+        kind = LC_COMMON_COMPONENT_FIELD if component_only else "total"
+        candidates = (
+            ("matrix-element", "total", measurement.get("matrix_element"), source),
+            (
+                LC_COMMON_COMPONENT_FIELD,
+                LC_COMMON_COMPONENT_FIELD,
+                common.get("value") if isinstance(common, Mapping) else None,
+                source,
+            ),
+            (
+                "generated-library",
+                kind,
+                imode2.get("authoritative_value")
+                if isinstance(imode2, Mapping)
+                else None,
+                str(imode2.get("authoritative_source", source))
+                if isinstance(imode2, Mapping)
+                else source,
+            ),
+            (
+                "direct-imode2",
+                kind,
+                imode2.get("imode2_value") if isinstance(imode2, Mapping) else None,
+                "legacy-direct-imode2-non-certifying",
+            ),
+        )
+        for name, value_kind, value, value_source in candidates:
+            if (
+                (name == "matrix-element" and component_only)
+                or isinstance(value, bool)
+                or not isinstance(value, (int, float))
+            ):
+                continue
+            result.append(
+                {
+                    "authority": f"{label}:{name}",
+                    "value_kind": value_kind,
+                    "value": float(value),
+                    "source": value_source,
+                }
+            )
+    return result
+
+
+def _diagnostic_evaluation(
+    runtime: object,
+    points: object,
+    *,
+    cell: CellSpec,
+    contract: SelectorContract | None,
+    precision: int,
+    point_context: str,
+) -> dict[str, object]:
+    selectors = _selector_kwargs(cell, contract)
+    values = runtime.evaluate(  # type: ignore[attr-defined]
+        points, precision=precision, **selectors
+    )
+    resolved = runtime.evaluate_resolved(  # type: ignore[attr-defined]
+        points, precision=precision, **selectors
+    )
+    totals = tuple(resolved.total())
+    if len(values) != 1 or len(totals) != 1:
+        raise RunnerError("precision diagnostic requires exactly one point")
+    result = {
+        "point_context": point_context,
+        "total": _diagnostic_number(values[0]),
+        "resolved_sum": _diagnostic_number(totals[0]),
+        "internal_agreement": pointwise_validation(
+            _real_nonnegative(values[0]),
+            _real_nonnegative(totals[0]),
+        ),
+    }
+    if (
+        contract is not None
+        and cell.measurement.accuracy is Accuracy.LC
+        and cell.workload is Workload.ALL_FLOW
+    ):
+        component = runtime.evaluate_resolved(  # type: ignore[attr-defined]
+            points,
+            precision=precision,
+            helicities=contract.runtime_all_flow_helicity_ids,
+            color_flows=contract.selected_color_flow_ids,
+        )
+        if (
+            tuple(component.helicity_ids) != contract.runtime_all_flow_helicity_ids
+            or tuple(component.color_ids) != contract.selected_color_flow_ids
+        ):
+            raise RunnerError("diagnostic LC common-component axes changed")
+        try:
+            result[LC_COMMON_COMPONENT_FIELD] = _diagnostic_number(
+                component.values[0][0][0]
+            )
+        except (AttributeError, IndexError, TypeError) as error:
+            raise RunnerError(
+                "diagnostic LC common component is not scalar"
+            ) from error
+    return result
+
+
+def _validation_failure_precision_diagnostic(
+    runtime: object,
+    points: object,
+    *,
+    cell: CellSpec,
+    contract: SelectorContract | None,
+    baseline: Mapping[str, object] | None,
+    peers: Mapping[str, Mapping[str, object]] | None = None,
+    measurement_context: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Attach a bounded, non-promoting p32/p200 explanation to three canaries."""
+
+    try:
+        measurements = dict(peers or {})
+        if baseline is not None:
+            measurements = {"baseline": baseline, **measurements}
+        authorities = _diagnostic_authorities(cell, measurements)
+        retained_digest = point_digest(points)
+        projector = getattr(runtime, "_diagnostic_project_onshell", None)
+        if not callable(projector):
+            raise RunnerError(
+                "runtime does not expose diagnostic on-shell projection"
+            )
+        diagnostic_points, raw_projection = projector(points, precision=200)
+        if not isinstance(raw_projection, Mapping):
+            raise RunnerError("runtime returned invalid diagnostic projection metadata")
+        projection = dict(raw_projection)
+        unchanged = projection.get("unchanged")
+        if not isinstance(unchanged, bool):
+            raise RunnerError(
+                "diagnostic projection does not report whether it changed"
+            )
+        projected_digest = projection.get("projected_digest")
+        if not isinstance(projected_digest, str) or not projected_digest:
+            raise RunnerError("diagnostic projection has no projected point digest")
+        projection["original_digest"] = retained_digest
+        if unchanged:
+            candidate_point_context = "retained-point-unchanged-by-projection"
+            authority_point_context = candidate_point_context
+        else:
+            candidate_point_context = "projected-onshell-point"
+            authority_point_context = "original-retained-point"
+        result: dict[str, object] = {
+            "abi": _PRECISION_DIAGNOSTIC_ABI,
+            "status": "diagnostic-only",
+            "promotes_measurement": False,
+            "timings_unchanged": True,
+            "retained_point": {
+                "digest": retained_digest,
+                "momenta": _reproduction_momenta(points),
+            },
+            "kinematic_projection": projection,
+            "stored_peer_point_context": authority_point_context,
+            "selector_contract": None if contract is None else contract.as_dict(),
+            "execution_identity": {
+                "cell_id": cell.cell_id,
+                "process": cell.process,
+                "multiplicity": cell.n_final,
+                "workload": cell.workload.value,
+                "layout": cell.workload.value,
+                "execution_mode": cell.measurement.execution_mode.value,
+                "backend": cell.measurement.backend,
+                "model": (
+                    None
+                    if cell.measurement.model is None
+                    else cell.measurement.model.value
+                ),
+                "accuracy": cell.measurement.accuracy.value,
+                "variant": cell.variant,
+            },
+            "measurement_timing_context": _diagnostic_timing_context(
+                cell, measurement_context
+            ),
+            "attempts": [],
+        }
+        attempts = result["attempts"]
+        assert isinstance(attempts, list)
+        for precision in (32, 200):
+            attempt: dict[str, object] = {"precision_digits": precision}
+            try:
+                candidate = _diagnostic_evaluation(
+                    runtime,
+                    diagnostic_points,
+                    cell=cell,
+                    contract=contract,
+                    precision=precision,
+                    point_context=candidate_point_context,
+                )
+                comparisons = []
+                for authority in authorities:
+                    value_kind = str(authority["value_kind"])
+                    candidate_fields = (
+                        ("total", "resolved_sum")
+                        if value_kind == "total"
+                        else (value_kind,)
+                    )
+                    for candidate_field in candidate_fields:
+                        candidate_value = candidate.get(candidate_field)
+                        if not isinstance(candidate_value, Mapping):
+                            continue
+                        comparison = pointwise_validation(
+                            float(candidate_value["binary64"]),
+                            float(authority["value"]),
+                            relative_tolerance=_pointwise_tolerance(cell),
+                        )
+                        comparison_payload = {
+                            "candidate_value_kind": candidate_field,
+                            "authority": authority["authority"],
+                            "source": authority["source"],
+                            "candidate_point_context": candidate_point_context,
+                            "authority_point_context": authority_point_context,
+                            "same_kinematic_point": unchanged,
+                            "certifying": unchanged,
+                            **comparison,
+                        }
+                        if not unchanged:
+                            comparison_payload.pop("status", None)
+                            comparison_payload["context_only"] = True
+                        comparisons.append(comparison_payload)
+                attempt.update(
+                    {
+                        "status": "evaluated",
+                        "candidate": candidate,
+                        "comparisons": comparisons,
+                    }
+                )
+            except Exception as error:
+                attempt.update(
+                    {
+                        "status": "unavailable",
+                        "error": {
+                            "kind": type(error).__name__,
+                            "message": str(error),
+                        },
+                    }
+                )
+                attempts.append(attempt)
+                continue
+            attempts.append(attempt)
+            internal = candidate["internal_agreement"]
+            if (
+                precision == 32
+                and isinstance(internal, Mapping)
+                and internal.get("status") == ResultStatus.OK.value
+                and comparisons
+                and all(
+                    comparison.get("status") == ResultStatus.OK.value
+                    for comparison in comparisons
+                )
+            ):
+                break
+        return result
+    except Exception as error:
+        return _unavailable_precision_diagnostic(error)
+
+
+def attach_validation_failure_precision_diagnostic(
+    cell: CellSpec,
+    measurement: dict[str, object],
+    *,
+    baseline: Mapping[str, object] | None,
+    peers: Mapping[str, Mapping[str, object]] | None = None,
+) -> None:
+    """Add the same bounded diagnostic after late direct-agreement failures."""
+
+    validation = measurement.get("validation")
+    if (
+        measurement.get("status") != ResultStatus.VALIDATION_FAILED.value
+        or not _precision_diagnostic_enabled(cell)
+        or not isinstance(validation, Mapping)
+        or "precision_diagnostic" in validation
+    ):
+        return
+    mutable_validation = dict(validation)
+    try:
+        artifact = measurement.get("artifact")
+        if not isinstance(artifact, Mapping):
+            raise RunnerError("failed measurement has no generated artifact")
+        path = artifact.get("path")
+        process_id = artifact.get("process_id")
+        if not isinstance(path, str) or not isinstance(process_id, str):
+            raise RunnerError("failed measurement artifact is not loadable")
+        runtime = _load_runtime(
+            Path(path).expanduser().resolve(strict=False), process_id
+        )
+        points = shared_validation_points(cell.process)
+        raw_contract = measurement.get("selector_contract")
+        contract = (
+            None
+            if raw_contract is None
+            else SelectorContract.from_mapping(raw_contract)
+        )
+        diagnostic = _validation_failure_precision_diagnostic(
+            runtime,
+            points,
+            cell=cell,
+            contract=contract,
+            baseline=baseline,
+            peers=peers,
+            measurement_context=measurement,
+        )
+    except Exception as error:
+        diagnostic = _unavailable_precision_diagnostic(error)
+    mutable_validation["precision_diagnostic"] = diagnostic
+    measurement["validation"] = mutable_validation
 
 
 def _require_nonzero_lc_all_flow_baseline(
@@ -391,6 +850,7 @@ def measure_pyamplicol_cell(
     settings: RunnerSettings,
     repo_root: Path,
     baseline: Mapping[str, object] | None,
+    validation_peers: Mapping[str, Mapping[str, object]] | None = None,
     selector_provider: Mapping[str, object] | None = None,
     prepared_model_path: Path | None = None,
     reused_artifact: GeneratedArtifact | None = None,
@@ -510,13 +970,12 @@ def measure_pyamplicol_cell(
             "non-scalar measurement without a canonical baseline must use "
             "recurrence high-precision validation"
         )
-    baseline_value = _baseline_matrix_element(baseline)
-    if baseline_value is not None:
-        validation["pointwise"] = pointwise_validation(
-            float(profile["matrix_element"]),
-            baseline_value,
-            relative_tolerance=_pointwise_tolerance(cell),
-        )
+    _attach_baseline_validation(
+        cell,
+        validation,
+        candidate_matrix_element=float(profile["matrix_element"]),
+        baseline=baseline,
+    )
     statuses = {
         str(record.get("status"))
         for record in validation.values()
@@ -527,6 +986,29 @@ def measure_pyamplicol_cell(
         if ResultStatus.VALIDATION_FAILED.value in statuses
         else ResultStatus.OK.value
     )
+    if (
+        validation["status"] == ResultStatus.VALIDATION_FAILED.value
+        and _precision_diagnostic_enabled(cell)
+    ):
+        validation["precision_diagnostic"] = (
+            _validation_failure_precision_diagnostic(
+                runtime,
+                points,
+                cell=cell,
+                contract=contract,
+                baseline=baseline,
+                peers=validation_peers,
+                measurement_context={
+                    "wall_seconds_per_point": profile.get(
+                        "wall_seconds_per_point"
+                    ),
+                    "provenance": {
+                        "execution_timing": execution_timing,
+                        "evaluator_total_timing": evaluator_total_timing,
+                    },
+                },
+            )
+        )
     status = str(profile["status"])
     if ResultStatus.VALIDATION_FAILED.value in statuses:
         status = ResultStatus.VALIDATION_FAILED.value
@@ -660,6 +1142,8 @@ def load_measurement(path: Path) -> dict[str, object]:
 
 
 __all__ = [
+    "attach_validation_failure_precision_diagnostic",
+    "baseline_uses_lc_common_component_authority",
     "failure_measurement",
     "file_digest",
     "generated_artifact_from_measurement",

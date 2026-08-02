@@ -67,6 +67,32 @@ a decimal 30 GB process-tree RAM limit. Press `Ctrl-C` or `Esc` to stop
 dispatch, terminate supervised process trees, preserve completed currents, and
 restore the terminal.
 
+After normal completion or an orderly interrupt, the controller prints the
+absolute path of `campaign_summary_ids/`. It replaces that directory with one
+sorted text file per non-success status, for example `error.txt`,
+`blocked_dependency.txt`, `validation_failed.txt`, or `worker_timeout.txt`.
+Replay any union of those exact IDs while retaining the normal dependency
+closure and other selector intersections:
+
+```console
+./steer_performance_campaign.py run \
+  --cell-id-file campaign_summary_ids/error.txt \
+                 campaign_summary_ids/validation_failed.txt \
+  --force-refresh
+```
+
+`--cell-id-file` is also accepted by `inspect`. Blank lines and full-line `#`
+comments are ignored. Capped and failed currents are otherwise reused under
+the ordinary rules, so use `--force-refresh` when the intent is a new attempt;
+replaying `blocked_dependency.txt` automatically includes required
+prerequisites.
+
+The default lifecycle keeps every current artifact and any artifact borrowed
+by an equivalent current. It moves obsolete sealed attempts into compact
+history, retaining metadata, results, logs, progress events, and phase
+timelines while removing only their heavy evaluator payloads. Use
+`--no-artifacts-removal` for a diagnostic run that must retain those payloads.
+
 Capture a running dashboard from another terminal without attaching to or
 changing the campaign:
 

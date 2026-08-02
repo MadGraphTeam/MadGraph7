@@ -27,6 +27,7 @@ from ..color import (
     build_color_contraction_plan,
     exact_color_contraction_factor,
 )
+from ..color.plan_types import _canonical_open_string_product_key
 from ..models.base import Model
 from ..models.recurrence_template import RecurrenceTemplateCatalog
 from ..processes.ir import CanonicalProcessIR
@@ -679,16 +680,14 @@ def recurrence_color_sector_owner_map(
     owners: list[int] = []
     for sector in sectors:
         if sector.kind == "open-lines":
-            open_strings = tuple(
-                sorted(
-                    (
-                        string.fundamental_source_slot,
-                        string.adjoint_source_slots,
-                        string.antifundamental_source_slot,
-                        string.singlet_source_slots,
-                    )
-                    for string in sector.open_strings
+            open_strings = _canonical_open_string_product_key(
+                (
+                    string.fundamental_source_slot,
+                    string.adjoint_source_slots,
+                    string.antifundamental_source_slot,
+                    string.singlet_source_slots,
                 )
+                for string in sector.open_strings
             )
             key: tuple[object, ...] = ("open-lines", open_strings)
         else:

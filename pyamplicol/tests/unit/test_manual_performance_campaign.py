@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import ast
 import base64
 import json
 import os
@@ -185,6 +186,9 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
         "current/contribution counts",
         "process-tree current/peak usage",
         "--continue-across-revisions",
+        "--cell-id-file",
+        "--no-artifacts-removal",
+        "sealed with compact diagnostics",
     ):
         assert fragment in help_text
     arguments = _parse("run", "--dry-run")
@@ -196,6 +200,7 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
     assert arguments.no_color is False
     assert arguments.force_refresh is False
     assert arguments.continue_across_revisions is False
+    assert arguments.no_artifacts_removal is False
     assert _parse("run", "--continue-across-revisions").continue_across_revisions
     refresh = _parse("refresh-pdf")
     assert refresh.expected_page_count is None
@@ -2619,11 +2624,11 @@ def test_copied_campaign_rebinds_private_pdf_build_profile(tmp_path: Path) -> No
 
 
 def test_controller_sources_only_use_read_only_git_for_external_checkout() -> None:
-    sources = (PROFILE / "steer_performance_campaign.py").read_text(
-        encoding="utf-8"
-    ) + (ROOT / "tools/performance_report/manual_campaign.py").read_text(
-        encoding="utf-8"
+    source_paths = (
+        PROFILE / "steer_performance_campaign.py",
+        ROOT / "tools/performance_report/manual_campaign.py",
     )
+    sources = "\n".join(path.read_text(encoding="utf-8") for path in source_paths)
     for forbidden in (
         "subprocess.Popen(",
         "os.system(",
@@ -2633,9 +2638,46 @@ def test_controller_sources_only_use_read_only_git_for_external_checkout() -> No
         "git fetch",
     ):
         assert forbidden not in sources
-    assert sources.count("subprocess.run(") == 2
-    assert '("git", "rev-parse", "HEAD")' in sources
-    assert '("git", "status", "--porcelain=v1", "--untracked-files=all")' in sources
+    commands: list[tuple[str | None, ...]] = []
+    for path in source_paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "run"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "subprocess"
+            ):
+                continue
+            assert node.args and isinstance(node.args[0], (ast.Tuple, ast.List))
+            command = tuple(
+                element.value if isinstance(element, ast.Constant) else None
+                for element in node.args[0].elts
+            )
+            assert command[:2] in {("git", "rev-parse"), ("git", "status")}
+            assert not {
+                "add",
+                "apply",
+                "checkout",
+                "clean",
+                "commit",
+                "fetch",
+                "merge",
+                "pull",
+                "push",
+                "reset",
+                "stash",
+            }.intersection(value for value in command if value is not None)
+            commands.append(command)
+    assert ("git", "rev-parse", "HEAD") in commands
+    assert (
+        "git",
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+    ) in commands
+    assert any(command[:3] == ("git", "rev-parse", "--verify") for command in commands)
     assert os.access(PROFILE / "steer_performance_campaign.py", os.X_OK)
 
 

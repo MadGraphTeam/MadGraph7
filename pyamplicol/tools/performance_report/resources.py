@@ -14,6 +14,7 @@ from collections import defaultdict
 from collections.abc import Callable, Collection, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, Protocol
 
@@ -56,6 +57,7 @@ DEFAULT_PHASE_STATE_STARTUP_GRACE_SECONDS = 30.0
 GENERATION_PHASE_EVIDENCE_ABI = "pyamplicol-report-generation-phase-evidence-v1"
 PROCESS_TREE_MEMORY_METRIC_ABI = "pyamplicol-process-tree-memory-metric-v1"
 MAX_CONSECUTIVE_MEMORY_PROBE_FAILURES = 3
+DEFAULT_SUPERVISOR_STDERR_LIMIT_BYTES = 64 * 1024
 _WORKER_IMPORT_ENVIRONMENT = frozenset(
     {
         "VIRTUAL_ENV",
@@ -118,6 +120,7 @@ class ResourceUsage:
 
 TerminationReason = Literal[
     "completed",
+    "worker_exit",
     "cancelled",
     "worker_timeout",
     "generation_timeout",
@@ -186,6 +189,56 @@ class SupervisedResult:
     generation_phase: GenerationPhaseEvidence | None = None
     memory_limit_bytes: int | None = None
     memory_limit_reason: str | None = None
+    pid: int | None = None
+    member_pids: tuple[int, ...] = ()
+    signal_number: int | None = None
+    signal_name: str | None = None
+    supervisor_stderr: str | None = None
+    supervisor_stderr_truncated: bool = False
+    supervisor_stderr_limit_bytes: int | None = None
+    phase_state_error: str | None = None
+    started_at_utc: str | None = None
+    finished_at_utc: str | None = None
+
+
+class _BoundedByteTail:
+    """Drain a pipe without allowing diagnostic capture to grow unbounded."""
+
+    def __init__(self, limit_bytes: int) -> None:
+        if limit_bytes <= 0:
+            raise ValueError("stderr capture limit must be positive")
+        self._limit_bytes = limit_bytes
+        self._tail = bytearray()
+        self._total_bytes = 0
+        self._lock = threading.Lock()
+
+    def drain(self, stream: object) -> None:
+        read = getattr(stream, "read", None)
+        if not callable(read):
+            return
+        while True:
+            try:
+                chunk = read(64 * 1024)
+            except (OSError, ValueError):
+                return
+            if not chunk:
+                return
+            if isinstance(chunk, str):
+                chunk = chunk.encode("utf-8", errors="replace")
+            with self._lock:
+                self._total_bytes += len(chunk)
+                self._tail.extend(chunk)
+                if len(self._tail) > self._limit_bytes:
+                    del self._tail[: len(self._tail) - self._limit_bytes]
+
+    def decoded(self) -> tuple[str | None, bool]:
+        with self._lock:
+            if not self._tail and self._total_bytes == 0:
+                return None, False
+            return (
+                bytes(self._tail).decode("utf-8", errors="replace"),
+                self._total_bytes > self._limit_bytes,
+            )
 
 
 class CompletedProcessLike(Protocol):
@@ -793,6 +846,8 @@ def supervise_worker(
     signaler: TreeSignaler = _signal_process_tree,
     observation_callback: ObservationCallback | None = None,
     cancellation_requested: CancellationCheck | None = None,
+    capture_stderr: bool = False,
+    stderr_limit_bytes: int = DEFAULT_SUPERVISOR_STDERR_LIMIT_BYTES,
 ) -> SupervisedResult:
     """Run a worker and enforce wall, stage, and memory limits.
 
@@ -837,6 +892,8 @@ def supervise_worker(
         raise ValueError("termination_grace_seconds must be non-negative")
     if phase_state_startup_grace_seconds < 0:
         raise ValueError("phase_state_startup_grace_seconds must be non-negative")
+    if stderr_limit_bytes <= 0:
+        raise ValueError("stderr_limit_bytes must be positive")
     if working_directory is not None:
         working_directory = working_directory.expanduser().resolve(strict=True)
         if not working_directory.is_dir():
@@ -860,6 +917,7 @@ def supervise_worker(
         ) -> Mapping[int, int]:
             return darwin_probe(pids)
 
+    started_at_utc = datetime.now(UTC).isoformat()
     phase_monitor_started = clock()
     popen_arguments: dict[str, object] = {
         "start_new_session": True,
@@ -870,7 +928,20 @@ def supervise_worker(
     }
     if working_directory is not None:
         popen_arguments["cwd"] = os.fspath(working_directory)
+    if capture_stderr:
+        popen_arguments["stderr"] = subprocess.PIPE
     process = popen_factory(tuple(command), **popen_arguments)
+    stderr_tail = _BoundedByteTail(stderr_limit_bytes)
+    stderr_stream = getattr(process, "stderr", None) if capture_stderr else None
+    stderr_thread: threading.Thread | None = None
+    if stderr_stream is not None:
+        stderr_thread = threading.Thread(
+            target=stderr_tail.drain,
+            args=(stderr_stream,),
+            name=f"worker-{process.pid}-stderr",
+            daemon=True,
+        )
+        stderr_thread.start()
     monitor = ResourceMonitor(
         process.pid,
         interval_seconds=interval_seconds,
@@ -886,6 +957,7 @@ def supervise_worker(
     consecutive_memory_probe_failures = 0
     pending_memory_probe_reason: str | None = None
     tree_termination_requested = False
+    observed_member_pids = {process.pid}
 
     def terminate(selected_reason: TerminationReason) -> None:
         nonlocal reason, returncode, tree_termination_requested
@@ -981,18 +1053,56 @@ def supervise_worker(
                     return
         phase_state = observed
 
+    def classify_process_exit(
+        exit_code: int,
+        *,
+        now_seconds: float,
+        zero_reason: TerminationReason = "completed",
+    ) -> None:
+        nonlocal returncode, reason, phase_error
+        returncode = exit_code
+        if phase_channel is not None:
+            observe_phase(now_seconds)
+            if phase_error is None and phase_state is None:
+                phase_error = "worker exited without authenticated phase-state evidence"
+            elif (
+                phase_error is None
+                and phase_state is not None
+                and phase_state.phase == "generation"
+            ):
+                phase_error = "worker exited before closing its generation interval"
+        if exit_code != 0:
+            reason = "worker_exit"
+        elif phase_error is not None:
+            reason = "phase_state_error"
+        else:
+            reason = zero_reason
+
     try:
         while True:
             if cancellation_requested is not None and cancellation_requested():
-                terminate("cancelled")
+                returncode = process.poll()
+                if returncode is None:
+                    terminate("cancelled")
+                else:
+                    classify_process_exit(
+                        returncode,
+                        now_seconds=clock(),
+                        zero_reason="cancelled",
+                    )
                 break
             if pending_memory_probe_reason is not None:
                 returncode = process.poll()
                 if returncode is not None:
-                    reason = "memory_probe_error"
+                    classify_process_exit(
+                        returncode,
+                        now_seconds=clock(),
+                        zero_reason="memory_probe_error",
+                    )
                     break
 
             usage = monitor.sample_once()
+            observed_member_pids.update(monitor.member_pids)
             now_seconds = clock()
             if observation_callback is not None:
                 # Monitoring is deliberately informational. A broken
@@ -1009,12 +1119,20 @@ def supervise_worker(
                             member_pids=monitor.member_pids,
                         )
                     )
+            returncode = process.poll()
+            if returncode is not None:
+                classify_process_exit(returncode, now_seconds=now_seconds)
+                break
             if max_rss_bytes is not None and usage.memory_probe_reason is not None:
                 consecutive_memory_probe_failures += 1
                 pending_memory_probe_reason = usage.memory_probe_reason
                 returncode = process.poll()
                 if returncode is not None:
-                    reason = "memory_probe_error"
+                    classify_process_exit(
+                        returncode,
+                        now_seconds=now_seconds,
+                        zero_reason="memory_probe_error",
+                    )
                     break
                 if (
                     consecutive_memory_probe_failures
@@ -1027,7 +1145,11 @@ def supervise_worker(
             if pending_memory_probe_reason is not None:
                 returncode = process.poll()
                 if returncode is not None:
-                    reason = "memory_probe_error"
+                    classify_process_exit(
+                        returncode,
+                        now_seconds=now_seconds,
+                        zero_reason="memory_probe_error",
+                    )
                     break
                 pending_memory_probe_reason = None
                 consecutive_memory_probe_failures = 0
@@ -1048,7 +1170,11 @@ def supervise_worker(
             if phase_channel is not None:
                 observe_phase(now_seconds)
                 if phase_error is not None:
-                    terminate("phase_state_error")
+                    returncode = process.poll()
+                    if returncode is not None and returncode != 0:
+                        reason = "worker_exit"
+                    else:
+                        terminate("phase_state_error")
                     break
                 if phase_state is not None:
                     if generation_timeout_seconds is not None:
@@ -1095,17 +1221,7 @@ def supervise_worker(
 
             returncode = process.poll()
             if returncode is not None:
-                if phase_channel is not None:
-                    if phase_state is None:
-                        reason = "phase_state_error"
-                        phase_error = (
-                            "worker exited without authenticated phase-state evidence"
-                        )
-                    elif phase_state.phase == "generation":
-                        reason = "phase_state_error"
-                        phase_error = (
-                            "worker exited before closing its generation interval"
-                        )
+                classify_process_exit(returncode, now_seconds=now_seconds)
                 break
             sleeper(interval_seconds)
     finally:
@@ -1132,6 +1248,21 @@ def supervise_worker(
 
     if returncode is None:
         returncode = process.wait()
+    observed_member_pids.update(monitor.member_pids)
+    if stderr_thread is not None:
+        stderr_thread.join(timeout=max(termination_grace_seconds, 1.0))
+        if stderr_thread.is_alive() and stderr_stream is not None:
+            with suppress(OSError, ValueError):
+                stderr_stream.close()
+            stderr_thread.join(timeout=1.0)
+    supervisor_stderr, supervisor_stderr_truncated = stderr_tail.decoded()
+    signal_number = -returncode if returncode < 0 else None
+    signal_name: str | None = None
+    if signal_number is not None:
+        try:
+            signal_name = signal.Signals(signal_number).name
+        except ValueError:
+            signal_name = f"SIG{signal_number}"
     generation_phase = None
     if phase_channel is not None and generation_timeout_seconds is not None:
         generation_phase = GenerationPhaseEvidence(
@@ -1171,12 +1302,23 @@ def supervise_worker(
         generation_phase=generation_phase,
         memory_limit_bytes=max_rss_bytes,
         memory_limit_reason=memory_limit_reason,
+        pid=process.pid,
+        member_pids=tuple(sorted(observed_member_pids)),
+        signal_number=signal_number,
+        signal_name=signal_name,
+        supervisor_stderr=supervisor_stderr,
+        supervisor_stderr_truncated=supervisor_stderr_truncated,
+        supervisor_stderr_limit_bytes=(stderr_limit_bytes if capture_stderr else None),
+        phase_state_error=phase_error,
+        started_at_utc=started_at_utc,
+        finished_at_utc=datetime.now(UTC).isoformat(),
     )
 
 
 __all__ = [
     "DEFAULT_PHASE_STATE_STARTUP_GRACE_SECONDS",
     "DEFAULT_SAMPLE_INTERVAL_SECONDS",
+    "DEFAULT_SUPERVISOR_STDERR_LIMIT_BYTES",
     "DEFAULT_TERMINATION_GRACE_SECONDS",
     "GENERATION_PHASE_EVIDENCE_ABI",
     "MAX_CONSECUTIVE_MEMORY_PROBE_FAILURES",

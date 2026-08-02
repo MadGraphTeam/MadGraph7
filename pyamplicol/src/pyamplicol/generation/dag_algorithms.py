@@ -10,6 +10,7 @@ from itertools import pairwise
 from typing import cast
 
 from ..color.plan import GenericColorPlan, build_color_plan
+from ..color.plan_types import _canonical_open_string_product_key
 from ..models._physics_ir import ContractionIR
 from ..models.base import (
     CouplingOrders,
@@ -530,7 +531,6 @@ def build_backward_live_state_plan(
                                         )
                                     )
 
-    useful: set[_LiveCurrentShape] = set()
     closures: list[BackwardLiveClosure] = []
     for left_mask, right_mask in closure_candidate_splits:
         left_shapes = possible_by_mask.get(left_mask, ())
@@ -628,9 +628,20 @@ def build_backward_live_state_plan(
                             )
                         )
                 if pair_closures:
-                    useful.add(left_shape)
-                    useful.add(right_shape)
                     closures.extend(pair_closures)
+
+    closure_owner_ids = _canonical_open_line_alias_owner_sector_ids(
+        color_plan,
+        (closure.color_sector_id for closure in closures),
+    )
+    closures = [
+        closure
+        for closure in closures
+        if int(closure.color_sector_id) in closure_owner_ids
+    ]
+    useful: set[_LiveCurrentShape] = {
+        shape for closure in closures for shape in (closure.left, closure.right)
+    }
 
     pending = deque(useful)
     while pending:
@@ -663,12 +674,12 @@ def _physical_sink_sector_ids(
     color_plan: GenericColorPlan,
     closure_candidate_splits: Sequence[tuple[int, int]],
 ) -> frozenset[int] | None:
-    """Return sectors whose physical word ends at a configured closure sink.
+    """Return sectors whose canonical traversal ends at a closure sink.
 
     Compatibility traversals exist only to build intermediate currents.  The
-    physical sector word owns the final sink, as documented by the colour-plan
-    contract.  Fail closed when a sector has no unique non-empty physical word
-    or when a closure side is not a singleton.
+    sector's authenticated canonical traversal owns the private recursion sink.
+    Fail closed when a sector has no canonical sink or when a closure side is
+    not a singleton.
     """
 
     sink_labels: set[int] = set()
@@ -682,14 +693,82 @@ def _physical_sink_sector_ids(
 
     active: set[int] = set()
     for sector in color_plan.sectors:
-        words = sector.color_words
-        if len(words) != 1 or not words[0]:
+        sink_label = sector.canonical_closure_sink_label(color_plan.process)
+        if sink_label is None:
             return None
-        if int(words[0][-1]) in sink_labels:
+        if int(sink_label) in sink_labels:
             active.add(int(sector.id))
     if not active:
         return None
     return frozenset(active)
+
+
+def _canonical_open_line_alias_owner_sector_ids(
+    color_plan: GenericColorPlan,
+    active_sector_ids: Iterable[int],
+) -> frozenset[int]:
+    """Choose one root-bearing owner per complete-open-line tensor.
+
+    NLC and full-colour plans enumerate permutations of complete open-line
+    blocks as public traversal sectors.  Those permutations are aliases of
+    the same product of colour tensors and must not each contribute a coherent
+    amplitude.  Choose the smallest *active* sector in each alias class: for
+    three or more open lines the smallest public sector can be rootless, so an
+    owner chosen before physical closure would incorrectly erase an amplitude.
+    """
+
+    active = frozenset(int(sector_id) for sector_id in active_sector_ids)
+    sector_by_id = {int(sector.id): sector for sector in color_plan.sectors}
+    unknown = active.difference(sector_by_id)
+    if unknown:
+        raise ValueError(
+            "active colour sectors are absent from the color plan: "
+            + ", ".join(str(sector_id) for sector_id in sorted(unknown))
+        )
+    if color_plan.color_accuracy not in {"nlc", "full"}:
+        return active
+
+    owner_by_key: dict[tuple[object, ...], int] = {}
+    owners: set[int] = set()
+    for sector_id in sorted(active):
+        sector = sector_by_id[sector_id]
+        if sector.kind == "open-lines":
+            open_strings = _canonical_open_string_product_key(
+                (
+                    line.fundamental_label,
+                    line.adjoint_labels,
+                    line.antifundamental_label,
+                    line.singlet_labels,
+                )
+                for line in sector.open_color_lines
+            )
+            key: tuple[object, ...] = ("open-lines", open_strings)
+        else:
+            key = (sector.kind, sector_id)
+        owners.add(owner_by_key.setdefault(key, sector_id))
+    return frozenset(owners)
+
+
+def _retain_canonical_open_line_alias_roots(
+    color_plan: GenericColorPlan,
+    roots: Sequence[AmplitudeRoot],
+) -> tuple[AmplitudeRoot, ...]:
+    """Retain one contributing root sector per open-line alias class."""
+
+    if not roots or color_plan.color_accuracy not in {"nlc", "full"}:
+        return tuple(roots)
+    owners = _canonical_open_line_alias_owner_sector_ids(
+        color_plan,
+        (root.color_sector_id for root in roots),
+    )
+    retained: list[AmplitudeRoot] = []
+    for root in roots:
+        if int(root.color_sector_id) not in owners:
+            continue
+        retained.append(
+            root if root.id == len(retained) else replace(root, id=len(retained))
+        )
+    return tuple(retained)
 
 
 def infer_minimal_coupling_order_limits(

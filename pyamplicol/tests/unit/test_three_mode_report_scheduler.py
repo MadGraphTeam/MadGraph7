@@ -14,7 +14,12 @@ from tools.performance_report.agreements import (
     LC_COMMON_COMPONENT_ABI,
     LC_COMMON_COMPONENT_FIELD,
 )
-from tools.performance_report.artifacts import ArtifactStore, CurrentRecord
+from tools.performance_report.artifacts import (
+    ArtifactAttempt,
+    ArtifactStore,
+    CurrentRecord,
+    DiskFullError,
+)
 from tools.performance_report.cache import empty_measurement
 from tools.performance_report.campaign_policy import (
     MACBOOK_M3_MEMORY_LIMIT_BYTES,
@@ -39,7 +44,11 @@ from tools.performance_report.models import (
     Workload,
 )
 from tools.performance_report.phase_state import WorkerPhaseChannel
-from tools.performance_report.resources import ResourceUsage, SupervisedResult
+from tools.performance_report.resources import (
+    GenerationPhaseEvidence,
+    ResourceUsage,
+    SupervisedResult,
+)
 from tools.performance_report.scheduler import (
     CampaignResult,
     CampaignScheduler,
@@ -1062,6 +1071,74 @@ def test_scheduler_never_publishes_first_failed_worker_result(
     assert worker_result["status"] == ResultStatus.ERROR.value
 
 
+def test_scheduler_result_rewrite_preserves_actionable_disk_full_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    target = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+    baseline = REPORT_CATALOG.baseline_cell(target)
+    assert baseline is not None
+    revision = "current-revision"
+    _publish_current(service.store, baseline, revision=revision)
+
+    def fake_supervise(
+        command: Sequence[str],
+        **_arguments: object,
+    ) -> SupervisedResult:
+        result_path = Path(command[command.index("--result-json") + 1])
+        result_path.write_text(
+            json.dumps(_ok_measurement(target, revision=revision)) + "\n",
+            encoding="ascii",
+        )
+        return SupervisedResult(
+            0,
+            "completed",
+            ResourceUsage(True, 1, 1, 0, 0.1, 0.1),
+        )
+
+    original_write_json = ArtifactAttempt.write_json
+
+    def fail_result_rewrite(
+        attempt: ArtifactAttempt,
+        relative_path: str,
+        payload: Mapping[str, object],
+    ) -> Path:
+        if relative_path == "worker-result.json":
+            raise DiskFullError(
+                f"disk full while writing {attempt.root / relative_path}; "
+                "0 bytes available"
+            )
+        return original_write_json(attempt, relative_path, payload)
+
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        fake_supervise,
+    )
+    monkeypatch.setattr(ArtifactAttempt, "write_json", fail_result_rewrite)
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(artifact_policy=ArtifactPolicy.REGENERATE),
+    )
+    monkeypatch.setattr(scheduler, "_prepare_model_for", lambda _planned: None)
+    scheduler.source_revision = revision
+
+    with pytest.raises(
+        DiskFullError,
+        match=r"disk full while writing .*worker-result.json; 0 bytes available",
+    ):
+        scheduler._run_cell(
+            PlannedCell(
+                target,
+                dependency=False,
+                baseline_cell_id=baseline.cell_id,
+                rank=1,
+            )
+        )
+
+    assert service.store.load_current(target.cell_id, missing_ok=True) is None
+
+
 def test_scheduler_never_publishes_first_skip(
     tmp_path: Path,
 ) -> None:
@@ -1142,6 +1219,30 @@ def test_dag_terminal_direct_peer_blocks_dependent_before_worker_launch(
         ),
     )
     monkeypatch.setattr(scheduler, "_prepare_model_for", lambda _planned: None)
+    blocked_after_terminal: list[str] = []
+    publish_blocked = scheduler._publish_blocked_dependency
+
+    def assert_prerequisite_is_terminal_before_blocking(
+        cell: CellSpec,
+        prerequisite_cell_ids: str | Sequence[str],
+        *,
+        current: CurrentRecord | None,
+    ) -> CellOutcome:
+        prerequisite_current = service.store.load_current(prerequisite.cell_id)
+        assert prerequisite_current is not None
+        assert prerequisite_current.result["status"] == ResultStatus.MEMORY_LIMIT.value
+        blocked_after_terminal.append(cell.cell_id)
+        return publish_blocked(
+            cell,
+            prerequisite_cell_ids,
+            current=current,
+        )
+
+    monkeypatch.setattr(
+        scheduler,
+        "_publish_blocked_dependency",
+        assert_prerequisite_is_terminal_before_blocking,
+    )
 
     def fake_supervise(
         command: Sequence[str],
@@ -1188,6 +1289,7 @@ def test_dag_terminal_direct_peer_blocks_dependent_before_worker_launch(
     blocked = outcomes[dependent.cell_id]
     assert blocked.status == "blocked_dependency"
     assert blocked.prerequisite_cell_ids == (prerequisite.cell_id,)
+    assert blocked_after_terminal == [dependent.cell_id]
     finished = [
         payload
         for payload in observed
@@ -1269,6 +1371,193 @@ def test_scheduler_plumbs_authenticated_generation_only_limit(
     assert command[command.index("--worker-wall-limit") + 1] == "90.0"
     assert command[command.index("--profiling-time-limit") + 1] == "60.0"
     assert command[command.index("--validation-time-limit") + 1] == "30.0"
+
+
+def test_scheduler_persists_abrupt_worker_exit_diagnostics_with_empty_worker_log(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    cell = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+    captured: dict[str, object] = {}
+
+    def crash(
+        command: Sequence[str],
+        **arguments: object,
+    ) -> SupervisedResult:
+        captured.update(arguments)
+        Path(command[command.index("--log-path") + 1]).touch()
+        phase_error = "worker exited before closing generation"
+        return SupervisedResult(
+            -11,
+            "worker_exit",
+            ResourceUsage(True, 0, 1234, 0, 0.2, 0.3),
+            generation_phase=GenerationPhaseEvidence(
+                configured_timeout_seconds=3600.0,
+                supervisor_reason="worker_exit",
+                authenticated=False,
+                run_id="phase-run-7",
+                worker_pid=4321,
+                final_sequence=1,
+                final_phase="generation",
+                generation_started_monotonic_ns=10,
+                generation_finished_monotonic_ns=None,
+                generation_elapsed_seconds=0.3,
+                final_state_sha256="c" * 64,
+                error=phase_error,
+            ),
+            pid=4321,
+            member_pids=(4321, 4322),
+            signal_number=11,
+            signal_name="SIGSEGV",
+            supervisor_stderr="native evaluator abort\n",
+            supervisor_stderr_limit_bytes=65536,
+            phase_state_error=phase_error,
+            started_at_utc="2026-08-02T00:00:00+00:00",
+            finished_at_utc="2026-08-02T00:00:01+00:00",
+        )
+
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        crash,
+    )
+    source_revision = "a" * 40
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(
+            source_identity_override=ReportSourceIdentity(
+                source_revision,
+                "b" * 40,
+                (),
+            ),
+            campaign_invocation_id="manual-invocation-7",
+        ),
+    )
+    monkeypatch.setattr(scheduler, "_prepare_model_for", lambda _planned: None)
+
+    outcome = scheduler._run_cell(
+        PlannedCell(cell, dependency=False, baseline_cell_id=None, rank=0)
+    )
+
+    assert outcome.status == "error"
+    assert captured["capture_stderr"] is True
+    attempt_roots = tuple(
+        (service.paths.artifact_root / "cells").glob(f"*/attempts/{outcome.detail}")
+    )
+    assert len(attempt_roots) == 1
+    attempt_root = attempt_roots[0]
+    assert (attempt_root / "worker.log").read_bytes() == b""
+    result = json.loads(
+        (attempt_root / "worker-result.json").read_text(encoding="ascii")
+    )
+    assert result["status"] == "error"
+    assert result["failure"] == {
+        "kind": "WorkerProcessExitError",
+        "message": "worker terminated by SIGSEGV (signal 11, return code -11)",
+    }
+    supervisor = result["resources"]["supervisor"]
+    assert supervisor == {
+        "abi": "pyamplicol-report-worker-supervisor-v1",
+        "campaign_invocation_id": "manual-invocation-7",
+        "finished_at_utc": "2026-08-02T00:00:01+00:00",
+        "member_pids": [4321, 4322],
+        "phase": "generation",
+        "phase_state_error": "worker exited before closing generation",
+        "pid": 4321,
+        "reason": "worker_exit",
+        "returncode": -11,
+        "signal_name": "SIGSEGV",
+        "signal_number": 11,
+        "source_revision": source_revision,
+        "started_at_utc": "2026-08-02T00:00:00+00:00",
+        "stderr": "native evaluator abort\n",
+        "stderr_limit_bytes": 65536,
+        "stderr_truncated": False,
+    }
+    assert result["provenance"]["report_source_revision"] == source_revision
+
+
+def test_prepared_model_worker_exit_persists_structured_failed_attempt(
+    tmp_path: Path,
+) -> None:
+    service = _service(tmp_path)
+    cell = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+    source_revision = "a" * 40
+    phase_error = "worker exited before closing preparation"
+    supervised = SupervisedResult(
+        -6,
+        "worker_exit",
+        ResourceUsage(True, 0, 2048, 1, 0.4, 0.5),
+        pid=7654,
+        member_pids=(7654, 7655),
+        signal_number=6,
+        signal_name="SIGABRT",
+        supervisor_stderr="native model compiler abort\n",
+        supervisor_stderr_limit_bytes=65536,
+        phase_state_error=phase_error,
+        started_at_utc="2026-08-02T01:00:00+00:00",
+        finished_at_utc="2026-08-02T01:00:01+00:00",
+    )
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(
+            source_identity_override=ReportSourceIdentity(
+                source_revision,
+                "b" * 40,
+                (),
+            ),
+            campaign_invocation_id="manual-preflight-9",
+        ),
+    )
+
+    outcome = scheduler._preparation_failure_outcome(
+        cell,
+        _PreparationFailed(
+            ModelKey.BUILTIN_SM,
+            "worker_exit",
+            "prepared-model worker aborted",
+            supervised,
+        ),
+    )
+
+    assert outcome.status == "error"
+    attempt_roots = tuple(
+        (service.paths.artifact_root / "cells").glob(f"*/attempts/{outcome.detail}")
+    )
+    assert len(attempt_roots) == 1
+    attempt_root = attempt_roots[0]
+    result = json.loads(
+        (attempt_root / "worker-result.json").read_text(encoding="ascii")
+    )
+    assert result["status"] == "error"
+    assert result["failure"] == {
+        "kind": "WorkerProcessExitError",
+        "message": "worker terminated by SIGABRT (signal 6, return code -6)",
+    }
+    assert result["resources"]["supervisor"] == {
+        "abi": "pyamplicol-report-worker-supervisor-v1",
+        "campaign_invocation_id": "manual-preflight-9",
+        "finished_at_utc": "2026-08-02T01:00:01+00:00",
+        "member_pids": [7654, 7655],
+        "phase": "preparation",
+        "phase_state_error": phase_error,
+        "pid": 7654,
+        "reason": "worker_exit",
+        "returncode": -6,
+        "signal_name": "SIGABRT",
+        "signal_number": 6,
+        "source_revision": source_revision,
+        "started_at_utc": "2026-08-02T01:00:00+00:00",
+        "stderr": "native model compiler abort\n",
+        "stderr_limit_bytes": 65536,
+        "stderr_truncated": False,
+    }
+    assert result["provenance"]["report_source_revision"] == source_revision
+    manifest = json.loads((attempt_root / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["status"] == "failed"
+    assert [record["path"] for record in manifest["artifacts"]] == [
+        "worker-result.json"
+    ]
 
 
 @pytest.mark.parametrize(
@@ -1845,6 +2134,87 @@ def test_busy_cell_lock_is_deferred_without_consuming_the_only_worker_slot(
         and payload.get("status") == "error"
         for payload in progress_events
     )
+
+
+def test_busy_equivalent_owner_lock_does_not_block_independent_ready_work(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    target = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+    equivalent = REPORT_CATALOG.equivalent_cells(target)[0]
+    baseline = REPORT_CATALOG.baseline_cell(target)
+    assert baseline is not None
+    independent = REPORT_CATALOG.cell(
+        "scalar-contact-n2-scalar-contact-contracted"
+    )
+    revision = "current-revision"
+    owner = _publish_current(service.store, equivalent, revision=revision)
+    _publish_current(service.store, baseline, revision=revision)
+    _publish_current(service.store, independent, revision=revision)
+    independent_finished = threading.Event()
+    failures: list[BaseException] = []
+    results: list[CampaignResult] = []
+
+    def observe(payload: Mapping[str, object]) -> None:
+        if (
+            payload.get("event") == "finished"
+            and payload.get("cell_id") == independent.cell_id
+        ):
+            independent_finished.set()
+
+    def fake_supervise(
+        command: Sequence[str],
+        **_arguments: object,
+    ) -> SupervisedResult:
+        result_path = Path(command[command.index("--result-json") + 1])
+        result_path.write_text(
+            json.dumps(_ok_measurement(target, revision=revision)) + "\n",
+            encoding="ascii",
+        )
+        return SupervisedResult(
+            0,
+            "completed",
+            ResourceUsage(True, 1, 1, 0, 0.1, 0.1),
+        )
+
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        fake_supervise,
+    )
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(
+            workers=1,
+            artifact_policy=ArtifactPolicy.REUSE,
+            progress_observer=observe,
+        ),
+    )
+    scheduler.source_revision = revision
+    planned = (
+        PlannedCell(target, False, baseline.cell_id, 0),
+        PlannedCell(independent, False, None, 1),
+    )
+
+    def run() -> None:
+        try:
+            results.append(scheduler.run(planned))
+        except BaseException as error:  # pragma: no cover - asserted below.
+            failures.append(error)
+
+    with service.store.named_lock(f"campaign-artifact-use-{owner.attempt_id}"):
+        thread = threading.Thread(target=run)
+        thread.start()
+        assert independent_finished.wait(1.0)
+    thread.join(2.0)
+
+    assert not thread.is_alive()
+    assert failures == []
+    assert len(results) == 1
+    assert {outcome.cell_id for outcome in results[0].outcomes} == {
+        target.cell_id,
+        independent.cell_id,
+    }
 
 
 def test_ufo_compiled_cells_overlap_outside_the_worker_side_compiler_gate(

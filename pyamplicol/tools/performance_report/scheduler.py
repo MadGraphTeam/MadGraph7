@@ -15,7 +15,7 @@ import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
-from contextlib import ExitStack, nullcontext, suppress
+from contextlib import ExitStack, suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -147,10 +147,12 @@ class CampaignSettings:
     resource_sample_interval_seconds: float = DEFAULT_SAMPLE_INTERVAL_SECONDS
     termination_grace_seconds: float = DEFAULT_TERMINATION_GRACE_SECONDS
     source_identity_override: ReportSourceIdentity | None = None
+    campaign_invocation_id: str | None = None
     progress_observer: Callable[[Mapping[str, object]], None] | None = None
     cancellation_requested: Callable[[], bool] | None = None
     manual_terminal_censors: bool = False
     discard_cancelled_attempts: bool = False
+    remove_heavy_attempt_artifacts: bool = False
     campaign_policy: CampaignPolicy = STRICT_POLICY
     report_profile: str | None = None
     study_contract_sha256: str | None = None
@@ -200,6 +202,14 @@ class CampaignSettings:
             raise ValueError("max_rss_bytes must be positive")
         if self.campaign_max_rss_bytes is not None and self.campaign_max_rss_bytes <= 0:
             raise ValueError("campaign_max_rss_bytes must be positive")
+        if self.campaign_invocation_id is not None and (
+            not self.campaign_invocation_id
+            or len(self.campaign_invocation_id) > 128
+            or not self.campaign_invocation_id.isprintable()
+        ):
+            raise ValueError(
+                "campaign_invocation_id must be 1..128 printable characters"
+            )
         if self.missing_only and self.rerun:
             raise ValueError("--missing-only and --rerun are mutually exclusive")
         if (self.original_amplicol_repository is None) != (
@@ -273,6 +283,57 @@ class _PreparationFailed(RuntimeError):
         self.reason = reason
         self.detail = detail
         self.supervised = supervised
+
+
+def _artifact_consumer_cell_ids(
+    cell: CellSpec,
+    *,
+    catalog: ReportCatalog,
+) -> tuple[str, ...]:
+    return tuple(
+        sorted(
+            {
+                cell.cell_id,
+                *(candidate.cell_id for candidate in catalog.equivalent_cells(cell)),
+            }
+        )
+    )
+
+
+def archive_cell_attempt_history(
+    service: ReportService,
+    cell: CellSpec,
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> tuple[str, ...]:
+    """Archive one cell's obsolete attempts while preserving live owners."""
+
+    return service.store.archive_obsolete_attempts(
+        cell.cell_id,
+        consumer_cell_ids=_artifact_consumer_cell_ids(cell, catalog=catalog),
+    )
+
+
+def reconcile_attempt_history(
+    service: ReportService,
+    cells: Sequence[CellSpec],
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> tuple[tuple[str, str], ...]:
+    """Best-effort bounded startup cleanup for an explicit campaign closure."""
+
+    warnings: list[tuple[str, str]] = []
+    for cell in sorted(cells, key=lambda candidate: candidate.cell_id):
+        try:
+            with service.store.named_lock(
+                f"campaign-cell-{cell.cell_id}", timeout=0.0
+            ):
+                archive_cell_attempt_history(service, cell, catalog=catalog)
+        except LockTimeoutError:
+            continue
+        except Exception as error:
+            warnings.append((cell.cell_id, f"{type(error).__name__}: {error}"))
+    return tuple(warnings)
 
 
 def _worker_environment_overrides(
@@ -1032,6 +1093,10 @@ def _resource_payload(
     *,
     memory_limit_bytes: int | None = None,
     memory_limit_reason: str | None = None,
+    supervised: SupervisedResult | None = None,
+    source_revision: str | None = None,
+    campaign_invocation_id: str | None = None,
+    supervisor_phase: str | None = None,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "available": usage.available,
@@ -1059,33 +1124,69 @@ def _resource_payload(
         )
     if generation_phase is not None:
         payload["generation_phase"] = generation_phase.as_dict()
+    if supervised is not None:
+        payload["supervisor"] = {
+            "abi": "pyamplicol-report-worker-supervisor-v1",
+            "reason": supervised.reason,
+            "returncode": supervised.returncode,
+            "signal_number": supervised.signal_number,
+            "signal_name": supervised.signal_name,
+            "pid": supervised.pid,
+            "member_pids": list(supervised.member_pids),
+            "phase": (
+                supervisor_phase
+                if supervisor_phase is not None
+                else (
+                    None
+                    if generation_phase is None
+                    else generation_phase.final_phase
+                )
+            ),
+            "phase_state_error": supervised.phase_state_error,
+            "stderr": supervised.supervisor_stderr,
+            "stderr_truncated": supervised.supervisor_stderr_truncated,
+            "stderr_limit_bytes": supervised.supervisor_stderr_limit_bytes,
+            "source_revision": source_revision,
+            "campaign_invocation_id": campaign_invocation_id,
+            "started_at_utc": supervised.started_at_utc,
+            "finished_at_utc": supervised.finished_at_utc,
+        }
     return payload
 
 
-def _attempt_files(root: Path) -> tuple[str, ...]:
-    return tuple(
-        sorted(
-            path.relative_to(root).as_posix()
-            for path in root.rglob("*")
-            if path.is_file()
-            and path.name not in {"manifest.json", "result.json"}
-            and not path.is_symlink()
-        )
-    )
+class WorkerProcessExitError(RuntimeError):
+    """A worker process exited independently of a supervisor resource cap."""
 
 
-def _write_json(path: Path, payload: Mapping[str, object]) -> None:
-    path.write_text(
-        json.dumps(
-            payload,
-            allow_nan=False,
-            ensure_ascii=True,
-            separators=(",", ":"),
-            sort_keys=True,
+def _worker_process_exit_error(supervised: SupervisedResult) -> WorkerProcessExitError:
+    if supervised.signal_name is not None and supervised.signal_number is not None:
+        detail = (
+            f"worker terminated by {supervised.signal_name} "
+            f"(signal {supervised.signal_number}, return code {supervised.returncode})"
         )
-        + "\n",
-        encoding="ascii",
-    )
+    else:
+        detail = f"worker exited with code {supervised.returncode}"
+    return WorkerProcessExitError(detail)
+
+
+def _attempt_files(
+    root: Path,
+    *,
+    include_heavy_artifact: bool = True,
+) -> tuple[str, ...]:
+    members: list[str] = []
+    for path in root.rglob("*"):
+        if (
+            not path.is_file()
+            or path.name in {"manifest.json", "result.json"}
+            or path.is_symlink()
+        ):
+            continue
+        relative = path.relative_to(root)
+        if not include_heavy_artifact and relative.parts[0] == "artifact":
+            continue
+        members.append(relative.as_posix())
+    return tuple(sorted(members))
 
 
 class CampaignScheduler:
@@ -1662,6 +1763,7 @@ class CampaignScheduler:
                         if self.worker_harness_identity is not None
                         else None
                     ),
+                    capture_stderr=True,
                 )
                 if (
                     supervised.reason != "completed"
@@ -1688,10 +1790,17 @@ class CampaignScheduler:
                             ).get("error")
                         except (AttributeError, json.JSONDecodeError, OSError):
                             detail = None
+                    process_detail = (
+                        str(_worker_process_exit_error(supervised))
+                        if supervised.reason == "worker_exit"
+                        else (
+                            f"reason={supervised.reason}, "
+                            f"exit={supervised.returncode}"
+                        )
+                    )
                     message = (
                         f"{model.value} prepared-model preflight failed: "
-                        f"reason={supervised.reason}, "
-                        f"exit={supervised.returncode}, detail={detail}"
+                        f"{process_detail}, detail={detail}"
                     )
                     raise _PreparationFailed(
                         model,
@@ -1786,6 +1895,9 @@ class CampaignScheduler:
                 None,
                 memory_limit_bytes=supervised.memory_limit_bytes,
                 memory_limit_reason=supervised.memory_limit_reason,
+                supervised=supervised,
+                source_revision=self.source_revision,
+                campaign_invocation_id=self.settings.campaign_invocation_id,
             )
             resources["terminal_reason"] = manual_reason
             with self.service.store.new_attempt(
@@ -1804,6 +1916,43 @@ class CampaignScheduler:
                 validate_measurement(result, expected_cell=cell)
                 record = attempt.publish(result)
                 return CellOutcome(cell.cell_id, state.value, record.attempt_id)
+        if supervised is not None and failure.reason == "worker_exit":
+            resources = _resource_payload(
+                supervised.usage,
+                supervised.generation_phase,
+                memory_limit_bytes=supervised.memory_limit_bytes,
+                memory_limit_reason=supervised.memory_limit_reason,
+                supervised=supervised,
+                source_revision=self.source_revision,
+                campaign_invocation_id=self.settings.campaign_invocation_id,
+                supervisor_phase="preparation",
+            )
+            result = failure_measurement(
+                ResultStatus.ERROR,
+                _worker_process_exit_error(supervised),
+                resources=resources,
+            )
+            self._attach_manual_provenance(result, cell=cell)
+            self._bind_study_result(result)
+            validate_measurement(result, expected_cell=cell)
+            with self.service.store.new_attempt(
+                cell.cell_id,
+                self.settings.artifact_policy,
+                based_on=self.service.store.load_current(
+                    cell.cell_id,
+                    missing_ok=True,
+                ),
+            ) as attempt:
+                attempt.write_json("worker-result.json", result)
+                attempt.mark_failed(
+                    str(result.get("failure")),
+                    artifact_paths=("worker-result.json",),
+                )
+                return CellOutcome(
+                    cell.cell_id,
+                    ResultStatus.ERROR.value,
+                    attempt.attempt_id,
+                )
         return CellOutcome(
             cell.cell_id,
             "preparation_error",
@@ -2007,6 +2156,20 @@ class CampaignScheduler:
                     # Publishing the shared-preparation terminal must remain
                     # inside the same cell/lane exclusion as ordinary results.
                     outcome = self._preparation_failure_outcome(cell, error)
+                finally:
+                    if self.settings.remove_heavy_attempt_artifacts:
+                        try:
+                            archive_cell_attempt_history(
+                                self.service,
+                                cell,
+                                catalog=self.catalog,
+                            )
+                        except Exception as error:
+                            self._observe(
+                                "cleanup-warning",
+                                cell,
+                                detail=f"{type(error).__name__}: {error}",
+                            )
         except _CoordinationDeferred:
             # A lock race is scheduling state, not a worker failure. The ready
             # queue will defer and retry this cell without emitting completion.
@@ -2036,7 +2199,7 @@ class CampaignScheduler:
         cell = planned.cell
         # Coordination locks are acquired non-blockingly by _run_cell before a
         # worker slot performs any artifact or dependency work.
-        with nullcontext():
+        with ExitStack() as lane_locks:
             fresh = self._current(cell)
             frontier_source = (
                 _resource_frontier_source(
@@ -2187,6 +2350,30 @@ class CampaignScheduler:
                 )
                 else equivalent_record
             )
+            if reusable_record is not None:
+                artifact_use_lock = (
+                    "campaign-artifact-use-" f"{reusable_record.attempt_id}"
+                )
+                try:
+                    lane_locks.enter_context(
+                        self.service.store.named_lock(
+                            artifact_use_lock,
+                            timeout=0.0,
+                            cancellation_requested=(
+                                self.settings.cancellation_requested
+                            ),
+                        )
+                    )
+                except LockTimeoutError as error:
+                    raise _CoordinationDeferred(artifact_use_lock) from error
+                artifact = reusable_record.result.get("artifact")
+                artifact_path = (
+                    artifact.get("path")
+                    if isinstance(artifact, Mapping)
+                    else None
+                )
+                if isinstance(artifact_path, str) and not Path(artifact_path).is_dir():
+                    reusable_record = None
             if reusable_record is None:
                 self._prepare_model_for(planned)
             self._observe("started", cell, dependency=planned.dependency)
@@ -2402,6 +2589,7 @@ class CampaignScheduler:
                     termination_grace_seconds=self.settings.termination_grace_seconds,
                     observation_callback=observe_resources,
                     cancellation_requested=self.settings.cancellation_requested,
+                    capture_stderr=True,
                 )
                 if legacy_workspace is not None:
                     self._remove_legacy_workspace(legacy_workspace)
@@ -2411,6 +2599,9 @@ class CampaignScheduler:
                     generation_phase,
                     memory_limit_bytes=supervised.memory_limit_bytes,
                     memory_limit_reason=supervised.memory_limit_reason,
+                    supervised=supervised,
+                    source_revision=self.source_revision,
+                    campaign_invocation_id=self.settings.campaign_invocation_id,
                 )
                 if supervised.reason == "cancelled":
                     if self.settings.discard_cancelled_attempts:
@@ -2426,7 +2617,12 @@ class CampaignScheduler:
                     else:
                         attempt.mark_interrupted(
                             "worker terminated by cancellation",
-                            artifact_paths=_attempt_files(attempt.root),
+                            artifact_paths=_attempt_files(
+                                attempt.root,
+                                include_heavy_artifact=(
+                                    not self.settings.remove_heavy_attempt_artifacts
+                                ),
+                            ),
                         )
                         detail = (
                             attempt.attempt_id
@@ -2549,16 +2745,22 @@ class CampaignScheduler:
                         "memory_limit": ResultStatus.MEMORY_LIMIT,
                         "memory_probe_error": ResultStatus.ERROR,
                         "phase_state_error": ResultStatus.ERROR,
+                        "worker_exit": ResultStatus.ERROR,
                     }[supervised.reason]
+                    error: BaseException | str = (
+                        _worker_process_exit_error(supervised)
+                        if supervised.reason == "worker_exit"
+                        else f"worker terminated by {supervised.reason}"
+                    )
                     result = failure_measurement(
                         status,
-                        f"worker terminated by {supervised.reason}",
+                        error,
                         resources=resources,
                     )
                 elif supervised.returncode != 0 or not worker_result.is_file():
                     result = failure_measurement(
                         ResultStatus.ERROR,
-                        f"worker exited with code {supervised.returncode}",
+                        _worker_process_exit_error(supervised),
                         resources=resources,
                     )
                 else:
@@ -2608,6 +2810,18 @@ class CampaignScheduler:
                 if supervised.reason != "completed" or (
                     supervised.returncode != 0 or not worker_result.is_file()
                 ):
+                    provenance = result.get("provenance")
+                    manual_provenance = (
+                        provenance.get("manual_campaign")
+                        if isinstance(provenance, Mapping)
+                        else None
+                    )
+                    if not isinstance(manual_provenance, Mapping):
+                        self._attach_manual_provenance(
+                            result,
+                            cell=cell,
+                            progress_path=worker_progress,
+                        )
                     self._bind_study_result(result)
                 validate_measurement(result, expected_cell=cell)
                 if result["status"] == ResultStatus.OK.value:
@@ -2639,8 +2853,14 @@ class CampaignScheduler:
                         raise RuntimeError(
                             "policy censor state changed during validation"
                         )
-                _write_json(worker_result, result)
-                paths = _attempt_files(attempt.root)
+                attempt.write_json("worker-result.json", result)
+                paths = _attempt_files(
+                    attempt.root,
+                    include_heavy_artifact=(
+                        policy_state is not None
+                        or not self.settings.remove_heavy_attempt_artifacts
+                    ),
+                )
                 if policy_state is not None:
                     record = attempt.publish(result, artifact_paths=paths)
                     return CellOutcome(
@@ -2840,7 +3060,9 @@ __all__ = [
     "CellOutcome",
     "CellSelection",
     "PlannedCell",
+    "archive_cell_attempt_history",
     "plan_campaign",
+    "reconcile_attempt_history",
     "select_cells",
     "validate_campaign_plan",
 ]

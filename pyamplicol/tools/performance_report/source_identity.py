@@ -130,6 +130,13 @@ def _generated_report_path(value: str) -> bool:
         and parts[4].endswith(".json")
     ):
         return True
+    if (
+        len(parts) == 5
+        and parts[:2] == ("docs", "performance_reports")
+        and parts[3] == "campaign_summary_ids"
+        and parts[4].endswith(".txt")
+    ):
+        return True
     if len(parts) == 4 and parts[:2] == ("docs", "performance_reports"):
         return _generated_publication_member(
             parts[3],

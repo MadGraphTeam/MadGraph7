@@ -110,6 +110,14 @@ class _PreSelectorRuntimeBackend(_RuntimeBackend):
         return (3.0 + 0j,)
 
 
+class _DiagnosticRuntimeBackend(_RuntimeBackend):
+    def _diagnostic_project_onshell(
+        self, momenta: object, *, precision: int
+    ) -> tuple[object, dict[str, object]]:
+        self.diagnostic_call = (momenta, precision)
+        return momenta, {"unchanged": True, "projected_digest": "a" * 64}
+
+
 class _BenchmarkBackend:
     def run(self, target: object, *, points: object = None) -> BenchmarkResult:
         del target, points
@@ -221,6 +229,21 @@ def test_runtime_accepts_typed_per_point_selectors() -> None:
 
     assert backend.selectors["helicity_by_point"] == ("h0",)
     assert backend.selectors["color_flow_by_point"] == ("c0",)
+
+
+def test_runtime_forwards_private_diagnostic_projection() -> None:
+    backend = _DiagnosticRuntimeBackend()
+    runtime = Runtime(backend)
+    points = ((((1.0, 0.0, 0.0, 1.0),),),)
+
+    projected, metadata = runtime._diagnostic_project_onshell(
+        points,
+        precision=200,
+    )
+
+    assert projected is points
+    assert metadata == {"unchanged": True, "projected_digest": "a" * 64}
+    assert backend.diagnostic_call == (points, 200)
 
 
 def test_runtime_preserves_pre_selector_backend_compatibility() -> None:

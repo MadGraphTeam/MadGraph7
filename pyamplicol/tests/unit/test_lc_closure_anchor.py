@@ -3,12 +3,18 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import pytest
+
 from pyamplicol.color import build_color_plan
 from pyamplicol.generation.dag_algorithms import (
+    _canonical_open_line_alias_owner_sector_ids,
+    _physical_sink_sector_ids,
     infer_minimal_coupling_order_limits,
     prune_dag_to_amplitude_roots,
 )
+from pyamplicol.generation.dag_color import ColorEngine
 from pyamplicol.generation.dag_compiler import compile_generic_dag
+from pyamplicol.generation.dag_ordering import _closure_candidate_splits
 from pyamplicol.models.builtin.model import BuiltinSMModel
 from pyamplicol.models.builtin.process_ir import build_process_ir
 
@@ -135,3 +141,205 @@ def test_single_trace_and_singlet_sectors_keep_public_words() -> None:
             == sector.color_words[0]
             for sector in plan.sectors
         )
+
+
+def test_non_lc_open_line_roots_use_the_canonical_private_sink() -> None:
+    model = BuiltinSMModel()
+    for accuracy in ("nlc", "full"):
+        process = build_process_ir(
+            "d d~ > t t~ g g",
+            color_accuracy=accuracy,
+        )
+        plan = build_color_plan(process, color_accuracy=accuracy)
+        engine = ColorEngine(plan, model)
+        candidate_splits = _closure_candidate_splits(process, model, engine)
+
+        assert candidate_splits == ((55, 8),)
+        assert _physical_sink_sector_ids(plan, candidate_splits) == frozenset(
+            sector.id for sector in plan.sectors
+        )
+
+        owner_sector_ids = frozenset(range(0, 24, 2))
+        assert _canonical_open_line_alias_owner_sector_ids(
+            plan,
+            (sector.id for sector in plan.sectors),
+        ) == owner_sector_ids
+        complete_limits = infer_minimal_coupling_order_limits(
+            process,
+            model=model,
+        )
+        complete_dag = compile_generic_dag(
+            process,
+            model=model,
+            color_plan=plan,
+            max_coupling_orders=complete_limits,
+        )
+        assert len(complete_dag.amplitude_roots) == 384
+        assert {
+            root.color_sector_id for root in complete_dag.amplitude_roots
+        } == owner_sector_ids
+        assert all(
+            sum(
+                root.color_sector_id == sector_id
+                for root in complete_dag.amplitude_roots
+            )
+            == 32
+            for sector_id in owner_sector_ids
+        )
+        backward_dag = compile_generic_dag(
+            process,
+            model=model,
+            color_plan=plan,
+            max_coupling_orders=complete_limits,
+            backward_live_planning=True,
+        )
+        assert {
+            root.color_sector_id for root in backward_dag.amplitude_roots
+        } == owner_sector_ids
+
+        # A restricted non-owner alias becomes the sole active owner rather
+        # than being erased by ownership derived from the complete plan.
+        sector = plan.sectors[13]
+        limits = infer_minimal_coupling_order_limits(
+            process,
+            model=model,
+            selected_color_sector_ids=(sector.id,),
+        )
+        dag = compile_generic_dag(
+            process,
+            model=model,
+            color_plan=plan,
+            selected_color_sector_ids=(sector.id,),
+            max_coupling_orders=limits,
+        )
+        traversal = sector.canonical_closure_traversal_word(process)
+
+        assert len(dag.amplitude_roots) == 32
+        assert {
+            dag.currents[root.right_id].index.external_labels
+            for root in dag.amplitude_roots
+        } == {(traversal[-1],)}
+        assert {
+            dag.currents[root.left_id].index.ordered_external_labels
+            for root in dag.amplitude_roots
+        } == {traversal[:-1]}
+        assert any(
+            current.index.particle_id == 6
+            and current.index.external_mask.bit_count() > 1
+            for current in dag.currents
+        )
+        assert not any(
+            current.index.particle_id == -6
+            and current.index.external_mask.bit_count() > 1
+            for current in dag.currents
+        )
+        root_keys = {
+            (
+                root.kind,
+                root.left_id,
+                root.right_id,
+                root.color_sector_id,
+                root.vertex_kind,
+                root.vertex_particles,
+                root.contraction_ir,
+            )
+            for root in dag.amplitude_roots
+        }
+        assert len(root_keys) == len(dag.amplitude_roots)
+
+
+def test_three_open_line_private_sinks_are_resolved_per_sector() -> None:
+    model = BuiltinSMModel()
+    full_mask = (1 << 6) - 1
+    for accuracy in ("nlc", "full"):
+        process = build_process_ir(
+            "d d~ > u u~ s s~",
+            color_accuracy=accuracy,
+        )
+        plan = build_color_plan(process, color_accuracy=accuracy)
+        engine = ColorEngine(plan, model)
+
+        assert len(plan.sectors) == 36
+        assert _canonical_open_line_alias_owner_sector_ids(
+            plan,
+            (sector.id for sector in plan.sectors),
+        ) == frozenset({0, 6, 12, 18, 24, 30})
+
+        assert {
+            sector.canonical_closure_sink_label(process) for sector in plan.sectors
+        } == {4, 6}
+        for sink_label in (4, 6):
+            sink_mask = 1 << (sink_label - 1)
+            expected_sector_ids = frozenset(
+                sector.id
+                for sector in plan.sectors
+                if sector.canonical_closure_sink_label(process) == sink_label
+            )
+            assert (
+                _physical_sink_sector_ids(
+                    plan,
+                    ((full_mask ^ sink_mask, sink_mask),),
+                )
+                == expected_sector_ids
+            )
+
+        assert {
+            right_mask
+            for _left_mask, right_mask in _closure_candidate_splits(
+                process,
+                model,
+                engine,
+            )
+        } == {1 << 3, 1 << 5}
+
+        limits = infer_minimal_coupling_order_limits(process, model=model)
+        dag = compile_generic_dag(
+            process,
+            model=model,
+            color_plan=plan,
+            max_coupling_orders=limits,
+        )
+        # Sector 24 is the smallest public alias in its class but is rootless;
+        # ownership is therefore selected from the sectors that really close.
+        root_owner_ids = frozenset({0, 6, 12, 18, 25, 30})
+        assert len(dag.amplitude_roots) == 48
+        assert {root.color_sector_id for root in dag.amplitude_roots} == root_owner_ids
+        assert all(
+            sum(root.color_sector_id == sector_id for root in dag.amplitude_roots) == 8
+            for sector_id in root_owner_ids
+        )
+        backward_dag = compile_generic_dag(
+            process,
+            model=model,
+            color_plan=plan,
+            max_coupling_orders=limits,
+            backward_live_planning=True,
+        )
+        assert {
+            root.color_sector_id for root in backward_dag.amplitude_roots
+        } == root_owner_ids
+
+
+def test_full_colour_pure_gluon_closure_remains_on_public_sinks() -> None:
+    process = build_process_ir("g g > g g", color_accuracy="full")
+    plan = build_color_plan(process, color_accuracy="full")
+    model = BuiltinSMModel()
+    candidate_splits = _closure_candidate_splits(
+        process,
+        model,
+        ColorEngine(plan, model),
+    )
+
+    assert all(
+        sector.canonical_closure_sink_label(process) == sector.color_words[0][-1]
+        for sector in plan.sectors
+    )
+    assert _physical_sink_sector_ids(plan, candidate_splits) == frozenset(
+        sector.id for sector in plan.sectors
+    )
+    assert _canonical_open_line_alias_owner_sector_ids(
+        plan,
+        (sector.id for sector in plan.sectors),
+    ) == frozenset(sector.id for sector in plan.sectors)
+    with pytest.raises(ValueError, match="absent from the color plan: 999"):
+        _canonical_open_line_alias_owner_sector_ids(plan, (999,))

@@ -8,6 +8,7 @@ decode or reinterpret Symbolica's serialization format.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import struct
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -40,6 +41,15 @@ _ARITHMETIC_GUARD_DIGITS = 8
 class _RuntimeState(TypedDict):
     model_parameter_values: Sequence[object]
     normalization_factor: object
+
+
+@dataclass(frozen=True, slots=True)
+class _DiagnosticMassBinding:
+    """One authenticated external-mass binding for diagnostic kinematics."""
+
+    mass: Decimal
+    authority: str
+    parameter_name: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -441,6 +451,39 @@ class SymbolicaExactExecutor:
         )
         self._stage_evaluators: tuple[_ExactEvaluator, ...] | None = None
         self._amplitude_evaluator: _ExactEvaluator | None = None
+
+    def _diagnostic_project_onshell(
+        self,
+        momenta: Momenta,
+        *,
+        precision: int,
+    ) -> tuple[
+        tuple[tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...], ...],
+        dict[str, object],
+    ]:
+        """Build diagnostic-only on-shell kinematics from current parameters."""
+
+        state = _runtime_state(self._native_runtime)
+        parameters = tuple(
+            _decimal(value, "runtime model parameter")
+            for value in state["model_parameter_values"]
+        )
+        execution = getattr(self, "_primary_execution", self._execution)
+        physics = getattr(self, "_primary_physics", self._physics)
+        schema = execution.get("runtime_schema")
+        if not isinstance(schema, Mapping):
+            raise ArtifactError("compiled execution has no runtime schema")
+        bindings = _diagnostic_schema_mass_bindings(schema, physics, parameters)
+        return _diagnostic_project_onshell_points(
+            momenta,
+            physics=physics,
+            artifact_mass_bindings=bindings,
+            # Native ``physics_json`` is already remapped to the selected alias.
+            # Exact evaluation applies ``self._permutation`` only after receiving
+            # these caller-order diagnostic momenta.
+            permutation=None,
+            precision=precision,
+        )
 
     def evaluate_resolved(
         self,
@@ -2361,6 +2404,295 @@ def _runtime_state(native_runtime: Any) -> _RuntimeState:
     if "normalization_factor" not in payload:
         raise ArtifactError("Rusticol exact-runtime normalization is absent")
     return cast(_RuntimeState, payload)
+
+
+def _diagnostic_external_particles(
+    physics: Mapping[str, object],
+) -> tuple[Mapping[str, object], ...]:
+    raw_particles = physics.get("external_particles")
+    if isinstance(raw_particles, str | bytes) or not isinstance(
+        raw_particles, Sequence
+    ):
+        raise ArtifactError("physics metadata has no external particles")
+    particles = []
+    for index, raw_particle in enumerate(raw_particles):
+        if not isinstance(raw_particle, Mapping):
+            raise ArtifactError(f"external particle {index} is not an object")
+        role = raw_particle.get("role")
+        if role not in {"initial", "final", "incoming", "outgoing"}:
+            raise ArtifactError(f"external particle {index} has an invalid role")
+        label = raw_particle.get("label")
+        pdg = raw_particle.get("pdg")
+        if (
+            isinstance(label, bool)
+            or not isinstance(label, int)
+            or label < 1
+            or isinstance(pdg, bool)
+            or not isinstance(pdg, int)
+        ):
+            raise ArtifactError(f"external particle {index} has invalid identity")
+        particles.append(raw_particle)
+    return tuple(particles)
+
+
+def _diagnostic_schema_mass_bindings(
+    schema: Mapping[str, object],
+    physics: Mapping[str, object],
+    parameters: Sequence[Decimal],
+) -> tuple[_DiagnosticMassBinding, ...]:
+    """Resolve external masses through authenticated schema bindings."""
+
+    model = schema.get("model")
+    raw_parameters = schema.get("model_parameters")
+    if not isinstance(model, Mapping):
+        raise ArtifactError("runtime schema has no model metadata")
+    raw_particles = model.get("particles")
+    if isinstance(raw_particles, str | bytes) or not isinstance(
+        raw_particles, Sequence
+    ):
+        raise ArtifactError("runtime schema model has no particles")
+    if isinstance(raw_parameters, str | bytes) or not isinstance(
+        raw_parameters, Sequence
+    ):
+        raise ArtifactError("runtime schema has no model parameters")
+    model_particles = tuple(
+        particle for particle in raw_particles if isinstance(particle, Mapping)
+    )
+    if len(model_particles) != len(raw_particles):
+        raise ArtifactError("runtime schema model particle is not an object")
+    parameter_records = tuple(
+        parameter for parameter in raw_parameters if isinstance(parameter, Mapping)
+    )
+    if len(parameter_records) != len(raw_parameters):
+        raise ArtifactError("runtime schema model parameter is not an object")
+
+    bindings = []
+    for index, external in enumerate(_diagnostic_external_particles(physics)):
+        pdg = cast(int, external["pdg"])
+        record = next(
+            (
+                particle
+                for particle in model_particles
+                if _json_integer(particle.get("pdg")) == pdg
+            ),
+            None,
+        )
+        if record is None:
+            record = next(
+                (
+                    particle
+                    for particle in model_particles
+                    if _json_integer(particle.get("pdg")) == -pdg
+                ),
+                None,
+            )
+        if record is None:
+            raise ArtifactError(
+                f"external particle {index} has no authenticated mass binding"
+            )
+        parameter_name = record.get("mass_parameter")
+        if parameter_name is not None:
+            if not isinstance(parameter_name, str) or not parameter_name:
+                raise ArtifactError(
+                    f"external particle {index} has an invalid mass parameter"
+                )
+            matches = tuple(
+                parameter
+                for parameter in parameter_records
+                if parameter.get("name") == parameter_name
+            )
+            if len(matches) != 1:
+                raise ArtifactError(
+                    f"external particle {index} mass parameter {parameter_name!r} "
+                    "does not have one authenticated binding"
+                )
+            parameter_index = matches[0].get("parameter_index")
+            if (
+                isinstance(parameter_index, bool)
+                or not isinstance(parameter_index, int)
+                or parameter_index < 0
+            ):
+                raise ArtifactError(
+                    f"external particle {index} mass parameter index is invalid"
+                )
+            try:
+                mass = parameters[parameter_index]
+            except IndexError as exc:
+                raise ArtifactError(
+                    f"external particle {index} mass parameter index is invalid"
+                ) from exc
+            authority = "authenticated-current-runtime-model-parameter"
+        else:
+            mass = _decimal(
+                record.get("mass", 0),
+                f"external particle {index} static mass",
+            )
+            authority = "authenticated-runtime-schema-static-mass"
+        if not mass.is_finite():
+            raise EvaluationError(f"external particle {index} mass must be finite")
+        bindings.append(
+            _DiagnosticMassBinding(
+                mass=mass,
+                authority=authority,
+                parameter_name=parameter_name,
+            )
+        )
+    return tuple(bindings)
+
+
+def _diagnostic_input_order(
+    values: Sequence[Any], permutation: tuple[int, ...] | None
+) -> tuple[Any, ...]:
+    """Invert the artifact-order alias permutation back to caller order."""
+
+    ordered = tuple(values)
+    if permutation is None:
+        return ordered
+    if len(permutation) != len(ordered) or set(permutation) != set(range(len(ordered))):
+        raise ArtifactError("diagnostic external permutation is invalid")
+    result: list[Any | None] = [None] * len(ordered)
+    for artifact_index, input_index in enumerate(permutation):
+        result[input_index] = ordered[artifact_index]
+    if any(value is None for value in result):
+        raise ArtifactError("diagnostic external permutation is incomplete")
+    return tuple(result)
+
+
+def _diagnostic_decimal_point_digest(
+    points: Sequence[Sequence[Sequence[Decimal]]],
+) -> str:
+    payload = [
+        [[str(component) for component in leg] for leg in point] for point in points
+    ]
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=True,
+        separators=(",", ":"),
+    ).encode("ascii")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _diagnostic_global_residual(
+    point: Sequence[Sequence[Decimal]],
+    particles: Sequence[Mapping[str, object]],
+) -> tuple[Decimal, Decimal, Decimal, Decimal]:
+    residual = [_ZERO, _ZERO, _ZERO, _ZERO]
+    for leg, particle in zip(point, particles, strict=True):
+        sign = -_ONE if particle["role"] in {"initial", "incoming"} else _ONE
+        for component_index, component in enumerate(leg):
+            residual[component_index] += sign * component
+    return cast(tuple[Decimal, Decimal, Decimal, Decimal], tuple(residual))
+
+
+def _diagnostic_project_onshell_points(
+    momenta: Momenta,
+    *,
+    physics: Mapping[str, object],
+    artifact_mass_bindings: Sequence[_DiagnosticMassBinding],
+    permutation: tuple[int, ...] | None,
+    precision: int,
+) -> tuple[
+    tuple[tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...], ...],
+    dict[str, object],
+]:
+    """Project external energies for a non-promoting precision diagnostic."""
+
+    if isinstance(precision, bool) or not isinstance(precision, int) or precision < 1:
+        raise EvaluationError(
+            "diagnostic precision must be a positive integer number of decimal digits"
+        )
+    particles = _diagnostic_external_particles(physics)
+    if len(artifact_mass_bindings) != len(particles):
+        raise ArtifactError("diagnostic external mass binding count is inconsistent")
+    input_particles = cast(
+        tuple[Mapping[str, object], ...],
+        _diagnostic_input_order(particles, permutation),
+    )
+    input_bindings = cast(
+        tuple[_DiagnosticMassBinding, ...],
+        _diagnostic_input_order(artifact_mass_bindings, permutation),
+    )
+    points = _prepare_points(momenta, physics, None)
+    working_precision = _working_precision(precision)
+    projected_points = []
+    point_metadata = []
+    unchanged = True
+    with localcontext() as context:
+        context.prec = working_precision
+        context.rounding = ROUND_HALF_EVEN
+        for point_index, point in enumerate(points):
+            before_global = _diagnostic_global_residual(point, input_particles)
+            projected_legs = []
+            leg_metadata = []
+            for leg_index, (leg, particle, binding) in enumerate(
+                zip(point, input_particles, input_bindings, strict=True)
+            ):
+                energy, px, py, pz = leg
+                spatial_squared = px * px + py * py + pz * pz
+                mass_squared = binding.mass * binding.mass
+                magnitude = (spatial_squared + mass_squared).sqrt()
+                projected_energy = -magnitude if energy.is_signed() else magnitude
+                projected = (projected_energy, px, py, pz)
+                projected_legs.append(projected)
+                unchanged = unchanged and projected_energy == energy
+                leg_metadata.append(
+                    {
+                        "point_index": point_index,
+                        "leg_index": leg_index,
+                        "label": particle["label"],
+                        "pdg": particle["pdg"],
+                        "state": (
+                            "incoming"
+                            if particle["role"] in {"initial", "incoming"}
+                            else "outgoing"
+                        ),
+                        "mass": str(binding.mass),
+                        "mass_authority": binding.authority,
+                        "mass_parameter": binding.parameter_name,
+                        "original_energy": str(energy),
+                        "projected_energy": str(projected_energy),
+                        "energy_delta": str(projected_energy - energy),
+                        "shell_residual_before": str(
+                            energy * energy - spatial_squared - mass_squared
+                        ),
+                        "shell_residual_after": str(
+                            projected_energy * projected_energy
+                            - spatial_squared
+                            - mass_squared
+                        ),
+                    }
+                )
+            projected_point = tuple(projected_legs)
+            projected_points.append(projected_point)
+            after_global = _diagnostic_global_residual(projected_point, input_particles)
+            point_metadata.append(
+                {
+                    "point_index": point_index,
+                    "global_residual_before": [
+                        str(component) for component in before_global
+                    ],
+                    "global_residual_after": [
+                        str(component) for component in after_global
+                    ],
+                    "legs": leg_metadata,
+                }
+            )
+    projected = tuple(projected_points)
+    return projected, {
+        "abi": "pyamplicol-diagnostic-onshell-projection-v1",
+        "kind": "per-leg-onshell-energy-v1",
+        "precision_digits": precision,
+        "working_precision_digits": working_precision,
+        "mass_authority": "authenticated-current-runtime-and-artifact-bindings",
+        "energy_sign_preserved": True,
+        "spatial_components_unchanged": True,
+        "global_rebalance_applied": False,
+        "global_residual_convention": "final-minus-initial",
+        "unchanged": unchanged,
+        "projected_digest": _diagnostic_decimal_point_digest(projected),
+        "projected_digest_kind": "sha256-decimal-string-momenta-v1",
+        "points": point_metadata,
+    }
 
 
 def _prepare_points(

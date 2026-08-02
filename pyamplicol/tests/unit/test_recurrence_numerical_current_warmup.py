@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import json
 import math
 import tempfile
+import weakref
 import zlib
 from collections.abc import Iterator, Mapping
 from dataclasses import replace
@@ -60,6 +62,7 @@ from pyamplicol.generation.recurrence_numerical_current_warmup import (
     recurrence_numerical_source_semantics_sha256,
     run_recurrence_numerical_current_warmup,
     validate_recurrence_numerical_current_application,
+    validate_recurrence_numerical_evidence_fallback,
 )
 from pyamplicol.generation.service import (
     _recurrence_relation_reporting,
@@ -1129,6 +1132,28 @@ def test_envelope_fallback_has_reuse_off_runtime_and_visible_provenance() -> Non
         )
 
 
+def _fallback_lowering_output(
+    tmp_path: Path,
+    name: str,
+    *,
+    inspection: Mapping[str, object],
+) -> generation_service._RustRecurrenceLoweringOutput:
+    return generation_service._RustRecurrenceLoweringOutput(
+        inspection_summary=inspection,
+        resolved_helicities=(),
+        amplitude_destinations=(),
+        exact_sections={},
+        generation_profile={"pass": name},
+        numerical_current_reuse_report=None,
+        payload_path=tmp_path / f"{name}.pacbin",
+        payload_size_bytes=1,
+        payload_sha256="a" * 64,
+        member_count=1,
+        unpacked_size_bytes=1,
+        index_sha256="b" * 64,
+    )
+
+
 def test_service_fallback_finishes_with_reuse_off_lowering(
     tmp_path: Path,
 ) -> None:
@@ -1148,28 +1173,12 @@ def test_service_fallback_finishes_with_reuse_off_lowering(
         raw_reason="injected test envelope",
     )
 
-    def lowering_output(
-        name: str,
-        *,
-        inspection: Mapping[str, object],
-    ) -> generation_service._RustRecurrenceLoweringOutput:
-        return generation_service._RustRecurrenceLoweringOutput(
-            inspection_summary=inspection,
-            resolved_helicities=(),
-            amplitude_destinations=(),
-            exact_sections={},
-            generation_profile={"pass": name},
-            numerical_current_reuse_report=None,
-            payload_path=tmp_path / f"{name}.pacbin",
-            payload_size_bytes=1,
-            payload_sha256="a" * 64,
-            member_count=1,
-            unpacked_size_bytes=1,
-            index_sha256="b" * 64,
-        )
-
-    baseline = lowering_output("baseline", inspection={})
-    final = lowering_output("final", inspection={"runtime": "original-plan"})
+    baseline = _fallback_lowering_output(tmp_path, "baseline", inspection={})
+    final = _fallback_lowering_output(
+        tmp_path,
+        "final",
+        inspection={"runtime": "original-plan"},
+    )
     calls: list[tuple[Path, dict[str, object]]] = []
 
     def lower_once(
@@ -1217,6 +1226,167 @@ def test_service_fallback_finishes_with_reuse_off_lowering(
     report_fallback = report["fallback"]
     assert isinstance(report_fallback, Mapping)
     assert report_fallback["geometry"] == geometry.to_json_dict()
+
+
+def test_python_envelope_fallback_detaches_exception_before_retry(
+    tmp_path: Path,
+) -> None:
+    class RetainedFrameResource:
+        pass
+
+    geometry = RecurrenceNumericalEvidenceGeometry.from_counts(
+        current_count=4,
+        component_count=4,
+        candidate_probe_count=2,
+        verification_probe_count=2,
+        runtime_parameter_count=2,
+    )
+    retained: list[weakref.ReferenceType[RetainedFrameResource]] = []
+
+    def fail_warmup() -> None:
+        frame_resource = RetainedFrameResource()
+        retained.append(weakref.ref(frame_resource))
+        try:
+            raise RuntimeError("canonical evidence writer overflow")
+        except RuntimeError as cause:
+            raise RecurrenceNumericalEvidenceEnvelopeExceeded(
+                geometry,
+                memory_envelope_bytes=1,
+                spooled_producer_resident_bytes=(
+                    geometry.spooled_producer_resident_upper_bound()
+                ),
+                raw_reason="injected Python warmup envelope",
+            ) from cause
+
+    try:
+        fail_warmup()
+    except RecurrenceNumericalEvidenceEnvelopeExceeded as exc:
+        detached = generation_service._detached_recurrence_evidence_envelope_outcome(
+            exc,
+            source_error=exc,
+        )
+    else:  # pragma: no cover - the injected fallback is mandatory
+        raise AssertionError("injected Python fallback did not fail")
+
+    assert detached.__traceback__ is None
+    assert detached.__cause__ is None
+    assert detached.__context__ is None
+    assert detached.to_json_dict()["geometry"] == geometry.to_json_dict()
+
+    baseline = _fallback_lowering_output(tmp_path, "baseline", inspection={})
+    final = _fallback_lowering_output(tmp_path, "final", inspection={})
+
+    def retry_without_evidence(
+        _destination: Path,
+        **_kwargs: object,
+    ) -> generation_service._RustRecurrenceLoweringOutput:
+        gc.collect()
+        assert retained[0]() is None
+        return final
+
+    generation_service._complete_recurrence_evidence_envelope_fallback(
+        lower_once=retry_without_evidence,
+        final_schedule_path=tmp_path / "python-fallback.pacbin",
+        baseline=baseline,
+        baseline_plan=_topology_replay_plan(),
+        color_accuracy="lc",
+        outcome=detached,
+    )
+
+
+def test_native_capacity_fallback_releases_warmup_before_retry(
+    tmp_path: Path,
+) -> None:
+    class RetainedResource:
+        pass
+
+    class WarmupOwner:
+        def __init__(
+            self,
+            retained: list[weakref.ReferenceType[RetainedResource]],
+            events: list[str],
+        ) -> None:
+            self.evidence_transport = RetainedResource()
+            self.candidate_capture = RetainedResource()
+            self.verification_capture = RetainedResource()
+            self.open_spool: RetainedResource | None = RetainedResource()
+            retained.extend(
+                weakref.ref(value)
+                for value in (
+                    self.evidence_transport,
+                    self.candidate_capture,
+                    self.verification_capture,
+                    self.open_spool,
+                )
+            )
+            self._events = events
+
+        def close(self) -> None:
+            self._events.append("warmup-closed")
+            self.open_spool = None
+
+    message = (
+        "raw numerical evidence exceeds the streaming 1 GiB resident memory "
+        "envelope"
+    )
+    retained_frames: list[weakref.ReferenceType[RetainedResource]] = []
+
+    def fail_native() -> None:
+        frame_resource = RetainedResource()
+        retained_frames.append(weakref.ref(frame_resource))
+        raise GenerationError(message)
+
+    plan = _topology_replay_plan()
+    try:
+        fail_native()
+    except GenerationError as exc:
+        outcome = recurrence_warmup.recurrence_numerical_evidence_capacity_outcome(
+            plan.sections,
+            candidate_probe_count=2,
+            verification_probe_count=2,
+            runtime_parameter_count=len(plan.runtime_parameter_schema),
+            error=exc,
+        )
+        assert isinstance(outcome, RecurrenceNumericalEvidenceEnvelopeExceeded)
+        detached = generation_service._detached_recurrence_evidence_envelope_outcome(
+            outcome,
+            source_error=exc,
+        )
+    else:  # pragma: no cover - the injected fallback is mandatory
+        raise AssertionError("injected native fallback did not fail")
+
+    events: list[str] = []
+    retained_warmup: list[weakref.ReferenceType[RetainedResource]] = []
+    warmup = WarmupOwner(retained_warmup, events)
+    warmup_owner = [warmup]
+    del warmup
+    baseline = _fallback_lowering_output(tmp_path, "baseline", inspection={})
+    final = _fallback_lowering_output(tmp_path, "final", inspection={})
+
+    def retry_without_evidence(
+        _destination: Path,
+        **_kwargs: object,
+    ) -> generation_service._RustRecurrenceLoweringOutput:
+        gc.collect()
+        events.append("retry")
+        assert warmup_owner == []
+        assert retained_frames[0]() is None
+        assert all(reference() is None for reference in retained_warmup)
+        assert detached.__traceback__ is None
+        assert detached.__cause__ is None
+        assert detached.__context__ is None
+        return final
+
+    generation_service._complete_recurrence_evidence_envelope_fallback(
+        lower_once=retry_without_evidence,
+        final_schedule_path=tmp_path / "native-fallback.pacbin",
+        baseline=baseline,
+        baseline_plan=plan,
+        color_accuracy="lc",
+        outcome=detached,
+        warmup_owner=warmup_owner,  # type: ignore[arg-type]
+    )
+    assert events == ["warmup-closed", "retry"]
 
 
 def test_compressed_canonical_transport_round_trips_with_length_and_digest() -> None:
@@ -1300,6 +1470,121 @@ def test_compressed_warmup_keeps_relation_rows_spooled_through_validation(
         verification_spool[0]
 
 
+def test_late_raw_wire_overflow_uses_typed_fallback_without_compression(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_select_raw_evidence_storage_geometry",
+        lambda *_args, **_kwargs: recurrence_warmup._RawEvidenceStorageGeometry(
+            scalar_count=128,
+            row_count=16,
+            canonical_byte_limit=128,
+            encoding="canonical-json-v3",
+            producer_resident_upper_bound=1 << 20,
+        ),
+    )
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_write_compressed_canonical_evidence",
+        lambda *_args, **_kwargs: pytest.fail(
+            "late raw overflow attempted compressed evidence transport"
+        ),
+    )
+
+    with pytest.raises(RecurrenceNumericalEvidenceEnvelopeExceeded) as captured:
+        run_recurrence_numerical_current_warmup(
+            _topology_replay_plan(),
+            candidate_points=_points(1),
+            verification_points=_points(101),
+            mode="certified-reuse",
+            color_accuracy="lc",
+            precision_digits=80,
+            seed=53,
+            relative_tolerance=1.0e-60,
+            absolute_tolerance=1.0e-70,
+        )
+
+    assert "canonical boundary" in captured.value.raw_reason
+    assert captured.value.geometry.current_count > 0
+
+
+def test_initial_compressed_capacity_uses_typed_optional_evidence_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_select_raw_evidence_storage_geometry",
+        lambda *_args, **_kwargs: recurrence_warmup._RawEvidenceStorageGeometry(
+            scalar_count=128,
+            row_count=16,
+            canonical_byte_limit=1 << 20,
+            encoding="zlib-canonical-json-v1",
+            producer_resident_upper_bound=1 << 20,
+        ),
+    )
+    monkeypatch.setattr(
+        recurrence_warmup,
+        "_write_compressed_canonical_evidence",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            recurrence_warmup._CanonicalEvidenceCapacityExceeded(
+                "injected compressed transport capacity"
+            )
+        ),
+    )
+
+    with pytest.raises(RecurrenceNumericalEvidenceEnvelopeExceeded) as captured:
+        run_recurrence_numerical_current_warmup(
+            _topology_replay_plan(),
+            candidate_points=_points(1),
+            verification_points=_points(101),
+            mode="certified-reuse",
+            color_accuracy="lc",
+            precision_digits=80,
+            seed=53,
+            relative_tolerance=1.0e-60,
+            absolute_tolerance=1.0e-70,
+        )
+
+    assert "compressed transport capacity" in captured.value.raw_reason
+
+
+def test_native_capacity_classifier_excludes_integrity_and_structure_errors() -> None:
+    sections = _topology_replay_plan().sections
+    outcome = recurrence_warmup.recurrence_numerical_evidence_capacity_outcome(
+        sections,
+        candidate_probe_count=4,
+        verification_probe_count=4,
+        runtime_parameter_count=2,
+        error=ArtifactError(
+            "raw numerical evidence exceeds the streaming 1 GiB resident memory "
+            "envelope"
+        ),
+    )
+
+    assert isinstance(outcome, RecurrenceNumericalEvidenceEnvelopeExceeded)
+    assert outcome.geometry.current_count == len(sections.currents)
+    assert (
+        validate_recurrence_numerical_evidence_fallback(outcome.to_json_dict())
+        == outcome.to_json_dict()
+    )
+    for message in (
+        "compressed numerical relation evidence digest mismatch",
+        "numerical relation evidence JSON lexical structure is incomplete",
+        "recurrence runtime parameter schema/defaults do not match",
+    ):
+        assert (
+            recurrence_warmup.recurrence_numerical_evidence_capacity_outcome(
+                sections,
+                candidate_probe_count=4,
+                verification_probe_count=4,
+                runtime_parameter_count=2,
+                error=ArtifactError(message),
+            )
+            is None
+        )
+
+
 def test_spooled_discovery_preserves_global_equal_opposite_and_zero_relations() -> None:
     plan = _signed_relation_plan()
     source_digest = recurrence_numerical_source_semantics_sha256(plan.sections)
@@ -1362,7 +1647,7 @@ def test_spooled_discovery_preserves_global_equal_opposite_and_zero_relations() 
     } >= {(3, "equal"), (4, "opposite"), (5, "zero")}
 
 
-def test_synthetic_multi_helicity_all_flow_keeps_census_but_disables_application(
+def test_synthetic_multi_helicity_all_flow_skips_unsafe_selector_hypotheses(
 ) -> None:
     plan = _signed_relation_plan()
     source_digest = recurrence_numerical_source_semantics_sha256(plan.sections)
@@ -1404,16 +1689,16 @@ def test_synthetic_multi_helicity_all_flow_keeps_census_but_disables_application
         color_accuracy="lc",
     )
 
-    assert {certificate.relation_kind for certificate in certificates} == {
-        "equal",
-        "opposite",
-        "zero",
-    }
+    assert certificates == ()
     scope = report["application_scope"]
     assert scope["multi_helicity_all_flow_domain_ids"] == [0]
     assert scope["multi_helicity_all_flow_application"] == "disabled"
     assert scope["suppressed_current_count"] == 4
-    assert report["tested_hypothesis_count"] > 0
+    assert report["tested_hypothesis_count"] == 0
+    candidate_index = report["candidate_index"]
+    assert candidate_index["theoretical_pair_hypothesis_count"] == 0
+    assert candidate_index["screened_pair_hypothesis_count"] == 0
+    assert candidate_index["zero_hypothesis_count"] == 0
     assert recurrence_warmup._effective_numerical_relation_mode(
         sections,
         requested_mode="certified-reuse",
@@ -1954,3 +2239,72 @@ def test_recurrence_service_forwards_complete_numerical_contract_to_pyo3(
     cached_args, cached_kwargs = calls[1]
     assert cached_args[2] == args[2]
     assert cached_kwargs == kwargs
+
+
+def test_recurrence_service_preserves_native_capacity_message_for_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    message = (
+        "raw numerical evidence exceeds the streaming 1 GiB resident memory "
+        "envelope"
+    )
+
+    def binding(*_args: object, **_kwargs: object) -> object:
+        # Native evidence validation exposes invalid_argument as ValueError;
+        # the service wrapper deliberately retains the exact marker in its
+        # typed GenerationError for the bounded fallback classifier.
+        raise ValueError(message)
+
+    native = SimpleNamespace(_lower_recurrence_direct_v2=binding)
+    monkeypatch.setattr(
+        generation_service.importlib,
+        "import_module",
+        lambda _name: native,
+    )
+    monkeypatch.setattr(
+        generation_service,
+        "verify_native_module",
+        lambda _module: None,
+    )
+    monkeypatch.setattr(
+        generation_service,
+        "active_native_source_identity",
+        lambda: ("source-revision", "a" * 64),
+    )
+    builder = SimpleNamespace(digest="c" * 64, layout="topology-replay")
+    template = SimpleNamespace(digest="d" * 64)
+    catalog = SimpleNamespace(
+        catalog_digest="e" * 64,
+        to_dict=lambda: {"z": 1, "a": 2},
+    )
+
+    with pytest.raises(GenerationError, match="streaming 1 GiB") as captured:
+        generation_service._invoke_rust_recurrence_lowering_v2(
+            builder,
+            template,
+            catalog,
+            "f" * 64,
+            "1" * 64,
+            tmp_path / "recurrence-runtime.pacbin",
+            point_tile_size=17,
+            workspace_mib=23,
+            relation_discovery_mode="certified-reuse",
+            relation_discovery_precision_digits=101,
+            relation_discovery_probe_count=3,
+            relation_discovery_verification_probe_count=5,
+            relation_discovery_relative_tolerance=1.25e-70,
+            relation_discovery_absolute_tolerance=2.5e-80,
+            relation_discovery_seed=123456789,
+            color_accuracy="nlc",
+            relation_discovery_evidence_json=b'{}',
+            progress_callback=None,
+        )
+    outcome = recurrence_warmup.recurrence_numerical_evidence_capacity_outcome(
+        _topology_replay_plan().sections,
+        candidate_probe_count=3,
+        verification_probe_count=5,
+        runtime_parameter_count=2,
+        error=captured.value,
+    )
+    assert isinstance(outcome, RecurrenceNumericalEvidenceEnvelopeExceeded)

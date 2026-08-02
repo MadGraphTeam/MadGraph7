@@ -147,11 +147,13 @@ from .recurrence_columnar import (
 from .recurrence_numerical_current_warmup import (
     EVIDENCE_ENVELOPE_FALLBACK_REASON,
     EVIDENCE_ENVELOPE_FALLBACK_WARNING,
+    RecurrenceNumericalCurrentWarmupResult,
     RecurrenceNumericalEvidenceEnvelopeExceeded,
     build_recurrence_numerical_current_probe_points,
     numerical_relation_correctness_payload,
     recurrence_numerical_current_envelope_fallback_report,
     recurrence_numerical_current_opt_out_report,
+    recurrence_numerical_evidence_capacity_outcome,
     recurrence_numerical_relation_correctness_summary,
     run_recurrence_numerical_current_warmup,
     validate_recurrence_numerical_current_application,
@@ -810,9 +812,23 @@ def _complete_recurrence_evidence_envelope_fallback(
     baseline_plan: _RecurrenceExactPlan,
     color_accuracy: str,
     outcome: RecurrenceNumericalEvidenceEnvelopeExceeded,
+    warmup_owner: list[RecurrenceNumericalCurrentWarmupResult] | None = None,
 ) -> _RustRecurrenceLoweringOutput:
     """Finish one certified-reuse geometry fallback through the reuse-off path."""
 
+    if warmup_owner is None:
+        warmup = None
+    else:
+        if len(warmup_owner) != 1:
+            raise AssertionError(
+                "recurrence fallback requires exactly one warm-up owner"
+            )
+        warmup = warmup_owner.pop()
+        warmup.close()
+    # Drop the transport, both captures and their spool owners before the
+    # mode-off lowering begins.  The caller has already cleared exception
+    # chains and transferred its only warm-up reference through this owner.
+    warmup = None
     output = lower_once(
         final_schedule_path,
         mode="off",
@@ -843,6 +859,41 @@ def _complete_recurrence_evidence_envelope_fallback(
         },
         numerical_current_reuse_report=aggregate_report,
     )
+
+
+def _detached_recurrence_evidence_envelope_outcome(
+    outcome: RecurrenceNumericalEvidenceEnvelopeExceeded,
+    *,
+    source_error: BaseException,
+) -> RecurrenceNumericalEvidenceEnvelopeExceeded:
+    """Copy fallback metadata while releasing exception-retained work state."""
+
+    detached = RecurrenceNumericalEvidenceEnvelopeExceeded(
+        outcome.geometry,
+        memory_envelope_bytes=outcome.memory_envelope_bytes,
+        spooled_producer_resident_bytes=(outcome.spooled_producer_resident_bytes),
+        raw_reason=outcome.raw_reason,
+    )
+    pending = [source_error]
+    if outcome is not source_error:
+        pending.append(outcome)
+    seen: set[int] = set()
+    while pending:
+        error = pending.pop()
+        identity = id(error)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        cause = error.__cause__
+        context = error.__context__
+        error.__traceback__ = None
+        error.__cause__ = None
+        error.__context__ = None
+        if cause is not None:
+            pending.append(cause)
+        if context is not None:
+            pending.append(context)
+    return detached
 
 
 def _invoke_rust_eager_lowering_v1(
@@ -1017,7 +1068,7 @@ def _invoke_rust_recurrence_lowering_v2(
         payload_sha256 = _file_sha256(destination)
     except Exception as exc:
         _discard_rust_eager_output(destination)
-        if isinstance(exc, GenerationError):
+        if isinstance(exc, GenerationError | ArtifactError):
             raise
         raise GenerationError(f"Rust recurrence lowering failed: {exc}") from exc
     return _RustRecurrenceLoweringOutput(
@@ -3507,6 +3558,7 @@ class GenerationBackend:
                     envelope_fallback: (
                         RecurrenceNumericalEvidenceEnvelopeExceeded | None
                     ) = None
+                    warmup = None
                     try:
                         with _SYMBOLICA_MATERIALIZATION_LOCK:
                             baseline_plan_started = time.perf_counter()
@@ -3561,7 +3613,12 @@ class GenerationBackend:
                                 f"process {process_name!r} recurrence numerical "
                                 "diagnostic evidence exceeds its memory envelope"
                             ) from exc
-                        envelope_fallback = exc
+                        envelope_fallback = (
+                            _detached_recurrence_evidence_envelope_outcome(
+                                exc,
+                                source_error=exc,
+                            )
+                        )
                     except (ArtifactError, ValueError) as exc:
                         raise GenerationError(
                             f"process {process_name!r} recurrence numerical "
@@ -3588,6 +3645,10 @@ class GenerationBackend:
                                 "row_count": int(geometry_details["row_count"]),
                             },
                         )
+                        warmup_owner = None
+                        if warmup is not None:
+                            warmup_owner = [warmup]
+                            warmup = None
                         return _complete_recurrence_evidence_envelope_fallback(
                             lower_once=lower_once,
                             final_schedule_path=final_schedule_path,
@@ -3595,15 +3656,96 @@ class GenerationBackend:
                             baseline_plan=baseline_plan,
                             color_accuracy=str(expanded.process_ir.color_accuracy),
                             outcome=envelope_fallback,
+                            warmup_owner=warmup_owner,
+                        )
+                    if warmup is None:
+                        raise AssertionError(
+                            "recurrence numerical warm-up completed without a result"
                         )
                     try:
-                        output = lower_once(
-                            final_schedule_path,
-                            mode=warmup.effective_mode,
-                            evidence=warmup.evidence_json,
-                            report_progress=False,
-                            timing_name="native-final-generation",
-                        )
+                        native_capacity_fallback: (
+                            RecurrenceNumericalEvidenceEnvelopeExceeded | None
+                        ) = None
+                        try:
+                            output = lower_once(
+                                final_schedule_path,
+                                mode=warmup.effective_mode,
+                                evidence=warmup.evidence_json,
+                                report_progress=False,
+                                timing_name="native-final-generation",
+                            )
+                        except (ArtifactError, GenerationError) as exc:
+                            native_capacity_fallback = (
+                                recurrence_numerical_evidence_capacity_outcome(
+                                    baseline_plan.sections,
+                                    candidate_probe_count=len(candidate_points),
+                                    verification_probe_count=len(verification_points),
+                                    runtime_parameter_count=len(
+                                        baseline_plan.runtime_parameter_schema
+                                    ),
+                                    error=exc,
+                                )
+                            )
+                            if (
+                                native_capacity_fallback is None
+                                or relation_discovery_mode != "certified-reuse"
+                            ):
+                                raise
+                            native_capacity_fallback = (
+                                _detached_recurrence_evidence_envelope_outcome(
+                                    native_capacity_fallback,
+                                    source_error=exc,
+                                )
+                            )
+                        if native_capacity_fallback is not None:
+                            # The failed native call can retain its evidence
+                            # argument through exception frames.  The handler
+                            # above detached those frames; close both trusted
+                            # spools and drop the result (including the evidence
+                            # transport) before retrying without reuse.
+                            fallback_details = native_capacity_fallback.to_json_dict()
+                            geometry_details = cast(
+                                Mapping[str, object],
+                                fallback_details["geometry"],
+                            )
+                            native_task.update(
+                                native_task.completed,
+                                message=EVIDENCE_ENVELOPE_FALLBACK_WARNING,
+                                details={
+                                    "process": process_name,
+                                    "step": "numerical-current reuse disabled",
+                                    "warning_code": (EVIDENCE_ENVELOPE_FALLBACK_REASON),
+                                    "current_count": int(
+                                        geometry_details["current_count"]
+                                    ),
+                                    "component_count": int(
+                                        geometry_details["component_count"]
+                                    ),
+                                    "scalar_count": int(
+                                        geometry_details["scalar_count"]
+                                    ),
+                                    "row_count": int(geometry_details["row_count"]),
+                                },
+                            )
+                            fallback_color_accuracy = str(
+                                expanded.process_ir.color_accuracy
+                            )
+                            warmup_owner = [warmup]
+                            warmup = None
+                            return _complete_recurrence_evidence_envelope_fallback(
+                                lower_once=lower_once,
+                                final_schedule_path=final_schedule_path,
+                                baseline=baseline,
+                                baseline_plan=baseline_plan,
+                                color_accuracy=fallback_color_accuracy,
+                                outcome=native_capacity_fallback,
+                                warmup_owner=warmup_owner,
+                            )
+                        if warmup is None:
+                            raise AssertionError(
+                                "recurrence numerical warm-up was released "
+                                "without a fallback"
+                            )
                         warmup = warmup.without_evidence_transport()
                         try:
                             with _SYMBOLICA_MATERIALIZATION_LOCK:
@@ -3663,7 +3805,8 @@ class GenerationBackend:
                             numerical_current_reuse_report=aggregate_report,
                         )
                     finally:
-                        warmup.close()
+                        if warmup is not None:
+                            warmup.close()
 
                 schedule_lowering_started = time.perf_counter()
                 shared = lowering_cache.lower_process(

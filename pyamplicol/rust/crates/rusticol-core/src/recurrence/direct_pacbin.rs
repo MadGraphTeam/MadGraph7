@@ -2,12 +2,18 @@
 
 //! PACBIN publication and authenticated loading for direct-plan v2.
 
-use std::path::Path;
+use std::io::{BufWriter, Write};
+use std::path::{Path, PathBuf};
 
-use super::direct_codec::{decode_recurrence_direct_plan_v2, encode_recurrence_direct_plan_v2};
+#[cfg(test)]
+use super::direct_codec::encode_recurrence_direct_plan_v2;
+use super::direct_codec::{
+    decode_recurrence_direct_plan_v2, encode_recurrence_direct_plan_v2_to_writer,
+};
 use super::direct_plan::DirectRecurrencePlan;
 use crate::pacbin::{
-    PacbinMemberKind, PacbinReader, PacbinWriteMember, PacbinWriteOptions, write_pacbin_atomic,
+    PACBIN_DEFAULT_CHUNK_SIZE, PacbinMemberKind, PacbinReader, PacbinWriteMember,
+    PacbinWriteOptions, create_temporary_file, write_pacbin_atomic,
 };
 use crate::{RusticolError, RusticolResult};
 use sha2::{Digest, Sha256};
@@ -17,6 +23,14 @@ pub const RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER: &str =
     "proof/recurrence-color-projection-v1.bin";
 const COLOR_PROJECTION_CERTIFICATE_BODY_MAGIC: &[u8] = b"PYAMP-COLOR-PROJECTION-BODY-V1\0\0";
 const COLOR_PROJECTION_CERTIFICATE_MAGIC: &[u8] = b"PYAMP-COLOR-PROJECTION-CERT-V1\0";
+
+struct TemporaryPlanPayload(PathBuf);
+
+impl Drop for TemporaryPlanPayload {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RecurrenceDirectPacbinMetadata {
@@ -42,11 +56,27 @@ pub fn write_recurrence_direct_plan_pacbin_with_projection_certificate(
     plan: &DirectRecurrencePlan,
     projection_certificate: Option<&[u8]>,
 ) -> RusticolResult<RecurrenceDirectPacbinMetadata> {
-    let payload = encode_recurrence_direct_plan_v2(plan)?;
-    let plan_member = PacbinWriteMember::from_bytes(
+    let destination = destination.as_ref();
+    let parent = destination
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let (payload_path, payload_file) = create_temporary_file(destination, parent)?;
+    let payload_guard = TemporaryPlanPayload(payload_path);
+    let mut payload_writer = BufWriter::with_capacity(PACBIN_DEFAULT_CHUNK_SIZE, payload_file);
+    let encoded_payload_size =
+        encode_recurrence_direct_plan_v2_to_writer(plan, &mut payload_writer)?;
+    payload_writer.flush().map_err(|error| {
+        RusticolError::artifact(format!(
+            "could not flush recurrence direct-plan temporary payload {}: {error}",
+            payload_guard.0.display()
+        ))
+    })?;
+    drop(payload_writer);
+    let plan_member = PacbinWriteMember::from_path(
         RECURRENCE_DIRECT_SCHEDULE_MEMBER,
         PacbinMemberKind::RecurrenceDirectPlan,
-        &payload,
+        &payload_guard.0,
     )?;
     let mut members = vec![plan_member];
     if let Some(certificate) = projection_certificate {
@@ -67,6 +97,12 @@ pub fn write_recurrence_direct_plan_pacbin_with_projection_certificate(
         .members()
         .iter()
         .find(|member| member.logical_path() == RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER);
+    if indexed.length() != encoded_payload_size {
+        return Err(RusticolError::artifact(format!(
+            "direct recurrence PACBIN plan length differs from the streamed payload: encoded={encoded_payload_size}, indexed={}",
+            indexed.length()
+        )));
+    }
     Ok(RecurrenceDirectPacbinMetadata {
         container_size: index.file_size(),
         member_count: index.members().len() as u64,

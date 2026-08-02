@@ -23,6 +23,7 @@ from .dag_algorithms import (
     _canonicalize_amplitude_root_order,
     _LiveCurrentShape,
     _normalize_generation_cap,
+    _retain_canonical_open_line_alias_roots,
     build_backward_live_state_plan,
 )
 from .dag_color import ColorEngine
@@ -1492,7 +1493,10 @@ class GenericDAGCompiler:
                             coupling=closure.coupling,
                         )
                     )
-        amplitude_roots = tuple(amplitude_roots_list)
+        amplitude_roots = _retain_canonical_open_line_alias_roots(
+            color_plan,
+            amplitude_roots_list,
+        )
         if global_flip_anchor is not None:
             amplitude_roots = tuple(
                 replace(
@@ -2150,7 +2154,12 @@ class GenericDAGCompiler:
                                     coupling=vertex.coupling,
                                 )
                             )
-        return roots
+        return list(
+            _retain_canonical_open_line_alias_roots(
+                color_engine.color_plan,
+                roots,
+            )
+        )
 
 
 def compile_generic_dag(

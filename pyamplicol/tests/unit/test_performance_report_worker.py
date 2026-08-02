@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import errno
 import json
 from pathlib import Path
 
 import pytest
 
+import tools.performance_report.worker as worker_module
+from tools.performance_report.artifacts import DiskFullError
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.phase_state import (
     WorkerPhaseChannel,
@@ -33,6 +36,29 @@ def test_atomic_worker_result_is_canonical_and_complete(tmp_path: Path) -> None:
         "value": 1,
     }
     assert not list(path.parent.glob("*.tmp"))
+
+
+def test_atomic_worker_result_normalizes_enospc_with_target_and_free_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "attempt" / "worker-result.json"
+
+    def no_space(_source: object, _destination: object) -> None:
+        raise OSError(errno.ENOSPC, "no space left")
+
+    monkeypatch.setattr(worker_module.os, "replace", no_space)
+    with pytest.raises(
+        DiskFullError,
+        match=(
+            r"disk full while writing .*worker-result\.json; "
+            r"[0-9]+ bytes available"
+        ),
+    ):
+        worker_module._atomic_json(path, {"status": "error"})
+
+    assert not path.exists()
+    assert not tuple(path.parent.glob(".worker-result.json.*.tmp"))
 
 
 def test_worker_source_identity_uses_controller_values_without_git(
@@ -441,3 +467,74 @@ def test_legacy_all_flow_worker_passes_selected_flow_provider(
 
     assert result["status"] == "ok"
     assert observed == [provider]
+
+
+def test_pyamplicol_worker_passes_all_validation_peers_to_measurement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cell = REPORT_CATALOG.cell(
+        "matrix-compiled-builtin-sm-full-n4-dd-tt-jets-contracted"
+    )
+    baseline = {"status": "ok", "matrix_element": 1.0}
+    peer = {
+        "status": "ok",
+        "matrix_element": 1.0,
+        "validation": {
+            "legacy_imode2_diagnostic": {
+                "authoritative_value": 1.0,
+                "imode2_value": 1.0,
+            }
+        },
+    }
+    baseline_path = tmp_path / "baseline.json"
+    peer_path = tmp_path / "peer.json"
+    baseline_path.write_text(json.dumps(baseline), encoding="ascii")
+    peer_path.write_text(json.dumps(peer), encoding="ascii")
+    observed: list[object] = []
+
+    class SourceIdentity:
+        def provenance(self) -> dict[str, object]:
+            return {}
+
+    def measure(*_args: object, **kwargs: object) -> dict[str, object]:
+        observed.append(kwargs.get("validation_peers"))
+        return {
+            "status": "validation_failed",
+            "validation": {"status": "validation_failed"},
+            "provenance": {},
+        }
+
+    identity = SourceIdentity()
+    monkeypatch.setattr(
+        "tools.performance_report.worker.require_eligible_report_source",
+        lambda _root: identity,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.worker.measure_pyamplicol_cell",
+        measure,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.worker.attach_direct_agreements",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.worker.attach_validation_failure_precision_diagnostic",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = measure_cell(
+        cell.cell_id,
+        repo_root=tmp_path,
+        attempt_root=tmp_path / "attempt",
+        target_runtime_seconds=1.0,
+        batch_size=1,
+        worker_cores=1,
+        baseline_json=baseline_path,
+        peer_json=(("reference-amplicol-full-n4-dd-tt-jets-contracted", peer_path),),
+    )
+
+    assert result["status"] == "validation_failed"
+    assert observed == [
+        {"reference-amplicol-full-n4-dd-tt-jets-contracted": peer}
+    ]

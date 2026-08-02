@@ -927,6 +927,19 @@ class ColorEngine:
             not word for word in sector.admissible_traversal_words
         ):
             return True
+        if sector.kind == "open-lines":
+            word = sector.canonical_closure_traversal_word(self.color_plan.process)
+            return _closure_combination_matches_word(
+                _labels_projected_to_word(
+                    left_index.ordered_external_labels,
+                    word,
+                ),
+                _labels_projected_to_word(
+                    right_index.ordered_external_labels,
+                    word,
+                ),
+                word,
+            )
         return any(
             _closure_combination_matches_word(
                 _labels_projected_to_word(left_index.ordered_external_labels, word),

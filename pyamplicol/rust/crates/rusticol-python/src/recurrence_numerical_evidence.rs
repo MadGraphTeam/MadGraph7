@@ -824,6 +824,7 @@ struct RawSourceCurrent {
     is_source: bool,
     contract_key: Vec<u8>,
     dimension: u16,
+    selector_domain_id: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -1614,11 +1615,16 @@ fn parse_raw_source_semantics(
         if dimension == 0 {
             return Err(invalid(format!("{context} dimension is zero")));
         }
+        let selector_domain_id = contract_values[5]
+            .as_u64()
+            .and_then(|value| u32::try_from(value).ok())
+            .ok_or_else(|| invalid(format!("{context} selector domain is not u32")))?;
         currents.push(RawSourceCurrent {
             current_id,
             is_source,
             contract_key: canonical_json_bytes(&contract, &context)?,
             dimension,
+            selector_domain_id,
         });
     }
     Ok(RawSourceSemantics {
@@ -2365,6 +2371,60 @@ fn validate_raw_kinematic(
     Ok(())
 }
 
+fn all_flow_selector_domain_helicities(
+    source: &RawSourceSemantics,
+) -> RusticolResult<BTreeMap<u32, Vec<(usize, u32)>>> {
+    let schedule = json_object(
+        &source.selector_schedule,
+        "recurrence numerical selector schedule",
+    )?;
+    require_json_fields(
+        schedule,
+        &["policy", "resolved_helicities"],
+        "recurrence union selector schedule",
+    )?;
+    require_json_string_value(
+        schedule,
+        "policy",
+        "seeded-helicity-per-selector-domain-and-physical-point-v1",
+        "recurrence union selector schedule",
+    )?;
+    let helicities = json_array(
+        schedule,
+        "resolved_helicities",
+        "recurrence union selector schedule",
+    )?;
+    let mut by_domain = BTreeMap::<u32, Vec<(usize, u32)>>::new();
+    for (index, value) in helicities.iter().enumerate() {
+        let helicity = json_object(value, "recurrence resolved helicity")?;
+        require_json_fields(
+            helicity,
+            &["helicity_index", "helicity_id", "selector_domain_id"],
+            "recurrence resolved helicity",
+        )?;
+        if json_u32(helicity, "helicity_index", "recurrence resolved helicity")? as usize != index {
+            return Err(invalid(
+                "recurrence resolved-helicity index is not canonical",
+            ));
+        }
+        by_domain
+            .entry(json_u32(
+                helicity,
+                "selector_domain_id",
+                "recurrence resolved helicity",
+            )?)
+            .or_default()
+            .push((
+                index,
+                json_u32(helicity, "helicity_id", "recurrence resolved helicity")?,
+            ));
+    }
+    if by_domain.is_empty() {
+        return Err(invalid("recurrence union selector schedule is empty"));
+    }
+    Ok(by_domain)
+}
+
 fn expected_selector_context(
     source: &RawSourceSemantics,
     seed: u64,
@@ -2372,12 +2432,12 @@ fn expected_selector_context(
     point_index: usize,
 ) -> RusticolResult<JsonValue> {
     let selector_seed = domain_seed(seed, domain, point_index);
-    let schedule = json_object(
-        &source.selector_schedule,
-        "recurrence numerical selector schedule",
-    )?;
     match source.strategy.as_str() {
         "topology-replay" => {
+            let schedule = json_object(
+                &source.selector_schedule,
+                "recurrence numerical selector schedule",
+            )?;
             require_json_fields(
                 schedule,
                 &["policy", "replay_targets"],
@@ -2423,53 +2483,7 @@ fn expected_selector_context(
             }))
         }
         "all-flow-union" => {
-            require_json_fields(
-                schedule,
-                &["policy", "resolved_helicities"],
-                "recurrence union selector schedule",
-            )?;
-            require_json_string_value(
-                schedule,
-                "policy",
-                "seeded-helicity-per-selector-domain-and-physical-point-v1",
-                "recurrence union selector schedule",
-            )?;
-            let helicities = json_array(
-                schedule,
-                "resolved_helicities",
-                "recurrence union selector schedule",
-            )?;
-            let mut by_domain = BTreeMap::<u32, Vec<(usize, u32)>>::new();
-            for (index, value) in helicities.iter().enumerate() {
-                let helicity = json_object(value, "recurrence resolved helicity")?;
-                require_json_fields(
-                    helicity,
-                    &["helicity_index", "helicity_id", "selector_domain_id"],
-                    "recurrence resolved helicity",
-                )?;
-                if json_u32(helicity, "helicity_index", "recurrence resolved helicity")? as usize
-                    != index
-                {
-                    return Err(invalid(
-                        "recurrence resolved-helicity index is not canonical",
-                    ));
-                }
-                by_domain
-                    .entry(json_u32(
-                        helicity,
-                        "selector_domain_id",
-                        "recurrence resolved helicity",
-                    )?)
-                    .or_default()
-                    .push((
-                        index,
-                        json_u32(helicity, "helicity_id", "recurrence resolved helicity")?,
-                    ));
-            }
-            if by_domain.is_empty() {
-                return Err(invalid("recurrence union selector schedule is empty"));
-            }
-            let selected = by_domain
+            let selected = all_flow_selector_domain_helicities(source)?
                 .into_iter()
                 .map(|(selector_domain_id, rows)| {
                     let (helicity_index, helicity_id) = rows[selector_seed as usize % rows.len()];
@@ -2486,6 +2500,10 @@ fn expected_selector_context(
             }))
         }
         "contracted-color-union" => {
+            let schedule = json_object(
+                &source.selector_schedule,
+                "recurrence numerical selector schedule",
+            )?;
             require_json_fields(
                 schedule,
                 &["policy", "fixed_source_schedule"],
@@ -3133,6 +3151,14 @@ fn derive_raw_numerical_relations(
     let mut theoretical_pair_hypothesis_count = 0_usize;
     let mut screened_pair_hypothesis_count = 0_usize;
     let mut zero_hypothesis_count = 0_usize;
+    let suppressed_selector_domains = if source.strategy == "all-flow-union" {
+        all_flow_selector_domain_helicities(source)?
+            .into_iter()
+            .filter_map(|(domain_id, helicities)| (helicities.len() > 1).then_some(domain_id))
+            .collect::<BTreeSet<_>>()
+    } else {
+        BTreeSet::new()
+    };
     let source_semantics_sha256 =
         canonical_json_sha256(&source.value, "raw numerical source semantics")?;
     let mut decision_chain = canonical_json_sha256(
@@ -3160,6 +3186,9 @@ fn derive_raw_numerical_relations(
             .or_default();
         if current.is_source {
             prior.push(current.current_id);
+            continue;
+        }
+        if suppressed_selector_domains.contains(&current.selector_domain_id) {
             continue;
         }
         let candidate_index = candidate_indexes
@@ -4462,6 +4491,7 @@ mod tests {
                     is_source: false,
                     contract_key: vec![7],
                     dimension: 1,
+                    selector_domain_id: 0,
                 })
                 .collect(),
         };
@@ -4508,6 +4538,97 @@ mod tests {
     }
 
     #[test]
+    fn multi_helicity_all_flow_domains_contribute_no_raw_hypotheses() {
+        let source_value = json!({"synthetic": "multi-helicity-all-flow"});
+        let source = RawSourceSemantics {
+            value: source_value.clone(),
+            process_id: "unsafe-selector-domain-test".to_owned(),
+            physical_pdgs: vec![1],
+            strategy: "all-flow-union".to_owned(),
+            selector_schedule: json!({
+                "policy": "seeded-helicity-per-selector-domain-and-physical-point-v1",
+                "resolved_helicities": [
+                    {"helicity_index": 0, "helicity_id": 0, "selector_domain_id": 0},
+                    {"helicity_index": 1, "helicity_id": 2, "selector_domain_id": 0},
+                ],
+            }),
+            currents: (0..3)
+                .map(|current_id| RawSourceCurrent {
+                    current_id,
+                    is_source: current_id == 0,
+                    contract_key: vec![7],
+                    dimension: 1,
+                    selector_domain_id: 0,
+                })
+                .collect(),
+        };
+        let bytes = canonical_json_bytes(
+            &json!([
+                {"current_id": 0, "dimension": 1, "values": [["1", "0"], ["1", "0"]]},
+                {"current_id": 1, "dimension": 1, "values": [["1", "0"], ["1", "0"]]},
+                {"current_id": 2, "dimension": 1, "values": [["1", "0"], ["1", "0"]]},
+            ]),
+            "unsafe selector-domain observations",
+        )
+        .unwrap();
+        let candidate = capture_from_observation_array(&bytes, &source, 2);
+        let verification = capture_from_observation_array(&bytes, &source, 2);
+        let runtime_parameter_schema_sha256 = digest(82);
+        let mut telemetry = RecurrenceEvidenceAuthenticationTelemetry::default();
+        let derivation = derive_raw_numerical_relations(
+            &source,
+            &candidate,
+            &verification,
+            96,
+            67,
+            &exact_binary64_rational(1.0e-70).unwrap(),
+            &exact_binary64_rational(1.0e-80).unwrap(),
+            &python_f64_hex(1.0e-70),
+            &python_f64_hex(1.0e-80),
+            &runtime_parameter_schema_sha256,
+            rusticol_core::recurrence::NUMERICAL_RELATION_CERTIFICATE_ALGORITHM,
+            &mut telemetry,
+        )
+        .unwrap();
+
+        assert!(derivation.relations.is_empty());
+        assert_eq!(derivation.tested_hypothesis_count, 0);
+        assert_eq!(derivation.theoretical_pair_hypothesis_count, 0);
+        assert_eq!(derivation.screened_pair_hypothesis_count, 0);
+        assert_eq!(derivation.zero_hypothesis_count, 0);
+        let chain_root = canonical_json_sha256(
+            &json!({
+                "abi": "pyamplicol-recurrence-numerical-decision-chain-v1",
+                "source_semantics_sha256": canonical_json_sha256(
+                    &source_value,
+                    "unsafe selector-domain source",
+                ).unwrap(),
+                "candidate_capture_sha256": candidate.capture_contract_sha256,
+                "verification_capture_sha256": verification.capture_contract_sha256,
+            }),
+            "unsafe selector-domain decision root",
+        )
+        .unwrap();
+        let expected = canonical_json_sha256(
+            &json!({
+                "abi": "pyamplicol-recurrence-numerical-decision-chain-v1",
+                "chain_tail_sha256": chain_root,
+                "tested_hypothesis_count": 0,
+                "theoretical_pair_hypothesis_count": 0,
+                "screened_pair_hypothesis_count": 0,
+                "zero_hypothesis_count": 0,
+                "numerical_candidate_count": 0,
+                "verification_rejected_count": 0,
+                "rejected_hypothesis_count": 0,
+                "certified_relation_count": 0,
+            }),
+            "unsafe selector-domain decision census",
+        )
+        .unwrap();
+        assert_eq!(derivation.decision_sha256, expected);
+    }
+
+    #[test]
     fn zero_residuals_stream_without_materialized_comparison_vectors() {
         let source = RawSourceSemantics {
             value: json!({}),
@@ -4520,6 +4641,7 @@ mod tests {
                 is_source: false,
                 contract_key: vec![1],
                 dimension: 1,
+                selector_domain_id: 0,
             }],
         };
         let bytes = canonical_json_bytes(
@@ -4960,6 +5082,7 @@ mod tests {
                     is_source: false,
                     contract_key: vec![1],
                     dimension: 1,
+                    selector_domain_id: 0,
                 })
                 .collect(),
         };
@@ -5228,6 +5351,7 @@ mod tests {
                 is_source: false,
                 contract_key: vec![0],
                 dimension: 1,
+                selector_domain_id: 0,
             }],
         };
         let metadata_byte_count = 1;
@@ -5283,6 +5407,7 @@ mod tests {
                 is_source: false,
                 contract_key: vec![0],
                 dimension: if current_id < 8_652 { 5 } else { 4 },
+                selector_domain_id: 0,
             })
             .collect();
         let source = RawSourceSemantics {

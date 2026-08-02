@@ -193,9 +193,16 @@ def _assert_runtime_physics_equivalent(
     assert isinstance(eager_reduction, Mapping)
     assert eager_reduction.get("kind") == reference_reduction.get("kind")
 
-    def semantic_groups(payload: Mapping[str, object]) -> set[tuple[object, ...]]:
+    def group_records(payload: Mapping[str, object]) -> list[Mapping[str, object]]:
         groups = payload.get("groups")
         assert isinstance(groups, list)
+        records = [group for group in groups if isinstance(group, Mapping)]
+        assert len(records) == len(groups)
+        return records
+
+    def semantic_groups(
+        groups: list[Mapping[str, object]],
+    ) -> set[tuple[object, ...]]:
         return {
             (
                 group["representative_helicity_id"],
@@ -204,10 +211,12 @@ def _assert_runtime_physics_equivalent(
                 tuple(group["physical_color_ids"]),
             )
             for group in groups
-            if isinstance(group, Mapping)
         }
 
-    assert semantic_groups(eager_reduction) == semantic_groups(reference_reduction)
+    eager_groups = group_records(eager_reduction)
+    reference_groups = group_records(reference_reduction)
+    assert len(eager_groups) == len(reference_groups)
+    assert semantic_groups(eager_groups) == semantic_groups(reference_groups)
 
 
 def _forbidden_backend_call(*_args: object, **_kwargs: object) -> None:
@@ -280,7 +289,7 @@ def test_backward_live_planner_matches_post_pruned_topology_and_physics(
 def test_backward_live_planner_preserves_selected_helicity_topology(
     color_accuracy: str,
 ) -> None:
-    model, _forward, reference, eager = _compile_reference_and_eager(
+    model, forward, reference, eager = _compile_reference_and_eager(
         "d d~ > u u~ s s~ g",
         color_accuracy,
         {"QCD": 5, "QED": 0},
@@ -289,8 +298,18 @@ def test_backward_live_planner_preserves_selected_helicity_topology(
 
     _assert_semantic_topology_parity(reference, eager)
     assert eager.helicity_coverage == "selected"
-    assert build_runtime_schema(eager, model, process_id="selected")["physics"] == (
-        build_runtime_schema(reference, model, process_id="selected")["physics"]
+    reference_physics = build_runtime_schema(
+        reference,
+        model,
+        process_id="selected",
+    )["physics"]
+    _assert_runtime_physics_equivalent(
+        reference_physics,
+        build_runtime_schema(forward, model, process_id="selected")["physics"],
+    )
+    _assert_runtime_physics_equivalent(
+        reference_physics,
+        build_runtime_schema(eager, model, process_id="selected")["physics"],
     )
 
 

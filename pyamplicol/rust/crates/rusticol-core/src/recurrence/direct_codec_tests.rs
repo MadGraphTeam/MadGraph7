@@ -2,6 +2,23 @@
 
 use super::*;
 use crate::recurrence::direct_plan::tests::valid_plan;
+use std::io::{self, Write};
+
+#[derive(Default)]
+struct CountingWriter {
+    written: u64,
+}
+
+impl Write for CountingWriter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.written += bytes.len() as u64;
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
 
 #[test]
 fn direct_codec_round_trips_deterministically() {
@@ -18,6 +35,33 @@ fn direct_codec_round_trips_deterministically() {
         1
     );
     assert_eq!(decoded, plan);
+}
+
+#[test]
+fn direct_codec_stream_matches_the_vec_adapter() {
+    let plan = valid_plan();
+    let expected = encode_recurrence_direct_plan_v2(&plan).unwrap();
+    let mut streamed = Vec::new();
+    let byte_count = encode_recurrence_direct_plan_v2_to_writer(&plan, &mut streamed).unwrap();
+    assert_eq!(streamed, expected);
+    assert_eq!(byte_count, expected.len() as u64);
+}
+
+#[test]
+fn direct_codec_stream_crosses_the_former_eight_gib_boundary_without_allocating() {
+    const EIGHT_GIB: u64 = 8 * 1024 * 1024 * 1024;
+    let mut writer = Writer::with_bytes_written(CountingWriter::default(), EIGHT_GIB - 1);
+    writer.raw(&[1, 2]).unwrap();
+    assert_eq!(writer.bytes_written, EIGHT_GIB + 1);
+    assert_eq!(writer.destination.written, 2);
+}
+
+#[test]
+fn direct_codec_stream_rejects_only_true_u64_length_overflow() {
+    let mut writer = Writer::with_bytes_written(CountingWriter::default(), u64::MAX);
+    let error = writer.raw(&[1]).unwrap_err();
+    assert!(error.to_string().contains("payload length overflows u64"));
+    assert_eq!(writer.destination.written, 0);
 }
 
 #[test]

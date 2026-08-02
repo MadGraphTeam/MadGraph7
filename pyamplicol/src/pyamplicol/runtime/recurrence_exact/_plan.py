@@ -84,6 +84,7 @@ class _SourceTemplate:
     crossing_helicity_factor: int
     crossing_chirality_factor: int
     crossing_spin_state_factor: int
+    mass_parameter_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +132,7 @@ class _RecurrenceExactPlan:
     runtime_defaults: tuple[Decimal, ...] = ()
     runtime_parameter_schema: tuple[_RuntimeParameterSchemaRow, ...] = ()
     color_contraction: _RecurrenceColorContraction | None = None
+    external_source_slots: tuple[int, ...] = ()
     # Populated lazily only after the complete plan boundary has validated.
     # The recipes are construction/runtime-session state, never serialized.
     trusted_executor_recipes: dict[int, object] = field(
@@ -233,6 +235,10 @@ class _RecurrenceExactPlan:
             prepared_by_name,
         )
         executor_exact_kernel_ids = _executor_exact_kernel_ids(pack)
+        external_source_slots, initial_source_slots = _external_source_layout(
+            metadata,
+            sections.external_source_count,
+        )
         result = cls(
             sections=sections,
             kernels=kernels,
@@ -240,10 +246,7 @@ class _RecurrenceExactPlan:
             executor_exact_kernel_ids=executor_exact_kernel_ids,
             executor_parent_permutations=_executor_parent_permutations(pack),
             source_templates=_source_templates(metadata, prepared_by_name),
-            initial_source_slots=_initial_source_slots(
-                metadata,
-                sections.external_source_count,
-            ),
+            initial_source_slots=initial_source_slots,
             executor_couplings=_executor_couplings(
                 pack,
                 executor_exact_kernel_ids,
@@ -254,6 +257,7 @@ class _RecurrenceExactPlan:
             runtime_defaults=runtime_defaults,
             runtime_parameter_schema=runtime_parameter_schema,
             color_contraction=color_contraction,
+            external_source_slots=external_source_slots,
         )
         result._validate(pack)
         return result
@@ -343,6 +347,10 @@ class _RecurrenceExactPlan:
             prepared_by_name,
         )
         executor_exact_kernel_ids = _executor_exact_kernel_ids(pack)
+        external_source_slots, initial_source_slots = _external_source_layout(
+            runtime_metadata,
+            sections.external_source_count,
+        )
         result = cls(
             sections=sections,
             kernels=kernels,
@@ -353,10 +361,7 @@ class _RecurrenceExactPlan:
                 runtime_metadata,
                 prepared_by_name,
             ),
-            initial_source_slots=_initial_source_slots(
-                runtime_metadata,
-                sections.external_source_count,
-            ),
+            initial_source_slots=initial_source_slots,
             executor_couplings=_executor_couplings(
                 pack,
                 executor_exact_kernel_ids,
@@ -367,6 +372,7 @@ class _RecurrenceExactPlan:
             runtime_defaults=runtime_defaults,
             runtime_parameter_schema=runtime_parameter_schema,
             color_contraction=None,
+            external_source_slots=external_source_slots,
         )
         result._validate(pack, allow_missing_color_contraction=True)
         return result
@@ -1017,15 +1023,17 @@ def _source_templates(
                 crossing.get("spin_state_factor"),
                 f"source template {index} crossing spin",
             ),
+            mass_parameter_name=mass_name,
         )
     return result
 
 
-def _initial_source_slots(
+def _external_source_layout(
     metadata: Mapping[str, object],
     expected_count: int,
-) -> frozenset[int]:
-    result = set()
+) -> tuple[tuple[int, ...], frozenset[int]]:
+    initial = set()
+    ordered_slots = []
     seen = set()
     for index, raw in enumerate(
         _sequence(metadata.get("external_legs"), "external legs")
@@ -1035,12 +1043,13 @@ def _initial_source_slots(
         is_initial = leg.get("is_initial")
         if not isinstance(is_initial, bool) or slot in seen:
             raise ArtifactError(f"external leg {index} has invalid source metadata")
+        ordered_slots.append(slot)
         seen.add(slot)
         if is_initial:
-            result.add(slot)
+            initial.add(slot)
     if len(seen) != expected_count or seen != set(range(expected_count)):
         raise ArtifactError("external source slots must be dense from zero")
-    return frozenset(result)
+    return tuple(ordered_slots), frozenset(initial)
 
 
 def _nonnegative_int(value: object, context: str) -> int:

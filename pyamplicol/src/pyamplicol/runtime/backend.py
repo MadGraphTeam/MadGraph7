@@ -920,6 +920,22 @@ class RusticolRuntimeBackend:
                 )
         return self._exact_executor
 
+    def _diagnostic_project_onshell(
+        self,
+        momenta: Momenta,
+        *,
+        precision: int,
+    ) -> tuple[
+        tuple[tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...], ...],
+        dict[str, object],
+    ]:
+        """Project kinematics only for the bounded validation diagnostic."""
+
+        return self._exact()._diagnostic_project_onshell(
+            momenta,
+            precision=precision,
+        )
+
     def set_model_parameters(self, mapping: ModelParameters) -> None:
         _invoke(
             self._native_module,

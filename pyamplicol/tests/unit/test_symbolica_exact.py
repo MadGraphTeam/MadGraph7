@@ -15,6 +15,7 @@ from pyamplicol.runtime.symbolica_exact import (
     _apply_lc_replay_resolved,
     _canonical_amplitude_outputs,
     _decimal,
+    _diagnostic_schema_mass_bindings,
     _exact_helicity_plan,
     _ExactEvaluator,
     _ExactRuntimeSourceState,
@@ -28,11 +29,111 @@ from pyamplicol.runtime.symbolica_exact import (
 )
 
 
+class _DiagnosticNativeRuntime:
+    def __init__(self, values: tuple[float, ...]) -> None:
+        self._values = values
+
+    def _exact_runtime_state_json(self) -> str:
+        return json.dumps(
+            {
+                "model_parameter_values": self._values,
+                "normalization_factor": 1.0,
+            }
+        )
+
+
+def _diagnostic_schema() -> dict[str, object]:
+    return {
+        "model": {
+            "particles": [
+                {"pdg": 6, "mass": 173.0, "mass_parameter": "ufo.MT"},
+                {"pdg": 21, "mass": 0.0, "mass_parameter": None},
+            ]
+        },
+        "model_parameters": [
+            {"name": "ufo.MT", "parameter_index": 0},
+        ],
+    }
+
+
+def _diagnostic_physics() -> dict[str, object]:
+    return {
+        "external_particles": [
+            {"label": 1, "pdg": 21, "role": "initial"},
+            {"label": 2, "pdg": 6, "role": "final"},
+        ]
+    }
+
+
 def test_binary64_decimal_tag_preserves_exact_float_value() -> None:
     parsed = _decimal("binary64:3fb999999999999a", "test scalar")
 
     assert parsed == Decimal.from_float(0.1)
     assert parsed != Decimal("0.1")
+
+
+def test_diagnostic_projection_uses_current_ufo_mass_and_input_order() -> None:
+    executor = object.__new__(SymbolicaExactExecutor)
+    schema = _diagnostic_schema()
+    physics = _diagnostic_physics()
+    executor._native_runtime = _DiagnosticNativeRuntime((7.0,))
+    executor._execution = {"runtime_schema": schema}
+    executor._physics = physics
+    executor._primary_execution = executor._execution
+    executor._primary_physics = physics
+    # Artifact order is (top, gluon); native physics is already caller order.
+    executor._permutation = (1, 0)
+
+    original = (
+        (
+            (-5.0, 0.0, 0.0, 5.0),
+            (24.9, 24.0, 0.0, 0.0),
+        ),
+    )
+    projected, metadata = executor._diagnostic_project_onshell(
+        original,
+        precision=200,
+    )
+
+    assert projected[0][0] == (
+        Decimal("-5"),
+        Decimal("0.0"),
+        Decimal("0.0"),
+        Decimal("5.0"),
+    )
+    assert projected[0][1] == (
+        Decimal("25.0"),
+        Decimal("24.0"),
+        Decimal("0.0"),
+        Decimal("0.0"),
+    )
+    assert metadata["precision_digits"] == 200
+    assert metadata["working_precision_digits"] == 208
+    assert metadata["spatial_components_unchanged"] is True
+    assert metadata["global_rebalance_applied"] is False
+    assert metadata["unchanged"] is False
+    point = metadata["points"][0]
+    assert point["global_residual_before"] != point["global_residual_after"]
+    gluon, top = point["legs"]
+    assert gluon["pdg"] == 21
+    assert gluon["projected_energy"] == "-5.0"
+    assert top["pdg"] == 6
+    assert top["mass"] == "7.0"
+    assert top["mass_parameter"] == "ufo.MT"
+    assert top["mass_authority"] == ("authenticated-current-runtime-model-parameter")
+    assert Decimal(top["shell_residual_after"]) == 0
+
+
+def test_diagnostic_schema_mass_binding_rejects_missing_parameter() -> None:
+    schema = _diagnostic_schema()
+    schema["model_parameters"] = []
+
+    with pytest.raises(ArtifactError, match="does not have one authenticated binding"):
+        _diagnostic_schema_mass_bindings(
+            schema,
+            _diagnostic_physics(),
+            (Decimal("7"),),
+        )
 
 
 class _RecordingEvaluator:

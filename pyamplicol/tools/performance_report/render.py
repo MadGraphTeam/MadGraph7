@@ -714,6 +714,69 @@ def _ratio_value(
     return numerator_number / denominator_number
 
 
+def _positive_timing_value(
+    measurement: Measurement,
+    field: str,
+) -> float | None:
+    """Return one finite positive timing without changing its clock identity."""
+
+    if not _ok(measurement):
+        return None
+    value = measurement.get(field)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if not math.isfinite(number) or number <= 0.0:
+        return None
+    return number
+
+
+def _secondary_runtime_ratio(
+    candidate: Measurement,
+    baseline: Measurement,
+    *,
+    baseline_mode: ExecutionMode,
+) -> float | None:
+    """Return the documented supplementary runtime ratio, if available.
+
+    The clock hierarchy is deliberately strict: compare exposed execution
+    attribution first, then authenticated evaluator totals.  Only the legacy
+    AmpliCol reference may supply its direct execution (or wall) clock when it
+    has no evaluator-total record; a recurrence core is never used as the
+    denominator for another backend's evaluator total.
+    """
+
+    execution_ratio = _ratio_value(
+        candidate,
+        baseline,
+        "execution_seconds_per_point",
+    )
+    if execution_ratio is not None:
+        return execution_ratio
+
+    candidate_total = evaluator_total_seconds_per_point(candidate)
+    if candidate_total is None:
+        return None
+    baseline_total = evaluator_total_seconds_per_point(baseline)
+    if baseline_total is not None:
+        return candidate_total / baseline_total
+    if baseline_mode is not ExecutionMode.AMPLICOL:
+        return None
+
+    legacy_direct = _positive_timing_value(
+        baseline,
+        "execution_seconds_per_point",
+    )
+    if legacy_direct is None:
+        legacy_direct = _positive_timing_value(
+            baseline,
+            "wall_seconds_per_point",
+        )
+    if legacy_direct is None:
+        return None
+    return candidate_total / legacy_direct
+
+
 def _ratio(candidate: Measurement, baseline: Measurement, field: str) -> str:
     value = _ratio_value(candidate, baseline, field)
     if value is None:
@@ -902,6 +965,46 @@ def _matrix_macros() -> list[str]:
     ]
 
 
+def _compact_comparison_macros() -> list[str]:
+    """Return the compact aligned comparison vocabulary shared by matrices."""
+
+    return [
+        (
+            r"\providecommand{\bestmoderatio}[2]{"
+            r"\textcolor{#1}{\texttt{x#2}}}"
+        ),
+        (
+            r"\providecommand{\bestmodecompactratio}[3]{"
+            r"\matrixpunct{(}"
+            r"\textcolor{ReportMuted}{\texttt{[x#1]}}"
+            r"\hspace{0.04in}"
+            r"\textcolor{#2}{\texttt{x#3}}"
+            r"\matrixpunct{)}}"
+        ),
+        (
+            r"\providecommand{\bestmodewallratio}[2]{"
+            r"\matrixpunct{(}\textcolor{#1}{\texttt{x#2}}\matrixpunct{)}}"
+        ),
+        (
+            r"\providecommand{\bestmodecompactprefix}[1]{"
+            r"\matrixpunct{(}\textcolor{ReportMuted}{\texttt{[x#1]}}"
+            r"\hspace{0.04in}}"
+        ),
+        (
+            r"\providecommand{\bestmodeopenprefix}{"
+            r"\matrixpunct{(}\hspace{0.04in}}"
+        ),
+        (
+            r"\providecommand{\bestmodeprimaryratio}[2]{"
+            r"\textcolor{#1}{\texttt{x#2}}\matrixpunct{)}}"
+        ),
+        (
+            r"\providecommand{\bestmodeabsoluteprefix}[1]{"
+            r"#1\hspace{0.04in}}"
+        ),
+    ]
+
+
 def _not_applicable() -> str:
     return r"\matrixnotapplicable{ReportMuted}"
 
@@ -950,6 +1053,64 @@ def _legacy_baseline_unavailable(
     )
 
 
+def _fixed_mode_generation_comparison_layout(
+    joined: JoinedWorkload,
+    *,
+    baseline_static_na: bool = False,
+    comparable: bool = True,
+) -> _BestModeComparisonLayout:
+    """Render one fixed-engine generation comparison without a mode letter."""
+
+    if not _ok(joined.candidate):
+        status = _status(joined.candidate)
+        return _BestModeComparisonLayout(status, "", status)
+    if baseline_static_na or not comparable:
+        absolute = _best_mode_metric(joined.candidate, "generation_seconds")
+        return _BestModeComparisonLayout(
+            absolute,
+            rf"\bestmodeabsoluteprefix{{{absolute}}}",
+            "",
+        )
+    if not _ok(joined.baseline):
+        status = _status(joined.baseline)
+        return _BestModeComparisonLayout(status, "", status)
+    generation_ratio = _ratio_value(
+        joined.candidate,
+        joined.baseline,
+        "generation_seconds",
+    )
+    if generation_ratio is None:
+        unavailable = r"\matrixna{ReportMuted}"
+        return _BestModeComparisonLayout(unavailable, "", unavailable)
+    ratio = (
+        rf"\bestmoderatio{{{_best_mode_ratio_color(generation_ratio)}}}"
+        rf"{{{_best_mode_value(generation_ratio)}}}"
+    )
+    return _BestModeComparisonLayout(ratio, "", ratio)
+
+
+def _fixed_mode_runtime_comparison_layout(
+    joined: JoinedWorkload,
+    *,
+    candidate_mode: ExecutionMode,
+    baseline_mode: ExecutionMode,
+    baseline_static_na: bool = False,
+) -> _BestModeComparisonLayout:
+    """Use the best-table compact clock layout for one fixed engine."""
+
+    return _best_mode_runtime_comparison_layout(
+        BestModeWorkload(
+            workload=joined.workload,
+            baseline=joined.baseline,
+            candidate=joined.candidate,
+            mode=candidate_mode,
+            terminal_label=None,
+        ),
+        baseline_mode=baseline_mode,
+        baseline_static_na=baseline_static_na,
+    )
+
+
 def _lc_cell(
     view: JoinedMatrixCell,
     *,
@@ -963,88 +1124,71 @@ def _lc_cell(
     selected_baseline_generation = (
         _static_na()
         if legacy_baseline_unavailable
-        else _metric(selected.baseline, "generation_seconds")
+        else _best_mode_metric(selected.baseline, "generation_seconds")
     )
     all_flow_baseline_generation = (
         _static_na()
         if legacy_baseline_unavailable
-        else _metric(all_flow.baseline, "generation_seconds")
+        else _best_mode_metric(all_flow.baseline, "generation_seconds")
     )
-    selected_generation_ratio = _ratio_or_absolute(
-        selected.candidate,
-        selected.baseline,
-        "generation_seconds",
-        absolute=legacy_baseline_unavailable,
+    selected_generation = _fixed_mode_generation_comparison_layout(
+        selected,
+        baseline_static_na=legacy_baseline_unavailable,
     )
-    all_flow_generation_ratio = (
-        (
-            r"\matrixncabsolute{"
-            + _metric(all_flow.candidate, "generation_seconds")
-            + "}"
-        )
-        if (
+    all_flow_generation = _fixed_mode_generation_comparison_layout(
+        all_flow,
+        baseline_static_na=legacy_baseline_unavailable,
+        comparable=not (
             view.dataset.candidate.execution_mode is ExecutionMode.RECURRENCE
             and view.dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
-            and _ok(all_flow.candidate)
-            and (_ok(all_flow.baseline) or legacy_baseline_unavailable)
-        )
-        else _ratio_or_absolute(
-            all_flow.candidate,
-            all_flow.baseline,
-            "generation_seconds",
-            absolute=legacy_baseline_unavailable,
-        )
+        ),
     )
-    selected_runtime = (
+    selected_baseline_runtime = (
         _static_na()
         if legacy_baseline_unavailable
-        else _metric(
+        else _best_mode_metric(
             selected.baseline,
             "wall_seconds_per_point",
             microseconds=True,
         )
     )
-    all_flow_runtime = (
+    all_flow_baseline_runtime = (
         _static_na()
         if legacy_baseline_unavailable
-        else _metric(
+        else _best_mode_metric(
             all_flow.baseline,
             "wall_seconds_per_point",
             microseconds=True,
         )
     )
-    selected_ratio = _ratio_pair_or_absolute(
-        selected.candidate,
-        selected.baseline,
+    selected_runtime = _fixed_mode_runtime_comparison_layout(
+        selected,
         candidate_mode=view.dataset.candidate.execution_mode,
-        absolute=legacy_baseline_unavailable,
+        baseline_mode=view.dataset.baseline.execution_mode,
+        baseline_static_na=legacy_baseline_unavailable,
     )
-    all_flow_ratio = _ratio_pair_or_absolute(
-        all_flow.candidate,
-        all_flow.baseline,
+    all_flow_runtime = _fixed_mode_runtime_comparison_layout(
+        all_flow,
         candidate_mode=view.dataset.candidate.execution_mode,
-        absolute=legacy_baseline_unavailable,
+        baseline_mode=view.dataset.baseline.execution_mode,
+        baseline_static_na=legacy_baseline_unavailable,
     )
     return _MatrixCellRows(
         generation=(
             selected_baseline_generation,
             r"\matrixpunct{|}",
             all_flow_baseline_generation,
-            "",
-            selected_generation_ratio,
+            *_best_mode_comparison_columns(selected_generation),
             r"\matrixpunct{|}",
-            "",
-            all_flow_generation_ratio,
+            *_best_mode_comparison_columns(all_flow_generation),
         ),
         runtime=(
-            selected_runtime,
+            selected_baseline_runtime,
             r"\matrixpunct{|}",
-            all_flow_runtime,
-            "",
-            selected_ratio,
+            all_flow_baseline_runtime,
+            *_best_mode_comparison_columns(selected_runtime),
             r"\matrixpunct{|}",
-            "",
-            all_flow_ratio,
+            *_best_mode_comparison_columns(all_flow_runtime),
         ),
     )
 
@@ -1059,35 +1203,39 @@ def _contracted_cell(
         view,
         catalog=catalog,
     )
-    candidate_generation = _ratio_or_absolute(
-        joined.candidate,
-        joined.baseline,
-        "generation_seconds",
-        absolute=legacy_baseline_unavailable,
+    candidate_generation = _fixed_mode_generation_comparison_layout(
+        joined,
+        baseline_static_na=legacy_baseline_unavailable,
     )
-    candidate_runtime = _ratio_pair_or_absolute(
-        joined.candidate,
-        joined.baseline,
+    candidate_runtime = _fixed_mode_runtime_comparison_layout(
+        joined,
         candidate_mode=view.dataset.candidate.execution_mode,
-        absolute=legacy_baseline_unavailable,
+        baseline_mode=view.dataset.baseline.execution_mode,
+        baseline_static_na=legacy_baseline_unavailable,
     )
     baseline_generation = (
         _static_na()
         if legacy_baseline_unavailable
-        else _metric(joined.baseline, "generation_seconds")
+        else _best_mode_metric(joined.baseline, "generation_seconds")
     )
     baseline_runtime = (
         _static_na()
         if legacy_baseline_unavailable
-        else _metric(
+        else _best_mode_metric(
             joined.baseline,
             "wall_seconds_per_point",
             microseconds=True,
         )
     )
     return _MatrixCellRows(
-        generation=(baseline_generation, "", candidate_generation),
-        runtime=(baseline_runtime, "", candidate_runtime),
+        generation=(
+            baseline_generation,
+            *_best_mode_comparison_columns(candidate_generation),
+        ),
+        runtime=(
+            baseline_runtime,
+            *_best_mode_comparison_columns(candidate_runtime),
+        ),
     )
 
 
@@ -1380,17 +1528,19 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
             "candidate/baseline generation and wall-time ratios."
         )
     clock_detail = (
-        " Runtime cells mark the candidate/baseline wall-time multiplier W, "
-        "the independent absolute evaluator total T from its dedicated "
-        "authenticated record, and the narrower authenticated recurrence core "
-        "C. Neither T nor C is derived from wall time or from the other, and C "
-        "is never relabeled as evaluator total."
-        if dataset.candidate.execution_mode is ExecutionMode.RECURRENCE
-        else " Runtime cells mark the candidate/baseline wall-time multiplier W and "
-        "the independent absolute evaluator-total value marked T from its "
-        "dedicated authenticated record. Compiled and eager cells do not "
-        "fabricate a recurrence-core C value, and T is never copied from or "
-        "derived from wall time."
+        " Runtime comparisons use ([xS]xW). The muted supplementary xS first "
+        "compares compatible exposed execution attributions; otherwise it "
+        "compares authenticated evaluator totals. Only when original AmpliCol "
+        "has no evaluator-total clock may a candidate evaluator total use the "
+        "legacy direct execution clock (or its wall clock when direct execution "
+        "is absent) as denominator. An evaluator total is never divided by a "
+        "recurrence core. This evaluator-total fallback is diagnostic only; the "
+        "execution/execution ratio remains the compatible supplementary "
+        "attribution. The coloured xW is always the candidate/baseline wall "
+        "multiplier and remains the primary figure of merit. When no compatible "
+        "supplementary clock exists, only (xW) is shown. No clock is fabricated "
+        "from another. Every displayed number uses exactly three significant "
+        "digits."
     )
     legacy_scope_detail = (
         " Original AmpliCol supports at most three open quark lines; beyond "
@@ -1425,10 +1575,9 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         + " "
         + _tex_escape(
             "Not applicable marks a process/multiplicity combination outside "
-            "the process-family definition. Not exposed means that a successful "
-            "wall-time measurement has no dedicated authenticated evidence for "
-            "the separately labeled T or C clock. Older entries remain marked "
-            "not exposed; neither label denotes an unfilled measurement."
+            "the process-family definition. Fixed-engine tables intentionally "
+            "omit mode letters because the selected engine is named in the "
+            "table heading."
         )
         + "}"
     )
@@ -1454,6 +1603,7 @@ def render_matrix_table(
             r"\matrixpunct{|}\hspace{0.025in}}r@{}}"
             r"#1&#2\end{tabular}}"
         ),
+        *_compact_comparison_macros(),
         r"\clearpage",
         rf"\subsection{{{_tex_escape(dataset.title)}}}",
     ]
@@ -1606,6 +1756,7 @@ def _best_mode_generation_comparison(
 def _best_mode_runtime_comparison_layout(
     joined: BestModeWorkload,
     *,
+    baseline_mode: ExecutionMode = ExecutionMode.AMPLICOL,
     baseline_static_na: bool = False,
 ) -> _BestModeComparisonLayout:
     if joined.mode is None:
@@ -1637,24 +1788,11 @@ def _best_mode_runtime_comparison_layout(
         unavailable = r"\matrixnaratio{ReportMuted}"
         return _BestModeComparisonLayout(unavailable, "", unavailable)
     wall_color = _best_mode_ratio_color(wall_ratio)
-    secondary_ratio = None
-    if (
-        unavailable_execution_timing_record(
-            joined.candidate,
-            "execution_seconds_per_point",
-        )
-        is None
-        and unavailable_execution_timing_record(
-            joined.baseline,
-            "execution_seconds_per_point",
-        )
-        is None
-    ):
-        secondary_ratio = _ratio_value(
-            joined.candidate,
-            joined.baseline,
-            "execution_seconds_per_point",
-        )
+    secondary_ratio = _secondary_runtime_ratio(
+        joined.candidate,
+        joined.baseline,
+        baseline_mode=baseline_mode,
+    )
     if secondary_ratio is None:
         inline = (
             rf"\bestmodewallratio{{{wall_color}}}"
@@ -1662,11 +1800,8 @@ def _best_mode_runtime_comparison_layout(
         )
         return _BestModeComparisonLayout(
             inline,
-            r"\bestmodeopenprefix",
-            (
-                rf"\bestmodeprimaryratio{{{wall_color}}}"
-                rf"{{{_best_mode_value(wall_ratio)}}}"
-            ),
+            "",
+            inline,
         )
     inline = (
         rf"\bestmodecompactratio{{{_best_mode_value(secondary_ratio)}}}"
@@ -2094,12 +2229,20 @@ def _best_mode_block(
                 r"runtime in \(\mu\mathrm{s}/\mathrm{pt}\). In LC cells, each "
                 r"pair is non-union-flow \texttt{|} union-flow. Generation "
                 r"multipliers are coloured directly. Each runtime workload "
-                r"uses \texttt{([xS]xW)}: the muted bracket is the separately "
-                r"measured, ratio-eligible execution attribution when exposed, "
-                r"and the coloured value is the candidate/AmpliCol wall-time "
-                r"multiplier used as the figure of merit. Independent absolute "
-                r"T and recurrence-core C clocks remain in the detailed "
-                r"evidence and are never fabricated from wall time. Every "
+                r"uses \texttt{([xS]xW)}. The muted supplementary xS first "
+                r"compares compatible exposed execution attributions; otherwise "
+                r"it uses authenticated evaluator totals. Because original "
+                r"AmpliCol exposes no evaluator-total clock, a candidate total "
+                r"then uses the AmpliCol direct execution clock, or its wall "
+                r"clock when direct execution is absent, as denominator. An "
+                r"evaluator total is "
+                r"never divided by a recurrence core. This evaluator-total "
+                r"fallback is diagnostic only; execution/execution remains the "
+                r"compatible supplementary attribution. The coloured xW is always "
+                r"the candidate/AmpliCol wall-time multiplier used for selection "
+                r"and as the primary figure of merit. If no compatible "
+                r"supplementary clock exists, only \texttt{(xW)} is shown. No "
+                r"clock is fabricated from another. Every "
                 r"displayed number uses exactly three significant digits. "
                 r"Original-AmpliCol "
                 r"rows beyond its three-open-quark-line scope are catalog "
@@ -2151,35 +2294,7 @@ def render_best_mode_table(
             r"\matrixpunct{|}\hspace{0.025in}}r@{}}"
             r"#1&#2\end{tabular}}"
         ),
-        (
-            r"\providecommand{\bestmoderatio}[2]{"
-            r"\textcolor{#1}{\texttt{x#2}}}"
-        ),
-        (
-            r"\providecommand{\bestmodecompactratio}[3]{"
-            r"\matrixpunct{(}"
-            r"\textcolor{ReportMuted}{\texttt{[x#1]}}"
-            r"\hspace{0.04in}"
-            r"\textcolor{#2}{\texttt{x#3}}"
-            r"\matrixpunct{)}}"
-        ),
-        (
-            r"\providecommand{\bestmodewallratio}[2]{"
-            r"\matrixpunct{(}\textcolor{#1}{\texttt{x#2}}\matrixpunct{)}}"
-        ),
-        (
-            r"\providecommand{\bestmodecompactprefix}[1]{"
-            r"\matrixpunct{(}\textcolor{ReportMuted}{\texttt{[x#1]}}"
-            r"\hspace{0.04in}}"
-        ),
-        (
-            r"\providecommand{\bestmodeopenprefix}{"
-            r"\matrixpunct{(}\hspace{0.04in}}"
-        ),
-        (
-            r"\providecommand{\bestmodeprimaryratio}[2]{"
-            r"\textcolor{#1}{\texttt{x#2}}\matrixpunct{)}}"
-        ),
+        *_compact_comparison_macros(),
         (
             r"\providecommand{\bestmodecode}[1]{"
             r"\textcolor{ReportMuted}{\texttt{(#1)}}}"
@@ -2187,10 +2302,6 @@ def render_best_mode_table(
         (
             r"\providecommand{\bestmodecodeprefix}[1]{"
             r"\bestmodecode{#1}\hspace{0.025in}}"
-        ),
-        (
-            r"\providecommand{\bestmodeabsoluteprefix}[1]{"
-            r"#1\hspace{0.04in}}"
         ),
         (
             r"\providecommand{\bestmodeabsolutechoice}[2]{"
@@ -2284,7 +2395,6 @@ def _z_evaluator_total(
     joined: JoinedWorkload,
     *,
     reference: bool,
-    recurrence: bool = False,
     static_na: bool = False,
 ) -> str:
     if static_na:
@@ -2294,15 +2404,25 @@ def _z_evaluator_total(
         return _not_exposed()
     if not _ok(measurement):
         return _status(measurement)
-    total_text = _evaluator_total_clock(measurement)
-    if not recurrence:
-        return total_text
+    total = evaluator_total_seconds_per_point(measurement)
+    if total is None:
+        return _not_exposed()
+    absolute = _time(total, microseconds=True)
+    baseline_wall = joined.baseline.get("wall_seconds_per_point")
+    if (
+        not _ok(joined.baseline)
+        or isinstance(baseline_wall, bool)
+        or not isinstance(baseline_wall, (int, float))
+        or not math.isfinite(float(baseline_wall))
+        or float(baseline_wall) <= 0.0
+    ):
+        return absolute + r"\," + r"\matrixnaratio{ReportMuted}"
+    ratio = total / float(baseline_wall)
     return (
-        r"\matrixzrecurrenceclocks{"
-        + total_text
-        + "}{"
-        + _recurrence_core_clock(measurement)
-        + "}"
+        absolute
+        + r"\,"
+        + rf"\matrixratio{{{_best_mode_ratio_color(ratio)}}}"
+        + rf"{{{_compact(ratio)}}}"
     )
 
 
@@ -2352,14 +2472,10 @@ def _z_block(
         (
             r"& & \textbf{gen [s]} & "
             r"\textbf{wall [\(\mu\mathrm{s}/\mathrm{pt}\)]} & "
-            r"\shortstack{\textbf{eval total T}\\"
-            r"\textbf{rec. core C}\\"
-            r"\textbf{[\(\mu\mathrm{s}/\mathrm{pt}\)]}} & "
+            r"\textbf{eval [\(\mu\mathrm{s}/\mathrm{pt}\)]} & "
             r"\textbf{gen [s]} & "
             r"\textbf{wall [\(\mu\mathrm{s}/\mathrm{pt}\)]} & "
-            r"\shortstack{\textbf{eval total T}\\"
-            r"\textbf{rec. core C}\\"
-            r"\textbf{[\(\mu\mathrm{s}/\mathrm{pt}\)]}} \\"
+            r"\textbf{eval [\(\mu\mathrm{s}/\mathrm{pt}\)]} \\"
         ),
         r"\midrule",
     ]
@@ -2420,7 +2536,6 @@ def _z_block(
                 _z_evaluator_total(
                     selected,
                     reference=reference,
-                    recurrence=(variant.execution_mode is ExecutionMode.RECURRENCE),
                     static_na=selected_static_na,
                 ),
                 _z_value(
@@ -2440,7 +2555,6 @@ def _z_block(
                 _z_evaluator_total(
                     all_flow,
                     reference=reference,
-                    recurrence=(variant.execution_mode is ExecutionMode.RECURRENCE),
                     static_na=all_flow_static_na,
                 ),
             )
@@ -2462,11 +2576,15 @@ def _z_block(
                 r"reference. The wall time is the common runtime observable. "
                 r"Not exposed means that a successful wall measurement has no "
                 r"dedicated authenticated evaluator-total timing. Authenticated "
-                r"accumulated warmed evaluator totals are marked T; T is not "
-                r"an attribution ratio. Recurrence rows also retain the "
-                r"independently measured narrower recurrence core marked C. "
-                r"Neither T nor C is derived from wall time or from the other, "
-                r"and C is never relabeled as evaluator total. Older entries "
+                r"accumulated warmed evaluator totals appear in the eval column "
+                r"with enough precision to remain distinct from wall time. Its "
+                r"parenthesized multiplier uses the original-AmpliCol wall "
+                r"measurement as denominator because the legacy reference has "
+                r"no separate evaluator-total clock. Recurrence rows retain the "
+                r"independently measured narrower recurrence core in detailed "
+                r"evidence; it is not relabeled as evaluator total. Neither "
+                r"evaluator total nor recurrence core is derived from wall "
+                r"time or from the other. Older entries "
                 r"without authenticated total evidence remain marked not "
                 r"exposed; it is not a missing measurement. "
                 + _tex_escape(STATIC_NA_NATIVE_BACKEND_GENERATION_CAP_N6_DESCRIPTION)
@@ -2862,7 +2980,7 @@ def summarize_visible_completeness(
                             (
                                 _static_na()
                                 if baseline_static_na
-                                else _metric(
+                                else _best_mode_metric(
                                     joined.baseline,
                                     "generation_seconds",
                                 )
@@ -2870,7 +2988,7 @@ def summarize_visible_completeness(
                             (
                                 _static_na()
                                 if baseline_static_na
-                                else _metric(
+                                else _best_mode_metric(
                                     joined.baseline,
                                     "wall_seconds_per_point",
                                     microseconds=True,
@@ -2878,27 +2996,16 @@ def summarize_visible_completeness(
                             ),
                         ),
                     )
-                    candidate_generation = (
-                        _ratio_or_absolute(
-                            joined.candidate,
-                            joined.baseline,
-                            "generation_seconds",
-                            absolute=baseline_static_na,
-                        )
-                        if baseline_static_na
-                        else _metric(joined.candidate, "generation_seconds")
-                        if (
+                    candidate_generation = _fixed_mode_generation_comparison_layout(
+                        joined,
+                        baseline_static_na=baseline_static_na,
+                        comparable=not (
                             joined.workload is Workload.ALL_FLOW
                             and dataset.candidate.execution_mode
                             is ExecutionMode.RECURRENCE
                             and dataset.baseline.execution_mode
                             is ExecutionMode.AMPLICOL
-                        )
-                        else _ratio(
-                            joined.candidate,
-                            joined.baseline,
-                            "generation_seconds",
-                        )
+                        ),
                     )
                     record(
                         candidate,
@@ -2907,13 +3014,13 @@ def summarize_visible_completeness(
                             f"{joined.workload.value}/candidate"
                         ),
                         (
-                            candidate_generation,
-                            _ratio_pair_or_absolute(
-                                joined.candidate,
-                                joined.baseline,
+                            candidate_generation.inline,
+                            _fixed_mode_runtime_comparison_layout(
+                                joined,
                                 candidate_mode=(dataset.candidate.execution_mode),
-                                absolute=baseline_static_na,
-                            ),
+                                baseline_mode=(dataset.baseline.execution_mode),
+                                baseline_static_na=baseline_static_na,
+                            ).inline,
                         ),
                     )
         for n_final, views in views_by_n.items():
@@ -3076,10 +3183,6 @@ def summarize_visible_completeness(
                                 _z_evaluator_total(
                                     joined,
                                     reference=False,
-                                    recurrence=(
-                                        variant.execution_mode
-                                        is ExecutionMode.RECURRENCE
-                                    ),
                                     static_na=static_na,
                                 ),
                             )

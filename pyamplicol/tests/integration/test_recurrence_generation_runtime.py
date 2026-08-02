@@ -10,7 +10,6 @@ import os
 from collections.abc import Iterator
 from dataclasses import replace
 from decimal import Decimal
-from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -1191,14 +1190,14 @@ def test_no_relation_default_and_explicit_opt_out_emit_identical_recurrence_plan
 
 
 @pytest.mark.parametrize("model_source", ("builtin", "ufo"))
-def test_recurrence_audit_contains_all_flow_opposites_and_rejects_near_relations(
+def test_recurrence_audit_suppresses_unsafe_all_flow_selector_domain(
     tmp_path: Path,
     model_source: str,
     builtin_sm_recurrence_jit_o2_model: ModelSource,
     ufo_sm_recurrence_jit_o2_model: CompiledModel,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Contain unsafe reuse, reject near matches, and preserve both SM frontends."""
+    """Skip unsafe all-flow hypotheses and preserve both SM frontends."""
 
     _require_native_recurrence()
     model = (
@@ -1298,8 +1297,8 @@ def test_recurrence_audit_contains_all_flow_opposites_and_rejects_near_relations
 
     diagnostic = lanes["diagnostic"]
     certified = lanes["certified-reuse"]
-    assert diagnostic["state"] == "authenticated-numerical-diagnostic-only"
-    assert diagnostic["certified_relation_count"] == 2
+    assert diagnostic["state"] == "no_certified_numerical_relation"
+    assert diagnostic["certified_relation_count"] == 0
     assert diagnostic["applied_relation_count"] == 0
     assert diagnostic["warning"]["required"] is False
     assert certified["requested_mode"] == "certified-reuse"
@@ -1311,8 +1310,8 @@ def test_recurrence_audit_contains_all_flow_opposites_and_rejects_near_relations
     assert certified["application_scope"]["effective_mode_reason"] == (
         "multi-helicity-all-flow-member-scope-unproven"
     )
-    assert certified["state"] == "authenticated-numerical-diagnostic-only"
-    assert certified["certified_relation_count"] == 2
+    assert certified["state"] == "no_certified_numerical_relation"
+    assert certified["certified_relation_count"] == 0
     assert certified["applied_relation_count"] == 0
     assert certified["warning"]["required"] is False
     assert warning_counts == {
@@ -1324,44 +1323,35 @@ def test_recurrence_audit_contains_all_flow_opposites_and_rejects_near_relations
     assert certified["application_validation"]["status"] == (
         "not-required-no-applied-relations"
     )
-    assert (
-        certified["application"]["certificate_replay"]["status"] == "verified"
-    )
-    assert diagnostic["application"]["relation_kind_counts"] == {
-        "equal": 0,
-        "opposite": 2,
-        "zero": 0,
-    }
-    assert certified["application"]["relation_kind_counts"] == {
-        "equal": 0,
-        "opposite": 2,
-        "zero": 0,
-    }
-    assert [
-        (
-            certificate["current_id"],
-            certificate["representative_id"],
-            certificate["relation_kind"],
+    for lane in (diagnostic, certified):
+        application_scope = lane["application_scope"]
+        assert application_scope["multi_helicity_all_flow_domain_ids"] == [0]
+        assert application_scope["suppressed_selector_domain_ids"] == [0]
+        assert application_scope["suppressed_current_count"] == 62
+        assert lane["discovery"]["tested_hypothesis_count"] == 0
+        assert lane["discovery"]["numerical_candidate_count"] == 0
+        assert lane["discovery"]["verification_rejected_count"] == 0
+        assert lane["discovery"]["rejected_hypothesis_count"] == 0
+        assert lane["discovery"]["certificates"] == []
+        assert lane["discovery"]["nearest_rejected_hypothesis"] is None
+        assert lane["application"]["certificates"] == []
+        assert lane["application"]["relation_kind_counts"] == {
+            "equal": 0,
+            "opposite": 0,
+            "zero": 0,
+        }
+        assert lane["application"]["certificate_replay"]["status"] == (
+            "no_certified_numerical_relation"
         )
-        for certificate in certified["application"]["certificates"]
-    ] == [(32, 31, "opposite"), (35, 34, "opposite")]
-    nearest = certified["discovery"]["nearest_rejected_hypothesis"]
-    assert nearest["current_id"] == 46
-    assert nearest["representative_id"] == {
-        "builtin": 42,
-        "ufo": 43,
-    }[model_source]
-    assert nearest["relation_kind"] == "equal"
-    assert Fraction(str(nearest["maximum_tolerance_ratio"])) > 1
     candidate_index = certified["discovery"]["candidate_index"]
     assert candidate_index == {
         "algorithm": "complete-contract-anchor-tolerance-window-v1",
         "completeness": "complete-within-configured-tolerance",
         "contract_count": 31,
         "exhaustive_fallback_contract_count": 0,
-        "theoretical_pair_hypothesis_count": 272,
-        "screened_pair_hypothesis_count": 266,
-        "zero_hypothesis_count": 62,
+        "theoretical_pair_hypothesis_count": 0,
+        "screened_pair_hypothesis_count": 0,
+        "zero_hypothesis_count": 0,
         "screened_hypothesis_budget": 1_000_000,
         "budget_classification": "within-authenticated-budget",
         "nearest_rejected_scope": (
@@ -1376,12 +1366,12 @@ def test_recurrence_audit_contains_all_flow_opposites_and_rejects_near_relations
     )
     assert persisted["full_census"] == {
         "inspected_current_count": 68,
-        "tested_hypothesis_count": 328,
-        "numerical_candidate_count": 314,
-        "verification_rejected_count": 312,
-        "uncertified_candidate_count": 312,
-        "certified_relation_count": 2,
-        "rejected_hypothesis_count": 326,
+        "tested_hypothesis_count": 0,
+        "numerical_candidate_count": 0,
+        "verification_rejected_count": 0,
+        "uncertified_candidate_count": 0,
+        "certified_relation_count": 0,
+        "rejected_hypothesis_count": 0,
         "candidate_index": candidate_index,
         "decision_sha256": certified["discovery"]["decision_sha256"],
         "rejection_decision_sha256": certified["discovery"][
@@ -1400,12 +1390,12 @@ def test_recurrence_audit_contains_all_flow_opposites_and_rejects_near_relations
     diagnostic_native = native_reports["diagnostic"]
     certified_native = native_reports["certified-reuse"]
     for native_report in (diagnostic_native, certified_native):
-        assert native_report["probe"]["tested_hypothesis_count"] == 328
-        assert native_report["numerical_candidate_count"] == 314
-        assert native_report["probe"]["verification_rejected_count"] == 312
-        assert native_report["uncertified_candidate_count"] == 312
-        assert native_report["exact_certified_relation_count"] == 2
-        assert native_report["rejected_hypothesis_count"] == 326
+        assert native_report["probe"]["tested_hypothesis_count"] == 0
+        assert native_report["numerical_candidate_count"] == 0
+        assert native_report["probe"]["verification_rejected_count"] == 0
+        assert native_report["uncertified_candidate_count"] == 0
+        assert native_report["exact_certified_relation_count"] == 0
+        assert native_report["rejected_hypothesis_count"] == 0
         assert native_report["numerical_candidate_count"] == (
             native_report["exact_certified_relation_count"]
             + native_report["uncertified_candidate_count"]
@@ -1415,36 +1405,36 @@ def test_recurrence_audit_contains_all_flow_opposites_and_rejects_near_relations
             - native_report["exact_certified_relation_count"]
         )
         assert native_report["rejected_candidates"] == []
+        assert native_report["certificates"] == []
+        assert native_report["certificate_count"] == 0
         rejected_diagnostics = native_report[
             "rejected_candidate_diagnostics"
         ]
-        assert rejected_diagnostics["total_rejected_hypothesis_count"] == 326
+        assert rejected_diagnostics["total_rejected_hypothesis_count"] == 0
         assert rejected_diagnostics["retained_count"] == 0
-        assert rejected_diagnostics["truncated"] is True
+        assert rejected_diagnostics["truncated"] is False
         assert rejected_diagnostics["truncation_policy"] == (
             "none-authenticated-full-rejection-digest-v1"
         )
         assert rejected_diagnostics["full_rejection_sha256"] == (
             native_report["probe"]["rejection_decision_sha256"]
         )
-    assert diagnostic_native["exact_certified_relation_count"] == 2
+    assert diagnostic_native["exact_certified_relation_count"] == 0
     assert diagnostic_native["applied_relation_count"] == 0
     assert diagnostic_native["scale_copy_row_count"] == 0
     assert diagnostic_native["requested_mode"] == "diagnostic"
     assert certified_native["requested_mode"] == "diagnostic"
     assert certified_native["state"] == "diagnostic-only"
-    assert certified_native["exact_certified_relation_count"] == 2
-    assert certified_native["applied_relation_count"] == 0
-    assert certified_native["scale_copy_row_count"] == 0
-    assert certified_native["current_count_before"] == 68
-    assert certified_native["current_count_after"] == 68
-    assert certified_native["contribution_count_before"] == 132
-    assert certified_native["contribution_count_after"] == 132
-    assert certified_native["interaction_evaluation_count_before"] == 132
-    # Diagnostic native reports retain the projected optimization census even
-    # though zero mappings or scale-copy rows are installed.
-    assert certified_native["interaction_evaluation_count_after"] == 130
-    assert certified_native["interaction_evaluation_savings"] == 2
+    for native_report in (diagnostic_native, certified_native):
+        assert native_report["applied_relation_count"] == 0
+        assert native_report["scale_copy_row_count"] == 0
+        assert native_report["current_count_before"] == 68
+        assert native_report["current_count_after"] == 68
+        assert native_report["contribution_count_before"] == 132
+        assert native_report["contribution_count_after"] == 132
+        assert native_report["interaction_evaluation_count_before"] == 132
+        assert native_report["interaction_evaluation_count_after"] == 132
+        assert native_report["interaction_evaluation_savings"] == 0
     _assert_runtime_values_match(
         runtimes["certified-reuse"],
         runtimes["diagnostic"],
@@ -1455,7 +1445,7 @@ def test_recurrence_audit_contains_all_flow_opposites_and_rejects_near_relations
     # resolved member and its total at the two higher precisions used by the
     # focused numerical-current diagnosis; these are evaluations of the
     # already-generated artifacts, not additional generation work.
-    for precision in (32, 80):
+    for precision in (32, 200):
         reference = runtimes["off"].evaluate_resolved(
             points,
             precision=precision,

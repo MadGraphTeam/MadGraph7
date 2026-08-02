@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import astuple, replace
 from decimal import Decimal, localcontext
 from types import SimpleNamespace
@@ -59,6 +60,89 @@ _ONE = Decimal(1)
 
 def _factor(real: int, imaginary: int = 0) -> _ExactFactor:
     return _ExactFactor(real, 1, imaginary, 1)
+
+
+def test_recurrence_diagnostic_projection_uses_external_source_layout() -> None:
+    massive = _SourceTemplate(
+        0,
+        4,
+        1,
+        0,
+        1,
+        "fermion",
+        "particle",
+        0,
+        1,
+        1,
+        1,
+        mass_parameter_name="ufo.MT",
+    )
+    massless = _SourceTemplate(
+        1,
+        4,
+        1,
+        0,
+        1,
+        "vector",
+        "self-conjugate",
+        None,
+        1,
+        1,
+        1,
+    )
+
+    class Plan:
+        def __init__(self) -> None:
+            self.sections = SimpleNamespace(
+                external_source_count=2,
+                sources=(
+                    _Source(0, 0, 0, 0, 0, 0, 0),
+                    _Source(1, 0, 1, 1, 0, 0, 0),
+                ),
+                source_dispatch_variants=(),
+            )
+            self.source_templates = {0: massive, 1: massless}
+            # Physics/artifact order is (source slot 1, source slot 0).
+            self.external_source_slots = (1, 0)
+
+        @staticmethod
+        def resolve_model_parameters(
+            _runtime_parameters: object, _precision: int
+        ) -> SimpleNamespace:
+            return SimpleNamespace(prepared=((Decimal("7"), Decimal(0)),))
+
+    class Native:
+        @staticmethod
+        def _exact_runtime_state_json() -> str:
+            return json.dumps(
+                {
+                    "model_parameter_values": [7.0],
+                    "normalization_factor": 1.0,
+                }
+            )
+
+    executor = object.__new__(RecurrenceExactExecutor)
+    executor._plan = Plan()
+    executor._native_runtime = Native()
+    executor._physics = {
+        "external_particles": [
+            {"label": 1, "pdg": 21, "role": "initial"},
+            {"label": 2, "pdg": 6, "role": "final"},
+        ]
+    }
+    executor._permutation = None
+
+    projected, metadata = executor._diagnostic_project_onshell(
+        (((-5.0, 0.0, 0.0, 5.0), (24.9, 24.0, 0.0, 0.0)),),
+        precision=200,
+    )
+
+    assert projected[0][0][0] == Decimal("-5.0")
+    assert projected[0][1][0] == Decimal("25.0")
+    gluon, top = metadata["points"][0]["legs"]
+    assert gluon["mass"] == "0"
+    assert top["mass"] == "7"
+    assert top["mass_parameter"] == "ufo.MT"
 
 
 def _scalar_union_plan() -> _RecurrenceExactPlan:

@@ -9,6 +9,7 @@ import pytest
 
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.measurement import (
+    _attach_baseline_validation,
     _baseline_matrix_element,
     _baseline_selector_contract,
     _measurement_selector_contract,
@@ -16,6 +17,9 @@ from tools.performance_report.measurement import (
     _reuse_artifact_for_measurement,
     _stable_runtime_identity,
     _validate_runtime_identity_postflight,
+    _validation_failure_precision_diagnostic,
+    attach_validation_failure_precision_diagnostic,
+    baseline_uses_lc_common_component_authority,
     failure_measurement,
     generated_artifact_from_measurement,
     measure_pyamplicol_cell,
@@ -45,6 +49,19 @@ def _contract() -> SelectorContract:
         all_flow_source_helicities=((1, -1), (2, 1), (3, -1)),
         point_digest="a" * 64,
     )
+
+
+def _unchanged_diagnostic_projection(
+    points: object, *, precision: int
+) -> tuple[object, dict[str, object]]:
+    assert precision == 200
+    return points, {
+        "abi": "pyamplicol-diagnostic-onshell-projection-v1",
+        "kind": "per-leg-onshell-energy-v1",
+        "precision_digits": precision,
+        "unchanged": True,
+        "projected_digest": "b" * 64,
+    }
 
 
 def test_baseline_contract_and_matrix_element_are_strict() -> None:
@@ -194,6 +211,449 @@ def test_lc_all_flow_baseline_must_authenticate_nonzero_common_component() -> No
         baseline["validation"]["lc_common_component"]["value"] = value
         with pytest.raises(RunnerError, match="baseline selector is structural zero"):
             _require_nonzero_lc_all_flow_baseline(cell, baseline)
+
+
+def _legacy_lc_component_baseline() -> dict[str, object]:
+    contract = _contract().as_dict()
+    return {
+        "status": ResultStatus.OK.value,
+        "matrix_element": 3.736057085488201e-8,
+        "selector_contract": contract,
+        "validation": {
+            "legacy_numerical_authority": {
+                "abi": "pyamplicol-report-legacy-numerical-authority-v1",
+                "source": "all-flow-selected-provider-replay",
+            },
+            "lc_common_component": {
+                "abi": "pyamplicol-report-lc-common-component-v1",
+                "cell_id": "reference-amplicol-lc-n4-dd-tt-jets-all-flow",
+                "value": 2.0402809302299425e-10,
+                "point_digest": contract["point_digest"],
+                "helicity_ids": contract["all_flow_helicity_ids"],
+                "color_flow_ids": contract["selected_color_flow_ids"],
+            },
+            "legacy_imode2_diagnostic": {
+                "authoritative_source": "selected-flow-generated-library-component",
+                "authoritative_value": 2.0402809302299425e-10,
+                "imode2_value": 2.0400817525978893e-10,
+            },
+        },
+    }
+
+
+def test_lc_provider_replay_authenticates_component_not_aggregate() -> None:
+    cell = REPORT_CATALOG.cell(
+        "matrix-recurrence-builtin-sm-lc-n4-dd-tt-jets-all-flow"
+    )
+    baseline = _legacy_lc_component_baseline()
+    validation: dict[str, object] = {}
+
+    assert baseline_uses_lc_common_component_authority(cell, baseline)
+    _attach_baseline_validation(
+        cell,
+        validation,
+        candidate_matrix_element=3.736053706261443e-8,
+        baseline=baseline,
+    )
+
+    assert "pointwise" not in validation
+
+
+@pytest.mark.parametrize(
+    ("cell_id", "candidate_text", "generated_library", "direct_imode2"),
+    (
+        (
+            "matrix-compiled-builtin-sm-full-n4-dd-tt-jets-contracted",
+            "1.0521884081060938437e-7",
+            1.0521886363225842e-7,
+            1.0521884081060942e-7,
+        ),
+        (
+            "matrix-compiled-builtin-sm-nlc-n4-dd-tt-jets-contracted",
+            "1.0434229425762874817e-7",
+            1.0434231717649298e-7,
+            1.0434229425762883e-7,
+        ),
+    ),
+)
+def test_n4_precision_diagnostic_retains_point_and_independent_authorities(
+    cell_id: str,
+    candidate_text: str,
+    generated_library: float,
+    direct_imode2: float,
+) -> None:
+    from decimal import Decimal
+
+    cell = REPORT_CATALOG.cell(cell_id)
+    candidate = Decimal(candidate_text)
+    calls: list[int] = []
+
+    class Resolved:
+        def total(self) -> tuple[Decimal]:
+            return (candidate,)
+
+    class Runtime:
+        _diagnostic_project_onshell = staticmethod(
+            _unchanged_diagnostic_projection
+        )
+
+        def evaluate(
+            self, _points: object, *, precision: int, **_selectors: object
+        ) -> tuple[Decimal]:
+            calls.append(precision)
+            return (candidate,)
+
+        def evaluate_resolved(
+            self, _points: object, *, precision: int, **_selectors: object
+        ) -> Resolved:
+            assert precision in {32, 200}
+            return Resolved()
+
+    baseline = {
+        "status": ResultStatus.OK.value,
+        "matrix_element": generated_library,
+        "validation": {
+            "legacy_numerical_authority": {
+                "abi": "pyamplicol-report-legacy-numerical-authority-v1",
+                "source": "contracted-generated-library",
+            },
+            "legacy_imode2_diagnostic": {
+                "authoritative_source": "dedicated-generated-library-probe",
+                "authoritative_value": generated_library,
+                "imode2_value": direct_imode2,
+            },
+        },
+    }
+    points = ((500.0, 0.0, 0.0, 500.0),)
+
+    diagnostic = _validation_failure_precision_diagnostic(
+        Runtime(),
+        points,
+        cell=cell,
+        contract=None,
+        baseline=baseline,
+        measurement_context={
+            "wall_seconds_per_point": 1.5e-6,
+            "provenance": {
+                "evaluator_total_timing": {"raw_seconds_per_point": 1.4e-6},
+                "execution_timing": {"raw_seconds_per_point": 1.3e-6},
+            },
+        },
+    )
+
+    assert diagnostic["status"] == "diagnostic-only"
+    assert diagnostic["promotes_measurement"] is False
+    assert diagnostic["timings_unchanged"] is True
+    assert diagnostic["execution_identity"] == {
+        "cell_id": cell_id,
+        "process": "d d~ > t t~ g g",
+        "multiplicity": 4,
+        "workload": "contracted",
+        "layout": "contracted",
+        "execution_mode": "compiled",
+        "backend": "jit",
+        "model": "builtin_sm",
+        "accuracy": cell.measurement.accuracy.value,
+        "variant": None,
+    }
+    assert diagnostic["measurement_timing_context"] == {
+        "source": "copied-from-measurement",
+        "recomputed": False,
+        "outer_wall_seconds_per_point": 1.5e-6,
+        "evaluator_total_timing": {"raw_seconds_per_point": 1.4e-6},
+        "recurrence_core_timing": None,
+    }
+    assert diagnostic["retained_point"]["momenta"] == [
+        [500.0, 0.0, 0.0, 500.0]
+    ]
+    assert calls == [32, 200]
+    assert [attempt["precision_digits"] for attempt in diagnostic["attempts"]] == [
+        32,
+        200,
+    ]
+    comparisons = diagnostic["attempts"][-1]["comparisons"]
+    generated = [
+        item
+        for item in comparisons
+        if item["authority"] == "baseline:generated-library"
+    ]
+    direct = [
+        item for item in comparisons if item["authority"] == "baseline:direct-imode2"
+    ]
+    assert {item["candidate_value_kind"] for item in generated} == {
+        "total",
+        "resolved_sum",
+    }
+    assert {item["status"] for item in generated} == {
+        ResultStatus.VALIDATION_FAILED.value
+    }
+    assert {item["status"] for item in direct} == {
+        ResultStatus.OK.value
+    }
+
+
+def test_lc_precision_diagnostic_compares_shared_component() -> None:
+    from decimal import Decimal
+
+    cell = REPORT_CATALOG.cell(
+        "matrix-recurrence-builtin-sm-lc-n4-dd-tt-jets-all-flow"
+    )
+    contract = _contract()
+    aggregate = Decimal("3.7360537062614512535e-8")
+    component = Decimal("2.0402809302299355e-10")
+    points = ((500.0, 0.0, 0.0, 500.0),)
+    received: list[object] = []
+    projection_calls: list[tuple[object, int]] = []
+
+    class Resolved:
+        def __init__(self, component_only: bool) -> None:
+            self.helicity_ids = (
+                contract.runtime_all_flow_helicity_ids if component_only else ()
+            )
+            self.color_ids = contract.selected_color_flow_ids if component_only else ()
+            self.values = (((component,),),) if component_only else ()
+
+        def total(self) -> tuple[Decimal]:
+            return (aggregate,)
+
+    class Runtime:
+        def _diagnostic_project_onshell(
+            self, raw_points: object, *, precision: int
+        ) -> tuple[object, dict[str, object]]:
+            projection_calls.append((raw_points, precision))
+            return _unchanged_diagnostic_projection(
+                raw_points,
+                precision=precision,
+            )
+
+        def evaluate(self, raw_points: object, **_selectors: object):
+            received.append(raw_points)
+            return (aggregate,)
+
+        def evaluate_resolved(
+            self,
+            raw_points: object,
+            *,
+            color_flows: object = None,
+            **_selectors: object,
+        ) -> Resolved:
+            received.append(raw_points)
+            return Resolved(color_flows is not None)
+
+    diagnostic = _validation_failure_precision_diagnostic(
+        Runtime(),
+        points,
+        cell=cell,
+        contract=contract,
+        baseline=_legacy_lc_component_baseline(),
+        measurement_context={
+            "wall_seconds_per_point": 2.5e-6,
+            "provenance": {
+                "evaluator_total_timing": {"raw_seconds_per_point": 2.4e-6},
+                "execution_timing": {"raw_seconds_per_point": 2.3e-6},
+            },
+        },
+    )
+
+    final = diagnostic["attempts"][-1]
+    assert projection_calls == [(points, 200)]
+    assert len(received) == 6
+    assert all(raw_points is points for raw_points in received)
+    assert diagnostic["measurement_timing_context"] == {
+        "source": "copied-from-measurement",
+        "recomputed": False,
+        "outer_wall_seconds_per_point": 2.5e-6,
+        "evaluator_total_timing": {"raw_seconds_per_point": 2.4e-6},
+        "recurrence_core_timing": {"raw_seconds_per_point": 2.3e-6},
+    }
+    assert final["candidate"]["lc_common_component"]["value"] == str(component)
+    comparisons = {item["authority"]: item for item in final["comparisons"]}
+    assert comparisons["baseline:generated-library"]["status"] == (
+        ResultStatus.OK.value
+    )
+    assert comparisons["baseline:direct-imode2"]["status"] == (
+        ResultStatus.VALIDATION_FAILED.value
+    )
+
+
+def test_precision_diagnostic_stops_after_resolved_p32() -> None:
+    cell = REPORT_CATALOG.cell(
+        "matrix-compiled-builtin-sm-full-n4-dd-tt-jets-contracted"
+    )
+    calls: list[int] = []
+
+    class Resolved:
+        def total(self) -> tuple[float]:
+            return (1.0,)
+
+    class Runtime:
+        _diagnostic_project_onshell = staticmethod(
+            _unchanged_diagnostic_projection
+        )
+
+        def evaluate(self, _points: object, *, precision: int, **_selectors: object):
+            calls.append(precision)
+            return (1.0,)
+
+        def evaluate_resolved(
+            self, _points: object, *, precision: int, **_selectors: object
+        ) -> Resolved:
+            return Resolved()
+
+    diagnostic = _validation_failure_precision_diagnostic(
+        Runtime(),
+        ((500.0, 0.0, 0.0, 500.0),),
+        cell=cell,
+        contract=None,
+        baseline={"status": ResultStatus.OK.value, "matrix_element": 1.0},
+    )
+
+    assert calls == [32]
+    assert [attempt["precision_digits"] for attempt in diagnostic["attempts"]] == [
+        32
+    ]
+
+
+def test_precision_diagnostic_records_p32_error_then_attempts_p200() -> None:
+    cell = REPORT_CATALOG.cell(
+        "matrix-compiled-builtin-sm-full-n4-dd-tt-jets-contracted"
+    )
+    calls: list[int] = []
+
+    class Resolved:
+        def total(self) -> tuple[float]:
+            return (1.0,)
+
+    class Runtime:
+        _diagnostic_project_onshell = staticmethod(
+            _unchanged_diagnostic_projection
+        )
+
+        def evaluate(self, _points: object, *, precision: int, **_selectors: object):
+            calls.append(precision)
+            if precision == 32:
+                raise RuntimeError("p32 diagnostic failure")
+            return (1.0,)
+
+        def evaluate_resolved(
+            self, _points: object, *, precision: int, **_selectors: object
+        ) -> Resolved:
+            return Resolved()
+
+    diagnostic = _validation_failure_precision_diagnostic(
+        Runtime(),
+        ((500.0, 0.0, 0.0, 500.0),),
+        cell=cell,
+        contract=None,
+        baseline={"status": ResultStatus.OK.value, "matrix_element": 1.0},
+    )
+
+    assert calls == [32, 200]
+    assert diagnostic["attempts"][0]["status"] == "unavailable"
+    assert diagnostic["attempts"][0]["error"]["message"] == (
+        "p32 diagnostic failure"
+    )
+    assert diagnostic["attempts"][1]["status"] == "evaluated"
+
+
+def test_precision_diagnostic_reuses_one_projected_point_and_marks_peers_context_only(
+) -> None:
+    from decimal import Decimal
+
+    cell = REPORT_CATALOG.cell(
+        "matrix-compiled-builtin-sm-full-n4-dd-tt-jets-contracted"
+    )
+    original = ((500.0, 0.0, 0.0, 500.0),)
+    projected = (
+        (Decimal("500.0000000000000001"), Decimal(0), Decimal(0), Decimal(500)),
+    )
+    received: list[object] = []
+    projection_calls: list[tuple[object, int]] = []
+
+    class Resolved:
+        def total(self) -> tuple[Decimal]:
+            return (Decimal("2"),)
+
+    class Runtime:
+        def _diagnostic_project_onshell(
+            self, points: object, *, precision: int
+        ) -> tuple[object, dict[str, object]]:
+            projection_calls.append((points, precision))
+            return projected, {
+                "unchanged": False,
+                "projected_digest": "c" * 64,
+            }
+
+        def evaluate(
+            self, points: object, *, precision: int, **_selectors: object
+        ) -> tuple[Decimal]:
+            assert precision in {32, 200}
+            received.append(points)
+            return (Decimal("2"),)
+
+        def evaluate_resolved(
+            self, points: object, *, precision: int, **_selectors: object
+        ) -> Resolved:
+            assert precision in {32, 200}
+            received.append(points)
+            return Resolved()
+
+    diagnostic = _validation_failure_precision_diagnostic(
+        Runtime(),
+        original,
+        cell=cell,
+        contract=None,
+        baseline={"status": ResultStatus.OK.value, "matrix_element": 1.0},
+    )
+
+    assert projection_calls == [(original, 200)]
+    assert len(received) == 4
+    assert all(points is projected for points in received)
+    assert diagnostic["kinematic_projection"]["original_digest"] == (
+        diagnostic["retained_point"]["digest"]
+    )
+    assert diagnostic["kinematic_projection"]["projected_digest"] == "c" * 64
+    assert [attempt["precision_digits"] for attempt in diagnostic["attempts"]] == [
+        32,
+        200,
+    ]
+    for attempt in diagnostic["attempts"]:
+        assert attempt["candidate"]["point_context"] == "projected-onshell-point"
+        for comparison in attempt["comparisons"]:
+            assert comparison["authority_point_context"] == "original-retained-point"
+            assert comparison["same_kinematic_point"] is False
+            assert comparison["certifying"] is False
+            assert comparison["context_only"] is True
+            assert "status" not in comparison
+
+
+def test_precision_diagnostic_is_bounded_and_non_promoting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    outside = REPORT_CATALOG.cell(
+        "matrix-compiled-builtin-sm-lc-n5-dd-z-jets-selected-flow"
+    )
+    measurement = {
+        "status": ResultStatus.VALIDATION_FAILED.value,
+        "validation": {"status": ResultStatus.VALIDATION_FAILED.value},
+    }
+    attach_validation_failure_precision_diagnostic(
+        outside, measurement, baseline=None
+    )
+    assert "precision_diagnostic" not in measurement["validation"]
+
+    cell = REPORT_CATALOG.cell(
+        "matrix-compiled-builtin-sm-full-n4-dd-tt-jets-contracted"
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.measurement.point_digest",
+        lambda _points: (_ for _ in ()).throw(RuntimeError("diagnostic only")),
+    )
+    diagnostic = _validation_failure_precision_diagnostic(
+        object(), object(), cell=cell, contract=None, baseline=None
+    )
+    assert diagnostic["status"] == "unavailable"
+    assert diagnostic["promotes_measurement"] is False
 
 
 def test_failure_measurement_preserves_compact_cache_shape() -> None:

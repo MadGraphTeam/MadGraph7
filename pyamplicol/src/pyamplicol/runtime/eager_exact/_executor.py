@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from decimal import ROUND_HALF_EVEN, localcontext
+from collections.abc import Mapping, Sequence
+from decimal import ROUND_HALF_EVEN, Decimal, localcontext
 from pathlib import Path
 from typing import Any, cast
 
@@ -28,6 +28,8 @@ from pyamplicol.runtime.symbolica_exact import (
     _apply_lc_replay_input_mapping,
     _apply_lc_replay_resolved,
     _decimal,
+    _diagnostic_project_onshell_points,
+    _diagnostic_schema_mass_bindings,
     _lc_replay_plan,
     _prepare_points,
     _reduce_resolved,
@@ -109,6 +111,34 @@ class EagerExactExecutor:
             }
         self._exact_execution = exact_execution
         self._lc_replay = _lc_replay_plan(exact_execution, physics, permutation)
+
+    def _diagnostic_project_onshell(
+        self,
+        momenta: Momenta,
+        *,
+        precision: int,
+    ) -> tuple[
+        tuple[tuple[tuple[Decimal, Decimal, Decimal, Decimal], ...], ...],
+        dict[str, object],
+    ]:
+        """Build diagnostic-only on-shell kinematics from current parameters."""
+
+        state = _runtime_state(self._native_runtime)
+        parameters = tuple(
+            _decimal(value, "runtime model parameter")
+            for value in state["model_parameter_values"]
+        )
+        schema = self._exact_execution.get("runtime_schema")
+        if not isinstance(schema, Mapping):
+            raise ArtifactError("eager execution has no runtime schema")
+        bindings = _diagnostic_schema_mass_bindings(schema, self._physics, parameters)
+        return _diagnostic_project_onshell_points(
+            momenta,
+            physics=self._physics,
+            artifact_mass_bindings=bindings,
+            permutation=self._permutation,
+            precision=precision,
+        )
 
     def evaluate_resolved(
         self,

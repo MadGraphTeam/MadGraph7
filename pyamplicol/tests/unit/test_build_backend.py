@@ -860,6 +860,9 @@ def test_candidate_source_revision_ignores_only_generated_report_outputs(
     (profile / "results/cache.json").write_text('{"updated":true}\n', encoding="utf-8")
     (profile / "result_sample_table.tex").write_text("% updated\n", encoding="utf-8")
     (profile / "pyAmpliCol.pdf").write_bytes(b"%PDF-1.7\n")
+    summary = profile / "campaign_summary_ids"
+    summary.mkdir()
+    (summary / "error.txt").write_text("cell-a\n", encoding="utf-8")
     monkeypatch.setattr(backend, "ROOT", checkout)
 
     assert backend._clean_source_revision() is None

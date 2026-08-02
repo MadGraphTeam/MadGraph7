@@ -42,7 +42,13 @@ from typing import Any
 from colorama import Fore, Style, just_fix_windows_console
 from prettytable import PrettyTable
 
-from .artifacts import ATTEMPT_SCHEMA, CURRENT_SCHEMA, ArtifactStore, CurrentRecord
+from .artifacts import (
+    ATTEMPT_SCHEMA,
+    CURRENT_SCHEMA,
+    ArtifactStore,
+    CurrentRecord,
+    _raise_disk_full,
+)
 from .cache import reset_entry, validate_measurement
 from .campaign_policy import (
     PolicyMeasurementState,
@@ -69,6 +75,7 @@ from .scheduler import (
     CellSelection,
     PlannedCell,
     plan_campaign,
+    reconcile_attempt_history,
     select_cells,
 )
 from .service import ReportPaths, ReportService, validate_profile_name
@@ -138,6 +145,9 @@ _TERMINAL_CAP_STATUSES = frozenset(
 )
 _PHASE_TIMELINE_SCHEMA = "pyamplicol-manual-campaign-phase-timeline-v1"
 _REPRODUCTION_STAGES = ("prepare", "generate", "profile")
+_SUMMARY_SUCCESS_STATUSES = frozenset(
+    {"ok", "success", "recycled", "reused", "skipped-current"}
+)
 
 
 class ManualCampaignError(RuntimeError):
@@ -245,9 +255,10 @@ def _utc_now() -> str:
 
 
 def _atomic_json(path: Path, payload: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    temporary: Path | None = None
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
         with temporary.open("x", encoding="ascii") as stream:
             json.dump(
                 payload,
@@ -261,8 +272,188 @@ def _atomic_json(path: Path, payload: object) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
+    except OSError as error:
+        _raise_disk_full(error, path)
     finally:
-        temporary.unlink(missing_ok=True)
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _fsync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _summary_status(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_")
+    if normalized == "cancelled":
+        return "interrupted"
+    if not normalized:
+        raise ManualCampaignError("campaign outcome has an empty status")
+    return normalized
+
+
+def _campaign_summary_categories(
+    *,
+    static_na_ids: Iterable[str] = (),
+    result: CampaignResult | None = None,
+    state: DashboardState | None = None,
+    interrupted: bool = False,
+) -> dict[str, set[str]]:
+    categories: dict[str, set[str]] = {}
+
+    def add(status: str, cell_id: str) -> None:
+        normalized = _summary_status(status)
+        if normalized in _SUMMARY_SUCCESS_STATUSES:
+            return
+        categories.setdefault(normalized, set()).add(cell_id)
+
+    for cell_id in static_na_ids:
+        add("static_na", cell_id)
+    observed_workers = (
+        {}
+        if state is None
+        else {
+            cell_id: worker
+            for cell_id, worker in state.workers.items()
+            if worker.peer_instance is None
+            and cell_id in state.invocation_evidence_ids
+        }
+    )
+    outcome_ids: set[str] = set()
+    if result is not None:
+        for outcome in result.outcomes:
+            if (
+                outcome.status == "cancelled"
+                and outcome.cell_id not in observed_workers
+            ):
+                continue
+            outcome_ids.add(outcome.cell_id)
+            add(outcome.status, outcome.cell_id)
+    if state is not None:
+        workers = tuple(observed_workers.values())
+        for worker in workers:
+            if worker.recycled or worker.cell_id in state.recycled_ids:
+                continue
+            if worker.cell_id in outcome_ids:
+                continue
+            if interrupted and worker.status in _ACTIVE_WORKER_STATUSES:
+                add("interrupted", worker.cell_id)
+            elif worker.status not in _ACTIVE_WORKER_STATUSES:
+                add(worker.status, worker.cell_id)
+    return categories
+
+
+def _has_invocation_summary_evidence(
+    result: CampaignResult | None,
+    state: DashboardState,
+) -> bool:
+    if state.invocation_evidence_ids:
+        return True
+    return result is not None and any(
+        outcome.status != "cancelled" for outcome in result.outcomes
+    )
+
+
+def _validate_existing_summary_directory(path: Path) -> None:
+    if path.is_symlink() or not path.is_dir():
+        raise ManualCampaignError(
+            f"campaign summary target is not a regular directory: {path}"
+        )
+
+
+def _publish_campaign_summary_ids(
+    service: ReportService,
+    categories: Mapping[str, Iterable[str]],
+) -> tuple[Path, dict[str, int]]:
+    target = service.paths.docs_dir / "campaign_summary_ids"
+    publication_root = (
+        service.paths.coordination_root / "campaign-summary-publication"
+    )
+    stage: Path | None = None
+    backup: Path | None = None
+    counts: dict[str, int] = {}
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        publication_root.mkdir(parents=True, exist_ok=True)
+        if publication_root.is_symlink() or not publication_root.is_dir():
+            raise ManualCampaignError(
+                "campaign summary staging root is not a regular directory: "
+                f"{publication_root}"
+            )
+        if publication_root.stat().st_dev != target.parent.stat().st_dev:
+            raise ManualCampaignError(
+                "campaign summary cannot be replaced atomically because its "
+                "documentation and coordination roots are on different "
+                f"filesystems: {target.parent} and {publication_root}"
+            )
+        token = uuid.uuid4().hex
+        stage = publication_root / f"{target.name}-{token}.stage"
+        backup = publication_root / f"{target.name}-{token}.backup"
+        stage.mkdir()
+        for raw_status, raw_ids in sorted(categories.items()):
+            status = _summary_status(raw_status)
+            if status in _SUMMARY_SUCCESS_STATUSES:
+                continue
+            cell_ids = tuple(sorted(set(raw_ids)))
+            if not cell_ids:
+                continue
+            path = stage / f"{status}.txt"
+            with path.open("x", encoding="utf-8", newline="\n") as stream:
+                stream.write("".join(f"{cell_id}\n" for cell_id in cell_ids))
+                stream.flush()
+                os.fsync(stream.fileno())
+            counts[status] = len(cell_ids)
+        _fsync_directory(stage)
+        with service.store.named_lock("campaign-summary-ids"):
+            moved_old = False
+            if target.exists() or target.is_symlink():
+                _validate_existing_summary_directory(target)
+                os.replace(target, backup)
+                moved_old = True
+            try:
+                os.replace(stage, target)
+                _fsync_directory(target.parent)
+            except BaseException:
+                if moved_old and not target.exists():
+                    os.replace(backup, target)
+                    _fsync_directory(target.parent)
+                raise
+            if moved_old:
+                shutil.rmtree(backup)
+                _fsync_directory(target.parent)
+    except OSError as error:
+        _raise_disk_full(error, target)
+    finally:
+        if stage is not None and stage.exists():
+            shutil.rmtree(stage)
+        if backup is not None and backup.exists() and target.exists():
+            shutil.rmtree(backup)
+    return target.resolve(strict=True), counts
+
+
+def _print_campaign_summary_ids(
+    path: Path,
+    counts: Mapping[str, int],
+    palette: Palette,
+) -> None:
+    print()
+    print(
+        _table(
+            ("campaign summary", "entries"),
+            (
+                (palette.key(status), palette.warning(count))
+                for status, count in sorted(counts.items())
+            )
+            if counts
+            else ((palette.success("non-OK entries"), palette.success(0)),),
+            align={"entries": "r"},
+        )
+    )
+    print(f"Campaign summary IDs: {path}")
 
 
 def _normal(value: str) -> str:
@@ -448,6 +639,7 @@ def _empty_selection_error(
             ("model", "--model"),
             ("variant", "--variant"),
             ("cell_id", "--cell-id"),
+            ("cell_id_file", "--cell-id-file"),
         )
         if getattr(arguments, attribute, None)
     )
@@ -478,6 +670,10 @@ def _empty_selection_error(
         (
             "--cell-id",
             "one exact canonical cell ID (see --help or a broader dry run)",
+        ),
+        (
+            "--cell-id-file",
+            "UTF-8 files containing one exact canonical cell ID per line",
         ),
     )
     suggestion = (
@@ -545,6 +741,49 @@ def _resolve_processes(
     return frozenset(process_keys), frozenset(concrete)
 
 
+def _cell_ids_from_files(
+    raw_groups: Sequence[Sequence[Path]] | None,
+    *,
+    known_cells: frozenset[str],
+) -> frozenset[str]:
+    selected: set[str] = set()
+    for group in raw_groups or ():
+        for raw_path in group:
+            path = Path(raw_path).expanduser()
+            try:
+                lines = path.read_text(encoding="utf-8").splitlines()
+            except (OSError, UnicodeError) as error:
+                raise ManualCampaignError(
+                    f"--cell-id-file could not read {path}: {error}"
+                ) from error
+            for line_number, line in enumerate(lines, start=1):
+                value = line.strip()
+                if not value or value.startswith("#"):
+                    continue
+                location = f"{path}:{line_number}"
+                if _normal(value) in {"*", "all"}:
+                    raise ManualCampaignError(
+                        f"{location}: wildcards are not allowed in a cell-ID file"
+                    )
+                if value not in known_cells:
+                    suggestions = difflib.get_close_matches(
+                        value,
+                        sorted(known_cells),
+                        n=3,
+                        cutoff=0.45,
+                    )
+                    suffix = (
+                        ""
+                        if not suggestions
+                        else f"; did you mean {', '.join(suggestions)}?"
+                    )
+                    raise ManualCampaignError(
+                        f"{location}: unknown canonical cell ID {value!r}{suffix}"
+                    )
+                selected.add(value)
+    return frozenset(selected)
+
+
 def selection_from_arguments(
     arguments: argparse.Namespace,
     *,
@@ -558,7 +797,13 @@ def selection_from_arguments(
     raw_modes = _flatten(getattr(arguments, "generation_engine", None))
     raw_models = _flatten(getattr(arguments, "model", None))
     raw_variants = _flatten(getattr(arguments, "variant", None))
-    raw_cell_ids = _flatten(getattr(arguments, "cell_id", None))
+    raw_cell_id_groups = getattr(arguments, "cell_id", None)
+    raw_cell_ids = _flatten(raw_cell_id_groups)
+    direct_cell_wildcard = any(
+        _normal(value) in {"*", "all"}
+        for group in raw_cell_id_groups or ()
+        for value in group
+    )
 
     multiplicities: set[int] = set()
     for raw in raw_multiplicities:
@@ -585,13 +830,30 @@ def selection_from_arguments(
             raise _invalid_value("--variant", raw, map(_normal, known_variants))
         variants.update(matches)
 
-    known_cells = {cell.cell_id for cell in catalog.measurement_cells()}
+    known_cells = frozenset(cell.cell_id for cell in catalog.measurement_cells())
     cell_ids: set[str] = set()
     for raw in raw_cell_ids:
         normalized = raw.strip()
+        if _normal(normalized) in {"*", "all"}:
+            continue
         if normalized not in known_cells:
             raise _invalid_value("--cell-id", normalized, known_cells)
         cell_ids.add(normalized)
+    file_cell_ids = _cell_ids_from_files(
+        getattr(arguments, "cell_id_file", None),
+        known_cells=known_cells,
+    )
+    if (
+        getattr(arguments, "cell_id_file", None)
+        and not file_cell_ids
+        and not raw_cell_ids
+        and not direct_cell_wildcard
+    ):
+        raise ManualCampaignError(
+            "--cell-id-file inputs contain no canonical cell IDs"
+        )
+    if not direct_cell_wildcard:
+        cell_ids.update(file_cell_ids)
 
     resolved_modes = _resolve_map(
         "--generation-engine",
@@ -2136,6 +2398,8 @@ class DashboardState:
     ready_count: int = 0
     waiting_dependency_count: int = 0
     waiting_coordination_lock_count: int = 0
+    cleanup_warnings: list[tuple[str, str]] = field(default_factory=list)
+    invocation_evidence_ids: set[str] = field(default_factory=set)
 
     @property
     def active(self) -> tuple[WorkerView, ...]:
@@ -2323,7 +2587,9 @@ class LeaseManager:
                 return
             worker = self.state.workers.setdefault(cell_id, WorkerView(cell_id))
             worker.updated_at = time.time()
+            cleanup_detail: str | None = None
             if event == "started":
+                self.state.invocation_evidence_ids.add(cell_id)
                 worker.status = "preparing"
                 worker.step = "dependency preparation"
                 worker.dependency = bool(payload.get("dependency", False))
@@ -2355,12 +2621,14 @@ class LeaseManager:
                         None if recipe.profile is None else _shell_join(recipe.profile)
                     )
             elif event == "worker":
+                self.state.invocation_evidence_ids.add(cell_id)
                 worker.status = "running"
                 worker.step = "worker launched"
                 worker.attempt_id = str(payload.get("attempt_id") or "") or None
                 worker.log_path = str(payload.get("log_path") or "") or None
                 worker.progress_path = str(payload.get("progress_path") or "") or None
             elif event == "resource":
+                self.state.invocation_evidence_ids.add(cell_id)
                 worker.status = "running"
                 worker.pid = _optional_int(payload.get("pid"))
                 worker.member_pids = tuple(
@@ -2393,6 +2661,12 @@ class LeaseManager:
                 _tail_log(worker)
             elif event == "finished":
                 reported_status = str(payload.get("status") or "unknown")
+                reported_detail = str(payload.get("detail") or "")
+                if not (
+                    reported_status == "cancelled"
+                    and reported_detail in {"not started", "lock wait cancelled"}
+                ):
+                    self.state.invocation_evidence_ids.add(cell_id)
                 worker.status = (
                     "recycled"
                     if reported_status in _RECYCLED_SUCCESS_STATUSES
@@ -2401,7 +2675,7 @@ class LeaseManager:
                 worker.recycled = reported_status in _RECYCLED_SUCCESS_STATUSES
                 if worker.recycled:
                     self.state.recycled_ids.add(cell_id)
-                worker.step = str(payload.get("detail") or worker.status)
+                worker.step = reported_detail or worker.status
                 raw_prerequisites = payload.get("prerequisite_cell_ids")
                 if isinstance(raw_prerequisites, Sequence) and not isinstance(
                     raw_prerequisites,
@@ -2488,10 +2762,19 @@ class LeaseManager:
                     "cancelled",
                 }:
                     self.state.failed_ids.add(cell_id)
+            elif event == "cleanup-warning":
+                cleanup_detail = str(payload.get("detail") or "unknown cleanup error")
+                warning = (cell_id, cleanup_detail)
+                if warning not in self.state.cleanup_warnings:
+                    self.state.cleanup_warnings.append(warning)
             observed_event = (
-                f"resource: {worker.phase}"
-                if event == "resource"
-                else f"{event}: {worker.step}"
+                f"cleanup warning: {cleanup_detail}"
+                if cleanup_detail is not None
+                else (
+                    f"resource: {worker.phase}"
+                    if event == "resource"
+                    else f"{event}: {worker.step}"
+                )
             )
             if not (
                 event == "resource"
@@ -2506,6 +2789,14 @@ class LeaseManager:
         with self._guard:
             self._closed = True
             self.path.unlink(missing_ok=True)
+
+
+def _print_cleanup_warnings(state: DashboardState, palette: Palette) -> None:
+    for cell_id, detail in state.cleanup_warnings:
+        print(
+            palette.warning(f"artifact cleanup skipped for {cell_id}: {detail}"),
+            file=sys.stderr,
+        )
 
 
 def _optional_int(value: object) -> int | None:
@@ -5532,6 +5823,7 @@ def _campaign_settings(
     *,
     observer: Any = None,
     cancelled: Any = None,
+    campaign_invocation_id: str | None = None,
 ) -> CampaignSettings:
     workers = int(arguments.workers)
     cores = int(arguments.cores_per_worker)
@@ -5572,10 +5864,14 @@ def _campaign_settings(
         resource_sample_interval_seconds=float(arguments.resource_sample_interval),
         termination_grace_seconds=float(arguments.termination_grace),
         source_identity_override=source,
+        campaign_invocation_id=campaign_invocation_id,
         progress_observer=observer,
         cancellation_requested=cancelled,
         manual_terminal_censors=True,
-        discard_cancelled_attempts=True,
+        discard_cancelled_attempts=False,
+        remove_heavy_attempt_artifacts=not bool(
+            getattr(arguments, "no_artifacts_removal", False)
+        ),
         report_profile=None,
         original_amplicol_repository=arguments.original_amplicol,
         original_amplicol_revision=getattr(
@@ -6014,6 +6310,12 @@ def _run_campaign(
                 ((cell.cell_id, _manual_static_na_reason(cell)) for cell in cells),
             )
         )
+        if not arguments.dry_run:
+            summary_path, summary_counts = _publish_campaign_summary_ids(
+                service,
+                {"static_na": static_na},
+            )
+            _print_campaign_summary_ids(summary_path, summary_counts, palette)
         return 0
     active_lightweight = lightweight_currents(
         service,
@@ -6161,6 +6463,24 @@ def _run_campaign(
         )
     else:
         update_source_marker(service, source)
+    if not bool(getattr(arguments, "no_artifacts_removal", False)):
+        cleanup_cells = tuple(
+            {
+                cell.cell_id: cell
+                for cell in (
+                    *measurable,
+                    *(item.cell for item in planned),
+                )
+            }.values()
+        )
+        cleanup_warnings = reconcile_attempt_history(service, cleanup_cells)
+        for cell_id, detail in cleanup_warnings:
+            print(
+                palette.warning(
+                    f"artifact cleanup skipped for {cell_id}: {detail}"
+                ),
+                file=sys.stderr,
+            )
     measurable_ids = {cell.cell_id for cell in measurable}
     if not planned and measurable_ids <= recycled:
         print(
@@ -6203,6 +6523,13 @@ def _run_campaign(
                     "policy unavailable and accounted for separately."
                 )
             )
+        summary_path, summary_counts = _publish_campaign_summary_ids(
+            service,
+            _campaign_summary_categories(
+                static_na_ids=static_na,
+            ),
+        )
+        _print_campaign_summary_ids(summary_path, summary_counts, palette)
         return 0
     cancellation = threading.Event()
     finished = threading.Event()
@@ -6245,6 +6572,7 @@ def _run_campaign(
         source,
         observer=lease.observe,
         cancelled=cancellation.is_set,
+        campaign_invocation_id=state.instance_id,
     )
     scheduler = CampaignScheduler(service, settings=settings)
     result_holder: list[CampaignResult] = []
@@ -6302,17 +6630,41 @@ def _run_campaign(
     if join_interrupted or worker_alive:
         interrupted = True
         state.interrupted = True
+    _print_cleanup_warnings(state, palette)
     if interrupted:
+        result = result_holder[0] if result_holder else None
+        summary_path, summary_counts = _publish_campaign_summary_ids(
+            service,
+            _campaign_summary_categories(
+                static_na_ids=static_na,
+                result=result,
+                state=state,
+                interrupted=True,
+            ),
+        )
+        _print_campaign_summary_ids(summary_path, summary_counts, palette)
         print(
             palette.warning(
                 "Interrupted: dispatch stopped, process trees received cancellation, "
-                "cancelled partial attempts were discarded, completed currents "
-                "were preserved, and leases were removed."
+                "compact interrupted-attempt diagnostics and completed currents "
+                "were preserved, obsolete heavy payloads followed the configured "
+                "cleanup policy, and leases were removed."
             ),
             file=sys.stderr,
         )
         return 130
     if error_holder:
+        partial_result = result_holder[0] if result_holder else None
+        if _has_invocation_summary_evidence(partial_result, state):
+            summary_path, summary_counts = _publish_campaign_summary_ids(
+                service,
+                _campaign_summary_categories(
+                    static_na_ids=static_na,
+                    result=partial_result,
+                    state=state,
+                ),
+            )
+            _print_campaign_summary_ids(summary_path, summary_counts, palette)
         raise error_holder[0]
     result = result_holder[0]
     statuses = Counter(outcome.status for outcome in result.outcomes)
@@ -6333,6 +6685,15 @@ def _run_campaign(
             align={"entries": "r"},
         )
     )
+    summary_path, summary_counts = _publish_campaign_summary_ids(
+        service,
+        _campaign_summary_categories(
+            static_na_ids=static_na,
+            result=result,
+            state=state,
+        ),
+    )
+    _print_campaign_summary_ids(summary_path, summary_counts, palette)
     return 1 if result.failed else 0
 
 
@@ -6649,6 +7010,16 @@ normalized. `non-union-flow` means one selected colour flow with the helicity
 sum; `union-flow` means all colour flows at one helicity; NLC/full rows use the
 contracted workload.
 
+`--cell-id-file` reads exact IDs, one per UTF-8 line, ignoring blank lines and
+full-line `#` comments. IDs from files and `--cell-id` are ORed before the
+remaining selectors are applied. Each completed run atomically refreshes
+`campaign_summary_ids/`; use one or more of its status files to target a retry.
+By default obsolete heavy attempt payloads are removed after compact metadata,
+logs, and live current/equivalent owners are protected. Use
+`--no-artifacts-removal` only when full failed-attempt payloads are needed.
+Keyboard interruption leaves attempts sealed with compact diagnostics before
+the same heavy-payload cleanup policy is applied.
+
 Where the report protocol permits, the controller parses, resolves, and
 dispatches the real public `pyamplicol generate` and `pyamplicol profile`
 subcommands in-process. Dry runs print directly runnable generation commands
@@ -6717,6 +7088,12 @@ Common recipes
   Recompute instead of reusing same-source currents:
     steer_performance_campaign.py run --force-refresh --table z_table
 
+  Retry exact error and validation-failure IDs:
+    steer_performance_campaign.py run \
+      --cell-id-file campaign_summary_ids/error.txt \
+                     campaign_summary_ids/validation_failed.txt \
+      --force-refresh
+
   Keep completed cells while complementing them with a new clean build:
     steer_performance_campaign.py run --continue-across-revisions \\
       --table z_table
@@ -6746,7 +7123,7 @@ Keyboard controls
   Tab or ←/→  cycle available commands       y  copy the exact command
   p           print the exact command outside the dashboard for selection
   Esc         close the command drawer        ?  show dashboard help
-  Ctrl-C      stop safely and discard partial attempts
+  Ctrl-C      stop safely, preserve compact diagnostics, and summarize IDs
 
 The selected-worker panel preserves typed engine details when available,
 including recurrence stages, current/contribution counts, relation counts,
@@ -6835,6 +7212,22 @@ def _selector_parent() -> argparse.ArgumentParser:
         action="append",
         metavar="CELL",
         help="Exact canonical cell identity; repeat or supply multiple values.",
+    )
+    parent.add_argument(
+        "--cell-id-file",
+        nargs="+",
+        action="append",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "UTF-8 file containing one exact canonical cell ID per line; blank "
+            "lines and full-line # comments are ignored. Repeat or supply "
+            "multiple paths. IDs are unioned with --cell-id and intersected "
+            "with every other selector. Wildcards are not accepted in files. "
+            "Running blocked_dependency.txt plans its prerequisite closure; "
+            "use --force-refresh when a selected ID already has a reusable "
+            "terminal current."
+        ),
     )
     return parent
 
@@ -6936,7 +7329,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="SECONDS",
         help=(
             "Grace after SIGTERM before a remaining process tree is killed; "
-            "cancelled partial attempts are then discarded."
+            "cancelled attempts are then sealed with compact diagnostics, while "
+            "obsolete heavy payloads follow the configured cleanup policy."
         ),
     )
     resources.add_argument(
@@ -6996,7 +7390,18 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Create a fresh generation+measurement attempt even when a "
             "complete current exists (including one accepted through "
-            "--continue-across-revisions); history is retained."
+            "--continue-across-revisions). Compact history is retained; "
+            "obsolete heavy payloads follow the default cleanup policy."
+        ),
+    )
+    behavior.add_argument(
+        "--no-artifacts-removal",
+        action="store_true",
+        help=(
+            "Retain every heavy attempt artifact for debugging. By default, "
+            "each completed cell archives obsolete attempt metadata and logs "
+            "while removing only heavy payload directories; live current and "
+            "equivalent-cell artifact owners are always preserved."
         ),
     )
     behavior.add_argument(

@@ -273,17 +273,19 @@ def _sector_intermediate_order_words(
     representatives.  This retains the distinct cyclic classes needed by
     three or more open lines without creating duplicate physical sectors.
 
-    Non-LC recursion keeps the physical words because its canonical closure
-    sink is selected independently of the LC fixed-sink traversal convention.
+    Non-LC recursion keeps one sector-private traversal.  For open lines this
+    is the authenticated canonical closure traversal, so intermediate currents
+    and the final sink use the same orientation without changing the public
+    physical colour word.
     """
 
     physical_words = sector.color_words
-    if (
-        not include_compatible_traversals
-        or sector.kind != "open-lines"
-        or not physical_words
-        or not physical_words[0]
-    ):
+    if not include_compatible_traversals:
+        if sector.kind == "open-lines" and process is not None:
+            canonical_word = sector.canonical_closure_traversal_word(process)
+            return (canonical_word,) if canonical_word else physical_words
+        return physical_words or sector.admissible_traversal_words
+    if sector.kind != "open-lines" or not physical_words or not physical_words[0]:
         return physical_words or sector.admissible_traversal_words
 
     sink_label = (
@@ -382,11 +384,12 @@ def _closure_candidate_splits(
     sink_labels: list[int] = []
     if color_engine.shared_lc_fixed_sink_label is not None:
         sink_labels.append(color_engine.shared_lc_fixed_sink_label)
+    sectors = color_engine.color_plan.sectors
     if not sink_labels and (
         color_engine.color_plan.color_accuracy == "lc"
         or color_engine.shared_single_trace
+        or any(sector.kind == "open-lines" for sector in sectors)
     ):
-        sectors = color_engine.color_plan.sectors
         if reference_color_order is not None:
             selected_sectors = tuple(
                 sector

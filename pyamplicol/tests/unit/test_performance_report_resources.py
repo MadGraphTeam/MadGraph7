@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import signal
 import subprocess
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -491,7 +492,7 @@ def test_ordinary_worker_environment_remains_compatible(
     assert observed["pythonpath"] == "/ordinary/controller/path"
 
 
-def test_supervisor_enforces_memory_limit_and_fails_closed_on_probe_error() -> None:
+def test_supervisor_enforces_memory_limit_and_preserves_exit_on_probe_error() -> None:
     process = FakeProcess()
 
     def terminate(_pgid: int, _members: object, selected_signal: int) -> None:
@@ -520,7 +521,7 @@ def test_supervisor_enforces_memory_limit_and_fails_closed_on_probe_error() -> N
         snapshotter=lambda: (_ for _ in ()).throw(OSError("unavailable")),
         popen_factory=lambda *_args, **_kwargs: completed,
     )
-    assert unavailable.reason == "memory_probe_error"
+    assert unavailable.reason == "worker_exit"
     assert unavailable.returncode == 7
     assert not unavailable.usage.available
     assert unavailable.usage.error == "unavailable"
@@ -704,6 +705,96 @@ def test_defaults_and_invalid_limits() -> None:
             ("worker",),
             environment_overrides={"INVALID=NAME": "value"},
         )
+    with pytest.raises(ValueError, match="stderr_limit_bytes"):
+        supervise_worker(("worker",), stderr_limit_bytes=0)
+
+
+@pytest.mark.parametrize(
+    ("script", "expected_returncode", "expected_signal"),
+    (
+        ("raise SystemExit(23)", 23, None),
+        (
+            "import os, signal; os.kill(os.getpid(), signal.SIGSEGV)",
+            -signal.SIGSEGV,
+            "SIGSEGV",
+        ),
+        (
+            "import os, signal; os.kill(os.getpid(), signal.SIGKILL)",
+            -signal.SIGKILL,
+            "SIGKILL",
+        ),
+    ),
+)
+def test_supervisor_preserves_worker_exit_and_decodes_signals(
+    script: str,
+    expected_returncode: int,
+    expected_signal: str | None,
+) -> None:
+    result = supervise_worker(
+        (sys.executable, "-c", script),
+        interval_seconds=0.01,
+        capture_stderr=True,
+    )
+
+    assert result.reason == "worker_exit"
+    assert result.returncode == expected_returncode
+    assert result.signal_name == expected_signal
+    assert result.signal_number == (
+        None if expected_returncode >= 0 else -expected_returncode
+    )
+    assert result.pid is not None
+    assert result.pid in result.member_pids
+    assert result.started_at_utc is not None
+    assert result.finished_at_utc is not None
+    assert result.supervisor_stderr is None
+
+
+def test_supervisor_retains_bounded_native_abort_stderr() -> None:
+    marker = "native evaluator abort: synthetic fault"
+    script = (
+        "import os; "
+        f"os.write(2, ({marker!r} + '\\n').encode()); "
+        "os.abort()"
+    )
+    result = supervise_worker(
+        (sys.executable, "-c", script),
+        interval_seconds=0.01,
+        capture_stderr=True,
+        stderr_limit_bytes=32,
+    )
+
+    assert result.reason == "worker_exit"
+    assert result.returncode == -signal.SIGABRT
+    assert result.signal_name == "SIGABRT"
+    assert result.supervisor_stderr is not None
+    assert result.supervisor_stderr.endswith("synthetic fault\n")
+    assert result.supervisor_stderr_truncated
+    assert result.supervisor_stderr_limit_bytes == 32
+
+
+def test_worker_exit_remains_primary_when_phase_state_also_fails(
+    tmp_path: Path,
+) -> None:
+    process = FakeProcess()
+    process.returncode = -signal.SIGSEGV
+    channel = WorkerPhaseChannel.create(tmp_path / "phase.json")
+    channel.path.write_text("{malformed", encoding="ascii")
+
+    result = supervise_worker(
+        ("worker",),
+        generation_timeout_seconds=2.0,
+        phase_channel=channel,
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 100)},
+        popen_factory=lambda *_args, **_kwargs: process,
+    )
+
+    assert result.reason == "worker_exit"
+    assert result.returncode == -signal.SIGSEGV
+    assert result.signal_name == "SIGSEGV"
+    assert result.phase_state_error is not None
+    assert "valid JSON" in result.phase_state_error
+    assert result.generation_phase is not None
+    assert result.generation_phase.supervisor_reason == "worker_exit"
 
 
 def test_generation_limit_excludes_preparation_and_post_generation(

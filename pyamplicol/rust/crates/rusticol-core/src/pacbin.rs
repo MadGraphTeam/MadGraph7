@@ -705,7 +705,10 @@ fn validate_write_index_bounds(members: &[PacbinWriteMember<'_>]) -> RusticolRes
     Ok(index_size)
 }
 
-fn create_temporary_file(destination: &Path, parent: &Path) -> RusticolResult<(PathBuf, File)> {
+pub(crate) fn create_temporary_file(
+    destination: &Path,
+    parent: &Path,
+) -> RusticolResult<(PathBuf, File)> {
     let file_name = destination
         .file_name()
         .ok_or_else(|| RusticolError::invalid_argument("pacbin destination must name a file"))?;

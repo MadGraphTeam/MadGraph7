@@ -390,9 +390,11 @@ def test_repeated_keyboard_interrupt_waits_for_cleanup_before_closing_lease(
         *,
         observer: object = None,
         cancelled: object = None,
+        campaign_invocation_id: str | None = None,
     ) -> object:
         del observer
         if cancelled is not None:
+            assert campaign_invocation_id
             cancelled_callbacks.append(cancelled)
         return object()
 
@@ -411,6 +413,21 @@ def test_repeated_keyboard_interrupt_waits_for_cleanup_before_closing_lease(
     )
     monkeypatch.setattr(manual_campaign, "require_measurement_ready", lambda _s: None)
     monkeypatch.setattr(manual_campaign, "update_source_marker", lambda *_a: False)
+    monkeypatch.setattr(
+        manual_campaign,
+        "_bind_original_amplicol_if_required",
+        lambda *_a, **_k: None,
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "reconcile_attempt_history",
+        lambda *_a, **_k: (),
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "_publish_campaign_summary_ids",
+        lambda *_a, **_k: (tmp_path / "campaign_summary_ids", {}),
+    )
     monkeypatch.setattr(manual_campaign, "_campaign_settings", settings)
     monkeypatch.setattr(manual_campaign, "CampaignScheduler", FakeScheduler)
     monkeypatch.setattr(manual_campaign, "LeaseManager", FakeLease)
@@ -433,8 +450,12 @@ def test_repeated_keyboard_interrupt_waits_for_cleanup_before_closing_lease(
         warmups=0,
         minimum_samples=5,
         termination_grace=0.01,
+        no_artifacts_removal=False,
     )
-    service = SimpleNamespace(store=object())
+    service = SimpleNamespace(
+        store=object(),
+        paths=SimpleNamespace(docs_dir=tmp_path),
+    )
 
     result = manual_campaign._run_campaign(
         arguments,

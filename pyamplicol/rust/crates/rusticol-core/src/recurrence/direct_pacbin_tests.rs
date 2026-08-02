@@ -52,6 +52,14 @@ fn direct_pacbin_round_trips_with_one_aligned_indexed_member() {
             .unwrap(),
         b"PACRDAP2"
     );
+    let retained: Vec<_> = fs::read_dir(&directory)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert_eq!(
+        retained,
+        [std::ffi::OsString::from("recurrence-runtime.pacbin")]
+    );
     fs::remove_dir_all(directory).unwrap();
 }
 
@@ -63,6 +71,21 @@ fn direct_pacbin_is_deterministic() {
     write_recurrence_direct_plan_pacbin(&first, &valid_plan()).unwrap();
     write_recurrence_direct_plan_pacbin(&second, &valid_plan()).unwrap();
     assert_eq!(fs::read(&first).unwrap(), fs::read(&second).unwrap());
+    fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn direct_pacbin_removes_the_streaming_temporary_payload_on_error() {
+    let directory = temporary_directory("stream-cleanup");
+    let path = directory.join("recurrence-runtime.pacbin");
+    let error = write_recurrence_direct_plan_pacbin_with_projection_certificate(
+        &path,
+        &valid_plan(),
+        Some(b"invalid certificate"),
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("certificate"));
+    assert_eq!(fs::read_dir(&directory).unwrap().count(), 0);
     fs::remove_dir_all(directory).unwrap();
 }
 
