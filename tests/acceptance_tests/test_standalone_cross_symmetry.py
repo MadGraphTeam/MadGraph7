@@ -3288,6 +3288,23 @@ class TestMadeventRouterColorSelection(unittest.TestCase):
     COLOUR TOPOLOGY DISTRIBUTION of two full event samples, one routed and one
     built with --use_crossing=False.
 
+    That comparison is run over two canonical forms, because the colour-only one
+    has a structural blind spot.  Canonicalising a topology means minimising it
+    over every relabelling of the legs, and legs may only be exchanged when they
+    have the same TYPE.  With the type (status, pid) the two gluons of
+    g g > q q~ are interchangeable, so the minimisation swaps them freely and
+    maps that class's two colour flows onto each other: both collapse into ONE
+    category, and NO redistribution between them can ever be detected.  Adding
+    the helicity to the type -- (status, pid, helicity) -- pins the permutation
+    whenever the gluons differ in helicity and separates the flows again.  That
+    refinement is what exposed a crossing build assigning ~10% of g g > q q~ a
+    colour flow drawn ~50/50 instead of from JAMP2: the recycled optim of a
+    crossing BASE kept every helicity config instead of the good-hel union, and
+    the configs with |M|^2 == 0 still carry non-zero individual diagrams and
+    JAMPs, which silently reweighted the AMP2 channel weights and the JAMP2
+    colour weights.  Marginal helicity, marginal colour and the cross section
+    were all correct while that was happening; only the correlation moved.
+
     ``g u u~`` dijets rather than ``p p > j j``: same subprocess groups, same
     routers, one quark flavour instead of four, so a generation takes seconds.
     """
@@ -3310,6 +3327,11 @@ class TestMadeventRouterColorSelection(unittest.TestCase):
     # allowance. The defect this guards moves it by ~3 points (0.403 -> 0.435 on
     # u~ g > u~ g at these beams, 8 sigma); the fix leaves it inside 1 sigma.
     MAX_SHIFT = 0.015
+    # Significance of the homogeneity chi-square (see _homogeneity), used by
+    # TestMadeventCrossingBaseColorFlow rather than by this class. 4 sigma
+    # (p ~ 3e-5) keeps a spurious failure rare while leaving a wide margin on
+    # the defect it guards: measured 0.4 on 3 dof fixed, 24.5 critical.
+    CHI2_Z = 4.0
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp(prefix='cross_router_col_')
@@ -3509,7 +3531,7 @@ class TestMadeventRouterColorSelection(unittest.TestCase):
 
         ref = self._topologies(plain, lhe_parser)
         got = self._topologies(routed, lhe_parser)
-        nall = sum(sum(c.values()) for c in ref.values())
+        nall = sum(sum(c['colour'].values()) for c in ref.values())
         self.assertGreater(nall, 0,
                            'the --use_crossing=False build produced no events')
         # The launch has to have honoured `set nevents`: at the run_card default
@@ -3523,44 +3545,59 @@ class TestMadeventRouterColorSelection(unittest.TestCase):
 
         compared = []
         for flav in sorted(ref):
-            nref = sum(ref[flav].values())
-            ngot = sum(got.get(flav, {}).values())
+            nref = sum(ref[flav]['colour'].values())
+            ngot = sum(got.get(flav, {}).get('colour', {}).values())
             logger.info('  %-18s %7d ref %7d routed   %s', self._fmt(flav),
                         nref, ngot,
                         ' '.join('%.4f/%.4f' % (
-                            got.get(flav, {}).get(t, 0) / float(ngot or 1),
-                            ref[flav][t] / float(nref))
-                            for t in sorted(ref[flav])))
+                            got.get(flav, {}).get('colour', {}).get(t, 0)
+                            / float(ngot or 1),
+                            ref[flav]['colour'][t] / float(nref))
+                            for t in sorted(ref[flav]['colour'])))
             if nref < self.MIN_CLASS or not ngot:
                 continue
             compared.append(flav)
-            # (a) as specified: no topology the reference never produces
-            extra = [t for t in got[flav]
-                     if t not in ref[flav]
-                     and nref * got[flav][t] / float(ngot) >= 5.0]
-            self.assertFalse(
-                extra,
-                '%s: the routed build writes %d colour topology(ies) the '
-                '--use_crossing=False build never produces (%s)'
-                % (self._fmt(flav), len(extra),
-                   ', '.join('%d events' % got[flav][t] for t in extra)))
-            # (b) and, strictly stronger, the same MIX of them: a wrong ICOLAMP
-            # row moves weight between topologies both builds can produce, so
-            # (a) alone does not see it.
-            for topo in set(list(ref[flav]) + list(got[flav])):
-                pref = ref[flav].get(topo, 0) / float(nref)
-                pgot = got[flav].get(topo, 0) / float(ngot)
-                sigma = math.sqrt(pref * (1 - pref) / nref
-                                  + pgot * (1 - pgot) / ngot)
-                self.assertLessEqual(
-                    abs(pgot - pref), max(self.MAX_SHIFT, 4.0 * sigma),
-                    '%s: colour topology %s carries %.4f of the class in the '
-                    'routed build but %.4f in the --use_crossing=False build '
-                    '(%d vs %d events, %.1f sigma) -- the router is not '
-                    'choosing the flow the module itself would'
-                    % (self._fmt(flav), topo, pgot, pref, got[flav].get(topo, 0),
-                       ref[flav].get(topo, 0),
-                       abs(pgot - pref) / sigma if sigma else 0.0))
+            # Both observables, weakest first. 'colour' is what a wrong ICOLAMP
+            # row moves; 'joint' additionally catches anything that moves the
+            # flow WITHIN a helicity configuration, which for a class with two
+            # identical gluons is the only thing there is to see.
+            for obs in ('colour', 'joint'):
+                rbin, gbin = ref[flav][obs], got[flav][obs]
+                # (a) as specified: no category the reference never produces
+                extra = [t for t in gbin
+                         if t not in rbin
+                         and nref * gbin[t] / float(ngot) >= 5.0]
+                self.assertFalse(
+                    extra,
+                    '%s: the routed build writes %d %s category(ies) the '
+                    '--use_crossing=False build never produces (%s)'
+                    % (self._fmt(flav), len(extra), obs,
+                       ', '.join('%d events' % gbin[t] for t in extra)))
+                # (b) and, strictly stronger, the same MIX of them: a wrong
+                # ICOLAMP row moves weight between categories both builds can
+                # produce, so (a) alone does not see it.
+                for topo in set(list(rbin) + list(gbin)):
+                    pref = rbin.get(topo, 0) / float(nref)
+                    pgot = gbin.get(topo, 0) / float(ngot)
+                    sigma = math.sqrt(pref * (1 - pref) / nref
+                                      + pgot * (1 - pgot) / ngot)
+                    self.assertLessEqual(
+                        abs(pgot - pref), max(self.MAX_SHIFT, 4.0 * sigma),
+                        '%s: %s category %s carries %.4f of the class in the '
+                        'routed build but %.4f in the --use_crossing=False '
+                        'build (%d vs %d events, %.1f sigma) -- the crossing '
+                        'build is not choosing the flow the module itself would'
+                        % (self._fmt(flav), obs, topo, pgot, pref,
+                           gbin.get(topo, 0), rbin.get(topo, 0),
+                           abs(pgot - pref) / sigma if sigma else 0.0))
+                # Deliberately NOT the homogeneity chi-square here, though
+                # _homogeneity is what TestMadeventCrossingBaseColorFlow uses.
+                # g g > g g carries 325k of the 400k events in this process, and
+                # at that size a chi-square resolves differences far below the
+                # MAX_SHIFT floor this test was calibrated around -- it would be
+                # a much tighter bar than intended on the classes it was never
+                # meant to police. The sharp statistic belongs on the class it
+                # was measured on.
         # The comparison is only worth anything if it reached the class the
         # router actually serves; without this it degrades to g g > g g, which
         # no router touches, and passes whatever the routers do.
@@ -3570,33 +3607,80 @@ class TestMadeventRouterColorSelection(unittest.TestCase):
             'the %d compared (%s), so this test checked nothing about the '
             'router' % (self._fmt(self.ROUTED_CLASS), len(compared),
                         ', '.join(self._fmt(f) for f in compared)))
+        # The identical-gluon class g g > u u~ is deliberately NOT required
+        # here: g g > g g takes 81% of this process and starves it to 0.5%
+        # (2139 events in 400k), which is an order of magnitude short of what
+        # it takes to resolve a flow shift inside it. TestMadeventCrossingBase-
+        # ColorFlow covers that class on a process where it is not starved.
 
     @staticmethod
     def _fmt(flav):
         return '%s > %s' % (' '.join(str(p) for p in flav[0]),
                             ' '.join(str(p) for p in flav[1]))
 
+    @staticmethod
+    def _homogeneity(ref, got):
+        """(chi2, dof, critical value) for 'both samples share one category mix'.
+
+        The per-category threshold above asks each category on its own to move by
+        more than max(MAX_SHIFT, 4 sigma). That is the right shape for a flow
+        that lands in the wrong bucket outright, but it has little power against
+        a COHERENT redistribution: the shift is divided among the categories and
+        each piece stays under the bar while the pattern as a whole is far from
+        chance. This is the standard 2 x K homogeneity chi-square on the raw
+        counts, which aggregates exactly that pattern.
+
+        Critical value is the Wilson-Hilferty quantile at CHI2_Z, so no scipy.
+        """
+        cats = set(list(ref) + list(got))
+        nref, ngot = sum(ref.values()), sum(got.values())
+        tot = float(nref + ngot)
+        chi2, nbin = 0.0, 0
+        for cat in cats:
+            oref, ogot = ref.get(cat, 0), got.get(cat, 0)
+            row = oref + ogot
+            if not row:
+                continue
+            nbin += 1
+            eref, egot = row * nref / tot, row * ngot / tot
+            chi2 += (oref - eref) ** 2 / eref + (ogot - egot) ** 2 / egot
+        dof = max(nbin - 1, 1)
+        crit = dof * (1 - 2.0 / (9 * dof)
+                      + TestMadeventRouterColorSelection.CHI2_Z
+                      * math.sqrt(2.0 / (9 * dof))) ** 3
+        return chi2, dof, crit
+
     @classmethod
     def _topologies(cls, outdir, lhe_parser):
-        """{flavour class: {canonical colour topology: events}} from the LHE."""
+        """{flavour class: {observable: {canonical category: events}}}.
+
+        Two observables per event, both canonicalised the same way (see
+        _canon_topology): 'colour' is the colour topology alone, 'joint' is the
+        colour topology with each leg additionally typed by its HELICITY.
+        'joint' is strictly finer, and for a class with two identical gluons it
+        is the only one that separates the flows at all -- see the class
+        docstring.
+        """
         lhe = pjoin(outdir, 'Events', 'run_01', 'unweighted_events.lhe.gz')
         out = {}
         cache = {}
         for event in lhe_parser.EventFile(lhe):
-            parts = [(int(p.status), int(p.pid), int(p.color1), int(p.color2))
-                     for p in event]
+            parts = [(int(p.status), int(p.pid), int(p.color1), int(p.color2),
+                      int(p.helicity)) for p in event]
             key = tuple(parts)
             if key not in cache:
                 flav = (tuple(sorted(p[1] for p in parts if p[0] == -1)),
                         tuple(sorted(p[1] for p in parts if p[0] == 1)))
-                cache[key] = (flav, cls._canon_topology(parts))
-            flav, topo = cache[key]
-            bucket = out.setdefault(flav, {})
-            bucket[topo] = bucket.get(topo, 0) + 1
+                cache[key] = (flav, cls._canon_topology(parts),
+                              cls._canon_topology(parts, helicity=True))
+            flav, topo, joint = cache[key]
+            bucket = out.setdefault(flav, {'colour': {}, 'joint': {}})
+            bucket['colour'][topo] = bucket['colour'].get(topo, 0) + 1
+            bucket['joint'][joint] = bucket['joint'].get(joint, 0) + 1
         return out
 
     @staticmethod
-    def _canon_topology(parts):
+    def _canon_topology(parts, helicity=False):
         """Colour topology of one event, free of the leg-ordering convention.
 
         The connections are (leg holding a colour, leg holding the matching
@@ -3607,9 +3691,19 @@ class TestMadeventRouterColorSelection(unittest.TestCase):
         result is then minimised over every relabelling of the legs, so two
         modules that write the same physical flow in a different leg order give
         the same answer.
+
+        The minimisation is only allowed to move legs of the same TYPE, and the
+        type is what decides how much the canonical form can still see. With
+        helicity=False the type is (status, pid), so two identical gluons are
+        interchangeable and the minimisation is free to swap them -- which maps
+        the two colour flows of g g > q q~ onto each other and collapses them
+        into a single category, making any redistribution between them
+        invisible. With helicity=True the type is (status, pid, helicity),
+        which pins the permutation whenever the two gluons differ in helicity
+        and keeps the flows apart.
         """
         col, anti = {}, {}
-        for i, (status, _pid, c, a) in enumerate(parts):
+        for i, (status, _pid, c, a, _h) in enumerate(parts):
             if status == -1:
                 c, a = a, c
             if c:
@@ -3621,7 +3715,10 @@ class TestMadeventRouterColorSelection(unittest.TestCase):
             for cc, aa in zip(sorted(col.get(label, [])),
                               sorted(anti.get(label, []))):
                 conns.add((cc, aa))
-        types = [(p[0], p[1]) for p in parts]
+        if helicity:
+            types = [(p[0], p[1], p[4]) for p in parts]
+        else:
+            types = [(p[0], p[1]) for p in parts]
         nleg = len(parts)
         best = None
         for perm in itertools.permutations(range(nleg)):
@@ -3820,3 +3917,134 @@ class TestMadeventCrossingFinalLegSplit(unittest.TestCase):
             'the default (mg7) export produced nothing with '
             'MG_SPLIT_CROSSING=on -- the split fired for a backend that '
             'cannot consume it')
+
+
+class TestMadeventCrossingBaseColorFlow(unittest.TestCase):
+    """A crossing BASE must pick the colour flow the same way with the crossing
+    machinery on as with it off.
+
+    Different code path from TestMadeventRouterColorSelection.  There is no
+    router here: ``u u~ > g g`` is a cross-GROUP (Track B) dependent and simply
+    reuses the compiled matrix element of ``g g > u u~``, which is the base.
+    What the base has to get right is not a mask but its own recycled optim --
+    and that is generated at RUN time by gen_ximprove, over the good-helicity
+    set.  Keeping every helicity config there instead of the good-hel union
+    looks harmless, because the |M|^2 sum is unchanged, but the same loop also
+    accumulates AMP2 (the single-diagram multi-channel weights) and JAMP2 (the
+    colour-flow weights), and a config whose |M|^2 vanishes still has non-zero
+    individual diagrams and JAMPs.  For g g > q q~ that gave the s-channel
+    config -- whose AMP2 is exactly zero over the good helicities -- about 10%
+    of the subprocess, and SELECT_COLOR masks JAMP2 by ICONFIG, so those events
+    took their flow from a polluted JAMP2 rather than the real one.
+
+    Only the CORRELATION moves.  The cross section stayed right to 4 digits
+    (the multi-channel weights are self-normalising), and so did the marginal
+    helicity and the marginal colour distributions.  Seeing it needs the joint
+    (helicity, colour) observable -- and for a class with two identical gluons
+    the colour-only canonical form is not merely weak but structurally blind:
+    it puts every event of g g > u u~ in ONE category, so its chi-square is
+    identically 0 no matter what the code does.
+
+    ``g g > u u~`` plus ``u u~ > g g`` rather than the dijet process the router
+    test uses: same base/dependent crossing pair, but g g > g g is not there to
+    take 81% of the events and starve the class being measured to 0.5%.
+    """
+
+    NEVENTS = 200000
+    SEED = 777
+    CLASS = ((21, 21), (-2, 2))    # g g > u u~
+    # It takes roughly 10k events in the class to resolve the shift; the point
+    # of this process is that essentially the whole sample lands there.
+    MIN_CLASS = 20000
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='cross_base_col_')
+
+    def tearDown(self):
+        if os.path.isdir(self.tmpdir):
+            shutil.rmtree(self.tmpdir)
+
+    def _generate(self, options, name):
+        from madgraph import MG5DIR
+        outdir = pjoin(self.tmpdir, name)
+        card = pjoin(self.tmpdir, 'cmd_%s.txt' % name)
+        with open(card, 'w') as fsock:
+            fsock.writelines(
+                ['generate g g > u u~ %s\n' % options,
+                 'add process u u~ > g g %s\n' % options,
+                 'output madevent %s -f -nojpeg\n' % outdir,
+                 'launch\n',
+                 'set nevents %d\n' % self.NEVENTS,
+                 'set iseed %d\n' % self.SEED,
+                 # a broken local lhapdf kills the systematics step
+                 'set use_syst False\n',
+                 'set lpp2 -1\n'])
+        subprocess.call([sys.executable, pjoin(MG5DIR, 'bin', 'mg5_aMC'), card])
+        self.assertTrue(os.path.isdir(pjoin(outdir, 'SubProcesses')),
+                        'madevent produced no output for %r' % (options or
+                                                                'the default'))
+        return outdir
+
+    def test_crossing_base_colour_flow_matches_no_crossing(self):
+        from madgraph.various import lhe_parser
+        helper = TestMadeventRouterColorSelection
+
+        crossed = self._generate('', 'on')
+        plain = self._generate('--use_crossing=False', 'off')
+
+        # The crossing really has to be in play, or this compares two identical
+        # builds and passes on anything.
+        base = pjoin(crossed, 'SubProcesses', 'P1_gg_qq',
+                     'crossgroup_helunion.dat')
+        self.assertTrue(
+            os.path.exists(base),
+            'the default build has no crossing base for g g > u u~ (no %s), so '
+            'this test exercises no crossing at all' % os.path.basename(base))
+        self.assertFalse(
+            os.path.exists(pjoin(plain, 'SubProcesses', 'P1_gg_qq',
+                                 'crossgroup_helunion.dat')),
+            '--use_crossing=False still emitted a crossing base')
+
+        ref = helper._topologies(plain, lhe_parser)
+        got = helper._topologies(crossed, lhe_parser)
+        self.assertIn(self.CLASS, ref,
+                      'the --use_crossing=False build produced no %s events'
+                      % helper._fmt(self.CLASS))
+        self.assertIn(self.CLASS, got,
+                      'the crossing build produced no %s events'
+                      % helper._fmt(self.CLASS))
+
+        rall, gall = ref[self.CLASS], got[self.CLASS]
+        nref = sum(rall['colour'].values())
+        ngot = sum(gall['colour'].values())
+        self.assertGreaterEqual(
+            min(nref, ngot), self.MIN_CLASS,
+            '%s got %d/%d events, below the %d this comparison needs to '
+            'resolve a colour-flow shift'
+            % (helper._fmt(self.CLASS), nref, ngot, self.MIN_CLASS))
+
+        # The colour-only form cannot see anything here -- assert that, so the
+        # reason the joint form is required stays documented in the suite and a
+        # future 'simplification' back to it fails loudly instead of quietly
+        # testing nothing.
+        self.assertEqual(
+            len(set(list(rall['colour']) + list(gall['colour']))), 1,
+            'the colour-only canonical form no longer merges the two flows of '
+            '%s into one category; the blind spot this test exists for may '
+            'have moved' % helper._fmt(self.CLASS))
+
+        chi2, dof, crit = helper._homogeneity(rall['joint'], gall['joint'])
+        logger.info('  %s: %d ref / %d crossed events, joint chi2 %.1f on %d '
+                    'dof (critical %.1f)', helper._fmt(self.CLASS), nref, ngot,
+                    chi2, dof, crit)
+        self.assertGreater(dof, 1,
+                           'the helicity-refined form separated only %d '
+                           'category(ies), so it is no finer than the '
+                           'colour-only one' % (dof + 1))
+        self.assertLessEqual(
+            chi2, crit,
+            '%s: the (helicity, colour) mix differs between the crossing build '
+            'and the --use_crossing=False build (chi2 = %.1f on %d dof, '
+            'critical %.1f) -- the crossing base is not choosing the colour '
+            'flow the module itself would'
+            % (helper._fmt(self.CLASS), chi2, dof, crit))

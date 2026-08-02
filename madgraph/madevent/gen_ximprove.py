@@ -329,18 +329,29 @@ class gensym(object):
 
                 # Convert to sorted list for reproducibility
                 #good_hels = sorted(list(good_hels))
-                good_set = set(all_good_hels[me_index])
+                base_good = set(all_good_hels[me_index])
+                good_set = set(base_good)
                 # Crossing base: the shared optim is also evaluated with each
                 # dependent's CROSSED helicity configs, but the recycled MATRIX
-                # bakes the base's helicity configs (it takes no runtime NHEL).
-                # The full helicity SUM is invariant under the crossing's helicity
-                # permutation, whereas the base's own good-hel SUBSET is not the
-                # dependent's -- dropping configs here biases a crossed dependent.
-                # So keep EVERY config for a base of a crossing class; wavefunction
-                # recycling is retained, only the good-hel config filter is off.
+                # bakes the base's helicity configs (it takes no runtime NHEL), so
+                # the base's own good-hel SUBSET is not the dependent's and
+                # filtering on it alone would bias a crossed dependent. Keep the
+                # UNION over the class: h survives if it is good for the base, or
+                # if some dependent reaches a base-good config through its
+                # crossing (perm[h] good).
+                # Keeping EVERY config instead is NOT a safe over-approximation.
+                # The recycled K loop also accumulates AMP2 (the single-diagram
+                # multi-channel weights) and JAMP2 (the colour-flow weights) from
+                # every config it keeps, and those are not the gauge-invariant
+                # |M|^2: a config whose |M|^2 vanishes still has non-zero
+                # individual diagrams and JAMPs, so keeping it silently reweights
+                # channel and colour selection. For g g > q q~ that resurrected
+                # the s-channel config, whose AMP2 is exactly zero over the good
+                # helicities, and diluted the colour flow toward 50/50.
                 perms = helunion.get(me_index, [])
-                if perms:
-                    good_set = set(range(1, len(perms[0]) + 1))
+                for perm in perms:
+                    good_set |= set(h for h, p in enumerate(perm, 1)
+                                    if p in base_good)
                 good_hels = [str(x) for x in sorted(good_set)]
 
                 mtext = open(matrix_file).read()
@@ -360,8 +371,14 @@ class gensym(object):
                 # generated -- and reuse the representative's |M|^2 for it. The
                 # reuse indices are the OPTIM's re-indexed positions in good_hels
                 # (helicity indices are renumbered 1..len(good_hels) in the optim).
-                # Disabled for a crossing-class base (perms), which keeps every
-                # config unoptimised.
+                # Still disabled for a crossing-class base (perms): the pairing
+                # is baked at the BASE's re-indexed positions, and a dependent
+                # reads those rows through its own crossing permutation, so the
+                # reuse is not obviously its mirror pairing. That costs only
+                # speed -- both rows of a pair get computed -- and not
+                # correctness, since AMP2/JAMP2 ratios do not depend on WHICH
+                # subset of the good configs is summed (they are the same for a
+                # row and its mirror).
                 csym_reuse_pairs = []
                 if not perms and all_csym[me_index]:
                     opt_index = {h: i + 1 for i, h in enumerate(sorted(good_set))}
