@@ -902,16 +902,40 @@ def test_summary_statistics_share_fixed_anchors_and_compact_notes(
         reset_caches,
     )
     best_tex = render_best_mode_table(Accuracy.LC, reset_caches)
+    summary_tables = tuple(
+        tex
+        for tex in render_all_tables(reset_caches).values()
+        if r"\providecommand{\matrixsummarystats}" in tex
+    )
+    separator = r"@{\hspace{0.014in}\matrixpunct{|}\hspace{0.014in}}"
+    summary_column_layout = (
+        r"\begin{tabular}[t]{@{}l"
+        + separator
+        + "l"
+        + separator
+        + "l"
+        + separator
+        + "l"
+        + separator
+        + r"l@{}}"
+    )
     fixed_slot_layout = (
-        r"\makebox[3.6em][r]{#1}&"
-        r"\makebox[4.6em][r]{#2}&"
-        r"\makebox[3.6em][r]{#3}&"
-        r"\makebox[4.2em][r]{#4}&"
-        r"\makebox[3.6em][r]{#5}"
+        r"\makebox[3.6em][l]{#1}&"
+        r"\makebox[4.6em][l]{#2}&"
+        r"\makebox[3.6em][l]{#3}&"
+        r"\makebox[4.2em][l]{#4}&"
+        r"\makebox[3.6em][l]{#5}"
     )
 
-    for tex in (fixed_tex, best_tex):
+    assert len(summary_tables) == 19
+    for tex in summary_tables:
+        assert summary_column_layout in tex
         assert fixed_slot_layout in tex
+        assert r"\makebox[3.6em][r]" not in tex
+        assert r"\makebox[4.6em][r]" not in tex
+        assert r"\makebox[4.2em][r]" not in tex
+
+    for tex in (fixed_tex, best_tex):
         assert r"\ReportTableNote{{\scriptsize " in tex
         assert "Every displayed number uses exactly three significant digits" in tex
         assert "weighted-average order" in tex
@@ -2750,10 +2774,52 @@ def test_four_line_contracted_n6_renders_without_legacy_dependency(
     )
 
     assert r"\textbf{n=6}" in tex
-    assert r"\bestmodeabsoluteprefix{\texttt{12.0}}" in tex
+    fixed_generation_row = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith(r"\texttt{14}")
+        and r"\bestmodeabsoluteprefix{\texttt{12.0}}" in line
+    )
+    fixed_runtime_row = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith(r" &  & \textcolor{ReportMuted}{\scriptsize run")
+        and r"\bestmodeabsoluteprefix{\texttt{2.00}}" in line
+    )
+    assert (
+        r"\matrixstaticna{ReportMuted} & "
+        r"\bestmodeabsoluteprefix{\texttt{12.0}} & "
+    ) in fixed_generation_row
+    assert (
+        r"\matrixstaticna{ReportMuted} & "
+        r"\bestmodeabsoluteprefix{\texttt{2.00}} & "
+    ) in fixed_runtime_row
     assert r"\matrixstaticna{ReportMuted}" in tex
     assert "absolute quantities without a baseline ratio" in tex
     assert "n.c." not in tex
+
+    best_tex = render_best_mode_table(Accuracy.FULL, caches)
+    best_generation_row = next(
+        line
+        for line in best_tex.splitlines()
+        if line.startswith(r"\texttt{14}")
+        and r"\bestmodeabsoluteprefix{\texttt{12.0}}" in line
+    )
+    best_runtime_row = next(
+        line
+        for line in best_tex.splitlines()
+        if line.startswith(r" &  & \textcolor{ReportMuted}{\scriptsize run")
+        and r"\bestmodeabsoluteprefix{\texttt{2.00}}" in line
+    )
+    assert (
+        r"\matrixstaticna{ReportMuted} & "
+        r"\bestmodeabsoluteprefix{\texttt{12.0}} & \bestmodecode{r}"
+    ) in best_generation_row
+    assert (
+        r"\matrixstaticna{ReportMuted} & "
+        r"\bestmodeabsoluteprefix{\texttt{2.00}} & "
+    ) in best_runtime_row
+    assert r"\bestmodecode" not in best_runtime_row
 
 
 def test_z_all_flow_setup_generation_ratio_is_not_comparable(

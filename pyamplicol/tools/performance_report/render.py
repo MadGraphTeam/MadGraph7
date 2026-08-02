@@ -1189,16 +1189,16 @@ def _matrix_macros() -> list[str]:
         (
             r"\providecommand{\matrixsummarystats}[5]{"
             r"\begingroup\matrixsummaryfont"
-            r"\begin{tabular}[t]{@{}r"
-            r"@{\hspace{0.014in}\matrixpunct{|}\hspace{0.014in}}r"
-            r"@{\hspace{0.014in}\matrixpunct{|}\hspace{0.014in}}r"
-            r"@{\hspace{0.014in}\matrixpunct{|}\hspace{0.014in}}r"
-            r"@{\hspace{0.014in}\matrixpunct{|}\hspace{0.014in}}r@{}}"
-            r"\makebox[3.6em][r]{#1}&"
-            r"\makebox[4.6em][r]{#2}&"
-            r"\makebox[3.6em][r]{#3}&"
-            r"\makebox[4.2em][r]{#4}&"
-            r"\makebox[3.6em][r]{#5}"
+            r"\begin{tabular}[t]{@{}l"
+            r"@{\hspace{0.014in}\matrixpunct{|}\hspace{0.014in}}l"
+            r"@{\hspace{0.014in}\matrixpunct{|}\hspace{0.014in}}l"
+            r"@{\hspace{0.014in}\matrixpunct{|}\hspace{0.014in}}l"
+            r"@{\hspace{0.014in}\matrixpunct{|}\hspace{0.014in}}l@{}}"
+            r"\makebox[3.6em][l]{#1}&"
+            r"\makebox[4.6em][l]{#2}&"
+            r"\makebox[3.6em][l]{#3}&"
+            r"\makebox[4.2em][l]{#4}&"
+            r"\makebox[3.6em][l]{#5}"
             r"\end{tabular}\endgroup}"
         ),
         (
@@ -2083,7 +2083,7 @@ def _best_mode_runtime_comparison_layout(
         )
         return _BestModeComparisonLayout(
             wall,
-            wall,
+            rf"\bestmodeabsoluteprefix{{{wall}}}",
             "",
         )
     if not _ok(joined.baseline):
