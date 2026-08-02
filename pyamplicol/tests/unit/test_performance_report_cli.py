@@ -280,7 +280,7 @@ def test_final_audit_is_routed_through_the_isolated_result_tables_entrypoint() -
     assert arguments.expected_source_revision == "a" * 40
     assert arguments.publication_revision == "b" * 40
     assert arguments.max_n_final == 9
-    assert arguments.expected_cell_count == 1706
+    assert arguments.expected_cell_count == 1796
     assert arguments.structural_only is True
 
 
@@ -353,7 +353,7 @@ def test_final_audit_receives_the_bound_architecture_profile_service(
     assert observed["expected_source_revision"] == "a" * 40
     assert observed["expected_publication_revision"] == "b" * 40
     assert observed["max_n_final"] == 9
-    assert observed["expected_cell_count"] == 1706
+    assert observed["expected_cell_count"] == 1796
     assert observed["replay"] is False
     assert environment_checks == [(repo.resolve(), profile, "a" * 40)]
     assert json.loads(capsys.readouterr().out)["final_gate_complete"] is True
@@ -497,6 +497,16 @@ def test_populate_dry_run_supports_exact_filters_and_dependencies(
     _initialize_git_repo(repo)
     main(("--repo-root", str(repo), "reset"))
     capsys.readouterr()
+    subprocess.run(
+        ("git", "add", "src/pyamplicol/_profiling_campaign"),
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ("git", "commit", "-q", "-m", "Track reset profile"),
+        cwd=repo,
+        check=True,
+    )
 
     assert (
         main(

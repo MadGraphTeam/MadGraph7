@@ -87,11 +87,11 @@ the ordinary rules, so use `--force-refresh` when the intent is a new attempt;
 replaying `blocked_dependency.txt` automatically includes required
 prerequisites.
 
-The default lifecycle keeps every current artifact and any artifact borrowed
-by an equivalent current. It moves obsolete sealed attempts into compact
-history, retaining metadata, results, logs, progress events, and phase
-timelines while removing only their heavy evaluator payloads. Use
-`--no-artifacts-removal` for a diagnostic run that must retain those payloads.
+The default lifecycle retains every heavy attempt payload. Use
+`--cleanup-artifacts` to move obsolete sealed attempts into compact history,
+retaining metadata, results, logs, progress events, and phase timelines while
+removing only their heavy evaluator payloads. Every current artifact and any
+artifact borrowed by an equivalent current remains protected.
 
 Capture a running dashboard from another terminal without attaching to or
 changing the campaign:

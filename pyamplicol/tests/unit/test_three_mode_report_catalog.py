@@ -101,10 +101,10 @@ def test_lc_cells_have_two_runtime_workloads_and_contracted_cells_have_one() -> 
         for cell in REPORT_CATALOG.matrix_cells()
     )
 
-    assert counts[(Accuracy.LC, Workload.SELECTED_FLOW)] == 404
-    assert counts[(Accuracy.LC, Workload.ALL_FLOW)] == 404
-    assert counts[(Accuracy.NLC, Workload.CONTRACTED)] == 188
-    assert counts[(Accuracy.FULL, Workload.CONTRACTED)] == 188
+    assert counts[(Accuracy.LC, Workload.SELECTED_FLOW)] == 428
+    assert counts[(Accuracy.LC, Workload.ALL_FLOW)] == 428
+    assert counts[(Accuracy.NLC, Workload.CONTRACTED)] == 200
+    assert counts[(Accuracy.FULL, Workload.CONTRACTED)] == 200
     assert all(
         cell.workload is Workload.CONTRACTED
         for cell in REPORT_CATALOG.matrix_cells()
@@ -113,7 +113,13 @@ def test_lc_cells_have_two_runtime_workloads_and_contracted_cells_have_one() -> 
 
 
 def test_extended_lc_families_are_declared_through_n9() -> None:
-    process_keys = {"gg_tt_jets", "gg_gluons", "dd_3q_lines", "dd_4q_lines"}
+    process_keys = {
+        "gg_tt_jets",
+        "gg_gluons",
+        "dd_3q_lines",
+        "dd_4q_lines",
+        "dd_3q_identical_lines",
+    }
     cells = tuple(
         cell
         for cell in REPORT_CATALOG.measurement_cells()
@@ -122,7 +128,7 @@ def test_extended_lc_families_are_declared_through_n9() -> None:
         and cell.measurement.accuracy is Accuracy.LC
     )
 
-    assert len(cells) == 40
+    assert len(cells) == 50
     assert {
         (
             cell.process_key,
@@ -150,12 +156,43 @@ def test_extended_lc_families_are_declared_through_n9() -> None:
     } == {"dd_4q_lines"}
 
 
-def test_n_le_four_new_matrix_smoke_has_384_logical_process_cells() -> None:
+def test_n_le_four_new_matrix_smoke_has_396_logical_process_cells() -> None:
     cells = [cell for cell in REPORT_CATALOG.matrix_cells() if cell.n_final <= 4]
     logical = {(cell.dataset_id, cell.process_key, cell.n_final) for cell in cells}
 
-    assert len(logical) == 384
-    assert len(cells) == 512
+    assert len(logical) == 396
+    assert len(cells) == 528
+
+
+def test_identical_quark_line_family_has_canonical_order_and_full_coverage() -> None:
+    family = next(
+        family
+        for family in REPORT_CATALOG.process_families
+        if family.identifier == 15
+    )
+
+    assert family.key == "dd_3q_identical_lines"
+    assert family.label_tex == r"$d\bar d\to u\bar u\,u\bar u+(n-4)g$"
+    assert family.minimum_n == 4
+    assert family.maximum_n(Accuracy.LC) == 9
+    assert family.maximum_n(Accuracy.NLC) == 6
+    assert family.maximum_n(Accuracy.FULL) == 6
+    assert family.include_3qqbar is True
+    assert family.process(3) is None
+    assert family.process(4) == "d d~ > u u~ u u~"
+    assert family.process(8) == "d d~ > u u~ u u~ g g g g"
+
+    cells = tuple(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.process_key == family.key
+    )
+    assert len(cells) == 90
+    assert not any(REPORT_CATALOG.static_na_reason(cell) for cell in cells)
+    assert REPORT_CATALOG.cell(
+        "matrix-recurrence-builtin-sm-full-n6-"
+        "dd-3q-identical-lines-contracted"
+    ).process == "d d~ > u u~ u u~ g g"
 
 
 def test_z_catalog_adds_recurrence_and_corrects_eager_label() -> None:
@@ -331,15 +368,20 @@ def test_z_variant_generation_cap_contract_is_paired_and_positive() -> None:
 
 
 def test_contracted_multi_quark_coverage_reaches_n6_in_every_mode() -> None:
+    process_keys = {
+        "dd_3q_lines",
+        "dd_3q_identical_lines",
+        "dd_4q_lines",
+    }
     cells = tuple(
         cell
         for cell in REPORT_CATALOG.measurement_cells()
-        if cell.process_key in {"dd_3q_lines", "dd_4q_lines"}
+        if cell.process_key in process_keys
         and cell.n_final == 6
         and cell.measurement.accuracy in {Accuracy.NLC, Accuracy.FULL}
     )
 
-    assert len(cells) == 20
+    assert len(cells) == 30
     assert {
         (
             cell.process_key,
@@ -350,7 +392,7 @@ def test_contracted_multi_quark_coverage_reaches_n6_in_every_mode() -> None:
         for cell in cells
     } == {
         (process_key, accuracy, mode, model)
-        for process_key in {"dd_3q_lines", "dd_4q_lines"}
+        for process_key in process_keys
         for accuracy in {Accuracy.NLC, Accuracy.FULL}
         for mode, model in {
             (ExecutionMode.AMPLICOL, None),
@@ -369,19 +411,24 @@ def test_contracted_multi_quark_coverage_reaches_n6_in_every_mode() -> None:
 
 
 def test_contracted_n6_catalog_impact_is_scoped_to_multi_quark_families() -> None:
+    process_keys = {
+        "dd_3q_lines",
+        "dd_3q_identical_lines",
+        "dd_4q_lines",
+    }
     cells = tuple(
         cell
         for cell in REPORT_CATALOG.measurement_cells()
-        if cell.process_key in {"dd_3q_lines", "dd_4q_lines"}
+        if cell.process_key in process_keys
         and cell.n_final == 6
         and cell.measurement.accuracy is not Accuracy.LC
     )
 
-    assert len(REPORT_CATALOG.measurement_cells()) == 1706
-    assert len(REPORT_CATALOG.matrix_cells()) == 1184
-    assert len(REPORT_CATALOG.reference_cells()) == 296
-    assert len(cells) == 20
-    assert {cell.process_key for cell in cells} == {"dd_3q_lines", "dd_4q_lines"}
+    assert len(REPORT_CATALOG.measurement_cells()) == 1796
+    assert len(REPORT_CATALOG.matrix_cells()) == 1256
+    assert len(REPORT_CATALOG.reference_cells()) == 314
+    assert len(cells) == 30
+    assert {cell.process_key for cell in cells} == process_keys
 
 
 def test_measurement_cells_reuses_one_immutable_catalog_materialization() -> None:
@@ -417,6 +464,10 @@ def test_contracted_n6_rows_are_canonical_reset_cache_entries() -> None:
     }
     assert set(entries) == {
         "matrix-recurrence-builtin-sm-full-n6-dd-3q-lines-contracted",
+        (
+            "matrix-recurrence-builtin-sm-full-n6-"
+            "dd-3q-identical-lines-contracted"
+        ),
         "matrix-recurrence-builtin-sm-full-n6-dd-4q-lines-contracted",
     }
     assert all(
@@ -424,12 +475,18 @@ def test_contracted_n6_rows_are_canonical_reset_cache_entries() -> None:
     )
 
 
-def test_three_line_report_retains_the_original_amplicol_oracle() -> None:
+@pytest.mark.parametrize(
+    "process_key",
+    ("dd_3q_lines", "dd_3q_identical_lines"),
+)
+def test_three_line_reports_retain_the_original_amplicol_oracle(
+    process_key: str,
+) -> None:
     recurrence = next(
         cell
         for cell in REPORT_CATALOG.matrix_cells()
         if cell.dataset_id == "matrix_recurrence_builtin_sm_lc"
-        and cell.process_key == "dd_3q_lines"
+        and cell.process_key == process_key
         and cell.n_final == 4
         and cell.workload is Workload.SELECTED_FLOW
     )

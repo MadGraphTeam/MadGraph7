@@ -233,26 +233,39 @@ with tempfile.TemporaryDirectory(prefix="pyamplicol-profiling-campaign-") as raw
     launcher = campaign / "steer_performance_campaign.py"
     assert launcher.is_file()
     assert not (campaign / "pyAmpliCol.pdf").exists()
+    dry_run_command = (
+        sys.executable,
+        "-I",
+        str(launcher),
+        "run",
+        "--dry-run",
+        "--table",
+        "scalar_contact",
+        "--multiplicity",
+        "2",
+        "--generation-engine",
+        "compiled",
+        "--no-color",
+    )
     dry_run = subprocess.run(
-        (
-            sys.executable,
-            "-I",
-            str(launcher),
-            "run",
-            "--dry-run",
-            "--table",
-            "scalar_contact",
-            "--multiplicity",
-            "2",
-            "--generation-engine",
-            "compiled",
-            "--no-color",
-        ),
+        dry_run_command,
         check=False,
         capture_output=True,
         text=True,
     )
     assert dry_run.returncode == 0, (dry_run.stdout, dry_run.stderr)
+    assert "retained (default)" in dry_run.stdout
+    cleanup_dry_run = subprocess.run(
+        (*dry_run_command, "--cleanup-artifacts"),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert cleanup_dry_run.returncode == 0, (
+        cleanup_dry_run.stdout,
+        cleanup_dry_run.stderr,
+    )
+    assert "cleanup enabled (--cleanup-artifacts)" in cleanup_dry_run.stdout
 print(json.dumps({"mode": mode, "version": version, "sdk_target": sdk.target}))
 """
 )

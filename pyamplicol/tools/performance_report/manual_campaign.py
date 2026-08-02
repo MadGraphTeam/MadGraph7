@@ -99,7 +99,7 @@ DEFAULT_BATCH_SIZE = 128
 DEFAULT_WARMUP_RUNS = 2
 DEFAULT_MINIMUM_SAMPLES = 5
 DEFAULT_WORKER_STALE_SECONDS = 15.0
-DEFAULT_MANUAL_EXPECTED_PAGE_COUNT = 60
+DEFAULT_MANUAL_EXPECTED_PAGE_COUNT = 59
 _ORIGINAL_AMPLICOL_REQUIRED_FILES = (
     "makefile",
     "process_list.py",
@@ -3830,7 +3830,7 @@ def _live_dashboard_snapshot(
 
 def _snapshot_fixture(
     *,
-    selected: int = 1706,
+    selected: int = 1796,
     recycled: int = 318,
     completed: int = 41,
 ) -> DashboardState:
@@ -5869,8 +5869,8 @@ def _campaign_settings(
         cancellation_requested=cancelled,
         manual_terminal_censors=True,
         discard_cancelled_attempts=False,
-        remove_heavy_attempt_artifacts=not bool(
-            getattr(arguments, "no_artifacts_removal", False)
+        remove_heavy_attempt_artifacts=bool(
+            getattr(arguments, "cleanup_artifacts", False)
         ),
         report_profile=None,
         original_amplicol_repository=arguments.original_amplicol,
@@ -6405,6 +6405,14 @@ def _run_campaign(
                             else "strict same-source"
                         ),
                     ),
+                    (
+                        palette.key("artifact cleanup"),
+                        (
+                            "cleanup enabled (--cleanup-artifacts)"
+                            if bool(getattr(arguments, "cleanup_artifacts", False))
+                            else "retained (default)"
+                        ),
+                    ),
                 ),
             )
         )
@@ -6463,7 +6471,7 @@ def _run_campaign(
         )
     else:
         update_source_marker(service, source)
-    if not bool(getattr(arguments, "no_artifacts_removal", False)):
+    if bool(getattr(arguments, "cleanup_artifacts", False)):
         cleanup_cells = tuple(
             {
                 cell.cell_id: cell
@@ -6643,12 +6651,17 @@ def _run_campaign(
             ),
         )
         _print_campaign_summary_ids(summary_path, summary_counts, palette)
+        artifact_outcome = (
+            "cleanup of eligible obsolete heavy payloads was enabled by "
+            "--cleanup-artifacts"
+            if bool(getattr(arguments, "cleanup_artifacts", False))
+            else "all heavy attempt payloads were retained (default)"
+        )
         print(
             palette.warning(
                 "Interrupted: dispatch stopped, process trees received cancellation, "
                 "compact interrupted-attempt diagnostics and completed currents "
-                "were preserved, obsolete heavy payloads followed the configured "
-                "cleanup policy, and leases were removed."
+                f"were preserved, {artifact_outcome}, and leases were removed."
             ),
             file=sys.stderr,
         )
@@ -7014,11 +7027,12 @@ contracted workload.
 full-line `#` comments. IDs from files and `--cell-id` are ORed before the
 remaining selectors are applied. Each completed run atomically refreshes
 `campaign_summary_ids/`; use one or more of its status files to target a retry.
-By default obsolete heavy attempt payloads are removed after compact metadata,
-logs, and live current/equivalent owners are protected. Use
-`--no-artifacts-removal` only when full failed-attempt payloads are needed.
-Keyboard interruption leaves attempts sealed with compact diagnostics before
-the same heavy-payload cleanup policy is applied.
+By default every heavy attempt payload is retained. Use `--cleanup-artifacts`
+to archive obsolete sealed attempts, retain their compact metadata, results,
+logs, progress events, and timelines, and remove only their heavy payloads;
+live current/equivalent owners remain protected. Keyboard interruption leaves
+attempts sealed with compact diagnostics and retains their heavy payloads
+unless that explicit cleanup option is enabled.
 
 Where the report protocol permits, the controller parses, resolves, and
 dispatches the real public `pyamplicol generate` and `pyamplicol profile`
@@ -7329,8 +7343,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="SECONDS",
         help=(
             "Grace after SIGTERM before a remaining process tree is killed; "
-            "cancelled attempts are then sealed with compact diagnostics, while "
-            "obsolete heavy payloads follow the configured cleanup policy."
+            "cancelled attempts are then sealed with compact diagnostics. Their "
+            "heavy payloads are retained unless --cleanup-artifacts is enabled."
         ),
     )
     resources.add_argument(
@@ -7390,18 +7404,20 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Create a fresh generation+measurement attempt even when a "
             "complete current exists (including one accepted through "
-            "--continue-across-revisions). Compact history is retained; "
-            "obsolete heavy payloads follow the default cleanup policy."
+            "--continue-across-revisions). Complete heavy attempt payloads are "
+            "retained by default; pass --cleanup-artifacts to compact obsolete "
+            "sealed attempts after preserving their diagnostics."
         ),
     )
     behavior.add_argument(
-        "--no-artifacts-removal",
+        "--cleanup-artifacts",
         action="store_true",
         help=(
-            "Retain every heavy attempt artifact for debugging. By default, "
-            "each completed cell archives obsolete attempt metadata and logs "
-            "while removing only heavy payload directories; live current and "
-            "equivalent-cell artifact owners are always preserved."
+            "Explicitly compact obsolete sealed attempts by retaining metadata, "
+            "results, logs, progress events, and timelines while removing only "
+            "their heavy payload directories. By default every heavy attempt "
+            "payload is retained; live current and equivalent-cell artifact "
+            "owners are always preserved."
         ),
     )
     behavior.add_argument(

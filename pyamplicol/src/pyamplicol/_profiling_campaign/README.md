@@ -79,10 +79,11 @@ contains exact canonical cell IDs and can be fed straight back to `run` or
   --force-refresh
 ```
 
-By default, superseded attempts keep their compact result, log, progress, and
-timeline diagnostics while obsolete heavy evaluator payloads are removed.
-Pass `run --no-artifacts-removal` only when a debugging run needs every heavy
-attempt payload.
+By default, every heavy attempt payload is retained. Pass
+`run --cleanup-artifacts` to archive obsolete sealed attempts, retain their
+compact result, log, progress, and timeline diagnostics, and remove only their
+heavy evaluator payloads. Current artifacts and artifacts borrowed by an
+equivalent current remain protected.
 
 Create separately named campaigns with separate `profiling-campaign copy`
 commands. The steering entry point derives the profile name from its containing

@@ -257,9 +257,9 @@ def test_x86_policy_has_the_exact_canonical_n4_split() -> None:
     )
     exempt = tuple(cell for cell in cells if generation_limit_exempt(cell))
 
-    assert len(cells) == 742
-    assert len(exempt) == 264
-    assert len(cells) - len(exempt) == 478
+    assert len(cells) == 762
+    assert len(exempt) == 271
+    assert len(cells) - len(exempt) == 491
     assert all(
         cell.measurement.execution_mode.value == "amplicol"
         or (
@@ -270,9 +270,9 @@ def test_x86_policy_has_the_exact_canonical_n4_split() -> None:
         for cell in exempt
     )
     full = REPORT_CATALOG.measurement_cells()
-    assert len(full) == 1706
-    assert sum(generation_limit_exempt(cell) for cell in full) == 689
-    assert sum(not generation_limit_exempt(cell) for cell in full) == 1017
+    assert len(full) == 1796
+    assert sum(generation_limit_exempt(cell) for cell in full) == 725
+    assert sum(not generation_limit_exempt(cell) for cell in full) == 1071
 
 
 def test_x86_settings_are_exact_and_use_decimal_80_gb() -> None:
@@ -1099,9 +1099,9 @@ def test_full_catalog_resource_lanes_are_unique_and_monotone(
     identities = tuple(
         (tuple(resource_lane_identity(cell).items()), cell.n_final) for cell in cells
     )
-    assert len(cells) == 1706
+    assert len(cells) == 1796
     assert len(set(identities)) == len(identities)
-    assert len({lane for lane, _n_final in identities}) == 306
+    assert len({lane for lane, _n_final in identities}) == 326
 
     selected = tuple(
         REPORT_CATALOG.cell(cell_id)

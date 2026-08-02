@@ -597,11 +597,17 @@ def test_prepared_model_preflight_always_emits_transient_completion(
     }
 
 
+@pytest.mark.parametrize(
+    "three_line_key",
+    ("dd_3q_lines", "dd_3q_identical_lines"),
+)
 def test_contracted_n6_multi_quark_plans_separate_legacy_capability(
     tmp_path: Path,
+    three_line_key: str,
 ) -> None:
     three_line = REPORT_CATALOG.cell(
-        "matrix-recurrence-builtin-sm-full-n6-dd-3q-lines-contracted"
+        "matrix-recurrence-builtin-sm-full-n6-"
+        f"{three_line_key.replace('_', '-')}-contracted"
     )
     four_line = REPORT_CATALOG.cell(
         "matrix-recurrence-builtin-sm-full-n6-dd-4q-lines-contracted"
@@ -616,14 +622,18 @@ def test_contracted_n6_multi_quark_plans_separate_legacy_capability(
         settings=CampaignSettings(),
     )
     assert {item.cell.cell_id for item in three_line_plan} == {
-        "reference-amplicol-full-n6-dd-3q-lines-contracted",
+        "reference-amplicol-full-n6-"
+        f"{three_line_key.replace('_', '-')}-contracted",
         three_line.cell_id,
     }
     assert (
         next(
             item for item in three_line_plan if item.cell == three_line
         ).baseline_cell_id
-        == "reference-amplicol-full-n6-dd-3q-lines-contracted"
+        == (
+            "reference-amplicol-full-n6-"
+            f"{three_line_key.replace('_', '-')}-contracted"
+        )
     )
 
     four_line_plan = plan_campaign(

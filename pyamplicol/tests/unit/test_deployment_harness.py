@@ -36,6 +36,9 @@ def test_installed_smoke_copies_and_dry_runs_the_profiling_campaign() -> None:
     assert '"scalar_contact"' in smoke
     assert '"--generation-engine"' in smoke
     assert '"compiled"' in smoke
+    assert '"retained (default)"' in smoke
+    assert '"--cleanup-artifacts"' in smoke
+    assert '"cleanup enabled (--cleanup-artifacts)"' in smoke
 
 
 def test_f64_deployment_smoke_hard_blocks_symbolica() -> None:

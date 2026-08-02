@@ -547,7 +547,7 @@ def _verify_baseline(arguments: argparse.Namespace) -> dict[str, object]:
         len(cells) != EXPECTED_CATALOG_CELL_COUNT
         or set(entries) != {cell.cell_id for cell in cells}
     ):
-        raise CampaignResetError("baseline gate does not cover exactly 1,706 cells")
+        raise CampaignResetError("baseline gate does not cover exactly 1,796 cells")
     amplicol = {
         cell.cell_id
         for cell in cells
@@ -559,7 +559,7 @@ def _verify_baseline(arguments: argparse.Namespace) -> dict[str, object]:
         or len(non_amplicol) != EXPECTED_NON_AMPLICOL_CELL_COUNT
     ):
         raise CampaignResetError(
-            "baseline gate catalog split differs from 296/1,410"
+            "baseline gate catalog split differs from 314/1,482"
         )
     for cell_id in non_amplicol:
         if entries[cell_id] != empty_measurement():

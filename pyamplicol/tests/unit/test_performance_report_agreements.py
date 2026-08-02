@@ -141,18 +141,18 @@ def test_canonical_n4_direct_agreement_graph_has_exact_locked_counts() -> None:
     )
 
     assert counts == {
-        BUILTIN_UFO_RECURRENCE: 136,
+        BUILTIN_UFO_RECURRENCE: 140,
         Z_RECURRENCE_CROSS_MODE: 80,
-        LC_CROSS_LAYOUT_COMPONENT: 208,
-        LC_LEGACY_PYAMPLICOL_COMPONENT: 176,
+        LC_CROSS_LAYOUT_COMPONENT: 213,
+        LC_LEGACY_PYAMPLICOL_COMPONENT: 180,
     }
     assert Counter(
         _direct_replay_category(edge)
         for edge in agreement_edges(maximum_n_final=4)
     ) == {
-        "fully-replayed-pyamplicol": 392,
-        "replayed-pyamplicol-vs-authenticated-legacy": 176,
-        "authenticated-stored-legacy-layout": 32,
+        "fully-replayed-pyamplicol": 400,
+        "replayed-pyamplicol-vs-authenticated-legacy": 180,
+        "authenticated-stored-legacy-layout": 33,
     }
 
 
@@ -177,10 +177,10 @@ def test_full_direct_agreement_graph_excludes_unavailable_four_line_legacy() -> 
     )
 
     assert counts == {
-        BUILTIN_UFO_RECURRENCE: 314,
+        BUILTIN_UFO_RECURRENCE: 332,
         Z_RECURRENCE_CROSS_MODE: 180,
-        LC_CROSS_LAYOUT_COMPONENT: 609,
-        LC_LEGACY_PYAMPLICOL_COMPONENT: 496,
+        LC_CROSS_LAYOUT_COMPONENT: 639,
+        LC_LEGACY_PYAMPLICOL_COMPONENT: 520,
     }
     assert {
         edge.kind for edge in incoming_agreement_edges(candidate)
@@ -199,26 +199,32 @@ def test_full_direct_agreement_graph_excludes_unavailable_four_line_legacy() -> 
         and edge.baseline.cell_id in measurable_ids
     )
     assert Counter(edge.kind for edge in measurable_edges) == {
-        BUILTIN_UFO_RECURRENCE: 314,
+        BUILTIN_UFO_RECURRENCE: 332,
         Z_RECURRENCE_CROSS_MODE: 156,
-        LC_CROSS_LAYOUT_COMPONENT: 597,
-        LC_LEGACY_PYAMPLICOL_COMPONENT: 484,
+        LC_CROSS_LAYOUT_COMPONENT: 627,
+        LC_LEGACY_PYAMPLICOL_COMPONENT: 508,
     }
     assert Counter(
         _direct_replay_category(edge) for edge in measurable_edges
     ) == {
-        "fully-replayed-pyamplicol": 970,
-        "replayed-pyamplicol-vs-authenticated-legacy": 484,
-        "authenticated-stored-legacy-layout": 97,
+        "fully-replayed-pyamplicol": 1012,
+        "replayed-pyamplicol-vs-authenticated-legacy": 508,
+        "authenticated-stored-legacy-layout": 103,
     }
 
 
-def test_three_line_lc_still_requires_legacy_and_layout_agreements() -> None:
+@pytest.mark.parametrize(
+    "process_key",
+    ("dd_3q_lines", "dd_3q_identical_lines"),
+)
+def test_three_line_lc_still_requires_legacy_and_layout_agreements(
+    process_key: str,
+) -> None:
     candidate = next(
         cell
         for cell in REPORT_CATALOG.measurement_cells()
         if cell.dataset_id == "matrix_recurrence_builtin_sm_lc"
-        and cell.process_key == "dd_3q_lines"
+        and cell.process_key == process_key
         and cell.n_final == 4
         and cell.workload is Workload.ALL_FLOW
     )
@@ -559,7 +565,7 @@ def test_canonical_n4_plan_keeps_bounded_acyclic_dependency_depth(
     )
     by_id = {item.cell.cell_id: item for item in planned}
 
-    assert len(planned) == len(by_id) == 742
+    assert len(planned) == len(by_id) == 762
     assert max(item.rank for item in planned) == 4
     for item in planned:
         dependency_ids = set(item.comparison_peer_ids)

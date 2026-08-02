@@ -67,7 +67,7 @@ def _parse(*arguments: str):
 
 
 def test_catalog_and_fresh_profile_are_complete_but_measurement_empty() -> None:
-    assert len(REPORT_CATALOG.measurement_cells()) == 1706
+    assert len(REPORT_CATALOG.measurement_cells()) == 1796
     assert PROFILE.is_dir()
     assert not (PROFILE / "pyAmpliCol.pdf").exists()
     assert not any(PROFILE.rglob("current.json"))
@@ -109,19 +109,39 @@ def test_selector_repetition_wildcard_aliases_and_intersection() -> None:
 
     all_arguments = _parse("inspect", "--table", "*", "--model", "all")
     _all_selection, all_cells = selection_from_arguments(all_arguments)
-    assert len(all_cells) == 1706
+    assert len(all_cells) == 1796
 
 
 def test_matrix_best_is_all_three_builtin_candidate_modes() -> None:
     arguments = _parse("inspect", "--table", "matrix_best")
     _selection, cells = selection_from_arguments(arguments)
-    assert len(cells) == 888
+    assert len(cells) == 942
     assert {cell.measurement.execution_mode for cell in cells} == {
         ExecutionMode.RECURRENCE,
         ExecutionMode.COMPILED,
         ExecutionMode.EAGER,
     }
     assert {cell.measurement.model for cell in cells} == {ModelKey.BUILTIN_SM}
+
+
+def test_process_id_15_selector_targets_only_identical_quark_line_cells() -> None:
+    arguments = _parse(
+        "inspect",
+        "--process-id",
+        "15",
+        "--multiplicity",
+        "4",
+        "--generation-engine",
+        "recurrence",
+        "--model",
+        "builtin_sm",
+    )
+    _selection, cells = selection_from_arguments(arguments)
+
+    assert len(cells) == 4
+    assert {cell.process_key for cell in cells} == {"dd_3q_identical_lines"}
+    assert {cell.process for cell in cells} == {"d d~ > u u~ u u~"}
+    assert {cell.n_final for cell in cells} == {4}
 
 
 def test_builtin_model_and_table_aliases_handle_amplicol_references() -> None:
@@ -187,10 +207,12 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
         "process-tree current/peak usage",
         "--continue-across-revisions",
         "--cell-id-file",
-        "--no-artifacts-removal",
+        "--cleanup-artifacts",
+        "every heavy attempt payload is retained",
         "sealed with compact diagnostics",
     ):
         assert fragment in help_text
+    assert "--no-artifacts-removal" not in help_text
     arguments = _parse("run", "--dry-run")
     assert arguments.workers == 1
     assert arguments.cores_per_worker == 1
@@ -200,13 +222,14 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
     assert arguments.no_color is False
     assert arguments.force_refresh is False
     assert arguments.continue_across_revisions is False
-    assert arguments.no_artifacts_removal is False
+    assert arguments.cleanup_artifacts is False
+    assert _parse("run", "--cleanup-artifacts").cleanup_artifacts is True
     assert _parse("run", "--continue-across-revisions").continue_across_revisions
     refresh = _parse("refresh-pdf")
     assert refresh.expected_page_count is None
     assert refresh.quiet is False
     assert _parse("refresh-pdf", "--quiet").quiet is True
-    assert DEFAULT_MANUAL_EXPECTED_PAGE_COUNT == 60
+    assert DEFAULT_MANUAL_EXPECTED_PAGE_COUNT == 59
     underscore = _parse("inspect", "--color_approximation", "lc")
     _selection, cells = selection_from_arguments(underscore)
     assert cells
@@ -2747,5 +2770,5 @@ def test_fresh_manual_report_compiles_with_the_manual_page_contract(
         expected_page_count=DEFAULT_MANUAL_EXPECTED_PAGE_COUNT,
         timeout_seconds=900.0,
     )
-    assert pages == 60
+    assert pages == 59
     assert (docs / "pyAmpliCol.pdf").stat().st_size > 100_000

@@ -158,6 +158,16 @@ PROCESS_FAMILIES = (
         maximum_contracted_n=6,
         include_3qqbar=True,
     ),
+    ProcessFamily(
+        15,
+        "dd_3q_identical_lines",
+        r"$d\bar d\to u\bar u\,u\bar u+(n-4)g$",
+        ("d", "d~"),
+        ("u", "u~", "u", "u~"),
+        9,
+        maximum_contracted_n=6,
+        include_3qqbar=True,
+    ),
 )
 
 

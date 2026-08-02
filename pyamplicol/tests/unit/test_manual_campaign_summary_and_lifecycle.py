@@ -577,9 +577,15 @@ def test_scheduler_runs_cleanup_after_each_cell(
     assert service.store.load_current(cell.cell_id).attempt_id == current.attempt_id
 
 
-def test_all_recycled_run_performs_startup_cleanup(
+@pytest.mark.parametrize(
+    ("extra_arguments", "cleanup_expected"),
+    (((), False), (("--cleanup-artifacts",), True)),
+)
+def test_all_recycled_run_applies_selected_startup_cleanup_policy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    extra_arguments: tuple[str, ...],
+    cleanup_expected: bool,
 ) -> None:
     service = _service(tmp_path)
     cell = REPORT_CATALOG.cell("scalar-contact-n2-scalar-contact-contracted")
@@ -617,7 +623,13 @@ def test_all_recycled_run_performs_startup_cleanup(
         lambda *_args, **_kwargs: False,
     )
     arguments = manual_campaign.build_parser().parse_args(
-        ("run", "--no-dashboard", "--cell-id", cell.cell_id)
+        (
+            "run",
+            "--no-dashboard",
+            "--cell-id",
+            cell.cell_id,
+            *extra_arguments,
+        )
     )
 
     exit_code = manual_campaign._run_campaign(
@@ -630,7 +642,7 @@ def test_all_recycled_run_performs_startup_cleanup(
     )
 
     assert exit_code == 0
-    assert not old.manifest_path.exists()
+    assert old.manifest_path.exists() is not cleanup_expected
     assert service.store.load_current(cell.cell_id).attempt_id == current.attempt_id
 
 
@@ -762,22 +774,71 @@ def test_compact_attempt_inventory_excludes_only_heavy_artifact(tmp_path: Path) 
     assert "artifact/nested/data.bin" in _attempt_files(root)
 
 
-def test_manual_campaign_enables_cleanup_unless_explicitly_disabled() -> None:
+def test_manual_campaign_retains_artifacts_unless_cleanup_is_explicit() -> None:
     source = ReportSourceIdentity("a" * 40, "b" * 40, ())
     default_arguments = manual_campaign.build_parser().parse_args(("run", "--dry-run"))
-    keep_arguments = manual_campaign.build_parser().parse_args(
-        ("run", "--dry-run", "--no-artifacts-removal")
+    cleanup_arguments = manual_campaign.build_parser().parse_args(
+        ("run", "--dry-run", "--cleanup-artifacts")
     )
 
-    assert manual_campaign._campaign_settings(
+    assert not manual_campaign._campaign_settings(
         default_arguments, source
     ).remove_heavy_attempt_artifacts
     assert not manual_campaign._campaign_settings(
         default_arguments, source
     ).discard_cancelled_attempts
-    assert not manual_campaign._campaign_settings(
-        keep_arguments, source
+    assert manual_campaign._campaign_settings(
+        cleanup_arguments, source
     ).remove_heavy_attempt_artifacts
+
+
+@pytest.mark.parametrize(
+    ("extra_arguments", "expected"),
+    (
+        ((), "retained (default)"),
+        (("--cleanup-artifacts",), "cleanup enabled (--cleanup-artifacts)"),
+    ),
+)
+def test_dry_run_prints_effective_artifact_cleanup_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    extra_arguments: tuple[str, ...],
+    expected: str,
+) -> None:
+    service = _service(tmp_path)
+    cell = REPORT_CATALOG.cell("scalar-contact-n2-scalar-contact-contracted")
+    source = ReportSourceIdentity("a" * 40, "b" * 40, ())
+    monkeypatch.setattr(
+        manual_campaign,
+        "lightweight_currents",
+        lambda *_a, **_k: {},
+    )
+    monkeypatch.setattr(manual_campaign, "plan_campaign", lambda *_a, **_k: ())
+    arguments = manual_campaign.build_parser().parse_args(
+        (
+            "run",
+            "--dry-run",
+            "--no-color",
+            "--cell-id",
+            cell.cell_id,
+            *extra_arguments,
+        )
+    )
+
+    assert (
+        manual_campaign._run_campaign(
+            arguments,
+            repo_root=tmp_path,
+            service=service,
+            source=source,
+            cells=(cell,),
+            palette=manual_campaign.Palette(False),
+        )
+        == 0
+    )
+
+    assert expected in capsys.readouterr().out
 
 
 def test_cleanup_skips_busy_owner_use_lock(tmp_path: Path) -> None:

@@ -450,7 +450,7 @@ def test_repeated_keyboard_interrupt_waits_for_cleanup_before_closing_lease(
         warmups=0,
         minimum_samples=5,
         termination_grace=0.01,
-        no_artifacts_removal=False,
+        cleanup_artifacts=False,
     )
     service = SimpleNamespace(
         store=object(),

@@ -420,7 +420,7 @@ def test_all_twelve_matrices_render_in_catalog_order(reset_caches) -> None:
     assert r"\multicolumn{3}{c}{\textbf{n=2}}" in contracted_tex
     assert r"\makebox[\linewidth][c]{%" in lc_tex
     assert r"\rowcolor{refblue}" in lc_tex
-    assert lc_tex.count(r"\multicolumn{8}{l}") >= 4
+    assert lc_tex.count(r"\multicolumn{8}{c}") >= 4
     tabular_spec = next(
         line for line in lc_tex.splitlines() if line.startswith(r"\begin{tabular}")
     )
@@ -436,8 +436,46 @@ def test_all_twelve_matrices_render_in_catalog_order(reset_caches) -> None:
     ) in lc_tex
     assert r"\matrixcolumnheading" not in lc_tex
 
+    obsolete_clock_macros = (
+        r"\matrixwallclock{",
+        r"\matrixwallabsolute{",
+        r"\matrixtotalevaluator{",
+        r"\matrixrecurrencecore{",
+        r"\matrixruntimepair{",
+        r"\matrixruntimetriple{",
+    )
+    best_mode_rendered = render_all_best_mode_tables(reset_caches)
+    for tex in (*rendered.values(), *best_mode_rendered.values()):
+        table_body = "\n".join(
+            line
+            for line in tex.splitlines()
+            if not line.startswith(r"\providecommand")
+        )
+        assert all(macro not in table_body for macro in obsolete_clock_macros)
 
-def test_matrix_summary_backgrounds_alternate_by_multiplicity(
+
+def test_identical_quark_line_family_renders_in_every_matrix_block(
+    reset_caches,
+) -> None:
+    rendered = render_all_matrix_tables(reset_caches)
+    best = render_all_best_mode_tables(reset_caches)
+    row = (
+        r"\texttt{15} & "
+        r"$d\bar d\to u\bar u\,u\bar u+(n-4)g$"
+    )
+
+    for name, expected_blocks in (
+        ("result_matrix_recurrence_builtin_sm_lc_table.tex", 3),
+        ("result_matrix_recurrence_builtin_sm_nlc_table.tex", 2),
+        ("result_matrix_recurrence_builtin_sm_full_table.tex", 2),
+    ):
+        assert rendered[name].count(row) == expected_blocks
+    assert best["result_matrix_best_builtin_sm_lc_table.tex"].count(row) == 3
+    assert best["result_matrix_best_builtin_sm_nlc_table.tex"].count(row) == 2
+    assert best["result_matrix_best_builtin_sm_full_table.tex"].count(row) == 2
+
+
+def test_matrix_summary_backgrounds_restart_for_each_multiplicity_block(
     reset_caches,
 ) -> None:
     rendered = render_all_matrix_tables(reset_caches)
@@ -451,7 +489,7 @@ def test_matrix_summary_backgrounds_alternate_by_multiplicity(
         return [
             [
                 cell.startswith(
-                    rf"\multicolumn{{{span}}}{{l}}{{\cellcolor{{refblue}}"
+                    rf"\multicolumn{{{span}}}{{c}}{{\cellcolor{{refblue}}"
                 )
                 for cell in row.split(" & ")[1:]
             ]
@@ -476,12 +514,8 @@ def test_matrix_summary_backgrounds_alternate_by_multiplicity(
             if r"\textbf{summary:" in line
         ]
         patterns = summary_patterns(tex, span)
-        for row_index, pattern in enumerate(patterns):
-            first_n = (row_index // 2) * 3 + 1
-            assert pattern == [
-                n_final % 2 == 1
-                for n_final in range(first_n, first_n + len(pattern))
-            ]
+        for pattern in patterns:
+            assert pattern == [index % 2 == 0 for index in range(len(pattern))]
         assert all(
             not row.startswith(
                 r"\multicolumn{3}{@{}l}{\cellcolor{refblue}"
@@ -493,12 +527,71 @@ def test_matrix_summary_backgrounds_alternate_by_multiplicity(
         assert all(row.endswith(" \\\\") for row in rows[1::2])
         assert r"\addlinespace[0.08em]" not in tex
 
+        summary_headers = [
+            line
+            for line in tex.splitlines()
+            if line.startswith(r"\multicolumn{3}{@{}l}{} & ")
+            and r"\textbf{n=" in line
+        ]
+        assert len(summary_headers) == len(rows) // 2
+        for header in summary_headers:
+            groups = header.count(r"\textbf{n=")
+            assert groups in (2, 3)
+            assert [
+                cell.startswith(
+                    rf"\multicolumn{{{span}}}{{c}}{{\cellcolor{{refblue}}"
+                )
+                for cell in header.split(" & ")[1:]
+            ] == [index % 2 == 0 for index in range(groups)]
+
     assert_alternating(lc_tex, 8)
     assert_alternating(contracted_tex, 3)
 
     for accuracy, span in ((Accuracy.LC, 8), (Accuracy.NLC, 3)):
         best_tex = render_best_mode_table(accuracy, reset_caches)
         assert_alternating(best_tex, span)
+
+    fixed_block_two_header = next(
+        line
+        for line in lc_tex.splitlines()
+        if line.startswith(r"\multicolumn{3}{@{}l}{} & ")
+        and r"\textbf{n=4}" in line
+    )
+    best_block_two_header = next(
+        line
+        for line in render_best_mode_table(Accuracy.LC, reset_caches).splitlines()
+        if line.startswith(r"\multicolumn{3}{@{}l}{} & ")
+        and r"\textbf{n=4}" in line
+    )
+    expected_block_two_header = (
+        r"\multicolumn{3}{@{}l}{} & "
+        r"\multicolumn{8}{c}{\cellcolor{refblue}\textbf{n=4}} & "
+        r"\multicolumn{8}{c}{\textbf{n=5}} & "
+        r"\multicolumn{8}{c}{\cellcolor{refblue}\textbf{n=6}} \\"
+    )
+    assert fixed_block_two_header == expected_block_two_header
+    assert best_block_two_header == expected_block_two_header
+
+    lc_runtime_summary_label = (
+        r"\matrixsummaryworkloads"
+        r"{\textbf{summary: run single-flow, hel. sum}}"
+        r"{\textbf{summary: run all-flows, single hel.}}"
+    )
+    best_lc_tex = render_best_mode_table(Accuracy.LC, reset_caches)
+    assert lc_runtime_summary_label in lc_tex
+    assert lc_runtime_summary_label in best_lc_tex
+    assert r"\textbf{summary: wall}" not in lc_tex
+    assert r"\textbf{summary: wall}" not in best_lc_tex
+    assert r"\textbf{summary: wall}" in contracted_tex
+
+    for tex in (lc_tex, contracted_tex, best_lc_tex):
+        table_body = "\n".join(
+            line
+            for line in tex.splitlines()
+            if not line.startswith(r"\providecommand")
+        )
+        assert r"\matrixtotalevaluator{" not in table_body
+        assert r"\matrixrecurrencecore{" not in table_body
 
 
 def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> None:
@@ -639,6 +732,38 @@ def test_ratio_summary_reports_five_exact_statistics_without_absolute_times() ->
     assert r"\texttt{" not in summary
 
 
+def test_summary_statistics_share_fixed_anchors_and_compact_notes(
+    reset_caches,
+) -> None:
+    fixed_tex = render_matrix_table(
+        next(
+            dataset
+            for dataset in REPORT_CATALOG.matrix_datasets
+            if dataset.candidate.accuracy is Accuracy.LC
+        ),
+        reset_caches,
+    )
+    best_tex = render_best_mode_table(Accuracy.LC, reset_caches)
+    fixed_slot_layout = (
+        r"\makebox[3.6em][r]{#1}&"
+        r"\makebox[4.6em][r]{#2}&"
+        r"\makebox[3.6em][r]{#3}&"
+        r"\makebox[4.2em][r]{#4}&"
+        r"\makebox[3.6em][r]{#5}"
+    )
+
+    for tex in (fixed_tex, best_tex):
+        assert fixed_slot_layout in tex
+        assert r"\ReportTableNote{{\scriptsize " in tex
+        assert "Every displayed number uses exactly three significant digits" in tex
+        assert "weighted-average order" in tex
+        assert "framed bold entry is the arithmetic average" in tex
+
+    assert "Fixed-engine tables intentionally omit mode letters" in fixed_tex
+    assert "selected independently in each cell and workload" in best_tex
+    assert "Summary mode counts use r|c|e" in best_tex
+
+
 def test_lc_summaries_omit_union_generation_and_keep_both_wall_workloads(
     reset_caches,
 ) -> None:
@@ -690,7 +815,9 @@ def test_lc_summaries_omit_union_generation_and_keep_both_wall_workloads(
         line for line in tex.splitlines() if r"\textbf{summary: generation}" in line
     )
     wall_summary = next(
-        line for line in tex.splitlines() if r"\textbf{summary: wall}" in line
+        line
+        for line in tex.splitlines()
+        if r"\textbf{summary: run single-flow, hel. sum}" in line
     )
     selected_stats = report_render._ratio_statistics_tex(selected_pairs)
     union_stats = report_render._ratio_statistics_tex(union_pairs)
@@ -701,6 +828,12 @@ def test_lc_summaries_omit_union_generation_and_keep_both_wall_workloads(
     assert rf"\matrixsummaryworkloads{{{selected_stats}}}{{{union_stats}}}" in (
         wall_summary
     )
+    assert (
+        r"\matrixsummaryworkloads"
+        r"{\textbf{summary: run single-flow, hel. sum}}"
+        r"{\textbf{summary: run all-flows, single hel.}}"
+    ) in wall_summary
+    assert r"\textbf{summary: wall}" not in tex
     assert r"\matrixsummarypair" not in generation_summary
     assert r"\matrixsummarypair" not in wall_summary
 
@@ -1262,9 +1395,9 @@ def test_visible_completeness_accounts_for_every_n4_slot(reset_caches) -> None:
     evidence = summary.as_dict()
 
     assert summary.complete
-    assert evidence["required_measurement_count"] == 742
-    assert evidence["rendered_required_measurement_count"] == 742
-    assert evidence["structurally_not_applicable_display_slot_count"] == 288
+    assert evidence["required_measurement_count"] == 762
+    assert evidence["rendered_required_measurement_count"] == 762
+    assert evidence["structurally_not_applicable_display_slot_count"] == 324
     assert evidence["not_exposed_display_slot_count"] == 16
     assert evidence["applicable_na_display_slot_count"] == 0
     assert evidence["missing_rendered_cell_count"] == 0
@@ -1280,8 +1413,8 @@ def test_visible_completeness_authenticates_catalog_static_na_slots(
     evidence = summary.as_dict()
 
     assert summary.complete
-    assert evidence["declared_measurement_cell_count"] == 1706
-    assert evidence["required_measurement_count"] == 1672
+    assert evidence["declared_measurement_cell_count"] == 1796
+    assert evidence["required_measurement_count"] == 1762
     assert evidence["catalog_static_na_cell_count"] == 34
     assert evidence["rendered_catalog_static_na_cell_count"] == 34
     assert evidence["applicable_na_display_slot_count"] == 0
@@ -2276,14 +2409,14 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
         (1, 64),
         (2, 186),
         (3, 206),
-        (4, 286),
-        (5, 285),
-        (6, 181),
-        (7, 155),
-        (8, 155),
-        (9, 154),
+        (4, 306),
+        (5, 305),
+        (6, 201),
+        (7, 165),
+        (8, 165),
+        (9, 164),
     )
-    assert summary.declared_total == 1706
+    assert summary.declared_total == 1796
     assert summary.static_na_by_n == (
         (1, 0),
         (2, 0),
@@ -2296,10 +2429,10 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
         (9, 10),
     )
     assert summary.static_na_total == 34
-    assert summary.expected_total == 1672
+    assert summary.expected_total == 1762
     assert summary.passed_total == 4
     assert summary.status_counts == (
-        ("not_available", 1668),
+        ("not_available", 1758),
         ("ok", 4),
         ("static-na", 34),
     )
@@ -2313,10 +2446,10 @@ def test_validation_summary_counts_complete_scope_and_comparison_kinds(
     assert summary.high_precision_count == 1
     assert summary.high_precision_maximum_relative_difference == 5.0e-14
     assert summary.uniform_source_revision == revision
-    assert "1706 & 34 & 4" in tex
-    assert "1706 declared cells" in tex
-    assert "1672 measurable cells" in tex
+    assert "1796 & 34 & 4" in tex
+    assert "1796 declared cells" in tex
+    assert "1762 measurable cells" in tex
     assert "34 catalog-authenticated static N/A" in tex
-    assert "396 matrix process/multiplicity positions" in tex
+    assert "432 matrix process/multiplicity positions" in tex
     assert "36 reference execution fields" in tex
     assert rf"\nolinkurl{{{revision}}}" in tex

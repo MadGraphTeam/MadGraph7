@@ -18,6 +18,7 @@ from tools.performance_report.agreements import (
     DIRECT_AGREEMENT_FIELD,
     LC_COMMON_COMPONENT_ABI,
     LC_COMMON_COMPONENT_FIELD,
+    agreement_edges,
 )
 from tools.performance_report.arena_profile import (
     ARENA_PHASE_TIMING_SCOPE,
@@ -35,6 +36,7 @@ from tools.performance_report.cache import (
     empty_measurement,
     reset_entry,
 )
+from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.final_audit import (
     ArtifactEvidence,
     FinalAuditError,
@@ -82,6 +84,38 @@ _LEGACY_REVISION = "07f16be4fee70c2bd624eee76822c0bb322cb595"
 _ARTIFACT_ID = "b" * 64
 _CAPABILITY = "rusticol.recurrence-direct-arena.complex-f64.v1"
 _COLOR_CAPABILITY = "rusticol.recurrence-color.lc.v1"
+
+
+def test_full_final_audit_distinguishes_declared_and_measurable_edge_totals() -> None:
+    declared_ids = {cell.cell_id for cell in REPORT_CATALOG.measurement_cells()}
+    measurable_ids = {
+        cell.cell_id
+        for cell in REPORT_CATALOG.measurement_cells()
+        if REPORT_CATALOG.static_na_reason(cell) is None
+    }
+    declared_edges = tuple(
+        edge
+        for edge in agreement_edges()
+        if edge.candidate.cell_id in declared_ids
+        and edge.baseline.cell_id in declared_ids
+    )
+    measurable_edges = tuple(
+        edge
+        for edge in declared_edges
+        if edge.candidate.cell_id in measurable_ids
+        and edge.baseline.cell_id in measurable_ids
+    )
+
+    assert len(declared_edges) == 1671
+    assert (
+        len(declared_edges)
+        == final_audit_module._EXPECTED_FULL_DIRECT_AGREEMENT_COUNT
+    )
+    assert len(measurable_edges) == 1623
+    assert (
+        sum(final_audit_module._EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS.values())
+        == len(measurable_edges)
+    )
 
 
 def _fake_latexmk(tmp_path: Path, log: str) -> Path:

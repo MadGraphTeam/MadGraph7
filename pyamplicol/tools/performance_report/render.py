@@ -563,13 +563,43 @@ def _metric_summary_group_cell(
     content: str,
     accuracy: Accuracy,
     *,
-    n_final: int,
+    group_index: int,
 ) -> str:
-    """Render one summary group with multiplicity-alternating shading."""
+    """Render one centred summary group with block-local band shading."""
 
-    if n_final % 2 == 1:
+    if group_index % 2 == 0:
         content = rf"\cellcolor{{refblue}}{content}"
-    return _metric_group_cell(content, accuracy, alignment="l")
+    return _metric_group_cell(content, accuracy, alignment="c")
+
+
+def _metric_summary_header_row(
+    multiplicities: Sequence[int],
+    accuracy: Accuracy,
+) -> str:
+    """Repeat the multiplicity headings immediately above summary rows."""
+
+    return (
+        r"\multicolumn{3}{@{}l}{} & "
+        + " & ".join(
+            _metric_summary_group_cell(
+                rf"\textbf{{n={n_final}}}",
+                accuracy,
+                group_index=group_index,
+            )
+            for group_index, n_final in enumerate(multiplicities)
+        )
+        + r" \\"
+    )
+
+
+def _matrix_wall_summary_label(accuracy: Accuracy) -> str:
+    if accuracy is Accuracy.LC:
+        return (
+            r"\matrixsummaryworkloads"
+            r"{\textbf{summary: run single-flow, hel. sum}}"
+            r"{\textbf{summary: run all-flows, single hel.}}"
+        )
+    return r"\textbf{summary: wall}"
 
 
 def _metric_row_label(*, runtime: bool) -> str:
@@ -948,6 +978,8 @@ def _matrix_macros() -> list[str]:
             r"\fbox{\textcolor{#1}{{\usefont{T1}{lmtt}{b}{n}x#2}}}"
             r"\endgroup}"
         ),
+        # Keep the five statistic anchors identical on every summary line.
+        # Max accommodates scientific notation; average accommodates its frame.
         (
             r"\providecommand{\matrixsummarystats}[5]{"
             r"\begingroup\matrixsummaryfont"
@@ -956,7 +988,12 @@ def _matrix_macros() -> list[str]:
             r"@{\hspace{0.014in}\matrixpunct{|}\hspace{0.014in}}r"
             r"@{\hspace{0.014in}\matrixpunct{|}\hspace{0.014in}}r"
             r"@{\hspace{0.014in}\matrixpunct{|}\hspace{0.014in}}r@{}}"
-            r"#1&#2&#3&#4&#5\end{tabular}\endgroup}"
+            r"\makebox[3.6em][r]{#1}&"
+            r"\makebox[4.6em][r]{#2}&"
+            r"\makebox[3.6em][r]{#3}&"
+            r"\makebox[4.2em][r]{#4}&"
+            r"\makebox[3.6em][r]{#5}"
+            r"\end{tabular}\endgroup}"
         ),
         (
             r"\providecommand{\matrixsummaryworkloads}[2]{"
@@ -1353,7 +1390,7 @@ def _matrix_block(
         r"\centering",
         r"\footnotesize",
         r"\setlength{\tabcolsep}{2.1pt}",
-        r"\renewcommand{\arraystretch}{1.10}",
+        r"\renewcommand{\arraystretch}{1.04}",
         r"\makebox[\linewidth][c]{%",
         rf"\begin{{tabular}}{{{column_spec}}}",
         r"\toprule",
@@ -1414,6 +1451,7 @@ def _matrix_block(
     lines.extend(
         [
             r"\specialrule{1.05pt}{0.22em}{0.18em}",
+            _metric_summary_header_row(multiplicities, accuracy),
             (
                 r"\multicolumn{3}{@{}l}{\textbf{summary: generation}} & "
                 + " & ".join(
@@ -1423,14 +1461,15 @@ def _matrix_block(
                             dataset,
                         ),
                         accuracy,
-                        n_final=n_final,
+                        group_index=group_index,
                     )
-                    for n_final in multiplicities
+                    for group_index, n_final in enumerate(multiplicities)
                 )
                 + r" \\[0.08em]"
             ),
             (
-                r"\multicolumn{3}{@{}l}{\textbf{summary: wall}} & "
+                rf"\multicolumn{{3}}{{@{{}}l}}{{"
+                rf"{_matrix_wall_summary_label(accuracy)}}} & "
                 + " & ".join(
                     _metric_summary_group_cell(
                         _matrix_wall_summary(
@@ -1438,9 +1477,9 @@ def _matrix_block(
                             accuracy,
                         ),
                         accuracy,
-                        n_final=n_final,
+                        group_index=group_index,
                     )
-                    for n_final in multiplicities
+                    for group_index, n_final in enumerate(multiplicities)
                 )
                 + r" \\"
             ),
@@ -1563,7 +1602,7 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         "bold entry is the arithmetic average of the per-cell multipliers."
     )
     return (
-        r"\ReportTableNote{Baseline: "
+        r"\ReportTableNote{{\scriptsize Baseline: "
         + _tex_escape(baseline)
         + "; candidate: "
         + _tex_escape(candidate)
@@ -1579,7 +1618,7 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
             "omit mode letters because the selected engine is named in the "
             "table heading."
         )
-        + "}"
+        + "}}"
     )
 
 
@@ -2113,7 +2152,7 @@ def _best_mode_block(
         r"\centering",
         r"\footnotesize",
         r"\setlength{\tabcolsep}{2.1pt}",
-        r"\renewcommand{\arraystretch}{1.10}",
+        r"\renewcommand{\arraystretch}{1.00}",
         r"\makebox[\linewidth][c]{%",
         rf"\begin{{tabular}}{{{column_spec}}}",
         r"\toprule",
@@ -2188,6 +2227,7 @@ def _best_mode_block(
     lines.extend(
         [
             r"\specialrule{1.05pt}{0.22em}{0.18em}",
+            _metric_summary_header_row(multiplicities, accuracy),
             (
                 r"\multicolumn{3}{@{}l}{\textbf{summary: generation}} & "
                 + " & ".join(
@@ -2197,14 +2237,15 @@ def _best_mode_block(
                             accuracy,
                         ),
                         accuracy,
-                        n_final=n_final,
+                        group_index=group_index,
                     )
-                    for n_final in multiplicities
+                    for group_index, n_final in enumerate(multiplicities)
                 )
                 + r" \\[0.08em]"
             ),
             (
-                r"\multicolumn{3}{@{}l}{\textbf{summary: wall}} & "
+                rf"\multicolumn{{3}}{{@{{}}l}}{{"
+                rf"{_matrix_wall_summary_label(accuracy)}}} & "
                 + " & ".join(
                     _metric_summary_group_cell(
                         _best_mode_wall_summary(
@@ -2212,9 +2253,9 @@ def _best_mode_block(
                             accuracy,
                         ),
                         accuracy,
-                        n_final=n_final,
+                        group_index=group_index,
                     )
-                    for n_final in multiplicities
+                    for group_index, n_final in enumerate(multiplicities)
                 )
                 + r" \\"
             ),
@@ -2223,7 +2264,8 @@ def _best_mode_block(
             r"}",
             r"\endgroup",
             (
-                r"\ReportTableNote{The candidate is selected independently in "
+                r"\ReportTableNote{{\scriptsize The candidate is selected "
+                r"independently in "
                 r"each cell and workload by the smallest validated wall time. "
                 r"The upper row is generation in seconds and the lower row is "
                 r"runtime in \(\mu\mathrm{s}/\mathrm{pt}\). In LC cells, each "
@@ -2260,7 +2302,7 @@ def _best_mode_block(
                 r"non-union flow only, while LC runtime keeps separate "
                 r"non-union and union wall-only lines. Summary mode counts "
                 r"use r|c|e for recurrence JIT O2, compiled JIT O3, and "
-                r"eager-DAG JIT O2, respectively.}"
+                r"eager-DAG JIT O2, respectively.}}"
             ),
             r"\end{minipage}",
         ]

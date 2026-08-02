@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: 0BSD
 """Reviewed, fail-closed scope for matrix structural-parity coverage gaps.
 
-The 1,184-row restart gate covers every candidate cell that the canonical
+The 1,256-row restart gate covers every candidate cell that the canonical
 matrix catalog defines.  This registry makes the two intentionally absent
 classes explicit so that they cannot be mistaken for silently unproved rows.
 Any catalog change in these classes requires a review and registry update.
@@ -38,6 +38,7 @@ _PROCESS_KEYS = (
     "dd_4l_jets",
     "dd_3q_lines",
     "dd_4q_lines",
+    "dd_3q_identical_lines",
 )
 _CANDIDATE_MODES = {
     ExecutionMode.RECURRENCE,
