@@ -1119,8 +1119,9 @@ def test_dashboard_error_total_is_in_primary_overview_summary() -> None:
     summary = next(line for line in frame.splitlines() if "Selected " in line)
     assert "Errors 1" in summary
     assert "Unverified 1" in summary
-    assert "Active 1" in summary
-    assert "Capped 1" in frame
+    assert "Remaining 1" in summary
+    assert "Workers active 1" in frame
+    assert "Capped 0" in frame
 
 
 def test_finished_unverified_is_not_counted_as_an_error(tmp_path: Path) -> None:
@@ -1450,7 +1451,7 @@ def test_phase_timeline_uses_only_explicit_legacy_durations() -> None:
 
 @pytest.mark.parametrize(
     ("width", "height", "expected_range"),
-    ((80, 24, "14-18/18"), (120, 36, "10-18/18")),
+    ((80, 24, "15-18/18"), (120, 36, "10-18/18")),
 )
 def test_dashboard_worker_viewport_pans_with_selection(
     width: int,
@@ -3388,12 +3389,17 @@ def _write_lease(
             "selected": len(workers),
             "recycled": 0,
             "active": active,
+            "selected_active": active,
+            "dependency_active": 0,
             "completed": 0,
-            "remaining": max(0, len(workers) - active),
+            "remaining": len(workers),
             "static_na": 0,
             "capped": 0,
             "failed": 0,
+            "unverified": 0,
             "dependency_only": 0,
+            "dependency_completed": 0,
+            "dependency_issues": 0,
         }
     path.write_text(
         json.dumps(
@@ -3484,7 +3490,7 @@ def test_peer_leases_merge_by_sha_without_accumulating_or_double_counting(
         "contribution_count": 286_294,
     }
     assert first.counters()["active"] == 1
-    assert first.counters()["remaining"] == 1
+    assert first.counters()["remaining"] == 2
     assert len(first.peer_active) == 2
     assert "Peer active 2" in render_dashboard_frame(first, width=120, height=36)
 
@@ -3710,6 +3716,8 @@ def test_live_dashboard_snapshot_selects_instance_and_shows_same_source_peers(
         "selected": 9,
         "recycled": 3,
         "active": 2,
+        "selected_active": 1,
+        "dependency_active": 1,
         "completed": 1,
         "remaining": 2,
         "static_na": 1,
@@ -3717,6 +3725,8 @@ def test_live_dashboard_snapshot_selects_instance_and_shows_same_source_peers(
         "failed": 0,
         "unverified": 0,
         "dependency_only": 2,
+        "dependency_completed": 1,
+        "dependency_issues": 0,
     }
     _write_lease(
         service,
@@ -3869,12 +3879,17 @@ def test_live_snapshot_command_is_read_only_and_lease_only(
             "selected": 3,
             "recycled": 1,
             "active": 1,
+            "selected_active": 1,
+            "dependency_active": 0,
             "completed": 0,
-            "remaining": 1,
+            "remaining": 2,
             "static_na": 0,
             "capped": 0,
             "failed": 0,
+            "unverified": 0,
             "dependency_only": 1,
+            "dependency_completed": 0,
+            "dependency_issues": 0,
         },
         workers={
             "gravity-cell": {
@@ -4280,7 +4295,7 @@ def test_finished_reuse_stays_recycled_while_work_and_caps_complete(
             }
         )
 
-    assert state.completed_ids == {"fresh", "capped"}
+    assert state.completed_ids == {"fresh"}
     assert state.capped_ids == {"capped"}
     assert state.workers["reused"].status == "recycled"
     assert state.workers["reused"].recycled
@@ -4290,13 +4305,17 @@ def test_finished_reuse_stays_recycled_while_work_and_caps_complete(
         "selected": 4,
         "recycled": 2,
         "active": 0,
-        "completed": 2,
+        "selected_active": 0,
+        "dependency_active": 0,
+        "completed": 1,
         "remaining": 0,
         "static_na": 0,
         "capped": 1,
         "failed": 0,
         "unverified": 0,
         "dependency_only": 0,
+        "dependency_completed": 0,
+        "dependency_issues": 0,
     }
 
 
@@ -4319,9 +4338,44 @@ def test_active_counter_includes_dependency_work_without_consuming_remaining() -
     counters = state.counters()
 
     assert counters["active"] == 1
+    assert counters["selected_active"] == 0
+    assert counters["dependency_active"] == 1
     assert counters["remaining"] == 1
     assert counters["dependency_only"] == 1
-    assert "Active 1" in render_dashboard_frame(state, width=120, height=36)
+    assert "Workers active 1" in render_dashboard_frame(state, width=120, height=36)
+
+
+def test_replanned_selected_dependency_remains_in_selected_counter_scope() -> None:
+    state = DashboardState(
+        instance_id="selected-replanned-dependency",
+        selected_ids=("selected-cell",),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        dependency_ids={"selected-cell"},
+        workers={
+            "selected-cell": WorkerView(
+                "selected-cell",
+                dependency=True,
+                status="running",
+            )
+        },
+    )
+
+    active = state.counters()
+
+    assert active["active"] == 1
+    assert active["selected_active"] == 1
+    assert active["dependency_active"] == 0
+    assert active["dependency_only"] == 0
+    assert active["remaining"] == 1
+
+    state._reduce_finished("selected-cell", "ok")
+    finished = state.counters()
+
+    assert finished["completed"] == 1
+    assert finished["remaining"] == 0
+    assert finished["dependency_completed"] == 0
+    assert finished["dependency_issues"] == 0
 
 
 def test_worker_status_counters_include_dependency_only_rows_and_lease(
@@ -4372,22 +4426,53 @@ def test_worker_status_counters_include_dependency_only_rows_and_lease(
         "selected": 1,
         "recycled": 0,
         "active": 1,
-        "completed": 2,
+        "selected_active": 0,
+        "dependency_active": 1,
+        "completed": 0,
         "remaining": 1,
         "static_na": 0,
-        "capped": 1,
-        "failed": 1,
-        "unverified": 1,
+        "capped": 0,
+        "failed": 0,
+        "unverified": 0,
         "dependency_only": 5,
+        "dependency_completed": 1,
+        "dependency_issues": 3,
     }
     frame = render_dashboard_frame(state, width=160, height=40)
-    assert "Active 1" in frame
-    assert "Errors 1" in frame
-    assert "Unverified 1" in frame
-    assert "Completed 2" in frame
-    assert "Capped 1" in frame
+    assert "Workers active 1" in frame
+    assert "selected 0" in frame
+    assert "dependency 1" in frame
+    assert "Errors 0" in frame
+    assert "Unverified 0" in frame
+    assert "Completed 0" in frame
+    assert "Capped 0" in frame
+    assert "Dependency done 1" in frame
+    assert "issues 3" in frame
     payload = json.loads(lease.path.read_text(encoding="utf-8"))
     assert payload["counters"] == counters
+
+    lease.observe({"event": "started", "cell_id": "direct-cell"})
+    active = state.counters()
+    assert active["selected_active"] == 1
+    assert active["remaining"] == 1
+    lease.observe({"event": "finished", "cell_id": "direct-cell", "status": "ok"})
+    finished = state.counters()
+    assert finished["completed"] == 1
+    assert finished["remaining"] == 0
+    assert sum(
+        finished[key]
+        for key in (
+            "recycled",
+            "completed",
+            "capped",
+            "failed",
+            "unverified",
+            "static_na",
+            "remaining",
+        )
+    ) == finished["selected"]
+    assert finished["dependency_completed"] == 1
+    assert finished["dependency_issues"] == 3
 
 
 def test_dashboard_reducer_replaces_prior_outcomes_across_retries(
@@ -4460,6 +4545,8 @@ def test_dashboard_reducer_replaces_prior_outcomes_across_retries(
         "selected": 3,
         "recycled": 0,
         "active": 0,
+        "selected_active": 0,
+        "dependency_active": 0,
         "completed": 1,
         "remaining": 0,
         "static_na": 0,
@@ -4467,6 +4554,8 @@ def test_dashboard_reducer_replaces_prior_outcomes_across_retries(
         "failed": 1,
         "unverified": 1,
         "dependency_only": 0,
+        "dependency_completed": 0,
+        "dependency_issues": 0,
     }
     payload = json.loads(lease.path.read_text(encoding="utf-8"))
     assert payload["counters"] == state.counters()
@@ -4570,7 +4659,7 @@ def test_manual_stage_timeouts_are_addressed_caps_in_dashboard_state(
         }
     )
 
-    assert state.completed_ids == {status}
+    assert state.completed_ids == set()
     assert state.capped_ids == {status}
     assert state.failed_ids == set()
     assert state.counters()["remaining"] == 0

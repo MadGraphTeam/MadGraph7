@@ -233,7 +233,7 @@ def test_compiled_plan_keeps_numerical_authorities_availability_optional(
     assert target.prerequisite_cell_ids == ()
 
 
-def test_explicit_optional_amplicol_is_a_soft_ordering_predecessor(
+def test_explicit_optional_amplicol_is_priority_metadata_not_a_prerequisite(
     tmp_path: Path,
 ) -> None:
     recurrence = _matrix_cell("matrix_recurrence_builtin_sm_lc")
@@ -251,7 +251,7 @@ def test_explicit_optional_amplicol_is_a_soft_ordering_predecessor(
     assert set(by_id) == {recurrence.cell_id, amplicol.cell_id}
     assert target.baseline_cell_id is None
     assert target.optional_baseline_cell_id == amplicol.cell_id
-    assert target.prerequisite_cell_ids == (amplicol.cell_id,)
+    assert target.prerequisite_cell_ids == ()
     assert by_id[amplicol.cell_id].rank < target.rank
 
 
@@ -810,7 +810,7 @@ def test_postworker_tampered_unverified_is_rejected_before_reconciliation(
         scheduler._run_cell(target)
 
 
-def test_soft_authority_chain_releases_on_first_success_without_waiting_for_peer(
+def test_authority_priority_never_blocks_ready_compiled_or_eager_work(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -823,102 +823,77 @@ def test_soft_authority_chain_releases_on_first_success_without_waiting_for_peer
     assert recurrence is not None
     amplicol = REPORT_CATALOG.validation_baseline_cell(recurrence)
     assert amplicol is not None
-    amplicol_running = threading.Event()
-    release_amplicol = threading.Event()
-    candidate_started = threading.Event()
+    eager = _matrix_cell("matrix_eager_builtin_sm_lc")
+    recurrence_started = threading.Event()
+    compiled_started = threading.Event()
+    eager_started = threading.Event()
+    start_order: list[ExecutionMode] = []
+    order_guard = threading.Lock()
 
     def run_in_lane(item: PlannedCell) -> CellOutcome:
+        with order_guard:
+            start_order.append(item.cell.measurement.execution_mode)
         if item.cell == amplicol:
-            amplicol_running.set()
-            assert release_amplicol.wait(1.0)
-            return CellOutcome(amplicol.cell_id, "ok", "late authority")
+            assert recurrence_started.wait(1.0)
+            return CellOutcome(amplicol.cell_id, "ok", "authority complete")
         if item.cell == recurrence:
-            assert amplicol_running.wait(1.0)
-            return CellOutcome(recurrence.cell_id, "ok", "preferred authority")
-        assert item.cell == candidate
-        candidate_started.set()
-        release_amplicol.set()
-        return CellOutcome(candidate.cell_id, "unverified", "synthetic diagnostic")
+            recurrence_started.set()
+            assert eager_started.wait(1.0)
+            return CellOutcome(recurrence.cell_id, "ok", "authority complete")
+        if item.cell == candidate:
+            assert recurrence_started.is_set()
+            compiled_started.set()
+            return CellOutcome(candidate.cell_id, "unverified", "diagnostic")
+        assert item.cell == eager
+        assert compiled_started.is_set()
+        eager_started.set()
+        return CellOutcome(eager.cell_id, "unverified", "diagnostic")
 
     monkeypatch.setattr(scheduler, "_run_cell_in_lane", run_in_lane)
     result = scheduler.run(
-        (
-            PlannedCell(recurrence, True, None, 0),
-            PlannedCell(amplicol, True, None, 0),
-            PlannedCell(
-                candidate,
-                False,
-                None,
-                1,
-                numerical_authority_cell_ids=(
-                    recurrence.cell_id,
-                    amplicol.cell_id,
-                ),
-            ),
+        tuple(
+            reversed(
+                (
+                    PlannedCell(amplicol, False, None, 0),
+                    PlannedCell(recurrence, False, None, 1),
+                    PlannedCell(
+                        candidate,
+                        False,
+                        None,
+                        2,
+                        numerical_authority_cell_ids=(
+                            recurrence.cell_id,
+                            amplicol.cell_id,
+                        ),
+                    ),
+                    PlannedCell(
+                        eager,
+                        False,
+                        None,
+                        3,
+                        numerical_authority_cell_ids=(
+                            recurrence.cell_id,
+                            amplicol.cell_id,
+                        ),
+                    ),
+                )
+            )
         )
     )
 
-    assert candidate_started.is_set()
+    assert compiled_started.is_set()
+    assert eager_started.is_set()
+    assert set(start_order[:2]) == {
+        ExecutionMode.AMPLICOL,
+        ExecutionMode.RECURRENCE,
+    }
+    assert start_order[2:] == [ExecutionMode.COMPILED, ExecutionMode.EAGER]
     assert {outcome.cell_id for outcome in result.outcomes} == {
         recurrence.cell_id,
         amplicol.cell_id,
         candidate.cell_id,
+        eager.cell_id,
     }
-
-
-def test_soft_authority_chain_waits_for_fallback_after_preferred_terminal(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    scheduler = CampaignScheduler(
-        _service(tmp_path),
-        settings=CampaignSettings(workers=2),
-    )
-    candidate = _matrix_cell("matrix_compiled_builtin_sm_lc")
-    recurrence = REPORT_CATALOG.validation_baseline_cell(candidate)
-    assert recurrence is not None
-    amplicol = REPORT_CATALOG.validation_baseline_cell(recurrence)
-    assert amplicol is not None
-    recurrence_finished = threading.Event()
-    release_amplicol = threading.Event()
-    candidate_started = threading.Event()
-
-    def run_in_lane(item: PlannedCell) -> CellOutcome:
-        if item.cell == recurrence:
-            recurrence_finished.set()
-            return CellOutcome(recurrence.cell_id, "error", "authority failed")
-        if item.cell == amplicol:
-            assert recurrence_finished.wait(1.0)
-            assert not candidate_started.is_set()
-            release_amplicol.set()
-            return CellOutcome(amplicol.cell_id, "generation_limit", "terminal")
-        assert item.cell == candidate
-        assert release_amplicol.is_set()
-        candidate_started.set()
-        return CellOutcome(candidate.cell_id, "unverified", "no authority")
-
-    monkeypatch.setattr(scheduler, "_run_cell_in_lane", run_in_lane)
-    result = scheduler.run(
-        (
-            PlannedCell(recurrence, True, None, 0),
-            PlannedCell(amplicol, True, None, 0),
-            PlannedCell(
-                candidate,
-                False,
-                None,
-                1,
-                numerical_authority_cell_ids=(
-                    recurrence.cell_id,
-                    amplicol.cell_id,
-                ),
-            ),
-        )
-    )
-
-    assert candidate_started.is_set()
-    assert next(
-        outcome for outcome in result.outcomes if outcome.cell_id == candidate.cell_id
-    ).status == "unverified"
 
 
 def test_plan_excludes_held_cell_without_suppressing_independent_work(

@@ -36,7 +36,7 @@ import zlib
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -45,7 +45,6 @@ from typing import Any
 from colorama import Fore, Style, just_fix_windows_console
 from prettytable import PrettyTable
 
-from .agreements import independent_numerical_authorities
 from .artifacts import (
     ATTEMPT_SCHEMA,
     ArtifactStore,
@@ -151,6 +150,8 @@ _DASHBOARD_COUNTER_KEYS = (
     "selected",
     "recycled",
     "active",
+    "selected_active",
+    "dependency_active",
     "completed",
     "remaining",
     "static_na",
@@ -158,6 +159,8 @@ _DASHBOARD_COUNTER_KEYS = (
     "failed",
     "unverified",
     "dependency_only",
+    "dependency_completed",
+    "dependency_issues",
 )
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _ACTIVE_WORKER_STATUSES = frozenset({"queued", "preparing", "running"})
@@ -2728,45 +2731,6 @@ def _selective_retry_cells(
     )
 
 
-def _selected_retry_authority_roots(
-    cells: Sequence[CellSpec],
-    active_currents: Mapping[str, LightweightCurrent],
-    *,
-    selected_cell_ids: frozenset[str],
-    catalog: ReportCatalog = REPORT_CATALOG,
-) -> tuple[CellSpec, ...]:
-    """Return selected, missing authority roots needed by retry targets.
-
-    Selective retry filters direct cells before dependency planning.  Retain
-    the user's original selector scope so a compiled/eager retry can rebuild
-    its same-source recurrence/AmpliCol authority chain without turning those
-    auxiliary cells into direct selections.
-    """
-
-    roots: dict[str, CellSpec] = {}
-    direct_ids = {cell.cell_id for cell in cells}
-    for cell in cells:
-        for authority in independent_numerical_authorities(
-            cell,
-            catalog=catalog,
-        ):
-            if authority.cell_id not in selected_cell_ids:
-                continue
-            current = active_currents.get(authority.cell_id)
-            state = (
-                policy_measurement_state_hint(current.result)
-                if current is not None and current.reusable
-                else None
-            )
-            if state is PolicyMeasurementState.SUCCESS:
-                break
-            if current is None or not current.reusable:
-                roots.setdefault(authority.cell_id, authority)
-    return tuple(
-        root for cell_id, root in roots.items() if cell_id not in direct_ids
-    )
-
-
 def _source_cohort_counts(
     currents: Mapping[str, LightweightCurrent],
     *,
@@ -3135,11 +3099,7 @@ class DashboardState:
             cell_id
             for cell_id, outcome in self.terminal_outcomes.items()
             if cell_id not in self.recycled_ids
-            and outcome
-            in {
-                _DashboardTerminalOutcome.SUCCESS,
-                _DashboardTerminalOutcome.CAPPED,
-            }
+            and outcome is _DashboardTerminalOutcome.SUCCESS
         }
 
     @property
@@ -3225,39 +3185,76 @@ class DashboardState:
         )
 
     def counters(self) -> dict[str, int]:
-        """Return one snapshot with explicit selection and worker scopes.
+        """Return one snapshot with non-overlapping selection dispositions.
 
-        Selection progress (selected/recycled/remaining/static N/A) concerns
-        direct user selections. Worker outcomes concern every row owned by this
-        invocation, including dependency-only cells shown in the worker table.
+        ``Selected`` progress is one exclusive partition.  Active work is not
+        a terminal disposition, so it remains in ``remaining`` until it
+        finishes.  Slot utilisation deliberately spans direct and dependency
+        work, and is exposed separately as ``active`` with an explicit split.
         """
 
         if self.counter_snapshot is not None:
             return dict(self.counter_snapshot)
         selected = set(self.selected_ids)
         recycled_ids = self.recycled_ids & selected
-        selected_terminal_ids = set(self.terminal_outcomes) & selected
-        addressed = recycled_ids | selected_terminal_ids
-        addressed |= self.static_na_ids & selected
+        selected_outcomes = {
+            cell_id: outcome
+            for cell_id, outcome in self.terminal_outcomes.items()
+            if cell_id in selected and cell_id not in recycled_ids
+        }
+        selected_terminal_ids = set(selected_outcomes)
+        static_na_ids = (
+            (self.static_na_ids & selected)
+            - recycled_ids
+            - selected_terminal_ids
+        )
+        remaining_ids = (
+            selected - recycled_ids - selected_terminal_ids - static_na_ids
+        )
+        dependency_only_ids = self.dependency_ids - selected
         active_ids = {worker.cell_id for worker in self.active}
         selected_active_ids = active_ids & selected
+        dependency_active_ids = active_ids & dependency_only_ids
+        dependency_outcomes = {
+            cell_id: outcome
+            for cell_id, outcome in self.terminal_outcomes.items()
+            if cell_id in dependency_only_ids
+        }
+        dependency_completed = sum(
+            outcome is _DashboardTerminalOutcome.SUCCESS
+            for outcome in dependency_outcomes.values()
+        )
+        dependency_issues = sum(
+            outcome is not _DashboardTerminalOutcome.SUCCESS
+            for outcome in dependency_outcomes.values()
+        )
         return {
             "selected": len(self.selected_ids),
             "recycled": len(recycled_ids),
             "active": len(active_ids),
-            # Worker-state counters cover every invocation-owned row rendered
-            # in the table, including dependency-only work. Selection progress
-            # remains scoped to the user's direct selection below.
-            "completed": len(self.completed_ids),
-            "remaining": max(
-                0,
-                len(self.selected_ids) - len(addressed | selected_active_ids),
+            "selected_active": len(selected_active_ids),
+            "dependency_active": len(dependency_active_ids),
+            "completed": sum(
+                outcome is _DashboardTerminalOutcome.SUCCESS
+                for outcome in selected_outcomes.values()
             ),
-            "static_na": len(self.static_na_ids & selected),
-            "capped": len(self.capped_ids),
-            "failed": len(self.failed_ids),
-            "unverified": len(self.unverified_ids),
-            "dependency_only": len(self.dependency_ids),
+            "remaining": len(remaining_ids),
+            "static_na": len(static_na_ids),
+            "capped": sum(
+                outcome is _DashboardTerminalOutcome.CAPPED
+                for outcome in selected_outcomes.values()
+            ),
+            "failed": sum(
+                outcome is _DashboardTerminalOutcome.FAILED
+                for outcome in selected_outcomes.values()
+            ),
+            "unverified": sum(
+                outcome is _DashboardTerminalOutcome.UNVERIFIED
+                for outcome in selected_outcomes.values()
+            ),
+            "dependency_only": len(dependency_only_ids),
+            "dependency_completed": dependency_completed,
+            "dependency_issues": dependency_issues,
         }
 
     def selected_worker(self) -> WorkerView | None:
@@ -4843,8 +4840,8 @@ def _ratatui_commands(
     counters = state.counters()
     peer_active_count = len(state.peer_active)
     compact = width < 105 or height < 30
-    overview_height = 6 if compact else 8
-    table_height = max(7, min(13, height // 3))
+    overview_height = 7 if compact else 8
+    table_height = max(7, min(13, height // 3) - (1 if compact else 0))
     footer_height = 1
     detail_y = overview_height + table_height
     detail_height = max(4, height - detail_y - footer_height)
@@ -4929,65 +4926,73 @@ def _ratatui_commands(
         if state.live_snapshot
         else " pyAmpliCol profiling campaign "
     )
-    first = [
+    selection_progress = [
         ("Selected ", key_style),
         (str(counters["selected"]), neutral_style),
         ("   Recycled ", key_style),
         (str(counters["recycled"]), success_style),
-        ("   Active ", key_style),
-        (str(counters["active"]), warning_style),
+        ("   Completed ", key_style),
+        (str(counters["completed"]), success_style),
+        ("   Remaining ", key_style),
+        (str(counters["remaining"]), neutral_style),
+    ]
+    selection_issues = [
+        ("   Capped ", key_style),
+        (str(counters["capped"]), warning_style),
         ("   Errors ", key_style),
         (str(counters["failed"]), failure_style),
         ("   Unverified ", key_style),
         (str(counters["unverified"]), warning_style),
     ]
-    if compact and peer_active_count:
-        first.extend(
+    if compact:
+        _append_dashboard_line(overview, selection_progress)
+        _append_dashboard_line(
+            overview,
+            [
+                *selection_issues,
+                ("   Static N/A ", key_style),
+                (str(counters["static_na"]), warning_style),
+            ],
+        )
+    else:
+        _append_dashboard_line(overview, [*selection_progress, *selection_issues])
+    worker_scope = [
+        ("Workers active ", key_style),
+        (str(counters["active"]), warning_style),
+        ("   selected ", key_style),
+        (str(counters["selected_active"]), warning_style),
+        ("   dependency ", key_style),
+        (str(counters["dependency_active"]), warning_style),
+        *(
             (
                 ("   Peer active ", key_style),
                 (str(peer_active_count), metric_style),
             )
-        )
-    if not compact:
-        first.extend(
-            (
-                ("   Completed ", key_style),
-                (str(counters["completed"]), success_style),
-                ("   Remaining ", key_style),
-                (str(counters["remaining"]), neutral_style),
+            if peer_active_count
+            else ()
+        ),
+        *(
+            ()
+            if compact
+            else (
+                ("   Static N/A ", key_style),
+                (str(counters["static_na"]), warning_style),
             )
-        )
-    _append_dashboard_line(overview, first)
-    _append_dashboard_line(
-        overview,
-        [
-            *(
-                (
-                    ("Completed ", key_style),
-                    (str(counters["completed"]), success_style),
-                    ("   Remaining ", key_style),
-                    (str(counters["remaining"]), neutral_style),
-                    ("   ", neutral_style),
-                )
-                if compact
-                else ()
-            ),
-            ("Static N/A ", key_style),
-            (str(counters["static_na"]), warning_style),
-            ("   Capped ", key_style),
-            (str(counters["capped"]), warning_style),
-            ("   Dependency-only ", key_style),
-            (str(counters["dependency_only"]), neutral_style),
-            *(
-                (
-                    ("   Peer active ", key_style),
-                    (str(peer_active_count), metric_style),
-                )
-                if peer_active_count and not compact
-                else ()
-            ),
-        ],
-    )
+        ),
+        ("   Dependency-only ", key_style),
+        (str(counters["dependency_only"]), neutral_style),
+        *(
+            (
+                ("   Dependency done ", key_style),
+                (str(counters["dependency_completed"]), success_style),
+                ("   issues ", key_style),
+                (str(counters["dependency_issues"]), failure_style),
+            )
+            if not compact
+            else ()
+        ),
+    ]
+    _append_dashboard_line(overview, worker_scope)
     _append_dashboard_line(
         overview,
         [
@@ -7289,10 +7294,6 @@ def _run_campaign(
         measurable,
         source_revision=source.revision,
     )
-    selected_cell_ids_before_retry = frozenset(
-        cell.cell_id for cell in measurable
-    )
-    active_lightweight_before_retry = active_lightweight
     continue_across_revisions = bool(
         getattr(arguments, "continue_across_revisions", False)
     )
@@ -7372,19 +7373,9 @@ def _run_campaign(
         for cell in measurable
         if fresh_attempt or cell.cell_id not in historical_recycled
     )
-    auxiliary_authority_roots = (
-        _selected_retry_authority_roots(
-            requested_for_plan,
-            active_lightweight_before_retry,
-            selected_cell_ids=selected_cell_ids_before_retry,
-            catalog=service.catalog,
-        )
-        if selective_retry
-        else ()
-    )
     preliminary_settings = _campaign_settings(arguments, source)
     planned = plan_campaign(
-        (*auxiliary_authority_roots, *requested_for_plan),
+        requested_for_plan,
         store=service.store,
         settings=preliminary_settings,
         expected_revision=source.revision,
@@ -7394,11 +7385,6 @@ def _run_campaign(
             source_revision=source.revision,
             initial=active_lightweight,
         ),
-    )
-    direct_plan_ids = {cell.cell_id for cell in requested_for_plan}
-    planned = tuple(
-        replace(item, dependency=item.cell.cell_id not in direct_plan_ids)
-        for item in planned
     )
     # A historical cell can still be required as an active-source dependency
     # of a newly measured cell.  In that case it is work, not recycled work.
@@ -8560,9 +8546,9 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Create fresh attempts only for selected cells whose latest "
             "terminal outcome is a non-cap failure. Valid, unseen, static-N/A, "
-            "and authenticated capped cells are excluded. Missing selected "
-            "numerical authorities are added as dependency-only validation "
-            "work. May be combined with --rerun-capped, but not "
+            "and authenticated capped cells are excluded. Optional numerical "
+            "authorities are used when available but are not injected or "
+            "waited on. May be combined with --rerun-capped, but not "
             "--force-refresh."
         ),
     )

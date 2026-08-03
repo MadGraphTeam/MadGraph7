@@ -363,7 +363,8 @@ def test_manual_current_reuse_survives_whole_campaign_move(
         current_resolver=resolver,
     )
     assert [item.cell.cell_id for item in planned] == [compiled.cell_id]
-    assert planned[0].baseline_cell_id == recurrence.cell_id
+    assert planned[0].baseline_cell_id is None
+    assert planned[0].optional_baseline_cell_id == recurrence.cell_id
 
     worker_attempt = service_b.store.new_attempt(
         compiled.cell_id,
@@ -1370,7 +1371,7 @@ def test_selective_retry_keeps_dependency_closure_and_reuses_ok_prerequisite(
     assert not planned_batches[1][0].dependency
 
 
-def test_selective_retry_retains_selected_independent_authority_chain(
+def test_selective_retry_does_not_inject_optional_authority_chain(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1420,14 +1421,13 @@ def test_selective_retry_retains_selected_independent_authority_chain(
         == 0
     )
 
-    by_id = {item.cell.cell_id: item for item in planned_batches[0]}
-    assert set(by_id) == {candidate.cell_id, recurrence.cell_id, amplicol.cell_id}
-    assert not by_id[candidate.cell_id].dependency
-    assert by_id[recurrence.cell_id].dependency
-    assert by_id[amplicol.cell_id].dependency
-    assert by_id[amplicol.cell_id].rank < by_id[recurrence.cell_id].rank
-    assert by_id[recurrence.cell_id].rank < by_id[candidate.cell_id].rank
-    assert by_id[recurrence.cell_id].prerequisite_cell_ids == (amplicol.cell_id,)
+    assert [item.cell.cell_id for item in planned_batches[0]] == [candidate.cell_id]
+    assert not planned_batches[0][0].dependency
+    assert planned_batches[0][0].prerequisite_cell_ids == ()
+    assert planned_batches[0][0].numerical_authority_cell_ids == (
+        recurrence.cell_id,
+        amplicol.cell_id,
+    )
 
 
 def test_manual_dry_run_plans_only_from_lightweight_metadata(

@@ -425,6 +425,33 @@ def _rank(cell: CellSpec) -> int:
     return 2
 
 
+_READY_MODE_ORDER = {
+    ExecutionMode.AMPLICOL: 0,
+    ExecutionMode.RECURRENCE: 1,
+    ExecutionMode.COMPILED: 2,
+    ExecutionMode.EAGER: 3,
+}
+
+
+def _ready_priority(cell: CellSpec) -> tuple[object, ...]:
+    """Prefer the authority ladder within one comparable physics cohort.
+
+    This is queue ordering only.  It deliberately creates no dependency: a
+    slow, failed, or locked authority can never keep a free worker slot idle.
+    """
+
+    return (
+        cell.process_key or cell.process,
+        cell.n_final,
+        cell.measurement.accuracy.value,
+        cell.workload.value,
+        _READY_MODE_ORDER[cell.measurement.execution_mode],
+        "" if cell.measurement.model is None else cell.measurement.model.value,
+        cell.variant or "",
+        cell.cell_id,
+    )
+
+
 def _successful_current(
     store: ArtifactStore,
     cell_id: str,
@@ -1111,11 +1138,7 @@ def plan_campaign(
         if cell.cell_id in ranks:
             return ranks[cell.cell_id]
         rank = _rank(cell)
-        for dependency in (
-            *dependencies(cell),
-            *optional_dependencies(cell),
-            *numerical_authorities(cell),
-        ):
+        for dependency in dependencies(cell):
             scheduled = needed.get(dependency.cell_id)
             if scheduled is not None:
                 rank = max(rank, planned_rank(scheduled) + 1)
@@ -1152,15 +1175,11 @@ def plan_campaign(
         return tuple(peer.cell_id for peer in optional_peers)
 
     def scheduled_prerequisite_ids(cell: CellSpec) -> tuple[str, ...]:
-        authority_ids = {
-            authority.cell_id for authority in numerical_authorities(cell)
-        }
         return tuple(
             sorted(
                 dependency.cell_id
-                for dependency in (*dependencies(cell), *optional_dependencies(cell))
+                for dependency in dependencies(cell)
                 if dependency.cell_id in needed
-                and dependency.cell_id not in authority_ids
             )
         )
 
@@ -2158,7 +2177,6 @@ class CampaignScheduler:
         planned_ids = frozenset(by_id)
         prerequisites: dict[str, set[str]] = {}
         dependents: dict[str, set[str]] = {cell_id: set() for cell_id in planned_ids}
-        soft_authorities: dict[str, tuple[str, ...]] = {}
         for item in ordered:
             declared = set(item.prerequisite_cell_ids) | set(
                 item.resource_predecessor_ids
@@ -2187,41 +2205,13 @@ class CampaignScheduler:
             prerequisites[item.cell.cell_id] = declared
             for predecessor_id in declared:
                 dependents[predecessor_id].add(item.cell.cell_id)
-            selected_authorities = tuple(
-                authority_id
-                for authority_id in item.numerical_authority_cell_ids
-                if authority_id in planned_ids
-            )
-            soft_authorities[item.cell.cell_id] = selected_authorities
-            for authority_id in selected_authorities:
-                dependents[authority_id].add(item.cell.cell_id)
-
-        completed_authority_ids: set[str] = set()
-        successful_authority_ids: set[str] = set()
-        selected_authority_ids = frozenset(
-            authority_id
-            for authority_ids in soft_authorities.values()
-            for authority_id in authority_ids
-        )
-
-        def soft_authority_ready(cell_id: str) -> bool:
-            """Release on the first successful authority or exhausted chain."""
-
-            for authority_id in soft_authorities[cell_id]:
-                if authority_id not in completed_authority_ids:
-                    return False
-                if authority_id in successful_authority_ids:
-                    return True
-            return True
-
-        ready: list[tuple[int, str]] = [
-            (item.rank, item.cell.cell_id)
+        ready: list[tuple[tuple[object, ...], str]] = [
+            (_ready_priority(item.cell), item.cell.cell_id)
             for item in ordered
             if not prerequisites[item.cell.cell_id]
-            and soft_authority_ready(item.cell.cell_id)
         ]
         heapq.heapify(ready)
-        queued_ids = {cell_id for _rank_value, cell_id in ready}
+        queued_ids = {cell_id for _priority, cell_id in ready}
         if not ready and ordered:
             raise ValueError("campaign plan contains a dependency cycle")
 
@@ -2241,7 +2231,7 @@ class CampaignScheduler:
             )
 
         def pop_lockable_candidate(now: float) -> PlannedCell | None:
-            deferred: list[tuple[int, str]] = []
+            deferred: list[tuple[tuple[object, ...], str]] = []
             selected: PlannedCell | None = None
             while ready:
                 key = heapq.heappop(ready)
@@ -2294,27 +2284,12 @@ class CampaignScheduler:
                     except _CoordinationDeferred:
                         waiting_locks[cell_id] = time.monotonic() + retry_delay_seconds
                         queued_ids.add(cell_id)
-                        heapq.heappush(ready, (item.rank, cell_id))
+                        heapq.heappush(
+                            ready,
+                            (_ready_priority(item.cell), cell_id),
+                        )
                         continue
                     outcomes.append(outcome)
-                    if cell_id in selected_authority_ids:
-                        completed_authority_ids.add(cell_id)
-                    if cell_id in selected_authority_ids and outcome.status == "ok":
-                        successful_authority_ids.add(cell_id)
-                    elif cell_id in selected_authority_ids and outcome.status in {
-                        "reused",
-                        "skipped-current",
-                    }:
-                        authority_current = self._current(
-                            by_id[cell_id].cell,
-                            comparison_dependency=True,
-                        )
-                        if (
-                            authority_current is not None
-                            and authority_current[1]
-                            is PolicyMeasurementState.SUCCESS
-                        ):
-                            successful_authority_ids.add(cell_id)
                     prerequisites.pop(cell_id, None)
                     waiting_locks.pop(cell_id, None)
                     for dependent_id in sorted(dependents[cell_id]):
@@ -2324,7 +2299,6 @@ class CampaignScheduler:
                         remaining.discard(cell_id)
                         if (
                             not remaining
-                            and soft_authority_ready(dependent_id)
                             and dependent_id not in queued_ids
                             and all(
                                 scheduled.cell.cell_id != dependent_id
@@ -2333,7 +2307,10 @@ class CampaignScheduler:
                         ):
                             dependent = by_id[dependent_id]
                             queued_ids.add(dependent_id)
-                            heapq.heappush(ready, (dependent.rank, dependent_id))
+                            heapq.heappush(
+                                ready,
+                                (_ready_priority(dependent.cell), dependent_id),
+                            )
                 if not futures and not queued_ids and prerequisites:
                     blocked = ", ".join(sorted(prerequisites))
                     raise ValueError(
