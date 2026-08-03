@@ -19,6 +19,7 @@ import tomllib
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import nullcontext
 from dataclasses import dataclass, replace
+from decimal import Decimal, InvalidOperation
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Protocol
 
@@ -66,6 +67,10 @@ from .timing import (
 RELATIVE_TOLERANCE = 1.0e-12
 INDEPENDENT_RELATIVE_TOLERANCE = 1.0e-8
 ABSOLUTE_TOLERANCE = 1.0e-15
+CONDITIONED_COMPARISON_ABI = "pyamplicol-report-conditioned-comparison-v2"
+RESOLVED_SUM_VALIDATION_ABI = "pyamplicol-report-resolved-sum-validation-v2"
+RESOLVED_COMPONENT_SCALE_ABI = "pyamplicol-report-resolved-component-scale-v1"
+_SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 GENERATION_VALIDATION_SEED = 12345
 DEFAULT_TARGET_RUNTIME_SECONDS = 5.0
 _ARENA_MINIMUM_SAMPLES = 5
@@ -380,6 +385,303 @@ def _sha256_file(path: Path) -> str:
 
 def point_digest(points: object) -> str:
     return hashlib.sha256(_canonical_json(points)).hexdigest()
+
+
+def _scale_decimal(value: object) -> Decimal:
+    """Return one finite non-negative magnitude without binary64 accumulation."""
+
+    try:
+        magnitude = abs(value)  # type: ignore[arg-type]
+        decimal = Decimal(str(magnitude))
+    except (InvalidOperation, TypeError, ValueError) as error:
+        raise RunnerError("resolved component magnitude is not numeric") from error
+    if not decimal.is_finite() or decimal < 0:
+        raise RunnerError("resolved component magnitude is not finite")
+    return decimal
+
+
+def _resolved_l1(value: object) -> Decimal:
+    to_list = getattr(value, "tolist", None)
+    if callable(to_list):
+        value = to_list()
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return sum((_resolved_l1(item) for item in value), Decimal(0))
+    return _scale_decimal(value)
+
+
+def _exact_number_text(value: object) -> str:
+    """Serialize a real component deterministically for a source binding."""
+
+    if isinstance(value, bool):
+        raise RunnerError("resolved component is boolean")
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise RunnerError("resolved component is not finite")
+        return value.hex()
+    number = float(value)  # validates arbitrary-precision real values cheaply
+    if not math.isfinite(number):
+        raise RunnerError("resolved component is not finite")
+    return str(value)
+
+
+def _resolved_component_payload(value: object) -> object:
+    to_list = getattr(value, "tolist", None)
+    if callable(to_list):
+        value = to_list()
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_resolved_component_payload(item) for item in value]
+    real = getattr(value, "real", value)
+    imag = getattr(value, "imag", 0)
+    if callable(real):
+        real = real()
+    if callable(imag):
+        imag = imag()
+    return {"real": _exact_number_text(real), "imag": _exact_number_text(imag)}
+
+
+def resolved_component_scale_evidence(
+    resolved: object,
+    points: object,
+) -> dict[str, object]:
+    """Bind per-point L1 scales to exact axes, ordering, values and momenta."""
+
+    values = getattr(resolved, "values", None)
+    to_list = getattr(values, "tolist", None)
+    if callable(to_list):
+        values = to_list()
+    if not isinstance(values, Sequence) or not values:
+        raise RunnerError("resolved evaluation does not expose point components")
+    helicity_ids = tuple(str(item) for item in getattr(resolved, "helicity_ids", ()))
+    color_flow_ids = tuple(str(item) for item in getattr(resolved, "color_ids", ()))
+    ordered = {
+        "helicity_ids": list(helicity_ids),
+        "color_flow_ids": list(color_flow_ids),
+        "values": _resolved_component_payload(values),
+    }
+    source_digest = hashlib.sha256(_canonical_json(ordered)).hexdigest()
+    ordering_digest = hashlib.sha256(
+        _canonical_json(
+            {
+                "helicity_ids": list(helicity_ids),
+                "color_flow_ids": list(color_flow_ids),
+            }
+        )
+    ).hexdigest()
+    scales: list[float] = []
+    for point_values in values:
+        scale = float(_resolved_l1(point_values))
+        if not math.isfinite(scale) or scale < 0.0:
+            raise RunnerError("resolved component L1 scale is not finite")
+        scales.append(scale)
+    return {
+        "abi": RESOLVED_COMPONENT_SCALE_ABI,
+        "point_digest": point_digest(points),
+        "helicity_ids": list(helicity_ids),
+        "color_flow_ids": list(color_flow_ids),
+        "resolved_ordering_sha256": ordering_digest,
+        "resolved_source_sha256": source_digest,
+        "scales": scales,
+    }
+
+
+def validate_conditioned_comparison_record(
+    value: object,
+    *,
+    require_binding: bool,
+) -> None:
+    """Authenticate a v2 conditioned comparison or a safely reusable v1 row."""
+
+    if not isinstance(value, Mapping):
+        raise ValueError("conditioned comparison must be an object")
+    if value.get("abi") != CONDITIONED_COMPARISON_ABI:
+        # Schema-free v1 rows can be reused only when the stored numbers
+        # recompute and satisfy the symmetric, floor-free criterion.
+        expected_v1 = {
+            "status",
+            "candidate",
+            "baseline",
+            "absolute_difference",
+            "relative_difference",
+            "relative_tolerance",
+            "absolute_tolerance",
+        }
+        if set(value) != expected_v1:
+            raise ValueError("conditioned comparison ABI is unsupported")
+        numeric: dict[str, float] = {}
+        for field in expected_v1 - {"status"}:
+            raw = value.get(field)
+            if (
+                isinstance(raw, bool)
+                or not isinstance(raw, (int, float))
+                or not math.isfinite(float(raw))
+            ):
+                raise ValueError(f"legacy comparison {field} is not finite")
+            numeric[field] = float(raw)
+        delta = abs(numeric["candidate"] - numeric["baseline"])
+        relative = delta / max(abs(numeric["baseline"]), 1.0e-300)
+        old_passed = (
+            delta <= numeric["absolute_tolerance"]
+            or relative <= numeric["relative_tolerance"]
+        )
+        safe = delta <= numeric["relative_tolerance"] * max(
+            abs(numeric["candidate"]), abs(numeric["baseline"])
+        )
+        expected_status = (
+            ResultStatus.OK.value
+            if old_passed
+            else ResultStatus.VALIDATION_FAILED.value
+        )
+        if numeric["absolute_difference"] != delta:
+            raise ValueError("legacy absolute difference was not recomputed")
+        if numeric["relative_difference"] != relative:
+            raise ValueError("legacy relative difference was not recomputed")
+        if value.get("status") != expected_status:
+            raise ValueError("legacy comparison status is inconsistent")
+        if expected_status == ResultStatus.OK.value and not safe:
+            raise ValueError("legacy comparison is not safely reusable")
+        return
+
+    expected_v2 = {
+        "abi",
+        "status",
+        "candidate",
+        "baseline",
+        "candidate_scale",
+        "baseline_scale",
+        "candidate_scale_source",
+        "baseline_scale_source",
+        "comparison_scale",
+        "absolute_difference",
+        "relative_difference",
+        "conditioned_residual",
+        "error_bound",
+        "relative_tolerance",
+        "comparison_binding",
+    }
+    if set(value) != expected_v2:
+        raise ValueError("conditioned comparison fields differ from the v2 ABI")
+    numeric = {}
+    for field in (
+        "candidate",
+        "baseline",
+        "candidate_scale",
+        "baseline_scale",
+        "comparison_scale",
+        "absolute_difference",
+        "relative_difference",
+        "conditioned_residual",
+        "error_bound",
+        "relative_tolerance",
+    ):
+        raw = value.get(field)
+        if (
+            isinstance(raw, bool)
+            or not isinstance(raw, (int, float))
+            or not math.isfinite(float(raw))
+        ):
+            raise ValueError(f"conditioned comparison {field} is not finite")
+        numeric[field] = float(raw)
+    if any(
+        numeric[field] < 0.0
+        for field in (
+            "candidate_scale",
+            "baseline_scale",
+            "comparison_scale",
+            "absolute_difference",
+            "relative_difference",
+            "conditioned_residual",
+            "error_bound",
+            "relative_tolerance",
+        )
+    ):
+        raise ValueError("conditioned comparison contains a negative magnitude")
+    for field in ("candidate_scale_source", "baseline_scale_source"):
+        raw = value.get(field)
+        if not isinstance(raw, str) or not raw:
+            raise ValueError(f"conditioned comparison {field} is invalid")
+    binding = value.get("comparison_binding")
+    if require_binding and (not isinstance(binding, Mapping) or not binding):
+        raise ValueError("conditioned comparison is not bound to its source")
+    if binding is not None and not isinstance(binding, Mapping):
+        raise ValueError("conditioned comparison binding is invalid")
+    if require_binding:
+        assert isinstance(binding, Mapping)
+        point_identity = binding.get("point_digest")
+        if not isinstance(point_identity, str) or not _SHA256_PATTERN.fullmatch(
+            point_identity
+        ):
+            raise ValueError("conditioned comparison point binding is invalid")
+        if binding.get("abi") == RESOLVED_COMPONENT_SCALE_ABI:
+            for field in ("resolved_ordering_sha256", "resolved_source_sha256"):
+                raw_digest = binding.get(field)
+                if not isinstance(raw_digest, str) or not _SHA256_PATTERN.fullmatch(
+                    raw_digest
+                ):
+                    raise ValueError(
+                        f"conditioned comparison {field} binding is invalid"
+                    )
+        else:
+            expected_binding_fields = {
+                "point_digest",
+                "selector_component_identity",
+                "selector_component_sha256",
+                "candidate_source_sha256",
+                "baseline_source_sha256",
+            }
+            if set(binding) != expected_binding_fields:
+                raise ValueError(
+                    "conditioned comparison source binding fields differ"
+                )
+            selector_identity = binding.get("selector_component_identity")
+            if not isinstance(selector_identity, Mapping) or not selector_identity:
+                raise ValueError(
+                    "conditioned comparison selector/component binding is invalid"
+                )
+            expected_selector_digest = hashlib.sha256(
+                _canonical_json(selector_identity)
+            ).hexdigest()
+            if binding.get("selector_component_sha256") != expected_selector_digest:
+                raise ValueError(
+                    "conditioned comparison selector/component digest differs"
+                )
+            for field in ("candidate_source_sha256", "baseline_source_sha256"):
+                raw_digest = binding.get(field)
+                if not isinstance(raw_digest, str) or not _SHA256_PATTERN.fullmatch(
+                    raw_digest
+                ):
+                    raise ValueError(
+                        f"conditioned comparison {field} binding is invalid"
+                    )
+    candidate = numeric["candidate"]
+    baseline = numeric["baseline"]
+    candidate_scale = numeric["candidate_scale"]
+    baseline_scale = numeric["baseline_scale"]
+    if candidate_scale < abs(candidate) or baseline_scale < abs(baseline):
+        raise ValueError("conditioned comparison scale is below its value")
+    delta = abs(candidate - baseline)
+    raw_relative = delta / max(abs(baseline), 1.0e-300)
+    scale = max(abs(candidate), abs(baseline), candidate_scale, baseline_scale)
+    if scale == 0.0:
+        if candidate != 0.0 or baseline != 0.0 or delta != 0.0:
+            raise ValueError("zero scale comparison contains a nonzero value")
+        residual = 0.0
+    else:
+        residual = delta / scale
+    bound = numeric["relative_tolerance"] * scale
+    status = (
+        ResultStatus.OK.value
+        if delta <= bound
+        else ResultStatus.VALIDATION_FAILED.value
+    )
+    if (
+        numeric["comparison_scale"] != scale
+        or numeric["absolute_difference"] != delta
+        or numeric["relative_difference"] != raw_relative
+        or numeric["conditioned_residual"] != residual
+        or numeric["error_bound"] != bound
+        or value.get("status") != status
+    ):
+        raise ValueError("conditioned comparison numerical evidence is inconsistent")
 
 
 def _real_nonnegative(value: object) -> float:
@@ -1096,11 +1398,7 @@ def _valid_symjit_plane_target(value: object) -> bool:
     if set(value) - allowed_fields:
         return False
     word_bits = value.get("word_bits")
-    if (
-        isinstance(word_bits, bool)
-        or not isinstance(word_bits, int)
-        or word_bits != 64
-    ):
+    if isinstance(word_bits, bool) or not isinstance(word_bits, int) or word_bits != 64:
         return False
     if value.get("endianness") != "little":
         return False
@@ -1996,31 +2294,76 @@ def resolved_sum_validation(
     *,
     cell: CellSpec,
     selector_contract: SelectorContract | None,
+    precision: int = 16,
 ) -> dict[str, object]:
     selectors = _selector_kwargs(cell, selector_contract)
-    optimized = runtime.evaluate(points, **selectors)
-    resolved = runtime.evaluate_resolved(points, **selectors)
+    optimized = runtime.evaluate(points, precision=precision, **selectors)
+    resolved = runtime.evaluate_resolved(points, precision=precision, **selectors)
     totals = tuple(resolved.total())
     if len(optimized) != len(totals):
         raise RunnerError("optimized and resolved evaluations have different lengths")
-    maximum_absolute = 0.0
-    maximum_relative = 0.0
-    for optimized_value, resolved_value in zip(optimized, totals, strict=True):
-        absolute = abs(complex(optimized_value) - complex(resolved_value))
-        relative = absolute / max(abs(complex(optimized_value)), 1.0e-300)
-        maximum_absolute = max(maximum_absolute, absolute)
-        maximum_relative = max(maximum_relative, relative)
-    passed = (
-        maximum_absolute <= ABSOLUTE_TOLERANCE or maximum_relative <= RELATIVE_TOLERANCE
+    scale_evidence = resolved_component_scale_evidence(resolved, points)
+    scales = scale_evidence["scales"]
+    if not isinstance(scales, list) or len(scales) != len(totals):
+        raise RunnerError("resolved scale evidence differs from evaluated points")
+
+    records: list[dict[str, object]] = []
+    for point_index, (optimized_value, resolved_value, raw_scale) in enumerate(
+        zip(optimized, totals, scales, strict=True)
+    ):
+        candidate = _real_nonnegative(optimized_value)
+        baseline = _real_nonnegative(resolved_value)
+        scale = float(raw_scale)
+        binding = {
+            field: scale_evidence[field]
+            for field in (
+                "abi",
+                "point_digest",
+                "helicity_ids",
+                "color_flow_ids",
+                "resolved_ordering_sha256",
+                "resolved_source_sha256",
+            )
+        }
+        binding["point_index"] = point_index
+        records.append(
+            pointwise_validation(
+                candidate,
+                baseline,
+                candidate_scale=max(scale, abs(candidate)),
+                baseline_scale=max(scale, abs(baseline)),
+                candidate_scale_source="resolved-component-l1",
+                baseline_scale_source="resolved-component-l1",
+                comparison_binding=binding,
+            )
+        )
+    maximum_absolute = max(
+        (float(record["absolute_difference"]) for record in records), default=0.0
     )
+    maximum_relative = max(
+        (float(record["relative_difference"]) for record in records), default=0.0
+    )
+    maximum_conditioned = max(
+        (float(record["conditioned_residual"]) for record in records), default=0.0
+    )
+    passed = all(record["status"] == ResultStatus.OK.value for record in records)
     return {
+        "abi": RESOLVED_SUM_VALIDATION_ABI,
         "status": (
             ResultStatus.OK.value if passed else ResultStatus.VALIDATION_FAILED.value
         ),
         "maximum_absolute_difference": maximum_absolute,
         "maximum_relative_difference": maximum_relative,
+        "maximum_conditioned_residual": maximum_conditioned,
         "relative_tolerance": RELATIVE_TOLERANCE,
-        "absolute_tolerance": ABSOLUTE_TOLERANCE,
+        "point_digest": point_digest(points),
+        "helicity_ids": list(getattr(resolved, "helicity_ids", ())),
+        "color_flow_ids": list(getattr(resolved, "color_ids", ())),
+        "resolved_ordering_sha256": scale_evidence["resolved_ordering_sha256"],
+        "resolved_source_sha256": scale_evidence["resolved_source_sha256"],
+        "scale_source": "resolved-component-l1",
+        "precision_digits": precision,
+        "points": records,
     }
 
 
@@ -2029,24 +2372,208 @@ def pointwise_validation(
     baseline: float,
     *,
     relative_tolerance: float = RELATIVE_TOLERANCE,
-    absolute_tolerance: float = ABSOLUTE_TOLERANCE,
+    absolute_tolerance: float | None = None,
+    candidate_scale: float | None = None,
+    baseline_scale: float | None = None,
+    candidate_scale_source: str = "value-magnitude",
+    baseline_scale_source: str = "value-magnitude",
+    comparison_binding: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    if relative_tolerance < 0.0 or absolute_tolerance < 0.0:
-        raise ValueError("pointwise tolerances must be non-negative")
+    """Return a scale-conditioned comparison without an absolute escape hatch.
+
+    ``absolute_tolerance`` remains an accepted keyword solely so callers from
+    the v1 API fail over without a signature break.  It is deliberately not
+    used for acceptance and must be either absent or finite/non-negative.
+    """
+
+    numbers = (candidate, baseline, relative_tolerance)
+    if any(not math.isfinite(float(value)) for value in numbers):
+        raise ValueError("pointwise values and tolerance must be finite")
+    if relative_tolerance < 0.0:
+        raise ValueError("pointwise tolerance must be non-negative")
+    if absolute_tolerance is not None and (
+        not math.isfinite(absolute_tolerance) or absolute_tolerance < 0.0
+    ):
+        raise ValueError("legacy absolute tolerance must be finite and non-negative")
+    candidate_scale = abs(candidate) if candidate_scale is None else candidate_scale
+    baseline_scale = abs(baseline) if baseline_scale is None else baseline_scale
+    if any(
+        not math.isfinite(float(value)) or value < 0.0
+        for value in (candidate_scale, baseline_scale)
+    ):
+        raise ValueError("comparison scales must be finite and non-negative")
+    if candidate_scale < abs(candidate) or baseline_scale < abs(baseline):
+        raise ValueError("comparison scale is smaller than its value magnitude")
     absolute = abs(candidate - baseline)
     relative = absolute / max(abs(baseline), 1.0e-300)
-    passed = absolute <= absolute_tolerance or relative <= relative_tolerance
+    comparison_scale = max(
+        abs(candidate), abs(baseline), candidate_scale, baseline_scale
+    )
+    if comparison_scale == 0.0:
+        if candidate != 0.0 or baseline != 0.0 or absolute != 0.0:
+            raise ValueError("zero comparison scale requires exact zero values")
+        conditioned_residual = 0.0
+    else:
+        conditioned_residual = absolute / comparison_scale
+    error_bound = relative_tolerance * comparison_scale
+    passed = absolute <= error_bound
     return {
+        "abi": CONDITIONED_COMPARISON_ABI,
         "status": (
             ResultStatus.OK.value if passed else ResultStatus.VALIDATION_FAILED.value
         ),
         "candidate": candidate,
         "baseline": baseline,
+        "candidate_scale": candidate_scale,
+        "baseline_scale": baseline_scale,
+        "candidate_scale_source": candidate_scale_source,
+        "baseline_scale_source": baseline_scale_source,
+        "comparison_scale": comparison_scale,
         "absolute_difference": absolute,
         "relative_difference": relative,
+        "conditioned_residual": conditioned_residual,
+        "error_bound": error_bound,
         "relative_tolerance": relative_tolerance,
-        "absolute_tolerance": absolute_tolerance,
+        "comparison_binding": (
+            None if comparison_binding is None else dict(comparison_binding)
+        ),
     }
+
+
+def validate_resolved_sum_validation_record(value: object) -> None:
+    """Validate v2 resolved-scale evidence or an exact-zero legacy record."""
+
+    if not isinstance(value, Mapping):
+        raise ValueError("resolved-sum validation must be an object")
+    if value.get("abi") != RESOLVED_SUM_VALIDATION_ABI:
+        expected_v1 = {
+            "status",
+            "maximum_absolute_difference",
+            "maximum_relative_difference",
+            "relative_tolerance",
+            "absolute_tolerance",
+        }
+        if set(value) != expected_v1:
+            raise ValueError("resolved-sum validation ABI is unsupported")
+        numbers: dict[str, float] = {}
+        for field in expected_v1 - {"status"}:
+            raw = value.get(field)
+            if (
+                isinstance(raw, bool)
+                or not isinstance(raw, (int, float))
+                or not math.isfinite(float(raw))
+                or float(raw) < 0.0
+            ):
+                raise ValueError(f"legacy resolved-sum {field} is invalid")
+            numbers[field] = float(raw)
+        old_passed = (
+            numbers["maximum_absolute_difference"] <= numbers["absolute_tolerance"]
+            or numbers["maximum_relative_difference"] <= numbers["relative_tolerance"]
+        )
+        if value.get("status") != (
+            ResultStatus.OK.value
+            if old_passed
+            else ResultStatus.VALIDATION_FAILED.value
+        ):
+            raise ValueError("legacy resolved-sum status is inconsistent")
+        # v1 did not retain either side of each comparison, so a nonzero
+        # difference cannot be authenticated against the new symmetric scale.
+        if old_passed and numbers["maximum_absolute_difference"] != 0.0:
+            raise ValueError("legacy resolved-sum evidence is floor-only or unbound")
+        return
+
+    expected = {
+        "abi",
+        "status",
+        "maximum_absolute_difference",
+        "maximum_relative_difference",
+        "maximum_conditioned_residual",
+        "relative_tolerance",
+        "point_digest",
+        "helicity_ids",
+        "color_flow_ids",
+        "resolved_ordering_sha256",
+        "resolved_source_sha256",
+        "scale_source",
+        "precision_digits",
+        "points",
+    }
+    if set(value) != expected:
+        raise ValueError("resolved-sum validation fields differ from the v2 ABI")
+    for field in ("point_digest", "resolved_ordering_sha256", "resolved_source_sha256"):
+        raw = value.get(field)
+        if (
+            not isinstance(raw, str)
+            or len(raw) != 64
+            or any(character not in "0123456789abcdef" for character in raw)
+        ):
+            raise ValueError(f"resolved-sum {field} is not SHA-256")
+    for field in ("helicity_ids", "color_flow_ids"):
+        raw = value.get(field)
+        if not isinstance(raw, list) or any(
+            not isinstance(item, str) or not item for item in raw
+        ):
+            raise ValueError(f"resolved-sum {field} is invalid")
+    if value.get("scale_source") != "resolved-component-l1":
+        raise ValueError("resolved-sum scale source is unsupported")
+    precision = value.get("precision_digits")
+    if isinstance(precision, bool) or not isinstance(precision, int) or precision < 1:
+        raise ValueError("resolved-sum precision is invalid")
+    relative_tolerance = value.get("relative_tolerance")
+    if (
+        isinstance(relative_tolerance, bool)
+        or not isinstance(relative_tolerance, (int, float))
+        or not math.isfinite(float(relative_tolerance))
+        or float(relative_tolerance) < 0.0
+    ):
+        raise ValueError("resolved-sum relative tolerance is invalid")
+    records = value.get("points")
+    if not isinstance(records, list) or not records:
+        raise ValueError("resolved-sum points are unavailable")
+    for point_index, record in enumerate(records):
+        validate_conditioned_comparison_record(record, require_binding=True)
+        assert isinstance(record, Mapping)
+        if float(record["relative_tolerance"]) != float(relative_tolerance):
+            raise ValueError("resolved-sum point tolerance differs")
+        binding = record.get("comparison_binding")
+        if not isinstance(binding, Mapping):
+            raise ValueError("resolved-sum point binding is unavailable")
+        expected_binding = {
+            "abi": RESOLVED_COMPONENT_SCALE_ABI,
+            "point_digest": value["point_digest"],
+            "helicity_ids": value["helicity_ids"],
+            "color_flow_ids": value["color_flow_ids"],
+            "resolved_ordering_sha256": value["resolved_ordering_sha256"],
+            "resolved_source_sha256": value["resolved_source_sha256"],
+            "point_index": point_index,
+        }
+        if dict(binding) != expected_binding:
+            raise ValueError("resolved-sum point binding differs from its source")
+    maximum_absolute = max(float(record["absolute_difference"]) for record in records)
+    maximum_relative = max(float(record["relative_difference"]) for record in records)
+    maximum_conditioned = max(
+        float(record["conditioned_residual"]) for record in records
+    )
+    for field, expected_value in (
+        ("maximum_absolute_difference", maximum_absolute),
+        ("maximum_relative_difference", maximum_relative),
+        ("maximum_conditioned_residual", maximum_conditioned),
+    ):
+        raw = value.get(field)
+        if (
+            isinstance(raw, bool)
+            or not isinstance(raw, (int, float))
+            or not math.isfinite(float(raw))
+            or float(raw) != expected_value
+        ):
+            raise ValueError(f"resolved-sum {field} is inconsistent")
+    status = (
+        ResultStatus.OK.value
+        if all(record["status"] == ResultStatus.OK.value for record in records)
+        else ResultStatus.VALIDATION_FAILED.value
+    )
+    if value.get("status") != status:
+        raise ValueError("resolved-sum status is inconsistent")
 
 
 @dataclass(frozen=True, slots=True)
@@ -3262,8 +3789,11 @@ def provenance_payload() -> dict[str, object]:
 
 __all__ = [
     "ABSOLUTE_TOLERANCE",
+    "CONDITIONED_COMPARISON_ABI",
     "INDEPENDENT_RELATIVE_TOLERANCE",
     "RELATIVE_TOLERANCE",
+    "RESOLVED_COMPONENT_SCALE_ABI",
+    "RESOLVED_SUM_VALIDATION_ABI",
     "GeneratedArtifact",
     "ProfilingTimeLimitError",
     "RunnerError",
@@ -3277,10 +3807,13 @@ __all__ = [
     "profile_runtime",
     "profiling_chunk_guard",
     "provenance_payload",
+    "resolved_component_scale_evidence",
     "resolved_sum_validation",
     "runtime_identity_payload",
     "runtime_validation_points",
     "validate_artifact_contract",
+    "validate_conditioned_comparison_record",
+    "validate_resolved_sum_validation_record",
     "validate_runtime_contract",
     "validate_selector_contract",
 ]

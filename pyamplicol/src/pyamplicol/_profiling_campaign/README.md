@@ -93,6 +93,11 @@ contains exact canonical cell IDs and can be fed straight back to `run` or
   --force-refresh
 ```
 
+`campaign_summary_ids/unverified.txt` is directly replayable without
+`--force-refresh`: those timing diagnostics are not successful currents, and
+they are rerun and validated automatically once recurrence or AmpliCol
+authority is available.
+
 By default, every heavy attempt payload is retained. Pass
 `run --cleanup-artifacts` to archive obsolete sealed attempts, retain their
 compact result, log, progress, and timeline diagnostics, and remove only their

@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import multiprocessing
+import shutil
 from pathlib import Path
 from queue import Empty
 from typing import Any
@@ -241,6 +242,111 @@ def test_failed_and_interrupted_attempts_cannot_replace_valid_current(
     assert json.loads(
         (interrupted.root / "manifest.json").read_text(encoding="utf-8")
     )["status"] == "interrupted"
+
+
+def _sealed_failed_worker_result(
+    store: ArtifactStore,
+    *,
+    cell_id: str = "cell",
+) -> tuple[str, Path]:
+    attempt = store.new_attempt(cell_id, ArtifactPolicy.REGENERATE)
+    attempt.write_json(
+        "worker-result.json",
+        {"status": "unverified", "marker": "diagnostic"},
+    )
+    attempt.mark_failed(
+        "independent authority unavailable",
+        artifact_paths=("worker-result.json",),
+    )
+    return attempt.attempt_id, attempt.root
+
+
+def test_named_unsuccessful_result_loads_only_authenticated_live_or_archive(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    attempt_id, root = _sealed_failed_worker_result(store)
+
+    assert store.load_sealed_unsuccessful_worker_result("cell", attempt_id) == {
+        "status": "unverified",
+        "marker": "diagnostic",
+    }
+
+    assert store.archive_obsolete_attempts("cell", consumer_cell_ids=()) == (
+        attempt_id,
+    )
+    assert not root.exists()
+    assert store.load_sealed_unsuccessful_worker_result("cell", attempt_id) == {
+        "status": "unverified",
+        "marker": "diagnostic",
+    }
+
+
+def test_archived_unsuccessful_result_ignores_only_pruned_heavy_payload(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    attempt = store.new_attempt("cell", ArtifactPolicy.REGENERATE)
+    attempt.write_json(
+        "worker-result.json",
+        {"status": "unverified", "marker": "retained"},
+    )
+    attempt.path("artifact/native/payload.bin").write_bytes(b"heavy")
+    attempt.mark_failed(
+        "independent authority unavailable",
+        artifact_paths=("worker-result.json", "artifact/native/payload.bin"),
+    )
+
+    assert store.archive_obsolete_attempts("cell", consumer_cell_ids=()) == (
+        attempt.attempt_id,
+    )
+    archived = store._attempt_history_cell_root("cell") / attempt.attempt_id
+    assert not (archived / "artifact").exists()
+    assert store.load_sealed_unsuccessful_worker_result(
+        "cell",
+        attempt.attempt_id,
+    ) == {"status": "unverified", "marker": "retained"}
+
+def test_named_unsuccessful_result_rejects_collisions_and_tampering(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    attempt_id, live = _sealed_failed_worker_result(store)
+    archived = store._attempt_history_cell_root("cell") / attempt_id
+    archived.parent.mkdir(parents=True)
+    shutil.copytree(live, archived)
+
+    with pytest.raises(ManifestValidationError, match="colliding locations"):
+        store.load_sealed_unsuccessful_worker_result("cell", attempt_id)
+
+    shutil.rmtree(archived)
+    worker_result = live / "worker-result.json"
+    worker_result.write_text('{"status":"ok"}\n', encoding="utf-8")
+    with pytest.raises(
+        ManifestValidationError,
+        match=r"artifact (size|digest) mismatch",
+    ):
+        store.load_sealed_unsuccessful_worker_result("cell", attempt_id)
+
+
+@pytest.mark.parametrize("location", ("live", "archive"))
+def test_named_unsuccessful_result_rejects_symlinked_inventory_ancestors(
+    tmp_path: Path,
+    location: str,
+) -> None:
+    store = _store(tmp_path)
+    attempt_id, _root = _sealed_failed_worker_result(store)
+    if location == "live":
+        inventory = store._cell_root("cell") / "attempts"
+    else:
+        store.archive_obsolete_attempts("cell", consumer_cell_ids=())
+        inventory = store._attempt_history_cell_root("cell")
+    external = tmp_path / f"external-{location}"
+    inventory.replace(external)
+    inventory.symlink_to(external, target_is_directory=True)
+
+    with pytest.raises(ManifestValidationError, match="symbolic link"):
+        store.load_sealed_unsuccessful_worker_result("cell", attempt_id)
 
 
 def test_attempt_context_records_interruption_without_masking_exception(

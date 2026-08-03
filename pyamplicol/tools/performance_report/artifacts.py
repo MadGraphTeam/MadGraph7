@@ -491,6 +491,91 @@ class ArtifactStore:
         validated = _validate_cell_id(cell_id)
         return self.attempt_history_root / _safe_component(validated)
 
+    @staticmethod
+    def _validate_direct_inventory_directory(
+        path: Path,
+        *,
+        parent: Path,
+        description: str,
+        missing_ok: bool,
+    ) -> Path | None:
+        if path.parent != parent:
+            raise ManifestValidationError(
+                f"{description} is outside its canonical inventory: {path}"
+            )
+        if path.is_symlink():
+            raise ManifestValidationError(f"{description} is a symbolic link: {path}")
+        if not path.exists():
+            if missing_ok:
+                return None
+            raise ManifestValidationError(f"{description} is absent: {path}")
+        if not path.is_dir():
+            raise ManifestValidationError(
+                f"{description} is not a regular directory: {path}"
+            )
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError as error:
+            raise ManifestValidationError(
+                f"{description} is unavailable: {path}"
+            ) from error
+        if resolved != path:
+            raise ManifestValidationError(
+                f"{description} escapes its canonical path: {path}"
+            )
+        return path
+
+    def _existing_live_attempt_root(
+        self,
+        cell_id: str,
+        attempt_id: str,
+    ) -> Path | None:
+        cell_root = self._existing_cell_root(cell_id, missing_ok=True)
+        if cell_root is None:
+            return None
+        attempts_root = self._validate_direct_inventory_directory(
+            cell_root / "attempts",
+            parent=cell_root,
+            description="attempts root",
+            missing_ok=True,
+        )
+        if attempts_root is None:
+            return None
+        return self._validate_direct_inventory_directory(
+            attempts_root / _validate_uuid(attempt_id, field="attempt_id"),
+            parent=attempts_root,
+            description="attempt root",
+            missing_ok=True,
+        )
+
+    def _existing_archived_attempt_root(
+        self,
+        cell_id: str,
+        attempt_id: str,
+    ) -> Path | None:
+        history_root = self._validate_direct_inventory_directory(
+            self.attempt_history_root,
+            parent=self.artifact_root,
+            description="attempt history root",
+            missing_ok=True,
+        )
+        if history_root is None:
+            return None
+        history_cell = self._validate_direct_inventory_directory(
+            self._attempt_history_cell_root(cell_id),
+            parent=history_root,
+            description="attempt history cell root",
+            missing_ok=True,
+        )
+        if history_cell is None:
+            return None
+        return self._validate_direct_inventory_directory(
+            history_cell / _validate_uuid(attempt_id, field="attempt_id"),
+            parent=history_cell,
+            description="archived attempt root",
+            missing_ok=True,
+        )
+
     @contextmanager
     def cell_lock(
         self,
@@ -723,6 +808,166 @@ class ArtifactStore:
                 _validate_uuid(path.name, field="attempt inventory member")
             )
         return tuple(attempt_ids)
+
+    def load_sealed_unsuccessful_worker_result(
+        self,
+        cell_id: str,
+        attempt_id: str,
+    ) -> Mapping[str, Any]:
+        """Load one explicitly named failed result through its sealed manifest.
+
+        This is deliberately not a history search.  Presentation metadata
+        names the exact attempt UUID, and this method authenticates only that
+        attempt's compact ``worker-result.json``.  It supports the canonical
+        live and archived locations used by bounded artifact cleanup.
+        """
+
+        validated_cell = _validate_cell_id(cell_id)
+        validated_attempt = _validate_uuid(attempt_id, field="attempt_id")
+        live_root = self._existing_live_attempt_root(
+            validated_cell,
+            validated_attempt,
+        )
+        archived_root = self._existing_archived_attempt_root(
+            validated_cell,
+            validated_attempt,
+        )
+        roots = tuple(
+            root
+            for root in (live_root, archived_root)
+            if root is not None
+        )
+        if len(roots) != 1:
+            raise ManifestValidationError(
+                "named unsuccessful attempt is absent or has colliding locations"
+            )
+        root = roots[0]
+        archived = root == archived_root
+        if root.is_symlink() or not root.is_dir():
+            raise ManifestValidationError(
+                f"named unsuccessful attempt is not a regular directory: {root}"
+            )
+        manifest_path = root / "manifest.json"
+        if manifest_path.is_symlink() or not manifest_path.is_file():
+            raise ManifestValidationError(
+                f"named unsuccessful attempt has no regular manifest: {root}"
+            )
+        manifest = _read_json_object(
+            manifest_path,
+            description="unsuccessful attempt manifest",
+        )
+        if (
+            set(manifest) != _ATTEMPT_KEYS
+            or manifest.get("schema") != ATTEMPT_SCHEMA
+            or manifest.get("cell_id") != validated_cell
+            or manifest.get("attempt_id") != validated_attempt
+            or manifest.get("status") not in {"failed", "interrupted"}
+            or manifest.get("result_path") is not None
+            or not isinstance(manifest.get("error"), str)
+            or not manifest.get("error")
+        ):
+            raise ManifestValidationError(
+                "named unsuccessful attempt manifest is invalid"
+            )
+        try:
+            ArtifactPolicy(manifest.get("artifact_policy"))
+        except (TypeError, ValueError) as error:
+            raise ManifestValidationError(
+                "unsuccessful attempt artifact policy is invalid"
+            ) from error
+        self._validate_based_on(manifest.get("based_on"))
+        raw_artifacts = manifest.get("artifacts")
+        if not isinstance(raw_artifacts, list):
+            raise ManifestValidationError(
+                "unsuccessful attempt artifacts must be an array"
+            )
+        artifacts: list[ArtifactFile] = []
+        for index, raw in enumerate(raw_artifacts):
+            if not isinstance(raw, dict) or set(raw) != _FILE_KEYS:
+                raise ManifestValidationError(
+                    f"artifact record {index} has an unsupported schema shape"
+                )
+            relative = _strict_relative_path(
+                raw.get("path"),
+                field=f"artifacts[{index}].path",
+            )
+            self._validate_unsuccessful_artifact_ancestors(root, relative)
+            candidate = root.joinpath(relative)
+            if archived and not candidate.exists() and not candidate.is_symlink():
+                if not relative.parts or relative.parts[0] != "artifact":
+                    raise ManifestValidationError(
+                        "archived compact diagnostic artifact is missing: "
+                        f"{relative.as_posix()}"
+                    )
+                self._validate_missing_archived_artifact_record(
+                    raw,
+                    index=index,
+                )
+                continue
+            artifacts.append(self._validate_artifact_file(root, raw, index=index))
+        paths = [
+            _strict_relative_path(raw.get("path"), field="artifact path").as_posix()
+            for raw in raw_artifacts
+            if isinstance(raw, Mapping)
+        ]
+        if len(paths) != len(set(paths)):
+            raise ManifestValidationError(
+                "unsuccessful attempt manifest has duplicate artifacts"
+            )
+        matches = tuple(
+            artifact
+            for artifact in artifacts
+            if artifact.relative_path == "worker-result.json"
+        )
+        if len(matches) != 1:
+            raise ManifestValidationError(
+                "unsuccessful attempt does not authenticate worker-result.json"
+            )
+        return self.materialize_current_result(
+            _read_json_object(
+                matches[0].path,
+                description="unsuccessful worker result",
+            )
+        )
+
+    @staticmethod
+    def _validate_unsuccessful_artifact_ancestors(
+        attempt_root: Path,
+        relative: Path,
+    ) -> None:
+        cursor = attempt_root
+        for offset, part in enumerate(relative.parts):
+            cursor = cursor / part
+            if cursor.is_symlink():
+                raise ManifestValidationError(
+                    "unsuccessful artifact traverses a symbolic link: "
+                    f"{relative.as_posix()}"
+                )
+            if (
+                offset < len(relative.parts) - 1
+                and cursor.exists()
+                and not cursor.is_dir()
+            ):
+                raise ManifestValidationError(
+                    "unsuccessful artifact traverses a non-directory: "
+                    f"{relative.as_posix()}"
+                )
+
+    @staticmethod
+    def _validate_missing_archived_artifact_record(
+        raw_record: Mapping[str, object],
+        *,
+        index: int,
+    ) -> None:
+        size = raw_record.get("size")
+        if isinstance(size, bool) or not isinstance(size, int) or size < 0:
+            raise ManifestValidationError(
+                f"artifacts[{index}].size must be a non-negative integer"
+            )
+        _validate_sha256(
+            raw_record.get("sha256"),
+            field=f"artifacts[{index}].sha256",
+        )
 
     def lightweight_current_payload(
         self,

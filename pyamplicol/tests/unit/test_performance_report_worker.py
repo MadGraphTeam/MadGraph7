@@ -8,7 +8,9 @@ from pathlib import Path
 import pytest
 
 import tools.performance_report.worker as worker_module
-from tools.performance_report.agreements import validation_baseline_fallback_peers
+from tools.performance_report.agreements import (
+    independent_numerical_authorities,
+)
 from tools.performance_report.artifacts import DiskFullError
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.measurement import load_measurement
@@ -144,6 +146,36 @@ def test_jsonl_progress_sink_captures_compact_typed_events(tmp_path: Path) -> No
 def test_every_catalog_cell_has_unique_worker_identity() -> None:
     cells = REPORT_CATALOG.measurement_cells()
     assert len({cell.cell_id for cell in cells}) == len(cells)
+
+
+@pytest.mark.parametrize("mutation", ("missing", "reordered", "extra"))
+def test_worker_requires_exact_catalog_numerical_authority_chain(
+    tmp_path: Path,
+    mutation: str,
+) -> None:
+    cell = REPORT_CATALOG.cell(
+        "matrix-compiled-builtin-sm-full-n4-dd-tt-jets-contracted"
+    )
+    canonical = tuple(
+        authority.cell_id for authority in independent_numerical_authorities(cell)
+    )
+    assert len(canonical) == 2
+    observed = {
+        "missing": canonical[:-1],
+        "reordered": tuple(reversed(canonical)),
+        "extra": (*canonical, REPORT_CATALOG.measurement_cells()[0].cell_id),
+    }[mutation]
+
+    with pytest.raises(ValueError, match="canonical catalog chain"):
+        measure_cell(
+            cell.cell_id,
+            repo_root=tmp_path,
+            attempt_root=tmp_path / "attempt",
+            target_runtime_seconds=1.0,
+            batch_size=1,
+            worker_cores=1,
+            expected_authority_cell_ids=observed,
+        )
 
 
 def test_no_legacy_baseline_lc_all_flow_gets_selected_flow_selector_peer() -> None:
@@ -571,6 +603,11 @@ def test_pyamplicol_worker_passes_all_validation_peers_to_measurement(
         target_runtime_seconds=1.0,
         batch_size=1,
         worker_cores=1,
+        expected_authority_cell_ids=tuple(
+            authority.cell_id
+            for authority in independent_numerical_authorities(cell)
+        ),
+        selected_authority_cell_id=independent_numerical_authorities(cell)[0].cell_id,
         baseline_json=baseline_path,
         peer_json=(("reference-amplicol-full-n4-dd-tt-jets-contracted", peer_path),),
     )
@@ -588,9 +625,9 @@ def test_z_worker_accepts_recurrence_as_baseline_and_direct_peer(
     cell = REPORT_CATALOG.cell(
         "z-builtin-sm-n1-dd-z-jets-jit-o1-selected-flow"
     )
-    fallback = validation_baseline_fallback_peers(cell)
-    assert len(fallback) == 1
-    recurrence = fallback[0]
+    authorities = independent_numerical_authorities(cell)
+    assert len(authorities) == 2
+    recurrence = authorities[0]
     measurement = {"status": "ok", "matrix_element": 1.0}
     measurement_path = tmp_path / "recurrence.json"
     measurement_path.write_text(json.dumps(measurement), encoding="ascii")
@@ -633,6 +670,11 @@ def test_z_worker_accepts_recurrence_as_baseline_and_direct_peer(
         target_runtime_seconds=1.0,
         batch_size=1,
         worker_cores=1,
+        expected_authority_cell_ids=tuple(
+            authority.cell_id
+            for authority in independent_numerical_authorities(cell)
+        ),
+        selected_authority_cell_id=recurrence.cell_id,
         baseline_json=measurement_path,
         peer_json=((recurrence.cell_id, measurement_path),),
     )

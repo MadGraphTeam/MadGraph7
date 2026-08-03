@@ -1269,6 +1269,49 @@ fn generated_eager_artifact_loads_when_fixture_is_supplied() {
     );
 }
 
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+#[test]
+fn retained_sparse_group_eager_artifact_decodes_when_fixture_is_supplied() {
+    let Some(root) = std::env::var_os("RUSTICOL_EAGER_SPARSE_GROUP_ARTIFACT") else {
+        return;
+    };
+    let root = PathBuf::from(root);
+    let _native = NativeRuntime::load(&root, None, None)
+        .expect("load retained zero-first-group eager artifact through NativeRuntime");
+    let artifact = VerifiedArtifact::open(&root).expect("verify retained eager artifact");
+    let selection = artifact
+        .select_process(None)
+        .expect("select retained eager process");
+    let (loaded, evaluator_root) =
+        load_verified_evaluator(&artifact, &selection).expect("load eager execution manifest");
+    let LoadedExecutionManifest::EagerV3(manifest) = loaded else {
+        panic!("retained artifact is not eager plan-v3");
+    };
+    let pack = super::eager_v3_load::load_eager_v3_prepared_pack(&artifact, &manifest)
+        .expect("load retained prepared kernel pack");
+    let container = super::eager_v3_load::open_verified_eager_v3_runtime_container(
+        &artifact,
+        &evaluator_root,
+        &manifest,
+    )
+    .expect("open retained eager runtime container");
+    let decoded =
+        super::eager_v3_decode::decode_eager_v3_runtime(&container, &manifest, &pack.manifest)
+            .expect("decode retained zero-first-group eager plan-v3");
+    let group_ids = decoded
+        .invocations
+        .iter()
+        .map(|row| row.evaluation_group_id)
+        .collect::<Vec<_>>();
+    assert!(group_ids.windows(2).all(|pair| pair[0] < pair[1]));
+    assert!(
+        group_ids
+            .windows(2)
+            .any(|pair| pair[1] > pair[0].saturating_add(1)),
+        "retained eager failure fixture must contain a pruned group gap: {group_ids:?}"
+    );
+}
+
 #[cfg(all(
     any(feature = "f64-compiled", feature = "f64-symjit"),
     any(target_os = "linux", target_os = "macos")

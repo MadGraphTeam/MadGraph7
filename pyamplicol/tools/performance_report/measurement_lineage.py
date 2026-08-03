@@ -36,6 +36,10 @@ from .models import (
     ResultStatus,
     Workload,
 )
+from .runner import (
+    validate_conditioned_comparison_record,
+    validate_resolved_sum_validation_record,
+)
 from .source_identity import require_eligible_report_source
 
 MEASUREMENT_LINEAGE_SCHEMA = "pyamplicol-performance-measurement-lineage-v2"
@@ -2624,88 +2628,42 @@ def _validate_numerical_validation_failure(
 
     pointwise = validation.get("pointwise")
     resolved_sum = validation.get("resolved_sum")
-    if (
-        not isinstance(pointwise, Mapping)
-        or set(pointwise)
-        != {
-            "status",
-            "candidate",
-            "baseline",
-            "absolute_difference",
-            "relative_difference",
-            "relative_tolerance",
-            "absolute_tolerance",
-        }
-        or not isinstance(resolved_sum, Mapping)
-        or set(resolved_sum)
-        != {
-            "status",
-            "maximum_absolute_difference",
-            "maximum_relative_difference",
-            "relative_tolerance",
-            "absolute_tolerance",
-        }
-    ):
+    if not isinstance(pointwise, Mapping) or not isinstance(resolved_sum, Mapping):
         raise MeasurementLineageError(
             f"{record.cell_id}: closure failure lacks complete pointwise/resolved "
             "validation evidence"
         )
-    raw_numbers = (
-        pointwise["candidate"],
-        pointwise["baseline"],
-        pointwise["absolute_difference"],
-        pointwise["relative_difference"],
-        pointwise["relative_tolerance"],
-        pointwise["absolute_tolerance"],
-        resolved_sum["maximum_absolute_difference"],
-        resolved_sum["maximum_relative_difference"],
-        resolved_sum["relative_tolerance"],
-        resolved_sum["absolute_tolerance"],
-    )
+    try:
+        validate_conditioned_comparison_record(
+            pointwise,
+            require_binding="abi" in pointwise,
+        )
+        validate_resolved_sum_validation_record(resolved_sum)
+    except ValueError as error:
+        raise MeasurementLineageError(
+            f"{record.cell_id}: closure validation evidence is inconsistent"
+        ) from error
     matrix_element = record.result.get("matrix_element")
-    if any(
-        isinstance(value, bool)
-        or not isinstance(value, (int, float))
-        or not math.isfinite(float(value))
-        or float(value) < 0.0
-        for value in raw_numbers
-    ) or (
-        isinstance(matrix_element, bool)
-        or not isinstance(matrix_element, (int, float))
-        or not math.isfinite(float(matrix_element))
-        or float(matrix_element) < 0.0
+    candidate = pointwise.get("candidate")
+    if (
+        isinstance(candidate, bool)
+        or not isinstance(candidate, (int, float))
+        or not math.isfinite(float(candidate))
+        or float(candidate) < 0.0
+        or (
+            isinstance(matrix_element, bool)
+            or not isinstance(matrix_element, (int, float))
+            or not math.isfinite(float(matrix_element))
+            or float(matrix_element) < 0.0
+        )
     ):
         raise MeasurementLineageError(
             f"{record.cell_id}: closure validation evidence is not finite and "
             "nonnegative"
         )
-    (
-        candidate,
-        baseline,
-        absolute,
-        relative,
-        relative_tolerance,
-        absolute_tolerance,
-        maximum_absolute,
-        maximum_relative,
-        resolved_relative_tolerance,
-        resolved_absolute_tolerance,
-    ) = (float(value) for value in raw_numbers)
-    recomputed_absolute = abs(candidate - baseline)
-    recomputed_relative = recomputed_absolute / max(abs(baseline), 1.0e-300)
     if (
-        float(matrix_element) != candidate
-        or absolute != recomputed_absolute
-        or relative != recomputed_relative
-        or (
-            recomputed_absolute <= absolute_tolerance
-            or recomputed_relative <= relative_tolerance
-        )
+        float(matrix_element) != float(candidate)
         or pointwise.get("status") != ResultStatus.VALIDATION_FAILED.value
-        or (
-            maximum_absolute > resolved_absolute_tolerance
-            and maximum_relative > resolved_relative_tolerance
-        )
         or resolved_sum.get("status") != ResultStatus.OK.value
     ):
         raise MeasurementLineageError(

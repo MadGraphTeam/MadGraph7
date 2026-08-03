@@ -353,6 +353,7 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
         "--continue-across-revisions",
         "--cell-id-file",
         "--cleanup-artifacts",
+        "`unverified.txt` needs no `--force-refresh`",
         "every heavy attempt payload is retained",
         "sealed with compact diagnostics",
         "without an original-AmpliCol checkout",

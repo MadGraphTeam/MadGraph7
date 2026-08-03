@@ -54,6 +54,7 @@ from .dag_types import (
     GenericDAG,
     InteractionNode,
 )
+from .helicity_replay import _semantic_amplitude_root_alias_signatures
 
 
 def _normalize_generation_cap(value: int | None) -> int | None:
@@ -630,15 +631,11 @@ def build_backward_live_state_plan(
                 if pair_closures:
                     closures.extend(pair_closures)
 
-    closure_owner_ids = _canonical_open_line_alias_owner_sector_ids(
-        color_plan,
-        (closure.color_sector_id for closure in closures),
-    )
-    closures = [
-        closure
-        for closure in closures
-        if int(closure.color_sector_id) in closure_owner_ids
-    ]
+    # Keep the union of every model-valid closure traversal.  Whole-sector
+    # ownership is not sound for three or more open fermion lines: different
+    # block traversals can expose distinct closure terms (and identical-line
+    # exchange signs).  Exact semantic alias removal happens only after the
+    # concrete DAG exists and can be certified by the shared replay proof.
     useful: set[_LiveCurrentShape] = {
         shape for closure in closures for shape in (closure.left, closure.right)
     }
@@ -749,26 +746,130 @@ def _canonical_open_line_alias_owner_sector_ids(
     return frozenset(owners)
 
 
-def _retain_canonical_open_line_alias_roots(
+def _canonical_open_line_alias_owner_sector_map(
     color_plan: GenericColorPlan,
-    roots: Sequence[AmplitudeRoot],
-) -> tuple[AmplitudeRoot, ...]:
-    """Retain one contributing root sector per open-line alias class."""
+) -> dict[int, int]:
+    """Map traversal sectors onto canonical complete-open-line tensors."""
 
+    if color_plan.color_accuracy not in {"nlc", "full"}:
+        return {int(sector.id): int(sector.id) for sector in color_plan.sectors}
+    sectors_by_key: dict[tuple[object, ...], list[int]] = {}
+    for sector in color_plan.sectors:
+        sector_id = int(sector.id)
+        if sector.kind == "open-lines":
+            open_strings = _canonical_open_string_product_key(
+                (
+                    line.fundamental_label,
+                    line.adjoint_labels,
+                    line.antifundamental_label,
+                    line.singlet_labels,
+                )
+                for line in sector.open_color_lines
+            )
+            key: tuple[object, ...] = ("open-lines", open_strings)
+        else:
+            key = (sector.kind, sector_id)
+        sectors_by_key.setdefault(key, []).append(sector_id)
+    return {
+        sector_id: min(sector_ids)
+        for sector_ids in sectors_by_key.values()
+        for sector_id in sector_ids
+    }
+
+
+def _retain_canonical_open_line_alias_roots(
+    dag: GenericDAG,
+    model: Model,
+) -> GenericDAG:
+    """Collapse only model-certified traversal aliases of amplitude roots.
+
+    Public NLC/full plans retain every colour sector.  Complete open-line block
+    permutations are private construction aliases, but a sector is not an
+    indivisible ownership unit: with three or more open lines, separate
+    traversals carry separate physical closure terms.  The shared helicity
+    replay signature proves equality of the full recursive closure while a
+    sector projection removes only that traversal identifier.  Distinct source
+    labels, ordered traversals, fermion exchange factors and kernel contracts
+    therefore remain distinct.
+    """
+
+    roots = dag.amplitude_roots
+    color_plan = dag.color_plan
     if not roots or color_plan.color_accuracy not in {"nlc", "full"}:
-        return tuple(roots)
-    owners = _canonical_open_line_alias_owner_sector_ids(
-        color_plan,
-        (root.color_sector_id for root in roots),
+        return dag
+
+    owner_by_sector = _canonical_open_line_alias_owner_sector_map(color_plan)
+    aliases_by_owner: dict[int, set[int]] = {}
+    for sector_id, owner_id in owner_by_sector.items():
+        aliases_by_owner.setdefault(owner_id, set()).add(sector_id)
+    if all(len(sector_ids) == 1 for sector_ids in aliases_by_owner.values()):
+        return dag
+
+    signatures = _semantic_amplitude_root_alias_signatures(
+        dag,
+        model,
+        color_sector_aliases=owner_by_sector,
     )
-    retained: list[AmplitudeRoot] = []
-    for root in roots:
-        if int(root.color_sector_id) not in owners:
+    grouped: dict[
+        tuple[
+            int,
+            str,
+            tuple[tuple[tuple[int, int], ...], ...],
+            tuple[float, float],
+        ],
+        dict[int, list[AmplitudeRoot]],
+    ] = {}
+    untouched: list[AmplitudeRoot] = []
+    for root, signature in zip(roots, signatures, strict=True):
+        if root.color_sector_id is None:
+            untouched.append(root)
             continue
-        retained.append(
-            root if root.id == len(retained) else replace(root, id=len(retained))
+        sector_id = int(root.color_sector_id)
+        owner_id = owner_by_sector.get(sector_id, sector_id)
+        if len(aliases_by_owner.get(owner_id, {sector_id})) == 1:
+            untouched.append(root)
+            continue
+        if signature is None:
+            raise ValueError(
+                "open-line traversal alias has no model-certified recursive "
+                f"closure signature: root {root.id}, sector {sector_id}"
+            )
+        key = (
+            owner_id,
+            signature.proof_digest,
+            signature.selector_states,
+            signature.factor,
         )
-    return tuple(retained)
+        grouped.setdefault(key, {}).setdefault(sector_id, []).append(root)
+
+    retained = list(untouched)
+    for key in sorted(grouped):
+        roots_by_sector = grouped[key]
+        multiplicities = {
+            sector_id: len(sector_roots)
+            for sector_id, sector_roots in roots_by_sector.items()
+        }
+        if len(set(multiplicities.values())) != 1:
+            detail = ", ".join(
+                f"sector {sector_id}: {count}"
+                for sector_id, count in sorted(multiplicities.items())
+            )
+            raise ValueError(
+                "proof-identical open-line traversal aliases have unequal "
+                f"root multiplicities for owner {key[0]} ({detail})"
+            )
+        representative_sector = min(roots_by_sector)
+        owner_id = key[0]
+        retained.extend(
+            replace(root, color_sector_id=owner_id)
+            for root in roots_by_sector[representative_sector]
+        )
+    retained.sort(key=lambda root: root.id)
+    rebound = tuple(
+        replace(root, id=index) if root.id != index else root
+        for index, root in enumerate(retained)
+    )
+    return dag if rebound == roots else replace(dag, amplitude_roots=rebound)
 
 
 def infer_minimal_coupling_order_limits(

@@ -265,6 +265,31 @@ def test_verified_fermion_pair_transition_mirrors_are_not_double_counted() -> No
     }
 
 
+@pytest.mark.parametrize(
+    ("direct_kind", "mirrored_kind", "equivalence_class"),
+    (
+        (10, 23, "builtin-sm:fermion-vector-to-fermion"),
+        (11, 24, "builtin-sm:antifermion-vector-to-antifermion"),
+    ),
+)
+def test_verified_fermion_vector_transition_mirrors_share_one_orientation(
+    direct_kind: int,
+    mirrored_kind: int,
+    equivalence_class: str,
+) -> None:
+    """Keep the two built-in electroweak input orientations as one diagram."""
+
+    model = BuiltinSMModel()
+
+    direct = model.vertex_evaluation_equivalence(direct_kind)
+    mirrored = model.vertex_evaluation_equivalence(mirrored_kind)
+
+    assert direct.class_id == mirrored.class_id == equivalence_class
+    assert direct.input_order == (0, 1)
+    assert mirrored.input_order == (1, 0)
+    assert direct.factor == mirrored.factor == (1.0, 0.0)
+
+
 def test_verified_scalar_vector_transition_mirrors_are_not_double_counted() -> None:
     model = BuiltinSMModel()
     catalog = build_recurrence_template_catalog(

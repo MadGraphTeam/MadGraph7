@@ -2174,13 +2174,56 @@ def _presentation_failure_measurement(
         status = ResultStatus(outcome.status)
     except ValueError:
         status = ResultStatus.FAILED
-    if status in {ResultStatus.NOT_AVAILABLE, ResultStatus.OK}:
+    # A durable ``unverified`` measurement is valid only when it is loaded
+    # from the exact authenticated sealed attempt below.  Never synthesize an
+    # otherwise schema-invalid measured result from the tiny presentation
+    # ledger when that attempt is absent, malformed, or mismatched.
+    if status in {
+        ResultStatus.NOT_AVAILABLE,
+        ResultStatus.OK,
+        ResultStatus.UNVERIFIED,
+    }:
         status = ResultStatus.FAILED
     measurement = failure_measurement(status, outcome.label)
     failure = measurement["failure"]
     assert isinstance(failure, dict)
     failure["kind"] = _PRESENTATION_FAILURE_KIND_PREFIX + outcome.status
     return measurement
+
+
+def _presentation_measurement(
+    service: ReportService,
+    cell: CellSpec,
+    outcome: LightweightPresentationOutcome,
+) -> dict[str, object]:
+    """Return a presentation-only terminal measurement, failing closed.
+
+    Unverified compiled/eager attempts are the sole terminal class whose
+    measured timings are useful.  The tiny ledger supplies its exact attempt
+    UUID; the artifact store authenticates that sealed worker result without
+    scanning history.  Every malformed or mismatched record falls back to the
+    ordinary compact terminal label.
+    """
+
+    if outcome.status != ResultStatus.UNVERIFIED.value or outcome.attempt_id is None:
+        return _presentation_failure_measurement(outcome)
+    try:
+        loaded = dict(
+            service.store.load_sealed_unsuccessful_worker_result(
+                cell.cell_id,
+                outcome.attempt_id,
+            )
+        )
+        if (
+            loaded.get("status") != ResultStatus.UNVERIFIED.value
+            or not _result_matches_cell(loaded, cell)
+            or _measurement_source_revision(loaded) != outcome.source_revision
+        ):
+            raise ValueError("unverified result identity differs from presentation")
+        validate_measurement(loaded, expected_cell=cell)
+    except (OSError, TypeError, ValueError, ManifestValidationError):
+        return _presentation_failure_measurement(outcome)
+    return loaded
 
 
 def _result_matches_cell(
@@ -4608,7 +4651,12 @@ def _ratatui_commands(
     def status_style(status: str) -> object:
         if status in {"error", "failed", "blocked_dependency"}:
             return failure_style
-        if status in {*_TERMINAL_CAP_STATUSES, "timeout", "cancelled"}:
+        if status in {
+            *_TERMINAL_CAP_STATUSES,
+            "timeout",
+            "cancelled",
+            ResultStatus.UNVERIFIED.value,
+        }:
             return warning_style
         if status in _COMPLETED_WORKER_STATUSES:
             return success_style
@@ -6051,14 +6099,60 @@ def _inspect_payload(
         source_revision=source_revision,
         accept_historical_source=accept_historical_source,
     )
+    outcomes = lightweight_presentation_outcomes(
+        service,
+        tuple(required.values()),
+        source_revision=source_revision,
+        accept_historical_source=accept_historical_source,
+    )
     statuses: Counter[str] = Counter()
+    unverified_diagnostics: list[dict[str, object]] = []
     for cell in cells:
         if _manual_static_na_reason(cell) is not None:
             statuses["static_not_available"] += 1
             continue
         current = currents.get(cell.cell_id)
+        outcome = outcomes.get(cell.cell_id)
         if current is None:
-            statuses[ResultStatus.NOT_AVAILABLE.value] += 1
+            if outcome is None or outcome.successful:
+                statuses[ResultStatus.NOT_AVAILABLE.value] += 1
+            else:
+                statuses[outcome.status] += 1
+                if outcome.status == ResultStatus.UNVERIFIED.value:
+                    diagnostic = _presentation_measurement(
+                        service,
+                        cell,
+                        outcome,
+                    )
+                    if diagnostic.get("status") == ResultStatus.UNVERIFIED.value:
+                        provenance = diagnostic.get("provenance")
+                        evaluator = (
+                            provenance.get("evaluator_total_timing")
+                            if isinstance(provenance, Mapping)
+                            else None
+                        )
+                        unverified_diagnostics.append(
+                            {
+                                "cell_id": cell.cell_id,
+                                "attempt_id": outcome.attempt_id,
+                                "generation_seconds": diagnostic.get(
+                                    "generation_seconds"
+                                ),
+                                "wall_seconds_per_point": diagnostic.get(
+                                    "wall_seconds_per_point"
+                                ),
+                                "evaluator_total_seconds_per_point": (
+                                    evaluator.get("raw_seconds_per_point")
+                                    if isinstance(evaluator, Mapping)
+                                    else None
+                                ),
+                                "reason": (
+                                    diagnostic.get("failure", {}).get("message")
+                                    if isinstance(diagnostic.get("failure"), Mapping)
+                                    else outcome.label
+                                ),
+                            }
+                        )
         elif not current.reusable:
             statuses[current.reason.replace(" ", "_")] += 1
         else:
@@ -6122,6 +6216,10 @@ def _inspect_payload(
             if cell_id in {cell.cell_id for cell in cells}
         ),
         "statuses": dict(sorted(statuses.items())),
+        "unverified_diagnostics": sorted(
+            unverified_diagnostics,
+            key=lambda item: str(item["cell_id"]),
+        ),
         "generation_multiplier_vs_amplicol": generation,
         "runtime_wall_multiplier_vs_amplicol": runtime,
         "runtime_evaluator_total_multiplier_vs_amplicol": evaluator_total,
@@ -6224,6 +6322,39 @@ def _print_inspect(payload: Mapping[str, object], palette: Palette) -> None:
             align={"entries": "r"},
         )
     )
+    unverified = payload.get("unverified_diagnostics")
+    if isinstance(unverified, list) and unverified:
+        print()
+        print(
+            _table(
+                (
+                    "unverified cell",
+                    "generation",
+                    "wall",
+                    "evaluator total",
+                    "reason",
+                ),
+                (
+                    (
+                        item.get("cell_id"),
+                        (
+                            "—"
+                            if item.get("generation_seconds") is None
+                            else f"{float(item['generation_seconds']):.6g} s"
+                        ),
+                        _format_seconds_per_point(
+                            item.get("wall_seconds_per_point")
+                        ),
+                        _format_seconds_per_point(
+                            item.get("evaluator_total_seconds_per_point")
+                        ),
+                        item.get("reason"),
+                    )
+                    for item in unverified
+                    if isinstance(item, Mapping)
+                ),
+            )
+        )
     rows: list[tuple[object, ...]] = []
     for title, key in (
         ("Generation", "generation_multiplier_vs_amplicol"),
@@ -7420,7 +7551,7 @@ def _merge_lightweight_snapshot(
                 ):
                     measurement = dict(current.result)
                 else:
-                    measurement = _presentation_failure_measurement(outcome)
+                    measurement = _presentation_measurement(service, cell, outcome)
             elif outcome is not None and outcome.successful:
                 if current is None or not current.reusable:
                     continue
@@ -7692,6 +7823,9 @@ contracted workload.
 full-line `#` comments. IDs from files and `--cell-id` are ORed before the
 remaining selectors are applied. Each completed run atomically refreshes
 `campaign_summary_ids/`; use one or more of its status files to target a retry.
+`unverified.txt` needs no `--force-refresh`: those retained diagnostics are not
+successful currents, and a later recurrence or AmpliCol authority causes the
+selected cells to run and validate again automatically.
 By default every heavy attempt payload is retained. Use `--cleanup-artifacts`
 to archive obsolete sealed attempts, retain their compact metadata, results,
 logs, progress events, and timelines, and remove only their heavy payloads;
@@ -7918,6 +8052,8 @@ def _selector_parent() -> argparse.ArgumentParser:
             "multiple paths. IDs are unioned with --cell-id and intersected "
             "with every other selector. Wildcards are not accepted in files. "
             "Running blocked_dependency.txt plans its prerequisite closure; "
+            "unverified.txt retries without --force-refresh when independent "
+            "authority becomes available; "
             "use --force-refresh when a selected ID already has a reusable "
             "terminal current."
         ),

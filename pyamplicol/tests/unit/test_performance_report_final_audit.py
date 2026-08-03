@@ -16,11 +16,14 @@ import pytest
 import tools.performance_report.final_audit as final_audit_module
 from tools.performance_report.agreements import (
     DIRECT_AGREEMENT_FIELD,
+    INDEPENDENT_AUTHORITY_ABI,
+    INDEPENDENT_AUTHORITY_FIELD,
     LC_COMMON_COMPONENT_ABI,
     LC_COMMON_COMPONENT_FIELD,
     LC_LEGACY_PYAMPLICOL_COMPONENT,
     agreement_edges,
     attach_direct_agreements,
+    independent_numerical_authorities,
 )
 from tools.performance_report.arena_profile import (
     ARENA_PHASE_TIMING_SCOPE,
@@ -1327,6 +1330,61 @@ def test_pointwise_audit_recomputes_arithmetic_and_status() -> None:
         )
 
 
+def test_pointwise_audit_authenticates_conditioned_point_binding() -> None:
+    from tools.performance_report.runner import pointwise_validation
+
+    selector_identity = {"cell_id": "candidate", "value_kind": "total"}
+    record = pointwise_validation(
+        1.0 + 1.0e-13,
+        1.0,
+        comparison_binding={
+            "point_digest": "a" * 64,
+            "selector_component_identity": selector_identity,
+            "selector_component_sha256": hashlib.sha256(
+                json.dumps(
+                    selector_identity,
+                    allow_nan=False,
+                    ensure_ascii=True,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ).encode("ascii")
+            ).hexdigest(),
+            "candidate_source_sha256": "b" * 64,
+            "baseline_source_sha256": "c" * 64,
+        },
+    )
+    _audit_pointwise(
+        record,
+        context="conditioned",
+        expected_candidate=1.0 + 1.0e-13,
+        expected_baseline=1.0,
+        expected_relative_tolerance=1.0e-12,
+        expected_point_digest="a" * 64,
+        expected_candidate_source_sha256="b" * 64,
+        expected_baseline_source_sha256="c" * 64,
+        expected_selector_identity=selector_identity,
+    )
+    with pytest.raises(FinalAuditError, match="different point"):
+        _audit_pointwise(
+            record,
+            context="conditioned",
+            expected_candidate=1.0 + 1.0e-13,
+            expected_baseline=1.0,
+            expected_relative_tolerance=1.0e-12,
+            expected_point_digest="b" * 64,
+        )
+    with pytest.raises(FinalAuditError, match="candidate scale source"):
+        _audit_pointwise(
+            record,
+            context="conditioned",
+            expected_candidate=1.0 + 1.0e-13,
+            expected_baseline=1.0,
+            expected_relative_tolerance=1.0e-12,
+            expected_point_digest="a" * 64,
+            expected_candidate_source_sha256="d" * 64,
+        )
+
+
 def test_python_package_tree_identity_is_canonical_and_ignores_caches(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -2515,7 +2573,7 @@ def test_stored_optional_legacy_agreement_survives_missing_current_endpoint(
     "execution_mode",
     (ExecutionMode.COMPILED, ExecutionMode.EAGER),
 )
-def test_final_audit_keeps_recurrence_authority_required(
+def test_final_audit_treats_terminal_recurrence_authority_as_unavailable(
     tmp_path: Path,
     execution_mode: ExecutionMode,
 ) -> None:
@@ -2524,7 +2582,10 @@ def test_final_audit_keeps_recurrence_authority_required(
     catalog = _Catalog(recurrence, candidate)
     candidate_measurement = _candidate_measurement(tmp_path)
 
-    with pytest.raises(FinalAuditError, match="required canonical baseline"):
+    with pytest.raises(
+        FinalAuditError,
+        match="no successful authenticated numerical authority",
+    ):
         _validation_baseline_for_audit(
             candidate,
             {
@@ -2533,6 +2594,69 @@ def test_final_audit_keeps_recurrence_authority_required(
             },
             {recurrence.cell_id: PolicyMeasurementState.GENERATION_LIMIT},
             catalog=catalog,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize(
+    "execution_mode",
+    (ExecutionMode.COMPILED, ExecutionMode.EAGER),
+)
+def test_final_audit_consumes_durable_selected_independent_authority(
+    tmp_path: Path,
+    execution_mode: ExecutionMode,
+) -> None:
+    candidate = REPORT_CATALOG.cell(
+        f"matrix-{execution_mode.value}-builtin-sm-lc-n1-dd-z-jets-selected-flow"
+    )
+    authorities = independent_numerical_authorities(candidate)
+    recurrence, legacy = authorities
+    candidate_measurement = _candidate_measurement(tmp_path / "candidate")
+    validation = candidate_measurement["validation"]
+    assert isinstance(validation, dict)
+    pointwise = validation["pointwise"]
+    assert isinstance(pointwise, dict)
+    pointwise["relative_tolerance"] = final_audit_module.RELATIVE_TOLERANCE
+    validation[INDEPENDENT_AUTHORITY_FIELD] = {
+        "abi": INDEPENDENT_AUTHORITY_ABI,
+        "expected_cell_ids": [authority.cell_id for authority in authorities],
+        "selected_cell_id": legacy.cell_id,
+        "status": "verified",
+        "reason": "independent-authority-agreement",
+        "same_artifact_diagnostics_are_authority": False,
+    }
+    legacy_measurement = _baseline_measurement(legacy.cell_id)
+
+    assert (
+        _validation_baseline_for_audit(
+            candidate,
+            {
+                candidate.cell_id: candidate_measurement,
+                legacy.cell_id: legacy_measurement,
+            },
+            {
+                recurrence.cell_id: PolicyMeasurementState.GENERATION_LIMIT,
+                legacy.cell_id: PolicyMeasurementState.SUCCESS,
+            },
+            catalog=REPORT_CATALOG,
+        )
+        is legacy_measurement
+    )
+
+    with pytest.raises(FinalAuditError, match="higher-priority authority"):
+        _validation_baseline_for_audit(
+            candidate,
+            {
+                candidate.cell_id: candidate_measurement,
+                recurrence.cell_id: _candidate_measurement(
+                    tmp_path / "recurrence"
+                ),
+                legacy.cell_id: legacy_measurement,
+            },
+            {
+                recurrence.cell_id: PolicyMeasurementState.SUCCESS,
+                legacy.cell_id: PolicyMeasurementState.SUCCESS,
+            },
+            catalog=REPORT_CATALOG,
         )
 
 

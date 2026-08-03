@@ -113,7 +113,7 @@ def recurrence_core_timing_record(
     sample_count = record.get("sample_count")
     native_points = record.get("native_profile_points_per_sample")
     if (
-        measurement.get("status") != "ok"
+        measurement.get("status") not in {"ok", "unverified"}
         or set(record) != RECURRENCE_CORE_TIMING_FIELDS
         or record.get("abi") != MEASURED_EXECUTION_TIMING_ABI
         or record.get("status") != "measured"
@@ -157,7 +157,7 @@ def evaluator_total_timing_record(
     points_per_sample = record.get("points_per_sample")
     measured_points = record.get("measured_point_count")
     if (
-        measurement.get("status") != "ok"
+        measurement.get("status") not in {"ok", "unverified"}
         or set(record) != EVALUATOR_TOTAL_TIMING_FIELDS
         or record.get("abi") != EVALUATOR_TOTAL_TIMING_ABI
         or record.get("status") != "measured"

@@ -25,6 +25,7 @@ from .dag_algorithms import (
     _normalize_generation_cap,
     _retain_canonical_open_line_alias_roots,
     build_backward_live_state_plan,
+    prune_dag_to_amplitude_roots,
 )
 from .dag_color import ColorEngine
 from .dag_equivalence import (
@@ -1223,6 +1224,7 @@ class GenericDAGCompiler:
             selected_source_helicities=selected_source_helicities,
             selected_color_sector_ids=selected_color_sector_ids,
         )
+        dag = _retain_canonical_open_line_alias_roots(dag, self.model)
         if global_flip_anchor is not None:
             dag = _canonicalize_amplitude_root_order(dag)
         if reuse_tracker is not None:
@@ -1493,10 +1495,7 @@ class GenericDAGCompiler:
                             coupling=closure.coupling,
                         )
                     )
-        amplitude_roots = _retain_canonical_open_line_alias_roots(
-            color_plan,
-            amplitude_roots_list,
-        )
+        amplitude_roots = tuple(amplitude_roots_list)
         if global_flip_anchor is not None:
             amplitude_roots = tuple(
                 replace(
@@ -1520,6 +1519,8 @@ class GenericDAGCompiler:
                 sorted(self.selected_color_sector_ids or ())
             ),
         )
+        dag = _retain_canonical_open_line_alias_roots(dag, self.model)
+        dag = prune_dag_to_amplitude_roots(dag)
         if global_flip_anchor is not None:
             dag = _canonicalize_amplitude_root_order(dag)
         if reuse_tracker is not None:
@@ -2154,12 +2155,7 @@ class GenericDAGCompiler:
                                     coupling=vertex.coupling,
                                 )
                             )
-        return list(
-            _retain_canonical_open_line_alias_roots(
-                color_engine.color_plan,
-                roots,
-            )
-        )
+        return roots
 
 
 def compile_generic_dag(

@@ -548,6 +548,7 @@ pub(super) fn decode_eager_v3_runtime(
     let kernel_specs = pack.kernel_specs()?;
     validate_semantics(
         metadata,
+        manifest.dag_summary.interaction_count,
         &currents,
         &values,
         &momenta,
@@ -1900,6 +1901,7 @@ fn validate_reduction_subset_semantics(
 #[allow(clippy::too_many_arguments)]
 fn validate_semantics(
     metadata: Metadata,
+    invocation_group_upper_bound: u64,
     currents: &[EagerPlanCurrentRow],
     values: &[EagerPlanValueRow],
     momenta: &[EagerPlanMomentumRow],
@@ -2051,8 +2053,9 @@ fn validate_semantics(
     if kernels.len() != kernel_specs.len() {
         return Err(integrity("prepared kernel specs repeat a kernel ID"));
     }
-    validate_dense_ids(
+    validate_ordered_sparse_ids(
         invocations.iter().map(|row| row.evaluation_group_id),
+        invocation_group_upper_bound,
         "invocation evaluation group",
     )?;
     for row in invocations {
@@ -2478,6 +2481,28 @@ fn validate_dense_ids(ids: impl Iterator<Item = u32>, context: &str) -> Rusticol
     Ok(())
 }
 
+fn validate_ordered_sparse_ids(
+    ids: impl Iterator<Item = u32>,
+    exclusive_upper_bound: u64,
+    context: &str,
+) -> RusticolResult<()> {
+    let mut previous = None;
+    for id in ids {
+        if id == MISSING_U32 || u64::from(id) >= exclusive_upper_bound {
+            return Err(integrity(format!(
+                "{context} ID {id} is outside its authenticated domain"
+            )));
+        }
+        if previous.is_some_and(|previous| id <= previous) {
+            return Err(integrity(format!(
+                "{context} IDs are not strictly increasing and unique"
+            )));
+        }
+        previous = Some(id);
+    }
+    Ok(())
+}
+
 fn validate_catalog_ranges(
     context: &str,
     ranges: &[EagerPlanCatalogRangeRow],
@@ -2856,6 +2881,96 @@ fn integrity(message: impl Into<String>) -> RusticolError {
 #[cfg(test)]
 mod reduction_subset_tests {
     use super::*;
+    use crate::pacbin::{
+        PacbinMemberKind, PacbinReader, PacbinWriteMember, PacbinWriteOptions, write_pacbin_atomic,
+    };
+    use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_INVOCATION_FIXTURE: AtomicU64 = AtomicU64::new(0);
+
+    fn invocation(evaluation_group_id: u32) -> EagerPlanInvocationRow {
+        EagerPlanInvocationRow {
+            evaluation_group_id,
+            kernel_id: 0,
+            left_value_slot_id: 0,
+            right_value_slot_id: 0,
+            left_momentum_slot_id: 0,
+            right_momentum_slot_id: 0,
+            coupling_slot_id: 0,
+            output_factor_source: 0,
+            attachment_start: 0,
+            attachment_count: 1,
+            selector_domain_id: MISSING_U32,
+        }
+    }
+
+    fn put_u32(row: &mut [u8], offset: usize, value: u32) {
+        row[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn put_u64(row: &mut [u8], offset: usize, value: u64) {
+        row[offset..offset + 8].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn decode_invocation_fixture(
+        rows: &[EagerPlanInvocationRow],
+        corrupt_padding: bool,
+    ) -> RusticolResult<Vec<EagerPlanInvocationRow>> {
+        let mut bytes = EagerSectionHeader::new(
+            EagerSectionKind::Invocations,
+            EagerPlanInvocationRow::ENCODED_LEN,
+            rows.len() as u64,
+        )?
+        .encode()
+        .to_vec();
+        for (index, source) in rows.iter().enumerate() {
+            let mut row = [0_u8; EagerPlanInvocationRow::ENCODED_LEN as usize];
+            for (offset, value) in [
+                source.evaluation_group_id,
+                source.kernel_id,
+                source.left_value_slot_id,
+                source.right_value_slot_id,
+                source.left_momentum_slot_id,
+                source.right_momentum_slot_id,
+                source.coupling_slot_id,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                put_u32(&mut row, offset * 4, value);
+            }
+            row[28] = source.output_factor_source;
+            put_u64(&mut row, 32, source.attachment_start);
+            put_u64(&mut row, 40, source.attachment_count);
+            put_u32(&mut row, 48, source.selector_domain_id);
+            if corrupt_padding && index == 0 {
+                row[29] = 1;
+            }
+            bytes.extend_from_slice(&row);
+        }
+
+        let root = std::env::temp_dir().join(format!(
+            "rusticol-eager-sparse-invocations-{}-{}",
+            std::process::id(),
+            NEXT_INVOCATION_FIXTURE.fetch_add(1, Ordering::Relaxed),
+        ));
+        fs::create_dir(&root).map_err(|error| {
+            RusticolError::artifact(format!("could not create test directory: {error}"))
+        })?;
+        let path = root.join("invocations.pacbin");
+        let member = PacbinWriteMember::from_bytes(
+            "tables/invocations.bin",
+            PacbinMemberKind::EagerRuntimeTable,
+            &bytes,
+        )?;
+        write_pacbin_atomic(&path, [member], PacbinWriteOptions::default())?;
+        let reader = PacbinReader::open(&path)?;
+        let decoded = decode_invocations(&reader);
+        drop(reader);
+        let _ = fs::remove_dir_all(root);
+        decoded
+    }
 
     fn metadata() -> Metadata {
         Metadata {
@@ -2961,6 +3076,58 @@ mod reduction_subset_tests {
     #[test]
     fn bounded_reduction_semantics_accept_canonical_partition() {
         validate(&entries()).expect("canonical reduction subset");
+    }
+
+    #[test]
+    fn pacbin_decode_accepts_sparse_invocation_groups_after_zero_first_group() {
+        let decoded = decode_invocation_fixture(&[invocation(1), invocation(3)], false)
+            .expect("decode authenticated sparse invocation rows");
+        assert_eq!(
+            decoded
+                .iter()
+                .map(|row| row.evaluation_group_id)
+                .collect::<Vec<_>>(),
+            [1, 3]
+        );
+        validate_ordered_sparse_ids(
+            decoded.iter().map(|row| row.evaluation_group_id),
+            4,
+            "invocation evaluation group",
+        )
+        .expect("zero-first-group pruning retains authenticated sparse IDs");
+    }
+
+    #[test]
+    fn sparse_invocation_group_ids_reject_duplicates_order_and_domain_escape() {
+        for (ids, message) in [
+            (&[1_u32, 1][..], "strictly increasing and unique"),
+            (&[2_u32, 1][..], "strictly increasing and unique"),
+            (&[1_u32, 4][..], "outside its authenticated domain"),
+            (&[MISSING_U32][..], "outside its authenticated domain"),
+        ] {
+            let rows = ids.iter().copied().map(invocation).collect::<Vec<_>>();
+            let decoded = decode_invocation_fixture(&rows, false)
+                .expect("fixed-width invocation rows remain decodable");
+            let error = validate_ordered_sparse_ids(
+                decoded.iter().map(|row| row.evaluation_group_id),
+                4,
+                "invocation evaluation group",
+            )
+            .expect_err("malformed sparse group IDs must fail closed");
+            assert!(error.to_string().contains(message), "{error}");
+        }
+    }
+
+    #[test]
+    fn pacbin_invocation_padding_mutation_fails_closed() {
+        let error = decode_invocation_fixture(&[invocation(1)], true)
+            .expect_err("mutated invocation padding must fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("invocation row padding must be zero"),
+            "{error}"
+        );
     }
 
     #[test]

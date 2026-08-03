@@ -21,7 +21,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .agreements import (
+    INDEPENDENT_AUTHORITY_FIELD,
+    attach_direct_agreements,
     incoming_agreement_edges,
+    independent_numerical_authorities,
     validation_baseline_fallback_peers,
     validation_baseline_is_required,
 )
@@ -55,7 +58,7 @@ from .campaign_policy import (
 )
 from .campaign_reset import OriginalAmplicolSeed, load_seed_if_present
 from .catalog import REPORT_CATALOG, ReportCatalog
-from .measurement import failure_measurement
+from .measurement import failure_measurement, reconcile_independent_authority
 from .measurement_lineage import MeasurementLineage
 from .models import (
     Accuracy,
@@ -253,6 +256,7 @@ class PlannedCell:
     comparison_peer_ids: tuple[str, ...] = ()
     optional_baseline_cell_id: str | None = None
     optional_comparison_peer_ids: tuple[str, ...] = ()
+    numerical_authority_cell_ids: tuple[str, ...] = ()
     force_recompare: bool = False
     prerequisite_cell_ids: tuple[str, ...] = ()
     resource_predecessor_ids: tuple[str, ...] = ()
@@ -437,6 +441,30 @@ def _successful_current(
         return None
     try:
         validate_measurement(current.result, expected_cell=expected_cell)
+        if (
+            expected_cell is not None
+            and expected_cell.measurement.execution_mode
+            in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
+            and expected_cell.measurement.model
+            in {ModelKey.SCALAR_CONTACT, ModelKey.SCALAR_GRAVITY}
+        ):
+            validation = current.result.get("validation")
+            authority = (
+                validation.get("independent_authority")
+                if isinstance(validation, Mapping)
+                else None
+            )
+            if not (
+                isinstance(authority, Mapping)
+                and authority.get("status") == "verified"
+                and isinstance(authority.get("selected_cell_id"), str)
+                and authority.get("selected_cell_id")
+            ):
+                # Historic scalar compiled currents were accepted only by a
+                # same-artifact p32 comparison.  That evidence remains useful
+                # diagnostics but is not an independent construction
+                # authority, so it must not grandfather a reusable success.
+                return None
         if expected_study_contract_sha256 is not None:
             require_z_table_f_attempt_binding(
                 current.result,
@@ -839,6 +867,56 @@ def plan_campaign(
             tuple(edge.baseline for edge in edges if not edge.required),
         )
 
+    def numerical_authorities(cell: CellSpec) -> tuple[CellSpec, ...]:
+        """Return ordered, availability-only numerical authorities.
+
+        Construction, selector/provider, cross-layout, and built-in/UFO
+        dependencies remain represented by the ordinary hard dependency
+        roles.  This list is only the independent numerical baseline chain
+        for compiled/eager measurements: recurrence first, then matching
+        original AmpliCol when the catalog exposes it.
+        """
+
+        return independent_numerical_authorities(cell, catalog=catalog)
+
+    def higher_priority_authority_is_now_successful(
+        cell: CellSpec,
+        current: CurrentRecord,
+    ) -> bool:
+        """Whether a verified current must be reconciled with a newer peer."""
+
+        authorities = numerical_authorities(cell)
+        if not authorities:
+            return False
+        validation = current.result.get("validation")
+        record = (
+            validation.get(INDEPENDENT_AUTHORITY_FIELD)
+            if isinstance(validation, Mapping)
+            else None
+        )
+        if not isinstance(record, Mapping):
+            # Existing verified currents predate the durable authority record;
+            # preserve their byte-for-byte reuse contract.
+            return False
+        authority_ids = tuple(authority.cell_id for authority in authorities)
+        if tuple(record.get("expected_cell_ids", ())) != authority_ids:
+            return True
+        selected_id = record.get("selected_cell_id")
+        if not isinstance(selected_id, str) or selected_id not in authority_ids:
+            return True
+        selected_index = authority_ids.index(selected_id)
+        return any(
+            (
+                resolved := resolve_current(
+                    authority,
+                    comparison_dependency=True,
+                )
+            )
+            is not None
+            and resolved[1] is PolicyMeasurementState.SUCCESS
+            for authority in authorities[:selected_index]
+        )
+
     def dependencies(cell: CellSpec) -> tuple[CellSpec, ...]:
         baseline, _optional_baseline, peers, _optional_peers = dependency_roles(cell)
         return tuple(
@@ -958,6 +1036,10 @@ def plan_campaign(
             elif state is PolicyMeasurementState.SUCCESS:
                 fresh_requested = (
                     not missing_dependencies and not terminal_dependency_cells
+                    and not higher_priority_authority_is_now_successful(
+                        cell,
+                        _record,
+                    )
                 )
             elif state is PolicyMeasurementState.DEPENDENCY:
                 provenance = _record.result.get("provenance")
@@ -1029,7 +1111,11 @@ def plan_campaign(
         if cell.cell_id in ranks:
             return ranks[cell.cell_id]
         rank = _rank(cell)
-        for dependency in (*dependencies(cell), *optional_dependencies(cell)):
+        for dependency in (
+            *dependencies(cell),
+            *optional_dependencies(cell),
+            *numerical_authorities(cell),
+        ):
             scheduled = needed.get(dependency.cell_id)
             if scheduled is not None:
                 rank = max(rank, planned_rank(scheduled) + 1)
@@ -1066,11 +1152,15 @@ def plan_campaign(
         return tuple(peer.cell_id for peer in optional_peers)
 
     def scheduled_prerequisite_ids(cell: CellSpec) -> tuple[str, ...]:
+        authority_ids = {
+            authority.cell_id for authority in numerical_authorities(cell)
+        }
         return tuple(
             sorted(
                 dependency.cell_id
                 for dependency in (*dependencies(cell), *optional_dependencies(cell))
                 if dependency.cell_id in needed
+                and dependency.cell_id not in authority_ids
             )
         )
 
@@ -1100,6 +1190,9 @@ def plan_campaign(
             comparison_peer_ids=comparison_peer_ids(cell),
             optional_baseline_cell_id=optional_baseline_id(cell),
             optional_comparison_peer_ids=optional_comparison_peer_ids(cell),
+            numerical_authority_cell_ids=tuple(
+                authority.cell_id for authority in numerical_authorities(cell)
+            ),
             force_recompare=cell.cell_id in force_recompare_ids,
             prerequisite_cell_ids=scheduled_prerequisite_ids(cell),
             resource_predecessor_ids=resource_predecessor_ids(cell),
@@ -1224,6 +1317,8 @@ def _resource_payload(
             "campaign_invocation_id": campaign_invocation_id,
             "started_at_utc": supervised.started_at_utc,
             "finished_at_utc": supervised.finished_at_utc,
+            "teardown_escalated": supervised.teardown_escalated,
+            "teardown_seconds": supervised.teardown_seconds,
         }
     return payload
 
@@ -1804,7 +1899,7 @@ class CampaignScheduler:
                     attempt_id=attempt_id,
                     pid=observation.pid,
                     member_pids=list(observation.member_pids),
-                    phase="preparation",
+                    phase=observation.phase or "preparation",
                     phase_sequence=None,
                     wall_seconds=observation.usage.wall_seconds,
                     cpu_seconds=observation.usage.cpu_seconds,
@@ -2063,6 +2158,7 @@ class CampaignScheduler:
         planned_ids = frozenset(by_id)
         prerequisites: dict[str, set[str]] = {}
         dependents: dict[str, set[str]] = {cell_id: set() for cell_id in planned_ids}
+        soft_authorities: dict[str, tuple[str, ...]] = {}
         for item in ordered:
             declared = set(item.prerequisite_cell_ids) | set(
                 item.resource_predecessor_ids
@@ -2091,11 +2187,38 @@ class CampaignScheduler:
             prerequisites[item.cell.cell_id] = declared
             for predecessor_id in declared:
                 dependents[predecessor_id].add(item.cell.cell_id)
+            selected_authorities = tuple(
+                authority_id
+                for authority_id in item.numerical_authority_cell_ids
+                if authority_id in planned_ids
+            )
+            soft_authorities[item.cell.cell_id] = selected_authorities
+            for authority_id in selected_authorities:
+                dependents[authority_id].add(item.cell.cell_id)
+
+        completed_authority_ids: set[str] = set()
+        successful_authority_ids: set[str] = set()
+        selected_authority_ids = frozenset(
+            authority_id
+            for authority_ids in soft_authorities.values()
+            for authority_id in authority_ids
+        )
+
+        def soft_authority_ready(cell_id: str) -> bool:
+            """Release on the first successful authority or exhausted chain."""
+
+            for authority_id in soft_authorities[cell_id]:
+                if authority_id not in completed_authority_ids:
+                    return False
+                if authority_id in successful_authority_ids:
+                    return True
+            return True
 
         ready: list[tuple[int, str]] = [
             (item.rank, item.cell.cell_id)
             for item in ordered
             if not prerequisites[item.cell.cell_id]
+            and soft_authority_ready(item.cell.cell_id)
         ]
         heapq.heapify(ready)
         queued_ids = {cell_id for _rank_value, cell_id in ready}
@@ -2174,12 +2297,40 @@ class CampaignScheduler:
                         heapq.heappush(ready, (item.rank, cell_id))
                         continue
                     outcomes.append(outcome)
+                    if cell_id in selected_authority_ids:
+                        completed_authority_ids.add(cell_id)
+                    if cell_id in selected_authority_ids and outcome.status == "ok":
+                        successful_authority_ids.add(cell_id)
+                    elif cell_id in selected_authority_ids and outcome.status in {
+                        "reused",
+                        "skipped-current",
+                    }:
+                        authority_current = self._current(
+                            by_id[cell_id].cell,
+                            comparison_dependency=True,
+                        )
+                        if (
+                            authority_current is not None
+                            and authority_current[1]
+                            is PolicyMeasurementState.SUCCESS
+                        ):
+                            successful_authority_ids.add(cell_id)
                     prerequisites.pop(cell_id, None)
                     waiting_locks.pop(cell_id, None)
                     for dependent_id in sorted(dependents[cell_id]):
+                        if dependent_id not in prerequisites:
+                            continue
                         remaining = prerequisites[dependent_id]
                         remaining.discard(cell_id)
-                        if not remaining and dependent_id not in queued_ids:
+                        if (
+                            not remaining
+                            and soft_authority_ready(dependent_id)
+                            and dependent_id not in queued_ids
+                            and all(
+                                scheduled.cell.cell_id != dependent_id
+                                for scheduled in futures.values()
+                            )
+                        ):
                             dependent = by_id[dependent_id]
                             queued_ids.add(dependent_id)
                             heapq.heappush(ready, (dependent.rank, dependent_id))
@@ -2417,6 +2568,7 @@ class CampaignScheduler:
                         for peer_cell_id in (
                             *planned.comparison_peer_ids,
                             *planned.optional_comparison_peer_ids,
+                            *planned.numerical_authority_cell_ids,
                         )
                     ),
                 )
@@ -2479,6 +2631,20 @@ class CampaignScheduler:
                     currents=dependency_currents,
                 )
             )
+            # Numerical authorities are availability-only and ordered:
+            # recurrence first, then original AmpliCol.  They never enter the
+            # terminal-dependency censor path, but a successful one is passed
+            # to the worker as the independent numerical baseline.
+            selected_authority_cell_id: str | None = None
+            for authority_cell_id in planned.numerical_authority_cell_ids:
+                authority = dependency_currents.get(authority_cell_id)
+                if (
+                    authority is not None
+                    and authority[1] is PolicyMeasurementState.SUCCESS
+                ):
+                    baseline_record = authority[0]
+                    selected_authority_cell_id = authority_cell_id
+                    break
             if terminal_dependencies:
                 return self._publish_dependency_censor(
                     cell,
@@ -2627,6 +2793,17 @@ class CampaignScheduler:
                 if baseline_record is not None:
                     command.extend(
                         ("--baseline-json", os.fspath(baseline_record.result_path))
+                    )
+                if selected_authority_cell_id is not None:
+                    command.extend(
+                        (
+                            "--selected-authority-cell-id",
+                            selected_authority_cell_id,
+                        )
+                    )
+                for authority_cell_id in planned.numerical_authority_cell_ids:
+                    command.extend(
+                        ("--expected-authority-cell-id", authority_cell_id)
                     )
                 for peer_cell_id, peer_record in sorted(peer_records.items()):
                     command.extend(
@@ -2969,6 +3146,85 @@ class CampaignScheduler:
                             progress_path=worker_progress,
                         )
                     self._bind_study_result(result)
+                candidate_status = result.get("status")
+                result_validation = result.get("validation")
+                authority_state = (
+                    result_validation.get(INDEPENDENT_AUTHORITY_FIELD)
+                    if isinstance(result_validation, Mapping)
+                    else None
+                )
+                if candidate_status == ResultStatus.UNVERIFIED.value or (
+                    candidate_status == ResultStatus.OK.value
+                    and isinstance(authority_state, Mapping)
+                ):
+                    # Authenticate the complete retained diagnostic before any
+                    # late authority is allowed to transform its status.
+                    validate_measurement(result, expected_cell=cell)
+                    late_authority: tuple[str, CurrentRecord] | None = None
+                    for authority_cell_id in planned.numerical_authority_cell_ids:
+                        current_authority = self._current(
+                            self.catalog.cell(authority_cell_id),
+                            comparison_dependency=True,
+                        )
+                        if (
+                            current_authority is not None
+                            and current_authority[1]
+                            is PolicyMeasurementState.SUCCESS
+                        ):
+                            late_authority = (
+                                authority_cell_id,
+                                current_authority[0],
+                            )
+                            break
+                    previous_selected = (
+                        authority_state.get("selected_cell_id")
+                        if isinstance(authority_state, Mapping)
+                        else None
+                    )
+                    should_reconcile = (
+                        late_authority is not None
+                        and (
+                            candidate_status == ResultStatus.UNVERIFIED.value
+                            or (
+                                isinstance(previous_selected, str)
+                                and planned.numerical_authority_cell_ids.index(
+                                    late_authority[0]
+                                )
+                                < planned.numerical_authority_cell_ids.index(
+                                    previous_selected
+                                )
+                            )
+                        )
+                    )
+                    if should_reconcile:
+                        assert late_authority is not None
+                        authority_cell_id, authority_record = late_authority
+                        result = reconcile_independent_authority(
+                            cell,
+                            result,
+                            authority_record.result,
+                            authority_cell_id=authority_cell_id,
+                        )
+                        if result.get("status") == ResultStatus.OK.value:
+                            direct_peer_ids = {
+                                edge.baseline.cell_id
+                                for edge in incoming_agreement_edges(
+                                    cell,
+                                    catalog=self.catalog,
+                                )
+                            }
+                            late_peers = {
+                                peer_cell_id: peer_record.result
+                                for peer_cell_id, peer_record in peer_records.items()
+                            }
+                            if authority_cell_id in direct_peer_ids:
+                                late_peers[authority_cell_id] = authority_record.result
+                            attach_direct_agreements(
+                                cell,
+                                result,
+                                late_peers,
+                                catalog=self.catalog,
+                            )
                 validate_measurement(result, expected_cell=cell)
                 if result["status"] == ResultStatus.OK.value:
                     policy_state = (

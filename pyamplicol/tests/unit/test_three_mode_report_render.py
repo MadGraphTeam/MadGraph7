@@ -10,6 +10,7 @@ import pytest
 import tools.performance_report.render as report_render
 from tools.performance_report.agreements import (
     DIRECT_AGREEMENT_ABI,
+    DIRECT_AGREEMENT_V2_ABI,
     LC_COMMON_COMPONENT_ABI,
     LC_COMMON_COMPONENT_FIELD,
     STRICT_ABSOLUTE_TOLERANCE,
@@ -55,6 +56,7 @@ from tools.performance_report.render import (
     render_z_ladder,
     summarize_visible_completeness,
 )
+from tools.performance_report.runner import pointwise_validation
 from tools.performance_report.source_identity import ReportSourceIdentity
 from tools.performance_report.validation_summary import (
     render_validation_summary,
@@ -90,8 +92,7 @@ def test_packaged_blank_tables_match_canonical_reset_renderer(
     reset_caches: dict[str, dict[str, object]],
 ) -> None:
     packaged_root = (
-        Path(__file__).resolve().parents[2]
-        / "src/pyamplicol/_profiling_campaign"
+        Path(__file__).resolve().parents[2] / "src/pyamplicol/_profiling_campaign"
     )
     rendered = render_all_tables(reset_caches, catalog=REPORT_CATALOG)
     packaged = {
@@ -248,6 +249,47 @@ def _set_status(
     )
     measurement = empty_measurement()
     measurement["status"] = status.value
+    entry["measurement"] = measurement
+
+
+def _set_unverified(
+    cache: dict[str, object],
+    *,
+    process_key: str,
+    n_final: int,
+    workload: Workload,
+    generation: float,
+    wall: float,
+    evaluator_total: float,
+    variant: str | None = None,
+) -> None:
+    entry = _entry(
+        cache,
+        process_key=process_key,
+        n_final=n_final,
+        workload=workload,
+        variant=variant,
+    )
+    cell = REPORT_CATALOG.cell(str(entry["cell_id"]))
+    measurement = _ok_measurement(
+        cell,
+        generation=generation,
+        wall=wall,
+        execution=None,
+    )
+    _mark_evaluator_total(
+        measurement,
+        execution_mode=cell.measurement.execution_mode.value,
+        total=evaluator_total,
+    )
+    measurement["status"] = ResultStatus.UNVERIFIED.value
+    measurement["failure"] = {
+        "kind": "IndependentAuthorityUnavailable",
+        "message": "no successful independent authority",
+    }
+    validation = measurement["validation"]
+    assert isinstance(validation, dict)
+    validation["status"] = ResultStatus.UNVERIFIED.value
     entry["measurement"] = measurement
 
 
@@ -571,9 +613,7 @@ def test_all_twelve_matrices_render_in_catalog_order(reset_caches) -> None:
     best_mode_rendered = render_all_best_mode_tables(reset_caches)
     for tex in (*rendered.values(), *best_mode_rendered.values()):
         table_body = "\n".join(
-            line
-            for line in tex.splitlines()
-            if not line.startswith(r"\providecommand")
+            line for line in tex.splitlines() if not line.startswith(r"\providecommand")
         )
         assert all(macro not in table_body for macro in obsolete_clock_macros)
 
@@ -605,16 +645,10 @@ def test_matrix_summary_backgrounds_restart_for_each_multiplicity_block(
     rendered = render_all_matrix_tables(reset_caches)
 
     def summary_patterns(tex: str, span: int) -> list[list[bool]]:
-        rows = [
-            line
-            for line in tex.splitlines()
-            if r"\textbf{summary:" in line
-        ]
+        rows = [line for line in tex.splitlines() if r"\textbf{summary:" in line]
         return [
             [
-                cell.startswith(
-                    rf"\multicolumn{{{span}}}{{c}}{{\cellcolor{{refblue}}"
-                )
+                cell.startswith(rf"\multicolumn{{{span}}}{{c}}{{\cellcolor{{refblue}}")
                 for cell in row.split(" & ")[1:]
             ]
             for row in rows
@@ -632,18 +666,12 @@ def test_matrix_summary_backgrounds_restart_for_each_multiplicity_block(
     )
 
     def assert_alternating(tex: str, span: int) -> None:
-        rows = [
-            line
-            for line in tex.splitlines()
-            if r"\textbf{summary:" in line
-        ]
+        rows = [line for line in tex.splitlines() if r"\textbf{summary:" in line]
         patterns = summary_patterns(tex, span)
         for pattern in patterns:
             assert pattern == [index % 2 == 0 for index in range(len(pattern))]
         assert all(
-            not row.startswith(
-                r"\multicolumn{3}{@{}l}{\cellcolor{refblue}"
-            )
+            not row.startswith(r"\multicolumn{3}{@{}l}{\cellcolor{refblue}")
             for row in tex.splitlines()
             if r"\textbf{summary:" in row
         )
@@ -654,17 +682,14 @@ def test_matrix_summary_backgrounds_restart_for_each_multiplicity_block(
         summary_headers = [
             line
             for line in tex.splitlines()
-            if line.startswith(r"\multicolumn{3}{@{}l}{} & ")
-            and r"\textbf{n=" in line
+            if line.startswith(r"\multicolumn{3}{@{}l}{} & ") and r"\textbf{n=" in line
         ]
         assert len(summary_headers) == len(rows) // 2
         for header in summary_headers:
             groups = header.count(r"\textbf{n=")
             assert groups in (2, 3)
             assert [
-                cell.startswith(
-                    rf"\multicolumn{{{span}}}{{c}}{{\cellcolor{{refblue}}"
-                )
+                cell.startswith(rf"\multicolumn{{{span}}}{{c}}{{\cellcolor{{refblue}}")
                 for cell in header.split(" & ")[1:]
             ] == [index % 2 == 0 for index in range(groups)]
 
@@ -678,14 +703,12 @@ def test_matrix_summary_backgrounds_restart_for_each_multiplicity_block(
     fixed_block_two_header = next(
         line
         for line in lc_tex.splitlines()
-        if line.startswith(r"\multicolumn{3}{@{}l}{} & ")
-        and r"\textbf{n=4}" in line
+        if line.startswith(r"\multicolumn{3}{@{}l}{} & ") and r"\textbf{n=4}" in line
     )
     best_block_two_header = next(
         line
         for line in render_best_mode_table(Accuracy.LC, reset_caches).splitlines()
-        if line.startswith(r"\multicolumn{3}{@{}l}{} & ")
-        and r"\textbf{n=4}" in line
+        if line.startswith(r"\multicolumn{3}{@{}l}{} & ") and r"\textbf{n=4}" in line
     )
     expected_block_two_header = (
         r"\multicolumn{3}{@{}l}{} & "
@@ -710,9 +733,7 @@ def test_matrix_summary_backgrounds_restart_for_each_multiplicity_block(
 
     for tex in (lc_tex, contracted_tex, best_lc_tex):
         table_body = "\n".join(
-            line
-            for line in tex.splitlines()
-            if not line.startswith(r"\providecommand")
+            line for line in tex.splitlines() if not line.startswith(r"\providecommand")
         )
         assert r"\matrixtotalevaluator{" not in table_body
         assert r"\matrixrecurrencecore{" not in table_body
@@ -828,13 +849,9 @@ def test_best_mode_summary_selects_wall_winner_per_lc_workload(reset_caches) -> 
     summary_header = next(
         line
         for line in tex.splitlines()
-        if line.startswith(r"\multicolumn{3}{@{}l}{} & ")
-        and r"\bestmodemix{" in line
+        if line.startswith(r"\multicolumn{3}{@{}l}{} & ") and r"\bestmodemix{" in line
     )
-    assert (
-        r"\textbf{n=1}\hspace{0.08in}\bestmodemix{r:0|c:1|e:0}"
-        in summary_header
-    )
+    assert r"\textbf{n=1}\hspace{0.08in}\bestmodemix{r:0|c:1|e:0}" in summary_header
     assert summary_header.count(r"\bestmodemix{") == 1
     assert r"r:0|c:0|e:1" not in summary_header
     assert r"\bestmodemix{" not in generation_summary
@@ -901,19 +918,21 @@ def test_best_mode_summary_headers_hold_one_exact_mode_mix_per_populated_group(
     populated_headers = tuple(
         line
         for line in populated_tex.splitlines()
-        if line.startswith(r"\multicolumn{3}{@{}l}{} & ")
-        and r"\textbf{n=" in line
+        if line.startswith(r"\multicolumn{3}{@{}l}{} & ") and r"\textbf{n=" in line
     )
     populated_body = "\n".join(
         line
         for line in populated_tex.splitlines()
         if not line.startswith(r"\providecommand")
     )
-    assert tuple(
-        token
-        for header in populated_headers
-        for token in re.findall(r"\\bestmodemix\{([^}]*)\}", header)
-    ) == expected_mode_counts
+    assert (
+        tuple(
+            token
+            for header in populated_headers
+            for token in re.findall(r"\\bestmodemix\{([^}]*)\}", header)
+        )
+        == expected_mode_counts
+    )
     assert all(
         header.count(r"\bestmodemix{") == header.count(r"\textbf{n=")
         for header in populated_headers
@@ -930,8 +949,7 @@ def test_best_mode_summary_headers_hold_one_exact_mode_mix_per_populated_group(
     blank_headers = tuple(
         line
         for line in blank_tex.splitlines()
-        if line.startswith(r"\multicolumn{3}{@{}l}{} & ")
-        and r"\textbf{n=" in line
+        if line.startswith(r"\multicolumn{3}{@{}l}{} & ") and r"\textbf{n=" in line
     )
     blank_body = "\n".join(
         line
@@ -953,8 +971,8 @@ def test_ratio_summary_reports_five_exact_statistics_without_absolute_times() ->
         r"\matrixsummaryratio{ReportOrange}{1.00}}{"
         r"\matrixsummaryratio{ReportRed}{3.00}}{"
         r"\matrixsummaryratio{ReportRed}{2.00}}{"
-        r"\matrixsummaryratiohighlight{ReportRed}{2.00}}{"
-        r"\matrixsummaryratio{ReportRed}{2.50}}"
+        r"\matrixsummaryratio{ReportRed}{2.00}}{"
+        r"\matrixsummaryratiohighlight{ReportRed}{2.50}}"
     )
     assert r"\texttt{" not in summary
 
@@ -992,8 +1010,8 @@ def test_summary_statistics_share_fixed_anchors_and_compact_notes(
         r"\makebox[3.6em][l]{#1}&"
         r"\makebox[4.6em][l]{#2}&"
         r"\makebox[3.6em][l]{#3}&"
-        r"\makebox[4.2em][l]{#4}&"
-        r"\makebox[3.6em][l]{#5}"
+        r"\makebox[3.6em][l]{#4}&"
+        r"\makebox[4.2em][l]{#5}"
     )
 
     assert len(summary_tables) == 19
@@ -1008,7 +1026,8 @@ def test_summary_statistics_share_fixed_anchors_and_compact_notes(
         assert r"\ReportTableNote{{\scriptsize " in tex
         assert "Every displayed number uses exactly three significant digits" in tex
         assert "weighted-average order" in tex
-        assert "framed bold entry is the arithmetic average" in tex
+        assert "weighted average" in tex
+        assert "framed bold entry" in tex
 
     assert "Fixed-engine tables intentionally omit mode letters" in fixed_tex
     assert "selected independently in each cell and workload" in best_tex
@@ -1171,6 +1190,9 @@ def test_fixed_matrix_renders_generic_presentation_outcomes(
 
     assert tex.count(marker) == 2
     assert "ManualCampaignOutcome" not in tex
+    if outcome == "blocked_dependency":
+        assert display == "blocked dep."
+        assert label not in tex
     if outcome == "dependency_backend_error":
         assert display == "depe back erro"
         assert label not in tex
@@ -1457,11 +1479,7 @@ def test_best_mode_compacts_three_maximum_length_future_outcomes(
 
     tex = render_best_mode_table(Accuracy.NLC, caches)
     display = report_render._compact_terminal_summary_display(terminal)
-    marker = (
-        r"\matrixstatus{ReportRed}{"
-        + report_render._tex_escape(display)
-        + "}"
-    )
+    marker = r"\matrixstatus{ReportRed}{" + report_render._tex_escape(display) + "}"
     assert tex.count(marker) == 4
     assert re.fullmatch(r"N out\.\[[0-9a-f]{6}\]", display)
     assert all(label not in tex for _outcome, label in outcomes)
@@ -1637,9 +1655,7 @@ def test_best_mode_renders_mixed_policy_censors_without_a_winner_code(
         if line.startswith(r" &  & \textcolor{ReportMuted}{\scriptsize run")
     )
 
-    marker = re.compile(
-        r"\\matrixstatus\{ReportOrange\}\{N out\.\[[0-9a-f]{6}\]\}"
-    )
+    marker = re.compile(r"\\matrixstatus\{ReportOrange\}\{N out\.\[[0-9a-f]{6}\]\}")
     assert len(marker.findall(row)) == 1
     assert len(marker.findall(runtime_row)) == 1
     assert (
@@ -1711,9 +1727,7 @@ def test_best_mode_mixed_terminal_summaries_are_visibly_complete(
     wall_summary = next(
         line for line in tex.splitlines() if r"\textbf{summary: wall}" in line
     )
-    marker = re.compile(
-        r"\\matrixstatus\{ReportOrange\}\{N out\.\[[0-9a-f]{6}\]\}"
-    )
+    marker = re.compile(r"\\matrixstatus\{ReportOrange\}\{N out\.\[[0-9a-f]{6}\]\}")
     assert len(marker.findall(generation_summary)) == 1
     assert len(marker.findall(wall_summary)) == 1
 
@@ -1809,8 +1823,7 @@ def test_recurrence_renders_absolute_when_amplicol_baseline_is_terminal(
     dataset = next(
         item
         for item in REPORT_CATALOG.matrix_datasets
-        if item.dataset_id
-        == f"matrix_recurrence_builtin_sm_{accuracy.value}"
+        if item.dataset_id == f"matrix_recurrence_builtin_sm_{accuracy.value}"
     )
     marker = r"\matrixstatus{ReportOrange}{>80GB}"
     for tex, best_mode in (
@@ -1819,9 +1832,7 @@ def test_recurrence_renders_absolute_when_amplicol_baseline_is_terminal(
     ):
         lines = tex.splitlines()
         row_index = next(
-            index
-            for index, line in enumerate(lines)
-            if line.startswith(r"\texttt{1}")
+            index for index, line in enumerate(lines) if line.startswith(r"\texttt{1}")
         )
         generation_row = lines[row_index]
         runtime_row = lines[row_index + 2]
@@ -1879,9 +1890,7 @@ def test_recurrence_renders_absolute_when_amplicol_was_not_run(
     ):
         lines = tex.splitlines()
         row_index = next(
-            index
-            for index, line in enumerate(lines)
-            if line.startswith(r"\texttt{1}")
+            index for index, line in enumerate(lines) if line.startswith(r"\texttt{1}")
         )
         generation_row = lines[row_index]
         runtime_row = lines[row_index + 2]
@@ -1937,16 +1946,12 @@ def test_later_amplicol_current_does_not_retroactively_link_recurrence(
     assert not view.workloads[0].comparison_linked
     tex = render_matrix_table(dataset, caches)
     generation_row = next(
-        line
-        for line in tex.splitlines()
-        if line.startswith(r"\texttt{1}")
+        line for line in tex.splitlines() if line.startswith(r"\texttt{1}")
     )
     assert r"\bestmodeabsoluteprefix{\texttt{4.00}}" in generation_row
     assert r"\bestmoderatio{" not in generation_row
     generation_summary = next(
-        line
-        for line in tex.splitlines()
-        if r"\textbf{summary: generation}" in line
+        line for line in tex.splitlines() if r"\textbf{summary: generation}" in line
     )
     assert r"\matrixsummarystats{" not in generation_summary
     assert r"\matrixna{ReportMuted}" in generation_summary
@@ -2115,6 +2120,61 @@ def test_direct_agreement_link_requires_exact_component_identity(
         assert r"\bestmodeprimaryratio{ReportGreen}{0.400}" in runtime_row
 
 
+def test_direct_agreement_v2_remains_comparison_linked(reset_caches) -> None:
+    caches = copy.deepcopy(reset_caches)
+    reference = _cache_by_dataset(caches, "reference_amplicol_lc")
+    recurrence = _cache_by_dataset(caches, "matrix_recurrence_builtin_sm_lc")
+    for cache, generation in ((reference, 10.0), (recurrence, 4.0)):
+        _set_ok(
+            cache,
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=Workload.ALL_FLOW,
+            generation=generation,
+            wall=generation * 1.0e-6,
+            execution=1.0e-6,
+        )
+    measurement = _entry(
+        recurrence,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.ALL_FLOW,
+    )["measurement"]
+    assert isinstance(measurement, dict)
+    validation = measurement["validation"]
+    assert isinstance(validation, dict)
+    records = validation["direct_agreements"]
+    assert isinstance(records, list) and records
+    for record in records:
+        assert isinstance(record, dict)
+        comparison = pointwise_validation(
+            float(record["candidate"]),
+            float(record["baseline"]),
+            relative_tolerance=float(record["relative_tolerance"]),
+            comparison_binding={"point_digest": "0" * 64},
+        )
+        comparison.pop("abi")
+        identity = {
+            field: record[field]
+            for field in (
+                "edge_kind",
+                "value_kind",
+                "baseline_cell_id",
+                "candidate_cell_id",
+            )
+        }
+        record.clear()
+        record.update({"abi": DIRECT_AGREEMENT_V2_ABI, **identity, **comparison})
+
+    dataset = REPORT_CATALOG.dataset("matrix_recurrence_builtin_sm_lc")
+    view = BaselineCandidateAdapter(caches).matrix_cell(
+        dataset,
+        REPORT_CATALOG.process_families[0],
+        1,
+    )
+    assert view.workloads[1].comparison_linked
+
+
 @pytest.mark.parametrize("mode", (ExecutionMode.COMPILED, ExecutionMode.EAGER))
 def test_fixed_compiled_and_eager_preserve_terminal_recurrence_baseline(
     reset_caches,
@@ -2159,6 +2219,137 @@ def test_fixed_compiled_and_eager_preserve_terminal_recurrence_baseline(
     assert lines[row_index + 2].count(marker) == 1
     assert r"\bestmodeabsoluteprefix{\texttt{4.00}}" in lines[row_index]
     assert r"\bestmodeabsoluteprefix{\texttt{2.00}}" in lines[row_index + 2]
+
+
+@pytest.mark.parametrize("mode", (ExecutionMode.COMPILED, ExecutionMode.EAGER))
+def test_fixed_compiled_and_eager_show_unverified_absolute_diagnostic_clocks(
+    reset_caches,
+    mode: ExecutionMode,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    baseline = _cache_by_dataset(caches, "matrix_recurrence_builtin_sm_nlc")
+    candidate = _cache_by_dataset(
+        caches,
+        f"matrix_{mode.value}_builtin_sm_nlc",
+    )
+    baseline_entry = _entry(
+        baseline,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+    )
+    baseline_entry["measurement"] = _memory_censor(
+        REPORT_CATALOG.cell(str(baseline_entry["cell_id"]))
+    )
+    _set_unverified(
+        candidate,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=4.0,
+        wall=2.0e-6,
+        evaluator_total=1.0e-6,
+    )
+
+    tex = render_matrix_table(
+        REPORT_CATALOG.dataset(f"matrix_{mode.value}_builtin_sm_nlc"),
+        caches,
+    )
+    lines = tex.splitlines()
+    row_index = next(
+        index for index, line in enumerate(lines) if line.startswith(r"\texttt{1}")
+    )
+    generation_row = lines[row_index]
+    runtime_row = lines[row_index + 2]
+    authority_marker = r"\matrixstatus{ReportOrange}{>80GB}"
+    unverified_marker = r"\matrixstatus{ReportOrange}{unverified}"
+
+    assert generation_row.count(authority_marker) == 1
+    assert runtime_row.count(authority_marker) == 1
+    assert r"\bestmodeabsoluteprefix{\texttt{4.00}}" in generation_row
+    assert unverified_marker in generation_row
+    assert (
+        r"\bestmodeunverifiedclockprefix{\texttt{1.00}}{\texttt{2.00}}" in runtime_row
+    )
+    assert unverified_marker in runtime_row
+    assert "Unverified compiled or eager diagnostics show absolute generation" in tex
+    assert "never enter ratios or summaries" in tex
+
+
+def test_best_mode_never_selects_or_summarizes_unverified_diagnostics(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    _set_best_mode_nlc_reference(caches)
+    for mode in ExecutionMode.COMPILED, ExecutionMode.EAGER:
+        _set_unverified(
+            _cache_by_dataset(
+                caches,
+                f"matrix_{mode.value}_builtin_sm_nlc",
+            ),
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=Workload.CONTRACTED,
+            generation=4.0,
+            wall=2.0e-6,
+            evaluator_total=1.0e-6,
+        )
+
+    view = BaselineCandidateAdapter(caches).best_mode_cell(
+        Accuracy.NLC,
+        REPORT_CATALOG.process_families[0],
+        1,
+    )
+    assert view.workloads[0].mode is None
+    assert view.workloads[0].terminal_label is not None
+
+    tex = render_best_mode_table(Accuracy.NLC, caches)
+    lines = tex.splitlines()
+    row_index = next(
+        index for index, line in enumerate(lines) if line.startswith(r"\texttt{1}")
+    )
+    marker = r"\matrixstatus{ReportOrange}{unverified}"
+    assert marker in lines[row_index]
+    assert marker in lines[row_index + 2]
+    assert r"\bestmodecode{" not in lines[row_index]
+    assert r"\bestmodeabsoluteprefix{\texttt{4.00}}" not in lines[row_index]
+
+    generation_summary = next(
+        line for line in lines if r"\textbf{summary: generation}" in line
+    )
+    wall_summary = next(line for line in lines if r"\textbf{summary: wall}" in line)
+    assert marker in generation_summary
+    assert marker in wall_summary
+    assert r"\matrixsummarystats{" not in generation_summary
+    assert r"\matrixsummarystats{" not in wall_summary
+    assert "never eligible for best-mode selection or summaries" in tex
+
+
+def test_presentation_only_unverified_is_orange_in_fixed_and_best_mode_tables(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    candidate = _cache_by_dataset(caches, "matrix_compiled_builtin_sm_nlc")
+    _set_presentation_outcome(
+        candidate,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        outcome="unverified",
+    )
+
+    fixed = render_matrix_table(
+        REPORT_CATALOG.dataset("matrix_compiled_builtin_sm_nlc"),
+        caches,
+    )
+    best = render_best_mode_table(Accuracy.NLC, caches)
+    marker = r"\matrixstatus{ReportOrange}{unverified}"
+    red_marker = r"\matrixstatus{ReportRed}{unverified}"
+
+    assert marker in fixed
+    assert marker in best
+    assert red_marker not in fixed
+    assert red_marker not in best
 
 
 @pytest.mark.parametrize(
@@ -2215,9 +2406,7 @@ def test_z_pyamplicol_renders_all_clocks_absolute_without_amplicol_baseline(
     caches = copy.deepcopy(reset_caches)
     baseline = _cache_by_dataset(caches, "reference_amplicol_lc")
     candidate = _cache_by_dataset(caches, "z_builtin_sm")
-    for index, workload in enumerate(
-        (Workload.SELECTED_FLOW, Workload.ALL_FLOW)
-    ):
+    for index, workload in enumerate((Workload.SELECTED_FLOW, Workload.ALL_FLOW)):
         baseline_entry = _entry(
             baseline,
             process_key="dd_z_jets",
@@ -2254,14 +2443,10 @@ def test_z_pyamplicol_renders_all_clocks_absolute_without_amplicol_baseline(
 
     tex = render_z_ladder(ModelKey.BUILTIN_SM, caches)
     reference_row = next(
-        line
-        for line in tex.splitlines()
-        if line.startswith(r"1 & \AC{} reference")
+        line for line in tex.splitlines() if line.startswith(r"1 & \AC{} reference")
     )
     candidate_row = next(
-        line
-        for line in tex.splitlines()
-        if line.startswith(f"1 & {setup}")
+        line for line in tex.splitlines() if line.startswith(f"1 & {setup}")
     )
     assert reference_row.count(r"\matrixstatus{ReportOrange}{>80GB}") == 4
     assert candidate_row.count(r"\matrixncabsolute{") == 6
@@ -2556,6 +2741,38 @@ def test_z_evaluator_total_is_mode_independent_and_not_execution_attribution(
     assert "original-AmpliCol wall measurement as denominator" in tex
 
 
+def test_z_unverified_retains_absolute_clocks_without_ratios(reset_caches) -> None:
+    caches = copy.deepcopy(reset_caches)
+    candidate = _cache_by_dataset(caches, "z_builtin_sm")
+    _set_unverified(
+        candidate,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.SELECTED_FLOW,
+        generation=4.0,
+        wall=2.0e-6,
+        evaluator_total=1.0e-6,
+        variant="jit_o3",
+    )
+
+    tex = render_z_ladder(ModelKey.BUILTIN_SM, caches)
+    row = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith("1 & compiled JIT O3")
+    )
+    marker = r"\matrixstatus{ReportOrange}{unverified}"
+
+    for value in ("4.00", "2.00", "1.00"):
+        assert (
+            rf"\matrixruntimepair{{\texttt{{{value}}}}}"
+            rf"{{{marker}}}"
+        ) in row
+    assert row.count(marker) == 3
+    assert r"\matrixratio{" not in row
+    assert "Unverified diagnostics retain absolute clocks" in tex
+
+
 def test_z_wall_and_evaluator_total_keep_distinct_six_digit_values(
     reset_caches,
 ) -> None:
@@ -2607,10 +2824,7 @@ def test_z_wall_and_evaluator_total_keep_distinct_six_digit_values(
     )
 
     assert r"\texttt{218.105}" in row
-    assert (
-        r"\texttt{217.812}\,\matrixratio{ReportRed}{2.18}"
-        in row
-    )
+    assert r"\texttt{217.812}\,\matrixratio{ReportRed}{2.18}" in row
     assert r"\texttt{183.456}" not in row
     assert r"\matrixrecurrencecore" not in row
 
@@ -3620,9 +3834,7 @@ def test_scalar_timing_marks_unavailable_arena_attribution_not_exposed(
 ) -> None:
     caches = copy.deepcopy(reset_caches)
     dataset = next(
-        item
-        for item in REPORT_CATALOG.scalar_datasets
-        if item.dataset_id == dataset_id
+        item for item in REPORT_CATALOG.scalar_datasets if item.dataset_id == dataset_id
     )
     cache = _cache_by_dataset(caches, dataset_id)
     _set_ok(
@@ -3697,6 +3909,79 @@ def test_scalar_timing_uses_dedicated_evaluator_total_not_wall(
     assert r"\texttt{218.105}" not in total_row
     assert r"execution [\(\mu\mathrm{s}/\mathrm{pt}\)]" not in tex
     assert "never copied from or derived from wall time" in tex
+
+
+@pytest.mark.parametrize("dataset_id", ("scalar_contact", "scalar_gravity"))
+def test_scalar_unverified_retains_absolute_clocks_with_marker(
+    reset_caches,
+    dataset_id: str,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    dataset = next(
+        item for item in REPORT_CATALOG.scalar_datasets if item.dataset_id == dataset_id
+    )
+    cache = _cache_by_dataset(caches, dataset_id)
+    _set_unverified(
+        cache,
+        process_key=dataset_id,
+        n_final=2,
+        workload=Workload.CONTRACTED,
+        generation=4.0,
+        wall=2.0e-6,
+        evaluator_total=1.0e-6,
+    )
+
+    tex = render_scalar_ladder(dataset, caches)
+    marker = r"\matrixstatus{ReportOrange}{unverified}"
+    expected = {
+        "generation [s]": "4.00",
+        r"wall [\(\mu\mathrm{s}/\mathrm{pt}\)]": "2.00",
+        r"evaluator total [\(\mu\mathrm{s}/\mathrm{pt}\)]": "1.00",
+    }
+    for prefix, value in expected.items():
+        row = next(line for line in tex.splitlines() if line.startswith(prefix))
+        assert (
+            rf"\matrixruntimepair{{\texttt{{{value}}}}}"
+            rf"{{{marker}}}"
+        ) in row
+    assert r"\matrixratio{" not in tex
+    assert "Unverified diagnostics retain absolute generation" in tex
+
+
+@pytest.mark.parametrize("surface", ("z_builtin_sm", "scalar_contact"))
+def test_ladder_presentation_only_unverified_is_orange(
+    reset_caches,
+    surface: str,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    cache = _cache_by_dataset(caches, surface)
+    if surface == "z_builtin_sm":
+        _set_presentation_outcome(
+            cache,
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=Workload.SELECTED_FLOW,
+            outcome="unverified",
+            variant="jit_o3",
+        )
+        tex = render_z_ladder(ModelKey.BUILTIN_SM, caches)
+    else:
+        _set_presentation_outcome(
+            cache,
+            process_key=surface,
+            n_final=2,
+            workload=Workload.CONTRACTED,
+            outcome="unverified",
+        )
+        dataset = next(
+            item
+            for item in REPORT_CATALOG.scalar_datasets
+            if item.dataset_id == surface
+        )
+        tex = render_scalar_ladder(dataset, caches)
+
+    assert r"\matrixstatus{ReportOrange}{unverified}" in tex
+    assert r"\matrixstatus{ReportRed}{unverified}" not in tex
 
 
 def test_all_outputs_include_matrices_z_and_scalar_ladders(

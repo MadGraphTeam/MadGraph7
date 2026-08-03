@@ -454,6 +454,16 @@ def _parser() -> argparse.ArgumentParser:
     worker.add_argument("--log-path", type=Path)
     worker.add_argument("--baseline-json", type=Path)
     worker.add_argument(
+        "--expected-authority-cell-id",
+        action="append",
+        default=[],
+        help=argparse.SUPPRESS,
+    )
+    worker.add_argument(
+        "--selected-authority-cell-id",
+        help=argparse.SUPPRESS,
+    )
+    worker.add_argument(
         "--peer-json",
         action="append",
         nargs=2,
@@ -1518,6 +1528,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             manual_source_revision=args.manual_source_revision,
             manual_source_tree=args.manual_source_tree,
             baseline_json=args.baseline_json,
+            expected_authority_cell_ids=tuple(args.expected_authority_cell_id),
+            selected_authority_cell_id=args.selected_authority_cell_id,
             peer_json=tuple((cell_id, Path(path)) for cell_id, path in args.peer_json),
             prepared_model_path=args.prepared_model,
             reused_measurement_json=args.reused_measurement_json,

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import ctypes
 import signal
 import subprocess
 import sys
@@ -21,10 +22,15 @@ from tools.performance_report.resources import (
     ProcessTreeSampler,
     ResourceMonitor,
     ResourceProbeError,
+    _darwin_process_identity,
+    _DarwinProcBsdInfo,
     _linux_proc_snapshot,
+    _parse_linux_process_identity,
     _parse_proc_stat,
     _parse_proc_status_rss,
     _parse_ps_output,
+    _ProcessIdentity,
+    _signal_process_tree,
     process_snapshot,
     supervise_worker,
 )
@@ -53,6 +59,73 @@ def test_linux_proc_parsers_and_snapshot_include_cpu_time(tmp_path: Path) -> Non
             cpu_seconds=2.5,
         )
     }
+
+
+def test_linux_process_identity_uses_one_stat_snapshot() -> None:
+    stat = (
+        "42 (worker (phase 2)) S 1 77 77 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 12345"
+    )
+
+    assert _parse_linux_process_identity(stat) == _ProcessIdentity(
+        birth_token=12345,
+        process_group=77,
+    )
+
+    with pytest.raises(ValueError, match="process identity"):
+        _parse_linux_process_identity(stat.replace(" 77 77 ", " 0 77 ", 1))
+
+
+def test_darwin_process_identity_uses_bsd_birth_and_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeProcPidInfo:
+        argtypes: object = None
+        restype: object = None
+
+        def __init__(self) -> None:
+            self.short = False
+            self.mismatched_pid = False
+
+        def __call__(
+            self,
+            pid: int,
+            flavor: int,
+            arg: int,
+            buffer: object,
+            size: int,
+        ) -> int:
+            assert flavor == 3
+            assert arg == 0
+            assert size == ctypes.sizeof(_DarwinProcBsdInfo)
+            info = ctypes.cast(
+                buffer,
+                ctypes.POINTER(_DarwinProcBsdInfo),
+            ).contents
+            info.pbi_pid = pid + int(self.mismatched_pid)
+            info.pbi_pgid = 81
+            info.pbi_start_tvsec = 123
+            info.pbi_start_tvusec = 456
+            return size - 1 if self.short else size
+
+    fake_proc_pidinfo = FakeProcPidInfo()
+
+    class FakeLibproc:
+        proc_pidinfo = fake_proc_pidinfo
+
+    monkeypatch.setattr(
+        "tools.performance_report.resources._darwin_libproc",
+        lambda: FakeLibproc(),
+    )
+
+    assert _darwin_process_identity(42) == _ProcessIdentity(
+        birth_token=(123, 456),
+        process_group=81,
+    )
+    fake_proc_pidinfo.short = True
+    assert _darwin_process_identity(42) is None
+    fake_proc_pidinfo.short = False
+    fake_proc_pidinfo.mismatched_pid = True
+    assert _darwin_process_identity(42) is None
 
 
 def test_ps_parser_and_platform_fallback_are_injectable(tmp_path: Path) -> None:
@@ -246,7 +319,7 @@ def test_supervisor_enforces_timeout_on_worker_process_group() -> None:
         popen_calls.append((tuple(command), start_new_session))
         return process
 
-    def signal_tree(pgid: int, members: object, selected_signal: int) -> None:
+    def signal_tree(pgid: int | None, members: object, selected_signal: int) -> None:
         member_tuple = tuple(sorted(members))  # type: ignore[arg-type]
         signals.append((pgid, member_tuple, selected_signal))
         process.returncode = -selected_signal
@@ -269,7 +342,303 @@ def test_supervisor_enforces_timeout_on_worker_process_group() -> None:
     assert result.reason == "worker_timeout"
     assert result.returncode == -signal.SIGTERM
     assert result.usage.wall_seconds == 2.0
-    assert signals == [(100, (100, 101), signal.SIGTERM)]
+    assert signals == [(100, (), signal.SIGTERM)]
+
+
+def test_process_tree_signaler_broadcasts_once_and_signals_only_outliers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    group_signals: list[tuple[int, int]] = []
+    individual_signals: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        "tools.performance_report.resources.os.killpg",
+        lambda pgid, selected_signal: group_signals.append((pgid, selected_signal)),
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.resources.os.kill",
+        lambda pid, selected_signal: individual_signals.append(
+            (pid, selected_signal)
+        ),
+    )
+
+    _signal_process_tree(100, (201, 202), signal.SIGTERM)
+
+    assert group_signals == [(100, signal.SIGTERM)]
+    assert individual_signals == [
+        (201, signal.SIGTERM),
+        (202, signal.SIGTERM),
+    ]
+
+
+def test_stubborn_memory_capped_tree_keeps_primary_outcome_until_reaped() -> None:
+    clock = FakeClock()
+    process = FakeProcess()
+    child_alive = True
+    kill_seen = False
+    post_kill_polls = 0
+    signals: list[tuple[int, tuple[int, ...], int]] = []
+    observed_phases: list[str | None] = []
+
+    snapshot_calls = 0
+
+    def snapshot() -> dict[int, ProcessRecord]:
+        nonlocal snapshot_calls
+        snapshot_calls += 1
+        if snapshot_calls == 1:
+            return {
+                100: ProcessRecord(100, 1, 60),
+                101: ProcessRecord(101, 100, 30),
+            }
+        return (
+            {}
+            if process.returncode is not None
+            else {100: ProcessRecord(100, 1, 110)}
+        )
+
+    def identity(pid: int) -> _ProcessIdentity | None:
+        if pid == process.pid and process.returncode is None:
+            return _ProcessIdentity(birth_token=1, process_group=process.pid)
+        if pid == 101 and child_alive:
+            return _ProcessIdentity(birth_token=2, process_group=process.pid)
+        return None
+
+    def signal_tree(pgid: int | None, members: object, selected_signal: int) -> None:
+        nonlocal kill_seen
+        signals.append(
+            (pgid, tuple(sorted(members)), selected_signal)  # type: ignore[arg-type]
+        )
+        if selected_signal == signal.SIGKILL:
+            kill_seen = True
+
+    def sleep(duration: float) -> None:
+        nonlocal child_alive, post_kill_polls
+        clock.now += duration
+        if not kill_seen:
+            return
+        post_kill_polls += 1
+        if post_kill_polls == 12:
+            process.returncode = -signal.SIGKILL
+        elif post_kill_polls == 14:
+            child_alive = False
+
+    result = supervise_worker(
+        ("worker",),
+        max_rss_bytes=100,
+        interval_seconds=0.1,
+        termination_grace_seconds=0.5,
+        snapshotter=snapshot,
+        popen_factory=lambda *_args, **_kwargs: process,
+        clock=clock,
+        sleeper=sleep,
+        signaler=signal_tree,
+        process_identity_probe=identity,
+        observation_callback=lambda observation: observed_phases.append(
+            observation.phase
+        ),
+    )
+
+    assert result.reason == "memory_limit"
+    assert result.returncode == -signal.SIGKILL
+    assert result.signal_name == "SIGKILL"
+    assert result.teardown_escalated
+    assert result.teardown_seconds > 0.5
+    assert signals == [
+        (100, (), signal.SIGTERM),
+        (100, (), signal.SIGKILL),
+    ]
+    assert "terminating" in observed_phases
+    assert observed_phases.count("waiting-for-reap") >= 12
+    assert not child_alive
+    assert snapshot_calls > 2
+
+
+def test_stubborn_wall_timeout_keeps_primary_outcome_until_root_is_reaped() -> None:
+    clock = FakeClock()
+    process = FakeProcess()
+    kill_seen = False
+    post_kill_polls = 0
+    signals: list[tuple[int | None, tuple[int, ...], int]] = []
+
+    def identity(pid: int) -> _ProcessIdentity | None:
+        return (
+            _ProcessIdentity(birth_token=1, process_group=process.pid)
+            if pid == process.pid and process.returncode is None
+            else None
+        )
+
+    def signal_tree(
+        pgid: int | None,
+        members: object,
+        selected_signal: int,
+    ) -> None:
+        nonlocal kill_seen
+        signals.append(
+            (pgid, tuple(sorted(members)), selected_signal)  # type: ignore[arg-type]
+        )
+        if selected_signal == signal.SIGKILL:
+            kill_seen = True
+
+    def sleep(duration: float) -> None:
+        nonlocal post_kill_polls
+        clock.now += duration
+        if not kill_seen:
+            return
+        post_kill_polls += 1
+        if post_kill_polls == 3:
+            process.returncode = -signal.SIGKILL
+
+    result = supervise_worker(
+        ("worker",),
+        timeout_seconds=0.1,
+        interval_seconds=0.1,
+        termination_grace_seconds=0.2,
+        snapshotter=lambda: (
+            {}
+            if process.returncode is not None
+            else {100: ProcessRecord(100, 1, 10)}
+        ),
+        popen_factory=lambda *_args, **_kwargs: process,
+        clock=clock,
+        sleeper=sleep,
+        signaler=signal_tree,
+        process_identity_probe=identity,
+    )
+
+    assert result.reason == "worker_timeout"
+    assert result.returncode == -signal.SIGKILL
+    assert result.teardown_escalated
+    assert signals == [
+        (100, (), signal.SIGTERM),
+        (100, (), signal.SIGKILL),
+    ]
+
+
+def test_descendant_group_change_keeps_birth_identity_until_gone() -> None:
+    clock = FakeClock()
+    process = FakeProcess()
+    child_alive = True
+    child_process_group = process.pid
+    kill_seen = False
+    post_kill_polls = 0
+    signals: list[tuple[int | None, tuple[int, ...], int]] = []
+
+    def identity(pid: int) -> _ProcessIdentity | None:
+        if pid == process.pid and process.returncode is None:
+            return _ProcessIdentity(birth_token=1, process_group=process.pid)
+        if pid == 101 and child_alive:
+            return _ProcessIdentity(
+                birth_token=2,
+                process_group=child_process_group,
+            )
+        return None
+
+    def signal_tree(
+        pgid: int | None,
+        members: object,
+        selected_signal: int,
+    ) -> None:
+        nonlocal child_process_group, kill_seen
+        selected_members = tuple(sorted(members))  # type: ignore[arg-type]
+        signals.append((pgid, selected_members, selected_signal))
+        if selected_signal == signal.SIGTERM:
+            child_process_group = 101
+        else:
+            assert selected_members == (101,)
+            kill_seen = True
+            process.returncode = -signal.SIGKILL
+
+    def sleep(duration: float) -> None:
+        nonlocal child_alive, post_kill_polls
+        clock.now += duration
+        if not kill_seen:
+            return
+        post_kill_polls += 1
+        if post_kill_polls == 3:
+            child_alive = False
+
+    result = supervise_worker(
+        ("worker",),
+        max_rss_bytes=100,
+        interval_seconds=0.1,
+        termination_grace_seconds=0.2,
+        snapshotter=lambda: {
+            **(
+                {100: ProcessRecord(100, 1, 70)}
+                if process.returncode is None
+                else {}
+            ),
+            **({101: ProcessRecord(101, 100, 40)} if child_alive else {}),
+        },
+        popen_factory=lambda *_args, **_kwargs: process,
+        clock=clock,
+        sleeper=sleep,
+        signaler=signal_tree,
+        process_identity_probe=identity,
+    )
+
+    assert result.reason == "memory_limit"
+    assert result.returncode == -signal.SIGKILL
+    assert result.teardown_escalated
+    assert not child_alive
+    assert post_kill_polls == 3
+    assert signals == [
+        (100, (), signal.SIGTERM),
+        (100, (101,), signal.SIGKILL),
+    ]
+
+
+def test_natural_exit_does_not_signal_a_reused_descendant_pid() -> None:
+    clock = FakeClock()
+    process = FakeProcess()
+    child_identity: _ProcessIdentity | None = _ProcessIdentity(
+        birth_token=2,
+        process_group=process.pid,
+    )
+    signals: list[tuple[int | None, tuple[int, ...], int]] = []
+
+    def identity(pid: int) -> _ProcessIdentity | None:
+        if pid == process.pid and process.returncode is None:
+            return _ProcessIdentity(birth_token=1, process_group=process.pid)
+        if pid == 101:
+            return child_identity
+        return None
+
+    def sleep(duration: float) -> None:
+        nonlocal child_identity
+        clock.now += duration
+        process.returncode = 0
+        child_identity = _ProcessIdentity(
+            birth_token=3,
+            process_group=process.pid,
+        )
+
+    result = supervise_worker(
+        ("worker",),
+        interval_seconds=0.1,
+        snapshotter=lambda: {
+            **(
+                {100: ProcessRecord(100, 1, 10)}
+                if process.returncode is None
+                else {}
+            ),
+            101: ProcessRecord(
+                101,
+                100 if process.returncode is None else 1,
+                10,
+            ),
+        },
+        popen_factory=lambda *_args, **_kwargs: process,
+        clock=clock,
+        sleeper=sleep,
+        signaler=lambda pgid, members, selected_signal: signals.append(
+            (pgid, tuple(sorted(members)), selected_signal)
+        ),
+        process_identity_probe=identity,
+    )
+
+    assert result.reason == "completed"
+    assert result.returncode == 0
+    assert signals == []
 
 
 def test_completed_root_cannot_leave_a_known_descendant_running() -> None:
@@ -294,7 +663,7 @@ def test_completed_root_cannot_leave_a_known_descendant_running() -> None:
         clock.now += duration
         process.returncode = 0
 
-    def signal_tree(pgid: int, members: object, selected_signal: int) -> None:
+    def signal_tree(pgid: int | None, members: object, selected_signal: int) -> None:
         nonlocal child_alive
         signals.append(
             (pgid, tuple(sorted(members)), selected_signal)  # type: ignore[arg-type]
@@ -311,15 +680,80 @@ def test_completed_root_cannot_leave_a_known_descendant_running() -> None:
         clock=clock,
         sleeper=sleep,
         signaler=signal_tree,
+        process_identity_probe=lambda pid: (
+            _ProcessIdentity(birth_token=pid, process_group=process.pid)
+            if (
+                (pid == process.pid and process.returncode is None)
+                or (pid == 101 and child_alive)
+            )
+            else None
+        ),
     )
 
     assert result.reason == "completed"
     assert result.returncode == 0
     assert not child_alive
     assert signals == [
-        (100, (101,), signal.SIGTERM),
-        (100, (101,), signal.SIGKILL),
+        (100, (), signal.SIGTERM),
+        (100, (), signal.SIGKILL),
     ]
+    assert result.teardown_escalated
+    assert result.teardown_seconds >= 0.1
+
+
+def test_completed_root_reports_graceful_descendant_teardown() -> None:
+    clock = FakeClock()
+    process = FakeProcess()
+    child_alive = True
+    signals: list[tuple[int | None, tuple[int, ...], int]] = []
+
+    def sleep(duration: float) -> None:
+        clock.now += duration
+        process.returncode = 0
+
+    def signal_tree(
+        pgid: int | None,
+        members: object,
+        selected_signal: int,
+    ) -> None:
+        nonlocal child_alive
+        signals.append(
+            (pgid, tuple(sorted(members)), selected_signal)  # type: ignore[arg-type]
+        )
+        assert selected_signal == signal.SIGTERM
+        child_alive = False
+
+    result = supervise_worker(
+        ("worker",),
+        interval_seconds=0.1,
+        termination_grace_seconds=0.2,
+        snapshotter=lambda: {
+            **(
+                {100: ProcessRecord(100, 1, 100)}
+                if process.returncode is None
+                else {}
+            ),
+            **({101: ProcessRecord(101, 100, 50)} if child_alive else {}),
+        },
+        popen_factory=lambda *_args, **_kwargs: process,
+        clock=clock,
+        sleeper=sleep,
+        signaler=signal_tree,
+        process_identity_probe=lambda pid: (
+            _ProcessIdentity(birth_token=pid, process_group=process.pid)
+            if (
+                (pid == process.pid and process.returncode is None)
+                or (pid == 101 and child_alive)
+            )
+            else None
+        ),
+    )
+
+    assert result.reason == "completed"
+    assert result.returncode == 0
+    assert signals == [(100, (), signal.SIGTERM)]
+    assert not result.teardown_escalated
+    assert result.teardown_seconds > 0.0
 
 
 def test_supervisor_propagates_symbolica_license_to_worker_environment(
@@ -1073,7 +1507,7 @@ def test_cancellation_terminates_the_process_tree_in_every_worker_phase(
         clock.now += duration
         cancellation = True
 
-    def signal_tree(pgid: int, members: object, selected_signal: int) -> None:
+    def signal_tree(pgid: int | None, members: object, selected_signal: int) -> None:
         signals.append(
             (pgid, tuple(sorted(members)), selected_signal)  # type: ignore[arg-type]
         )
@@ -1101,7 +1535,7 @@ def test_cancellation_terminates_the_process_tree_in_every_worker_phase(
 
     assert result.reason == "cancelled"
     assert result.returncode == -signal.SIGTERM
-    assert signals == [(100, (100, 101), signal.SIGTERM)]
+    assert signals == [(100, (), signal.SIGTERM)]
     assert result.generation_phase is not None
     assert result.generation_phase.authenticated
     assert result.generation_phase.final_phase == expected_phase

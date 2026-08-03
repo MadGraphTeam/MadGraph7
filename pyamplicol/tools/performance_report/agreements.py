@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -18,14 +20,19 @@ from .models import (
 )
 from .runner import (
     ABSOLUTE_TOLERANCE,
+    CONDITIONED_COMPARISON_ABI,
     INDEPENDENT_RELATIVE_TOLERANCE,
     RELATIVE_TOLERANCE,
     SelectorContract,
     _real_nonnegative,
+    point_digest,
     pointwise_validation,
+    validate_conditioned_comparison_record,
 )
 
 DIRECT_AGREEMENT_ABI = "pyamplicol-report-direct-agreement-v1"
+DIRECT_AGREEMENT_V1_ABI = DIRECT_AGREEMENT_ABI
+DIRECT_AGREEMENT_V2_ABI = "pyamplicol-report-direct-agreement-v2"
 LC_COMMON_COMPONENT_ABI = "pyamplicol-report-lc-common-component-v1"
 BUILTIN_UFO_RECURRENCE = "builtin-ufo-recurrence"
 Z_RECURRENCE_CROSS_MODE = "z-recurrence-cross-mode"
@@ -39,6 +46,8 @@ DIRECT_AGREEMENT_KINDS = (
 )
 DIRECT_AGREEMENT_FIELD = "direct_agreements"
 LC_COMMON_COMPONENT_FIELD = "lc_common_component"
+INDEPENDENT_AUTHORITY_ABI = "pyamplicol-report-independent-authority-v1"
+INDEPENDENT_AUTHORITY_FIELD = "independent_authority"
 STRICT_RELATIVE_TOLERANCE = RELATIVE_TOLERANCE
 STRICT_ABSOLUTE_TOLERANCE = ABSOLUTE_TOLERANCE
 
@@ -57,8 +66,7 @@ class AgreementEdge:
     def value_kind(self) -> str:
         return (
             LC_COMMON_COMPONENT_FIELD
-            if self.kind
-            in {LC_CROSS_LAYOUT_COMPONENT, LC_LEGACY_PYAMPLICOL_COMPONENT}
+            if self.kind in {LC_CROSS_LAYOUT_COMPONENT, LC_LEGACY_PYAMPLICOL_COMPONENT}
             else "matrix_element"
         )
 
@@ -76,7 +84,10 @@ class AgreementEdge:
         cross-layout pyAmpliCol edge remains mandatory.
         """
 
-        return self.kind != LC_LEGACY_PYAMPLICOL_COMPONENT
+        return self.kind not in {
+            LC_LEGACY_PYAMPLICOL_COMPONENT,
+            Z_RECURRENCE_CROSS_MODE,
+        }
 
 
 def validation_baseline_is_required(
@@ -94,16 +105,17 @@ def validation_baseline_is_required(
 
     if baseline is None:
         return False
+    if cell.measurement.execution_mode in {
+        ExecutionMode.COMPILED,
+        ExecutionMode.EAGER,
+    } and baseline.measurement.execution_mode in {
+        ExecutionMode.RECURRENCE,
+        ExecutionMode.AMPLICOL,
+    }:
+        return False
     if baseline.measurement.execution_mode is not ExecutionMode.AMPLICOL:
         return True
-    return not (
-        cell.measurement.execution_mode is ExecutionMode.RECURRENCE
-        or (
-            cell.dataset_id.startswith("z_")
-            and cell.measurement.execution_mode
-            in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
-        )
-    )
+    return cell.measurement.execution_mode is not ExecutionMode.RECURRENCE
 
 
 def _unique_cell(
@@ -140,9 +152,7 @@ def _builtin_recurrence_peer(
             and (
                 (
                     cell.dataset_id.startswith("matrix_recurrence_")
-                    and candidate.dataset_id.startswith(
-                        "matrix_recurrence_builtin_sm_"
-                    )
+                    and candidate.dataset_id.startswith("matrix_recurrence_builtin_sm_")
                     and candidate.variant is None
                 )
                 or (
@@ -161,11 +171,10 @@ def _z_recurrence_peer(
     cell: CellSpec,
     cells: Sequence[CellSpec],
 ) -> CellSpec | None:
-    if (
-        not cell.dataset_id.startswith("z_")
-        or cell.measurement.execution_mode
-        not in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
-    ):
+    if not cell.dataset_id.startswith("z_") or cell.measurement.execution_mode not in {
+        ExecutionMode.COMPILED,
+        ExecutionMode.EAGER,
+    }:
         return None
     return _unique_cell(
         tuple(
@@ -275,9 +284,7 @@ def incoming_agreement_edges(
         edges.append(AgreementEdge(LC_CROSS_LAYOUT_COMPONENT, layout, cell))
     legacy = _lc_legacy_peer(cell, cells, catalog=catalog)
     if legacy is not None:
-        edges.append(
-            AgreementEdge(LC_LEGACY_PYAMPLICOL_COMPONENT, legacy, cell)
-        )
+        edges.append(AgreementEdge(LC_LEGACY_PYAMPLICOL_COMPONENT, legacy, cell))
     return tuple(
         sorted(
             edges,
@@ -309,6 +316,60 @@ def validation_baseline_fallback_peers(
         for edge in incoming_agreement_edges(cell, catalog=catalog)
         if edge.required and edge.kind == Z_RECURRENCE_CROSS_MODE
     )
+
+
+def independent_numerical_authorities(
+    cell: CellSpec,
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> tuple[CellSpec, ...]:
+    """Return the canonical ordered independent-authority chain.
+
+    This identity is shared by planning, the isolated worker, strict result
+    validation, and late reconciliation.  It deliberately contains only
+    availability-optional numerical authorities: recurrence first, followed
+    by matching original AmpliCol when the catalog exposes it.
+    """
+
+    if cell.measurement.execution_mode not in {
+        ExecutionMode.COMPILED,
+        ExecutionMode.EAGER,
+    }:
+        return ()
+    candidates: list[CellSpec] = []
+    baseline = catalog.validation_baseline_cell(cell)
+    recurrence_peer = next(
+        (
+            edge.baseline
+            for edge in incoming_agreement_edges(cell, catalog=catalog)
+            if edge.kind == Z_RECURRENCE_CROSS_MODE
+        ),
+        None,
+    )
+    recurrence = (
+        recurrence_peer
+        if recurrence_peer is not None
+        else (
+            baseline
+            if baseline is not None
+            and baseline.measurement.execution_mode is ExecutionMode.RECURRENCE
+            else None
+        )
+    )
+    if recurrence is not None:
+        candidates.append(recurrence)
+    legacy = (
+        catalog.validation_baseline_cell(recurrence)
+        if recurrence is not None
+        else baseline
+    )
+    if (
+        legacy is not None
+        and legacy.measurement.execution_mode is ExecutionMode.AMPLICOL
+        and legacy.cell_id not in {item.cell_id for item in candidates}
+    ):
+        candidates.append(legacy)
+    return tuple(candidates)
 
 
 def agreement_edges(
@@ -373,11 +434,7 @@ def evaluate_lc_common_component(
     values = getattr(resolved, "values", None)
     try:
         raw_value = values[0][0][0]
-        if (
-            len(values) != 1
-            or len(values[0]) != 1
-            or len(values[0][0]) != 1
-        ):
+        if len(values) != 1 or len(values[0]) != 1 or len(values[0][0]) != 1:
             raise IndexError
     except (IndexError, TypeError) as error:
         raise AgreementError(
@@ -432,24 +489,163 @@ def _measurement_number(
     return number
 
 
-def _direct_record(
+def _agreement_source_digest(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("ascii")
+    ).hexdigest()
+
+
+def _measurement_point_digest(measurement: Mapping[str, object]) -> str:
+    selector = measurement.get("selector_contract")
+    if isinstance(selector, Mapping):
+        raw = selector.get("point_digest")
+        if isinstance(raw, str):
+            return raw
+    validation = measurement.get("validation")
+    if isinstance(validation, Mapping):
+        raw = validation.get("point_digest")
+        if isinstance(raw, str):
+            return raw
+    provenance = measurement.get("provenance")
+    if isinstance(provenance, Mapping) and "report_momenta" in provenance:
+        return point_digest(provenance["report_momenta"])
+    raise AgreementError("direct agreement measurement has no point identity")
+
+
+def _measurement_scale(
+    measurement: Mapping[str, object],
+    *,
+    edge: AgreementEdge,
+    role: str,
+    number: float,
+) -> tuple[float, str, str]:
+    validation = measurement.get("validation")
+    if edge.value_kind == LC_COMMON_COMPONENT_FIELD and isinstance(
+        validation, Mapping
+    ):
+        component = validation.get(LC_COMMON_COMPONENT_FIELD)
+        if isinstance(component, Mapping):
+            return (
+                abs(number),
+                "authority-component-magnitude",
+                _agreement_source_digest(component),
+            )
+    if edge.value_kind == "matrix_element" and isinstance(validation, Mapping):
+        resolved = validation.get("resolved_sum")
+        if isinstance(resolved, Mapping):
+            records = resolved.get("points")
+            source = resolved.get("resolved_source_sha256")
+            if (
+                isinstance(records, list)
+                and len(records) == 1
+                and isinstance(records[0], Mapping)
+                and isinstance(source, str)
+            ):
+                raw_scale = records[0].get("candidate_scale")
+                if (
+                    not isinstance(raw_scale, bool)
+                    and isinstance(raw_scale, (int, float))
+                    and math.isfinite(float(raw_scale))
+                    and float(raw_scale) >= abs(number)
+                ):
+                    return float(raw_scale), "resolved-component-l1", source
+    stable_validation = (
+        {
+            key: item
+            for key, item in validation.items()
+            if key != DIRECT_AGREEMENT_FIELD
+        }
+        if isinstance(validation, Mapping)
+        else validation
+    )
+    source = _agreement_source_digest(
+        {
+            "role": role,
+            "value_kind": edge.value_kind,
+            "value": number,
+            "selector_contract": measurement.get("selector_contract"),
+            "validation": stable_validation,
+            "provenance": measurement.get("provenance"),
+        }
+    )
+    return abs(number), "authority-value-magnitude", source
+
+
+def direct_agreement_record(
     edge: AgreementEdge,
     *,
-    candidate: float,
-    baseline: float,
+    candidate_measurement: Mapping[str, object],
+    baseline_measurement: Mapping[str, object],
 ) -> dict[str, object]:
+    candidate = _measurement_number(
+        candidate_measurement,
+        edge=edge,
+        role="candidate",
+    )
+    baseline = _measurement_number(
+        baseline_measurement,
+        edge=edge,
+        role="baseline",
+    )
+    candidate_scale, candidate_scale_source, candidate_source = _measurement_scale(
+        candidate_measurement,
+        edge=edge,
+        role="candidate",
+        number=candidate,
+    )
+    baseline_scale, baseline_scale_source, baseline_source = _measurement_scale(
+        baseline_measurement,
+        edge=edge,
+        role="baseline",
+        number=baseline,
+    )
+    candidate_point = _measurement_point_digest(candidate_measurement)
+    baseline_point = _measurement_point_digest(baseline_measurement)
+    if candidate_point != baseline_point:
+        raise AgreementError("direct agreement points differ")
+    selector_identity = {
+        "candidate_cell_id": edge.candidate.cell_id,
+        "baseline_cell_id": edge.baseline.cell_id,
+        "candidate_accuracy": edge.candidate.measurement.accuracy.value,
+        "baseline_accuracy": edge.baseline.measurement.accuracy.value,
+        "candidate_workload": edge.candidate.workload.value,
+        "baseline_workload": edge.baseline.workload.value,
+        "value_kind": edge.value_kind,
+        "candidate_selector": candidate_measurement.get("selector_contract"),
+        "baseline_selector": baseline_measurement.get("selector_contract"),
+    }
+    comparison = pointwise_validation(
+        candidate,
+        baseline,
+        relative_tolerance=edge.relative_tolerance,
+        candidate_scale=candidate_scale,
+        baseline_scale=baseline_scale,
+        candidate_scale_source=candidate_scale_source,
+        baseline_scale_source=baseline_scale_source,
+        comparison_binding={
+            "point_digest": candidate_point,
+            "selector_component_identity": selector_identity,
+            "selector_component_sha256": _agreement_source_digest(
+                selector_identity
+            ),
+            "candidate_source_sha256": candidate_source,
+            "baseline_source_sha256": baseline_source,
+        },
+    )
+    comparison.pop("abi")
     return {
-        "abi": DIRECT_AGREEMENT_ABI,
+        "abi": DIRECT_AGREEMENT_V2_ABI,
         "edge_kind": edge.kind,
         "value_kind": edge.value_kind,
         "baseline_cell_id": edge.baseline.cell_id,
         "candidate_cell_id": edge.candidate.cell_id,
-        **pointwise_validation(
-            candidate,
-            baseline,
-            relative_tolerance=edge.relative_tolerance,
-            absolute_tolerance=STRICT_ABSOLUTE_TOLERANCE,
-        ),
+        **comparison,
     }
 
 
@@ -462,12 +658,14 @@ def validate_direct_agreement_records(
 
     if not isinstance(value, list):
         raise ValueError(f"{DIRECT_AGREEMENT_FIELD} must be an array")
-    expected_fields = {
+    identity_fields = {
         "abi",
         "edge_kind",
         "value_kind",
         "baseline_cell_id",
         "candidate_cell_id",
+    }
+    v1_fields = identity_fields | {
         "status",
         "candidate",
         "baseline",
@@ -476,12 +674,28 @@ def validate_direct_agreement_records(
         "relative_tolerance",
         "absolute_tolerance",
     }
+    v2_fields = identity_fields | {
+        "status",
+        "candidate",
+        "baseline",
+        "candidate_scale",
+        "baseline_scale",
+        "candidate_scale_source",
+        "baseline_scale_source",
+        "comparison_scale",
+        "absolute_difference",
+        "relative_difference",
+        "conditioned_residual",
+        "error_bound",
+        "relative_tolerance",
+        "comparison_binding",
+    }
     seen: set[tuple[str, str, str]] = set()
     for index, raw in enumerate(value):
         if not isinstance(raw, Mapping):
-            raise ValueError(
-                f"{DIRECT_AGREEMENT_FIELD}[{index}] must be an object"
-            )
+            raise ValueError(f"{DIRECT_AGREEMENT_FIELD}[{index}] must be an object")
+        abi = raw.get("abi")
+        expected_fields = v2_fields if abi == DIRECT_AGREEMENT_V2_ABI else v1_fields
         if set(raw) != expected_fields:
             raise ValueError(
                 f"{DIRECT_AGREEMENT_FIELD}[{index}] fields differ from the ABI"
@@ -493,14 +707,13 @@ def validate_direct_agreement_records(
             )
         expected_value_kind = (
             LC_COMMON_COMPONENT_FIELD
-            if kind
-            in {LC_CROSS_LAYOUT_COMPONENT, LC_LEGACY_PYAMPLICOL_COMPONENT}
+            if kind in {LC_CROSS_LAYOUT_COMPONENT, LC_LEGACY_PYAMPLICOL_COMPONENT}
             else "matrix_element"
         )
         baseline_id = raw.get("baseline_cell_id")
         candidate_id = raw.get("candidate_cell_id")
         if (
-            raw.get("abi") != DIRECT_AGREEMENT_ABI
+            abi not in {DIRECT_AGREEMENT_V2_ABI, DIRECT_AGREEMENT_V1_ABI}
             or raw.get("value_kind") != expected_value_kind
             or not isinstance(baseline_id, str)
             or not baseline_id
@@ -511,59 +724,36 @@ def validate_direct_agreement_records(
                 and candidate_id != expected_candidate_id
             )
         ):
-            raise ValueError(
-                f"{DIRECT_AGREEMENT_FIELD}[{index}] identity is invalid"
-            )
+            raise ValueError(f"{DIRECT_AGREEMENT_FIELD}[{index}] identity is invalid")
         key = (kind, baseline_id, candidate_id)
         if key in seen:
-            raise ValueError(
-                f"{DIRECT_AGREEMENT_FIELD}[{index}] duplicates an edge"
-            )
+            raise ValueError(f"{DIRECT_AGREEMENT_FIELD}[{index}] duplicates an edge")
         seen.add(key)
-        numeric: dict[str, float] = {}
-        for field in (
-            "candidate",
-            "baseline",
-            "absolute_difference",
-            "relative_difference",
-            "relative_tolerance",
-            "absolute_tolerance",
-        ):
-            raw_number = raw.get(field)
-            if (
-                isinstance(raw_number, bool)
-                or not isinstance(raw_number, (int, float))
-                or not math.isfinite(float(raw_number))
-            ):
-                raise ValueError(
-                    f"{DIRECT_AGREEMENT_FIELD}[{index}].{field} is not finite"
-                )
-            numeric[field] = float(raw_number)
-        recomputed_absolute = abs(numeric["candidate"] - numeric["baseline"])
-        recomputed_relative = recomputed_absolute / max(
-            abs(numeric["baseline"]), 1.0e-300
-        )
         expected_relative_tolerance = agreement_relative_tolerance(kind)
-        passed = (
-            recomputed_absolute <= STRICT_ABSOLUTE_TOLERANCE
-            or recomputed_relative <= expected_relative_tolerance
-        )
-        if (
-            numeric["absolute_difference"] != recomputed_absolute
-            or numeric["relative_difference"] != recomputed_relative
-            or numeric["relative_tolerance"] != expected_relative_tolerance
-            or numeric["absolute_tolerance"] != STRICT_ABSOLUTE_TOLERANCE
-            or raw.get("status")
-            != (
-                ResultStatus.OK.value
-                if passed
-                else ResultStatus.VALIDATION_FAILED.value
+        comparison = {
+            key: item for key, item in raw.items() if key not in identity_fields
+        }
+        if abi == DIRECT_AGREEMENT_V2_ABI:
+            comparison["abi"] = CONDITIONED_COMPARISON_ABI
+        try:
+            validate_conditioned_comparison_record(
+                comparison,
+                require_binding=abi == DIRECT_AGREEMENT_V2_ABI,
             )
-        ):
+        except ValueError as error:
             raise ValueError(
                 f"{DIRECT_AGREEMENT_FIELD}[{index}] numerical record is invalid"
+            ) from error
+        if float(comparison["relative_tolerance"]) != expected_relative_tolerance:
+            raise ValueError(f"{DIRECT_AGREEMENT_FIELD}[{index}] tolerance is invalid")
+        if (
+            abi == DIRECT_AGREEMENT_V1_ABI
+            and float(comparison["absolute_tolerance"]) != STRICT_ABSOLUTE_TOLERANCE
+        ):
+            raise ValueError(
+                f"{DIRECT_AGREEMENT_FIELD}[{index}] legacy tolerance is invalid"
             )
-        if not passed:
+        if raw.get("status") != ResultStatus.OK.value:
             raise ValueError(
                 f"{DIRECT_AGREEMENT_FIELD}[{index}] agreement is not successful"
             )
@@ -588,9 +778,7 @@ def validate_lc_common_component(
         "color_flow_ids",
     }
     if set(value) != expected_fields:
-        raise ValueError(
-            f"{LC_COMMON_COMPONENT_FIELD} fields differ from the ABI"
-        )
+        raise ValueError(f"{LC_COMMON_COMPONENT_FIELD} fields differ from the ABI")
     cell_id = value.get("cell_id")
     number = value.get("value")
     point_digest = value.get("point_digest")
@@ -643,7 +831,11 @@ def attach_direct_agreements(
 ) -> None:
     """Attach every incoming direct edge and make any failure terminal."""
 
-    if measurement.get("status") != ResultStatus.OK.value:
+    initial_status = measurement.get("status")
+    if initial_status not in {
+        ResultStatus.OK.value,
+        ResultStatus.UNVERIFIED.value,
+    }:
         return
     validation = measurement.get("validation")
     if not isinstance(validation, Mapping):
@@ -651,9 +843,7 @@ def attach_direct_agreements(
     mutable_validation = dict(validation)
     expected = incoming_agreement_edges(cell, catalog=catalog)
     expected_peer_ids = {edge.baseline.cell_id for edge in expected}
-    required_peer_ids = {
-        edge.baseline.cell_id for edge in expected if edge.required
-    }
+    required_peer_ids = {edge.baseline.cell_id for edge in expected if edge.required}
     observed_peer_ids = set(peers)
     if not required_peer_ids.issubset(observed_peer_ids) or not (
         observed_peer_ids <= expected_peer_ids
@@ -680,24 +870,14 @@ def attach_direct_agreements(
                 f"{edge.baseline.cell_id}"
             )
         records.append(
-            _direct_record(
+            direct_agreement_record(
                 edge,
-                candidate=_measurement_number(
-                    measurement,
-                    edge=edge,
-                    role="candidate",
-                ),
-                baseline=_measurement_number(
-                    peer,
-                    edge=edge,
-                    role="baseline",
-                ),
+                candidate_measurement=measurement,
+                baseline_measurement=peer,
             )
         )
     mutable_validation[DIRECT_AGREEMENT_FIELD] = records
-    failed = any(
-        record["status"] != ResultStatus.OK.value for record in records
-    )
+    failed = any(record["status"] != ResultStatus.OK.value for record in records)
     if failed:
         mutable_validation["status"] = ResultStatus.VALIDATION_FAILED.value
         measurement["status"] = ResultStatus.VALIDATION_FAILED.value
@@ -705,6 +885,12 @@ def attach_direct_agreements(
             "kind": "MeasurementValidationError",
             "message": "required direct numerical agreement failed",
         }
+    elif initial_status == ResultStatus.UNVERIFIED.value:
+        # Hard model/layout/provider agreements remain mandatory even when the
+        # independent recurrence/AmpliCol numerical authority is unavailable.
+        # Passing them is necessary but deliberately cannot promote a
+        # diagnostic candidate to a reusable success.
+        mutable_validation["status"] = ResultStatus.UNVERIFIED.value
     measurement["validation"] = mutable_validation
 
 
@@ -713,6 +899,9 @@ __all__ = [
     "DIRECT_AGREEMENT_ABI",
     "DIRECT_AGREEMENT_FIELD",
     "DIRECT_AGREEMENT_KINDS",
+    "DIRECT_AGREEMENT_V2_ABI",
+    "INDEPENDENT_AUTHORITY_ABI",
+    "INDEPENDENT_AUTHORITY_FIELD",
     "LC_COMMON_COMPONENT_ABI",
     "LC_COMMON_COMPONENT_FIELD",
     "LC_CROSS_LAYOUT_COMPONENT",
@@ -725,8 +914,10 @@ __all__ = [
     "agreement_edges",
     "agreement_relative_tolerance",
     "attach_direct_agreements",
+    "direct_agreement_record",
     "evaluate_lc_common_component",
     "incoming_agreement_edges",
+    "independent_numerical_authorities",
     "legacy_lc_common_component",
     "validate_direct_agreement_records",
     "validate_lc_common_component",

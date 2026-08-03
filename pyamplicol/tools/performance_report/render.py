@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from .agreements import (
     DIRECT_AGREEMENT_ABI,
     DIRECT_AGREEMENT_FIELD,
+    DIRECT_AGREEMENT_V2_ABI,
     LC_COMMON_COMPONENT_ABI,
     LC_COMMON_COMPONENT_FIELD,
     incoming_agreement_edges,
@@ -99,12 +100,26 @@ _KNOWN_PRESENTATION_TERMINAL_LABELS = {
     "skip": "skip",
     "static_na": "static na",
     "unsupported": "unsupported",
+    "unverified": "unverified",
     "validation_failed": "validation failed",
     "validation_timeout": "validation timeout",
     "worker_timeout": "worker timeout",
 }
+_KNOWN_PRESENTATION_TERMINAL_DISPLAY_LABELS = {
+    "blocked_dependency": "blocked dep.",
+}
 _KNOWN_RESULT_TERMINAL_LABELS = frozenset(
-    {"N/A", "t/o", "RAM", "skip", "validation failed", "unsupported", "failed", "error"}
+    {
+        "N/A",
+        "t/o",
+        "RAM",
+        "skip",
+        "validation failed",
+        "unverified",
+        "unsupported",
+        "failed",
+        "error",
+    }
 )
 _POLICY_TERMINAL_DISPLAY_LABEL = re.compile(
     r"(?:(?:worker|profile|validation) >[0-9]{1,4}(?:\.[0-9]{1,4})?(?:h|s)"
@@ -381,9 +396,7 @@ class BaselineCandidateAdapter:
         *,
         variant: str | None = None,
     ) -> CellSpec:
-        return self._cells[
-            (dataset_id, process_key, n_final, workload, variant)
-        ]
+        return self._cells[(dataset_id, process_key, n_final, workload, variant)]
 
     @staticmethod
     def _finite_number(value: object) -> bool:
@@ -395,10 +408,7 @@ class BaselineCandidateAdapter:
 
     @classmethod
     def _exact_number(cls, value: object, expected: object) -> bool:
-        if (
-            not cls._finite_number(value)
-            or not cls._finite_number(expected)
-        ):
+        if not cls._finite_number(value) or not cls._finite_number(expected):
             return False
         return float(value) == float(expected)
 
@@ -470,7 +480,8 @@ class BaselineCandidateAdapter:
                     item
                     for item in records
                     if isinstance(item, Mapping)
-                    and item.get("abi") == DIRECT_AGREEMENT_ABI
+                    and item.get("abi")
+                    in {DIRECT_AGREEMENT_ABI, DIRECT_AGREEMENT_V2_ABI}
                     and item.get("edge_kind") == edge.kind
                     and item.get("value_kind") == edge.value_kind
                     and item.get("candidate_cell_id") == candidate_cell.cell_id
@@ -495,8 +506,7 @@ class BaselineCandidateAdapter:
                     "color_flow_ids",
                 )
                 if any(
-                    candidate_component.get(field)
-                    != baseline_component.get(field)
+                    candidate_component.get(field) != baseline_component.get(field)
                     for field in identity_fields
                 ):
                     continue
@@ -548,9 +558,7 @@ class BaselineCandidateAdapter:
             return False
         validation = candidate.get("validation")
         pointwise = (
-            validation.get("pointwise")
-            if isinstance(validation, Mapping)
-            else None
+            validation.get("pointwise") if isinstance(validation, Mapping) else None
         )
         return (
             isinstance(pointwise, Mapping)
@@ -758,8 +766,7 @@ class BaselineCandidateAdapter:
                 for mode in _BEST_MODE_ORDER
             )
             measured_candidates = tuple(
-                (mode, cell, self.index.for_cell(cell))
-                for mode, cell in candidates
+                (mode, cell, self.index.for_cell(cell)) for mode, cell in candidates
             )
             eligible = tuple(
                 (mode, cell, measurement)
@@ -785,8 +792,7 @@ class BaselineCandidateAdapter:
                 winner_mode, winner = None, _NA
                 terminal_label = _best_mode_terminal_label(
                     tuple(
-                        measurement
-                        for _mode, _cell, measurement in measured_candidates
+                        measurement for _mode, _cell, measurement in measured_candidates
                     )
                 )
                 comparison_linked = False
@@ -952,11 +958,7 @@ def _metric_summary_header_row(
             _metric_summary_group_cell(
                 (
                     rf"\textbf{{n={n_final}}}"
-                    + (
-                        rf"\hspace{{0.08in}}{annotation}"
-                        if annotation
-                        else ""
-                    )
+                    + (rf"\hspace{{0.08in}}{annotation}" if annotation else "")
                 ),
                 accuracy,
                 group_index=group_index,
@@ -1072,6 +1074,7 @@ def _visible_status(measurement: Measurement) -> _TerminalOutcome:
             color=(
                 "ReportOrange"
                 if slug in _POLICY_PRESENTATION_OUTCOME_SLUGS
+                or slug == ResultStatus.UNVERIFIED.value
                 else "ReportRed"
             ),
         )
@@ -1081,12 +1084,19 @@ def _visible_status(measurement: Measurement) -> _TerminalOutcome:
         ResultStatus.MEMORY_LIMIT.value: "RAM",
         ResultStatus.SKIP.value: "skip",
         ResultStatus.VALIDATION_FAILED.value: "validation failed",
+        ResultStatus.UNVERIFIED.value: "unverified",
         ResultStatus.UNSUPPORTED.value: "unsupported",
         ResultStatus.FAILED.value: "failed",
         ResultStatus.ERROR.value: "error",
     }
     label = labels.get(status, status)
-    color = "ReportMuted" if status == ResultStatus.NOT_AVAILABLE.value else "ReportRed"
+    color = (
+        "ReportMuted"
+        if status == ResultStatus.NOT_AVAILABLE.value
+        else "ReportOrange"
+        if status == ResultStatus.UNVERIFIED.value
+        else "ReportRed"
+    )
     return _TerminalOutcome(
         identity=f"result:{status}",
         label=label,
@@ -1108,8 +1118,7 @@ def _compact_terminal_display(outcome: _TerminalOutcome) -> str:
         and _KNOWN_PRESENTATION_TERMINAL_LABELS.get(identity_value) == outcome.label
     )
     known_result = (
-        identity_kind == "result"
-        and outcome.label in _KNOWN_RESULT_TERMINAL_LABELS
+        identity_kind == "result" and outcome.label in _KNOWN_RESULT_TERMINAL_LABELS
     )
     known_policy = (
         (
@@ -1127,20 +1136,21 @@ def _compact_terminal_display(outcome: _TerminalOutcome) -> str:
         if identity_kind == "summary"
         else None
     )
-    if (
-        known_presentation
-        or known_result
-        or known_policy
-    ):
-        return outcome.label
+    if known_presentation or known_result or known_policy:
+        return (
+            _KNOWN_PRESENTATION_TERMINAL_DISPLAY_LABELS.get(
+                identity_value,
+                outcome.label,
+            )
+            if known_presentation
+            else outcome.label
+        )
     if compact_count is not None:
         return f"N out.[{compact_count.group('digest')}]"
     if identity_kind in {"policy", "presentation"} and _SAFE_OUTCOME_SLUG.fullmatch(
         identity_value
     ):
-        slug_words = tuple(
-            word for word in re.split(r"[_-]+", identity_value) if word
-        )
+        slug_words = tuple(word for word in re.split(r"[_-]+", identity_value) if word)
         if len(slug_words) == 1 and len(slug_words[0]) <= 12:
             return slug_words[0]
         if 2 <= len(slug_words) <= 3:
@@ -1210,6 +1220,68 @@ def _best_mode_metric(
     if unavailable is not None:
         return unavailable
     return _best_mode_time(measurement.get(field), microseconds=microseconds)
+
+
+def _diagnostic_best_mode_time(
+    measurement: Measurement,
+    field: str,
+    *,
+    microseconds: bool = False,
+) -> str:
+    """Render one retained diagnostic timing without treating it as success."""
+
+    value = measurement.get(field)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return r"\matrixna{ReportMuted}"
+    number = float(value)
+    if not math.isfinite(number) or number < 0.0:
+        return r"\matrixna{ReportMuted}"
+    return _best_mode_time(number, microseconds=microseconds)
+
+
+def _unverified_runtime_clocks(measurement: Measurement) -> tuple[str, str]:
+    """Return retained evaluator-total and outer-wall clocks for diagnostics."""
+
+    wall = _diagnostic_best_mode_time(
+        measurement,
+        "wall_seconds_per_point",
+        microseconds=True,
+    )
+    evaluator_total = evaluator_total_seconds_per_point(measurement)
+    evaluator = (
+        r"\matrixna{ReportMuted}"
+        if evaluator_total is None
+        else _best_mode_time(evaluator_total, microseconds=True)
+    )
+    return evaluator, wall
+
+
+def _unverified_absolute_time(
+    measurement: Measurement,
+    field: str,
+    *,
+    microseconds: bool = False,
+) -> str:
+    """Render one retained diagnostic clock with its non-success marker."""
+
+    absolute = _diagnostic_best_mode_time(
+        measurement,
+        field,
+        microseconds=microseconds,
+    )
+    return rf"\matrixruntimepair{{{absolute}}}{{{_status(measurement)}}}"
+
+
+def _unverified_evaluator_total(measurement: Measurement) -> str:
+    """Render retained evaluator-total timing without making it comparable."""
+
+    total = evaluator_total_seconds_per_point(measurement)
+    absolute = (
+        r"\matrixna{ReportMuted}"
+        if total is None
+        else _best_mode_time(total, microseconds=True)
+    )
+    return rf"\matrixruntimepair{{{absolute}}}{{{_status(measurement)}}}"
 
 
 def _ratio_value(
@@ -1482,7 +1554,7 @@ def _matrix_macros() -> list[str]:
             r"\endgroup}"
         ),
         # Keep the five statistic anchors identical on every summary line.
-        # Max accommodates scientific notation; average accommodates its frame.
+        # Max accommodates scientific notation; weighted average carries the frame.
         (
             r"\providecommand{\matrixsummarystats}[5]{"
             r"\begingroup\matrixsummaryfont"
@@ -1494,8 +1566,8 @@ def _matrix_macros() -> list[str]:
             r"\makebox[3.6em][l]{#1}&"
             r"\makebox[4.6em][l]{#2}&"
             r"\makebox[3.6em][l]{#3}&"
-            r"\makebox[4.2em][l]{#4}&"
-            r"\makebox[3.6em][l]{#5}"
+            r"\makebox[3.6em][l]{#4}&"
+            r"\makebox[4.2em][l]{#5}"
             r"\end{tabular}\endgroup}"
         ),
         (
@@ -1541,6 +1613,11 @@ def _compact_comparison_macros() -> list[str]:
         (
             r"\providecommand{\bestmodeabsoluteprefix}[1]{"
             r"#1\hspace{0.04in}}"
+        ),
+        (
+            r"\providecommand{\bestmodeunverifiedclockprefix}[2]{"
+            r"\textcolor{ReportMuted}{\texttt{[}#1\texttt{]}}"
+            r"\hspace{0.04in}#2\hspace{0.04in}}"
         ),
     ]
 
@@ -1602,6 +1679,17 @@ def _fixed_mode_generation_comparison_layout(
 ) -> _BestModeComparisonLayout:
     """Render one fixed-engine generation comparison without a mode letter."""
 
+    if joined.candidate.get("status") == ResultStatus.UNVERIFIED.value:
+        absolute = _diagnostic_best_mode_time(
+            joined.candidate,
+            "generation_seconds",
+        )
+        status = _status(joined.candidate)
+        return _BestModeComparisonLayout(
+            rf"{absolute}\,{status}",
+            rf"\bestmodeabsoluteprefix{{{absolute}}}",
+            status,
+        )
     if not _ok(joined.candidate):
         status = _status(joined.candidate)
         return _BestModeComparisonLayout(status, "", status)
@@ -1609,10 +1697,7 @@ def _fixed_mode_generation_comparison_layout(
         baseline_static_na
         or not comparable
         or not joined.comparison_linked
-        or (
-            baseline_mode is ExecutionMode.AMPLICOL
-            and not _ok(joined.baseline)
-        )
+        or (baseline_mode is ExecutionMode.AMPLICOL and not _ok(joined.baseline))
     ):
         absolute = _best_mode_metric(joined.candidate, "generation_seconds")
         return _BestModeComparisonLayout(
@@ -1646,6 +1731,16 @@ def _fixed_mode_runtime_comparison_layout(
     baseline_static_na: bool = False,
 ) -> _BestModeComparisonLayout:
     """Use the best-table compact clock layout for one fixed engine."""
+
+    if joined.candidate.get("status") == ResultStatus.UNVERIFIED.value:
+        evaluator, wall = _unverified_runtime_clocks(joined.candidate)
+        status = _status(joined.candidate)
+        clocks = rf"\bestmodeunverifiedclockprefix{{{evaluator}}}{{{wall}}}"
+        return _BestModeComparisonLayout(
+            rf"{clocks}{status}",
+            clocks,
+            status,
+        )
 
     return _best_mode_runtime_comparison_layout(
         BestModeWorkload(
@@ -1867,7 +1962,7 @@ def _ratio_statistics_tex(
             rf"\matrixsummaryratiohighlight"
             rf"{{{_best_mode_ratio_color(value)}}}"
             rf"{{{_best_mode_value(value)}}}"
-            if index == 3
+            if index == 4
             else rf"\matrixsummaryratio{{{_best_mode_ratio_color(value)}}}"
             rf"{{{_best_mode_value(value)}}}"
         )
@@ -2105,21 +2200,29 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         if dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
         else ""
     )
+    unverified_detail = (
+        " Unverified compiled or eager diagnostics show absolute generation "
+        "and runtime values with a yellow unverified marker, but never enter "
+        "ratios or summaries. In their runtime token the muted bracketed value "
+        "is evaluator-total and the following value is outer wall time."
+        if dataset.candidate.execution_mode
+        in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
+        else ""
+    )
     summary_detail = (
         " Summary rows contain multipliers only in min, max, median, average, "
         "and weighted-average order; the weighted average is the ratio of "
-        "timing sums. The framed bold entry is the arithmetic average of the "
-        "per-cell multipliers. LC generation uses selected flow only, while LC "
+        "timing sums and is the framed bold entry. LC generation uses selected "
+        "flow only, while LC "
         "runtime shows separate selected-flow and all-flow wall-only lines."
         if dataset.candidate.accuracy is Accuracy.LC
         else " Summary rows contain multipliers only in min, max, median, average, "
         "and weighted-average order; the weighted average is the ratio of "
-        "timing sums, and runtime statistics use wall time only. The framed "
-        "bold entry is the arithmetic average of the per-cell multipliers."
+        "timing sums, is the framed bold entry, and runtime statistics use wall "
+        "time only."
     )
     comparison_identity_detail = (
-        " Ratios and summaries require exact stored linkage to the current "
-        "denominator."
+        " Ratios and summaries require exact stored linkage to the current denominator."
         if dataset.baseline.execution_mode is not ExecutionMode.AMPLICOL
         else ""
     )
@@ -2132,6 +2235,7 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         + _tex_escape(detail)
         + _tex_escape(clock_detail)
         + _tex_escape(legacy_scope_detail)
+        + _tex_escape(unverified_detail)
         + _tex_escape(comparison_identity_detail)
         + _tex_escape(summary_detail)
         + " "
@@ -2211,15 +2315,12 @@ def _canonical_best_mode_terminal_label(
         if terminal is None:
             continue
         outcomes = (
-            terminal.outcomes
-            if isinstance(terminal, _TerminalSummary)
-            else (terminal,)
+            terminal.outcomes if isinstance(terminal, _TerminalSummary) else (terminal,)
         )
         for outcome in outcomes:
             key = (outcome.identity, outcome.label, outcome.color)
             if all(
-                (item.identity, item.label, item.color) != key
-                for item in represented
+                (item.identity, item.label, item.color) != key for item in represented
             ):
                 represented.append(outcome)
 
@@ -2397,8 +2498,10 @@ def _best_mode_runtime_comparison_layout(
     if not _ok(joined.candidate):
         status = _status(joined.candidate)
         return _BestModeComparisonLayout(status, "", status)
-    if baseline_static_na or not joined.comparison_linked or (
-        baseline_mode is ExecutionMode.AMPLICOL and not _ok(joined.baseline)
+    if (
+        baseline_static_na
+        or not joined.comparison_linked
+        or (baseline_mode is ExecutionMode.AMPLICOL and not _ok(joined.baseline))
     ):
         wall = _best_mode_metric(
             joined.candidate,
@@ -2919,13 +3022,15 @@ def _best_mode_block(
                 r"rows beyond its three-open-quark-line scope are catalog "
                 r"static N/A entries; their candidates are shown absolutely and "
                 r"excluded from ratio summaries. Unavailable baselines keep "
-                r"their status; candidates remain absolute."
+                r"their status; candidates remain absolute. Unverified "
+                r"compiled or eager diagnostics are never eligible for best-mode "
+                r"selection or summaries and remain visibly marked unverified."
                 + boundary_note
                 + r" Only exact stored same-point links enter ratios."
                 + r" Summary rows contain multipliers only in min, max, "
                 r"median, average, and weighted-average order; the weighted "
-                r"average is the ratio of timing sums. The framed bold entry "
-                r"is the arithmetic average of the per-cell multipliers. "
+                r"average is the ratio of timing sums and is the framed bold "
+                r"entry. "
                 r"Muted (r), (c), and (e) labels on the generation row "
                 r"identify the recurrence, compiled, and eager winner selected "
                 r"by wall time for each workload; the runtime row does not "
@@ -3043,6 +3148,15 @@ def _z_value(
     if static_na:
         return _static_na()
     measurement = joined.baseline if reference else joined.candidate
+    if (
+        not reference
+        and measurement.get("status") == ResultStatus.UNVERIFIED.value
+    ):
+        return _unverified_absolute_time(
+            measurement,
+            field,
+            microseconds=microseconds,
+        )
     absolute = _metric(measurement, field, microseconds=microseconds)
     if reference or not _ok(measurement):
         return absolute
@@ -3069,6 +3183,8 @@ def _z_evaluator_total(
     measurement = joined.baseline if reference else joined.candidate
     if reference:
         return _not_exposed()
+    if measurement.get("status") == ResultStatus.UNVERIFIED.value:
+        return _unverified_evaluator_total(measurement)
     if not _ok(measurement):
         return _status(measurement)
     total = evaluator_total_seconds_per_point(measurement)
@@ -3239,7 +3355,8 @@ def _z_block(
                 r"when successful and exactly linked by stored same-point "
                 r"evidence, directly or through current recurrence. Otherwise "
                 r"its status remains visible and successful pyAmpliCol values "
-                r"are absolute. "
+                r"are absolute. Unverified diagnostics retain absolute clocks "
+                r"with a yellow marker, but never enter ratios or summaries. "
                 r"Each pyAmpliCol row reports separate topology-replay and "
                 r"all-flow-union generation and runtime measurements. "
                 r"Parenthesized values are candidate/reference ratios. "
@@ -3322,6 +3439,8 @@ def render_all_z_ladders(
 
 def _scalar_value(measurement: Measurement, field: str) -> str:
     if field == "evaluator_total_seconds_per_point":
+        if measurement.get("status") == ResultStatus.UNVERIFIED.value:
+            return _unverified_evaluator_total(measurement)
         if not _ok(measurement):
             return _status(measurement)
         total = evaluator_total_seconds_per_point(measurement)
@@ -3338,6 +3457,13 @@ def _scalar_value(measurement: Measurement, field: str) -> str:
             return rf"\texttt{{{_compact(float(value))}}}"
         except (TypeError, ValueError):
             return rf"\texttt{{{_tex_escape(str(value))}}}"
+    if measurement.get("status") == ResultStatus.UNVERIFIED.value:
+        return _unverified_absolute_time(
+            measurement,
+            field,
+            microseconds=field
+            in {"wall_seconds_per_point", "execution_seconds_per_point"},
+        )
     return _metric(
         measurement,
         field,
@@ -3449,6 +3575,8 @@ def render_scalar_ladder(
                 r"Evaluator total is the independently measured accumulated "
                 r"warmed evaluator clock from its dedicated authenticated "
                 r"record; it is never copied from or derived from wall time. "
+                r"Unverified diagnostics retain absolute generation, wall, and "
+                r"evaluator clocks with a yellow marker; they are not successes. "
                 r"\textsc{not exposed} denotes a successful wall measurement, "
                 r"and older entries without dedicated evaluator-total evidence "
                 r"remain valid; it does not denote a missing result.}"

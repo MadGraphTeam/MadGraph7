@@ -27,8 +27,11 @@ from typing import Any
 
 from .agreements import (
     BUILTIN_UFO_RECURRENCE,
-    DIRECT_AGREEMENT_ABI,
     DIRECT_AGREEMENT_FIELD,
+    DIRECT_AGREEMENT_V1_ABI,
+    DIRECT_AGREEMENT_V2_ABI,
+    INDEPENDENT_AUTHORITY_ABI,
+    INDEPENDENT_AUTHORITY_FIELD,
     LC_COMMON_COMPONENT_ABI,
     LC_COMMON_COMPONENT_FIELD,
     LC_CROSS_LAYOUT_COMPONENT,
@@ -38,8 +41,10 @@ from .agreements import (
     Z_RECURRENCE_CROSS_MODE,
     AgreementEdge,
     agreement_edges,
+    direct_agreement_record,
     evaluate_lc_common_component,
     incoming_agreement_edges,
+    independent_numerical_authorities,
     validation_baseline_is_required,
 )
 from .cache import digest_json, reset_entry
@@ -66,6 +71,7 @@ from .catalog import (
 )
 from .measurement import (
     baseline_uses_lc_common_component_authority,
+    conditioned_measurement_comparison,
     shared_validation_points,
 )
 from .measurement_lineage import (
@@ -88,12 +94,17 @@ from .render import render_all_tables, summarize_visible_completeness
 from .report_policy import publication_measurement_policy_issues
 from .runner import (
     ABSOLUTE_TOLERANCE,
+    CONDITIONED_COMPARISON_ABI,
     INDEPENDENT_RELATIVE_TOLERANCE,
     RELATIVE_TOLERANCE,
+    RESOLVED_SUM_VALIDATION_ABI,
     SelectorContract,
     _valid_symjit_plane_target,
     point_digest,
+    resolved_sum_validation,
     runtime_validation_points,
+    validate_conditioned_comparison_record,
+    validate_resolved_sum_validation_record,
     validate_runtime_contract,
     validate_selector_contract,
 )
@@ -150,9 +161,7 @@ _EXPECTED_FULL_STATIC_NA_REASONS = {
         for workload in ("selected-flow", "all-flow")
     },
 }
-_EXPECTED_FULL_STATIC_NA_CELL_IDS = frozenset(
-    _EXPECTED_FULL_STATIC_NA_REASONS
-)
+_EXPECTED_FULL_STATIC_NA_CELL_IDS = frozenset(_EXPECTED_FULL_STATIC_NA_REASONS)
 _EXPECTED_FULL_DIRECT_AGREEMENT_COUNT = 1671
 _EXPECTED_N4_CELL_COUNT = 762
 _EXPECTED_N4_DIRECT_AGREEMENT_COUNTS = {
@@ -207,6 +216,8 @@ def _count_contract_matches_with_optional_category(
         )
         for category, expected in expected_maxima.items()
     )
+
+
 _LOADED_ORIGIN_OBSERVATION_FIELDS = frozenset(
     {
         "observed_module_count",
@@ -230,9 +241,7 @@ _EAGER_DIRECT_BINDING_ABI = "pyamplicol-eager-plane-table-binding-v2"
 _RECURRENCE_DIRECT_TEMPLATE_ABI = "pyamplicol-recurrence-direct-template-v1"
 _RECURRENCE_DIRECT_BACKEND_ABI = "rusticol.recurrence-direct-backend.v1"
 _RECURRENCE_DIRECT_CANONICALIZATION_ABI = "pyamplicol-canonical-json-v1"
-_RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI = (
-    "pyamplicol-recurrence-plane-binding-v2"
-)
+_RECURRENCE_DIRECT_PAYLOAD_BINDING_ABI = "pyamplicol-recurrence-plane-binding-v2"
 _RECURRENCE_JIT_DIRECT_APPLICATION_ABI = "pyamplicol-symjit-plane-application-v2"
 _SOURCE_RUNTIME_CAPABILITY = {
     "jit": "symjit.application.complex-f64.v1",
@@ -251,6 +260,8 @@ _REPORT_PROFILE_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
 _PUBLICATION_MEMBER_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
 _PORTABLE_ARTIFACT_ROOT = "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}"
 _PUBLICATION_LINEAGE_KIND = "pyamplicol-report-publication-lineage-v1"
+
+
 class FinalAuditError(RuntimeError):
     """The final report evidence does not satisfy its publication contract."""
 
@@ -661,37 +672,41 @@ def _audit_pointwise(
     expected_candidate: float,
     expected_baseline: float,
     expected_relative_tolerance: float,
+    expected_point_digest: str | None = None,
+    expected_candidate_source_sha256: str | None = None,
+    expected_baseline_source_sha256: str | None = None,
+    expected_selector_identity: Mapping[str, object] | None = None,
 ) -> None:
     record = _mapping(raw, context)
+    direct_abi = record.get("abi")
+    if direct_abi in {DIRECT_AGREEMENT_V2_ABI, DIRECT_AGREEMENT_V1_ABI}:
+        record = {
+            key: value
+            for key, value in record.items()
+            if key
+            not in {
+                "abi",
+                "edge_kind",
+                "value_kind",
+                "baseline_cell_id",
+                "candidate_cell_id",
+            }
+        }
+        if direct_abi == DIRECT_AGREEMENT_V2_ABI:
+            record["abi"] = CONDITIONED_COMPARISON_ABI
+    try:
+        validate_conditioned_comparison_record(
+            record,
+            require_binding=record.get("abi") == CONDITIONED_COMPARISON_ABI,
+        )
+    except ValueError as error:
+        raise FinalAuditError(f"{context}: {error}") from error
     candidate = _finite_number(record.get("candidate"), f"{context}.candidate")
     baseline = _finite_number(record.get("baseline"), f"{context}.baseline")
-    absolute = _finite_number(
-        record.get("absolute_difference"),
-        f"{context}.absolute_difference",
-        nonnegative=True,
-    )
-    relative = _finite_number(
-        record.get("relative_difference"),
-        f"{context}.relative_difference",
-        nonnegative=True,
-    )
     relative_tolerance = _finite_number(
         record.get("relative_tolerance"),
         f"{context}.relative_tolerance",
         nonnegative=True,
-    )
-    absolute_tolerance = _finite_number(
-        record.get("absolute_tolerance"),
-        f"{context}.absolute_tolerance",
-        nonnegative=True,
-    )
-    recomputed_absolute = abs(candidate - baseline)
-    recomputed_relative = recomputed_absolute / max(abs(baseline), 1.0e-300)
-    expected_status = _canonical_status(
-        recomputed_absolute,
-        recomputed_relative,
-        absolute_tolerance=absolute_tolerance,
-        relative_tolerance=relative_tolerance,
     )
     checks = (
         (
@@ -703,68 +718,68 @@ def _audit_pointwise(
             "baseline does not equal the canonical baseline measurement",
         ),
         (
-            _same_float(absolute, recomputed_absolute),
-            "absolute difference was not recomputed correctly",
-        ),
-        (
-            _same_float(relative, recomputed_relative),
-            "relative difference was not recomputed correctly",
-        ),
-        (
             _same_float(relative_tolerance, expected_relative_tolerance),
             "relative tolerance is not the catalog contract",
         ),
         (
-            _same_float(absolute_tolerance, ABSOLUTE_TOLERANCE),
-            "absolute tolerance is not the report contract",
-        ),
-        (
-            record.get("status") == expected_status == ResultStatus.OK.value,
+            record.get("status") == ResultStatus.OK.value,
             "stored or recomputed status is not ok",
         ),
     )
     failures = [message for passed, message in checks if not passed]
+    if record.get("abi") == CONDITIONED_COMPARISON_ABI:
+        binding = _mapping(record.get("comparison_binding"), f"{context}.binding")
+        if (
+            expected_point_digest is not None
+            and binding.get("point_digest") != expected_point_digest
+        ):
+            failures.append("comparison scale is bound to a different point")
+        if (
+            expected_candidate_source_sha256 is not None
+            and binding.get("candidate_source_sha256")
+            != expected_candidate_source_sha256
+        ):
+            failures.append("candidate scale source differs from resolved evidence")
+        if (
+            expected_baseline_source_sha256 is not None
+            and binding.get("baseline_source_sha256")
+            != expected_baseline_source_sha256
+        ):
+            failures.append("baseline scale source differs from authority evidence")
+        if (
+            expected_selector_identity is not None
+            and binding.get("selector_component_identity")
+            != expected_selector_identity
+        ):
+            failures.append("selector/component scale identity differs")
+    else:
+        absolute_tolerance = _finite_number(
+            record.get("absolute_tolerance"),
+            f"{context}.absolute_tolerance",
+            nonnegative=True,
+        )
+        if not _same_float(absolute_tolerance, ABSOLUTE_TOLERANCE):
+            failures.append("legacy absolute tolerance is not the report contract")
     if failures:
         raise FinalAuditError(f"{context}: " + "; ".join(failures))
 
 
 def _audit_resolved_sum(raw: object, *, context: str) -> None:
     record = _mapping(raw, context)
-    absolute = _finite_number(
-        record.get("maximum_absolute_difference"),
-        f"{context}.maximum_absolute_difference",
-        nonnegative=True,
-    )
-    relative = _finite_number(
-        record.get("maximum_relative_difference"),
-        f"{context}.maximum_relative_difference",
-        nonnegative=True,
-    )
-    relative_tolerance = _finite_number(
-        record.get("relative_tolerance"),
-        f"{context}.relative_tolerance",
-        nonnegative=True,
-    )
-    absolute_tolerance = _finite_number(
-        record.get("absolute_tolerance"),
-        f"{context}.absolute_tolerance",
-        nonnegative=True,
-    )
-    expected_status = _canonical_status(
-        absolute,
-        relative,
-        absolute_tolerance=absolute_tolerance,
-        relative_tolerance=relative_tolerance,
-    )
+    try:
+        validate_resolved_sum_validation_record(record)
+    except ValueError as error:
+        raise FinalAuditError(f"{context}: {error}") from error
     if (
-        relative_tolerance != RELATIVE_TOLERANCE
-        or absolute_tolerance != ABSOLUTE_TOLERANCE
-        or record.get("status") != expected_status
-        or expected_status != ResultStatus.OK.value
-    ):
-        raise FinalAuditError(
-            f"{context} does not satisfy the recomputed resolved-sum contract"
+        _finite_number(
+            record.get("relative_tolerance"),
+            f"{context}.relative_tolerance",
+            nonnegative=True,
         )
+        != RELATIVE_TOLERANCE
+        or record.get("status") != ResultStatus.OK.value
+    ):
+        raise FinalAuditError(f"{context} is not a successful resolved-sum record")
 
 
 def _audit_lc_common_component(
@@ -825,6 +840,27 @@ def _agreement_value(
     )
 
 
+def _measurement_validation_point_digest(
+    measurement: Mapping[str, object],
+    *,
+    context: str,
+) -> str:
+    selector = measurement.get("selector_contract")
+    if isinstance(selector, Mapping):
+        raw = selector.get("point_digest")
+        if isinstance(raw, str):
+            return raw
+    validation = measurement.get("validation")
+    if isinstance(validation, Mapping):
+        raw = validation.get("point_digest")
+        if isinstance(raw, str):
+            return raw
+    provenance = measurement.get("provenance")
+    if isinstance(provenance, Mapping) and "report_momenta" in provenance:
+        return point_digest(provenance["report_momenta"])
+    raise FinalAuditError(f"{context} has no validation point identity")
+
+
 def _stored_direct_agreement(
     measurement: Mapping[str, object],
     *,
@@ -861,10 +897,9 @@ def _stored_pointwise_matches_baseline(
     pointwise = validation.get("pointwise") if isinstance(validation, Mapping) else None
     if not isinstance(pointwise, Mapping):
         return False
-    if (
-        cell.measurement.accuracy is Accuracy.LC
-        and measurement.get("selector_contract") != baseline.get("selector_contract")
-    ):
+    if cell.measurement.accuracy is Accuracy.LC and measurement.get(
+        "selector_contract"
+    ) != baseline.get("selector_contract"):
         return False
     candidate_value = measurement.get("matrix_element")
     baseline_value = baseline.get("matrix_element")
@@ -882,8 +917,119 @@ def _stored_pointwise_matches_baseline(
             expected_candidate=float(candidate_value),
             expected_baseline=float(baseline_value),
             expected_relative_tolerance=_expected_pointwise_tolerance(cell),
+            expected_point_digest=(
+                _measurement_validation_point_digest(
+                    measurement,
+                    context=cell.cell_id,
+                )
+                if pointwise.get("abi") == CONDITIONED_COMPARISON_ABI
+                else None
+            ),
         )
     except FinalAuditError:
+        return False
+    return True
+
+
+def _stored_independent_pointwise_matches_baseline(
+    cell: CellSpec,
+    measurement: Mapping[str, object],
+    baseline_cell: CellSpec,
+    baseline: Mapping[str, object],
+) -> bool:
+    """Authenticate the stored comparison against its selected authority.
+
+    Most authorities compare matrix elements and use the ordinary pointwise
+    audit.  Original-AmpliCol LC all-flow authority instead authenticates the
+    one common selector component; its aggregate is deliberately not a
+    candidate baseline.
+    """
+
+    validation = measurement.get("validation")
+    pointwise = validation.get("pointwise") if isinstance(validation, Mapping) else None
+    if not isinstance(pointwise, Mapping):
+        return False
+    if pointwise.get("abi") == CONDITIONED_COMPARISON_ABI:
+        try:
+            canonical = conditioned_measurement_comparison(
+                cell,
+                measurement,
+                baseline,
+            )
+        except (RuntimeError, TypeError, ValueError):
+            return False
+        return dict(pointwise) == canonical
+
+    try:
+        component_only = baseline_uses_lc_common_component_authority(
+            cell,
+            baseline,
+        )
+    except (RuntimeError, ValueError):
+        return False
+    if not component_only:
+        return _stored_pointwise_matches_baseline(cell, measurement, baseline)
+    if measurement.get("selector_contract") != baseline.get("selector_contract"):
+        return False
+    baseline_validation = baseline.get("validation")
+    if not isinstance(validation, Mapping) or not isinstance(
+        baseline_validation,
+        Mapping,
+    ):
+        return False
+    candidate_component = validation.get(LC_COMMON_COMPONENT_FIELD)
+    baseline_component = baseline_validation.get(LC_COMMON_COMPONENT_FIELD)
+    if not isinstance(candidate_component, Mapping) or not isinstance(
+        baseline_component,
+        Mapping,
+    ):
+        return False
+    try:
+        candidate_value = _audit_lc_common_component(
+            cell,
+            measurement,
+            context=cell.cell_id,
+        )
+        baseline_value = _audit_lc_common_component(
+            baseline_cell,
+            baseline,
+            context=baseline_cell.cell_id,
+        )
+        component_identity = {
+            "candidate_cell_id": candidate_component.get("cell_id"),
+            "baseline_cell_id": baseline_component.get("cell_id"),
+            "point_digest": candidate_component.get("point_digest"),
+            "helicity_ids": candidate_component.get("helicity_ids"),
+            "color_flow_ids": candidate_component.get("color_flow_ids"),
+        }
+        if any(
+            candidate_component.get(field) != baseline_component.get(field)
+            for field in ("point_digest", "helicity_ids", "color_flow_ids")
+        ):
+            return False
+        selector_identity = {
+            "cell_id": cell.cell_id,
+            "accuracy": cell.measurement.accuracy.value,
+            "workload": cell.workload.value,
+            "selector_contract": measurement.get("selector_contract"),
+            "value_kind": LC_COMMON_COMPONENT_FIELD,
+            "component_identity": component_identity,
+        }
+        _audit_pointwise(
+            validation.get("pointwise"),
+            context=f"{cell.cell_id}.validation.pointwise",
+            expected_candidate=candidate_value,
+            expected_baseline=baseline_value,
+            expected_relative_tolerance=_expected_pointwise_tolerance(cell),
+            expected_point_digest=_measurement_validation_point_digest(
+                measurement,
+                context=cell.cell_id,
+            ),
+            expected_candidate_source_sha256=digest_json(candidate_component),
+            expected_baseline_source_sha256=digest_json(baseline_component),
+            expected_selector_identity=selector_identity,
+        )
+    except (FinalAuditError, RuntimeError, TypeError, ValueError):
         return False
     return True
 
@@ -923,6 +1069,14 @@ def _stored_legacy_component_matches_baseline(
                 context=baseline_cell.cell_id,
             ),
             expected_relative_tolerance=edge.relative_tolerance,
+            expected_point_digest=(
+                _measurement_validation_point_digest(
+                    measurement,
+                    context=cell.cell_id,
+                )
+                if record.get("abi") == DIRECT_AGREEMENT_V2_ABI
+                else None
+            ),
         )
     except FinalAuditError:
         return False
@@ -981,9 +1135,7 @@ def _audit_direct_agreements(
                 str(raw_record.get("baseline_cell_id")),
             )
             if key in records_by_key:
-                errors.append(
-                    f"{cell.cell_id}: duplicate direct agreement {key!r}"
-                )
+                errors.append(f"{cell.cell_id}: duplicate direct agreement {key!r}")
             records_by_key[key] = raw_record
         required_keys = {(edge.kind, edge.baseline.cell_id) for edge in required}
         allowed_keys = {(edge.kind, edge.baseline.cell_id) for edge in allowed}
@@ -1003,31 +1155,12 @@ def _audit_direct_agreements(
             if key not in records_by_key:
                 assert not edge.required
                 continue
-            context = (
-                f"{cell.cell_id}.validation.{DIRECT_AGREEMENT_FIELD}"
-                f"[{edge.kind}]"
-            )
+            context = f"{cell.cell_id}.validation.{DIRECT_AGREEMENT_FIELD}[{edge.kind}]"
             record = records_by_key[key]
-            expected_fields = {
-                "abi",
-                "edge_kind",
-                "value_kind",
-                "baseline_cell_id",
-                "candidate_cell_id",
-                "status",
-                "candidate",
-                "baseline",
-                "absolute_difference",
-                "relative_difference",
-                "relative_tolerance",
-                "absolute_tolerance",
-            }
-            if set(record) != expected_fields:
-                errors.append(f"{context}: fields differ from the direct-edge ABI")
-                continue
             baseline_measurement = measurements.get(edge.baseline.cell_id)
             if (
-                record.get("abi") != DIRECT_AGREEMENT_ABI
+                record.get("abi")
+                not in {DIRECT_AGREEMENT_V2_ABI, DIRECT_AGREEMENT_V1_ABI}
                 or record.get("edge_kind") != edge.kind
                 or record.get("value_kind") != edge.value_kind
                 or record.get("baseline_cell_id") != edge.baseline.cell_id
@@ -1064,6 +1197,21 @@ def _audit_direct_agreements(
                         f"{context}: required baseline is not a successful "
                         "selector-compatible current"
                     )
+                if (
+                    record.get("abi") == DIRECT_AGREEMENT_V2_ABI
+                    and current_baseline is not None
+                    and baseline_measurement is not None
+                ):
+                    expected_record = direct_agreement_record(
+                        edge,
+                        candidate_measurement=measurement,
+                        baseline_measurement=baseline_measurement,
+                    )
+                    if dict(record) != expected_record:
+                        raise FinalAuditError(
+                            f"{context}: conditioned scale/source binding differs "
+                            "from the current candidate and authority"
+                        )
                 _audit_pointwise(
                     record,
                     context=context,
@@ -1078,6 +1226,14 @@ def _audit_direct_agreements(
                         else stored_baseline
                     ),
                     expected_relative_tolerance=edge.relative_tolerance,
+                    expected_point_digest=(
+                        _measurement_validation_point_digest(
+                            measurement,
+                            context=edge.candidate.cell_id,
+                        )
+                        if record.get("abi") == DIRECT_AGREEMENT_V2_ABI
+                        else None
+                    ),
                 )
                 audited_edges.append(edge)
             except Exception as error:
@@ -1701,9 +1857,7 @@ def _profile_publication_lineage(
         "publication_revision": identity.publication_revision,
         "publication_tree": identity.publication_tree,
         "report_profile": profile,
-        "relationship": (
-            "same-commit" if same_revision else "report-only-descendant"
-        ),
+        "relationship": ("same-commit" if same_revision else "report-only-descendant"),
         "worktree_clean": True,
         "changed_path_count": len(changes),
         "changed_paths": changes,
@@ -2345,8 +2499,7 @@ def _runtime_for_measurement_source(
         or not isinstance(native_features, list)
         or not all(isinstance(feature, str) for feature in native_features)
         or environment is None
-        or package_tree.get("sha256")
-        != environment.get("python_package_tree_sha256")
+        or package_tree.get("sha256") != environment.get("python_package_tree_sha256")
         or identity.get("package_version") != environment.get("pyamplicol")
         or candidate.get("candidate_fingerprint")
         != environment.get("candidate_fingerprint")
@@ -2354,8 +2507,7 @@ def _runtime_for_measurement_source(
         != environment.get("native_build_inputs_sha256")
         or identity.get("native_build_inputs_sha256")
         != environment.get("native_build_inputs_sha256")
-        or native_extension.get("sha256")
-        != environment.get("native_extension_sha256")
+        or native_extension.get("sha256") != environment.get("native_extension_sha256")
         or native_target.get("triple") != environment.get("native_target")
         or (", ".join(native_features) or "baseline")
         != environment.get("native_cpu_features")
@@ -2592,9 +2744,7 @@ def _audit_unavailable_execution_timing(
         "execution_seconds_per_point": None,
         "provenance": {
             "execution_timing": timing,
-            "arena_profile_evidence": provenance.get(
-                "arena_profile_evidence"
-            ),
+            "arena_profile_evidence": provenance.get("arena_profile_evidence"),
         },
     }
     if (
@@ -2651,6 +2801,7 @@ def _audit_measurement(
     measurement: Mapping[str, object],
     *,
     baseline: Mapping[str, object] | None,
+    baseline_cell: CellSpec | None = None,
     expected_source_revision: str,
     expected_legacy_revision: str,
     active_runtime: Mapping[str, object] | None,
@@ -2703,6 +2854,10 @@ def _audit_measurement(
     )
     if validation.get("status") != ResultStatus.OK.value:
         raise FinalAuditError(f"{context}.measurement.validation.status is not ok")
+    validation_point_digest = _measurement_validation_point_digest(
+        measurement,
+        context=context,
+    )
 
     raw_selector = measurement.get("selector_contract")
     selector: SelectorContract | None = None
@@ -2776,10 +2931,51 @@ def _audit_measurement(
     if active_runtime is None:
         raise FinalAuditError("pyAmpliCol measurements require an active runtime")
     _audit_effective_config(cell, provenance)
-    _audit_resolved_sum(
+    raw_resolved_sum = _mapping(
         validation.get("resolved_sum"),
+        f"{context}.measurement.validation.resolved_sum",
+    )
+    _audit_resolved_sum(
+        raw_resolved_sum,
         context=f"{context}.measurement.validation.resolved_sum",
     )
+    resolved_source_sha256 = (
+        str(raw_resolved_sum["resolved_source_sha256"])
+        if raw_resolved_sum.get("abi") == RESOLVED_SUM_VALIDATION_ABI
+        else None
+    )
+    ordinary_selector_identity = {
+        "cell_id": cell.cell_id,
+        "accuracy": cell.measurement.accuracy.value,
+        "workload": cell.workload.value,
+        "selector_contract": raw_selector,
+        "value_kind": "matrix-element",
+    }
+    high_selector_identity = {
+        **ordinary_selector_identity,
+        "value_kind": "matrix-element-p16-versus-p32",
+    }
+    raw_high_precision = validation.get("high_precision")
+    raw_high_resolved: Mapping[str, object] | None = None
+    if (
+        isinstance(raw_high_precision, Mapping)
+        and raw_high_precision.get("abi") == CONDITIONED_COMPARISON_ABI
+    ):
+        raw_high_resolved = _mapping(
+            validation.get("high_precision_resolved_sum"),
+            f"{context}.measurement.validation.high_precision_resolved_sum",
+        )
+        _audit_resolved_sum(
+            raw_high_resolved,
+            context=f"{context}.measurement.validation.high_precision_resolved_sum",
+        )
+        if (
+            raw_high_resolved.get("point_digest") != validation_point_digest
+            or raw_high_resolved.get("precision_digits") != 32
+        ):
+            raise FinalAuditError(
+                f"{context} p32 resolved scale is bound to a different point/precision"
+            )
 
     scalar = cell.measurement.model in {
         ModelKey.SCALAR_CONTACT,
@@ -2798,12 +2994,20 @@ def _audit_measurement(
                 f"{context}.measurement.validation.high_precision.baseline",
             ),
             expected_relative_tolerance=RELATIVE_TOLERANCE,
+            expected_point_digest=validation_point_digest,
+            expected_candidate_source_sha256=resolved_source_sha256,
+            expected_baseline_source_sha256=(
+                str(raw_high_resolved["resolved_source_sha256"])
+                if isinstance(raw_high_precision, Mapping)
+                and raw_high_precision.get("abi") == CONDITIONED_COMPARISON_ABI
+                else None
+            ),
+            expected_selector_identity=high_selector_identity,
         )
         if baseline is not None:
             raise FinalAuditError(f"{context} scalar cell has a catalog baseline")
     else:
         if baseline is None:
-            raw_high_precision = validation.get("high_precision")
             raw_pointwise = validation.get("pointwise")
             if isinstance(raw_high_precision, Mapping):
                 if cell.measurement.execution_mode is not ExecutionMode.RECURRENCE:
@@ -2820,6 +3024,14 @@ def _audit_measurement(
                         nonnegative=True,
                     ),
                     expected_relative_tolerance=RELATIVE_TOLERANCE,
+                    expected_point_digest=validation_point_digest,
+                    expected_candidate_source_sha256=resolved_source_sha256,
+                    expected_baseline_source_sha256=(
+                        str(raw_high_resolved["resolved_source_sha256"])
+                        if raw_high_resolved is not None
+                        else None
+                    ),
+                    expected_selector_identity=high_selector_identity,
                 )
             elif isinstance(raw_pointwise, Mapping):
                 if cell.measurement.execution_mode is not ExecutionMode.RECURRENCE:
@@ -2836,6 +3048,9 @@ def _audit_measurement(
                         nonnegative=True,
                     ),
                     expected_relative_tolerance=_expected_pointwise_tolerance(cell),
+                    expected_point_digest=validation_point_digest,
+                    expected_candidate_source_sha256=resolved_source_sha256,
+                    expected_selector_identity=ordinary_selector_identity,
                 )
             elif cell.measurement.execution_mode is ExecutionMode.RECURRENCE:
                 if (
@@ -2860,7 +3075,21 @@ def _audit_measurement(
                     f"{context} has no canonical or stored recurrence authority"
                 )
         elif baseline_uses_lc_common_component_authority(cell, baseline):
-            if "pointwise" in validation:
+            if INDEPENDENT_AUTHORITY_FIELD in validation:
+                if baseline_cell is None:
+                    raise FinalAuditError(
+                        f"{context} has no selected LC component authority"
+                    )
+                if not _stored_independent_pointwise_matches_baseline(
+                    cell,
+                    measurement,
+                    baseline_cell,
+                    baseline,
+                ):
+                    raise FinalAuditError(
+                        f"{context} LC component authority comparison is invalid"
+                    )
+            elif "pointwise" in validation:
                 raise FinalAuditError(
                     f"{context} compares an LC all-flow aggregate outside the "
                     "legacy provider replay authority"
@@ -2882,7 +3111,22 @@ def _audit_measurement(
                 expected_candidate=matrix_element,
                 expected_baseline=baseline_value,
                 expected_relative_tolerance=_expected_pointwise_tolerance(cell),
+                expected_point_digest=validation_point_digest,
+                expected_candidate_source_sha256=resolved_source_sha256,
+                expected_selector_identity=ordinary_selector_identity,
             )
+            if INDEPENDENT_AUTHORITY_FIELD in validation and (
+                baseline_cell is None
+                or not _stored_independent_pointwise_matches_baseline(
+                    cell,
+                    measurement,
+                    baseline_cell,
+                    baseline,
+                )
+            ):
+                raise FinalAuditError(
+                    f"{context} conditioned authority binding is not canonical"
+                )
             baseline_selector = baseline.get("selector_contract")
             if cell.measurement.accuracy is Accuracy.LC:
                 if raw_selector != baseline_selector:
@@ -2913,13 +3157,87 @@ def _validation_baseline_endpoint_for_audit(
     Original AmpliCol is an optional comparison endpoint for recurrence.  Its
     result is consumed normally when successful, but a missing or terminal
     endpoint leaves recurrence to the independently audited resolved-sum and
-    high-precision route.  Z compiled/eager cells may instead use their hard
-    recurrence agreement peer; every other catalog baseline remains mandatory.
+    high-precision route.  Compiled/eager results authenticate the exact
+    recurrence-or-AmpliCol endpoint selected by their durable independent-
+    authority record.  Older verified currents without that record retain the
+    former baseline/direct-agreement audit path.
     """
 
     measurement = measurements.get(cell.cell_id)
     if measurement is None:
         raise FinalAuditError(f"candidate measurement {cell.cell_id!r} is missing")
+    validation = _mapping(
+        measurement.get("validation"),
+        f"{cell.cell_id}.validation",
+    )
+    raw_authority = validation.get(INDEPENDENT_AUTHORITY_FIELD)
+    if raw_authority is not None:
+        if cell.measurement.execution_mode not in {
+            ExecutionMode.COMPILED,
+            ExecutionMode.EAGER,
+        }:
+            raise FinalAuditError(
+                f"{cell.cell_id} stores independent authority in an invalid mode"
+            )
+        record = _mapping(
+            raw_authority,
+            f"{cell.cell_id}.validation.{INDEPENDENT_AUTHORITY_FIELD}",
+        )
+        expected_fields = {
+            "abi",
+            "expected_cell_ids",
+            "selected_cell_id",
+            "status",
+            "reason",
+            "same_artifact_diagnostics_are_authority",
+        }
+        authorities = independent_numerical_authorities(cell, catalog=catalog)
+        authority_ids = [authority.cell_id for authority in authorities]
+        selected_id = record.get("selected_cell_id")
+        if (
+            set(record) != expected_fields
+            or record.get("abi") != INDEPENDENT_AUTHORITY_ABI
+            or record.get("expected_cell_ids") != authority_ids
+            or record.get("status") != "verified"
+            or record.get("reason") != "independent-authority-agreement"
+            or record.get("same_artifact_diagnostics_are_authority") is not False
+            or not isinstance(selected_id, str)
+            or selected_id not in authority_ids
+        ):
+            raise FinalAuditError(
+                f"{cell.cell_id} independent-authority record is invalid"
+            )
+        selected_index = authority_ids.index(selected_id)
+        for higher_priority in authorities[:selected_index]:
+            if (
+                measurement_states.get(higher_priority.cell_id)
+                is PolicyMeasurementState.SUCCESS
+            ):
+                raise FinalAuditError(
+                    f"{cell.cell_id} has an unreconciled higher-priority authority "
+                    f"{higher_priority.cell_id!r}"
+                )
+        selected_cell = authorities[selected_index]
+        selected = measurements.get(selected_id)
+        if (
+            selected is None
+            or measurement_states.get(selected_id)
+            is not PolicyMeasurementState.SUCCESS
+        ):
+            raise FinalAuditError(
+                f"selected independent authority {selected_id!r} is unavailable"
+            )
+        if not _stored_independent_pointwise_matches_baseline(
+            cell,
+            measurement,
+            selected_cell,
+            selected,
+        ):
+            raise FinalAuditError(
+                f"{cell.cell_id} stored comparison does not authenticate selected "
+                f"authority {selected_id!r}"
+            )
+        return selected_cell, selected
     baseline_cell = catalog.validation_baseline_cell(cell)
     if baseline_cell is None:
         return None
@@ -2952,39 +3270,46 @@ def _validation_baseline_endpoint_for_audit(
             return baseline_cell, baseline
     if cell.measurement.execution_mode is ExecutionMode.RECURRENCE:
         return None
-    fallback_edges = tuple(
-        edge
-        for edge in incoming_agreement_edges(cell, catalog=catalog)
-        if edge.kind == Z_RECURRENCE_CROSS_MODE and edge.required
-    )
-    if len(fallback_edges) != 1:
+    if cell.measurement.execution_mode in {
+        ExecutionMode.COMPILED,
+        ExecutionMode.EAGER,
+    }:
+        # Compatibility for already-valid currents produced before the durable
+        # authority record was introduced.  They must still carry an
+        # authenticated comparison to a successful canonical endpoint.
+        for authority_cell in independent_numerical_authorities(
+            cell,
+            catalog=catalog,
+        ):
+            authority = measurements.get(authority_cell.cell_id)
+            if (
+                authority is None
+                or measurement_states.get(authority_cell.cell_id)
+                is not PolicyMeasurementState.SUCCESS
+            ):
+                continue
+            if _stored_independent_pointwise_matches_baseline(
+                cell,
+                measurement,
+                authority_cell,
+                authority,
+            ):
+                return authority_cell, authority
+            if (
+                authority_cell.measurement.execution_mode
+                is ExecutionMode.RECURRENCE
+                and _stored_direct_agreement(
+                    measurement,
+                    edge_kind=Z_RECURRENCE_CROSS_MODE,
+                    baseline_cell_id=authority_cell.cell_id,
+                )
+                is not None
+            ):
+                return None
         raise FinalAuditError(
-            f"{cell.cell_id} has no unique required recurrence authority"
+            f"{cell.cell_id} has no successful authenticated numerical authority"
         )
-    fallback_cell = fallback_edges[0].baseline
-    fallback = measurements.get(fallback_cell.cell_id)
-    if (
-        fallback is None
-        or measurement_states.get(fallback_cell.cell_id)
-        is not PolicyMeasurementState.SUCCESS
-    ):
-        raise FinalAuditError(
-            f"required recurrence authority {fallback_cell.cell_id!r} is unavailable"
-        )
-    if _stored_pointwise_matches_baseline(cell, measurement, fallback):
-        return fallback_cell, fallback
-    if (
-        _stored_direct_agreement(
-            measurement,
-            edge_kind=Z_RECURRENCE_CROSS_MODE,
-            baseline_cell_id=fallback_cell.cell_id,
-        )
-        is None
-    ):
-        raise FinalAuditError(
-            f"{cell.cell_id} stores no recurrence-authority comparison"
-        )
-    return None
+    raise FinalAuditError(f"{cell.cell_id} has no successful canonical baseline")
 
 
 def _validation_baseline_for_audit(
@@ -3168,11 +3493,7 @@ def _audit_symjit_plane_evaluator_leaves(
         )
     input_len = evaluator.get("input_len")
     output_len = evaluator.get("output_len")
-    if (
-        isinstance(input_len, bool)
-        or not isinstance(input_len, int)
-        or input_len < 0
-    ):
+    if isinstance(input_len, bool) or not isinstance(input_len, int) or input_len < 0:
         mismatches.append("input_len")
     if (
         isinstance(output_len, bool)
@@ -3194,10 +3515,7 @@ def _audit_symjit_plane_evaluator_leaves(
         mismatches.append("plane_application.storage_abi")
     if plane.get("element_layout") != "split-complex-plane-major":
         mismatches.append("plane_application.element_layout")
-    if (
-        plane.get("descriptor_order")
-        != "inputs-re-im-then-outputs-re-im"
-    ):
+    if plane.get("descriptor_order") != "inputs-re-im-then-outputs-re-im":
         mismatches.append("plane_application.descriptor_order")
     if isinstance(input_len, int) and not isinstance(input_len, bool):
         if plane.get("input_complex_count") != input_len:
@@ -3211,10 +3529,7 @@ def _audit_symjit_plane_evaluator_leaves(
             mismatches.append("plane_application.output_plane_count")
     if plane.get("compiler_type") != "native":
         mismatches.append("plane_application.compiler_type")
-    if (
-        plane.get("translation_mode")
-        != "symbolica-structured-instructions"
-    ):
+    if plane.get("translation_mode") != "symbolica-structured-instructions":
         mismatches.append("plane_application.translation_mode")
     if plane.get("direct_arena") is not True:
         mismatches.append("plane_application.direct_arena")
@@ -3845,8 +4160,7 @@ def _audit_recurrence_source_pack(
         )
         prepared_kernel_id = binding.get("prepared_kernel_id")
         if (
-            binding.get("source_application_abi")
-            != _SYMJIT_PLANE_APPLICATION_ABI
+            binding.get("source_application_abi") != _SYMJIT_PLANE_APPLICATION_ABI
             or binding.get("direct_application_abi")
             != _RECURRENCE_JIT_DIRECT_APPLICATION_ABI
             or binding.get("payload_paths") != [source_path]
@@ -4333,25 +4647,6 @@ def _replay_cell(
     stored_matrix = _finite_number(
         measurement.get("matrix_element"), f"{context}.stored_matrix_element"
     )
-    matrix_absolute = abs(observed_matrix - stored_matrix)
-    matrix_relative = matrix_absolute / max(abs(stored_matrix), 1.0e-300)
-    if matrix_absolute > ABSOLUTE_TOLERANCE and matrix_relative > RELATIVE_TOLERANCE:
-        raise FinalAuditError(
-            f"{context} no longer reproduces the stored matrix element"
-        )
-    resolved = runtime.evaluate_resolved(  # type: ignore[attr-defined]
-        points,
-        precision=16,
-        **selectors,
-    )
-    resolved_totals = tuple(resolved.total())
-    maximum_absolute, maximum_relative = _resolved_differences(
-        optimized,
-        resolved_totals,
-        context=context,
-    )
-    if maximum_absolute > ABSOLUTE_TOLERANCE and maximum_relative > RELATIVE_TOLERANCE:
-        raise FinalAuditError(f"{context} optimized/resolved values disagree")
     validation = _mapping(
         measurement.get("validation"),
         f"{context}.validation",
@@ -4360,37 +4655,117 @@ def _replay_cell(
         validation.get("resolved_sum"),
         f"{context}.validation.resolved_sum",
     )
-    for field, observed in (
-        ("maximum_absolute_difference", maximum_absolute),
-        ("maximum_relative_difference", maximum_relative),
-    ):
-        stored = _finite_number(stored_resolved.get(field), f"{context}.{field}")
-        if not math.isclose(
-            observed,
-            stored,
-            rel_tol=RELATIVE_TOLERANCE,
-            abs_tol=ABSOLUTE_TOLERANCE,
+    matrix_absolute = abs(observed_matrix - stored_matrix)
+    matrix_scale = max(abs(observed_matrix), abs(stored_matrix))
+    if stored_resolved.get("abi") == RESOLVED_SUM_VALIDATION_ABI:
+        records = stored_resolved.get("points")
+        if (
+            not isinstance(records, list)
+            or len(records) != 1
+            or not isinstance(records[0], Mapping)
         ):
-            raise FinalAuditError(
-                f"{context} recomputed {field} differs from stored evidence"
-            )
-    if validation.get("high_precision") is not None:
-        high_precision = tuple(
-            runtime.evaluate(  # type: ignore[attr-defined]
-                points,
-                precision=32,
-                **selectors,
-            )
+            raise FinalAuditError(f"{context} has invalid resolved scale evidence")
+        matrix_scale = max(
+            matrix_scale,
+            _finite_number(
+                records[0].get("candidate_scale"),
+                f"{context}.candidate_scale",
+                nonnegative=True,
+            ),
         )
-        if not high_precision:
-            raise FinalAuditError(f"{context} precision-32 evaluation is empty")
-        high_value = _real_nonnegative(high_precision[0], f"{context}.precision32")
-        _audit_pointwise(
+    if matrix_absolute > RELATIVE_TOLERANCE * matrix_scale:
+        raise FinalAuditError(
+            f"{context} no longer reproduces the stored matrix element"
+        )
+    resolved = runtime.evaluate_resolved(  # type: ignore[attr-defined]
+        points,
+        precision=16,
+        **selectors,
+    )
+    if stored_resolved.get("abi") == RESOLVED_SUM_VALIDATION_ABI:
+        replayed_resolved = resolved_sum_validation(
+            runtime,  # type: ignore[arg-type]
+            points,
+            cell=cell,
+            selector_contract=(
+                None
+                if raw_selector is None
+                else SelectorContract.from_mapping(_mapping(raw_selector, context))
+            ),
+            precision=16,
+        )
+        if replayed_resolved != dict(stored_resolved):
+            raise FinalAuditError(
+                f"{context} recomputed conditioned resolved evidence differs"
+            )
+    else:
+        resolved_totals = tuple(resolved.total())
+        maximum_absolute, maximum_relative = _resolved_differences(
+            optimized,
+            resolved_totals,
+            context=context,
+        )
+        for field, observed in (
+            ("maximum_absolute_difference", maximum_absolute),
+            ("maximum_relative_difference", maximum_relative),
+        ):
+            stored = _finite_number(stored_resolved.get(field), f"{context}.{field}")
+            if not math.isclose(
+                observed,
+                stored,
+                rel_tol=RELATIVE_TOLERANCE,
+                abs_tol=ABSOLUTE_TOLERANCE,
+            ):
+                raise FinalAuditError(
+                    f"{context} recomputed {field} differs from stored evidence"
+                )
+    if validation.get("high_precision") is not None:
+        high_record = _mapping(
             validation.get("high_precision"),
+            f"{context}.validation.high_precision",
+        )
+        if high_record.get("abi") == CONDITIONED_COMPARISON_ABI:
+            replayed_high_resolved = resolved_sum_validation(
+                runtime,  # type: ignore[arg-type]
+                points,
+                cell=cell,
+                selector_contract=(
+                    None
+                    if raw_selector is None
+                    else SelectorContract.from_mapping(_mapping(raw_selector, context))
+                ),
+                precision=32,
+            )
+            if replayed_high_resolved != validation.get("high_precision_resolved_sum"):
+                raise FinalAuditError(
+                    f"{context} recomputed p32 resolved evidence differs"
+                )
+            high_value = _finite_number(
+                _mapping(
+                    replayed_high_resolved["points"][0],
+                    f"{context}.precision32.point",
+                ).get("candidate"),
+                f"{context}.precision32",
+                nonnegative=True,
+            )
+        else:
+            high_precision = tuple(
+                runtime.evaluate(  # type: ignore[attr-defined]
+                    points,
+                    precision=32,
+                    **selectors,
+                )
+            )
+            if not high_precision:
+                raise FinalAuditError(f"{context} precision-32 evaluation is empty")
+            high_value = _real_nonnegative(high_precision[0], f"{context}.precision32")
+        _audit_pointwise(
+            high_record,
             context=f"{context}.validation.high_precision",
             expected_candidate=observed_matrix,
             expected_baseline=high_value,
             expected_relative_tolerance=RELATIVE_TOLERANCE,
+            expected_point_digest=point_digest(points),
         )
     common_component: float | None = None
     if cell.measurement.accuracy is Accuracy.LC:
@@ -4505,9 +4880,7 @@ def _replayed_agreement_value(
     if replay_required:
         assert observation is not None
         if observation.lc_common_component is None:
-            raise FinalAuditError(
-                f"{cell.cell_id} replay has no LC common component"
-            )
+            raise FinalAuditError(f"{cell.cell_id} replay has no LC common component")
         return observation.lc_common_component
     return _audit_lc_common_component(
         cell,
@@ -4589,19 +4962,36 @@ def _audit_replayed_direct_agreements(
                     replay_required=category == _FULLY_REPLAYED_PYAMPLICOL,
                 )
             absolute = abs(candidate - baseline)
-            relative = absolute / max(abs(baseline), 1.0e-300)
+            stored_record = _stored_direct_agreement(
+                measurements[edge.candidate.cell_id],
+                edge_kind=edge.kind,
+                baseline_cell_id=edge.baseline.cell_id,
+            )
+            scale = max(abs(candidate), abs(baseline))
             if (
-                absolute > STRICT_ABSOLUTE_TOLERANCE
-                and relative > edge.relative_tolerance
+                isinstance(stored_record, Mapping)
+                and stored_record.get("abi") == DIRECT_AGREEMENT_V2_ABI
             ):
+                scale = max(
+                    scale,
+                    _finite_number(
+                        stored_record.get("candidate_scale"),
+                        f"{edge.candidate.cell_id}.candidate_scale",
+                        nonnegative=True,
+                    ),
+                    _finite_number(
+                        stored_record.get("baseline_scale"),
+                        f"{edge.candidate.cell_id}.baseline_scale",
+                        nonnegative=True,
+                    ),
+                )
+            if absolute > edge.relative_tolerance * scale:
                 raise FinalAuditError(
                     f"replayed {edge.kind} direct edge differs from "
                     f"{edge.baseline.cell_id}"
                 )
         except Exception as error:
-            errors.append(
-                f"{edge.candidate.cell_id}: {error}"
-            )
+            errors.append(f"{edge.candidate.cell_id}: {error}")
     if errors:
         rendered = "\n".join(f"- {message}" for message in errors[:50])
         raise FinalAuditError(
@@ -4689,9 +5079,7 @@ def _audit_final_report_locked(
         raise FinalAuditError("max_n_final must be positive")
     root = repo_root.expanduser().resolve(strict=False)
     report = service or ReportService(ReportPaths.from_repo(root), catalog=catalog)
-    using_production_source_auditor = (
-        source_auditor is _require_report_source_checkout
-    )
+    using_production_source_auditor = source_auditor is _require_report_source_checkout
     if using_production_source_auditor:
         report_profile = _active_report_profile(root, report)
         try:
@@ -4747,15 +5135,12 @@ def _audit_final_report_locked(
         measurement_lineage = None
     policy_profile = report_profile or (
         MACBOOK_M3_PROFILE
-        if active_policy in {
+        if active_policy
+        in {
             MACBOOK_M3_POLICY,
             MACBOOK_M3_Z_TABLE_F_POLICY,
         }
-        else (
-            X86_EPYC_PROFILE
-            if active_policy is X86_EPYC_POLICY
-            else ""
-        )
+        else (X86_EPYC_PROFILE if active_policy is X86_EPYC_POLICY else "")
     )
     publication_lineage = _validated_publication_lineage(
         raw_publication_lineage,
@@ -4780,24 +5165,17 @@ def _audit_final_report_locked(
             key=lambda item: item.cell_id,
         )
     )
-    if (
-        expected_cell_count is not None
-        and len(declared_cells) != expected_cell_count
-    ):
+    if expected_cell_count is not None and len(declared_cells) != expected_cell_count:
         raise FinalAuditError(
             "catalog selected "
             f"{len(declared_cells)} declared cells, expected "
             f"{expected_cell_count}"
         )
     static_na_cells = tuple(
-        cell
-        for cell in declared_cells
-        if catalog.static_na_reason(cell) is not None
+        cell for cell in declared_cells if catalog.static_na_reason(cell) is not None
     )
     if catalog is REPORT_CATALOG and max_n_final == _FULL_CATALOG_MAX_N_FINAL:
-        observed_static_na_ids = {
-            cell.cell_id for cell in static_na_cells
-        }
+        observed_static_na_ids = {cell.cell_id for cell in static_na_cells}
         if observed_static_na_ids != _EXPECTED_FULL_STATIC_NA_CELL_IDS:
             missing_static_na_ids = sorted(
                 _EXPECTED_FULL_STATIC_NA_CELL_IDS - observed_static_na_ids
@@ -4811,8 +5189,7 @@ def _audit_final_report_locked(
                 f"extra={extra_static_na_ids}"
             )
         observed_static_na_reasons = {
-            cell.cell_id: catalog.static_na_reason(cell)
-            for cell in static_na_cells
+            cell.cell_id: catalog.static_na_reason(cell) for cell in static_na_cells
         }
         if observed_static_na_reasons != _EXPECTED_FULL_STATIC_NA_REASONS:
             raise FinalAuditError(
@@ -4820,9 +5197,7 @@ def _audit_final_report_locked(
                 f"{dict(sorted(observed_static_na_reasons.items()))}"
             )
     cells = tuple(
-        cell
-        for cell in declared_cells
-        if catalog.static_na_reason(cell) is None
+        cell for cell in declared_cells if catalog.static_na_reason(cell) is None
     )
     published_measurements: dict[str, Mapping[str, object]] = {}
     measurements: dict[str, Mapping[str, object]] = {}
@@ -4943,9 +5318,7 @@ def _audit_final_report_locked(
                 expected_source_tree=cell_source[1],
             )
             if published_state is not current_state:
-                raise FinalAuditError(
-                    "published and current policy states differ"
-                )
+                raise FinalAuditError("published and current policy states differ")
         except (CampaignPolicyError, FinalAuditError) as error:
             errors.append(f"{cell.cell_id}: {error}")
             continue
@@ -4995,9 +5368,7 @@ def _audit_final_report_locked(
             for source in resource_sources.get(resource_lane(cell), ())
             if source.n_final < cell.n_final
         )
-        frontier_source = (
-            lower_resource_sources[0] if lower_resource_sources else None
-        )
+        frontier_source = lower_resource_sources[0] if lower_resource_sources else None
         state = measurement_states[cell.cell_id]
         if frontier_source is not None:
             expected_frontier = resource_frontier_reference(
@@ -5086,9 +5457,7 @@ def _audit_final_report_locked(
                 "current required terminal dependencies"
             )
     if dependency_errors:
-        rendered = "\n".join(
-            f"- {message}" for message in dependency_errors[:50]
-        )
+        rendered = "\n".join(f"- {message}" for message in dependency_errors[:50])
         raise FinalAuditError(
             "final report policy-dependency audit failed "
             f"({len(dependency_errors)}):\n{rendered}"
@@ -5101,13 +5470,10 @@ def _audit_final_report_locked(
         policy=active_policy,
     )
     if (
-        visible_completeness.declared_measurement_cell_count
-        != len(declared_cells)
+        visible_completeness.declared_measurement_cell_count != len(declared_cells)
         or visible_completeness.required_measurement_count != len(cells)
-        or visible_completeness.rendered_required_measurement_count
-        != len(cells)
-        or visible_completeness.catalog_static_na_cell_count
-        != len(static_na_cells)
+        or visible_completeness.rendered_required_measurement_count != len(cells)
+        or visible_completeness.catalog_static_na_cell_count != len(static_na_cells)
         or visible_completeness.rendered_catalog_static_na_cell_count
         != len(static_na_cells)
         or not visible_completeness.complete
@@ -5156,16 +5522,21 @@ def _audit_final_report_locked(
     for cell in successful_cells:
         measurement = measurements[cell.cell_id]
         try:
-            baseline = _validation_baseline_for_audit(
+            baseline_endpoint = _validation_baseline_endpoint_for_audit(
                 cell,
                 measurements,
                 measurement_states,
                 catalog=catalog,
             )
+            baseline_cell = (
+                None if baseline_endpoint is None else baseline_endpoint[0]
+            )
+            baseline = None if baseline_endpoint is None else baseline_endpoint[1]
             reference = _audit_measurement(
                 cell,
                 measurement,
                 baseline=baseline,
+                baseline_cell=baseline_cell,
                 expected_source_revision=measurement_sources[cell.cell_id][0],
                 expected_source_tree=measurement_sources[cell.cell_id][1],
                 expected_legacy_revision=expected_legacy_revision,
@@ -5271,9 +5642,7 @@ def _audit_final_report_locked(
                     f"{reference.cell.cell_id}.provenance",
                 )
                 assert active_runtime is not None
-                source_revision = measurement_sources[
-                    reference.cell.cell_id
-                ][0]
+                source_revision = measurement_sources[reference.cell.cell_id][0]
                 _audit_runtime_identity(
                     reference.cell,
                     provenance,
@@ -5366,9 +5735,7 @@ def _audit_final_report_locked(
             and not _count_contract_matches_with_optional_category(
                 replayed_direct_agreement_counts,
                 _EXPECTED_N4_DIRECT_REPLAY_COUNTS,
-                optional_category=(
-                    _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY
-                ),
+                optional_category=(_REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY),
             )
         ):
             raise FinalAuditError(
@@ -5384,9 +5751,7 @@ def _audit_final_report_locked(
             and not _count_contract_matches_with_optional_category(
                 replayed_direct_agreement_counts,
                 _EXPECTED_FULL_DIRECT_REPLAY_COUNTS,
-                optional_category=(
-                    _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY
-                ),
+                optional_category=(_REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY),
             )
         ):
             raise FinalAuditError(
@@ -5463,8 +5828,7 @@ def _audit_final_report_locked(
     )
     if (
         canonical_publication_scope
-        and len(catalog_direct_edges)
-        != _EXPECTED_FULL_DIRECT_AGREEMENT_COUNT
+        and len(catalog_direct_edges) != _EXPECTED_FULL_DIRECT_AGREEMENT_COUNT
     ):
         raise FinalAuditError(
             "canonical publication direct-agreement catalog count differs: "
@@ -5508,12 +5872,8 @@ def _audit_final_report_locked(
                     source[0] == measurement_lineage.descendant_revision
                     for source in measurement_sources.values()
                 ),
-                "invalidated_cell_count": len(
-                    measurement_lineage.invalidated_cell_ids
-                ),
-                "recompare_cell_count": len(
-                    measurement_lineage.recompare_cell_ids
-                ),
+                "invalidated_cell_count": len(measurement_lineage.invalidated_cell_ids),
+                "recompare_cell_count": len(measurement_lineage.recompare_cell_ids),
             }
         ),
         "publication_revision": publication_lineage["publication_revision"],
@@ -5525,9 +5885,7 @@ def _audit_final_report_locked(
         "declared_cell_count": len(declared_cells),
         "measurable_cell_count": len(cells),
         "catalog_static_na_cell_count": len(static_na_cells),
-        "catalog_static_na_reason_counts": dict(
-            sorted(static_na_reasons.items())
-        ),
+        "catalog_static_na_reason_counts": dict(sorted(static_na_reasons.items())),
         "mode_counts": dict(sorted(declared_modes.items())),
         "declared_mode_counts": dict(sorted(declared_modes.items())),
         "measurable_mode_counts": dict(sorted(measurable_modes.items())),
@@ -5663,9 +6021,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         _ensure_exact_cli_python(arguments.repo_root, raw_arguments)
         if arguments.report_profile is None:
-            raise FinalAuditError(
-                "final-audit requires --report-profile"
-            )
+            raise FinalAuditError("final-audit requires --report-profile")
         service = ReportService(
             ReportPaths.from_repo(
                 arguments.repo_root,

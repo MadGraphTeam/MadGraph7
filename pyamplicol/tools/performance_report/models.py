@@ -69,6 +69,7 @@ class ResultStatus(StrEnum):
     MEMORY_LIMIT = "memory_limit"
     SKIP = "skip"
     VALIDATION_FAILED = "validation_failed"
+    UNVERIFIED = "unverified"
     ERROR = "error"
     UNSUPPORTED = "unsupported"
 

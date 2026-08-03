@@ -226,6 +226,39 @@ def test_epyc_n9_codec_limit_summary_round_trips_to_exact_run_selection(
     assert tuple(cell.cell_id for cell in cells) == (cell_id,)
 
 
+def test_unverified_summary_round_trips_to_exact_retry_selection(
+    tmp_path: Path,
+) -> None:
+    service = _service(tmp_path)
+    cell_id = "matrix-compiled-builtin-sm-lc-n1-dd-z-jets-selected-flow"
+    result = CampaignResult(
+        planned=(),
+        outcomes=(
+            CellOutcome(
+                cell_id,
+                "unverified",
+                "independent numerical authority unavailable",
+            ),
+        ),
+    )
+    categories = manual_campaign._campaign_summary_categories(result=result)
+    summary, counts = manual_campaign._publish_campaign_summary_ids(
+        service,
+        categories,
+    )
+
+    assert counts == {"unverified": 1}
+    selection_file = summary / "unverified.txt"
+    assert selection_file.read_text(encoding="utf-8") == f"{cell_id}\n"
+    arguments = manual_campaign.build_parser().parse_args(
+        ("run", "--dry-run", "--cell-id-file", str(selection_file))
+    )
+
+    _selection, cells = manual_campaign.selection_from_arguments(arguments)
+
+    assert tuple(cell.cell_id for cell in cells) == (cell_id,)
+
+
 def test_interrupted_summary_contains_observed_not_unstarted_cells() -> None:
     state = DashboardState(
         instance_id="invocation",

@@ -1,13 +1,22 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import json
 from collections import Counter
 from copy import deepcopy
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
-from tools.performance_report.agreements import DIRECT_AGREEMENT_FIELD
+import tools.performance_report.manual_campaign as manual_campaign
+from tools.performance_report.agreements import (
+    DIRECT_AGREEMENT_FIELD,
+    INDEPENDENT_AUTHORITY_ABI,
+    INDEPENDENT_AUTHORITY_FIELD,
+    incoming_agreement_edges,
+    independent_numerical_authorities,
+)
 from tools.performance_report.arena_profile import (
     ARENA_PHASE_TIMING_SCOPE,
     ARENA_PROFILE_BOUNDARY,
@@ -21,9 +30,11 @@ from tools.performance_report.arena_profile import (
 from tools.performance_report.cache import (
     CACHE_SCHEMA_VERSION,
     REPORT_VERSION,
+    _validate_unverified_direct_agreement_coverage,
     build_reset_caches,
     digest_json,
     empty_measurement,
+    schema_document,
     validate_cache,
     validate_measurement,
 )
@@ -35,12 +46,16 @@ from tools.performance_report.catalog import (
 )
 from tools.performance_report.models import (
     Accuracy,
+    ArtifactPolicy,
+    CellSpec,
     ExecutionMode,
     ModelKey,
     ResultStatus,
     Workload,
     ZVariant,
 )
+from tools.performance_report.runner import pointwise_validation
+from tools.performance_report.service import ReportPaths, ReportService
 
 
 def test_matrix_catalog_has_requested_twelve_datasets() -> None:
@@ -72,6 +87,14 @@ def test_matrix_catalog_has_requested_twelve_datasets() -> None:
 def test_required_agreement_evidence_bumps_report_cache_contract() -> None:
     assert CACHE_SCHEMA_VERSION == 4
     assert REPORT_VERSION == "0.3.0"
+
+
+def test_packaged_report_cache_schema_is_canonical() -> None:
+    packaged = (
+        Path(__file__).resolve().parents[2]
+        / "src/pyamplicol/_profiling_campaign/results/report-cache.schema.json"
+    )
+    assert json.loads(packaged.read_text(encoding="ascii")) == schema_document()
 
 
 def test_prepared_modes_are_portable_o2_and_compiled_is_o3() -> None:
@@ -622,7 +645,7 @@ def test_successful_measurement_requires_successful_validation() -> None:
         }
     )
 
-    with pytest.raises(ValueError, match="successful validation"):
+    with pytest.raises(ValueError, match="validation status"):
         validate_measurement(measurement)
 
 
@@ -688,6 +711,315 @@ def _candidate_measurement_with_runtime_postflight() -> dict[str, object]:
         }
     )
     return measurement
+
+
+def _unverified_candidate_measurement(cell: CellSpec) -> dict[str, object]:
+    measurement = _candidate_measurement_with_runtime_postflight()
+    point_identity = "a" * 64
+    ordering = "b" * 64
+
+    def resolved_record(precision: int, source: str) -> dict[str, object]:
+        record = pointwise_validation(
+            1.0,
+            1.0,
+            candidate_scale=1.0,
+            baseline_scale=1.0,
+            comparison_binding={
+                "abi": "pyamplicol-report-resolved-component-scale-v1",
+                "point_digest": point_identity,
+                "helicity_ids": [],
+                "color_flow_ids": [],
+                "resolved_ordering_sha256": ordering,
+                "resolved_source_sha256": source,
+                "point_index": 0,
+            },
+        )
+        return {
+            "abi": "pyamplicol-report-resolved-sum-validation-v2",
+            "status": ResultStatus.OK.value,
+            "maximum_absolute_difference": 0.0,
+            "maximum_relative_difference": 0.0,
+            "maximum_conditioned_residual": 0.0,
+            "relative_tolerance": 1.0e-12,
+            "point_digest": point_identity,
+            "helicity_ids": [],
+            "color_flow_ids": [],
+            "resolved_ordering_sha256": ordering,
+            "resolved_source_sha256": source,
+            "scale_source": "resolved-component-l1",
+            "precision_digits": precision,
+            "points": [record],
+        }
+
+    binary64 = resolved_record(16, "c" * 64)
+    p32 = resolved_record(32, "d" * 64)
+    selector_identity = {
+        "cell_id": cell.cell_id,
+        "accuracy": cell.measurement.accuracy.value,
+        "workload": cell.workload.value,
+        "selector_contract": None,
+        "value_kind": "matrix-element-p16-versus-p32",
+    }
+    high_precision = pointwise_validation(
+        1.0,
+        1.0,
+        candidate_scale=1.0,
+        baseline_scale=1.0,
+        comparison_binding={
+            "point_digest": point_identity,
+            "selector_component_identity": selector_identity,
+            "selector_component_sha256": digest_json(selector_identity),
+            "candidate_source_sha256": "c" * 64,
+            "baseline_source_sha256": "d" * 64,
+        },
+    )
+    validation = measurement["validation"]
+    assert isinstance(validation, dict)
+    validation.update(
+        {
+            "status": ResultStatus.UNVERIFIED.value,
+            "resolved_sum": binary64,
+            "high_precision_resolved_sum": p32,
+            "high_precision": high_precision,
+            "precision_diagnostic": {
+                "abi": (
+                    "pyamplicol-report-validation-failure-precision-diagnostic-v2"
+                ),
+                "status": "unavailable",
+                "promotes_measurement": False,
+                "error": {"kind": "FixtureUnavailable", "message": "fixture"},
+            },
+            INDEPENDENT_AUTHORITY_FIELD: {
+                "abi": INDEPENDENT_AUTHORITY_ABI,
+                "expected_cell_ids": [
+                    authority.cell_id
+                    for authority in independent_numerical_authorities(cell)
+                ],
+                "selected_cell_id": None,
+                "status": "unavailable",
+                "reason": "no-successful-independent-authority",
+                "same_artifact_diagnostics_are_authority": False,
+            },
+        }
+    )
+    measurement["status"] = ResultStatus.UNVERIFIED.value
+    measurement["failure"] = {
+        "kind": "IndependentAuthorityUnavailable",
+        "message": "no successful independent numerical authority is available",
+    }
+    return measurement
+
+
+def test_unverified_measurement_contract_is_strict_and_catalog_bound() -> None:
+    cell = REPORT_CATALOG.cell(
+        "matrix-compiled-builtin-sm-full-n1-dd-z-jets-contracted"
+    )
+    measurement = _unverified_candidate_measurement(cell)
+    validate_measurement(measurement, expected_cell=cell)
+
+    validation = measurement["validation"]
+    assert isinstance(validation, dict)
+    authority = validation[INDEPENDENT_AUTHORITY_FIELD]
+    assert isinstance(authority, dict)
+    canonical = list(authority["expected_cell_ids"])
+    for malformed in (
+        canonical[:-1],
+        list(reversed(canonical)),
+        [*canonical, "matrix-compiled-builtin-sm-full-n1-dd-z-jets-contracted"],
+    ):
+        tampered = deepcopy(measurement)
+        tampered["validation"][INDEPENDENT_AUTHORITY_FIELD][  # type: ignore[index]
+            "expected_cell_ids"
+        ] = malformed
+        with pytest.raises(ValueError, match="independent-authority"):
+            validate_measurement(tampered, expected_cell=cell)
+
+    tampered = deepcopy(measurement)
+    tampered["validation"]["precision_diagnostic"][  # type: ignore[index]
+        "promotes_measurement"
+    ] = True
+    with pytest.raises(ValueError, match="precision diagnostic"):
+        validate_measurement(tampered, expected_cell=cell)
+
+
+def test_unverified_presentation_overlay_is_attempt_bound_and_json_isolated(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    docs = repo / "docs" / "performance_reports" / "manual"
+    docs.mkdir(parents=True)
+    service = ReportService(
+        ReportPaths.from_repo(
+            repo,
+            docs_dir=docs,
+            artifact_root=tmp_path / "campaign-artifacts",
+            coordination_root=tmp_path / "campaign-artifacts" / "coordination",
+        )
+    )
+    cell = REPORT_CATALOG.cell(
+        "matrix-compiled-builtin-sm-full-n1-dd-z-jets-contracted"
+    )
+    revision = "a" * 40
+    measurement = _unverified_candidate_measurement(cell)
+    provenance = measurement["provenance"]
+    assert isinstance(provenance, dict)
+    provenance.update(
+        {
+            "report_source_revision": revision,
+            "manual_campaign": {
+                "cell_identity": {
+                    "cell_id": cell.cell_id,
+                    "dataset_id": cell.dataset_id,
+                    "process_key": cell.process_key,
+                    "process": cell.process,
+                    "n_final": cell.n_final,
+                    "workload": cell.workload.value,
+                    "execution_mode": cell.measurement.execution_mode.value,
+                    "model": cell.measurement.model.value,
+                    "accuracy": cell.measurement.accuracy.value,
+                    "backend": cell.measurement.backend,
+                    "variant": cell.variant,
+                }
+            },
+        }
+    )
+    validate_measurement(measurement, expected_cell=cell)
+
+    attempt = service.store.new_attempt(cell.cell_id, ArtifactPolicy.REGENERATE)
+    attempt.write_json("worker-result.json", measurement)
+    attempt.mark_failed(
+        "independent authority unavailable",
+        artifact_paths=("worker-result.json",),
+    )
+    outcome = manual_campaign.LightweightPresentationOutcome(
+        profile="campaign-local-v1",
+        cell_id=cell.cell_id,
+        source_revision=revision,
+        campaign_invocation_id="fixture",
+        attempt_id=attempt.attempt_id,
+        status=ResultStatus.UNVERIFIED.value,
+        label="unverified",
+        completed_at_ns=1,
+    )
+
+    publication_caches, publication_merged = (
+        manual_campaign._merge_lightweight_snapshot(service, {})
+    )
+    render_caches, render_merged = manual_campaign._merge_lightweight_snapshot(
+        service,
+        {},
+        {cell.cell_id: outcome},
+    )
+    assert publication_merged == 0
+    assert render_merged == 1
+
+    def cell_measurement(
+        caches: dict[str, dict[str, object]],
+    ) -> dict[str, object]:
+        payload = caches[f"{cell.dataset_id}.json"]
+        entries = payload["entries"]
+        assert isinstance(entries, list)
+        entry = next(
+            item
+            for item in entries
+            if isinstance(item, dict) and item.get("cell_id") == cell.cell_id
+        )
+        value = entry["measurement"]
+        assert isinstance(value, dict)
+        return value
+
+    assert cell_measurement(render_caches)["status"] == ResultStatus.UNVERIFIED.value
+    assert cell_measurement(render_caches)["generation_seconds"] == 1.0
+    assert cell_measurement(publication_caches)["status"] == (
+        ResultStatus.NOT_AVAILABLE.value
+    )
+
+    tables = service._render_tables(render_caches)
+    assert "unverified" in tables[
+        "result_matrix_compiled_builtin_sm_full_table.tex"
+    ].lower()
+    service._snapshot_files(publication_caches, tables)
+    installed_payloads = tuple(
+        path
+        for path in service.paths.results_dir.glob("*.json")
+        if path.name != "report-cache.schema.json"
+    )
+    assert installed_payloads
+    assert all(
+        '"status":"unverified"' not in json.dumps(
+            json.loads(path.read_text(encoding="ascii")),
+            separators=(",", ":"),
+        )
+        for path in installed_payloads
+    )
+
+    wrong_source = replace(outcome, source_revision="b" * 40)
+    wrong_attempt = replace(
+        outcome,
+        attempt_id="00000000-0000-4000-8000-000000000000",
+    )
+    wrong_identity_measurement = deepcopy(measurement)
+    wrong_identity_provenance = wrong_identity_measurement["provenance"]
+    assert isinstance(wrong_identity_provenance, dict)
+    wrong_identity_manual = wrong_identity_provenance["manual_campaign"]
+    assert isinstance(wrong_identity_manual, dict)
+    wrong_identity = wrong_identity_manual["cell_identity"]
+    assert isinstance(wrong_identity, dict)
+    wrong_identity["cell_id"] = "different-cell"
+    wrong_identity_attempt = service.store.new_attempt(
+        cell.cell_id,
+        ArtifactPolicy.REGENERATE,
+    )
+    wrong_identity_attempt.write_json(
+        "worker-result.json",
+        wrong_identity_measurement,
+    )
+    wrong_identity_attempt.mark_failed(
+        "independent authority unavailable",
+        artifact_paths=("worker-result.json",),
+    )
+    wrong_cell = replace(outcome, attempt_id=wrong_identity_attempt.attempt_id)
+    for malformed in (wrong_source, wrong_attempt, wrong_cell):
+        fallback = manual_campaign._presentation_measurement(
+            service,
+            cell,
+            malformed,
+        )
+        validate_measurement(fallback, expected_cell=cell)
+        assert fallback["status"] == ResultStatus.FAILED.value
+        assert fallback["generation_seconds"] is None
+        failure = fallback["failure"]
+        assert isinstance(failure, dict)
+        assert failure["kind"] == "ManualCampaignOutcome:unverified"
+
+
+def test_unverified_measurement_requires_every_hard_direct_agreement() -> None:
+    cell = REPORT_CATALOG.cell(
+        "matrix-compiled-builtin-sm-lc-n1-dd-z-jets-all-flow"
+    )
+    required = next(
+        edge
+        for edge in incoming_agreement_edges(cell)
+        if edge.required
+    )
+    with pytest.raises(ValueError, match="coverage is incomplete"):
+        _validate_unverified_direct_agreement_coverage(
+            {DIRECT_AGREEMENT_FIELD: []},
+            expected_cell=cell,
+        )
+    _validate_unverified_direct_agreement_coverage(
+        {
+            DIRECT_AGREEMENT_FIELD: [
+                {
+                    "edge_kind": required.kind,
+                    "baseline_cell_id": required.baseline.cell_id,
+                    "candidate_cell_id": cell.cell_id,
+                    "status": ResultStatus.OK.value,
+                }
+            ]
+        },
+        expected_cell=cell,
+    )
 
 
 def _arena_unavailable_candidate_measurement() -> dict[str, object]:

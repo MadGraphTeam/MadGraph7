@@ -26,6 +26,7 @@ from .agreements import (
     LC_CROSS_LAYOUT_COMPONENT,
     attach_direct_agreements,
     incoming_agreement_edges,
+    independent_numerical_authorities,
 )
 from .artifacts import _filesystem_lock, _raise_disk_full
 from .catalog import REPORT_CATALOG, ReportCatalog
@@ -364,6 +365,8 @@ def measure_cell(
     manual_source_revision: str | None = None,
     manual_source_tree: str | None = None,
     baseline_json: Path | None = None,
+    expected_authority_cell_ids: Sequence[str] = (),
+    selected_authority_cell_id: str | None = None,
     peer_json: Sequence[tuple[str, Path]] = (),
     prepared_model_path: Path | None = None,
     reused_measurement_json: Path | None = None,
@@ -390,6 +393,29 @@ def measure_cell(
         raise ValueError(
             f"{cell_id}: catalog static N/A cell cannot be measured "
             f"({static_na_reason}: {description})"
+        )
+    authority_ids = tuple(expected_authority_cell_ids)
+    canonical_authority_ids = tuple(
+        authority.cell_id
+        for authority in independent_numerical_authorities(cell, catalog=catalog)
+    )
+    if authority_ids != canonical_authority_ids:
+        raise ValueError(
+            "expected numerical authority cell IDs differ from the canonical "
+            f"catalog chain: expected={canonical_authority_ids!r}, "
+            f"observed={authority_ids!r}"
+        )
+    if selected_authority_cell_id is not None and (
+        selected_authority_cell_id not in authority_ids
+        or baseline_json is None
+    ):
+        raise ValueError("selected numerical authority is not in the expected chain")
+    if authority_ids and (baseline_json is not None) != (
+        selected_authority_cell_id is not None
+    ):
+        raise ValueError(
+            "compiled/eager baseline and selected numerical authority must be "
+            "specified together"
         )
     source_identity = _source_identity(
         repo_root,
@@ -487,6 +513,8 @@ def measure_cell(
             ),
             repo_root=repo_root,
             baseline=baseline,
+            expected_authority_cell_ids=authority_ids,
+            selected_authority_cell_id=selected_authority_cell_id,
             validation_peers=peers,
             selector_provider=selector_provider,
             prepared_model_path=prepared_model_path,

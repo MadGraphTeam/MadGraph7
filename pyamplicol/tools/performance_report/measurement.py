@@ -9,7 +9,7 @@ import math
 import os
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,8 +18,11 @@ if TYPE_CHECKING:
 
 from .agreements import (
     DIRECT_AGREEMENT_FIELD,
+    INDEPENDENT_AUTHORITY_ABI,
+    INDEPENDENT_AUTHORITY_FIELD,
     LC_COMMON_COMPONENT_FIELD,
     evaluate_lc_common_component,
+    independent_numerical_authorities,
     validate_lc_common_component,
 )
 from .cache import empty_measurement
@@ -46,9 +49,11 @@ from .runner import (
     pointwise_validation,
     profile_runtime,
     provenance_payload,
+    resolved_sum_validation,
     runtime_identity_payload,
     runtime_validation_points,
     validate_artifact_contract,
+    validate_resolved_sum_validation_record,
 )
 from .source_identity import (
     ReportSourceIdentityError,
@@ -171,13 +176,26 @@ def _baseline_matrix_element(
     return float(value)
 
 
-_LEGACY_NUMERICAL_AUTHORITY_ABI = (
-    "pyamplicol-report-legacy-numerical-authority-v1"
-)
+_LEGACY_NUMERICAL_AUTHORITY_ABI = "pyamplicol-report-legacy-numerical-authority-v1"
 _LEGACY_NUMERICAL_AUTHORITY_FIELD = "legacy_numerical_authority"
-_LEGACY_ALL_FLOW_COMPONENT_AUTHORITY_SOURCE = (
-    "all-flow-selected-provider-replay"
-)
+_LEGACY_ALL_FLOW_COMPONENT_AUTHORITY_SOURCE = "all-flow-selected-provider-replay"
+
+
+def _independent_authority_record(
+    expected_cell_ids: Sequence[str],
+    *,
+    selected_cell_id: str | None,
+    status: str,
+    reason: str,
+) -> dict[str, object]:
+    return {
+        "abi": INDEPENDENT_AUTHORITY_ABI,
+        "expected_cell_ids": list(expected_cell_ids),
+        "selected_cell_id": selected_cell_id,
+        "status": status,
+        "reason": reason,
+        "same_artifact_diagnostics_are_authority": False,
+    }
 
 
 def baseline_uses_lc_common_component_authority(
@@ -201,8 +219,7 @@ def baseline_uses_lc_common_component_authority(
     if not (
         isinstance(authority, Mapping)
         and authority.get("abi") == _LEGACY_NUMERICAL_AUTHORITY_ABI
-        and authority.get("source")
-        == _LEGACY_ALL_FLOW_COMPONENT_AUTHORITY_SOURCE
+        and authority.get("source") == _LEGACY_ALL_FLOW_COMPONENT_AUTHORITY_SOURCE
     ):
         return False
     if baseline.get("status") != ResultStatus.OK.value:
@@ -225,6 +242,8 @@ def _attach_baseline_validation(
     *,
     candidate_matrix_element: float,
     baseline: Mapping[str, object] | None,
+    points: object = None,
+    contract: SelectorContract | None = None,
 ) -> None:
     if baseline_uses_lc_common_component_authority(cell, baseline):
         # The worker's direct-agreement edge compares the authenticated shared
@@ -232,11 +251,380 @@ def _attach_baseline_validation(
         return
     baseline_value = _baseline_matrix_element(baseline)
     if baseline_value is not None:
+        resolved_sum = validation.get("resolved_sum")
+        if not isinstance(resolved_sum, Mapping):
+            raise RunnerError("candidate resolved-sum scale evidence is unavailable")
+        point_records = resolved_sum.get("points")
+        if not isinstance(point_records, list) or len(point_records) != 1:
+            raise RunnerError("candidate comparison requires one resolved point")
+        point_record = point_records[0]
+        if not isinstance(point_record, Mapping):
+            raise RunnerError("candidate resolved scale record is unavailable")
+        candidate_scale = point_record.get("candidate_scale")
+        candidate_source = resolved_sum.get("resolved_source_sha256")
+        if (
+            isinstance(candidate_scale, bool)
+            or not isinstance(candidate_scale, (int, float))
+            or not isinstance(candidate_source, str)
+        ):
+            raise RunnerError("candidate resolved scale evidence is invalid")
+        baseline_source = _comparison_source_digest(
+            {
+                "matrix_element": baseline_value,
+                "selector_contract": baseline.get("selector_contract"),
+                "validation": baseline.get("validation"),
+                "provenance": baseline.get("provenance"),
+            }
+        )
         validation["pointwise"] = pointwise_validation(
             candidate_matrix_element,
             baseline_value,
             relative_tolerance=_pointwise_tolerance(cell),
+            candidate_scale=float(candidate_scale),
+            baseline_scale=abs(baseline_value),
+            candidate_scale_source="resolved-component-l1",
+            baseline_scale_source="authority-value-magnitude",
+            comparison_binding=_conditioned_binding(
+                cell,
+                points,
+                contract,
+                candidate_source_sha256=candidate_source,
+                baseline_source_sha256=baseline_source,
+                value_kind="matrix-element",
+            ),
         )
+
+
+def _stored_validation_point_digest(measurement: Mapping[str, object]) -> str:
+    selector = measurement.get("selector_contract")
+    if isinstance(selector, Mapping):
+        raw = selector.get("point_digest")
+        if isinstance(raw, str):
+            return raw
+    validation = measurement.get("validation")
+    if isinstance(validation, Mapping):
+        raw = validation.get("point_digest")
+        if isinstance(raw, str):
+            return raw
+        resolved = validation.get("resolved_sum")
+        if isinstance(resolved, Mapping):
+            try:
+                validate_resolved_sum_validation_record(resolved)
+            except ValueError as error:
+                raise RunnerError(
+                    "measurement resolved-sum point identity is invalid"
+                ) from error
+            raw = resolved.get("point_digest")
+            if isinstance(raw, str):
+                return raw
+    provenance = measurement.get("provenance")
+    if isinstance(provenance, Mapping) and "report_momenta" in provenance:
+        return point_digest(provenance["report_momenta"])
+    raise RunnerError("measurement has no validation point identity")
+
+
+def _stored_conditioned_scale(
+    measurement: Mapping[str, object],
+    value: float,
+) -> tuple[float, str, str]:
+    validation = measurement.get("validation")
+    if isinstance(validation, Mapping):
+        resolved = validation.get("resolved_sum")
+        if isinstance(resolved, Mapping):
+            try:
+                validate_resolved_sum_validation_record(resolved)
+            except ValueError as error:
+                raise RunnerError(
+                    "measurement resolved-sum scale evidence is invalid"
+                ) from error
+            records = resolved.get("points")
+            source = resolved.get("resolved_source_sha256")
+            if (
+                isinstance(records, list)
+                and len(records) == 1
+                and isinstance(records[0], Mapping)
+                and isinstance(source, str)
+            ):
+                raw_scale = records[0].get("candidate_scale")
+                raw_candidate = records[0].get("candidate")
+                if (
+                    not isinstance(raw_scale, bool)
+                    and isinstance(raw_scale, (int, float))
+                    and math.isfinite(float(raw_scale))
+                    and float(raw_scale) >= abs(value)
+                    and not isinstance(raw_candidate, bool)
+                    and isinstance(raw_candidate, (int, float))
+                    and float(raw_candidate) == value
+                ):
+                    return float(raw_scale), "resolved-component-l1", source
+                raise RunnerError(
+                    "measurement matrix element differs from resolved-sum evidence"
+                )
+    source = _comparison_source_digest(
+        {
+            "matrix_element": value,
+            "selector_contract": measurement.get("selector_contract"),
+            "validation": validation,
+            "provenance": measurement.get("provenance"),
+        }
+    )
+    return abs(value), "authority-value-magnitude", source
+
+
+def _stored_lc_common_component(
+    measurement: Mapping[str, object],
+    *,
+    selector_contract: Mapping[str, object],
+    expected_cell_id: str | None,
+) -> tuple[float, Mapping[str, object], str]:
+    validation = measurement.get("validation")
+    observation = (
+        validation.get(LC_COMMON_COMPONENT_FIELD)
+        if isinstance(validation, Mapping)
+        else None
+    )
+    try:
+        validate_lc_common_component(
+            observation,
+            expected_cell_id=expected_cell_id,
+            selector_contract=selector_contract,
+        )
+    except ValueError as error:
+        raise RunnerError(
+            "LC all-flow authority has no selector-bound common component"
+        ) from error
+    assert isinstance(observation, Mapping)
+    raw_value = observation.get("value")
+    if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
+        raise RunnerError("LC all-flow common component is not numeric")
+    value = float(raw_value)
+    if not math.isfinite(value):
+        raise RunnerError("LC all-flow common component is not finite")
+    return value, observation, _comparison_source_digest(observation)
+
+
+def conditioned_measurement_comparison(
+    cell: CellSpec,
+    candidate: Mapping[str, object],
+    baseline: Mapping[str, object],
+) -> dict[str, object]:
+    """Compare a completed candidate to late independent authority evidence."""
+
+    raw_contract = candidate.get("selector_contract")
+    baseline_contract = baseline.get("selector_contract")
+    if raw_contract != baseline_contract:
+        raise RunnerError("candidate and authority selector contracts differ")
+    contract = (
+        None if raw_contract is None else SelectorContract.from_mapping(raw_contract)  # type: ignore[arg-type]
+    )
+    candidate_point = _stored_validation_point_digest(candidate)
+    baseline_point = _stored_validation_point_digest(baseline)
+    if candidate_point != baseline_point:
+        raise RunnerError("candidate and authority validation points differ")
+
+    if baseline_uses_lc_common_component_authority(cell, baseline):
+        if not isinstance(raw_contract, Mapping) or contract is None:
+            raise RunnerError("LC all-flow authority has no selector contract")
+        candidate_value, candidate_component, candidate_source = (
+            _stored_lc_common_component(
+                candidate,
+                selector_contract=raw_contract,
+                expected_cell_id=cell.cell_id,
+            )
+        )
+        baseline_value, baseline_component, baseline_source = (
+            _stored_lc_common_component(
+                baseline,
+                selector_contract=raw_contract,
+                expected_cell_id=None,
+            )
+        )
+        component_identity = {
+            "candidate_cell_id": candidate_component["cell_id"],
+            "baseline_cell_id": baseline_component["cell_id"],
+            "point_digest": candidate_component["point_digest"],
+            "helicity_ids": candidate_component["helicity_ids"],
+            "color_flow_ids": candidate_component["color_flow_ids"],
+        }
+        if any(
+            candidate_component[field] != baseline_component[field]
+            for field in ("point_digest", "helicity_ids", "color_flow_ids")
+        ):
+            raise RunnerError("LC all-flow common-component identities differ")
+        selector_identity = {
+            "cell_id": cell.cell_id,
+            "accuracy": cell.measurement.accuracy.value,
+            "workload": cell.workload.value,
+            "selector_contract": contract.as_dict(),
+            "value_kind": LC_COMMON_COMPONENT_FIELD,
+            "component_identity": component_identity,
+        }
+        return pointwise_validation(
+            candidate_value,
+            baseline_value,
+            relative_tolerance=_pointwise_tolerance(cell),
+            candidate_scale=abs(candidate_value),
+            baseline_scale=abs(baseline_value),
+            candidate_scale_source="authority-component-magnitude",
+            baseline_scale_source="authority-component-magnitude",
+            comparison_binding={
+                "point_digest": candidate_point,
+                "selector_component_identity": selector_identity,
+                "selector_component_sha256": _comparison_source_digest(
+                    selector_identity
+                ),
+                "candidate_source_sha256": candidate_source,
+                "baseline_source_sha256": baseline_source,
+            },
+        )
+
+    raw_candidate_value = candidate.get("matrix_element")
+    if isinstance(raw_candidate_value, bool) or not isinstance(
+        raw_candidate_value, (int, float)
+    ):
+        raise RunnerError("candidate has no matrix element")
+    candidate_value = float(raw_candidate_value)
+    if not math.isfinite(candidate_value):
+        raise RunnerError("candidate matrix element is not finite")
+    baseline_value = _baseline_matrix_element(baseline)
+    assert baseline_value is not None
+    candidate_scale, candidate_scale_source, candidate_source = (
+        _stored_conditioned_scale(candidate, candidate_value)
+    )
+    baseline_scale, baseline_scale_source, baseline_source = _stored_conditioned_scale(
+        baseline, baseline_value
+    )
+    return pointwise_validation(
+        candidate_value,
+        baseline_value,
+        relative_tolerance=_pointwise_tolerance(cell),
+        candidate_scale=candidate_scale,
+        baseline_scale=baseline_scale,
+        candidate_scale_source=candidate_scale_source,
+        baseline_scale_source=baseline_scale_source,
+        comparison_binding={
+            "point_digest": candidate_point,
+            "selector_component_identity": {
+                "cell_id": cell.cell_id,
+                "accuracy": cell.measurement.accuracy.value,
+                "workload": cell.workload.value,
+                "selector_contract": None if contract is None else contract.as_dict(),
+                "value_kind": "matrix-element",
+            },
+            "selector_component_sha256": _comparison_source_digest(
+                {
+                    "cell_id": cell.cell_id,
+                    "accuracy": cell.measurement.accuracy.value,
+                    "workload": cell.workload.value,
+                    "selector_contract": (
+                        None if contract is None else contract.as_dict()
+                    ),
+                    "value_kind": "matrix-element",
+                }
+            ),
+            "candidate_source_sha256": candidate_source,
+            "baseline_source_sha256": baseline_source,
+        },
+    )
+
+
+def reconcile_independent_authority(
+    cell: CellSpec,
+    measurement: Mapping[str, object],
+    authority: Mapping[str, object],
+    *,
+    authority_cell_id: str,
+) -> dict[str, object]:
+    """Resolve one durable unverified result against late authority evidence."""
+
+    initial_status = measurement.get("status")
+    if initial_status not in {
+        ResultStatus.UNVERIFIED.value,
+        ResultStatus.OK.value,
+    }:
+        raise RunnerError(
+            "late authority reconciliation requires measured candidate input"
+        )
+    validation = measurement.get("validation")
+    if not isinstance(validation, Mapping):
+        raise RunnerError("unverified result has no validation evidence")
+    record = validation.get(INDEPENDENT_AUTHORITY_FIELD)
+    if not isinstance(record, Mapping):
+        raise RunnerError("unverified result has no independent-authority record")
+    expected_ids = tuple(record.get("expected_cell_ids", ()))
+    canonical_ids = tuple(
+        candidate.cell_id for candidate in independent_numerical_authorities(cell)
+    )
+    previous_selected = record.get("selected_cell_id")
+    record_status = record.get("status")
+    if (
+        record.get("abi") != INDEPENDENT_AUTHORITY_ABI
+        or expected_ids != canonical_ids
+        or authority_cell_id not in canonical_ids
+        or authority.get("status") != ResultStatus.OK.value
+    ):
+        raise RunnerError("late independent-authority contract is invalid")
+    if initial_status == ResultStatus.UNVERIFIED.value:
+        if previous_selected is not None or record_status != "unavailable":
+            raise RunnerError("unverified independent-authority state is invalid")
+    elif (
+        not isinstance(previous_selected, str)
+        or previous_selected not in canonical_ids
+        or record_status != "verified"
+        or canonical_ids.index(authority_cell_id)
+        >= canonical_ids.index(previous_selected)
+    ):
+        raise RunnerError("late authority does not supersede the selected authority")
+
+    updated = dict(measurement)
+    mutable_validation = dict(validation)
+    try:
+        comparison = conditioned_measurement_comparison(cell, updated, authority)
+    except Exception as error:
+        mutable_validation[INDEPENDENT_AUTHORITY_FIELD] = (
+            _independent_authority_record(
+                canonical_ids,
+                selected_cell_id=authority_cell_id,
+                status="incompatible",
+                reason="successful-independent-authority-contract-incompatible",
+            )
+        )
+        mutable_validation["status"] = ResultStatus.VALIDATION_FAILED.value
+        updated["status"] = ResultStatus.VALIDATION_FAILED.value
+        updated["validation"] = mutable_validation
+        updated["failure"] = {
+            "kind": "IndependentAuthorityContractError",
+            "message": str(error),
+        }
+        return updated
+
+    mutable_validation["pointwise"] = comparison
+    passed = comparison.get("status") == ResultStatus.OK.value
+    mutable_validation[INDEPENDENT_AUTHORITY_FIELD] = _independent_authority_record(
+        canonical_ids,
+        selected_cell_id=authority_cell_id,
+        status="verified" if passed else "mismatch",
+        reason=(
+            "independent-authority-agreement"
+            if passed
+            else "independent-authority-mismatch"
+        ),
+    )
+    resolved_status = (
+        ResultStatus.OK.value if passed else ResultStatus.VALIDATION_FAILED.value
+    )
+    mutable_validation["status"] = resolved_status
+    updated["status"] = resolved_status
+    updated["validation"] = mutable_validation
+    updated["failure"] = (
+        None
+        if passed
+        else {
+            "kind": "IndependentAuthorityMismatch",
+            "message": "candidate disagrees with independent numerical authority",
+        }
+    )
+    return updated
 
 
 _PRECISION_DIAGNOSTIC_ABI = (
@@ -285,9 +673,7 @@ def _diagnostic_timing_context(
     return {
         "source": "copied-from-measurement",
         "recomputed": False,
-        "outer_wall_seconds_per_point": measurement.get(
-            "wall_seconds_per_point"
-        ),
+        "outer_wall_seconds_per_point": measurement.get("wall_seconds_per_point"),
         "evaluator_total_timing": (
             dict(evaluator_total) if isinstance(evaluator_total, Mapping) else None
         ),
@@ -310,9 +696,7 @@ def _diagnostic_authorities(
     for label, measurement in measurements.items():
         validation = measurement.get("validation")
         validation = validation if isinstance(validation, Mapping) else {}
-        component_only = baseline_uses_lc_common_component_authority(
-            cell, measurement
-        )
+        component_only = baseline_uses_lc_common_component_authority(cell, measurement)
         legacy = validation.get(_LEGACY_NUMERICAL_AUTHORITY_FIELD)
         source = (
             str(legacy.get("source"))
@@ -415,9 +799,7 @@ def _diagnostic_evaluation(
                 component.values[0][0][0]
             )
         except (AttributeError, IndexError, TypeError) as error:
-            raise RunnerError(
-                "diagnostic LC common component is not scalar"
-            ) from error
+            raise RunnerError("diagnostic LC common component is not scalar") from error
     return result
 
 
@@ -430,6 +812,7 @@ def _validation_failure_precision_diagnostic(
     baseline: Mapping[str, object] | None,
     peers: Mapping[str, Mapping[str, object]] | None = None,
     measurement_context: Mapping[str, object] | None = None,
+    complete_ladder: bool = False,
 ) -> dict[str, object]:
     """Attach a bounded, non-promoting p32/p200 explanation to three canaries."""
 
@@ -441,9 +824,7 @@ def _validation_failure_precision_diagnostic(
         retained_digest = point_digest(points)
         projector = getattr(runtime, "_diagnostic_project_onshell", None)
         if not callable(projector):
-            raise RunnerError(
-                "runtime does not expose diagnostic on-shell projection"
-            )
+            raise RunnerError("runtime does not expose diagnostic on-shell projection")
         diagnostic_points, raw_projection = projector(points, precision=200)
         if not isinstance(raw_projection, Mapping):
             raise RunnerError("runtime returned invalid diagnostic projection metadata")
@@ -562,6 +943,8 @@ def _validation_failure_precision_diagnostic(
             attempts.append(attempt)
             internal = candidate["internal_agreement"]
             if (
+                not complete_ladder
+                and
                 precision == 32
                 and isinstance(internal, Mapping)
                 and internal.get("status") == ResultStatus.OK.value
@@ -786,6 +1169,43 @@ def _runtime_identity_digest(identity: Mapping[str, object]) -> str:
     ).hexdigest()
 
 
+def _comparison_source_digest(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("ascii")
+    ).hexdigest()
+
+
+def _conditioned_binding(
+    cell: CellSpec,
+    points: object,
+    contract: SelectorContract | None,
+    *,
+    candidate_source_sha256: str,
+    baseline_source_sha256: str,
+    value_kind: str,
+) -> dict[str, object]:
+    selector_identity = {
+        "cell_id": cell.cell_id,
+        "accuracy": cell.measurement.accuracy.value,
+        "workload": cell.workload.value,
+        "selector_contract": None if contract is None else contract.as_dict(),
+        "value_kind": value_kind,
+    }
+    return {
+        "point_digest": point_digest(points),
+        "selector_component_identity": selector_identity,
+        "selector_component_sha256": _comparison_source_digest(selector_identity),
+        "candidate_source_sha256": candidate_source_sha256,
+        "baseline_source_sha256": baseline_source_sha256,
+    }
+
+
 def _validate_runtime_identity_postflight(
     initial: Mapping[str, object],
     postflight: Mapping[str, object],
@@ -856,6 +1276,8 @@ def measure_pyamplicol_cell(
     settings: RunnerSettings,
     repo_root: Path,
     baseline: Mapping[str, object] | None,
+    expected_authority_cell_ids: Sequence[str] = (),
+    selected_authority_cell_id: str | None = None,
     validation_peers: Mapping[str, Mapping[str, object]] | None = None,
     selector_provider: Mapping[str, object] | None = None,
     prepared_model_path: Path | None = None,
@@ -863,6 +1285,25 @@ def measure_pyamplicol_cell(
     phase_reporter: WorkerPhaseReporter | None = None,
 ) -> dict[str, object]:
     """Generate or retime one complete-coverage pyAmpliCol artifact."""
+
+    canonical_authority_ids = tuple(
+        authority.cell_id for authority in independent_numerical_authorities(cell)
+    )
+    authority_ids = tuple(expected_authority_cell_ids)
+    if authority_ids != canonical_authority_ids:
+        raise RunnerError(
+            "expected numerical authorities differ from the canonical catalog chain"
+        )
+    if selected_authority_cell_id is not None and (
+        selected_authority_cell_id not in authority_ids or baseline is None
+    ):
+        raise RunnerError("selected numerical authority is invalid")
+    if authority_ids and (baseline is not None) != (
+        selected_authority_cell_id is not None
+    ):
+        raise RunnerError(
+            "compiled/eager baseline and selected numerical authority differ"
+        )
 
     _require_nonzero_lc_all_flow_baseline(cell, baseline)
     contract = _measurement_selector_contract(cell, baseline, selector_provider)
@@ -935,8 +1376,9 @@ def measure_pyamplicol_cell(
     benchmark_evidence = profile.pop("benchmark_evidence")
     if phase_reporter is not None:
         phase_reporter.validation_started()
+    resolved_sum = profile.pop("resolved_sum_validation")
     validation: dict[str, object] = {
-        "resolved_sum": profile.pop("resolved_sum_validation"),
+        "resolved_sum": resolved_sum,
         DIRECT_AGREEMENT_FIELD: [],
     }
     if cell.measurement.accuracy is Accuracy.LC:
@@ -951,73 +1393,183 @@ def measure_pyamplicol_cell(
         ModelKey.SCALAR_CONTACT,
         ModelKey.SCALAR_GRAVITY,
     }
+    diagnostic_without_authority = (
+        cell.measurement.execution_mode
+        in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
+        and selected_authority_cell_id is None
+    )
     requires_high_precision = scalar or (
-        baseline is None and cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+        baseline is None
+        and cell.measurement.execution_mode
+        in {
+            ExecutionMode.RECURRENCE,
+            ExecutionMode.COMPILED,
+            ExecutionMode.EAGER,
+        }
     )
     if requires_high_precision:
-        high_precision = runtime.evaluate(
+        high_precision_resolved = resolved_sum_validation(
+            runtime,
             points,
+            cell=cell,
+            selector_contract=contract,
             precision=32,
-            **_selector_kwargs(cell, contract),
         )
-        if not high_precision:
-            raise RunnerError("high-precision evaluation returned no values")
-        high_precision_value = _real_nonnegative(high_precision[0])
+        high_precision_records = high_precision_resolved.get("points")
+        candidate_records = resolved_sum.get("points")
+        if (
+            not isinstance(high_precision_records, list)
+            or len(high_precision_records) != 1
+            or not isinstance(candidate_records, list)
+            or len(candidate_records) != 1
+            or not isinstance(high_precision_records[0], Mapping)
+            or not isinstance(candidate_records[0], Mapping)
+        ):
+            raise RunnerError("high-precision validation requires one resolved point")
+        high_record = high_precision_records[0]
+        candidate_record = candidate_records[0]
+        high_precision_value = float(high_record["candidate"])
+        candidate_source = resolved_sum.get("resolved_source_sha256")
+        baseline_source = high_precision_resolved.get("resolved_source_sha256")
+        if not isinstance(candidate_source, str) or not isinstance(
+            baseline_source, str
+        ):
+            raise RunnerError("high-precision resolved source binding is unavailable")
+        validation["high_precision_resolved_sum"] = high_precision_resolved
         validation["high_precision"] = pointwise_validation(
             float(profile["matrix_element"]),
             high_precision_value,
-        )
-    if (
-        baseline is None
-        and not scalar
-        and cell.measurement.execution_mode is not ExecutionMode.RECURRENCE
-    ):
-        raise RunnerError(
-            "non-scalar measurement without a canonical baseline must use "
-            "recurrence high-precision validation"
+            candidate_scale=float(candidate_record["candidate_scale"]),
+            baseline_scale=float(high_record["candidate_scale"]),
+            candidate_scale_source="resolved-component-l1-binary64",
+            baseline_scale_source="resolved-component-l1-p32",
+            comparison_binding=_conditioned_binding(
+                cell,
+                points,
+                contract,
+                candidate_source_sha256=candidate_source,
+                baseline_source_sha256=baseline_source,
+                value_kind="matrix-element-p16-versus-p32",
+            ),
         )
     _attach_baseline_validation(
         cell,
         validation,
         candidate_matrix_element=float(profile["matrix_element"]),
         baseline=baseline,
+        points=points,
+        contract=contract,
     )
+    authority_failure: dict[str, str] | None = None
+    if cell.measurement.execution_mode in {
+        ExecutionMode.COMPILED,
+        ExecutionMode.EAGER,
+    }:
+        if selected_authority_cell_id is None:
+            validation[INDEPENDENT_AUTHORITY_FIELD] = (
+                _independent_authority_record(
+                    authority_ids,
+                    selected_cell_id=None,
+                    status="unavailable",
+                    reason="no-successful-independent-authority",
+                )
+            )
+        else:
+            assert baseline is not None
+            candidate_view = {
+                "matrix_element": float(profile["matrix_element"]),
+                "selector_contract": None if contract is None else contract.as_dict(),
+                "validation": validation,
+            }
+            try:
+                comparison = conditioned_measurement_comparison(
+                    cell,
+                    candidate_view,
+                    baseline,
+                )
+            except Exception as error:
+                validation[INDEPENDENT_AUTHORITY_FIELD] = (
+                    _independent_authority_record(
+                        authority_ids,
+                        selected_cell_id=selected_authority_cell_id,
+                        status="incompatible",
+                        reason=(
+                            "successful-independent-authority-contract-incompatible"
+                        ),
+                    )
+                )
+                validation["authority_contract_error"] = {
+                    "kind": type(error).__name__,
+                    "message": str(error),
+                }
+                authority_failure = {
+                    "kind": "IndependentAuthorityContractError",
+                    "message": str(error),
+                }
+            else:
+                validation["pointwise"] = comparison
+                passed = comparison.get("status") == ResultStatus.OK.value
+                validation[INDEPENDENT_AUTHORITY_FIELD] = (
+                    _independent_authority_record(
+                        authority_ids,
+                        selected_cell_id=selected_authority_cell_id,
+                        status="verified" if passed else "mismatch",
+                        reason=(
+                            "independent-authority-agreement"
+                            if passed
+                            else "independent-authority-mismatch"
+                        ),
+                    )
+                )
+                if not passed:
+                    authority_failure = {
+                        "kind": "IndependentAuthorityMismatch",
+                        "message": (
+                            "candidate disagrees with independent numerical authority"
+                        ),
+                    }
     statuses = {
         str(record.get("status"))
         for record in validation.values()
         if isinstance(record, Mapping)
     }
+    internal_failure = ResultStatus.VALIDATION_FAILED.value in statuses
     validation["status"] = (
         ResultStatus.VALIDATION_FAILED.value
-        if ResultStatus.VALIDATION_FAILED.value in statuses
-        else ResultStatus.OK.value
+        if internal_failure or authority_failure is not None
+        else (
+            ResultStatus.UNVERIFIED.value
+            if diagnostic_without_authority
+            else ResultStatus.OK.value
+        )
     )
     if (
         validation["status"] == ResultStatus.VALIDATION_FAILED.value
         and _precision_diagnostic_enabled(cell)
-    ):
-        validation["precision_diagnostic"] = (
-            _validation_failure_precision_diagnostic(
-                runtime,
-                points,
-                cell=cell,
-                contract=contract,
-                baseline=baseline,
-                peers=validation_peers,
-                measurement_context={
-                    "wall_seconds_per_point": profile.get(
-                        "wall_seconds_per_point"
-                    ),
-                    "provenance": {
-                        "execution_timing": execution_timing,
-                        "evaluator_total_timing": evaluator_total_timing,
-                    },
+    ) or validation["status"] == ResultStatus.UNVERIFIED.value:
+        validation["precision_diagnostic"] = _validation_failure_precision_diagnostic(
+            runtime,
+            points,
+            cell=cell,
+            contract=contract,
+            baseline=baseline,
+            peers=validation_peers,
+            measurement_context={
+                "wall_seconds_per_point": profile.get("wall_seconds_per_point"),
+                "provenance": {
+                    "execution_timing": execution_timing,
+                    "evaluator_total_timing": evaluator_total_timing,
                 },
-            )
+            },
+            complete_ladder=(
+                validation["status"] == ResultStatus.UNVERIFIED.value
+            ),
         )
     status = str(profile["status"])
-    if ResultStatus.VALIDATION_FAILED.value in statuses:
+    if validation["status"] == ResultStatus.VALIDATION_FAILED.value:
         status = ResultStatus.VALIDATION_FAILED.value
+    elif validation["status"] == ResultStatus.UNVERIFIED.value:
+        status = ResultStatus.UNVERIFIED.value
     runtime_identity_postflight = runtime_identity_payload(
         cell,
         runtime,
@@ -1107,8 +1659,13 @@ def measure_pyamplicol_cell(
             "failure": None,
         }
     )
-    if status != ResultStatus.OK.value:
+    if status == ResultStatus.UNVERIFIED.value:
         measurement["failure"] = {
+            "kind": "IndependentAuthorityUnavailable",
+            "message": "no successful independent numerical authority is available",
+        }
+    elif status != ResultStatus.OK.value:
+        measurement["failure"] = authority_failure or {
             "kind": "MeasurementValidationError",
             "message": "candidate or same-artifact numerical validation failed",
         }
@@ -1210,11 +1767,13 @@ def load_measurement(
 __all__ = [
     "attach_validation_failure_precision_diagnostic",
     "baseline_uses_lc_common_component_authority",
+    "conditioned_measurement_comparison",
     "failure_measurement",
     "file_digest",
     "generated_artifact_from_measurement",
     "load_measurement",
     "measure_pyamplicol_cell",
+    "reconcile_independent_authority",
     "shared_validation_points",
     "source_revision",
 ]

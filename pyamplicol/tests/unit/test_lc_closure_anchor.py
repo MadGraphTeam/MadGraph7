@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import replace
 
 import pytest
@@ -8,13 +9,18 @@ import pytest
 from pyamplicol.color import build_color_plan
 from pyamplicol.generation.dag_algorithms import (
     _canonical_open_line_alias_owner_sector_ids,
+    _canonical_open_line_alias_owner_sector_map,
     _physical_sink_sector_ids,
+    _retain_canonical_open_line_alias_roots,
     infer_minimal_coupling_order_limits,
     prune_dag_to_amplitude_roots,
 )
 from pyamplicol.generation.dag_color import ColorEngine
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.dag_ordering import _closure_candidate_splits
+from pyamplicol.generation.dag_types import AmplitudeRoot, GenericDAG
+from pyamplicol.generation.helicity_replay import _SemanticAmplitudeRootSignature
+from pyamplicol.models._physics_ir import ContractionIR
 from pyamplicol.models.builtin.model import BuiltinSMModel
 from pyamplicol.models.builtin.process_ir import build_process_ir
 
@@ -25,6 +31,123 @@ def _sector_for_word(expression: str, word: tuple[int, ...]):
     return process, next(
         sector for sector in plan.sectors if sector.word_labels == word
     )
+
+
+def _alias_root_test_dag(
+    sector_ids: tuple[int, ...],
+) -> GenericDAG:
+    process = build_process_ir(
+        "d d~ > t t~ g g",
+        color_accuracy="full",
+    )
+    plan = build_color_plan(process, color_accuracy="full")
+    contraction = ContractionIR(
+        name="alias-root-test",
+        left_basis="scalar",
+        right_basis="scalar",
+        coefficients=((1.0, 0.0),),
+    )
+    roots = tuple(
+        AmplitudeRoot(
+            id=root_id,
+            kind="direct",
+            left_id=root_id,
+            right_id=root_id,
+            color_weight=(1.0, 0.0),
+            contraction_ir=contraction,
+            color_sector_id=sector_id,
+        )
+        for root_id, sector_id in enumerate(sector_ids)
+    )
+    return GenericDAG(
+        process=process,
+        color_plan=plan,
+        currents=(),
+        sources=(),
+        interactions=(),
+        amplitude_roots=roots,
+    )
+
+
+def _first_open_line_alias_pair(dag: GenericDAG) -> tuple[int, int]:
+    owner_by_sector = _canonical_open_line_alias_owner_sector_map(dag.color_plan)
+    aliases_by_owner: dict[int, list[int]] = {}
+    for sector_id, owner_id in owner_by_sector.items():
+        aliases_by_owner.setdefault(owner_id, []).append(sector_id)
+    pair = next(
+        tuple(sorted(sector_ids))[:2]
+        for sector_ids in aliases_by_owner.values()
+        if len(sector_ids) >= 2
+    )
+    assert len(pair) == 2
+    return pair[0], pair[1]
+
+
+def _alias_signature(label: str) -> _SemanticAmplitudeRootSignature:
+    return _SemanticAmplitudeRootSignature(
+        proof_digest=label * 64,
+        selector_states=(),
+        factor=(1.0, 0.0),
+    )
+
+
+def test_proof_identical_aliases_reject_unequal_root_multiplicity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first, second = _first_open_line_alias_pair(_alias_root_test_dag(()))
+    dag = _alias_root_test_dag((first, first, second))
+    signature = _alias_signature("a")
+    monkeypatch.setattr(
+        "pyamplicol.generation.dag_algorithms."
+        "_semantic_amplitude_root_alias_signatures",
+        lambda *_args, **_kwargs: (signature, signature, signature),
+    )
+
+    with pytest.raises(ValueError, match="unequal root multiplicities"):
+        _retain_canonical_open_line_alias_roots(dag, BuiltinSMModel())
+
+
+def test_proof_identical_aliases_with_equal_multiplicity_still_collapse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first, second = _first_open_line_alias_pair(_alias_root_test_dag(()))
+    dag = _alias_root_test_dag((first, first, second, second))
+    signature = _alias_signature("a")
+    monkeypatch.setattr(
+        "pyamplicol.generation.dag_algorithms."
+        "_semantic_amplitude_root_alias_signatures",
+        lambda *_args, **_kwargs: (signature,) * 4,
+    )
+
+    retained = _retain_canonical_open_line_alias_roots(dag, BuiltinSMModel())
+
+    owner = _canonical_open_line_alias_owner_sector_map(dag.color_plan)[first]
+    assert len(retained.amplitude_roots) == 2
+    assert {root.color_sector_id for root in retained.amplitude_roots} == {owner}
+
+
+def test_distinct_alias_proof_signatures_remain_a_union(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first, second = _first_open_line_alias_pair(_alias_root_test_dag(()))
+    dag = _alias_root_test_dag((first, first, second, second))
+    signature_a = _alias_signature("a")
+    signature_b = _alias_signature("b")
+    monkeypatch.setattr(
+        "pyamplicol.generation.dag_algorithms."
+        "_semantic_amplitude_root_alias_signatures",
+        lambda *_args, **_kwargs: (
+            signature_a,
+            signature_b,
+            signature_a,
+            signature_b,
+        ),
+    )
+
+    retained = _retain_canonical_open_line_alias_roots(dag, BuiltinSMModel())
+
+    assert len(retained.amplitude_roots) == 2
+    assert {root.left_id for root in retained.amplitude_roots} == {0, 1}
 
 
 def test_two_line_closure_rotates_public_blocks_from_source_slot_zero() -> None:
@@ -299,15 +422,20 @@ def test_three_open_line_private_sinks_are_resolved_per_sector() -> None:
             color_plan=plan,
             max_coupling_orders=limits,
         )
-        # Sector 24 is the smallest public alias in its class but is rootless;
-        # ownership is therefore selected from the sectors that really close.
-        root_owner_ids = frozenset({0, 6, 12, 18, 25, 30})
-        assert len(dag.amplitude_roots) == 48
+        # The public tensor owners remain stable, including rootless sector 24.
+        # Semantic closure ownership retains both distinct traversal families
+        # where they exist instead of deleting an entire alias sector.
+        root_owner_ids = frozenset({0, 6, 12, 18, 24, 30})
+        assert len(dag.amplitude_roots) == 80
         assert {root.color_sector_id for root in dag.amplitude_roots} == root_owner_ids
-        assert all(
-            sum(root.color_sector_id == sector_id for root in dag.amplitude_roots) == 8
-            for sector_id in root_owner_ids
-        )
+        assert Counter(
+            root.color_sector_id for root in dag.amplitude_roots
+        ) == Counter({0: 16, 6: 16, 12: 16, 18: 8, 24: 8, 30: 16})
+        assert {
+            dag.currents[root.right_id].index.external_labels
+            for root in dag.amplitude_roots
+            if root.color_sector_id == 0
+        } == {(4,), (6,)}
         backward_dag = compile_generic_dag(
             process,
             model=model,
@@ -318,6 +446,74 @@ def test_three_open_line_private_sinks_are_resolved_per_sector() -> None:
         assert {
             root.color_sector_id for root in backward_dag.amplitude_roots
         } == root_owner_ids
+        assert len(backward_dag.amplitude_roots) == len(dag.amplitude_roots)
+
+
+@pytest.mark.parametrize("accuracy", ("nlc", "full"))
+def test_identical_three_line_aliases_preserve_exchange_closures(
+    accuracy: str,
+) -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir(
+        "d d~ > u u~ u u~",
+        color_accuracy=accuracy,
+    )
+    limits = infer_minimal_coupling_order_limits(process, model=model)
+
+    dag = compile_generic_dag(
+        process,
+        model=model,
+        max_coupling_orders=limits,
+    )
+    backward_dag = compile_generic_dag(
+        process,
+        model=model,
+        max_coupling_orders=limits,
+        backward_live_planning=True,
+    )
+
+    expected_by_owner = Counter({0: 24, 6: 24, 12: 20, 18: 20, 24: 20, 30: 20})
+    assert Counter(root.color_sector_id for root in dag.amplitude_roots) == (
+        expected_by_owner
+    )
+    assert Counter(
+        root.color_sector_id for root in backward_dag.amplitude_roots
+    ) == expected_by_owner
+    assert all(
+        {
+            dag.currents[root.right_id].index.external_labels
+            for root in dag.amplitude_roots
+            if root.color_sector_id == owner
+        }
+        == {(4,), (6,)}
+        for owner in expected_by_owner
+    )
+
+
+@pytest.mark.parametrize("accuracy", ("nlc", "full"))
+def test_four_open_line_aliases_retain_semantic_closure_union(
+    accuracy: str,
+) -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir(
+        "d d~ > u u~ s s~ c c~",
+        color_accuracy=accuracy,
+    )
+    limits = infer_minimal_coupling_order_limits(process, model=model)
+    dag = compile_generic_dag(
+        process,
+        model=model,
+        max_coupling_orders=limits,
+        online_evaluation_reuse=True,
+        backward_live_planning=True,
+    )
+
+    counts = Counter(root.color_sector_id for root in dag.amplitude_roots)
+    assert len(dag.color_plan.sectors) == 576
+    assert len(counts) == 24
+    assert len(dag.amplitude_roots) == 672
+    assert set(counts.values()) == {8, 24, 32, 48}
+    assert all(sector_id % 24 == 0 for sector_id in counts)
 
 
 def test_full_colour_pure_gluon_closure_remains_on_public_sinks() -> None:
@@ -341,5 +537,10 @@ def test_full_colour_pure_gluon_closure_remains_on_public_sinks() -> None:
         plan,
         (sector.id for sector in plan.sectors),
     ) == frozenset(sector.id for sector in plan.sectors)
+    dag = compile_generic_dag(process, model=model, color_plan=plan)
+    assert len(dag.amplitude_roots) == 96
+    assert Counter(root.color_sector_id for root in dag.amplitude_roots) == Counter(
+        {sector.id: 16 for sector in plan.sectors}
+    )
     with pytest.raises(ValueError, match="absent from the color plan: 999"):
         _canonical_open_line_alias_owner_sector_ids(plan, (999,))

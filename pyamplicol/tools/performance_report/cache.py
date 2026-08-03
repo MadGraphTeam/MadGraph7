@@ -13,12 +13,21 @@ from typing import Any
 
 from .agreements import (
     DIRECT_AGREEMENT_FIELD,
+    INDEPENDENT_AUTHORITY_ABI,
+    INDEPENDENT_AUTHORITY_FIELD,
     LC_COMMON_COMPONENT_FIELD,
+    incoming_agreement_edges,
+    independent_numerical_authorities,
     validate_direct_agreement_records,
     validate_lc_common_component,
 )
 from .catalog import REPORT_CATALOG, ReportCatalog
-from .models import Accuracy, CellSpec, ResultStatus
+from .models import Accuracy, CellSpec, ExecutionMode, ResultStatus
+from .runner import (
+    CONDITIONED_COMPARISON_ABI,
+    validate_conditioned_comparison_record,
+    validate_resolved_sum_validation_record,
+)
 from .timing import (
     ARENA_UNAVAILABLE_EXECUTION_TIMING_ABI,
     EVALUATOR_TOTAL_TIMING_KEY,
@@ -57,6 +66,9 @@ _RUNTIME_POSTFLIGHT_FIELDS = frozenset(
         "runtime_identity_postflight_loaded_module_origin_policy",
         "runtime_identity_postflight_match",
     }
+)
+_PRECISION_DIAGNOSTIC_ABI = (
+    "pyamplicol-report-validation-failure-precision-diagnostic-v2"
 )
 
 
@@ -347,6 +359,202 @@ def _validate_execution_timing(
         )
 
 
+def _validate_conditioned_measurement_bindings(
+    validation: Mapping[str, object],
+    *,
+    expected_cell: CellSpec | None,
+    selector_contract: object,
+) -> None:
+    resolved = validation.get("resolved_sum")
+    if not isinstance(resolved, Mapping):
+        return
+    point_identity = resolved.get("point_digest")
+    resolved_source = resolved.get("resolved_source_sha256")
+    high_resolved = validation.get("high_precision_resolved_sum")
+    high_source = (
+        high_resolved.get("resolved_source_sha256")
+        if isinstance(high_resolved, Mapping)
+        else None
+    )
+    component = validation.get(LC_COMMON_COMPONENT_FIELD)
+    for field in ("pointwise", "high_precision"):
+        record = validation.get(field)
+        if not (
+            isinstance(record, Mapping)
+            and record.get("abi") == CONDITIONED_COMPARISON_ABI
+        ):
+            continue
+        binding = _required_mapping(
+            record.get("comparison_binding"),
+            f"validation.{field}.comparison_binding",
+        )
+        identity = _required_mapping(
+            binding.get("selector_component_identity"),
+            f"validation.{field}.selector_component_identity",
+        )
+        if binding.get("point_digest") != point_identity:
+            raise ValueError(f"validation.{field} is bound to a different point")
+        value_kind = identity.get("value_kind")
+        if expected_cell is not None:
+            expected_identity = {
+                "cell_id": expected_cell.cell_id,
+                "accuracy": expected_cell.measurement.accuracy.value,
+                "workload": expected_cell.workload.value,
+                "selector_contract": selector_contract,
+                "value_kind": value_kind,
+            }
+            for key, expected in expected_identity.items():
+                if identity.get(key) != expected:
+                    raise ValueError(
+                        f"validation.{field} selector/component identity differs"
+                    )
+        if value_kind == LC_COMMON_COMPONENT_FIELD:
+            if not isinstance(component, Mapping):
+                raise ValueError(
+                    f"validation.{field} has no LC component scale source"
+                )
+            component_identity = identity.get("component_identity")
+            if not isinstance(component_identity, Mapping):
+                raise ValueError(
+                    f"validation.{field} LC component identity is unavailable"
+                )
+            for key in ("point_digest", "helicity_ids", "color_flow_ids"):
+                if component_identity.get(key) != component.get(key):
+                    raise ValueError(
+                        f"validation.{field} LC component identity differs"
+                    )
+            expected_candidate_source = digest_json(component)
+        else:
+            expected_candidate_source = resolved_source
+        if binding.get("candidate_source_sha256") != expected_candidate_source:
+            raise ValueError(
+                f"validation.{field} candidate scale source differs from resolved "
+                "evidence"
+            )
+        if field == "high_precision" and (
+            value_kind != "matrix-element-p16-versus-p32"
+            or binding.get("baseline_source_sha256") != high_source
+        ):
+            raise ValueError(
+                "validation.high_precision source binding differs from p32 evidence"
+            )
+
+
+def _validate_independent_authority_record(
+    validation: Mapping[str, object],
+    *,
+    expected_cell: CellSpec,
+    expected_status: str,
+) -> None:
+    raw = validation.get(INDEPENDENT_AUTHORITY_FIELD)
+    record = _required_mapping(raw, f"validation.{INDEPENDENT_AUTHORITY_FIELD}")
+    expected_fields = {
+        "abi",
+        "expected_cell_ids",
+        "selected_cell_id",
+        "status",
+        "reason",
+        "same_artifact_diagnostics_are_authority",
+    }
+    canonical_ids = [
+        cell.cell_id for cell in independent_numerical_authorities(expected_cell)
+    ]
+    if (
+        set(record) != expected_fields
+        or record.get("abi") != INDEPENDENT_AUTHORITY_ABI
+        or record.get("expected_cell_ids") != canonical_ids
+        or record.get("status") != expected_status
+        or record.get("same_artifact_diagnostics_are_authority") is not False
+    ):
+        raise ValueError("independent-authority record is invalid")
+    selected = record.get("selected_cell_id")
+    reason = record.get("reason")
+    if expected_status == "unavailable":
+        if selected is not None or reason != "no-successful-independent-authority":
+            raise ValueError("unavailable independent-authority record is invalid")
+    elif (
+        not isinstance(selected, str)
+        or selected not in canonical_ids
+        or not isinstance(reason, str)
+        or not reason
+    ):
+        raise ValueError("selected independent-authority record is invalid")
+
+
+def _validate_unverified_precision_diagnostic(value: object) -> None:
+    record = _required_mapping(value, "validation.precision_diagnostic")
+    if (
+        record.get("abi") != _PRECISION_DIAGNOSTIC_ABI
+        or record.get("promotes_measurement") is not False
+    ):
+        raise ValueError("unverified precision diagnostic is invalid")
+    if record.get("status") == "unavailable":
+        error = _required_mapping(
+            record.get("error"),
+            "validation.precision_diagnostic.error",
+        )
+        if not isinstance(error.get("kind"), str) or not isinstance(
+            error.get("message"), str
+        ):
+            raise ValueError("unavailable precision diagnostic has no error")
+        return
+    if record.get("status") != "diagnostic-only":
+        raise ValueError("unverified precision diagnostic status is invalid")
+    attempts = record.get("attempts")
+    if not isinstance(attempts, list) or [
+        attempt.get("precision_digits")
+        if isinstance(attempt, Mapping)
+        else None
+        for attempt in attempts
+    ] != [32, 200]:
+        raise ValueError("unverified precision diagnostic must retain p32 and p200")
+    if any(
+        attempt.get("status") not in {"evaluated", "unavailable"}
+        for attempt in attempts
+        if isinstance(attempt, Mapping)
+    ) or any(not isinstance(attempt, Mapping) for attempt in attempts):
+        raise ValueError("unverified precision diagnostic attempt is invalid")
+
+
+def _validate_unverified_direct_agreement_coverage(
+    validation: Mapping[str, object],
+    *,
+    expected_cell: CellSpec,
+) -> None:
+    direct_records = validation.get(DIRECT_AGREEMENT_FIELD)
+    if not isinstance(direct_records, list):
+        raise ValueError("unverified result has no direct-agreement records")
+    observed_edges = {
+        (
+            record.get("edge_kind"),
+            record.get("baseline_cell_id"),
+            record.get("candidate_cell_id"),
+        )
+        for record in direct_records
+        if isinstance(record, Mapping)
+    }
+    if any(
+        record.get("status") != ResultStatus.OK.value
+        for record in direct_records
+        if isinstance(record, Mapping)
+    ):
+        raise ValueError("unverified result has a failed direct-agreement record")
+    catalog_edges = incoming_agreement_edges(expected_cell)
+    required_edges = {
+        (edge.kind, edge.baseline.cell_id, edge.candidate.cell_id)
+        for edge in catalog_edges
+        if edge.required
+    }
+    allowed_edges = {
+        (edge.kind, edge.baseline.cell_id, edge.candidate.cell_id)
+        for edge in catalog_edges
+    }
+    if not required_edges.issubset(observed_edges) or not (
+        observed_edges <= allowed_edges
+    ):
+        raise ValueError("unverified result direct-agreement coverage is incomplete")
+
+
 def validate_measurement(
     value: object,
     *,
@@ -383,7 +591,8 @@ def validate_measurement(
         expected = empty_measurement()
         if dict(measurement) != expected:
             raise ValueError("not_available measurement must be the canonical reset")
-    elif status is ResultStatus.OK:
+    elif status in {ResultStatus.OK, ResultStatus.UNVERIFIED}:
+        retained_diagnostic = status is ResultStatus.UNVERIFIED
         for field in (
             "generation_seconds",
             "wall_seconds_per_point",
@@ -395,10 +604,32 @@ def validate_measurement(
             "provenance",
         ):
             if measurement[field] is None:
-                raise ValueError(f"successful measurement requires {field}")
+                raise ValueError(f"measured result requires {field}")
         validation = _required_mapping(measurement["validation"], "validation")
-        if validation.get("status") != ResultStatus.OK.value:
-            raise ValueError("successful measurement requires successful validation")
+        expected_validation_status = (
+            ResultStatus.UNVERIFIED.value
+            if retained_diagnostic
+            else ResultStatus.OK.value
+        )
+        if validation.get("status") != expected_validation_status:
+            raise ValueError("measurement validation status is inconsistent")
+        if "resolved_sum" in validation:
+            validate_resolved_sum_validation_record(validation["resolved_sum"])
+        for field in ("pointwise", "high_precision"):
+            if field in validation:
+                validate_conditioned_comparison_record(
+                    validation[field],
+                    require_binding=True,
+                )
+        if "high_precision_resolved_sum" in validation:
+            validate_resolved_sum_validation_record(
+                validation["high_precision_resolved_sum"]
+            )
+        _validate_conditioned_measurement_bindings(
+            validation,
+            expected_cell=expected_cell,
+            selector_contract=measurement.get("selector_contract"),
+        )
         validate_direct_agreement_records(
             validation.get(DIRECT_AGREEMENT_FIELD),
             expected_candidate_id=(
@@ -409,9 +640,7 @@ def validate_measurement(
         if expected_cell is not None:
             expects_lc = expected_cell.measurement.accuracy is Accuracy.LC
             if expects_lc and not isinstance(selector_contract, Mapping):
-                raise ValueError(
-                    "successful LC measurement requires selector_contract"
-                )
+                raise ValueError("successful LC measurement requires selector_contract")
             if not expects_lc and selector_contract is not None:
                 raise ValueError(
                     "successful non-LC measurement cannot contain selector_contract"
@@ -430,9 +659,69 @@ def validate_measurement(
                 selector_contract=selector_contract,
             )
         elif validation.get(LC_COMMON_COMPONENT_FIELD) is not None:
-            raise ValueError(
-                "non-LC measurement cannot contain lc_common_component"
+            raise ValueError("non-LC measurement cannot contain lc_common_component")
+        if retained_diagnostic:
+            if (
+                expected_cell is None
+                or expected_cell.measurement.execution_mode
+                not in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
+            ):
+                raise ValueError(
+                    "unverified timing requires a compiled/eager catalog cell"
+                )
+            _validate_independent_authority_record(
+                validation,
+                expected_cell=expected_cell,
+                expected_status="unavailable",
             )
+            _validate_unverified_direct_agreement_coverage(
+                validation,
+                expected_cell=expected_cell,
+            )
+            resolved = _required_mapping(
+                validation.get("resolved_sum"),
+                "validation.resolved_sum",
+            )
+            high_resolved = _required_mapping(
+                validation.get("high_precision_resolved_sum"),
+                "validation.high_precision_resolved_sum",
+            )
+            high_precision = _required_mapping(
+                validation.get("high_precision"),
+                "validation.high_precision",
+            )
+            if any(
+                record.get("status") != ResultStatus.OK.value
+                for record in (resolved, high_resolved, high_precision)
+            ):
+                raise ValueError(
+                    "unverified result requires successful same-artifact diagnostics"
+                )
+            _validate_unverified_precision_diagnostic(
+                validation.get("precision_diagnostic")
+            )
+        elif INDEPENDENT_AUTHORITY_FIELD in validation:
+            if expected_cell is None:
+                raise ValueError(
+                    "independent-authority evidence requires a catalog cell"
+                )
+            _validate_independent_authority_record(
+                validation,
+                expected_cell=expected_cell,
+                expected_status="verified",
+            )
+            pointwise = _required_mapping(
+                validation.get("pointwise"),
+                "validation.pointwise",
+            )
+            if pointwise.get("status") != ResultStatus.OK.value:
+                raise ValueError(
+                    "verified independent-authority comparison is not successful"
+                )
+            if "precision_diagnostic" in validation:
+                _validate_unverified_precision_diagnostic(
+                    validation.get("precision_diagnostic")
+                )
         provenance = _required_mapping(
             measurement["provenance"], "measurement.provenance"
         )
@@ -446,9 +735,7 @@ def validate_measurement(
                 raw_execution_timing,
                 execution_seconds_per_point=execution_seconds,
                 measurement_sample_count=int(measurement["sample_count"]),
-                arena_profile_evidence=provenance.get(
-                    "arena_profile_evidence"
-                ),
+                arena_profile_evidence=provenance.get("arena_profile_evidence"),
             )
         elif execution_seconds is None and "source_revision" in provenance:
             raise ValueError(
@@ -464,7 +751,18 @@ def validate_measurement(
                 "authenticated accumulated evaluator-total record"
             )
         _validate_runtime_identity_postflight(provenance, validation)
-        if measurement["failure"] is not None:
+        if retained_diagnostic:
+            failure = _required_mapping(
+                measurement["failure"],
+                "measurement.failure",
+            )
+            if set(failure) != {"kind", "message"} or failure.get(
+                "kind"
+            ) != "IndependentAuthorityUnavailable" or not isinstance(
+                failure.get("message"), str
+            ) or not failure.get("message"):
+                raise ValueError("unverified result failure metadata is invalid")
+        elif measurement["failure"] is not None:
             raise ValueError("successful measurement cannot contain failure metadata")
     elif measurement["failure"] is None:
         raise ValueError("non-success measurement requires failure metadata")
@@ -475,9 +773,7 @@ def validate_cache(
     *,
     expected_cells: Iterable[CellSpec] | None = None,
 ) -> None:
-    expected_cell_list = (
-        None if expected_cells is None else tuple(expected_cells)
-    )
+    expected_cell_list = None if expected_cells is None else tuple(expected_cells)
     expected_by_id = (
         {}
         if expected_cell_list is None
@@ -530,7 +826,26 @@ def validate_cache(
 def schema_document() -> dict[str, object]:
     statuses = [status.value for status in ResultStatus]
     nullable_number: dict[str, Any] = {"type": ["number", "null"], "minimum": 0}
-    direct_agreement_record: dict[str, Any] = {
+    direct_identity_properties: dict[str, Any] = {
+        "edge_kind": {
+            "enum": [
+                "builtin-ufo-recurrence",
+                "z-recurrence-cross-mode",
+                "lc-cross-layout-component",
+                "lc-legacy-pyamplicol-component",
+            ]
+        },
+        "value_kind": {"enum": ["matrix_element", LC_COMMON_COMPONENT_FIELD]},
+        "baseline_cell_id": {"type": "string", "minLength": 1},
+        "candidate_cell_id": {"type": "string", "minLength": 1},
+        "status": {"enum": statuses},
+        "candidate": {"type": "number"},
+        "baseline": {"type": "number"},
+        "absolute_difference": {"type": "number", "minimum": 0},
+        "relative_difference": {"type": "number", "minimum": 0},
+        "relative_tolerance": {"type": "number", "minimum": 0},
+    }
+    direct_v1: dict[str, Any] = {
         "type": "object",
         "required": [
             "abi",
@@ -548,29 +863,50 @@ def schema_document() -> dict[str, object]:
         ],
         "properties": {
             "abi": {"const": "pyamplicol-report-direct-agreement-v1"},
-            "edge_kind": {
-                "enum": [
-                    "builtin-ufo-recurrence",
-                    "z-recurrence-cross-mode",
-                    "lc-cross-layout-component",
-                    "lc-legacy-pyamplicol-component",
-                ]
-            },
-            "value_kind": {
-                "enum": ["matrix_element", LC_COMMON_COMPONENT_FIELD]
-            },
-            "baseline_cell_id": {"type": "string", "minLength": 1},
-            "candidate_cell_id": {"type": "string", "minLength": 1},
-            "status": {"enum": statuses},
-            "candidate": {"type": "number"},
-            "baseline": {"type": "number"},
-            "absolute_difference": {"type": "number", "minimum": 0},
-            "relative_difference": {"type": "number", "minimum": 0},
-            "relative_tolerance": {"type": "number", "minimum": 0},
+            **direct_identity_properties,
             "absolute_tolerance": {"type": "number", "minimum": 0},
         },
         "additionalProperties": False,
     }
+    direct_v2_fields = [
+        "abi",
+        "edge_kind",
+        "value_kind",
+        "baseline_cell_id",
+        "candidate_cell_id",
+        "status",
+        "candidate",
+        "baseline",
+        "candidate_scale",
+        "baseline_scale",
+        "candidate_scale_source",
+        "baseline_scale_source",
+        "comparison_scale",
+        "absolute_difference",
+        "relative_difference",
+        "conditioned_residual",
+        "error_bound",
+        "relative_tolerance",
+        "comparison_binding",
+    ]
+    direct_v2: dict[str, Any] = {
+        "type": "object",
+        "required": direct_v2_fields,
+        "properties": {
+            "abi": {"const": "pyamplicol-report-direct-agreement-v2"},
+            **direct_identity_properties,
+            "candidate_scale": {"type": "number", "minimum": 0},
+            "baseline_scale": {"type": "number", "minimum": 0},
+            "candidate_scale_source": {"type": "string", "minLength": 1},
+            "baseline_scale_source": {"type": "string", "minLength": 1},
+            "comparison_scale": {"type": "number", "minimum": 0},
+            "conditioned_residual": {"type": "number", "minimum": 0},
+            "error_bound": {"type": "number", "minimum": 0},
+            "comparison_binding": {"type": "object", "minProperties": 1},
+        },
+        "additionalProperties": False,
+    }
+    direct_agreement_record: dict[str, Any] = {"oneOf": [direct_v1, direct_v2]}
     lc_common_component: dict[str, Any] = {
         "type": "object",
         "required": [
@@ -605,9 +941,36 @@ def schema_document() -> dict[str, object]:
         "additionalProperties": False,
     }
     validation_properties = {
+        "status": {"enum": statuses},
         DIRECT_AGREEMENT_FIELD: {
             "type": "array",
             "items": direct_agreement_record,
+        },
+        INDEPENDENT_AUTHORITY_FIELD: {
+            "type": "object",
+            "required": [
+                "abi",
+                "expected_cell_ids",
+                "selected_cell_id",
+                "status",
+                "reason",
+                "same_artifact_diagnostics_are_authority",
+            ],
+            "properties": {
+                "abi": {"const": INDEPENDENT_AUTHORITY_ABI},
+                "expected_cell_ids": {
+                    "type": "array",
+                    "uniqueItems": True,
+                    "items": {"type": "string", "minLength": 1},
+                },
+                "selected_cell_id": {"type": ["string", "null"]},
+                "status": {
+                    "enum": ["unavailable", "verified", "mismatch", "incompatible"]
+                },
+                "reason": {"type": "string", "minLength": 1},
+                "same_artifact_diagnostics_are_authority": {"const": False},
+            },
+            "additionalProperties": False,
         },
         LC_COMMON_COMPONENT_FIELD: lc_common_component,
     }
@@ -704,12 +1067,38 @@ def schema_document() -> dict[str, object]:
                                     },
                                     "then": {
                                         "properties": {
-                                            "validation": (
-                                                successful_validation_record
-                                            )
+                                            "validation": (successful_validation_record)
                                         }
                                     },
-                                }
+                                },
+                                {
+                                    "if": {
+                                        "properties": {
+                                            "status": {
+                                                "const": ResultStatus.UNVERIFIED.value
+                                            }
+                                        },
+                                        "required": ["status"],
+                                    },
+                                    "then": {
+                                        "properties": {
+                                            "validation": {
+                                                "type": "object",
+                                                "required": [
+                                                    "status",
+                                                    DIRECT_AGREEMENT_FIELD,
+                                                    INDEPENDENT_AUTHORITY_FIELD,
+                                                    "resolved_sum",
+                                                    "high_precision_resolved_sum",
+                                                    "high_precision",
+                                                    "precision_diagnostic",
+                                                ],
+                                                "properties": validation_properties,
+                                            },
+                                            "failure": {"type": "object"},
+                                        }
+                                    },
+                                },
                             ],
                             "additionalProperties": False,
                         },

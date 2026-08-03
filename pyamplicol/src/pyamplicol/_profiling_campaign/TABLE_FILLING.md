@@ -94,6 +94,9 @@ comments are ignored. Capped and failed currents are otherwise reused under
 the ordinary rules, so use `--force-refresh` when the intent is a new attempt;
 replaying `blocked_dependency.txt` automatically includes required
 prerequisites.
+`unverified.txt` needs no `--force-refresh`: an unverified timing diagnostic is
+not a successful current and is automatically rerun against a later available
+recurrence or AmpliCol authority.
 
 The default lifecycle retains every heavy attempt payload. Use
 `--cleanup-artifacts` to move obsolete sealed attempts into compact history,

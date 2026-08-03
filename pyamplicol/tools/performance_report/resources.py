@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import math
 import os
 import platform
@@ -15,6 +16,7 @@ from collections.abc import Callable, Collection, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import cache
 from pathlib import Path
 from typing import Literal, Protocol
 
@@ -199,6 +201,8 @@ class SupervisedResult:
     phase_state_error: str | None = None
     started_at_utc: str | None = None
     finished_at_utc: str | None = None
+    teardown_escalated: bool = False
+    teardown_seconds: float = 0.0
 
 
 class _BoundedByteTail:
@@ -262,9 +266,20 @@ PsRunner = Callable[[Sequence[str]], CompletedProcessLike]
 PopenFactory = Callable[..., WorkerProcess]
 Clock = Callable[[], float]
 Sleeper = Callable[[float], None]
-TreeSignaler = Callable[[int, Collection[int], int], None]
+TreeSignaler = Callable[[int | None, Collection[int], int], None]
 ObservationCallback = Callable[[WorkerObservation], None]
 CancellationCheck = Callable[[], bool]
+
+
+@dataclass(frozen=True, slots=True)
+class _ProcessIdentity:
+    """Authenticated process birth identity plus its current signal group."""
+
+    birth_token: int | tuple[int, int]
+    process_group: int
+
+
+ProcessIdentityProbe = Callable[[int], _ProcessIdentity | None]
 
 
 def _parse_proc_stat(text: str, *, clock_ticks_per_second: int) -> tuple[int, float]:
@@ -768,32 +783,318 @@ def _worker_environment(
 
 
 def _signal_process_tree(
-    root_process_group: int,
-    member_pids: Collection[int],
+    root_process_group: int | None,
+    out_of_group_pids: Collection[int],
     selected_signal: int,
 ) -> None:
-    with suppress(ProcessLookupError, PermissionError):
-        os.killpg(root_process_group, selected_signal)
-    for pid in member_pids:
-        if pid == root_process_group:
-            continue
+    if root_process_group is not None:
+        with suppress(ProcessLookupError, PermissionError):
+            os.killpg(root_process_group, selected_signal)
+    for pid in out_of_group_pids:
         with suppress(ProcessLookupError, PermissionError):
             os.kill(pid, selected_signal)
+
+
+def _parse_linux_process_identity(stat: str) -> _ProcessIdentity:
+    """Authenticate a Linux process from one coherent ``/proc/PID/stat`` row."""
+
+    closing_parenthesis = stat.rfind(")")
+    if closing_parenthesis < 0:
+        raise ValueError("missing process-name terminator")
+    fields = stat[closing_parenthesis + 1 :].split()
+    # ``fields`` starts at kernel field 3 (state).  Read pgrp (field 5) and
+    # starttime (field 22) from the same snapshot so group migration cannot be
+    # mistaken for PID reuse.
+    process_group = int(fields[2])
+    start_ticks = int(fields[19])
+    if process_group <= 0 or start_ticks < 0:
+        raise ValueError("invalid process identity")
+    return _ProcessIdentity(
+        birth_token=start_ticks,
+        process_group=process_group,
+    )
+
+
+class _DarwinProcBsdInfo(ctypes.Structure):
+    """Darwin ``proc_bsdinfo`` fields needed for authenticated teardown."""
+
+    _fields_ = [
+        ("pbi_flags", ctypes.c_uint32),
+        ("pbi_status", ctypes.c_uint32),
+        ("pbi_xstatus", ctypes.c_uint32),
+        ("pbi_pid", ctypes.c_uint32),
+        ("pbi_ppid", ctypes.c_uint32),
+        ("pbi_uid", ctypes.c_uint32),
+        ("pbi_gid", ctypes.c_uint32),
+        ("pbi_ruid", ctypes.c_uint32),
+        ("pbi_rgid", ctypes.c_uint32),
+        ("pbi_svuid", ctypes.c_uint32),
+        ("pbi_svgid", ctypes.c_uint32),
+        ("rfu_1", ctypes.c_uint32),
+        ("pbi_comm", ctypes.c_char * 16),
+        ("pbi_name", ctypes.c_char * 32),
+        ("pbi_nfiles", ctypes.c_uint32),
+        ("pbi_pgid", ctypes.c_uint32),
+        ("pbi_pjobc", ctypes.c_uint32),
+        ("e_tdev", ctypes.c_uint32),
+        ("e_tpgid", ctypes.c_uint32),
+        ("pbi_nice", ctypes.c_int32),
+        ("pbi_start_tvsec", ctypes.c_uint64),
+        ("pbi_start_tvusec", ctypes.c_uint64),
+    ]
+
+
+@cache
+def _darwin_libproc() -> ctypes.CDLL:
+    return ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+
+
+def _darwin_process_identity(pid: int) -> _ProcessIdentity | None:
+    info = _DarwinProcBsdInfo()
+    try:
+        proc_pidinfo = _darwin_libproc().proc_pidinfo
+        proc_pidinfo.argtypes = (
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_uint64,
+            ctypes.c_void_p,
+            ctypes.c_int,
+        )
+        proc_pidinfo.restype = ctypes.c_int
+        written = proc_pidinfo(
+            pid,
+            3,  # PROC_PIDTBSDINFO
+            0,
+            ctypes.byref(info),
+            ctypes.sizeof(info),
+        )
+    except (AttributeError, OSError):
+        return None
+    if written != ctypes.sizeof(info):
+        return None
+    process_group = int(info.pbi_pgid)
+    start_seconds = int(info.pbi_start_tvsec)
+    start_microseconds = int(info.pbi_start_tvusec)
+    if (
+        int(info.pbi_pid) != pid
+        or process_group <= 0
+        or start_seconds < 0
+        or not 0 <= start_microseconds < 1_000_000
+        or (start_seconds == 0 and start_microseconds == 0)
+    ):
+        return None
+    return _ProcessIdentity(
+        birth_token=(start_seconds, start_microseconds),
+        process_group=process_group,
+    )
+
+
+def _process_identity(pid: int) -> _ProcessIdentity | None:
+    """Return immutable birth evidence and the process's current signal group."""
+
+    system = platform.system()
+    if system == "Linux":
+        try:
+            stat = Path(f"/proc/{pid}/stat").read_text(encoding="ascii")
+            return _parse_linux_process_identity(stat)
+        except (OSError, UnicodeError, ValueError, IndexError):
+            return None
+    if system == "Darwin":
+        return _darwin_process_identity(pid)
+    return None
+
+
+@dataclass(frozen=True, slots=True)
+class _TeardownResult:
+    returncode: int
+    escalated: bool
+    elapsed_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class _TeardownDiagnostics:
+    escalated: bool
+    elapsed_seconds: float
+
+
+def _emit_teardown_observation(
+    process: WorkerProcess,
+    monitor: ResourceMonitor,
+    observation_callback: ObservationCallback | None,
+    *,
+    phase: str,
+) -> None:
+    usage = monitor.sample_once()
+    if observation_callback is None:
+        return
+    with suppress(Exception):
+        observation_callback(
+            WorkerObservation(
+                pid=process.pid,
+                usage=usage,
+                phase=phase,
+                phase_sequence=None,
+                member_pids=monitor.member_pids,
+            )
+        )
+
+
+def _identity_process_group(identity: _ProcessIdentity) -> int:
+    return identity.process_group
+
+
+def _capture_process_identities(
+    identities: dict[int, _ProcessIdentity],
+    member_pids: Collection[int],
+    identity_probe: ProcessIdentityProbe,
+) -> None:
+    """Retain the first authenticated identity observed for each worker PID."""
+
+    for pid in member_pids:
+        if pid in identities:
+            continue
+        identity = identity_probe(pid)
+        if identity is not None:
+            identities[pid] = identity
+
+
+def _live_descendant_identities(
+    process: WorkerProcess,
+    identities: Mapping[int, _ProcessIdentity],
+    identity_probe: ProcessIdentityProbe,
+) -> dict[int, _ProcessIdentity]:
+    surviving: dict[int, _ProcessIdentity] = {}
+    for pid, captured in identities.items():
+        if pid == process.pid:
+            continue
+        current = identity_probe(pid)
+        if current is None or current.birth_token != captured.birth_token:
+            continue
+        # Birth identity is immutable; route signals using the freshly probed
+        # process group in case the descendant called setpgid()/setsid().
+        surviving[pid] = current
+    return surviving
+
+
+def _signal_authenticated_tree(
+    process: WorkerProcess,
+    *,
+    returncode: int | None,
+    descendants: Mapping[int, _ProcessIdentity],
+    selected_signal: int,
+    signaler: TreeSignaler,
+) -> None:
+    """Signal each authenticated worker identity no more than once."""
+
+    group_is_live = returncode is None or any(
+        _identity_process_group(identity) == process.pid
+        for identity in descendants.values()
+    )
+    out_of_group = tuple(
+        sorted(
+            pid
+            for pid, identity in descendants.items()
+            if _identity_process_group(identity) != process.pid
+        )
+    )
+    if not group_is_live and not out_of_group:
+        return
+    signaler(process.pid if group_is_live else None, out_of_group, selected_signal)
 
 
 def _terminate_worker(
     process: WorkerProcess,
     *,
-    member_pids: Collection[int],
+    monitor: ResourceMonitor,
+    process_identities: dict[int, _ProcessIdentity],
     grace_seconds: float,
     signaler: TreeSignaler,
-) -> int:
-    signaler(process.pid, member_pids, signal.SIGTERM)
-    try:
-        return process.wait(timeout=grace_seconds)
-    except subprocess.TimeoutExpired:
-        signaler(process.pid, member_pids, signal.SIGKILL)
-        return process.wait(timeout=max(grace_seconds, 1.0))
+    clock: Clock,
+    sleeper: Sleeper,
+    observation_callback: ObservationCallback | None,
+    identity_probe: ProcessIdentityProbe,
+) -> _TeardownResult:
+    started = clock()
+    identities = process_identities
+
+    def refresh(*, phase: str) -> tuple[int | None, dict[int, _ProcessIdentity]]:
+        returncode = process.poll()
+        surviving = _live_descendant_identities(
+            process,
+            identities,
+            identity_probe,
+        )
+        if returncode is not None and not surviving:
+            return returncode, {}
+        _emit_teardown_observation(
+            process,
+            monitor,
+            observation_callback,
+            phase=phase,
+        )
+        _capture_process_identities(
+            identities,
+            monitor.member_pids,
+            identity_probe,
+        )
+        returncode = process.poll()
+        surviving = _live_descendant_identities(
+            process,
+            identities,
+            identity_probe,
+        )
+        return returncode, surviving
+
+    returncode = process.poll()
+    surviving = _live_descendant_identities(
+        process,
+        identities,
+        identity_probe,
+    )
+    if returncode is not None and not surviving:
+        return _TeardownResult(
+            returncode=returncode,
+            escalated=False,
+            elapsed_seconds=max(clock() - started, 0.0),
+        )
+    _signal_authenticated_tree(
+        process,
+        returncode=returncode,
+        descendants=surviving,
+        selected_signal=signal.SIGTERM,
+        signaler=signaler,
+    )
+    deadline = clock() + grace_seconds
+    while True:
+        returncode, surviving = refresh(phase="terminating")
+        if returncode is not None and not surviving:
+            return _TeardownResult(
+                returncode=returncode,
+                escalated=False,
+                elapsed_seconds=max(clock() - started, 0.0),
+            )
+        if clock() >= deadline:
+            break
+        sleeper(min(0.25, max(deadline - clock(), 0.0)))
+
+    _signal_authenticated_tree(
+        process,
+        returncode=returncode,
+        descendants=surviving,
+        selected_signal=signal.SIGKILL,
+        signaler=signaler,
+    )
+    while True:
+        returncode, surviving = refresh(phase="waiting-for-reap")
+        if returncode is not None and not surviving:
+            return _TeardownResult(
+                returncode=returncode,
+                escalated=True,
+                elapsed_seconds=max(clock() - started, 0.0),
+            )
+        # SIGKILL can remain uninterruptible while a task is in kernel I/O.
+        # Keep this lane occupied, but let the dashboard and other lanes run.
+        sleeper(0.25)
 
 
 def _terminate_surviving_descendants(
@@ -804,20 +1105,84 @@ def _terminate_surviving_descendants(
     signaler: TreeSignaler,
     clock: Clock,
     sleeper: Sleeper,
-) -> None:
+    observation_callback: ObservationCallback | None,
+    identity_probe: ProcessIdentityProbe,
+    process_identities: dict[int, _ProcessIdentity],
+) -> _TeardownDiagnostics:
     """Terminate a process group left behind after its root has exited."""
 
-    members = tuple(pid for pid in monitor.member_pids if pid != process.pid)
-    if not members:
-        return
-    signaler(process.pid, members, signal.SIGTERM)
+    started = clock()
+    identities = process_identities
+    surviving = _live_descendant_identities(
+        process,
+        identities,
+        identity_probe,
+    )
+    if not surviving:
+        return _TeardownDiagnostics(
+            escalated=False,
+            elapsed_seconds=0.0,
+        )
+    _signal_authenticated_tree(
+        process,
+        returncode=process.poll(),
+        descendants=surviving,
+        selected_signal=signal.SIGTERM,
+        signaler=signaler,
+    )
     deadline = clock() + grace_seconds
-    while members and clock() < deadline:
+    while surviving and clock() < deadline:
         sleeper(min(0.05, max(deadline - clock(), 0.0)))
-        monitor.sample_once()
-        members = tuple(pid for pid in monitor.member_pids if pid != process.pid)
-    if members:
-        signaler(process.pid, members, signal.SIGKILL)
+        _emit_teardown_observation(
+            process,
+            monitor,
+            observation_callback,
+            phase="terminating",
+        )
+        _capture_process_identities(
+            identities,
+            monitor.member_pids,
+            identity_probe,
+        )
+        surviving = _live_descendant_identities(
+            process,
+            identities,
+            identity_probe,
+        )
+    if not surviving:
+        return _TeardownDiagnostics(
+            escalated=False,
+            elapsed_seconds=max(clock() - started, 0.0),
+        )
+    _signal_authenticated_tree(
+        process,
+        returncode=process.poll(),
+        descendants=surviving,
+        selected_signal=signal.SIGKILL,
+        signaler=signaler,
+    )
+    while surviving:
+        sleeper(0.25)
+        _emit_teardown_observation(
+            process,
+            monitor,
+            observation_callback,
+            phase="waiting-for-reap",
+        )
+        _capture_process_identities(
+            identities,
+            monitor.member_pids,
+            identity_probe,
+        )
+        surviving = _live_descendant_identities(
+            process,
+            identities,
+            identity_probe,
+        )
+    return _TeardownDiagnostics(
+        escalated=True,
+        elapsed_seconds=max(clock() - started, 0.0),
+    )
 
 
 def supervise_worker(
@@ -848,6 +1213,7 @@ def supervise_worker(
     cancellation_requested: CancellationCheck | None = None,
     capture_stderr: bool = False,
     stderr_limit_bytes: int = DEFAULT_SUPERVISOR_STDERR_LIMIT_BYTES,
+    process_identity_probe: ProcessIdentityProbe = _process_identity,
 ) -> SupervisedResult:
     """Run a worker and enforce wall, stage, and memory limits.
 
@@ -931,6 +1297,16 @@ def supervise_worker(
     if capture_stderr:
         popen_arguments["stderr"] = subprocess.PIPE
     process = popen_factory(tuple(command), **popen_arguments)
+    if (
+        process_identity_probe is _process_identity
+        and not isinstance(process, subprocess.Popen)
+    ):
+        # Injected protocol fakes have no relationship to host PIDs. Focused
+        # teardown tests opt in to an injected identity probe explicitly.
+        def unavailable_process_identity(_pid: int) -> _ProcessIdentity | None:
+            return None
+
+        process_identity_probe = unavailable_process_identity
     stderr_tail = _BoundedByteTail(stderr_limit_bytes)
     stderr_stream = getattr(process, "stderr", None) if capture_stderr else None
     stderr_thread: threading.Thread | None = None
@@ -957,18 +1333,37 @@ def supervise_worker(
     consecutive_memory_probe_failures = 0
     pending_memory_probe_reason: str | None = None
     tree_termination_requested = False
+    teardown_escalated = False
+    teardown_seconds = 0.0
     observed_member_pids = {process.pid}
+    observed_process_identities: dict[int, _ProcessIdentity] = {}
+    _capture_process_identities(
+        observed_process_identities,
+        (process.pid,),
+        process_identity_probe,
+    )
 
     def terminate(selected_reason: TerminationReason) -> None:
         nonlocal reason, returncode, tree_termination_requested
+        nonlocal teardown_escalated, teardown_seconds
+        if tree_termination_requested:
+            return
         reason = selected_reason
         tree_termination_requested = True
-        returncode = _terminate_worker(
+        teardown = _terminate_worker(
             process,
-            member_pids=monitor.member_pids,
+            monitor=monitor,
+            process_identities=observed_process_identities,
             grace_seconds=termination_grace_seconds,
             signaler=signaler,
+            clock=clock,
+            sleeper=sleeper,
+            observation_callback=observation_callback,
+            identity_probe=process_identity_probe,
         )
+        returncode = teardown.returncode
+        teardown_escalated = teardown.escalated
+        teardown_seconds = teardown.elapsed_seconds
 
     def effective_generation_elapsed(
         state: WorkerPhaseState,
@@ -1103,6 +1498,11 @@ def supervise_worker(
 
             usage = monitor.sample_once()
             observed_member_pids.update(monitor.member_pids)
+            _capture_process_identities(
+                observed_process_identities,
+                monitor.member_pids,
+                process_identity_probe,
+            )
             now_seconds = clock()
             if observation_callback is not None:
                 # Monitoring is deliberately informational. A broken
@@ -1225,26 +1625,41 @@ def supervise_worker(
                 break
             sleeper(interval_seconds)
     finally:
-        if process.poll() is None:
-            _terminate_worker(
+        if process.poll() is None and not tree_termination_requested:
+            teardown = _terminate_worker(
                 process,
-                member_pids=monitor.member_pids,
+                monitor=monitor,
+                process_identities=observed_process_identities,
                 grace_seconds=termination_grace_seconds,
                 signaler=signaler,
+                clock=clock,
+                sleeper=sleeper,
+                observation_callback=observation_callback,
+                identity_probe=process_identity_probe,
             )
+            returncode = teardown.returncode
+            teardown_escalated = teardown.escalated
+            teardown_seconds = teardown.elapsed_seconds
         elif not tree_termination_requested:
             # ``poll`` reaps the root, but a daemonized/reparented descendant
             # may still survive in the worker's process group. Do not return
             # control to the scheduler until that known tree is gone.
-            process.wait()
-            _terminate_surviving_descendants(
+            returncode = process.wait()
+            descendant_teardown = _terminate_surviving_descendants(
                 process,
                 monitor=monitor,
                 grace_seconds=termination_grace_seconds,
                 signaler=signaler,
                 clock=clock,
                 sleeper=sleeper,
+                observation_callback=observation_callback,
+                identity_probe=process_identity_probe,
+                process_identities=observed_process_identities,
             )
+            teardown_escalated = (
+                teardown_escalated or descendant_teardown.escalated
+            )
+            teardown_seconds += descendant_teardown.elapsed_seconds
 
     if returncode is None:
         returncode = process.wait()
@@ -1312,6 +1727,8 @@ def supervise_worker(
         phase_state_error=phase_error,
         started_at_utc=started_at_utc,
         finished_at_utc=datetime.now(UTC).isoformat(),
+        teardown_escalated=teardown_escalated,
+        teardown_seconds=teardown_seconds,
     )
 
 

@@ -43,6 +43,8 @@ _PURE_GLUON_PROCESS = "g g > g g"
 _N5_PURE_GLUON_PROCESS = "g g > g g g g g"
 _SAME_FLAVOUR_PROCESS = "d d~ > d d~"
 _NEUTRAL_CURRENT_PROCESS = "d d~ > e+ e-"
+_FOUR_LEPTON_PROCESS = "d d~ > e+ e- e+ e-"
+_DILEPTON_ZH_PROCESS = "d d~ > e+ e- z h"
 _CHARGED_CURRENT_PROCESS = "u d~ > e+ ve"
 _TWO_QUARK_LINE_PROCESS = "d d~ > t t~"
 _RELATION_REUSE_PROCESS = "d d~ > t t~ g g"
@@ -388,6 +390,34 @@ def _assert_decimal_values_match(
         assert abs(actual_value - expected_value) <= (
             absolute_tolerance + relative_tolerance * abs(expected_value)
         )
+
+
+def _assert_scale_sensitive_values_match(
+    actual: object,
+    expected: object,
+    *,
+    relative_tolerance: Decimal = Decimal("1e-12"),
+) -> None:
+    """Compare tiny exact values without the report's absolute tolerance floor."""
+
+    assert isinstance(actual, tuple)
+    assert isinstance(expected, tuple)
+    assert len(actual) == len(expected)
+    for actual_value, expected_value in zip(actual, expected, strict=True):
+        if isinstance(actual_value, tuple):
+            _assert_scale_sensitive_values_match(
+                actual_value,
+                expected_value,
+                relative_tolerance=relative_tolerance,
+            )
+            continue
+        assert isinstance(actual_value, Decimal)
+        assert isinstance(expected_value, Decimal)
+        scale = max(abs(actual_value), abs(expected_value))
+        if scale == 0:
+            assert actual_value == expected_value
+        else:
+            assert abs(actual_value - expected_value) <= relative_tolerance * scale
 
 
 def _single_recurrence_execution(artifact: Path) -> dict[str, Any]:
@@ -812,6 +842,22 @@ def builtin_sm_recurrence_jit_o2_model() -> Iterator[ModelSource]:
         return
     with packaged_prepared_model_path(BUILTIN_SM_JIT_O2) as prepared_model:
         yield ModelSource.from_path(prepared_model)
+
+
+@pytest.fixture(scope="module")
+def builtin_sm_current_recurrence_jit_o2_model(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> CompiledModel:
+    """Prepare the live built-in lowering contract for alias regressions."""
+
+    _require_native_recurrence()
+    root = tmp_path_factory.mktemp("builtin-sm-current-recurrence-jit-o2")
+    return ModelSource.built_in_sm().compile(
+        cache_dir=root / "model-cache",
+        use_cache=True,
+        prepared_output=root / "built-in-sm-jit-o2.pyamplicol-model",
+        evaluator=_generation_config("recurrence").evaluator,
+    )
 
 
 @pytest.fixture(scope="module")
@@ -1622,6 +1668,54 @@ def test_builtin_lc_recurrence_artifact_loads_and_matches_compiled(
         recurrence,
         compiled,
         points,
+    )
+
+
+@pytest.mark.parametrize(
+    "process_expression",
+    (
+        _FOUR_LEPTON_PROCESS,
+        _DILEPTON_ZH_PROCESS,
+        _NEUTRAL_CURRENT_PROCESS,
+        "d d~ > z g",
+    ),
+)
+def test_builtin_fermion_vector_aliases_match_compiled_at_small_scale(
+    tmp_path: Path,
+    process_expression: str,
+    builtin_sm_current_recurrence_jit_o2_model: CompiledModel,
+) -> None:
+    """Reject mirrored EW-current double counting even below 1e-15."""
+
+    _require_native_recurrence()
+    recurrence_artifact = tmp_path / "recurrence"
+    compiled_artifact = tmp_path / "compiled"
+    Generator(_generation_config("recurrence")).generate(
+        process_expression,
+        recurrence_artifact,
+        model=builtin_sm_current_recurrence_jit_o2_model,
+    )
+    Generator(_generation_config("compiled")).generate(
+        process_expression,
+        compiled_artifact,
+    )
+
+    points = _validation_points(process_expression)
+    recurrence = Runtime.load(recurrence_artifact)
+    compiled = Runtime.load(compiled_artifact)
+    recurrence_resolved = recurrence.evaluate_resolved(points, precision=200)
+    compiled_resolved = compiled.evaluate_resolved(points, precision=200)
+
+    assert recurrence_resolved.helicity_ids == compiled_resolved.helicity_ids
+    assert recurrence_resolved.color_ids == compiled_resolved.color_ids
+    assert recurrence_resolved.shape == compiled_resolved.shape
+    _assert_scale_sensitive_values_match(
+        recurrence_resolved.values,
+        compiled_resolved.values,
+    )
+    _assert_scale_sensitive_values_match(
+        recurrence.evaluate(points, precision=200),
+        compiled.evaluate(points, precision=200),
     )
 
 

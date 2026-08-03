@@ -429,6 +429,20 @@ class BuiltinSMLoweringMixin:
                 input_order=input_order,
             )
 
+        fermion_gauge_orientations = {
+            10: ("fermion-vector-to-fermion", (0, 1)),
+            23: ("fermion-vector-to-fermion", (1, 0)),
+            11: ("antifermion-vector-to-antifermion", (0, 1)),
+            24: ("antifermion-vector-to-antifermion", (1, 0)),
+        }
+        relation = fermion_gauge_orientations.get(kind)
+        if relation is not None:
+            class_name, input_order = relation
+            return VertexEvaluationEquivalence(
+                class_id=f"builtin-sm:{class_name}",
+                input_order=input_order,
+            )
+
         fermion_pair_orientations = {
             21: (0, 1),
             22: (1, 0),

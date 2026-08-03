@@ -33,6 +33,7 @@ RUNTIME_SELECTOR_PROVENANCE = "pyamplicol-runtime-selectors-v1"
 
 _ComplexWeight: TypeAlias = tuple[float, float]
 _SelectorState: TypeAlias = tuple[tuple[int, int], ...]
+_ColorSectorAliases: TypeAlias = Mapping[int, int]
 
 
 @dataclass(frozen=True, slots=True)
@@ -362,20 +363,37 @@ class _PendingAmplitudeClass:
     members: list[tuple[int, tuple[_SelectorState, ...], _ComplexWeight]]
 
 
-def build_helicity_recurrence_plan(
+@dataclass(frozen=True, slots=True)
+class _SemanticAmplitudeRootSignature:
+    """Exact model-certified identity used only for construction aliases."""
+
+    proof_digest: str
+    selector_states: tuple[_SelectorState, ...]
+    factor: _ComplexWeight
+
+
+def _derive_current_replay_proofs(
     dag: GenericDAG,
     model: Model,
-) -> HelicityRecurrencePlan | None:
-    """Derive reusable recurrence classes for a complete-helicity DAG.
+    *,
+    color_sector_aliases: _ColorSectorAliases | None = None,
+) -> tuple[
+    dict[int, tuple[int, int]],
+    dict[int, dict[str, object]],
+    list[_PendingCurrentClass],
+    tuple[_CurrentProof, ...],
+    list[int],
+    list[str],
+]:
+    """Build the shared exact recursive-current proof graph.
 
-    The selected-helicity generation path deliberately returns ``None`` and is
-    therefore byte-for-byte unchanged.  Proof failures are attached only to the
-    affected current and descendants that depend on it; independent classes are
-    retained.
+    ``color_sector_aliases`` projects only the traversal-sector identifier.
+    Every external label, ordered traversal, line group, flavour flow, kernel
+    contract, coupling and coefficient remains part of the proof.  The normal
+    helicity-replay path passes no projection; contracted open-line
+    construction uses the projection to recognize only proven block-order
+    aliases.
     """
-
-    if dag.helicity_coverage != "complete" or dag.selected_source_helicities:
-        return None
 
     source_by_bit, source_contracts, source_diagnostics = _source_contracts(
         dag,
@@ -428,6 +446,7 @@ def build_helicity_recurrence_plan(
                 "current_contract": _current_contract(
                     current,
                     include_spin_state=False,
+                    color_sector_aliases=color_sector_aliases,
                 ),
                 "source_topology": source_contract["topology"],
                 "source_contract_digest": source_contract["digest"],
@@ -454,6 +473,7 @@ def build_helicity_recurrence_plan(
             interactions_by_result[current.id],
             model,
             current_proofs,
+            color_sector_aliases=color_sector_aliases,
         )
         if isinstance(candidate, str):
             _record_residual_current(
@@ -483,7 +503,39 @@ def build_helicity_recurrence_plan(
 
     if any(item is None for item in current_proofs):
         raise ValueError("helicity recurrence derivation left a current unclassified")
-    proven_currents = tuple(item for item in current_proofs if item is not None)
+    return (
+        source_by_bit,
+        source_contracts,
+        pending_classes,
+        tuple(item for item in current_proofs if item is not None),
+        residual_current_ids,
+        diagnostics,
+    )
+
+
+def build_helicity_recurrence_plan(
+    dag: GenericDAG,
+    model: Model,
+) -> HelicityRecurrencePlan | None:
+    """Derive reusable recurrence classes for a complete-helicity DAG.
+
+    The selected-helicity generation path deliberately returns ``None`` and is
+    therefore byte-for-byte unchanged.  Proof failures are attached only to the
+    affected current and descendants that depend on it; independent classes are
+    retained.
+    """
+
+    if dag.helicity_coverage != "complete" or dag.selected_source_helicities:
+        return None
+
+    (
+        source_by_bit,
+        source_contracts,
+        pending_classes,
+        proven_currents,
+        residual_current_ids,
+        diagnostics,
+    ) = _derive_current_replay_proofs(dag, model)
 
     pending_amplitudes, residual_root_ids, root_diagnostics = _amplitude_classes(
         dag,
@@ -741,6 +793,8 @@ def _generated_current_signature(
     interactions: Sequence[InteractionNode],
     model: Model,
     current_proofs: Sequence[_CurrentProof | None],
+    *,
+    color_sector_aliases: _ColorSectorAliases | None = None,
 ) -> tuple[dict[str, object], tuple[str, ...]] | str:
     terms_by_key: dict[str, list[_ComplexWeight]] = defaultdict(list)
     transition_contracts: set[str] = set()
@@ -813,7 +867,10 @@ def _generated_current_signature(
     return (
         {
             "kind": "generated-current",
-            "current_contract": _current_contract(current),
+            "current_contract": _current_contract(
+                current,
+                color_sector_aliases=color_sector_aliases,
+            ),
             "propagator_contract": propagator,
             "terms": terms,
         },
@@ -884,6 +941,8 @@ def _amplitude_classes(
     model: Model,
     current_proofs: Sequence[_CurrentProof],
     source_by_bit: Mapping[int, tuple[int, int]],
+    *,
+    color_sector_aliases: _ColorSectorAliases | None = None,
 ) -> tuple[list[_PendingAmplitudeClass], list[int], list[str]]:
     pending: list[_PendingAmplitudeClass] = []
     class_by_signature: dict[str, int] = {}
@@ -944,7 +1003,10 @@ def _amplitude_classes(
 
         payload = {
             "kind": "amplitude-closure",
-            "root_contract": _root_contract(root),
+            "root_contract": _root_contract(
+                root,
+                color_sector_aliases=color_sector_aliases,
+            ),
             "parent_recurrence_classes": list(parent_classes),
         }
         direct_signature = _canonical_json(payload)
@@ -972,6 +1034,55 @@ def _amplitude_classes(
             (root.id, selector_states, member_factor)
         )
     return pending, residual, diagnostics
+
+
+def _semantic_amplitude_root_alias_signatures(
+    dag: GenericDAG,
+    model: Model,
+    *,
+    color_sector_aliases: _ColorSectorAliases,
+) -> tuple[_SemanticAmplitudeRootSignature | None, ...]:
+    """Return exact root signatures under one traversal-sector projection.
+
+    This is deliberately a construction-only view of the same proof machinery
+    used by helicity replay.  The projection changes only sector identifiers;
+    traversal order, source labels, fermion exchange factors and every model
+    kernel contract remain exact.  A ``None`` entry means that no proof was
+    available and callers must fail closed rather than remove that root.
+    """
+
+    (
+        source_by_bit,
+        _source_contracts_by_id,
+        _pending_classes,
+        current_proofs,
+        _residual_current_ids,
+        _diagnostics,
+    ) = _derive_current_replay_proofs(
+        dag,
+        model,
+        color_sector_aliases=color_sector_aliases,
+    )
+    pending, residual, _root_diagnostics = _amplitude_classes(
+        dag,
+        model,
+        current_proofs,
+        source_by_bit,
+        color_sector_aliases=color_sector_aliases,
+    )
+    signatures: list[_SemanticAmplitudeRootSignature | None] = [
+        None
+    ] * len(dag.amplitude_roots)
+    for recurrence in pending:
+        for root_id, selector_states, factor in recurrence.members:
+            signatures[root_id] = _SemanticAmplitudeRootSignature(
+                proof_digest=recurrence.proof_digest,
+                selector_states=selector_states,
+                factor=factor,
+            )
+    for root_id in residual:
+        signatures[root_id] = None
+    return tuple(signatures)
 
 
 def _root_selector_states(
@@ -1066,8 +1177,15 @@ def _current_contract(
     current: CurrentNode,
     *,
     include_spin_state: bool = True,
+    color_sector_aliases: _ColorSectorAliases | None = None,
 ) -> dict[str, object]:
     index = current.index
+    color_state = index.color_state.to_json_dict()
+    if color_sector_aliases is not None:
+        sector_id = int(color_state["sector_id"])
+        color_state["sector_id"] = int(
+            color_sector_aliases.get(sector_id, sector_id)
+        )
     payload: dict[str, object] = {
         "particle_id": int(index.particle_id),
         "external_mask": int(index.external_mask),
@@ -1076,7 +1194,7 @@ def _current_contract(
         "chirality": int(index.chirality),
         "flavour_flow": list(index.flavour_flow),
         "quantum_number_flow": [list(item) for item in index.quantum_number_flow],
-        "color_state": index.color_state.to_json_dict(),
+        "color_state": color_state,
         "momentum_mask": int(index.momentum_mask),
         "coupling_orders": [list(item) for item in index.coupling_orders],
         "auxiliary_kind": index.auxiliary_kind,
@@ -1088,11 +1206,20 @@ def _current_contract(
     return payload
 
 
-def _root_contract(root: AmplitudeRoot) -> dict[str, object]:
+def _root_contract(
+    root: AmplitudeRoot,
+    *,
+    color_sector_aliases: _ColorSectorAliases | None = None,
+) -> dict[str, object]:
+    color_sector_id = root.color_sector_id
+    if color_sector_id is not None and color_sector_aliases is not None:
+        color_sector_id = int(
+            color_sector_aliases.get(int(color_sector_id), int(color_sector_id))
+        )
     return {
         "kind": root.kind,
         "color_weight": list(root.color_weight),
-        "color_sector_id": root.color_sector_id,
+        "color_sector_id": color_sector_id,
         "vertex_kind": root.vertex_kind,
         "vertex_particles": (
             None if root.vertex_particles is None else list(root.vertex_particles)
