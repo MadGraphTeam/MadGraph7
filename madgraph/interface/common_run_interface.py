@@ -1175,6 +1175,7 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
            banner
            param_card.dat
            run_card.dat
+           run_card.toml [mg7]
            pythia_card.dat
            pythia8_card.dat
            plot_card.dat
@@ -1229,7 +1230,9 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
                     r'@MG5aMC\s*reconstruction_name', # MA5 hadronique
                     '@MG5aMC', # MA5 hadronique
                     'run_rivet_later', # Rivet
-                    'change particle_in_density_matrix' # density mode of reweight
+                    'change particle_in_density_matrix', # density mode of reweight
+                    'simd_vector_size', # mg7 run_card.toml
+                    'include_madspace', # mg7 run_card.toml
                     ]
         
         
@@ -1262,6 +1265,9 @@ class CommonRunCmd(HelpToCmd, CheckValidForCmd, cmd.Cmd):
             return 'pythia_card.dat'
         elif 'begin minpts' in text:
             return 'plot_card.dat'
+        elif 'simd_vector_size' in text or 'include_madspace' in text:
+            # mg7 run_card is a TOML file (madspace/MadNIS integration engine)
+            return 'run_card.toml'
         elif ('gridpack' in text and 'ebeam1' in text) or \
                 ('req_acc_fo' in text and 'ebeam1' in text):
             return 'run_card.dat'
@@ -7497,6 +7503,41 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             return 'repeat'
         return outline
 
+    def _card_key_from_keyword(self, keyword):
+        """Map a user-typed card-type keyword to the corresponding paths key.
+        Accepts a paths key ('run', 'madspin', ...), a card filename
+        ('run_card.toml', 'madspin_card.dat') or a detect_card_type value.
+        Returns the paths key, or None if it is not a known card type."""
+
+        kw = keyword.strip()
+        if kw in self.paths:
+            return kw
+        for suffix in ('_card.dat', '_card.toml', '_card', '.dat', '.toml'):
+            if kw.endswith(suffix):
+                kw = kw[:-len(suffix)]
+                break
+        return kw if kw in self.paths else None
+
+    def _forced_copy_from_keyword(self, args):
+        """Handle the 'TYPE PATH' / 'PATH TYPE' syntax: copy the given file onto
+        the card whose type is named by the keyword, bypassing the regexp
+        auto-detection. Returns True if the line matched and was handled."""
+
+        def resolve_path(tok):
+            if os.path.isfile(tok):
+                return tok
+            if self.me_dir and os.path.isfile(pjoin(self.me_dir, tok)):
+                return pjoin(self.me_dir, tok)
+            return None
+
+        for kw_tok, path_tok in (args, args[::-1]):
+            key = self._card_key_from_keyword(kw_tok)
+            realpath = resolve_path(path_tok)
+            if key and realpath:
+                self.copy_file(realpath, card_type=key)
+                return True
+        return False
+
     def default(self, line):
         """Default action if line is not recognized"""
 
@@ -7510,8 +7551,11 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         # check if input is a file
         elif hasattr(self, 'do_%s' % args[0]):
             self.do_set(' '.join(args[1:]))
+        # "TYPE PATH" / "PATH TYPE": force the card type (bypass auto-detection)
+        elif len(args) == 2 and self._forced_copy_from_keyword(args):
+            self.value = 'repeat'
         elif line.strip() != '0' and line.strip() != 'done' and \
-            str(line) != 'EOF' and line.strip() in self.allow_arg:  
+            str(line) != 'EOF' and line.strip() in self.allow_arg:
             self.open_file(line)
             self.value = 'repeat'
         elif os.path.isfile(line):
@@ -8008,12 +8052,14 @@ class AskforEditCard(cmd.OneLinePathCompletion):
 
 
 
-    def copy_file(self, path, pathname=None):
-        """detect the type of the file and overwritte the current file"""
-        
+    def copy_file(self, path, pathname=None, card_type=None):
+        """detect the type of the file and overwritte the current file.
+        If card_type is given (a paths key such as 'run', 'madspin', ...) the
+        auto-detection (regexp) is bypassed and that card is overwritten."""
+
         if not pathname:
             pathname = path
-        
+
         if path.endswith('.lhco'):
             #logger.info('copy %s as Events/input.lhco' % (path))
             #files.cp(path, pjoin(self.mother_interface.me_dir, 'Events', 'input.lhco' ))
@@ -8022,8 +8068,17 @@ class AskforEditCard(cmd.OneLinePathCompletion):
         elif path.endswith('.lhco.gz'):
             #logger.info('copy %s as Events/input.lhco.gz' % (path))
             #files.cp(path, pjoin(self.mother_interface.me_dir, 'Events', 'input.lhco.gz' ))
-            self.do_set('mw_run inputfile %s' % os.path.relpath(path, self.mother_interface.me_dir))     
-            return             
+            self.do_set('mw_run inputfile %s' % os.path.relpath(path, self.mother_interface.me_dir))
+            return
+        elif card_type:
+            # type forced by the user via the keyword syntax -> bypass detection
+            if card_type not in self.paths:
+                logger.warning('Unknown card type "%s". File not copied.' % card_type)
+                return
+            logger.info('copy %s as %s' % (pathname, card_type))
+            files.cp(path, self.paths[card_type])
+            self.reload_card(self.paths[card_type])
+            return
         else:
             card_name = self.detect_card_type(path)
 
@@ -8055,10 +8110,15 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             me_dir = None
             
         if answer.isdigit():
-            if answer == '9':
+            idx = int(answer) - self.integer_bias
+            if 0 <= idx < len(self.cards):
+                # a real card at that number always wins
+                answer = self.cards[idx]
+            elif answer == '9':
+                # legacy: the non-merged editor offers plot_card.dat as option 9
                 answer = 'plot'
             else:
-                answer = self.cards[int(answer)-self.integer_bias]
+                answer = self.cards[idx]
         path = ''
         if 'madweight' in answer:
             answer = answer.replace('madweight', 'MadWeight')
@@ -8344,6 +8404,262 @@ def scanparamcardhandling(input_path=lambda obj: pjoin(obj.me_dir, 'Cards', 'par
                 param_card_iterator.write_summary(path, order=order)
 
         return new_fct
-    return decorator    
+    return decorator
+
+
+class AskforEditCardWithSwitch(object):
+    """Mixin merging a ControlSwitch (tool selection) with AskforEditCard
+    (card editing) into a *single* question, as done in the MadDM plugin.
+
+    Historically a run was configured with two consecutive questions: first a
+    ControlSwitch to pick which programs to run (shower/detector/analysis/
+    madspin/reweight/...) and then a separate AskforEditCard to edit the
+    associated cards.  This mixin collapses the two so the switches and the
+    editable cards are shown together and stay in sync (selecting a card that
+    is currently off turns the corresponding switch on, and vice-versa).
+
+    A concrete class combines this mixin (first, so its overrides win), a
+    ControlSwitch subclass providing the switches, and AskforEditCard, e.g.::
+
+        class AskRunEditCard(AskforEditCardWithSwitch, AskRun, AskforEditCard):
+            switch_class = AskRun
+            always_cards = ['param_card.dat', 'run_card.dat']
+            switch_cards = [ ... ]
+
+    Class attributes the concrete subclass must define:
+      switch_class : the ControlSwitch subclass used for the switch part.
+      always_cards : card file names always offered for edition.
+      switch_cards : ordered list of dicts describing cards controlled by a
+                     switch.  Each dict has the keys:
+                        'card' : card file name (e.g. 'madspin_card.dat')
+                        'key'  : switch key controlling it (e.g. 'madspin')
+                        'on'   : predicate(switch_dict)->bool, True when the
+                                 card is active (displayed/kept)
+                        'set'  : switch value to set when the user selects the
+                                 (currently hidden) card
+    """
+
+    switch_class = None
+    always_cards = []
+    switch_cards = []
+    optional_cards = []  # shown (no switch) only when present on disk
+
+    # ------------------------------------------------------------------
+    #  construction
+    # ------------------------------------------------------------------
+    def __init__(self, question, cards=None, mode='auto', **opt):
+        self.integer_bias = len(self.to_control) + 1
+        line_args = opt.pop('line_args', [])
+        force = opt.pop('force', False)
+        # kwargs understood only by AskforEditCard (not by the ControlSwitch)
+        card_only = {}
+        for key in ('lhapdf', 'from_banner', 'banner', 'param_consistency',
+                    'write_file'):
+            if key in opt:
+                card_only[key] = opt.pop(key)
+
+        # 1) initialise the ControlSwitch (tool selection) part. This computes
+        #    the default value of each switch from the *current* card content,
+        #    so it must run before we materialise the (default) tool cards.
+        self.switch_class.__init__(self, question, line_args=line_args,
+                                   mode=mode, force=force, **opt)
+        switch_allow_arg = list(self.allow_arg)
+
+        # 2) build the full (fixed) list of candidate cards and make sure they
+        #    all physically exist (copy the *_default.dat) so AskforEditCard can
+        #    initialise each of them below.
+        all_cards = self.build_all_cards()
+        try:
+            self.mother_interface.keep_cards(all_cards, ignore=['*'])
+        except Exception as error:
+            logger.debug('could not pre-copy tool cards: %s', error)
+
+        # 3) initialise the AskforEditCard (card edition) part.
+        card_opt = dict(opt)
+        card_opt.update(card_only)
+        card_opt['allow_arg'] = []
+        AskforEditCard.__init__(self, '', all_cards, mode=mode, **card_opt)
+
+        # merge the two sets of valid answers and build the joined question
+        self.allow_arg += switch_allow_arg
+        # from now on, changing a switch also updates the associated card so
+        # that the card the user edits already matches the chosen switch.
+        self._switch_ready = True
+        self.question = self.create_question()
+
+    def build_all_cards(self):
+        """Ordered list of every card that can appear in the question.
+        A switch-controlled card is only offered when its tool is available
+        (the value it would set is an allowed value of its switch) and a card
+        (or its default) actually exists on disk."""
+
+        cards_dir = pjoin(self.mother_interface.me_dir, 'Cards')
+        cards = list(self.always_cards)
+        self.card_switch = {}  # card file name -> switch spec
+        for spec in self.switch_cards:
+            allowed = self.get_allowed(spec['key']) or []
+            if spec['set'] not in allowed:
+                continue
+            card = spec['card']
+            default = card.replace('.dat', '_default.dat')
+            if not (os.path.exists(pjoin(cards_dir, card)) or
+                    os.path.exists(pjoin(cards_dir, '.%s' % card)) or
+                    os.path.exists(pjoin(cards_dir, default))):
+                continue
+            cards.append(card)
+            self.card_switch[card] = spec
+        # cards not driven by a switch but only offered when present on disk
+        for card in self.optional_cards:
+            if os.path.exists(pjoin(cards_dir, card)):
+                cards.append(card)
+        return cards
+
+    def active_cards(self):
+        """The subset of self.cards to display given the current switch state
+        (always_cards plus the switch cards whose tool is currently on)."""
+
+        active = []
+        for card in self.cards:
+            spec = self.card_switch.get(card)
+            if spec is None or spec['on'](self.switch):
+                active.append(card)
+        return active
+
+    @staticmethod
+    def card_label(card):
+        """short human readable name used in the question (e.g. 'madspin')"""
+        name = os.path.basename(card)
+        if '_card' in name:
+            return name.split('_card')[0]
+        return name.rsplit('.', 1)[0]
+
+    # ------------------------------------------------------------------
+    #  question rendering
+    # ------------------------------------------------------------------
+    def create_question(self, help_text=True):
+        """switch block (from the ControlSwitch) followed by the editable
+        cards box (only the cards whose tool is currently active)."""
+
+        question = cmd.ControlSwitch.create_question(self, help_text=False)
+
+        # during the ControlSwitch initialisation the card part is not set up
+        # yet: only render the switch block.
+        if not hasattr(self, 'cards'):
+            self.question = question
+            return question
+
+        to_show = []
+        for i, card in enumerate(self.cards):
+            spec = self.card_switch.get(card)
+            if spec is not None and not spec['on'](self.switch):
+                continue
+            to_show.append((self.integer_bias + i, self.card_label(card), card))
+
+        if to_show:
+            indent = max(len(label) for _, label, _ in to_show)
+            question += '\n\033[92m You can also edit the following cards\033[0m:\n'
+            question += '/' + '-' * 60 + '\\\n'
+            fmt = ' \x1b[31m%%s\x1b[0m. %%-%ds : \x1b[32m%%s\x1b[0m' % indent
+            for number, label, card in to_show:
+                question += '| %-77s|\n' % (fmt % (number, label, card))
+            question += '\\' + '-' * 60 + '/\n'
+            question += ' you can also\n'
+            question += '   - enter the path to a valid card or banner.\n'
+            question += '   - use the \'set\' command to modify a parameter directly.\n'
+
+        self.question = question
+        return self.question
+
+    # ------------------------------------------------------------------
+    #  input routing
+    # ------------------------------------------------------------------
+    def trigger(self, line):
+        """If the user selects (by number) a card whose tool is currently off,
+        first turn the corresponding switch on, then proceed to open it."""
+
+        args = line.split()
+        if args and args[0].isdigit():
+            idx = int(args[0]) - self.integer_bias
+            if 0 <= idx < len(self.cards):
+                spec = self.card_switch.get(self.cards[idx])
+                if spec is not None and not spec['on'](self.switch):
+                    self.set_switch(spec['key'], spec['set'], user=True)
+                    if not spec['on'](self.switch):
+                        # tool could not be enabled -> re-ask the question
+                        return 'repeat'
+                    self.create_question()
+        return AskforEditCard.trigger(self, line)
+
+    def default(self, line):
+        """switch commands are handled by the ControlSwitch, everything else
+        (card numbers, 'set', paths, ...) by AskforEditCard."""
+
+        try:
+            return cmd.ControlSwitch.default(self, line, raise_error=True)
+        except cmd.NotValidInput:
+            return AskforEditCard.default(self, line)
+
+    def postcmd(self, stop, line):
+        # ControlSwitch.postcmd cooperatively calls AskforEditCard.postcmd
+        # (check card consistency / update dependent) via super().
+        out = cmd.ControlSwitch.postcmd(self, stop, line)
+        if out is True:
+            # the question is finished: re-derive the switch values from the
+            # (possibly hand-edited) card content before returning.
+            self.sync_switches_from_cards()
+        return out
+
+    def set_switch(self, key, value, user=True):
+        """Change a switch and, once the question is live, immediately apply the
+        card-setup commands implied by the new value (e.g. copy the density
+        reweight card, set the MadSpin spinmode) so the card the user is about
+        to edit already matches the switch."""
+
+        old = self.switch.get(key)
+        out = cmd.ControlSwitch.set_switch(self, key, value, user=user)
+        if getattr(self, '_switch_ready', False) and self.switch.get(key) != old:
+            if hasattr(self, 'get_cardcmd_for_%s' % key):
+                for line in getattr(self, 'get_cardcmd_for_%s' % key)(self.switch[key]):
+                    self.onecmd(line)
+        return out
+
+    def _sync_switch_from_card(self, key):
+        """Read the card content back into the switch value for a single key
+        (e.g. the MadSpin spinmode, the reweight density mode).  Only an active
+        switch is refreshed so that a tool the user left off stays off."""
+
+        key = key.lower()
+        if self.switch.get(key) in ('OFF', 'Not Avail.'):
+            return
+        reader = getattr(self, 'switch_value_from_card_%s' % key, None)
+        if reader is None:
+            return
+        try:
+            value = reader()
+        except Exception as error:
+            logger.debug('could not sync switch %s from card: %s', key, error)
+            return
+        if not value:
+            return
+        checked = self.check_value(key, value)
+        if checked:
+            # check_value returns True or the normalised value
+            self.switch[key] = checked if isinstance(checked, str) else value
+
+    def sync_switches_from_cards(self):
+        """Re-derive every (active) switch value from its card content."""
+        for key, _ in self.to_control:
+            self._sync_switch_from_card(key)
+
+    def reload_card(self, path):
+        """After a card is (re)loaded -- i.e. the user just closed it in the
+        editor -- refresh the switch it controls so the redisplayed question
+        reflects any hand-edit (e.g. changing the MadSpin spinmode)."""
+
+        out = AskforEditCard.reload_card(self, path)
+        spec = self.card_switch.get(os.path.basename(path))
+        if spec is not None:
+            self._sync_switch_from_card(spec['key'])
+        return out
 
 

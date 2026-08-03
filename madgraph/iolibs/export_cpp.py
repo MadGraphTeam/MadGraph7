@@ -3356,8 +3356,91 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # process-dependent defaults (mirrors the LO run_card.dat logic).
         self.create_run_card(matrix_elements, history)
 
+        # SubProcesses/proc_characteristics: needed by the CommonRunCmd-based
+        # post-processing driver (get_characteristics) so that the madevent
+        # tool interface can run on this directory.
+        self.create_proc_characteristics(matrix_elements)
+
+        # Cards/me5_configuration.txt: read by CommonRunCmd.set_configuration.
+        # Point it at the MG5 install so tool paths (pythia8, etc.) and the
+        # cluster/run-mode settings resolve from the central configuration.
+        try:
+            with open(pjoin(self.dir_path, 'Cards',
+                            'me5_configuration.txt'), 'w') as fsock:
+                fsock.write('# configuration for the mg7 post-processing tools\n'
+                            'mg5_path = %s\n' % MG5DIR)
+        except Exception as error:
+            logger.warning('could not write me5_configuration.txt: %s', error)
+
+        # MadAnalysis5 default analysis cards, tailored to this process. This
+        # must run *before* history.write() below: writing the proc_card cleans
+        # the history in place (dropping the multiparticle 'define' lines that
+        # MA5 needs to resolve p/j/... in the process).
+        self.create_ma5_default_cards(matrix_elements, history)
+
+        # Record the generation commands (proc_card_mg5.dat) so that the model
+        # and process end up in the LHE banner (needed by MadSpin/reweight/...).
+        try:
+            if history:
+                history.write(os.path.join(self.dir_path, 'Cards',
+                                           'proc_card_mg5.dat'))
+        except Exception as error:
+            logger.warning('could not write proc_card_mg5.dat: %s', error)
+
         # we don't call super().finalize() since it would call ProcessExporterCPP.finalize()
         # which would compile the model in src/, and we don't want that
+
+    def pass_information_from_cmd(self, cmd):
+        """Capture the process definitions from the command interface; needed to
+        generate the MadAnalysis5 default cards at output time."""
+        self.proc_defs = getattr(cmd, '_curr_proc_defs', None)
+
+    def create_ma5_default_cards(self, matrix_elements, history):
+        """Call MadAnalysis5 to write process-tailored default analysis cards
+        (parton + hadron), like the madevent exporter does. Falls back silently
+        to the generic default cards if MA5 is unavailable or fails."""
+        ma5_path = self.opt.get('madanalysis5_path')
+        proc_defs = getattr(self, 'proc_defs', None)
+        if not ma5_path or proc_defs is None:
+            return
+
+        processes = None
+        try:
+            if isinstance(matrix_elements, group_subprocs.SubProcessGroupList):
+                processes = [me.get('processes') for megroup in matrix_elements
+                             for me in megroup['matrix_elements']]
+            elif matrix_elements:
+                processes = [me.get('processes')
+                             for me in matrix_elements['matrix_elements']]
+        except (KeyError, TypeError):
+            processes = None
+
+        # expand merged-flavor beam codes (81/82/...) so MA5 recognises the legs
+        proc_defs = self.expand_merged_particle_legs(proc_defs)
+
+        try:
+            from madgraph.interface import common_run_interface as common_run
+            ma5 = common_run.CommonRunCmd.get_MadAnalysis5_interpreter(
+                MG5DIR, ma5_path, loglevel=100)
+            if ma5 is None:
+                return
+            logger.info('Generating MadAnalysis5 default cards tailored to this process')
+            for lvl in ('parton', 'hadron'):
+                try:
+                    text = ma5.main.madgraph.generate_card(history, proc_defs,
+                                                           processes, lvl)
+                except (Exception, SystemExit):
+                    import traceback as _tb
+                    logger.debug('MA5 %s card error:\n%s', lvl, _tb.format_exc())
+                    logger.warning('MadAnalysis5 failed to write a %s-level default '
+                                   'analysis card for this process.', lvl)
+                    continue
+                out = os.path.join(self.dir_path, 'Cards',
+                                   'madanalysis5_%s_card_default.dat' % lvl)
+                with open(out, 'w') as fsock:
+                    fsock.write(text)
+        except (Exception, SystemExit) as error:
+            logger.warning('MadAnalysis5 default card generation failed: %s', error)
 
     def create_run_card(self, matrix_elements, history):
         """Write Cards/run_card.toml from the run_card.toml template via
@@ -3402,6 +3485,64 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # can offer "set <param> default" (mirrors run_card_default.dat at LO).
         run_card.write(pjoin(self.dir_path, 'Cards', 'run_card_default.toml'),
                        template=template)
+
+    def create_proc_characteristics(self, matrix_elements):
+        """Populate and write SubProcesses/proc_characteristics. This is the
+        file CommonRunCmd.get_characteristics() reads to learn ninitial /
+        nexternal / initial-state PDGs, so that the reused madevent tool
+        interface can drive post-processing on this (C++/madspace) output."""
+        pc = self.proc_characteristic
+
+        if isinstance(matrix_elements, group_subprocs.SubProcessGroupList):
+            me_list = [me for megroup in matrix_elements
+                       for me in megroup['matrix_elements']]
+        elif matrix_elements:
+            me_list = list(matrix_elements['matrix_elements'])
+        else:
+            me_list = []
+
+        procs = []
+        qcd_orders = set()
+        for me in me_list:
+            if not me.get('processes'):
+                continue
+            nexternal, ninitial = me.get_nexternal_ninitial()
+            pc['nexternal'] = max(pc['nexternal'], nexternal)
+            pc['ninitial'] = ninitial
+            procs.extend(me.get('processes'))
+            # power of alpha_s in |M|^2 = QCD coupling order of the amplitude;
+            # collect it over every diagram so we can tell whether it is uniform.
+            # Never let this break the output: on any surprise just fall back to
+            # -1 (systematics then simply cannot reconstruct the reweighting).
+            try:
+                for diagram in me.get('diagrams'):
+                    qcd_orders.add(diagram.calculate_orders().get('QCD', 0))
+            except Exception as error:
+                logger.debug('could not determine the QCD order: %s', error)
+                qcd_orders.add(None)
+
+        # a single value of alpha_s (uniform QCD power) lets systematics
+        # reconstruct the LO reweighting info without an <mgrwt> block
+        pc['single_qcd_order'] = (qcd_orders.pop()
+                                  if len(qcd_orders) == 1 and None not in qcd_orders
+                                  else -1)
+
+        if procs:
+            pc['pdg_initial1'] = [p.get_initial_pdg(1) for p in procs
+                                  if p.get_initial_pdg(1)]
+            pc['pdg_initial2'] = [p.get_initial_pdg(2) for p in procs
+                                  if p.get_initial_pdg(2)]
+            model = procs[0].get('model')
+            colored = set(abs(p.get('pdg_code')) for p in model.get('particles')
+                          if p.get('color') > 1)
+            pc['colored_pdgs'] = sorted(colored)
+            # ISR/FSR presence drives (e.g.) the shower's initial/final radiation
+            pc['has_isr'] = any(abs(pid) in colored
+                                for pid in pc['pdg_initial1'] + pc['pdg_initial2'])
+            pc['has_fsr'] = any(abs(fid) in colored
+                                for p in procs for fid in p.get_final_ids())
+
+        pc.write(pjoin(self.dir_path, 'SubProcesses', 'proc_characteristics'))
 
 def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
     """ Determine which Export class is required. cmd is the command 

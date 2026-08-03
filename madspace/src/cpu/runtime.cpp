@@ -964,9 +964,8 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
         --instr_index;
         bool is_ready = true;
         std::size_t dependency_count = 0;
-        for (auto& out : instr.outputs) {
-            local_uses_backward.at(out.local_index).push_back(instr_index);
-            std::size_t source_instr = local_sources_backward.at(out.local_index);
+        auto check_dependency = [&](std::size_t local_index) {
+            std::size_t source_instr = local_sources_backward.at(local_index);
             if (source_instr != -1) {
                 is_ready = false;
                 auto& source_deps = dep_instrs_backward.at(source_instr);
@@ -976,14 +975,23 @@ CpuRuntime::CpuRuntime(const Function& function, ContextPtr context, bool concur
                     ++dependency_count;
                 }
             }
+        };
+        for (auto& out : instr.outputs) {
+            local_uses_backward.at(out.local_index).push_back(instr_index);
+            check_dependency(out.local_index);
         }
+        // also run dependency check for inputs to prevent concurrent writes to
+        // same gradient
+        for (auto& in : instr.inputs) {
+            check_dependency(in.local_index);
+        }
+        for (auto& in : instr.inputs) {
+            local_sources_backward.at(in.local_index) = instr_index;
+        }
+
         dep_counts_backward.at(instr_index) = dependency_count;
         if (is_ready) {
             _ready_instructions_backward_init.push_back(instr_index);
-        }
-
-        for (auto& in : instr.inputs) {
-            local_sources_backward.at(in.local_index) = instr_index;
         }
     }
 

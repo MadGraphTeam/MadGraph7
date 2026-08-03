@@ -12,7 +12,7 @@ cpu_thread_pool_size = %(run.cpu_thread_pool_size)s
 gpu_thread_pool_size = %(run.gpu_thread_pool_size)s
 combine_thread_pool_size = %(run.combine_thread_pool_size)s
 output_format = %(run.output_format)s # options: compact_npy, lhe_npy, lhe
-verbosity = %(run.verbosity)s # options: silent, pretty, log
+verbosity = %(run.verbosity)s # options: silent, pretty, log, auto (pretty if attached to a terminal, log otherwise)
 dummy_matrix_element = %(run.dummy_matrix_element)s
 
 [gridpack]
@@ -45,6 +45,14 @@ survey_target_precision = %(generation.survey_target_precision)s
 cut_efficiency_threshold = %(generation.cut_efficiency_threshold)s
 max_cut_repetitions = %(generation.max_cut_repetitions)s
 systematics = %(generation.systematics)s
+
+[postprocessing]
+time_of_flight = %(postprocessing.time_of_flight)s # threshold (in mm) below which the invariant livetime is not written (-1 means not written)
+systematics = %(postprocessing.systematics)s
+systematics_muf = %(postprocessing.systematics_muf)s
+systematics_mur = %(postprocessing.systematics_mur)s
+systematics_pdf = %(postprocessing.systematics_pdf)s
+systematics_str_options = %(postprocessing.systematics_str_options)s
 
 [vegas]
 enable = %(vegas.enable)s

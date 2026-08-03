@@ -581,7 +581,7 @@ class EventGenerator:
     def channel_status(self) -> list[GeneratorStatus]: ...
     def channels(self) -> list[ChannelEventGenerator]: ...
     def combine_to_compact_npy(self, file_name: str) -> None: ...
-    def combine_to_lhe(self, file_name: str, lhe_completer: LHECompleter) -> None: ...
+    def combine_to_lhe(self, file_name: str, lhe_completer: LHECompleter, meta: LHEMeta = ...) -> None: ...
     def combine_to_lhe_npy(
         self, file_name: str, lhe_completer: LHECompleter
     ) -> None: ...
@@ -1299,6 +1299,16 @@ class LHECompleter:
         self,
         subproc_args: collections.abc.Sequence[SubprocArgs],
         bw_cutoff: typing.SupportsFloat,
+    ) -> None: ...
+    def complete_event_data(
+        self,
+        event: LHEEvent,
+        subprocess_index: typing.SupportsInt,
+        diagram_index: typing.SupportsInt,
+        color_index: typing.SupportsInt,
+        flavor_index: typing.SupportsInt,
+        helicity_index: typing.SupportsInt,
+        rand_gen: RandGen,
     ) -> None: ...
     def save(self, file: str) -> None: ...
     @property
@@ -2598,6 +2608,12 @@ class PropagatorChannelWeights(FunctionGenerator):
         ],
     ) -> None: ...
 
+class RandGen:
+    @typing.overload
+    def __init__(self) -> None: ...
+    @typing.overload
+    def __init__(self, seed: typing.SupportsInt) -> None: ...
+
 class RunningCoupling(FunctionGenerator):
     def __init__(self, grid: AlphaSGrid, prefix: str = "") -> None: ...
 
@@ -2629,9 +2645,7 @@ class SubprocArgs:
             collections.abc.Sequence[collections.abc.Sequence[typing.SupportsInt]]
         ] = [],
         color_flows: collections.abc.Sequence[
-            collections.abc.Sequence[
-                collections.abc.Sequence[tuple[typing.SupportsInt, typing.SupportsInt]]
-            ]
+            collections.abc.Sequence[tuple[typing.SupportsInt, typing.SupportsInt]]
         ] = [],
         pdg_color_types: collections.abc.Mapping[
             typing.SupportsInt, typing.SupportsInt
@@ -2642,17 +2656,14 @@ class SubprocArgs:
         pdg_ids: collections.abc.Sequence[
             collections.abc.Sequence[collections.abc.Sequence[typing.SupportsInt]]
         ] = [],
-        matrix_flavor_indices: collections.abc.Sequence[typing.SupportsInt] = [],
     ) -> None: ...
     @property
-    def color_flows(self) -> list[list[list[tuple[int, int]]]]: ...
+    def color_flows(self) -> list[list[tuple[int, int]]]: ...
     @color_flows.setter
     def color_flows(
         self,
         arg0: collections.abc.Sequence[
-            collections.abc.Sequence[
-                collections.abc.Sequence[tuple[typing.SupportsInt, typing.SupportsInt]]
-            ]
+            collections.abc.Sequence[tuple[typing.SupportsInt, typing.SupportsInt]]
         ],
     ) -> None: ...
     @property
@@ -2677,12 +2688,6 @@ class SubprocArgs:
     def helicities(
         self,
         arg0: collections.abc.Sequence[collections.abc.Sequence[typing.SupportsFloat]],
-    ) -> None: ...
-    @property
-    def matrix_flavor_indices(self) -> list[int]: ...
-    @matrix_flavor_indices.setter
-    def matrix_flavor_indices(
-        self, arg0: collections.abc.Sequence[typing.SupportsInt]
     ) -> None: ...
     @property
     def pdg_color_types(self) -> dict[int, int]: ...
