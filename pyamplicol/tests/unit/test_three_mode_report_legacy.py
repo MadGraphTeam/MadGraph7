@@ -20,6 +20,7 @@ from tools.performance_report.legacy import (
     LegacyAdapterError,
     LegacyMeasurementAdapter,
     LegacySettings,
+    MaintainedLegacyApi,
     TimingRow,
     _canonical_mapped_color_word,
     _canonical_process_entry,
@@ -431,6 +432,101 @@ def test_canonical_process_entry_retains_preferred_duplicate_word() -> None:
 
 
 @pytest.mark.parametrize(
+    "pdgs",
+    (
+        (1, -1, 2, -2, 3, -3, 21),
+        (1, -1, 2, -2, 2, -2, 21),
+    ),
+)
+def test_real_three_line_process_file_keeps_exact_source_carrier(
+    pdgs: tuple[int, ...],
+    tmp_path: Path,
+) -> None:
+    process_file = tmp_path / "processes.txt"
+    pdg_row = " ".join(str(pdg) for pdg in pdgs)
+    process_file.write_text(
+        "\n".join(
+            (
+                "7 1",
+                pdg_row,
+                "2",
+                "4 1 1 1 3 4 5 6 2 7",
+                f"1 4 {pdg_row} 2 7 1 3 4 5 6 0.5",
+                "5 1 1 1 3 4 5 6 7 2",
+                f"1 5 {pdg_row} 2 1 3 4 5 7 6 0.5",
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+    api = MaintainedLegacyApi()
+    entries = api.parse_process_file(process_file)
+    preferred, matches = api.select_generated_process_entry(
+        entries,
+        generated_process="d d~ > three open lines plus g",
+        wanted_pdgs=pdgs,
+    )
+
+    entry, mapped, word = _canonical_process_entry(
+        api,
+        matches,
+        preferred_entry=preferred,
+        source_pdgs=pdgs,
+        initial_state_count=2,
+    )
+
+    assert int(entry.group) == 4
+    assert mapped == (2, 7, 1, 3, 4, 5, 6)
+    assert word == (2, 7, 1, 3, 4, 5, 6)
+
+
+def test_real_two_line_process_file_keeps_cross_paired_source_carrier(
+    tmp_path: Path,
+) -> None:
+    process_file = tmp_path / "processes.txt"
+    process_file.write_text(
+        """6 4
+1 6 -1 -6 21 21
+1 6 -6 -1 21 21
+6 1 -1 -6 21 21
+6 1 -6 -1 21 21
+
+
+2
+
+1   1   1   1 2 3 4 6 5
+1   1   1 -1 21 21 6 -6   5 1 2 3 4 6   2.0
+
+
+
+2   1   1   1 2 3 6 5 4
+1   2   1 -1 21 21 6 -6   5 4 1 2 3 6   2.0
+""",
+        encoding="utf-8",
+    )
+    pdgs = (1, -1, 6, -6, 21, 21)
+    api = MaintainedLegacyApi()
+    entries = api.parse_process_file(process_file)
+    preferred, matches = api.select_generated_process_entry(
+        entries,
+        generated_process="d d~ > t t~ g g",
+        wanted_pdgs=pdgs,
+    )
+
+    entry, mapped, word = _canonical_process_entry(
+        api,
+        matches,
+        preferred_entry=preferred,
+        source_pdgs=pdgs,
+        initial_state_count=2,
+    )
+
+    assert int(entry.group) == 1
+    assert mapped == (3, 1, 2, 5, 6, 4)
+    assert word == (2, 5, 6, 4, 3, 1)
+
+
+@pytest.mark.parametrize(
     ("n_final", "pdgs", "selected_word", "other_word", "reverse_entries"),
     (
         (
@@ -450,15 +546,15 @@ def test_canonical_process_entry_retains_preferred_duplicate_word() -> None:
         (
             5,
             (1, -1, 2, -2, 2, -2, 21),
+            (2, 7, 1, 3, 4, 5, 6),
             (2, 1, 3, 4, 5, 7, 6),
-            (2, 4, 3, 1, 5, 7, 6),
             False,
         ),
         (
             5,
             (1, -1, 2, -2, 2, -2, 21),
+            (2, 7, 1, 3, 4, 5, 6),
             (2, 1, 3, 4, 5, 7, 6),
-            (2, 4, 3, 1, 5, 7, 6),
             True,
         ),
     ),
@@ -479,9 +575,9 @@ def test_identical_three_line_lc_uses_selected_entry_mapped_row(
         if reverse_entries
         else (other_entry, selected_entry)
     )
-    # The legacy process parser's preferred row is deliberately noncanonical;
-    # the shared policy must inspect the mapped physical rows itself.
-    api = EntryMappedFakeApi(pdgs, entries, selected_entry=other_entry)
+    # The exact-source process-file row is the generated-library carrier.
+    # Reordering the surrounding candidate rows must not replace it.
+    api = EntryMappedFakeApi(pdgs, entries, selected_entry=selected_entry)
     api.lc_probe_result = SimpleNamespace(
         value=4.0,
         lc_row_partitions=(
@@ -512,7 +608,7 @@ def test_identical_three_line_lc_uses_selected_entry_mapped_row(
     )
 
     contract = SelectorContract.from_mapping(measurement["selector_contract"])
-    assert api.mapped_entries == list(entries)
+    assert api.mapped_entries == [selected_entry]
     assert api.probed_entries == [selected_entry]
     assert contract.selected_color_flow_ids == (
         "flow:" + ",".join(str(label) for label in selected_word),
@@ -540,9 +636,9 @@ def test_identical_three_line_lc_uses_selected_entry_mapped_row(
         (
             5,
             (1, -1, 2, -2, 2, -2, 21),
+            (2, 7, 1, 3, 4, 5, 6),
+            (3, 4, 2, 7, 1, 5, 6),
             (2, 1, 3, 4, 5, 7, 6),
-            (3, 4, 2, 1, 5, 7, 6),
-            (2, 4, 3, 1, 5, 7, 6),
         ),
     ),
 )
@@ -555,13 +651,18 @@ def test_identical_three_line_lc_rejects_duplicate_canonical_probe_rows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    selected_entry = FakeEntry(
+        group=2,
+        process_pdgs=pdgs,
+        color_order=selected_word,
+    )
     api = EntryMappedFakeApi(
         pdgs,
         (
             FakeEntry(group=1, process_pdgs=pdgs, color_order=other_word),
-            FakeEntry(group=2, process_pdgs=pdgs, color_order=selected_word),
+            selected_entry,
         ),
-        selected_entry=FakeEntry(group=1, process_pdgs=pdgs, color_order=other_word),
+        selected_entry=selected_entry,
     )
     api.lc_probe_result = SimpleNamespace(
         value=3.0,
@@ -1149,12 +1250,12 @@ def test_all_flow_uses_direct_fixed_helicity_and_its_own_generation_setup(
     provenance = measurement["provenance"]
     assert provenance["generation_timing_is_workload_specific"] is True
     assert provenance["row_selection_policy"] == (
-        "exact-external-pdg-order-then-canonical-lc-flow-word-v1"
+        "exact-external-pdg-order-then-process-file-order-v1"
     )
     assert provenance["raw_mapped_color_order"] == [2, 4, 1, 3]
     assert (
         provenance["selector_color_word_policy"]
-        == "lexicographic-canonical-physical-lc-flow-v1"
+        == "outgoing-open-string-blocks-by-fundamental-source-label-v1"
     )
     assert (
         provenance["generation_source"] == "direct-imode2-generation-setup"

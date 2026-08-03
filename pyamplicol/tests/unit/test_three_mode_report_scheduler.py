@@ -233,7 +233,7 @@ def test_compiled_plan_keeps_numerical_authorities_availability_optional(
     assert target.prerequisite_cell_ids == ()
 
 
-def test_explicit_optional_amplicol_is_priority_metadata_not_a_prerequisite(
+def test_explicit_optional_amplicol_orders_recurrence_without_becoming_hard(
     tmp_path: Path,
 ) -> None:
     recurrence = _matrix_cell("matrix_recurrence_builtin_sm_lc")
@@ -251,8 +251,31 @@ def test_explicit_optional_amplicol_is_priority_metadata_not_a_prerequisite(
     assert set(by_id) == {recurrence.cell_id, amplicol.cell_id}
     assert target.baseline_cell_id is None
     assert target.optional_baseline_cell_id == amplicol.cell_id
-    assert target.prerequisite_cell_ids == ()
+    assert target.prerequisite_cell_ids == (amplicol.cell_id,)
     assert by_id[amplicol.cell_id].rank < target.rank
+
+
+def test_selected_authority_chain_is_encoded_as_ordering_prerequisites(
+    tmp_path: Path,
+) -> None:
+    compiled = _matrix_cell("matrix_compiled_builtin_sm_lc")
+    recurrence = REPORT_CATALOG.validation_baseline_cell(compiled)
+    assert recurrence is not None
+    amplicol = REPORT_CATALOG.validation_baseline_cell(recurrence)
+    assert amplicol is not None
+    eager = _matrix_cell("matrix_eager_builtin_sm_lc")
+
+    planned = plan_campaign(
+        (compiled, eager, recurrence, amplicol),
+        store=_store(tmp_path),
+        settings=CampaignSettings(),
+    )
+    by_id = {item.cell.cell_id: item for item in planned}
+
+    assert by_id[amplicol.cell_id].prerequisite_cell_ids == ()
+    assert by_id[recurrence.cell_id].prerequisite_cell_ids == (amplicol.cell_id,)
+    for candidate in (compiled, eager):
+        assert by_id[candidate.cell_id].prerequisite_cell_ids == (recurrence.cell_id,)
 
 
 def test_optional_amplicol_current_is_forwarded_only_when_successful(
@@ -810,7 +833,7 @@ def test_postworker_tampered_unverified_is_rejected_before_reconciliation(
         scheduler._run_cell(target)
 
 
-def test_authority_priority_never_blocks_ready_compiled_or_eager_work(
+def test_selected_authorities_finish_before_compiled_and_eager_work(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -824,9 +847,6 @@ def test_authority_priority_never_blocks_ready_compiled_or_eager_work(
     amplicol = REPORT_CATALOG.validation_baseline_cell(recurrence)
     assert amplicol is not None
     eager = _matrix_cell("matrix_eager_builtin_sm_lc")
-    recurrence_started = threading.Event()
-    compiled_started = threading.Event()
-    eager_started = threading.Event()
     start_order: list[ExecutionMode] = []
     order_guard = threading.Lock()
 
@@ -834,20 +854,16 @@ def test_authority_priority_never_blocks_ready_compiled_or_eager_work(
         with order_guard:
             start_order.append(item.cell.measurement.execution_mode)
         if item.cell == amplicol:
-            assert recurrence_started.wait(1.0)
             return CellOutcome(amplicol.cell_id, "ok", "authority complete")
         if item.cell == recurrence:
-            recurrence_started.set()
-            assert eager_started.wait(1.0)
+            assert start_order == [ExecutionMode.AMPLICOL, ExecutionMode.RECURRENCE]
             return CellOutcome(recurrence.cell_id, "ok", "authority complete")
         if item.cell == candidate:
-            assert recurrence_started.is_set()
-            compiled_started.set()
-            return CellOutcome(candidate.cell_id, "unverified", "diagnostic")
+            assert ExecutionMode.RECURRENCE in start_order
+            return CellOutcome(candidate.cell_id, "ok", "verified")
         assert item.cell == eager
-        assert compiled_started.is_set()
-        eager_started.set()
-        return CellOutcome(eager.cell_id, "unverified", "diagnostic")
+        assert ExecutionMode.RECURRENCE in start_order
+        return CellOutcome(eager.cell_id, "ok", "verified")
 
     monkeypatch.setattr(scheduler, "_run_cell_in_lane", run_in_lane)
     result = scheduler.run(
@@ -855,7 +871,13 @@ def test_authority_priority_never_blocks_ready_compiled_or_eager_work(
             reversed(
                 (
                     PlannedCell(amplicol, False, None, 0),
-                    PlannedCell(recurrence, False, None, 1),
+                    PlannedCell(
+                        recurrence,
+                        False,
+                        None,
+                        1,
+                        prerequisite_cell_ids=(amplicol.cell_id,),
+                    ),
                     PlannedCell(
                         candidate,
                         False,
@@ -865,6 +887,7 @@ def test_authority_priority_never_blocks_ready_compiled_or_eager_work(
                             recurrence.cell_id,
                             amplicol.cell_id,
                         ),
+                        prerequisite_cell_ids=(recurrence.cell_id,),
                     ),
                     PlannedCell(
                         eager,
@@ -875,24 +898,68 @@ def test_authority_priority_never_blocks_ready_compiled_or_eager_work(
                             recurrence.cell_id,
                             amplicol.cell_id,
                         ),
+                        prerequisite_cell_ids=(recurrence.cell_id,),
                     ),
                 )
             )
         )
     )
 
-    assert compiled_started.is_set()
-    assert eager_started.is_set()
-    assert set(start_order[:2]) == {
-        ExecutionMode.AMPLICOL,
-        ExecutionMode.RECURRENCE,
-    }
-    assert start_order[2:] == [ExecutionMode.COMPILED, ExecutionMode.EAGER]
+    assert start_order[:2] == [ExecutionMode.AMPLICOL, ExecutionMode.RECURRENCE]
+    assert set(start_order[2:]) == {ExecutionMode.COMPILED, ExecutionMode.EAGER}
     assert {outcome.cell_id for outcome in result.outcomes} == {
         recurrence.cell_id,
         amplicol.cell_id,
         candidate.cell_id,
         eager.cell_id,
+    }
+
+
+@pytest.mark.parametrize(
+    "authority_status",
+    ("error", "generation_limit", "memory_limit", "worker_timeout"),
+)
+def test_terminal_optional_authority_releases_baseline_free_candidate(
+    authority_status: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scheduler = CampaignScheduler(
+        _service(tmp_path),
+        settings=CampaignSettings(workers=2),
+    )
+    candidate = _matrix_cell("matrix_compiled_builtin_sm_lc")
+    recurrence = REPORT_CATALOG.validation_baseline_cell(candidate)
+    assert recurrence is not None
+    start_order: list[str] = []
+
+    def run_in_lane(item: PlannedCell) -> CellOutcome:
+        start_order.append(item.cell.cell_id)
+        if item.cell == recurrence:
+            return CellOutcome(recurrence.cell_id, authority_status, "terminal")
+        assert item.cell == candidate
+        return CellOutcome(candidate.cell_id, "unverified", "baseline-free")
+
+    monkeypatch.setattr(scheduler, "_run_cell_in_lane", run_in_lane)
+    result = scheduler.run(
+        (
+            PlannedCell(recurrence, False, None, 0),
+            PlannedCell(
+                candidate,
+                False,
+                None,
+                1,
+                numerical_authority_cell_ids=(recurrence.cell_id,),
+                prerequisite_cell_ids=(recurrence.cell_id,),
+            ),
+        )
+    )
+
+    assert start_order == [recurrence.cell_id, candidate.cell_id]
+    outcomes = {outcome.cell_id: outcome.status for outcome in result.outcomes}
+    assert outcomes == {
+        recurrence.cell_id: authority_status,
+        candidate.cell_id: "unverified",
     }
 
 

@@ -450,13 +450,38 @@ def test_complete_lc_fixed_helicity_selection_composes_with_flow_replay(
     )
 
 
+@pytest.mark.parametrize(
+    (
+        "process",
+        "expected_total",
+        "expected_fixed_helicity",
+        "expected_all_flow_fixed_helicity",
+    ),
+    (
+        (
+            "d d~ > u u~ s s~ g",
+            8.495913119023438e-15,
+            2.6043061427778106e-15,
+            4.899181433766111e-14,
+        ),
+        (
+            "d d~ > u u~ u u~ g",
+            3.215288522484574e-15,
+            5.102730162523396e-16,
+            4.4151994948046454e-14,
+        ),
+    ),
+)
 def test_three_line_lc_publication_reload_and_union_components_match(
+    process: str,
+    expected_total: float,
+    expected_fixed_helicity: float,
+    expected_all_flow_fixed_helicity: float,
     tmp_path: Path,
 ) -> None:
     if importlib.util.find_spec("pyamplicol._rusticol") is None:
         pytest.skip("the Rusticol extension has not been built")
 
-    process = "d d~ > u u~ s s~ g"
     generation = GenerationConfig(
         emit_api_bundle=False,
         validation=GenerationValidationConfig(
@@ -514,7 +539,16 @@ def test_three_line_lc_publication_reload_and_union_components_match(
         abs=1.0e-15,
     )
     assert complete.evaluate(points, color_flows=(flow_id,))[0].real == pytest.approx(
-        8.495913119023438e-15,
+        expected_total,
+        rel=1.0e-11,
+        abs=1.0e-25,
+    )
+    assert complete.evaluate(
+        points,
+        color_flows=(flow_id,),
+        helicities=(helicity_id,),
+    )[0].real == pytest.approx(
+        expected_fixed_helicity,
         rel=1.0e-11,
         abs=1.0e-25,
     )
@@ -528,7 +562,7 @@ def test_three_line_lc_publication_reload_and_union_components_match(
         abs=1.0e-15,
     )
     assert complete_fixed.total()[0].real == pytest.approx(
-        4.899181433766111e-14,
+        expected_all_flow_fixed_helicity,
         rel=1.0e-11,
         abs=1.0e-24,
     )

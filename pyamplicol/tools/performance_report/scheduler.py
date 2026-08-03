@@ -436,8 +436,9 @@ _READY_MODE_ORDER = {
 def _ready_priority(cell: CellSpec) -> tuple[object, ...]:
     """Prefer the authority ladder within one comparable physics cohort.
 
-    This is queue ordering only.  It deliberately creates no dependency: a
-    slow, failed, or locked authority can never keep a free worker slot idle.
+    Plan-level ordering prerequisites serialize optional authorities when both
+    endpoints are selected.  This priority only orders otherwise-ready cells;
+    independent physics cohorts remain work-conserving.
     """
 
     return (
@@ -1177,9 +1178,14 @@ def plan_campaign(
     def scheduled_prerequisite_ids(cell: CellSpec) -> tuple[str, ...]:
         return tuple(
             sorted(
-                dependency.cell_id
-                for dependency in dependencies(cell)
-                if dependency.cell_id in needed
+                {
+                    dependency.cell_id
+                    for dependency in (
+                        *dependencies(cell),
+                        *optional_dependencies(cell),
+                    )
+                    if dependency.cell_id in needed
+                }
             )
         )
 
