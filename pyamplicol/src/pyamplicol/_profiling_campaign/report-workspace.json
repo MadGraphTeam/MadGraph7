@@ -1,5 +1,5 @@
 {
-  "artifact_root": ".artifacts/performance-report/macbook_M3_manual",
+  "artifact_root": "campaign_artifacts",
   "campaign_policy": {
     "allow_terminal_censors": false,
     "cell_cores": null,
@@ -12,12 +12,12 @@
     "target_runtime_seconds": 5.0,
     "workers": null
   },
-  "coordination_root": ".artifacts/performance-report-coordination/macbook_M3_manual",
+  "coordination_root": "campaign_artifacts/coordination",
   "document": "pyAmpliCol.tex",
   "environment_json": "report_environment.json",
   "environment_tex": "report_environment.tex",
   "excluded_content": [
-    ".artifacts evaluator attempts",
+    "campaign_artifacts evaluator attempts and prepared models",
     "worker logs",
     "locks and coordination state",
     "LaTeX auxiliary files"

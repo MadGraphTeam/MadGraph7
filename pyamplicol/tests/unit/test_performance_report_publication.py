@@ -3,13 +3,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shlex
 from copy import deepcopy
 from pathlib import Path
 
 import pytest
 
 from tools.performance_report.publication import (
+    PORTABLE_CURRENT_REPRODUCTION_RECIPE_ABI,
     PublicationPortabilityError,
+    materialize_current_value,
+    portable_current_value,
     portable_publication_value,
     publication_absolute_paths,
     publication_measurement_matches_current,
@@ -508,3 +512,162 @@ def test_raw_current_is_audited_before_projection_and_is_never_mutated(
     assert not publication_measurement_matches_current(changed, current, paths)
     assert audit_order == ["raw", "projected"]
     assert current == before
+
+
+def test_portable_current_round_trip_rebases_only_approved_locators(
+    tmp_path: Path,
+) -> None:
+    source = _paths(tmp_path / "before", "manual")
+    target = _paths(tmp_path / "after", "renamed")
+    identity = {"native_extension": {"path": "/authenticated/runtime.so"}}
+    payload = {
+        "artifact": {
+            "path": str(source.artifact_root / "cells/a/attempts/id/artifact"),
+            "log_path": str(source.artifact_root / "cells/a/attempts/id/worker.log"),
+        },
+        "provenance": {
+            "worker_log": str(
+                source.artifact_root / "cells/a/attempts/id/worker.log"
+            ),
+            "runtime_identity": identity,
+            "runtime_identity_sha256": _digest(identity),
+        },
+    }
+    identity_before = _canonical_bytes(identity)
+
+    portable = portable_current_value(payload, source)
+    materialized = materialize_current_value(portable, target)
+
+    assert portable["artifact"]["path"] == (  # type: ignore[index]
+        "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}/cells/a/attempts/id/artifact"
+    )
+    assert materialized["artifact"]["path"] == str(  # type: ignore[index]
+        target.artifact_root / "cells/a/attempts/id/artifact"
+    )
+    assert _canonical_bytes(portable["provenance"]["runtime_identity"]) == (  # type: ignore[index]
+        identity_before
+    )
+
+
+@pytest.mark.parametrize(
+    "locator",
+    (
+        "/tmp/old-campaign/artifact",
+        "relative/artifact",
+        "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}",
+        "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}/../escape",
+        "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}/artifact\\member",
+        "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}//artifact",
+    ),
+)
+def test_portable_current_rejects_legacy_or_noncanonical_artifact_locator(
+    tmp_path: Path,
+    locator: str,
+) -> None:
+    paths = _paths(tmp_path)
+
+    with pytest.raises(PublicationPortabilityError):
+        materialize_current_value({"artifact": {"path": locator}}, paths)
+
+
+def test_portable_current_rejects_artifact_symlink_traversal(tmp_path: Path) -> None:
+    paths = _paths(tmp_path)
+    paths.artifact_root.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (paths.artifact_root / "escape").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(PublicationPortabilityError, match="invalid rooted path"):
+        materialize_current_value(
+            {
+                "artifact": {
+                    "path": "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}/escape/payload"
+                }
+            },
+            paths,
+        )
+
+
+def test_portable_current_rejects_in_root_artifact_symlink_traversal(
+    tmp_path: Path,
+) -> None:
+    paths = _paths(tmp_path)
+    target = paths.artifact_root / "real"
+    target.mkdir(parents=True)
+    (paths.artifact_root / "alias").symlink_to(target, target_is_directory=True)
+
+    with pytest.raises(PublicationPortabilityError, match="symbolic link"):
+        materialize_current_value(
+            {
+                "artifact": {
+                    "path": "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}/alias/payload"
+                }
+            },
+            paths,
+        )
+
+
+def test_portable_current_preserves_external_installed_command_and_moves_state(
+    tmp_path: Path,
+) -> None:
+    source = _paths(tmp_path / "before", "manual")
+    target = _paths(tmp_path / "after path's", "renamed")
+    external_python = "/opt/pyamplicol-venv/bin/python"
+    profile_argv = (
+        external_python,
+        "-m",
+        "pyamplicol",
+        "profile",
+        str(source.artifact_root / "manual-reproductions/cell/artifact"),
+    )
+    payload = {
+        "artifact": {
+            "path": str(source.artifact_root / "cells/a/attempts/id/artifact")
+        },
+        "provenance": {
+            "manual_campaign": {
+                "public_cli_reproduction": {
+                    "abi": PORTABLE_CURRENT_REPRODUCTION_RECIPE_ABI,
+                    "prepare": None,
+                    "generate": None,
+                    "profile": list(profile_argv),
+                }
+            }
+        },
+    }
+
+    portable = portable_current_value(payload, source)
+    stored_argv = portable["provenance"]["manual_campaign"][  # type: ignore[index]
+        "public_cli_reproduction"
+    ]["profile"]
+    assert external_python in stored_argv
+    assert stored_argv[-1].startswith(
+        "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}/manual-reproductions"
+    )
+    assert "${LOCAL_PATH_REDACTED}" not in stored_argv
+
+    materialized = materialize_current_value(portable, target)
+    moved_argv = materialized["provenance"]["manual_campaign"][  # type: ignore[index]
+        "public_cli_reproduction"
+    ]["profile"]
+    assert external_python in moved_argv
+    assert moved_argv[-1] == str(
+        target.artifact_root / "manual-reproductions/cell/artifact"
+    )
+    assert shlex.split(shlex.join(moved_argv)) == moved_argv
+
+    with pytest.raises(PublicationPortabilityError, match="structured ABI"):
+        materialize_current_value(
+            {
+                "provenance": {
+                    "manual_campaign": {
+                        "public_cli_reproduction": {
+                            "prepare": None,
+                            "generate": None,
+                            "profile": "old absolute command",
+                        }
+                    }
+                }
+            },
+            target,
+        )

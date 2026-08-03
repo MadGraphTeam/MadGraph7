@@ -122,12 +122,14 @@ class ReportService:
         paths: ReportPaths,
         *,
         catalog: ReportCatalog = REPORT_CATALOG,
+        portable_current_results: bool = False,
     ) -> None:
         self.paths = paths
         self.catalog = catalog
         self.store = ArtifactStore(
             artifact_root=paths.artifact_root,
             lock_root=paths.coordination_root,
+            current_publication_paths=(paths if portable_current_results else None),
         )
         self._authenticated_measurement_lineage: MeasurementLineage | None = None
         self._measurement_lineage_bound = False
@@ -370,19 +372,31 @@ class ReportService:
         }
         self.validate_payloads(portable_caches)  # type: ignore[arg-type]
         self.paths.results_dir.mkdir(parents=True, exist_ok=True)
+        staging_root = self.paths.artifact_root / "report-snapshot-builds"
+        staging_root.mkdir(parents=True, exist_ok=True)
         staging = Path(
             tempfile.mkdtemp(
                 prefix=".report-snapshot-",
-                dir=self.paths.docs_dir,
+                dir=staging_root,
             )
         )
         written: list[Path] = []
         replaced: list[tuple[Path, Path | None]] = []
+        temporary_files: list[Path] = []
+
+        def adjacent_temporary(destination: Path, *, kind: str) -> Path:
+            with tempfile.NamedTemporaryFile(
+                prefix=f".{destination.name}.report-{kind}-",
+                dir=destination.parent,
+                delete=False,
+            ) as handle:
+                temporary = Path(handle.name)
+            temporary_files.append(temporary)
+            return temporary
+
         try:
             staged_results = staging / "results"
             staged_results.mkdir()
-            backup_root = staging / "previous"
-            backup_root.mkdir()
             schema_path = staged_results / "report-cache.schema.json"
             schema_path.write_bytes(_canonical_bytes(schema_document()))
             for name, payload in portable_caches.items():
@@ -414,13 +428,14 @@ class ReportService:
                 ),
             ]
             try:
-                for source, destination, relative in publications:
+                for source, destination, _relative in publications:
                     backup: Path | None = None
                     if destination.exists():
-                        backup = backup_root / relative
-                        backup.parent.mkdir(parents=True, exist_ok=True)
+                        backup = adjacent_temporary(destination, kind="backup")
                         shutil.copy2(destination, backup)
-                    source.replace(destination)
+                    install = adjacent_temporary(destination, kind="install")
+                    shutil.copy2(source, install)
+                    install.replace(destination)
                     replaced.append((destination, backup))
                     written.append(destination)
             except BaseException:
@@ -431,6 +446,8 @@ class ReportService:
                         backup.replace(destination)
                 raise
         finally:
+            for temporary in temporary_files:
+                temporary.unlink(missing_ok=True)
             shutil.rmtree(staging, ignore_errors=True)
         return tuple(written)
 

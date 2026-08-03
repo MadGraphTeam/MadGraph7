@@ -19,12 +19,16 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from types import TracebackType
-from typing import Any, BinaryIO
+from typing import TYPE_CHECKING, Any, BinaryIO
 
 from .models import ArtifactPolicy
 
+if TYPE_CHECKING:
+    from .service import ReportPaths
+
 ATTEMPT_SCHEMA = "pyamplicol-performance-attempt-v1"
 CURRENT_SCHEMA = "pyamplicol-performance-current-v1"
+PORTABLE_CURRENT_SCHEMA = "pyamplicol-performance-portable-current-v1"
 
 _ATTEMPT_KEYS = {
     "schema",
@@ -338,13 +342,73 @@ def _filesystem_lock(
 class ArtifactStore:
     """Store immutable attempts and atomically select one validated current result."""
 
-    def __init__(self, *, artifact_root: Path, lock_root: Path) -> None:
+    def __init__(
+        self,
+        *,
+        artifact_root: Path,
+        lock_root: Path,
+        current_publication_paths: ReportPaths | None = None,
+    ) -> None:
         self.artifact_root = Path(artifact_root).expanduser().resolve(strict=False)
         self.lock_root = Path(lock_root).expanduser().resolve(strict=False)
+        self.current_publication_paths = current_publication_paths
+        if current_publication_paths is not None and (
+            current_publication_paths.artifact_root != self.artifact_root
+            or current_publication_paths.coordination_root != self.lock_root
+        ):
+            raise ValueError(
+                "portable current roots must match the artifact store roots"
+            )
         self.cells_root = self.artifact_root / "cells"
         self.attempt_history_root = self.artifact_root / "attempt-history"
         self.cells_root.mkdir(parents=True, exist_ok=True)
         self.lock_root.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def current_schema(self) -> str:
+        return (
+            CURRENT_SCHEMA
+            if self.current_publication_paths is None
+            else PORTABLE_CURRENT_SCHEMA
+        )
+
+    def _stored_current_result(
+        self,
+        result: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        if self.current_publication_paths is None:
+            return result
+        from .publication import portable_current_value
+
+        portable = portable_current_value(result, self.current_publication_paths)
+        if not isinstance(portable, Mapping):  # pragma: no cover - input is a mapping.
+            raise ArtifactStoreError("portable current result must remain an object")
+        return portable
+
+    def materialize_current_result(
+        self,
+        result: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Resolve an authenticated stored current against this store's roots."""
+
+        if self.current_publication_paths is None:
+            return result
+        from .publication import PublicationPortabilityError, materialize_current_value
+
+        try:
+            materialized = materialize_current_value(
+                result,
+                self.current_publication_paths,
+            )
+        except PublicationPortabilityError as error:
+            raise ManifestValidationError(
+                f"portable current result contains an unsafe locator: {error}"
+            ) from error
+        if not isinstance(materialized, Mapping):  # pragma: no cover - input is object.
+            raise ManifestValidationError(
+                "portable current result did not materialize as an object"
+            )
+        return materialized
 
     def _cell_root(self, cell_id: str) -> Path:
         validated = _validate_cell_id(cell_id)
@@ -693,7 +757,10 @@ class ArtifactStore:
                 f"current pointer is not a regular file: {pointer_path}"
             )
         pointer = _read_json_object(pointer_path, description="current pointer")
-        if set(pointer) != _CURRENT_KEYS or pointer.get("schema") != CURRENT_SCHEMA:
+        if (
+            set(pointer) != _CURRENT_KEYS
+            or pointer.get("schema") != self.current_schema
+        ):
             raise ManifestValidationError("current pointer has an unsupported shape")
         if pointer.get("cell_id") != validated:
             raise ManifestValidationError("current pointer cell_id does not match")
@@ -769,7 +836,9 @@ class ArtifactStore:
             result_record,
             index=raw_artifacts.index(result_record),
         )
-        result = _read_json_object(result_file.path, description="attempt result")
+        result = self.materialize_current_result(
+            _read_json_object(result_file.path, description="attempt result")
+        )
         return attempt_id, result
 
     def protected_attempt_ids(
@@ -980,7 +1049,7 @@ class ArtifactStore:
             raise ManifestValidationError(
                 f"current pointer has an unsupported schema shape: {pointer_path}"
             )
-        if pointer["schema"] != CURRENT_SCHEMA:
+        if pointer["schema"] != self.current_schema:
             raise ManifestValidationError(
                 f"unsupported current pointer schema: {pointer['schema']!r}"
             )
@@ -1088,7 +1157,9 @@ class ArtifactStore:
             for artifact in artifacts
             if artifact.relative_path == result_relative
         )
-        result = _read_json_object(result_file.path, description="attempt result")
+        result = self.materialize_current_result(
+            _read_json_object(result_file.path, description="attempt result")
+        )
         return CurrentRecord(
             cell_id=expected_cell_id,
             attempt_id=expected_attempt_id,
@@ -1147,7 +1218,7 @@ class ArtifactStore:
         manifest_path = attempt.root / "manifest.json"
         digest = _sha256(manifest_path)
         pointer = {
-            "schema": CURRENT_SCHEMA,
+            "schema": self.current_schema,
             "cell_id": attempt.cell_id,
             "attempt_id": attempt.attempt_id,
             "manifest_path": f"attempts/{attempt.attempt_id}/manifest.json",
@@ -1238,7 +1309,7 @@ class ArtifactAttempt:
         artifact_paths: Iterable[str] = (),
     ) -> CurrentRecord:
         self._require_open()
-        self.write_json("result.json", result)
+        self.write_json("result.json", self.store._stored_current_result(result))
         relative_paths = {"result.json", *artifact_paths}
         records = [self._file_record(relative) for relative in sorted(relative_paths)]
         manifest = self._manifest(
@@ -1355,6 +1426,7 @@ class ArtifactAttempt:
 __all__ = [
     "ATTEMPT_SCHEMA",
     "CURRENT_SCHEMA",
+    "PORTABLE_CURRENT_SCHEMA",
     "ArtifactAction",
     "ArtifactAttempt",
     "ArtifactDecision",

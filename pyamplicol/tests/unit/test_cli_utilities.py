@@ -8,7 +8,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from pyamplicol.cli import UtilityInvocation, parse_cli, run_cli
+from pyamplicol.cli.utilities import profiling_campaign_root
 
 
 def test_examples_list_is_checkout_independent_and_descriptive() -> None:
@@ -79,6 +82,12 @@ def test_profiling_campaign_copy_is_reset_and_requires_force(
     assert (destination / "results/report-cache.schema.json").is_file()
     assert not (destination / "pyAmpliCol.pdf").exists()
     assert not (destination / ".artifacts").exists()
+    assert (destination / "campaign_artifacts").is_dir()
+    assert not tuple((destination / "campaign_artifacts").iterdir())
+    assert not (profiling_campaign_root() / "campaign_artifacts").exists()
+    copied_readme = (destination / "README.md").read_text(encoding="utf-8")
+    assert "moves its state" in copied_readme
+    assert "legacy `.artifacts`" in copied_readme
     workspace = json.loads(
         (destination / "report-workspace.json").read_text(encoding="utf-8")
     )
@@ -107,7 +116,66 @@ def test_profiling_campaign_copy_is_reset_and_requires_force(
         == 2
     )
     assert "not empty" in stderr.getvalue()
+    (destination / "campaign_artifacts/attempts/cell-a").mkdir(parents=True)
+    (destination / "campaign_artifacts/attempts/cell-a/payload.bin").write_bytes(
+        b"attempt"
+    )
+    (destination / "campaign_summary_ids").mkdir()
+    (destination / "campaign_summary_ids/error.txt").write_text(
+        "cell-a\n", encoding="utf-8"
+    )
+    (destination / "pyAmpliCol.pdf").write_bytes(b"%PDF-1.4\n")
+    (destination / "measurement_lineage.json").write_text(
+        "stale lineage\n",
+        encoding="utf-8",
+    )
+    (destination / "pyAmpliCol.aux").write_text("stale aux\n", encoding="utf-8")
+    (destination / "pyAmpliCol.log").write_text("stale log\n", encoding="utf-8")
+    (destination / "notes.aux").write_text("unrelated\n", encoding="utf-8")
+    (destination / ".artifacts").mkdir()
+    (destination / ".artifacts/legacy.bin").write_bytes(b"legacy")
+    (destination / "unrelated.txt").write_text("keep\n", encoding="utf-8")
     assert run_cli(("profiling-campaign", "copy", str(destination), "--force")) == 0
+    assert (destination / "campaign_artifacts").is_dir()
+    assert not tuple((destination / "campaign_artifacts").iterdir())
+    assert not (destination / "campaign_summary_ids").exists()
+    assert not (destination / "pyAmpliCol.pdf").exists()
+    assert not (destination / "measurement_lineage.json").exists()
+    assert not (destination / "pyAmpliCol.aux").exists()
+    assert not (destination / "pyAmpliCol.log").exists()
+    assert (destination / "notes.aux").read_text(encoding="utf-8") == "unrelated\n"
+    assert (destination / ".artifacts/legacy.bin").read_bytes() == b"legacy"
+    assert (destination / "unrelated.txt").read_text(encoding="utf-8") == "keep\n"
+
+
+def test_profiling_campaign_force_refuses_an_active_directory_lock(
+    tmp_path: Path,
+) -> None:
+    import fcntl
+
+    destination = tmp_path / "active-campaign"
+    assert run_cli(("profiling-campaign", "copy", str(destination))) == 0
+    sentinel = destination / "campaign_artifacts/active-attempt.bin"
+    sentinel.write_bytes(b"active")
+    descriptor = os.open(
+        destination,
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+    )
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_SH)
+        stderr = io.StringIO()
+        assert (
+            run_cli(
+                ("profiling-campaign", "copy", str(destination), "--force"),
+                stderr=stderr,
+            )
+            == 2
+        )
+        assert "campaign is active" in stderr.getvalue()
+        assert sentinel.read_bytes() == b"active"
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
 
 
 def test_profiling_campaign_copy_records_local_amplicol_default(
@@ -145,7 +213,136 @@ def test_profiling_campaign_copy_records_local_amplicol_default(
     assert configured.read_text(encoding="utf-8") == f"{checkout}\n"
 
     assert run_cli(("profiling-campaign", "copy", str(destination), "--force")) == 0
-    assert not configured.exists()
+    assert configured.read_text(encoding="utf-8") == f"{checkout}\n"
+
+    replacement = tmp_path / "replacement-amplicol"
+    replacement.mkdir()
+    assert (
+        run_cli(
+            (
+                "profiling-campaign",
+                "copy",
+                str(destination),
+                "--force",
+                "--local-amplicol",
+                str(replacement),
+            )
+        )
+        == 0
+    )
+    assert configured.read_text(encoding="utf-8") == f"{replacement.resolve()}\n"
+
+
+def test_profiling_campaign_force_rejects_unsafe_exact_reset_targets(
+    tmp_path: Path,
+) -> None:
+    external = tmp_path / "external"
+    external.mkdir()
+    sentinel = external / "sentinel"
+    sentinel.write_text("keep\n", encoding="utf-8")
+
+    for name in ("campaign_artifacts", "campaign_summary_ids"):
+        destination = tmp_path / f"campaign-{name}"
+        destination.mkdir()
+        (destination / name).symlink_to(external, target_is_directory=True)
+        stderr = io.StringIO()
+        assert (
+            run_cli(
+                ("profiling-campaign", "copy", str(destination), "--force"),
+                stderr=stderr,
+            )
+            == 2
+        )
+        assert "unsafe" in stderr.getvalue() or "escapes" in stderr.getvalue()
+        assert sentinel.read_text(encoding="utf-8") == "keep\n"
+
+    destination = tmp_path / "campaign-pdf"
+    destination.mkdir()
+    (destination / "pyAmpliCol.pdf").symlink_to(sentinel)
+    stderr = io.StringIO()
+    assert (
+        run_cli(
+            ("profiling-campaign", "copy", str(destination), "--force"),
+            stderr=stderr,
+        )
+        == 2
+    )
+    assert "unsafe" in stderr.getvalue() or "escapes" in stderr.getvalue()
+    assert sentinel.read_text(encoding="utf-8") == "keep\n"
+
+
+def test_profiling_campaign_force_rejects_unsafe_managed_output(
+    tmp_path: Path,
+) -> None:
+    external = tmp_path / "external-readme"
+    external.write_text("keep\n", encoding="utf-8")
+    destination = tmp_path / "campaign"
+    destination.mkdir()
+    (destination / "README.md").symlink_to(external)
+
+    stderr = io.StringIO()
+    assert (
+        run_cli(
+            ("profiling-campaign", "copy", str(destination), "--force"),
+            stderr=stderr,
+        )
+        == 2
+    )
+    assert "unsafe" in stderr.getvalue() or "escapes" in stderr.getvalue()
+    assert external.read_text(encoding="utf-8") == "keep\n"
+
+
+def test_profiling_campaign_force_rejects_symlinked_destination(
+    tmp_path: Path,
+) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+    destination = tmp_path / "campaign"
+    destination.symlink_to(real, target_is_directory=True)
+
+    stderr = io.StringIO()
+    assert (
+        run_cli(
+            ("profiling-campaign", "copy", str(destination), "--force"),
+            stderr=stderr,
+        )
+        == 2
+    )
+    assert "must not traverse a symlink" in stderr.getvalue()
+    assert not tuple(real.iterdir())
+
+
+def test_profiling_campaign_force_rejects_special_state_members(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "campaign"
+    state = destination / "campaign_artifacts"
+    state.mkdir(parents=True)
+    os.mkfifo(state / "active.pipe")
+
+    stderr = io.StringIO()
+    assert (
+        run_cli(
+            ("profiling-campaign", "copy", str(destination), "--force"),
+            stderr=stderr,
+        )
+        == 2
+    )
+    assert "contains a special file" in stderr.getvalue()
+    assert (state / "active.pipe").exists()
+
+
+def test_profiling_campaign_copy_help_describes_local_reset(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as stopped:
+        parse_cli(("profiling-campaign", "copy", "--help"))
+
+    assert stopped.value.code == 0
+    rendered = capsys.readouterr().out
+    assert "DEST/campaign_artifacts" in rendered
+    assert "moves with DEST" in rendered
+    assert "unrelated files" in rendered
 
 
 def test_config_template_and_resolve(tmp_path: Path) -> None:

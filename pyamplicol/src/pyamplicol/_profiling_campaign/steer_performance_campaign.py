@@ -38,7 +38,7 @@ def _embedded_profile(entrypoint: Path, repo_root: Path) -> str:
     return relative.parts[0]
 
 
-def _reexecute_with_repository_python(repo_root: Path) -> None:
+def _reexecute_with_repository_python(repo_root: Path, entrypoint: Path) -> None:
     expected = repo_root / ".venv/bin/python"
     if not expected.is_file():
         raise RuntimeError(
@@ -59,13 +59,16 @@ def _reexecute_with_repository_python(repo_root: Path) -> None:
     environment.pop("PYTHONHOME", None)
     os.execve(
         os.fspath(expected),
-        (os.fspath(expected), os.fspath(Path(__file__).resolve()), *sys.argv[1:]),
+        (os.fspath(expected), os.fspath(entrypoint), *sys.argv[1:]),
         environment,
     )
 
 
 def main() -> int:
-    entrypoint = Path(__file__).resolve()
+    # Keep the lexical path until the controller has rejected symlinked
+    # campaign directories and ancestors.  Resolving here would erase the
+    # exact path that must be validated before campaign state is opened.
+    entrypoint = Path(os.path.abspath(os.fspath(__file__)))
     profile = entrypoint.parent.name
     try:
         repo_root = _repository_root(entrypoint)
@@ -82,12 +85,17 @@ def main() -> int:
             installed=True,
         )
 
-    _reexecute_with_repository_python(repo_root)
+    _reexecute_with_repository_python(repo_root, entrypoint)
     sys.path.insert(0, os.fspath(repo_root))
     sys.path.insert(0, os.fspath(repo_root / "src"))
     from tools.performance_report.manual_campaign import main as campaign_main
 
-    return campaign_main(sys.argv[1:], repo_root=repo_root, profile=source_profile)
+    return campaign_main(
+        sys.argv[1:],
+        repo_root=repo_root,
+        profile=source_profile,
+        docs_dir=entrypoint.parent,
+    )
 
 
 if __name__ == "__main__":

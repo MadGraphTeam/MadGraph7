@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 import time
 import uuid
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -226,11 +226,30 @@ def _capture_current_records(
     )
 
 
+def _report_source_copy_ignore(
+    source: Path,
+    *patterns: str,
+) -> Callable[[str, list[str]], set[str]]:
+    """Ignore build debris and only the report root's private campaign state."""
+
+    pattern_ignore = shutil.ignore_patterns(*patterns)
+    source_path = os.path.abspath(source)
+
+    def ignore(directory: str, names: list[str]) -> set[str]:
+        ignored = set(pattern_ignore(directory, names))
+        if os.path.abspath(directory) == source_path and "campaign_artifacts" in names:
+            ignored.add("campaign_artifacts")
+        return ignored
+
+    return ignore
+
+
 def _copy_report_source(source: Path, destination: Path) -> None:
     shutil.copytree(
         source,
         destination,
-        ignore=shutil.ignore_patterns(
+        ignore=_report_source_copy_ignore(
+            source,
             "*.aux",
             "*.fdb_latexmk",
             "*.fls",

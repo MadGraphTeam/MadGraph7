@@ -11,6 +11,7 @@ from tools.performance_report.publisher import (
     PublicationResult,
     ReportPublisherError,
     _compile_pdf,
+    _copy_report_source,
     publish_once,
     run_publisher,
     validate_published_snapshot,
@@ -42,6 +43,25 @@ def _clean_report_service(tmp_path: Path) -> ReportService:
         check=True,
     )
     return service
+
+
+def test_publisher_source_copy_excludes_only_top_level_campaign_state(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "pyAmpliCol.tex").write_text("report\n", encoding="ascii")
+    (source / "campaign_artifacts").mkdir()
+    (source / "campaign_artifacts/sentinel").write_text("private\n", encoding="ascii")
+    nested = source / "appendix/campaign_artifacts"
+    nested.mkdir(parents=True)
+    (nested / "published.txt").write_text("keep\n", encoding="ascii")
+    destination = tmp_path / "staging"
+
+    _copy_report_source(source, destination)
+
+    assert not (destination / "campaign_artifacts").exists()
+    assert (destination / "appendix/campaign_artifacts/published.txt").is_file()
 
 
 def test_pdf_compiler_can_allow_overfull_boxes_for_interactive_refresh(

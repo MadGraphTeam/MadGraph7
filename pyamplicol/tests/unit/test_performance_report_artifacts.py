@@ -13,6 +13,7 @@ import pytest
 from tools.performance_report.artifacts import (
     ATTEMPT_SCHEMA,
     CURRENT_SCHEMA,
+    PORTABLE_CURRENT_SCHEMA,
     ArtifactAction,
     ArtifactStore,
     ArtifactStoreError,
@@ -20,12 +21,29 @@ from tools.performance_report.artifacts import (
     ManifestValidationError,
 )
 from tools.performance_report.models import ArtifactPolicy
+from tools.performance_report.service import ReportPaths
 
 
 def _store(tmp_path: Path) -> ArtifactStore:
     return ArtifactStore(
         artifact_root=tmp_path / "artifacts",
         lock_root=tmp_path / "coordination",
+    )
+
+
+def _portable_store(campaign: Path, *, repo: Path) -> ArtifactStore:
+    artifact_root = campaign / "campaign_artifacts"
+    paths = ReportPaths(
+        repo_root=repo,
+        docs_dir=campaign,
+        results_dir=campaign / "results",
+        artifact_root=artifact_root,
+        coordination_root=artifact_root / "coordination",
+    )
+    return ArtifactStore(
+        artifact_root=paths.artifact_root,
+        lock_root=paths.coordination_root,
+        current_publication_paths=paths,
     )
 
 
@@ -97,6 +115,108 @@ def test_successful_attempt_is_uuid_qualified_and_published_atomically(
         f"attempts/{attempt.attempt_id}/manifest.json"
     )
     assert not list(attempt.root.rglob("*.tmp-*"))
+
+
+def test_portable_current_bytes_survive_campaign_move_and_materialize(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "source"
+    repo.mkdir()
+    campaign_a = tmp_path / "parent-a" / "manual-a"
+    store_a = _portable_store(campaign_a, repo=repo)
+    attempt = store_a.new_attempt("cell", ArtifactPolicy.REGENERATE)
+    artifact = attempt.path("artifact")
+    artifact.mkdir()
+    (artifact / "payload.bin").write_bytes(b"payload")
+    identity = {"native_extension": {"path": "/authenticated/runtime.so"}}
+    current_a = attempt.publish(
+        {
+            "status": "ok",
+            "artifact": {"path": str(artifact)},
+            "provenance": {
+                "worker_log": str(attempt.root / "worker.log"),
+                "runtime_identity": identity,
+                "runtime_identity_sha256": hashlib.sha256(
+                    json.dumps(
+                        identity,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ).encode("ascii")
+                ).hexdigest(),
+            },
+        },
+        artifact_paths=("artifact/payload.bin",),
+    )
+    stored = json.loads((attempt.root / "result.json").read_text())
+    pointer = json.loads(
+        (attempt.root.parent.parent / "current.json").read_text(encoding="utf-8")
+    )
+    assert pointer["schema"] == PORTABLE_CURRENT_SCHEMA
+    assert stored["artifact"]["path"].startswith(
+        "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}/"
+    )
+    assert stored["provenance"]["worker_log"].startswith(
+        "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}/"
+    )
+    assert stored["provenance"]["runtime_identity"] == identity
+
+    campaign_b = tmp_path / "parent-b" / "renamed-campaign"
+    campaign_b.parent.mkdir()
+    campaign_a.rename(campaign_b)
+    store_b = _portable_store(campaign_b, repo=repo)
+
+    current_b = store_b.load_current("cell")
+    lightweight = store_b.lightweight_current_payload("cell")
+    assert current_b is not None
+    assert lightweight is not None
+    expected_artifact = current_b.result_path.parent / "artifact"
+    assert current_b.result["artifact"]["path"] == str(expected_artifact)
+    assert lightweight[1]["artifact"]["path"] == str(expected_artifact)
+    assert current_b.manifest_sha256 == current_a.manifest_sha256
+
+
+def test_portable_store_rejects_old_absolute_current_without_migration(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "source"
+    repo.mkdir()
+    campaign = tmp_path / "manual"
+    artifact_root = campaign / "campaign_artifacts"
+    ordinary = ArtifactStore(
+        artifact_root=artifact_root,
+        lock_root=artifact_root / "coordination",
+    )
+    attempt = ordinary.new_attempt("cell", ArtifactPolicy.REGENERATE)
+    artifact = attempt.path("artifact")
+    artifact.mkdir()
+    attempt.publish({"artifact": {"path": str(artifact)}})
+
+    portable = _portable_store(campaign, repo=repo)
+    with pytest.raises(ManifestValidationError, match="current pointer schema"):
+        portable.load_current("cell")
+    with pytest.raises(ManifestValidationError, match="unsupported shape"):
+        portable.lightweight_current_payload("cell")
+
+
+def test_portable_store_rejects_artifactless_legacy_terminal_current(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "source"
+    repo.mkdir()
+    campaign = tmp_path / "manual"
+    artifact_root = campaign / "campaign_artifacts"
+    ordinary = ArtifactStore(
+        artifact_root=artifact_root,
+        lock_root=artifact_root / "coordination",
+    )
+    attempt = ordinary.new_attempt("cell", ArtifactPolicy.REGENERATE)
+    attempt.publish({"status": "memory_limit", "artifact": None})
+
+    portable = _portable_store(campaign, repo=repo)
+    with pytest.raises(ManifestValidationError, match="current pointer schema"):
+        portable.load_current("cell")
+    with pytest.raises(ManifestValidationError, match="unsupported shape"):
+        portable.lightweight_current_payload("cell")
 
 
 def test_failed_and_interrupted_attempts_cannot_replace_valid_current(

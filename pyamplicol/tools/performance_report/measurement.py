@@ -6,9 +6,15 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import time
+import uuid
 from collections.abc import Mapping
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .service import ReportPaths
 
 from .agreements import (
     DIRECT_AGREEMENT_FIELD,
@@ -1134,10 +1140,70 @@ def failure_measurement(
     return failure
 
 
-def load_measurement(path: Path) -> dict[str, object]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+def _validate_portable_current_result_path(
+    path: Path,
+    paths: ReportPaths,
+) -> Path:
+    root_input = paths.artifact_root.expanduser()
+    root_lexical = Path(os.path.abspath(root_input))
+    try:
+        root = root_input.resolve(strict=True)
+    except OSError as error:
+        raise ValueError("portable current artifact root is unavailable") from error
+    if root_input.is_symlink() or root != root_lexical or not root.is_dir():
+        raise ValueError("portable current artifact root is not canonical")
+
+    source_input = path.expanduser()
+    source_lexical = Path(os.path.abspath(source_input))
+    try:
+        source = source_input.resolve(strict=True)
+    except OSError as error:
+        raise ValueError("portable current result file is unavailable") from error
+    if source_input.is_symlink() or source != source_lexical or not source.is_file():
+        raise ValueError("portable current result path is not canonical")
+    try:
+        relative = source.relative_to(root)
+    except ValueError as error:
+        raise ValueError(
+            "portable current result is outside the artifact root"
+        ) from error
+    parts = relative.parts
+    if (
+        len(parts) != 5
+        or parts[0] != "cells"
+        or not parts[1]
+        or parts[2] != "attempts"
+        or parts[4] != "result.json"
+    ):
+        raise ValueError("portable current result path has an unsupported shape")
+    try:
+        attempt_id = str(uuid.UUID(parts[3]))
+    except (AttributeError, ValueError) as error:
+        raise ValueError("portable current result attempt ID is invalid") from error
+    if attempt_id != parts[3]:
+        raise ValueError("portable current result attempt ID is not canonical")
+    return source
+
+
+def load_measurement(
+    path: Path,
+    *,
+    publication_paths: ReportPaths | None = None,
+) -> dict[str, object]:
+    source = (
+        path
+        if publication_paths is None
+        else _validate_portable_current_result_path(path, publication_paths)
+    )
+    payload = json.loads(source.read_text(encoding="utf-8"))
     if not isinstance(payload, Mapping):
         raise ValueError("measurement file must contain an object")
+    if publication_paths is not None:
+        from .publication import materialize_current_value
+
+        payload = materialize_current_value(payload, publication_paths)
+        if not isinstance(payload, Mapping):  # pragma: no cover - parsed object above.
+            raise ValueError("portable measurement did not materialize as an object")
     return dict(payload)
 
 

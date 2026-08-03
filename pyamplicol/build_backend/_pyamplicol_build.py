@@ -186,6 +186,7 @@ _EXCLUDED_TREES = (
     Path("docs/.result_outputs"),
     Path("docs/archive"),
     Path("outputs"),
+    _PROFILING_CAMPAIGN_SOURCE / "campaign_artifacts",
     Path("src/pyamplicol/_sdk/fortran"),
     Path("src/pyamplicol/_sdk/include"),
     Path("src/pyamplicol/_sdk/lib"),

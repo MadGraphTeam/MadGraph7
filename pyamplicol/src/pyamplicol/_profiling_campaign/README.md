@@ -2,8 +2,8 @@
 # pyAmpliCol profiling campaign template
 
 This packaged directory is the authoritative reset template for a
-self-contained profiling campaign. Create it in a new or empty destination
-whose name identifies its measurement environment:
+self-contained profiling campaign. Create it in a destination whose name
+identifies its measurement environment:
 
 ```console
 pyamplicol profiling-campaign copy ./my-profiling-campaign
@@ -11,8 +11,10 @@ cd ./my-profiling-campaign
 ```
 
 The copy contains the report's LaTeX sources, reset raw JSON measurements, and
-generated table TeX. Large evaluator artifacts, worker logs, locks, and
-coordination state are deliberately stored outside the publication directory.
+generated table TeX. Its visible `campaign_artifacts/` directory contains all
+evaluator attempts, prepared artifacts, worker logs, locks, leases, and other
+runtime state. Moving or renaming the whole campaign therefore moves its state;
+no repository-level or legacy `.artifacts` directory is consulted.
 
 Use the executable manual controller described in `TABLE_FILLING.md`. Its
 `--help` output is the authoritative selector, resource-limit, reuse, and
@@ -32,6 +34,13 @@ pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
   --dry-run --table scalar_contact --multiplicity 2 \
   --generation-engine compiled --no-dashboard
 ```
+
+`--force` overwrites the managed template files and resets only this copy's
+`campaign_artifacts/`, `pyAmpliCol.pdf`, `campaign_summary_ids/`, and known
+measurement-lineage/LaTeX build byproducts. It keeps unrelated files and a
+previously recorded `.pyamplicol-original-amplicol` default unless a new
+`--local-amplicol PATH` is supplied. Stop an active campaign before resetting
+its destination.
 
 Release wheels do not include the optional `ratatui` and `ratatui_py`
 dashboard bindings. Installed campaign runs therefore continue headlessly as
@@ -85,13 +94,13 @@ compact result, log, progress, and timeline diagnostics, and remove only their
 heavy evaluator payloads. Current artifacts and artifacts borrowed by an
 equivalent current remain protected.
 
-Create separately named campaigns with separate `profiling-campaign copy`
-commands. The steering entry point derives the profile name from its containing
-directory, so result artifacts, worker leases, locks, reproduction files, and
-PDFs use independent roots. A copy made from an installed wheel uses that
-wheel's recorded source revision and installed runtime. Never commit evaluator
-artifacts, candidate wheels, prepared models, attempts, logs, locks,
-coordination state, page images, or LaTeX auxiliary files.
+Create independent campaigns with separate `profiling-campaign copy` commands.
+Every result artifact, worker lease, lock, and reproduction file remains below
+that copy's `campaign_artifacts/`, even when two destinations share a basename.
+A copy made from an installed wheel uses that wheel's recorded source revision
+and installed runtime. Never commit `campaign_artifacts/`, evaluator artifacts,
+candidate wheels, prepared models, attempts, logs, locks, coordination state,
+page images, or LaTeX auxiliary files.
 
 When the launcher runs from a source checkout, it checks the checkout index
 and worktree before measuring. It reads ordinary Git metadata directly and,

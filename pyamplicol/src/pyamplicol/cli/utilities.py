@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import os
 import shutil
 import stat
@@ -49,6 +50,23 @@ _PROFILING_CAMPAIGN_GLOBS = (
 )
 _PROFILING_CAMPAIGN_FILE_COUNT = 55
 _PROFILING_CAMPAIGN_LOCAL_AMPLICOL = ".pyamplicol-original-amplicol"
+_PROFILING_CAMPAIGN_STATE = "campaign_artifacts"
+_PROFILING_CAMPAIGN_SUMMARY = "campaign_summary_ids"
+_PROFILING_CAMPAIGN_PDF = "pyAmpliCol.pdf"
+_PROFILING_CAMPAIGN_GENERATED_FILES = (
+    "measurement_lineage.json",
+    "pyAmpliCol.aux",
+    "pyAmpliCol.bbl",
+    "pyAmpliCol.bcf",
+    "pyAmpliCol.blg",
+    "pyAmpliCol.fdb_latexmk",
+    "pyAmpliCol.fls",
+    "pyAmpliCol.log",
+    "pyAmpliCol.out",
+    "pyAmpliCol.run.xml",
+    "pyAmpliCol.synctex.gz",
+    "pyAmpliCol.toc",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,9 +117,25 @@ def _utility_parser() -> argparse.ArgumentParser:
     profiling_commands = profiling_campaign.add_subparsers(
         dest="profiling_campaign_command", required=True
     )
-    campaign_copy = profiling_commands.add_parser("copy")
+    campaign_copy = profiling_commands.add_parser(
+        "copy",
+        description=(
+            "Create a self-contained profiling campaign. Runtime state is stored "
+            "in the visible DEST/campaign_artifacts directory and moves with DEST."
+        ),
+    )
     campaign_copy.add_argument("destination", type=Path)
-    campaign_copy.add_argument("--force", action="store_true")
+    campaign_copy.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "overwrite the managed template files and reset only "
+            "DEST/campaign_artifacts, DEST/pyAmpliCol.pdf, and "
+            "DEST/campaign_summary_ids, plus known lineage/LaTeX byproducts; "
+            "unrelated files and the recorded local AmpliCol checkout are "
+            "preserved (stop an active campaign first)"
+        ),
+    )
     campaign_copy.add_argument(
         "--local-amplicol",
         type=Path,
@@ -235,6 +269,184 @@ def _resolved_original_amplicol_checkout(path: Path) -> Path:
     return repository
 
 
+def _literal_campaign_destination(destination: Path) -> Path:
+    """Return an absolute destination without accepting symlink traversal."""
+
+    target = Path(os.path.abspath(os.fspath(destination.expanduser())))
+    try:
+        canonical = target.resolve(strict=False)
+    except OSError as error:
+        raise ConfigurationError(
+            f"profiling campaign destination is unavailable: {target}"
+        ) from error
+    if canonical != target:
+        raise ConfigurationError(
+            "profiling campaign destination must not traverse a symlink: "
+            f"{target}"
+        )
+    if os.path.lexists(target):
+        try:
+            mode = target.lstat().st_mode
+        except OSError as error:
+            raise ConfigurationError(
+                f"cannot inspect profiling campaign destination: {target}"
+            ) from error
+        if stat.S_ISLNK(mode) or not stat.S_ISDIR(mode):
+            raise ConfigurationError(f"destination is not a real directory: {target}")
+    return target
+
+
+def _acquire_campaign_reset_lock(target: Path) -> int:
+    """Exclusively claim one real campaign directory without creating state."""
+
+    import fcntl
+
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(target, flags)
+    except OSError as error:
+        raise ConfigurationError(
+            f"cannot open profiling campaign destination: {target}"
+        ) from error
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as error:
+        os.close(descriptor)
+        if error.errno in {errno.EACCES, errno.EAGAIN}:
+            raise ConfigurationError(
+                "profiling campaign is active; stop it before using --force: "
+                f"{target}"
+            ) from None
+        raise ConfigurationError(
+            f"cannot lock profiling campaign destination: {target}"
+        ) from error
+    return descriptor
+
+
+def _release_campaign_reset_lock(descriptor: int) -> None:
+    import fcntl
+
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+    finally:
+        os.close(descriptor)
+
+
+def _require_campaign_member(target: Path, relative: Path) -> Path:
+    """Prove that a literal managed member remains beneath ``target``."""
+
+    if relative.is_absolute() or not relative.parts or any(
+        part in {"", ".", ".."} for part in relative.parts
+    ):
+        raise ConfigurationError(f"invalid profiling campaign member: {relative}")
+    member = target.joinpath(*relative.parts)
+    try:
+        member.relative_to(target)
+        canonical_target = target.resolve(strict=False)
+        member.resolve(strict=False).relative_to(canonical_target)
+    except (OSError, ValueError) as error:
+        raise ConfigurationError(
+            f"profiling campaign member escapes its destination: {relative}"
+        ) from error
+    return member
+
+
+def _preflight_managed_file(target: Path, relative: Path) -> Path:
+    """Reject links or non-files along one managed template output path."""
+
+    output = _require_campaign_member(target, relative)
+    cursor = target
+    for part in relative.parts[:-1]:
+        cursor /= part
+        if not os.path.lexists(cursor):
+            continue
+        mode = cursor.lstat().st_mode
+        if stat.S_ISLNK(mode) or not stat.S_ISDIR(mode):
+            raise ConfigurationError(
+                f"unsafe profiling campaign output ancestor: {cursor}"
+            )
+    if os.path.lexists(output):
+        mode = output.lstat().st_mode
+        if stat.S_ISLNK(mode) or not stat.S_ISREG(mode):
+            raise ConfigurationError(f"unsafe profiling campaign output: {output}")
+    return output
+
+
+def _preflight_removable_tree(path: Path) -> None:
+    """Validate one exact campaign-managed directory before its removal."""
+
+    if not os.path.lexists(path):
+        return
+    mode = path.lstat().st_mode
+    if stat.S_ISLNK(mode) or not stat.S_ISDIR(mode) or os.path.ismount(path):
+        raise ConfigurationError(f"unsafe campaign reset directory: {path}")
+    pending = [path]
+    while pending:
+        directory = pending.pop()
+        try:
+            entries = tuple(os.scandir(directory))
+        except OSError as error:
+            raise ConfigurationError(
+                f"cannot inspect campaign reset directory: {directory}"
+            ) from error
+        for entry in entries:
+            child = Path(entry.path)
+            try:
+                child_mode = entry.stat(follow_symlinks=False).st_mode
+            except OSError as error:
+                raise ConfigurationError(
+                    f"cannot inspect campaign reset member: {child}"
+                ) from error
+            if stat.S_ISLNK(child_mode):
+                raise ConfigurationError(
+                    f"campaign reset directory contains a symlink: {child}"
+                )
+            if stat.S_ISDIR(child_mode):
+                if os.path.ismount(child):
+                    raise ConfigurationError(
+                        f"campaign reset directory contains a mount: {child}"
+                    )
+                pending.append(child)
+            elif not stat.S_ISREG(child_mode):
+                raise ConfigurationError(
+                    f"campaign reset directory contains a special file: {child}"
+                )
+
+
+def _preflight_removable_file(path: Path) -> None:
+    if not os.path.lexists(path):
+        return
+    mode = path.lstat().st_mode
+    if stat.S_ISLNK(mode) or not stat.S_ISREG(mode):
+        raise ConfigurationError(f"unsafe campaign reset file: {path}")
+
+
+def _reset_profiling_campaign_outputs(target: Path) -> None:
+    """Remove only the exact campaign-managed runtime publications."""
+
+    state = _require_campaign_member(target, Path(_PROFILING_CAMPAIGN_STATE))
+    summary = _require_campaign_member(target, Path(_PROFILING_CAMPAIGN_SUMMARY))
+    pdf = _require_campaign_member(target, Path(_PROFILING_CAMPAIGN_PDF))
+    generated = tuple(
+        _require_campaign_member(target, Path(name))
+        for name in _PROFILING_CAMPAIGN_GENERATED_FILES
+    )
+    _preflight_removable_tree(state)
+    _preflight_removable_tree(summary)
+    _preflight_removable_file(pdf)
+    for path in generated:
+        _preflight_removable_file(path)
+    if state.exists():
+        shutil.rmtree(state)
+    if summary.exists():
+        shutil.rmtree(summary)
+    if pdf.exists():
+        pdf.unlink()
+    for path in generated:
+        if path.exists():
+            path.unlink()
+
+
 def _copy_profiling_campaign(
     destination: Path,
     *,
@@ -247,35 +459,50 @@ def _copy_profiling_campaign(
         else _resolved_original_amplicol_checkout(local_amplicol)
     )
     source = profiling_campaign_root()
-    target = destination.expanduser().resolve(strict=False)
-    if target.exists():
-        if not target.is_dir():
-            raise ConfigurationError(f"destination is not a directory: {target}")
-        if any(target.iterdir()) and not force:
-            raise ConfigurationError(
-                f"destination is not empty: {target}; pass --force to merge"
-            )
-    target.mkdir(parents=True, exist_ok=True)
-    for relative in _profiling_campaign_inventory(source):
-        output = target / relative
-        output.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source / relative, output)
-    launcher = target / "steer_performance_campaign.py"
-    launcher_lines = launcher.read_bytes().splitlines(keepends=True)
-    if not launcher_lines or not launcher_lines[0].startswith(b"#!"):
-        raise ConfigurationError("profiling campaign launcher has no shebang")
-    launcher.write_bytes(
-        f"#!{sys.executable}\n".encode() + b"".join(launcher_lines[1:])
-    )
-    launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    local_amplicol_path = target / _PROFILING_CAMPAIGN_LOCAL_AMPLICOL
-    if validated_amplicol is None:
-        local_amplicol_path.unlink(missing_ok=True)
-    else:
-        local_amplicol_path.write_text(
-            f"{validated_amplicol}\n",
-            encoding="utf-8",
+    target = _literal_campaign_destination(destination)
+    if target.exists() and any(target.iterdir()) and not force:
+        raise ConfigurationError(
+            f"destination is not empty: {target}; pass --force to reset"
         )
+    target.mkdir(parents=True, exist_ok=True)
+    if target.is_symlink() or not target.is_dir():
+        raise ConfigurationError(f"destination is not a real directory: {target}")
+    reset_lock = _acquire_campaign_reset_lock(target)
+    try:
+        inventory = _profiling_campaign_inventory(source)
+        for relative in inventory:
+            _preflight_managed_file(target, relative)
+        if validated_amplicol is not None:
+            _preflight_managed_file(
+                target,
+                Path(_PROFILING_CAMPAIGN_LOCAL_AMPLICOL),
+            )
+        if force:
+            _reset_profiling_campaign_outputs(target)
+        for relative in inventory:
+            output = target / relative
+            output.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source / relative, output)
+        launcher = target / "steer_performance_campaign.py"
+        launcher_lines = launcher.read_bytes().splitlines(keepends=True)
+        if not launcher_lines or not launcher_lines[0].startswith(b"#!"):
+            raise ConfigurationError("profiling campaign launcher has no shebang")
+        launcher.write_bytes(
+            f"#!{sys.executable}\n".encode() + b"".join(launcher_lines[1:])
+        )
+        launcher.chmod(
+            launcher.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+        )
+        local_amplicol_path = target / _PROFILING_CAMPAIGN_LOCAL_AMPLICOL
+        if validated_amplicol is not None:
+            local_amplicol_path.write_text(
+                f"{validated_amplicol}\n",
+                encoding="utf-8",
+            )
+        state_root = target / _PROFILING_CAMPAIGN_STATE
+        state_root.mkdir()
+    finally:
+        _release_campaign_reset_lock(reset_lock)
     return target
 
 

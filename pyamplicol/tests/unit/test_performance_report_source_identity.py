@@ -103,6 +103,15 @@ def test_generated_report_outputs_do_not_dirty_measurement_source(
     summary = profile / "campaign_summary_ids"
     summary.mkdir()
     (summary / "error.txt").write_text("cell-a\n", encoding="utf-8")
+    campaign_artifacts = profile / "campaign_artifacts"
+    (campaign_artifacts / "attempts/cell-a").mkdir(parents=True)
+    (campaign_artifacts / "attempts/cell-a/result.json").write_text(
+        '{"status":"ok"}\n', encoding="utf-8"
+    )
+    (campaign_artifacts / "coordination/locks").mkdir(parents=True)
+    (campaign_artifacts / "coordination/locks/cell.lock").write_text(
+        "locked\n", encoding="utf-8"
+    )
     artifacts = repo / ".artifacts/performance-report/macbook_M3"
     artifacts.mkdir(parents=True)
     (artifacts / "attempt.bin").write_bytes(b"attempt")
@@ -127,6 +136,9 @@ def test_generated_report_outputs_do_not_dirty_measurement_source(
         "docs/performance_reports/macbook_M3/campaign_summary_ids/error.json",
         "docs/performance_reports/macbook_M3/"
         ".campaign_summary_ids.deadbeef.tmp/error.txt",
+        "docs/performance_reports/macbook_M3/campaign_artifact/attempt.bin",
+        "docs/performance_reports/campaign_artifacts/attempt.bin",
+        "scratch/macbook_M3/campaign_artifacts/attempt.bin",
     ),
 )
 def test_profile_scaffold_or_arbitrary_changes_dirty_measurement_source(

@@ -23,14 +23,19 @@ been uploaded to PyPI or TestPyPI. See
 [Release Status](release-status.md) before treating a locally built artifact
 as a release.
 
-An installed wheel can also populate a new or empty profiling campaign:
+An installed wheel can also populate a self-contained profiling campaign:
 
 ```console
 pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
 ```
 
-`--force` replaces template members without deleting unrelated files already
-in the destination; choose a new destination for a clean reset.
+The visible `campaign_artifacts/` directory inside the destination holds all
+attempts, prepared artifacts, logs, locks, and leases. It moves with the whole
+campaign and does not share or consult legacy `.artifacts` state. `--force`
+resets that campaign-local state plus the managed PDF, summary IDs, measurement
+lineage, and known LaTeX byproducts, while preserving unrelated files and a
+recorded original-AmpliCol checkout. Stop an active campaign before resetting
+its destination.
 
 Its launcher uses installed resources and runs headlessly when the optional
 Ratatui bindings are absent. An original-AmpliCol checkout is needed only when

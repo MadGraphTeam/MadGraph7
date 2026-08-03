@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -284,22 +286,66 @@ def test_failed_snapshot_publication_restores_previous_files(
     old_cache = cache.read_bytes()
 
     original_replace = Path.replace
+    original_copy2 = shutil.copy2
     calls = 0
+    staging_sources: list[Path] = []
+
+    def observe_staging_copy(source: Path, destination: Path) -> Path:
+        if ".report-snapshot-" in str(source):
+            staging_sources.append(source)
+        return original_copy2(source, destination)
 
     def fail_after_one_replace(source: Path, destination: Path) -> Path:
         nonlocal calls
-        if ".report-snapshot-" in str(source):
+        if ".report-install-" in source.name:
             calls += 1
             if calls == 3:
                 raise OSError("injected publication interruption")
         return original_replace(source, destination)
 
+    monkeypatch.setattr(shutil, "copy2", observe_staging_copy)
     monkeypatch.setattr(Path, "replace", fail_after_one_replace)
     with pytest.raises(OSError, match="injected"):
         service.publish(reset=True, merge_artifacts=False)
 
     assert table.read_bytes() == old_table
     assert cache.read_bytes() == old_cache
+    assert staging_sources
+    assert all(
+        source.is_relative_to(service.paths.artifact_root)
+        for source in staging_sources
+    )
+    assert not tuple(service.paths.docs_dir.glob(".report-snapshot-*"))
+    snapshot_root = service.paths.artifact_root / "report-snapshot-builds"
+    assert snapshot_root.is_dir()
+    assert not tuple(snapshot_root.iterdir())
+    assert not tuple(service.paths.docs_dir.glob(".*.report-*-*"))
+    assert not tuple(service.paths.results_dir.glob(".*.report-*-*"))
+
+
+def test_snapshot_install_remains_atomic_across_artifact_filesystems(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    service.publish(reset=True, merge_artifacts=False)
+    original_replace = Path.replace
+    installs: list[tuple[Path, Path]] = []
+
+    def reject_cross_directory_replace(source: Path, destination: Path) -> Path:
+        if source.parent != destination.parent:
+            raise OSError(errno.EXDEV, "injected cross-device replacement")
+        installs.append((source, destination))
+        return original_replace(source, destination)
+
+    monkeypatch.setattr(Path, "replace", reject_cross_directory_replace)
+    written = service.publish(reset=True, merge_artifacts=False)
+
+    assert written
+    assert installs
+    assert all(source.parent == destination.parent for source, destination in installs)
+    assert not tuple(service.paths.docs_dir.glob(".*.report-*-*"))
+    assert not tuple(service.paths.results_dir.glob(".*.report-*-*"))
 
 
 def test_audit_rejects_nonpublication_timing_and_source_evidence(

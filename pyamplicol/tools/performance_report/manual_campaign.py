@@ -13,6 +13,7 @@ import argparse
 import base64
 import copy
 import difflib
+import errno
 import hashlib
 import importlib
 import json
@@ -21,6 +22,7 @@ import os
 import re
 import shlex
 import shutil
+import stat
 import statistics
 import struct
 import subprocess
@@ -44,10 +46,10 @@ from prettytable import PrettyTable
 
 from .artifacts import (
     ATTEMPT_SCHEMA,
-    CURRENT_SCHEMA,
     ArtifactStore,
     CurrentRecord,
     LockTimeoutError,
+    ManifestValidationError,
     _raise_disk_full,
 )
 from .cache import reset_entry, validate_measurement
@@ -67,9 +69,11 @@ from .models import (
     ResultStatus,
     Workload,
 )
+from .publication import PORTABLE_CURRENT_REPRODUCTION_RECIPE_ABI
 from .publisher import (
     DEFAULT_PDF_TIMEOUT_SECONDS,
     _compile_pdf,
+    _report_source_copy_ignore,
 )
 from .scheduler import (
     CampaignResult,
@@ -90,6 +94,7 @@ from .timing import (
 
 PROFILE = "macbook_M3_manual"
 _ACTIVE_PROFILE = PROFILE
+_PRESENTATION_PROFILE = "campaign-local-v1"
 DEFAULT_GENERATION_LIMIT_SECONDS = 60.0 * 60.0
 DEFAULT_WORKER_WALL_LIMIT_SECONDS = 60.0 * 60.0
 DEFAULT_RAM_BYTES = 30_000_000_000
@@ -173,6 +178,100 @@ _SUMMARY_SUCCESS_STATUSES = frozenset(
 
 class ManualCampaignError(RuntimeError):
     """One concise, user-facing steering error."""
+
+
+def _require_literal_directory(
+    path: Path,
+    *,
+    label: str,
+    required: bool,
+) -> None:
+    """Reject symlink and special-file campaign roots before resolution."""
+
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        if required:
+            raise ManualCampaignError(f"{label} does not exist: {path}") from None
+        return
+    except OSError as error:
+        raise ManualCampaignError(f"cannot inspect {label} {path}: {error}") from error
+    if stat.S_ISLNK(metadata.st_mode):
+        raise ManualCampaignError(f"{label} must not be a symbolic link: {path}")
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise ManualCampaignError(f"{label} must be a directory: {path}")
+
+
+def _campaign_report_paths(repo_root: Path, docs_dir: Path) -> ReportPaths:
+    """Derive every private campaign path from one literal campaign directory."""
+
+    expanded = docs_dir.expanduser()
+    literal_docs = expanded if expanded.is_absolute() else Path.cwd() / expanded
+    _require_literal_directory(
+        literal_docs,
+        label="campaign directory",
+        required=True,
+    )
+    literal_artifacts = literal_docs / "campaign_artifacts"
+    literal_coordination = literal_artifacts / "coordination"
+    _require_literal_directory(
+        literal_artifacts,
+        label="campaign artifact root",
+        required=False,
+    )
+    _require_literal_directory(
+        literal_coordination,
+        label="campaign coordination root",
+        required=False,
+    )
+    resolved_docs = literal_docs.resolve(strict=True)
+    if resolved_docs != Path(os.path.abspath(literal_docs)):
+        raise ManualCampaignError(
+            "campaign directory must not traverse a symbolic link: "
+            f"{literal_docs}"
+        )
+    artifact_root = resolved_docs / "campaign_artifacts"
+    return ReportPaths.from_repo(
+        repo_root,
+        docs_dir=resolved_docs,
+        artifact_root=artifact_root,
+        coordination_root=artifact_root / "coordination",
+    )
+
+
+def _acquire_campaign_directory_lock(docs_dir: Path) -> int:
+    """Hold a shared lifetime claim so ``copy --force`` cannot reset state."""
+
+    import fcntl
+
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(docs_dir, flags)
+    except OSError as error:
+        raise ManualCampaignError(
+            f"cannot open campaign directory for coordination: {docs_dir}"
+        ) from error
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_SH)
+    except OSError as error:
+        os.close(descriptor)
+        if error.errno in {errno.EACCES, errno.EAGAIN}:
+            raise ManualCampaignError(
+                f"campaign directory is being reset: {docs_dir}"
+            ) from None
+        raise ManualCampaignError(
+            f"cannot coordinate campaign directory: {docs_dir}"
+        ) from error
+    return descriptor
+
+
+def _release_campaign_directory_lock(descriptor: int) -> None:
+    import fcntl
+
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+    finally:
+        os.close(descriptor)
 
 
 def _missing_ratatui_bindings() -> tuple[str, ...]:
@@ -971,14 +1070,8 @@ def _model_cli_source(cell: CellSpec, repo_root: Path) -> str:
     return "built-in-sm" if source is None else os.fspath(source)
 
 
-def _reproduction_root(repo_root: Path, cell: CellSpec) -> Path:
-    return (
-        repo_root
-        / ".artifacts/performance_reports"
-        / _ACTIVE_PROFILE
-        / "manual-reproductions"
-        / cell.cell_id
-    )
+def _reproduction_root(artifact_root: Path, cell: CellSpec) -> Path:
+    return artifact_root / "manual-reproductions" / cell.cell_id
 
 
 def _pyamplicol_cli(repo_root: Path) -> tuple[str, ...]:
@@ -998,12 +1091,12 @@ def _pyamplicol_cli(repo_root: Path) -> tuple[str, ...]:
 def _materialize_reproduction_momenta(
     cell: CellSpec,
     *,
-    repo_root: Path,
+    artifact_root: Path,
     momenta: object,
 ) -> Path:
     """Publish the exact recorded report points for public recurrence."""
 
-    path = _reproduction_root(repo_root, cell) / "momenta.json"
+    path = _reproduction_root(artifact_root, cell) / "momenta.json"
     _atomic_json(path, momenta)
     return path
 
@@ -1019,10 +1112,11 @@ class ReproductionRecipe:
 
     def as_dict(self) -> dict[str, object]:
         return {
+            "abi": PORTABLE_CURRENT_REPRODUCTION_RECIPE_ABI,
             "kind": self.kind,
-            "prepare": (None if self.prepare is None else _shell_join(self.prepare)),
-            "generate": (None if self.generate is None else _shell_join(self.generate)),
-            "profile": None if self.profile is None else _shell_join(self.profile),
+            "prepare": None if self.prepare is None else list(self.prepare),
+            "generate": None if self.generate is None else list(self.generate),
+            "profile": None if self.profile is None else list(self.profile),
             "note": self.note,
             "exact": self.exact,
         }
@@ -1115,6 +1209,7 @@ def reproduction_recipe(
     cell: CellSpec,
     *,
     repo_root: Path,
+    artifact_root: Path,
     artifact_path: str = "<ARTIFACT_DIR>",
     cores: int = DEFAULT_CORES_PER_WORKER,
     target_runtime: float = DEFAULT_TARGET_RUNTIME_SECONDS,
@@ -1134,8 +1229,8 @@ def reproduction_recipe(
         )
     cli = _pyamplicol_cli(repo_root)
     if artifact_path == "<ARTIFACT_DIR>":
-        artifact_path = os.fspath(_reproduction_root(repo_root, cell) / "artifact")
-    model_cache = _reproduction_root(repo_root, cell) / "model-cache"
+        artifact_path = os.fspath(_reproduction_root(artifact_root, cell) / "artifact")
+    model_cache = _reproduction_root(artifact_root, cell) / "model-cache"
     provenance = (
         measurement.get("provenance") if isinstance(measurement, Mapping) else None
     )
@@ -1180,7 +1275,7 @@ def reproduction_recipe(
             "built-in-sm" if cell.measurement.model is ModelKey.BUILTIN_SM else "ufo-sm"
         )
         prepared_path = (
-            _reproduction_root(repo_root, cell)
+            _reproduction_root(artifact_root, cell)
             / "prepared-models"
             / f"{prepared_stem}-jit-o2.pyamplicol-model"
         )
@@ -1328,7 +1423,7 @@ def reproduction_recipe(
             os.fspath(
                 _materialize_reproduction_momenta(
                     cell,
-                    repo_root=repo_root,
+                    artifact_root=artifact_root,
                     momenta=recorded_momenta,
                 )
             ),
@@ -1889,7 +1984,7 @@ def lightweight_presentation_outcome(
         return None
     return _parse_presentation_outcome(
         _read_object(path),
-        expected_profile=_ACTIVE_PROFILE,
+        expected_profile=_PRESENTATION_PROFILE,
         expected_cell_id=cell.cell_id,
         source_revision=source_revision,
         accept_historical_source=accept_historical_source,
@@ -1928,7 +2023,7 @@ def _replace_presentation_outcome_locked(
 
     validated = _parse_presentation_outcome(
         outcome.as_dict(),
-        expected_profile=_ACTIVE_PROFILE,
+        expected_profile=_PRESENTATION_PROFILE,
         expected_cell_id=outcome.cell_id,
         source_revision=outcome.source_revision,
         accept_historical_source=False,
@@ -1941,21 +2036,38 @@ def _replace_presentation_outcome_locked(
         outcome.cell_id,
         catalog_validated=catalog_validated,
     )
+    raw_existing = (
+        None if path.is_symlink() or not path.is_file() else _read_object(path)
+    )
     existing = (
         None
-        if path.is_symlink() or not path.is_file()
+        if raw_existing is None
         else _parse_presentation_outcome(
-            _read_object(path),
-            expected_profile=_ACTIVE_PROFILE,
+            raw_existing,
+            expected_profile=_PRESENTATION_PROFILE,
             expected_cell_id=outcome.cell_id,
             source_revision=outcome.source_revision,
             accept_historical_source=accept_historical_source,
         )
     )
-    if only_if_replacing_failure and (
-        existing is None or existing.successful
-    ):
-        return False
+    if only_if_replacing_failure:
+        replacement_target = existing
+        if replacement_target is None and not accept_historical_source:
+            historical = (
+                None
+                if raw_existing is None
+                else _parse_presentation_outcome(
+                    raw_existing,
+                    expected_profile=_PRESENTATION_PROFILE,
+                    expected_cell_id=outcome.cell_id,
+                    source_revision=outcome.source_revision,
+                    accept_historical_source=True,
+                )
+            )
+            if historical is not None and not historical.successful:
+                replacement_target = historical
+        if replacement_target is None or replacement_target.successful:
+            return False
     if existing is not None and existing.ordering_key > outcome.ordering_key:
         return False
     _atomic_json(path, outcome.as_dict(), sync=False)
@@ -2036,7 +2148,7 @@ def _publish_recycled_presentation_outcomes(
                 _publish_presentation_outcome(
                     service,
                     LightweightPresentationOutcome(
-                        profile=_ACTIVE_PROFILE,
+                        profile=_PRESENTATION_PROFILE,
                         cell_id=cell_id,
                         source_revision=source_revision,
                         campaign_invocation_id=campaign_invocation_id,
@@ -2236,7 +2348,7 @@ def lightweight_current(
     raw_attempt_id = None if pointer is None else pointer.get("attempt_id")
     if (
         pointer is None
-        or pointer.get("schema") != CURRENT_SCHEMA
+        or pointer.get("schema") != store.current_schema
         or pointer.get("cell_id") != cell.cell_id
         or not isinstance(raw_attempt_id, str)
     ):
@@ -2337,6 +2449,18 @@ def lightweight_current(
             False,
             False,
             "result unreadable",
+        )
+    try:
+        result = dict(store.materialize_current_result(result))
+    except ManifestValidationError:
+        return LightweightCurrent(
+            cell.cell_id,
+            attempt_id,
+            result_path,
+            {},
+            False,
+            False,
+            "unsafe result locator",
         )
     revision = _measurement_source_revision(result)
     revision_valid = revision is not None
@@ -2985,6 +3109,7 @@ class LeaseManager:
                     recipe = reproduction_recipe(
                         cell,
                         repo_root=self.service.paths.repo_root,
+                        artifact_root=self.service.paths.artifact_root,
                         cores=settings.cores,
                         target_runtime=settings.target_runtime,
                         batch_size=settings.batch_size,
@@ -3117,17 +3242,17 @@ class LeaseManager:
                             else None
                         )
                         if isinstance(recipe, Mapping):
-                            prepare = recipe.get("prepare")
-                            generate = recipe.get("generate")
-                            profile = recipe.get("profile")
-                            worker.reproduce_prepare = (
-                                prepare if isinstance(prepare, str) else None
+                            worker.reproduce_prepare = _stored_reproduction_command(
+                                recipe,
+                                "prepare",
                             )
-                            worker.reproduce_generate = (
-                                generate if isinstance(generate, str) else None
+                            worker.reproduce_generate = _stored_reproduction_command(
+                                recipe,
+                                "generate",
                             )
-                            worker.reproduce_profile = (
-                                profile if isinstance(profile, str) else None
+                            worker.reproduce_profile = _stored_reproduction_command(
+                                recipe,
+                                "profile",
                             )
                 if worker.recycled and worker.reuse_explanation is None:
                     worker.reuse_explanation = worker.step
@@ -3192,7 +3317,7 @@ class LeaseManager:
                         _publish_presentation_outcome(
                             self.service,
                             LightweightPresentationOutcome(
-                                profile=_ACTIVE_PROFILE,
+                                profile=_PRESENTATION_PROFILE,
                                 cell_id=cell_id,
                                 source_revision=self.state.source_revision,
                                 campaign_invocation_id=self.state.instance_id,
@@ -3500,7 +3625,14 @@ def _stored_reproduction_command(
     key: str,
 ) -> str | None:
     value = recipe.get(key) if isinstance(recipe, Mapping) else None
-    return value if isinstance(value, str) and value else None
+    if (
+        not isinstance(value, Sequence)
+        or isinstance(value, (str, bytes, bytearray))
+        or not value
+        or any(not isinstance(argument, str) or not argument for argument in value)
+    ):
+        return None
+    return _shell_join(value)
 
 
 def _apply_persisted_worker_result(
@@ -6463,6 +6595,7 @@ def _dry_run_rows(
     planned: Sequence[PlannedCell],
     *,
     repo_root: Path,
+    artifact_root: Path,
     arguments: argparse.Namespace,
 ) -> Iterable[tuple[object, ...]]:
     direct_ids = {cell.cell_id for cell in direct}
@@ -6470,6 +6603,7 @@ def _dry_run_rows(
         recipe = reproduction_recipe(
             item.cell,
             repo_root=repo_root,
+            artifact_root=artifact_root,
             cores=arguments.cores_per_worker,
             target_runtime=arguments.target_measurement_duration,
             batch_size=arguments.batch_size,
@@ -6518,6 +6652,7 @@ def _dry_run_recipe_blocks(
     direct: Sequence[CellSpec],
     *,
     repo_root: Path,
+    artifact_root: Path,
     arguments: argparse.Namespace,
     width: int,
 ) -> Iterable[str]:
@@ -6527,6 +6662,7 @@ def _dry_run_recipe_blocks(
         recipe = reproduction_recipe(
             cell,
             repo_root=repo_root,
+            artifact_root=artifact_root,
             cores=arguments.cores_per_worker,
             target_runtime=arguments.target_measurement_duration,
             batch_size=arguments.batch_size,
@@ -6602,6 +6738,7 @@ def _recycled_attention_workers(
     recycled_ids: set[str],
     *,
     repo_root: Path,
+    artifact_root: Path,
     settings: ReproductionSettings,
 ) -> dict[str, WorkerView]:
     """Expose same-source recycled currents without scanning attempt history."""
@@ -6640,6 +6777,7 @@ def _recycled_attention_workers(
             recipe = reproduction_recipe(
                 cell,
                 repo_root=repo_root,
+                artifact_root=artifact_root,
                 cores=settings.cores,
                 target_runtime=settings.target_runtime,
                 batch_size=settings.batch_size,
@@ -6883,6 +7021,7 @@ def _run_campaign(
                     cells,
                     planned,
                     repo_root=repo_root,
+                    artifact_root=service.paths.artifact_root,
                     arguments=arguments,
                 ),
                 max_width={"entry": 18, "details": max(48, terminal_width - 27)},
@@ -6894,6 +7033,7 @@ def _run_campaign(
         for block in _dry_run_recipe_blocks(
             direct_recipes,
             repo_root=repo_root,
+            artifact_root=service.paths.artifact_root,
             arguments=arguments,
             width=terminal_width,
         ):
@@ -7025,6 +7165,7 @@ def _run_campaign(
             lightweight,
             recycled,
             repo_root=repo_root,
+            artifact_root=service.paths.artifact_root,
             settings=state.reproduction_settings,
         )
     )
@@ -7299,7 +7440,8 @@ def _copy_report_sources(source: Path, destination: Path) -> None:
     shutil.copytree(
         source,
         destination,
-        ignore=shutil.ignore_patterns(
+        ignore=_report_source_copy_ignore(
+            source,
             "pyAmpliCol.pdf",
             "*.aux",
             "*.bbl",
@@ -7329,10 +7471,8 @@ def _stage_copied_profile_identity(staging_docs: Path, profile: str) -> None:
     workspace = _read_object(workspace_path)
     if workspace is not None:
         workspace["profile"] = profile
-        workspace["artifact_root"] = f".artifacts/performance-report/{profile}"
-        workspace["coordination_root"] = (
-            f".artifacts/performance-report-coordination/{profile}"
-        )
+        workspace["artifact_root"] = "campaign_artifacts"
+        workspace["coordination_root"] = "campaign_artifacts/coordination"
         initialized = workspace.get("initialized_environment")
         if isinstance(initialized, Mapping):
             workspace["initialized_environment"] = {
@@ -8141,28 +8281,19 @@ def main(
         if repo_root is None
         else repo_root.expanduser().resolve(strict=False)
     )
-    destination = (
-        None if docs_dir is None else docs_dir.expanduser().resolve(strict=False)
-    )
-    if installed and destination is None:
+    if installed and docs_dir is None:
         raise ValueError("installed campaign mode requires its destination directory")
-
-    def report_paths() -> ReportPaths:
-        if destination is None:
-            return ReportPaths.from_repo(root, profile=selected_profile)
-        local_state = destination / ".artifacts"
-        return ReportPaths.from_repo(
-            root,
-            docs_dir=destination,
-            artifact_root=local_state / "performance-report" / selected_profile,
-            coordination_root=(
-                local_state / "performance-report-coordination" / selected_profile
-            ),
-        )
-
+    campaign_docs = (
+        root / "docs/performance_reports" / selected_profile
+        if docs_dir is None
+        else docs_dir
+    )
     json_output = arguments.command == "inspect" and arguments.format == "json"
     palette = Palette(_color_enabled(arguments, json_output=json_output))
+    campaign_lock: int | None = None
     try:
+        paths = _campaign_report_paths(root, campaign_docs)
+        campaign_lock = _acquire_campaign_directory_lock(paths.docs_dir)
         dashboard_disabled = _configure_dashboard_capability(
             arguments,
             installed=installed,
@@ -8184,7 +8315,7 @@ def main(
                 raise ManualCampaignError("--instance requires --live")
             state = (
                 _live_dashboard_snapshot(
-                    report_paths().coordination_root,
+                    paths.coordination_root,
                     instance=arguments.instance,
                     stale_after_seconds=arguments.stale_after,
                 )
@@ -8205,7 +8336,7 @@ def main(
                 print(result)
             return 0
 
-        service = ReportService(report_paths())
+        service = ReportService(paths, portable_current_results=True)
         service.bind_measurement_lineage(None)
         service.bind_original_amplicol_seed(None)
         source = (
@@ -8261,6 +8392,9 @@ def main(
     except (ManualCampaignError, OSError, RuntimeError, TypeError, ValueError) as error:
         print(palette.failure(f"error: {error}"), file=sys.stderr)
         return 2
+    finally:
+        if campaign_lock is not None:
+            _release_campaign_directory_lock(campaign_lock)
     return 2
 
 

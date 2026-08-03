@@ -96,8 +96,9 @@ def _generated_report_path(value: str) -> bool:
     """Return whether a dirty path is a generated report output.
 
     Benchmark caches, rendered tables, authenticated environment metadata,
-    PDFs, local evaluator attempts, and the corresponding generated files
-    inside one architecture-profile workspace are outputs of a report campaign.
+    PDFs, campaign-local evaluator attempts, and the corresponding generated
+    files inside one architecture-profile workspace are outputs of a report
+    campaign.
     They do not alter the evaluator source being measured and therefore do not
     make the source checkout ineligible. Profile prose, manifests, entry points,
     nested files, and all other tracked or untracked changes do.
@@ -108,6 +109,13 @@ def _generated_report_path(value: str) -> bool:
     if not parts:
         return False
     if parts[0] in {".artifacts", "tmp"}:
+        return True
+    if (
+        len(parts) >= 5
+        and parts[:2] == ("docs", "performance_reports")
+        and parts[2] not in {"", ".", ".."}
+        and parts[3] == "campaign_artifacts"
+    ):
         return True
     if parts[:4] == ("docs", "arxiv", "results", ".coordination"):
         return True

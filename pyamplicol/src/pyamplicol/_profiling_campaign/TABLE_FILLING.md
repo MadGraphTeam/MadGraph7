@@ -39,7 +39,10 @@ to store that checkout as the copied campaign's default; an explicit
 Inside a contributor checkout it re-executes with the repository `.venv`; an
 installed copy uses the wheel's Python runtime. Both modes reuse compatible
 same-source currents by default, supervise each process tree, and keep attempts
-and large artifacts outside this publication directory.
+and large artifacts in this campaign's visible `campaign_artifacts/` directory.
+That state moves with the entire campaign and never falls back to an old
+repository-level `.artifacts` directory. Use separate copied directories for
+independent campaigns, even when their basenames happen to match.
 
 Preview selections before launching workers:
 
@@ -92,6 +95,13 @@ The default lifecycle retains every heavy attempt payload. Use
 retaining metadata, results, logs, progress events, and phase timelines while
 removing only their heavy evaluator payloads. Every current artifact and any
 artifact borrowed by an equivalent current remains protected.
+
+Running `pyamplicol profiling-campaign copy DEST --force` again resets only
+`DEST/campaign_artifacts`, the managed PDF, the campaign summary-ID directory,
+known lineage/LaTeX build byproducts, and the packaged template files. It
+preserves unrelated files and the recorded original-AmpliCol checkout unless a
+new `--local-amplicol` value is supplied. Stop active campaign processes before
+resetting their destination.
 
 Capture a running dashboard from another terminal without attaching to or
 changing the campaign:

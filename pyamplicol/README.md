@@ -138,14 +138,19 @@ by the wheel-owned static Rusticol SDK.
 
 ## Profiling campaigns
 
-An installed wheel can populate a new or empty campaign workspace:
+An installed wheel can populate a self-contained campaign workspace:
 
 ```console
 pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
 ```
 
-`--force` replaces the template members but does not delete unrelated files in
-an existing destination; use a new destination when a clean reset is required.
+Each campaign keeps attempts, prepared artifacts, logs, locks, and leases in
+its visible `campaign_artifacts/` directory. Moving or renaming the whole
+campaign moves that state with it and never consults legacy repository-level
+`.artifacts` state. `--force` resets that local state plus the managed PDF,
+summary IDs, measurement lineage, and known LaTeX byproducts while preserving
+unrelated destination files and a previously recorded original-AmpliCol
+checkout. Stop active campaign processes before resetting their destination.
 
 All pyAmpliCol backends work from installed resources. The optional original
 AmpliCol reference backend additionally requires

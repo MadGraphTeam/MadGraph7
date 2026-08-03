@@ -59,6 +59,7 @@ from .publisher import (
     DEFAULT_EXPECTED_PAGE_COUNT,
     DEFAULT_PDF_TIMEOUT_SECONDS,
     DEFAULT_PUBLICATION_INTERVAL_SECONDS,
+    _report_source_copy_ignore,
     run_publisher,
     validate_published_snapshot,
 )
@@ -807,7 +808,8 @@ def _compile_pdf(service: ReportService) -> Path:
         shutil.copytree(
             service.paths.docs_dir,
             build_docs,
-            ignore=shutil.ignore_patterns(
+            ignore=_report_source_copy_ignore(
+                service.paths.docs_dir,
                 "*.aux",
                 "*.fdb_latexmk",
                 "*.fls",

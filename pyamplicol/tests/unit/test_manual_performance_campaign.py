@@ -63,10 +63,152 @@ from tools.performance_report.service import ReportPaths, ReportService
 
 ROOT = Path(__file__).resolve().parents[2]
 PROFILE = ROOT / "src/pyamplicol/_profiling_campaign"
+CAMPAIGN_ARTIFACT_ROOT = PROFILE / "campaign_artifacts"
 
 
 def _parse(*arguments: str):
     return build_parser().parse_args(arguments)
+
+
+def test_campaign_state_roots_are_local_and_isolated_by_full_destination(
+    tmp_path: Path,
+) -> None:
+    first_docs = tmp_path / "first" / "same-name"
+    second_docs = tmp_path / "second" / "same-name"
+    first_docs.mkdir(parents=True)
+    second_docs.mkdir(parents=True)
+
+    first = manual_campaign._campaign_report_paths(ROOT, first_docs)
+    second = manual_campaign._campaign_report_paths(ROOT, second_docs)
+
+    assert first.docs_dir == first_docs.resolve()
+    assert first.artifact_root == first_docs.resolve() / "campaign_artifacts"
+    assert first.coordination_root == first.artifact_root / "coordination"
+    assert second.artifact_root == second_docs.resolve() / "campaign_artifacts"
+    assert first.artifact_root != second.artifact_root
+    first_service = ReportService(first, portable_current_results=True)
+    second_service = ReportService(second, portable_current_results=True)
+    with (
+        first_service.store.named_lock("same-cell", timeout=0.0),
+        second_service.store.named_lock("same-cell", timeout=0.0),
+    ):
+        pass
+    attempt = first_service.store.new_attempt(
+        "same-cell",
+        manual_campaign.ArtifactPolicy.REGENERATE,
+    )
+    attempt.publish({"status": "ok"})
+    assert first_service.store.load_current("same-cell") is not None
+    assert second_service.store.load_current("same-cell", missing_ok=True) is None
+    assert (
+        second_service.store.lightweight_current_payload(
+            "same-cell",
+            missing_ok=True,
+        )
+        is None
+    )
+
+    legacy_store = manual_campaign.ArtifactStore(
+        artifact_root=tmp_path / ".artifacts/performance-report/same-name",
+        lock_root=tmp_path / ".artifacts/performance-report-coordination/same-name",
+    )
+    legacy_attempt = legacy_store.new_attempt(
+        "legacy-cell",
+        manual_campaign.ArtifactPolicy.REGENERATE,
+    )
+    legacy_attempt.publish({"status": "ok"})
+    assert first_service.store.load_current("legacy-cell", missing_ok=True) is None
+    assert second_service.store.load_current("legacy-cell", missing_ok=True) is None
+    assert not (first_docs / ".artifacts").exists()
+    assert not (second_docs / ".artifacts").exists()
+
+
+def test_campaign_state_root_is_created_fresh_when_absent(tmp_path: Path) -> None:
+    docs = tmp_path / "campaign"
+    docs.mkdir()
+    assert not (docs / "campaign_artifacts").exists()
+
+    paths = manual_campaign._campaign_report_paths(ROOT, docs)
+    ReportService(paths)
+
+    assert paths.artifact_root == docs / "campaign_artifacts"
+    assert paths.coordination_root == docs / "campaign_artifacts/coordination"
+    assert (paths.artifact_root / "cells").is_dir()
+    assert paths.coordination_root.is_dir()
+    assert not (docs / ".artifacts").exists()
+
+
+@pytest.mark.parametrize("member", ("campaign_artifacts", "coordination"))
+def test_campaign_state_rejects_symlinked_private_directories(
+    tmp_path: Path,
+    member: str,
+) -> None:
+    docs = tmp_path / "campaign"
+    docs.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    if member == "campaign_artifacts":
+        (docs / member).symlink_to(outside, target_is_directory=True)
+    else:
+        state = docs / "campaign_artifacts"
+        state.mkdir()
+        (state / member).symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ManualCampaignError, match="must not be a symbolic link"):
+        manual_campaign._campaign_report_paths(ROOT, docs)
+
+
+def test_campaign_state_rejects_special_private_member(tmp_path: Path) -> None:
+    docs = tmp_path / "campaign"
+    docs.mkdir()
+    (docs / "campaign_artifacts").write_text("not a directory\n", encoding="ascii")
+
+    with pytest.raises(ManualCampaignError, match="must be a directory"):
+        manual_campaign._campaign_report_paths(ROOT, docs)
+
+
+def test_campaign_state_rejects_symlinked_campaign_directory(tmp_path: Path) -> None:
+    actual = tmp_path / "actual"
+    actual.mkdir()
+    linked = tmp_path / "campaign"
+    linked.symlink_to(actual, target_is_directory=True)
+
+    with pytest.raises(ManualCampaignError, match="must not be a symbolic link"):
+        manual_campaign._campaign_report_paths(ROOT, linked)
+
+
+def test_campaign_command_holds_shared_destination_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import fcntl
+
+    docs = tmp_path / "campaign"
+    docs.mkdir()
+    original_fixture = manual_campaign._snapshot_fixture
+
+    def assert_locked() -> DashboardState:
+        descriptor = os.open(
+            docs,
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0),
+        )
+        try:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        finally:
+            os.close(descriptor)
+        return original_fixture()
+
+    monkeypatch.setattr(manual_campaign, "_snapshot_fixture", assert_locked)
+
+    assert (
+        campaign_main(
+            ("dashboard-snapshot", "--width", "80", "--height", "24"),
+            repo_root=ROOT,
+            docs_dir=docs,
+        )
+        == 0
+    )
 
 
 def test_catalog_and_fresh_profile_are_complete_but_measurement_empty() -> None:
@@ -268,7 +410,11 @@ def test_reproduction_recipe_uses_public_generate_and_profile() -> None:
         and cell.workload is Workload.ALL_FLOW
         and cell.measurement.model is ModelKey.BUILTIN_SM
     )
-    recipe = reproduction_recipe(candidate, repo_root=ROOT)
+    recipe = reproduction_recipe(
+        candidate,
+        repo_root=ROOT,
+        artifact_root=CAMPAIGN_ARTIFACT_ROOT,
+    )
     assert recipe.kind == "public-cli-template+model-compile-prerequisite"
     assert recipe.prepare is not None
     assert recipe.prepare[:5] == (
@@ -303,7 +449,11 @@ def test_reproduction_recipe_uses_public_generate_and_profile() -> None:
         for cell in REPORT_CATALOG.measurement_cells()
         if cell.measurement.execution_mode is ExecutionMode.AMPLICOL
     )
-    legacy_recipe = reproduction_recipe(legacy, repo_root=ROOT)
+    legacy_recipe = reproduction_recipe(
+        legacy,
+        repo_root=ROOT,
+        artifact_root=CAMPAIGN_ARTIFACT_ROOT,
+    )
     assert legacy_recipe.kind == "legacy-report-adapter"
     assert legacy_recipe.generate is None
     assert legacy_recipe.profile is None
@@ -338,6 +488,7 @@ def test_reproduction_recipe_exposes_authenticated_reuse_off_fallback() -> None:
     recipe = reproduction_recipe(
         candidate,
         repo_root=ROOT,
+        artifact_root=CAMPAIGN_ARTIFACT_ROOT,
         measurement={"provenance": {"numerical_relation_fallback": fallback}},
     )
 
@@ -354,6 +505,7 @@ def test_reproduction_recipe_exposes_authenticated_reuse_off_fallback() -> None:
         reproduction_recipe(
             candidate,
             repo_root=ROOT,
+            artifact_root=CAMPAIGN_ARTIFACT_ROOT,
             measurement={"provenance": {"numerical_relation_fallback": malformed}},
         )
 
@@ -367,7 +519,11 @@ def test_reproduction_cli_prefix_runs_from_an_unrelated_directory(
         if cell.measurement.execution_mode is ExecutionMode.RECURRENCE
         and cell.measurement.model is ModelKey.BUILTIN_SM
     )
-    recipe = reproduction_recipe(candidate, repo_root=ROOT)
+    recipe = reproduction_recipe(
+        candidate,
+        repo_root=ROOT,
+        artifact_root=CAMPAIGN_ARTIFACT_ROOT,
+    )
     assert recipe.generate is not None
     command_prefix = recipe.generate[:3]
     completed = subprocess.run(
@@ -411,6 +567,7 @@ def test_completed_reproduction_recipe_uses_exact_selectors_and_momenta(
     recipe = reproduction_recipe(
         candidate,
         repo_root=tmp_path,
+        artifact_root=tmp_path / "campaign_artifacts",
         measurement=measurement,
     )
     assert recipe.exact is True
@@ -429,6 +586,11 @@ def test_completed_reproduction_recipe_uses_exact_selectors_and_momenta(
     assert "--momenta" in recipe.profile
     momenta_path = Path(recipe.profile[recipe.profile.index("--momenta") + 1])
     assert json.loads(momenta_path.read_text(encoding="ascii")) == recorded_momenta
+    assert momenta_path.is_relative_to(tmp_path / "campaign_artifacts")
+    assert all(
+        ".artifacts" not in argument
+        for argument in (*recipe.prepare, *recipe.generate, *recipe.profile)
+    )
     assert "<" not in " ".join((*recipe.generate, *recipe.profile))
 
 
@@ -443,7 +605,11 @@ def test_ufo_recurrence_recipe_has_public_model_compile_prerequisite(
         if cell.measurement.execution_mode is ExecutionMode.RECURRENCE
         and cell.measurement.model is ModelKey.UFO_SM
     )
-    recipe = reproduction_recipe(candidate, repo_root=tmp_path)
+    recipe = reproduction_recipe(
+        candidate,
+        repo_root=tmp_path,
+        artifact_root=tmp_path / "campaign_artifacts",
+    )
 
     assert recipe.prepare is not None
     assert recipe.prepare[:5] == (
@@ -475,7 +641,11 @@ def test_compiled_recipe_labels_both_private_timing_exceptions() -> None:
         for cell in REPORT_CATALOG.measurement_cells()
         if cell.measurement.execution_mode is ExecutionMode.COMPILED
     )
-    recipe = reproduction_recipe(candidate, repo_root=ROOT)
+    recipe = reproduction_recipe(
+        candidate,
+        repo_root=ROOT,
+        artifact_root=CAMPAIGN_ARTIFACT_ROOT,
+    )
 
     assert recipe.exact is False
     assert "precompiled-generation" in recipe.kind
@@ -968,6 +1138,7 @@ def test_recycled_resource_cap_is_available_to_error_filter(
         {cell.cell_id: current},
         {cell.cell_id},
         repo_root=ROOT,
+        artifact_root=CAMPAIGN_ARTIFACT_ROOT,
         settings=ReproductionSettings(),
     )
 
@@ -1020,6 +1191,7 @@ def test_recycled_legacy_manual_memory_cap_needs_no_new_censor_record(
         {cell.cell_id: current},
         {cell.cell_id},
         repo_root=ROOT,
+        artifact_root=CAMPAIGN_ARTIFACT_ROOT,
         settings=ReproductionSettings(),
     )[cell.cell_id]
 
@@ -1091,6 +1263,7 @@ def test_successful_recycled_result_uses_done_filter_and_persisted_timeline(
         {cell.cell_id: current},
         {cell.cell_id},
         repo_root=ROOT,
+        artifact_root=CAMPAIGN_ARTIFACT_ROOT,
         settings=ReproductionSettings(),
     )
     worker = workers[cell.cell_id]
@@ -1353,7 +1526,7 @@ def _presentation_outcome(
     completed_at_ns: int = 1,
     invocation_id: str = "presentation-test",
     source_revision: str = "a" * 40,
-    profile: str = manual_campaign.PROFILE,
+    profile: str = manual_campaign._PRESENTATION_PROFILE,
     attempt_id: str | None = None,
 ) -> manual_campaign.LightweightPresentationOutcome:
     return manual_campaign.LightweightPresentationOutcome(
@@ -1366,6 +1539,40 @@ def _presentation_outcome(
         label=manual_campaign._humanized_outcome_label(status),
         completed_at_ns=completed_at_ns,
     )
+
+
+def test_presentation_outcome_survives_campaign_parent_and_basename_move(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = manual_campaign.ReportSourceIdentity("a" * 40, "b" * 40, ())
+    campaign_a = tmp_path / "parent-a/original-name"
+    campaign_a.mkdir(parents=True)
+    service_a = ReportService(
+        manual_campaign._campaign_report_paths(ROOT, campaign_a),
+        portable_current_results=True,
+    )
+    manual_campaign.update_source_marker(service_a, source)
+    cell = _presentation_test_cell()
+    monkeypatch.setattr(manual_campaign, "_ACTIVE_PROFILE", "original-name")
+    expected = _presentation_outcome(cell.cell_id, status="error")
+    assert manual_campaign._publish_presentation_outcome(service_a, expected)
+
+    campaign_b = tmp_path / "parent-b/renamed-campaign"
+    campaign_b.parent.mkdir()
+    campaign_a.rename(campaign_b)
+    service_b = ReportService(
+        manual_campaign._campaign_report_paths(ROOT, campaign_b),
+        portable_current_results=True,
+    )
+    monkeypatch.setattr(manual_campaign, "_ACTIVE_PROFILE", "renamed-campaign")
+
+    moved = manual_campaign.lightweight_presentation_outcome(
+        service_b,
+        cell,
+        source_revision=source.revision,
+    )
+    assert moved == expected
 
 
 def _valid_presentation_current(
@@ -1748,7 +1955,7 @@ def test_presentation_outcome_parser_rejects_printable_non_ascii_metadata(
     assert (
         manual_campaign._parse_presentation_outcome(
             malformed,
-            expected_profile=manual_campaign.PROFILE,
+            expected_profile=manual_campaign._PRESENTATION_PROFILE,
             expected_cell_id=cell.cell_id,
             source_revision="a" * 40,
             accept_historical_source=False,
@@ -2016,9 +2223,11 @@ def test_lease_success_with_resolved_ok_only_suppresses_existing_failure(
             assert observed.attempt_id == current.attempt_id
 
 
+@pytest.mark.parametrize("continuation_at_success", (False, True))
 def test_cross_revision_success_tombstones_historical_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    continuation_at_success: bool,
 ) -> None:
     service = _manual_service(tmp_path)
     cell = _presentation_test_cell()
@@ -2034,7 +2243,7 @@ def test_cross_revision_success_tombstones_historical_failure(
     manual_campaign.update_source_marker(
         service,
         manual_campaign.ReportSourceIdentity("b" * 40, "c" * 40, ()),
-        continue_across_revisions=True,
+        continue_across_revisions=continuation_at_success,
     )
     current = _valid_presentation_current(cell.cell_id, tmp_path)
     monkeypatch.setattr(
@@ -2062,6 +2271,13 @@ def test_cross_revision_success_tombstones_historical_failure(
             "completed_at_ns": 2,
         }
     )
+
+    if not continuation_at_success:
+        manual_campaign.update_source_marker(
+            service,
+            manual_campaign.ReportSourceIdentity("b" * 40, "c" * 40, ()),
+            continue_across_revisions=True,
+        )
 
     tombstone = manual_campaign.lightweight_presentation_outcome(
         service,
@@ -3485,9 +3701,9 @@ def test_live_snapshot_command_is_read_only_and_lease_only(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    service = ReportService(
-        ReportPaths.from_repo(tmp_path, profile="macbook_M3_manual")
-    )
+    docs = tmp_path / "docs/performance_reports/macbook_M3_manual"
+    docs.mkdir(parents=True)
+    service = ReportService(manual_campaign._campaign_report_paths(tmp_path, docs))
     now = time.time()
     _write_lease(
         service,
@@ -3541,6 +3757,7 @@ def test_live_snapshot_command_is_read_only_and_lease_only(
             "36",
         ),
         repo_root=tmp_path,
+        docs_dir=docs,
     )
 
     assert result == 0
@@ -3778,6 +3995,7 @@ def test_installed_dashboard_snapshot_explains_optional_bindings(
         "_missing_ratatui_bindings",
         lambda: ("ratatui_py",),
     )
+    (tmp_path / "campaign").mkdir()
 
     result = campaign_main(
         ("dashboard-snapshot", "--no-color"),
@@ -3997,10 +4215,11 @@ def test_manual_refresh_projects_artifact_output_and_reproduction_commands(
     reproduction = reproduction_recipe(
         cell,
         repo_root=service.paths.repo_root,
+        artifact_root=service.paths.artifact_root,
         artifact_path=str(artifact),
     ).as_dict()
     assert all(
-        isinstance(reproduction[field], str)
+        isinstance(reproduction[field], list)
         for field in ("prepare", "generate", "profile")
     )
 
@@ -4064,9 +4283,9 @@ def test_manual_refresh_projects_artifact_output_and_reproduction_commands(
         "public_cli_reproduction"
     ]
     for field in ("prepare", "generate", "profile"):
-        command = published_recipe[field]  # type: ignore[index]
-        assert isinstance(command, str)
-        assert "${PYAMPLICOL_SOURCE_ROOT}" in command
+        argv = published_recipe[field]  # type: ignore[index]
+        assert isinstance(argv, list)
+        assert any("${PYAMPLICOL_SOURCE_ROOT}" in argument for argument in argv)
     rendered = json.dumps(portable)
     assert str(service.paths.artifact_root) not in rendered
     assert str(service.paths.repo_root) not in rendered
@@ -4076,9 +4295,9 @@ def test_manual_refresh_projects_artifact_output_and_reproduction_commands(
     external_trace = (
         service.paths.repo_root.parent / "pyamplicol-external-test" / "trace.json"
     )
-    external_recipe["profile"] = (
-        f"{external_recipe['profile']} --trace {external_trace}"
-    )
+    external_profile = external_recipe["profile"]
+    assert isinstance(external_profile, list)
+    external_recipe["profile"] = [*external_profile, "--trace", str(external_trace)]
     external_diagnostic = merged_cache(artifact, external_recipe)
     redacted = portable_publication_value(
         external_diagnostic[f"{cell.dataset_id}.json"],
@@ -4092,7 +4311,7 @@ def test_manual_refresh_projects_artifact_output_and_reproduction_commands(
     redacted_recipe = redacted_entry["measurement"]["provenance"][  # type: ignore[index]
         "manual_campaign"
     ]["public_cli_reproduction"]
-    assert redacted_recipe["profile"] == "${LOCAL_PATH_REDACTED}"
+    assert redacted_recipe["profile"][-1] == "${LOCAL_PATH_REDACTED}"
     assert str(tmp_path) not in json.dumps(redacted)
     assert portable_publication_value(redacted, service.paths) == redacted
 
@@ -4143,11 +4362,96 @@ def test_copied_campaign_rebinds_private_pdf_build_profile(tmp_path: Path) -> No
     assert environment["profile"] == "independent_run"
     assert workspace["profile"] == "independent_run"
     assert workspace["initialized_environment"]["profile"] == "independent_run"
-    assert workspace["artifact_root"].endswith("/independent_run")
-    assert workspace["coordination_root"].endswith("/independent_run")
+    assert workspace["artifact_root"] == "campaign_artifacts"
+    assert workspace["coordination_root"] == "campaign_artifacts/coordination"
     assert "{independent\\_run}" in (staging / "report_environment.tex").read_text(
         encoding="utf-8"
     )
+
+
+def test_manual_refresh_source_copy_excludes_only_top_level_campaign_state(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "pyAmpliCol.tex").write_text("report\n", encoding="ascii")
+    state = source / "campaign_artifacts"
+    state.mkdir()
+    (state / "large-sentinel.bin").write_bytes(b"private")
+    nested = source / "appendix/campaign_artifacts"
+    nested.mkdir(parents=True)
+    (nested / "published.txt").write_text("keep\n", encoding="ascii")
+    destination = tmp_path / "staging"
+
+    manual_campaign._copy_report_sources(source, destination)
+
+    assert not (destination / "campaign_artifacts").exists()
+    assert (destination / "appendix/campaign_artifacts/published.txt").is_file()
+
+
+def test_refresh_pdf_does_not_stage_local_campaign_state_recursively(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    docs = tmp_path / "portable-campaign"
+    docs.mkdir()
+    (docs / "pyAmpliCol.tex").write_text("report\n", encoding="ascii")
+    service = ReportService(
+        manual_campaign._campaign_report_paths(ROOT, docs),
+        portable_current_results=True,
+    )
+    sentinel = service.paths.artifact_root / "large-private-sentinel.bin"
+    sentinel.write_bytes(b"private-state" * 1024)
+    manual_campaign.update_source_marker(
+        service,
+        manual_campaign.ReportSourceIdentity("a" * 40, "b" * 40, ()),
+    )
+    observed: dict[str, Path] = {}
+
+    monkeypatch.setattr(
+        manual_campaign,
+        "_capture_lightweight_snapshot",
+        lambda *_args, **_kwargs: ({}, {}, ()),
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "_merge_lightweight_snapshot",
+        lambda *_args, **_kwargs: ({}, 0),
+    )
+    monkeypatch.setattr(ReportService, "_render_tables", lambda *_args: {})
+    monkeypatch.setattr(ReportService, "_snapshot_files", lambda *_args: ())
+
+    def compile_staged(staging_docs: Path, **_kwargs: object) -> int:
+        observed["staging_docs"] = staging_docs
+        assert not (staging_docs / "campaign_artifacts").exists()
+        assert not any(
+            path.name == sentinel.name for path in staging_docs.rglob("*")
+        )
+        (staging_docs / "pyAmpliCol.pdf").write_bytes(b"%PDF-1.4\n")
+        return 1
+
+    monkeypatch.setattr(manual_campaign, "_compile_pdf", compile_staged)
+    monkeypatch.setattr(
+        manual_campaign,
+        "_install_report_snapshot",
+        lambda *_args, **_kwargs: None,
+    )
+
+    assert (
+        manual_campaign._refresh_pdf(
+            _parse("refresh-pdf", "--quiet", "--expected-page-count", "1"),
+            service=service,
+            source=manual_campaign.ReportSourceIdentity("a" * 40, "b" * 40, ()),
+            palette=manual_campaign.Palette(False),
+        )
+        == 0
+    )
+    assert "staging_docs" in observed
+    assert not observed["staging_docs"].exists()
+    assert sentinel.read_bytes() == b"private-state" * 1024
+    build_root = service.paths.artifact_root / "manual-publication-builds"
+    assert build_root.is_dir()
+    assert not tuple(build_root.iterdir())
 
 
 def test_controller_sources_only_use_read_only_git_for_external_checkout() -> None:

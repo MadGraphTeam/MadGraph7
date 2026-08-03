@@ -30,6 +30,11 @@ creates an editable workspace and materializes the wheel-owned JSON/UFO models
 without relying on a source-tree layout.
 
 `pyamplicol profiling-campaign copy DEST --force` similarly creates a fresh
-installed-resource profiling workspace. It can run headlessly without optional
-Ratatui bindings; only original-AmpliCol measurements require the copied
-launcher's `run --original-amplicol PATH_TO_CLEAN_COMPLETE_CHECKOUT` option.
+installed-resource profiling workspace. Its visible `campaign_artifacts/`
+directory holds all campaign state and moves with `DEST`; old repository-level
+`.artifacts` state is ignored. `--force` resets only that local state and the
+managed PDF, summary IDs, measurement lineage, and known LaTeX byproducts while
+preserving unrelated files. The copy can run headlessly without optional
+Ratatui bindings; only original-AmpliCol
+measurements require the copied launcher's
+`run --original-amplicol PATH_TO_CLEAN_COMPLETE_CHECKOUT` option.

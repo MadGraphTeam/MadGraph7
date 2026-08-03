@@ -25,6 +25,9 @@ from tools.performance_report.timing import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
+CAMPAIGN_ARTIFACT_ROOT = (
+    ROOT / "src/pyamplicol/_profiling_campaign/campaign_artifacts"
+)
 
 
 def _parse(*arguments: str):
@@ -81,6 +84,7 @@ def test_generation_recipe_spells_out_measurement_relevant_hyperparameters() -> 
     recipe = reproduction_recipe(
         candidate,
         repo_root=ROOT,
+        artifact_root=CAMPAIGN_ARTIFACT_ROOT,
         cores=2,
         target_runtime=0.75,
         batch_size=32,
@@ -137,6 +141,7 @@ def test_dry_run_recipe_blocks_cover_more_than_twenty_direct_cells() -> None:
         manual_campaign._dry_run_recipe_blocks(
             cells,
             repo_root=ROOT,
+            artifact_root=CAMPAIGN_ARTIFACT_ROOT,
             arguments=_parse("run", "--dry-run"),
             width=120,
         )

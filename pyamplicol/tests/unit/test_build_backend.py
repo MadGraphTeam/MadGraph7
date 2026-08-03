@@ -1325,6 +1325,10 @@ def test_archive_overlay_without_git_history_uses_pruned_allowlist(
         Path("src/pyamplicol/_profiling_campaign/pyAmpliCol.aux"),
         Path("src/pyamplicol/_profiling_campaign/pyAmpliCol.synctex.gz"),
         Path("docs/performance_reports/macbook_M3/pyAmpliCol.toc"),
+        Path(
+            "src/pyamplicol/_profiling_campaign/campaign_artifacts/"
+            "private-attempt.bin"
+        ),
         Path("src/pyamplicol.egg-info/PKG-INFO"),
         Path("src/pyamplicol/_rusticol.abi3.so"),
         Path("src/pyamplicol/_rusticol.dylib"),

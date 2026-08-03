@@ -10,6 +10,7 @@ import pytest
 import tools.performance_report.worker as worker_module
 from tools.performance_report.artifacts import DiskFullError
 from tools.performance_report.catalog import REPORT_CATALOG
+from tools.performance_report.measurement import load_measurement
 from tools.performance_report.phase_state import (
     WorkerPhaseChannel,
     WorkerPhaseReporter,
@@ -18,6 +19,7 @@ from tools.performance_report.phase_state import (
 from tools.performance_report.worker import (
     _atomic_json,
     _JsonlProgressSink,
+    _portable_current_paths,
     _selector_provider_measurement,
     _source_identity,
     _worker_legacy_workspace,
@@ -36,6 +38,44 @@ def test_atomic_worker_result_is_canonical_and_complete(tmp_path: Path) -> None:
         "value": 1,
     }
     assert not list(path.parent.glob("*.tmp"))
+
+
+def test_worker_materializes_portable_peer_from_canonical_current_path(
+    tmp_path: Path,
+) -> None:
+    campaign = tmp_path / "manual"
+    state = campaign / "campaign_artifacts"
+    (state / "coordination").mkdir(parents=True)
+    worker_attempt = (
+        state
+        / "cells/worker/attempts/11111111-1111-4111-8111-111111111111"
+    )
+    peer_attempt = state / "cells/peer/attempts/22222222-2222-4222-8222-222222222222"
+    worker_attempt.mkdir(parents=True)
+    peer_artifact = peer_attempt / "artifact"
+    peer_artifact.mkdir(parents=True)
+    result_path = peer_attempt / "result.json"
+    result_path.write_text(
+        json.dumps(
+            {
+                "status": "ok",
+                "artifact": {
+                    "path": "${PYAMPLICOL_REPORT_ARTIFACT_ROOT}/cells/peer/attempts/"
+                    "22222222-2222-4222-8222-222222222222/artifact"
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    paths = _portable_current_paths(
+        repo_root=tmp_path / "source",
+        attempt_root=worker_attempt,
+    )
+
+    assert paths is not None
+    loaded = load_measurement(result_path, publication_paths=paths)
+    assert loaded["artifact"]["path"] == str(peer_artifact)
 
 
 def test_atomic_worker_result_normalizes_enospc_with_target_and_free_bytes(

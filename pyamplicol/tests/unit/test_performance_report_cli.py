@@ -55,6 +55,7 @@ def _fake_latexmk(tmp_path: Path, log: str) -> Path:
     executable.write_text(
         "#!/usr/bin/env python3\n"
         "from pathlib import Path\n"
+        "assert not Path('campaign_artifacts').exists()\n"
         "Path('pyAmpliCol.pdf').write_bytes(b'%PDF-1.4\\n%%EOF\\n')\n"
         f"Path('pyAmpliCol.log').write_text({log!r}, encoding='utf-8')\n",
         encoding="utf-8",
@@ -450,6 +451,11 @@ def test_refresh_pdf_rejects_successful_latex_with_overfull_box(
     repo = tmp_path / "repo"
     service = ReportService(ReportPaths.from_repo(repo))
     service.paths.docs_dir.mkdir(parents=True, exist_ok=True)
+    (service.paths.docs_dir / "campaign_artifacts").mkdir()
+    (service.paths.docs_dir / "campaign_artifacts/sentinel").write_text(
+        "private\n",
+        encoding="ascii",
+    )
     (service.paths.docs_dir / "pyAmpliCol.tex").write_text(
         "\\documentclass{article}\\begin{document}bad\\end{document}\n",
         encoding="ascii",

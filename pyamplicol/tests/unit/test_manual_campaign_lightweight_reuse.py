@@ -20,6 +20,7 @@ from tools.performance_report.artifacts import (
     ATTEMPT_SCHEMA,
     CURRENT_SCHEMA,
     ArtifactStore,
+    ManifestValidationError,
 )
 from tools.performance_report.cache import empty_measurement
 from tools.performance_report.catalog import REPORT_CATALOG
@@ -30,7 +31,7 @@ from tools.performance_report.manual_campaign import (
     build_parser,
     lightweight_current,
 )
-from tools.performance_report.measurement import failure_measurement
+from tools.performance_report.measurement import failure_measurement, load_measurement
 from tools.performance_report.models import (
     Accuracy,
     ArtifactPolicy,
@@ -42,6 +43,7 @@ from tools.performance_report.models import (
 from tools.performance_report.scheduler import CampaignSettings, plan_campaign
 from tools.performance_report.service import ReportPaths, ReportService
 from tools.performance_report.source_identity import ReportSourceIdentity
+from tools.performance_report.worker import _portable_current_paths
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -213,6 +215,235 @@ def _write_lightweight_success_current(
     pointer_path = service.store._cell_root(cell.cell_id) / "current.json"
     pointer_path.write_text(json.dumps(pointer), encoding="utf-8")
     return manifest_path, result_path
+
+
+def _portable_manual_service(campaign: Path) -> ReportService:
+    campaign = campaign.expanduser().resolve(strict=False)
+    state = campaign / "campaign_artifacts"
+    paths = ReportPaths(
+        repo_root=ROOT,
+        docs_dir=campaign,
+        results_dir=campaign / "results",
+        artifact_root=state,
+        coordination_root=state / "coordination",
+    )
+    return ReportService(paths, portable_current_results=True)
+
+
+def _publish_success_current(
+    service: ReportService,
+    cell: CellSpec,
+    *,
+    revision: str,
+) -> None:
+    attempt = service.store.new_attempt(cell.cell_id, ArtifactPolicy.REGENERATE)
+    artifact = attempt.path("artifact")
+    artifact.mkdir()
+    (artifact / "artifact.json").write_text("{}\n", encoding="ascii")
+    result = empty_measurement()
+    result.update(
+        {
+            "status": ResultStatus.OK.value,
+            "generation_seconds": 1.0,
+            "wall_seconds_per_point": 1.0e-6,
+            "execution_seconds_per_point": 8.0e-7,
+            "matrix_element": 1.0,
+            "sample_count": 5,
+            "standard_error_seconds_per_point": 0.0,
+            "relative_standard_error": 0.0,
+            "artifact": {"path": str(artifact), "process_id": cell.process},
+            "validation": {
+                "status": ResultStatus.OK.value,
+                DIRECT_AGREEMENT_FIELD: [],
+            },
+            "resources": {},
+            "provenance": {
+                "report_source_revision": revision,
+                "manual_campaign": {
+                    "cell_identity": _cell_identity(cell),
+                    "public_cli_reproduction": manual_campaign.reproduction_recipe(
+                        cell,
+                        repo_root=service.paths.repo_root,
+                        artifact_root=service.paths.artifact_root,
+                    ).as_dict(),
+                },
+                "numerical_relation_correctness": {},
+            },
+        }
+    )
+    attempt.publish(result, artifact_paths=("artifact/artifact.json",))
+
+
+def test_manual_current_reuse_survives_whole_campaign_move(
+    tmp_path: Path,
+) -> None:
+    revision = "b" * 40
+    recurrence = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.cell_id
+        == "matrix-recurrence-builtin-sm-full-n1-dd-z-jets-contracted"
+    )
+    compiled = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.cell_id
+        == "matrix-compiled-builtin-sm-full-n1-dd-z-jets-contracted"
+    )
+    campaign_a = tmp_path / "parent-a" / "campaign-a"
+    service_a = _portable_manual_service(campaign_a)
+    _publish_success_current(service_a, recurrence, revision=revision)
+
+    campaign_b = tmp_path / "other-parent" / "renamed-campaign"
+    campaign_b.parent.mkdir()
+    campaign_a.rename(campaign_b)
+    service_b = _portable_manual_service(campaign_b)
+    state_b = campaign_b / "campaign_artifacts"
+
+    full = service_b.store.load_current(recurrence.cell_id)
+    lightweight = lightweight_current(
+        service_b.store,
+        recurrence,
+        source_revision=revision,
+    )
+    assert full is not None
+    assert lightweight is not None and lightweight.reusable
+    assert Path(str(full.result["artifact"]["path"])).is_relative_to(state_b)
+    assert Path(str(lightweight.result["artifact"]["path"])).is_relative_to(state_b)
+    portable_recipe = lightweight.result["provenance"]["manual_campaign"][
+        "public_cli_reproduction"
+    ]
+    assert isinstance(portable_recipe["generate"], list)
+    assert any(str(state_b) in argument for argument in portable_recipe["generate"])
+    assert str(campaign_a) not in json.dumps(portable_recipe, sort_keys=True)
+
+    resolver = manual_campaign._lightweight_current_resolver(
+        service_b,
+        source_revision=revision,
+        initial={recurrence.cell_id: lightweight},
+    )
+    resolved = resolver(recurrence)
+    assert resolved is not None
+    assert Path(str(resolved[0].result["artifact"]["path"])).is_relative_to(state_b)
+    planned = plan_campaign(
+        (compiled,),
+        store=service_b.store,
+        settings=CampaignSettings(),
+        expected_revision=revision,
+        current_resolver=resolver,
+    )
+    assert [item.cell.cell_id for item in planned] == [compiled.cell_id]
+    assert planned[0].baseline_cell_id == recurrence.cell_id
+
+    worker_attempt = service_b.store.new_attempt(
+        compiled.cell_id,
+        ArtifactPolicy.REGENERATE,
+    )
+    worker_paths = _portable_current_paths(
+        repo_root=ROOT,
+        attempt_root=worker_attempt.root,
+    )
+    assert worker_paths is not None
+    worker_loaded = load_measurement(
+        full.result_path,
+        publication_paths=worker_paths,
+    )
+    assert Path(str(worker_loaded["artifact"]["path"])).is_relative_to(state_b)
+    worker_attempt.discard()
+
+    inspect_payload = manual_campaign._inspect_payload(
+        service_b,
+        (recurrence,),
+        source_revision=revision,
+        renderer_revision=revision,
+    )
+    assert inspect_payload["reusable_count"] == 1
+    assert inspect_payload["statuses"] == {ResultStatus.OK.value: 1}
+    assert str(campaign_a) not in json.dumps(inspect_payload, sort_keys=True)
+
+    merged_payloads, merged_count = manual_campaign._merge_lightweight_snapshot(
+        service_b,
+        {recurrence.cell_id: lightweight},
+    )
+    assert merged_count == 1
+    merged_measurement = next(
+        entry["measurement"]
+        for payload in merged_payloads.values()
+        for entry in payload["entries"]
+        if entry["cell_id"] == recurrence.cell_id
+    )
+    assert Path(str(merged_measurement["artifact"]["path"])).is_relative_to(state_b)
+    assert str(campaign_a) not in json.dumps(merged_measurement, sort_keys=True)
+
+    recipe = manual_campaign.reproduction_recipe(
+        recurrence,
+        repo_root=ROOT,
+        artifact_root=state_b,
+        measurement=lightweight.result,
+    )
+    reproduction_root = state_b / "manual-reproductions" / recurrence.cell_id
+    recipe_commands = tuple(
+        command
+        for command in (recipe.prepare, recipe.generate, recipe.profile)
+        if command is not None
+    )
+    rendered_recipe = "\n".join(" ".join(command) for command in recipe_commands)
+    assert str(reproduction_root) in rendered_recipe
+    assert str(campaign_b / ".artifacts") not in rendered_recipe
+    assert str(campaign_a) not in rendered_recipe
+
+    recycled_workers = manual_campaign._recycled_attention_workers(
+        (recurrence,),
+        {recurrence.cell_id: lightweight},
+        {recurrence.cell_id},
+        repo_root=ROOT,
+        artifact_root=state_b,
+        settings=manual_campaign.ReproductionSettings(),
+    )
+    recycled = recycled_workers[recurrence.cell_id]
+    assert recycled.status == "recycled"
+    assert recycled.recycled
+    rendered_worker_commands = "\n".join(
+        command
+        for command in (
+            recycled.reproduce_prepare,
+            recycled.reproduce_generate,
+            recycled.reproduce_profile,
+        )
+        if command is not None
+    )
+    assert str(reproduction_root) in rendered_worker_commands
+    assert str(campaign_b / ".artifacts") not in rendered_worker_commands
+    assert str(campaign_a) not in rendered_worker_commands
+
+
+def test_manual_portable_reuse_rejects_old_absolute_current(
+    tmp_path: Path,
+) -> None:
+    revision = "b" * 40
+    cell = _pyamplicol_leaf_cell()
+    campaign = tmp_path / "manual"
+    state = campaign / "campaign_artifacts"
+    ordinary = ReportService(
+        ReportPaths(
+            repo_root=ROOT,
+            docs_dir=campaign,
+            results_dir=campaign / "results",
+            artifact_root=state,
+            coordination_root=state / "coordination",
+        )
+    )
+    _publish_success_current(ordinary, cell, revision=revision)
+    portable = _portable_manual_service(campaign)
+
+    with pytest.raises(ManifestValidationError, match="current pointer schema"):
+        portable.store.load_current(cell.cell_id)
+    lightweight = lightweight_current(
+        portable.store,
+        cell,
+        source_revision=revision,
+    )
+    assert lightweight is None
 
 
 def _git_object(git_dir: Path, kind: bytes, body: bytes) -> str:

@@ -1349,6 +1349,7 @@ class CampaignScheduler:
         recipe = reproduction_recipe(
             cell,
             repo_root=self.service.paths.repo_root,
+            artifact_root=self.service.paths.artifact_root,
             cores=self.settings.cell_cores,
             target_runtime=self.settings.target_runtime_seconds,
             batch_size=self.settings.batch_size,

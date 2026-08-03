@@ -13,6 +13,7 @@ import tempfile
 import threading
 import time
 import traceback
+import uuid
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -38,6 +39,7 @@ from .measurement import (
 from .models import ExecutionMode, ResultStatus
 from .phase_state import WorkerPhaseChannel, WorkerPhaseReporter
 from .runner import ProfilingTimeLimitError, RunnerSettings
+from .service import ReportPaths
 from .source_identity import ReportSourceIdentity, require_eligible_report_source
 from .worker_harness import attach_worker_harness_identity
 
@@ -127,6 +129,67 @@ def _source_identity(
     if _GIT_OBJECT_ID.fullmatch(tree) is None:
         raise ValueError("manual source tree must be a 40-digit hexadecimal ID")
     return ReportSourceIdentity(revision.lower(), tree.lower(), ())
+
+
+def _portable_current_paths(
+    *,
+    repo_root: Path,
+    attempt_root: Path,
+) -> ReportPaths | None:
+    """Recognize the canonical copied-campaign attempt shape.
+
+    Ordinary developer/report stores retain their historical raw-current ABI.
+    A copied manual campaign has one literal visible state root, so its worker
+    can materialize authenticated peer/current files without another CLI flag.
+    """
+
+    lexical_attempt = Path(os.path.abspath(attempt_root.expanduser()))
+    if len(lexical_attempt.parents) < 4:
+        return None
+    artifact_root = lexical_attempt.parents[3]
+    if artifact_root.name != "campaign_artifacts":
+        return None
+    relative = lexical_attempt.relative_to(artifact_root)
+    if (
+        len(relative.parts) != 4
+        or relative.parts[0] != "cells"
+        or not relative.parts[1]
+        or relative.parts[2] != "attempts"
+    ):
+        raise ValueError("manual campaign worker attempt path is not canonical")
+    try:
+        attempt_id = str(uuid.UUID(relative.parts[3]))
+    except ValueError as error:
+        raise ValueError("manual campaign worker attempt ID is invalid") from error
+    if attempt_id != relative.parts[3]:
+        raise ValueError("manual campaign worker attempt ID is not canonical")
+    try:
+        resolved_attempt = attempt_root.expanduser().resolve(strict=True)
+        resolved_root = artifact_root.resolve(strict=True)
+    except OSError as error:
+        raise ValueError("manual campaign worker state root is unavailable") from error
+    if (
+        resolved_attempt != lexical_attempt
+        or resolved_root != artifact_root
+        or artifact_root.is_symlink()
+        or not artifact_root.is_dir()
+    ):
+        raise ValueError("manual campaign worker state root is not canonical")
+    coordination_root = artifact_root / "coordination"
+    if (
+        coordination_root.is_symlink()
+        or not coordination_root.is_dir()
+        or coordination_root.resolve(strict=True) != coordination_root
+    ):
+        raise ValueError("manual campaign coordination root is not canonical")
+    docs_dir = artifact_root.parent
+    return ReportPaths(
+        repo_root=repo_root.expanduser().resolve(strict=False),
+        docs_dir=docs_dir,
+        results_dir=docs_dir / "results",
+        artifact_root=artifact_root,
+        coordination_root=coordination_root,
+    )
 
 
 def _atomic_json(path: Path, payload: Mapping[str, object]) -> None:
@@ -336,15 +399,35 @@ def measure_cell(
     progress: ProgressSink | None = (
         None if progress_jsonl is None else _JsonlProgressSink(progress_jsonl)
     )
-    baseline = None if baseline_json is None else load_measurement(baseline_json)
-    peers = {peer_cell_id: load_measurement(path) for peer_cell_id, path in peer_json}
+    publication_paths = _portable_current_paths(
+        repo_root=repo_root,
+        attempt_root=attempt_root,
+    )
+    baseline = (
+        None
+        if baseline_json is None
+        else load_measurement(
+            baseline_json,
+            publication_paths=publication_paths,
+        )
+    )
+    peers = {
+        peer_cell_id: load_measurement(
+            path,
+            publication_paths=publication_paths,
+        )
+        for peer_cell_id, path in peer_json
+    }
     if len(peers) != len(peer_json):
         raise ValueError("direct-agreement peer cell IDs must be unique")
     reused_artifact = (
         None
         if reused_measurement_json is None
         else generated_artifact_from_measurement(
-            load_measurement(reused_measurement_json)
+            load_measurement(
+                reused_measurement_json,
+                publication_paths=publication_paths,
+            )
         )
     )
     selector_provider = _selector_provider_measurement(

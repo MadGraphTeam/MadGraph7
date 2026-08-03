@@ -82,6 +82,7 @@ from .models import (
     Workload,
 )
 from .publication import publication_measurement_matches_current
+from .publisher import _report_source_copy_ignore
 from .render import render_all_tables, summarize_visible_completeness
 from .report_policy import publication_measurement_policy_issues
 from .runner import (
@@ -1807,7 +1808,8 @@ def _audit_pdf(service: ReportService) -> dict[str, object]:
         shutil.copytree(
             service.paths.docs_dir,
             build_docs,
-            ignore=shutil.ignore_patterns(
+            ignore=_report_source_copy_ignore(
+                service.paths.docs_dir,
                 "*.aux",
                 "*.fdb_latexmk",
                 "*.fls",

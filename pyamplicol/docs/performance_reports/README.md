@@ -13,14 +13,23 @@ These PDFs are historical measurements, not release-CI results. Raw JSON,
 generated TeX, build workspaces, attempts, logs, locks, and coordination state
 are not kept in the source tree.
 
-Populate a new or empty campaign from any installed wheel with:
+Create or reset a self-contained campaign from any installed wheel with:
 
 ```console
 pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
 ```
 
-`--force` replaces template members but preserves unrelated files already in
-the destination; use a new destination for a clean reset.
+Runtime attempts, artifacts, locks, and coordination state live visibly in
+`pyamplicol-profiling-campaign/campaign_artifacts/`. Moving or renaming the
+whole campaign directory moves that state with it; campaigns with the same
+basename in different parents remain independent. Historical repository-global
+`.artifacts` state is intentionally ignored.
+
+`--force` replaces the managed template files and resets only
+`campaign_artifacts/`, the managed PDF and summary IDs, measurement lineage,
+and known LaTeX byproducts. It preserves unrelated destination files and the
+recorded local-AmpliCol checkout. Stop an active campaign before resetting it;
+an active controller makes the command fail without removing state.
 
 All pyAmpliCol backends use installed resources. Measuring the optional
 original-AmpliCol reference additionally requires
