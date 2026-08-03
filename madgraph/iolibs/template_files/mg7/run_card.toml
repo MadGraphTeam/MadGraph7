@@ -69,7 +69,7 @@ sde_strategy = %(phasespace.sde_strategy)s #options: diagrams, denominators
 decays = %(phasespace.decays)s # options: all, massive, none
 t_channel = %(phasespace.t_channel)s # options: propagator, rambo, chili
 flat_mode = %(phasespace.flat_mode)s # options: propagator, rambo, chili
-simplified_channel_count = %(phasespace.simplified_channel_count)s
+combine_channel_threshold = %(phasespace.combine_channel_threshold)s
 invariant_power = %(phasespace.invariant_power)s
 bw_cutoff = %(phasespace.bw_cutoff)s
 

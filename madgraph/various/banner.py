@@ -6536,7 +6536,7 @@ class RunCardMG7(RunCard):
             allowed=['propagator', 'rambo', 'chili'])
         self.add_toml_param('phasespace', 'flat_mode', "rambo",
             allowed=['propagator', 'rambo', 'chili'])
-        self.add_toml_param('phasespace', 'simplified_channel_count', 10)
+        self.add_toml_param('phasespace', 'combine_channel_threshold', 0.01)
         self.add_toml_param('phasespace', 'invariant_power', 0.7)
         self.add_toml_param('phasespace', 'bw_cutoff', 15)
 

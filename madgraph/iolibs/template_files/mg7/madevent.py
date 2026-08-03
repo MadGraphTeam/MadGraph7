@@ -461,20 +461,11 @@ class MadgraphProcess:
             ]
             self.event_generator = self.survey_phasespaces(self.phasespaces)
         elif phasespace_mode == "both":
-            kept_count = self.run_card["phasespace"]["simplified_channel_count"]
             phasespaces_multi = [
                 subproc.build_multichannel_phasespace()
                 for subproc in self.subprocesses
             ]
             evgen_multi = self.survey_phasespaces(phasespaces_multi)
-
-            phasespaces_flat = [
-                subproc.build_flat_phasespace()
-                if len(subproc.meta["channels"]) > kept_count + 1 else
-                None
-                for subproc in self.subprocesses
-            ]
-            #evgen_flat = self.survey_phasespaces(phasespaces_flat, "flat")
 
             channel_status = evgen_multi.channel_status()
             cross_sections = []
@@ -482,20 +473,24 @@ class MadgraphProcess:
             for phasespace in phasespaces_multi:
                 channel_count = len(phasespace.channels)
                 cross_sections.append([
-                    status.mean
+                    abs(status.mean)
                     for status in channel_status[index:index + channel_count]
                 ])
                 index += channel_count
 
             self.phasespaces = [
-                ps_multi
-                if ps_flat is None else
-                subproc.simplify_phasespace(ps_multi, ps_flat, cross_secs)
-                for subproc, ps_multi, ps_flat, cross_secs in zip(
-                    self.subprocesses, phasespaces_multi, phasespaces_flat, cross_sections
+                subproc.simplify_phasespace(ps_multi, cross_secs)
+                for subproc, ps_multi, cross_secs in zip(
+                    self.subprocesses, phasespaces_multi, cross_sections
                 )
             ]
-            self.event_generator = self.survey_phasespaces(self.phasespaces)
+            if any(
+                ps_multi is not ps_both
+                for ps_multi, ps_both in zip(phasespaces_multi, self.phasespaces)
+            ):
+                self.event_generator = self.survey_phasespaces(self.phasespaces)
+            else:
+                self.event_generator = evgen_multi
         else:
             raise ValueError("Unknown phasespace mode")
 
@@ -1181,25 +1176,31 @@ class MadgraphSubprocess:
     def simplify_phasespace(
         self,
         multi_phasespace: PhaseSpace,
-        flat_phasespace: PhaseSpace | None,
         cross_sections: list[float]
-    ) -> PhaseSpace:
+    ) -> PhaseSpace | None:
         assert multi_phasespace.mode == "multichannel"
 
-        kept_count = self.process.run_card["phasespace"]["simplified_channel_count"]
-        if len(multi_phasespace.channels) <= kept_count:
+        threshold = 1 - self.process.run_card["phasespace"]["combine_channel_threshold"]
+        kept_channels = []
+        tot_cs = sum(cross_sections)
+        cum_cs = 0.
+        seen_active_flavors = set()
+        for index, (cs, chan) in sorted(
+            enumerate(zip(cross_sections, multi_phasespace.channels)),
+            key=lambda pair: pair[1][0],
+            reverse=True
+        ):
+            cum_cs += cs
+            has_unseen_flavors = False
+            for flavs in chan.active_flavors:
+                for flav in flavs:
+                    if flav not in seen_active_flavors:
+                        has_unseen_flavors = True
+                        seen_active_flavors.add(flav)
+            if not has_unseen_flavors and cum_cs / tot_cs < threshold:
+                kept_channels.append(index)
+        if len(kept_channels) == len(cross_sections):
             return multi_phasespace
-
-        assert flat_phasespace is not None and flat_phasespace.mode == "flat"
-        #TODO: need to be careful here in the case of flavor sampling
-        #TODO: come up with some smarter heuristic than just channel cross section
-        #TODO: deal with resonances in a smart way
-        kept_channels = [
-            index
-            for index, cs in sorted(
-                enumerate(cross_sections), key=lambda pair: pair[1], reverse=True
-            )
-        ][:kept_count]
 
         channels = []
         channel_map = {}
@@ -1229,6 +1230,7 @@ class MadgraphSubprocess:
                 event_generator = channel.event_generator,
             ))
 
+        flat_phasespace = self.build_flat_phasespace()
         flat_channel = flat_phasespace.channels[0]
         channels.append(Channel(
             phasespace_mapping = flat_channel.phasespace_mapping,
