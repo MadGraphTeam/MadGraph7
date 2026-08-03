@@ -30,6 +30,8 @@ def test_installed_smoke_uses_the_v1_builtin_model_name() -> None:
 
 def test_installed_smoke_copies_and_dry_runs_the_profiling_campaign() -> None:
     smoke = deployment._INSTALLED_SMOKE
+    assert 'campaign = Path(raw).resolve() / "campaign"' in smoke
+    assert 'campaign = Path(raw) / "campaign"' not in smoke
     assert '"profiling-campaign"' in smoke
     assert 'campaign / "steer_performance_campaign.py"' in smoke
     assert 'campaign / "pyAmpliCol.pdf"' in smoke

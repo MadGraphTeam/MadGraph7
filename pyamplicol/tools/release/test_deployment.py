@@ -214,7 +214,7 @@ for relative in (
     assert package.joinpath(*relative).is_file(), relative
 
 with tempfile.TemporaryDirectory(prefix="pyamplicol-profiling-campaign-") as raw:
-    campaign = Path(raw) / "campaign"
+    campaign = Path(raw).resolve() / "campaign"
     subprocess.run(
         (
             sys.executable,
