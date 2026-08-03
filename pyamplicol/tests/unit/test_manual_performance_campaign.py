@@ -790,7 +790,9 @@ def test_dashboard_detail_columns_and_supervision_summary_are_styled() -> None:
         recycled_ids=set(),
         static_na_ids=set(),
         workers={worker.cell_id: worker},
-        completed_ids={worker.cell_id},
+        terminal_outcomes={
+            worker.cell_id: manual_campaign._DashboardTerminalOutcome.SUCCESS
+        },
         show_completed=True,
     )
     width = 160
@@ -1019,9 +1021,12 @@ def test_dashboard_filters_order_and_keyboard_toggles() -> None:
         recycled_ids={"done-reused", "recycled-cap"},
         static_na_ids=set(),
         workers=workers,
-        completed_ids={"done-ok", "done-reused", "recycled-cap"},
-        capped_ids={"recycled-cap"},
-        failed_ids={"attention-error"},
+        terminal_outcomes={
+            "done-ok": manual_campaign._DashboardTerminalOutcome.SUCCESS,
+            "done-reused": manual_campaign._DashboardTerminalOutcome.SUCCESS,
+            "recycled-cap": manual_campaign._DashboardTerminalOutcome.CAPPED,
+            "attention-error": manual_campaign._DashboardTerminalOutcome.FAILED,
+        },
     )
     cancellation = threading.Event()
 
@@ -1103,10 +1108,11 @@ def test_dashboard_error_total_is_in_primary_overview_summary() -> None:
         recycled_ids={"recycled-cap"},
         static_na_ids=set(),
         workers=workers,
-        completed_ids={"recycled-cap"},
-        capped_ids={"recycled-cap"},
-        failed_ids={"error"},
-        unverified_ids={"unverified"},
+        terminal_outcomes={
+            "recycled-cap": manual_campaign._DashboardTerminalOutcome.CAPPED,
+            "error": manual_campaign._DashboardTerminalOutcome.FAILED,
+            "unverified": manual_campaign._DashboardTerminalOutcome.UNVERIFIED,
+        },
     )
 
     frame = render_dashboard_frame(state, width=120, height=36)
@@ -1140,6 +1146,7 @@ def test_finished_unverified_is_not_counted_as_an_error(tmp_path: Path) -> None:
     assert state.unverified_ids == {"diagnostic"}
     assert state.counters()["failed"] == 0
     assert state.counters()["unverified"] == 1
+    assert state.counters()["remaining"] == 0
 
 
 def test_recycled_resource_cap_is_available_to_error_filter(
@@ -2022,6 +2029,14 @@ def test_started_event_drops_stale_identity_before_generic_failure_overlay(
         progress_message="stale progress",
         progress_task_id="stale-task",
         progress_details={"stale": True},
+        wall_seconds=12.0,
+        cpu_seconds=8.0,
+        current_rss_bytes=99,
+        peak_rss_bytes=101,
+        published_wall_seconds_per_point=0.5,
+        phase_timeline=(manual_campaign.PhaseTimelineRow("stale"),),
+        blocked_prerequisite_ids=("stale-prerequisite",),
+        events=["stale event"],
         log_tail=["stale cap diagnostics"],
     )
     state = DashboardState(
@@ -2041,6 +2056,9 @@ def test_started_event_drops_stale_identity_before_generic_failure_overlay(
 
     lease.observe({"event": "started", "cell_id": cell.cell_id})
 
+    fresh_worker = state.workers[cell.cell_id]
+    assert fresh_worker is not worker
+    worker = fresh_worker
     assert worker.attempt_id is None
     assert worker.log_path is None
     assert worker.progress_path is None
@@ -2050,6 +2068,14 @@ def test_started_event_drops_stale_identity_before_generic_failure_overlay(
     assert worker.progress_task_id is None
     assert worker.progress_details == {}
     assert worker.log_tail == []
+    assert worker.wall_seconds == 0.0
+    assert worker.cpu_seconds is None
+    assert worker.current_rss_bytes == 0
+    assert worker.peak_rss_bytes == 0
+    assert worker.published_wall_seconds_per_point is None
+    assert worker.phase_timeline == ()
+    assert worker.blocked_prerequisite_ids == ()
+    assert worker.events == ["started: dependency preparation"]
 
     lease.observe(
         {
@@ -4296,6 +4322,227 @@ def test_active_counter_includes_dependency_work_without_consuming_remaining() -
     assert counters["remaining"] == 1
     assert counters["dependency_only"] == 1
     assert "Active 1" in render_dashboard_frame(state, width=120, height=36)
+
+
+def test_worker_status_counters_include_dependency_only_rows_and_lease(
+    tmp_path: Path,
+) -> None:
+    dependency_ids = {
+        "dependency-ok",
+        "dependency-cap",
+        "dependency-error",
+        "dependency-unverified",
+        "dependency-running",
+    }
+    state = DashboardState(
+        instance_id="dependency-status-counters",
+        selected_ids=("direct-cell",),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        dependency_ids=dependency_ids,
+        source_revision="a" * 40,
+    )
+    lease = LeaseManager(_manual_service(tmp_path), state)
+    for cell_id, status in (
+        ("dependency-ok", "ok"),
+        ("dependency-cap", "memory_limit"),
+        ("dependency-error", "error"),
+        ("dependency-unverified", ResultStatus.UNVERIFIED.value),
+    ):
+        lease.observe({"event": "started", "cell_id": cell_id, "dependency": True})
+        lease.observe(
+            {
+                "event": "finished",
+                "cell_id": cell_id,
+                "status": status,
+                "detail": status,
+            }
+        )
+    lease.observe(
+        {
+            "event": "started",
+            "cell_id": "dependency-running",
+            "dependency": True,
+        }
+    )
+
+    counters = state.counters()
+
+    assert counters == {
+        "selected": 1,
+        "recycled": 0,
+        "active": 1,
+        "completed": 2,
+        "remaining": 1,
+        "static_na": 0,
+        "capped": 1,
+        "failed": 1,
+        "unverified": 1,
+        "dependency_only": 5,
+    }
+    frame = render_dashboard_frame(state, width=160, height=40)
+    assert "Active 1" in frame
+    assert "Errors 1" in frame
+    assert "Unverified 1" in frame
+    assert "Completed 2" in frame
+    assert "Capped 1" in frame
+    payload = json.loads(lease.path.read_text(encoding="utf-8"))
+    assert payload["counters"] == counters
+
+
+def test_dashboard_reducer_replaces_prior_outcomes_across_retries(
+    tmp_path: Path,
+) -> None:
+    state = DashboardState(
+        instance_id="retry-transitions",
+        selected_ids=("retry-error", "retry-cap", "retry-recycled"),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        source_revision="a" * 40,
+    )
+    lease = LeaseManager(_manual_service(tmp_path), state)
+
+    lease.observe(
+        {
+            "event": "finished",
+            "cell_id": "retry-error",
+            "status": "error",
+        }
+    )
+    assert state.counters()["failed"] == 1
+    assert state.counters()["remaining"] == 2
+    lease.observe({"event": "started", "cell_id": "retry-error"})
+    assert state.failed_ids == set()
+    assert state.counters()["active"] == 1
+    lease.observe({"event": "finished", "cell_id": "retry-error", "status": "ok"})
+    assert state.completed_ids == {"retry-error"}
+    assert state.failed_ids == set()
+
+    lease.observe(
+        {
+            "event": "finished",
+            "cell_id": "retry-cap",
+            "status": "memory_limit",
+        }
+    )
+    assert state.capped_ids == {"retry-cap"}
+    lease.observe({"event": "started", "cell_id": "retry-cap"})
+    lease.observe(
+        {
+            "event": "finished",
+            "cell_id": "retry-cap",
+            "status": ResultStatus.UNVERIFIED.value,
+        }
+    )
+    assert state.capped_ids == set()
+    assert state.completed_ids == {"retry-error"}
+    assert state.unverified_ids == {"retry-cap"}
+
+    lease.observe(
+        {
+            "event": "finished",
+            "cell_id": "retry-recycled",
+            "status": "reused",
+        }
+    )
+    assert state.recycled_ids == {"retry-recycled"}
+    lease.observe({"event": "started", "cell_id": "retry-recycled"})
+    lease.observe(
+        {
+            "event": "finished",
+            "cell_id": "retry-recycled",
+            "status": "error",
+        }
+    )
+    assert state.recycled_ids == set()
+    assert state.failed_ids == {"retry-recycled"}
+    assert state.counters() == {
+        "selected": 3,
+        "recycled": 0,
+        "active": 0,
+        "completed": 1,
+        "remaining": 0,
+        "static_na": 0,
+        "capped": 0,
+        "failed": 1,
+        "unverified": 1,
+        "dependency_only": 0,
+    }
+    payload = json.loads(lease.path.read_text(encoding="utf-8"))
+    assert payload["counters"] == state.counters()
+
+
+def test_cancelled_cell_remains_pending_in_dashboard_progress(tmp_path: Path) -> None:
+    state = DashboardState(
+        instance_id="cancelled-transition",
+        selected_ids=("cancelled-cell",),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        source_revision="a" * 40,
+    )
+    lease = LeaseManager(_manual_service(tmp_path), state)
+    lease.observe({"event": "started", "cell_id": "cancelled-cell"})
+    lease.observe(
+        {
+            "event": "finished",
+            "cell_id": "cancelled-cell",
+            "status": "cancelled",
+        }
+    )
+
+    assert state.terminal_outcomes == {}
+    assert state.counters()["active"] == 0
+    assert state.counters()["remaining"] == 1
+
+
+def test_late_resource_event_cannot_reactivate_terminal_worker(tmp_path: Path) -> None:
+    state = DashboardState(
+        instance_id="late-resource",
+        selected_ids=("cell",),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        source_revision="a" * 40,
+    )
+    lease = LeaseManager(_manual_service(tmp_path), state)
+    lease.observe({"event": "started", "cell_id": "cell"})
+    lease.observe(
+        {
+            "event": "worker",
+            "cell_id": "cell",
+            "attempt_id": "new-attempt",
+        }
+    )
+    lease.observe(
+        {
+            "event": "resource",
+            "cell_id": "cell",
+            "attempt_id": "old-attempt",
+            "wall_seconds": 50.0,
+        }
+    )
+    assert state.workers["cell"].wall_seconds == 0.0
+    lease.observe(
+        {
+            "event": "resource",
+            "cell_id": "cell",
+            "attempt_id": "new-attempt",
+            "wall_seconds": 2.0,
+        }
+    )
+    lease.observe({"event": "finished", "cell_id": "cell", "status": "ok"})
+    lease.observe(
+        {
+            "event": "resource",
+            "cell_id": "cell",
+            "attempt_id": "new-attempt",
+            "wall_seconds": 99.0,
+        }
+    )
+
+    assert state.workers["cell"].status == "ok"
+    assert state.workers["cell"].wall_seconds == 2.0
+    assert state.counters()["active"] == 0
+    assert state.counters()["completed"] == 1
 
 
 @pytest.mark.parametrize(

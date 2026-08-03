@@ -38,6 +38,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -161,7 +162,9 @@ _DASHBOARD_COUNTER_KEYS = (
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _ACTIVE_WORKER_STATUSES = frozenset({"queued", "preparing", "running"})
 _RECYCLED_SUCCESS_STATUSES = frozenset({"recycled", "reused", "skipped-current"})
-_COMPLETED_WORKER_STATUSES = frozenset({"ok", *_RECYCLED_SUCCESS_STATUSES})
+_COMPLETED_WORKER_STATUSES = frozenset(
+    {"ok", "success", *_RECYCLED_SUCCESS_STATUSES}
+)
 _TERMINAL_CAP_STATUSES = frozenset(
     {
         PolicyMeasurementState.GENERATION_LIMIT.value,
@@ -185,6 +188,19 @@ _REPRODUCTION_STAGES = ("prepare", "generate", "profile")
 _SUMMARY_SUCCESS_STATUSES = frozenset(
     {"ok", "success", "recycled", "reused", "skipped-current"}
 )
+
+
+class _DashboardTerminalOutcome(StrEnum):
+    """One normalized terminal category for a dashboard-owned cell.
+
+    The map keyed by cell ID is the sole terminal-state authority. Counter
+    sets are derived views, so retries cannot leave a cell in two categories.
+    """
+
+    SUCCESS = "success"
+    CAPPED = "capped"
+    FAILED = "failed"
+    UNVERIFIED = "unverified"
 
 
 class ManualCampaignError(RuntimeError):
@@ -3047,10 +3063,9 @@ class DashboardState:
     )
     dependency_ids: set[str] = field(default_factory=set)
     workers: dict[str, WorkerView] = field(default_factory=dict)
-    completed_ids: set[str] = field(default_factory=set)
-    capped_ids: set[str] = field(default_factory=set)
-    failed_ids: set[str] = field(default_factory=set)
-    unverified_ids: set[str] = field(default_factory=set)
+    terminal_outcomes: dict[str, _DashboardTerminalOutcome] = field(
+        default_factory=dict
+    )
     selected_index: int = 0
     detail_scroll: int = 0
     show_completed: bool = False
@@ -3071,6 +3086,85 @@ class DashboardState:
     waiting_coordination_lock_count: int = 0
     cleanup_warnings: list[tuple[str, str]] = field(default_factory=list)
     invocation_evidence_ids: set[str] = field(default_factory=set)
+
+    def _clear_cell_disposition(self, cell_id: str) -> None:
+        self.terminal_outcomes.pop(cell_id, None)
+        self.recycled_ids.discard(cell_id)
+
+    def _reduce_started(self, cell_id: str, *, dependency: bool) -> WorkerView:
+        """Apply one started event and return a wholly fresh worker view."""
+
+        self._clear_cell_disposition(cell_id)
+        worker = WorkerView(
+            cell_id,
+            dependency=dependency,
+            status="preparing",
+            step="dependency preparation",
+            phase="preparation",
+        )
+        self.workers[cell_id] = worker
+        return worker
+
+    def _reduce_finished(
+        self,
+        cell_id: str,
+        status: str,
+        *,
+        recycled: bool = False,
+    ) -> None:
+        """Reduce a finished event into one normalized terminal category."""
+
+        self._clear_cell_disposition(cell_id)
+        if recycled or status in _RECYCLED_SUCCESS_STATUSES:
+            self.recycled_ids.add(cell_id)
+        if status in _SUMMARY_SUCCESS_STATUSES:
+            outcome = _DashboardTerminalOutcome.SUCCESS
+        elif status in _TERMINAL_CAP_STATUSES:
+            outcome = _DashboardTerminalOutcome.CAPPED
+        elif status == ResultStatus.UNVERIFIED.value:
+            outcome = _DashboardTerminalOutcome.UNVERIFIED
+        elif status != "cancelled":
+            outcome = _DashboardTerminalOutcome.FAILED
+        else:
+            return
+        self.terminal_outcomes[cell_id] = outcome
+
+    @property
+    def completed_ids(self) -> set[str]:
+        return {
+            cell_id
+            for cell_id, outcome in self.terminal_outcomes.items()
+            if cell_id not in self.recycled_ids
+            and outcome
+            in {
+                _DashboardTerminalOutcome.SUCCESS,
+                _DashboardTerminalOutcome.CAPPED,
+            }
+        }
+
+    @property
+    def capped_ids(self) -> set[str]:
+        return {
+            cell_id
+            for cell_id, outcome in self.terminal_outcomes.items()
+            if outcome is _DashboardTerminalOutcome.CAPPED
+        }
+
+    @property
+    def failed_ids(self) -> set[str]:
+        return {
+            cell_id
+            for cell_id, outcome in self.terminal_outcomes.items()
+            if outcome is _DashboardTerminalOutcome.FAILED
+        }
+
+    @property
+    def unverified_ids(self) -> set[str]:
+        return {
+            cell_id
+            for cell_id, outcome in self.terminal_outcomes.items()
+            if outcome is _DashboardTerminalOutcome.UNVERIFIED
+        }
 
     @property
     def active(self) -> tuple[WorkerView, ...]:
@@ -3131,27 +3225,38 @@ class DashboardState:
         )
 
     def counters(self) -> dict[str, int]:
+        """Return one snapshot with explicit selection and worker scopes.
+
+        Selection progress (selected/recycled/remaining/static N/A) concerns
+        direct user selections. Worker outcomes concern every row owned by this
+        invocation, including dependency-only cells shown in the worker table.
+        """
+
         if self.counter_snapshot is not None:
             return dict(self.counter_snapshot)
         selected = set(self.selected_ids)
         recycled_ids = self.recycled_ids & selected
-        completed_ids = (self.completed_ids & selected) - recycled_ids
-        addressed = recycled_ids | completed_ids | (self.static_na_ids & selected)
+        selected_terminal_ids = set(self.terminal_outcomes) & selected
+        addressed = recycled_ids | selected_terminal_ids
+        addressed |= self.static_na_ids & selected
         active_ids = {worker.cell_id for worker in self.active}
         selected_active_ids = active_ids & selected
         return {
             "selected": len(self.selected_ids),
             "recycled": len(recycled_ids),
             "active": len(active_ids),
-            "completed": len(completed_ids),
+            # Worker-state counters cover every invocation-owned row rendered
+            # in the table, including dependency-only work. Selection progress
+            # remains scoped to the user's direct selection below.
+            "completed": len(self.completed_ids),
             "remaining": max(
                 0,
                 len(self.selected_ids) - len(addressed | selected_active_ids),
             ),
             "static_na": len(self.static_na_ids & selected),
-            "capped": len(self.capped_ids & selected),
-            "failed": len(self.failed_ids & selected),
-            "unverified": len(self.unverified_ids & selected),
+            "capped": len(self.capped_ids),
+            "failed": len(self.failed_ids),
+            "unverified": len(self.unverified_ids),
             "dependency_only": len(self.dependency_ids),
         }
 
@@ -3261,20 +3366,10 @@ class LeaseManager:
             cleanup_detail: str | None = None
             if event == "started":
                 self.state.invocation_evidence_ids.add(cell_id)
-                worker.attempt_id = None
-                worker.log_path = None
-                worker.progress_path = None
-                worker.progress_completed = None
-                worker.progress_total = None
-                worker.progress_message = ""
-                worker.progress_task_id = None
-                worker.progress_details.clear()
-                worker.log_tail.clear()
-                worker._progress_tail_state = _IncrementalTailState()
-                worker._log_tail_state = _IncrementalTailState()
-                worker.status = "preparing"
-                worker.step = "dependency preparation"
-                worker.dependency = bool(payload.get("dependency", False))
+                worker = self.state._reduce_started(
+                    cell_id,
+                    dependency=bool(payload.get("dependency", False)),
+                )
                 try:
                     cell = self.service.catalog.cell(cell_id)
                 except KeyError:
@@ -3304,6 +3399,9 @@ class LeaseManager:
                         None if recipe.profile is None else _shell_join(recipe.profile)
                     )
             elif event == "worker":
+                if worker.status not in _ACTIVE_WORKER_STATUSES:
+                    self._write()
+                    return
                 self.state.invocation_evidence_ids.add(cell_id)
                 worker.status = "running"
                 worker.step = "worker launched"
@@ -3311,6 +3409,13 @@ class LeaseManager:
                 worker.log_path = str(payload.get("log_path") or "") or None
                 worker.progress_path = str(payload.get("progress_path") or "") or None
             elif event == "resource":
+                resource_attempt_id = str(payload.get("attempt_id") or "") or None
+                if worker.status not in _ACTIVE_WORKER_STATUSES or (
+                    resource_attempt_id is not None
+                    and resource_attempt_id != worker.attempt_id
+                ):
+                    self._write()
+                    return
                 self.state.invocation_evidence_ids.add(cell_id)
                 worker.status = "running"
                 worker.pid = _optional_int(payload.get("pid"))
@@ -3357,8 +3462,6 @@ class LeaseManager:
                     else reported_status
                 )
                 worker.recycled = reported_status in _RECYCLED_SUCCESS_STATUSES
-                if worker.recycled:
-                    self.state.recycled_ids.add(cell_id)
                 worker.step = reported_detail or worker.status
                 raw_prerequisites = payload.get("prerequisite_cell_ids")
                 if isinstance(raw_prerequisites, Sequence) and not isinstance(
@@ -3434,21 +3537,11 @@ class LeaseManager:
                     worker.reuse_explanation = worker.step
                 _tail_progress(worker)
                 _tail_log(worker)
-                if worker.status in {
-                    "ok",
-                    *_TERMINAL_CAP_STATUSES,
-                }:
-                    self.state.completed_ids.add(cell_id)
-                if worker.status in _TERMINAL_CAP_STATUSES:
-                    self.state.capped_ids.add(cell_id)
-                elif worker.status == ResultStatus.UNVERIFIED.value:
-                    self.state.unverified_ids.add(cell_id)
-                elif worker.status not in {
-                    "ok",
-                    "recycled",
-                    "cancelled",
-                }:
-                    self.state.failed_ids.add(cell_id)
+                self.state._reduce_finished(
+                    cell_id,
+                    worker.status,
+                    recycled=worker.recycled,
+                )
                 reported_success = reported_status in _SUMMARY_SUCCESS_STATUSES
                 successful_current = (
                     current
@@ -4600,11 +4693,10 @@ def _snapshot_fixture(
         static_na_ids={f"cell-{index:04d}" for index in range(12)},
         source_revision="5b58aeb7600548e84e7214ee0ef62e5f159ec3fb",
     )
-    state.completed_ids = {
-        f"cell-{index:04d}" for index in range(recycled, recycled + completed)
-    }
-    state.capped_ids = {"cell-0412"}
-    state.failed_ids = {"cell-0413"}
+    for index in range(recycled, recycled + completed):
+        state._reduce_finished(f"cell-{index:04d}", "ok")
+    state._reduce_finished("cell-0412", "memory_limit")
+    state._reduce_finished("cell-0413", "error")
     state.dependency_ids = {"reference-amplicol-lc-n6-dd-zzz-jets-selected-flow"}
     state.workers = {
         "matrix-compiled-builtin-sm-lc-n9-dd-zzz-jets-selected-flow": WorkerView(
@@ -4671,7 +4763,10 @@ def _snapshot_fixture(
         ),
     }
     worker_ids = tuple(state.workers)
-    state.completed_ids.add("matrix-recurrence-ufo-sm-lc-n7-gg-gluons-all-flow")
+    state._reduce_finished(
+        "matrix-recurrence-ufo-sm-lc-n7-gg-gluons-all-flow",
+        "ok",
+    )
     state.selected_ids = (
         *worker_ids,
         *(f"cell-{index:04d}" for index in range(max(0, selected - len(worker_ids)))),
@@ -7526,11 +7621,12 @@ def _run_campaign(
             settings=state.reproduction_settings,
         )
     )
-    state.capped_ids.update(
-        cell_id
-        for cell_id, worker in state.workers.items()
-        if worker.status in _TERMINAL_CAP_STATUSES
-    )
+    for cell_id, worker in state.workers.items():
+        state._reduce_finished(
+            cell_id,
+            worker.status,
+            recycled=worker.recycled,
+        )
     lease = LeaseManager(service, state)
     lease.publish()
     settings = _campaign_settings(
