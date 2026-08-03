@@ -3290,7 +3290,9 @@ class ProcessExporterMG7(ProcessExporterCPP):
                     )
                 )
 
-                for chan_info, chan_tags in zip(subproc_info["channels"], diagram_tags):
+                for unmerged_chan_index, (chan_info, chan_tags) in enumerate(
+                    zip(subproc_info["channels"], diagram_tags)
+                ):
                     chan_index = len(channels)
 
                     same_diags = []
@@ -3306,7 +3308,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
                         channels.append(
                             {
                                 "subprocess": subproc_index,
-                                "channel": chan_index,
+                                "channel": unmerged_chan_index,
                                 "diagrams": [],
                             }
                         )

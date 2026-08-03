@@ -43,8 +43,8 @@ class IdentifySGTopologyTag(IdentifySGConfigTag):
         vertex = super(IdentifySGTopologyTag, IdentifySGTopologyTag).vertex_id_from_vertex(
             vertex, last_vertex, model, ninitial
         )
-        if len(vertex) == 1:
-            return ((0,),)
+        if vertex == (0,):
+            return (0,)
         (_, mass, width, qcd, onshell), = vertex
         return ((mass, width, qcd, onshell),)
 
@@ -61,7 +61,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             self.sym_indices, self.sym_perms, _ = find_symmetry(
                 self.matrix_element,
                 lambda diag: IdentifySGTopologyTag(diag, self.model),
-                skip_identical_check=True
+                skip_identical_check=True,
             )
         else:
             self.sym_indices, self.sym_perms, _ = find_symmetry(
