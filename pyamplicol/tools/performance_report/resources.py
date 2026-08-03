@@ -1378,7 +1378,7 @@ def supervise_worker(
             return wall_seconds
         return max(finished_ns / 1_000_000_000 - phase_monitor_started, 0.0)
 
-    def observe_phase(now_seconds: float) -> None:
+    def observe_phase(now_seconds: float) -> float:
         nonlocal phase_state, phase_error
         assert phase_channel is not None
         try:
@@ -1387,19 +1387,25 @@ def supervise_worker(
                 expected_pid=process.pid,
             )
         except FileNotFoundError:
+            observed_at_seconds = max(now_seconds, clock())
             if (
                 phase_state is not None
-                or now_seconds - phase_monitor_started
+                or observed_at_seconds - phase_monitor_started
                 >= phase_state_startup_grace_seconds
             ):
                 phase_error = "worker phase-state file is missing"
-            return
+            return observed_at_seconds
         except WorkerPhaseStateError as error:
             phase_error = str(error)
-            return
+            return max(now_seconds, clock())
 
+        # The dashboard callback and the authenticated file read both happen
+        # after the loop's initial sample.  Validate worker timestamps against
+        # a clock captured after that read so a legitimate transition during
+        # a slow observation cannot appear spuriously in the future.
+        observed_at_seconds = max(now_seconds, clock())
         earliest_seconds = phase_monitor_started - interval_seconds
-        latest_seconds = now_seconds + interval_seconds
+        latest_seconds = observed_at_seconds + interval_seconds
         observed_timestamps = (
             observed.transition_monotonic_ns,
             observed.generation_started_monotonic_ns,
@@ -1418,11 +1424,11 @@ def supervise_worker(
                 "worker phase-state transition timestamp is outside the "
                 "supervised process lifetime"
             )
-            return
+            return observed_at_seconds
         if phase_state is not None:
             if observed.sequence < phase_state.sequence:
                 phase_error = "worker phase-state sequence moved backwards"
-                return
+                return observed_at_seconds
             if (
                 observed.sequence == phase_state.sequence
                 and observed.sha256 != phase_state.sha256
@@ -1430,7 +1436,7 @@ def supervise_worker(
                 phase_error = (
                     "worker phase-state changed without advancing its sequence"
                 )
-                return
+                return observed_at_seconds
             for field in (
                 "generation_started_monotonic_ns",
                 "generation_finished_monotonic_ns",
@@ -1445,8 +1451,9 @@ def supervise_worker(
                     and getattr(observed, field) != prior_timestamp
                 ):
                     phase_error = f"worker {field} changed"
-                    return
+                    return observed_at_seconds
         phase_state = observed
+        return observed_at_seconds
 
     def classify_process_exit(
         exit_code: int,
@@ -1568,7 +1575,7 @@ def supervise_worker(
                 terminate("memory_limit")
                 break
             if phase_channel is not None:
-                observe_phase(now_seconds)
+                now_seconds = observe_phase(now_seconds)
                 if phase_error is not None:
                     returncode = process.poll()
                     if returncode is not None and returncode != 0:

@@ -270,6 +270,7 @@ class CellOutcome:
     status: str
     detail: str
     prerequisite_cell_ids: tuple[str, ...] = ()
+    terminal_detail: str | None = None
 
 
 class _CoordinationDeferred(RuntimeError):
@@ -1404,6 +1405,17 @@ def _worker_process_exit_error(supervised: SupervisedResult) -> WorkerProcessExi
     return WorkerProcessExitError(detail)
 
 
+def _measurement_terminal_detail(result: Mapping[str, object]) -> str | None:
+    """Return the compact persisted reason carried by a terminal event."""
+
+    policy_label = policy_status_label(result)
+    if isinstance(policy_label, str) and policy_label.strip():
+        return policy_label
+    failure = result.get("failure")
+    message = failure.get("message") if isinstance(failure, Mapping) else None
+    return message if isinstance(message, str) and message.strip() else None
+
+
 def _attempt_files(
     root: Path,
     *,
@@ -2153,7 +2165,12 @@ class CampaignScheduler:
                 )
                 validate_measurement(result, expected_cell=cell)
                 record = attempt.publish(result)
-                return CellOutcome(cell.cell_id, state.value, record.attempt_id)
+                return CellOutcome(
+                    cell.cell_id,
+                    state.value,
+                    record.attempt_id,
+                    terminal_detail=_measurement_terminal_detail(result),
+                )
         if supervised is not None and failure.reason == "worker_exit":
             resources = _resource_payload(
                 supervised.usage,
@@ -2190,6 +2207,7 @@ class CampaignScheduler:
                     cell.cell_id,
                     ResultStatus.ERROR.value,
                     attempt.attempt_id,
+                    terminal_detail=_measurement_terminal_detail(result),
                 )
         return CellOutcome(
             cell.cell_id,
@@ -2385,6 +2403,7 @@ class CampaignScheduler:
                 cell,
                 status=outcome.status,
                 detail=outcome.detail,
+                terminal_detail=outcome.terminal_detail,
             )
             return outcome
         completed_at_ns: int | None = None
@@ -2418,6 +2437,7 @@ class CampaignScheduler:
                         cell,
                         status=outcome.status,
                         detail=outcome.detail,
+                        terminal_detail=outcome.terminal_detail,
                         prerequisite_cell_ids=outcome.prerequisite_cell_ids,
                         completed_at_ns=completed_at_ns,
                     )
@@ -2473,6 +2493,7 @@ class CampaignScheduler:
                 cell,
                 status=outcome.status,
                 detail=outcome.detail,
+                terminal_detail=outcome.terminal_detail,
                 prerequisite_cell_ids=outcome.prerequisite_cell_ids,
                 completed_at_ns=completed_at_ns,
             )
@@ -2980,6 +3001,7 @@ class CampaignScheduler:
                         cell.cell_id,
                         "cancelled",
                         detail,
+                        terminal_detail="worker terminated by cancellation",
                     )
                 policy_state: PolicyMeasurementState | None = None
                 if self.settings.manual_terminal_censors and supervised.reason in {
@@ -3094,11 +3116,17 @@ class CampaignScheduler:
                         "phase_state_error": ResultStatus.ERROR,
                         "worker_exit": ResultStatus.ERROR,
                     }[supervised.reason]
-                    error: BaseException | str = (
-                        _worker_process_exit_error(supervised)
-                        if supervised.reason == "worker_exit"
-                        else f"worker terminated by {supervised.reason}"
-                    )
+                    if supervised.reason == "worker_exit":
+                        error: BaseException | str = _worker_process_exit_error(
+                            supervised
+                        )
+                    elif supervised.reason == "phase_state_error":
+                        error = (
+                            supervised.phase_state_error
+                            or "worker phase-state validation failed"
+                        )
+                    else:
+                        error = f"worker terminated by {supervised.reason}"
                     result = failure_measurement(
                         status,
                         error,
@@ -3297,6 +3325,11 @@ class CampaignScheduler:
                             else policy_state.value
                         ),
                         record.attempt_id,
+                        terminal_detail=(
+                            None
+                            if policy_state is PolicyMeasurementState.SUCCESS
+                            else _measurement_terminal_detail(result)
+                        ),
                     )
                 attempt.mark_failed(
                     str(result.get("failure")),
@@ -3310,6 +3343,7 @@ class CampaignScheduler:
                         if decision.current is None
                         else "previous valid current preserved"
                     ),
+                    terminal_detail=_measurement_terminal_detail(result),
                 )
 
     def _publish_dependency_censor(
@@ -3345,6 +3379,7 @@ class CampaignScheduler:
                 cell.cell_id,
                 PolicyMeasurementState.DEPENDENCY.value,
                 record.attempt_id,
+                terminal_detail=_measurement_terminal_detail(result),
             )
 
     def _publish_resource_frontier(
@@ -3375,6 +3410,7 @@ class CampaignScheduler:
                 cell.cell_id,
                 PolicyMeasurementState.RESOURCE_FRONTIER.value,
                 record.attempt_id,
+                terminal_detail=_measurement_terminal_detail(result),
             )
 
     def _effective_cell_rss_limit(self) -> int | None:
@@ -3445,6 +3481,7 @@ class CampaignScheduler:
                 "blocked_dependency",
                 message,
                 normalized,
+                terminal_detail=message,
             )
 
     def _publish_skip(
@@ -3476,6 +3513,7 @@ class CampaignScheduler:
                     if current is None
                     else "previous valid current preserved"
                 ),
+                terminal_detail=message,
             )
 
 

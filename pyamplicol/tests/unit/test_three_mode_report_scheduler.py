@@ -2610,6 +2610,72 @@ def test_scheduler_persists_abrupt_worker_exit_diagnostics_with_empty_worker_log
     assert result["provenance"]["report_source_revision"] == source_revision
 
 
+def test_scheduler_persists_and_forwards_exact_phase_state_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    cell = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+    phase_error = (
+        "worker phase-state transition timestamp is outside the supervised "
+        "process lifetime"
+    )
+
+    def invalid_phase(
+        command: Sequence[str],
+        **_arguments: object,
+    ) -> SupervisedResult:
+        Path(command[command.index("--log-path") + 1]).touch()
+        return SupervisedResult(
+            -15,
+            "phase_state_error",
+            ResourceUsage(True, 0, 1234, 0, 0.2, 0.3),
+            pid=4321,
+            member_pids=(4321,),
+            phase_state_error=phase_error,
+    )
+
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        invalid_phase,
+    )
+    events: list[dict[str, object]] = []
+    scheduler = CampaignScheduler(
+        service,
+        settings=CampaignSettings(
+            source_identity_override=ReportSourceIdentity(
+                "a" * 40,
+                "b" * 40,
+                (),
+            ),
+            progress_observer=lambda payload: events.append(dict(payload)),
+        ),
+    )
+    monkeypatch.setattr(scheduler, "_prepare_model_for", lambda _planned: None)
+
+    outcome = scheduler._run_cell(
+        PlannedCell(cell, dependency=False, baseline_cell_id=None, rank=0)
+    )
+
+    assert outcome.status == ResultStatus.ERROR.value
+    assert outcome.terminal_detail == phase_error
+    attempt_roots = tuple(
+        (service.paths.artifact_root / "cells").glob(
+            f"*/attempts/{outcome.detail}"
+        )
+    )
+    assert len(attempt_roots) == 1
+    result = json.loads(
+        (attempt_roots[0] / "worker-result.json").read_text(encoding="ascii")
+    )
+    assert result["failure"]["message"] == phase_error
+    assert result["resources"]["supervisor"]["reason"] == "phase_state_error"
+    assert result["resources"]["supervisor"]["phase_state_error"] == phase_error
+    finished = [event for event in events if event["event"] == "finished"]
+    assert len(finished) == 1
+    assert finished[0]["terminal_detail"] == phase_error
+
+
 def test_prepared_model_worker_exit_persists_structured_failed_attempt(
     tmp_path: Path,
 ) -> None:

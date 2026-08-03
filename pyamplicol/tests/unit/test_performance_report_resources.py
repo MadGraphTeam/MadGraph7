@@ -1406,6 +1406,116 @@ def test_supervisor_allows_authenticated_stage_budget_without_generation_limit(
 
 
 @pytest.mark.parametrize(
+    ("last_transition", "expected_phase"),
+    (
+        ("generation", "post-generation"),
+        ("profiling", "profiling"),
+        ("validation", "validation"),
+        ("complete", "complete"),
+    ),
+)
+def test_phase_transitions_during_slow_observation_use_fresh_clock(
+    tmp_path: Path,
+    last_transition: str,
+    expected_phase: str,
+) -> None:
+    clock = FakeClock()
+    process = FakeProcess()
+    channel = WorkerPhaseChannel.create(tmp_path / f"{last_transition}.json")
+    reporter = WorkerPhaseReporter(
+        channel,
+        worker_pid=process.pid,
+        clock_ns=lambda: int(clock.now * 1_000_000_000),
+        track_post_generation_stages=True,
+    )
+    transitioned = False
+
+    def observe(_observation: object) -> None:
+        nonlocal transitioned
+        if transitioned:
+            return
+        transitioned = True
+        # Longer than the sampling interval: the old supervisor compared the
+        # resulting authenticated timestamps with its pre-callback clock and
+        # rejected them as being outside the process lifetime.
+        clock.now = 5.0
+        with reporter.generation():
+            pass
+        if last_transition in {"profiling", "validation", "complete"}:
+            reporter.profiling_started()
+        if last_transition in {"validation", "complete"}:
+            reporter.validation_started()
+        if last_transition == "complete":
+            reporter.complete()
+
+    def sleep(duration: float) -> None:
+        clock.now += duration
+        process.returncode = 0
+
+    def signal_tree(_pgid: int, _members: object, selected_signal: int) -> None:
+        process.returncode = -selected_signal
+
+    result = supervise_worker(
+        ("worker",),
+        generation_timeout_seconds=60.0,
+        profiling_timeout_seconds=60.0,
+        validation_timeout_seconds=60.0,
+        phase_channel=channel,
+        interval_seconds=1.0,
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 100)},
+        popen_factory=lambda *_args, **_kwargs: process,
+        clock=clock,
+        sleeper=sleep,
+        signaler=signal_tree,
+        observation_callback=observe,
+    )
+
+    assert result.reason == "completed"
+    assert result.returncode == 0
+    assert result.phase_state_error is None
+    assert result.generation_phase is not None
+    assert result.generation_phase.authenticated
+    assert result.generation_phase.final_phase == expected_phase
+
+
+def test_phase_monitor_still_rejects_authenticated_future_timestamp(
+    tmp_path: Path,
+) -> None:
+    clock = FakeClock()
+    process = FakeProcess()
+    channel = WorkerPhaseChannel.create(tmp_path / "future.json")
+    WorkerPhaseReporter(
+        channel,
+        worker_pid=process.pid,
+        clock_ns=lambda: 10_000_000_000,
+    )
+
+    def signal_tree(_pgid: int, _members: object, selected_signal: int) -> None:
+        process.returncode = -selected_signal
+
+    result = supervise_worker(
+        ("worker",),
+        generation_timeout_seconds=60.0,
+        phase_channel=channel,
+        interval_seconds=1.0,
+        snapshotter=lambda: {100: ProcessRecord(100, 1, 100)},
+        popen_factory=lambda *_args, **_kwargs: process,
+        clock=clock,
+        sleeper=clock.sleep,
+        signaler=signal_tree,
+    )
+
+    assert result.reason == "phase_state_error"
+    assert result.returncode == -signal.SIGTERM
+    assert result.phase_state_error == (
+        "worker phase-state transition timestamp is outside the supervised "
+        "process lifetime"
+    )
+    assert result.generation_phase is not None
+    assert not result.generation_phase.authenticated
+
+
+@pytest.mark.parametrize(
     ("boundaries", "expected_reason"),
     (
         ((0.0, 3.0, 3.5, 4.0), "generation_timeout"),

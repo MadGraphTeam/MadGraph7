@@ -3447,7 +3447,17 @@ class LeaseManager:
             elif event == "finished":
                 reported_status = str(payload.get("status") or "unknown")
                 reported_detail = str(payload.get("detail") or "")
+                raw_terminal_detail = payload.get("terminal_detail")
+                reported_terminal_detail = (
+                    raw_terminal_detail
+                    if isinstance(raw_terminal_detail, str)
+                    else None
+                )
                 outcome_attempt_id = worker.attempt_id
+                reported_attempt_id = _canonical_attempt_uuid(outcome_attempt_id)
+                if reported_attempt_id is None:
+                    reported_attempt_id = _canonical_attempt_uuid(reported_detail)
+                reported_success = reported_status in _SUMMARY_SUCCESS_STATUSES
                 if not (
                     reported_status == "cancelled"
                     and reported_detail in {"not started", "lock wait cancelled"}
@@ -3479,6 +3489,7 @@ class LeaseManager:
                 except KeyError:
                     cell = None
                 current: LightweightCurrent | None = None
+                terminal_result: Mapping[str, object] | None = None
                 if cell is not None:
                     worker.generation_engine = cell.measurement.execution_mode.value
                     current = lightweight_current(
@@ -3486,7 +3497,17 @@ class LeaseManager:
                         cell,
                         source_revision=self.state.source_revision,
                     )
-                    if current is not None and current.complete:
+                    current_is_observed_attempt = (
+                        current is not None
+                        and current.complete
+                        and (
+                            reported_success
+                            or reported_attempt_id == current.attempt_id
+                        )
+                    )
+                    if current_is_observed_attempt:
+                        assert current is not None
+                        terminal_result = current.result
                         worker.attempt_id = current.attempt_id
                         _apply_persisted_worker_result(
                             worker,
@@ -3530,6 +3551,11 @@ class LeaseManager:
                                 recipe,
                                 "profile",
                             )
+                terminal_step = _concise_terminal_step(reported_terminal_detail)
+                if terminal_step is None and terminal_result is not None:
+                    terminal_step = _terminal_result_step(terminal_result)
+                if terminal_step is not None:
+                    worker.step = terminal_step
                 if worker.recycled and worker.reuse_explanation is None:
                     worker.reuse_explanation = worker.step
                 _tail_progress(worker)
@@ -3539,7 +3565,6 @@ class LeaseManager:
                     worker.status,
                     recycled=worker.recycled,
                 )
-                reported_success = reported_status in _SUMMARY_SUCCESS_STATUSES
                 successful_current = (
                     current
                     if reported_success
@@ -3927,6 +3952,48 @@ def _apply_persisted_worker_result(
             worker.peak_rss_bytes = peak_rss
         if worker.peak_guard_bytes <= 0 and peak_guard is not None and peak_guard >= 0:
             worker.peak_guard_bytes = peak_guard
+
+
+def _concise_terminal_step(value: str | None) -> str | None:
+    """Normalize one event-carried terminal reason for bounded display."""
+
+    if value is None:
+        return None
+    concise = " ".join(_dashboard_log_line(value).split())
+    if not concise:
+        return None
+    return concise if len(concise) <= 240 else f"{concise[:237]}..."
+
+
+def _terminal_result_step(result: Mapping[str, object]) -> str | None:
+    """Return one concise terminal reason from an already loaded current."""
+
+    resources = result.get("resources")
+    supervisor = (
+        resources.get("supervisor") if isinstance(resources, Mapping) else None
+    )
+    if (
+        isinstance(supervisor, Mapping)
+        and supervisor.get("reason") == "phase_state_error"
+    ):
+        phase_error = supervisor.get("phase_state_error")
+        if isinstance(phase_error, str) and phase_error.strip():
+            value = phase_error
+        else:
+            value = "worker phase-state validation failed"
+    else:
+        policy_label = policy_status_label(result)
+        failure = result.get("failure")
+        failure_message = (
+            failure.get("message") if isinstance(failure, Mapping) else None
+        )
+        if isinstance(policy_label, str) and policy_label.strip():
+            value = policy_label
+        elif isinstance(failure_message, str) and failure_message.strip():
+            value = failure_message
+        else:
+            return None
+    return _concise_terminal_step(value)
 
 
 def _coalesced_worker_events(events: Sequence[str]) -> tuple[str, ...]:

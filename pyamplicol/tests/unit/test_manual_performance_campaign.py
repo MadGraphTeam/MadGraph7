@@ -1171,6 +1171,184 @@ def test_finished_unverified_is_not_counted_as_an_error(tmp_path: Path) -> None:
     assert state.counters()["remaining"] == 0
 
 
+def test_finished_failure_shows_authenticated_reason_and_keeps_attempt_id(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    result = {
+        "status": ResultStatus.ERROR.value,
+        "failure": {
+            "kind": None,
+            "message": "worker terminated by phase_state_error",
+        },
+        "resources": {
+            "supervisor": {
+                "reason": "phase_state_error",
+                "phase_state_error": (
+                    "worker phase-state transition timestamp is outside the "
+                    "supervised process lifetime"
+                ),
+            },
+        },
+    }
+    with service.store.new_attempt(
+        cell.cell_id,
+        manual_campaign.ArtifactPolicy.REGENERATE,
+    ) as attempt:
+        attempt.write_json("worker-result.json", result)
+        attempt.mark_failed(
+            "phase-state failure",
+            artifact_paths=("worker-result.json",),
+        )
+        attempt_id = attempt.attempt_id
+
+    state = DashboardState(
+        instance_id="terminal-reason",
+        selected_ids=(cell.cell_id,),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        source_revision="a" * 40,
+        workers={
+            cell.cell_id: WorkerView(
+                cell.cell_id,
+                status="running",
+                phase="terminating",
+                attempt_id=attempt_id,
+            )
+        },
+    )
+    monkeypatch.setattr(
+        service.store,
+        "load_sealed_unsuccessful_worker_result",
+        lambda *_args, **_kwargs: pytest.fail(
+            "terminal dashboard must not hash sealed attempt payloads"
+        ),
+    )
+
+    LeaseManager(service, state).observe(
+        {
+            "event": "finished",
+            "cell_id": cell.cell_id,
+            "status": ResultStatus.ERROR.value,
+            "detail": attempt_id,
+            "terminal_detail": (
+                "worker phase-state transition timestamp is outside the "
+                "supervised process lifetime"
+            ),
+            "completed_at_ns": 7,
+        }
+    )
+
+    worker = state.workers[cell.cell_id]
+    assert worker.step == (
+        "worker phase-state transition timestamp is outside the supervised "
+        "process lifetime"
+    )
+    assert worker.attempt_id == attempt_id
+    frame = render_dashboard_frame(state, width=220, height=36)
+    assert "worker phase-state transition timestamp" in frame
+    assert "Attempt" in frame
+    assert attempt_id in frame
+
+
+def test_terminal_result_step_uses_generic_failure_message() -> None:
+    assert manual_campaign._terminal_result_step(
+        {
+            "status": ResultStatus.VALIDATION_FAILED.value,
+            "failure": {
+                "kind": "MeasurementValidationError",
+                "message": "resolved component sum disagrees with total",
+            },
+        }
+    ) == "resolved component sum disagrees with total"
+    assert manual_campaign._terminal_result_step(
+        {
+            "status": ResultStatus.MEMORY_LIMIT.value,
+            "failure": {"kind": "ReportPolicyCensor", "message": "memory cap"},
+            "provenance": {
+                "manual_campaign": {"memory_limit_bytes": 15_000_000_000}
+            },
+        }
+    ) == ">15GB"
+
+
+def test_finished_failure_does_not_show_preserved_current_as_failed_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    result = {
+        "status": ResultStatus.VALIDATION_FAILED.value,
+        "failure": {
+            "kind": "MeasurementValidationError",
+            "message": "new attempt disagrees with the numerical authority",
+        },
+    }
+    with service.store.new_attempt(
+        cell.cell_id,
+        manual_campaign.ArtifactPolicy.REGENERATE,
+    ) as attempt:
+        attempt.write_json("worker-result.json", result)
+        attempt.mark_failed(
+            "validation failure",
+            artifact_paths=("worker-result.json",),
+        )
+        failed_attempt_id = attempt.attempt_id
+    preserved_attempt_id = "00000000-0000-4000-8000-000000000099"
+    preserved = LightweightCurrent(
+        cell_id=cell.cell_id,
+        attempt_id=preserved_attempt_id,
+        result_path=tmp_path / "preserved-result.json",
+        result={
+            "status": ResultStatus.OK.value,
+            "wall_seconds_per_point": 0.25,
+        },
+        complete=True,
+        reusable=True,
+        reason="previous valid current",
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "lightweight_current",
+        lambda *_args, **_kwargs: preserved,
+    )
+    state = DashboardState(
+        instance_id="preserved-current",
+        selected_ids=(cell.cell_id,),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        source_revision="a" * 40,
+        workers={
+            cell.cell_id: WorkerView(
+                cell.cell_id,
+                status="running",
+                attempt_id=failed_attempt_id,
+            )
+        },
+    )
+
+    LeaseManager(service, state).observe(
+        {
+            "event": "finished",
+            "cell_id": cell.cell_id,
+            "status": ResultStatus.VALIDATION_FAILED.value,
+            "detail": "previous valid current preserved",
+            "terminal_detail": (
+                "new attempt disagrees with the numerical authority"
+            ),
+            "completed_at_ns": 8,
+        }
+    )
+
+    worker = state.workers[cell.cell_id]
+    assert worker.attempt_id == failed_attempt_id
+    assert worker.step == "new attempt disagrees with the numerical authority"
+    assert worker.published_wall_seconds_per_point is None
+
+
 def test_recycled_resource_cap_is_available_to_error_filter(
     tmp_path: Path,
 ) -> None:
@@ -3007,6 +3185,43 @@ def test_scheduler_finished_event_has_positive_completion_timestamp_after_starte
     assert isinstance(finished["completed_at_ns"], int)
     assert before <= finished["completed_at_ns"] <= after
     assert finished["status"] == ("error" if raises else "ok")
+
+
+def test_scheduler_finished_event_forwards_terminal_detail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _manual_service(tmp_path)
+    cell = _presentation_test_cell()
+    events: list[dict[str, object]] = []
+    scheduler = manual_campaign.CampaignScheduler(
+        service,
+        settings=manual_campaign.CampaignSettings(
+            source_identity_override=manual_campaign.ReportSourceIdentity(
+                "a" * 40, "b" * 40, ()
+            ),
+            progress_observer=lambda payload: events.append(dict(payload)),
+        ),
+    )
+    monkeypatch.setattr(scheduler, "_coordination_lock_names", lambda _cell: ())
+    monkeypatch.setattr(
+        scheduler,
+        "_run_cell_in_lane",
+        lambda _planned: CellOutcome(
+            cell.cell_id,
+            ResultStatus.VALIDATION_FAILED.value,
+            "00000000-0000-4000-8000-000000000088",
+            terminal_detail="resolved component sum disagrees with total",
+        ),
+    )
+
+    scheduler._run_cell(manual_campaign.PlannedCell(cell, False, None, 0))
+
+    finished = [event for event in events if event["event"] == "finished"]
+    assert len(finished) == 1
+    assert finished[0]["terminal_detail"] == (
+        "resolved component sum disagrees with total"
+    )
 
 
 def test_scheduler_inner_coordination_deferred_emits_no_finished_event(
