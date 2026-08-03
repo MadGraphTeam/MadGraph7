@@ -1423,6 +1423,7 @@ class Helicity:
 @dataclass(frozen=True)
 class Particle:
     label: int
+    pdg_id: int = 1
 
 
 class Resolved:
@@ -1778,51 +1779,8 @@ def test_nlc_and_full_use_contracted_topology_replay_configuration() -> None:
         }
 
 
-def test_selector_contract_uses_first_flow_and_first_nonzero_helicity() -> None:
+def test_selector_contract_uses_canonical_minimum_flow_and_fixed_helicity() -> None:
     runtime = FakeRuntime()
-    points = (((1.0, 0.0, 0.0, 1.0),),)
-
-    contract = derive_selector_contract(runtime, points)
-
-    assert contract.selected_color_flow_ids == ("flow:2,1,3",)
-    assert contract.selected_color_words == ((2, 1, 3),)
-    assert contract.all_flow_helicity_ids == ("h:-1,+1,-1",)
-    assert contract.all_flow_source_helicities == ((1, -1), (2, 1), (3, -1))
-    assert contract.point_digest == point_digest(points)
-    assert SelectorContract.from_mapping(contract.as_dict()) == contract
-    validate_selector_contract(runtime, contract, points)
-
-
-def test_selector_contract_scans_later_flow_when_first_flow_is_zero() -> None:
-    class LaterFlowRuntime(FakeRuntime):
-        def evaluate_resolved(
-            self,
-            _points: object,
-            **selectors: object,
-        ) -> Resolved:
-            selected_flows = selectors.get("color_flows")
-            if selected_flows == ("flow:2,1,3",):
-                return Resolved(
-                    (
-                        (
-                            (0.0 + 0.0j,),
-                            (0.0 + 0.0j,),
-                        ),
-                    ),
-                    self.resolved_total,
-                )
-            assert selected_flows == ("flow:1,2,3",)
-            return Resolved(
-                (
-                    (
-                        (0.0 + 0.0j,),
-                        (3.0 + 0.0j,),
-                    ),
-                ),
-                self.resolved_total,
-            )
-
-    runtime = LaterFlowRuntime()
     points = (((1.0, 0.0, 0.0, 1.0),),)
 
     contract = derive_selector_contract(runtime, points)
@@ -1830,48 +1788,146 @@ def test_selector_contract_scans_later_flow_when_first_flow_is_zero() -> None:
     assert contract.selected_color_flow_ids == ("flow:1,2,3",)
     assert contract.selected_color_words == ((1, 2, 3),)
     assert contract.all_flow_helicity_ids == ("h:-1,+1,-1",)
+    assert contract.all_flow_source_helicities == ((1, -1), (2, 1), (3, -1))
+    assert contract.point_digest == point_digest(points)
+    assert SelectorContract.from_mapping(contract.as_dict()) == contract
     validate_selector_contract(runtime, contract, points)
 
 
-def test_selector_contract_selects_largest_tiny_finite_component() -> None:
-    class TinyRuntime(FakeRuntime):
+def test_selector_contract_is_independent_of_runtime_flow_enumeration() -> None:
+    points = (((1.0, 0.0, 0.0, 1.0),),)
+    forward = FakeRuntime()
+    reverse = FakeRuntime()
+    reverse.physics.color_flows = tuple(reversed(forward.physics.color_flows))
+
+    assert derive_selector_contract(forward, points) == derive_selector_contract(
+        reverse,
+        points,
+    )
+
+
+def test_selector_contract_rejects_zero_canonical_minimum_flow() -> None:
+    class CanonicalMinimumZeroRuntime(FakeRuntime):
+        def evaluate_resolved(
+            self,
+            _points: object,
+            **selectors: object,
+        ) -> Resolved:
+            assert selectors.get("helicities") == ("h:-1,+1,-1",)
+            selected_flows = selectors.get("color_flows")
+            if selected_flows == ("flow:1,2,3",):
+                return Resolved(
+                    (
+                        (
+                            (0.0 + 0.0j,),
+                            (0.0 + 0.0j,),
+                        ),
+                    ),
+                    self.resolved_total,
+                )
+            pytest.fail("selector must not fall back to a noncanonical flow")
+
+    with pytest.raises(
+        RunnerError,
+        match="canonical fixed-helicity selector is zero",
+    ):
+        derive_selector_contract(
+            CanonicalMinimumZeroRuntime(),
+            (((1.0, 0.0, 0.0, 1.0),),),
+        )
+
+
+def test_selector_contract_ignores_larger_noncanonical_flow_component() -> None:
+    class CanonicalMinimumRuntime(FakeRuntime):
         def evaluate_resolved(
             self,
             _points: object,
             **selectors: object,
         ) -> Resolved:
             selected_flows = selectors.get("color_flows")
-            if selected_flows == ("flow:2,1,3",):
+            if selected_flows == ("flow:1,2,3",):
                 return Resolved(
                     (
                         (
+                            (0.0 + 0.0j,),
                             (1.0e-18 + 0.0j,),
-                            (1.0e-17 + 0.0j,),
                         ),
                     ),
                     self.resolved_total,
                 )
-            assert selected_flows == ("flow:1,2,3",)
+            pytest.fail("selector must not rank noncanonical flow components")
+
+    contract = derive_selector_contract(
+        CanonicalMinimumRuntime(),
+        (((1.0, 0.0, 0.0, 1.0),),),
+    )
+
+    assert contract.selected_color_flow_ids == ("flow:1,2,3",)
+    assert contract.all_flow_helicity_ids == ("h:-1,+1,-1",)
+
+
+def test_selector_contract_rejects_duplicate_physical_flow_words() -> None:
+    runtime = FakeRuntime()
+    runtime.physics.color_flows = (
+        Flow("flow:1,2,3", (1, 2, 3)),
+        Flow("flow:1,2,3", (1, 2, 3)),
+    )
+
+    with pytest.raises(RunnerError, match="color-flow words must be unique"):
+        derive_selector_contract(
+            runtime,
+            (((1.0, 0.0, 0.0, 1.0),),),
+        )
+
+
+def test_selector_contract_rejects_noncanonical_physical_axis_ids() -> None:
+    runtime = FakeRuntime()
+    runtime.physics.color_flows = (
+        Flow("opaque", (1, 2, 3)),
+        Flow("flow:2,1,3", (2, 1, 3)),
+    )
+    with pytest.raises(RunnerError, match="flow ID does not encode"):
+        derive_selector_contract(
+            runtime,
+            (((1.0, 0.0, 0.0, 1.0),),),
+        )
+
+    runtime = FakeRuntime()
+    runtime.physics.helicities = (
+        Helicity("opaque", (-1, 1, -1)),
+        Helicity("h:-1,-1,-1", (-1, -1, -1)),
+    )
+    with pytest.raises(RunnerError, match="helicity ID does not encode"):
+        derive_selector_contract(
+            runtime,
+            (((1.0, 0.0, 0.0, 1.0),),),
+        )
+
+
+def test_selector_contract_rejects_nonfinite_canonical_component() -> None:
+    class NonfiniteRuntime(FakeRuntime):
+        def evaluate_resolved(
+            self,
+            _points: object,
+            **selectors: object,
+        ) -> Resolved:
+            assert selectors == {
+                "color_flows": ("flow:1,2,3",),
+                "helicities": ("h:-1,+1,-1",),
+            }
             return Resolved(
-                (
-                    (
-                        (2.0e-17 + 0.0j,),
-                        (0.0 + 0.0j,),
-                    ),
-                ),
+                ((((complex(float("nan"), 0.0),),),)),
                 self.resolved_total,
             )
 
-    runtime = TinyRuntime()
-    points = (((1.0, 0.0, 0.0, 1.0),),)
-
-    contract = derive_selector_contract(runtime, points)
-
-    assert contract.selected_color_flow_ids == ("flow:1,2,3",)
-    assert contract.all_flow_helicity_ids == ("h:-1,-1,-1",)
+    with pytest.raises(RunnerError, match="non-finite component"):
+        derive_selector_contract(
+            NonfiniteRuntime(),
+            (((1.0, 0.0, 0.0, 1.0),),),
+        )
 
 
-def test_selector_contract_rejects_all_zero_components() -> None:
+def test_selector_contract_rejects_all_zero_canonical_components() -> None:
     class ZeroRuntime(FakeRuntime):
         def evaluate_resolved(
             self,
@@ -1890,7 +1946,7 @@ def test_selector_contract_rejects_all_zero_components() -> None:
 
     with pytest.raises(
         RunnerError,
-        match="no nonzero fixed-helicity selector",
+        match="canonical fixed-helicity selector is zero",
     ):
         derive_selector_contract(
             ZeroRuntime(),
@@ -1918,7 +1974,10 @@ def test_selector_contract_rejects_changed_point_or_axis() -> None:
 def test_selector_contract_maps_only_exact_signed_zero_runtime_alias() -> None:
     runtime = FakeRuntime()
     points = (((1.0, 0.0, 0.0, 1.0),),)
-    runtime.physics.external_particles = tuple(Particle(label) for label in range(1, 7))
+    runtime.physics.external_particles = tuple(
+        Particle(label, 23 if label == 6 else 1)
+        for label in range(1, 7)
+    )
     runtime.physics.helicities = (
         Helicity(
             "h:-1,+1,-1,+1,-1,+0",

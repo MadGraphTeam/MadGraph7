@@ -53,6 +53,13 @@ from .runner import (
     point_digest,
     pointwise_validation,
 )
+from .selector_policy import (
+    SelectorPolicyError,
+    canonical_lc_selector_word,
+    fixed_selector_helicity,
+    selector_color_flow_id,
+    selector_helicity_id,
+)
 
 DEFAULT_WARMUP_POINTS = 100
 DEFAULT_MIN_POINTS = 100
@@ -714,6 +721,61 @@ def _canonical_colored_word(
     return tuple(label for block in blocks for label in block)
 
 
+def _canonical_process_entry(
+    api: LegacyApi,
+    matches: Sequence[object],
+    *,
+    preferred_entry: object,
+    source_pdgs: Sequence[int],
+    initial_state_count: int,
+) -> tuple[object, tuple[int, ...], tuple[int, ...]]:
+    """Choose and bind the same structural LC representative as pyAmpliCol."""
+
+    candidates: list[tuple[object, tuple[int, ...], tuple[int, ...]]] = []
+    for entry in matches:
+        mapped = api.source_mapped_color_order(entry, source_pdgs=source_pdgs)
+        word = _canonical_mapped_color_word(
+            source_pdgs,
+            mapped,
+            initial_state_count=initial_state_count,
+        )
+        candidates.append((entry, mapped, word))
+    try:
+        # Several concrete process rows can share one public color word after
+        # colorless or identical-particle permutations.  The public selector
+        # chooses the word; the stable row tie-break below chooses its carrier.
+        selected_word = canonical_lc_selector_word(
+            {word for _entry, _mapped, word in candidates}
+        )
+    except SelectorPolicyError as error:
+        raise LegacyAdapterError(str(error)) from error
+    selected = tuple(item for item in candidates if item[2] == selected_word)
+    preferred = tuple(item for item in selected if item[0] is preferred_entry)
+    if len(preferred) == 1:
+        return preferred[0]
+
+    def stable_entry_key(
+        item: tuple[object, tuple[int, ...], tuple[int, ...]],
+    ) -> tuple[tuple[int, ...], int, int, tuple[int, ...]]:
+        entry, mapped, _word = item
+        try:
+            process_pdgs = tuple(int(pdg) for pdg in entry.process_pdgs)
+            group = int(entry.group)
+            integral = int(entry.integral)
+        except (AttributeError, TypeError, ValueError) as error:
+            raise LegacyAdapterError(
+                "canonical legacy selector row identity is invalid"
+            ) from error
+        return process_pdgs, group, integral, mapped
+
+    ranked = tuple((stable_entry_key(item), item) for item in selected)
+    if len({key for key, _item in ranked}) != len(ranked):
+        raise LegacyAdapterError(
+            "canonical legacy selector row identities are not unique"
+        )
+    return min(ranked, key=lambda item: item[0])[1]
+
+
 def adaptive_profile_points(
     warmup_seconds: float,
     *,
@@ -778,57 +840,8 @@ def _quark_line_count(pdgs: Sequence[int]) -> int:
     return sum(1 for pdg in pdgs if 1 <= abs(int(pdg)) <= 6) // 2
 
 
-def _preferred_helicities(pdg: int) -> tuple[int, ...]:
-    absolute = abs(int(pdg))
-    if absolute in {
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        11,
-        12,
-        13,
-        14,
-        15,
-        16,
-        21,
-        22,
-    }:
-        return (-1, 1)
-    if absolute in {23, 24}:
-        return (-1, 0, 1)
-    return (0,)
-
-
-def _fixed_helicity(pdgs: Sequence[int]) -> tuple[int, ...]:
-    result: list[int] = []
-    charged_current_fermions = any(abs(int(pdg)) in {12, 14, 16} for pdg in pdgs)
-    for index, pdg in enumerate(pdgs, start=1):
-        domain = _preferred_helicities(pdg)
-        if -1 in domain and 1 in domain:
-            # Prefer the left-chiral particle/right-chiral antiparticle state
-            # for charged-current fermion chains.  The former position-parity
-            # heuristic chose the structural-zero e+ nu_e state in families
-            # such as u d~ > e+ ve, then propagated that zero selector through
-            # every pyAmpliCol baseline.  Preserve the established neutral-
-            # current/vector policy outside this focused correction.
-            if charged_current_fermions and (
-                1 <= abs(int(pdg)) <= 6 or 11 <= abs(int(pdg)) <= 16
-            ):
-                result.append(-1 if int(pdg) > 0 else 1)
-            else:
-                result.append(-1 if index % 2 else 1)
-        elif 0 in domain:
-            result.append(0)
-        else:
-            result.append(domain[0])
-    return tuple(result)
-
-
-def _helicity_id(values: Sequence[int]) -> str:
-    return "h:" + ",".join(f"{int(value):+d}" for value in values)
+_fixed_helicity = fixed_selector_helicity
+_helicity_id = selector_helicity_id
 
 
 def _compiler_payload(value: object) -> object:
@@ -1173,12 +1186,16 @@ class LegacyMeasurementAdapter:
             "python": platform.python_version(),
             "repository": os.fspath(repository.resolve(strict=False)),
             "row_selection_policy": (
-                "exact-external-pdg-order-then-process-file-order-v1"
+                "exact-external-pdg-order-then-canonical-lc-flow-word-v1"
+                if cell.measurement.accuracy is Accuracy.LC
+                else "exact-external-pdg-order-then-process-file-order-v1"
             ),
             "matching_row_count": context.matching_rows,
             "raw_mapped_color_order": list(context.mapped_color_order),
             "selector_color_word_policy": (
-                "outgoing-open-string-blocks-by-fundamental-source-label-v1"
+                "lexicographic-canonical-physical-lc-flow-v1"
+                if cell.measurement.accuracy is Accuracy.LC
+                else "outgoing-open-string-blocks-by-fundamental-source-label-v1"
             ),
             "commands": commands,
             "target_runtime_seconds": settings.target_runtime_seconds,
@@ -1285,17 +1302,16 @@ class LegacyMeasurementAdapter:
                 "LC all-flow selector provider generated-library artifact is incomplete"
             )
         provider_entries = self.api.parse_process_file(required_paths[1])
-        provider_entry, _provider_matches = self.api.select_generated_process_entry(
+        _provider_entry, provider_matches = self.api.select_generated_process_entry(
             provider_entries,
             generated_process=cell.process,
             wanted_pdgs=context.source_pdgs,
         )
-        provider_word = _canonical_mapped_color_word(
-            context.source_pdgs,
-            self.api.source_mapped_color_order(
-                provider_entry,
-                source_pdgs=context.source_pdgs,
-            ),
+        provider_entry, _provider_mapped, provider_word = _canonical_process_entry(
+            self.api,
+            provider_matches,
+            preferred_entry=_provider_entry,
+            source_pdgs=context.source_pdgs,
             initial_state_count=_initial_state_count(cell.process),
         )
         if provider_word != context.selector_contract.selected_color_words[0]:
@@ -1596,20 +1612,27 @@ class LegacyMeasurementAdapter:
             generated_process=cell.process,
             wanted_pdgs=source_pdgs,
         )
-        mapped = self.api.source_mapped_color_order(
-            entry,
-            source_pdgs=source_pdgs,
-        )
-        color_word = _canonical_mapped_color_word(
-            source_pdgs,
-            mapped,
-            initial_state_count=_initial_state_count(cell.process),
-        )
+        if cell.measurement.accuracy is Accuracy.LC:
+            entry, mapped, color_word = _canonical_process_entry(
+                self.api,
+                matches,
+                preferred_entry=entry,
+                source_pdgs=source_pdgs,
+                initial_state_count=_initial_state_count(cell.process),
+            )
+        else:
+            mapped = self.api.source_mapped_color_order(
+                entry,
+                source_pdgs=source_pdgs,
+            )
+            color_word = _canonical_mapped_color_word(
+                source_pdgs,
+                mapped,
+                initial_state_count=_initial_state_count(cell.process),
+            )
         helicities = _fixed_helicity(source_pdgs)
         contract = SelectorContract(
-            selected_color_flow_ids=(
-                "flow:" + ",".join(str(label) for label in color_word),
-            ),
+            selected_color_flow_ids=(selector_color_flow_id(color_word),),
             selected_color_words=(color_word,),
             all_flow_helicity_ids=(_helicity_id(helicities),),
             all_flow_source_helicities=tuple(

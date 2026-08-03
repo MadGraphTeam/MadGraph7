@@ -53,6 +53,14 @@ from .runtime_evidence import (
     loaded_pyamplicol_origin_policy,
     python_package_tree_identity,
 )
+from .selector_policy import (
+    SelectorPolicyError,
+    canonical_lc_flow_word,
+    canonical_lc_selector_word,
+    fixed_selector_helicity,
+    selector_color_flow_id,
+    selector_helicity_id,
+)
 from .timing import (
     ARENA_UNAVAILABLE_EXECUTION_TIMING_ABI,
     EVALUATOR_TOTAL_SAMPLE_CONTRACT,
@@ -2192,7 +2200,7 @@ def derive_selector_contract(
     runtime: RuntimeLike,
     points: object,
 ) -> SelectorContract:
-    """Select the deterministic flow/helicity with the largest finite component."""
+    """Select one backend-independent labelled LC flow and helicity."""
 
     physics = runtime.physics
     color_flows = tuple(getattr(physics, "color_flows", ()))
@@ -2201,47 +2209,74 @@ def derive_selector_contract(
     if not color_flows or not helicities or not particles:
         raise RunnerError("LC selector derivation requires complete physical axes")
 
-    selected_flow = None
-    chosen_index: int | None = None
-    selected_magnitude = 0.0
-    for flow in color_flows:
-        resolved = runtime.evaluate_resolved(points, color_flows=(str(flow.id),))
-        values = getattr(resolved, "values", ())
-        for helicity_index, _helicity in enumerate(helicities):
-            components = tuple(
-                complex(point[helicity_index][color_index])
-                for point in values
-                for color_index in range(len(point[helicity_index]))
-            )
-            if any(
-                not math.isfinite(component.real) or not math.isfinite(component.imag)
-                for component in components
-            ):
-                raise RunnerError(
-                    "fixed-helicity selector contains a non-finite component"
-                )
-            magnitude = max((abs(component) for component in components), default=0.0)
-            if not math.isfinite(magnitude):
-                raise RunnerError(
-                    "fixed-helicity selector contains a non-finite component"
-                )
-            if magnitude > selected_magnitude:
-                selected_flow = flow
-                chosen_index = helicity_index
-                selected_magnitude = magnitude
-    if selected_flow is None or chosen_index is None:
-        raise RunnerError("no nonzero fixed-helicity selector exists at report point")
-    helicity = helicities[chosen_index]
+    try:
+        words = tuple(canonical_lc_flow_word(flow.word) for flow in color_flows)
+        selected_word = canonical_lc_selector_word(words)
+    except (AttributeError, SelectorPolicyError) as error:
+        raise RunnerError(str(error)) from error
+    selected_matches = tuple(
+        flow
+        for flow, word in zip(color_flows, words, strict=True)
+        if word == selected_word
+    )
+    if len(selected_matches) != 1:
+        raise RunnerError("LC selector did not identify exactly one physical flow")
+    selected_flow = selected_matches[0]
+    expected_flow_id = selector_color_flow_id(selected_word)
+    if str(selected_flow.id) != expected_flow_id:
+        raise RunnerError("LC selector flow ID does not encode its physical word")
+
+    try:
+        pdgs = tuple(int(particle.pdg_id) for particle in particles)
+        states = fixed_selector_helicity(pdgs)
+    except (AttributeError, SelectorPolicyError, TypeError, ValueError) as error:
+        raise RunnerError(
+            "LC selector derivation requires external particle PDGs"
+        ) from error
+    helicity_matches = tuple(
+        helicity
+        for helicity in helicities
+        if tuple(int(value) for value in helicity.values) == states
+    )
+    if len(helicity_matches) != 1:
+        raise RunnerError(
+            "artifact does not expose exactly one deterministic selector helicity"
+        )
+    helicity = helicity_matches[0]
+    expected_helicity_id = selector_helicity_id(states)
+    if str(helicity.id) != expected_helicity_id:
+        raise RunnerError("LC selector helicity ID does not encode its physical states")
+
+    resolved = runtime.evaluate_resolved(
+        points,
+        color_flows=(expected_flow_id,),
+        helicities=(expected_helicity_id,),
+    )
+    components = tuple(
+        complex(component)
+        for point in getattr(resolved, "values", ())
+        for helicity_row in point
+        for component in helicity_row
+    )
+    if not components:
+        raise RunnerError("fixed-helicity selector evaluation is empty")
+    if any(
+        not math.isfinite(component.real) or not math.isfinite(component.imag)
+        for component in components
+    ):
+        raise RunnerError("fixed-helicity selector contains a non-finite component")
+    if not any(abs(component) > 0.0 for component in components):
+        raise RunnerError("canonical fixed-helicity selector is zero at report point")
+
     labels = tuple(int(particle.label) for particle in particles)
-    states = tuple(int(value) for value in helicity.values)
     if len(labels) != len(states):
         raise RunnerError(
             "helicity source-state axis does not match external particles"
         )
     return SelectorContract(
-        selected_color_flow_ids=(str(selected_flow.id),),
-        selected_color_words=(tuple(int(label) for label in selected_flow.word),),
-        all_flow_helicity_ids=(str(helicity.id),),
+        selected_color_flow_ids=(expected_flow_id,),
+        selected_color_words=(selected_word,),
+        all_flow_helicity_ids=(expected_helicity_id,),
         all_flow_source_helicities=tuple(zip(labels, states, strict=True)),
         point_digest=point_digest(points),
     )

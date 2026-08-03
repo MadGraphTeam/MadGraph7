@@ -22,6 +22,7 @@ from tools.performance_report.legacy import (
     LegacySettings,
     TimingRow,
     _canonical_mapped_color_word,
+    _canonical_process_entry,
     _fixed_helicity,
     _helicity_id,
     _parse_generated_library_color_probe_output,
@@ -155,6 +156,54 @@ class FakeApi:
             ),
             lc_partition_sum=2.5,
         )
+
+
+class EntryMappedFakeApi(FakeApi):
+    """Expose distinct generated entries so selector tests cannot use a stub row."""
+
+    def __init__(
+        self,
+        pdgs: tuple[int, ...],
+        entries: tuple[FakeEntry, ...],
+        *,
+        selected_entry: FakeEntry,
+    ) -> None:
+        super().__init__(pdgs)
+        self.entries = entries
+        self.selected_entry = selected_entry
+        self.mapped_entries: list[FakeEntry] = []
+        self.probed_entries: list[FakeEntry] = []
+
+    def parse_process_file(self, path: Path) -> tuple[object, ...]:
+        return self.entries
+
+    def select_generated_process_entry(
+        self,
+        entries: tuple[object, ...],
+        *,
+        generated_process: str,
+        wanted_pdgs: tuple[int, ...],
+    ) -> tuple[object, tuple[object, ...]]:
+        assert entries == self.entries
+        assert wanted_pdgs == self.pdgs
+        return self.selected_entry, self.entries
+
+    def source_mapped_color_order(
+        self,
+        entry: object,
+        *,
+        source_pdgs: tuple[int, ...],
+    ) -> tuple[int, ...]:
+        assert source_pdgs == self.pdgs
+        assert isinstance(entry, FakeEntry)
+        self.mapped_entries.append(entry)
+        return entry.color_order
+
+    def run_color_probe(self, repository: Path, **kwargs: object) -> object:
+        entry = kwargs["entry"]
+        assert isinstance(entry, FakeEntry)
+        self.probed_entries.append(entry)
+        return super().run_color_probe(repository, **kwargs)
 
 
 class FakeExecutor:
@@ -356,6 +405,196 @@ def _settings(repository: Path) -> LegacySettings:
         maximum_points=10_000,
         repository=repository,
     )
+
+
+def test_canonical_process_entry_retains_preferred_duplicate_word() -> None:
+    pdgs = (1, -1, 11, -11)
+    first = FakeEntry(group=1, integral=1, process_pdgs=pdgs, color_order=(2, 1, 3, 4))
+    preferred = FakeEntry(
+        group=2,
+        integral=1,
+        process_pdgs=pdgs,
+        color_order=(2, 1, 4, 3),
+    )
+    api = EntryMappedFakeApi(pdgs, (first, preferred), selected_entry=preferred)
+
+    entry, _mapped, word = _canonical_process_entry(
+        api,
+        (first, preferred),
+        preferred_entry=preferred,
+        source_pdgs=pdgs,
+        initial_state_count=2,
+    )
+
+    assert entry is preferred
+    assert word == (2, 1)
+
+
+@pytest.mark.parametrize(
+    ("n_final", "pdgs", "selected_word", "other_word", "reverse_entries"),
+    (
+        (
+            4,
+            (1, -1, 2, -2, 2, -2),
+            (2, 1, 3, 4, 5, 6),
+            (2, 4, 3, 1, 5, 6),
+            False,
+        ),
+        (
+            4,
+            (1, -1, 2, -2, 2, -2),
+            (2, 1, 3, 4, 5, 6),
+            (2, 4, 3, 1, 5, 6),
+            True,
+        ),
+        (
+            5,
+            (1, -1, 2, -2, 2, -2, 21),
+            (2, 1, 3, 4, 5, 7, 6),
+            (2, 4, 3, 1, 5, 7, 6),
+            False,
+        ),
+        (
+            5,
+            (1, -1, 2, -2, 2, -2, 21),
+            (2, 1, 3, 4, 5, 7, 6),
+            (2, 4, 3, 1, 5, 7, 6),
+            True,
+        ),
+    ),
+)
+def test_identical_three_line_lc_uses_selected_entry_mapped_row(
+    n_final: int,
+    pdgs: tuple[int, ...],
+    selected_word: tuple[int, ...],
+    other_word: tuple[int, ...],
+    reverse_entries: bool,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selected_entry = FakeEntry(group=2, process_pdgs=pdgs, color_order=selected_word)
+    other_entry = FakeEntry(group=1, process_pdgs=pdgs, color_order=other_word)
+    entries = (
+        (selected_entry, other_entry)
+        if reverse_entries
+        else (other_entry, selected_entry)
+    )
+    # The legacy process parser's preferred row is deliberately noncanonical;
+    # the shared policy must inspect the mapped physical rows itself.
+    api = EntryMappedFakeApi(pdgs, entries, selected_entry=other_entry)
+    api.lc_probe_result = SimpleNamespace(
+        value=4.0,
+        lc_row_partitions=(
+            SimpleNamespace(row=1, value=1.5, permutation=other_word),
+            SimpleNamespace(row=2, value=2.5, permutation=selected_word),
+        ),
+        lc_partition_sum=4.0,
+    )
+    adapter, _api, _executor = _adapter(api)
+    monkeypatch.setattr(
+        "tools.performance_report.legacy._shared_point",
+        lambda _process: (
+            pdgs,
+            tuple((1.0, 0.0, 0.0, 0.0) for _ in pdgs),
+            (tuple((1.0, 0.0, 0.0, 0.0) for _ in pdgs),),
+        ),
+    )
+
+    measurement = adapter.measure(
+        _cell(
+            Accuracy.LC,
+            Workload.ALL_FLOW,
+            process_key="dd_3q_identical_lines",
+            n_final=n_final,
+        ),
+        artifact_path=tmp_path / f"identical-n{n_final}",
+        settings=_settings(tmp_path / "repository"),
+    )
+
+    contract = SelectorContract.from_mapping(measurement["selector_contract"])
+    assert api.mapped_entries == list(entries)
+    assert api.probed_entries == [selected_entry]
+    assert contract.selected_color_flow_ids == (
+        "flow:" + ",".join(str(label) for label in selected_word),
+    )
+    assert contract.selected_color_words == (selected_word,)
+    assert measurement["validation"]["lc_common_component"]["value"] == 2.5
+
+
+@pytest.mark.parametrize(
+    (
+        "n_final",
+        "pdgs",
+        "selected_word",
+        "same_canonical_word",
+        "other_word",
+    ),
+    (
+        (
+            4,
+            (1, -1, 2, -2, 2, -2),
+            (2, 1, 3, 4, 5, 6),
+            (3, 4, 2, 1, 5, 6),
+            (2, 4, 3, 1, 5, 6),
+        ),
+        (
+            5,
+            (1, -1, 2, -2, 2, -2, 21),
+            (2, 1, 3, 4, 5, 7, 6),
+            (3, 4, 2, 1, 5, 7, 6),
+            (2, 4, 3, 1, 5, 7, 6),
+        ),
+    ),
+)
+def test_identical_three_line_lc_rejects_duplicate_canonical_probe_rows(
+    n_final: int,
+    pdgs: tuple[int, ...],
+    selected_word: tuple[int, ...],
+    same_canonical_word: tuple[int, ...],
+    other_word: tuple[int, ...],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    api = EntryMappedFakeApi(
+        pdgs,
+        (
+            FakeEntry(group=1, process_pdgs=pdgs, color_order=other_word),
+            FakeEntry(group=2, process_pdgs=pdgs, color_order=selected_word),
+        ),
+        selected_entry=FakeEntry(group=1, process_pdgs=pdgs, color_order=other_word),
+    )
+    api.lc_probe_result = SimpleNamespace(
+        value=3.0,
+        lc_row_partitions=(
+            SimpleNamespace(row=1, value=1.0, permutation=selected_word),
+            SimpleNamespace(row=2, value=2.0, permutation=same_canonical_word),
+        ),
+        lc_partition_sum=3.0,
+    )
+    adapter, _api, _executor = _adapter(api)
+    monkeypatch.setattr(
+        "tools.performance_report.legacy._shared_point",
+        lambda _process: (
+            pdgs,
+            tuple((1.0, 0.0, 0.0, 0.0) for _ in pdgs),
+            (tuple((1.0, 0.0, 0.0, 0.0) for _ in pdgs),),
+        ),
+    )
+
+    with pytest.raises(
+        LegacyAdapterError,
+        match="did not identify exactly one selected physical row",
+    ):
+        adapter.measure(
+            _cell(
+                Accuracy.LC,
+                Workload.ALL_FLOW,
+                process_key="dd_3q_identical_lines",
+                n_final=n_final,
+            ),
+            artifact_path=tmp_path / f"identical-duplicate-n{n_final}",
+            settings=_settings(tmp_path / "repository"),
+        )
 
 
 def test_generated_library_color_probe_parser_accepts_real_counterless_stdout() -> None:
@@ -909,10 +1148,13 @@ def test_all_flow_uses_direct_fixed_helicity_and_its_own_generation_setup(
     assert LEGACY_NUMERICAL_AUTHORITY_FIELD not in measurement["validation"]
     provenance = measurement["provenance"]
     assert provenance["generation_timing_is_workload_specific"] is True
+    assert provenance["row_selection_policy"] == (
+        "exact-external-pdg-order-then-canonical-lc-flow-word-v1"
+    )
     assert provenance["raw_mapped_color_order"] == [2, 4, 1, 3]
     assert (
         provenance["selector_color_word_policy"]
-        == "outgoing-open-string-blocks-by-fundamental-source-label-v1"
+        == "lexicographic-canonical-physical-lc-flow-v1"
     )
     assert (
         provenance["generation_source"] == "direct-imode2-generation-setup"
