@@ -66,6 +66,45 @@ class AgreementEdge:
     def relative_tolerance(self) -> float:
         return agreement_relative_tolerance(self.kind)
 
+    @property
+    def required(self) -> bool:
+        """Whether this peer is a hard measurement prerequisite.
+
+        Original-AmpliCol LC agreement is useful when the legacy oracle is
+        available, but its absence must not censor an otherwise independently
+        validated pyAmpliCol measurement. Every model, cross-mode, and
+        cross-layout pyAmpliCol edge remains mandatory.
+        """
+
+        return self.kind != LC_LEGACY_PYAMPLICOL_COMPONENT
+
+
+def validation_baseline_is_required(
+    cell: CellSpec,
+    baseline: CellSpec | None,
+) -> bool:
+    """Return whether ``baseline`` is a hard numerical prerequisite.
+
+    Recurrence has its own resolved-sum and high-precision validation path, so
+    original AmpliCol is an optional comparison for recurrence.  Z compiled
+    and eager cells instead have a required, selector-compatible recurrence
+    agreement peer, which can supply the pointwise numerical baseline when
+    original AmpliCol is unavailable.
+    """
+
+    if baseline is None:
+        return False
+    if baseline.measurement.execution_mode is not ExecutionMode.AMPLICOL:
+        return True
+    return not (
+        cell.measurement.execution_mode is ExecutionMode.RECURRENCE
+        or (
+            cell.dataset_id.startswith("z_")
+            and cell.measurement.execution_mode
+            in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
+        )
+    )
+
 
 def _unique_cell(
     matches: Sequence[CellSpec],
@@ -247,6 +286,28 @@ def incoming_agreement_edges(
                 edge.baseline.cell_id,
             ),
         )
+    )
+
+
+def validation_baseline_fallback_peers(
+    cell: CellSpec,
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> tuple[CellSpec, ...]:
+    """Return required peers that may replace an unavailable soft baseline.
+
+    This is deliberately limited to the Z recurrence cross-mode authority.
+    The edge remains a mandatory direct-agreement dependency even when its
+    successful current is also used as the worker's pointwise baseline.
+    """
+
+    baseline = catalog.validation_baseline_cell(cell)
+    if validation_baseline_is_required(cell, baseline):
+        return ()
+    return tuple(
+        edge.baseline
+        for edge in incoming_agreement_edges(cell, catalog=catalog)
+        if edge.required and edge.kind == Z_RECURRENCE_CROSS_MODE
     )
 
 
@@ -590,13 +651,24 @@ def attach_direct_agreements(
     mutable_validation = dict(validation)
     expected = incoming_agreement_edges(cell, catalog=catalog)
     expected_peer_ids = {edge.baseline.cell_id for edge in expected}
-    if set(peers) != expected_peer_ids:
+    required_peer_ids = {
+        edge.baseline.cell_id for edge in expected if edge.required
+    }
+    observed_peer_ids = set(peers)
+    if not required_peer_ids.issubset(observed_peer_ids) or not (
+        observed_peer_ids <= expected_peer_ids
+    ):
         raise AgreementError(
             f"{cell.cell_id} direct-agreement peers differ: "
-            f"expected={sorted(expected_peer_ids)}, observed={sorted(peers)}"
+            f"required={sorted(required_peer_ids)}, "
+            f"allowed={sorted(expected_peer_ids)}, "
+            f"observed={sorted(observed_peer_ids)}"
         )
     records: list[dict[str, object]] = []
     for edge in expected:
+        if edge.baseline.cell_id not in peers:
+            assert not edge.required
+            continue
         peer = peers[edge.baseline.cell_id]
         if peer.get("status") != ResultStatus.OK.value:
             raise AgreementError(
@@ -658,4 +730,6 @@ __all__ = [
     "legacy_lc_common_component",
     "validate_direct_agreement_records",
     "validate_lc_common_component",
+    "validation_baseline_fallback_peers",
+    "validation_baseline_is_required",
 ]

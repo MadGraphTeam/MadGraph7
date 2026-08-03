@@ -7,7 +7,10 @@ import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 
-from .agreements import incoming_agreement_edges
+from .agreements import (
+    incoming_agreement_edges,
+    validation_baseline_is_required,
+)
 from .artifacts import ArtifactStore, CurrentRecord
 from .cache import validate_measurement
 from .catalog import REPORT_CATALOG, ReportCatalog
@@ -162,11 +165,18 @@ def catalog_prerequisite_cells(
     *,
     catalog: ReportCatalog = REPORT_CATALOG,
 ) -> tuple[CellSpec, ...]:
-    """Return direct baseline and agreement/equivalence prerequisites."""
+    """Return required baseline and agreement/equivalence prerequisites."""
 
-    baseline = catalog.validation_baseline_cell(cell)
+    candidate_baseline = catalog.validation_baseline_cell(cell)
+    baseline = (
+        candidate_baseline
+        if validation_baseline_is_required(cell, candidate_baseline)
+        else None
+    )
     peers = tuple(
-        edge.baseline for edge in incoming_agreement_edges(cell, catalog=catalog)
+        edge.baseline
+        for edge in incoming_agreement_edges(cell, catalog=catalog)
+        if edge.required
     )
     return tuple(
         sorted(

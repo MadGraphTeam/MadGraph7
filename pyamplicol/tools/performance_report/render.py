@@ -9,6 +9,13 @@ import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
+from .agreements import (
+    DIRECT_AGREEMENT_ABI,
+    DIRECT_AGREEMENT_FIELD,
+    LC_COMMON_COMPONENT_ABI,
+    LC_COMMON_COMPONENT_FIELD,
+    incoming_agreement_edges,
+)
 from .cache import empty_measurement
 from .campaign_policy import (
     STRICT_POLICY,
@@ -177,7 +184,7 @@ class MeasurementIndex:
     def get(
         self,
         dataset_id: str,
-        process_key: str,
+        process_key: str | None,
         n_final: int,
         workload: Workload,
         *,
@@ -188,12 +195,24 @@ class MeasurementIndex:
             _NA,
         )
 
+    def for_cell(self, cell: CellSpec) -> Measurement:
+        """Return the current measurement owned by one canonical catalog cell."""
+
+        return self.get(
+            cell.dataset_id,
+            cell.process_key,
+            cell.n_final,
+            cell.workload,
+            variant=cell.variant,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class JoinedWorkload:
     workload: Workload
     baseline: Measurement
     candidate: Measurement
+    comparison_linked: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,6 +249,7 @@ class BestModeWorkload:
     candidate: Measurement
     mode: ExecutionMode | None
     terminal_label: _TerminalSummary | None
+    comparison_linked: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -341,16 +361,259 @@ class BaselineCandidateAdapter:
     ):
         self.catalog = catalog
         self.index = MeasurementIndex(caches)
+        self._cells = {
+            (
+                cell.dataset_id,
+                cell.process_key,
+                cell.n_final,
+                cell.workload,
+                cell.variant,
+            ): cell
+            for cell in catalog.measurement_cells()
+        }
+
+    def _cell(
+        self,
+        dataset_id: str,
+        process_key: str,
+        n_final: int,
+        workload: Workload,
+        *,
+        variant: str | None = None,
+    ) -> CellSpec:
+        return self._cells[
+            (dataset_id, process_key, n_final, workload, variant)
+        ]
 
     @staticmethod
-    def _baseline_dataset(dataset: MatrixDataset) -> str:
-        accuracy = dataset.candidate.accuracy.value
-        if dataset.baseline.execution_mode is ExecutionMode.AMPLICOL:
-            return f"reference_amplicol_{accuracy}"
-        if dataset.baseline.execution_mode is ExecutionMode.RECURRENCE:
-            return f"matrix_recurrence_builtin_sm_{accuracy}"
-        raise ValueError(
-            "matrix baseline must be original AmpliCol or built-in recurrence"
+    def _finite_number(value: object) -> bool:
+        return (
+            not isinstance(value, bool)
+            and isinstance(value, (int, float))
+            and math.isfinite(float(value))
+        )
+
+    @classmethod
+    def _exact_number(cls, value: object, expected: object) -> bool:
+        if (
+            not cls._finite_number(value)
+            or not cls._finite_number(expected)
+        ):
+            return False
+        return float(value) == float(expected)
+
+    @staticmethod
+    def _selectors_match(
+        candidate_cell: CellSpec,
+        candidate: Measurement,
+        baseline: Measurement,
+    ) -> bool:
+        candidate_selector = candidate.get("selector_contract")
+        baseline_selector = baseline.get("selector_contract")
+        if candidate_cell.measurement.accuracy is Accuracy.LC:
+            return (
+                isinstance(candidate_selector, Mapping)
+                and isinstance(baseline_selector, Mapping)
+                and candidate_selector == baseline_selector
+            )
+        return candidate_selector is None and baseline_selector is None
+
+    @staticmethod
+    def _component(
+        cell: CellSpec,
+        measurement: Measurement,
+    ) -> Mapping[str, object] | None:
+        validation = measurement.get("validation")
+        component = (
+            validation.get(LC_COMMON_COMPONENT_FIELD)
+            if isinstance(validation, Mapping)
+            else None
+        )
+        if not isinstance(component, Mapping):
+            return None
+        if (
+            component.get("abi") != LC_COMMON_COMPONENT_ABI
+            or component.get("cell_id") != cell.cell_id
+            or not BaselineCandidateAdapter._finite_number(component.get("value"))
+        ):
+            return None
+        return component
+
+    def _direct_agreement_link(
+        self,
+        candidate_cell: CellSpec,
+        candidate: Measurement,
+        baseline_cell: CellSpec,
+        baseline: Measurement,
+    ) -> bool:
+        matching_edges = tuple(
+            edge
+            for edge in incoming_agreement_edges(
+                candidate_cell,
+                catalog=self.catalog,
+            )
+            if edge.baseline.cell_id == baseline_cell.cell_id
+        )
+        if not matching_edges:
+            return False
+        validation = candidate.get("validation")
+        records = (
+            validation.get(DIRECT_AGREEMENT_FIELD)
+            if isinstance(validation, Mapping)
+            else None
+        )
+        if not isinstance(records, list):
+            return False
+        for edge in matching_edges:
+            record = next(
+                (
+                    item
+                    for item in records
+                    if isinstance(item, Mapping)
+                    and item.get("abi") == DIRECT_AGREEMENT_ABI
+                    and item.get("edge_kind") == edge.kind
+                    and item.get("value_kind") == edge.value_kind
+                    and item.get("candidate_cell_id") == candidate_cell.cell_id
+                    and item.get("baseline_cell_id") == baseline_cell.cell_id
+                    and item.get("status") == ResultStatus.OK.value
+                ),
+                None,
+            )
+            if record is None:
+                continue
+            if edge.value_kind == "matrix_element":
+                candidate_value = candidate.get("matrix_element")
+                baseline_value = baseline.get("matrix_element")
+            else:
+                candidate_component = self._component(candidate_cell, candidate)
+                baseline_component = self._component(baseline_cell, baseline)
+                if candidate_component is None or baseline_component is None:
+                    continue
+                identity_fields = (
+                    "point_digest",
+                    "helicity_ids",
+                    "color_flow_ids",
+                )
+                if any(
+                    candidate_component.get(field)
+                    != baseline_component.get(field)
+                    for field in identity_fields
+                ):
+                    continue
+                candidate_value = candidate_component.get("value")
+                baseline_value = baseline_component.get("value")
+            if self._exact_number(
+                record.get("candidate"),
+                candidate_value,
+            ) and self._exact_number(
+                record.get("baseline"),
+                baseline_value,
+            ):
+                return True
+        return False
+
+    def _direct_link(
+        self,
+        candidate_cell: CellSpec,
+        candidate: Measurement,
+        baseline_cell: CellSpec,
+        baseline: Measurement,
+    ) -> bool:
+        if not (_ok(candidate) and _ok(baseline)) or not self._selectors_match(
+            candidate_cell,
+            candidate,
+            baseline,
+        ):
+            return False
+        matching_edges = tuple(
+            edge
+            for edge in incoming_agreement_edges(
+                candidate_cell,
+                catalog=self.catalog,
+            )
+            if edge.baseline.cell_id == baseline_cell.cell_id
+        )
+        if matching_edges:
+            return self._direct_agreement_link(
+                candidate_cell,
+                candidate,
+                baseline_cell,
+                baseline,
+            )
+        canonical_baseline = self.catalog.validation_baseline_cell(candidate_cell)
+        if (
+            canonical_baseline is None
+            or canonical_baseline.cell_id != baseline_cell.cell_id
+        ):
+            return False
+        validation = candidate.get("validation")
+        pointwise = (
+            validation.get("pointwise")
+            if isinstance(validation, Mapping)
+            else None
+        )
+        return (
+            isinstance(pointwise, Mapping)
+            and pointwise.get("status") == ResultStatus.OK.value
+            and self._exact_number(
+                pointwise.get("candidate"),
+                candidate.get("matrix_element"),
+            )
+            and self._exact_number(
+                pointwise.get("baseline"),
+                baseline.get("matrix_element"),
+            )
+        )
+
+    def _recurrence_bridge(self, candidate_cell: CellSpec) -> CellSpec | None:
+        baseline = self.catalog.validation_baseline_cell(candidate_cell)
+        if (
+            baseline is not None
+            and baseline.measurement.execution_mode is ExecutionMode.RECURRENCE
+        ):
+            return baseline
+        peers = tuple(
+            edge.baseline
+            for edge in incoming_agreement_edges(
+                candidate_cell,
+                catalog=self.catalog,
+            )
+            if edge.baseline.measurement.execution_mode is ExecutionMode.RECURRENCE
+        )
+        return peers[0] if len(peers) == 1 else None
+
+    def _comparison_linked(
+        self,
+        candidate_cell: CellSpec,
+        candidate: Measurement,
+        baseline_cell: CellSpec,
+        baseline: Measurement,
+    ) -> bool:
+        if (
+            baseline_cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+            and candidate_cell.measurement.execution_mode
+            in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
+        ):
+            recurrence_cell = self._recurrence_bridge(candidate_cell)
+            if recurrence_cell is None:
+                return False
+            recurrence = self.index.for_cell(recurrence_cell)
+            return self._direct_link(
+                candidate_cell,
+                candidate,
+                recurrence_cell,
+                recurrence,
+            ) and self._direct_link(
+                recurrence_cell,
+                recurrence,
+                baseline_cell,
+                baseline,
+            )
+        return self._direct_link(
+            candidate_cell,
+            candidate,
+            baseline_cell,
+            baseline,
         )
 
     def matrix_cell(
@@ -373,25 +636,32 @@ class BaselineCandidateAdapter:
         if not applicable:
             joined = tuple(JoinedWorkload(workload, _NA, _NA) for workload in workloads)
         else:
-            baseline_dataset = self._baseline_dataset(dataset)
-            joined = tuple(
-                JoinedWorkload(
+            joined_items: list[JoinedWorkload] = []
+            for workload in workloads:
+                candidate_cell = self._cell(
+                    dataset.dataset_id,
+                    family.key,
+                    n_final,
                     workload,
-                    self.index.get(
-                        baseline_dataset,
-                        family.key,
-                        n_final,
-                        workload,
-                    ),
-                    self.index.get(
-                        dataset.dataset_id,
-                        family.key,
-                        n_final,
-                        workload,
-                    ),
                 )
-                for workload in workloads
-            )
+                baseline_cell = self.catalog.baseline_cell(candidate_cell)
+                assert baseline_cell is not None
+                candidate = self.index.for_cell(candidate_cell)
+                baseline = self.index.for_cell(baseline_cell)
+                joined_items.append(
+                    JoinedWorkload(
+                        workload,
+                        baseline,
+                        candidate,
+                        self._comparison_linked(
+                            candidate_cell,
+                            candidate,
+                            baseline_cell,
+                            baseline,
+                        ),
+                    )
+                )
+            joined = tuple(joined_items)
         return JoinedMatrixCell(dataset, family, n_final, applicable, joined)
 
     def z_workload(
@@ -408,18 +678,29 @@ class BaselineCandidateAdapter:
             n_final,
             workload,
         )
-        candidate = (
-            baseline
-            if variant.execution_mode is ExecutionMode.AMPLICOL
-            else self.index.get(
-                z_dataset_id(model),
-                "dd_z_jets",
-                n_final,
-                workload,
-                variant=variant.key,
-            )
+        if variant.execution_mode is ExecutionMode.AMPLICOL:
+            return JoinedWorkload(workload, baseline, baseline)
+        candidate_cell = self._cell(
+            z_dataset_id(model),
+            "dd_z_jets",
+            n_final,
+            workload,
+            variant=variant.key,
         )
-        return JoinedWorkload(workload, baseline, candidate)
+        baseline_cell = self.catalog.baseline_cell(candidate_cell)
+        assert baseline_cell is not None
+        candidate = self.index.for_cell(candidate_cell)
+        return JoinedWorkload(
+            workload,
+            baseline,
+            candidate,
+            self._comparison_linked(
+                candidate_cell,
+                candidate,
+                baseline_cell,
+                baseline,
+            ),
+        )
 
     def best_mode_cell(
         self,
@@ -457,16 +738,17 @@ class BaselineCandidateAdapter:
         baseline_dataset = f"reference_amplicol_{accuracy.value}"
         joined_workloads: list[BestModeWorkload] = []
         for workload in workloads:
-            baseline = self.index.get(
+            baseline_cell = self._cell(
                 baseline_dataset,
                 family.key,
                 n_final,
                 workload,
             )
+            baseline = self.index.for_cell(baseline_cell)
             candidates = tuple(
                 (
                     mode,
-                    self.index.get(
+                    self._cell(
                         f"matrix_{mode.value}_builtin_sm_{accuracy.value}",
                         family.key,
                         n_final,
@@ -475,25 +757,39 @@ class BaselineCandidateAdapter:
                 )
                 for mode in _BEST_MODE_ORDER
             )
+            measured_candidates = tuple(
+                (mode, cell, self.index.for_cell(cell))
+                for mode, cell in candidates
+            )
             eligible = tuple(
-                (mode, measurement)
-                for mode, measurement in candidates
+                (mode, cell, measurement)
+                for mode, cell, measurement in measured_candidates
                 if _runtime_value(measurement) is not None
             )
             if eligible:
-                winner_mode, winner = min(
+                winner_mode, winner_cell, winner = min(
                     eligible,
                     key=lambda item: (
-                        _runtime_value(item[1]),
+                        _runtime_value(item[2]),
                         _BEST_MODE_ORDER.index(item[0]),
                     ),
                 )
                 terminal_label = None
+                comparison_linked = self._comparison_linked(
+                    winner_cell,
+                    winner,
+                    baseline_cell,
+                    baseline,
+                )
             else:
                 winner_mode, winner = None, _NA
                 terminal_label = _best_mode_terminal_label(
-                    tuple(measurement for _mode, measurement in candidates)
+                    tuple(
+                        measurement
+                        for _mode, _cell, measurement in measured_candidates
+                    )
                 )
+                comparison_linked = False
             joined_workloads.append(
                 BestModeWorkload(
                     workload,
@@ -501,6 +797,7 @@ class BaselineCandidateAdapter:
                     winner,
                     winner_mode,
                     terminal_label,
+                    comparison_linked,
                 )
             )
         return BestModeMatrixCell(
@@ -1299,6 +1596,7 @@ def _legacy_baseline_unavailable(
 def _fixed_mode_generation_comparison_layout(
     joined: JoinedWorkload,
     *,
+    baseline_mode: ExecutionMode,
     baseline_static_na: bool = False,
     comparable: bool = True,
 ) -> _BestModeComparisonLayout:
@@ -1307,7 +1605,15 @@ def _fixed_mode_generation_comparison_layout(
     if not _ok(joined.candidate):
         status = _status(joined.candidate)
         return _BestModeComparisonLayout(status, "", status)
-    if baseline_static_na or not comparable:
+    if (
+        baseline_static_na
+        or not comparable
+        or not joined.comparison_linked
+        or (
+            baseline_mode is ExecutionMode.AMPLICOL
+            and not _ok(joined.baseline)
+        )
+    ):
         absolute = _best_mode_metric(joined.candidate, "generation_seconds")
         return _BestModeComparisonLayout(
             absolute,
@@ -1348,6 +1654,7 @@ def _fixed_mode_runtime_comparison_layout(
             candidate=joined.candidate,
             mode=candidate_mode,
             terminal_label=None,
+            comparison_linked=joined.comparison_linked,
         ),
         baseline_mode=baseline_mode,
         baseline_static_na=baseline_static_na,
@@ -1376,10 +1683,12 @@ def _lc_cell(
     )
     selected_generation = _fixed_mode_generation_comparison_layout(
         selected,
+        baseline_mode=view.dataset.baseline.execution_mode,
         baseline_static_na=legacy_baseline_unavailable,
     )
     all_flow_generation = _fixed_mode_generation_comparison_layout(
         all_flow,
+        baseline_mode=view.dataset.baseline.execution_mode,
         baseline_static_na=legacy_baseline_unavailable,
         comparable=not (
             view.dataset.candidate.execution_mode is ExecutionMode.RECURRENCE
@@ -1448,6 +1757,7 @@ def _contracted_cell(
     )
     candidate_generation = _fixed_mode_generation_comparison_layout(
         joined,
+        baseline_mode=view.dataset.baseline.execution_mode,
         baseline_static_na=legacy_baseline_unavailable,
     )
     candidate_runtime = _fixed_mode_runtime_comparison_layout(
@@ -1495,7 +1805,8 @@ def _summary_pair(
     valid = [
         item
         for item in joined
-        if _ok(item.baseline)
+        if item.comparison_linked
+        and _ok(item.baseline)
         and _ok(item.candidate)
         and item.baseline.get(field) is not None
         and item.candidate.get(field) is not None
@@ -1788,10 +2099,9 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         "digits."
     )
     legacy_scope_detail = (
-        " Original AmpliCol supports at most three open quark lines; beyond "
-        "that scope its declared catalog entry is marked static N/A, requires "
-        "no measurement, and valid candidate generation and runtime values are "
-        "shown as absolute quantities without a baseline ratio."
+        " Original AmpliCol is static N/A beyond three open quark lines; "
+        "unavailable, terminal, or unlinked baselines keep their status while "
+        "successful candidate timings remain absolute and leave summaries."
         if dataset.baseline.execution_mode is ExecutionMode.AMPLICOL
         else ""
     )
@@ -1807,6 +2117,12 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         "timing sums, and runtime statistics use wall time only. The framed "
         "bold entry is the arithmetic average of the per-cell multipliers."
     )
+    comparison_identity_detail = (
+        " Ratios and summaries require exact stored linkage to the current "
+        "denominator."
+        if dataset.baseline.execution_mode is not ExecutionMode.AMPLICOL
+        else ""
+    )
     return (
         r"\ReportTableNote{{\scriptsize Baseline: "
         + _tex_escape(baseline)
@@ -1816,6 +2132,7 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         + _tex_escape(detail)
         + _tex_escape(clock_detail)
         + _tex_escape(legacy_scope_detail)
+        + _tex_escape(comparison_identity_detail)
         + _tex_escape(summary_detail)
         + " "
         + _tex_escape(
@@ -2020,7 +2337,12 @@ def _best_mode_generation_comparison_layout(
         return _BestModeComparisonLayout(status, "", status)
     assert joined.mode is not None
     mode_code = _BEST_MODE_CODES[joined.mode]
-    if baseline_static_na or not comparable:
+    if (
+        baseline_static_na
+        or not comparable
+        or not joined.comparison_linked
+        or not _ok(joined.baseline)
+    ):
         absolute = _best_mode_metric(joined.candidate, "generation_seconds")
         return _BestModeComparisonLayout(
             rf"\bestmodeabsolutechoice{{{absolute}}}{{{mode_code}}}",
@@ -2075,7 +2397,9 @@ def _best_mode_runtime_comparison_layout(
     if not _ok(joined.candidate):
         status = _status(joined.candidate)
         return _BestModeComparisonLayout(status, "", status)
-    if baseline_static_na:
+    if baseline_static_na or not joined.comparison_linked or (
+        baseline_mode is ExecutionMode.AMPLICOL and not _ok(joined.baseline)
+    ):
         wall = _best_mode_metric(
             joined.candidate,
             "wall_seconds_per_point",
@@ -2329,7 +2653,8 @@ def _best_mode_summary_items(
     valid = tuple(
         item
         for item in joined
-        if item.mode is not None
+        if item.comparison_linked
+        and item.mode is not None
         and _ok(item.baseline)
         and _ok(item.candidate)
         and item.baseline.get(field) is not None
@@ -2593,8 +2918,10 @@ def _best_mode_block(
                 r"Original-AmpliCol "
                 r"rows beyond its three-open-quark-line scope are catalog "
                 r"static N/A entries; their candidates are shown absolutely and "
-                r"excluded from ratio summaries."
+                r"excluded from ratio summaries. Unavailable baselines keep "
+                r"their status; candidates remain absolute."
                 + boundary_note
+                + r" Only exact stored same-point links enter ratios."
                 + r" Summary rows contain multipliers only in min, max, "
                 r"median, average, and weighted-average order; the weighted "
                 r"average is the ratio of timing sums. The framed bold entry "
@@ -2726,7 +3053,7 @@ def _z_value(
         if evaluator_total_timing_record(measurement) is not None:
             return absolute
         return _not_exposed()
-    if not comparable:
+    if not comparable or not joined.comparison_linked or not _ok(joined.baseline):
         return rf"\matrixncabsolute{{{absolute}}}"
     return absolute + r"\," + _ratio(measurement, joined.baseline, field)
 
@@ -2748,10 +3075,11 @@ def _z_evaluator_total(
     if total is None:
         return _not_exposed()
     absolute = _time(total, microseconds=True)
+    if not joined.comparison_linked or not _ok(joined.baseline):
+        return rf"\matrixncabsolute{{{absolute}}}"
     baseline_wall = joined.baseline.get("wall_seconds_per_point")
     if (
-        not _ok(joined.baseline)
-        or isinstance(baseline_wall, bool)
+        isinstance(baseline_wall, bool)
         or not isinstance(baseline_wall, (int, float))
         or not math.isfinite(float(baseline_wall))
         or float(baseline_wall) <= 0.0
@@ -2907,7 +3235,11 @@ def _z_block(
             r"\end{tabular}",
             r"\endgroup",
             (
-                r"\ReportTableNote{Original AmpliCol is the denominator. "
+                r"\ReportTableNote{Original AmpliCol is the denominator only "
+                r"when successful and exactly linked by stored same-point "
+                r"evidence, directly or through current recurrence. Otherwise "
+                r"its status remains visible and successful pyAmpliCol values "
+                r"are absolute. "
                 r"Each pyAmpliCol row reports separate topology-replay and "
                 r"all-flow-union generation and runtime measurements. "
                 r"Parenthesized values are candidate/reference ratios. "
@@ -3338,6 +3670,7 @@ def summarize_visible_completeness(
                     )
                     candidate_generation = _fixed_mode_generation_comparison_layout(
                         joined,
+                        baseline_mode=dataset.baseline.execution_mode,
                         baseline_static_na=baseline_static_na,
                         comparable=not (
                             joined.workload is Workload.ALL_FLOW

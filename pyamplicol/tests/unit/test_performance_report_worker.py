@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import tools.performance_report.worker as worker_module
+from tools.performance_report.agreements import validation_baseline_fallback_peers
 from tools.performance_report.artifacts import DiskFullError
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.measurement import load_measurement
@@ -578,3 +579,63 @@ def test_pyamplicol_worker_passes_all_validation_peers_to_measurement(
     assert observed == [
         {"reference-amplicol-full-n4-dd-tt-jets-contracted": peer}
     ]
+
+
+def test_z_worker_accepts_recurrence_as_baseline_and_direct_peer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cell = REPORT_CATALOG.cell(
+        "z-builtin-sm-n1-dd-z-jets-jit-o1-selected-flow"
+    )
+    fallback = validation_baseline_fallback_peers(cell)
+    assert len(fallback) == 1
+    recurrence = fallback[0]
+    measurement = {"status": "ok", "matrix_element": 1.0}
+    measurement_path = tmp_path / "recurrence.json"
+    measurement_path.write_text(json.dumps(measurement), encoding="ascii")
+    observed: list[tuple[object, object]] = []
+
+    class SourceIdentity:
+        def provenance(self) -> dict[str, object]:
+            return {}
+
+    def measure(*_args: object, **kwargs: object) -> dict[str, object]:
+        observed.append((kwargs.get("baseline"), kwargs.get("validation_peers")))
+        return {
+            "status": "ok",
+            "validation": {"status": "ok"},
+            "provenance": {},
+        }
+
+    identity = SourceIdentity()
+    monkeypatch.setattr(
+        "tools.performance_report.worker.require_eligible_report_source",
+        lambda _root: identity,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.worker.measure_pyamplicol_cell",
+        measure,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.worker.attach_direct_agreements",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.worker.attach_validation_failure_precision_diagnostic",
+        lambda *_args, **_kwargs: None,
+    )
+
+    result = measure_cell(
+        cell.cell_id,
+        repo_root=tmp_path,
+        attempt_root=tmp_path / "attempt",
+        target_runtime_seconds=1.0,
+        batch_size=1,
+        worker_cores=1,
+        baseline_json=measurement_path,
+        peer_json=((recurrence.cell_id, measurement_path),),
+    )
+
+    assert result["status"] == "ok"
+    assert observed == [(measurement, {recurrence.cell_id: measurement})]

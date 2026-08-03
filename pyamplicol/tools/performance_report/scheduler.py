@@ -20,7 +20,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from .agreements import incoming_agreement_edges
+from .agreements import (
+    incoming_agreement_edges,
+    validation_baseline_fallback_peers,
+    validation_baseline_is_required,
+)
 from .artifacts import (
     ArtifactAction,
     ArtifactStore,
@@ -247,6 +251,8 @@ class PlannedCell:
     baseline_cell_id: str | None
     rank: int
     comparison_peer_ids: tuple[str, ...] = ()
+    optional_baseline_cell_id: str | None = None
+    optional_comparison_peer_ids: tuple[str, ...] = ()
     force_recompare: bool = False
     prerequisite_cell_ids: tuple[str, ...] = ()
     resource_predecessor_ids: tuple[str, ...] = ()
@@ -675,6 +681,9 @@ def _partition_dependency_records(
     *,
     baseline_cell_id: str | None,
     comparison_peer_ids: Sequence[str],
+    optional_baseline_cell_id: str | None = None,
+    optional_comparison_peer_ids: Sequence[str] = (),
+    baseline_fallback_peer_ids: Sequence[str] = (),
     currents: Mapping[
         str,
         tuple[CurrentRecord, PolicyMeasurementState],
@@ -698,6 +707,10 @@ def _partition_dependency_records(
                 dependency_reference(baseline_cell_id, record.result)
             )
             terminal_ids.add(baseline_cell_id)
+    elif optional_baseline_cell_id is not None:
+        optional = currents.get(optional_baseline_cell_id)
+        if optional is not None and optional[1] is PolicyMeasurementState.SUCCESS:
+            baseline_record = optional[0]
     peer_records: dict[str, CurrentRecord] = {}
     for peer_cell_id in comparison_peer_ids:
         record, state = currents[peer_cell_id]
@@ -708,6 +721,16 @@ def _partition_dependency_records(
                 dependency_reference(peer_cell_id, record.result)
             )
             terminal_ids.add(peer_cell_id)
+    for peer_cell_id in optional_comparison_peer_ids:
+        optional = currents.get(peer_cell_id)
+        if optional is not None and optional[1] is PolicyMeasurementState.SUCCESS:
+            peer_records[peer_cell_id] = optional[0]
+    if baseline_record is None:
+        for peer_cell_id in baseline_fallback_peer_ids:
+            fallback = currents.get(peer_cell_id)
+            if fallback is not None and fallback[1] is PolicyMeasurementState.SUCCESS:
+                baseline_record = fallback[0]
+                break
     return baseline_record, peer_records, tuple(terminal_required)
 
 
@@ -798,17 +821,44 @@ def plan_campaign(
             comparison_dependency=comparison_dependency,
         )
 
-    def dependencies(cell: CellSpec) -> tuple[CellSpec, ...]:
-        baseline = catalog.validation_baseline_cell(cell)
-        peers = tuple(
-            edge.baseline for edge in incoming_agreement_edges(cell, catalog=catalog)
+    def dependency_roles(
+        cell: CellSpec,
+    ) -> tuple[
+        CellSpec | None,
+        CellSpec | None,
+        tuple[CellSpec, ...],
+        tuple[CellSpec, ...],
+    ]:
+        candidate_baseline = catalog.validation_baseline_cell(cell)
+        baseline_required = validation_baseline_is_required(cell, candidate_baseline)
+        edges = incoming_agreement_edges(cell, catalog=catalog)
+        return (
+            candidate_baseline if baseline_required else None,
+            candidate_baseline if not baseline_required else None,
+            tuple(edge.baseline for edge in edges if edge.required),
+            tuple(edge.baseline for edge in edges if not edge.required),
         )
+
+    def dependencies(cell: CellSpec) -> tuple[CellSpec, ...]:
+        baseline, _optional_baseline, peers, _optional_peers = dependency_roles(cell)
         return tuple(
             {
                 dependency.cell_id: dependency
                 for dependency in (
                     *((baseline,) if baseline is not None else ()),
                     *peers,
+                )
+            }.values()
+        )
+
+    def optional_dependencies(cell: CellSpec) -> tuple[CellSpec, ...]:
+        _baseline, optional_baseline, _peers, optional_peers = dependency_roles(cell)
+        return tuple(
+            {
+                dependency.cell_id: dependency
+                for dependency in (
+                    *((optional_baseline,) if optional_baseline is not None else ()),
+                    *optional_peers,
                 )
             }.values()
         )
@@ -979,7 +1029,7 @@ def plan_campaign(
         if cell.cell_id in ranks:
             return ranks[cell.cell_id]
         rank = _rank(cell)
-        for dependency in dependencies(cell):
+        for dependency in (*dependencies(cell), *optional_dependencies(cell)):
             scheduled = needed.get(dependency.cell_id)
             if scheduled is not None:
                 rank = max(rank, planned_rank(scheduled) + 1)
@@ -1000,14 +1050,26 @@ def plan_campaign(
         return rank
 
     def validation_baseline_id(cell: CellSpec) -> str | None:
-        baseline = catalog.validation_baseline_cell(cell)
+        baseline, _optional, _peers, _optional_peers = dependency_roles(cell)
         return None if baseline is None else baseline.cell_id
+
+    def optional_baseline_id(cell: CellSpec) -> str | None:
+        _baseline, optional, _peers, _optional_peers = dependency_roles(cell)
+        return None if optional is None else optional.cell_id
+
+    def comparison_peer_ids(cell: CellSpec) -> tuple[str, ...]:
+        _baseline, _optional, peers, _optional_peers = dependency_roles(cell)
+        return tuple(peer.cell_id for peer in peers)
+
+    def optional_comparison_peer_ids(cell: CellSpec) -> tuple[str, ...]:
+        _baseline, _optional, _peers, optional_peers = dependency_roles(cell)
+        return tuple(peer.cell_id for peer in optional_peers)
 
     def scheduled_prerequisite_ids(cell: CellSpec) -> tuple[str, ...]:
         return tuple(
             sorted(
                 dependency.cell_id
-                for dependency in dependencies(cell)
+                for dependency in (*dependencies(cell), *optional_dependencies(cell))
                 if dependency.cell_id in needed
             )
         )
@@ -1035,10 +1097,9 @@ def plan_campaign(
             dependency=cell.cell_id not in requested_ids,
             baseline_cell_id=validation_baseline_id(cell),
             rank=planned_rank(cell),
-            comparison_peer_ids=tuple(
-                edge.baseline.cell_id
-                for edge in incoming_agreement_edges(cell, catalog=catalog)
-            ),
+            comparison_peer_ids=comparison_peer_ids(cell),
+            optional_baseline_cell_id=optional_baseline_id(cell),
+            optional_comparison_peer_ids=optional_comparison_peer_ids(cell),
             force_recompare=cell.cell_id in force_recompare_ids,
             prerequisite_cell_ids=scheduled_prerequisite_ids(cell),
             resource_predecessor_ids=resource_predecessor_ids(cell),
@@ -1072,14 +1133,27 @@ def validate_campaign_plan(
             f"cell {cell_id!r} is outside the contracted 28-cell Z-table F scope"
         )
     baseline = catalog.validation_baseline_cell(planned[0].cell)
-    expected_baseline_id = None if baseline is None else baseline.cell_id
+    baseline_required = validation_baseline_is_required(planned[0].cell, baseline)
+    expected_baseline_id = (
+        baseline.cell_id if baseline is not None and baseline_required else None
+    )
+    expected_optional_baseline_id = (
+        baseline.cell_id if baseline is not None and not baseline_required else None
+    )
+    edges = incoming_agreement_edges(planned[0].cell, catalog=catalog)
     expected_peer_ids = tuple(
-        edge.baseline.cell_id
-        for edge in incoming_agreement_edges(planned[0].cell, catalog=catalog)
+        edge.baseline.cell_id for edge in edges if edge.required
+    )
+    expected_optional_peer_ids = tuple(
+        edge.baseline.cell_id for edge in edges if not edge.required
     )
     if (
         planned[0].baseline_cell_id != expected_baseline_id
         or planned[0].comparison_peer_ids != expected_peer_ids
+        or planned[0].optional_baseline_cell_id
+        != expected_optional_baseline_id
+        or planned[0].optional_comparison_peer_ids
+        != expected_optional_peer_ids
     ):
         raise StudyContractError(
             "the Z-table F runnable cell does not carry its canonical "
@@ -1521,15 +1595,17 @@ class CampaignScheduler:
             return
         item = planned[0]
         baseline = self.catalog.validation_baseline_cell(item.cell)
+        edges = incoming_agreement_edges(
+            item.cell,
+            catalog=self.catalog,
+        )
         dependencies = (
-            *((baseline,) if baseline is not None else ()),
             *(
-                edge.baseline
-                for edge in incoming_agreement_edges(
-                    item.cell,
-                    catalog=self.catalog,
-                )
+                (baseline,)
+                if validation_baseline_is_required(item.cell, baseline)
+                else ()
             ),
+            *(edge.baseline for edge in edges if edge.required),
         )
         missing = tuple(
             dependency.cell_id
@@ -2318,13 +2394,30 @@ class CampaignScheduler:
                 if planned.baseline_cell_id is None
                 else self.catalog.cell(planned.baseline_cell_id)
             )
+            optional_baseline = (
+                None
+                if planned.optional_baseline_cell_id is None
+                else self.catalog.cell(planned.optional_baseline_cell_id)
+            )
+            required_dependency_ids = {
+                dependency_id
+                for dependency_id in (
+                    planned.baseline_cell_id,
+                    *planned.comparison_peer_ids,
+                )
+                if dependency_id is not None
+            }
             dependency_cells = {
                 dependency.cell_id: dependency
                 for dependency in (
                     *((baseline,) if baseline is not None else ()),
+                    *((optional_baseline,) if optional_baseline is not None else ()),
                     *(
                         self.catalog.cell(peer_cell_id)
-                        for peer_cell_id in planned.comparison_peer_ids
+                        for peer_cell_id in (
+                            *planned.comparison_peer_ids,
+                            *planned.optional_comparison_peer_ids,
+                        )
                     ),
                 )
             }
@@ -2338,9 +2431,12 @@ class CampaignScheduler:
                     dependency,
                     comparison_dependency=True,
                 )
-                if current_dependency is None:
+                if (
+                    current_dependency is None
+                    and dependency.cell_id in required_dependency_ids
+                ):
                     missing_dependency_ids.append(dependency.cell_id)
-                else:
+                elif current_dependency is not None:
                     dependency_currents[dependency.cell_id] = current_dependency
             if missing_dependency_ids:
                 return self._publish_blocked_dependency(
@@ -2352,6 +2448,7 @@ class CampaignScheduler:
                 terminal_dependency_ids = tuple(
                     dependency_id
                     for dependency_id, (_record, state) in dependency_currents.items()
+                    if dependency_id in required_dependency_ids
                     if state is not PolicyMeasurementState.SUCCESS
                 )
                 if terminal_dependency_ids:
@@ -2364,6 +2461,21 @@ class CampaignScheduler:
                 _partition_dependency_records(
                     baseline_cell_id=(None if baseline is None else baseline.cell_id),
                     comparison_peer_ids=planned.comparison_peer_ids,
+                    optional_baseline_cell_id=(
+                        None
+                        if optional_baseline is None
+                        else optional_baseline.cell_id
+                    ),
+                    optional_comparison_peer_ids=(
+                        planned.optional_comparison_peer_ids
+                    ),
+                    baseline_fallback_peer_ids=tuple(
+                        peer.cell_id
+                        for peer in validation_baseline_fallback_peers(
+                            cell,
+                            catalog=self.catalog,
+                        )
+                    ),
                     currents=dependency_currents,
                 )
             )

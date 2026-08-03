@@ -18,7 +18,9 @@ from tools.performance_report.agreements import (
     DIRECT_AGREEMENT_FIELD,
     LC_COMMON_COMPONENT_ABI,
     LC_COMMON_COMPONENT_FIELD,
+    LC_LEGACY_PYAMPLICOL_COMPONENT,
     agreement_edges,
+    attach_direct_agreements,
 )
 from tools.performance_report.arena_profile import (
     ARENA_PHASE_TIMING_SCOPE,
@@ -36,6 +38,7 @@ from tools.performance_report.cache import (
     empty_measurement,
     reset_entry,
 )
+from tools.performance_report.campaign_policy import PolicyMeasurementState
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.final_audit import (
     ArtifactEvidence,
@@ -43,6 +46,7 @@ from tools.performance_report.final_audit import (
     _active_runtime_snapshot,
     _artifact_reference,
     _audit_compiled_execution,
+    _audit_direct_agreements,
     _audit_eager_execution,
     _audit_measurement,
     _audit_model_source,
@@ -50,17 +54,21 @@ from tools.performance_report.final_audit import (
     _audit_pointwise,
     _audit_recurrence_execution,
     _audit_recurrence_source_pack,
+    _audit_replayed_direct_agreements,
     _audit_runtime_identity,
     _audit_tex_table_reachability,
     _audit_unavailable_execution_timing,
     _authenticated_effective_config,
     _catalog_static_na_projection_errors,
+    _count_contract_matches_with_optional_category,
     _ensure_exact_cli_python,
+    _legacy_consumer_coverage,
     _python_package_tree_identity,
     _real_nonnegative,
     _runtime_for_measurement_source,
     _runtime_namespace_paths,
     _shared_artifact_contract,
+    _validation_baseline_for_audit,
     audit_final_report,
 )
 from tools.performance_report.measurement_lineage import (
@@ -115,6 +123,51 @@ def test_full_final_audit_distinguishes_declared_and_measurable_edge_totals() ->
     assert (
         sum(final_audit_module._EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS.values())
         == len(measurable_edges)
+    )
+
+
+@pytest.mark.parametrize(
+    ("expected", "optional_category"),
+    (
+        (
+            final_audit_module._EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS,
+            LC_LEGACY_PYAMPLICOL_COMPONENT,
+        ),
+        (
+            final_audit_module._EXPECTED_FULL_DIRECT_REPLAY_COUNTS,
+            final_audit_module._REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY,
+        ),
+    ),
+)
+def test_final_audit_count_contract_bounds_only_optional_legacy_category(
+    expected: Mapping[str, int],
+    optional_category: str,
+) -> None:
+    without_optional = dict(expected)
+    without_optional[optional_category] = 0
+    assert _count_contract_matches_with_optional_category(
+        without_optional,
+        expected,
+        optional_category=optional_category,
+    )
+
+    missing_required = dict(expected)
+    required_category = next(
+        category for category in expected if category != optional_category
+    )
+    missing_required[required_category] -= 1
+    assert not _count_contract_matches_with_optional_category(
+        missing_required,
+        expected,
+        optional_category=optional_category,
+    )
+
+    too_many_optional = dict(expected)
+    too_many_optional[optional_category] += 1
+    assert not _count_contract_matches_with_optional_category(
+        too_many_optional,
+        expected,
+        optional_category=optional_category,
     )
 
 
@@ -1589,6 +1642,9 @@ class _Catalog:
     def static_na_reason(self, _cell: CellSpec) -> None:
         return None
 
+    def legacy_reference_available(self, _cell: CellSpec) -> bool:
+        return True
+
 
 def _selector() -> dict[str, object]:
     return {
@@ -2216,6 +2272,267 @@ def test_recurrence_without_legacy_oracle_requires_high_precision_validation(
             expected_source_revision=_REVISION,
             expected_legacy_revision=_LEGACY_REVISION,
             active_runtime=_active_runtime(),
+        )
+
+
+@pytest.mark.parametrize(
+    "baseline_state",
+    tuple(
+        state
+        for state in PolicyMeasurementState
+        if state is not PolicyMeasurementState.SUCCESS
+    ),
+)
+def test_final_audit_omits_only_non_successful_optional_legacy_baseline(
+    tmp_path: Path,
+    baseline_state: PolicyMeasurementState,
+) -> None:
+    baseline = _legacy_cell()
+    candidate = replace(
+        _cell(ExecutionMode.RECURRENCE, optimization_level=2),
+        dataset_id="matrix_recurrence_builtin_sm_lc",
+    )
+    catalog = _Catalog(baseline, candidate)
+    baseline_measurement = _baseline_measurement()
+    candidate_measurement = _candidate_measurement(tmp_path)
+
+    assert (
+        _validation_baseline_for_audit(
+            candidate,
+            {
+                baseline.cell_id: baseline_measurement,
+                candidate.cell_id: candidate_measurement,
+            },
+            {baseline.cell_id: baseline_state},
+            catalog=catalog,  # type: ignore[arg-type]
+        )
+        is None
+    )
+    assert (
+        _validation_baseline_for_audit(
+            candidate,
+            {candidate.cell_id: candidate_measurement},
+            {},
+            catalog=catalog,  # type: ignore[arg-type]
+        )
+        is None
+    )
+
+
+def test_final_audit_consumes_successful_optional_legacy_baseline(
+    tmp_path: Path,
+) -> None:
+    baseline = _legacy_cell()
+    candidate = replace(
+        _cell(ExecutionMode.RECURRENCE, optimization_level=2),
+        dataset_id="matrix_recurrence_builtin_sm_lc",
+    )
+    catalog = _Catalog(baseline, candidate)
+    baseline_measurement = _baseline_measurement()
+    candidate_measurement = _candidate_measurement(tmp_path)
+
+    assert (
+        _validation_baseline_for_audit(
+            candidate,
+            {
+                baseline.cell_id: baseline_measurement,
+                candidate.cell_id: candidate_measurement,
+            },
+            {baseline.cell_id: PolicyMeasurementState.SUCCESS},
+            catalog=catalog,  # type: ignore[arg-type]
+        )
+        is baseline_measurement
+    )
+    with pytest.raises(FinalAuditError, match="successful optional baseline"):
+        _validation_baseline_for_audit(
+            candidate,
+            {candidate.cell_id: candidate_measurement},
+            {baseline.cell_id: PolicyMeasurementState.SUCCESS},
+            catalog=catalog,  # type: ignore[arg-type]
+        )
+
+
+def test_optional_endpoint_transition_preserves_stored_authority_route(
+    tmp_path: Path,
+) -> None:
+    baseline = _legacy_cell()
+    candidate = replace(
+        _cell(ExecutionMode.RECURRENCE, optimization_level=2),
+        dataset_id="matrix_recurrence_builtin_sm_lc",
+    )
+    catalog = _Catalog(baseline, candidate)
+    baseline_measurement = _baseline_measurement()
+    pointwise_measurement = _candidate_measurement(tmp_path)
+
+    assert (
+        _validation_baseline_for_audit(
+            candidate,
+            {
+                baseline.cell_id: baseline_measurement,
+                candidate.cell_id: pointwise_measurement,
+            },
+            {baseline.cell_id: PolicyMeasurementState.GENERATION_LIMIT},
+            catalog=catalog,  # type: ignore[arg-type]
+        )
+        is None
+    )
+    assert (
+        _audit_measurement(
+            candidate,
+            pointwise_measurement,
+            baseline=None,
+            expected_source_revision=_REVISION,
+            expected_legacy_revision=_LEGACY_REVISION,
+            active_runtime=_active_runtime(),
+        )
+        is not None
+    )
+    high_precision_measurement = deepcopy(pointwise_measurement)
+    validation = high_precision_measurement["validation"]
+    assert isinstance(validation, dict)
+    pointwise = validation.pop("pointwise")
+    assert isinstance(pointwise, dict)
+    pointwise["relative_tolerance"] = final_audit_module.RELATIVE_TOLERANCE
+    validation["high_precision"] = pointwise
+    assert (
+        _validation_baseline_for_audit(
+            candidate,
+            {
+                baseline.cell_id: baseline_measurement,
+                candidate.cell_id: high_precision_measurement,
+            },
+            {baseline.cell_id: PolicyMeasurementState.SUCCESS},
+            catalog=catalog,  # type: ignore[arg-type]
+        )
+        is None
+    )
+    assert (
+        _audit_measurement(
+            candidate,
+            high_precision_measurement,
+            baseline=None,
+            expected_source_revision=_REVISION,
+            expected_legacy_revision=_LEGACY_REVISION,
+            active_runtime=_active_runtime(),
+        )
+        is not None
+    )
+    assert (
+        _legacy_consumer_coverage(
+            (baseline, candidate),
+            {
+                baseline.cell_id: baseline_measurement,
+                candidate.cell_id: high_precision_measurement,
+            },
+            {
+                baseline.cell_id: PolicyMeasurementState.SUCCESS,
+                candidate.cell_id: PolicyMeasurementState.SUCCESS,
+            },
+            catalog=catalog,  # type: ignore[arg-type]
+        )
+        == ()
+    )
+
+
+def test_stored_optional_legacy_agreement_survives_missing_current_endpoint(
+    tmp_path: Path,
+) -> None:
+    legacy_selected = _legacy_cell()
+    baseline = replace(legacy_selected, workload=Workload.ALL_FLOW)
+    candidate = replace(
+        _cell(ExecutionMode.RECURRENCE, optimization_level=2),
+        dataset_id="matrix_recurrence_builtin_sm_lc",
+        workload=Workload.ALL_FLOW,
+    )
+    selected = replace(candidate, workload=Workload.SELECTED_FLOW)
+
+    class DirectCatalog(_Catalog):
+        def measurement_cells(self) -> tuple[CellSpec, ...]:
+            return (legacy_selected, self.baseline, selected, self.candidate)
+
+    catalog = DirectCatalog(baseline, candidate)
+    baseline_measurement = _baseline_measurement(baseline.cell_id)
+    selected_measurement = _candidate_measurement(tmp_path / "selected")
+    selected_validation = selected_measurement["validation"]
+    assert isinstance(selected_validation, dict)
+    selected_validation[LC_COMMON_COMPONENT_FIELD] = _lc_common_component(
+        selected.cell_id
+    )
+    candidate_measurement = _candidate_measurement(tmp_path)
+    validation = candidate_measurement["validation"]
+    assert isinstance(validation, dict)
+    validation[LC_COMMON_COMPONENT_FIELD] = _lc_common_component(
+        candidate.cell_id
+    )
+    attach_direct_agreements(
+        candidate,
+        candidate_measurement,
+        {
+            baseline.cell_id: baseline_measurement,
+            selected.cell_id: selected_measurement,
+        },
+        catalog=catalog,  # type: ignore[arg-type]
+    )
+
+    edges, counts = _audit_direct_agreements(
+        (selected, candidate),
+        {
+            selected.cell_id: selected_measurement,
+            candidate.cell_id: candidate_measurement,
+        },
+        catalog=catalog,  # type: ignore[arg-type]
+    )
+
+    assert len(edges) == 2
+    assert counts[LC_LEGACY_PYAMPLICOL_COMPONENT] == 1
+    replay_counts = _audit_replayed_direct_agreements(
+        edges,
+        {
+            selected.cell_id: selected_measurement,
+            candidate.cell_id: candidate_measurement,
+        },
+        {
+            selected.cell_id: final_audit_module._ReplayObservation(
+                matrix_element=1.0,
+                resolved_maximum_absolute=0.0,
+                resolved_maximum_relative=0.0,
+                lc_common_component=1.0,
+            ),
+            candidate.cell_id: final_audit_module._ReplayObservation(
+                matrix_element=1.0,
+                resolved_maximum_absolute=0.0,
+                resolved_maximum_relative=0.0,
+                lc_common_component=1.0,
+            )
+        },
+    )
+    assert replay_counts[
+        final_audit_module._REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY
+    ] == 1
+
+
+@pytest.mark.parametrize(
+    "execution_mode",
+    (ExecutionMode.COMPILED, ExecutionMode.EAGER),
+)
+def test_final_audit_keeps_recurrence_authority_required(
+    tmp_path: Path,
+    execution_mode: ExecutionMode,
+) -> None:
+    recurrence = _cell(ExecutionMode.RECURRENCE, optimization_level=2)
+    candidate = _cell(execution_mode, optimization_level=2)
+    catalog = _Catalog(recurrence, candidate)
+    candidate_measurement = _candidate_measurement(tmp_path)
+
+    with pytest.raises(FinalAuditError, match="required canonical baseline"):
+        _validation_baseline_for_audit(
+            candidate,
+            {
+                recurrence.cell_id: {},
+                candidate.cell_id: candidate_measurement,
+            },
+            {recurrence.cell_id: PolicyMeasurementState.GENERATION_LIMIT},
+            catalog=catalog,  # type: ignore[arg-type]
         )
 
 

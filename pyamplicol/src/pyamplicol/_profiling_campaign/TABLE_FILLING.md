@@ -27,11 +27,16 @@ when those bindings are present, notably in a contributor checkout prepared
 with `just dev-install`; without them it exits with an actionable instruction.
 
 PyAmpliCol-only dry runs and measurements do not need a legacy checkout.
-Selections whose planned dependency closure includes original AmpliCol require
-`run --original-amplicol PATH`; `PATH` must be a clean, complete checkout
-exposing the PR #12 probe sources and Make targets. The
-`amplicol_with_patches` branch works now, and a compatible upstream revision
-will work unchanged after the PR is merged.
+Recurrence, compiled, and eager cells run independently when their original-
+AmpliCol comparison is absent or terminal; the tables show their absolute
+timings without an unavailable multiplier. Select that mode explicitly with
+`--generation-engine recurrence compiled eager`. Omitted engine selection and
+quoted `*` mean every engine, so a broad/default selection includes original
+AmpliCol unless another selector excludes it. A selection that includes
+`amplicol` requires `run --original-amplicol PATH`; `PATH` must be a clean,
+complete checkout exposing the PR #12 probe sources and Make targets.
+The `amplicol_with_patches` branch works now, and a compatible upstream
+revision will work unchanged after the PR is merged.
 Pass `--local-amplicol PATH` to the initial `profiling-campaign copy` command
 to store that checkout as the copied campaign's default; an explicit
 `run --original-amplicol PATH` still overrides it.

@@ -8,6 +8,13 @@ from pathlib import Path
 import pytest
 
 import tools.performance_report.render as report_render
+from tools.performance_report.agreements import (
+    DIRECT_AGREEMENT_ABI,
+    LC_COMMON_COMPONENT_ABI,
+    LC_COMMON_COMPONENT_FIELD,
+    STRICT_ABSOLUTE_TOLERANCE,
+    incoming_agreement_edges,
+)
 from tools.performance_report.arena_profile import (
     ARENA_PHASE_TIMING_SCOPE,
     ARENA_PROFILE_BOUNDARY,
@@ -125,7 +132,85 @@ def _set_ok(
         and item["workload"] == workload.value
         and item["variant"] == variant
     )
-    entry["measurement"] = {
+    cell = REPORT_CATALOG.cell(str(entry["cell_id"]))
+    entry["measurement"] = _ok_measurement(
+        cell,
+        generation=generation,
+        wall=wall,
+        execution=execution,
+    )
+
+
+_TEST_SELECTOR_CONTRACT = {
+    "all_flow_helicity_ids": ["h:test"],
+    "all_flow_source_helicities": {"1": 1},
+    "point_digest": "0" * 64,
+    "selected_color_flow_ids": ["flow:test"],
+    "selected_color_words": [[1]],
+}
+
+
+def _ok_measurement(
+    cell,
+    *,
+    generation: float,
+    wall: float,
+    execution: float | None,
+) -> dict[str, object]:
+    selector = (
+        copy.deepcopy(_TEST_SELECTOR_CONTRACT)
+        if cell.measurement.accuracy is Accuracy.LC
+        else None
+    )
+    direct_agreements = [
+        {
+            "abi": DIRECT_AGREEMENT_ABI,
+            "edge_kind": edge.kind,
+            "value_kind": edge.value_kind,
+            "baseline_cell_id": edge.baseline.cell_id,
+            "candidate_cell_id": cell.cell_id,
+            "status": ResultStatus.OK.value,
+            "candidate": 1.0,
+            "baseline": 1.0,
+            "absolute_difference": 0.0,
+            "relative_difference": 0.0,
+            "relative_tolerance": edge.relative_tolerance,
+            "absolute_tolerance": STRICT_ABSOLUTE_TOLERANCE,
+        }
+        for edge in incoming_agreement_edges(cell)
+    ]
+    validation: dict[str, object] = {
+        "status": ResultStatus.OK.value,
+        "pointwise": {
+            "status": ResultStatus.OK.value,
+            "candidate": 1.0,
+            "baseline": 1.0,
+            "absolute_difference": 0.0,
+            "relative_difference": 0.0,
+            "relative_tolerance": 1.0e-8,
+            "absolute_tolerance": 1.0e-15,
+        },
+        "high_precision": {
+            "status": ResultStatus.OK.value,
+            "candidate": 1.0,
+            "baseline": 1.0,
+            "absolute_difference": 0.0,
+            "relative_difference": 0.0,
+            "relative_tolerance": 1.0e-12,
+            "absolute_tolerance": 1.0e-15,
+        },
+        "direct_agreements": direct_agreements,
+    }
+    if selector is not None:
+        validation[LC_COMMON_COMPONENT_FIELD] = {
+            "abi": LC_COMMON_COMPONENT_ABI,
+            "cell_id": cell.cell_id,
+            "value": 1.0,
+            "point_digest": selector["point_digest"],
+            "helicity_ids": selector["all_flow_helicity_ids"],
+            "color_flow_ids": selector["selected_color_flow_ids"],
+        }
+    return {
         "status": ResultStatus.OK.value,
         "generation_seconds": generation,
         "wall_seconds_per_point": wall,
@@ -135,8 +220,8 @@ def _set_ok(
         "standard_error_seconds_per_point": 1.0e-9,
         "relative_standard_error": 0.01,
         "artifact": {"digest": "artifact"},
-        "selector_contract": {"digest": "selector"},
-        "validation": {"status": ResultStatus.OK.value},
+        "selector_contract": selector,
+        "validation": validation,
         "resources": {"peak_rss_gib": 1.0},
         "provenance": {"source": "test"},
         "failure": None,
@@ -345,28 +430,12 @@ def _fill_visible_scope(
             cell = REPORT_CATALOG.cell(str(entry["cell_id"]))
             if REPORT_CATALOG.static_na_reason(cell) is not None:
                 continue
-            entry["measurement"] = {
-                "status": ResultStatus.OK.value,
-                "generation_seconds": 1.0,
-                "wall_seconds_per_point": 2.0e-6,
-                "execution_seconds_per_point": 1.0e-6,
-                "matrix_element": 1.0,
-                "sample_count": 5,
-                "standard_error_seconds_per_point": 1.0e-9,
-                "relative_standard_error": 0.01,
-                "artifact": {"digest": "artifact"},
-                "selector_contract": {"digest": "selector"},
-                "validation": {
-                    "status": ResultStatus.OK.value,
-                    "high_precision": {
-                        "status": ResultStatus.OK.value,
-                        "relative_difference": 0.0,
-                    },
-                },
-                "resources": {"peak_rss_gib": 1.0},
-                "provenance": {"source": "test"},
-                "failure": None,
-            }
+            entry["measurement"] = _ok_measurement(
+                cell,
+                generation=1.0,
+                wall=2.0e-6,
+                execution=1.0e-6,
+            )
 
 
 def _fill_visible_n4_scope(caches: dict[str, dict[str, object]]) -> None:
@@ -1492,10 +1561,12 @@ def test_best_mode_success_wins_over_generic_presentation_outcomes(
         if line.startswith(r" &  & \textcolor{ReportMuted}{\scriptsize run")
     )
 
-    assert r"\bestmodecodeprefix{c}" in generation_row
-    assert r"\bestmoderatio{ReportGreen}{0.400}" in generation_row
-    assert r"\bestmodewallratio{ReportGreen}{0.100}" in runtime_row
-    assert r"\bestmodemix{r:0|c:1|e:0}" in tex
+    assert r"\bestmodecode{c}" in generation_row
+    assert r"\bestmodeabsoluteprefix{\texttt{4.00}}" in generation_row
+    assert r"\bestmodeabsoluteprefix{\texttt{1.00}}" in runtime_row
+    assert r"\bestmoderatio{" not in generation_row
+    assert r"\bestmodewallratio{" not in runtime_row
+    assert r"\bestmodemix{r:0|c:1|e:0}" not in tex
     assert r"\matrixstatus{ReportRed}{error}" not in tex
     assert r"\matrixstatus{ReportRed}{blocked dependency}" not in tex
 
@@ -1670,9 +1741,18 @@ def test_best_mode_terminal_baselines_are_visibly_complete(
             )
 
     tex = render_best_mode_table(Accuracy.NLC, caches)
-    row = next(line for line in tex.splitlines() if line.startswith(r"\texttt{1}"))
+    lines = tex.splitlines()
+    row_index = next(
+        index for index, line in enumerate(lines) if line.startswith(r"\texttt{1}")
+    )
+    generation_row = lines[row_index]
+    runtime_row = lines[row_index + 2]
     marker = r"\matrixstatus{ReportOrange}{>80GB}"
-    assert row.count(marker) >= 2
+    assert generation_row.count(marker) == 1
+    assert runtime_row.count(marker) == 1
+    assert r"\bestmodeabsoluteprefix{\texttt{1.00}}" in generation_row
+    assert r"\bestmodecode{r}" in generation_row
+    assert r"\bestmodeabsoluteprefix{\texttt{2.00}}" in runtime_row
     generation_summary = next(
         line for line in tex.splitlines() if r"\textbf{summary: generation}" in line
     )
@@ -1681,9 +1761,609 @@ def test_best_mode_terminal_baselines_are_visibly_complete(
     )
     assert marker in generation_summary
     assert marker in wall_summary
-    assert r"\matrixna{ReportMuted}" not in row
+    assert r"\matrixna{ReportMuted}" not in generation_row
+    assert r"\matrixna{ReportMuted}" not in runtime_row
     assert r"\matrixna{ReportMuted}" not in generation_summary
     assert r"\matrixna{ReportMuted}" not in wall_summary
+
+
+@pytest.mark.parametrize(
+    ("accuracy", "workloads"),
+    (
+        (Accuracy.LC, (Workload.SELECTED_FLOW, Workload.ALL_FLOW)),
+        (Accuracy.NLC, (Workload.CONTRACTED,)),
+        (Accuracy.FULL, (Workload.CONTRACTED,)),
+    ),
+)
+def test_recurrence_renders_absolute_when_amplicol_baseline_is_terminal(
+    reset_caches,
+    accuracy: Accuracy,
+    workloads: tuple[Workload, ...],
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    baseline = _cache_by_dataset(caches, f"reference_amplicol_{accuracy.value}")
+    candidate = _cache_by_dataset(
+        caches,
+        f"matrix_recurrence_builtin_sm_{accuracy.value}",
+    )
+    for index, workload in enumerate(workloads):
+        baseline_entry = _entry(
+            baseline,
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=workload,
+        )
+        baseline_entry["measurement"] = _memory_censor(
+            REPORT_CATALOG.cell(str(baseline_entry["cell_id"]))
+        )
+        _set_ok(
+            candidate,
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=workload,
+            generation=4.0 + 6.0 * index,
+            wall=(2.0 + index) * 1.0e-6,
+            execution=(1.0 + 0.5 * index) * 1.0e-6,
+        )
+
+    dataset = next(
+        item
+        for item in REPORT_CATALOG.matrix_datasets
+        if item.dataset_id
+        == f"matrix_recurrence_builtin_sm_{accuracy.value}"
+    )
+    marker = r"\matrixstatus{ReportOrange}{>80GB}"
+    for tex, best_mode in (
+        (render_matrix_table(dataset, caches), False),
+        (render_best_mode_table(accuracy, caches), True),
+    ):
+        lines = tex.splitlines()
+        row_index = next(
+            index
+            for index, line in enumerate(lines)
+            if line.startswith(r"\texttt{1}")
+        )
+        generation_row = lines[row_index]
+        runtime_row = lines[row_index + 2]
+        assert generation_row.count(marker) == len(workloads)
+        assert runtime_row.count(marker) == len(workloads)
+        assert generation_row.count(r"\bestmodeabsoluteprefix{") == len(workloads)
+        assert runtime_row.count(r"\bestmodeabsoluteprefix{") == len(workloads)
+        assert r"\bestmodeabsoluteprefix{\texttt{4.00}}" in generation_row
+        assert r"\bestmodeabsoluteprefix{\texttt{2.00}}" in runtime_row
+        assert r"\bestmoderatio{" not in generation_row
+        assert r"\bestmodeprimaryratio{" not in runtime_row
+        if best_mode:
+            assert generation_row.count(r"\bestmodecode{r}") == len(workloads)
+
+    best_tex = render_best_mode_table(accuracy, caches)
+    generation_summary = next(
+        line
+        for line in best_tex.splitlines()
+        if r"\textbf{summary: generation}" in line
+    )
+    wall_summary = next(
+        line
+        for line in best_tex.splitlines()
+        if "summary: run" in line or r"\textbf{summary: wall}" in line
+    )
+    assert marker in generation_summary
+    assert marker in wall_summary
+    assert r"\matrixsummarystats{" not in generation_summary
+    assert r"\matrixsummarystats{" not in wall_summary
+
+
+def test_recurrence_renders_absolute_when_amplicol_was_not_run(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    candidate = _cache_by_dataset(caches, "matrix_recurrence_builtin_sm_nlc")
+    _set_ok(
+        candidate,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=4.0,
+        wall=2.0e-6,
+        execution=1.0e-6,
+    )
+    dataset = next(
+        item
+        for item in REPORT_CATALOG.matrix_datasets
+        if item.dataset_id == "matrix_recurrence_builtin_sm_nlc"
+    )
+
+    for tex in (
+        render_matrix_table(dataset, caches),
+        render_best_mode_table(Accuracy.NLC, caches),
+    ):
+        lines = tex.splitlines()
+        row_index = next(
+            index
+            for index, line in enumerate(lines)
+            if line.startswith(r"\texttt{1}")
+        )
+        generation_row = lines[row_index]
+        runtime_row = lines[row_index + 2]
+        assert r"\matrixstatus{ReportMuted}{N/A}" in generation_row
+        assert r"\matrixstatus{ReportMuted}{N/A}" in runtime_row
+        assert r"\bestmodeabsoluteprefix{\texttt{4.00}}" in generation_row
+        assert r"\bestmodeabsoluteprefix{\texttt{2.00}}" in runtime_row
+        assert r"\bestmoderatio{" not in generation_row
+        assert r"\bestmodeprimaryratio{" not in runtime_row
+
+
+def test_later_amplicol_current_does_not_retroactively_link_recurrence(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    recurrence = _cache_by_dataset(caches, "matrix_recurrence_builtin_sm_nlc")
+    reference = _cache_by_dataset(caches, "reference_amplicol_nlc")
+    _set_ok(
+        recurrence,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=4.0,
+        wall=2.0e-6,
+        execution=1.0e-6,
+    )
+    recurrence_measurement = _entry(
+        recurrence,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+    )["measurement"]
+    assert isinstance(recurrence_measurement, dict)
+    validation = recurrence_measurement["validation"]
+    assert isinstance(validation, dict)
+    validation.pop("pointwise")
+    _set_ok(
+        reference,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=10.0,
+        wall=10.0e-6,
+        execution=None,
+    )
+
+    dataset = REPORT_CATALOG.dataset("matrix_recurrence_builtin_sm_nlc")
+    view = BaselineCandidateAdapter(caches).matrix_cell(
+        dataset,
+        REPORT_CATALOG.process_families[0],
+        1,
+    )
+    assert not view.workloads[0].comparison_linked
+    tex = render_matrix_table(dataset, caches)
+    generation_row = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith(r"\texttt{1}")
+    )
+    assert r"\bestmodeabsoluteprefix{\texttt{4.00}}" in generation_row
+    assert r"\bestmoderatio{" not in generation_row
+    generation_summary = next(
+        line
+        for line in tex.splitlines()
+        if r"\textbf{summary: generation}" in line
+    )
+    assert r"\matrixsummarystats{" not in generation_summary
+    assert r"\matrixna{ReportMuted}" in generation_summary
+    assert "unlinked baselines keep their status" in tex
+
+
+@pytest.mark.parametrize("mode", (ExecutionMode.COMPILED, ExecutionMode.EAGER))
+@pytest.mark.parametrize("broken_chain", (False, True))
+def test_best_dag_ratio_requires_exact_transitive_amplicol_link(
+    reset_caches,
+    mode: ExecutionMode,
+    broken_chain: bool,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    reference = _cache_by_dataset(caches, "reference_amplicol_nlc")
+    recurrence = _cache_by_dataset(caches, "matrix_recurrence_builtin_sm_nlc")
+    candidate = _cache_by_dataset(
+        caches,
+        f"matrix_{mode.value}_builtin_sm_nlc",
+    )
+    for cache, generation, wall in (
+        (reference, 10.0, 10.0e-6),
+        (recurrence, 6.0, 3.0e-6),
+        (candidate, 2.0, 1.0e-6),
+    ):
+        _set_ok(
+            cache,
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=Workload.CONTRACTED,
+            generation=generation,
+            wall=wall,
+            execution=wall,
+        )
+    if broken_chain:
+        recurrence_measurement = _entry(
+            recurrence,
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=Workload.CONTRACTED,
+        )["measurement"]
+        assert isinstance(recurrence_measurement, dict)
+        validation = recurrence_measurement["validation"]
+        assert isinstance(validation, dict)
+        pointwise = validation["pointwise"]
+        assert isinstance(pointwise, dict)
+        pointwise["baseline"] = 2.0
+
+    view = BaselineCandidateAdapter(caches).best_mode_cell(
+        Accuracy.NLC,
+        REPORT_CATALOG.process_families[0],
+        1,
+    )
+    assert view.workloads[0].mode is mode
+    assert view.workloads[0].comparison_linked is not broken_chain
+    generation_row = next(
+        line
+        for line in render_best_mode_table(Accuracy.NLC, caches).splitlines()
+        if line.startswith(r"\texttt{1}")
+    )
+    if broken_chain:
+        assert r"\bestmodeabsoluteprefix{\texttt{2.00}}" in generation_row
+        assert r"\bestmoderatio{" not in generation_row
+    else:
+        assert r"\bestmoderatio{ReportGreen}{0.200}" in generation_row
+        assert r"\bestmodeabsoluteprefix{\texttt{2.00}}" not in generation_row
+
+
+@pytest.mark.parametrize("broken_selector", (False, True))
+def test_direct_pointwise_link_requires_exact_selector(
+    reset_caches,
+    broken_selector: bool,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    reference = _cache_by_dataset(caches, "reference_amplicol_lc")
+    recurrence = _cache_by_dataset(caches, "matrix_recurrence_builtin_sm_lc")
+    for cache, generation in ((reference, 10.0), (recurrence, 4.0)):
+        _set_ok(
+            cache,
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=Workload.SELECTED_FLOW,
+            generation=generation,
+            wall=generation * 1.0e-6,
+            execution=1.0e-6,
+        )
+    if broken_selector:
+        measurement = _entry(
+            recurrence,
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=Workload.SELECTED_FLOW,
+        )["measurement"]
+        assert isinstance(measurement, dict)
+        selector = measurement["selector_contract"]
+        assert isinstance(selector, dict)
+        selector["point_digest"] = "1" * 64
+
+    dataset = REPORT_CATALOG.dataset("matrix_recurrence_builtin_sm_lc")
+    view = BaselineCandidateAdapter(caches).matrix_cell(
+        dataset,
+        REPORT_CATALOG.process_families[0],
+        1,
+    )
+    assert view.workloads[0].comparison_linked is not broken_selector
+    generation_row = next(
+        line
+        for line in render_matrix_table(dataset, caches).splitlines()
+        if line.startswith(r"\texttt{1}")
+    )
+    if broken_selector:
+        assert r"\bestmodeabsoluteprefix{\texttt{4.00}}" in generation_row
+        assert r"\bestmoderatio{" not in generation_row
+    else:
+        assert r"\bestmoderatio{ReportGreen}{0.400}" in generation_row
+
+
+@pytest.mark.parametrize("broken_component", (False, True))
+def test_direct_agreement_link_requires_exact_component_identity(
+    reset_caches,
+    broken_component: bool,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    reference = _cache_by_dataset(caches, "reference_amplicol_lc")
+    recurrence = _cache_by_dataset(caches, "matrix_recurrence_builtin_sm_lc")
+    for cache, generation in ((reference, 10.0), (recurrence, 4.0)):
+        _set_ok(
+            cache,
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=Workload.ALL_FLOW,
+            generation=generation,
+            wall=generation * 1.0e-6,
+            execution=1.0e-6,
+        )
+    if broken_component:
+        measurement = _entry(
+            recurrence,
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=Workload.ALL_FLOW,
+        )["measurement"]
+        assert isinstance(measurement, dict)
+        validation = measurement["validation"]
+        assert isinstance(validation, dict)
+        component = validation[LC_COMMON_COMPONENT_FIELD]
+        assert isinstance(component, dict)
+        component["color_flow_ids"] = ["flow:other"]
+
+    dataset = REPORT_CATALOG.dataset("matrix_recurrence_builtin_sm_lc")
+    view = BaselineCandidateAdapter(caches).matrix_cell(
+        dataset,
+        REPORT_CATALOG.process_families[0],
+        1,
+    )
+    assert view.workloads[1].comparison_linked is not broken_component
+    lines = render_matrix_table(dataset, caches).splitlines()
+    row_index = next(
+        index for index, line in enumerate(lines) if line.startswith(r"\texttt{1}")
+    )
+    runtime_row = lines[row_index + 2]
+    if broken_component:
+        assert r"\bestmodeabsoluteprefix{\texttt{4.00}}" in runtime_row
+        assert r"\bestmodeprimaryratio{" not in runtime_row
+    else:
+        assert r"\bestmodeprimaryratio{ReportGreen}{0.400}" in runtime_row
+
+
+@pytest.mark.parametrize("mode", (ExecutionMode.COMPILED, ExecutionMode.EAGER))
+def test_fixed_compiled_and_eager_preserve_terminal_recurrence_baseline(
+    reset_caches,
+    mode: ExecutionMode,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    baseline = _cache_by_dataset(caches, "matrix_recurrence_builtin_sm_nlc")
+    candidate = _cache_by_dataset(
+        caches,
+        f"matrix_{mode.value}_builtin_sm_nlc",
+    )
+    baseline_entry = _entry(
+        baseline,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+    )
+    baseline_entry["measurement"] = _memory_censor(
+        REPORT_CATALOG.cell(str(baseline_entry["cell_id"]))
+    )
+    _set_ok(
+        candidate,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=4.0,
+        wall=2.0e-6,
+        execution=1.0e-6,
+    )
+    dataset = next(
+        item
+        for item in REPORT_CATALOG.matrix_datasets
+        if item.dataset_id == f"matrix_{mode.value}_builtin_sm_nlc"
+    )
+
+    lines = render_matrix_table(dataset, caches).splitlines()
+    row_index = next(
+        index for index, line in enumerate(lines) if line.startswith(r"\texttt{1}")
+    )
+    marker = r"\matrixstatus{ReportOrange}{>80GB}"
+    assert lines[row_index].count(marker) == 1
+    assert lines[row_index + 2].count(marker) == 1
+    assert r"\bestmodeabsoluteprefix{\texttt{4.00}}" in lines[row_index]
+    assert r"\bestmodeabsoluteprefix{\texttt{2.00}}" in lines[row_index + 2]
+
+
+@pytest.mark.parametrize(
+    ("mode", "code"),
+    ((ExecutionMode.COMPILED, "c"), (ExecutionMode.EAGER, "e")),
+)
+def test_best_compiled_and_eager_render_absolute_without_amplicol_baseline(
+    reset_caches,
+    mode: ExecutionMode,
+    code: str,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    candidate = _cache_by_dataset(
+        caches,
+        f"matrix_{mode.value}_builtin_sm_nlc",
+    )
+    _set_ok(
+        candidate,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=4.0,
+        wall=2.0e-6,
+        execution=1.0e-6,
+    )
+
+    lines = render_best_mode_table(Accuracy.NLC, caches).splitlines()
+    row_index = next(
+        index for index, line in enumerate(lines) if line.startswith(r"\texttt{1}")
+    )
+    assert r"\matrixstatus{ReportMuted}{N/A}" in lines[row_index]
+    assert r"\matrixstatus{ReportMuted}{N/A}" in lines[row_index + 2]
+    assert r"\bestmodeabsoluteprefix{\texttt{4.00}}" in lines[row_index]
+    assert rf"\bestmodecode{{{code}}}" in lines[row_index]
+    assert r"\bestmodeabsoluteprefix{\texttt{2.00}}" in lines[row_index + 2]
+    assert r"\bestmoderatio{" not in lines[row_index]
+    assert r"\bestmodeprimaryratio{" not in lines[row_index + 2]
+
+
+@pytest.mark.parametrize(
+    ("variant", "setup", "execution_mode"),
+    (
+        ("recurrence_jit_o2", "recurrence JIT O2", "recurrence"),
+        ("jit_o3", "compiled JIT O3", "compiled"),
+        ("eager_jit_o2", "eager-DAG JIT O2", "eager"),
+    ),
+)
+def test_z_pyamplicol_renders_all_clocks_absolute_without_amplicol_baseline(
+    reset_caches,
+    variant: str,
+    setup: str,
+    execution_mode: str,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    baseline = _cache_by_dataset(caches, "reference_amplicol_lc")
+    candidate = _cache_by_dataset(caches, "z_builtin_sm")
+    for index, workload in enumerate(
+        (Workload.SELECTED_FLOW, Workload.ALL_FLOW)
+    ):
+        baseline_entry = _entry(
+            baseline,
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=workload,
+        )
+        baseline_entry["measurement"] = _memory_censor(
+            REPORT_CATALOG.cell(str(baseline_entry["cell_id"]))
+        )
+        _set_ok(
+            candidate,
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=workload,
+            generation=4.0 + 6.0 * index,
+            wall=(2.0 + index) * 1.0e-6,
+            execution=(1.0 + 0.5 * index) * 1.0e-6,
+            variant=variant,
+        )
+        candidate_entry = _entry(
+            candidate,
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=workload,
+            variant=variant,
+        )
+        measurement = candidate_entry["measurement"]
+        assert isinstance(measurement, dict)
+        _mark_evaluator_total(
+            measurement,
+            execution_mode=execution_mode,
+            total=(1.7 + index) * 1.0e-6,
+        )
+
+    tex = render_z_ladder(ModelKey.BUILTIN_SM, caches)
+    reference_row = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith(r"1 & \AC{} reference")
+    )
+    candidate_row = next(
+        line
+        for line in tex.splitlines()
+        if line.startswith(f"1 & {setup}")
+    )
+    assert reference_row.count(r"\matrixstatus{ReportOrange}{>80GB}") == 4
+    assert candidate_row.count(r"\matrixncabsolute{") == 6
+    assert r"\matrixratio{" not in candidate_row
+    assert r"\matrixnaratio{" not in candidate_row
+    assert "successful pyAmpliCol values are absolute" in tex
+
+
+@pytest.mark.parametrize(
+    ("variant", "setup", "execution_mode"),
+    (
+        ("jit_o3", "compiled JIT O3", ExecutionMode.COMPILED),
+        ("eager_jit_o2", "eager-DAG JIT O2", ExecutionMode.EAGER),
+    ),
+)
+@pytest.mark.parametrize("broken_chain", (False, True))
+def test_z_dag_ratio_accepts_only_exact_recurrence_to_amplicol_chain(
+    reset_caches,
+    variant: str,
+    setup: str,
+    execution_mode: ExecutionMode,
+    broken_chain: bool,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    reference = _cache_by_dataset(caches, "reference_amplicol_lc")
+    z_cache = _cache_by_dataset(caches, "z_builtin_sm")
+    _set_ok(
+        reference,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.SELECTED_FLOW,
+        generation=10.0,
+        wall=10.0e-6,
+        execution=None,
+    )
+    _set_ok(
+        z_cache,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.SELECTED_FLOW,
+        generation=6.0,
+        wall=3.0e-6,
+        execution=2.0e-6,
+        variant="recurrence_jit_o2",
+    )
+    _set_ok(
+        z_cache,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.SELECTED_FLOW,
+        generation=2.0,
+        wall=1.0e-6,
+        execution=0.8e-6,
+        variant=variant,
+    )
+    candidate = _entry(
+        z_cache,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.SELECTED_FLOW,
+        variant=variant,
+    )["measurement"]
+    recurrence = _entry(
+        z_cache,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.SELECTED_FLOW,
+        variant="recurrence_jit_o2",
+    )["measurement"]
+    assert isinstance(candidate, dict)
+    assert isinstance(recurrence, dict)
+    candidate_validation = candidate["validation"]
+    recurrence_validation = recurrence["validation"]
+    assert isinstance(candidate_validation, dict)
+    assert isinstance(recurrence_validation, dict)
+    assert isinstance(candidate_validation.get("pointwise"), dict)
+    if broken_chain:
+        recurrence_pointwise = recurrence_validation["pointwise"]
+        assert isinstance(recurrence_pointwise, dict)
+        recurrence_pointwise["baseline"] = 2.0
+
+    z_variant = next(item for item in REPORT_CATALOG.z_variants if item.key == variant)
+    joined = BaselineCandidateAdapter(caches).z_workload(
+        model=ModelKey.BUILTIN_SM,
+        n_final=1,
+        variant=z_variant,
+        workload=Workload.SELECTED_FLOW,
+    )
+    assert z_variant.execution_mode is execution_mode
+    assert joined.comparison_linked is not broken_chain
+    candidate_row = next(
+        line
+        for line in render_z_ladder(ModelKey.BUILTIN_SM, caches).splitlines()
+        if line.startswith(f"1 & {setup}")
+    )
+    if broken_chain:
+        assert candidate_row.startswith(
+            f"1 & {setup} & \\matrixncabsolute{{\\texttt{{2}}}}"
+        )
+        assert r"\matrixratio{" not in candidate_row
+    else:
+        assert r"\matrixratio{ReportGreen}{0.2}" in candidate_row
 
 
 def test_best_mode_missing_candidates_remain_incomplete_under_strict_policy(
@@ -2442,6 +3122,7 @@ def test_best_mode_uses_candidate_total_against_legacy_direct_or_wall(
 ) -> None:
     caches = copy.deepcopy(reset_caches)
     reference = _cache_by_dataset(caches, "reference_amplicol_nlc")
+    recurrence = _cache_by_dataset(caches, "matrix_recurrence_builtin_sm_nlc")
     candidate = _cache_by_dataset(
         caches,
         f"matrix_{execution_mode}_builtin_sm_nlc",
@@ -2454,6 +3135,15 @@ def test_best_mode_uses_candidate_total_against_legacy_direct_or_wall(
         generation=4.0,
         wall=2.0e-6,
         execution=legacy_execution,
+    )
+    _set_ok(
+        recurrence,
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.CONTRACTED,
+        generation=3.0,
+        wall=1.5e-6,
+        execution=1.2e-6,
     )
     _set_ok(
         candidate,
@@ -2746,7 +3436,7 @@ def test_four_line_recurrence_renders_absolute_values_without_legacy_oracle(
     assert tex.count(r"\texttt{2.00}") >= 2
     assert r"\matrixruntimetriple{" not in tex
     assert tex.count(r"\matrixstaticna{ReportMuted}") >= 2
-    assert "absolute quantities without a baseline ratio" in tex
+    assert "static N/A beyond three open quark lines" in tex
     assert "n.c." not in tex
 
 
@@ -2795,7 +3485,7 @@ def test_four_line_contracted_n6_renders_without_legacy_dependency(
         r"\bestmodeabsoluteprefix{\texttt{2.00}} & "
     ) in fixed_runtime_row
     assert r"\matrixstaticna{ReportMuted}" in tex
-    assert "absolute quantities without a baseline ratio" in tex
+    assert "static N/A beyond three open quark lines" in tex
     assert "n.c." not in tex
 
     best_tex = render_best_mode_table(Accuracy.FULL, caches)

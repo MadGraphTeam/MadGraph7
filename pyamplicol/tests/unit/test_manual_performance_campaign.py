@@ -355,8 +355,19 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
         "--cleanup-artifacts",
         "every heavy attempt payload is retained",
         "sealed with compact diagnostics",
+        "without an original-AmpliCol checkout",
+        "--generation-engine recurrence compiled eager",
+        "report shows its absolute",
+        "quoted `*`",
+        "broad/default selection includes AmpliCol",
     ):
         assert fragment in help_text
+    run_help = parser._subparsers._group_actions[0].choices["run"].format_help()
+    assert "recurrence, compiled, and eager selections run without" in run_help
+    assert "report absolute timings" in run_help
+    assert "Omitted or '*' engine" in run_help
+    assert "selection means all engines" in run_help
+    assert "broad/default selection" in run_help
     assert "--no-artifacts-removal" not in help_text
     arguments = _parse("run", "--dry-run")
     assert arguments.workers == 1
@@ -2598,6 +2609,93 @@ def test_run_campaign_recycle_paths_replace_failure_with_known_ok_tombstone(
     assert observed.attempt_id == current.attempt_id
 
 
+def test_cross_revision_continuation_recycles_ok_and_replans_blocked_cell(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _manual_service(tmp_path)
+    old_revision = "a" * 40
+    active_source = manual_campaign.ReportSourceIdentity("b" * 40, "c" * 40, ())
+    ok_cell = REPORT_CATALOG.cell(
+        "matrix-recurrence-builtin-sm-lc-n3-dd-z-jets-selected-flow"
+    )
+    blocked_cell = REPORT_CATALOG.cell(
+        "matrix-recurrence-builtin-sm-lc-n4-dd-ttzh-jets-selected-flow"
+    )
+
+    def historical(
+        cell: CellSpec,
+        *,
+        status: str,
+        reusable: bool,
+    ) -> LightweightCurrent:
+        return LightweightCurrent(
+            cell_id=cell.cell_id,
+            attempt_id=f"historical-{status}",
+            result_path=tmp_path / f"{cell.cell_id}.json",
+            result={
+                "status": status,
+                "provenance": {"report_source_revision": old_revision},
+            },
+            complete=reusable,
+            reusable=reusable,
+            reason=("historical source current" if reusable else "incomplete status"),
+        )
+
+    currents = {
+        ok_cell.cell_id: historical(ok_cell, status="ok", reusable=True),
+        blocked_cell.cell_id: historical(
+            blocked_cell,
+            status="skip",
+            reusable=False,
+        ),
+    }
+    planned = (
+        manual_campaign.PlannedCell(
+            blocked_cell,
+            dependency=False,
+            baseline_cell_id=None,
+            rank=0,
+            optional_baseline_cell_id=(
+                "reference-amplicol-lc-n4-dd-ttzh-jets-selected-flow"
+            ),
+        ),
+    )
+    _stub_run_campaign_boundaries(
+        monkeypatch,
+        tmp_path,
+        currents=currents,
+        planned=planned,
+        outcomes=(CellOutcome(blocked_cell.cell_id, "ok", "completed"),),
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "lightweight_currents",
+        lambda *_args, **kwargs: (
+            dict(currents) if kwargs.get("accept_historical_source") else {}
+        ),
+    )
+    requested: list[tuple[str, ...]] = []
+
+    def capture_plan(cells: tuple[CellSpec, ...], **_kwargs: object):
+        requested.append(tuple(cell.cell_id for cell in cells))
+        return planned
+
+    monkeypatch.setattr(manual_campaign, "plan_campaign", capture_plan)
+
+    return_code = manual_campaign._run_campaign(
+        _parse("run", "--continue-across-revisions", "--no-dashboard"),
+        repo_root=ROOT,
+        service=service,
+        source=active_source,
+        cells=(ok_cell, blocked_cell),
+        palette=manual_campaign.Palette(False),
+    )
+
+    assert return_code == 0
+    assert requested == [(blocked_cell.cell_id,)]
+
+
 def test_run_campaign_recycled_cap_does_not_erase_newer_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3928,6 +4026,92 @@ def test_installed_campaign_uses_copied_local_amplicol_and_explicit_override(
     assert arguments.original_amplicol == override
     assert arguments.original_amplicol_revision == "a" * 40
     assert observed == [configured, override]
+
+
+@pytest.mark.parametrize(
+    "cell_id",
+    (
+        "matrix-recurrence-builtin-sm-lc-n4-dd-ttzh-jets-all-flow",
+        "matrix-compiled-builtin-sm-lc-n4-dd-ttzh-jets-selected-flow",
+    ),
+)
+def test_pyamplicol_only_plan_and_binding_need_no_original_checkout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cell_id: str,
+) -> None:
+    docs_dir = tmp_path / "campaign"
+    docs_dir.mkdir()
+    service = _manual_service(tmp_path)
+    selected = REPORT_CATALOG.cell(cell_id)
+    planned = manual_campaign.plan_campaign(
+        (selected,),
+        store=service.store,
+        settings=manual_campaign.CampaignSettings(),
+    )
+
+    assert planned
+    assert all(
+        item.cell.measurement.execution_mode is not ExecutionMode.AMPLICOL
+        for item in planned
+    )
+    assert any(
+        item.optional_baseline_cell_id is not None
+        or item.optional_comparison_peer_ids
+        for item in planned
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "_validated_original_amplicol_checkout",
+        lambda _path: pytest.fail("pyAmpliCol-only plan validated legacy checkout"),
+    )
+    arguments = _parse(
+        "run",
+        "--generation-engine",
+        selected.measurement.execution_mode.value,
+    )
+
+    manual_campaign._bind_original_amplicol_if_required(
+        arguments,
+        planned,
+        installed=True,
+        root=tmp_path,
+        docs_dir=docs_dir,
+    )
+
+    assert arguments.original_amplicol is None
+    assert arguments.original_amplicol_revision is None
+
+
+def test_direct_or_wildcard_amplicol_selection_still_requires_checkout(
+    tmp_path: Path,
+) -> None:
+    docs_dir = tmp_path / "campaign"
+    docs_dir.mkdir()
+    legacy = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+        and REPORT_CATALOG.static_na_reason(cell) is None
+    )
+    planned = (manual_campaign.PlannedCell(legacy, False, None, 0),)
+
+    with pytest.raises(
+        ManualCampaignError,
+        match="selection requires original AmpliCol",
+    ):
+        manual_campaign._bind_original_amplicol_if_required(
+            _parse("run"),
+            planned,
+            installed=True,
+            root=tmp_path,
+            docs_dir=docs_dir,
+        )
+    _selection, wildcard_cells = selection_from_arguments(_parse("run", "--dry-run"))
+    assert any(
+        cell.measurement.execution_mode is ExecutionMode.AMPLICOL
+        for cell in wildcard_cells
+    )
 
 
 def test_saved_local_amplicol_is_not_validated_for_pyamplicol_only_work(

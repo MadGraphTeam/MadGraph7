@@ -7724,6 +7724,16 @@ visibly falls back to reuse-off while ordinary generation continues under the
 generation-time and 30-GB process-tree caps. Z-table C++/ASM variants above
 multiplicity six remain catalog-defined static N/A and create no attempts.
 
+Recurrence, compiled, and eager cells can run without original AmpliCol when
+those pyAmpliCol engines are selected explicitly. A missing or terminal legacy
+comparison then leaves the candidate runnable and the report shows its absolute
+timings without an AmpliCol multiplier. Selecting `amplicol` explicitly still
+requires a clean complete checkout. An omitted engine selector and quoted `*`
+both mean every engine, so a broad/default selection includes AmpliCol unless
+another selector excludes it. Use
+`--generation-engine recurrence compiled eager` to guarantee a pyAmpliCol-only
+campaign.
+
 Canonical selector values and aliases
 -------------------------------------
   tables: z_table (z), matrix, matrix_best, reference, scalar, or exact dataset
@@ -7763,6 +7773,10 @@ Common recipes
 
   Four workers, two cores each:
     steer_performance_campaign.py run --workers 4 --cores-per-worker 2
+
+  All pyAmpliCol engines without an original-AmpliCol checkout:
+    steer_performance_campaign.py run \\
+      --generation-engine recurrence compiled eager
 
   Recompute instead of reusing same-source currents:
     steer_performance_campaign.py run --force-refresh --table z_table
@@ -8032,8 +8046,12 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Clean, complete original-AmpliCol checkout containing the profiling "
             "interface from PR #12 (currently amplicol_with_patches; compatible "
-            "upstream revisions are accepted after merge). Required only when "
-            "the selected campaign closure contains original-AmpliCol cells."
+            "upstream revisions are accepted after merge). Required when the "
+            "direct selection includes the amplicol engine. Explicit recurrence, "
+            "compiled, and eager selections run without it and report absolute "
+            "timings when no successful legacy comparison exists. Omitted or '*' "
+            "engine selection means all engines, so a broad/default selection "
+            "also includes amplicol unless another selector excludes it."
         ),
     )
     profiling = run.add_argument_group("profiling hyperparameters")

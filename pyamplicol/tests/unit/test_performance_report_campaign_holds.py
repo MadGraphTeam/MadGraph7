@@ -194,7 +194,8 @@ def test_dependency_hold_becomes_eligible_after_every_prerequisite_is_ok(
     store = _store(tmp_path)
     target = _cell()
     prerequisites = catalog_prerequisite_closure(target)
-    assert len(prerequisites) == 2
+    assert len(prerequisites) == 1
+    assert prerequisites[0].measurement.execution_mode.value == "recurrence"
 
     before = _classify(store, _prior(target))[target.cell_id]
     assert before.eligible is False
@@ -305,15 +306,15 @@ def test_historical_hold_history_rejects_bad_digest_and_reason_tampering(
         _classify(store, {target.cell_id: tampered})
 
 
-def test_multilevel_closure_does_not_release_on_direct_prerequisite_only(
+def test_optional_amplicol_ancestor_does_not_hold_compiled_descendant(
     tmp_path: Path,
 ) -> None:
     store = _store(tmp_path)
     target = _cell()
     direct = REPORT_CATALOG.validation_baseline_cell(target)
     assert direct is not None
-    ancestor = REPORT_CATALOG.validation_baseline_cell(direct)
-    assert ancestor is not None
+    optional_ancestor = REPORT_CATALOG.validation_baseline_cell(direct)
+    assert optional_ancestor is not None
     _publish_ok(store, direct)
 
     disposition = _classify(
@@ -321,13 +322,10 @@ def test_multilevel_closure_does_not_release_on_direct_prerequisite_only(
         _prior(target),
     )[target.cell_id]
 
-    assert disposition.eligible is False
-    assert disposition.blocking_prerequisites == ((ancestor.cell_id, "missing"),)
-    _publish_ok(store, ancestor)
-    assert _classify(
-        store,
-        _prior(target),
-    )[target.cell_id].eligible
+    assert disposition.eligible is True
+    assert disposition.prerequisite_ids == (direct.cell_id,)
+    assert optional_ancestor.cell_id not in disposition.prerequisite_ids
+    assert disposition.blocking_prerequisites == ()
 
 
 @pytest.mark.parametrize(

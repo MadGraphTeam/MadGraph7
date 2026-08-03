@@ -48,12 +48,17 @@ if `--no-dashboard` were supplied. `dashboard-snapshot` is available when
 those bindings are present, including in a contributor checkout prepared with
 `just dev-install`; otherwise it exits with the corresponding instruction.
 
-Dry runs and measurement selections whose planned closure contains only
-pyAmpliCol need no legacy source. If the planned closure includes an original
-AmpliCol comparison, pass `run --original-amplicol PATH`, where `PATH` is a
-clean, complete checkout exposing the color-probe sources and Make targets
-from PR #12. The `amplicol_with_patches` branch works now; a compatible
-upstream revision will work unchanged after the PR is merged.
+Dry runs and explicit pyAmpliCol-only engine selections need no legacy source.
+Recurrence, compiled, and eager cells remain runnable when an original-AmpliCol
+comparison is absent or terminal; their report cells show absolute timings and
+omit the unavailable multiplier. Use, for example,
+`run --generation-engine recurrence compiled eager`. Omitted engine selection
+and quoted `*` mean every engine, so a broad/default selection includes
+original AmpliCol unless another selector excludes it. When `amplicol` is
+selected, pass `run --original-amplicol PATH`, where `PATH` is a clean,
+complete checkout exposing the color-probe sources and Make targets from PR
+#12. The `amplicol_with_patches` branch works now; a compatible upstream
+revision will work unchanged after the PR is merged.
 Alternatively, add `--local-amplicol PATH` to the copy command to record that
 checkout as this campaign's default; a later `run --original-amplicol PATH`
 overrides it.

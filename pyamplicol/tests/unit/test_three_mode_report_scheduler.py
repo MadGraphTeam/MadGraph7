@@ -13,6 +13,7 @@ from tools.performance_report.agreements import (
     DIRECT_AGREEMENT_FIELD,
     LC_COMMON_COMPONENT_ABI,
     LC_COMMON_COMPONENT_FIELD,
+    validation_baseline_fallback_peers,
 )
 from tools.performance_report.artifacts import (
     ArtifactAttempt,
@@ -58,6 +59,7 @@ from tools.performance_report.scheduler import (
     PlannedCell,
     _CoordinationDeferred,
     _fresh_equivalent_current,
+    _partition_dependency_records,
     _PreparationFailed,
     _symbolica_generation_lock_path,
     _worker_environment_overrides,
@@ -197,7 +199,7 @@ def test_selection_combines_all_supported_filter_axes() -> None:
     assert selected[0].cell_id.endswith("all-flow")
 
 
-def test_dependency_plan_orders_amplicol_recurrence_then_candidate(
+def test_dependency_plan_keeps_amplicol_optional_but_recurrence_required(
     tmp_path: Path,
 ) -> None:
     candidate = select_cells(
@@ -214,14 +216,378 @@ def test_dependency_plan_orders_amplicol_recurrence_then_candidate(
         settings=CampaignSettings(),
     )
 
-    assert len(planned) == 3
-    assert [item.rank for item in planned] == [0, 1, 2]
+    assert len(planned) == 2
+    assert [item.rank for item in planned] == [1, 2]
     assert [item.cell.measurement.execution_mode for item in planned] == [
-        ExecutionMode.AMPLICOL,
         ExecutionMode.RECURRENCE,
         ExecutionMode.COMPILED,
     ]
-    assert [item.dependency for item in planned] == [True, True, False]
+    assert [item.dependency for item in planned] == [True, False]
+    recurrence = planned[0]
+    assert recurrence.baseline_cell_id is None
+    assert recurrence.optional_baseline_cell_id == (
+        "reference-amplicol-lc-n1-dd-z-jets-selected-flow"
+    )
+
+
+def test_explicit_optional_amplicol_is_a_soft_ordering_predecessor(
+    tmp_path: Path,
+) -> None:
+    recurrence = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+    amplicol = REPORT_CATALOG.validation_baseline_cell(recurrence)
+    assert amplicol is not None
+
+    planned = plan_campaign(
+        (recurrence, amplicol),
+        store=_store(tmp_path),
+        settings=CampaignSettings(),
+    )
+    by_id = {item.cell.cell_id: item for item in planned}
+    target = by_id[recurrence.cell_id]
+
+    assert set(by_id) == {recurrence.cell_id, amplicol.cell_id}
+    assert target.baseline_cell_id is None
+    assert target.optional_baseline_cell_id == amplicol.cell_id
+    assert target.prerequisite_cell_ids == (amplicol.cell_id,)
+    assert by_id[amplicol.cell_id].rank < target.rank
+
+
+def test_optional_amplicol_current_is_forwarded_only_when_successful(
+    tmp_path: Path,
+) -> None:
+    recurrence = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+    amplicol = REPORT_CATALOG.validation_baseline_cell(recurrence)
+    assert amplicol is not None
+    record = _publish_current(_store(tmp_path), amplicol, revision="same")
+
+    baseline, peers, blockers = _partition_dependency_records(
+        baseline_cell_id=None,
+        comparison_peer_ids=(),
+        optional_baseline_cell_id=amplicol.cell_id,
+        currents={
+            amplicol.cell_id: (record, PolicyMeasurementState.GENERATION_LIMIT)
+        },
+    )
+    assert baseline is None
+    assert peers == {}
+    assert blockers == ()
+
+    baseline, peers, blockers = _partition_dependency_records(
+        baseline_cell_id=None,
+        comparison_peer_ids=(),
+        optional_baseline_cell_id=amplicol.cell_id,
+        currents={amplicol.cell_id: (record, PolicyMeasurementState.SUCCESS)},
+    )
+    assert baseline is record
+    assert peers == {}
+    assert blockers == ()
+
+
+@pytest.mark.parametrize(
+    ("state", "expects_baseline"),
+    (
+        (PolicyMeasurementState.SUCCESS, True),
+        (PolicyMeasurementState.GENERATION_LIMIT, False),
+    ),
+)
+def test_scheduler_launches_recurrence_with_only_successful_optional_amplicol(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    state: PolicyMeasurementState,
+    expects_baseline: bool,
+) -> None:
+    service = _service(tmp_path)
+    recurrence = _matrix_cell("matrix_recurrence_builtin_sm_lc")
+    amplicol = REPORT_CATALOG.validation_baseline_cell(recurrence)
+    assert amplicol is not None
+    optional_record = _publish_current(
+        service.store,
+        amplicol,
+        revision="current-revision",
+    )
+    captured: list[str] = []
+
+    def current(
+        cell: CellSpec,
+        *,
+        comparison_dependency: bool = False,
+    ) -> tuple[CurrentRecord, PolicyMeasurementState] | None:
+        assert comparison_dependency is (cell == amplicol)
+        return (optional_record, state) if cell == amplicol else None
+
+    def supervise(command: Sequence[str], **_kwargs: object) -> SupervisedResult:
+        captured.extend(command)
+        result_path = Path(command[command.index("--result-json") + 1])
+        result_path.write_text(
+            json.dumps(_ok_measurement(recurrence, revision="current-revision"))
+            + "\n",
+            encoding="ascii",
+        )
+        return SupervisedResult(
+            0,
+            "completed",
+            ResourceUsage(True, 1, 1, 0, 0.1, 0.1),
+        )
+
+    scheduler = CampaignScheduler(service, settings=CampaignSettings())
+    scheduler.source_revision = "current-revision"
+    monkeypatch.setattr(scheduler, "_current", current)
+    monkeypatch.setattr(scheduler, "_prepare_model_for", lambda _planned: None)
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        supervise,
+    )
+
+    outcome = scheduler._run_cell(
+        PlannedCell(
+            recurrence,
+            dependency=False,
+            baseline_cell_id=None,
+            optional_baseline_cell_id=amplicol.cell_id,
+            rank=1,
+        )
+    )
+
+    assert outcome.status == ResultStatus.OK.value
+    assert ("--baseline-json" in captured) is expects_baseline
+
+
+@pytest.mark.parametrize(
+    ("variant", "workload"),
+    (
+        ("jit_o1", Workload.SELECTED_FLOW),
+        ("jit_o1", Workload.ALL_FLOW),
+        ("eager_jit_o2", Workload.SELECTED_FLOW),
+        ("eager_jit_o2", Workload.ALL_FLOW),
+    ),
+)
+def test_z_compiled_and_eager_plan_recurrence_without_amplicol(
+    tmp_path: Path,
+    variant: str,
+    workload: Workload,
+) -> None:
+    candidate = _z_cell(variant=variant, workload=workload)
+    baseline = REPORT_CATALOG.validation_baseline_cell(candidate)
+    fallback = validation_baseline_fallback_peers(candidate)
+    assert baseline is not None
+    assert len(fallback) == 1
+
+    planned = plan_campaign(
+        (candidate,),
+        store=_store(tmp_path),
+        settings=CampaignSettings(),
+    )
+    by_id = {item.cell.cell_id: item for item in planned}
+    target = by_id[candidate.cell_id]
+
+    assert target.baseline_cell_id is None
+    assert target.optional_baseline_cell_id == baseline.cell_id
+    assert fallback[0].cell_id in target.comparison_peer_ids
+    assert fallback[0].cell_id in by_id
+    assert by_id[fallback[0].cell_id].rank < target.rank
+    assert all(
+        item.cell.measurement.execution_mode is not ExecutionMode.AMPLICOL
+        for item in planned
+    )
+
+
+@pytest.mark.parametrize(
+    ("variant", "workload"),
+    (
+        ("jit_o1", Workload.SELECTED_FLOW),
+        ("jit_o1", Workload.ALL_FLOW),
+        ("eager_jit_o2", Workload.SELECTED_FLOW),
+        ("eager_jit_o2", Workload.ALL_FLOW),
+    ),
+)
+@pytest.mark.parametrize(
+    ("amplicol_state", "uses_amplicol"),
+    (
+        (PolicyMeasurementState.SUCCESS, True),
+        (PolicyMeasurementState.GENERATION_LIMIT, False),
+    ),
+)
+def test_z_worker_prefers_amplicol_then_falls_back_to_required_recurrence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    variant: str,
+    workload: Workload,
+    amplicol_state: PolicyMeasurementState,
+    uses_amplicol: bool,
+) -> None:
+    service = _service(tmp_path)
+    candidate = _z_cell(variant=variant, workload=workload)
+    baseline = REPORT_CATALOG.validation_baseline_cell(candidate)
+    fallback = validation_baseline_fallback_peers(candidate)
+    assert baseline is not None
+    assert len(fallback) == 1
+    recurrence = fallback[0]
+    planned = plan_campaign(
+        (candidate,),
+        store=service.store,
+        settings=CampaignSettings(),
+    )
+    target = next(item for item in planned if item.cell == candidate)
+    dependency_records = {
+        peer_id: _publish_current(
+            service.store,
+            REPORT_CATALOG.cell(peer_id),
+            revision="current-revision",
+        )
+        for peer_id in target.comparison_peer_ids
+    }
+    amplicol_record = _publish_current(
+        service.store,
+        baseline,
+        revision="current-revision",
+    )
+    captured: list[str] = []
+
+    def current(
+        cell: CellSpec,
+        *,
+        comparison_dependency: bool = False,
+    ) -> tuple[CurrentRecord, PolicyMeasurementState] | None:
+        if cell == candidate:
+            assert comparison_dependency is False
+            return None
+        assert comparison_dependency is True
+        if cell == baseline:
+            return amplicol_record, amplicol_state
+        record = dependency_records.get(cell.cell_id)
+        return (
+            None
+            if record is None
+            else (record, PolicyMeasurementState.SUCCESS)
+        )
+
+    def supervise(command: Sequence[str], **_kwargs: object) -> SupervisedResult:
+        captured.extend(command)
+        result_path = Path(command[command.index("--result-json") + 1])
+        result_path.write_text(
+            json.dumps(_ok_measurement(candidate, revision="current-revision"))
+            + "\n",
+            encoding="ascii",
+        )
+        return SupervisedResult(
+            0,
+            "completed",
+            ResourceUsage(True, 1, 1, 0, 0.1, 0.1),
+        )
+
+    scheduler = CampaignScheduler(service, settings=CampaignSettings())
+    scheduler.source_revision = "current-revision"
+    monkeypatch.setattr(scheduler, "_current", current)
+    monkeypatch.setattr(scheduler, "_prepare_model_for", lambda _planned: None)
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        supervise,
+    )
+
+    outcome = scheduler._run_cell(target)
+
+    expected_baseline = (
+        amplicol_record if uses_amplicol else dependency_records[recurrence.cell_id]
+    )
+    assert outcome.status == ResultStatus.OK.value
+    assert captured[captured.index("--baseline-json") + 1] == str(
+        expected_baseline.result_path
+    )
+    peer_offset = next(
+        index
+        for index, value in enumerate(captured)
+        if value == "--peer-json" and captured[index + 1] == recurrence.cell_id
+    )
+    assert captured[peer_offset + 2] == str(
+        dependency_records[recurrence.cell_id].result_path
+    )
+
+
+@pytest.mark.parametrize(
+    "recurrence_state",
+    (None, PolicyMeasurementState.GENERATION_LIMIT),
+)
+def test_z_worker_blocks_when_required_recurrence_is_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    recurrence_state: PolicyMeasurementState | None,
+) -> None:
+    service = _service(tmp_path)
+    candidate = _z_cell(
+        variant="jit_o1",
+        workload=Workload.SELECTED_FLOW,
+    )
+    baseline = REPORT_CATALOG.validation_baseline_cell(candidate)
+    fallback = validation_baseline_fallback_peers(candidate)
+    assert baseline is not None
+    assert len(fallback) == 1
+    recurrence = fallback[0]
+    planned = plan_campaign(
+        (candidate,),
+        store=service.store,
+        settings=CampaignSettings(),
+    )
+    target = next(item for item in planned if item.cell == candidate)
+    amplicol_record = _publish_current(
+        service.store,
+        baseline,
+        revision="current-revision",
+    )
+    terminal_recurrence = _ok_measurement(
+        recurrence,
+        revision="current-revision",
+    )
+    terminal_recurrence["status"] = ResultStatus.TIMEOUT.value
+    provenance = terminal_recurrence["provenance"]
+    assert isinstance(provenance, dict)
+    provenance["policy_censor_sha256"] = "f" * 64
+    recurrence_record = service.store.new_attempt(
+        recurrence.cell_id,
+        ArtifactPolicy.REGENERATE,
+    ).publish(terminal_recurrence)
+
+    def current(
+        cell: CellSpec,
+        *,
+        comparison_dependency: bool = False,
+    ) -> tuple[CurrentRecord, PolicyMeasurementState] | None:
+        if cell == candidate:
+            return None
+        assert comparison_dependency is True
+        if cell == baseline:
+            return amplicol_record, PolicyMeasurementState.SUCCESS
+        if cell == recurrence:
+            return (
+                None
+                if recurrence_state is None
+                else (recurrence_record, recurrence_state)
+            )
+        pytest.fail(f"unexpected dependency query for {cell.cell_id}")
+
+    scheduler = CampaignScheduler(service, settings=CampaignSettings())
+    scheduler.source_revision = "current-revision"
+    monkeypatch.setattr(scheduler, "_current", current)
+    monkeypatch.setattr(
+        scheduler,
+        "_publish_dependency_censor",
+        lambda cell, dependencies, *, current: CellOutcome(
+            cell.cell_id,
+            "blocked_dependency",
+            "required comparison dependency is terminal",
+            prerequisite_cell_ids=tuple(
+                dependency["cell_id"] for dependency in dependencies
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "tools.performance_report.scheduler.supervise_worker",
+        lambda *_args, **_kwargs: pytest.fail("blocked Z worker was launched"),
+    )
+
+    outcome = scheduler._run_cell(target)
+
+    assert outcome.status == "blocked_dependency"
+    assert outcome.prerequisite_cell_ids == (recurrence.cell_id,)
 
 
 def test_plan_excludes_held_cell_without_suppressing_independent_work(
@@ -621,19 +987,12 @@ def test_contracted_n6_multi_quark_plans_separate_legacy_capability(
         store=_store(tmp_path / "three-line"),
         settings=CampaignSettings(),
     )
-    assert {item.cell.cell_id for item in three_line_plan} == {
+    assert tuple(item.cell for item in three_line_plan) == (three_line,)
+    three_line_item = three_line_plan[0]
+    assert three_line_item.baseline_cell_id is None
+    assert three_line_item.optional_baseline_cell_id == (
         "reference-amplicol-full-n6-"
-        f"{three_line_key.replace('_', '-')}-contracted",
-        three_line.cell_id,
-    }
-    assert (
-        next(
-            item for item in three_line_plan if item.cell == three_line
-        ).baseline_cell_id
-        == (
-            "reference-amplicol-full-n6-"
-            f"{three_line_key.replace('_', '-')}-contracted"
-        )
+        f"{three_line_key.replace('_', '-')}-contracted"
     )
 
     four_line_plan = plan_campaign(
@@ -750,6 +1109,63 @@ def test_z_cell_explicitly_reuses_valid_cross_source_comparisons(
     assert tuple(item.cell for item in planned) == (candidate,)
 
 
+def test_z_table_f_preflight_does_not_require_optional_amplicol(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _service(tmp_path)
+    candidate = REPORT_CATALOG.cell(
+        "z-builtin-sm-n8-dd-z-jets-recurrence-jit-o2-all-flow"
+    )
+    settings = CampaignSettings(
+        workers=1,
+        cell_cores=1,
+        target_runtime_seconds=5.0,
+        max_rss_bytes=MACBOOK_M3_MEMORY_LIMIT_BYTES,
+        campaign_policy=MACBOOK_M3_Z_TABLE_F_POLICY,
+        report_profile="macbook_M3",
+        study_contract_sha256="c" * 64,
+    )
+    planned = plan_campaign(
+        (candidate,),
+        store=service.store,
+        settings=settings,
+    )
+    candidate_plan = next(item for item in planned if item.cell == candidate)
+    optional_ids = {
+        dependency_id
+        for dependency_id in (
+            candidate_plan.optional_baseline_cell_id,
+            *candidate_plan.optional_comparison_peer_ids,
+        )
+        if dependency_id is not None
+    }
+    required_ids = {
+        dependency_id
+        for dependency_id in (
+            candidate_plan.baseline_cell_id,
+            *candidate_plan.comparison_peer_ids,
+        )
+        if dependency_id is not None
+    }
+    queried: list[str] = []
+    scheduler = object.__new__(CampaignScheduler)
+    scheduler.settings = settings
+    scheduler.catalog = REPORT_CATALOG
+
+    def current(cell: CellSpec, **_kwargs: object) -> object:
+        queried.append(cell.cell_id)
+        return object()
+
+    monkeypatch.setattr(scheduler, "_current", current)
+
+    scheduler._validate_z_table_f_plan((candidate_plan,))
+
+    assert optional_ids
+    assert set(queried) == required_ids
+    assert set(queried).isdisjoint(optional_ids)
+
+
 def test_missing_only_rejects_stale_report_revision(tmp_path: Path) -> None:
     store = _store(tmp_path)
     candidate = next(
@@ -771,7 +1187,7 @@ def test_missing_only_rejects_stale_report_revision(tmp_path: Path) -> None:
         expected_revision="new",
     )
 
-    assert [item.rank for item in planned] == [0, 1, 2]
+    assert [item.rank for item in planned] == [1, 2]
 
 
 def _matrix_cell(
@@ -785,6 +1201,18 @@ def _matrix_cell(
         if cell.dataset_id == dataset_id
         and cell.process_key == "dd_z_jets"
         and cell.n_final == 1
+        and cell.workload is workload
+    )
+
+
+def _z_cell(*, variant: str, workload: Workload) -> CellSpec:
+    return next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.dataset_id == "z_builtin_sm"
+        and cell.process_key == "dd_z_jets"
+        and cell.n_final == 1
+        and cell.variant == variant
         and cell.workload is workload
     )
 

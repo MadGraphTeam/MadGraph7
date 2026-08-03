@@ -19,6 +19,8 @@ from tools.performance_report.agreements import (
     attach_direct_agreements,
     evaluate_lc_common_component,
     incoming_agreement_edges,
+    validation_baseline_fallback_peers,
+    validation_baseline_is_required,
 )
 from tools.performance_report.artifacts import ArtifactStore
 from tools.performance_report.cache import (
@@ -217,7 +219,7 @@ def test_full_direct_agreement_graph_excludes_unavailable_four_line_legacy() -> 
     "process_key",
     ("dd_3q_lines", "dd_3q_identical_lines"),
 )
-def test_three_line_lc_still_requires_legacy_and_layout_agreements(
+def test_three_line_lc_keeps_optional_legacy_and_required_layout_agreements(
     process_key: str,
 ) -> None:
     candidate = next(
@@ -229,12 +231,44 @@ def test_three_line_lc_still_requires_legacy_and_layout_agreements(
         and cell.workload is Workload.ALL_FLOW
     )
 
-    assert {
-        edge.kind for edge in incoming_agreement_edges(candidate)
-    } == {
+    edges = incoming_agreement_edges(candidate)
+    assert {edge.kind for edge in edges} == {
         LC_CROSS_LAYOUT_COMPONENT,
         LC_LEGACY_PYAMPLICOL_COMPONENT,
     }
+    assert {edge.kind for edge in edges if edge.required} == {
+        LC_CROSS_LAYOUT_COMPONENT
+    }
+    assert {edge.kind for edge in edges if not edge.required} == {
+        LC_LEGACY_PYAMPLICOL_COMPONENT
+    }
+
+
+def test_optional_legacy_agreement_can_be_absent_but_required_layout_cannot() -> None:
+    candidate = _cell(
+        "matrix_compiled_builtin_sm_lc",
+        workload=Workload.ALL_FLOW,
+    )
+    edges = incoming_agreement_edges(candidate)
+    layout = next(edge for edge in edges if edge.required)
+    topology = _measurement(layout.baseline.cell_id, 1.0, 0.25)
+    union = _measurement(candidate.cell_id, 1.0, 0.25)
+
+    attach_direct_agreements(
+        candidate,
+        union,
+        {layout.baseline.cell_id: topology},
+    )
+
+    assert union["status"] == ResultStatus.OK.value
+    assert [
+        record["edge_kind"]
+        for record in union["validation"][DIRECT_AGREEMENT_FIELD]
+    ] == [LC_CROSS_LAYOUT_COMPONENT]
+
+    missing_required = _measurement(candidate.cell_id, 1.0, 0.25)
+    with pytest.raises(RuntimeError, match="direct-agreement peers differ"):
+        attach_direct_agreements(candidate, missing_required, {})
 
 
 def test_ufo_recurrence_can_pass_independent_oracle_and_fail_direct_edge() -> None:
@@ -445,6 +479,16 @@ def test_replay_categories_are_explicit_and_missing_endpoints_fail_closed() -> N
         cell_id: _measurement(cell_id, 1.0, 1.0)
         for cell_id in cells
     }
+    attach_direct_agreements(
+        pac_legacy.candidate,
+        measurements[pac_legacy.candidate.cell_id],
+        {
+            pac_pac.baseline.cell_id: measurements[pac_pac.baseline.cell_id],
+            pac_legacy.baseline.cell_id: measurements[
+                pac_legacy.baseline.cell_id
+            ],
+        },
+    )
     replayed = {
         cell_id: _ReplayObservation(1.0, 0.0, 0.0, 1.0)
         for cell_id, cell in cells.items()
@@ -532,9 +576,24 @@ def test_campaign_plan_schedules_every_direct_peer_before_z_union(
     )
     by_id = {item.cell.cell_id: item for item in planned}
     target = by_id[candidate.cell_id]
+    baseline = REPORT_CATALOG.validation_baseline_cell(candidate)
+    assert baseline is not None
 
+    edges = incoming_agreement_edges(candidate)
+    assert validation_baseline_is_required(candidate, baseline) is False
+    assert tuple(validation_baseline_fallback_peers(candidate)) == tuple(
+        edge.baseline
+        for edge in edges
+        if edge.kind == Z_RECURRENCE_CROSS_MODE
+    )
+    assert target.baseline_cell_id is None
+    assert target.optional_baseline_cell_id == baseline.cell_id
+    assert baseline.cell_id not in by_id
     assert set(target.comparison_peer_ids) == {
-        edge.baseline.cell_id for edge in incoming_agreement_edges(candidate)
+        edge.baseline.cell_id for edge in edges if edge.required
+    }
+    assert set(target.optional_comparison_peer_ids) == {
+        edge.baseline.cell_id for edge in edges if not edge.required
     }
     assert all(
         peer_id in by_id and by_id[peer_id].rank < target.rank
@@ -545,6 +604,58 @@ def test_campaign_plan_schedules_every_direct_peer_before_z_union(
         and item.cell.dataset_id == "z_external_sm"
         for item in planned
     )
+
+
+def test_all_z_compiled_and_eager_cells_use_required_recurrence_fallback(
+    tmp_path: Path,
+) -> None:
+    candidates = tuple(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.dataset_id.startswith("z_")
+        and cell.measurement.execution_mode
+        in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
+    )
+
+    store = ArtifactStore(
+        artifact_root=tmp_path / "artifacts",
+        lock_root=tmp_path / "locks",
+    )
+    static_count = 0
+    runnable_count = 0
+    assert len(candidates) == 180
+    for candidate in candidates:
+        baseline = REPORT_CATALOG.validation_baseline_cell(candidate)
+        fallback = validation_baseline_fallback_peers(candidate)
+        assert baseline is not None
+        assert baseline.measurement.execution_mode is ExecutionMode.AMPLICOL
+        assert validation_baseline_is_required(candidate, baseline) is False
+        assert len(fallback) == 1
+        assert fallback[0].measurement.execution_mode is ExecutionMode.RECURRENCE
+        assert any(
+            edge.kind == Z_RECURRENCE_CROSS_MODE
+            and edge.required
+            and edge.baseline == fallback[0]
+            for edge in incoming_agreement_edges(candidate)
+        )
+        planned = plan_campaign(
+            (candidate,),
+            store=store,
+            settings=CampaignSettings(),
+        )
+        if REPORT_CATALOG.static_na_reason(candidate) is not None:
+            static_count += 1
+            assert planned == ()
+            continue
+        runnable_count += 1
+        by_id = {item.cell.cell_id: item for item in planned}
+        target = by_id[candidate.cell_id]
+        assert baseline.cell_id not in by_id
+        assert fallback[0].cell_id in target.comparison_peer_ids
+        assert fallback[0].cell_id in by_id
+        assert by_id[fallback[0].cell_id].rank < target.rank
+
+    assert (runnable_count, static_count) == (156, 24)
 
 
 def test_canonical_n4_plan_keeps_bounded_acyclic_dependency_depth(
