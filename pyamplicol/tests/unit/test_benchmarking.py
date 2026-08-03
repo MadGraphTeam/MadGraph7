@@ -562,6 +562,19 @@ def test_benchmark_calibrates_blocks_and_repetitions_toward_target(
         in events
     )
     assert ProgressStart("runtime-benchmark", "Profiling runtime", 4) in events
+    updates = [
+        event
+        for event in events
+        if isinstance(event, ProgressUpdate) and event.task_id == "runtime-benchmark"
+    ]
+    assert updates
+    assert all(
+        event.details["progress_kind"] == "benchmark-statistics"
+        and event.details["repetitions"] == 25
+        and event.details["batch_size"] == 2
+        for event in updates
+    )
+    assert all("\x1b[" not in (event.message or "") for event in updates)
 
 
 def test_benchmark_chunk_guard_runs_before_the_next_calibrated_call() -> None:

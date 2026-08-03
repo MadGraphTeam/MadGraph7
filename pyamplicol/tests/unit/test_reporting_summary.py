@@ -41,6 +41,7 @@ class _Result:
 def test_human_structured_results_use_aligned_prettytable() -> None:
     rendered = render_summary(_Result("complete", 2, ()), color=False)
     assert rendered is not None
+    assert set(rendered.splitlines()[-1]) <= {"+", "-"}
     assert "field" in rendered
     assert "generated processes" in rendered
     assert "complete" in rendered
@@ -111,9 +112,10 @@ def test_total_evaluation_uses_a_colored_point_table_without_changing_json() -> 
     assert rendered is not None
     assert "Summed Evaluation" in rendered
     assert "matrix element" in rendered
-    assert "1.25" in rendered
-    assert "2.5" in rendered
+    assert "1.250000000000000e+00" in rendered
+    assert "2.500000000000000e+00" in rendered
     assert "\x1b[" in rendered
+    assert set(rendered.splitlines()[-1]) <= {"+", "-"}
     stream = io.StringIO()
     write_result(result, format="json", stream=stream, color=True)
     assert json.loads(stream.getvalue()) == [
@@ -141,10 +143,13 @@ def test_resolved_evaluation_uses_colored_component_and_sum_tables() -> None:
     assert "Resolved Evaluation (LC)" in rendered
     assert "h:first" in rendered
     assert "flow:second" in rendered
-    assert "1+2j" in rendered
+    assert "1.000000000000000e+00+2.000000000000000e+00j" in rendered
     assert "Resolved Sum" in rendered
-    assert "13+2j" in rendered
+    assert "1.300000000000000e+01+2.000000000000000e+00j" in rendered
     assert "\x1b[" in rendered
+    component_table, total_table = rendered.split("\n\n", maxsplit=1)
+    for table in (component_table, total_table):
+        assert set(table.splitlines()[-1]) <= {"+", "-"}
     stream = io.StringIO()
     write_result(result, format="json", stream=stream, color=True)
     payload = json.loads(stream.getvalue())
@@ -152,6 +157,15 @@ def test_resolved_evaluation_uses_colored_component_and_sum_tables() -> None:
     assert payload["helicity_ids"] == ["h:first", "h:second"]
     assert payload["color_ids"] == ["flow:first", "flow:second"]
     assert "\x1b[" not in stream.getvalue()
+
+
+def test_evaluation_values_use_scientific_notation_except_exact_zero() -> None:
+    rendered = render_summary((0.0002519743243773565, 0.0), color=False)
+
+    assert rendered is not None
+    assert "2.519743243773565e-04" in rendered
+    zero_row = next(line for line in rendered.splitlines() if "|     1 |" in line)
+    assert zero_row.split("|")[-2].strip() == "0"
 
 
 def _benchmark_result() -> BenchmarkResult:
@@ -300,6 +314,64 @@ def test_benchmark_result_uses_clear_runtime_profile_table() -> None:
     assert "profiled evaluator core attribution" in rendered
     assert "Profile wall (paired profiled pass)" in rendered
     assert "Rusticol Timing Breakdown (paired profiled attribution)" in rendered
+
+
+def test_timing_breakdown_omits_exact_zero_component_rows() -> None:
+    result = _benchmark_result()
+    breakdown = result.timing_breakdown
+    assert breakdown is not None
+    exact_zero = BenchmarkComponentTiming(
+        0.0,
+        BenchmarkStatistics(0.0, 0.0, 0.0),
+        breakdown.sample_count,
+    )
+    uncertain_zero = BenchmarkComponentTiming(
+        0.0,
+        BenchmarkStatistics(1.0e-9, 0.5e-9, 1.0),
+        breakdown.sample_count,
+    )
+    zero_stage = BenchmarkStageTiming(
+        2,
+        exact_zero,
+        exact_zero,
+        exact_zero,
+        leaf_input_pack_time=exact_zero,
+        backend_call_time=exact_zero,
+        evaluator_output_gather_time=exact_zero,
+    )
+    partially_unavailable_stage = BenchmarkStageTiming(
+        3,
+        None,
+        exact_zero,
+        None,
+        backend_call_time=uncertain_zero,
+    )
+
+    rendered = render_summary(
+        replace(
+            result,
+            timing_breakdown=replace(
+                breakdown,
+                state_clear_time=exact_zero,
+                state_prepare_time=uncertain_zero,
+                selector_planner_time=None,
+                stages=(
+                    *breakdown.stages,
+                    zero_stage,
+                    partially_unavailable_stage,
+                ),
+            ),
+        ),
+        color=False,
+    )
+
+    assert rendered is not None
+    assert "| State clear" not in rendered
+    assert "| State prepare" in rendered
+    assert "| Selector planning" in rendered
+    assert "|     2 |" not in rendered
+    assert "|     3 |" in rendered
+    assert "| Other Rusticol core" in rendered
 
 
 def test_recurrence_profile_reports_paired_schedule_and_nested_attribution() -> None:
@@ -477,6 +549,11 @@ def test_benchmark_profile_table_color_is_optional() -> None:
 
     assert rendered is not None
     assert "\x1b[" in rendered
+    tables = tuple(
+        section for section in rendered.split("\n\n") if section.startswith("+")
+    )
+    assert tables
+    assert all(set(table.splitlines()[-1]) <= {"+", "-"} for table in tables)
 
 
 def test_benchmark_profile_counters_remain_machine_readable() -> None:

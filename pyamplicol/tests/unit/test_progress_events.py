@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import re
 import threading
 import time
 from dataclasses import FrozenInstanceError
@@ -104,6 +105,50 @@ def test_logging_progress_rate_limits_updates_but_always_emits_completion(
     assert "build 2/3" not in messages
     assert "build 3/3" in messages
     assert messages[-1] == "build done"
+
+
+def test_logging_progress_colors_typed_benchmark_statistics_without_changing_text(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    event = ProgressUpdate(
+        "runtime-benchmark",
+        3,
+        5,
+        (
+            "0.555/1s; wall 1.7773 us/point +/- 0.0072 us "
+            "(relative standard error 0.41%); 813 calls x 128 points"
+        ),
+        details={
+            "progress_kind": "benchmark-statistics",
+            "elapsed_seconds": 0.555,
+            "target_seconds": 1.0,
+            "wall_seconds_per_point": 1.7773e-6,
+            "wall_standard_error_seconds_per_point": 0.0072e-6,
+            "wall_relative_standard_error": 0.0041,
+            "repetitions": 813,
+            "batch_size": 128,
+            "sample_count": 3,
+        },
+    )
+    plain = progress_module._format_event(event)
+    sink = LoggingProgressSink(minimum_interval=0.0, color=True)
+
+    with caplog.at_level("INFO", logger="pyamplicol.progress"):
+        sink.emit(event)
+
+    colored = caplog.records[-1].getMessage()
+    assert "\x1b[" in colored
+    assert re.sub(r"\x1b\[[0-9;]*m", "", colored) == plain
+    assert "runtime-benchmark 3/5: 0.555/1s" in plain
+    assert "wall 1.7773 us/point" in plain
+    assert "relative standard error 0.41%" in plain
+
+
+def test_log_progress_factory_honors_resolved_color_setting() -> None:
+    sink = progress_sink("log", stream=io.StringIO(), color=True)
+
+    assert isinstance(sink, LoggingProgressSink)
+    assert sink.color is True
 
 
 def test_tty_progress_accepts_concurrent_phase_shape() -> None:

@@ -170,6 +170,7 @@ class LoggingProgressSink:
     logger: logging.Logger = field(default_factory=lambda: get_logger("progress"))
     level: int = logging.INFO
     minimum_interval: float = 1.0
+    color: bool = False
     _last_emit: dict[str, float] = field(default_factory=dict, init=False, repr=False)
     _lock: RLock = field(default_factory=RLock, init=False, repr=False)
 
@@ -181,7 +182,7 @@ class LoggingProgressSink:
                 complete = event.total is not None and event.completed == event.total
                 if not complete and now - last < self.minimum_interval:
                     return
-            self.logger.log(self.level, _format_event(event))
+            self.logger.log(self.level, _format_event(event, color=self.color))
             self._last_emit[event.task_id] = now
             if isinstance(event, ProgressEnd):
                 self._last_emit.pop(event.task_id, None)
@@ -764,6 +765,14 @@ def _detail_int(details: ProgressDetails, key: str) -> int | None:
     return value
 
 
+def _detail_float(details: ProgressDetails, key: str) -> float | None:
+    value = details.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    result = float(value)
+    return result if math.isfinite(result) else None
+
+
 def _paint_fragments(
     fragments: list[tuple[str, str | None]],
     *,
@@ -820,10 +829,17 @@ def _format_event(
     event: ProgressEvent,
     *,
     description: str | None = None,
+    color: bool = False,
 ) -> str:
     if isinstance(event, ProgressStart):
-        total = f" (0/{event.total})" if event.total is not None else ""
-        return f"{event.description}{total}"
+        result = _terminal_paint(event.description, "CYAN", enabled=color)
+        if event.total is not None:
+            result += (
+                " ("
+                + _terminal_paint(f"0/{event.total}", "MAGENTA", enabled=color)
+                + ")"
+            )
+        return result
     label = description or event.task_id
     if isinstance(event, ProgressUpdate):
         count = (
@@ -831,17 +847,109 @@ def _format_event(
             if event.total is not None
             else str(event.completed)
         )
-        suffix = f": {event.message}" if event.message else ""
+        message = _benchmark_statistics_message(event.details, color=color)
+        if message is None:
+            message = event.message
+        suffix = f": {message}" if message else ""
         context = _log_detail_text(event.details)
-        return f"{label} {count}{suffix}{context}"
+        return (
+            _terminal_paint(label, "CYAN", enabled=color)
+            + " "
+            + _terminal_paint(count, "MAGENTA", enabled=color)
+            + suffix
+            + context
+        )
     state = "done" if event.success else "failed"
-    suffix = f": {event.message}" if event.message else ""
+    state_color = "GREEN" if event.success else "RED"
+    suffix = (
+        ": " + _terminal_paint(event.message, state_color, enabled=color)
+        if event.message
+        else ""
+    )
     elapsed = (
-        f" in {_duration_text(event.elapsed_seconds)}"
+        " in "
+        + _terminal_paint(
+            _duration_text(event.elapsed_seconds), "MAGENTA", enabled=color
+        )
         if event.elapsed_seconds is not None
         else ""
     )
-    return f"{label} {state}{elapsed}{suffix}"
+    return (
+        _terminal_paint(label, "CYAN", enabled=color)
+        + " "
+        + _terminal_paint(state, state_color, enabled=color)
+        + elapsed
+        + suffix
+    )
+
+
+def _benchmark_statistics_message(
+    details: ProgressDetails,
+    *,
+    color: bool,
+) -> str | None:
+    """Render typed benchmark statistics without putting ANSI in backend events."""
+
+    if details.get("progress_kind") != "benchmark-statistics":
+        return None
+    elapsed = _detail_float(details, "elapsed_seconds")
+    target = _detail_float(details, "target_seconds")
+    mean = _detail_float(details, "wall_seconds_per_point")
+    repetitions = _detail_int(details, "repetitions")
+    batch_size = _detail_int(details, "batch_size")
+    sample_count = _detail_int(details, "sample_count")
+    if (
+        elapsed is None
+        or target is None
+        or mean is None
+        or repetitions is None
+        or batch_size is None
+        or sample_count is None
+        or min(elapsed, target, mean, repetitions, batch_size, sample_count) < 0
+    ):
+        return None
+    if mean < 1.0e-6:
+        scale, unit = 1.0e9, "ns"
+    elif mean < 1.0e-3:
+        scale, unit = 1.0e6, "us"
+    elif mean < 1.0:
+        scale, unit = 1.0e3, "ms"
+    else:
+        scale, unit = 1.0, "s"
+
+    result = _terminal_paint(f"{elapsed:.3g}/{target:.3g}s", "MAGENTA", enabled=color)
+    result += "; " + _terminal_paint("wall", "CYAN", enabled=color) + " "
+    result += _terminal_paint(
+        f"{mean * scale:.5g} {unit}/point", "GREEN", enabled=color
+    )
+    if sample_count < 2:
+        result += " " + _terminal_paint("SE pending", "YELLOW", enabled=color)
+    else:
+        error = _detail_float(details, "wall_standard_error_seconds_per_point")
+        relative_error = _detail_float(details, "wall_relative_standard_error")
+        if error is None or relative_error is None or min(error, relative_error) < 0:
+            return None
+        relative_color = (
+            "GREEN"
+            if relative_error <= 0.01
+            else "YELLOW"
+            if relative_error <= 0.05
+            else "RED"
+        )
+        result += " +/- " + _terminal_paint(
+            f"{error * scale:.2g} {unit}", "YELLOW", enabled=color
+        )
+        result += " (" + _terminal_paint(
+            "relative standard error", "CYAN", enabled=color
+        )
+        result += (
+            " "
+            + _terminal_paint(f"{relative_error:.2%}", relative_color, enabled=color)
+            + ")"
+        )
+    result += "; " + _terminal_paint(f"{repetitions} calls", "CYAN", enabled=color)
+    result += " x " + _terminal_paint(f"{batch_size} points", "CYAN", enabled=color)
+    return result
 
 
 def _log_detail_text(details: ProgressDetails) -> str:
@@ -892,7 +1000,10 @@ def progress_sink(
     if selected == "off":
         return NullProgressSink()
     if selected == "log":
-        return LoggingProgressSink(logger or get_logger("progress"))
+        return LoggingProgressSink(
+            logger or get_logger("progress"),
+            color=bool(color),
+        )
     if selected == "tty":
         return TtyProgressSink(stream, color=color)
     raise ValueError(f"unknown progress mode {mode!r}")

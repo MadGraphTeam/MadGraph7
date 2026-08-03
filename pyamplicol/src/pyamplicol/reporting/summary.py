@@ -46,19 +46,27 @@ def _value_text(value: object) -> str:
     return str(value)
 
 
+def _evaluation_scalar_text(value: Decimal | float | int) -> str:
+    if value == 0:
+        return "0"
+    scientific = f"{value:.15e}"
+    if "e" not in scientific:
+        return scientific
+    mantissa, raw_exponent = scientific.rsplit("e", maxsplit=1)
+    return f"{mantissa}e{int(raw_exponent):+03d}"
+
+
 def _evaluation_value_text(value: complex | Decimal | float | int) -> str:
-    if isinstance(value, Decimal):
-        return str(value)
     if isinstance(value, complex):
-        real = f"{value.real:.16g}"
+        real = _evaluation_scalar_text(value.real)
         if value.imag == 0.0:
             return real
-        imaginary = f"{abs(value.imag):.16g}j"
+        imaginary = f"{_evaluation_scalar_text(abs(value.imag))}j"
         if value.real == 0.0:
             return imaginary if value.imag > 0.0 else f"-{imaginary}"
         sign = "+" if value.imag > 0.0 else "-"
         return f"{real}{sign}{imaginary}"
-    return f"{value:.16g}"
+    return _evaluation_scalar_text(value)
 
 
 def _is_evaluation_value(value: object) -> bool:
@@ -78,7 +86,7 @@ def _total_evaluation_summary(
     table.title = _paint(title, "CYAN", enabled=color)
     table.align["point"] = "r"
     table.align["matrix element"] = "r"
-    table.hrules = prettytable.HRuleStyle.HEADER
+    table.hrules = prettytable.HRuleStyle.FRAME
     for point, raw in enumerate(values):
         if not _is_evaluation_value(raw):
             raise TypeError("evaluation values must be numeric")
@@ -114,7 +122,7 @@ def _resolved_evaluation_summary(
     component_table.align["helicity"] = "l"
     component_table.align["color"] = "l"
     component_table.align["matrix element"] = "r"
-    component_table.hrules = prettytable.HRuleStyle.HEADER
+    component_table.hrules = prettytable.HRuleStyle.FRAME
     for point, helicities in enumerate(evaluation.values):
         for helicity, colors in zip(
             evaluation.helicity_ids,
@@ -249,6 +257,24 @@ def _component_timing_text(timing: BenchmarkComponentTiming | None) -> str:
         f"{timing.mean_seconds_per_point * scale:.6g} +/- "
         f"{timing.uncertainty.standard_error * scale:.3g} {unit}/point"
     )
+
+
+def _component_timing_is_exact_zero(
+    timing: BenchmarkComponentTiming | None,
+) -> bool:
+    return (
+        timing is not None
+        and timing.mean_seconds_per_point == 0.0
+        and timing.uncertainty.standard_deviation == 0.0
+        and timing.uncertainty.standard_error == 0.0
+        and timing.uncertainty.relative_standard_error == 0.0
+    )
+
+
+def _component_timings_are_exact_zero(
+    timings: tuple[BenchmarkComponentTiming | None, ...],
+) -> bool:
+    return all(_component_timing_is_exact_zero(timing) for timing in timings)
 
 
 def _counter_mean_text(value: float, unit: str) -> str:
@@ -809,7 +835,7 @@ def _benchmark_summary(
     table.align["value"] = "l"
     table.max_width["metric"] = 24
     table.max_width["value"] = 96
-    table.hrules = prettytable.HRuleStyle.HEADER
+    table.hrules = prettytable.HRuleStyle.FRAME
     for metric, value, color_name in rows:
         table.add_row(
             (
@@ -848,7 +874,7 @@ def _benchmark_summary(
     component_table.align["component"] = "l"
     component_table.align["mean +/- standard error"] = "r"
     component_table.align["relative standard error"] = "r"
-    component_table.hrules = prettytable.HRuleStyle.HEADER
+    component_table.hrules = prettytable.HRuleStyle.FRAME
     detailed_eager_profile = eager_profile and any(
         timing is not None
         for timing in (
@@ -1118,6 +1144,8 @@ def _benchmark_summary(
             ("Other Rusticol core", breakdown.other_core_time),
         )
     for label, timing in component_rows:
+        if _component_timing_is_exact_zero(timing):
+            continue
         relative = (
             "N/A"
             if timing is None
@@ -1139,7 +1167,18 @@ def _benchmark_summary(
         component_table.add_row((label, value, relative))
     sections.append(cast(str, component_table.get_string()))
 
-    if breakdown.stages:
+    visible_stages = tuple(
+        stage
+        for stage in breakdown.stages
+        if not _component_timings_are_exact_zero(
+            (
+                stage.input_pack_time,
+                stage.evaluator_call_time,
+                stage.output_assign_time,
+            )
+        )
+    )
+    if visible_stages:
         stage_table = prettytable.PrettyTable(
             ("stage", "input pack", "evaluator call", "output assign")
         )
@@ -1147,8 +1186,8 @@ def _benchmark_summary(
         stage_table.align["stage"] = "r"
         for column in ("input pack", "evaluator call", "output assign"):
             stage_table.align[column] = "r"
-        stage_table.hrules = prettytable.HRuleStyle.HEADER
-        for stage in breakdown.stages:
+        stage_table.hrules = prettytable.HRuleStyle.FRAME
+        for stage in visible_stages:
             stage_table.add_row(
                 (
                     stage.stage_index,
@@ -1163,15 +1202,26 @@ def _benchmark_summary(
             )
         sections.append(cast(str, stage_table.get_string()))
 
-        if any(
-            timing is not None
+        visible_nested_stages = tuple(
+            stage
             for stage in breakdown.stages
-            for timing in (
-                stage.leaf_input_pack_time,
-                stage.backend_call_time,
-                stage.evaluator_output_gather_time,
+            if any(
+                timing is not None
+                for timing in (
+                    stage.leaf_input_pack_time,
+                    stage.backend_call_time,
+                    stage.evaluator_output_gather_time,
+                )
             )
-        ):
+            and not _component_timings_are_exact_zero(
+                (
+                    stage.leaf_input_pack_time,
+                    stage.backend_call_time,
+                    stage.evaluator_output_gather_time,
+                )
+            )
+        )
+        if visible_nested_stages:
             nested_stage_table = prettytable.PrettyTable(
                 ("stage", "leaf input pack", "backend call", "output gather")
             )
@@ -1183,8 +1233,8 @@ def _benchmark_summary(
             nested_stage_table.align["stage"] = "r"
             for column in ("leaf input pack", "backend call", "output gather"):
                 nested_stage_table.align[column] = "r"
-            nested_stage_table.hrules = prettytable.HRuleStyle.HEADER
-            for stage in breakdown.stages:
+            nested_stage_table.hrules = prettytable.HRuleStyle.FRAME
+            for stage in visible_nested_stages:
                 nested_stage_table.add_row(
                     (
                         stage.stage_index,
@@ -1215,7 +1265,7 @@ def _benchmark_summary(
         for column in ("area", "counter", "normalization"):
             counter_table.align[column] = "l"
         counter_table.align["mean"] = "r"
-        counter_table.hrules = prettytable.HRuleStyle.HEADER
+        counter_table.hrules = prettytable.HRuleStyle.FRAME
         previous_area: str | None = None
         for area, label, counter_value, unit, basis in _profile_counter_rows(counters):
             area_text = (
@@ -1288,7 +1338,7 @@ def _generation_summary(
     table.align["value"] = "l"
     table.max_width["field"] = 30
     table.max_width["value"] = 88
-    table.hrules = prettytable.HRuleStyle.HEADER
+    table.hrules = prettytable.HRuleStyle.FRAME
     for row in rows:
         table.add_row(row)
     return cast(str, table.get_string())
@@ -1326,7 +1376,7 @@ def _artifact_inspection_summary(
     summary.align["value"] = "l"
     summary.max_width["field"] = 24
     summary.max_width["value"] = 88
-    summary.hrules = prettytable.HRuleStyle.HEADER
+    summary.hrules = prettytable.HRuleStyle.FRAME
     physical_file_count = plain.get("physical_file_count")
     if not isinstance(physical_file_count, int):
         payload_count = plain["payload_count"]
@@ -1390,7 +1440,7 @@ def _artifact_inspection_summary(
     process_table.align["aliases"] = "r"
     process_table.max_width["stable ID"] = 30
     process_table.max_width["concrete process"] = 48
-    process_table.hrules = prettytable.HRuleStyle.HEADER
+    process_table.hrules = prettytable.HRuleStyle.FRAME
     accuracy_colors = {"lc": "CYAN", "nlc": "YELLOW", "full": "MAGENTA"}
     for process in processes:
         accuracy = str(process["color_accuracy"])
@@ -1430,7 +1480,7 @@ def _artifact_inspection_summary(
     execution_table.max_width["process"] = 30
     execution_table.max_width["execution field"] = 26
     execution_table.max_width["value"] = 72
-    execution_table.hrules = prettytable.HRuleStyle.HEADER
+    execution_table.hrules = prettytable.HRuleStyle.FRAME
     for process in processes:
         process_id = str(process["id"])
         mode = str(process.get("execution_mode", "compiled"))
@@ -1689,7 +1739,7 @@ def _artifact_inspection_summary(
         alias_table.max_width["stable alias ID"] = 30
         alias_table.max_width["concrete process"] = 52
         alias_table.max_width["representative ID"] = 30
-        alias_table.hrules = prettytable.HRuleStyle.HEADER
+        alias_table.hrules = prettytable.HRuleStyle.FRAME
         for alias in aliases:
             alias_table.add_row(
                 (alias["id"], alias["expression"], alias["representative_id"])
@@ -1705,7 +1755,7 @@ def _artifact_inspection_summary(
         dependency_table = prettytable.PrettyTable(("dependency", "version", "license"))
         dependency_table.align = "l"
         dependency_table.max_width["license"] = 48
-        dependency_table.hrules = prettytable.HRuleStyle.HEADER
+        dependency_table.hrules = prettytable.HRuleStyle.FRAME
         for dependency in dependencies:
             dependency_table.add_row(
                 (dependency["name"], dependency["version"], dependency["license"])
@@ -1762,7 +1812,7 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
     table.align["value"] = "l"
     table.max_width["field"] = 30
     table.max_width["value"] = 88
-    table.hrules = prettytable.HRuleStyle.HEADER
+    table.hrules = prettytable.HRuleStyle.FRAME
     for key, entry in plain.items():
         text = _value_text(entry)
         label = key.replace("_", " ")

@@ -521,18 +521,20 @@ class BenchmarkBackend:
                         if repeated_profiler is not None:
                             native_profile_sample_limit = planned_sample_count
                     if self._progress is not None:
+                        message, details = _sample_progress_payload(
+                            samples,
+                            elapsed_seconds=elapsed,
+                            target_seconds=self._config.target_runtime,
+                            repetitions=repetitions,
+                            batch_size=len(batch),
+                        )
                         self._progress.emit(
                             ProgressUpdate(
                                 task_id,
                                 completed=len(samples),
                                 total=planned_sample_count,
-                                message=_sample_progress_message(
-                                    samples,
-                                    elapsed_seconds=elapsed,
-                                    target_seconds=self._config.target_runtime,
-                                    repetitions=repetitions,
-                                    batch_size=len(batch),
-                                ),
+                                message=message,
+                                details=details,
                             )
                         )
             except KeyboardInterrupt:
@@ -947,14 +949,14 @@ def _helicity_workload_text(
     return f"selected {len(selected)}/{count} helicities: {', '.join(selected)}"
 
 
-def _sample_progress_message(
+def _sample_progress_payload(
     samples: list[float],
     *,
     elapsed_seconds: float,
     target_seconds: float,
     repetitions: int,
     batch_size: int,
-) -> str:
+) -> tuple[str, dict[str, str | int | float | None]]:
     mean, _deviation, error, relative_error = _sample_statistics(samples)
     if mean < 1.0e-6:
         scale, unit = 1.0e9, "ns"
@@ -972,11 +974,22 @@ def _sample_progress_message(
             f"(relative standard error {relative_error:.2%})"
         )
     )
-    return (
+    message = (
         f"{elapsed_seconds:.3g}/{target_seconds:.3g}s; "
         f"wall {mean * scale:.5g} {unit}/point {uncertainty}; "
         f"{repetitions} calls x {batch_size} points"
     )
+    return message, {
+        "progress_kind": "benchmark-statistics",
+        "elapsed_seconds": elapsed_seconds,
+        "target_seconds": target_seconds,
+        "wall_seconds_per_point": mean,
+        "wall_standard_error_seconds_per_point": (error if len(samples) >= 2 else None),
+        "wall_relative_standard_error": (relative_error if len(samples) >= 2 else None),
+        "repetitions": repetitions,
+        "batch_size": batch_size,
+        "sample_count": len(samples),
+    }
 
 
 def _planned_sample_count(
