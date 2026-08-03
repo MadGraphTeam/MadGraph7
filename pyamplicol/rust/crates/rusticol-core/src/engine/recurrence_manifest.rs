@@ -27,7 +27,6 @@ pub(super) const RECURRENCE_COLOR_CONTRACTION_PATH: &str = "recurrence-color.bin
 pub(super) const RECURRENCE_KERNEL_PACK_MANIFEST_PATH: &str = "model/eager-kernel-pack.json";
 pub(super) const RECURRENCE_KERNEL_PAYLOAD_ROOT: &str = "model/eager-kernels";
 
-const MAX_EXECUTION_MANIFEST_BYTES: usize = 16 << 20;
 const MAX_PROCESS_BINDING_BYTES: u64 = 1 << 20;
 const MAX_RUNTIME_CONTAINER_BYTES: u64 = 64 * 1024 * 1024 * 1024;
 const MAX_POINT_TILE_SIZE: u64 = 1_048_576;
@@ -2573,11 +2572,6 @@ pub(super) fn parse_recurrence_execution_manifest(
     path: &str,
     outer: &ArtifactProcess,
 ) -> RusticolResult<RecurrenceExecutionManifest> {
-    if bytes.len() >= MAX_EXECUTION_MANIFEST_BYTES {
-        return Err(RusticolError::artifact(format!(
-            "recurrence execution manifest {path:?} must be smaller than {MAX_EXECUTION_MANIFEST_BYTES} bytes"
-        )));
-    }
     let manifest: RecurrenceExecutionManifest = serde_json::from_slice(bytes).map_err(|error| {
         RusticolError::serialization(format!(
             "could not parse bounded recurrence execution manifest {path:?}: {error}"
@@ -3765,7 +3759,7 @@ pub(super) mod tests {
 
     #[test]
     fn accepts_observed_large_recurrence_manifest() {
-        let bytes = manifest_bytes_with_size(4_449_912);
+        let bytes = manifest_bytes_with_size(40_826_959);
         let parsed = parse_recurrence_execution_manifest(
             &bytes,
             "processes/x_to_x/execution.json",
@@ -3774,23 +3768,6 @@ pub(super) mod tests {
         .unwrap();
 
         assert_eq!(parsed.key, "x_to_x");
-    }
-
-    #[test]
-    fn rejects_recurrence_manifest_above_16_mib() {
-        let bytes = manifest_bytes_with_size(MAX_EXECUTION_MANIFEST_BYTES + 1);
-        let error = parse_recurrence_execution_manifest(
-            &bytes,
-            "processes/x_to_x/execution.json",
-            &outer(),
-        )
-        .unwrap_err();
-
-        assert!(
-            error
-                .to_string()
-                .contains("must be smaller than 16777216 bytes")
-        );
     }
 
     #[test]

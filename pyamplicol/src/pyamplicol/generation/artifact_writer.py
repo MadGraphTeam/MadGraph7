@@ -150,7 +150,6 @@ RECURRENCE_RUNTIME_STORAGE_ABI = "pacbin-v1"
 _RECURRENCE_RUNTIME_CONTAINER_PATH = "recurrence-runtime.pacbin"
 _RECURRENCE_DIRECT_SCHEDULE_MEMBER_PATH = "schedule/recurrence-direct-schedule-v2.bin"
 _RECURRENCE_COLOR_CONTRACTION_PATH = "recurrence-color.bin"
-_MAX_RECURRENCE_EXECUTION_SUMMARY_BYTES = 16 << 20
 _RECURRENCE_SCHEDULE_SHARING_EXTENSION = "recurrence_schedule_sharing"
 _SAFE_TOML_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
 _SUPPORTED_ARTIFACT_TARGETS = frozenset(
@@ -1655,11 +1654,6 @@ def _bounded_recurrence_execution_summary(
         raise ValueError(
             f"Rust recurrence execution summary is not canonical JSON: {exc}"
         ) from exc
-    if len(content) >= _MAX_RECURRENCE_EXECUTION_SUMMARY_BYTES:
-        raise ValueError(
-            "Rust recurrence execution summary must be smaller than 16 MiB; "
-            f"received {len(content)} bytes"
-        )
     return content
 
 

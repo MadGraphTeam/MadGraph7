@@ -184,26 +184,14 @@ def test_recurrence_execution_manifest_publishes_only_direct_arena_contract() ->
 def test_recurrence_execution_summary_accepts_observed_large_manifest(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    observed_maximum_size = 4_449_912
+    observed_cluster_size = 40_826_959
 
     content = _recurrence_execution_summary_with_size(
         monkeypatch,
-        observed_maximum_size,
+        observed_cluster_size,
     )
 
-    assert len(content) == observed_maximum_size
-
-
-def test_recurrence_execution_summary_rejects_manifest_above_16_mib(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    oversized = artifact_writer._MAX_RECURRENCE_EXECUTION_SUMMARY_BYTES + 1
-
-    with pytest.raises(
-        ValueError,
-        match=rf"smaller than 16 MiB; received {oversized} bytes",
-    ):
-        _recurrence_execution_summary_with_size(monkeypatch, oversized)
+    assert len(content) == observed_cluster_size
 
 
 def test_recurrence_physics_identifies_direct_plan_and_runtime_layout() -> None:
