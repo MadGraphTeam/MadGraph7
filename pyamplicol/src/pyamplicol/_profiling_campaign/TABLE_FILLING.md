@@ -26,20 +26,21 @@ bindings. Installed runs automatically continue headlessly as though
 when those bindings are present, notably in a contributor checkout prepared
 with `just dev-install`; without them it exits with an actionable instruction.
 
-PyAmpliCol-only dry runs and measurements do not need a legacy checkout.
-Recurrence, compiled, and eager cells run independently when their original-
-AmpliCol comparison is absent or terminal; the tables show their absolute
-timings without an unavailable multiplier. Select that mode explicitly with
-`--generation-engine recurrence compiled eager`. Omitted engine selection and
-quoted `*` mean every engine, so a broad/default selection includes original
-AmpliCol unless another selector excludes it. A selection that includes
-`amplicol` requires `run --original-amplicol PATH`; `PATH` must be a clean,
-complete checkout exposing the PR #12 probe sources and Make targets.
-The `amplicol_with_patches` branch works now, and a compatible upstream
-revision will work unchanged after the PR is merged.
-Pass `--local-amplicol PATH` to the initial `profiling-campaign copy` command
-to store that checkout as the copied campaign's default; an explicit
-`run --original-amplicol PATH` still overrides it.
+By default, selected cells gain their available active-source numerical
+authority closure, ordered original AmpliCol, recurrence, then compiled/eager.
+Added cells are dependency-only work; independent processes remain parallel,
+and a terminal authority releases its candidate to run unverified. Without a
+configured legacy checkout, recurrence remains available as the authority for
+compiled/eager work. Pass `--no-dependencies-added` to suppress optional
+authority expansion while retaining every hard construction and
+selector/provider dependency. A selection that directly or automatically
+includes `amplicol` requires a clean, complete checkout exposing the PR #12
+probe sources and Make targets. Supply it with
+`run --original-amplicol PATH`, or pass `--local-amplicol PATH` to the initial
+`profiling-campaign copy` command to save it as the campaign default; the run
+option overrides the saved default. The `amplicol_with_patches` branch works
+now, and a compatible upstream revision will work unchanged after the PR is
+merged.
 
 Inside a contributor checkout it re-executes with the repository `.venv`; an
 installed copy uses the wheel's Python runtime. Both modes reuse compatible

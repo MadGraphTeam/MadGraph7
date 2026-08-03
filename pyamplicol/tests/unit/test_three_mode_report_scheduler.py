@@ -201,7 +201,7 @@ def test_selection_combines_all_supported_filter_axes() -> None:
     assert selected[0].cell_id.endswith("all-flow")
 
 
-def test_compiled_plan_keeps_numerical_authorities_availability_optional(
+def test_compiled_plan_can_opt_out_of_automatic_numerical_authorities(
     tmp_path: Path,
 ) -> None:
     candidate = select_cells(
@@ -231,6 +231,241 @@ def test_compiled_plan_keeps_numerical_authorities_availability_optional(
         "reference-amplicol-lc-n1-dd-z-jets-selected-flow",
     )
     assert target.prerequisite_cell_ids == ()
+
+
+@pytest.mark.parametrize(
+    "dataset_id",
+    ("matrix_compiled_builtin_sm_lc", "matrix_eager_builtin_sm_lc"),
+)
+def test_automatic_authority_closure_orders_amplicol_recurrence_then_candidate(
+    dataset_id: str,
+    tmp_path: Path,
+) -> None:
+    candidate = _matrix_cell(dataset_id)
+    recurrence = REPORT_CATALOG.validation_baseline_cell(candidate)
+    assert recurrence is not None
+    amplicol = REPORT_CATALOG.validation_baseline_cell(recurrence)
+    assert amplicol is not None
+
+    planned = plan_campaign(
+        (candidate,),
+        store=_store(tmp_path),
+        settings=CampaignSettings(
+            add_optional_dependencies=True,
+            original_amplicol_available=True,
+        ),
+    )
+    by_id = {item.cell.cell_id: item for item in planned}
+
+    assert set(by_id) == {candidate.cell_id, recurrence.cell_id, amplicol.cell_id}
+    assert not by_id[candidate.cell_id].dependency
+    assert by_id[recurrence.cell_id].dependency
+    assert by_id[amplicol.cell_id].dependency
+    assert by_id[amplicol.cell_id].prerequisite_cell_ids == ()
+    assert by_id[recurrence.cell_id].prerequisite_cell_ids == (amplicol.cell_id,)
+    assert recurrence.cell_id in by_id[candidate.cell_id].prerequisite_cell_ids
+    assert by_id[amplicol.cell_id].rank < by_id[recurrence.cell_id].rank
+    assert by_id[recurrence.cell_id].rank < by_id[candidate.cell_id].rank
+
+
+def test_automatic_authority_closure_without_legacy_adds_recurrence_only(
+    tmp_path: Path,
+) -> None:
+    candidate = _matrix_cell("matrix_compiled_builtin_sm_lc")
+    recurrence = REPORT_CATALOG.validation_baseline_cell(candidate)
+    assert recurrence is not None
+
+    planned = plan_campaign(
+        (candidate,),
+        store=_store(tmp_path),
+        settings=CampaignSettings(add_optional_dependencies=True),
+    )
+    by_id = {item.cell.cell_id: item for item in planned}
+
+    assert set(by_id) == {candidate.cell_id, recurrence.cell_id}
+    assert by_id[recurrence.cell_id].dependency
+    assert by_id[candidate.cell_id].prerequisite_cell_ids == (recurrence.cell_id,)
+
+
+def test_automatic_authority_closure_reuses_active_source_authorities(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    candidate = _matrix_cell("matrix_compiled_builtin_sm_lc")
+    recurrence = REPORT_CATALOG.validation_baseline_cell(candidate)
+    assert recurrence is not None
+    amplicol = REPORT_CATALOG.validation_baseline_cell(recurrence)
+    assert amplicol is not None
+    _publish_current(store, recurrence, revision="same")
+    _publish_current(store, amplicol, revision="same")
+
+    planned = plan_campaign(
+        (candidate,),
+        store=store,
+        settings=CampaignSettings(
+            add_optional_dependencies=True,
+            original_amplicol_available=True,
+        ),
+        expected_revision="same",
+    )
+
+    assert tuple(item.cell for item in planned) == (candidate,)
+
+
+def test_automatic_authority_closure_replans_historical_authorities(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    candidate = _matrix_cell("matrix_compiled_builtin_sm_lc")
+    recurrence = REPORT_CATALOG.validation_baseline_cell(candidate)
+    assert recurrence is not None
+    amplicol = REPORT_CATALOG.validation_baseline_cell(recurrence)
+    assert amplicol is not None
+    _publish_current(store, recurrence, revision="old")
+    _publish_current(store, amplicol, revision="old")
+
+    planned = plan_campaign(
+        (candidate,),
+        store=store,
+        settings=CampaignSettings(
+            add_optional_dependencies=True,
+            original_amplicol_available=True,
+        ),
+        expected_revision="new",
+    )
+
+    assert {item.cell.cell_id for item in planned} == {
+        candidate.cell_id,
+        recurrence.cell_id,
+        amplicol.cell_id,
+    }
+
+
+def test_automatic_authority_closure_reuses_terminal_active_authority(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    candidate = _matrix_cell("matrix_compiled_builtin_sm_lc")
+    recurrence = REPORT_CATALOG.validation_baseline_cell(candidate)
+    assert recurrence is not None
+    terminal = _publish_current(store, recurrence, revision="same")
+
+    def current(
+        cell: CellSpec,
+    ) -> tuple[CurrentRecord, PolicyMeasurementState] | None:
+        if cell == recurrence:
+            return terminal, PolicyMeasurementState.GENERATION_LIMIT
+        return None
+
+    planned = plan_campaign(
+        (candidate,),
+        store=store,
+        settings=CampaignSettings(add_optional_dependencies=True),
+        current_resolver=current,
+    )
+
+    assert tuple(item.cell for item in planned) == (candidate,)
+    assert planned[0].prerequisite_cell_ids == ()
+    assert recurrence.cell_id in planned[0].numerical_authority_cell_ids
+
+
+def test_no_dependencies_added_still_closes_hard_lc_provider_dependency(
+    tmp_path: Path,
+) -> None:
+    candidate = _matrix_cell(
+        "matrix_compiled_builtin_sm_lc",
+        workload=Workload.ALL_FLOW,
+    )
+
+    planned = plan_campaign(
+        (candidate,),
+        store=_store(tmp_path),
+        settings=CampaignSettings(add_optional_dependencies=False),
+    )
+    by_id = {item.cell.cell_id: item for item in planned}
+
+    assert candidate.cell_id in by_id
+    hard_ids = set(by_id[candidate.cell_id].prerequisite_cell_ids)
+    assert hard_ids
+    assert all(by_id[cell_id].dependency for cell_id in hard_ids)
+    assert all(
+        by_id[cell_id].cell.measurement.execution_mode is ExecutionMode.COMPILED
+        for cell_id in hard_ids
+    )
+
+
+def test_automatic_authority_addition_recursively_closes_its_dependencies(
+    tmp_path: Path,
+) -> None:
+    candidate = _matrix_cell(
+        "matrix_compiled_builtin_sm_lc",
+        workload=Workload.ALL_FLOW,
+    )
+    recurrence = REPORT_CATALOG.validation_baseline_cell(candidate)
+    assert recurrence is not None
+    recurrence_provider = REPORT_CATALOG.cell(
+        recurrence.cell_id.replace("all-flow", "selected-flow")
+    )
+
+    planned = plan_campaign(
+        (candidate,),
+        store=_store(tmp_path),
+        settings=CampaignSettings(add_optional_dependencies=True),
+    )
+    by_id = {item.cell.cell_id: item for item in planned}
+
+    assert recurrence.cell_id in by_id[candidate.cell_id].prerequisite_cell_ids
+    assert recurrence_provider.cell_id in by_id
+    assert by_id[recurrence_provider.cell_id].dependency
+    assert (
+        recurrence_provider.cell_id
+        in by_id[recurrence.cell_id].prerequisite_cell_ids
+    )
+    assert by_id[recurrence_provider.cell_id].rank < by_id[recurrence.cell_id].rank
+
+
+def test_catalog_wide_automatic_authority_closure_is_exact_and_acyclic(
+    tmp_path: Path,
+) -> None:
+    direct = tuple(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if cell.measurement.execution_mode
+        in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
+        and REPORT_CATALOG.static_na_reason(cell) is None
+    )
+    planned = plan_campaign(
+        direct,
+        store=_store(tmp_path),
+        settings=CampaignSettings(
+            add_optional_dependencies=True,
+            original_amplicol_available=True,
+        ),
+    )
+    by_id = {item.cell.cell_id: item for item in planned}
+
+    assert len(by_id) == len(planned)
+    for candidate in direct:
+        item = by_id[candidate.cell_id]
+        for authority in independent_numerical_authorities(candidate):
+            assert authority.cell_id in by_id
+            assert by_id[authority.cell_id].rank < item.rank
+            assert (
+                authority.process_key,
+                authority.n_final,
+                authority.measurement.accuracy,
+                authority.workload,
+            ) == (
+                candidate.process_key,
+                candidate.n_final,
+                candidate.measurement.accuracy,
+                candidate.workload,
+            )
+    for item in planned:
+        assert all(
+            by_id[prerequisite].rank < item.rank
+            for prerequisite in item.prerequisite_cell_ids
+        )
 
 
 def test_explicit_optional_amplicol_orders_recurrence_without_becoming_hard(

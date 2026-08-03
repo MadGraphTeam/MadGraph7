@@ -1334,7 +1334,14 @@ def test_selective_retry_keeps_dependency_closure_and_reuses_ok_prerequisite(
 
     monkeypatch.setattr(manual_campaign, "_dry_run_rows", observe_dry_run_rows)
     arguments = build_parser().parse_args(
-        ("run", "--dry-run", "--rerun-failed", "--cell-id", target.cell_id)
+        (
+            "run",
+            "--dry-run",
+            "--rerun-failed",
+            "--no-dependencies-added",
+            "--cell-id",
+            target.cell_id,
+        )
     )
     source = ReportSourceIdentity(revision, "b" * 40, ())
 
@@ -1371,7 +1378,7 @@ def test_selective_retry_keeps_dependency_closure_and_reuses_ok_prerequisite(
     assert not planned_batches[1][0].dependency
 
 
-def test_selective_retry_does_not_inject_optional_authority_chain(
+def test_selective_retry_injects_authority_chain_unless_explicitly_disabled(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1395,6 +1402,11 @@ def test_selective_retry_does_not_inject_optional_authority_chain(
         "lightweight_current",
         lambda *_args, **_kwargs: None,
     )
+    monkeypatch.setattr(
+        manual_campaign,
+        "_original_amplicol_available_for_planning",
+        lambda *_args, **_kwargs: True,
+    )
     planned_batches: list[tuple[object, ...]] = []
     real_dry_run_rows = manual_campaign._dry_run_rows
 
@@ -1408,26 +1420,55 @@ def test_selective_retry_does_not_inject_optional_authority_chain(
 
     monkeypatch.setattr(manual_campaign, "_dry_run_rows", observe_dry_run_rows)
     arguments = build_parser().parse_args(("run", "--dry-run", "--rerun-failed"))
+    source = ReportSourceIdentity(revision, "b" * 40, ())
 
     assert (
         _run_campaign(
             arguments,
             repo_root=ROOT,
             service=service,
-            source=ReportSourceIdentity(revision, "b" * 40, ()),
-            cells=(candidate, recurrence, amplicol),
+            source=source,
+            cells=(candidate,),
             palette=Palette(False),
         )
         == 0
     )
 
-    assert [item.cell.cell_id for item in planned_batches[0]] == [candidate.cell_id]
-    assert not planned_batches[0][0].dependency
-    assert planned_batches[0][0].prerequisite_cell_ids == ()
-    assert planned_batches[0][0].numerical_authority_cell_ids == (
+    assert [item.cell.cell_id for item in planned_batches[0]] == [
+        amplicol.cell_id,
+        recurrence.cell_id,
+        candidate.cell_id,
+    ]
+    assert [item.dependency for item in planned_batches[0]] == [True, True, False]
+    assert planned_batches[0][1].prerequisite_cell_ids == (amplicol.cell_id,)
+    assert planned_batches[0][2].prerequisite_cell_ids == (recurrence.cell_id,)
+    assert planned_batches[0][2].numerical_authority_cell_ids == (
         recurrence.cell_id,
         amplicol.cell_id,
     )
+
+    opt_out = build_parser().parse_args(
+        (
+            "run",
+            "--dry-run",
+            "--rerun-failed",
+            "--no-dependencies-added",
+        )
+    )
+    assert (
+        _run_campaign(
+            opt_out,
+            repo_root=ROOT,
+            service=service,
+            source=source,
+            cells=(candidate,),
+            palette=Palette(False),
+        )
+        == 0
+    )
+    assert [item.cell.cell_id for item in planned_batches[1]] == [candidate.cell_id]
+    assert not planned_batches[1][0].dependency
+    assert planned_batches[1][0].prerequisite_cell_ids == ()
 
 
 def test_manual_dry_run_plans_only_from_lightweight_metadata(

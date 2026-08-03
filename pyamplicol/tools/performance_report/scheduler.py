@@ -150,6 +150,8 @@ class CampaignSettings:
     artifact_policy: ArtifactPolicy = ArtifactPolicy.REGENERATE
     missing_only: bool = False
     rerun: bool = False
+    add_optional_dependencies: bool = False
+    original_amplicol_available: bool = False
     allow_symbolica_parallel: bool = False
     resource_sample_interval_seconds: float = DEFAULT_SAMPLE_INTERVAL_SECONDS
     termination_grace_seconds: float = DEFAULT_TERMINATION_GRACE_SECONDS
@@ -969,6 +971,31 @@ def plan_campaign(
             }.values()
         )
 
+    def automatically_added_authorities(cell: CellSpec) -> tuple[CellSpec, ...]:
+        """Return the runnable optional numerical-authority closure."""
+
+        if not settings.add_optional_dependencies:
+            return ()
+        candidates = list(numerical_authorities(cell))
+        if cell.measurement.execution_mode is ExecutionMode.RECURRENCE:
+            baseline = catalog.validation_baseline_cell(cell)
+            if (
+                baseline is not None
+                and not validation_baseline_is_required(cell, baseline)
+                and baseline.measurement.execution_mode is ExecutionMode.AMPLICOL
+            ):
+                candidates.append(baseline)
+        return tuple(
+            {
+                authority.cell_id: authority
+                for authority in candidates
+                if (
+                    authority.measurement.execution_mode is not ExecutionMode.AMPLICOL
+                    or settings.original_amplicol_available
+                )
+            }.values()
+        )
+
     exclusion_memo: dict[str, bool] = {}
     exclusion_visiting: set[str] = set()
 
@@ -1108,6 +1135,15 @@ def plan_campaign(
         if frontier_source is None:
             for dependency in missing_dependencies:
                 include(dependency, explicitly_requested=False)
+            for authority in automatically_added_authorities(cell):
+                if (
+                    resolve_current(
+                        authority,
+                        comparison_dependency=True,
+                    )
+                    is None
+                ):
+                    include(authority, explicitly_requested=False)
         visiting.remove(cell.cell_id)
         needed[cell.cell_id] = cell
 
@@ -1133,13 +1169,25 @@ def plan_campaign(
                 # returns without launching it when the lower cell succeeds.
                 needed[cell.cell_id] = cell
 
+    def scheduled_dependencies(cell: CellSpec) -> tuple[CellSpec, ...]:
+        return tuple(
+            {
+                dependency.cell_id: dependency
+                for dependency in (
+                    *dependencies(cell),
+                    *optional_dependencies(cell),
+                )
+                if dependency.cell_id in needed
+            }.values()
+        )
+
     ranks: dict[str, int] = {}
 
     def planned_rank(cell: CellSpec) -> int:
         if cell.cell_id in ranks:
             return ranks[cell.cell_id]
         rank = _rank(cell)
-        for dependency in dependencies(cell):
+        for dependency in scheduled_dependencies(cell):
             scheduled = needed.get(dependency.cell_id)
             if scheduled is not None:
                 rank = max(rank, planned_rank(scheduled) + 1)
@@ -1178,14 +1226,7 @@ def plan_campaign(
     def scheduled_prerequisite_ids(cell: CellSpec) -> tuple[str, ...]:
         return tuple(
             sorted(
-                {
-                    dependency.cell_id
-                    for dependency in (
-                        *dependencies(cell),
-                        *optional_dependencies(cell),
-                    )
-                    if dependency.cell_id in needed
-                }
+                dependency.cell_id for dependency in scheduled_dependencies(cell)
             )
         )
 

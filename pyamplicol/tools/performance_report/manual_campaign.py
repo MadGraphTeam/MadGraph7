@@ -6770,6 +6770,7 @@ def _campaign_settings(
     arguments: argparse.Namespace,
     source: ReportSourceIdentity,
     *,
+    original_amplicol_available: bool = False,
     observer: Any = None,
     cancelled: Any = None,
     campaign_invocation_id: str | None = None,
@@ -6783,6 +6784,11 @@ def _campaign_settings(
             "CPUs; lower either value or pass --allow-oversubscription"
         )
     fresh_attempt = _fresh_attempt_requested(arguments)
+    original_amplicol_revision = getattr(
+        arguments,
+        "original_amplicol_revision",
+        None,
+    )
     return CampaignSettings(
         workers=workers,
         cell_cores=cores,
@@ -6810,6 +6816,10 @@ def _campaign_settings(
         ),
         missing_only=not fresh_attempt,
         rerun=fresh_attempt,
+        add_optional_dependencies=not bool(
+            getattr(arguments, "no_dependencies_added", False)
+        ),
+        original_amplicol_available=original_amplicol_available,
         allow_symbolica_parallel=bool(arguments.allow_engine_parallelism),
         resource_sample_interval_seconds=float(arguments.resource_sample_interval),
         termination_grace_seconds=float(arguments.termination_grace),
@@ -6823,12 +6833,12 @@ def _campaign_settings(
             getattr(arguments, "cleanup_artifacts", False)
         ),
         report_profile=None,
-        original_amplicol_repository=arguments.original_amplicol,
-        original_amplicol_revision=getattr(
-            arguments,
-            "original_amplicol_revision",
-            None,
+        original_amplicol_repository=(
+            arguments.original_amplicol
+            if original_amplicol_revision is not None
+            else None
         ),
+        original_amplicol_revision=original_amplicol_revision,
     )
 
 
@@ -6906,6 +6916,28 @@ def _configured_original_amplicol(docs_dir: Path) -> Path | None:
             f"campaign local-AmpliCol configuration is invalid: {config}"
         )
     return Path(lines[0])
+
+
+def _original_amplicol_available_for_planning(
+    arguments: argparse.Namespace,
+    *,
+    installed: bool,
+    root: Path,
+    docs_dir: Path,
+) -> bool:
+    """Whether optional authority closure may include original AmpliCol."""
+
+    if bool(getattr(arguments, "no_dependencies_added", False)):
+        return False
+    if arguments.original_amplicol is not None:
+        return True
+    if not installed:
+        return (root / "dependencies/checkouts/legacy-amplicol").is_dir()
+    try:
+        configured = _configured_original_amplicol(docs_dir)
+    except ManualCampaignError:
+        return False
+    return configured is not None and configured.is_dir()
 
 
 def _resolve_original_amplicol(
@@ -7373,7 +7405,17 @@ def _run_campaign(
         for cell in measurable
         if fresh_attempt or cell.cell_id not in historical_recycled
     )
-    preliminary_settings = _campaign_settings(arguments, source)
+    original_amplicol_available = _original_amplicol_available_for_planning(
+        arguments,
+        installed=installed,
+        root=repo_root,
+        docs_dir=service.paths.docs_dir,
+    )
+    preliminary_settings = _campaign_settings(
+        arguments,
+        source,
+        original_amplicol_available=original_amplicol_available,
+    )
     planned = plan_campaign(
         requested_for_plan,
         store=service.store,
@@ -7618,6 +7660,7 @@ def _run_campaign(
     settings = _campaign_settings(
         arguments,
         source,
+        original_amplicol_available=original_amplicol_available,
         observer=lease.observe,
         cancelled=cancellation.is_set,
         campaign_invocation_id=state.instance_id,
@@ -8166,15 +8209,16 @@ visibly falls back to reuse-off while ordinary generation continues under the
 generation-time and 30-GB process-tree caps. Z-table C++/ASM variants above
 multiplicity six remain catalog-defined static N/A and create no attempts.
 
-Recurrence, compiled, and eager cells can run without original AmpliCol when
-those pyAmpliCol engines are selected explicitly. A missing or terminal legacy
-comparison then leaves the candidate runnable and the report shows its absolute
-timings without an AmpliCol multiplier. Selecting `amplicol` explicitly still
-requires a clean complete checkout. An omitted engine selector and quoted `*`
-both mean every engine, so a broad/default selection includes AmpliCol unless
-another selector excludes it. Use
-`--generation-engine recurrence compiled eager` to guarantee a pyAmpliCol-only
-campaign.
+By default the planner adds each selected cell's available numerical-authority
+closure at the active source revision. The exact per-process order is original
+AmpliCol, recurrence, then compiled/eager; added authorities are shown as
+dependency-only work. Independent processes remain parallel. A missing or
+terminal authority releases its candidate to run unverified rather than
+creating a blocked dependency. Use `--no-dependencies-added` for an explicitly
+baseline-free selection; hard construction and selector/provider dependencies
+are always retained. Selecting `amplicol` explicitly still requires a clean
+complete checkout. An omitted engine selector and quoted `*` both mean every
+engine.
 
 Canonical selector values and aliases
 -------------------------------------
@@ -8216,9 +8260,10 @@ Common recipes
   Four workers, two cores each:
     steer_performance_campaign.py run --workers 4 --cores-per-worker 2
 
-  All pyAmpliCol engines without an original-AmpliCol checkout:
+  All pyAmpliCol engines without adding optional authority cells:
     steer_performance_campaign.py run \\
-      --generation-engine recurrence compiled eager
+      --generation-engine recurrence compiled eager \\
+      --no-dependencies-added
 
   Recompute instead of reusing same-source currents:
     steer_performance_campaign.py run --force-refresh --table z_table
@@ -8495,11 +8540,11 @@ def build_parser() -> argparse.ArgumentParser:
             "Clean, complete original-AmpliCol checkout containing the profiling "
             "interface from PR #12 (currently amplicol_with_patches; compatible "
             "upstream revisions are accepted after merge). Required when the "
-            "direct selection includes the amplicol engine. Explicit recurrence, "
-            "compiled, and eager selections run without it and report absolute "
-            "timings when no successful legacy comparison exists. Omitted or '*' "
-            "engine selection means all engines, so a broad/default selection "
-            "also includes amplicol unless another selector excludes it."
+            "direct selection or automatically added authority closure includes "
+            "the amplicol engine. When no checkout is configured, recurrence "
+            "remains available as the authority for compiled/eager work. Pass "
+            "--no-dependencies-added for an explicitly baseline-free selection. "
+            "Omitted or '*' engine selection means all engines."
         ),
     )
     profiling = run.add_argument_group("profiling hyperparameters")
@@ -8530,6 +8575,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     behavior = run.add_argument_group("reuse and display")
     behavior.add_argument(
+        "--no-dependencies-added",
+        action="store_true",
+        help=(
+            "Do not automatically add availability-optional numerical "
+            "authorities outside the direct selection. Hard construction and "
+            "selector/provider dependencies are always retained; explicitly "
+            "selected authorities still run first."
+        ),
+    )
+    behavior.add_argument(
         "--force-refresh",
         action="store_true",
         help=(
@@ -8546,10 +8601,10 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Create fresh attempts only for selected cells whose latest "
             "terminal outcome is a non-cap failure. Valid, unseen, static-N/A, "
-            "and authenticated capped cells are excluded. Optional numerical "
-            "authorities are used when available but are not injected or "
-            "waited on. May be combined with --rerun-capped, but not "
-            "--force-refresh."
+            "and authenticated capped cells are excluded. Missing or historical "
+            "numerical authorities are added as dependency-only work unless "
+            "--no-dependencies-added is given. May be combined with "
+            "--rerun-capped, but not --force-refresh."
         ),
     )
     behavior.add_argument(

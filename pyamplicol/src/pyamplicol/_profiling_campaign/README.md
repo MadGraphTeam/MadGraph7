@@ -48,20 +48,21 @@ if `--no-dashboard` were supplied. `dashboard-snapshot` is available when
 those bindings are present, including in a contributor checkout prepared with
 `just dev-install`; otherwise it exits with the corresponding instruction.
 
-Dry runs and explicit pyAmpliCol-only engine selections need no legacy source.
-Recurrence, compiled, and eager cells remain runnable when an original-AmpliCol
-comparison is absent or terminal; their report cells show absolute timings and
-omit the unavailable multiplier. Use, for example,
-`run --generation-engine recurrence compiled eager`. Omitted engine selection
-and quoted `*` mean every engine, so a broad/default selection includes
-original AmpliCol unless another selector excludes it. When `amplicol` is
-selected, pass `run --original-amplicol PATH`, where `PATH` is a clean,
+By default, a run adds the available numerical-authority closure for every
+selected cell at the active source revision. Added dependency-only work is
+ordered original AmpliCol, recurrence, then compiled/eager. Independent
+processes remain parallel, while a terminal authority releases its candidate
+to run unverified. When no legacy checkout is configured, recurrence remains
+available as the authority for compiled/eager work. Use
+`--no-dependencies-added` to suppress optional authority expansion; hard
+construction and selector/provider dependencies are always retained. A
+selection that directly or automatically includes `amplicol` requires a clean,
 complete checkout exposing the color-probe sources and Make targets from PR
-#12. The `amplicol_with_patches` branch works now; a compatible upstream
-revision will work unchanged after the PR is merged.
-Alternatively, add `--local-amplicol PATH` to the copy command to record that
-checkout as this campaign's default; a later `run --original-amplicol PATH`
-overrides it.
+#12. Supply it with `run --original-amplicol PATH`, or add
+`--local-amplicol PATH` to the copy command to record that checkout as this
+campaign's default; the run option overrides the saved default. The
+`amplicol_with_patches` branch works now; a compatible upstream revision will
+work unchanged after the PR is merged.
 
 Rebuild every table and the PDF from one stable current-result snapshot with:
 

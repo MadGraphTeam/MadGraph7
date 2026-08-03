@@ -356,19 +356,17 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
         "`unverified.txt` needs no `--force-refresh`",
         "every heavy attempt payload is retained",
         "sealed with compact diagnostics",
-        "without an original-AmpliCol checkout",
-        "--generation-engine recurrence compiled eager",
-        "report shows its absolute",
+        "--no-dependencies-added",
+        "dependency-only work",
+        "AmpliCol, recurrence, then compiled/eager",
         "quoted `*`",
-        "broad/default selection includes AmpliCol",
     ):
         assert fragment in help_text
     run_help = parser._subparsers._group_actions[0].choices["run"].format_help()
-    assert "recurrence, compiled, and eager selections run without" in run_help
-    assert "report absolute timings" in run_help
+    assert "automatically added authority closure" in run_help
+    assert "recurrence remains available" in run_help
+    assert "Hard construction" in run_help
     assert "Omitted or '*' engine" in run_help
-    assert "selection means all engines" in run_help
-    assert "broad/default selection" in run_help
     assert "--no-artifacts-removal" not in help_text
     arguments = _parse("run", "--dry-run")
     assert arguments.workers == 1
@@ -379,9 +377,32 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
     assert arguments.no_color is False
     assert arguments.force_refresh is False
     assert arguments.continue_across_revisions is False
+    assert arguments.no_dependencies_added is False
     assert arguments.cleanup_artifacts is False
+    assert _parse("run", "--no-dependencies-added").no_dependencies_added is True
     assert _parse("run", "--cleanup-artifacts").cleanup_artifacts is True
     assert _parse("run", "--continue-across-revisions").continue_across_revisions
+    source = manual_campaign.ReportSourceIdentity("a" * 40, "b" * 40, ())
+    settings = manual_campaign._campaign_settings(
+        arguments,
+        source,
+        original_amplicol_available=True,
+    )
+    assert settings.add_optional_dependencies is True
+    assert settings.original_amplicol_available is True
+    opt_out_settings = manual_campaign._campaign_settings(
+        _parse("run", "--dry-run", "--no-dependencies-added"),
+        source,
+        original_amplicol_available=True,
+    )
+    assert opt_out_settings.add_optional_dependencies is False
+    unvalidated_legacy = manual_campaign._campaign_settings(
+        _parse("run", "--dry-run", "--original-amplicol", "/tmp/legacy"),
+        source,
+        original_amplicol_available=True,
+    )
+    assert unvalidated_legacy.original_amplicol_available is True
+    assert unvalidated_legacy.original_amplicol_repository is None
     refresh = _parse("refresh-pdf")
     assert refresh.expected_page_count is None
     assert refresh.quiet is False
@@ -4099,6 +4120,78 @@ def test_installed_campaign_uses_copied_local_amplicol_and_explicit_override(
     assert observed == [configured, override]
 
 
+def test_original_amplicol_planning_availability_is_cheap_and_explicit(
+    tmp_path: Path,
+) -> None:
+    docs_dir = tmp_path / "campaign"
+    docs_dir.mkdir()
+    arguments = _parse("run", "--generation-engine", "compiled")
+
+    assert not manual_campaign._original_amplicol_available_for_planning(
+        arguments,
+        installed=True,
+        root=tmp_path,
+        docs_dir=docs_dir,
+    )
+
+    configured = tmp_path / "configured-amplicol"
+    configured.mkdir()
+    (docs_dir / ".pyamplicol-original-amplicol").write_text(
+        f"{configured.resolve()}\n",
+        encoding="utf-8",
+    )
+    assert manual_campaign._original_amplicol_available_for_planning(
+        arguments,
+        installed=True,
+        root=tmp_path,
+        docs_dir=docs_dir,
+    )
+
+    configured.rmdir()
+    assert not manual_campaign._original_amplicol_available_for_planning(
+        arguments,
+        installed=True,
+        root=tmp_path,
+        docs_dir=docs_dir,
+    )
+
+    (docs_dir / ".pyamplicol-original-amplicol").write_text(
+        "not-an-absolute-path\n",
+        encoding="utf-8",
+    )
+    assert not manual_campaign._original_amplicol_available_for_planning(
+        arguments,
+        installed=True,
+        root=tmp_path,
+        docs_dir=docs_dir,
+    )
+    arguments.no_dependencies_added = True
+    assert not manual_campaign._original_amplicol_available_for_planning(
+        arguments,
+        installed=True,
+        root=tmp_path,
+        docs_dir=docs_dir,
+    )
+    arguments.no_dependencies_added = False
+
+    contributor = tmp_path / "dependencies/checkouts/legacy-amplicol"
+    contributor.mkdir(parents=True)
+    assert manual_campaign._original_amplicol_available_for_planning(
+        arguments,
+        installed=False,
+        root=tmp_path,
+        docs_dir=docs_dir,
+    )
+
+    arguments.original_amplicol = tmp_path / "explicit-amplicol"
+    assert manual_campaign._original_amplicol_available_for_planning(
+        arguments,
+        installed=True,
+        root=tmp_path,
+        docs_dir=docs_dir,
+    )
+
+
 @pytest.mark.parametrize(
     "cell_id",
     (
@@ -4106,7 +4199,7 @@ def test_installed_campaign_uses_copied_local_amplicol_and_explicit_override(
         "matrix-compiled-builtin-sm-lc-n4-dd-ttzh-jets-selected-flow",
     ),
 )
-def test_pyamplicol_only_plan_and_binding_need_no_original_checkout(
+def test_pyamplicol_only_opt_out_plan_and_binding_need_no_original_checkout(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     cell_id: str,
@@ -4118,7 +4211,7 @@ def test_pyamplicol_only_plan_and_binding_need_no_original_checkout(
     planned = manual_campaign.plan_campaign(
         (selected,),
         store=service.store,
-        settings=manual_campaign.CampaignSettings(),
+        settings=manual_campaign.CampaignSettings(add_optional_dependencies=False),
     )
 
     assert planned
@@ -4140,6 +4233,7 @@ def test_pyamplicol_only_plan_and_binding_need_no_original_checkout(
         "run",
         "--generation-engine",
         selected.measurement.execution_mode.value,
+        "--no-dependencies-added",
     )
 
     manual_campaign._bind_original_amplicol_if_required(
