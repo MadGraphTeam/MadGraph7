@@ -1092,10 +1092,10 @@ class MadgraphSubprocess:
     ):
         self.process = process
         self.meta = meta
-        self.unmerged_meta = unmerged_meta
         self.subproc_id = subproc_id
         self.multi_channel_data = None
 
+        self.unmerged_meta = None
         if unmerged_meta is None:
             api_path_formats = [self.meta["me_path"]]
             subproc_paths = [self.meta["path"]]
@@ -1103,9 +1103,13 @@ class MadgraphSubprocess:
             api_path_formats = []
             subproc_paths = []
             for subproc in self.meta["subprocesses"]:
-                submeta = self.unmerged_meta[subproc]
+                submeta = unmerged_meta[subproc]
                 api_path_formats.append(submeta["me_path"])
                 subproc_paths.append(submeta["path"])
+            if len(subproc_paths) == 1:
+                self.meta = submeta
+            else:
+                self.unmerged_meta = unmerged_meta
 
         all_api_paths = []
         for api_path_format, subproc_path in zip(api_path_formats, subproc_paths):
