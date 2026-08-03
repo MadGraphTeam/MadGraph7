@@ -80,7 +80,8 @@ cd pyamplicol-examples
 
 The primary example generates a multiprocess `p p > Z j j` artifact from the
 packaged serialized Standard Model, then evaluates and profiles one concrete
-subprocess:
+subprocess. It retains the 18 model-supported tree-level channels and reports
+the omitted loop-induced `g g > Z g g` candidate:
 
 ```console
 pyamplicol generate_pp_zjj_from_ufo_sm.toml

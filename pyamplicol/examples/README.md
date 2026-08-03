@@ -10,8 +10,9 @@ pyamplicol examples copy ./pyamplicol-examples
 cd pyamplicol-examples
 ```
 
-The primary example uses the serialized external Standard Model and generates a
-19-subprocess `p p > Z j j` artifact:
+The primary example uses the serialized external Standard Model and generates
+an 18-subprocess tree-level `p p > Z j j` artifact. Expansion also finds
+`g g > Z g g`, which is loop-induced and therefore omitted:
 
 ```console
 pyamplicol generate_pp_zjj_from_ufo_sm.toml

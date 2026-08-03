@@ -1686,6 +1686,61 @@ class _ExpandedProcess:
     request: ProcessRequest
     process_ir: CanonicalProcessIR
     aliases: tuple[Mapping[str, object], ...] = ()
+    source_expansion_size: int = 1
+    source_request: ProcessRequest | None = None
+
+
+class _NoModelSupportedAmplitudes(GenerationError):
+    """A concrete tree-level subprocess has no amplitude in the active model."""
+
+
+@dataclass(frozen=True, slots=True)
+class _UnsupportedProcess:
+    expanded: _ExpandedProcess
+    reason: str
+
+
+def _source_request(expanded: _ExpandedProcess) -> ProcessRequest:
+    return expanded.source_request or expanded.request
+
+
+def _partition_model_supported_processes(
+    results: Sequence[_DagProcess | _UnsupportedProcess],
+) -> tuple[tuple[_DagProcess, ...], tuple[_UnsupportedProcess, ...]]:
+    """Retain supported children without silently dropping a whole request."""
+
+    unsupported = tuple(
+        result for result in results if isinstance(result, _UnsupportedProcess)
+    )
+    supported = tuple(
+        cast(_DagProcess, result)
+        for result in results
+        if not isinstance(result, _UnsupportedProcess)
+    )
+    supported_request_names = {
+        _source_request(result.expanded).name for result in supported
+    }
+    unsupported_by_request: dict[str, list[_UnsupportedProcess]] = {}
+    for result in unsupported:
+        source = _source_request(result.expanded)
+        unsupported_by_request.setdefault(source.name, []).append(result)
+    empty_requests = tuple(
+        (request_name, entries)
+        for request_name, entries in unsupported_by_request.items()
+        if request_name not in supported_request_names
+    )
+    if empty_requests:
+        details = []
+        for _request_name, entries in empty_requests:
+            source = _source_request(entries[0].expanded)
+            reasons = "; ".join(entry.reason for entry in entries)
+            details.append(f"{source.expression!r}: {reasons}")
+        raise GenerationError(
+            "process expansion produced no model-supported tree-level amplitudes "
+            "for requested process" + ("es" if len(details) != 1 else "") + ": "
+            + "; ".join(details)
+        )
+    return supported, unsupported
 
 
 @dataclass(frozen=True, slots=True)
@@ -2254,7 +2309,7 @@ class GenerationBackend:
                         "Compiling process DAGs",
                         total=len(expanded),
                     ) as phase:
-                        compiled = _map_process_phase(
+                        dag_results = _map_process_phase(
                             expanded,
                             lambda entry: self._compile_for_generation(
                                 entry,
@@ -2266,6 +2321,24 @@ class GenerationBackend:
                             phase_name="DAG compilation",
                             item_name=lambda entry: entry.request.name,
                         )
+                        compiled, unsupported = _partition_model_supported_processes(
+                            dag_results
+                        )
+                        if unsupported:
+                            rendered = ", ".join(
+                                f"{item.expanded.request.name} "
+                                f"({item.expanded.process_ir.process})"
+                                for item in unsupported
+                            )
+                            _LOGGER.warning(
+                                "Skipped %d concrete subprocess%s with no "
+                                "model-supported tree-level amplitudes: %s",
+                                len(unsupported),
+                                "" if len(unsupported) == 1 else "es",
+                                rendered,
+                            )
+                        del dag_results
+                        del unsupported
 
                     indexed_compiled = tuple(enumerate(compiled))
                     with reporter.phase(
@@ -2742,6 +2815,8 @@ class GenerationBackend:
                         request=concrete,
                         process_ir=process_ir,
                         aliases=tuple(alias_records),
+                        source_expansion_size=len(expanded),
+                        source_request=request,
                     )
                 )
             phase.update(request_index, message=request.name)
@@ -2752,7 +2827,7 @@ class GenerationBackend:
         expanded: _ExpandedProcess,
         model: Model,
         phase: PhaseHandle,
-    ) -> _DagProcess:
+    ) -> _DagProcess | _UnsupportedProcess:
         process_name = expanded.request.name
         with phase.child(
             process_name,
@@ -2777,27 +2852,52 @@ class GenerationBackend:
                     details=payload,
                 )
 
-            dag, coverage = self._compile_concrete_process(
-                expanded.process_ir,
-                model,
-                progress_callback=report if task.sink is not None else None,
-            )
-            task.update(
-                task.completed,
-                message="DAG complete",
-                details={
-                    "process": process_name,
-                    "step": "DAG complete",
-                    "current_count": len(dag.currents),
-                    "interaction_count": len(dag.interactions),
-                    "amplitude_count": len(dag.amplitude_roots),
-                },
-            )
+            try:
+                dag, coverage = self._compile_concrete_process(
+                    expanded.process_ir,
+                    model,
+                    progress_callback=report if task.sink is not None else None,
+                )
+            except _NoModelSupportedAmplitudes as exc:
+                if expanded.source_expansion_size <= 1:
+                    raise
+                result: _DagProcess | _UnsupportedProcess = _UnsupportedProcess(
+                    expanded=expanded,
+                    reason=str(exc),
+                )
+                step = "unsupported tree-level subprocess"
+                task.update(
+                    task.completed,
+                    message=step,
+                    details={
+                        "process": process_name,
+                        "step": step,
+                        "amplitude_count": 0,
+                    },
+                )
+            else:
+                result = _DagProcess(
+                    expanded=expanded,
+                    dag=dag,
+                    coverage=coverage,
+                )
+                step = "DAG complete"
+                task.update(
+                    task.completed,
+                    message=step,
+                    details={
+                        "process": process_name,
+                        "step": step,
+                        "current_count": len(dag.currents),
+                        "interaction_count": len(dag.interactions),
+                        "amplitude_count": len(dag.amplitude_roots),
+                    },
+                )
         phase.advance(
             message=process_name,
-            details={"process": process_name, "step": "DAG complete"},
+            details={"process": process_name, "step": step},
         )
-        return _DagProcess(expanded=expanded, dag=dag, coverage=coverage)
+        return result
 
     def _prepare_warmup_process(
         self,
@@ -5553,8 +5653,9 @@ class GenerationBackend:
                 f"process {process.process!r} DAG was unexpectedly truncated"
             )
         if not dag.has_amplitudes:
-            raise GenerationError(
-                f"process {process.process!r} has no model-supported amplitudes"
+            raise _NoModelSupportedAmplitudes(
+                f"process {process.process!r} has no model-supported tree-level "
+                "amplitudes"
             )
         return (
             dag,

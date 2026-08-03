@@ -11,7 +11,7 @@ import pytest
 
 import pyamplicol.generation.service as service_module
 import pyamplicol.licensing as licensing_module
-from pyamplicol.api import ProcessSet
+from pyamplicol.api import ModelSource, ProcessSet
 from pyamplicol.api.errors import GenerationError
 from pyamplicol.config import (
     EvaluatorConfig,
@@ -25,6 +25,8 @@ from pyamplicol.config import (
 )
 from pyamplicol.generation.progress import PhaseHandle
 from pyamplicol.licensing import SymbolicaLicenseState
+from pyamplicol.models import BuiltinSMModel
+from pyamplicol.models.builtin.process_ir import build_process_ir
 
 
 class _RuntimeSchemaStub:
@@ -393,6 +395,114 @@ def test_licensed_multiparticle_expansion_drives_workers_and_provenance(
         "shared affinity-aware CPU budget for concurrent process generation",
         "shared affinity-aware CPU budget for Symbolica evaluator work",
     ]
+
+
+def test_generation_prunes_unsupported_multiparticle_tree_channel(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    backend = service_module.GenerationBackend(
+        RunConfig(
+            action="generate",
+            generation=GenerationConfig(
+                workers=1,
+                validation=GenerationValidationConfig(
+                    enabled=False,
+                    post_build_validation=False,
+                ),
+            ),
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
+        ),
+        None,
+    )
+    model = BuiltinSMModel()
+    resolved = service_module._ResolvedModel(
+        source=ModelSource.built_in_sm(),
+        model=model,
+        use_compiled_process_catalog=False,
+    )
+    monkeypatch.setattr(
+        backend,
+        "_detect_symbolica_license",
+        lambda: SymbolicaLicenseState(licensed=True, restricted=False),
+    )
+    monkeypatch.setattr(backend, "_resolve_model", lambda _source: resolved)
+    monkeypatch.setattr(
+        backend,
+        "_artifact_model",
+        lambda _resolved: SimpleNamespace(name="test-model"),
+    )
+    monkeypatch.setattr(
+        backend,
+        "_expand_request",
+        lambda _request, _resolved: (
+            build_process_ir("d d~ > z"),
+            build_process_ir("g g > z g g"),
+        ),
+    )
+    monkeypatch.setattr(
+        backend,
+        "_prepare_warmup_process",
+        lambda process, _model, **_kwargs: SimpleNamespace(
+            expanded=process.expanded,
+            validation_points=(),
+            filters={},
+        ),
+    )
+    schema = _RuntimeSchemaStub()
+    monkeypatch.setattr(
+        backend,
+        "_construct_evaluator",
+        lambda process, _model, _phase: SimpleNamespace(
+            compiled=process,
+            runtime_schema=schema,
+            helicity_sum_runtime_schema=None,
+            helicity_selector_lanes=(),
+            color_selector_lanes=(),
+        ),
+    )
+    monkeypatch.setattr(
+        backend,
+        "_materialize_evaluator",
+        lambda process, _model, _root, _phase: SimpleNamespace(
+            process_id=process.compiled.expanded.request.name,
+        ),
+    )
+    captured: dict[str, object] = {}
+
+    def capture_artifact(destination: Path, **kwargs: object) -> SimpleNamespace:
+        captured.update(kwargs)
+        return SimpleNamespace(
+            output=Path(destination),
+            files=(),
+            api_bundle_path=None,
+        )
+
+    monkeypatch.setattr(
+        service_module,
+        "write_schema_v3_artifact",
+        capture_artifact,
+    )
+
+    result = backend.generate(
+        ProcessSet.from_expressions(("p p > z j j",)),
+        tmp_path / "artifact",
+    )
+
+    assert [request.name for request in result.processes.requests] == [
+        "p_p_to_z_j_j_1"
+    ]
+    assert [
+        process.process_id for process in captured["processes"]  # type: ignore[union-attr]
+    ] == ["p_p_to_z_j_j_1"]
+    assert "g g > z g g" not in {
+        request.expression for request in result.processes.requests
+    }
+    assert (
+        "Skipped 1 concrete subprocess with no model-supported tree-level "
+        "amplitudes: p_p_to_z_j_j_2 (g g > z g g)"
+    ) in caplog.text
 
 
 def test_eager_generation_never_enters_compiled_evaluator_lane(

@@ -67,8 +67,10 @@ name; unnamed multiparticle requests receive generated concrete names:
 entries = [{ expression = "p p > Z j j" }]
 ```
 
-For the primary two-flavor expansion, the current physical filter produces 19
-processes named `p_p_to_z_j_j_1` through `p_p_to_z_j_j_19`. The name is not a
+For the primary two-flavor expansion, the physical filter produces 19 concrete
+candidates. Generation retains `p_p_to_z_j_j_1` through
+`p_p_to_z_j_j_18`; candidate 19 is `g g > Z g g`, which has no tree-level
+Standard Model amplitude and is reported and omitted. The name is not a
 filesystem path. Either `p_p_to_z_j_j_4` or the concrete expression
 `d d~ > z g g` selects that process from the shared `artifacts/pp_zjj` root.
 
