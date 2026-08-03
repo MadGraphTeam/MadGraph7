@@ -153,6 +153,9 @@ for summed, explicit in zip(total, resolved.total(), strict=True):
 
 At LC, resolved values have shape `(point, helicity, physical color flow)`. At
 NLC/full, the final dimension has length one because color is contracted.
+The CLI renders total values and resolved components, including their explicit
+per-point sums, as colorized terminal tables. Pass `--format json` for the
+unchanged machine-readable tuple or resolved-tensor representation.
 
 Selectors use IDs reported by `runtime.physics`:
 

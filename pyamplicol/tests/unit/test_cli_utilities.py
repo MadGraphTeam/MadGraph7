@@ -42,6 +42,18 @@ def test_examples_copy_requires_force_for_nonempty_destination(
     assert 'lc_flow_layout = "all-flow-union"' in union_card
     assert (destination / "models/json/sm/sm.json").is_file()
     assert (destination / "models/ufo/sm/vertices.py").is_file()
+    expected_progress = {
+        "evaluate_total.toml": "off",
+        "evaluate_resolved.toml": "off",
+        "benchmark.toml": "log",
+    }
+    for name, progress in expected_progress.items():
+        card = parse_cli((str(destination / name),))
+        assert not isinstance(card, UtilityInvocation)
+        output = card.resolve().effective.output
+        assert output.format == "human"
+        assert output.color == "auto"
+        assert output.progress == progress
     stderr = io.StringIO()
     assert run_cli(("examples", "copy", str(destination)), stderr=stderr) == 2
     assert "not empty" in stderr.getvalue()

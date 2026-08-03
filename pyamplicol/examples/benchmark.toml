@@ -19,5 +19,6 @@ helicity_ids = []
 color_flow_ids = []
 
 [output]
-format = "json"
+format = "human"
+color = "auto"
 progress = "log"

@@ -16,5 +16,6 @@ model_parameters = "data/model_parameters.json"
 momenta = "data/pp_zjj_momenta.json"
 
 [output]
-format = "json"
+format = "human"
+color = "auto"
 progress = "off"

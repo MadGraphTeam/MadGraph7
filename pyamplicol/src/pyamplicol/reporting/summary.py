@@ -8,6 +8,7 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import fields, is_dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
         BenchmarkProfileCounters,
         BenchmarkResult,
         BenchmarkStatistics,
+        ResolvedEvaluation,
     )
 
 
@@ -42,6 +44,107 @@ def _value_text(value: object) -> str:
     if isinstance(value, bool):
         return "yes" if value else "no"
     return str(value)
+
+
+def _evaluation_value_text(value: complex | Decimal | float | int) -> str:
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, complex):
+        real = f"{value.real:.16g}"
+        if value.imag == 0.0:
+            return real
+        imaginary = f"{abs(value.imag):.16g}j"
+        if value.real == 0.0:
+            return imaginary if value.imag > 0.0 else f"-{imaginary}"
+        sign = "+" if value.imag > 0.0 else "-"
+        return f"{real}{sign}{imaginary}"
+    return f"{value:.16g}"
+
+
+def _is_evaluation_value(value: object) -> bool:
+    return not isinstance(value, bool) and isinstance(
+        value, (complex, Decimal, float, int)
+    )
+
+
+def _total_evaluation_summary(
+    values: tuple[object, ...],
+    *,
+    prettytable: Any,
+    color: bool,
+    title: str = "Summed Evaluation",
+) -> str:
+    table = prettytable.PrettyTable(("point", "matrix element"))
+    table.title = _paint(title, "CYAN", enabled=color)
+    table.align["point"] = "r"
+    table.align["matrix element"] = "r"
+    table.hrules = prettytable.HRuleStyle.HEADER
+    for point, raw in enumerate(values):
+        if not _is_evaluation_value(raw):
+            raise TypeError("evaluation values must be numeric")
+        value = cast(complex | Decimal | float | int, raw)
+        table.add_row(
+            (
+                point,
+                _paint(
+                    _evaluation_value_text(value),
+                    "GREEN",
+                    enabled=color,
+                ),
+            )
+        )
+    return cast(str, table.get_string())
+
+
+def _resolved_evaluation_summary(
+    evaluation: ResolvedEvaluation,
+    *,
+    prettytable: Any,
+    color: bool,
+) -> str:
+    component_table = prettytable.PrettyTable(
+        ("point", "helicity", "color", "matrix element")
+    )
+    component_table.title = _paint(
+        f"Resolved Evaluation ({evaluation.color_accuracy.upper()})",
+        "CYAN",
+        enabled=color,
+    )
+    component_table.align["point"] = "r"
+    component_table.align["helicity"] = "l"
+    component_table.align["color"] = "l"
+    component_table.align["matrix element"] = "r"
+    component_table.hrules = prettytable.HRuleStyle.HEADER
+    for point, helicities in enumerate(evaluation.values):
+        for helicity, colors in zip(
+            evaluation.helicity_ids,
+            helicities,
+            strict=True,
+        ):
+            for color_id, value in zip(
+                evaluation.color_ids,
+                colors,
+                strict=True,
+            ):
+                component_table.add_row(
+                    (
+                        point,
+                        _paint(helicity, "CYAN", enabled=color),
+                        _paint(color_id, "MAGENTA", enabled=color),
+                        _paint(
+                            _evaluation_value_text(value),
+                            "GREEN",
+                            enabled=color,
+                        ),
+                    )
+                )
+    total_table = _total_evaluation_summary(
+        cast(tuple[object, ...], evaluation.total()),
+        prettytable=prettytable,
+        color=color,
+        title="Resolved Sum",
+    )
+    return f"{component_table.get_string()}\n\n{total_table}"
 
 
 def _colored(text: str, *, key: str, enabled: bool) -> str:
@@ -1623,10 +1726,26 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
         prettytable: Any = importlib.import_module("prettytable")
     except ImportError:
         return None
-    from pyamplicol.api.results import BenchmarkResult, GenerationResult
+    from pyamplicol.api.results import (
+        BenchmarkResult,
+        GenerationResult,
+        ResolvedEvaluation,
+    )
 
     if isinstance(value, GenerationResult):
         return _generation_summary(value, prettytable=prettytable)
+    if isinstance(value, ResolvedEvaluation):
+        return _resolved_evaluation_summary(
+            value,
+            prettytable=prettytable,
+            color=color,
+        )
+    if isinstance(value, tuple) and all(_is_evaluation_value(item) for item in value):
+        return _total_evaluation_summary(
+            cast(tuple[object, ...], value),
+            prettytable=prettytable,
+            color=color,
+        )
     plain = _plain(value)
     if not isinstance(plain, Mapping):
         return None

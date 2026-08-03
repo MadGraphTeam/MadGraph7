@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 import json
 from dataclasses import dataclass, replace
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,6 +18,7 @@ from pyamplicol.api import (
     GenerationResult,
     ProcessRequest,
     ProcessSet,
+    ResolvedEvaluation,
 )
 from pyamplicol.artifacts import (
     ArtifactAliasInspection,
@@ -98,6 +100,57 @@ def test_json_result_never_contains_table_or_color_sequences() -> None:
         "generated_processes": 2,
         "status": "complete",
     }
+    assert "\x1b[" not in stream.getvalue()
+
+
+def test_total_evaluation_uses_a_colored_point_table_without_changing_json() -> None:
+    result = (complex(1.25, 0.0), Decimal("2.5"))
+
+    rendered = render_summary(result, color=True)
+
+    assert rendered is not None
+    assert "Summed Evaluation" in rendered
+    assert "matrix element" in rendered
+    assert "1.25" in rendered
+    assert "2.5" in rendered
+    assert "\x1b[" in rendered
+    stream = io.StringIO()
+    write_result(result, format="json", stream=stream, color=True)
+    assert json.loads(stream.getvalue()) == [
+        {"imag": 0.0, "real": 1.25},
+        "2.5",
+    ]
+    assert "\x1b[" not in stream.getvalue()
+
+
+def test_resolved_evaluation_uses_colored_component_and_sum_tables() -> None:
+    result = ResolvedEvaluation(
+        values=(
+            (
+                (complex(1.0, 2.0), complex(3.0, 0.0)),
+                (complex(4.0, 0.0), complex(5.0, 0.0)),
+            ),
+        ),
+        helicity_ids=("h:first", "h:second"),
+        color_ids=("flow:first", "flow:second"),
+    )
+
+    rendered = render_summary(result, color=True)
+
+    assert rendered is not None
+    assert "Resolved Evaluation (LC)" in rendered
+    assert "h:first" in rendered
+    assert "flow:second" in rendered
+    assert "1+2j" in rendered
+    assert "Resolved Sum" in rendered
+    assert "13+2j" in rendered
+    assert "\x1b[" in rendered
+    stream = io.StringIO()
+    write_result(result, format="json", stream=stream, color=True)
+    payload = json.loads(stream.getvalue())
+    assert payload["values"][0][0][0] == {"imag": 2.0, "real": 1.0}
+    assert payload["helicity_ids"] == ["h:first", "h:second"]
+    assert payload["color_ids"] == ["flow:first", "flow:second"]
     assert "\x1b[" not in stream.getvalue()
 
 
