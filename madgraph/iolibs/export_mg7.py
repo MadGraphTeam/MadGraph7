@@ -7,19 +7,19 @@ from madgraph.iolibs import export_cpp
 from madgraph.iolibs.group_subprocs import IdentifyConfigTag
 from madgraph.core.diagram_generation import DiagramTag
 
-class IdentifyJetTag(IdentifyConfigTag):
+class IdentifyTopologyTag(IdentifyConfigTag):
     """ Like IndentifyConfigTag, but ignores spin and color """
 
     @staticmethod
     def link_from_leg(leg, model):
         (leg_num1, _, mass, width, _), leg_num2 = super(
-            IdentifyJetTag, IdentifyJetTag
+            IdentifyTopologyTag, IdentifyTopologyTag
         ).link_from_leg(leg, model)[0]
         return [((leg_num1, mass, width), leg_num2)]
 
     @staticmethod
     def vertex_id_from_vertex(vertex, last_vertex, model, ninitial):
-        vertex = super(IdentifyJetTag, IdentifyJetTag).vertex_id_from_vertex(
+        vertex = super(IdentifyTopologyTag, IdentifyTopologyTag).vertex_id_from_vertex(
             vertex, last_vertex, model, ninitial
         )
         if len(vertex) == 1:
@@ -28,19 +28,19 @@ class IdentifyJetTag(IdentifyConfigTag):
         return ((mass, width), 0)
 
 
-class IdentifySGJetTag(IdentifySGConfigTag):
+class IdentifySGTopologyTag(IdentifySGConfigTag):
     """ Like IndentifySGConfigTag, but ignores spin, color and charge """
 
     @staticmethod
     def link_from_leg(leg, model):
         (state, _, _, _, mass, width), leg_num = super(
-            IdentifySGJetTag, IdentifySGJetTag
+            IdentifySGTopologyTag, IdentifySGTopologyTag
         ).link_from_leg(leg, model)[0]
         return [((state, mass, width), leg_num)]
 
     @staticmethod
     def vertex_id_from_vertex(vertex, last_vertex, model, ninitial):
-        vertex = super(IdentifySGJetTag, IdentifySGJetTag).vertex_id_from_vertex(
+        vertex = super(IdentifySGTopologyTag, IdentifySGTopologyTag).vertex_id_from_vertex(
             vertex, last_vertex, model, ninitial
         )
         if len(vertex) == 1:
@@ -51,17 +51,16 @@ class IdentifySGJetTag(IdentifySGConfigTag):
 
 class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
 
-    def __init__(self, matrix_element, cpp_helas_call_writer):
+    def __init__(self, matrix_element, cpp_helas_call_writer, merge_same_topologies=True):
         super().__init__(matrix_element, cpp_helas_call_writer)
         self.matrix_element = matrix_element
         self.name = f"P{matrix_element.get('processes')[0].shell_string()}"
         self.model = self.matrix_element.get("processes")[0].get("model")
         self.amplitude = self.matrix_element.get("base_amplitude")
-        merge_jets = False
-        if merge_jets:
+        if merge_same_topologies:
             self.sym_indices, self.sym_perms, _ = find_symmetry(
                 self.matrix_element,
-                lambda diag: IdentifySGJetTag(diag, self.model),
+                lambda diag: IdentifySGTopologyTag(diag, self.model),
                 skip_identical_check=True
             )
         else:
@@ -167,7 +166,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
             if sym_index < 0:
                 chan_index = channel_indices[-sym_index - 1]
                 self.diagram_tags[chan_index].append(
-                    IdentifyJetTag(diagram, self.model),
+                    IdentifyTopologyTag(diagram, self.model),
                 )
                 self.channels[chan_index]["diagrams"].append(
                     {
@@ -209,7 +208,7 @@ class OneProcessExporterMG7(export_cpp.OneProcessExporterCPP):
                 vertices.append(vertex_props)
 
             chan_index = len(self.channels)
-            self.diagram_tags.append([IdentifyJetTag(diagram, self.model)])
+            self.diagram_tags.append([IdentifyTopologyTag(diagram, self.model)])
             channel_indices.append(chan_index)
             self.channels.append(
                 {

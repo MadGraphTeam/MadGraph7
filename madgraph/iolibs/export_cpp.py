@@ -3204,7 +3204,11 @@ class ProcessExporterMG7(ProcessExporterCPP):
         self, matrix_element, cpp_helas_call_writer, proc_number=None
     ):
         """ Override of super().generate_subprocess_directory """
-        process_exporter_mg7 = self.oneprocessclass(matrix_element,cpp_helas_call_writer)
+        process_exporter_mg7 = self.oneprocessclass(
+            matrix_element,
+            cpp_helas_call_writer,
+            merge_same_topologies=self.opt.get('merge_same_topologies', True)
+        )
 
         # Create the directory PN_xx_xxxxx in the specified path
         proc_dir_name = process_exporter_mg7.name
