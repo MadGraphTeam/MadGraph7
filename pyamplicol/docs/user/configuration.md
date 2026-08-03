@@ -4,6 +4,9 @@
 
 TOML schema version 1 is shared by the CLI and Python configuration classes.
 `examples/all_options.toml` is the exhaustive commented field reference.
+Commands using `models/`, `data/`, or the packaged cards assume the installed
+environment is active and the current directory is the workspace created by
+`pyamplicol examples copy ./pyamplicol-examples`.
 
 ## Primary Run Card
 
@@ -165,6 +168,7 @@ request-symbolica-trial-license
 request-symbolica-hobbyist-license
 config template|resolve
 examples list|copy|run
+profiling-campaign copy
 doctor
 self-test
 ```

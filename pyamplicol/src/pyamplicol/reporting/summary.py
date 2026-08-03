@@ -696,7 +696,13 @@ def _benchmark_summary(
         (breakdown is not None and breakdown.execution_mode == "recurrence")
         or environment.get("execution_mode") == "recurrence"
     )
-    profile_metric_label = "recurrence core" if recurrence_timing else "evaluator core"
+    direct_arena_timing = environment.get("compiled_direct_arena_active") is True
+    if recurrence_timing:
+        profile_metric_label = "recurrence core"
+    elif direct_arena_timing:
+        profile_metric_label = "Direct-Arena runtime envelope"
+    else:
+        profile_metric_label = "evaluator core"
     profile_repetitions_value = environment.get("native_profile_repetitions_per_sample")
     profile_repetitions = (
         int(profile_repetitions_value)
@@ -890,6 +896,11 @@ def _benchmark_summary(
     )
     momentum_input_setup_time = (
         breakdown.momentum_input_setup_time or breakdown.momentum_setup_time
+    )
+    orchestration_component_label = (
+        "Direct-Arena runtime envelope"
+        if direct_arena_timing
+        else "Runtime orchestration"
     )
     component_rows: tuple[tuple[str, BenchmarkComponentTiming | None], ...]
     if detailed_eager_profile:
@@ -1087,7 +1098,7 @@ def _benchmark_summary(
             ),
             ("Native input pack", breakdown.native_input_pack_time),
             ("Native input crossing", breakdown.native_input_crossing_time),
-            ("Runtime orchestration", breakdown.orchestration_time),
+            (orchestration_component_label, breakdown.orchestration_time),
             ("State prepare", breakdown.state_prepare_time),
             ("State clear", breakdown.state_clear_time),
             ("Source fill", breakdown.source_fill_time),

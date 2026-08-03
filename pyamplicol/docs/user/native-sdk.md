@@ -34,6 +34,13 @@ rusticol-config --cargo-rustflags
 rusticol-config --json
 ```
 
+Run these commands with the Python environment containing pyAmpliCol
+activated. The generated drivers and hand-written examples are portable across
+artifact locations, but they intentionally discover the wheel-owned SDK from
+that environment rather than embedding the path of the machine that generated
+the artifact. If `pyamplicol` was invoked by an explicit path, activate that
+same environment or add its `bin` directory to `PATH` first.
+
 `--cflags`, `--libs`, and `--rustflags` return shell-escaped argument streams.
 `--rust-source` returns the safe Rust wrapper path. `--cargo-rustflags` returns
 the same Rust linker arguments in Cargo's unit-separator encoding for
@@ -249,6 +256,10 @@ examples/native/runtime_cpp artifacts/pp_zjj p_p_to_z_j_j_4 \
 examples/native/runtime_fortran artifacts/pp_zjj 'd d~ > z g g' \
   examples/data/model_parameters.json
 ```
+
+The same JSON parameter card is accepted by Python and every native SDK: a
+finite JSON number denotes a real value, while `[real, imaginary]` represents
+an explicitly complex value.
 
 The C ABI, C++ wrapper, Fortran module, and generated Rust wrapper use the same
 Rusticol resolver. After loading, `process_key()` returns the stable ID even

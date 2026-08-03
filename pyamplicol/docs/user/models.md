@@ -2,6 +2,10 @@
 
 # Models And Processes
 
+Commands using the packaged `models/` paths assume the installed environment
+is active and the current directory is a workspace created by
+`pyamplicol examples copy ./pyamplicol-examples`.
+
 ## Serialized JSON
 
 Serialized JSON is the primary portable model input. It is deterministic to
@@ -136,11 +140,12 @@ p = ["d", "d~", "g"]
 j = ["d", "d~", "g"]
 ```
 
-The UFO SM uses its declared particle names when parsing generation
-requests. The current generation filter retains 19 concrete processes. A
-runtime may select one through the concrete expression recorded by artifact
-inspection or a stable name such as `p_p_to_z_j_j_4`; neither is an output
-directory name.
+The UFO SM uses its declared particle names when parsing generation requests.
+The primary expansion produces 19 concrete candidates and retains the 18 with
+tree-level amplitudes. Candidate 19, `g g > Z g g`, is loop-induced in the
+Standard Model and is reported and omitted. A runtime may select a retained
+process through the concrete expression recorded by artifact inspection or a
+stable name such as `p_p_to_z_j_j_4`; neither is an output directory name.
 
 Explicit process sets are also supported:
 

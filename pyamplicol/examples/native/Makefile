@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: 0BSD
 
 CXX ?= c++
+ifeq ($(origin FC), default)
+FC := gfortran
+endif
 FC ?= gfortran
 CXXFLAGS ?= -O2
 FFLAGS ?= -O2

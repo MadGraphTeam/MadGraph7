@@ -31,9 +31,15 @@ source checkout:
 pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
 ./pyamplicol-profiling-campaign/steer_performance_campaign.py --help
 ./pyamplicol-profiling-campaign/steer_performance_campaign.py run \
-  --dry-run --table scalar_contact --multiplicity 2 \
-  --generation-engine compiled --no-dashboard
+  --workers 1 --table matrix --process-id 1 --multiplicity 1 \
+  --color-approximation lc --generation-mode non-union-flow \
+  --generation-engine recurrence --model built_in \
+  --no-dependencies-added --no-dashboard
 ```
+
+The final command is a real, deliberately small installation smoke test. It
+measures only `d d~ > Z`; broader multiplicities belong on a dedicated
+profiling host.
 
 `--force` overwrites the managed template files and resets only this copy's
 `campaign_artifacts/`, `pyAmpliCol.pdf`, `campaign_summary_ids/`, and known

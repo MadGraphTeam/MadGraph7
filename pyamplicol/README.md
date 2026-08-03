@@ -78,6 +78,10 @@ pyamplicol examples copy ./pyamplicol-examples --force
 cd pyamplicol-examples
 ```
 
+Keep the Python environment containing pyAmpliCol activated while using the
+copy. The generated Python driver imports that installation, and the native
+Makefiles discover its SDK through the sibling `rusticol-config` command.
+
 The primary example generates a multiprocess `p p > Z j j` artifact from the
 packaged serialized Standard Model, then evaluates and profiles one concrete
 subprocess. It retains the 18 model-supported tree-level channels and reports
@@ -102,8 +106,12 @@ pyamplicol inspect ./artifacts/ddbar_zg
 The same runtime is available from Python:
 
 ```python
+import json
+from pathlib import Path
+
 from pyamplicol import Runtime
 
+momenta = json.loads(Path("data/pp_zjj_momenta.json").read_text())
 runtime = Runtime.load("artifacts/pp_zjj", process="d d~ > z g g")
 total = runtime.evaluate(momenta)
 resolved = runtime.evaluate_resolved(momenta)
@@ -143,7 +151,17 @@ An installed wheel can populate a self-contained campaign workspace:
 
 ```console
 pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
+cd ./pyamplicol-profiling-campaign
+./steer_performance_campaign.py run \
+  --workers 1 --table matrix --process-id 1 --multiplicity 1 \
+  --color-approximation lc --generation-mode non-union-flow \
+  --generation-engine recurrence --model built_in \
+  --no-dependencies-added --no-dashboard
 ```
+
+That deliberately small real campaign measures only the final-state-
+multiplicity-one `d d~ > Z` recurrence cell. Broader campaign selections are
+intended for dedicated profiling hosts, not installation smoke tests.
 
 Each campaign keeps attempts, prepared artifacts, logs, locks, and leases in
 its visible `campaign_artifacts/` directory. Moving or renaming the whole

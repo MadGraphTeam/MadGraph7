@@ -27,7 +27,16 @@ An installed wheel can also populate a self-contained profiling campaign:
 
 ```console
 pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
+./pyamplicol-profiling-campaign/steer_performance_campaign.py run \
+  --workers 1 --table matrix --process-id 1 --multiplicity 1 \
+  --color-approximation lc --generation-mode non-union-flow \
+  --generation-engine recurrence --model built_in \
+  --no-dependencies-added --no-dashboard
 ```
+
+This installation smoke measures only the final-state-multiplicity-one
+`d d~ > Z` recurrence cell. Use broader selections only for an intentional
+performance campaign.
 
 The visible `campaign_artifacts/` directory inside the destination holds all
 attempts, prepared artifacts, logs, locks, and leases. It moves with the whole

@@ -16,9 +16,14 @@ empty destination and invoke the controller there:
 ```console
 pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
 ./pyamplicol-profiling-campaign/steer_performance_campaign.py \
-  run --dry-run --table scalar_contact --multiplicity 2 \
-  --generation-engine compiled --no-dashboard
+  run --workers 1 --table matrix --process-id 1 --multiplicity 1 \
+  --color-approximation lc --generation-mode non-union-flow \
+  --generation-engine recurrence --model built_in \
+  --no-dependencies-added --no-dashboard
 ```
+
+This real smoke campaign selects only the final-state-multiplicity-one
+`d d~ > Z` recurrence cell and is suitable for checking an installation.
 
 Release wheels omit the optional `ratatui` and `ratatui_py` dashboard
 bindings. Installed runs automatically continue headlessly as though
@@ -64,17 +69,21 @@ selections. Each recipe uses the repository `.venv/bin/pyamplicol` and states
 whether it is exact, a template, or a diagnostic protocol exception. UFO
 recurrence/eager recipes include their public `model compile` prerequisite.
 
-Run a bounded multicore selection:
+The same small installation campaign, when run from inside its directory, is:
 
 ```console
 ./steer_performance_campaign.py run \
-  --workers 4 --cores-per-worker 2 --table z_table --multiplicity 3
+  --workers 1 --table matrix --process-id 1 --multiplicity 1 \
+  --color-approximation lc --generation-mode non-union-flow \
+  --generation-engine recurrence --model built_in \
+  --no-dependencies-added --no-dashboard
 ```
 
-Defaults are one worker, one core, a one-hour generation/preparation limit, and
-a decimal 30 GB process-tree RAM limit. Press `Ctrl-C` or `Esc` to stop
-dispatch, terminate supervised process trees, preserve completed currents, and
-restore the terminal.
+Broader selections may raise `--workers` and `--cores-per-worker` on a dedicated
+profiling host. Defaults are one worker, one core, a one-hour
+generation/preparation limit, and a decimal 30 GB process-tree RAM limit.
+Press `Ctrl-C` or `Esc` to stop dispatch, terminate supervised process trees,
+preserve completed currents, and restore the terminal.
 
 After normal completion or an orderly interrupt, the controller prints the
 absolute path of `campaign_summary_ids/`. It replaces that directory with one

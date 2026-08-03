@@ -29,26 +29,31 @@ pub(super) fn parse_complex_parameter_overrides(
     })?;
     let mut overrides = BTreeMap::new();
     for (name, value) in object {
-        let components = value.as_array().ok_or_else(|| {
-            RusticolError::invalid_argument(format!(
-                "model-parameter JSON entry {name:?} must be [real, imaginary]"
-            ))
-        })?;
-        if components.len() != 2 {
-            return Err(RusticolError::invalid_argument(format!(
-                "model-parameter JSON entry {name:?} must have exactly two components"
-            )));
-        }
-        let real = components[0].as_f64().ok_or_else(|| {
-            RusticolError::invalid_argument(format!(
-                "model-parameter JSON entry {name:?} has a non-numeric real component"
-            ))
-        })?;
-        let imaginary = components[1].as_f64().ok_or_else(|| {
-            RusticolError::invalid_argument(format!(
-                "model-parameter JSON entry {name:?} has a non-numeric imaginary component"
-            ))
-        })?;
+        let (real, imaginary) = if let Some(real) = value.as_f64() {
+            (real, 0.0)
+        } else {
+            let components = value.as_array().ok_or_else(|| {
+                RusticolError::invalid_argument(format!(
+                    "model-parameter JSON entry {name:?} must be a real number or [real, imaginary]"
+                ))
+            })?;
+            if components.len() != 2 {
+                return Err(RusticolError::invalid_argument(format!(
+                    "model-parameter JSON entry {name:?} must have exactly two components"
+                )));
+            }
+            let real = components[0].as_f64().ok_or_else(|| {
+                RusticolError::invalid_argument(format!(
+                    "model-parameter JSON entry {name:?} has a non-numeric real component"
+                ))
+            })?;
+            let imaginary = components[1].as_f64().ok_or_else(|| {
+                RusticolError::invalid_argument(format!(
+                    "model-parameter JSON entry {name:?} has a non-numeric imaginary component"
+                ))
+            })?;
+            (real, imaginary)
+        };
         if !real.is_finite() || !imaginary.is_finite() {
             return Err(RusticolError::invalid_argument(format!(
                 "model-parameter JSON entry {name:?} must contain finite values"
@@ -57,6 +62,37 @@ pub(super) fn parse_complex_parameter_overrides(
         overrides.insert(name.clone(), (real, imaginary));
     }
     Ok(overrides)
+}
+
+#[cfg(test)]
+mod parameter_json_tests {
+    use super::parse_complex_parameter_overrides;
+    use std::path::Path;
+
+    #[test]
+    fn parameter_json_accepts_real_scalars_and_complex_pairs() {
+        let parsed = parse_complex_parameter_overrides(
+            r#"{"aS": 0.117, "complex": [2.5, -0.25]}"#,
+            Path::new("parameters.json"),
+        )
+        .expect("parameter card should parse");
+
+        assert_eq!(parsed.get("aS"), Some(&(0.117, 0.0)));
+        assert_eq!(parsed.get("complex"), Some(&(2.5, -0.25)));
+    }
+
+    #[test]
+    fn parameter_json_rejects_non_numeric_values() {
+        let error =
+            parse_complex_parameter_overrides(r#"{"aS": "0.117"}"#, Path::new("parameters.json"))
+                .expect_err("string parameter must fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("must be a real number or [real, imaginary]")
+        );
+    }
 }
 
 impl ExecutionRuntime {

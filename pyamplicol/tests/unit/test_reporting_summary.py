@@ -316,6 +316,28 @@ def test_benchmark_result_uses_clear_runtime_profile_table() -> None:
     assert "Rusticol Timing Breakdown (paired profiled attribution)" in rendered
 
 
+def test_compiled_direct_arena_labels_the_inclusive_runtime_envelope() -> None:
+    result = _benchmark_result()
+    rendered = render_summary(
+        replace(
+            result,
+            environment={
+                **result.environment,
+                "compiled_direct_arena_active": True,
+                "evaluator_time_source": (
+                    "runtime_profile_core_compiled_direct_arena_orchestration_time"
+                ),
+            },
+        ),
+        color=False,
+    )
+
+    assert rendered is not None
+    assert rendered.count("Direct-Arena runtime envelope") >= 3
+    assert "evaluator core" not in rendered
+    assert "Runtime orchestration" not in rendered
+
+
 def test_timing_breakdown_omits_exact_zero_component_rows() -> None:
     result = _benchmark_result()
     breakdown = result.timing_breakdown

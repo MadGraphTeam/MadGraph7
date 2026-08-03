@@ -270,6 +270,7 @@ def test_native_examples_use_installed_sdk_discovery_and_public_wrappers() -> No
     for option in ("--cflags", "--libs", "--fortran-source"):
         assert f"$(RUSTICOL_CONFIG) {option}" in makefile
     assert "CXX ?= c++" in makefile
+    assert "ifeq ($(origin FC), default)\nFC := gfortran\nendif" in makefile
     assert "FC ?= gfortran" in makefile
     assert "$(RUSTICOL_CONFIG) --library" not in makefile
     assert "rusticol::Runtime" in cpp
@@ -301,6 +302,14 @@ def test_native_examples_use_installed_sdk_discovery_and_public_wrappers() -> No
     combined = "\n".join((makefile, cpp, fortran))
     assert "src/pyamplicol" not in combined
     assert str(ROOT) not in combined
+
+
+def test_typed_external_model_example_selects_process_local_compiled_jit() -> None:
+    source = (EXAMPLES / "python/typed_generation.py").read_text(encoding="utf-8")
+
+    assert '"execution_mode": "compiled"' in source
+    assert '"backend": "jit"' in source
+    assert '"optimization_level": 3' in source
 
 
 def test_readme_states_current_release_boundary_and_available_utilities() -> None:

@@ -3,12 +3,19 @@
 # Packaged Examples
 
 All TOML cards use schema version 1 and resolve paths relative to themselves.
-Create an editable, installation-independent workspace with:
+Create an editable workspace whose model/data assets are independent of the
+installation location with:
 
 ```console
 pyamplicol examples copy ./pyamplicol-examples
 cd pyamplicol-examples
 ```
+
+Keep the environment containing pyAmpliCol activated for every command below.
+The Python examples import that installation, while the C, C++, Fortran, and
+Rust Makefiles find its static SDK through the sibling `rusticol-config`
+command. If `pyamplicol` was invoked by an explicit path instead, activate that
+same environment (or put its `bin` directory on `PATH`) before continuing.
 
 The primary example uses the serialized external Standard Model and generates
 an 18-subprocess tree-level `p p > Z j j` artifact. Expansion also finds
@@ -161,8 +168,8 @@ example relies on an installation directory.
 Plan or generate the primary process through the typed API:
 
 ```console
-python python/typed_generation.py artifacts/pp_zjj --plan-only
-python python/typed_generation.py artifacts/pp_zjj
+python python/typed_generation.py artifacts/pp_zjj_typed --plan-only
+python python/typed_generation.py artifacts/pp_zjj_typed
 ```
 
 The script compiles the external JSON model before planning, carries explicit
@@ -244,4 +251,4 @@ Both examples apply a direct `aS` override, evaluate the five-particle
 validation point, and verify that resolved components reproduce the total.
 
 Current release validation and upload status are listed in
-[`docs/user/release-status.md`](../docs/user/release-status.md).
+the [release-status guide](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/release-status.md).

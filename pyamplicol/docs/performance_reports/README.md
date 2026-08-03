@@ -17,7 +17,16 @@ Create or reset a self-contained campaign from any installed wheel with:
 
 ```console
 pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
+./pyamplicol-profiling-campaign/steer_performance_campaign.py run \
+  --workers 1 --table matrix --process-id 1 --multiplicity 1 \
+  --color-approximation lc --generation-mode non-union-flow \
+  --generation-engine recurrence --model built_in \
+  --no-dependencies-added --no-dashboard
 ```
+
+The run above is the supported quick installation check: it measures only the
+final-state-multiplicity-one `d d~ > Z` recurrence cell. The retained reports
+come from much broader dedicated campaigns.
 
 Runtime attempts, artifacts, locks, and coordination state live visibly in
 `pyamplicol-profiling-campaign/campaign_artifacts/`. Moving or renaming the

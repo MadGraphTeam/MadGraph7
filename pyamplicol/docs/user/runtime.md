@@ -5,6 +5,9 @@
 `Runtime` loads a schema-v3 process artifact and exposes stable process,
 particle, helicity, color, reduction, and model-parameter metadata. The native
 extension is imported only when an artifact is loaded.
+Commands and snippets using `artifacts/`, `data/`, or `models/` assume the
+installed environment is active and the current directory is the workspace
+created by `pyamplicol examples copy ./pyamplicol-examples`.
 
 ## Inspect An Artifact
 
@@ -259,10 +262,16 @@ storage, so memory use does not grow with the calibrated repetition count.
 
 For f64 artifacts, wall time starts inside Rusticol after the caller-language
 momentum buffer has been converted and covers repeated ordinary core
-evaluations through reduction. The evaluator time remains the sum of generated
-stage and amplitude evaluator calls. This keeps Python/NumPy conversion and
-language-wrapper costs out of the runtime metric shared by the Python, C11,
-C++17, Fortran 2008, and Rust 2021 APIs.
+evaluations through reduction. Recurrence profiles expose the recurrence
+schedule, and legacy compiled/eager paths expose their generated evaluator
+calls. The optimized compiled Direct-Arena hot path deliberately has no
+internal phase clocks: its displayed `Direct-Arena runtime envelope` is the
+complete native runtime call after input packing, including arena setup,
+generated kernel execution, reduction, normalization, and orchestration. It is
+not a pure evaluator-kernel or pure orchestration measurement. These native
+metrics keep Python/NumPy conversion and language-wrapper costs out of the
+runtime timing shared by the Python, C11, C++17, Fortran 2008, and Rust 2021
+APIs.
 
 The human result is a colorized PrettyTable showing the selected process, wall
 and evaluator means with standard errors, wall standard deviation and relative
@@ -289,7 +298,11 @@ the lane-dependent attribution explicitly. Per-stage tables retain
 packing/evaluator/output detail. An
 `Other Rusticol core` row closes the exclusive component sum against profile
 wall time and is expected to contain only residual bookkeeping and unsplit
-work.
+work. For compiled Direct-Arena, the table labels the otherwise
+`orchestration_time` bucket as `Direct-Arena runtime envelope`, matching its
+inclusive meaning; the current profile cannot derive a kernel-only duration
+from that uninstrumented path. `evaluator total` in the headline table remains
+the separately measured, minimally instrumented complete evaluator call.
 
 The `Native Work Counters` table reports input bytes and explicit native
 containers, state/source/momentum/model components, stage and amplitude

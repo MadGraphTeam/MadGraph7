@@ -71,6 +71,13 @@ def main() -> int:
         },
         "color": {"accuracy": args.color_accuracy},
         "generation": {"output": args.output, "mode": args.mode},
+        # Raw JSON/UFO model IR has no prepared recurrence-kernel bundle.
+        # Match the primary card by building process-local compiled JIT evaluators.
+        "evaluator": {
+            "backend": "jit",
+            "execution_mode": "compiled",
+            "jit": {"optimization_level": 3, "compress": True},
+        },
     }
     resolution = resolve_config(card)
     config = resolution.effective
