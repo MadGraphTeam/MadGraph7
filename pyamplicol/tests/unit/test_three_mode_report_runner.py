@@ -46,6 +46,7 @@ from tools.performance_report.runner import (
     _authenticated_recurrence_source_identity,
     _authenticated_symjit_plane_leaves,
     _benchmark_measurement,
+    _calibrate_arena_repetitions,
     _real_nonnegative,
     _regular_file_identity,
     _run_arena_benchmark,
@@ -573,6 +574,120 @@ def test_report_arena_benchmark_uses_private_profiler_without_public_fallback(
         assert arena_batch == wall_batch
         assert arena_repetitions == wall_repetitions
         assert arena_kwargs == {**wall_kwargs, "include_values": False}
+
+
+def test_report_arena_benchmark_recovers_from_busy_floor_calibration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Clock:
+        value = 0.0
+
+        def advance(self, duration: float) -> None:
+            self.value += duration
+
+    class Runtime:
+        def __init__(self, clock: Clock) -> None:
+            self.clock = clock
+            self.wall_repetitions: list[int] = []
+            self.profile_repetitions: list[int] = []
+
+        def _benchmark_f64_wall_time(
+            self,
+            batch: object,
+            repetitions: int,
+            **_kwargs: object,
+        ) -> float:
+            assert isinstance(batch, tuple)
+            self.wall_repetitions.append(repetitions)
+            duration = (
+                3.753739778
+                if len(self.wall_repetitions) == 1
+                else 0.0181 * repetitions
+            )
+            self.clock.advance(duration)
+            return duration
+
+        def _profile_arena_repeated(
+            self,
+            batch: object,
+            repetitions: int,
+            **_kwargs: object,
+        ) -> dict[str, object]:
+            assert isinstance(batch, tuple)
+            self.profile_repetitions.append(repetitions)
+            duration = 1.0e-3
+            self.clock.advance(duration)
+            return _raw_arena_profile(
+                execution_mode="compiled",
+                points=len(batch) * repetitions,
+                wall_time=duration,
+            )
+
+    clock = Clock()
+    runtime = Runtime(clock)
+    guarded_estimates: list[float | None] = []
+    monkeypatch.setattr(
+        "tools.performance_report.runner.time.perf_counter",
+        lambda: clock.value,
+    )
+
+    result = _run_arena_benchmark(
+        runtime,
+        (((1.0, 0.0, 0.0, 1.0),),),
+        execution_mode="compiled",
+        benchmark_config=SimpleNamespace(
+            target_runtime=5.0,
+            batch_size=2,
+            warmup_runs=0,
+            minimum_samples=5,
+            precision=16,
+        ),
+        selectors={"helicities": None, "color_flows": None},
+        chunk_guard=lambda estimate, _label: guarded_estimates.append(estimate),
+    )
+
+    assert result.sample_count == 5
+    assert result.environment["elapsed_seconds"] == pytest.approx(5.068)
+    assert result.environment["repetitions_per_sample"] == 56
+    assert result.environment["calibration"]["blocks"] == [
+        {"repetitions": 1, "duration_seconds": 3.753739778},
+        {"repetitions": 1, "duration_seconds": 0.0181},
+        {"repetitions": 56, "duration_seconds": pytest.approx(1.0136)},
+    ]
+    assert runtime.wall_repetitions == [1, 1, 56, 56, 56, 56, 56, 56]
+    assert runtime.profile_repetitions == [56] * 5
+    assert guarded_estimates[:3] == [
+        None,
+        pytest.approx(3.753739778),
+        pytest.approx(1.0136),
+    ]
+
+
+def test_report_arena_calibration_confirms_genuinely_slow_floor_once() -> None:
+    calls: list[int] = []
+
+    def timer(
+        _batch: object,
+        repetitions: int,
+        **_arguments: object,
+    ) -> float:
+        calls.append(repetitions)
+        return 2.0
+
+    repetitions, blocks = _calibrate_arena_repetitions(
+        timer,
+        (((1.0, 0.0, 0.0, 1.0),),),
+        target_runtime=5.0,
+        sample_count=5,
+        selector_arguments={},
+    )
+
+    assert repetitions == 1
+    assert calls == [1, 1]
+    assert blocks == [
+        {"repetitions": 1, "duration_seconds": 2.0},
+        {"repetitions": 1, "duration_seconds": 2.0},
+    ]
 
 
 def test_report_arena_benchmark_requires_private_profiler() -> None:

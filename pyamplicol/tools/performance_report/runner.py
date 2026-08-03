@@ -2699,6 +2699,7 @@ def _calibrate_arena_repetitions(
         "Arena wall calibration duration",
     )
     blocks = [{"repetitions": repetitions, "duration_seconds": observed}]
+    minimum_repetition_confirmed = False
     if progress is not None:
         progress.emit(
             ProgressUpdate(
@@ -2716,6 +2717,44 @@ def _calibrate_arena_repetitions(
         estimate = math.ceil(repetitions * target_per_block / observed)
         candidate = min(max(estimate, 1), _ARENA_MAX_REPETITIONS)
         if candidate == repetitions:
+            # A busy worker can make the first one-repetition probe arbitrarily
+            # slow.  At the repetition floor that outlier otherwise terminates
+            # calibration immediately, even when the warmed steady-state call
+            # is orders of magnitude faster.  Confirm the floor once and use
+            # the faster observation: scheduling contention can delay a probe,
+            # but it cannot make the native work complete spuriously early.
+            if (
+                repetitions == 1
+                and observed >= target_per_block
+                and not minimum_repetition_confirmed
+            ):
+                confirmation = _positive_duration(
+                    timer(batch, repetitions, **selector_arguments),
+                    "Arena wall calibration confirmation duration",
+                )
+                blocks.append(
+                    {
+                        "repetitions": repetitions,
+                        "duration_seconds": confirmation,
+                    }
+                )
+                observed = min(observed, confirmation)
+                minimum_repetition_confirmed = True
+                if progress is not None:
+                    progress.emit(
+                        ProgressUpdate(
+                            task_id,
+                            len(blocks),
+                            _ARENA_MAX_CALIBRATION_BLOCKS + 1,
+                            "confirming minimum-repetition timing",
+                            {
+                                "duration_seconds": confirmation,
+                                "selected_duration_seconds": observed,
+                                "repetitions": repetitions,
+                            },
+                        )
+                    )
+                continue
             break
         repetitions = candidate
         observed = _positive_duration(
