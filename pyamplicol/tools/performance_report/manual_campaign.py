@@ -3095,9 +3095,8 @@ class DashboardState:
         recycled_ids = self.recycled_ids & selected
         completed_ids = (self.completed_ids & selected) - recycled_ids
         addressed = recycled_ids | completed_ids | (self.static_na_ids & selected)
-        active_ids = {
-            worker.cell_id for worker in self.active if worker.cell_id in selected
-        }
+        active_ids = {worker.cell_id for worker in self.active}
+        selected_active_ids = active_ids & selected
         return {
             "selected": len(self.selected_ids),
             "recycled": len(recycled_ids),
@@ -3105,7 +3104,7 @@ class DashboardState:
             "completed": len(completed_ids),
             "remaining": max(
                 0,
-                len(self.selected_ids) - len(addressed | active_ids),
+                len(self.selected_ids) - len(addressed | selected_active_ids),
             ),
             "static_na": len(self.static_na_ids & selected),
             "capped": len(self.capped_ids & selected),

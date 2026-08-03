@@ -4244,6 +4244,30 @@ def test_finished_reuse_stays_recycled_while_work_and_caps_complete(
     }
 
 
+def test_active_counter_includes_dependency_work_without_consuming_remaining() -> None:
+    state = DashboardState(
+        instance_id="dependency-active",
+        selected_ids=("direct-cell",),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        dependency_ids={"dependency-cell"},
+        workers={
+            "dependency-cell": WorkerView(
+                "dependency-cell",
+                dependency=True,
+                status="running",
+            )
+        },
+    )
+
+    counters = state.counters()
+
+    assert counters["active"] == 1
+    assert counters["remaining"] == 1
+    assert counters["dependency_only"] == 1
+    assert "Active 1" in render_dashboard_frame(state, width=120, height=36)
+
+
 @pytest.mark.parametrize(
     "status",
     ("worker_timeout", "profiling_timeout", "validation_timeout"),
