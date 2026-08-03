@@ -34,6 +34,138 @@ def _parse(*arguments: str):
     return build_parser().parse_args(arguments)
 
 
+def test_selective_retry_flags_parse_as_a_union_and_request_fresh_attempts() -> None:
+    arguments = _parse("run", "--rerun-failed", "--rerun-capped")
+
+    assert arguments.rerun_failed
+    assert arguments.rerun_capped
+    assert manual_campaign._selective_retry_requested(arguments)
+    assert manual_campaign._fresh_attempt_requested(arguments)
+
+
+def test_selective_retry_classification_is_structured_and_fail_closed(
+    tmp_path: Path,
+) -> None:
+    cells = tuple(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if manual_campaign._manual_static_na_reason(cell) is None
+    )[:6]
+
+    def current(
+        index: int,
+        *,
+        status: ResultStatus,
+        generation_limit: bool = False,
+        incomplete_worker_timeout: bool = False,
+    ) -> LightweightCurrent:
+        result = (
+            {"status": ResultStatus.OK.value}
+            if status is ResultStatus.OK
+            else manual_campaign.failure_measurement(status, "terminal fixture")
+        )
+        if generation_limit:
+            result["provenance"] = {
+                "manual_campaign": {"generation_limit_seconds": 3600.0}
+            }
+        if incomplete_worker_timeout:
+            result["provenance"] = {
+                "policy_censor": {"kind": "worker_timeout"}
+            }
+        return LightweightCurrent(
+            cell_id=cells[index].cell_id,
+            attempt_id=f"00000000-0000-4000-8000-00000000000{index}",
+            result_path=tmp_path / f"result-{index}.json",
+            result=result,
+            complete=True,
+            reusable=True,
+            reason="terminal fixture",
+        )
+
+    def outcome(
+        index: int,
+        status: str,
+        *,
+        attempt_id: str | None = None,
+    ) -> manual_campaign.LightweightPresentationOutcome:
+        return manual_campaign.LightweightPresentationOutcome(
+            profile="macbook_M3_manual",
+            cell_id=cells[index].cell_id,
+            source_revision="a" * 40,
+            campaign_invocation_id=f"invocation-{index}",
+            attempt_id=attempt_id,
+            status=status,
+            label=status,
+            completed_at_ns=index + 1,
+        )
+
+    ok = current(0, status=ResultStatus.OK)
+    failed = outcome(1, ResultStatus.FAILED.value)
+    unverified = outcome(2, ResultStatus.UNVERIFIED.value)
+    capped = current(3, status=ResultStatus.TIMEOUT, generation_limit=True)
+    authenticated_cap = outcome(
+        3,
+        "generation_limit",
+        attempt_id=capped.attempt_id,
+    )
+    incomplete_cap = current(
+        4,
+        status=ResultStatus.TIMEOUT,
+        incomplete_worker_timeout=True,
+    )
+    incomplete_cap_outcome = outcome(
+        4,
+        "worker_timeout",
+        attempt_id=incomplete_cap.attempt_id,
+    )
+    unauthenticated_cap_slug = outcome(
+        5,
+        "generation_limit",
+        attempt_id="00000000-0000-4000-8000-000000000099",
+    )
+
+    assert manual_campaign._selective_retry_category(ok, None) is None
+    assert manual_campaign._selective_retry_category(None, failed) == "failed"
+    assert manual_campaign._selective_retry_category(None, unverified) == "failed"
+    assert (
+        manual_campaign._selective_retry_category(capped, authenticated_cap)
+        == "capped"
+    )
+    assert (
+        manual_campaign._selective_retry_category(
+            incomplete_cap,
+            incomplete_cap_outcome,
+        )
+        == "failed"
+    )
+    assert (
+        manual_campaign._selective_retry_category(None, unauthenticated_cap_slug)
+        == "failed"
+    )
+    assert manual_campaign._selective_retry_category(None, None) is None
+
+    selected = manual_campaign._selective_retry_cells(
+        cells,
+        {
+            ok.cell_id: ok,
+            capped.cell_id: capped,
+            incomplete_cap.cell_id: incomplete_cap,
+        },
+        {
+            failed.cell_id: failed,
+            unverified.cell_id: unverified,
+            authenticated_cap.cell_id: authenticated_cap,
+            incomplete_cap_outcome.cell_id: incomplete_cap_outcome,
+            unauthenticated_cap_slug.cell_id: unauthenticated_cap_slug,
+        },
+        rerun_failed=True,
+        rerun_capped=True,
+    )
+    assert tuple(cell.cell_id for cell in selected) == tuple(
+        cell.cell_id for cell in cells[1:]
+    )
+
+
 def test_empty_selector_intersection_shows_canonical_values_and_suggestions() -> None:
     arguments = _parse(
         "inspect",

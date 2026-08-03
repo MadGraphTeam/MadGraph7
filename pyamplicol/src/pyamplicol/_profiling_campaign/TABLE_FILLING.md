@@ -90,9 +90,27 @@ closure and other selector intersections:
 ```
 
 `--cell-id-file` is also accepted by `inspect`. Blank lines and full-line `#`
-comments are ignored. Capped and failed currents are otherwise reused under
-the ordinary rules, so use `--force-refresh` when the intent is a new attempt;
-replaying `blocked_dependency.txt` automatically includes required
+comments are ignored. For a structured retry within the ordinary direct
+selection, add `--rerun-failed`, `--rerun-capped`, or both:
+
+```console
+./steer_performance_campaign.py run \
+  --table z_table --generation-engine recurrence compiled \
+  --rerun-failed --rerun-capped
+```
+
+`--rerun-failed` keeps cells whose latest terminal outcome is unsuccessful but
+is not an authenticated policy cap; `--rerun-capped` keeps authenticated policy
+caps, and combining them takes the union. Successful, static, and unseen cells
+are not direct retry targets. Unverified results are automatically retryable
+and may be selected as failed. Dependency closure is still planned normally,
+including reuse of successful prerequisite currents. Historical outcomes are
+recognized only with `--continue-across-revisions`. These retry flags cannot be
+combined with `--force-refresh`; use that option only for an unconditional
+refresh. If no selected cell matches the requested retry state, the command is
+a successful no-op and preserves the existing campaign summary.
+
+Replaying `blocked_dependency.txt` automatically includes required
 prerequisites.
 `unverified.txt` needs no `--force-refresh`: an unverified timing diagnostic is
 not a successful current and is automatically rerun against a later available

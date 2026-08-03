@@ -230,6 +230,36 @@ def _portable_manual_service(campaign: Path) -> ReportService:
     return ReportService(paths, portable_current_results=True)
 
 
+def _isolated_manual_service(root: Path) -> ReportService:
+    return ReportService(
+        ReportPaths(
+            repo_root=ROOT,
+            docs_dir=root / "docs",
+            results_dir=root / "results",
+            artifact_root=root / "artifacts",
+            coordination_root=root / "coordination",
+        )
+    )
+
+
+def _presentation_outcome(
+    cell: CellSpec,
+    *,
+    revision: str,
+    status: str = ResultStatus.FAILED.value,
+) -> manual_campaign.LightweightPresentationOutcome:
+    return manual_campaign.LightweightPresentationOutcome(
+        profile="macbook_M3_manual",
+        cell_id=cell.cell_id,
+        source_revision=revision,
+        campaign_invocation_id="selective-retry-fixture",
+        attempt_id=None,
+        status=status,
+        label=status,
+        completed_at_ns=1,
+    )
+
+
 def _publish_success_current(
     service: ReportService,
     cell: CellSpec,
@@ -1071,6 +1101,270 @@ def test_continuation_keeps_direct_history_but_not_dependency_resolution(
     output = capsys.readouterr().out
     assert "Cross-revision continuation is enabled" in output
     assert historical_revision in output
+
+
+def test_selective_retry_conflicts_with_force_refresh_before_state_access(
+    tmp_path: Path,
+) -> None:
+    service = _isolated_manual_service(tmp_path)
+    arguments = build_parser().parse_args(
+        ("run", "--force-refresh", "--rerun-failed", "--no-dashboard")
+    )
+
+    with pytest.raises(
+        manual_campaign.ManualCampaignError,
+        match="--force-refresh cannot be combined with --rerun-failed",
+    ):
+        _run_campaign(
+            arguments,
+            repo_root=ROOT,
+            service=service,
+            source=ReportSourceIdentity("a" * 40, "b" * 40, ()),
+            cells=(),
+            palette=Palette(False),
+        )
+
+
+def test_selective_retry_no_match_preserves_existing_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    service = _isolated_manual_service(tmp_path)
+    measurable = tuple(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if REPORT_CATALOG.static_na_reason(cell) is None
+    )[:2]
+    static_na = next(
+        cell
+        for cell in REPORT_CATALOG.measurement_cells()
+        if REPORT_CATALOG.static_na_reason(cell) is not None
+    )
+    ok = manual_campaign.LightweightCurrent(
+        cell_id=measurable[0].cell_id,
+        attempt_id="00000000-0000-4000-8000-000000000001",
+        result_path=tmp_path / "ok.json",
+        result={"status": ResultStatus.OK.value},
+        complete=True,
+        reusable=True,
+        reason="reusable",
+    )
+    summary = service.paths.docs_dir / "campaign_summary_ids"
+    summary.mkdir(parents=True)
+    sentinel = summary / "error.txt"
+    sentinel.write_text("existing-cell\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        manual_campaign,
+        "lightweight_currents",
+        lambda *_args, **_kwargs: {ok.cell_id: ok},
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "lightweight_presentation_outcomes",
+        lambda *_args, **_kwargs: {},
+    )
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("no-match selective retry reached planning/publication")
+
+    monkeypatch.setattr(manual_campaign, "plan_campaign", forbidden)
+    monkeypatch.setattr(manual_campaign, "_publish_campaign_summary_ids", forbidden)
+    arguments = build_parser().parse_args(
+        ("run", "--rerun-failed", "--rerun-capped", "--no-dashboard")
+    )
+
+    result = _run_campaign(
+        arguments,
+        repo_root=ROOT,
+        service=service,
+        source=ReportSourceIdentity("a" * 40, "b" * 40, ()),
+        cells=(*measurable, static_na),
+        palette=Palette(False),
+    )
+
+    assert result == 0
+    assert sentinel.read_text(encoding="utf-8") == "existing-cell\n"
+    assert "No entries among 2 measurable selected cells match" in (
+        capsys.readouterr().out
+    )
+
+
+def test_selective_retry_historical_state_requires_continuation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    active_revision = "b" * 40
+    historical_revision = "a" * 40
+    service = _isolated_manual_service(tmp_path)
+    cell = _pyamplicol_leaf_cell()
+    historical = _presentation_outcome(
+        cell,
+        revision=historical_revision,
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "lightweight_currents",
+        lambda *_args, **_kwargs: {},
+    )
+
+    def outcomes(
+        *_args: object,
+        accept_historical_source: bool = False,
+        **_kwargs: object,
+    ) -> dict[str, manual_campaign.LightweightPresentationOutcome]:
+        return {cell.cell_id: historical} if accept_historical_source else {}
+
+    planned: list[tuple[str, ...]] = []
+
+    def observe_plan(
+        requested: tuple[CellSpec, ...],
+        **_kwargs: object,
+    ) -> tuple[object, ...]:
+        planned.append(tuple(item.cell_id for item in requested))
+        return ()
+
+    monkeypatch.setattr(manual_campaign, "lightweight_presentation_outcomes", outcomes)
+    monkeypatch.setattr(manual_campaign, "plan_campaign", observe_plan)
+
+    strict = build_parser().parse_args(
+        ("run", "--dry-run", "--rerun-failed", "--cell-id", cell.cell_id)
+    )
+    continued = build_parser().parse_args(
+        (
+            "run",
+            "--dry-run",
+            "--rerun-failed",
+            "--continue-across-revisions",
+            "--cell-id",
+            cell.cell_id,
+        )
+    )
+    source = ReportSourceIdentity(active_revision, "c" * 40, ())
+
+    assert (
+        _run_campaign(
+            strict,
+            repo_root=ROOT,
+            service=service,
+            source=source,
+            cells=(cell,),
+            palette=Palette(False),
+        )
+        == 0
+    )
+    assert planned == []
+    assert (
+        _run_campaign(
+            continued,
+            repo_root=ROOT,
+            service=service,
+            source=source,
+            cells=(cell,),
+            palette=Palette(False),
+        )
+        == 0
+    )
+    assert planned == [(cell.cell_id,)]
+
+
+def test_selective_retry_keeps_dependency_closure_and_reuses_ok_prerequisite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    revision = "a" * 40
+    service = _isolated_manual_service(tmp_path)
+    target = REPORT_CATALOG.cell(
+        "matrix-recurrence-builtin-sm-lc-n1-dd-z-jets-all-flow"
+    )
+    prerequisite = REPORT_CATALOG.cell(
+        "matrix-recurrence-builtin-sm-lc-n1-dd-z-jets-selected-flow"
+    )
+    failure = _presentation_outcome(target, revision=revision)
+    monkeypatch.setattr(
+        manual_campaign,
+        "lightweight_presentation_outcomes",
+        lambda *_args, **_kwargs: {target.cell_id: failure},
+    )
+    success_result = {"status": ResultStatus.OK.value}
+    success_record = manual_campaign.CurrentRecord(
+        cell_id=prerequisite.cell_id,
+        attempt_id="00000000-0000-4000-8000-000000000001",
+        manifest_path=tmp_path / "manifest.json",
+        manifest_sha256="0" * 64,
+        result_path=tmp_path / "result.json",
+        result=success_result,
+        artifacts=(),
+        artifact_policy=ArtifactPolicy.REUSE,
+    )
+    success = manual_campaign.LightweightCurrent(
+        cell_id=prerequisite.cell_id,
+        attempt_id=success_record.attempt_id,
+        result_path=success_record.result_path,
+        result=success_result,
+        complete=True,
+        reusable=True,
+        reason="reusable",
+        record=success_record,
+    )
+    recycle_prerequisite = False
+
+    def resolve_lightweight(
+        _store: ArtifactStore,
+        cell: CellSpec,
+        **_kwargs: object,
+    ) -> manual_campaign.LightweightCurrent | None:
+        if recycle_prerequisite and cell.cell_id == prerequisite.cell_id:
+            return success
+        return None
+
+    monkeypatch.setattr(manual_campaign, "lightweight_current", resolve_lightweight)
+    real_plan_campaign = manual_campaign.plan_campaign
+    planned_batches: list[tuple[object, ...]] = []
+
+    def observe_plan(*args: object, **kwargs: object) -> tuple[object, ...]:
+        planned = real_plan_campaign(*args, **kwargs)
+        planned_batches.append(planned)
+        return planned
+
+    monkeypatch.setattr(manual_campaign, "plan_campaign", observe_plan)
+    arguments = build_parser().parse_args(
+        ("run", "--dry-run", "--rerun-failed", "--cell-id", target.cell_id)
+    )
+    source = ReportSourceIdentity(revision, "b" * 40, ())
+
+    assert (
+        _run_campaign(
+            arguments,
+            repo_root=ROOT,
+            service=service,
+            source=source,
+            cells=(target,),
+            palette=Palette(False),
+        )
+        == 0
+    )
+    assert [item.cell.cell_id for item in planned_batches[0]] == [
+        prerequisite.cell_id,
+        target.cell_id,
+    ]
+    assert planned_batches[0][0].dependency
+
+    recycle_prerequisite = True
+    assert (
+        _run_campaign(
+            arguments,
+            repo_root=ROOT,
+            service=service,
+            source=source,
+            cells=(target,),
+            palette=Palette(False),
+        )
+        == 0
+    )
+    assert [item.cell.cell_id for item in planned_batches[1]] == [target.cell_id]
+    assert not planned_batches[1][0].dependency
 
 
 def test_manual_dry_run_plans_only_from_lightweight_metadata(

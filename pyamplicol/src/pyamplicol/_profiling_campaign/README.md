@@ -98,6 +98,18 @@ contains exact canonical cell IDs and can be fed straight back to `run` or
 they are rerun and validated automatically once recurrence or AmpliCol
 authority is available.
 
+For state-based retries, keep the ordinary table/process/engine selectors and
+add `--rerun-failed`, `--rerun-capped`, or both. The flags filter only that
+direct selection: failed means its latest terminal non-success is not an
+authenticated policy cap, while capped means an authenticated policy cap. The
+combined flags take the union; successful, static, and never-attempted cells
+are excluded. Unverified results remain automatically retryable and can be
+selected as failed. Normal dependency closure and reuse of successful currents
+still apply, and `--continue-across-revisions` controls whether historical
+terminal state participates. The retry flags conflict with `--force-refresh`.
+A retry filter with no matches exits successfully without replacing the
+existing campaign summary.
+
 By default, every heavy attempt payload is retained. Pass
 `run --cleanup-artifacts` to archive obsolete sealed attempts, retain their
 compact result, log, progress, and timeline diagnostics, and remove only their

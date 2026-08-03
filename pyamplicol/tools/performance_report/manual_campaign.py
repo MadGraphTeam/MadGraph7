@@ -169,6 +169,15 @@ _TERMINAL_CAP_STATUSES = frozenset(
         PolicyMeasurementState.VALIDATION_TIMEOUT.value,
     }
 )
+_TERMINAL_CAP_STATES = frozenset(
+    {
+        PolicyMeasurementState.GENERATION_LIMIT,
+        PolicyMeasurementState.MEMORY_LIMIT,
+        PolicyMeasurementState.WORKER_TIMEOUT,
+        PolicyMeasurementState.PROFILING_TIMEOUT,
+        PolicyMeasurementState.VALIDATION_TIMEOUT,
+    }
+)
 _PHASE_TIMELINE_SCHEMA = "pyamplicol-manual-campaign-phase-timeline-v1"
 _REPRODUCTION_STAGES = ("prepare", "generate", "profile")
 _SUMMARY_SUCCESS_STATUSES = frozenset(
@@ -2617,6 +2626,88 @@ def lightweight_currents(
         if current is not None:
             result[cell.cell_id] = current
     return result
+
+
+def _selective_retry_requested(arguments: argparse.Namespace) -> bool:
+    return bool(
+        getattr(arguments, "rerun_failed", False)
+        or getattr(arguments, "rerun_capped", False)
+    )
+
+
+def _fresh_attempt_requested(arguments: argparse.Namespace) -> bool:
+    return bool(
+        getattr(arguments, "force_refresh", False)
+        or _selective_retry_requested(arguments)
+    )
+
+
+def _selective_retry_category(
+    current: LightweightCurrent | None,
+    outcome: LightweightPresentationOutcome | None,
+) -> str | None:
+    """Classify the latest reusable terminal for selective retry.
+
+    Tiny presentation outcomes are authoritative for ordering, but a cap is
+    trusted only when it names the exact attempt of a validated reusable cap
+    current.  This keeps future/unauthenticated timeout-like slugs in the
+    ordinary failure class rather than silently granting them policy meaning.
+    """
+
+    cap_state: PolicyMeasurementState | None = None
+    current_state: PolicyMeasurementState | None = None
+    if current is not None and current.reusable:
+        current_state = policy_measurement_state_hint(current.result)
+        if (
+            current_state in _TERMINAL_CAP_STATES
+            and policy_status_label(current.result) is not None
+        ):
+            cap_state = current_state
+
+    if outcome is not None:
+        if outcome.successful:
+            return None
+        if (
+            cap_state is not None
+            and current is not None
+            and outcome.attempt_id == current.attempt_id
+            and outcome.status == cap_state.value
+        ):
+            return "capped"
+        return "failed"
+
+    if current is None or not current.reusable:
+        return None
+    if current_state is PolicyMeasurementState.SUCCESS:
+        return None
+    return "capped" if cap_state is not None else "failed"
+
+
+def _selective_retry_cells(
+    cells: Sequence[CellSpec],
+    currents: Mapping[str, LightweightCurrent],
+    outcomes: Mapping[str, LightweightPresentationOutcome],
+    *,
+    rerun_failed: bool,
+    rerun_capped: bool,
+) -> tuple[CellSpec, ...]:
+    selected_categories = {
+        category
+        for category, enabled in (
+            ("failed", rerun_failed),
+            ("capped", rerun_capped),
+        )
+        if enabled
+    }
+    return tuple(
+        cell
+        for cell in cells
+        if _selective_retry_category(
+            currents.get(cell.cell_id),
+            outcomes.get(cell.cell_id),
+        )
+        in selected_categories
+    )
 
 
 def _source_cohort_counts(
@@ -6543,6 +6634,7 @@ def _campaign_settings(
             f"{workers} workers x {cores} cores exceeds {available} logical "
             "CPUs; lower either value or pass --allow-oversubscription"
         )
+    fresh_attempt = _fresh_attempt_requested(arguments)
     return CampaignSettings(
         workers=workers,
         cell_cores=cores,
@@ -6565,11 +6657,11 @@ def _campaign_settings(
         max_rss_bytes=int(arguments.ram_limit),
         artifact_policy=(
             ArtifactPolicy.REGENERATE
-            if arguments.force_refresh
+            if fresh_attempt
             else ArtifactPolicy.REUSE
         ),
-        missing_only=not arguments.force_refresh,
-        rerun=bool(arguments.force_refresh),
+        missing_only=not fresh_attempt,
+        rerun=fresh_attempt,
         allow_symbolica_parallel=bool(arguments.allow_engine_parallelism),
         resource_sample_interval_seconds=float(arguments.resource_sample_interval),
         termination_grace_seconds=float(arguments.termination_grace),
@@ -7009,10 +7101,26 @@ def _run_campaign(
     palette: Palette,
     installed: bool = False,
 ) -> int:
+    selective_retry = _selective_retry_requested(arguments)
+    if bool(getattr(arguments, "force_refresh", False)) and selective_retry:
+        raise ManualCampaignError(
+            "--force-refresh cannot be combined with --rerun-failed or "
+            "--rerun-capped; use force refresh for every selected cell or the "
+            "selective retry flags"
+        )
+    fresh_attempt = _fresh_attempt_requested(arguments)
     measurable = tuple(cell for cell in cells if _manual_static_na_reason(cell) is None)
     static_na = {
         cell.cell_id for cell in cells if _manual_static_na_reason(cell) is not None
     }
+    if not measurable and selective_retry:
+        print(
+            palette.success(
+                "No measurable selected entries match the requested selective "
+                "retry; no workers or attempts were created."
+            )
+        )
+        return 0
     if not measurable:
         print(
             palette.warning(
@@ -7051,10 +7159,61 @@ def _run_campaign(
         if continue_across_revisions
         else active_lightweight
     )
+    if selective_retry:
+        outcomes = lightweight_presentation_outcomes(
+            service,
+            measurable,
+            source_revision=source.revision,
+            accept_historical_source=continue_across_revisions,
+        )
+        base_measurable_count = len(measurable)
+        measurable = _selective_retry_cells(
+            measurable,
+            lightweight,
+            outcomes,
+            rerun_failed=bool(getattr(arguments, "rerun_failed", False)),
+            rerun_capped=bool(getattr(arguments, "rerun_capped", False)),
+        )
+        if not measurable:
+            requested = " and ".join(
+                option
+                for option, enabled in (
+                    ("--rerun-failed", getattr(arguments, "rerun_failed", False)),
+                    ("--rerun-capped", getattr(arguments, "rerun_capped", False)),
+                )
+                if enabled
+            )
+            print(
+                palette.success(
+                    f"No entries among {base_measurable_count} measurable "
+                    f"selected cells match {requested}; no workers or attempts "
+                    "were created."
+                )
+            )
+            return 0
+        matched_ids = {cell.cell_id for cell in measurable}
+        cells = measurable
+        static_na = set()
+        active_lightweight = {
+            cell_id: current
+            for cell_id, current in active_lightweight.items()
+            if cell_id in matched_ids
+        }
+        lightweight = {
+            cell_id: current
+            for cell_id, current in lightweight.items()
+            if cell_id in matched_ids
+        }
+        print(
+            palette.warning(
+                f"Selective retry matched {len(measurable)} of "
+                f"{base_measurable_count} measurable selected entries."
+            )
+        )
     recycled = {
         cell_id
         for cell_id, current in lightweight.items()
-        if current.reusable and not arguments.force_refresh
+        if current.reusable and not fresh_attempt
     }
     historical_recycled = {
         cell_id
@@ -7064,7 +7223,7 @@ def _run_campaign(
     requested_for_plan = tuple(
         cell
         for cell in measurable
-        if arguments.force_refresh or cell.cell_id not in historical_recycled
+        if fresh_attempt or cell.cell_id not in historical_recycled
     )
     preliminary_settings = _campaign_settings(arguments, source)
     planned = plan_campaign(
@@ -7915,6 +8074,10 @@ Common recipes
   Recompute instead of reusing same-source currents:
     steer_performance_campaign.py run --force-refresh --table z_table
 
+  Retry only failed or policy-capped cells inside the ordinary selection:
+    steer_performance_campaign.py run --rerun-failed --rerun-capped \
+      --continue-across-revisions --table matrix
+
   Retry exact error and validation-failure IDs:
     steer_performance_campaign.py run \
       --cell-id-file campaign_summary_ids/error.txt \
@@ -8226,6 +8389,26 @@ def build_parser() -> argparse.ArgumentParser:
             "--continue-across-revisions). Complete heavy attempt payloads are "
             "retained by default; pass --cleanup-artifacts to compact obsolete "
             "sealed attempts after preserving their diagnostics."
+        ),
+    )
+    behavior.add_argument(
+        "--rerun-failed",
+        action="store_true",
+        help=(
+            "Create fresh attempts only for selected cells whose latest "
+            "terminal outcome is a non-cap failure. Valid, unseen, static-N/A, "
+            "and authenticated capped cells are excluded. May be combined "
+            "with --rerun-capped, but not --force-refresh."
+        ),
+    )
+    behavior.add_argument(
+        "--rerun-capped",
+        action="store_true",
+        help=(
+            "Create fresh attempts only for selected cells with an "
+            "authenticated generation, RAM, worker, profiling, or validation "
+            "cap. May be combined with --rerun-failed, but not "
+            "--force-refresh."
         ),
     )
     behavior.add_argument(
