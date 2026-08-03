@@ -10,6 +10,34 @@ from importlib import import_module
 from pathlib import Path
 
 
+def _entrypoint_from_invocation(raw_entrypoint: str) -> Path:
+    """Preserve a trustworthy lexical campaign path for relative launchers."""
+
+    entrypoint = Path(raw_entrypoint)
+    if entrypoint.is_absolute():
+        return Path(os.path.abspath(os.fspath(entrypoint)))
+
+    logical_text = os.environ.get("PWD")
+    logical_cwd = Path(logical_text) if logical_text else None
+    try:
+        physical_cwd = Path.cwd()
+        same_directory = (
+            logical_cwd is not None
+            and logical_cwd.is_absolute()
+            and logical_cwd.samefile(physical_cwd)
+        )
+    except OSError:
+        same_directory = False
+    if not same_directory:
+        raise RuntimeError(
+            "campaign launcher cannot identify its working directory: "
+            "the shell PWD is missing or no longer names the physical directory. "
+            "Run `cd ..` and re-enter the intended campaign directory, then retry "
+            "(or invoke its absolute path from another working directory)."
+        )
+    return Path(os.path.abspath(os.fspath(logical_cwd / entrypoint)))
+
+
 def _repository_root(entrypoint: Path) -> Path:
     for candidate in entrypoint.parents:
         if (candidate / "tools/performance_report").is_dir() and (
@@ -68,7 +96,11 @@ def main() -> int:
     # Keep the lexical path until the controller has rejected symlinked
     # campaign directories and ancestors.  Resolving here would erase the
     # exact path that must be validated before campaign state is opened.
-    entrypoint = Path(os.path.abspath(os.fspath(__file__)))
+    try:
+        entrypoint = _entrypoint_from_invocation(sys.argv[0])
+    except RuntimeError as error:
+        sys.stderr.write(f"error: {error}\n")
+        return 2
     profile = entrypoint.parent.name
     try:
         repo_root = _repository_root(entrypoint)
@@ -83,6 +115,7 @@ def main() -> int:
             profile=profile,
             docs_dir=entrypoint.parent,
             installed=True,
+            launcher_path_checked=True,
         )
 
     _reexecute_with_repository_python(repo_root, entrypoint)
@@ -95,6 +128,7 @@ def main() -> int:
         repo_root=repo_root,
         profile=source_profile,
         docs_dir=entrypoint.parent,
+        launcher_path_checked=True,
     )
 
 

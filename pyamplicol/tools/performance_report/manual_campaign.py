@@ -269,6 +269,36 @@ def _campaign_report_paths(repo_root: Path, docs_dir: Path) -> ReportPaths:
     )
 
 
+def _require_launcher_working_directory_identity(
+    *, launcher_path_checked: bool
+) -> None:
+    """Reject a launcher left inside a renamed campaign directory."""
+
+    if launcher_path_checked:
+        return
+    invocation = Path(sys.argv[0])
+    if invocation.name != "steer_performance_campaign.py":
+        return
+    logical_text = os.environ.get("PWD")
+    logical_cwd = Path(logical_text) if logical_text else None
+    try:
+        physical_cwd = Path.cwd()
+        same_directory = (
+            logical_cwd is not None
+            and logical_cwd.is_absolute()
+            and logical_cwd.samefile(physical_cwd)
+        )
+    except OSError:
+        same_directory = False
+    if not same_directory:
+        raise ManualCampaignError(
+            "campaign launcher cannot identify its working directory: "
+            "the shell PWD is missing or no longer names the physical directory. "
+            "Run `cd ..` and re-enter the intended campaign directory, then retry "
+            "(or invoke its absolute path from another working directory)."
+        )
+
+
 def _acquire_campaign_directory_lock(docs_dir: Path) -> int:
     """Hold a shared lifetime claim so ``copy --force`` cannot reset state."""
 
@@ -8879,6 +8909,7 @@ def main(
     profile: str = PROFILE,
     docs_dir: Path | None = None,
     installed: bool = False,
+    launcher_path_checked: bool = False,
 ) -> int:
     global _ACTIVE_PROFILE
 
@@ -8902,6 +8933,9 @@ def main(
     palette = Palette(_color_enabled(arguments, json_output=json_output))
     campaign_lock: int | None = None
     try:
+        _require_launcher_working_directory_identity(
+            launcher_path_checked=launcher_path_checked,
+        )
         paths = _campaign_report_paths(root, campaign_docs)
         campaign_lock = _acquire_campaign_directory_lock(paths.docs_dir)
         dashboard_disabled = _configure_dashboard_capability(

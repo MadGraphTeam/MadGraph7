@@ -177,6 +177,114 @@ def test_campaign_state_rejects_symlinked_campaign_directory(tmp_path: Path) -> 
         manual_campaign._campaign_report_paths(ROOT, linked)
 
 
+@pytest.mark.parametrize("pwd_state", ("unset", "renamed-away", "recreated"))
+def test_existing_relative_launcher_rejects_stale_pwd_before_campaign_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    pwd_state: str,
+) -> None:
+    original = tmp_path / "campaign"
+    original.mkdir()
+    moved = tmp_path / "renamed-campaign"
+    original.rename(moved)
+    if pwd_state == "recreated":
+        original.mkdir()
+    monkeypatch.chdir(moved)
+    if pwd_state == "unset":
+        monkeypatch.delenv("PWD", raising=False)
+    else:
+        monkeypatch.setenv("PWD", str(original))
+    monkeypatch.setattr(sys, "argv", ["./steer_performance_campaign.py"])
+    monkeypatch.setattr(
+        manual_campaign,
+        "_campaign_report_paths",
+        lambda *_args, **_kwargs: pytest.fail(
+            "stale relative launcher opened campaign paths"
+        ),
+    )
+
+    assert (
+        campaign_main(
+            ("dashboard-snapshot", "--width", "80", "--height", "24"),
+            repo_root=ROOT,
+            docs_dir=moved,
+        )
+        == 2
+    )
+    assert "cd .." in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("checked_absolute", (False, True))
+def test_campaign_controller_allows_matching_or_checked_launcher_invocation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    checked_absolute: bool,
+) -> None:
+    docs = tmp_path / "campaign"
+    docs.mkdir()
+    monkeypatch.chdir(docs)
+    monkeypatch.setenv(
+        "PWD",
+        str(tmp_path / "different-directory" if checked_absolute else docs),
+    )
+    invocation = (
+        docs / "steer_performance_campaign.py"
+        if checked_absolute
+        else Path("./steer_performance_campaign.py")
+    )
+    monkeypatch.setattr(sys, "argv", [os.fspath(invocation)])
+
+    assert (
+        campaign_main(
+            ("dashboard-snapshot", "--width", "80", "--height", "24"),
+            repo_root=ROOT,
+            docs_dir=docs,
+            launcher_path_checked=checked_absolute,
+        )
+        == 0
+    )
+
+
+@pytest.mark.parametrize("replacement", (False, True))
+def test_old_absolute_launcher_reexecution_rejects_stale_pwd_by_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    replacement: bool,
+) -> None:
+    original = tmp_path / "campaign"
+    original.mkdir()
+    moved = tmp_path / "renamed-campaign"
+    original.rename(moved)
+    if replacement:
+        original.mkdir()
+    monkeypatch.chdir(moved)
+    monkeypatch.setenv("PWD", str(original))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [os.fspath(moved / "steer_performance_campaign.py")],
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "_campaign_report_paths",
+        lambda *_args, **_kwargs: pytest.fail(
+            "old absolute launcher opened campaign paths after stale re-exec"
+        ),
+    )
+
+    assert (
+        campaign_main(
+            ("dashboard-snapshot", "--width", "80", "--height", "24"),
+            repo_root=ROOT,
+            docs_dir=moved,
+        )
+        == 2
+    )
+    assert "cd .." in capsys.readouterr().err
+
+
 def test_campaign_command_holds_shared_destination_lock(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

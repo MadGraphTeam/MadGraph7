@@ -75,12 +75,14 @@ def test_campaign_entrypoint_passes_copied_profile_to_controller(
         repo_root: Path,
         profile: str,
         docs_dir: Path,
+        launcher_path_checked: bool,
     ) -> int:
         observed.update(
             arguments=arguments,
             repo_root=repo_root,
             profile=profile,
             docs_dir=docs_dir,
+            launcher_path_checked=launcher_path_checked,
         )
         return 17
 
@@ -93,6 +95,7 @@ def test_campaign_entrypoint_passes_copied_profile_to_controller(
         "repo_root": ROOT,
         "profile": "independent_campaign",
         "docs_dir": copied.parent,
+        "launcher_path_checked": True,
     }
 
 
@@ -116,6 +119,7 @@ def test_installed_campaign_entrypoint_passes_its_directory_to_controller(
             profile: str,
             docs_dir: Path,
             installed: bool,
+            launcher_path_checked: bool,
         ) -> int:
             observed.update(
                 arguments=arguments,
@@ -123,6 +127,7 @@ def test_installed_campaign_entrypoint_passes_its_directory_to_controller(
                 profile=profile,
                 docs_dir=docs_dir,
                 installed=installed,
+                launcher_path_checked=launcher_path_checked,
             )
             return 19
 
@@ -136,7 +141,40 @@ def test_installed_campaign_entrypoint_passes_its_directory_to_controller(
         "profile": "independent_campaign",
         "docs_dir": copied.parent,
         "installed": True,
+        "launcher_path_checked": True,
     }
+
+
+@pytest.mark.parametrize("pwd_state", ("unset", "renamed-away", "recreated"))
+def test_relative_campaign_entrypoint_rejects_stale_pwd_after_move(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    pwd_state: str,
+) -> None:
+    namespace = _entrypoint_namespace()
+    original = tmp_path / "campaign"
+    original.mkdir()
+    moved = tmp_path / "renamed-campaign"
+    original.rename(moved)
+    if pwd_state == "recreated":
+        original.mkdir()
+    monkeypatch.chdir(moved)
+    if pwd_state == "unset":
+        monkeypatch.delenv("PWD", raising=False)
+    else:
+        monkeypatch.setenv("PWD", str(original))
+    monkeypatch.setattr(sys, "argv", ["./steer_performance_campaign.py", "inspect"])
+    entrypoint_main = cast(Callable[[], int], namespace["main"])
+    entrypoint_main.__globals__["__file__"] = str(
+        moved / "steer_performance_campaign.py"
+    )
+    entrypoint_main.__globals__["import_module"] = lambda _name: pytest.fail(
+        "stale relative launcher reached the campaign controller"
+    )
+
+    assert entrypoint_main() == 2
+    assert "cd .." in capsys.readouterr().err
 
 
 def test_source_launcher_preserves_symlinked_campaign_path_for_rejection(
@@ -153,9 +191,10 @@ def test_source_launcher_preserves_symlinked_campaign_path_for_rejection(
     actual.mkdir()
     linked = profile_parent / "linked-campaign"
     linked.symlink_to(actual, target_is_directory=True)
-    copied = linked / "steer_performance_campaign.py"
+    monkeypatch.chdir(actual)
+    monkeypatch.setenv("PWD", str(linked))
     entrypoint_main = cast(Callable[[], int], namespace["main"])
-    entrypoint_main.__globals__["__file__"] = str(copied)
+    entrypoint_main.__globals__["__file__"] = "./steer_performance_campaign.py"
     entrypoint_main.__globals__["_reexecute_with_repository_python"] = (
         lambda _root, _entrypoint: None
     )
@@ -166,9 +205,11 @@ def test_source_launcher_preserves_symlinked_campaign_path_for_rejection(
         repo_root: Path,
         profile: str,
         docs_dir: Path,
+        launcher_path_checked: bool,
     ) -> int:
         assert profile == "linked-campaign"
         assert docs_dir == linked
+        assert launcher_path_checked is True
         with pytest.raises(
             manual_campaign.ManualCampaignError,
             match="symbolic link",
@@ -177,6 +218,6 @@ def test_source_launcher_preserves_symlinked_campaign_path_for_rejection(
         return 23
 
     monkeypatch.setattr(manual_campaign, "main", rejecting_campaign_main)
-    monkeypatch.setattr(sys, "argv", [str(copied), "inspect"])
+    monkeypatch.setattr(sys, "argv", ["./steer_performance_campaign.py", "inspect"])
 
     assert entrypoint_main() == 23
