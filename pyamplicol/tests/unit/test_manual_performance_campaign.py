@@ -1094,6 +1094,7 @@ def test_dashboard_error_total_is_in_primary_overview_summary() -> None:
     workers = {
         "active": WorkerView("active", status="running"),
         "error": WorkerView("error", status="error"),
+        "unverified": WorkerView("unverified", status="unverified"),
         "recycled-cap": WorkerView("recycled-cap", status="memory_limit"),
     }
     state = DashboardState(
@@ -1105,13 +1106,40 @@ def test_dashboard_error_total_is_in_primary_overview_summary() -> None:
         completed_ids={"recycled-cap"},
         capped_ids={"recycled-cap"},
         failed_ids={"error"},
+        unverified_ids={"unverified"},
     )
 
     frame = render_dashboard_frame(state, width=120, height=36)
     summary = next(line for line in frame.splitlines() if "Selected " in line)
     assert "Errors 1" in summary
+    assert "Unverified 1" in summary
     assert "Active 1" in summary
     assert "Capped 1" in frame
+
+
+def test_finished_unverified_is_not_counted_as_an_error(tmp_path: Path) -> None:
+    service = _manual_service(tmp_path)
+    state = DashboardState(
+        instance_id="unverified-counter",
+        selected_ids=("diagnostic",),
+        recycled_ids=set(),
+        static_na_ids=set(),
+        source_revision="a" * 40,
+    )
+
+    LeaseManager(service, state).observe(
+        {
+            "event": "finished",
+            "cell_id": "diagnostic",
+            "status": ResultStatus.UNVERIFIED.value,
+            "detail": "independent authority unavailable",
+        }
+    )
+
+    assert state.failed_ids == set()
+    assert state.unverified_ids == {"diagnostic"}
+    assert state.counters()["failed"] == 0
+    assert state.counters()["unverified"] == 1
 
 
 def test_recycled_resource_cap_is_available_to_error_filter(
@@ -3661,6 +3689,7 @@ def test_live_dashboard_snapshot_selects_instance_and_shows_same_source_peers(
         "static_na": 1,
         "capped": 1,
         "failed": 0,
+        "unverified": 0,
         "dependency_only": 2,
     }
     _write_lease(
@@ -4240,6 +4269,7 @@ def test_finished_reuse_stays_recycled_while_work_and_caps_complete(
         "static_na": 0,
         "capped": 1,
         "failed": 0,
+        "unverified": 0,
         "dependency_only": 0,
     }
 

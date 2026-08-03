@@ -36,7 +36,7 @@ import zlib
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -44,6 +44,7 @@ from typing import Any
 from colorama import Fore, Style, just_fix_windows_console
 from prettytable import PrettyTable
 
+from .agreements import independent_numerical_authorities
 from .artifacts import (
     ATTEMPT_SCHEMA,
     ArtifactStore,
@@ -154,6 +155,7 @@ _DASHBOARD_COUNTER_KEYS = (
     "static_na",
     "capped",
     "failed",
+    "unverified",
     "dependency_only",
 )
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -2710,6 +2712,45 @@ def _selective_retry_cells(
     )
 
 
+def _selected_retry_authority_roots(
+    cells: Sequence[CellSpec],
+    active_currents: Mapping[str, LightweightCurrent],
+    *,
+    selected_cell_ids: frozenset[str],
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> tuple[CellSpec, ...]:
+    """Return selected, missing authority roots needed by retry targets.
+
+    Selective retry filters direct cells before dependency planning.  Retain
+    the user's original selector scope so a compiled/eager retry can rebuild
+    its same-source recurrence/AmpliCol authority chain without turning those
+    auxiliary cells into direct selections.
+    """
+
+    roots: dict[str, CellSpec] = {}
+    direct_ids = {cell.cell_id for cell in cells}
+    for cell in cells:
+        for authority in independent_numerical_authorities(
+            cell,
+            catalog=catalog,
+        ):
+            if authority.cell_id not in selected_cell_ids:
+                continue
+            current = active_currents.get(authority.cell_id)
+            state = (
+                policy_measurement_state_hint(current.result)
+                if current is not None and current.reusable
+                else None
+            )
+            if state is PolicyMeasurementState.SUCCESS:
+                break
+            if current is None or not current.reusable:
+                roots.setdefault(authority.cell_id, authority)
+    return tuple(
+        root for cell_id, root in roots.items() if cell_id not in direct_ids
+    )
+
+
 def _source_cohort_counts(
     currents: Mapping[str, LightweightCurrent],
     *,
@@ -3009,6 +3050,7 @@ class DashboardState:
     completed_ids: set[str] = field(default_factory=set)
     capped_ids: set[str] = field(default_factory=set)
     failed_ids: set[str] = field(default_factory=set)
+    unverified_ids: set[str] = field(default_factory=set)
     selected_index: int = 0
     detail_scroll: int = 0
     show_completed: bool = False
@@ -3109,6 +3151,7 @@ class DashboardState:
             "static_na": len(self.static_na_ids & selected),
             "capped": len(self.capped_ids & selected),
             "failed": len(self.failed_ids & selected),
+            "unverified": len(self.unverified_ids & selected),
             "dependency_only": len(self.dependency_ids),
         }
 
@@ -3398,6 +3441,8 @@ class LeaseManager:
                     self.state.completed_ids.add(cell_id)
                 if worker.status in _TERMINAL_CAP_STATUSES:
                     self.state.capped_ids.add(cell_id)
+                elif worker.status == ResultStatus.UNVERIFIED.value:
+                    self.state.unverified_ids.add(cell_id)
                 elif worker.status not in {
                     "ok",
                     "recycled",
@@ -4331,7 +4376,9 @@ def _lease_counter_snapshot(value: object) -> dict[str, int] | None:
         return None
     counters: dict[str, int] = {}
     for key in _DASHBOARD_COUNTER_KEYS:
-        observed = _optional_int(value.get(key))
+        observed = _optional_int(
+            value.get(key, 0 if key == "unverified" else None)
+        )
         if observed is None or observed < 0:
             return None
         counters[key] = observed
@@ -4796,6 +4843,8 @@ def _ratatui_commands(
         (str(counters["active"]), warning_style),
         ("   Errors ", key_style),
         (str(counters["failed"]), failure_style),
+        ("   Unverified ", key_style),
+        (str(counters["unverified"]), warning_style),
     ]
     if compact and peer_active_count:
         first.extend(
@@ -7145,6 +7194,10 @@ def _run_campaign(
         measurable,
         source_revision=source.revision,
     )
+    selected_cell_ids_before_retry = frozenset(
+        cell.cell_id for cell in measurable
+    )
+    active_lightweight_before_retry = active_lightweight
     continue_across_revisions = bool(
         getattr(arguments, "continue_across_revisions", False)
     )
@@ -7224,9 +7277,19 @@ def _run_campaign(
         for cell in measurable
         if fresh_attempt or cell.cell_id not in historical_recycled
     )
+    auxiliary_authority_roots = (
+        _selected_retry_authority_roots(
+            requested_for_plan,
+            active_lightweight_before_retry,
+            selected_cell_ids=selected_cell_ids_before_retry,
+            catalog=service.catalog,
+        )
+        if selective_retry
+        else ()
+    )
     preliminary_settings = _campaign_settings(arguments, source)
     planned = plan_campaign(
-        requested_for_plan,
+        (*auxiliary_authority_roots, *requested_for_plan),
         store=service.store,
         settings=preliminary_settings,
         expected_revision=source.revision,
@@ -7236,6 +7299,11 @@ def _run_campaign(
             source_revision=source.revision,
             initial=active_lightweight,
         ),
+    )
+    direct_plan_ids = {cell.cell_id for cell in requested_for_plan}
+    planned = tuple(
+        replace(item, dependency=item.cell.cell_id not in direct_plan_ids)
+        for item in planned
     )
     # A historical cell can still be required as an active-source dependency
     # of a newly measured cell.  In that case it is work, not recycled work.
@@ -8396,8 +8464,10 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Create fresh attempts only for selected cells whose latest "
             "terminal outcome is a non-cap failure. Valid, unseen, static-N/A, "
-            "and authenticated capped cells are excluded. May be combined "
-            "with --rerun-capped, but not --force-refresh."
+            "and authenticated capped cells are excluded. Missing selected "
+            "numerical authorities are added as dependency-only validation "
+            "work. May be combined with --rerun-capped, but not "
+            "--force-refresh."
         ),
     )
     behavior.add_argument(

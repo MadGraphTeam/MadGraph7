@@ -1320,15 +1320,18 @@ def test_selective_retry_keeps_dependency_closure_and_reuses_ok_prerequisite(
         return None
 
     monkeypatch.setattr(manual_campaign, "lightweight_current", resolve_lightweight)
-    real_plan_campaign = manual_campaign.plan_campaign
     planned_batches: list[tuple[object, ...]] = []
+    real_dry_run_rows = manual_campaign._dry_run_rows
 
-    def observe_plan(*args: object, **kwargs: object) -> tuple[object, ...]:
-        planned = real_plan_campaign(*args, **kwargs)
-        planned_batches.append(planned)
-        return planned
+    def observe_dry_run_rows(
+        direct: object,
+        planned: tuple[object, ...],
+        **kwargs: object,
+    ) -> tuple[object, ...]:
+        planned_batches.append(tuple(planned))
+        return tuple(real_dry_run_rows(direct, planned, **kwargs))
 
-    monkeypatch.setattr(manual_campaign, "plan_campaign", observe_plan)
+    monkeypatch.setattr(manual_campaign, "_dry_run_rows", observe_dry_run_rows)
     arguments = build_parser().parse_args(
         ("run", "--dry-run", "--rerun-failed", "--cell-id", target.cell_id)
     )
@@ -1365,6 +1368,66 @@ def test_selective_retry_keeps_dependency_closure_and_reuses_ok_prerequisite(
     )
     assert [item.cell.cell_id for item in planned_batches[1]] == [target.cell_id]
     assert not planned_batches[1][0].dependency
+
+
+def test_selective_retry_retains_selected_independent_authority_chain(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    revision = "a" * 40
+    service = _isolated_manual_service(tmp_path)
+    candidate = REPORT_CATALOG.cell(
+        "matrix-compiled-builtin-sm-full-n4-dd-3q-lines-contracted"
+    )
+    recurrence = REPORT_CATALOG.validation_baseline_cell(candidate)
+    assert recurrence is not None
+    amplicol = REPORT_CATALOG.validation_baseline_cell(recurrence)
+    assert amplicol is not None
+    failure = _presentation_outcome(candidate, revision=revision)
+    monkeypatch.setattr(
+        manual_campaign,
+        "lightweight_presentation_outcomes",
+        lambda *_args, **_kwargs: {candidate.cell_id: failure},
+    )
+    monkeypatch.setattr(
+        manual_campaign,
+        "lightweight_current",
+        lambda *_args, **_kwargs: None,
+    )
+    planned_batches: list[tuple[object, ...]] = []
+    real_dry_run_rows = manual_campaign._dry_run_rows
+
+    def observe_dry_run_rows(
+        direct: object,
+        planned: tuple[object, ...],
+        **kwargs: object,
+    ) -> tuple[object, ...]:
+        planned_batches.append(tuple(planned))
+        return tuple(real_dry_run_rows(direct, planned, **kwargs))
+
+    monkeypatch.setattr(manual_campaign, "_dry_run_rows", observe_dry_run_rows)
+    arguments = build_parser().parse_args(("run", "--dry-run", "--rerun-failed"))
+
+    assert (
+        _run_campaign(
+            arguments,
+            repo_root=ROOT,
+            service=service,
+            source=ReportSourceIdentity(revision, "b" * 40, ()),
+            cells=(candidate, recurrence, amplicol),
+            palette=Palette(False),
+        )
+        == 0
+    )
+
+    by_id = {item.cell.cell_id: item for item in planned_batches[0]}
+    assert set(by_id) == {candidate.cell_id, recurrence.cell_id, amplicol.cell_id}
+    assert not by_id[candidate.cell_id].dependency
+    assert by_id[recurrence.cell_id].dependency
+    assert by_id[amplicol.cell_id].dependency
+    assert by_id[amplicol.cell_id].rank < by_id[recurrence.cell_id].rank
+    assert by_id[recurrence.cell_id].rank < by_id[candidate.cell_id].rank
+    assert by_id[recurrence.cell_id].prerequisite_cell_ids == (amplicol.cell_id,)
 
 
 def test_manual_dry_run_plans_only_from_lightweight_metadata(
