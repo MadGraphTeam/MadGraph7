@@ -22,7 +22,7 @@ from tools.performance_report.artifacts import (
     CurrentRecord,
     DiskFullError,
 )
-from tools.performance_report.cache import empty_measurement
+from tools.performance_report.cache import digest_json, empty_measurement
 from tools.performance_report.campaign_policy import (
     MACBOOK_M3_MEMORY_LIMIT_BYTES,
     MACBOOK_M3_Z_TABLE_F_POLICY,
@@ -52,6 +52,7 @@ from tools.performance_report.resources import (
     SupervisedResult,
     WorkerObservation,
 )
+from tools.performance_report.runner import pointwise_validation
 from tools.performance_report.scheduler import (
     CampaignResult,
     CampaignScheduler,
@@ -152,6 +153,73 @@ def _ok_measurement(
         "status": ResultStatus.OK.value,
         DIRECT_AGREEMENT_FIELD: [],
     }
+    if cell is not None and cell.dataset_id in {"scalar_contact", "scalar_gravity"}:
+        point_identity = "a" * 64
+        ordering = "b" * 64
+
+        def resolved_record(precision: int, source: str) -> dict[str, object]:
+            point = pointwise_validation(
+                1.0,
+                1.0,
+                candidate_scale=1.0,
+                baseline_scale=1.0,
+                comparison_binding={
+                    "abi": "pyamplicol-report-resolved-component-scale-v1",
+                    "point_digest": point_identity,
+                    "helicity_ids": [],
+                    "color_flow_ids": [],
+                    "resolved_ordering_sha256": ordering,
+                    "resolved_source_sha256": source,
+                    "point_index": 0,
+                },
+            )
+            return {
+                "abi": "pyamplicol-report-resolved-sum-validation-v2",
+                "status": ResultStatus.OK.value,
+                "maximum_absolute_difference": 0.0,
+                "maximum_relative_difference": 0.0,
+                "maximum_conditioned_residual": 0.0,
+                "relative_tolerance": 1.0e-12,
+                "point_digest": point_identity,
+                "helicity_ids": [],
+                "color_flow_ids": [],
+                "resolved_ordering_sha256": ordering,
+                "resolved_source_sha256": source,
+                "scale_source": "resolved-component-l1",
+                "precision_digits": precision,
+                "points": [point],
+            }
+
+        binary64 = resolved_record(16, "c" * 64)
+        p32 = resolved_record(32, "d" * 64)
+        selector_identity = {
+            "cell_id": cell.cell_id,
+            "accuracy": cell.measurement.accuracy.value,
+            "workload": cell.workload.value,
+            "selector_contract": None,
+            "value_kind": "matrix-element-p16-versus-p32",
+        }
+        validation.update(
+            {
+                "resolved_sum": binary64,
+                "high_precision_resolved_sum": p32,
+                "high_precision": pointwise_validation(
+                    1.0,
+                    1.0,
+                    candidate_scale=1.0,
+                    baseline_scale=1.0,
+                    candidate_scale_source="resolved-component-l1-binary64",
+                    baseline_scale_source="resolved-component-l1-p32",
+                    comparison_binding={
+                        "point_digest": point_identity,
+                        "selector_component_identity": selector_identity,
+                        "selector_component_sha256": digest_json(selector_identity),
+                        "candidate_source_sha256": "c" * 64,
+                        "baseline_source_sha256": "d" * 64,
+                    },
+                ),
+            }
+        )
     if selector is not None:
         assert cell is not None
         validation[LC_COMMON_COMPONENT_FIELD] = {
@@ -1726,7 +1794,7 @@ def test_missing_only_reconciles_amplicol_current_when_recurrence_later_succeeds
 
 
 @pytest.mark.parametrize("dataset_id", ("scalar_contact", "scalar_gravity"))
-def test_self_certified_scalar_compiled_current_is_stale(
+def test_self_certified_scalar_compiled_current_is_reused(
     tmp_path: Path,
     dataset_id: str,
 ) -> None:
@@ -1741,12 +1809,11 @@ def test_self_certified_scalar_compiled_current_is_stale(
     planned = plan_campaign(
         (cell,),
         store=store,
-        settings=CampaignSettings(),
+        settings=CampaignSettings(missing_only=True),
         expected_revision="active",
     )
 
-    assert tuple(item.cell for item in planned) == (cell,)
-    assert planned[0].numerical_authority_cell_ids == ()
+    assert planned == ()
 
 
 def test_z_cell_explicitly_reuses_valid_cross_source_comparisons(

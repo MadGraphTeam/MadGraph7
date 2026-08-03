@@ -270,6 +270,7 @@ class ReportService:
             validate_cache(
                 payload,
                 expected_cells=cells_by_dataset[dataset_id],  # type: ignore[arg-type]
+                catalog=self.catalog,
             )
             entries = payload["entries"]
             assert isinstance(entries, list)
@@ -355,6 +356,7 @@ class ReportService:
                 validate_measurement(
                     measurement,
                     expected_cell=cell,
+                    catalog=self.catalog,
                 )
                 entry["measurement"] = dict(measurement)
                 merged += 1

@@ -19,7 +19,7 @@ import sys
 import tempfile
 import tomllib
 from collections import Counter, defaultdict
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from importlib.machinery import EXTENSION_SUFFIXES
 from pathlib import Path, PurePosixPath
@@ -45,9 +45,10 @@ from .agreements import (
     evaluate_lc_common_component,
     incoming_agreement_edges,
     independent_numerical_authorities,
+    requires_independent_numerical_authority,
     validation_baseline_is_required,
 )
-from .cache import digest_json, reset_entry
+from .cache import _validate_standalone_internal_validation, digest_json, reset_entry
 from .campaign_policy import (
     MACBOOK_M3_POLICY,
     MACBOOK_M3_PROFILE,
@@ -198,24 +199,63 @@ _EXPECTED_FULL_DIRECT_REPLAY_COUNTS = {
 }
 
 
-def _count_contract_matches_with_optional_category(
+def _count_contract_matches_with_optional_categories(
     observed: Mapping[str, int],
     expected_maxima: Mapping[str, int],
     *,
-    optional_category: str,
+    optional_categories: Collection[str],
 ) -> bool:
-    """Keep required counts exact while bounding one optional category."""
+    """Keep required counts exact while bounding optional edge categories."""
 
-    if set(observed) != set(expected_maxima):
+    optional = frozenset(optional_categories)
+    if set(observed) != set(expected_maxima) or not optional <= set(expected_maxima):
         return False
     return all(
         (
             0 <= observed[category] <= expected
-            if category == optional_category
+            if category in optional
             else observed[category] == expected
         )
         for category, expected in expected_maxima.items()
     )
+
+
+def _replay_count_contract_matches_direct_edges(
+    observed: Mapping[str, int],
+    direct_edge_counts: Mapping[str, int],
+    expected_replay_counts: Mapping[str, int],
+) -> bool:
+    """Require replay of every direct edge that was actually available.
+
+    Z recurrence and legacy-AmpliCol comparison edges may be absent.  The
+    remaining built-in/UFO and LC cross-layout edges are still exact at the
+    direct-edge gate.  Projecting the replay categories from those already
+    checked direct counts prevents either a required replay or an available
+    optional replay from disappearing behind an aggregate category count.
+    """
+
+    if set(observed) != set(expected_replay_counts):
+        return False
+    try:
+        stored_legacy_layout = expected_replay_counts[
+            _AUTHENTICATED_STORED_LEGACY_LAYOUT
+        ]
+        fully_replayed = (
+            direct_edge_counts[BUILTIN_UFO_RECURRENCE]
+            + direct_edge_counts[Z_RECURRENCE_CROSS_MODE]
+            + direct_edge_counts[LC_CROSS_LAYOUT_COMPONENT]
+            - stored_legacy_layout
+        )
+        replayed_legacy = direct_edge_counts[LC_LEGACY_PYAMPLICOL_COMPONENT]
+    except KeyError:
+        return False
+    if fully_replayed < 0:
+        return False
+    return dict(observed) == {
+        _FULLY_REPLAYED_PYAMPLICOL: fully_replayed,
+        _REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY: replayed_legacy,
+        _AUTHENTICATED_STORED_LEGACY_LAYOUT: stored_legacy_layout,
+    }
 
 
 _LOADED_ORIGIN_OBSERVATION_FIELDS = frozenset(
@@ -2982,6 +3022,12 @@ def _audit_measurement(
         ModelKey.SCALAR_GRAVITY,
     }
     if scalar:
+        try:
+            _validate_standalone_internal_validation(measurement, validation)
+        except ValueError as error:
+            raise FinalAuditError(
+                f"{context}.measurement.validation standalone evidence: {error}"
+            ) from error
         _audit_pointwise(
             validation.get("high_precision"),
             context=f"{context}.measurement.validation.high_precision",
@@ -3172,12 +3218,9 @@ def _validation_baseline_endpoint_for_audit(
     )
     raw_authority = validation.get(INDEPENDENT_AUTHORITY_FIELD)
     if raw_authority is not None:
-        if cell.measurement.execution_mode not in {
-            ExecutionMode.COMPILED,
-            ExecutionMode.EAGER,
-        }:
+        if not requires_independent_numerical_authority(cell, catalog=catalog):
             raise FinalAuditError(
-                f"{cell.cell_id} stores independent authority in an invalid mode"
+                f"{cell.cell_id} stores inapplicable independent authority"
             )
         record = _mapping(
             raw_authority,
@@ -5581,10 +5624,13 @@ def _audit_final_report_locked(
         and max_n_final == 4
         and len(cells) == _EXPECTED_N4_CELL_COUNT
         and active_policy is STRICT_POLICY
-        and not _count_contract_matches_with_optional_category(
+        and not _count_contract_matches_with_optional_categories(
             direct_agreement_counts,
             _EXPECTED_N4_DIRECT_AGREEMENT_COUNTS,
-            optional_category=LC_LEGACY_PYAMPLICOL_COMPONENT,
+            optional_categories={
+                Z_RECURRENCE_CROSS_MODE,
+                LC_LEGACY_PYAMPLICOL_COMPONENT,
+            },
         )
     ):
         raise FinalAuditError(
@@ -5597,10 +5643,13 @@ def _audit_final_report_locked(
         and max_n_final == _FULL_CATALOG_MAX_N_FINAL
         and len(declared_cells) == _EXPECTED_FULL_CATALOG_CELL_COUNT
         and active_policy is STRICT_POLICY
-        and not _count_contract_matches_with_optional_category(
+        and not _count_contract_matches_with_optional_categories(
             direct_agreement_counts,
             _EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS,
-            optional_category=LC_LEGACY_PYAMPLICOL_COMPONENT,
+            optional_categories={
+                Z_RECURRENCE_CROSS_MODE,
+                LC_LEGACY_PYAMPLICOL_COMPONENT,
+            },
         )
     ):
         raise FinalAuditError(
@@ -5732,10 +5781,10 @@ def _audit_final_report_locked(
             and max_n_final == 4
             and len(cells) == _EXPECTED_N4_CELL_COUNT
             and active_policy is STRICT_POLICY
-            and not _count_contract_matches_with_optional_category(
+            and not _replay_count_contract_matches_direct_edges(
                 replayed_direct_agreement_counts,
+                direct_agreement_counts,
                 _EXPECTED_N4_DIRECT_REPLAY_COUNTS,
-                optional_category=(_REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY),
             )
         ):
             raise FinalAuditError(
@@ -5748,10 +5797,10 @@ def _audit_final_report_locked(
             and max_n_final == _FULL_CATALOG_MAX_N_FINAL
             and len(declared_cells) == _EXPECTED_FULL_CATALOG_CELL_COUNT
             and active_policy is STRICT_POLICY
-            and not _count_contract_matches_with_optional_category(
+            and not _replay_count_contract_matches_direct_edges(
                 replayed_direct_agreement_counts,
+                direct_agreement_counts,
                 _EXPECTED_FULL_DIRECT_REPLAY_COUNTS,
-                optional_category=(_REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY),
             )
         ):
             raise FinalAuditError(

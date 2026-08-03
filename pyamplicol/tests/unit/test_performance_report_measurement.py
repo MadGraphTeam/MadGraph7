@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from tools.performance_report.agreements import independent_numerical_authorities
+from tools.performance_report.cache import _validate_independent_authority_record
 from tools.performance_report.catalog import REPORT_CATALOG
 from tools.performance_report.measurement import (
     _attach_baseline_validation,
@@ -973,25 +974,94 @@ def test_measurement_persists_generation_and_runtime_command_paths(
 
 
 @pytest.mark.parametrize(
-    ("accuracy", "authority_available"),
     (
-        (Accuracy.NLC, True),
-        (Accuracy.FULL, True),
-        (Accuracy.FULL, False),
+        "cell_id",
+        "authority_available",
+        "standalone",
+        "p32_matches",
+        "custom_authority",
+    ),
+    (
+        (
+            "matrix-compiled-builtin-sm-nlc-n1-dd-z-jets-contracted",
+            True,
+            False,
+            True,
+            False,
+        ),
+        (
+            "matrix-compiled-builtin-sm-full-n1-dd-z-jets-contracted",
+            True,
+            False,
+            True,
+            False,
+        ),
+        (
+            "matrix-compiled-builtin-sm-full-n1-dd-z-jets-contracted",
+            False,
+            False,
+            True,
+            False,
+        ),
+        (
+            "scalar-contact-n2-scalar-contact-contracted",
+            False,
+            True,
+            True,
+            False,
+        ),
+        (
+            "scalar-gravity-n2-scalar-gravity-contracted",
+            False,
+            True,
+            True,
+            False,
+        ),
+        (
+            "scalar-contact-n2-scalar-contact-contracted",
+            False,
+            True,
+            False,
+            False,
+        ),
+        (
+            "scalar-contact-n2-scalar-contact-contracted",
+            True,
+            False,
+            True,
+            True,
+        ),
     ),
 )
 def test_initial_compiled_authority_uses_nested_resolved_point_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    accuracy: Accuracy,
+    cell_id: str,
     authority_available: bool,
+    standalone: bool,
+    p32_matches: bool,
+    custom_authority: bool,
 ) -> None:
     import tools.performance_report.measurement as report_measurement
 
-    cell = REPORT_CATALOG.cell(
-        f"matrix-compiled-builtin-sm-{accuracy.value}-n1-dd-z-jets-contracted"
-    )
-    point_identity = "f" * 64
+    cell = REPORT_CATALOG.cell(cell_id)
+
+    class CustomAuthorityCatalog:
+        """Make one scalar use the ordinary matrix authority chain."""
+
+        def measurement_cells(self):
+            return REPORT_CATALOG.measurement_cells()
+
+        def validation_baseline_cell(self, candidate):
+            if candidate == cell:
+                return REPORT_CATALOG.cell(
+                    "matrix-recurrence-builtin-sm-full-n1-dd-z-jets-contracted"
+                )
+            return REPORT_CATALOG.validation_baseline_cell(candidate)
+
+    catalog = CustomAuthorityCatalog() if custom_authority else REPORT_CATALOG
+    validation_points = ((1.0,),)
+    point_identity = report_measurement.point_digest(validation_points)
     source = "b" * 64
     resolved_point = report_measurement.pointwise_validation(
         1.0,
@@ -1024,6 +1094,25 @@ def test_initial_compiled_authority_uses_nested_resolved_point_identity(
         "precision_digits": 16,
         "points": [resolved_point],
     }
+    p32_resolved = {**deepcopy(resolved), "precision_digits": 32}
+    if not p32_matches:
+        p32_resolved["points"] = [
+            report_measurement.pointwise_validation(
+                2.0,
+                2.0,
+                candidate_scale=2.0,
+                baseline_scale=2.0,
+                comparison_binding={
+                    "abi": "pyamplicol-report-resolved-component-scale-v1",
+                    "point_digest": point_identity,
+                    "helicity_ids": [],
+                    "color_flow_ids": [],
+                    "resolved_ordering_sha256": "a" * 64,
+                    "resolved_source_sha256": source,
+                    "point_index": 0,
+                },
+            )
+        ]
     artifact_path = tmp_path / "artifact"
     artifact = GeneratedArtifact(
         path=artifact_path,
@@ -1096,8 +1185,17 @@ def test_initial_compiled_authority_uses_nested_resolved_point_identity(
     monkeypatch.setattr(
         report_measurement,
         "shared_validation_points",
-        lambda _process: ((1.0,),),
+        lambda _process: validation_points,
     )
+    if standalone or cell.measurement.model in {
+        report_measurement.ModelKey.SCALAR_CONTACT,
+        report_measurement.ModelKey.SCALAR_GRAVITY,
+    }:
+        monkeypatch.setattr(
+            report_measurement,
+            "runtime_validation_points",
+            lambda _runtime: validation_points,
+        )
     monkeypatch.setattr(
         report_measurement,
         "_resolution_benchmark_config",
@@ -1113,14 +1211,11 @@ def test_initial_compiled_authority_uses_nested_resolved_point_identity(
         "resolved_sum_validation",
         lambda *_args, **_kwargs: (
             pytest.fail("p32 is diagnostic-only with authority")
-            if authority_available
-            else {
-                **deepcopy(resolved),
-                "precision_digits": 32,
-            }
+            if authority_available and not custom_authority
+            else deepcopy(p32_resolved)
         ),
     )
-    authorities = independent_numerical_authorities(cell)
+    authorities = independent_numerical_authorities(cell, catalog=catalog)  # type: ignore[arg-type]
     baseline = {
         "status": ResultStatus.OK.value,
         "matrix_element": 1.0,
@@ -1139,7 +1234,25 @@ def test_initial_compiled_authority_uses_nested_resolved_point_identity(
         selected_authority_cell_id=(
             authorities[0].cell_id if authority_available else None
         ),
+        catalog=catalog,  # type: ignore[arg-type]
     )
+
+    if custom_authority:
+        validation = measurement["validation"]
+        assert isinstance(validation, dict)
+        _validate_independent_authority_record(
+            validation,
+            expected_cell=cell,
+            expected_status="verified",
+            catalog=catalog,  # type: ignore[arg-type]
+        )
+        with pytest.raises(ValueError, match="not applicable"):
+            _validate_independent_authority_record(
+                validation,
+                expected_cell=cell,
+                expected_status="verified",
+                catalog=REPORT_CATALOG,
+            )
 
     validation = measurement["validation"]
     if authority_available:
@@ -1148,6 +1261,21 @@ def test_initial_compiled_authority_uses_nested_resolved_point_identity(
         assert validation["independent_authority"]["selected_cell_id"] == (
             authorities[0].cell_id
         )
+    elif standalone and p32_matches:
+        assert authorities == ()
+        assert measurement["status"] == ResultStatus.OK.value
+        assert measurement["failure"] is None
+        assert validation["high_precision"]["status"] == ResultStatus.OK.value
+        assert "independent_authority" not in validation
+        assert "precision_diagnostic" not in validation
+    elif standalone:
+        assert authorities == ()
+        assert measurement["status"] == ResultStatus.VALIDATION_FAILED.value
+        assert measurement["failure"]["kind"] == "MeasurementValidationError"
+        assert validation["high_precision"]["status"] == (
+            ResultStatus.VALIDATION_FAILED.value
+        )
+        assert "independent_authority" not in validation
     else:
         assert measurement["status"] == ResultStatus.UNVERIFIED.value
         assert measurement["failure"]["kind"] == "IndependentAuthorityUnavailable"

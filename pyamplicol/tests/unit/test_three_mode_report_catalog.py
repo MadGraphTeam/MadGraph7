@@ -765,6 +765,8 @@ def _unverified_candidate_measurement(cell: CellSpec) -> dict[str, object]:
         1.0,
         candidate_scale=1.0,
         baseline_scale=1.0,
+        candidate_scale_source="resolved-component-l1-binary64",
+        baseline_scale_source="resolved-component-l1-p32",
         comparison_binding={
             "point_digest": point_identity,
             "selector_component_identity": selector_identity,
@@ -840,6 +842,107 @@ def test_unverified_measurement_contract_is_strict_and_catalog_bound() -> None:
     ] = True
     with pytest.raises(ValueError, match="precision diagnostic"):
         validate_measurement(tampered, expected_cell=cell)
+
+
+@pytest.mark.parametrize(
+    "cell_id",
+    (
+        "scalar-contact-n2-scalar-contact-contracted",
+        "scalar-gravity-n2-scalar-gravity-contracted",
+    ),
+)
+def test_standalone_scalar_cell_rejects_inapplicable_unverified_authority(
+    cell_id: str,
+) -> None:
+    cell = REPORT_CATALOG.cell(cell_id)
+    measurement = _unverified_candidate_measurement(cell)
+
+    with pytest.raises(ValueError, match="not applicable"):
+        validate_measurement(measurement, expected_cell=cell)
+
+
+@pytest.mark.parametrize(
+    "cell_id",
+    (
+        "scalar-contact-n2-scalar-contact-contracted",
+        "scalar-gravity-n2-scalar-gravity-contracted",
+    ),
+)
+def test_standalone_scalar_ok_requires_strict_internal_p32_contract(
+    cell_id: str,
+) -> None:
+    cell = REPORT_CATALOG.cell(cell_id)
+    measurement = _unverified_candidate_measurement(cell)
+    measurement["status"] = ResultStatus.OK.value
+    measurement["failure"] = None
+    validation = measurement["validation"]
+    assert isinstance(validation, dict)
+    validation["status"] = ResultStatus.OK.value
+    validation.pop("precision_diagnostic")
+    validation.pop(INDEPENDENT_AUTHORITY_FIELD)
+
+    validate_measurement(measurement, expected_cell=cell)
+    validation.pop("high_precision")
+    with pytest.raises(ValueError, match="high_precision"):
+        validate_measurement(measurement, expected_cell=cell)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "point",
+        "ordering",
+        "binary-precision",
+        "matrix-value",
+        "p32-value",
+    ),
+)
+def test_standalone_scalar_ok_rejects_cross_record_p32_tampering(
+    mutation: str,
+) -> None:
+    cell = REPORT_CATALOG.cell("scalar-contact-n2-scalar-contact-contracted")
+    measurement = _unverified_candidate_measurement(cell)
+    measurement["status"] = ResultStatus.OK.value
+    measurement["failure"] = None
+    validation = measurement["validation"]
+    assert isinstance(validation, dict)
+    validation["status"] = ResultStatus.OK.value
+    validation.pop("precision_diagnostic")
+    validation.pop(INDEPENDENT_AUTHORITY_FIELD)
+    resolved = validation["resolved_sum"]
+    high_resolved = validation["high_precision_resolved_sum"]
+    assert isinstance(resolved, dict)
+    assert isinstance(high_resolved, dict)
+    high_points = high_resolved["points"]
+    assert isinstance(high_points, list)
+    high_point = high_points[0]
+    assert isinstance(high_point, dict)
+    high_binding = high_point["comparison_binding"]
+    assert isinstance(high_binding, dict)
+
+    if mutation == "point":
+        high_resolved["point_digest"] = "e" * 64
+        high_binding["point_digest"] = "e" * 64
+    elif mutation == "ordering":
+        high_resolved["resolved_ordering_sha256"] = "e" * 64
+        high_binding["resolved_ordering_sha256"] = "e" * 64
+    elif mutation == "binary-precision":
+        resolved["precision_digits"] = 17
+    elif mutation == "matrix-value":
+        measurement["matrix_element"] = 2.0
+    else:
+        high_points[0] = pointwise_validation(
+            2.0,
+            2.0,
+            candidate_scale=2.0,
+            baseline_scale=2.0,
+            candidate_scale_source=str(high_point["candidate_scale_source"]),
+            baseline_scale_source=str(high_point["baseline_scale_source"]),
+            comparison_binding=high_binding,
+        )
+
+    with pytest.raises(ValueError, match="standalone"):
+        validate_measurement(measurement, expected_cell=cell)
 
 
 def test_unverified_presentation_overlay_is_attempt_bound_and_json_isolated(
@@ -1006,6 +1109,7 @@ def test_unverified_measurement_requires_every_hard_direct_agreement() -> None:
         _validate_unverified_direct_agreement_coverage(
             {DIRECT_AGREEMENT_FIELD: []},
             expected_cell=cell,
+            catalog=REPORT_CATALOG,
         )
     _validate_unverified_direct_agreement_coverage(
         {
@@ -1019,6 +1123,7 @@ def test_unverified_measurement_requires_every_hard_direct_agreement() -> None:
             ]
         },
         expected_cell=cell,
+        catalog=REPORT_CATALOG,
     )
 
 

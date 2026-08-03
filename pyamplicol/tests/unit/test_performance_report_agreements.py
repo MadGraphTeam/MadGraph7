@@ -21,6 +21,7 @@ from tools.performance_report.agreements import (
     evaluate_lc_common_component,
     incoming_agreement_edges,
     independent_numerical_authorities,
+    requires_independent_numerical_authority,
     validation_baseline_is_required,
 )
 from tools.performance_report.artifacts import ArtifactStore
@@ -691,6 +692,38 @@ def test_all_z_compiled_and_eager_cells_use_optional_ordered_authorities(
         assert not {authority.cell_id for authority in authorities}.intersection(by_id)
 
     assert (runnable_count, static_count) == (156, 24)
+
+
+def test_catalog_wide_independent_authority_policy_matches_surface_semantics() -> None:
+    cells = REPORT_CATALOG.measurement_cells()
+    authority_required = tuple(
+        cell for cell in cells if requires_independent_numerical_authority(cell)
+    )
+    standalone_compiled = tuple(
+        cell
+        for cell in cells
+        if cell.measurement.execution_mode
+        in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
+        and not requires_independent_numerical_authority(cell)
+    )
+
+    assert len(authority_required) == 808
+    assert all(
+        cell.measurement.execution_mode
+        in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
+        for cell in authority_required
+    )
+    assert len(standalone_compiled) == 10
+    assert {cell.dataset_id for cell in standalone_compiled} == {
+        "scalar_contact",
+        "scalar_gravity",
+    }
+    assert all(
+        not requires_independent_numerical_authority(cell)
+        for cell in cells
+        if cell.measurement.execution_mode
+        not in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
+    )
 
 
 def test_canonical_n4_plan_keeps_bounded_acyclic_dependency_depth(

@@ -23,9 +23,11 @@ from .agreements import (
     LC_COMMON_COMPONENT_FIELD,
     evaluate_lc_common_component,
     independent_numerical_authorities,
+    requires_independent_numerical_authority,
     validate_lc_common_component,
 )
 from .cache import empty_measurement
+from .catalog import REPORT_CATALOG, ReportCatalog
 from .models import (
     Accuracy,
     CellSpec,
@@ -1283,11 +1285,13 @@ def measure_pyamplicol_cell(
     prepared_model_path: Path | None = None,
     reused_artifact: GeneratedArtifact | None = None,
     phase_reporter: WorkerPhaseReporter | None = None,
+    catalog: ReportCatalog = REPORT_CATALOG,
 ) -> dict[str, object]:
     """Generate or retime one complete-coverage pyAmpliCol artifact."""
 
     canonical_authority_ids = tuple(
-        authority.cell_id for authority in independent_numerical_authorities(cell)
+        authority.cell_id
+        for authority in independent_numerical_authorities(cell, catalog=catalog)
     )
     authority_ids = tuple(expected_authority_cell_ids)
     if authority_ids != canonical_authority_ids:
@@ -1393,10 +1397,12 @@ def measure_pyamplicol_cell(
         ModelKey.SCALAR_CONTACT,
         ModelKey.SCALAR_GRAVITY,
     }
+    authority_expected = requires_independent_numerical_authority(
+        cell,
+        catalog=catalog,
+    )
     diagnostic_without_authority = (
-        cell.measurement.execution_mode
-        in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
-        and selected_authority_cell_id is None
+        authority_expected and selected_authority_cell_id is None
     )
     requires_high_precision = scalar or (
         baseline is None
@@ -1461,10 +1467,7 @@ def measure_pyamplicol_cell(
         contract=contract,
     )
     authority_failure: dict[str, str] | None = None
-    if cell.measurement.execution_mode in {
-        ExecutionMode.COMPILED,
-        ExecutionMode.EAGER,
-    }:
+    if authority_expected:
         if selected_authority_cell_id is None:
             validation[INDEPENDENT_AUTHORITY_FIELD] = (
                 _independent_authority_record(

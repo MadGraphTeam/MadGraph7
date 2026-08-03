@@ -495,7 +495,7 @@ def test_legacy_all_flow_worker_passes_selected_flow_provider(
 ) -> None:
     cell = REPORT_CATALOG.cell("reference-amplicol-lc-n1-dd-z-jets-all-flow")
     provider = {"status": "ok", "selector_contract": {"fixture": True}}
-    observed: list[object] = []
+    observed: list[tuple[object, object]] = []
 
     class SourceIdentity:
         def provenance(self) -> dict[str, object]:
@@ -571,7 +571,9 @@ def test_pyamplicol_worker_passes_all_validation_peers_to_measurement(
             return {}
 
     def measure(*_args: object, **kwargs: object) -> dict[str, object]:
-        observed.append(kwargs.get("validation_peers"))
+        observed.append(
+            (kwargs.get("validation_peers"), kwargs.get("catalog"))
+        )
         return {
             "status": "validation_failed",
             "validation": {"status": "validation_failed"},
@@ -614,7 +616,10 @@ def test_pyamplicol_worker_passes_all_validation_peers_to_measurement(
 
     assert result["status"] == "validation_failed"
     assert observed == [
-        {"reference-amplicol-full-n4-dd-tt-jets-contracted": peer}
+        (
+            {"reference-amplicol-full-n4-dd-tt-jets-contracted": peer},
+            REPORT_CATALOG,
+        )
     ]
 
 

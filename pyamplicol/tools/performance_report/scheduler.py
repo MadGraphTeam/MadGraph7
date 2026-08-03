@@ -25,7 +25,6 @@ from .agreements import (
     attach_direct_agreements,
     incoming_agreement_edges,
     independent_numerical_authorities,
-    validation_baseline_fallback_peers,
     validation_baseline_is_required,
 )
 from .artifacts import (
@@ -466,36 +465,17 @@ def _successful_current(
     measurement_lineage: MeasurementLineage | None = None,
     expected_study_contract_sha256: str | None = None,
     expected_worker_harness: Mapping[str, object] | None = None,
+    catalog: ReportCatalog = REPORT_CATALOG,
 ) -> CurrentRecord | None:
     current = store.load_current(cell_id, missing_ok=True)
     if current is None or current.result.get("status") != ResultStatus.OK.value:
         return None
     try:
-        validate_measurement(current.result, expected_cell=expected_cell)
-        if (
-            expected_cell is not None
-            and expected_cell.measurement.execution_mode
-            in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
-            and expected_cell.measurement.model
-            in {ModelKey.SCALAR_CONTACT, ModelKey.SCALAR_GRAVITY}
-        ):
-            validation = current.result.get("validation")
-            authority = (
-                validation.get("independent_authority")
-                if isinstance(validation, Mapping)
-                else None
-            )
-            if not (
-                isinstance(authority, Mapping)
-                and authority.get("status") == "verified"
-                and isinstance(authority.get("selected_cell_id"), str)
-                and authority.get("selected_cell_id")
-            ):
-                # Historic scalar compiled currents were accepted only by a
-                # same-artifact p32 comparison.  That evidence remains useful
-                # diagnostics but is not an independent construction
-                # authority, so it must not grandfather a reusable success.
-                return None
+        validate_measurement(
+            current.result,
+            expected_cell=expected_cell,
+            catalog=catalog,
+        )
         if expected_study_contract_sha256 is not None:
             require_z_table_f_attempt_binding(
                 current.result,
@@ -544,6 +524,7 @@ def _policy_current(
     original_amplicol_seed: OriginalAmplicolSeed | None = None,
     expected_worker_harness: Mapping[str, object] | None = None,
     comparison_dependency: bool = False,
+    catalog: ReportCatalog = REPORT_CATALOG,
 ) -> tuple[CurrentRecord, PolicyMeasurementState] | None:
     if settings.campaign_policy is STRICT_POLICY:
         current = _successful_current(
@@ -555,6 +536,7 @@ def _policy_current(
             measurement_lineage=measurement_lineage,
             expected_study_contract_sha256=(settings.study_contract_sha256),
             expected_worker_harness=expected_worker_harness,
+            catalog=catalog,
         )
         if current is not None:
             return current, PolicyMeasurementState.SUCCESS
@@ -573,7 +555,11 @@ def _policy_current(
         ):
             return None
         try:
-            validate_measurement(terminal.result, expected_cell=cell)
+            validate_measurement(
+                terminal.result,
+                expected_cell=cell,
+                catalog=catalog,
+            )
         except ValueError:
             return None
         return terminal, state
@@ -621,7 +607,11 @@ def _policy_current(
     if expected_source is None:
         return None
     try:
-        validate_measurement(current.result, expected_cell=cell)
+        validate_measurement(
+            current.result,
+            expected_cell=cell,
+            catalog=catalog,
+        )
         if settings.study_contract_sha256 is not None and not cross_source:
             require_z_table_f_attempt_binding(
                 current.result,
@@ -705,6 +695,7 @@ def _resource_frontier_source(
                 measurement_lineage=measurement_lineage,
                 original_amplicol_seed=original_amplicol_seed,
                 expected_worker_harness=expected_worker_harness,
+                catalog=catalog,
             )
         )
         if current is None:
@@ -742,7 +733,6 @@ def _partition_dependency_records(
     comparison_peer_ids: Sequence[str],
     optional_baseline_cell_id: str | None = None,
     optional_comparison_peer_ids: Sequence[str] = (),
-    baseline_fallback_peer_ids: Sequence[str] = (),
     currents: Mapping[
         str,
         tuple[CurrentRecord, PolicyMeasurementState],
@@ -784,12 +774,6 @@ def _partition_dependency_records(
         optional = currents.get(peer_cell_id)
         if optional is not None and optional[1] is PolicyMeasurementState.SUCCESS:
             peer_records[peer_cell_id] = optional[0]
-    if baseline_record is None:
-        for peer_cell_id in baseline_fallback_peer_ids:
-            fallback = currents.get(peer_cell_id)
-            if fallback is not None and fallback[1] is PolicyMeasurementState.SUCCESS:
-                baseline_record = fallback[0]
-                break
     return baseline_record, peer_records, tuple(terminal_required)
 
 
@@ -816,6 +800,7 @@ def _fresh_equivalent_current(
             measurement_lineage=measurement_lineage,
             expected_study_contract_sha256=(expected_study_contract_sha256),
             expected_worker_harness=expected_worker_harness,
+            catalog=catalog,
         )
         if current is not None:
             return current
@@ -878,6 +863,7 @@ def plan_campaign(
             original_amplicol_seed=original_amplicol_seed,
             expected_worker_harness=expected_worker_harness,
             comparison_dependency=comparison_dependency,
+            catalog=catalog,
         )
 
     def dependency_roles(
@@ -1442,7 +1428,7 @@ class CampaignScheduler:
         service: ReportService,
         *,
         settings: CampaignSettings,
-        catalog: ReportCatalog = REPORT_CATALOG,
+        catalog: ReportCatalog | None = None,
         measurement_lineage: MeasurementLineage | None = None,
         measurement_lineage_authenticated: bool = False,
         study_contract: Mapping[str, object] | None = None,
@@ -1450,7 +1436,7 @@ class CampaignScheduler:
     ) -> None:
         self.service = service
         self.settings = settings
-        self.catalog = catalog
+        self.catalog = service.catalog if catalog is None else catalog
         self.source_identity = (
             settings.source_identity_override
             if settings.source_identity_override is not None
@@ -1753,6 +1739,7 @@ class CampaignScheduler:
             original_amplicol_seed=self.original_amplicol_seed,
             expected_worker_harness=self.worker_harness_identity,
             comparison_dependency=comparison_dependency,
+            catalog=self.catalog,
         )
 
     def _validate_z_table_f_plan(
@@ -2163,7 +2150,11 @@ class CampaignScheduler:
                     reason=manual_reason,
                     resources=resources,
                 )
-                validate_measurement(result, expected_cell=cell)
+                validate_measurement(
+                    result,
+                    expected_cell=cell,
+                    catalog=self.catalog,
+                )
                 record = attempt.publish(result)
                 return CellOutcome(
                     cell.cell_id,
@@ -2189,7 +2180,11 @@ class CampaignScheduler:
             )
             self._attach_manual_provenance(result, cell=cell)
             self._bind_study_result(result)
-            validate_measurement(result, expected_cell=cell)
+            validate_measurement(
+                result,
+                expected_cell=cell,
+                catalog=self.catalog,
+            )
             with self.service.store.new_attempt(
                 cell.cell_id,
                 self.settings.artifact_policy,
@@ -2665,13 +2660,6 @@ class CampaignScheduler:
                     ),
                     optional_comparison_peer_ids=(
                         planned.optional_comparison_peer_ids
-                    ),
-                    baseline_fallback_peer_ids=tuple(
-                        peer.cell_id
-                        for peer in validation_baseline_fallback_peers(
-                            cell,
-                            catalog=self.catalog,
-                        )
                     ),
                     currents=dependency_currents,
                 )
@@ -3211,7 +3199,11 @@ class CampaignScheduler:
                 ):
                     # Authenticate the complete retained diagnostic before any
                     # late authority is allowed to transform its status.
-                    validate_measurement(result, expected_cell=cell)
+                    validate_measurement(
+                        result,
+                        expected_cell=cell,
+                        catalog=self.catalog,
+                    )
                     late_authority: tuple[str, CurrentRecord] | None = None
                     for authority_cell_id in planned.numerical_authority_cell_ids:
                         current_authority = self._current(
@@ -3277,7 +3269,11 @@ class CampaignScheduler:
                                 late_peers,
                                 catalog=self.catalog,
                             )
-                validate_measurement(result, expected_cell=cell)
+                validate_measurement(
+                    result,
+                    expected_cell=cell,
+                    catalog=self.catalog,
+                )
                 if result["status"] == ResultStatus.OK.value:
                     policy_state = (
                         PolicyMeasurementState.SUCCESS
@@ -3373,7 +3369,11 @@ class CampaignScheduler:
                 ),
             )
             self._bind_study_result(result)
-            validate_measurement(result, expected_cell=cell)
+            validate_measurement(
+                result,
+                expected_cell=cell,
+                catalog=self.catalog,
+            )
             record = attempt.publish(result)
             return CellOutcome(
                 cell.cell_id,
@@ -3404,7 +3404,11 @@ class CampaignScheduler:
                 frontier=frontier,
             )
             self._bind_study_result(result)
-            validate_measurement(result, expected_cell=cell)
+            validate_measurement(
+                result,
+                expected_cell=cell,
+                catalog=self.catalog,
+            )
             record = attempt.publish(result)
             return CellOutcome(
                 cell.cell_id,

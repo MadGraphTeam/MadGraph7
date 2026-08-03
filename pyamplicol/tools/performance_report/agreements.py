@@ -80,8 +80,9 @@ class AgreementEdge:
 
         Original-AmpliCol LC agreement is useful when the legacy oracle is
         available, but its absence must not censor an otherwise independently
-        validated pyAmpliCol measurement. Every model, cross-mode, and
-        cross-layout pyAmpliCol edge remains mandatory.
+        validated pyAmpliCol measurement.  Z cross-mode recurrence is likewise
+        an availability-only numerical authority.  Model-source and
+        cross-layout pyAmpliCol edges remain mandatory.
         """
 
         return self.kind not in {
@@ -97,10 +98,9 @@ def validation_baseline_is_required(
     """Return whether ``baseline`` is a hard numerical prerequisite.
 
     Recurrence has its own resolved-sum and high-precision validation path, so
-    original AmpliCol is an optional comparison for recurrence.  Z compiled
-    and eager cells instead have a required, selector-compatible recurrence
-    agreement peer, which can supply the pointwise numerical baseline when
-    original AmpliCol is unavailable.
+    original AmpliCol is an optional comparison for recurrence.  Compiled and
+    eager comparison surfaces use recurrence and original AmpliCol as ordered,
+    availability-only numerical authorities rather than hard prerequisites.
     """
 
     if baseline is None:
@@ -296,28 +296,6 @@ def incoming_agreement_edges(
     )
 
 
-def validation_baseline_fallback_peers(
-    cell: CellSpec,
-    *,
-    catalog: ReportCatalog = REPORT_CATALOG,
-) -> tuple[CellSpec, ...]:
-    """Return required peers that may replace an unavailable soft baseline.
-
-    This is deliberately limited to the Z recurrence cross-mode authority.
-    The edge remains a mandatory direct-agreement dependency even when its
-    successful current is also used as the worker's pointwise baseline.
-    """
-
-    baseline = catalog.validation_baseline_cell(cell)
-    if validation_baseline_is_required(cell, baseline):
-        return ()
-    return tuple(
-        edge.baseline
-        for edge in incoming_agreement_edges(cell, catalog=catalog)
-        if edge.required and edge.kind == Z_RECURRENCE_CROSS_MODE
-    )
-
-
 def independent_numerical_authorities(
     cell: CellSpec,
     *,
@@ -370,6 +348,23 @@ def independent_numerical_authorities(
     ):
         candidates.append(legacy)
     return tuple(candidates)
+
+
+def requires_independent_numerical_authority(
+    cell: CellSpec,
+    *,
+    catalog: ReportCatalog = REPORT_CATALOG,
+) -> bool:
+    """Whether ``cell`` needs an external numerical authority to become OK.
+
+    This is a success-classification rule, not a hard scheduling dependency.
+    Standalone absolute benchmark surfaces have no catalog authority chain and
+    are certified by their own strict internal validation contract.  Matrix
+    and Z compiled/eager comparison surfaces do expose such a chain and remain
+    unverified until one of its endpoints agrees.
+    """
+
+    return bool(independent_numerical_authorities(cell, catalog=catalog))
 
 
 def agreement_edges(
@@ -919,8 +914,8 @@ __all__ = [
     "incoming_agreement_edges",
     "independent_numerical_authorities",
     "legacy_lc_common_component",
+    "requires_independent_numerical_authority",
     "validate_direct_agreement_records",
     "validate_lc_common_component",
-    "validation_baseline_fallback_peers",
     "validation_baseline_is_required",
 ]

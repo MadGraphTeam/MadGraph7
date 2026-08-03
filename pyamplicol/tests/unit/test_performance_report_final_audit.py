@@ -21,6 +21,7 @@ from tools.performance_report.agreements import (
     LC_COMMON_COMPONENT_ABI,
     LC_COMMON_COMPONENT_FIELD,
     LC_LEGACY_PYAMPLICOL_COMPONENT,
+    Z_RECURRENCE_CROSS_MODE,
     agreement_edges,
     attach_direct_agreements,
     independent_numerical_authorities,
@@ -63,11 +64,12 @@ from tools.performance_report.final_audit import (
     _audit_unavailable_execution_timing,
     _authenticated_effective_config,
     _catalog_static_na_projection_errors,
-    _count_contract_matches_with_optional_category,
+    _count_contract_matches_with_optional_categories,
     _ensure_exact_cli_python,
     _legacy_consumer_coverage,
     _python_package_tree_identity,
     _real_nonnegative,
+    _replay_count_contract_matches_direct_edges,
     _runtime_for_measurement_source,
     _runtime_namespace_paths,
     _shared_artifact_contract,
@@ -130,47 +132,96 @@ def test_full_final_audit_distinguishes_declared_and_measurable_edge_totals() ->
 
 
 @pytest.mark.parametrize(
-    ("expected", "optional_category"),
+    ("expected_edges", "expected_replays"),
     (
         (
             final_audit_module._EXPECTED_FULL_DIRECT_AGREEMENT_COUNTS,
-            LC_LEGACY_PYAMPLICOL_COMPONENT,
+            final_audit_module._EXPECTED_FULL_DIRECT_REPLAY_COUNTS,
         ),
         (
-            final_audit_module._EXPECTED_FULL_DIRECT_REPLAY_COUNTS,
-            final_audit_module._REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY,
+            final_audit_module._EXPECTED_N4_DIRECT_AGREEMENT_COUNTS,
+            final_audit_module._EXPECTED_N4_DIRECT_REPLAY_COUNTS,
         ),
     ),
 )
-def test_final_audit_count_contract_bounds_only_optional_legacy_category(
-    expected: Mapping[str, int],
-    optional_category: str,
+def test_final_audit_count_contract_bounds_only_optional_authority_edges(
+    expected_edges: Mapping[str, int],
+    expected_replays: Mapping[str, int],
 ) -> None:
-    without_optional = dict(expected)
-    without_optional[optional_category] = 0
-    assert _count_contract_matches_with_optional_category(
+    without_optional = dict(expected_edges)
+    without_optional[Z_RECURRENCE_CROSS_MODE] = 0
+    without_optional[LC_LEGACY_PYAMPLICOL_COMPONENT] = 0
+    assert _count_contract_matches_with_optional_categories(
         without_optional,
-        expected,
-        optional_category=optional_category,
+        expected_edges,
+        optional_categories={
+            Z_RECURRENCE_CROSS_MODE,
+            LC_LEGACY_PYAMPLICOL_COMPONENT,
+        },
+    )
+    expected_without_optional_replays = dict(expected_replays)
+    expected_without_optional_replays[
+        final_audit_module._FULLY_REPLAYED_PYAMPLICOL
+    ] -= expected_edges[Z_RECURRENCE_CROSS_MODE]
+    expected_without_optional_replays[
+        final_audit_module._REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY
+    ] = 0
+    assert _replay_count_contract_matches_direct_edges(
+        expected_without_optional_replays,
+        without_optional,
+        expected_replays,
     )
 
-    missing_required = dict(expected)
-    required_category = next(
-        category for category in expected if category != optional_category
-    )
-    missing_required[required_category] -= 1
-    assert not _count_contract_matches_with_optional_category(
-        missing_required,
-        expected,
-        optional_category=optional_category,
+    optional_categories = {
+        Z_RECURRENCE_CROSS_MODE,
+        LC_LEGACY_PYAMPLICOL_COMPONENT,
+    }
+    for required_category in set(expected_edges) - optional_categories:
+        missing_required = dict(expected_edges)
+        missing_required[required_category] -= 1
+        assert not _count_contract_matches_with_optional_categories(
+            missing_required,
+            expected_edges,
+            optional_categories=optional_categories,
+        )
+
+    for optional_category in optional_categories:
+        too_many_optional = dict(expected_edges)
+        too_many_optional[optional_category] += 1
+        assert not _count_contract_matches_with_optional_categories(
+            too_many_optional,
+            expected_edges,
+            optional_categories=optional_categories,
+        )
+
+    missing_required_replay = dict(expected_without_optional_replays)
+    missing_required_replay[
+        final_audit_module._FULLY_REPLAYED_PYAMPLICOL
+    ] -= 1
+    assert not _replay_count_contract_matches_direct_edges(
+        missing_required_replay,
+        without_optional,
+        expected_replays,
     )
 
-    too_many_optional = dict(expected)
-    too_many_optional[optional_category] += 1
-    assert not _count_contract_matches_with_optional_category(
-        too_many_optional,
-        expected,
-        optional_category=optional_category,
+    missing_available_z_replay = dict(expected_replays)
+    missing_available_z_replay[
+        final_audit_module._FULLY_REPLAYED_PYAMPLICOL
+    ] -= 1
+    assert not _replay_count_contract_matches_direct_edges(
+        missing_available_z_replay,
+        expected_edges,
+        expected_replays,
+    )
+
+    missing_available_legacy_replay = dict(expected_replays)
+    missing_available_legacy_replay[
+        final_audit_module._REPLAYED_PYAMPLICOL_AUTHENTICATED_LEGACY
+    ] -= 1
+    assert not _replay_count_contract_matches_direct_edges(
+        missing_available_legacy_replay,
+        expected_edges,
+        expected_replays,
     )
 
 

@@ -520,6 +520,7 @@ def measure_cell(
             prepared_model_path=prepared_model_path,
             reused_artifact=reused_artifact,
             phase_reporter=phase_reporter,
+            catalog=catalog,
         )
     attach_direct_agreements(
         cell,

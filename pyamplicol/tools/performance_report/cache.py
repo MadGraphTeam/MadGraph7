@@ -18,6 +18,7 @@ from .agreements import (
     LC_COMMON_COMPONENT_FIELD,
     incoming_agreement_edges,
     independent_numerical_authorities,
+    requires_independent_numerical_authority,
     validate_direct_agreement_records,
     validate_lc_common_component,
 )
@@ -445,7 +446,15 @@ def _validate_independent_authority_record(
     *,
     expected_cell: CellSpec,
     expected_status: str,
+    catalog: ReportCatalog,
 ) -> None:
+    if not requires_independent_numerical_authority(
+        expected_cell,
+        catalog=catalog,
+    ):
+        raise ValueError(
+            "independent-authority evidence is not applicable to this catalog cell"
+        )
     raw = validation.get(INDEPENDENT_AUTHORITY_FIELD)
     record = _required_mapping(raw, f"validation.{INDEPENDENT_AUTHORITY_FIELD}")
     expected_fields = {
@@ -457,7 +466,11 @@ def _validate_independent_authority_record(
         "same_artifact_diagnostics_are_authority",
     }
     canonical_ids = [
-        cell.cell_id for cell in independent_numerical_authorities(expected_cell)
+        cell.cell_id
+        for cell in independent_numerical_authorities(
+            expected_cell,
+            catalog=catalog,
+        )
     ]
     if (
         set(record) != expected_fields
@@ -516,10 +529,109 @@ def _validate_unverified_precision_diagnostic(value: object) -> None:
         raise ValueError("unverified precision diagnostic attempt is invalid")
 
 
+def _validate_standalone_internal_validation(
+    measurement: Mapping[str, object],
+    validation: Mapping[str, object],
+) -> None:
+    """Validate the p16/resolved/p32 contract for standalone benchmarks."""
+
+    if INDEPENDENT_AUTHORITY_FIELD in validation:
+        raise ValueError(
+            "standalone measurement cannot store independent-authority evidence"
+        )
+    resolved = _required_mapping(
+        validation.get("resolved_sum"),
+        "validation.resolved_sum",
+    )
+    high_resolved = _required_mapping(
+        validation.get("high_precision_resolved_sum"),
+        "validation.high_precision_resolved_sum",
+    )
+    high_precision = _required_mapping(
+        validation.get("high_precision"),
+        "validation.high_precision",
+    )
+    resolved_points = resolved.get("points")
+    high_points = high_resolved.get("points")
+    if (
+        not isinstance(resolved_points, list)
+        or len(resolved_points) != 1
+        or not isinstance(resolved_points[0], Mapping)
+        or not isinstance(high_points, list)
+        or len(high_points) != 1
+        or not isinstance(high_points[0], Mapping)
+    ):
+        raise ValueError(
+            "standalone measurement requires one p16 and one p32 resolved point"
+        )
+    resolved_point = resolved_points[0]
+    high_point = high_points[0]
+    if (
+        resolved.get("status") != ResultStatus.OK.value
+        or resolved.get("precision_digits") != 16
+        or high_resolved.get("status") != ResultStatus.OK.value
+        or high_resolved.get("precision_digits") != 32
+        or high_precision.get("status") != ResultStatus.OK.value
+    ):
+        raise ValueError(
+            "standalone measurement requires successful resolved and p32 validation"
+        )
+    identity_fields = (
+        "point_digest",
+        "helicity_ids",
+        "color_flow_ids",
+        "resolved_ordering_sha256",
+    )
+    if any(
+        resolved.get(field) != high_resolved.get(field)
+        for field in identity_fields
+    ):
+        raise ValueError(
+            "standalone p16 and p32 resolved evidence has different identity"
+        )
+    matrix_element = measurement.get("matrix_element")
+    if (
+        isinstance(matrix_element, bool)
+        or not isinstance(matrix_element, (int, float))
+        or not math.isfinite(float(matrix_element))
+    ):
+        raise ValueError("standalone measurement matrix element is not finite")
+    expected_links = (
+        (resolved_point.get("candidate"), matrix_element),
+        (high_precision.get("candidate"), matrix_element),
+        (high_precision.get("baseline"), high_point.get("candidate")),
+        (
+            high_precision.get("candidate_scale"),
+            resolved_point.get("candidate_scale"),
+        ),
+        (
+            high_precision.get("baseline_scale"),
+            high_point.get("candidate_scale"),
+        ),
+        (high_precision.get("relative_tolerance"), resolved.get("relative_tolerance")),
+        (
+            high_precision.get("relative_tolerance"),
+            high_resolved.get("relative_tolerance"),
+        ),
+    )
+    if any(observed != expected for observed, expected in expected_links):
+        raise ValueError(
+            "standalone matrix element and p16/p32 evidence are not exactly linked"
+        )
+    if (
+        high_precision.get("candidate_scale_source")
+        != "resolved-component-l1-binary64"
+        or high_precision.get("baseline_scale_source")
+        != "resolved-component-l1-p32"
+    ):
+        raise ValueError("standalone p16/p32 scale-source labels are invalid")
+
+
 def _validate_unverified_direct_agreement_coverage(
     validation: Mapping[str, object],
     *,
     expected_cell: CellSpec,
+    catalog: ReportCatalog,
 ) -> None:
     direct_records = validation.get(DIRECT_AGREEMENT_FIELD)
     if not isinstance(direct_records, list):
@@ -539,7 +651,7 @@ def _validate_unverified_direct_agreement_coverage(
         if isinstance(record, Mapping)
     ):
         raise ValueError("unverified result has a failed direct-agreement record")
-    catalog_edges = incoming_agreement_edges(expected_cell)
+    catalog_edges = incoming_agreement_edges(expected_cell, catalog=catalog)
     required_edges = {
         (edge.kind, edge.baseline.cell_id, edge.candidate.cell_id)
         for edge in catalog_edges
@@ -559,6 +671,7 @@ def validate_measurement(
     value: object,
     *,
     expected_cell: CellSpec | None = None,
+    catalog: ReportCatalog = REPORT_CATALOG,
 ) -> None:
     measurement = _required_mapping(value, "measurement")
     expected_keys = set(empty_measurement())
@@ -673,10 +786,12 @@ def validate_measurement(
                 validation,
                 expected_cell=expected_cell,
                 expected_status="unavailable",
+                catalog=catalog,
             )
             _validate_unverified_direct_agreement_coverage(
                 validation,
                 expected_cell=expected_cell,
+                catalog=catalog,
             )
             resolved = _required_mapping(
                 validation.get("resolved_sum"),
@@ -700,6 +815,16 @@ def validate_measurement(
             _validate_unverified_precision_diagnostic(
                 validation.get("precision_diagnostic")
             )
+        elif (
+            expected_cell is not None
+            and expected_cell.measurement.execution_mode
+            in {ExecutionMode.COMPILED, ExecutionMode.EAGER}
+            and not requires_independent_numerical_authority(
+                expected_cell,
+                catalog=catalog,
+            )
+        ):
+            _validate_standalone_internal_validation(measurement, validation)
         elif INDEPENDENT_AUTHORITY_FIELD in validation:
             if expected_cell is None:
                 raise ValueError(
@@ -709,6 +834,7 @@ def validate_measurement(
                 validation,
                 expected_cell=expected_cell,
                 expected_status="verified",
+                catalog=catalog,
             )
             pointwise = _required_mapping(
                 validation.get("pointwise"),
@@ -772,6 +898,7 @@ def validate_cache(
     payload: object,
     *,
     expected_cells: Iterable[CellSpec] | None = None,
+    catalog: ReportCatalog = REPORT_CATALOG,
 ) -> None:
     expected_cell_list = None if expected_cells is None else tuple(expected_cells)
     expected_by_id = (
@@ -811,6 +938,7 @@ def validate_cache(
         validate_measurement(
             entry.get("measurement"),
             expected_cell=expected_by_id.get(cell_id),
+            catalog=catalog,
         )
     duplicate_ids = sorted(
         cell_id for cell_id, count in Counter(ids).items() if count > 1
