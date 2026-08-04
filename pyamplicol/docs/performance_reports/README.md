@@ -4,8 +4,8 @@
 The repository publishes only two rendered snapshots from separate manual
 measurement campaigns:
 
-- [MacBook M3 report](macbook_M3_pyAmpliCol.pdf)
-- [AMD EPYC report](EPYC_pyAmpliCol.pdf)
+- [MacBook M3 report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
+- [AMD EPYC report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
 
 These PDFs are measurement-host results, not release-CI results. Raw JSON,
 generated TeX, build workspaces, attempts, logs, locks, and coordination state
