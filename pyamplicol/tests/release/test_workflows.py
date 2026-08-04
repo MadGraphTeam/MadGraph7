@@ -404,6 +404,10 @@ def test_publisher_is_manual_oidc_only_and_has_no_build_checkout() -> None:
     assert "cargo" not in workflow
     assert "tools/release/build" not in workflow
     assert "gh-action-pypi-publish" in workflow
+    assert workflow.count(
+        "pypa/gh-action-pypi-publish@"
+        "dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2"
+    ) == 2
 
 
 def test_publisher_does_not_reauthenticate_release_run_metadata() -> None:
