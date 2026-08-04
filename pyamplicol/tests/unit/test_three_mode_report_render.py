@@ -1383,7 +1383,7 @@ def test_best_mode_mixed_generic_outcomes_have_deterministic_labels(
 ) -> None:
     assignments = (
         ("error", "validation_failed", "blocked_dependency"),
-        ("blocked_dependency", "error", "validation_failed"),
+        ("error", "blocked_dependency", "validation_failed"),
     )
     rendered_tables: list[str] = []
     for outcomes in assignments:
@@ -1415,13 +1415,15 @@ def test_best_mode_mixed_generic_outcomes_have_deterministic_labels(
             REPORT_CATALOG.process_families[0],
             1,
         )
-        terminal = view.workloads[0].terminal_label
-        assert terminal is not None
-        display = report_render._compact_terminal_summary_display(terminal)
-        marker = rf"\matrixstatus{{ReportRed}}{{{display}}}"
+        joined = view.workloads[0]
+        marker = r"\matrixstatus{ReportRed}{error}"
 
         assert tex.count(marker) == 4
-        assert re.fullmatch(r"N out\.\[[0-9a-f]{6}\]", display)
+        assert joined.mode is ExecutionMode.RECURRENCE
+        assert joined.terminal_label is None
+        assert r"\bestmodecodeprefix{r}" in tex
+        assert r"\matrixstatus{ReportRed}{validation failed}" not in tex
+        assert r"\matrixstatus{ReportRed}{blocked dep.}" not in tex
         rendered_tables.append(tex)
 
     assert rendered_tables[0] == rendered_tables[1]
@@ -1464,24 +1466,14 @@ def test_best_mode_compacts_three_maximum_length_future_outcomes(
         REPORT_CATALOG.process_families[0],
         1,
     )
-    terminal = view.workloads[0].terminal_label
-    assert terminal is not None
-    assert terminal.color == "ReportRed"
-    assert len(terminal.label) <= 48
-    assert terminal.label.isascii()
-    assert len(terminal.label.split(" | ")) == 3
-    assert {item.identity for item in terminal.outcomes} == {
-        "presentation:future_alpha",
-        "presentation:future_bravo",
-        "presentation:future_charlie",
-    }
-    assert terminal.label.split(" | ") == ["futu alph", "futu brav", "futu char"]
+    joined = view.workloads[0]
+    assert joined.mode is ExecutionMode.RECURRENCE
+    assert joined.terminal_label is None
 
     tex = render_best_mode_table(Accuracy.NLC, caches)
-    display = report_render._compact_terminal_summary_display(terminal)
-    marker = r"\matrixstatus{ReportRed}{" + report_render._tex_escape(display) + "}"
+    marker = r"\matrixstatus{ReportRed}{futu alph}"
     assert tex.count(marker) == 4
-    assert re.fullmatch(r"N out\.\[[0-9a-f]{6}\]", display)
+    assert r"\bestmodecodeprefix{r}" in tex
     assert all(label not in tex for _outcome, label in outcomes)
 
 
@@ -1589,7 +1581,124 @@ def test_best_mode_success_wins_over_generic_presentation_outcomes(
     assert r"\matrixstatus{ReportRed}{blocked dependency}" not in tex
 
 
-def test_best_mode_renders_mixed_policy_censors_without_a_winner_code(
+def test_best_mode_uses_an_exact_equivalent_z_success_over_a_matrix_cap(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    _set_ok(
+        _cache_by_dataset(caches, "reference_amplicol_lc"),
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.SELECTED_FLOW,
+        generation=10.0,
+        wall=10.0e-6,
+        execution=None,
+    )
+    for mode in (ExecutionMode.RECURRENCE, ExecutionMode.COMPILED):
+        entry = _entry(
+            _cache_by_dataset(caches, f"matrix_{mode.value}_builtin_sm_lc"),
+            process_key="dd_z_jets",
+            n_final=1,
+            workload=Workload.SELECTED_FLOW,
+        )
+        entry["measurement"] = _memory_censor(
+            REPORT_CATALOG.cell(str(entry["cell_id"]))
+        )
+    _set_ok(
+        _cache_by_dataset(caches, "z_builtin_sm"),
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.SELECTED_FLOW,
+        variant="recurrence_jit_o2",
+        generation=7.0,
+        wall=2.0e-6,
+        execution=1.0e-6,
+    )
+    equivalent_terminal = _entry(
+        _cache_by_dataset(caches, "z_builtin_sm"),
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.ALL_FLOW,
+        variant="recurrence_jit_o2",
+    )
+    equivalent_terminal["measurement"] = _generation_censor(
+        REPORT_CATALOG.cell(str(equivalent_terminal["cell_id"]))
+    )
+
+    view = BaselineCandidateAdapter(caches).best_mode_cell(
+        Accuracy.LC,
+        REPORT_CATALOG.process_families[0],
+        1,
+    )
+    selected = view.workloads[0]
+    assert selected.mode is ExecutionMode.RECURRENCE
+    assert selected.candidate["status"] == ResultStatus.OK.value
+    assert selected.candidate["wall_seconds_per_point"] == 2.0e-6
+    assert selected.comparison_linked
+    all_flow = view.workloads[1]
+    assert all_flow.mode is ExecutionMode.RECURRENCE
+    assert all_flow.candidate["status"] == ResultStatus.TIMEOUT.value
+
+    tex = render_best_mode_table(Accuracy.LC, caches)
+    row = next(line for line in tex.splitlines() if line.startswith(r"\texttt{1}"))
+    assert row.count(r"\bestmodecodeprefix{r}") == 2
+    assert r"\matrixstatus{ReportOrange}{>2h}" in row
+    assert r"\matrixstatus{ReportOrange}{>80GB}" not in tex
+
+
+def test_best_mode_prefers_its_owned_success_before_equivalent_success(
+    reset_caches,
+) -> None:
+    caches = copy.deepcopy(reset_caches)
+    _set_ok(
+        _cache_by_dataset(caches, "reference_amplicol_lc"),
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.SELECTED_FLOW,
+        generation=10.0,
+        wall=10.0e-6,
+        execution=None,
+    )
+    _set_ok(
+        _cache_by_dataset(caches, "matrix_recurrence_builtin_sm_lc"),
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.SELECTED_FLOW,
+        generation=5.0,
+        wall=5.0e-6,
+        execution=4.0e-6,
+    )
+    _set_ok(
+        _cache_by_dataset(caches, "z_builtin_sm"),
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.SELECTED_FLOW,
+        variant="recurrence_jit_o2",
+        generation=1.0,
+        wall=0.5e-6,
+        execution=0.4e-6,
+    )
+    _set_ok(
+        _cache_by_dataset(caches, "matrix_compiled_builtin_sm_lc"),
+        process_key="dd_z_jets",
+        n_final=1,
+        workload=Workload.SELECTED_FLOW,
+        generation=2.0,
+        wall=2.0e-6,
+        execution=1.5e-6,
+    )
+
+    view = BaselineCandidateAdapter(caches).best_mode_cell(
+        Accuracy.LC,
+        REPORT_CATALOG.process_families[0],
+        1,
+    )
+    selected = view.workloads[0]
+    assert selected.mode is ExecutionMode.COMPILED
+    assert selected.candidate["wall_seconds_per_point"] == 2.0e-6
+
+
+def test_best_mode_mixed_policy_censors_fall_back_to_recurrence(
     reset_caches,
 ) -> None:
     caches = copy.deepcopy(reset_caches)
@@ -1655,15 +1764,17 @@ def test_best_mode_renders_mixed_policy_censors_without_a_winner_code(
         if line.startswith(r" &  & \textcolor{ReportMuted}{\scriptsize run")
     )
 
-    marker = re.compile(r"\\matrixstatus\{ReportOrange\}\{N out\.\[[0-9a-f]{6}\]\}")
-    assert len(marker.findall(row)) == 1
-    assert len(marker.findall(runtime_row)) == 1
+    marker = r"\matrixstatus{ReportOrange}{>2h}"
+    assert marker in row
+    assert marker in runtime_row
     assert (
         r">{\matrixentryfont}l"
         r">{\matrixentryfont}r@{}"
         r">{\matrixentryfont}l"
     ) in tex
-    assert r"\bestmodecode{" not in row
+    assert r"\bestmodecodeprefix{r}" in row
+    assert r"\matrixstatus{ReportOrange}{>80GB}" not in row
+    assert r"\matrixstatus{ReportOrange}{dependency}" not in row
     assert r"\matrixna{ReportMuted}" not in row
 
 
@@ -1727,9 +1838,9 @@ def test_best_mode_mixed_terminal_summaries_are_visibly_complete(
     wall_summary = next(
         line for line in tex.splitlines() if r"\textbf{summary: wall}" in line
     )
-    marker = re.compile(r"\\matrixstatus\{ReportOrange\}\{N out\.\[[0-9a-f]{6}\]\}")
-    assert len(marker.findall(generation_summary)) == 1
-    assert len(marker.findall(wall_summary)) == 1
+    marker = r"\matrixstatus{ReportOrange}{>2h}"
+    assert generation_summary.count(marker) == 1
+    assert wall_summary.count(marker) == 1
 
     completeness = summarize_visible_completeness(
         caches,
@@ -1740,7 +1851,7 @@ def test_best_mode_mixed_terminal_summaries_are_visibly_complete(
     assert not completeness.applicable_na_display_slots
 
 
-def test_best_mode_terminal_baselines_are_visibly_complete(
+def test_best_mode_terminal_baselines_stay_in_rows_but_not_summaries(
     reset_caches,
 ) -> None:
     caches = copy.deepcopy(reset_caches)
@@ -1773,12 +1884,12 @@ def test_best_mode_terminal_baselines_are_visibly_complete(
     wall_summary = next(
         line for line in tex.splitlines() if r"\textbf{summary: wall}" in line
     )
-    assert marker in generation_summary
-    assert marker in wall_summary
+    assert marker not in generation_summary
+    assert marker not in wall_summary
     assert r"\matrixna{ReportMuted}" not in generation_row
     assert r"\matrixna{ReportMuted}" not in runtime_row
-    assert r"\matrixna{ReportMuted}" not in generation_summary
-    assert r"\matrixna{ReportMuted}" not in wall_summary
+    assert r"\matrixna{ReportMuted}" in generation_summary
+    assert r"\matrixna{ReportMuted}" in wall_summary
 
 
 @pytest.mark.parametrize(
@@ -1858,10 +1969,12 @@ def test_recurrence_renders_absolute_when_amplicol_baseline_is_terminal(
         for line in best_tex.splitlines()
         if "summary: run" in line or r"\textbf{summary: wall}" in line
     )
-    assert marker in generation_summary
-    assert marker in wall_summary
+    assert marker not in generation_summary
+    assert marker not in wall_summary
     assert r"\matrixsummarystats{" not in generation_summary
     assert r"\matrixsummarystats{" not in wall_summary
+    assert r"\matrixna{ReportMuted}" in generation_summary
+    assert r"\matrixna{ReportMuted}" in wall_summary
 
 
 def test_recurrence_renders_absolute_when_amplicol_was_not_run(
@@ -2301,7 +2414,7 @@ def test_best_mode_never_selects_or_summarizes_unverified_diagnostics(
         1,
     )
     assert view.workloads[0].mode is None
-    assert view.workloads[0].terminal_label is not None
+    assert view.workloads[0].terminal_label is None
 
     tex = render_best_mode_table(Accuracy.NLC, caches)
     lines = tex.splitlines()
@@ -2309,23 +2422,25 @@ def test_best_mode_never_selects_or_summarizes_unverified_diagnostics(
         index for index, line in enumerate(lines) if line.startswith(r"\texttt{1}")
     )
     marker = r"\matrixstatus{ReportOrange}{unverified}"
-    assert marker in lines[row_index]
-    assert marker in lines[row_index + 2]
-    assert r"\bestmodecode{" not in lines[row_index]
+    assert marker not in lines[row_index]
+    assert marker not in lines[row_index + 2]
+    assert r"\bestmodecodeprefix{r}" not in lines[row_index]
+    assert r"\matrixstatus{ReportMuted}{N/A}" in lines[row_index]
+    assert r"\matrixstatus{ReportMuted}{N/A}" in lines[row_index + 2]
     assert r"\bestmodeabsoluteprefix{\texttt{4.00}}" not in lines[row_index]
 
     generation_summary = next(
         line for line in lines if r"\textbf{summary: generation}" in line
     )
     wall_summary = next(line for line in lines if r"\textbf{summary: wall}" in line)
-    assert marker in generation_summary
-    assert marker in wall_summary
+    assert marker not in generation_summary
+    assert marker not in wall_summary
     assert r"\matrixsummarystats{" not in generation_summary
     assert r"\matrixsummarystats{" not in wall_summary
     assert "never eligible for best-mode selection or summaries" in tex
 
 
-def test_presentation_only_unverified_is_orange_in_fixed_and_best_mode_tables(
+def test_presentation_only_unverified_is_fixed_only_and_not_a_best_mode(
     reset_caches,
 ) -> None:
     caches = copy.deepcopy(reset_caches)
@@ -2347,7 +2462,7 @@ def test_presentation_only_unverified_is_orange_in_fixed_and_best_mode_tables(
     red_marker = r"\matrixstatus{ReportRed}{unverified}"
 
     assert marker in fixed
-    assert marker in best
+    assert marker not in best
     assert red_marker not in fixed
     assert red_marker not in best
 
@@ -2617,13 +2732,44 @@ def test_matrix_tables_are_fixed_nonsplittable_blocks(reset_caches) -> None:
         )
 
 
-def test_inapplicable_and_reset_cells_use_distinct_markers(reset_caches) -> None:
-    dataset = REPORT_CATALOG.dataset("matrix_recurrence_builtin_sm_lc")
-    tex = render_matrix_table(dataset, reset_caches)
+def test_inapplicable_not_run_and_reset_cells_use_distinct_markers(
+    reset_caches,
+) -> None:
+    lc = render_matrix_table(
+        REPORT_CATALOG.dataset("matrix_recurrence_builtin_sm_lc"),
+        reset_caches,
+    )
+    assert r"\matrixnotapplicable{ReportMuted}" in lc
+    assert r"\matrixstatus{ReportMuted}{not run}" not in lc
+    assert r"\matrixstatus{ReportMuted}{N/A}" in lc
 
-    assert r"\matrixnotapplicable{ReportMuted}" in tex
-    assert r"\matrixstatus{ReportMuted}{N/A}" in tex
-    assert "Fixed-engine tables intentionally omit mode letters" in tex
+    for accuracy in (Accuracy.NLC, Accuracy.FULL):
+        fixed = render_matrix_table(
+            REPORT_CATALOG.dataset(f"matrix_recurrence_builtin_sm_{accuracy.value}"),
+            reset_caches,
+        )
+        best = render_best_mode_table(accuracy, reset_caches)
+        for tex in (fixed, best):
+            assert tex.count(r"\matrixstatus{ReportMuted}{not run}") == 12
+            assert tex.count(r"\matrixnotapplicable{ReportMuted}") == 28
+        assert "Not run marks an otherwise defined process" in fixed
+
+        n6_family_one = next(
+            line
+            for line in fixed.splitlines()
+            if line.startswith(r"\texttt{1}")
+            and r"\matrixstatus{ReportMuted}{not run}" in line
+        )
+        assert r"\matrixnotapplicable{ReportMuted}" not in n6_family_one
+        family_fourteen = next(
+            line
+            for line in fixed.splitlines()
+            if line.startswith(r"\texttt{14}")
+            and line.count(r"\matrixnotapplicable{ReportMuted}") == 2
+        )
+        assert r"\matrixstatus{ReportMuted}{not run}" not in family_fourteen
+
+    assert "Fixed-engine tables intentionally omit mode letters" in lc
 
 
 def test_z_reference_execution_is_explicitly_not_exposed(reset_caches) -> None:

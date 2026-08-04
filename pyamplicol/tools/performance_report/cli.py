@@ -554,7 +554,15 @@ def _parser() -> argparse.ArgumentParser:
     populate.add_argument("--process-key", action="append", default=[])
     populate.add_argument("--process", action="append", default=[])
     populate.add_argument("--n-final", action="append", default=[])
-    populate.add_argument("--variant", action="append", default=[])
+    populate.add_argument(
+        "--variant",
+        action="append",
+        default=[],
+        help=(
+            "filter named Z implementations; rows without a variant dimension "
+            "remain eligible"
+        ),
+    )
     populate.add_argument(
         "--workload",
         choices=("selected-flow", "all-flow", "both", "contracted"),

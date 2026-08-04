@@ -366,6 +366,31 @@ def test_selector_repetition_wildcard_aliases_and_intersection() -> None:
     assert len(all_cells) == 1796
 
 
+def test_variant_filter_keeps_unvaried_matrix_rows_in_a_broad_selection() -> None:
+    arguments = _parse(
+        "run",
+        "--dry-run",
+        "--multiplicity",
+        "8",
+        "9",
+        "--generation-engine",
+        "amplicol",
+        "recurrence",
+        "compiled",
+        "--variant",
+        "recurrence_jit_o2",
+        "jit_o3",
+    )
+    _selection, cells = selection_from_arguments(arguments)
+
+    assert {
+        "reference_amplicol_lc",
+        "matrix_recurrence_builtin_sm_lc",
+        "matrix_compiled_builtin_sm_lc",
+    }.issubset({cell.dataset_id for cell in cells})
+    assert all(cell.variant in {None, "recurrence_jit_o2", "jit_o3"} for cell in cells)
+
+
 def test_matrix_best_is_all_three_builtin_candidate_modes() -> None:
     arguments = _parse("inspect", "--table", "matrix_best")
     _selection, cells = selection_from_arguments(arguments)

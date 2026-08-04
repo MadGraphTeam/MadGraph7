@@ -269,6 +269,21 @@ def test_selection_combines_all_supported_filter_axes() -> None:
     assert selected[0].cell_id.endswith("all-flow")
 
 
+def test_variant_selection_only_filters_cells_with_a_variant_dimension() -> None:
+    selected = select_cells(
+        CellSelection(
+            modes=frozenset({ExecutionMode.COMPILED}),
+            multiplicities=frozenset({8, 9}),
+            variants=frozenset({"jit_o3"}),
+        )
+    )
+
+    assert any(cell.dataset_id == "matrix_compiled_builtin_sm_lc" for cell in selected)
+    assert any(cell.dataset_id == "z_builtin_sm" for cell in selected)
+    assert all(cell.variant in {None, "jit_o3"} for cell in selected)
+    assert not any(cell.variant == "jit_o1" for cell in selected)
+
+
 def test_compiled_plan_can_opt_out_of_automatic_numerical_authorities(
     tmp_path: Path,
 ) -> None:

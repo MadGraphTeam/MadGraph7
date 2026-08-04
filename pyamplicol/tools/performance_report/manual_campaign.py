@@ -8623,6 +8623,7 @@ Canonical selector values and aliases
   engines: amplicol, recurrence, compiled, eager
   models: built_in (builtin_sm), sm_ufo (ufo_sm), scalar_contact, scalar_gravity
   variants: recurrence_jit_o2, jit_o1, jit_o3, eager_jit_o2, cpp_o3, asm_o3
+            (filters named Z implementations only; unvaried rows remain)
   wildcard: quoted '*' or all; omitted selectors also mean all
 
 Accepted aliases
@@ -8787,7 +8788,11 @@ def _selector_parent() -> argparse.ArgumentParser:
         nargs="+",
         action="append",
         metavar="VARIANT",
-        help="Z-table implementation variant; repeat or supply multiple values.",
+        help=(
+            "Z-table implementation variant; repeat or supply multiple values. "
+            "This narrows only variant-bearing rows; ordinary matrix/reference "
+            "rows have no variant dimension and remain eligible."
+        ),
     )
     parent.add_argument(
         "--cell-id",

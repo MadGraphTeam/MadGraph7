@@ -125,7 +125,9 @@ class CellSelection:
             not self.process_keys or cell.process_key in self.process_keys,
             not self.processes or cell.process in self.processes,
             not self.multiplicities or cell.n_final in self.multiplicities,
-            not self.variants or cell.variant in self.variants,
+            # Variants are an optional dimension exposed by Z-ladder rows.
+            # Ordinary matrix/reference/scalar rows have no variant to filter.
+            not self.variants or cell.variant is None or cell.variant in self.variants,
             not self.workloads or cell.workload in self.workloads,
             not self.cell_ids or cell.cell_id in self.cell_ids,
         )

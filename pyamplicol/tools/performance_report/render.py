@@ -624,6 +624,36 @@ class BaselineCandidateAdapter:
             baseline,
         )
 
+    def _best_mode_candidate(
+        self,
+        cell: CellSpec,
+    ) -> tuple[CellSpec, Measurement]:
+        """Resolve one mode across its owned and exact-equivalent attempts.
+
+        Campaign planning follows the same precedence: an existing current owned
+        by the requested cell wins before a reusable equivalent current.  The
+        report must nevertheless see an equivalent Z-ladder success when the
+        matrix-owned cell contains only a terminal outcome.  If neither surface
+        succeeded, retain the owned terminal before an equivalent terminal so
+        the recurrence fallback can report the attempt that actually ran.
+        """
+
+        measurement = self.index.for_cell(cell)
+        if _runtime_value(measurement) is not None:
+            return cell, measurement
+        equivalents = self.catalog.equivalent_cells(cell)
+        for equivalent in equivalents:
+            equivalent_measurement = self.index.for_cell(equivalent)
+            if _runtime_value(equivalent_measurement) is not None:
+                return equivalent, equivalent_measurement
+        if _terminal_measurement_label(measurement) is not None:
+            return cell, measurement
+        for equivalent in equivalents:
+            equivalent_measurement = self.index.for_cell(equivalent)
+            if _terminal_measurement_label(equivalent_measurement) is not None:
+                return equivalent, equivalent_measurement
+        return cell, measurement
+
     def matrix_cell(
         self,
         dataset: MatrixDataset,
@@ -766,7 +796,7 @@ class BaselineCandidateAdapter:
                 for mode in _BEST_MODE_ORDER
             )
             measured_candidates = tuple(
-                (mode, cell, self.index.for_cell(cell)) for mode, cell in candidates
+                (mode, *self._best_mode_candidate(cell)) for mode, cell in candidates
             )
             eligible = tuple(
                 (mode, cell, measurement)
@@ -789,12 +819,16 @@ class BaselineCandidateAdapter:
                     baseline,
                 )
             else:
-                winner_mode, winner = None, _NA
-                terminal_label = _best_mode_terminal_label(
-                    tuple(
-                        measurement for _mode, _cell, measurement in measured_candidates
-                    )
+                _recurrence_mode, _winner_cell, recurrence = next(
+                    candidate
+                    for candidate in measured_candidates
+                    if candidate[0] is ExecutionMode.RECURRENCE
                 )
+                if _terminal_measurement_label(recurrence) is None:
+                    winner_mode, winner = None, _NA
+                else:
+                    winner_mode, winner = ExecutionMode.RECURRENCE, recurrence
+                terminal_label = None
                 comparison_linked = False
             joined_workloads.append(
                 BestModeWorkload(
@@ -1626,6 +1660,24 @@ def _not_applicable() -> str:
     return r"\matrixnotapplicable{ReportMuted}"
 
 
+def _not_run() -> str:
+    return r"\matrixstatus{ReportMuted}{not run}"
+
+
+def _matrix_scope_marker(
+    family: ProcessFamily,
+    n_final: int,
+    accuracy: Accuracy,
+) -> str:
+    """Distinguish nonexistent processes from intentionally unrun cells."""
+
+    if family.process(n_final) is None:
+        return _not_applicable()
+    if n_final > family.maximum_n(accuracy):
+        return _not_run()
+    raise ValueError("applicable matrix cell has no scope marker")
+
+
 def _not_exposed() -> str:
     return r"\matrixnotexposed{ReportMuted}"
 
@@ -2035,7 +2087,7 @@ def _matrix_block(
             if not view.applicable:
                 generation_row.append(
                     _metric_group_cell(
-                        _not_applicable(),
+                        _matrix_scope_marker(family, n_final, accuracy),
                         accuracy,
                     )
                 )
@@ -2240,10 +2292,11 @@ def _matrix_legend(dataset: MatrixDataset) -> str:
         + _tex_escape(summary_detail)
         + " "
         + _tex_escape(
-            "Not applicable marks a process/multiplicity combination outside "
-            "the process-family definition. Fixed-engine tables intentionally "
-            "omit mode letters because the selected engine is named in the "
-            "table heading."
+            "Not applicable marks a multiplicity for which the process family "
+            "does not exist. Not run marks an otherwise defined process that "
+            "was intentionally excluded from the declared measurement scope. "
+            "Fixed-engine tables intentionally omit mode letters because the "
+            "selected engine is named in the table heading."
         )
         + "}}"
     )
@@ -2391,16 +2444,6 @@ def _terminal_measurement_label(measurement: Measurement) -> _TerminalOutcome | 
     return _visible_status(measurement)
 
 
-def _best_mode_terminal_label(
-    measurements: Sequence[Measurement],
-) -> _TerminalSummary | None:
-    """Return one fail-closed summary when no candidate mode succeeded."""
-
-    return _canonical_best_mode_terminal_label(
-        tuple(_terminal_measurement_label(measurement) for measurement in measurements)
-    )
-
-
 def _best_mode_terminal_status(joined: BestModeWorkload) -> str:
     if joined.terminal_label is None:
         return _status(joined.candidate)
@@ -2435,7 +2478,12 @@ def _best_mode_generation_comparison_layout(
         return _BestModeComparisonLayout(status, "", status)
     if not _ok(joined.candidate):
         status = _status(joined.candidate)
-        return _BestModeComparisonLayout(status, "", status)
+        mode_code = _BEST_MODE_CODES[joined.mode]
+        return _BestModeComparisonLayout(
+            rf"\bestmodecodeprefix{{{mode_code}}}{status}",
+            rf"\bestmodecodeprefix{{{mode_code}}}",
+            status,
+        )
     assert joined.mode is not None
     mode_code = _BEST_MODE_CODES[joined.mode]
     if (
@@ -2578,8 +2626,6 @@ def _best_mode_summary_terminal_label(
 ) -> _TerminalOutcome | _TerminalSummary | None:
     if joined.mode is None:
         return joined.terminal_label
-    if not _ok(joined.baseline):
-        return _terminal_measurement_label(joined.baseline)
     if not _ok(joined.candidate):
         return _terminal_measurement_label(joined.candidate)
     return None
@@ -2907,7 +2953,7 @@ def _best_mode_block(
             if not view.applicable:
                 generation_row.append(
                     _metric_group_cell(
-                        _not_applicable(),
+                        _matrix_scope_marker(family, n_final, accuracy),
                         accuracy,
                     )
                 )
@@ -3749,10 +3795,15 @@ def summarize_visible_completeness(
                 views_by_n.setdefault(n_final, []).append(view)
                 if not view.applicable:
                     structural_seen += 1
-                    if _renders_na(_not_applicable()):
+                    marker = _matrix_scope_marker(
+                        family,
+                        n_final,
+                        dataset.candidate.accuracy,
+                    )
+                    if _renders_na(marker):
                         contract_errors.append(
                             f"{dataset.table_name}/n{n_final}/{family.key}: "
-                            "structural slot uses the missing-measurement marker"
+                            "out-of-scope slot uses the missing-measurement marker"
                         )
                     continue
                 for joined in view.workloads:
