@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import importlib
 import io
 import logging
 
@@ -9,6 +10,8 @@ from pyamplicol.reporting import (
     get_logger,
     reset_cli_logging,
 )
+
+logging_module = importlib.import_module("pyamplicol.reporting.logging")
 
 
 def test_cli_logging_is_package_local_idempotent_and_resettable() -> None:
@@ -79,5 +82,31 @@ def test_cli_logging_colors_terminal_warnings_without_coloring_plain_output() ->
     assert colored.getvalue().startswith("\x1b[33mWARNING pyamplicol.generation")
     assert colored.getvalue().endswith("\x1b[0m\n")
     assert plain.getvalue() == (
+        "WARNING pyamplicol.generation: skipped unsupported process\n"
+    )
+
+
+def test_cli_logging_falls_back_to_plain_text_without_colorama(monkeypatch) -> None:
+    stream = io.StringIO()
+    real_import_module = logging_module.importlib.import_module
+
+    def import_without_colorama(name: str) -> object:
+        if name == "colorama":
+            raise ImportError("colorama unavailable")
+        return real_import_module(name)
+
+    monkeypatch.setattr(
+        logging_module.importlib,
+        "import_module",
+        import_without_colorama,
+    )
+    reset_cli_logging()
+    try:
+        configure_cli_logging("warning", stream=stream, color=True)
+        get_logger("generation").warning("skipped unsupported process")
+    finally:
+        reset_cli_logging()
+
+    assert stream.getvalue() == (
         "WARNING pyamplicol.generation: skipped unsupported process\n"
     )

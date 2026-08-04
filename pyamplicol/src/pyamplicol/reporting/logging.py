@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import importlib
 import logging
 import sys
-from typing import TextIO
-
-import colorama
+from typing import Any, TextIO
 
 LOGGER_NAME = "pyamplicol"
 DEFAULT_LOG_FORMAT = "%(levelname)s %(name)s: %(message)s"
@@ -24,6 +23,10 @@ class _CliFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         rendered = super().format(record)
         if not self._color:
+            return rendered
+        try:
+            colorama: Any = importlib.import_module("colorama")
+        except ImportError:
             return rendered
         if record.levelno >= logging.ERROR:
             foreground = colorama.Fore.RED
