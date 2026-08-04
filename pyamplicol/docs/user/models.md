@@ -212,7 +212,7 @@ color representation, mass/width, propagators, interactions, and exact quantum
 numbers rather than absolute SM PDG ranges. Default and model-supplied UFO
 propagators are distinguished from normalized expressions, independently of
 their object names. Implementation parity and model-hardening gates for the
-`0.1.0` release are tracked in [Release Status](release-status.md).
+`0.1.1` release are tracked in [Release Status](release-status.md).
 
 ## Supported UFO Subset
 

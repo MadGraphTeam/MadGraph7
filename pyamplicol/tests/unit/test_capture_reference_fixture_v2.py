@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import tomllib
 from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
@@ -17,10 +18,12 @@ from tools.developer.reference_capture import artifacts, evidence, pipeline, pro
 from tools.developer.reference_fixture import model as reference_model
 from tools.developer.reference_fixture import numerics as reference_numerics
 
+ROOT = Path(__file__).resolve().parents[2]
+with (ROOT / "dependencies" / "release-lock.toml").open("rb") as stream:
+    RELEASE_VERSION = str(tomllib.load(stream)["project"]["version"])
+
 _REFERENCE_SCHEMA = json.loads(
-    (
-        Path(__file__).resolve().parents[2] / "schemas/reference-physics-v2.schema.json"
-    ).read_text(encoding="utf-8")
+    (ROOT / "schemas/reference-physics-v2.schema.json").read_text(encoding="utf-8")
 )
 _POINT_VALIDATOR = Draft202012Validator(
     {
@@ -430,7 +433,7 @@ def test_runtime_snapshot_requires_exact_clean_candidate(
 ) -> None:
     revision = "1" * 40
     fingerprint = "2" * 12
-    version = f"0.1.0.dev0+candidate.{fingerprint}"
+    version = f"{RELEASE_VERSION}.dev0+candidate.{fingerprint}"
     site = tmp_path / "site-packages"
     package = site / "pyamplicol"
     package.mkdir(parents=True)
@@ -491,7 +494,7 @@ def test_runtime_snapshot_rejects_candidate_from_another_revision(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fingerprint = "2" * 12
-    version = f"0.1.0.dev0+candidate.{fingerprint}"
+    version = f"{RELEASE_VERSION}.dev0+candidate.{fingerprint}"
     package = tmp_path / "site-packages" / "pyamplicol"
     package.mkdir(parents=True)
     module_path = package / "__init__.py"
@@ -526,7 +529,7 @@ def test_runtime_snapshot_rejects_candidate_from_another_revision(
 
 def _candidate_runtime_snapshot() -> capture.RuntimeSnapshot:
     return capture.RuntimeSnapshot(
-        "0.1.0.dev0+candidate." + "2" * 12,
+        f"{RELEASE_VERSION}.dev0+candidate." + "2" * 12,
         "2" * 12,
         "1" * 40,
         "3" * 64,
@@ -689,7 +692,7 @@ def test_run_capture_uses_mocked_assembly_and_validation_paths(
     calls: list[str] = []
     source = capture.SourceSnapshot("https://example.invalid/repo", "1" * 40, "2" * 64)
     runtime = capture.RuntimeSnapshot(
-        "0.1.0.dev0+candidate." + "3" * 12,
+        f"{RELEASE_VERSION}.dev0+candidate." + "3" * 12,
         "3" * 12,
         "1" * 40,
         "4" * 64,

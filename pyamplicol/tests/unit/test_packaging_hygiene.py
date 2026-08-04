@@ -15,6 +15,8 @@ sys.path.insert(0, str(ROOT / "build_backend"))
 
 import package_version  # noqa: E402
 
+RELEASE_VERSION = "0.1.1"
+
 
 def _copy_version_contract(tmp_path: Path) -> Path:
     root = tmp_path / "source"
@@ -30,7 +32,7 @@ def _copy_version_contract(tmp_path: Path) -> Path:
 
 
 def test_cargo_workspace_is_the_canonical_package_version() -> None:
-    assert package_version.canonical_package_version(ROOT) == "0.1.0"
+    assert package_version.canonical_package_version(ROOT) == RELEASE_VERSION
 
 
 def test_package_version_contract_rejects_release_lock_drift(tmp_path: Path) -> None:
@@ -38,7 +40,11 @@ def test_package_version_contract_rejects_release_lock_drift(tmp_path: Path) -> 
     lock = root / "dependencies" / "release-lock.toml"
     text = lock.read_text(encoding="utf-8")
     lock.write_text(
-        text.replace('version = "0.1.0"', 'version = "0.1.1"', 1),
+        text.replace(
+            f'version = "{RELEASE_VERSION}"',
+            'version = "9.9.9"',
+            1,
+        ),
         encoding="utf-8",
     )
 

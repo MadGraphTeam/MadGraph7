@@ -195,7 +195,6 @@ def _validate_bundle(
         SYMBOLICA_SERIALIZATION_ABI,
         SYMJIT_APPLICATION_ABI,
         SYMJIT_PLANE_APPLICATION_ABI,
-        package_version,
     )
     from pyamplicol.models.loading import MODEL_COMPILER_VERSION, compiler_fingerprint
     from pyamplicol.models.prepared import (
@@ -232,16 +231,6 @@ def _validate_bundle(
                 f"expected {value!r}, got {producer.get(key)!r}"
             )
     packaged_package_version = producer.get("package_version")
-    active_package_version = package_version()
-    if not _compatible_package_versions(
-        packaged_package_version,
-        active_package_version,
-    ):
-        raise PackagedPreparedModelError(
-            "packaged prepared-model producer package_version is stale: "
-            f"expected {active_package_version!r}, "
-            f"got {packaged_package_version!r}"
-        )
     if compiled_producer.get("pyamplicol") != packaged_package_version:
         raise PackagedPreparedModelError(
             "prepared compiled-model package version disagrees with metadata"
@@ -336,28 +325,6 @@ def _asset_names(identifier: str, architecture: str) -> tuple[str, str]:
     return f"{stem}.metadata.json", f"{stem}.pyamplicol-model"
 
 
-def _compatible_package_versions(recorded: object, active: object) -> bool:
-    if not isinstance(recorded, str) or not isinstance(active, str):
-        return False
-    if recorded == active:
-        return True
-    recorded_base = _candidate_package_version_base(recorded)
-    active_base = _candidate_package_version_base(active)
-    return recorded_base is not None and recorded_base == active_base
-
-
-def _candidate_package_version_base(value: str) -> str | None:
-    marker = "+candidate."
-    base, separator, fingerprint = value.rpartition(marker)
-    if (
-        separator != marker
-        or not base
-        or marker in base
-        or len(fingerprint) != 12
-        or any(character not in "0123456789abcdef" for character in fingerprint)
-    ):
-        return None
-    return base
 
 
 def _mapping(value: object, context: str) -> Mapping[str, object]:

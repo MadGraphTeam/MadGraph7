@@ -66,7 +66,10 @@ from prepare_selftest_fixture import (
 
 MAX_WHEEL_BYTES = 95_000_000
 EXPECTED_DISTRIBUTION = "pyamplicol"
-EXPECTED_RELEASE_VERSION = "0.1.0"
+with (ROOT / "dependencies" / "release-lock.toml").open("rb") as _release_stream:
+    EXPECTED_RELEASE_VERSION = str(
+        tomllib.load(_release_stream)["project"]["version"]
+    )
 EXPECTED_PYTHON_TAG = "cp311"
 EXPECTED_ABI_TAG = "abi3"
 RELEASE_TARGETS = {
@@ -1665,7 +1668,11 @@ def audit_wheel(
 
     build_info_names = [name for name in entries if name.endswith("/_build_info.json")]
     if mode == "candidate":
-        if not re.fullmatch(r"0\.1\.0\.dev0\+candidate\.[0-9a-f]{12}", version):
+        candidate_pattern = (
+            re.escape(EXPECTED_RELEASE_VERSION)
+            + r"\.dev0\+candidate\.[0-9a-f]{12}"
+        )
+        if re.fullmatch(candidate_pattern, version) is None:
             raise ArtifactError(f"candidate wheel has invalid version: {version}")
         if build_info_names != ["pyamplicol/_build_info.json"]:
             raise ArtifactError("candidate wheel must contain one _build_info.json")

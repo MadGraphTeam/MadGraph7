@@ -9,6 +9,7 @@ import json
 import os
 import re
 import sys
+import tomllib
 import zipfile
 from collections.abc import Sequence
 from email.parser import BytesParser
@@ -18,7 +19,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 BOOTSTRAP_CONTEXT = "release-prepared-model-producer-v1"
-EXPECTED_VERSION = "0.1.0"
+with (ROOT / "dependencies" / "release-lock.toml").open("rb") as _release_stream:
+    EXPECTED_VERSION = str(tomllib.load(_release_stream)["project"]["version"])
 
 
 class ReleasePreparedModelError(RuntimeError):
@@ -88,7 +90,7 @@ def audit_bootstrap_wheel(wheel: Path) -> dict[str, object]:
             )
         if metadata.get("Version") != EXPECTED_VERSION:
             raise ReleasePreparedModelError(
-                "bootstrap wheel must retain release version '0.1.0'"
+                f"bootstrap wheel must retain release version {EXPECTED_VERSION!r}"
             )
         marker = _json_member(archive, build_info_names[0])
         expected_marker = {

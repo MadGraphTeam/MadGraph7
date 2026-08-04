@@ -1171,10 +1171,6 @@ def _mark_release_prepared_model_bootstrap(
 ) -> None:
     """Mark a release-version wheel as regeneration-only and non-publishable."""
 
-    if base_version != "0.1.0":
-        raise RuntimeError(
-            "release prepared-model bootstrap requires package version '0.1.0'"
-        )
     package = overlay / "src" / "pyamplicol"
     package.mkdir(parents=True, exist_ok=True)
     (package / "_build_info.json").write_text(

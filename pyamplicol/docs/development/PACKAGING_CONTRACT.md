@@ -7,7 +7,7 @@ publication.
 
 ## Canonical Build
 
-- Distribution: `pyamplicol==0.1.0`, Python 3.11+, license `0BSD`.
+- Distribution: `pyamplicol==0.1.1`, Python 3.11+, license `0BSD`.
 - Backend: the in-tree PEP 517 wrapper delegates to pinned Maturin.
 - Python extension: `pyamplicol._rusticol`, built from `rusticol-python` with
   `abi3-py311`.
@@ -67,9 +67,11 @@ and is rejected by the ordinary release artifact audit. It exists only long
 enough to run the architecture-local producer.
 
 The producer writes `mode: release`, an explicit null candidate fingerprint,
-package and bundle producer version `0.1.0`, and a source identity derived only
-from `dependencies/release-lock.toml` and canonical `Cargo.lock`. The workflow
-writes each pair below `release_assets/prepared_models` in its upload, then
+the producing package version, and a source identity derived only from
+`dependencies/release-lock.toml` and canonical `Cargo.lock`. Producer version
+is provenance: a pack may be reused by a later patch release when its schema,
+compiler, model-source, dependency, and application ABI identities all match.
+The workflow writes each pair below `release_assets/prepared_models` in its upload, then
 uploads it for review; it cannot commit, publish, or mutate the repository.
 Both architecture pairs must be committed to the source-only store in a later
 reviewed change before an ordinary release build can succeed.

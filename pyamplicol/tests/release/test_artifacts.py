@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / "tools" / "release"))
 _LOCK = tomllib.loads(
     (ROOT / "dependencies" / "release-lock.toml").read_text(encoding="utf-8")
 )
+_RELEASE_VERSION = str(_LOCK["project"]["version"])
 _CONTRIBUTOR_LOCK = tomllib.loads(
     (ROOT / "dependencies" / "contributor-lock.toml").read_text(encoding="utf-8")
 )
@@ -682,7 +683,7 @@ def _wheel(
     *,
     platform_tag: str = "manylinux_2_28_x86_64",
     rust_target: str = "x86_64-unknown-linux-gnu",
-    version: str = "0.1.0",
+    version: str = _RELEASE_VERSION,
     candidate: bool = False,
     extension: bytes = b"synthetic abi3 extension",
     bad_record: bool = False,
@@ -883,7 +884,7 @@ def _wheel(
 def _sdist(
     directory: Path,
     *,
-    version: str = "0.1.0",
+    version: str = _RELEASE_VERSION,
     candidate: bool = False,
     manifest_path: str | None = None,
     project_requirement: str | None = None,
@@ -1096,7 +1097,7 @@ def test_release_and_candidate_wheels_are_distinct_and_audited(
     assert report.target == "manylinux_2_28_x86_64"
     assert report.abi_tag == "abi3"
 
-    candidate_version = "0.1.0.dev0+candidate.0123456789ab"
+    candidate_version = f"{_RELEASE_VERSION}.dev0+candidate.0123456789ab"
     candidate = _wheel(
         tmp_path,
         version=candidate_version,
@@ -1114,7 +1115,10 @@ def test_release_metadata_may_document_candidate_workflows(tmp_path: Path) -> No
         metadata_description="Contributor candidate setup is non-publishable.\n",
     )
 
-    assert audit_wheel(wheel, mode="release", native_scan=False).version == "0.1.0"
+    assert (
+        audit_wheel(wheel, mode="release", native_scan=False).version
+        == _RELEASE_VERSION
+    )
 
 
 def test_release_wheel_requires_the_minimal_build_marker(tmp_path: Path) -> None:
@@ -1136,7 +1140,7 @@ def test_release_wheel_requires_the_minimal_build_marker(tmp_path: Path) -> None
                     "selftest_fixture_bootstrap": False,
                     "source_revision": "a" * 40,
                     "source_checkout": "/private/source",
-                    "version": "0.1.0",
+                    "version": _RELEASE_VERSION,
                 }
             ).encode()
         },
@@ -1149,7 +1153,7 @@ def test_candidate_and_release_symbolica_wheel_pins_can_match(
     tmp_path: Path,
     candidate_dependency_provenance: None,
 ) -> None:
-    candidate_version = "0.1.0.dev0+candidate.0123456789ab"
+    candidate_version = f"{_RELEASE_VERSION}.dev0+candidate.0123456789ab"
     release_pin = _wheel(
         tmp_path,
         version=candidate_version,
@@ -1194,7 +1198,7 @@ def test_candidate_dependency_provenance_rejects_extra_attestations(
     state_path.write_text(json.dumps(state) + "\n", encoding="utf-8")
     candidate = _wheel(
         tmp_path,
-        version="0.1.0.dev0+candidate.0123456789ab",
+        version=f"{_RELEASE_VERSION}.dev0+candidate.0123456789ab",
         candidate=True,
     )
 
@@ -1212,7 +1216,7 @@ def test_candidate_dependency_provenance_rejects_heavy_source_attestations(
     state_path.write_text(json.dumps(state) + "\n", encoding="utf-8")
     candidate = _wheel(
         tmp_path,
-        version="0.1.0.dev0+candidate.0123456789ab",
+        version=f"{_RELEASE_VERSION}.dev0+candidate.0123456789ab",
         candidate=True,
     )
 
@@ -1226,7 +1230,7 @@ def test_candidate_wheel_rejects_selftest_fixture_bootstrap_marker(
 ) -> None:
     candidate = _wheel(
         tmp_path,
-        version="0.1.0.dev0+candidate.0123456789ab",
+        version=f"{_RELEASE_VERSION}.dev0+candidate.0123456789ab",
         candidate=True,
         selftest_fixture_bootstrap=True,
     )
@@ -1241,7 +1245,7 @@ def test_host_native_linux_tag_is_candidate_only(
 ) -> None:
     candidate = _wheel(
         tmp_path,
-        version="0.1.0.dev0+candidate.0123456789ab",
+        version=f"{_RELEASE_VERSION}.dev0+candidate.0123456789ab",
         candidate=True,
         platform_tag="linux_x86_64",
     )
@@ -1258,7 +1262,7 @@ def test_candidate_allows_only_rustup_standard_library_source_paths(
     tmp_path: Path,
     candidate_dependency_provenance: None,
 ) -> None:
-    candidate_version = "0.1.0.dev0+candidate.0123456789ab"
+    candidate_version = f"{_RELEASE_VERSION}.dev0+candidate.0123456789ab"
     rustup_location = (
         b"/Users/developer/.rustup/toolchains/stable-aarch64-apple-darwin/"
         b"lib/rustlib/src/rust/library/core/src/slice/index.rs"
@@ -1279,7 +1283,7 @@ def test_candidate_allows_only_rustup_standard_library_source_paths(
 
     other_local_path = _wheel(
         tmp_path,
-        version="0.1.0.dev0+candidate.abcdef012345",
+        version=f"{_RELEASE_VERSION}.dev0+candidate.abcdef012345",
         candidate=True,
         extension=b"/Users/developer/project/private.rs",
     )
@@ -1354,7 +1358,10 @@ def test_release_allows_rust_standard_library_backtrace_source_paths(
         b"../../backtrace/src/symbolize/gimli.rs"
     )
     wheel = _wheel(tmp_path, extension=standard_library_location)
-    assert audit_wheel(wheel, mode="release", native_scan=False).version == "0.1.0"
+    assert (
+        audit_wheel(wheel, mode="release", native_scan=False).version
+        == _RELEASE_VERSION
+    )
 
 
 def test_release_allows_remapped_rust_standard_library_backtrace_paths(
@@ -1364,7 +1371,10 @@ def test_release_allows_remapped_rust_standard_library_backtrace_paths(
         b"library/std/src/../../backtrace/src/symbolize/gimli.rs"
     )
     wheel = _wheel(tmp_path, extension=remapped_standard_library_location)
-    assert audit_wheel(wheel, mode="release", native_scan=False).version == "0.1.0"
+    assert (
+        audit_wheel(wheel, mode="release", native_scan=False).version
+        == _RELEASE_VERSION
+    )
 
 
 @pytest.mark.parametrize("marker", [b"__gmpz_init", b"mpfr_set", b"malachite-q"])
@@ -1440,7 +1450,9 @@ def test_record_direct_dependency_and_size_fail_closed(tmp_path: Path) -> None:
     with pytest.raises(ArtifactError, match="non-relocatable"):
         audit_wheel(parent_reference, mode="release", native_scan=False)
 
-    oversized = tmp_path / "pyamplicol-0.1.0-cp311-abi3-manylinux_2_28_x86_64.whl"
+    oversized = (
+        tmp_path / f"pyamplicol-{_RELEASE_VERSION}-cp311-abi3-manylinux_2_28_x86_64.whl"
+    )
     with oversized.open("wb") as stream:
         stream.truncate(MAX_WHEEL_BYTES + 1)
     with pytest.raises(ArtifactError, match="limit"):
@@ -1449,7 +1461,7 @@ def test_record_direct_dependency_and_size_fail_closed(tmp_path: Path) -> None:
 
 def test_wheel_filename_version_must_match_metadata(tmp_path: Path) -> None:
     wheel = _wheel(tmp_path)
-    renamed = wheel.with_name(wheel.name.replace("-0.1.0-", "-9.9.9-"))
+    renamed = wheel.with_name(wheel.name.replace(f"-{_RELEASE_VERSION}-", "-9.9.9-"))
     wheel.rename(renamed)
     with pytest.raises(ArtifactError, match="filename version"):
         audit_wheel(renamed, mode="release", native_scan=False)
@@ -1609,7 +1621,10 @@ def test_wheel_selftest_accepts_source_edits_with_stable_runtime_contract(
 ) -> None:
     wheel = _wheel(tmp_path, extra_files={source_name: replacement})
 
-    assert audit_wheel(wheel, mode="release", native_scan=False).version == "0.1.0"
+    assert (
+        audit_wheel(wheel, mode="release", native_scan=False).version
+        == _RELEASE_VERSION
+    )
 
 
 def test_wheel_selftest_digests_ignore_nested_model_sources(tmp_path: Path) -> None:
@@ -1622,7 +1637,10 @@ def test_wheel_selftest_digests_ignore_nested_model_sources(tmp_path: Path) -> N
         },
     )
 
-    assert audit_wheel(wheel, mode="release", native_scan=False).version == "0.1.0"
+    assert (
+        audit_wheel(wheel, mode="release", native_scan=False).version
+        == _RELEASE_VERSION
+    )
 
 
 @pytest.mark.parametrize(
@@ -1723,7 +1741,10 @@ def test_runtime_requirements_must_agree_with_release_contract(tmp_path: Path) -
         tmp_path,
         requirements=[*_DEFAULT_REQUIREMENTS, "build>=1; extra == 'test'"],
     )
-    assert audit_wheel(optional, mode="release", native_scan=False).version == "0.1.0"
+    assert (
+        audit_wheel(optional, mode="release", native_scan=False).version
+        == _RELEASE_VERSION
+    )
 
 
 def test_wheel_uses_metadata_not_packaged_dependency_inventories(
@@ -1814,7 +1835,8 @@ def test_wheel_rejects_generated_sboms(tmp_path: Path) -> None:
     wheel = _wheel(
         tmp_path,
         extra_files={
-            "pyamplicol-0.1.0.dist-info/sboms/rusticol-python.cyclonedx.json": b"{}\n"
+            f"pyamplicol-{_RELEASE_VERSION}.dist-info/"
+            "sboms/rusticol-python.cyclonedx.json": b"{}\n"
         },
     )
     with pytest.raises(ArtifactError, match="must not contain generated SBOMs"):
@@ -1834,7 +1856,7 @@ def test_wheel_requires_standard_license_metadata_and_allows_extra_notices(
     tmp_path: Path,
 ) -> None:
     supplementary = "licenses/SymJIT.txt"
-    dist_info = "pyamplicol-0.1.0.dist-info"
+    dist_info = f"pyamplicol-{_RELEASE_VERSION}.dist-info"
     wheel = _wheel(
         tmp_path,
         omitted_member=f"{dist_info}/licenses/{supplementary}",
@@ -1857,14 +1879,17 @@ def test_wheel_requires_standard_license_metadata_and_allows_extra_notices(
         license_files=(*_LEGAL_FILES, additional),
         extra_files={f"{dist_info}/licenses/{additional}": b"additional attribution\n"},
     )
-    assert audit_wheel(wheel, mode="release", native_scan=False).version == "0.1.0"
+    assert (
+        audit_wheel(wheel, mode="release", native_scan=False).version
+        == _RELEASE_VERSION
+    )
 
 
 def test_candidate_sdk_version_must_match_staged_package_exactly(
     tmp_path: Path,
     candidate_dependency_provenance: None,
 ) -> None:
-    version = "0.1.0.dev0+candidate.0123456789ab"
+    version = f"{_RELEASE_VERSION}.dev0+candidate.0123456789ab"
     wheel = _wheel(
         tmp_path,
         version=version,
@@ -1877,11 +1902,11 @@ def test_candidate_sdk_version_must_match_staged_package_exactly(
 
 def test_release_sdist_identity_and_path_scan(tmp_path: Path) -> None:
     release = _sdist(tmp_path)
-    assert audit_sdist(release, mode="release").version == "0.1.0"
+    assert audit_sdist(release, mode="release").version == _RELEASE_VERSION
 
     candidate = _sdist(
         tmp_path,
-        version="0.1.0-dev.0+candidate.0123456789ab",
+        version=f"{_RELEASE_VERSION}-dev.0+candidate.0123456789ab",
         candidate=True,
     )
     with pytest.raises(ArtifactError, match="candidate source distributions"):
@@ -1931,7 +1956,7 @@ def test_release_sdist_requires_the_minimal_build_marker(tmp_path: Path) -> None
                     "publishable": True,
                     "selftest_fixture_bootstrap": False,
                     "source_revision": "not-a-revision",
-                    "version": "0.1.0",
+                    "version": _RELEASE_VERSION,
                 }
             ).encode()
         },
@@ -2019,7 +2044,7 @@ def test_sdist_accepts_prepared_payload_compiler_edits(tmp_path: Path) -> None:
         extra_files={"src/pyamplicol/evaluators/symbolica_compile.py": b"# drift\n"},
     )
 
-    assert audit_sdist(sdist, mode="release").version == "0.1.0"
+    assert audit_sdist(sdist, mode="release").version == _RELEASE_VERSION
 
 
 @pytest.mark.parametrize(

@@ -9,6 +9,8 @@ import pytest
 
 from tools.release import prepare_release_prepared_models as producer
 
+RELEASE_VERSION = producer.EXPECTED_VERSION
+
 
 def _bootstrap_wheel(
     path: Path,
@@ -26,16 +28,17 @@ def _bootstrap_wheel(
         "schema_version": 1,
         "selftest_fixture_bootstrap": True,
         "source_checkout": str(producer.ROOT.resolve()),
-        "version": "0.1.0",
+        "version": RELEASE_VERSION,
     }
+    metadata = (
+        f"Metadata-Version: 2.4\nName: pyamplicol\nVersion: {RELEASE_VERSION}\n\n"
+    ).encode()
     members = {
         "pyamplicol/_build_info.json": (
             json.dumps(marker, sort_keys=True) + "\n"
         ).encode(),
         "pyamplicol/assets/prepared_models/__init__.py": b"",
-        "pyamplicol-0.1.0.dist-info/METADATA": (
-            b"Metadata-Version: 2.4\nName: pyamplicol\nVersion: 0.1.0\n\n"
-        ),
+        f"pyamplicol-{RELEASE_VERSION}.dist-info/METADATA": metadata,
     }
     if include_prepared_payload:
         members[
@@ -54,11 +57,11 @@ def _bootstrap_wheel(
 
 
 def test_release_bootstrap_wheel_is_explicitly_non_publishable(tmp_path: Path) -> None:
-    wheel = _bootstrap_wheel(tmp_path / "pyamplicol-0.1.0.whl")
+    wheel = _bootstrap_wheel(tmp_path / f"pyamplicol-{RELEASE_VERSION}.whl")
 
     result = producer.audit_bootstrap_wheel(wheel)
 
-    assert result["version"] == "0.1.0"
+    assert result["version"] == RELEASE_VERSION
     assert result["publishable"] is False
     assert result["release_prepared_model_bootstrap"] is True
     assert result["selftest_fixture_bootstrap"] is True
@@ -67,7 +70,7 @@ def test_release_bootstrap_wheel_is_explicitly_non_publishable(tmp_path: Path) -
 
 def test_release_bootstrap_wheel_rejects_publishable_marker(tmp_path: Path) -> None:
     wheel = _bootstrap_wheel(
-        tmp_path / "pyamplicol-0.1.0.whl",
+        tmp_path / f"pyamplicol-{RELEASE_VERSION}.whl",
         publishable=True,
     )
 
@@ -80,7 +83,7 @@ def test_release_bootstrap_wheel_rejects_publishable_marker(tmp_path: Path) -> N
 
 def test_release_bootstrap_wheel_rejects_prepared_payloads(tmp_path: Path) -> None:
     wheel = _bootstrap_wheel(
-        tmp_path / "pyamplicol-0.1.0.whl",
+        tmp_path / f"pyamplicol-{RELEASE_VERSION}.whl",
         include_prepared_payload=True,
     )
 
@@ -95,7 +98,7 @@ def test_release_bootstrap_wheel_rejects_auxiliary_source_store(
     tmp_path: Path,
 ) -> None:
     wheel = _bootstrap_wheel(
-        tmp_path / "pyamplicol-0.1.0.whl",
+        tmp_path / f"pyamplicol-{RELEASE_VERSION}.whl",
         include_release_store=True,
     )
 
@@ -110,7 +113,7 @@ def test_release_bootstrap_wheel_rejects_stale_selftest_fixture(
     tmp_path: Path,
 ) -> None:
     wheel = _bootstrap_wheel(
-        tmp_path / "pyamplicol-0.1.0.whl",
+        tmp_path / f"pyamplicol-{RELEASE_VERSION}.whl",
         include_selftest_fixture=True,
     )
 

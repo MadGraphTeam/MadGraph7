@@ -34,6 +34,8 @@ from .common import (
 _SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
 _GIT_REVISION_RE = re.compile(r"^[a-f0-9]{40}$")
 _OFFICIAL_SYMJIT_SOURCE_URL = "https://github.com/siravan/symjit-crate.git"
+with RELEASE_LOCK.open("rb") as _release_stream:
+    _RELEASE_VERSION = str(tomllib.load(_release_stream)["project"]["version"])
 
 
 def _git_environment() -> dict[str, str]:
@@ -232,7 +234,7 @@ def collect_runtime_snapshot(source: SourceSnapshot) -> RuntimeSnapshot:
         build_info.get("schema_version") != 1
         or build_info.get("publishable") is not False
         or re.fullmatch(r"[a-f0-9]{12}", fingerprint) is None
-        or version != f"0.1.0.dev0+candidate.{fingerprint}"
+        or version != f"{_RELEASE_VERSION}.dev0+candidate.{fingerprint}"
     ):
         raise CaptureError(
             "installed pyamplicol has invalid candidate build provenance"

@@ -57,13 +57,13 @@ def test_packaged_builtin_sm_jit_o2_is_discoverable_and_validated(
         assert compiled.prepared_backend == "jit"
     with prepared_models.open_packaged_prepared_model() as bundle:
         assert bundle.backend == "jit"
-        assert len(bundle.kernel_pack.kernels) == metadata["kernel_count"] == 59
+        assert len(bundle.kernel_pack.kernels) == metadata["kernel_count"] == 53
         eligible_ids = {
             kernel.kernel_id
             for kernel in bundle.kernel_pack.kernels
             if PREPARED_INDEPENDENT_BLOCK_PROOF in kernel.proof_classes
         }
-        assert len(eligible_ids) == 36
+        assert len(eligible_ids) == 32
         assert {
             variant.base_kernel_id for variant in bundle.kernel_pack.kernel_variants
         } == eligible_ids
@@ -152,20 +152,20 @@ def test_packaged_prepared_model_rejects_resource_tampering(
         pass
 
 
-def test_packaged_prepared_model_rejects_package_version_drift(
+def test_packaged_prepared_model_accepts_older_package_producer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import pyamplicol._internal.versions as versions
 
-    monkeypatch.setattr(versions, "package_version", lambda: "999.0")
-    with (
-        pytest.raises(
-            prepared_models.PackagedPreparedModelError,
-            match="package_version is stale",
-        ),
-        prepared_models.packaged_prepared_model_path(prepared_models.BUILTIN_SM_JIT_O2),
-    ):
-        pass
+    producer = _metadata()["producer"]
+    assert isinstance(producer, dict)
+    assert str(producer["package_version"]).startswith("0.1.0")
+    monkeypatch.setattr(versions, "package_version", lambda: "0.1.1")
+
+    with prepared_models.packaged_prepared_model_path(
+        prepared_models.BUILTIN_SM_JIT_O2
+    ) as path:
+        assert path.is_file()
 
 
 def test_packaged_prepared_model_accepts_candidate_fingerprint_drift(

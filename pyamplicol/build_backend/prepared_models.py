@@ -332,9 +332,10 @@ def _write_packaged_prepared_model_asset(
             raise RuntimeError("prepared bundle has an invalid candidate fingerprint")
     else:
         release_version = _release_package_version(overlay, release)
-        if package_version != release_version or package_version != "0.1.0":
+        if package_version != release_version:
             raise RuntimeError(
-                "release prepared assets require bundle producer version '0.1.0'"
+                "release prepared assets require the canonical package version "
+                f"{release_version!r}"
             )
     if pack.producer.get("version") != package_version:
         raise RuntimeError("prepared kernel-pack package version is inconsistent")
@@ -555,27 +556,6 @@ def _validate_bundle(
         packaged_producer.get("package_version"),
         "packaged prepared-model producer package_version",
     )
-    active_package_version = _expected_package_version(overlay, mode)
-    if mode == "candidate":
-        packaged_base = _candidate_package_version_base(
-            packaged_package_version,
-            "packaged prepared-model producer package_version",
-        )
-        active_base = _candidate_package_version_base(
-            active_package_version,
-            "candidate package version",
-        )
-        if packaged_base != active_base:
-            raise RuntimeError(
-                "packaged prepared-model producer package version base is stale: "
-                f"expected {active_base!r}, got {packaged_base!r}"
-            )
-    elif packaged_package_version != active_package_version:
-        raise RuntimeError(
-            "packaged prepared-model producer package_version is stale: "
-            f"expected {active_package_version!r}, "
-            f"got {packaged_package_version!r}"
-        )
     if producer.get("compiled_model_schema_version") != compiled_schema:
         raise RuntimeError("prepared compiled-model schema is stale")
     if producer.get("model_compiler_version") != compiler_version:
@@ -729,34 +709,6 @@ def _cargo_package_version(overlay: Path, package_name: str) -> str:
             f"Cargo.lock must contain exactly one {package_name} package"
         )
     return _required_string(matches[0], f"Cargo.lock {package_name} version")
-
-
-def _expected_package_version(overlay: Path, mode: str) -> str:
-    if mode == "candidate":
-        info = _load_json(
-            overlay / "src" / "pyamplicol" / "_build_info.json",
-            "candidate package build info",
-        )
-        return _required_string(info.get("version"), "candidate package version")
-    with (overlay / "Cargo.toml").open("rb") as stream:
-        cargo = tomllib.load(stream)
-    return _required_string(
-        cargo["workspace"]["package"]["version"], "Cargo package version"
-    )
-
-
-def _candidate_package_version_base(value: str, context: str) -> str:
-    marker = "+candidate."
-    base, separator, fingerprint = value.rpartition(marker)
-    if (
-        separator != marker
-        or not base
-        or marker in base
-        or len(fingerprint) != 12
-        or any(character not in "0123456789abcdef" for character in fingerprint)
-    ):
-        raise RuntimeError(f"{context} is not a valid candidate package version")
-    return base
 
 
 def _built_in_source_digest(package_root: Path) -> str:

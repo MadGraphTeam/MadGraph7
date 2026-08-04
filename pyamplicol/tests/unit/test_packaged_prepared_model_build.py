@@ -22,6 +22,9 @@ from prepared_models import (  # noqa: E402
     write_release_packaged_prepared_model_asset,
 )
 
+with (ROOT / "dependencies" / "release-lock.toml").open("rb") as stream:
+    RELEASE_VERSION = str(tomllib.load(stream)["project"]["version"])
+
 
 def _overlay(tmp_path: Path) -> Path:
     overlay = tmp_path / "overlay"
@@ -99,7 +102,10 @@ def _release_store(overlay: Path) -> Path:
     return store
 
 
-def _release_bundle(overlay: Path, package_version: str = "0.1.0") -> object:
+def _release_bundle(
+    overlay: Path,
+    package_version: str = RELEASE_VERSION,
+) -> object:
     package_root = overlay / "src" / "pyamplicol"
     compiled_schema = prepared_models_module._literal_assignment(
         package_root / "_internal" / "versions.py",
@@ -226,7 +232,7 @@ def test_release_source_ready_asset_uses_only_release_lock_identity(
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     assert metadata["build_contract"] == {"mode": "release"}
     assert "native_build_inputs_sha256" not in metadata["producer"]
-    assert metadata["producer"]["package_version"] == "0.1.0"
+    assert metadata["producer"]["package_version"] == RELEASE_VERSION
     assert metadata["dependencies"]["symbolica_version"] == "2.2.0"
     assert metadata["dependencies"]["symjit_version"] == "2.22.0"
     assert bundle_path.read_bytes() == source_bundle.read_bytes()
@@ -239,7 +245,10 @@ def test_release_source_ready_asset_rejects_candidate_producer_version(
     overlay = _release_overlay(tmp_path)
     source_bundle = tmp_path / "candidate.pyamplicol-model"
     source_bundle.write_bytes(b"candidate prepared bundle fixture")
-    bundle = _release_bundle(overlay, "0.1.0.dev0+candidate.123456789abc")
+    bundle = _release_bundle(
+        overlay,
+        f"{RELEASE_VERSION}.dev0+candidate.123456789abc",
+    )
     monkeypatch.setattr(
         prepared_models_module,
         "_load_prepared_contract",
@@ -248,7 +257,10 @@ def test_release_source_ready_asset_rejects_candidate_producer_version(
         ),
     )
 
-    with pytest.raises(RuntimeError, match=r"producer version '0\.1\.0'"):
+    with pytest.raises(
+        RuntimeError,
+        match="canonical package version",
+    ):
         write_release_packaged_prepared_model_asset(
             overlay,
             source_bundle,
@@ -284,6 +296,24 @@ def test_release_source_store_projects_over_candidate_package_assets(
         for path in package_assets.iterdir()
         if path.name != "__init__.py"
     } == expected
+
+
+def test_release_staging_accepts_older_package_producer(tmp_path: Path) -> None:
+    overlay = _release_overlay(tmp_path)
+    store = overlay / "release_assets" / "prepared_models"
+    shutil.copytree(ROOT / "release_assets" / "prepared_models", store)
+    producer_versions = {
+        json.loads(path.read_text(encoding="utf-8"))["producer"]["package_version"]
+        for path in store.glob("*.metadata.json")
+    }
+    assert producer_versions == {"0.1.0"}
+    assert RELEASE_VERSION == "0.1.1"
+
+    assert project_release_packaged_prepared_model_store(
+        overlay,
+        require_store=True,
+    )
+    stage_packaged_prepared_models(overlay, "release")
 
 
 def test_release_source_store_is_required_only_for_source_checkout(

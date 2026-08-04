@@ -4,7 +4,7 @@
 
 ## Binary Wheel
 
-After `0.1.0` is uploaded to PyPI, install it with:
+After `0.1.1` is uploaded to PyPI, install it with:
 
 ```console
 python -m venv .venv
@@ -18,7 +18,7 @@ Fortran, or Rust compiler is needed only when compiling that language's native
 consumer against the included Rusticol SDK. pyAmpliCol has no LHAPDF
 dependency.
 
-The immutable `v0.1.0` source tag exists and `pyamplicol==0.1.0` is available
+The immutable `v0.1.1` source tag exists and `pyamplicol==0.1.1` is available
 for testing from TestPyPI, but it has not yet been uploaded to PyPI. See
 [Release Status](release-status.md) for the current publication boundary.
 
@@ -54,7 +54,7 @@ the copied launcher's `run` command with `--original-amplicol PATH`.
 ## Source Install
 
 ```console
-git clone --branch v0.1.0 --depth 1 https://github.com/mg5amcnlo/pyamplicol.git
+git clone --branch v0.1.1 --depth 1 https://github.com/mg5amcnlo/pyamplicol.git
 cd pyamplicol
 python -m pip install .
 ```
@@ -69,8 +69,8 @@ An unpacked release source distribution supports the same command:
 
 ```console
 python -m pip download --no-binary pyamplicol pyamplicol
-tar -xf pyamplicol-0.1.0.tar.gz
-cd pyamplicol-0.1.0
+tar -xf pyamplicol-0.1.1.tar.gz
+cd pyamplicol-0.1.1
 python -m pip install .
 ```
 
