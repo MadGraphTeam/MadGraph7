@@ -27,11 +27,6 @@ pub(super) const RECURRENCE_COLOR_CONTRACTION_PATH: &str = "recurrence-color.bin
 pub(super) const RECURRENCE_KERNEL_PACK_MANIFEST_PATH: &str = "model/eager-kernel-pack.json";
 pub(super) const RECURRENCE_KERNEL_PAYLOAD_ROOT: &str = "model/eager-kernels";
 
-const MAX_POINT_TILE_SIZE: u64 = 1_048_576;
-const MAX_WORKSPACE_MIB: u64 = 4096;
-const MAX_SUMMARY_COUNT: u64 = 1 << 48;
-const MAX_METADATA_ROWS: usize = 1 << 20;
-const MAX_SOURCE_COMPONENTS: u64 = 1 << 20;
 const MAX_RELATION_DISCOVERY_SAMPLES: usize = 16;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -68,8 +63,8 @@ pub(super) struct RecurrenceKernelPackReference {
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct RecurrenceRuntimeOptions {
-    pub(super) point_tile_size: u64,
-    pub(super) workspace_mib: u64,
+    pub(super) point_tile_size: u32,
+    pub(super) workspace_mib: u32,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -750,15 +745,15 @@ impl RecurrenceExecutionManifest {
 
 impl RecurrenceRuntimeOptions {
     fn validate(self) -> RusticolResult<()> {
-        if !(1..=MAX_POINT_TILE_SIZE).contains(&self.point_tile_size) {
-            return Err(RusticolError::artifact(format!(
-                "recurrence point_tile_size must be in 1..={MAX_POINT_TILE_SIZE}"
-            )));
+        if self.point_tile_size == 0 {
+            return Err(RusticolError::artifact(
+                "recurrence point_tile_size must be positive",
+            ));
         }
-        if !(1..=MAX_WORKSPACE_MIB).contains(&self.workspace_mib) {
-            return Err(RusticolError::artifact(format!(
-                "recurrence workspace_mib must be in 1..={MAX_WORKSPACE_MIB}"
-            )));
+        if self.workspace_mib == 0 {
+            return Err(RusticolError::artifact(
+                "recurrence workspace_mib must be positive",
+            ));
         }
         Ok(())
     }
@@ -2352,7 +2347,7 @@ impl RecurrenceColorContractionReference {
 
 impl RecurrenceSourceTemplate {
     fn validate(&self, index: usize) -> RusticolResult<()> {
-        if self.dimension == 0 || self.dimension > MAX_SOURCE_COMPONENTS {
+        if self.dimension == 0 || u32::try_from(self.dimension).is_err() {
             return Err(RusticolError::artifact(format!(
                 "recurrence source template {index} has an unsupported dimension"
             )));
@@ -2417,7 +2412,7 @@ impl RecurrenceGenericSourceIr {
                 validate_text(value, &format!("recurrence source {index} {label}"))?;
             }
         }
-        if self.component_dimension == 0 || self.component_dimension > MAX_SOURCE_COMPONENTS {
+        if self.component_dimension == 0 || u32::try_from(self.component_dimension).is_err() {
             return Err(RusticolError::artifact(format!(
                 "recurrence source {index} has an unsupported component dimension"
             )));
@@ -2633,18 +2628,18 @@ fn validate_direct_contract(
 }
 
 fn bounded_len(context: &str, len: usize) -> RusticolResult<()> {
-    if len > MAX_METADATA_ROWS {
+    if u32::try_from(len).is_err() {
         return Err(RusticolError::artifact(format!(
-            "{context} count exceeds the supported bound {MAX_METADATA_ROWS}"
+            "{context} count exceeds the u32 identifier domain"
         )));
     }
     Ok(())
 }
 
 fn validate_counts(context: &str, counts: &[u64]) -> RusticolResult<()> {
-    if counts.iter().any(|count| *count > MAX_SUMMARY_COUNT) {
+    if counts.iter().any(|count| usize::try_from(*count).is_err()) {
         return Err(RusticolError::artifact(format!(
-            "{context} count exceeds the supported bound {MAX_SUMMARY_COUNT}"
+            "{context} count exceeds the platform index domain"
         )));
     }
     Ok(())
@@ -3752,6 +3747,25 @@ pub(super) mod tests {
         .unwrap();
 
         assert_eq!(parsed.key, "x_to_x");
+    }
+
+    #[test]
+    fn accepts_runtime_options_above_old_reader_ceilings() {
+        let mut value = manifest();
+        value["runtime_options"]["point_tile_size"] = json!(1_048_577);
+        value["runtime_options"]["workspace_mib"] = json!(4097);
+
+        parse(&value).unwrap();
+
+        value["runtime_options"]["workspace_mib"] = json!(0);
+        assert!(parse(&value).is_err());
+
+        value["runtime_options"]["workspace_mib"] = json!(u64::from(u32::MAX) + 1);
+        assert!(parse(&value).is_err());
+
+        value["runtime_options"]["workspace_mib"] = json!(4097);
+        value["runtime_options"]["point_tile_size"] = json!(u64::from(u32::MAX) + 1);
+        assert!(parse(&value).is_err());
     }
 
     #[test]

@@ -27,9 +27,6 @@ const LEGACY_EAGER_PLAN_ABI: &str = "pyamplicol-eager-plan-v2";
 const LEGACY_EAGER_RUNTIME_CAPABILITY: &str = "rusticol.eager-dag.complex-f64.v1";
 
 pub(super) const MAX_EXECUTION_MANIFEST_BYTES: usize = 1 << 20;
-const MAX_POINT_TILE_SIZE: u64 = 1_048_576;
-const MAX_WORKSPACE_MIB: u64 = 4096;
-const MAX_SUMMARY_COUNT: u64 = 1 << 48;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -214,15 +211,15 @@ impl EagerV3ExecutionManifest {
 
 impl EagerV3RuntimeOptions {
     fn validate(self) -> RusticolResult<()> {
-        if !(1..=MAX_POINT_TILE_SIZE).contains(&self.point_tile_size) {
-            return Err(RusticolError::artifact(format!(
-                "eager point_tile_size must be in 1..={MAX_POINT_TILE_SIZE}"
-            )));
+        if self.point_tile_size == 0 {
+            return Err(RusticolError::artifact(
+                "eager point_tile_size must be positive",
+            ));
         }
-        if !(1..=MAX_WORKSPACE_MIB).contains(&self.workspace_mib) {
-            return Err(RusticolError::artifact(format!(
-                "eager workspace_mib must be in 1..={MAX_WORKSPACE_MIB}"
-            )));
+        if self.workspace_mib == 0 {
+            return Err(RusticolError::artifact(
+                "eager workspace_mib must be positive",
+            ));
         }
         Ok(())
     }
@@ -612,9 +609,9 @@ fn validate_direct_capabilities(capabilities: &[String], context: &str) -> Rusti
 }
 
 fn validate_counts(context: &str, counts: &[u64]) -> RusticolResult<()> {
-    if counts.iter().any(|count| *count > MAX_SUMMARY_COUNT) {
+    if counts.iter().any(|count| usize::try_from(*count).is_err()) {
         return Err(RusticolError::artifact(format!(
-            "{context} count exceeds the supported bound {MAX_SUMMARY_COUNT}"
+            "{context} count exceeds the platform index domain"
         )));
     }
     Ok(())

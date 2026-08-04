@@ -86,9 +86,12 @@ def test_table_filler_defaults_to_five_seconds_per_cell() -> None:
             "attempt",
             "--result-json",
             "result.json",
+            "--memory-limit-bytes",
+            "15000000000",
         )
     )
     assert worker.target_runtime == 5.0
+    assert worker.memory_limit_bytes == 15_000_000_000
 
     limited = _parser().parse_args(
         ("populate", "--generation-time-limit-seconds", "7200")

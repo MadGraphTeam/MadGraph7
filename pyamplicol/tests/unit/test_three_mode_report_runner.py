@@ -1880,6 +1880,42 @@ def test_config_threads_manual_profile_sampling_settings() -> None:
     assert values["benchmark"]["minimum_samples"] == 11  # type: ignore[index]
 
 
+@pytest.mark.parametrize(
+    ("mode", "workspace_key"),
+    (
+        (ExecutionMode.RECURRENCE, "recurrence"),
+        (ExecutionMode.EAGER, "eager"),
+    ),
+)
+def test_config_derives_selected_engine_workspace_from_campaign_memory_cap(
+    mode: ExecutionMode,
+    workspace_key: str,
+) -> None:
+    values = config_values(
+        _cell(mode, Accuracy.LC, Workload.SELECTED_FLOW),
+        RunnerSettings(memory_limit_bytes=15_000_000_000),
+        repo_root=Path("/repo"),
+    )
+    evaluator = values["evaluator"]
+    assert isinstance(evaluator, dict)
+    assert evaluator[workspace_key] == {"workspace_mib": 14_305}
+    assert ({"eager", "recurrence"} - {workspace_key}).isdisjoint(evaluator)
+
+    compiled = config_values(
+        _cell(ExecutionMode.COMPILED, Accuracy.LC, Workload.SELECTED_FLOW),
+        RunnerSettings(memory_limit_bytes=15_000_000_000),
+        repo_root=Path("/repo"),
+    )["evaluator"]
+    assert isinstance(compiled, dict)
+    assert "eager" not in compiled
+    assert "recurrence" not in compiled
+
+
+def test_runner_rejects_sub_mib_workspace_budget() -> None:
+    with pytest.raises(ValueError, match="at least one MiB"):
+        RunnerSettings(memory_limit_bytes=1024 * 1024 - 1)
+
+
 def test_nlc_and_full_use_contracted_topology_replay_configuration() -> None:
     for accuracy in (Accuracy.NLC, Accuracy.FULL):
         cell = _cell(ExecutionMode.RECURRENCE, accuracy, Workload.CONTRACTED)

@@ -19,6 +19,7 @@ from tools.performance_report.phase_state import (
     WorkerPhaseReporter,
     read_worker_phase_state,
 )
+from tools.performance_report.runner import RunnerSettings
 from tools.performance_report.worker import (
     _atomic_json,
     _JsonlProgressSink,
@@ -571,8 +572,14 @@ def test_pyamplicol_worker_passes_all_validation_peers_to_measurement(
             return {}
 
     def measure(*_args: object, **kwargs: object) -> dict[str, object]:
+        settings = kwargs.get("settings")
+        assert isinstance(settings, RunnerSettings)
         observed.append(
-            (kwargs.get("validation_peers"), kwargs.get("catalog"))
+            (
+                kwargs.get("validation_peers"),
+                kwargs.get("catalog"),
+                settings.memory_limit_bytes,
+            )
         )
         return {
             "status": "validation_failed",
@@ -605,6 +612,7 @@ def test_pyamplicol_worker_passes_all_validation_peers_to_measurement(
         target_runtime_seconds=1.0,
         batch_size=1,
         worker_cores=1,
+        memory_limit_bytes=15_000_000_000,
         expected_authority_cell_ids=tuple(
             authority.cell_id
             for authority in independent_numerical_authorities(cell)
@@ -619,6 +627,7 @@ def test_pyamplicol_worker_passes_all_validation_peers_to_measurement(
         (
             {"reference-amplicol-full-n4-dd-tt-jets-contracted": peer},
             REPORT_CATALOG,
+            15_000_000_000,
         )
     ]
 

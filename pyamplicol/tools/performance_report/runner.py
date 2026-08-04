@@ -86,6 +86,7 @@ _ARENA_MAX_SAMPLES = 64
 _ARENA_MAX_CALIBRATION_BLOCKS = 4
 _ARENA_MAX_REPETITIONS = 1_000_000_000
 _ARENA_MINIMUM_TARGET_FRACTION = 0.95
+_MIB = 1024 * 1024
 _RECURRENCE_DIRECT_TEMPLATE_ABI = "pyamplicol-recurrence-direct-template-v1"
 _RECURRENCE_DIRECT_BACKEND_ABI = "rusticol.recurrence-direct-backend.v1"
 _RECURRENCE_DIRECT_CANONICALIZATION_ABI = "pyamplicol-canonical-json-v1"
@@ -160,6 +161,7 @@ class RunnerSettings:
     target_runtime_seconds: float = DEFAULT_TARGET_RUNTIME_SECONDS
     batch_size: int = 128
     worker_cores: int = 1
+    memory_limit_bytes: int | None = None
     warmup_runs: int = 2
     minimum_samples: int = 5
     model_cache_dir: Path | None = None
@@ -175,6 +177,12 @@ class RunnerSettings:
             raise ValueError("batch_size must be positive")
         if self.worker_cores < 1:
             raise ValueError("worker_cores must be positive")
+        if self.memory_limit_bytes is not None and (
+            isinstance(self.memory_limit_bytes, bool)
+            or not isinstance(self.memory_limit_bytes, int)
+            or self.memory_limit_bytes < _MIB
+        ):
+            raise ValueError("memory_limit_bytes must be at least one MiB")
         if self.warmup_runs < 0:
             raise ValueError("warmup_runs must be non-negative")
         if self.minimum_samples < _ARENA_MINIMUM_SAMPLES:
@@ -804,6 +812,16 @@ def config_values(
         },
         "output": {"format": "json", "progress": "off"},
     }
+    if settings.memory_limit_bytes is not None and measurement.execution_mode in {
+        ExecutionMode.EAGER,
+        ExecutionMode.RECURRENCE,
+    }:
+        workspace_mib = settings.memory_limit_bytes // _MIB
+        evaluator = values["evaluator"]
+        assert isinstance(evaluator, dict)
+        evaluator[measurement.execution_mode.value] = {
+            "workspace_mib": workspace_mib
+        }
     return values
 
 

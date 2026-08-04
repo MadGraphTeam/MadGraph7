@@ -248,12 +248,10 @@ fn long_writer_valid_model_name_within_compact_summary_profile_is_accepted() {
 }
 
 #[test]
-fn runtime_options_and_summaries_are_bounded() {
+fn runtime_options_require_positive_values_and_summary_relationships_hold() {
     let mutations: &[(&[&str], Value)] = &[
         (&["runtime_options", "point_tile_size"], json!(0)),
-        (&["runtime_options", "point_tile_size"], json!(1_048_577)),
         (&["runtime_options", "workspace_mib"], json!(0)),
-        (&["runtime_options", "workspace_mib"], json!(4097)),
         (&["dag_summary", "interaction_count"], json!(1_u64 << 49)),
         (
             &["dag_summary", "interaction_evaluation_count"],
@@ -290,6 +288,15 @@ fn runtime_options_and_summaries_are_bounded() {
             "mutation unexpectedly passed: {path:?}"
         );
     }
+}
+
+#[test]
+fn runtime_options_accept_writer_valid_values_above_old_reader_ceilings() {
+    let mut fixture = Fixture::new();
+    fixture.manifest["runtime_options"]["point_tile_size"] = json!(1_048_577);
+    fixture.manifest["runtime_options"]["workspace_mib"] = json!(4097);
+
+    fixture.parse().unwrap();
 }
 
 #[test]

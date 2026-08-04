@@ -47,7 +47,6 @@ use crate::direct_arena::{
 // cross-stage locality on both cache-rich and cache-poor CPUs without an
 // online host-specific tuner.
 const COMPILED_DIRECT_LOCALITY_POINT_CAP: u32 = 32;
-const COMPILED_DIRECT_WORKSPACE_BYTES: usize = 256 * 1024 * 1024;
 const COMPILED_DIRECT_CACHE_TARGET_BYTES: usize = 4 * 1024 * 1024;
 
 fn compiled_direct_cache_target_bytes() -> usize {
@@ -345,8 +344,8 @@ fn compiled_direct_tile_sizing(
     let hot_scalar_values_per_point = execution_scalar_values_per_point
         .max(authenticated_reduction_scalar_values_per_point.unwrap_or(0));
     let (effective_tile_capacity, reduction_tile_capacity) = match layout_policy {
-        // This developer/test contract remains exact: neither the adaptive
-        // locality cap nor the production workspace policy changes it.
+        // This developer/test contract remains exact: the adaptive locality
+        // policy does not change it.
         CompiledDirectCurrentLayoutPolicy::Identity { tile_capacity } => {
             let capacity = usize::try_from(tile_capacity).map_err(|_| {
                 RusticolError::integrity("compiled Direct-Arena identity tile exceeds usize")
@@ -358,11 +357,10 @@ fn compiled_direct_tile_sizing(
                 // Adaptive production tiling is only valid when every
                 // reducer reachable from this engine has a static footprint.
                 // Still route the one-point fallback through the common
-                // selector so its padded physical allocation cannot bypass
-                // the hard workspace bound.
+                // selector so its padded physical allocation remains checked.
                 let capacity = deterministic_point_tile_size_with_cache_footprint(
                     1,
-                    COMPILED_DIRECT_WORKSPACE_BYTES,
+                    usize::MAX,
                     usize::MAX,
                     physical_scalar_values_per_point,
                     hot_scalar_values_per_point,
@@ -371,14 +369,14 @@ fn compiled_direct_tile_sizing(
             } else {
                 let execution_capacity = deterministic_point_tile_size_with_cache_footprint(
                     COMPILED_DIRECT_LOCALITY_POINT_CAP,
-                    COMPILED_DIRECT_WORKSPACE_BYTES,
+                    usize::MAX,
                     compiled_direct_cache_target_bytes(),
                     physical_scalar_values_per_point,
                     execution_scalar_values_per_point,
                 )? as usize;
                 let reduction_capacity = deterministic_point_tile_size_with_cache_footprint(
                     COMPILED_DIRECT_LOCALITY_POINT_CAP,
-                    COMPILED_DIRECT_WORKSPACE_BYTES,
+                    usize::MAX,
                     compiled_direct_cache_target_bytes(),
                     physical_scalar_values_per_point,
                     hot_scalar_values_per_point,
@@ -3075,7 +3073,7 @@ extern "C" int native_direct_leaf_direct_application_v1(
         )
     }
 
-    fn assert_compiled_direct_workspace_bounds(runtime: &ExecutionRuntime) {
+    fn assert_compiled_direct_tile_geometry(runtime: &ExecutionRuntime) {
         if let Some(direct) = runtime.compiled_direct_runtime.as_ref() {
             let sizing = direct.tile_sizing();
             let stride = direct.arena.point_stride() as usize;
@@ -3083,10 +3081,7 @@ extern "C" int native_direct_leaf_direct_application_v1(
                 .checked_mul(sizing.physical_scalar_values_per_point)
                 .and_then(|value| value.checked_mul(std::mem::size_of::<f64>()))
                 .expect("retained Direct logical tile bytes fit usize");
-            assert!(
-                logical_tile_bytes <= COMPILED_DIRECT_WORKSPACE_BYTES,
-                "retained padded Direct tile requires {logical_tile_bytes} bytes"
-            );
+            assert!(logical_tile_bytes > 0);
             if sizing.reduction_scalar_values_per_point == 0 {
                 assert_eq!(
                     sizing.effective_tile_capacity, 1,
@@ -3101,7 +3096,7 @@ extern "C" int native_direct_leaf_direct_application_v1(
             .chain(runtime.helicity_selector_runtimes.iter().map(Box::as_ref))
             .chain(runtime.color_selector_runtimes.values().map(Box::as_ref));
         for child in children {
-            assert_compiled_direct_workspace_bounds(child);
+            assert_compiled_direct_tile_geometry(child);
         }
     }
 
@@ -3236,7 +3231,10 @@ extern "C" int native_direct_leaf_direct_application_v1(
         let expected_direct_bytes = expected_stride as usize
             * expected.physical_scalar_values_per_point
             * std::mem::size_of::<f64>();
-        assert!(expected_direct_bytes <= COMPILED_DIRECT_WORKSPACE_BYTES);
+        assert!(
+            expected_direct_bytes > COMPILED_DIRECT_CACHE_TARGET_BYTES,
+            "the soft cache target must not reject a larger physical arena"
+        );
         for _ in 0..32 {
             assert_eq!(
                 compiled_direct_tile_sizing(
@@ -3323,8 +3321,8 @@ extern "C" int native_direct_leaf_direct_application_v1(
             )
             .unwrap()
             .effective_tile_capacity,
-            16,
-            "the 256 MiB padded physical bound remains hard"
+            32,
+            "large physical arenas retain the locality-limited tile"
         );
         let hard_limited = compiled_direct_tile_sizing(
             &stages,
@@ -3349,8 +3347,8 @@ extern "C" int native_direct_leaf_direct_application_v1(
             * hard_limited.physical_scalar_values_per_point
             * std::mem::size_of::<f64>();
         assert!(
-            hard_direct_bytes <= COMPILED_DIRECT_WORKSPACE_BYTES,
-            "actual padded tile-controlled Direct bytes exceed the 256 MiB hard bound"
+            hard_direct_bytes > 256 * 1024 * 1024,
+            "the regression geometry must exceed the removed fixed workspace bound"
         );
         assert_eq!(
             compiled_direct_tile_sizing(
@@ -3373,7 +3371,7 @@ extern "C" int native_direct_leaf_direct_application_v1(
             physical_component_count: 2_100_000,
             live_component_count: 1,
         };
-        assert!(
+        assert_eq!(
             compiled_direct_tile_sizing(
                 &stages,
                 &amplitude,
@@ -3384,8 +3382,10 @@ extern "C" int native_direct_leaf_direct_application_v1(
                 CompiledDirectReductionFootprint::Unauthenticated,
                 CompiledDirectCurrentLayoutPolicy::StageLivenessProduction,
             )
-            .is_err(),
-            "the unauthenticated one-point fallback must retain the padded hard bound"
+            .unwrap()
+            .effective_tile_capacity,
+            1,
+            "the unauthenticated fallback remains one point without a fixed byte ceiling"
         );
         assert_eq!(
             compiled_direct_tile_sizing(
@@ -3793,8 +3793,8 @@ extern "C" int native_direct_leaf_direct_application_v1(
             second.metadata_json().unwrap(),
             "independent loads reported different nested Direct provenance"
         );
-        assert_compiled_direct_workspace_bounds(&first.runtime);
-        assert_compiled_direct_workspace_bounds(&second.runtime);
+        assert_compiled_direct_tile_geometry(&first.runtime);
+        assert_compiled_direct_tile_geometry(&second.runtime);
         eprintln!(
             "retained-compiled-direct-sizing engines={} requested_bytes={} \
              minimum_tile={} metadata={}",

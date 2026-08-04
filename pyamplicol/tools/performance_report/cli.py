@@ -493,6 +493,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     worker.add_argument("--batch-size", type=int, default=128)
     worker.add_argument("--cell-cores", type=int, default=1)
+    worker.add_argument("--memory-limit-bytes", type=int, help=argparse.SUPPRESS)
     worker.add_argument("--warmup-runs", type=int, default=2)
     worker.add_argument("--minimum-samples", type=int, default=5)
     worker.add_argument("--progress-jsonl", type=Path)
@@ -1526,6 +1527,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             target_runtime_seconds=args.target_runtime,
             batch_size=args.batch_size,
             worker_cores=args.cell_cores,
+            memory_limit_bytes=args.memory_limit_bytes,
             warmup_runs=args.warmup_runs,
             minimum_samples=args.minimum_samples,
             progress_jsonl=args.progress_jsonl,

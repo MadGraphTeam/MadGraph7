@@ -21,12 +21,31 @@ pub use crate::direct_arena::{
     DirectArenaView, DirectFactorView, DirectMomentumView, DirectParameterView,
 };
 use crate::{RusticolError, RusticolResult};
+use std::cell::RefCell;
 use std::ffi::{c_int, c_void};
 use std::time::{Duration, Instant};
 
 pub const RECURRENCE_DIRECT_BACKEND_ABI: &str = "rusticol.recurrence-direct-backend.v1";
 
 pub const DIRECT_STATUS_OK: c_int = 0;
+
+thread_local! {
+    static DIRECT_EXECUTOR_ERROR_DETAIL: RefCell<Option<RusticolError>> = const { RefCell::new(None) };
+}
+
+/// Clear the synchronous detail channel before executing one direct plan.
+pub(crate) fn clear_direct_executor_error_detail() {
+    DIRECT_EXECUTOR_ERROR_DETAIL.with(|detail| *detail.borrow_mut() = None);
+}
+
+/// Preserve a concrete callback failure across the narrow integer-status ABI.
+pub(crate) fn record_direct_executor_error_detail(detail: RusticolError) {
+    DIRECT_EXECUTOR_ERROR_DETAIL.with(|slot| *slot.borrow_mut() = Some(detail));
+}
+
+fn take_direct_executor_error_detail() -> Option<RusticolError> {
+    DIRECT_EXECUTOR_ERROR_DETAIL.with(|detail| detail.borrow_mut().take())
+}
 
 pub type DirectSourceExecutor = unsafe extern "C" fn(
     *const c_void,
@@ -542,6 +561,7 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
     timings: &mut DirectExecutionRoleTimings,
     mut traffic: Option<&mut DirectArenaTrafficCounters>,
 ) -> RusticolResult<()> {
+    clear_direct_executor_error_detail();
     workspace.validate(point_count)?;
     if executors.plan_layout_digest != plan.runtime_layout_digest() {
         return Err(RusticolError::integrity(
@@ -797,9 +817,22 @@ fn execute_certified_reuse_rows(
     Ok(())
 }
 
-fn check_status(role: DirectExecutorRole, executor_id: u32, status: c_int) -> RusticolResult<()> {
+pub(crate) fn check_status(
+    role: DirectExecutorRole,
+    executor_id: u32,
+    status: c_int,
+) -> RusticolResult<()> {
+    let detail = take_direct_executor_error_detail();
     if status == DIRECT_STATUS_OK {
         Ok(())
+    } else if let Some(detail) = detail {
+        Err(RusticolError::with_kind(
+            detail.kind(),
+            format!(
+                "direct recurrence {role:?} executor {executor_id} failed: {}",
+                detail.message()
+            ),
+        ))
     } else {
         Err(RusticolError::evaluation(format!(
             "direct recurrence {role:?} executor {executor_id} returned status {status}"

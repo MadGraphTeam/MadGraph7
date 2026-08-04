@@ -580,6 +580,36 @@ mod tests {
     }
 
     #[test]
+    fn observed_large_minimum_pitch_uses_the_explicit_workspace_budget() {
+        const PHYSICAL_SCALARS_PER_POINT: usize = 4_249_960;
+        const REQUIRED_BYTES: usize = 271_997_440;
+
+        assert_eq!(
+            deterministic_point_tile_size_with_cache_footprint(
+                1024,
+                REQUIRED_BYTES,
+                4 * 1024 * 1024,
+                PHYSICAL_SCALARS_PER_POINT,
+                1,
+            )
+            .unwrap(),
+            8
+        );
+        assert!(
+            deterministic_point_tile_size_with_cache_footprint(
+                1024,
+                REQUIRED_BYTES - 1,
+                4 * 1024 * 1024,
+                PHYSICAL_SCALARS_PER_POINT,
+                1,
+            )
+            .unwrap_err()
+            .message()
+            .contains("minimum aligned Direct-Arena pitch")
+        );
+    }
+
+    #[test]
     fn allocator_alignment_reserve_is_outside_the_logical_budget() {
         assert_eq!(
             deterministic_point_tile_size(1, 128, usize::MAX, 2).unwrap(),

@@ -501,7 +501,7 @@ fn compiled_pack(backend: &str, runtime_capability: &str) -> PreparedKernelPackM
 }
 
 #[test]
-fn runtime_options_are_positive_and_bounded() {
+fn runtime_options_are_positive_and_use_checked_platform_sizes() {
     let options = EagerRuntimeOptionsManifest {
         point_tile_size: 1024,
         workspace_mib: 256,
@@ -511,6 +511,18 @@ fn runtime_options_are_positive_and_bounded() {
     assert_eq!(options.point_tile_size, 1024);
     assert_eq!(options.workspace_bytes, 256 * 1024 * 1024);
 
+    let above_old_reader_ceilings = EagerRuntimeOptionsManifest {
+        point_tile_size: 1_048_577,
+        workspace_mib: 4097,
+    }
+    .validate()
+    .expect("writer-valid eager runtime options above old reader ceilings");
+    assert_eq!(above_old_reader_ceilings.point_tile_size, 1_048_577);
+    assert_eq!(
+        above_old_reader_ceilings.workspace_bytes,
+        4097 * 1024 * 1024
+    );
+
     for invalid in [
         EagerRuntimeOptionsManifest {
             point_tile_size: 0,
@@ -519,14 +531,6 @@ fn runtime_options_are_positive_and_bounded() {
         EagerRuntimeOptionsManifest {
             point_tile_size: 1024,
             workspace_mib: 0,
-        },
-        EagerRuntimeOptionsManifest {
-            point_tile_size: MAX_EAGER_POINT_TILE_SIZE + 1,
-            workspace_mib: 256,
-        },
-        EagerRuntimeOptionsManifest {
-            point_tile_size: 1024,
-            workspace_mib: MAX_EAGER_WORKSPACE_MIB + 1,
         },
     ] {
         assert!(invalid.validate().is_err());

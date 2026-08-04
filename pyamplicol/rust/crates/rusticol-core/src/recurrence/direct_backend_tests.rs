@@ -3,13 +3,36 @@
 use super::direct_backend::*;
 use super::direct_plan::{
     DIRECT_CONTRIBUTION_FLAG_CERTIFIED_REUSE, DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
-    DIRECT_NONE_U32, DirectClosureRow, DirectContributionRow, DirectFinalizationRow,
-    DirectRecurrencePlan, DirectSourceRow,
+    DIRECT_NONE_U32, DirectClosureRow, DirectContributionRow, DirectExecutorRole,
+    DirectFinalizationRow, DirectRecurrencePlan, DirectSourceRow,
 };
 use super::exact::{ExactComplexRational, ExactRational};
+use crate::RusticolErrorKind;
 use std::ffi::c_void;
 
 const STATUS_BOUNDS: i32 = 2;
+
+#[test]
+fn executor_status_preserves_concrete_error_and_drains_the_detail_channel() {
+    clear_direct_executor_error_detail();
+    record_direct_executor_error_detail(crate::RusticolError::integrity(
+        "descriptor row 789823 is invalid",
+    ));
+
+    let error = check_status(DirectExecutorRole::Contribution, 312, 4).unwrap_err();
+    assert_eq!(error.kind(), RusticolErrorKind::Integrity);
+    assert_eq!(
+        error.message(),
+        "direct recurrence Contribution executor 312 failed: descriptor row 789823 is invalid"
+    );
+
+    let generic = check_status(DirectExecutorRole::Contribution, 312, 4).unwrap_err();
+    assert_eq!(generic.kind(), RusticolErrorKind::Evaluation);
+    assert_eq!(
+        generic.message(),
+        "direct recurrence Contribution executor 312 returned status 4"
+    );
+}
 
 unsafe extern "C" fn fill_sources(
     _context: *const c_void,

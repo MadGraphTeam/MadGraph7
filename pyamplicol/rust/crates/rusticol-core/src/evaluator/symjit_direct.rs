@@ -17,7 +17,7 @@ use super::symjit_plane::{
 use crate::recurrence::direct_backend::{
     DIRECT_STATUS_OK, DirectArenaView, DirectClosureExecutor, DirectContributionExecutor,
     DirectExecutorHandle, DirectFactorView, DirectFinalizationExecutor, DirectMomentumView,
-    DirectParameterView,
+    DirectParameterView, record_direct_executor_error_detail,
 };
 use crate::recurrence::{
     DIRECT_NONE_U32, DirectClosureRow, DirectContributionRow, DirectExecutorRole,
@@ -38,14 +38,10 @@ use wide::f64x4;
 pub(crate) const SYMJIT_RECURRENCE_PLANE_APPLICATION_ABI: &str =
     "pyamplicol-symjit-plane-application-v2";
 
-const MAX_DIRECT_PLANES: usize = 512;
-const MAX_DIRECT_SCALARS: usize = 256;
 const STATUS_INVALID_CONTEXT: c_int = 1;
 const STATUS_INVALID_ARGUMENT: c_int = 2;
 const STATUS_ROLE_MISMATCH: c_int = 3;
 const STATUS_EXECUTION_FAILED: c_int = 4;
-const MAX_DESCRIPTOR_CACHE_ROW_GROUPS: usize = 4_096;
-const MAX_DESCRIPTOR_CACHE_BYTES: usize = 256 * 1024 * 1024;
 
 /// One model-fixed arena-plane projection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -199,9 +195,36 @@ impl PlaneWorkspace {
         self.row_groups.clear();
         self.storage = None;
         self.descriptor_bytes = 0;
-        self.scratch = vec![0.0; expected_scratch];
-        self.broadcasts = vec![0.0; expected_broadcasts];
-        self.broadcast_value_bits = vec![None; broadcast_plane_count];
+        let mut scratch = Vec::new();
+        scratch
+            .try_reserve_exact(expected_scratch)
+            .map_err(|error| {
+                RusticolError::internal(format!(
+                    "could not allocate recurrence scratch planes: {error}"
+                ))
+            })?;
+        scratch.resize(expected_scratch, 0.0);
+        let mut broadcasts = Vec::new();
+        broadcasts
+            .try_reserve_exact(expected_broadcasts)
+            .map_err(|error| {
+                RusticolError::internal(format!(
+                    "could not allocate recurrence broadcast planes: {error}"
+                ))
+            })?;
+        broadcasts.resize(expected_broadcasts, 0.0);
+        let mut broadcast_value_bits = Vec::new();
+        broadcast_value_bits
+            .try_reserve_exact(broadcast_plane_count)
+            .map_err(|error| {
+                RusticolError::internal(format!(
+                    "could not allocate recurrence broadcast cache: {error}"
+                ))
+            })?;
+        broadcast_value_bits.resize(broadcast_plane_count, None);
+        self.scratch = scratch;
+        self.broadcasts = broadcasts;
+        self.broadcast_value_bits = broadcast_value_bits;
         self.point_stride = point_stride;
         debug_assert_eq!(descriptor_count, input_plane_count + output_plane_count);
         Ok(())
@@ -321,8 +344,23 @@ impl LoadedSymjitDirectExecutor {
         // source planes (most commonly the shared structural-zero projection).
         // Intern those occurrences on the cold path so duplicate descriptors
         // address one persistent broadcast plane.
-        let mut slot_by_scalar = vec![None; scalars.len()];
+        let mut slot_by_scalar = Vec::new();
+        slot_by_scalar
+            .try_reserve_exact(scalars.len())
+            .map_err(|error| {
+                RusticolError::internal(format!(
+                    "could not allocate recurrence scalar slot map: {error}"
+                ))
+            })?;
+        slot_by_scalar.resize(scalars.len(), None);
         let mut broadcast_scalar_by_slot = Vec::new();
+        broadcast_scalar_by_slot
+            .try_reserve_exact(scalars.len())
+            .map_err(|error| {
+                RusticolError::internal(format!(
+                    "could not allocate recurrence broadcast scalar catalog: {error}"
+                ))
+            })?;
         let mut broadcast_slot_by_binding = Vec::new();
         broadcast_slot_by_binding
             .try_reserve_exact(parameter_bindings.len())
@@ -434,16 +472,6 @@ fn validate_binding(
         return Err(RusticolError::integrity(
             "recurrence plane binding shape does not match its SymJIT P-kernel",
         ));
-    }
-    if parameter_bindings
-        .len()
-        .checked_add(output_destinations.len())
-        .is_none_or(|count| count > MAX_DIRECT_PLANES)
-        || scalars.len() > MAX_DIRECT_SCALARS
-    {
-        return Err(RusticolError::compatibility(format!(
-            "recurrence plane binding exceeds the adapter limits of {MAX_DIRECT_PLANES} planes and {MAX_DIRECT_SCALARS} scalar sources"
-        )));
     }
     if scalars.first() != Some(&SymjitDirectScalarProjection::ExactFactor { imaginary: false })
         || scalars.get(1) != Some(&SymjitDirectScalarProjection::ExactFactor { imaginary: true })
@@ -622,18 +650,34 @@ fn invoke_typed_rows<T: DirectTypedRow>(
     if rows.is_null() || row_count == 0 || point_count == 0 {
         return STATUS_INVALID_ARGUMENT;
     }
-    catch_unwind(AssertUnwindSafe(|| {
+    match catch_unwind(AssertUnwindSafe(|| {
         let context = unsafe { &*context.cast::<SymjitDirectExecutorContext>() };
         if context.role != T::ROLE {
-            return STATUS_ROLE_MISMATCH;
+            return Ok(STATUS_ROLE_MISMATCH);
         }
         let rows = unsafe { std::slice::from_raw_parts(rows, row_count as usize) };
-        match context.execute_rows(arena, momenta, parameters, factors, rows, point_count) {
-            Ok(()) => DIRECT_STATUS_OK,
-            Err(_) => STATUS_EXECUTION_FAILED,
+        context.execute_rows(arena, momenta, parameters, factors, rows, point_count)?;
+        Ok(DIRECT_STATUS_OK)
+    })) {
+        Ok(Ok(status)) => status,
+        Ok(Err(error)) => {
+            record_direct_executor_error_detail(error);
+            STATUS_EXECUTION_FAILED
         }
-    }))
-    .unwrap_or(STATUS_EXECUTION_FAILED)
+        Err(payload) => {
+            let message = if let Some(message) = payload.downcast_ref::<&str>() {
+                (*message).to_owned()
+            } else if let Some(message) = payload.downcast_ref::<String>() {
+                message.clone()
+            } else {
+                "non-string panic payload".to_owned()
+            };
+            record_direct_executor_error_detail(RusticolError::internal(format!(
+                "recurrence SymJIT executor panicked: {message}"
+            )));
+            STATUS_EXECUTION_FAILED
+        }
+    }
 }
 
 enum DirectRowRef<'a> {
@@ -788,26 +832,17 @@ impl SymjitDirectExecutorContext {
             }
             index
         } else {
-            if workspace.row_groups.len() >= MAX_DESCRIPTOR_CACHE_ROW_GROUPS {
-                return Err(RusticolError::compatibility(
-                    "recurrence SymJIT descriptor cache exceeds its row-group limit",
-                ));
-            }
             let cached =
                 self.build_cached_row_group(&mut workspace, identity, rows, arena, momenta)?;
-            let total_bytes = workspace
-                .descriptor_bytes
-                .checked_add(cached.descriptor_bytes)
-                .ok_or_else(|| {
-                    RusticolError::compatibility(
-                        "recurrence SymJIT descriptor cache size overflows",
-                    )
-                })?;
-            if total_bytes > MAX_DESCRIPTOR_CACHE_BYTES {
-                return Err(RusticolError::compatibility(
-                    "recurrence SymJIT descriptor cache exceeds its byte limit",
-                ));
-            }
+            let total_bytes = checked_descriptor_cache_bytes(
+                workspace.descriptor_bytes,
+                cached.descriptor_bytes,
+            )?;
+            workspace.row_groups.try_reserve(1).map_err(|error| {
+                RusticolError::compatibility(format!(
+                    "could not reserve recurrence descriptor row group: {error}"
+                ))
+            })?;
             workspace.descriptor_bytes = total_bytes;
             workspace.row_groups.push(cached);
             workspace.row_groups.len() - 1
@@ -1041,6 +1076,12 @@ impl SymjitDirectExecutorContext {
         self.internal_broadcast_bytes
             .set(self.internal_broadcast_bytes.get().saturating_add(bytes));
     }
+}
+
+fn checked_descriptor_cache_bytes(current: usize, additional: usize) -> RusticolResult<usize> {
+    current.checked_add(additional).ok_or_else(|| {
+        RusticolError::compatibility("recurrence SymJIT descriptor cache size overflows")
+    })
 }
 
 fn build_plane_table(
@@ -1669,6 +1710,117 @@ pub(crate) mod tests {
             .expect("a manifest/application compression mismatch must fail closed");
         assert!(error.message().contains("compression"));
         assert!(error.message().contains("regenerate"));
+    }
+
+    #[test]
+    fn writer_valid_large_plane_and_scalar_bindings_are_not_artificially_capped() {
+        const INPUT_COMPLEX_COUNT: usize = 257;
+        let program =
+            format!("([('assign', ('out', 0), ('param', 0))], {INPUT_COMPLEX_COUNT}, [])");
+        let bytes = compile_symbolica_program_to_plane_application_bytes(
+            &program,
+            INPUT_COMPLEX_COUNT,
+            1,
+            2,
+            false,
+        )
+        .unwrap();
+        let mut parameter_bindings = Vec::new();
+        let mut input_planes = Vec::new();
+        for index in 0..(2 * INPUT_COMPLEX_COUNT) {
+            parameter_bindings.push(SymjitDirectParameterBinding::Plane {
+                index: index as u32,
+            });
+            input_planes.push(SymjitDirectPlaneProjection::ParentCurrent {
+                parent: 0,
+                component: 0,
+                imaginary: index % 2 == 1,
+            });
+        }
+        input_planes.extend([
+            SymjitDirectPlaneProjection::DestinationCurrent {
+                component: 0,
+                imaginary: false,
+            },
+            SymjitDirectPlaneProjection::DestinationCurrent {
+                component: 0,
+                imaginary: true,
+            },
+        ]);
+        let mut scalars = vec![
+            SymjitDirectScalarProjection::ExactFactor { imaginary: false },
+            SymjitDirectScalarProjection::ExactFactor { imaginary: true },
+        ];
+        scalars.resize(257, SymjitDirectScalarProjection::Literal(0.0));
+
+        LoadedSymjitDirectExecutor::load_prepared_application_bytes(
+            &bytes,
+            PathBuf::from("large-recurrence-plane.symjit"),
+            SYMJIT_RECURRENCE_PLANE_APPLICATION_ABI,
+            2,
+            false,
+            DirectExecutorRole::Contribution,
+            parameter_bindings,
+            input_planes,
+            scalars,
+            vec![514, 515],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn descriptor_cache_accounting_accepts_the_observed_303_megabyte_geometry() {
+        assert_eq!(
+            checked_descriptor_cache_bytes(153_624_576, 149_667_840).unwrap(),
+            303_292_416
+        );
+        assert!(checked_descriptor_cache_bytes(usize::MAX, 1).is_err());
+    }
+
+    #[test]
+    fn callback_failure_reaches_the_direct_backend_with_concrete_context() {
+        let loaded = identity_executor(DirectExecutorRole::Contribution);
+        let DirectExecutorHandle::Contribution { call, context } = loaded.handle() else {
+            unreachable!()
+        };
+        let mut current_re = vec![1.0; 2];
+        let mut current_im = vec![0.0; 2];
+        let mut amplitude_re = vec![0.0; 1];
+        let mut amplitude_im = vec![0.0; 1];
+        let (arena, momenta, parameters, factors) = views(
+            &mut current_re,
+            &mut current_im,
+            &mut amplitude_re,
+            &mut amplitude_im,
+            &[],
+            &[],
+            &[],
+            &[],
+            1,
+        );
+        let row = DirectContributionRow {
+            parent0_component_base: 0,
+            parent1_component_base_or_sentinel: DIRECT_NONE_U32,
+            parent0_momentum_form_id: 0,
+            parent1_momentum_form_id_or_sentinel: DIRECT_NONE_U32,
+            destination_component_base: 1,
+            exact_factor_id: 0,
+            selector_domain_id: 0,
+            flags: 0,
+        };
+
+        crate::recurrence::direct_backend::clear_direct_executor_error_detail();
+        let status = unsafe { call(context, arena, momenta, parameters, factors, &row, 1, 1) };
+        let error = crate::recurrence::direct_backend::check_status(
+            DirectExecutorRole::Contribution,
+            312,
+            status,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Integrity);
+        assert!(error.message().contains("Contribution executor 312 failed"));
+        assert!(error.message().contains("exact factor"));
     }
 
     fn parameter_broadcast_executor(role: DirectExecutorRole) -> LoadedSymjitDirectExecutor {

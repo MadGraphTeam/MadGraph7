@@ -2553,6 +2553,7 @@ def test_scheduler_plumbs_authenticated_generation_only_limit(
             generation_time_limit_seconds=7200.0,
             profiling_time_limit_seconds=60.0,
             validation_time_limit_seconds=30.0,
+            max_rss_bytes=30_000_000_000,
         ),
     )
     monkeypatch.setattr(scheduler, "_prepare_model_for", lambda _planned: None)
@@ -2582,6 +2583,8 @@ def test_scheduler_plumbs_authenticated_generation_only_limit(
         == channel.authentication_key
     )
     assert command[command.index("--worker-wall-limit") + 1] == "90.0"
+    assert command[command.index("--memory-limit-bytes") + 1] == "30000000000"
+    assert captured["max_rss_bytes"] == 30_000_000_000
     assert command[command.index("--profiling-time-limit") + 1] == "60.0"
     assert command[command.index("--validation-time-limit") + 1] == "30.0"
 

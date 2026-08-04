@@ -2788,6 +2788,9 @@ class CampaignScheduler:
                     "--progress-jsonl",
                     os.fspath(worker_progress),
                 ]
+                memory_limit_bytes = self._effective_cell_rss_limit()
+                if memory_limit_bytes is not None:
+                    command.extend(("--memory-limit-bytes", str(memory_limit_bytes)))
                 for option, limit in (
                     ("--worker-wall-limit", self.settings.timeout_seconds),
                     (
@@ -2932,7 +2935,7 @@ class CampaignScheduler:
                     ),
                     generation_guard_includes_preparation=True,
                     phase_channel=phase_channel,
-                    max_rss_bytes=self._effective_cell_rss_limit(),
+                    max_rss_bytes=memory_limit_bytes,
                     environment_overrides=_worker_environment_overrides(
                         self.settings,
                         self.service.paths.coordination_root,

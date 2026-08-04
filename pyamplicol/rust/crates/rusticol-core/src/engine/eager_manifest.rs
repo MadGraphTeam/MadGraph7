@@ -15,8 +15,6 @@ use sha2::{Digest, Sha256};
 use std::fmt::Write as _;
 
 pub(super) const EAGER_EXECUTION_KIND: &str = "pyamplicol-runtime-eager-execution";
-pub(super) const MAX_EAGER_POINT_TILE_SIZE: usize = 1_048_576;
-pub(super) const MAX_EAGER_WORKSPACE_MIB: usize = 4096;
 const PREPARED_KERNEL_VARIANT_ABI: &str = "pyamplicol-prepared-kernel-variant-v2";
 const PREPARED_INDEPENDENT_BLOCK_VARIANT_ID: &str = "independent-block-4";
 const PREPARED_INDEPENDENT_BLOCK_PROOF: &str = "prepared-kernel-independent-current-block-v1";
@@ -67,15 +65,15 @@ pub(super) struct EagerRuntimeOptionsManifest {
 
 impl EagerRuntimeOptionsManifest {
     pub(super) fn validate(self) -> RusticolResult<crate::EagerRuntimeOptions> {
-        if self.point_tile_size == 0 || self.point_tile_size > MAX_EAGER_POINT_TILE_SIZE {
-            return Err(RusticolError::artifact(format!(
-                "eager point_tile_size must be in 1..={MAX_EAGER_POINT_TILE_SIZE}"
-            )));
+        if self.point_tile_size == 0 {
+            return Err(RusticolError::artifact(
+                "eager point_tile_size must be positive",
+            ));
         }
-        if self.workspace_mib == 0 || self.workspace_mib > MAX_EAGER_WORKSPACE_MIB {
-            return Err(RusticolError::artifact(format!(
-                "eager workspace_mib must be in 1..={MAX_EAGER_WORKSPACE_MIB}"
-            )));
+        if self.workspace_mib == 0 {
+            return Err(RusticolError::artifact(
+                "eager workspace_mib must be positive",
+            ));
         }
         crate::EagerRuntimeOptions::from_mib(self.point_tile_size, self.workspace_mib)
     }
