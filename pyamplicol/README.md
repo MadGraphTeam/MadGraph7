@@ -79,8 +79,11 @@ cd pyamplicol-examples
 ```
 
 Keep the Python environment containing pyAmpliCol activated while using the
-copy. The generated Python driver imports that installation, and the native
-Makefiles discover its SDK through the sibling `rusticol-config` command.
+top-level CLI and Python examples, or invoke its executables by explicit path.
+For a copy below a source checkout prepared by `just dev-install`, generated
+artifact Python and native API drivers also find the nearest checkout `.venv`
+automatically; explicit SDK overrides and an active environment take
+precedence.
 
 The primary example generates a multiprocess `p p > Z j j` artifact from the
 packaged serialized Standard Model, then evaluates and profiles one concrete

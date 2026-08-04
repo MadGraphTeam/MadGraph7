@@ -8,10 +8,24 @@ FC ?= gfortran
 CXXFLAGS ?= -O2
 FFLAGS ?= -O2
 RUSTICOL_CONFIG ?= rusticol-config
+RUSTICOL_CONFIG_PATH := $(shell \
+	if command -v "$(RUSTICOL_CONFIG)" >/dev/null 2>&1; then \
+		command -v "$(RUSTICOL_CONFIG)"; \
+	elif [ "$(RUSTICOL_CONFIG)" = rusticol-config ]; then \
+		directory="$(CURDIR)"; \
+		while [ "$$directory" != / ]; do \
+			candidate="$$directory/.venv/bin/rusticol-config"; \
+			if [ -x "$$candidate" ]; then printf '%s\n' "$$candidate"; break; fi; \
+			directory=$$(dirname "$$directory"); \
+		done; \
+	fi)
+ifeq ($(strip $(RUSTICOL_CONFIG_PATH)),)
+$(error rusticol-config is unavailable; activate the pyAmpliCol environment or set RUSTICOL_CONFIG=/absolute/path)
+endif
 
-RUSTICOL_CFLAGS := $(shell $(RUSTICOL_CONFIG) --cflags)
-RUSTICOL_LIBS := $(shell $(RUSTICOL_CONFIG) --libs)
-RUSTICOL_FORTRAN := $(shell $(RUSTICOL_CONFIG) --fortran-source)
+RUSTICOL_CFLAGS := $(shell "$(RUSTICOL_CONFIG_PATH)" --cflags)
+RUSTICOL_LIBS := $(shell "$(RUSTICOL_CONFIG_PATH)" --libs)
+RUSTICOL_FORTRAN := $(shell "$(RUSTICOL_CONFIG_PATH)" --fortran-source)
 
 .PHONY: all
 all: runtime_cpp runtime_fortran

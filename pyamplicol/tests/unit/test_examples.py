@@ -268,11 +268,13 @@ def test_native_examples_use_installed_sdk_discovery_and_public_wrappers() -> No
     fortran = (EXAMPLES / "native/runtime.f90").read_text(encoding="utf-8")
 
     for option in ("--cflags", "--libs", "--fortran-source"):
-        assert f"$(RUSTICOL_CONFIG) {option}" in makefile
+        assert f'"$(RUSTICOL_CONFIG_PATH)" {option}' in makefile
+    assert ".venv/bin/rusticol-config" in makefile
+    assert "rusticol-config is unavailable" in makefile
     assert "CXX ?= c++" in makefile
     assert "ifeq ($(origin FC), default)\nFC := gfortran\nendif" in makefile
     assert "FC ?= gfortran" in makefile
-    assert "$(RUSTICOL_CONFIG) --library" not in makefile
+    assert '"$(RUSTICOL_CONFIG_PATH)" --library' not in makefile
     assert "rusticol::Runtime" in cpp
     assert ".evaluate_resolved(" in cpp
     assert "set_model_parameters_json" in cpp
@@ -297,7 +299,7 @@ def test_native_examples_use_installed_sdk_discovery_and_public_wrappers() -> No
     assert "rusticol_runtime_" not in generated_rust
     assert "unsafe" not in generated_rust
     assert "the Rust Rusticol API supports only double precision" in generated_rust
-    assert "$(RUSTICOL_CONFIG) --rustflags" in generated_makefile
+    assert '"$(RUSTICOL_CONFIG_PATH)" --rustflags' in generated_makefile
 
     combined = "\n".join((makefile, cpp, fortran))
     assert "src/pyamplicol" not in combined

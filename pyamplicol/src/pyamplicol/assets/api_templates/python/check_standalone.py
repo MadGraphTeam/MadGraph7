@@ -5,15 +5,59 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import math
+import os
 import statistics
+import sys
 import time
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-import pyamplicol
+
+def _load_pyamplicol() -> Any:
+    try:
+        return importlib.import_module("pyamplicol")
+    except ModuleNotFoundError as error:
+        if error.name != "pyamplicol":
+            raise
+        previous = os.environ.get("_PYAMPLICOL_API_BOOTSTRAP")
+        if previous is not None:
+            raise SystemExit(
+                "pyamplicol remained unavailable after retrying with " + previous
+            ) from error
+        script = Path(__file__).resolve()
+        layouts = (
+            (Path("bin/python"), Path("bin/rusticol-config")),
+            (Path("Scripts/python.exe"), Path("Scripts/rusticol-config.exe")),
+        )
+        for parent in script.parents:
+            for python_relative, config_relative in layouts:
+                python = parent / ".venv" / python_relative
+                config = parent / ".venv" / config_relative
+                if (
+                    not python.is_file()
+                    or not os.access(python, os.X_OK)
+                    or not config.is_file()
+                    or not os.access(config, os.X_OK)
+                ):
+                    continue
+                environment = os.environ.copy()
+                environment["_PYAMPLICOL_API_BOOTSTRAP"] = str(python)
+                os.execve(
+                    python,
+                    (str(python), str(script), *sys.argv[1:]),
+                    environment,
+                )
+        raise SystemExit(
+            "pyamplicol is not importable; activate its environment or place this "
+            "artifact below a checkout containing .venv from `just dev-install`"
+        ) from error
+
+
+pyamplicol = _load_pyamplicol()
 
 
 def _validation_point(path: Path, process_id: str, precision: int):

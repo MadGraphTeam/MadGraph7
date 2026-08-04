@@ -41,6 +41,14 @@ that environment rather than embedding the path of the machine that generated
 the artifact. If `pyamplicol` was invoked by an explicit path, activate that
 same environment or add its `bin` directory to `PATH` first.
 
+The canonical source workflow has one additional fallback. Generated API
+drivers and the copied hand-written native Makefile walk their containing
+checkout for the nearest `.venv/bin/rusticol-config`, as created by
+`just dev-install`; the generated Python driver likewise retries with that
+environment's Python. This supports a copied workspace below the checkout even
+from a later, unactivated shell. An explicit `RUSTICOL_CONFIG` or active `PATH`
+always wins, and artifacts elsewhere retain the activation/override contract.
+
 `--cflags`, `--libs`, and `--rustflags` return shell-escaped argument streams.
 `--rust-source` returns the safe Rust wrapper path. `--cargo-rustflags` returns
 the same Rust linker arguments in Cargo's unit-separator encoding for
@@ -98,6 +106,15 @@ make -C artifacts/pp_zjj/API/fortran run \
 Each Makefile writes binaries, objects, and Fortran modules to a sibling
 `.pyamplicol-api-build/` directory, leaving the integrity-checked process
 artifact unchanged.
+
+Regenerate artifacts created before this discovery fallback was introduced;
+their API payloads are immutable and intentionally are not rewritten in place.
+For the copied primary source example, use:
+
+```console
+../.venv/bin/pyamplicol generate_pp_zjj_from_ufo_sm.toml \
+  --set generation.mode=replace
+```
 
 Compiled and eager artifacts use this same API surface. Eager artifacts carry
 their model-local kernel payloads and compact invocation tables inside the
