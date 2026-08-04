@@ -2979,7 +2979,7 @@ class Vertex(PhysicsObject):
     """Vertex: list of legs (ordered), id (Interaction)
     """
     
-    sorted_keys = ['id', 'legs', 'color_key', 'aux_pair']
+    sorted_keys = ['id', 'legs']
 
     # This sets what are the ID's of the vertices that must be ignored for the
     # purpose of the multi-channeling. 0 and -1 are ID's of various technical
@@ -3014,20 +3014,6 @@ class Vertex(PhysicsObject):
         #       that it can be easily identified when constructing the DiagramChainLinks.
         self['id'] = 0
         self['legs'] = LegList()
-        # Restrict the vertex to a single colour structure of its interaction.
-        # None (the default) means that all of them contribute, which is the
-        # normal situation. It is set when a quartic vertex has been recovered
-        # from the two cubic vertices it factorises into, since each such pair
-        # rebuilds one specific colour structure (see
-        # diagram_generation.Amplitude.collapse_auxiliary_diagrams).
-        self['color_key'] = None
-        # Numbers of the two legs which used to sit on the auxiliary line.
-        # The colour structure the vertex is restricted to is the one
-        # separating them, but which structure that is can only be settled
-        # once the mothers are in the order ALOHA receives them, so the pair
-        # is carried along and resolved in generate_helas_diagrams.
-        self['aux_pair'] = None
-
     def filter(self, name, value):
         """Filter for valid vertex property values."""
 
@@ -3038,14 +3024,6 @@ class Vertex(PhysicsObject):
         if name == 'legs':
             if not isinstance(value, LegList):
                 raise self.PhysicsObjectError("%s is not a valid LegList object" % str(value))
-
-        if name == 'color_key':
-            if value is not None and not isinstance(value, int):
-                raise self.PhysicsObjectError("%s is not a valid colour key" % str(value))
-
-        if name == 'aux_pair':
-            if value is not None and not isinstance(value, tuple):
-                raise self.PhysicsObjectError("%s is not a valid auxiliary pair" % str(value))
 
         return True
 

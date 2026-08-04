@@ -201,12 +201,6 @@ class ColorBasis(dict):
             # Ignore color string if it doesn't correspond to any coupling
             if i not in inter_indices:
                 continue
-
-            # A vertex rebuilt from the two cubic vertices it factorises into
-            # only carries the colour structure those two reproduce.
-            if vertex.get('color_key') is not None and \
-               i != vertex.get('color_key'):
-                continue
             
             # Build the new element
             assert type(col_str) == color_algebra.ColorString 

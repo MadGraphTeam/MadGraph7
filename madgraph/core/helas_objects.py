@@ -2054,8 +2054,7 @@ class HelasWavefunction(base_objects.PhysicsObject):
 
         vertex = base_objects.Vertex({
             'id': self.get('interaction_id'),
-            'legs': legs,
-            'color_key': diagram_generation.pinned_color_key(self)})
+            'legs': legs})
 
         return vertex
 
@@ -3412,8 +3411,7 @@ class HelasAmplitude(base_objects.PhysicsObject):
 
         return base_objects.Vertex({
             'id': self.get('interaction_id'),
-            'legs': legs,
-            'color_key': diagram_generation.pinned_color_key(self)})
+            'legs': legs})
 
     def get_s_and_t_channels(self, ninitial, model, new_pdg, reverse_t_ch = False):
         """Returns two lists of vertices corresponding to the s- and
@@ -4002,7 +4000,6 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # Cache for get_quartic_amplitude_merges(), needed both by the helas
         # calls and by the colour amplitudes. Runtime only, like the above.
         self.quartic_amplitude_merges = None
-        self.quartic_wavefunction_merges = None
 
     def filter(self, name, value):
         """Filter for valid diagram property values."""
@@ -4233,15 +4230,6 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                     done_color = {} # store link to color
                     for coupl_key in sorted(inter.get('couplings').keys()):
                         color = coupl_key[0]
-                        # a vertex rebuilt from two cubic vertices only carries
-                        # the colour structure those two reproduce
-                        if vertex.get('color_key') is not None:
-                            probe = HelasWavefunction(last_leg,
-                                                      vertex.get('id'), model)
-                            probe.set('mothers', mothers)
-                            if color != self.resolve_auxiliary_color_key(
-                                    probe, vertex, model):
-                                continue
                         if color in done_color:
                             wf = done_color[color]
                             wf.get('coupling').append(inter.get('couplings')[coupl_key])
@@ -4343,14 +4331,6 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 done_color = {}
                 for i, coupl_key in enumerate(keys):
                     color = coupl_key[0]
-                    # a vertex rebuilt from two cubic vertices only carries
-                    # the colour structure those two reproduce
-                    if inter and lastvx.get('color_key') is not None:
-                        probe = HelasAmplitude(lastvx, model)
-                        probe.set('mothers', mothers)
-                        if color != self.resolve_auxiliary_color_key(
-                                probe, lastvx, model):
-                            continue
                     if inter and color in list(done_color.keys()):
                         amp = done_color[color]
                         amp.get('coupling').append(inter.get('couplings')[coupl_key])
@@ -6131,36 +6111,6 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         return col_amp_list
 
 
-    @staticmethod
-    def resolve_auxiliary_color_key(candidate, vertex, model):
-        """Colour structure a recovered quartic vertex is restricted to.
-
-        The vertex was rebuilt from two cubic vertices sharing an auxiliary
-        line, so it only carries the colour structure separating the pair that
-        used to sit on that line. Which structure that is depends on the order
-        in which ALOHA receives the legs, so it can only be settled here,
-        against sorted_mothers, and not on the generated diagram."""
-
-        pair = vertex.get('aux_pair')
-        pairings = diagram_generation.get_unrollable_quartic_vertices(
-            model).get(vertex.get('id'), (None, None))[1]
-        if pair is None or pairings is None:
-            return vertex.get('color_key')
-
-        mothers = HelasMatrixElement.sorted_mothers(candidate)
-        if isinstance(candidate, HelasWavefunction):
-            outgoing = candidate.find_outgoing_number() - 1
-            slots = [i for i in range(len(mothers) + 1) if i != outgoing]
-        else:
-            slots = list(range(len(mothers)))
-        wanted = frozenset(slots[i] for i, mother in enumerate(mothers)
-                           if mother.get('number_external') in pair)
-        for key, pairing in enumerate(pairings):
-            if frozenset(pairing[0]) == wanted or \
-               frozenset(pairing[1]) == wanted:
-                return key
-        return vertex.get('color_key')
-
     def get_color_amplitudes(self):
         """Return a list of (coefficient, amplitude number) lists,
         corresponding to the JAMPs for this matrix element. The
@@ -6176,91 +6126,6 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # they must not enter the JAMPs a second time.
         return [[entry for entry in col_amp if entry[1] not in merges]
                 for col_amp in col_amps]
-
-    def get_quartic_wavefunction_merges(self):
-        """Pairs of currents which can be summed instead of their amplitudes.
-
-        Where a quartic current and the cubic current it has to be summed with
-        sit at the same node, and the amplitudes using them differ by nothing
-        else, the sum can be done once on the current rather than on every
-        amplitude that current feeds. Both carry the same 1/P^2 through the
-        same propagator, so they simply add.
-
-        Returns ({source number: (source, target, coeff)}, absorbed amplitude
-        numbers). The absorbed amplitudes are the ones the sum takes care of:
-        they must be left out of both the helas calls and the JAMPs.
-        """
-
-        if self.quartic_wavefunction_merges is None:
-            self.quartic_wavefunction_merges = \
-                self.compute_quartic_wavefunction_merges()
-        return self.quartic_wavefunction_merges
-
-    def compute_quartic_wavefunction_merges(self):
-        """Work out the current sums, see get_quartic_wavefunction_merges."""
-
-        merges = self.get_quartic_amplitude_merges()
-        if not merges:
-            return {}, set()
-
-        model = self.get('processes')[0].get('model')
-        unrollable = diagram_generation.get_unrollable_quartic_vertices(model)
-        amplitudes = dict((amp.get('number'), amp)
-                          for amp in self.get_all_amplitudes())
-
-        # every consumer of a wavefunction, so that a current is only summed
-        # away when nothing else is left needing it on its own
-        consumers = {}
-        for amp in self.get_all_amplitudes():
-            for mother in amp.get('mothers'):
-                consumers.setdefault(mother.get('number'), []).append(
-                    ('amplitude', amp.get('number')))
-        for wf in self.get_all_wavefunctions():
-            for mother in wf.get('mothers'):
-                consumers.setdefault(mother.get('number'), []).append(
-                    ('wavefunction', wf.get('number')))
-
-        candidates = {}
-        absorbed = {}
-        for source, (target, coeff) in merges.items():
-            mothers = amplitudes[source].get('mothers')
-            others = amplitudes[target].get('mothers')
-            if len(mothers) != len(others):
-                continue
-            numbers = [wf.get('number') for wf in others]
-            only_source = [wf for wf in mothers
-                           if wf.get('number') not in numbers]
-            numbers = [wf.get('number') for wf in mothers]
-            only_target = [wf for wf in others
-                           if wf.get('number') not in numbers]
-            if len(only_source) != 1 or len(only_target) != 1:
-                continue
-            quartic, cubic = only_source[0], only_target[0]
-            if quartic.get('interaction_id') not in unrollable or \
-               cubic.get('interaction_id') in unrollable:
-                continue
-            key = quartic.get('number')
-            if key in candidates and candidates[key] != (quartic, cubic, coeff):
-                candidates[key] = None      # not a single consistent sum
-                continue
-            candidates.setdefault(key, (quartic, cubic, coeff))
-            absorbed.setdefault(key, set()).add(source)
-
-        res = {}
-        taken = set()
-        for key, value in candidates.items():
-            if value is None:
-                continue
-            # the sum only replaces this current if it accounts for every use
-            uses = consumers.get(key, [])
-            if any(kind == 'wavefunction' for kind, _ in uses):
-                continue
-            if set(number for _, number in uses) != absorbed[key]:
-                continue
-            res[key] = value
-            taken |= absorbed[key]
-
-        return res, taken
 
     def get_quartic_amplitude_merges(self):
         """Return {amplitude number: (target number, coefficient)} for the
