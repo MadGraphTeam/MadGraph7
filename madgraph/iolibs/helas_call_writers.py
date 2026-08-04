@@ -242,7 +242,16 @@ class HelasCallWriter(base_objects.PhysicsObject):
             for amplitude in diagram.get('amplitudes'):
                 res.append(self.get_amplitude_call(amplitude))
 
+        res.extend(self.get_amplitude_merge_lines(matrix_element))
+
         return res
+
+    def get_amplitude_merge_lines(self, matrix_element):
+        """Lines summing the quartic contributions into the amplitude which
+        carries the same colour factor. Only the Fortran writer implements
+        this, see FortranUFOHelasCallWriter."""
+
+        return []
 
     def get_wavefunction_calls(self, wavefunctions):
         """Return a list of strings, corresponding to the Helas calls
@@ -1026,6 +1035,34 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
     the interaction."""
 
     mp_prefix = check_param_card.ParamCard.mp_prefix
+
+    def get_amplitude_merge_lines(self, matrix_element):
+        """Sum every quartic contribution into the amplitude carrying the
+        same colour factor.
+
+        The two share a colour factor up to a rational coefficient, so adding
+        them here lets the JAMPs run over the cubic diagrams only, which is
+        what the JAMP optimiser then has to work with. The amplitudes summed
+        away are dropped from the colour amplitudes by
+        HelasMatrixElement.get_color_amplitudes."""
+
+        merges = matrix_element.get_quartic_amplitude_merges()
+        if not merges:
+            return []
+
+        res = ['# Sum the quartic contributions into their cubic partner']
+        for source in sorted(merges):
+            target, coeff = merges[source]
+            if coeff == 1:
+                res.append('AMP(%d) = AMP(%d) + AMP(%d)' %
+                           (target, target, source))
+            elif coeff == -1:
+                res.append('AMP(%d) = AMP(%d) - AMP(%d)' %
+                           (target, target, source))
+            else:
+                res.append('AMP(%d) = AMP(%d) + (%.15e)*AMP(%d)' %
+                           (target, target, float(coeff), source))
+        return res
 
     def __init__(self, argument={}, hel_sum = False, options={}):
         """Allow generating a HelasCallWriter from a Model.The hel_sum argument

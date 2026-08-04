@@ -17,6 +17,7 @@
 
 from __future__ import absolute_import
 import copy
+import fractions
 import itertools
 import logging
 import math
@@ -25,6 +26,7 @@ import math
 import tests.unit_tests as unittest
 
 import madgraph.core.base_objects as base_objects
+import madgraph.core.color_amp as color_amp
 import madgraph.core.diagram_generation as diagram_generation
 import models.import_ufo as import_ufo
 from madgraph import MadGraph5Error, InvalidCmd
@@ -3893,3 +3895,162 @@ class TestDiagramTag(unittest.TestCase):
                 self.assertEqual(dtag,
                                  diagram_generation.DiagramTag(\
                                      dtag.diagram_from_tag(self.base_model)))
+
+#===============================================================================
+# TestQuarticUnrolling
+#===============================================================================
+class TestQuarticUnrolling(unittest.TestCase):
+    """Test the unrolling of quartic vertices into pairs of cubic ones"""
+
+    def setUp(self):
+        self.base_model = import_ufo.import_model('sm')
+
+    def make_amplitude(self, initial, final, orders=None):
+        myleglist = base_objects.LegList(
+            [base_objects.Leg({'id':pdg, 'state':False}) for pdg in initial] +
+            [base_objects.Leg({'id':pdg, 'state':True}) for pdg in final])
+        mydict = {'legs':myleglist, 'model':self.base_model}
+        if orders:
+            mydict['orders'] = orders
+        return diagram_generation.Amplitude(base_objects.Process(mydict))
+
+    def colour_directions(self, amplitude):
+        """Return {(diagram, colour chain): (direction, norm)} where direction
+        is the colour vector of that contribution normalised to its first non
+        zero entry. Two contributions can be summed exactly when they share a
+        direction, the relative weight being the ratio of their norms. This is
+        computed from the colour algebra and is completely independent from
+        the unrolling being tested."""
+
+        basis = color_amp.ColorBasis()
+        basis.build(amplitude)
+        components = {}
+        for index, key in enumerate(sorted(basis.keys())):
+            for (diag, chain, coeff, imag, nc, loop_nc) in basis[key]:
+                components.setdefault((diag, chain), {})[index] = \
+                    (fractions.Fraction(coeff), imag, nc, loop_nc)
+
+        res = {}
+        for piece, entries in components.items():
+            first = min(entries)
+            norm, imag, nc, loop_nc = entries[first]
+            res[piece] = (tuple(sorted(
+                (i, c / norm, m ^ imag, n - nc, l - loop_nc)
+                for i, (c, m, n, l) in entries.items())), norm)
+        return res
+
+    def check_process(self, initial, final, nlink, orders=None):
+        """Every link must reproduce the colour algebra, and every quartic
+        contribution must be linked to exactly one cubic diagram."""
+
+        amplitude = self.make_amplitude(initial, final, orders)
+        links = amplitude.unroll_quartic_vertices()
+        directions = self.colour_directions(amplitude)
+        diagrams = amplitude.get('diagrams')
+
+        self.assertEqual(len(links), nlink)
+
+        for (diag, chain), (target, coeff) in links.items():
+            target_chain = (0,) * len(diagrams[target].get('vertices'))
+            source_dir, source_norm = directions[(diag, chain)]
+            target_dir, target_norm = directions[(target, target_chain)]
+            # same colour direction, and the coefficient is the relative weight
+            self.assertEqual(source_dir, target_dir)
+            self.assertEqual(coeff, source_norm / target_norm)
+            # the target is a genuine cubic diagram
+            self.assertEqual(amplitude.unrolled_diagram(
+                diagrams[target], {},
+                diagram_generation.get_unrollable_quartic_vertices(
+                    self.base_model)).get('vertices'),
+                diagrams[target].get('vertices'))
+
+        # nothing is left behind: the contributions which are not linked are
+        # exactly the ones carried by a diagram without any quartic vertex
+        unrollable = diagram_generation.get_unrollable_quartic_vertices(
+            self.base_model)
+        cubic = [i for i, d in enumerate(diagrams)
+                 if not any(v.get('id') in unrollable
+                            for v in d.get('vertices'))]
+        unlinked = [piece for piece in directions if piece not in links]
+        self.assertEqual(sorted(piece[0] for piece in unlinked), sorted(cubic))
+
+    def test_unrollable_vertices_sm(self):
+        """The four gluon vertex is the only one factorising in the SM"""
+
+        unrollable = diagram_generation.get_unrollable_quartic_vertices(
+            self.base_model)
+        self.assertEqual(len(unrollable), 1)
+        (cubic, pairings), = unrollable.values()
+        quartic, = unrollable.keys()
+        self.assertEqual([p.get_pdg_code() for p in
+                          self.base_model.get_interaction(quartic).get('particles')],
+                         [21, 21, 21, 21])
+        self.assertEqual([p.get_pdg_code() for p in
+                          self.base_model.get_interaction(cubic).get('particles')],
+                         [21, 21, 21])
+        # each colour structure splits the four legs into two pairs
+        self.assertEqual(pairings, [((0, 1), (2, 3)),
+                                    ((0, 2), (1, 3)),
+                                    ((0, 3), (1, 2))])
+
+    def test_unroll_gg_gg(self):
+        """g g > g g: the contact term merges into the s, t and u channel"""
+
+        self.check_process([21, 21], [21, 21], 3)
+
+    def test_unroll_gg_ggg(self):
+        """g g > g g g: 45 contributions collapse onto the 15 cubic diagrams"""
+
+        self.check_process([21, 21], [21, 21, 21], 30)
+
+    def test_unroll_gg_gggg(self):
+        """g g > g g g g: 510 contributions collapse onto 105 cubic diagrams"""
+
+        self.check_process([21, 21], [21, 21, 21, 21], 405)
+
+    def test_unroll_bbx_ggg(self):
+        """A quartic vertex sitting next to a colour triplet line"""
+
+        self.check_process([5, -5], [21, 21, 21], 3)
+
+    def test_unroll_gg_ttxg(self):
+        """The quartic vertex feeding an internal gluon of a t t~ pair"""
+
+        self.check_process([21, 21], [6, -6, 21], 3)
+
+    def test_links_match_helas_colour_indices(self):
+        """The links must be usable against HelasAmplitude.
+
+        helas_objects colorizes the reconstructed base amplitude, whose
+        vertex order can differ from the generated diagrams, so the chains
+        only line up with HelasAmplitude.get('color_indices') when the
+        unrolling is run on get_base_amplitude()."""
+
+        import madgraph.core.helas_objects as helas_objects
+
+        amplitude = self.make_amplitude([21, 21], [21, 21, 21])
+        matrix_element = helas_objects.HelasMatrixElement(amplitude)
+        base = matrix_element.get('base_amplitude')
+
+        known = {}
+        for diagram in matrix_element.get('diagrams'):
+            for helas_amp in diagram.get('amplitudes'):
+                known[(diagram.get('number') - 1,
+                       tuple(helas_amp.get('color_indices')))] = \
+                    helas_amp.get('number')
+
+        links = base.unroll_quartic_vertices()
+        self.assertTrue(links)
+        for (diag, chain), (target, _) in links.items():
+            target_chain = (0,) * len(base.get('diagrams')[target].get('vertices'))
+            self.assertIn((diag, chain), known)
+            self.assertIn((target, target_chain), known)
+        # every amplitude is either a merge target or folded into one
+        self.assertEqual(len(known) - len(links),
+                         len(set(target for target, _ in links.values())))
+
+    def test_no_unrolling_without_quartic(self):
+        """Processes without a four gluon vertex give no link"""
+
+        amplitude = self.make_amplitude([5, -5], [5, -5])
+        self.assertEqual(amplitude.unroll_quartic_vertices(), {})

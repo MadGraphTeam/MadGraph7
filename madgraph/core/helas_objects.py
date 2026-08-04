@@ -2054,7 +2054,8 @@ class HelasWavefunction(base_objects.PhysicsObject):
 
         vertex = base_objects.Vertex({
             'id': self.get('interaction_id'),
-            'legs': legs})
+            'legs': legs,
+            'color_key': diagram_generation.pinned_color_key(self)})
 
         return vertex
 
@@ -3411,7 +3412,8 @@ class HelasAmplitude(base_objects.PhysicsObject):
 
         return base_objects.Vertex({
             'id': self.get('interaction_id'),
-            'legs': legs})
+            'legs': legs,
+            'color_key': diagram_generation.pinned_color_key(self)})
 
     def get_s_and_t_channels(self, ninitial, model, new_pdg, reverse_t_ch = False):
         """Returns two lists of vertices corresponding to the s- and
@@ -3997,6 +3999,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         self._flavor_populated = False
         self._flavor_allow_trimming = False
         self._flavor_trimmed = False
+        # Cache for get_quartic_amplitude_merges(), needed both by the helas
+        # calls and by the colour amplitudes. Runtime only, like the above.
+        self.quartic_amplitude_merges = None
 
     def filter(self, name, value):
         """Filter for valid diagram property values."""
@@ -4227,6 +4232,15 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                     done_color = {} # store link to color
                     for coupl_key in sorted(inter.get('couplings').keys()):
                         color = coupl_key[0]
+                        # a vertex rebuilt from two cubic vertices only carries
+                        # the colour structure those two reproduce
+                        if vertex.get('color_key') is not None:
+                            probe = HelasWavefunction(last_leg,
+                                                      vertex.get('id'), model)
+                            probe.set('mothers', mothers)
+                            if color != self.resolve_auxiliary_color_key(
+                                    probe, vertex, model):
+                                continue
                         if color in done_color:
                             wf = done_color[color]
                             wf.get('coupling').append(inter.get('couplings')[coupl_key])
@@ -4328,6 +4342,14 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 done_color = {}
                 for i, coupl_key in enumerate(keys):
                     color = coupl_key[0]
+                    # a vertex rebuilt from two cubic vertices only carries
+                    # the colour structure those two reproduce
+                    if inter and lastvx.get('color_key') is not None:
+                        probe = HelasAmplitude(lastvx, model)
+                        probe.set('mothers', mothers)
+                        if color != self.resolve_auxiliary_color_key(
+                                probe, lastvx, model):
+                            continue
                     if inter and color in list(done_color.keys()):
                         amp = done_color[color]
                         amp.get('coupling').append(inter.get('couplings')[coupl_key])
@@ -6107,13 +6129,108 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
         return col_amp_list
 
+
+    @staticmethod
+    def resolve_auxiliary_color_key(candidate, vertex, model):
+        """Colour structure a recovered quartic vertex is restricted to.
+
+        The vertex was rebuilt from two cubic vertices sharing an auxiliary
+        line, so it only carries the colour structure separating the pair that
+        used to sit on that line. Which structure that is depends on the order
+        in which ALOHA receives the legs, so it can only be settled here,
+        against sorted_mothers, and not on the generated diagram."""
+
+        pair = vertex.get('aux_pair')
+        pairings = diagram_generation.get_unrollable_quartic_vertices(
+            model).get(vertex.get('id'), (None, None))[1]
+        if pair is None or pairings is None:
+            return vertex.get('color_key')
+
+        mothers = HelasMatrixElement.sorted_mothers(candidate)
+        if isinstance(candidate, HelasWavefunction):
+            outgoing = candidate.find_outgoing_number() - 1
+            slots = [i for i in range(len(mothers) + 1) if i != outgoing]
+        else:
+            slots = list(range(len(mothers)))
+        wanted = frozenset(slots[i] for i, mother in enumerate(mothers)
+                           if mother.get('number_external') in pair)
+        for key, pairing in enumerate(pairings):
+            if frozenset(pairing[0]) == wanted or \
+               frozenset(pairing[1]) == wanted:
+                return key
+        return vertex.get('color_key')
+
     def get_color_amplitudes(self):
         """Return a list of (coefficient, amplitude number) lists,
         corresponding to the JAMPs for this matrix element. The
         coefficients are given in the format (fermion factor, color
         coeff (frac), imaginary, Nc power)."""
-        
-        return self.generate_color_amplitudes(self['color_basis'],self['diagrams'])
+
+        col_amps = self.generate_color_amplitudes(self['color_basis'],
+                                                  self['diagrams'])
+        merges = self.get_quartic_amplitude_merges()
+        if not merges:
+            return col_amps
+        # These have been summed into their partner by GET_AMP already, so
+        # they must not enter the JAMPs a second time.
+        return [[entry for entry in col_amp if entry[1] not in merges]
+                for col_amp in col_amps]
+
+    def get_quartic_amplitude_merges(self):
+        """Return {amplitude number: (target number, coefficient)} for the
+        quartic gluon contributions which can be summed into another
+        amplitude.
+
+        Each colour structure of a four gluon vertex carries the same colour
+        factor as the diagram obtained by splitting that vertex into two cubic
+        ones, see diagram_generation.Amplitude.unroll_quartic_vertices, so the
+        two amplitudes may be added before the colour algebra is applied.
+        Doing so here keeps the JAMPs -- and hence the work of the JAMP
+        optimiser -- proportional to the number of cubic diagrams rather than
+        to the number of amplitudes.
+
+        The result is cached, since it is needed both when writing the helas
+        calls and when building the colour amplitudes.
+        """
+
+        if self.quartic_amplitude_merges is None:
+            self.quartic_amplitude_merges = self.compute_quartic_amplitude_merges()
+        return self.quartic_amplitude_merges
+
+    def compute_quartic_amplitude_merges(self):
+        """Work out the amplitude merges, see get_quartic_amplitude_merges."""
+
+        if not madgraph.merge_quartic_vertices:
+            return {}
+        # colorize() is applied to the reconstructed amplitude, so this is the
+        # one whose colour chains line up with our 'color_indices'
+        base = self.get('base_amplitude')
+        links = base.unroll_quartic_vertices()
+        if not links:
+            return {}
+
+        numbers = {}
+        for diagram in self.get('diagrams'):
+            for amplitude in diagram.get('amplitudes'):
+                numbers[(diagram.get('number') - 1,
+                         tuple(amplitude.get('color_indices')))] = \
+                    amplitude.get('number')
+
+        res = {}
+        for source, (target, coeff) in links.items():
+            target_chain = (0,) * \
+                len(base.get('diagrams')[target].get('vertices'))
+            try:
+                res[numbers[source]] = (numbers[(target, target_chain)], coeff)
+            except KeyError:
+                # no amplitude for one of the two: leave them alone
+                continue
+
+        # a merged amplitude must never itself be merged away, otherwise the
+        # contributions it absorbed would be lost
+        targets = set(target for target, _ in res.values())
+        return dict((source, value) for source, value in res.items()
+                    if source not in targets)
 
     def sort_split_orders(self, split_orders):
         """ Sort the 'split_orders' list given in argument so that the orders of

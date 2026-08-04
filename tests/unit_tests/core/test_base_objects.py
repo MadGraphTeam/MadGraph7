@@ -1473,7 +1473,9 @@ class VertexTest(unittest.TestCase):
     def setUp(self):
 
         self.mydict = {'id':3,
-                      'legs':self.myleglist}
+                      'legs':self.myleglist,
+                      'color_key':None,
+                      'aux_pair':None}
 
         self.myvertex = base_objects.Vertex(self.mydict)
 
@@ -1547,7 +1549,9 @@ class VertexTest(unittest.TestCase):
 
         goal = "{\n"
         goal = goal + "    \'id\': 3,\n"
-        goal = goal + "    \'legs\': %s\n}" % repr(self.myleglist)
+        goal = goal + "    \'legs\': %s,\n" % repr(self.myleglist)
+        goal = goal + "    \'color_key\': None,\n"
+        goal = goal + "    \'aux_pair\': None\n}"
 
         self.assertEqual(goal, str(self.myvertex))
 

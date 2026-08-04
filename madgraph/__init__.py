@@ -60,4 +60,10 @@ if __debug__ or ADMIN_DEBUG:
     ordering = True
 else:
     ordering = False
+
+# Sum the quartic gluon contributions into the cubic amplitude carrying the
+# same colour factor, see HelasMatrixElement.get_quartic_amplitude_merges.
+# Off by default while the optimisation is being benchmarked.
+merge_quartic_vertices = os.environ.get('MG_MERGE_QUARTIC', '') not in \
+                                                        ('', '0', 'False')
         

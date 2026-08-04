@@ -24,11 +24,13 @@ from __future__ import absolute_import
 
 import array
 import copy
+import fractions
 import itertools
 import logging
 
 import madgraph
 import madgraph.core.base_objects as base_objects
+import madgraph.core.color_algebra as color_algebra
 import madgraph.various.misc as misc
 import madgraph.fks.fks_tag as fks_tag
 from madgraph import InvalidCmd, MadGraph5Error
@@ -294,6 +296,10 @@ class DiagramTag(object):
 #            return (vertex.get('id'),(),{'PDGs':vertex.get('PDGs')})
             return ((vertex.get('id'),vertex.get('loop_tag')),(),
                                                     {'PDGs':vertex.get('PDGs')})
+        elif vertex.get('color_key') is not None:
+            # a vertex restricted to one colour structure is not the same
+            # vertex as the unrestricted one, nor as the other restrictions
+            return ((vertex.get('id'),(vertex.get('color_key'),)),(),{})
         else:
             return ((vertex.get('id'),()),(),{})
 
@@ -426,6 +432,397 @@ class DiagramTagChainLink(object):
                                self.depth)
 
     __repr__ = __str__
+
+#===============================================================================
+# Unrolling of quartic vertices into pairs of cubic vertices
+#===============================================================================
+
+class UnrollDiagramTag(DiagramTag):
+    """DiagramTag which keeps every external leg distinct.
+
+    The default DiagramTag deliberately identifies identical final state
+    particles, which is what is wanted when comparing different processes. To
+    recognise a diagram inside its own amplitude we need the leg numbers, so
+    that e.g. the t- and u-channel of g g > g g do not collide."""
+
+    @staticmethod
+    def link_from_leg(leg, model):
+        return [((leg.get('id'), leg.get('number')), leg.get('number'))]
+
+
+def get_unrollable_quartic_vertices(model):
+    """Find the quartic interactions which factorise into two cubic ones.
+
+    A quartic vertex qualifies when its four legs carry the same
+    self-conjugate particle and each of its colour structures is a product of
+    two structure constants sharing a single summed index -- the four gluon
+    vertex being the canonical example. Such a colour structure splits the
+    four colour indices into two pairs, and that splitting is precisely the
+    one produced by two cubic vertices joined by an internal line.
+
+    Returns {quartic_id: (cubic_id, pairings)} where pairings[icolor] is the
+    pair of 2-tuples of colour index positions separated by the summed index.
+    """
+
+    try:
+        return model._unrollable_quartic_vertices
+    except AttributeError:
+        pass
+
+    # Cubic candidates: three identical legs with a single f(0,1,2) structure
+    cubic_by_pdg = {}
+    for inter in model.get('interactions'):
+        parts = inter.get('particles')
+        if len(parts) != 3:
+            continue
+        pdgs = misc.make_unique([p.get_pdg_code() for p in parts])
+        if len(pdgs) != 1:
+            continue
+        color = inter.get('color')
+        if len(color) != 1 or len(color[0]) != 1:
+            continue
+        if not isinstance(color[0][0], color_algebra.f) or \
+           sorted(color[0][0]) != [0, 1, 2]:
+            continue
+        cubic_by_pdg[pdgs[0]] = inter.get('id')
+
+    res = {}
+    for inter in model.get('interactions'):
+        parts = inter.get('particles')
+        if len(parts) != 4:
+            continue
+        pdgs = misc.make_unique([p.get_pdg_code() for p in parts])
+        if len(pdgs) != 1 or pdgs[0] not in cubic_by_pdg:
+            continue
+        pairings = []
+        for col_str in inter.get('color'):
+            pairing = _f_pair_split(col_str)
+            if pairing is None:
+                break
+            pairings.append(pairing)
+        else:
+            if pairings:
+                res[inter.get('id')] = (cubic_by_pdg[pdgs[0]], pairings)
+
+    try:
+        model._unrollable_quartic_vertices = res
+    except AttributeError:
+        pass
+    return res
+
+
+def pinned_color_key(helas_object):
+    """Colour structure a reconstructed vertex has to be restricted to.
+
+    With merge_quartic_vertices the quartic vertices are recovered from the
+    two cubic ones they factorise into and therefore carry a single colour
+    structure. The diagram rebuilt from the helas objects has to say so,
+    otherwise colorize() expands all of them and the colour chains no longer
+    match the amplitudes that were actually generated."""
+
+    if not madgraph.merge_quartic_vertices:
+        return None
+    model = getattr(helas_object, 'model', None)
+    if model is None:
+        return None
+    if helas_object.get('interaction_id') in \
+            get_unrollable_quartic_vertices(model):
+        return helas_object.get('color_key')
+    return None
+
+
+def _f_pair_split(col_str):
+    """If col_str is f(..)*f(..) with a single shared summed index and the
+    four remaining indices being 0,1,2,3, return the two pairs of external
+    colour index positions it separates, otherwise None."""
+
+    if len(col_str) != 2 or not all(isinstance(obj, color_algebra.f)
+                                    for obj in col_str):
+        return None
+    shared = [i for i in col_str[0] if i in col_str[1]]
+    if len(shared) != 1 or shared[0] >= 0:
+        return None
+    pairs = tuple(tuple(sorted(i for i in obj if i != shared[0]))
+                  for obj in col_str)
+    if sorted(pairs[0] + pairs[1]) != [0, 1, 2, 3]:
+        return None
+    return pairs
+
+
+AUXILIARY_PDG_OFFSET = 9000000
+
+
+def get_auxiliary_model(model):
+    """Return a copy of model where every unrollable quartic vertex has been
+    replaced by two cubic vertices joined by an auxiliary line.
+
+    Generating with this model gives one diagram per colour structure of the
+    quartic vertex, and -- this is the point -- the diagram carrying the
+    auxiliary line has exactly the same topology, and therefore exactly the
+    same decomposition, as the purely cubic diagram it has to be summed with.
+    The 'from_group' rule which makes that decomposition canonical only looks
+    at the topology, never at which particle sits on a line, so the two are
+    rooted identically and every current except the auxiliary line itself is
+    shared. The auxiliary lines are removed again by
+    Amplitude.collapse_auxiliary_diagrams before the diagrams are used.
+
+    Returns (model, {auxiliary pdg: (quartic id, cubic id, pairings)}) or
+    (model, {}) if there is nothing to do.
+
+    Note that copy.deepcopy must not be used on colour structures: ColorObject
+    derives from array.array and deepcopy silently turns it into a plain array.
+    """
+
+    unrollable = get_unrollable_quartic_vertices(model)
+    if not unrollable:
+        return model, {}
+
+    particles = base_objects.ParticleList(model.get('particles'))
+    interactions = base_objects.InteractionList(
+        [inter for inter in model.get('interactions')
+         if inter.get('id') not in unrollable])
+    next_id = max(inter.get('id') for inter in model.get('interactions')) + 1
+
+    auxiliaries = {}
+    for quartic_id, (cubic_id, pairings) in unrollable.items():
+        quartic = model.get_interaction(quartic_id)
+        partner = quartic.get('particles')[0]
+        aux_pdg = AUXILIARY_PDG_OFFSET + partner.get_pdg_code()
+        auxiliary = base_objects.Particle({
+            'name': 'aux%d' % partner.get_pdg_code(),
+            'antiname': 'aux%d' % partner.get_pdg_code(),
+            'spin': partner.get('spin'), 'color': partner.get('color'),
+            'charge': 0., 'mass': 'ZERO', 'width': 'ZERO',
+            'pdg_code': aux_pdg, 'line': partner.get('line'),
+            'is_part': True, 'self_antipart': True})
+        particles.append(auxiliary)
+
+        # the quartic coupling order is shared between the two cubic vertices
+        orders = dict((order, value // 2)
+                      for order, value in quartic.get('orders').items())
+        interactions.append(base_objects.Interaction({
+            'id': next_id,
+            'particles': base_objects.ParticleList(
+                [partner, partner, auxiliary]),
+            'color': [color_algebra.ColorString(
+                [color_algebra.f(0, 1, 2)])],
+            'lorentz': model.get_interaction(cubic_id).get('lorentz'),
+            'couplings': dict(model.get_interaction(cubic_id).get('couplings')),
+            'orders': orders}))
+        auxiliaries[aux_pdg] = (quartic_id, next_id, pairings)
+        next_id += 1
+
+    aux_model = base_objects.Model()
+    aux_model.set('particles', particles)
+    aux_model.set('interactions', interactions)
+    for key in ('name', 'order_hierarchy', 'conserved_charge',
+                'coupling_orders', 'expansion_order'):
+        try:
+            aux_model.set(key, model.get(key))
+        except Exception:
+            pass
+
+    return aux_model, auxiliaries
+
+
+def colour_index_order(vertex, is_last, model):
+    """Return the vertex legs in the order in which color_amp.ColorBasis maps
+    them onto the colour indices of the interaction.
+
+    This mirrors ColorBasis.add_vertex: the outgoing leg of an internal
+    vertex is flipped to its antiparticle and moved to the front, then the
+    legs are sorted following the particle order of the interaction. Note
+    that the sorting can move the outgoing leg away from the front again, so
+    its position is returned along with the legs.
+
+    Returns (legs, outgoing_position), the position being None for the last
+    vertex of a diagram, or None if the vertex does not match its
+    interaction."""
+
+    inter = model.get_interaction(vertex.get('id'))
+    if inter is None:
+        return None
+
+    legs = vertex.get('legs')
+    entries = []
+    for index, leg in enumerate(legs):
+        part = model.get('particle_dict')[leg.get('id')]
+        outgoing = index == len(legs) - 1 and not is_last
+        entries.append((leg, part.get_anti_pdg_code() if outgoing
+                        else part.get_pdg_code(), outgoing))
+
+    if not is_last:
+        entries.insert(0, entries.pop(-1))
+
+    ordered = []
+    for pdg in [p.get_pdg_code() for p in inter.get('particles')]:
+        for index, entry in enumerate(entries):
+            if entry[1] == pdg:
+                ordered.append(entries.pop(index))
+                break
+        else:
+            return None
+
+    out_position = None
+    for index, entry in enumerate(ordered):
+        if entry[2]:
+            out_position = index
+
+    return [entry[0] for entry in ordered], out_position
+
+
+def split_quartic_vertex(vertex, is_last, pairing, cubic_id, model):
+    """Replace a quartic vertex by the two cubic vertices that the given
+    colour structure factorises into, joined by a new internal line."""
+
+    ordered, out_position = colour_index_order(vertex, is_last, model)
+    first, second = pairing
+    if not is_last and out_position in first:
+        # the pair the outgoing leg does not belong to is the one replaced by
+        # the new internal line
+        first, second = second, first
+
+    combined = [ordered[i] for i in first]
+    new_leg = base_objects.Leg({
+        'id': combined[0].get('id'),
+        'number': min(leg.get('number') for leg in combined),
+        'state': len([l for l in combined if not l.get('state')]) != 1,
+        'from_group': True})
+
+    first_vx = base_objects.Vertex({
+        'legs': base_objects.LegList(combined + [new_leg]),
+        'id': cubic_id})
+    if is_last:
+        rest = [ordered[i] for i in second] + [new_leg]
+    else:
+        # the outgoing leg has to stay last
+        rest = [ordered[i] for i in second if i != out_position] + \
+               [new_leg, ordered[out_position]]
+    second_vx = base_objects.Vertex({'legs': base_objects.LegList(rest),
+                                     'id': cubic_id})
+
+    return [first_vx, second_vx]
+
+
+# Placeholder standing for the single summed index of a factorisable quartic
+# colour structure, which is not a leg of the vertex.
+_SUMMED = 'summed'
+
+
+def diagram_colour_signature(diagram, model, color_chain, unrollable):
+    """Canonical signature of the colour string of one colour structure choice.
+
+    Returns (key, coeff), where key identifies the product of colour objects
+    up to the antisymmetry of the structure constants and coeff collects the
+    resulting sign together with the rational prefactors. Two contributions
+    sharing a key have proportional colour factors and can be summed, the
+    relative weight being the ratio of their coeff.
+
+    Every line is labelled by the set of external legs it separates rather
+    than by its leg number, so that the signature can be compared between
+    diagrams which number their internal lines differently. Returns None when
+    the colour structure is not of a supported form.
+    """
+
+    vertices = diagram.get('vertices')
+    last = len(vertices) - 1
+
+    # A leg number is reused by the vertex which produces it, so an external
+    # leg is one consumed while no internal line of that number is alive.
+    alive = {}
+    externals = []
+    for i, vertex in enumerate(vertices):
+        legs = vertex.get('legs')
+        incoming = legs if i == last else legs[:-1]
+        for leg in incoming:
+            if alive.pop(leg.get('number'), None) is None:
+                externals.append(leg.get('number'))
+        if i != last:
+            alive[legs[-1].get('number')] = True
+    externals = frozenset(externals)
+    if not externals:
+        return None
+    reference = min(externals)
+
+    def normalise(side):
+        """Root independent label of the line splitting side from its rest."""
+        return side if reference not in side else externals - side
+
+    factors = []
+    coeff = fractions.Fraction(1, 1)
+    imaginary = False
+    live = {}
+    for i, vertex in enumerate(vertices):
+        inter = model.get_interaction(vertex.get('id'))
+        if inter is None:
+            return None
+        order = colour_index_order(vertex, i == last, model)
+        if order is None:
+            return None
+        ordered, out_position = order
+        sides = [None] * len(ordered)
+        below = frozenset()
+        # the outgoing leg is only known once all the incoming ones are read,
+        # since a vertex reuses the smallest incoming leg number for it
+        for pos in range(len(ordered)):
+            if pos == out_position:
+                continue
+            number = ordered[pos].get('number')
+            side = live.pop(number, None)
+            if side is None:
+                side = frozenset([number])
+            sides[pos] = side
+            below = below | side
+        if out_position is not None:
+            # the outgoing leg carries everything that is not below it
+            sides[out_position] = externals - below
+            live[ordered[out_position].get('number')] = below
+
+        labels = dict(enumerate(normalise(side) for side in sides))
+        if vertex.get('id') in unrollable:
+            pairing = unrollable[vertex.get('id')][1][color_chain[i]]
+            labels[_SUMMED] = normalise(sides[pairing[0][0]] |
+                                        sides[pairing[0][1]])
+
+        if not inter.get('color'):
+            continue
+        col_str = inter.get('color')[color_chain[i]]
+        coeff *= col_str.coeff
+        imaginary ^= col_str.is_imaginary
+        for obj in col_str:
+            try:
+                indices = [labels[j if j >= 0 else _SUMMED] for j in obj]
+            except KeyError:
+                return None
+            if isinstance(obj, color_algebra.f):
+                # totally antisymmetric: sort and keep track of the parity
+                order = sorted(range(len(indices)),
+                               key=lambda k: sorted(indices[k]))
+                coeff *= _permutation_sign(order)
+                indices = [indices[k] for k in order]
+            factors.append((obj.__class__.__name__,
+                            tuple(tuple(sorted(index)) for index in indices)))
+
+    return (tuple(sorted(factors)), imaginary), coeff
+
+
+def _permutation_sign(order):
+    """Signature of a permutation given as a list of positions."""
+
+    sign = 1
+    seen = [False] * len(order)
+    for start in range(len(order)):
+        if seen[start]:
+            continue
+        length = 0
+        pos = start
+        while not seen[pos]:
+            seen[pos] = True
+            pos = order[pos]
+            length += 1
+        if length % 2 == 0:
+            sign = -sign
+    return sign
 
 #===============================================================================
 # Amplitude
@@ -580,8 +977,31 @@ class Amplitude(base_objects.PhysicsObject):
            "particles are missing in model: %s" %  model.get('particles')
 
         assert model.get('interactions'), \
-               "interactions are missing in model" 
-                  
+               "interactions are missing in model"
+
+        # Generate with every unrollable quartic vertex split into the two
+        # cubic vertices it factorises into, then put them back together. This
+        # gives one diagram per colour structure of the quartic vertex, each
+        # sharing its topology -- and hence its currents -- with the purely
+        # cubic diagram it has to be summed with. The auxiliary model has no
+        # unrollable vertex left, so the recursion below stops immediately.
+        if madgraph.merge_quartic_vertices and \
+                not process.get('is_decay_chain'):
+            aux_model, auxiliaries = get_auxiliary_model(model)
+            if auxiliaries:
+                aux_process = copy.copy(process)
+                aux_process.set('model', aux_model)
+                aux_amplitude = Amplitude()
+                aux_amplitude.set('process', aux_process)
+                success = aux_amplitude.generate_diagrams(
+                                            diagram_filter=diagram_filter)
+                res = self.collapse_auxiliary_diagrams(
+                                aux_amplitude.get('diagrams'), auxiliaries)
+                self.trim_diagrams(diaglist=res)
+                if returndiag:
+                    return success, res
+                self['diagrams'] = res
+                return success
 
         res = base_objects.DiagramList()
         # First check that the number of fermions is even
@@ -944,9 +1364,220 @@ class Amplitude(base_objects.PhysicsObject):
             
         return res
 
+    def unroll_quartic_vertices(self, diaglist=None):
+        """Link every quartic vertex contribution to the cubic diagram it
+        merges with.
+
+        Each colour structure of an unrollable quartic vertex (see
+        get_unrollable_quartic_vertices) splits its four legs into two pairs,
+        which is exactly what two cubic vertices joined by an internal line
+        do. Replacing every quartic vertex of a diagram by that pair of cubic
+        vertices therefore turns it into a diagram already present in the
+        amplitude, and the two carry the same colour factor up to a rational
+        coefficient. Their amplitudes can hence be summed before the colour
+        algebra is applied.
+
+        Returns {(diagram_index, colour_chain): (target_index, coeff)} where
+        colour_chain follows the convention of color_amp.ColorBasis.colorize
+        (one colour structure index per vertex) and the amplitude of the
+        source is coeff times a contribution to the target diagram. Diagrams
+        without any quartic vertex are left out.
+
+        To line the result up with HelasAmplitude, call this on the
+        *reconstructed* amplitude, HelasMatrixElement.get_base_amplitude(),
+        and not on the amplitude the matrix element was built from. That is
+        the one helas_objects itself colorizes, and the vertex order of the
+        reconstructed diagrams -- hence the position of a colour structure
+        index inside the chain -- can differ from the generated ones. The two
+        happen to agree up to six gluons and start to differ at seven.
+        """
+
+        model = self.get('process').get('model')
+        if diaglist is None:
+            diaglist = self.get('diagrams')
+
+        unrollable = get_unrollable_quartic_vertices(model)
+        if not unrollable:
+            return {}
+
+        quartic_positions = []
+        for diag in diaglist:
+            quartic_positions.append([i for i, vx in
+                                      enumerate(diag.get('vertices'))
+                                      if vx.get('id') in unrollable])
+        if not any(quartic_positions):
+            return {}
+
+        ninitial = self.get_ninitial()
+        # Diagrams free of quartic vertices are the possible merge targets
+        target_index = {}
+        for i, diag in enumerate(diaglist):
+            if quartic_positions[i]:
+                continue
+            target_index[str(UnrollDiagramTag(diag, model, ninitial))] = i
+
+        res = {}
+        for i, diag in enumerate(diaglist):
+            positions = quartic_positions[i]
+            if not positions:
+                continue
+            # only the colour structures which carry a coupling contribute,
+            # matching what color_amp.ColorBasis.colorize keeps, and a vertex
+            # pinned to one structure contributes only that one
+            allowed = []
+            for position in positions:
+                vertex = diag.get('vertices')[position]
+                if vertex.get('color_key') is not None:
+                    allowed.append([vertex.get('color_key')])
+                else:
+                    allowed.append(sorted(misc.make_unique(
+                        [key[0] for key in model.get_interaction(
+                            vertex.get('id')).get('couplings')])))
+            for keys in itertools.product(*allowed):
+                choice = dict(zip(positions, keys))
+                unrolled = self.unrolled_diagram(diag, choice, unrollable)
+                try:
+                    target = target_index[
+                        str(UnrollDiagramTag(unrolled, model, ninitial))]
+                except KeyError:
+                    # No cubic partner: the merge is not available, which can
+                    # happen when the partner was removed by a diagram filter
+                    # or by a forbidden s-channel.
+                    continue
+                chain = tuple(choice.get(p, 0)
+                              for p in range(len(diag.get('vertices'))))
+                source_sig = diagram_colour_signature(diag, model, chain,
+                                                      unrollable)
+                target_chain = (0,) * len(diaglist[target].get('vertices'))
+                target_sig = diagram_colour_signature(diaglist[target], model,
+                                                      target_chain, unrollable)
+                if source_sig is None or target_sig is None or \
+                   source_sig[0] != target_sig[0]:
+                    continue
+                res[(i, chain)] = (target, source_sig[1] / target_sig[1])
+
+        return res
+
+    def collapse_auxiliary_diagrams(self, diaglist, auxiliaries):
+        """Turn every auxiliary line back into the quartic vertex it stands for.
+
+        The two cubic vertices sharing an auxiliary line rebuild one specific
+        colour structure of the quartic vertex, so the recovered vertex is
+        pinned to that structure through its 'color_key'. The legs are ordered
+        so that the pair which used to sit on the auxiliary line lands on the
+        colour indices that structure separates.
+        """
+
+        if not auxiliaries:
+            return diaglist
+
+        res = diaglist.__class__()
+        for diagram in diaglist:
+            vertices = diagram.get('vertices')
+            last = len(vertices) - 1
+            # an auxiliary line is produced by the vertex whose outgoing leg
+            # carries it, and consumed by the one having it as an incoming leg
+            produced = {}
+            for i, vertex in enumerate(vertices):
+                if i == last:
+                    continue
+                pdg = vertex.get('legs')[-1].get('id')
+                if pdg in auxiliaries:
+                    produced[vertex.get('legs')[-1].get('number')] = (i, pdg)
+
+            if not produced:
+                res.append(diagram)
+                continue
+
+            collapsed = {}
+            for i, vertex in enumerate(vertices):
+                incoming = vertex.get('legs') if i == last \
+                    else vertex.get('legs')[:-1]
+                for position, leg in enumerate(incoming):
+                    if leg.get('id') not in auxiliaries:
+                        continue
+                    collapsed[i] = (produced[leg.get('number')][0], position,
+                                    auxiliaries[leg.get('id')])
+
+            new_vertices = base_objects.VertexList()
+            for i, vertex in enumerate(vertices):
+                if i in [source for source, _, _ in collapsed.values()]:
+                    continue        # the producer disappears into the consumer
+                if i not in collapsed:
+                    new_vertices.append(vertex)
+                    continue
+                source, position, (quartic_id, _, pairings) = collapsed[i]
+                pair = list(vertices[source].get('legs')[:-1])
+                rest = [leg for j, leg in enumerate(
+                    vertex.get('legs') if i == last
+                    else vertex.get('legs')[:-1]) if j != position]
+                new_vertices.append(self.collapsed_vertex(
+                    pair, rest, None if i == last else vertex.get('legs')[-1],
+                    quartic_id, pairings))
+            res.append(base_objects.Diagram({'vertices': new_vertices}))
+
+        return res
+
+    def collapsed_vertex(self, pair, rest, outgoing, quartic_id, pairings):
+        """Build the quartic vertex standing for an auxiliary line separating
+        pair from rest, pinned to the colour structure which does that split."""
+
+        # The incoming legs are kept in a canonical order rather than in an
+        # order chosen to suit the pair: the three vertices recovered from the
+        # three pairings of the same quartic vertex have to differ by their
+        # colour structure only. Reordering them instead would make them the
+        # same vertex once the helas mothers are sorted, and one structure
+        # would be counted three times.
+        incoming = sorted(rest + pair, key=lambda leg: leg.get('number'))
+        legs = base_objects.LegList(incoming)
+        if outgoing is not None:
+            legs.append(outgoing)
+        vertex = base_objects.Vertex({'legs': legs, 'id': quartic_id})
+
+        # An unrollable quartic vertex has four legs of the same particle, so
+        # ordering on the interaction particles leaves them alone and the
+        # colour index order is just the outgoing leg moved to the front.
+        offset = 0 if outgoing is None else 1
+        numbers = [leg.get('number') for leg in incoming]
+        positions = frozenset(offset + numbers.index(leg.get('number'))
+                              for leg in pair)
+        for key, pairing in enumerate(pairings):
+            if frozenset(pairing[0]) == positions or \
+               frozenset(pairing[1]) == positions:
+                # This key labels the pairing in the leg order used here, which
+                # is enough to keep the three recovered vertices distinct. The
+                # key actually used is settled against the helas mother order
+                # by HelasMatrixElement.resolve_auxiliary_color_key.
+                vertex.set('color_key', key)
+                vertex.set('aux_pair',
+                           tuple(leg.get('number') for leg in pair))
+                return vertex
+
+        raise MadGraph5Error(
+            'No colour structure of interaction %d separates the auxiliary '
+            'pair' % quartic_id)
+
+    def unrolled_diagram(self, diagram, choice, unrollable):
+        """Return a copy of diagram where the quartic vertices listed in
+        choice (position -> colour structure index) have been replaced by the
+        two cubic vertices that colour structure factorises into."""
+
+        model = self.get('process').get('model')
+        vertices = base_objects.VertexList()
+        for i, vertex in enumerate(diagram.get('vertices')):
+            if i not in choice:
+                vertices.append(vertex)
+                continue
+            cubic_id, pairings = unrollable[vertex.get('id')]
+            vertices.extend(split_quartic_vertex(
+                vertex, i == len(diagram.get('vertices')) - 1,
+                pairings[choice[i]], cubic_id, model))
+
+        return base_objects.Diagram({'vertices': vertices})
+
     def apply_4gluon_specials(self, diag_list):
 
-        res = diag_list.__class__()       
+        res = diag_list.__class__()
         for diag in diag_list:
             keep = True
             for vertex in diag.get('vertices'):
