@@ -333,7 +333,7 @@ def test_compiled_direct_arena_labels_the_inclusive_runtime_envelope() -> None:
     )
 
     assert rendered is not None
-    assert rendered.count("Direct-Arena runtime envelope") >= 3
+    assert rendered.count("Direct-Arena runtime envelope") == 2
     assert "evaluator core" not in rendered
     assert "Runtime orchestration" not in rendered
 

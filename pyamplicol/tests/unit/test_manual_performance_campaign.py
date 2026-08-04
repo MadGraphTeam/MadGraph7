@@ -471,6 +471,7 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
     ):
         assert fragment in help_text
     run_help = parser._subparsers._group_actions[0].choices["run"].format_help()
+    assert "Process family number 1..15" in run_help
     assert "automatically added authority closure" in run_help
     assert "recurrence remains available" in run_help
     assert "Hard construction" in run_help

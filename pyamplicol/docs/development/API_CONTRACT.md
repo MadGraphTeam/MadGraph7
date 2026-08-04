@@ -23,6 +23,7 @@ review.
   `ModelParameter`, and `ResolvedEvaluation`.
 - Process metadata: `ProcessAlias`.
 - Helpers: `generate`, `load`, and `benchmark`.
+- Package metadata: `__version__`.
 - Errors: `PyAmpliColError`, `ConfigurationError`, `ModelError`,
   `GenerationError`, `ArtifactError`, `CompatibilityError`,
   `EvaluationError`, and `DependencyError`.
@@ -38,9 +39,11 @@ directory, serialized JSON, or compiled-model file and records a resolved
 source kind without importing Symbolica.
 
 `ModelSource.compile(*, cache_dir=None, use_cache=True,
-require_supported=True) -> CompiledModel` is the explicit public model
-compilation operation. `CompiledModel` is an opaque immutable handle accepted
-by generation; compiler-owned expression and tensor IR remain private.
+require_supported=True, prepared_output=None, evaluator=None) -> CompiledModel`
+is the explicit public model compilation operation. `prepared_output` may also
+write a reusable prepared-model bundle using the supplied typed evaluator
+configuration. `CompiledModel` is an opaque immutable handle accepted by
+generation; compiler-owned expression and tensor IR remain private.
 `CompiledModel.info` exposes stable typed source, capability, parameter,
 diagnostic, and phase-timing records. Convenience properties mirror those
 records, while `write(path)` serializes the complete private payload and
@@ -106,14 +109,17 @@ of `RuntimeBackend`: keeping the protocol's original minimum surface preserves
 compatibility with third-party backends, while the built-in Rusticol adapter and
 installed-candidate gates must expose both identities.
 
-`Runtime.evaluate(momenta, *, helicities=None, color_flows=None)` returns one
-fully summed value per point. Momenta have shape
+`Runtime.evaluate(momenta, *, helicities=None, color_flows=None,
+helicity_by_point=None, color_flow_by_point=None, precision=16)` returns one
+fully summed value per point. Global and per-point selectors are mutually
+exclusive within each selector dimension. Momenta have shape
 `(point, particle, [E, px, py, pz])`.
 
-`Runtime.evaluate_resolved(...) -> ResolvedEvaluation` returns LC values with
-shape `(point, physical_helicity, physical_color_flow)` and NLC/full values
-with shape `(point, physical_helicity, 1)`. `ResolvedEvaluation.total()` must
-reproduce `evaluate()`.
+`Runtime.evaluate_resolved(momenta, *, helicities=None, color_flows=None,
+precision=16) -> ResolvedEvaluation` returns LC values with shape `(point,
+physical_helicity, physical_color_flow)` and NLC/full values with shape
+`(point, physical_helicity, 1)`. `ResolvedEvaluation.total()` must reproduce
+`evaluate()`.
 
 `Runtime.set_model_parameters(mapping)` validates the complete update before
 committing it. `set_model_parameter(name, value)` is a convenience wrapper.

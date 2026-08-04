@@ -28,10 +28,19 @@ overrides in order, then recorded license/resource clamping.
 - `max_quark_lines: int | null`
 - `coupling_order_policy: minimal | explicit = minimal`
 - `max_coupling_orders: table[str, int] = {}`
+- `max_color_sectors: int | null`
+- `reference_color_order: list[int] = []`
+- `selected_color_sector_ids: list[int] = []`
+- `selected_source_helicities: table[int, int] = {}`
+
+The explicit color-sector, reference-order, and source-helicity controls are
+developer-facing generation constraints. Ordinary users should leave them at
+their defaults and use the runtime selectors below.
 
 ## Color
 
 - `accuracy: lc | nlc | full = lc`
+- `lc_flow_layout: topology-replay | all-flow-union = topology-replay`
 
 LC generation always includes complete physical flow coverage. Runtime flow
 selectors are configured under `evaluation` or `benchmark`; internal sector,
@@ -134,12 +143,12 @@ to compiled execution. Cards that require process-local compiled DAGs must set
 ### JIT
 
 - `optimization_level: 0 | 1 | 2 | 3 = 3`
+- `compress: bool = true`
 
-JIT artifacts always use indirect SymJIT translation because direct
-translation is not a stable serialized-application ABI.
-The default above applies to process-local compiled DAG evaluators. Prepared
-JIT kernel packs used by eager and recurrence execution force optimization
-level 2 to preserve their cross-architecture storage contract.
+JIT artifacts embed direct SymJIT applications. The defaults above apply to
+process-local compiled DAG evaluators. Prepared JIT kernel packs used by eager
+and recurrence execution force optimization level 2 to preserve their
+cross-architecture storage contract.
 
 ### C++
 
@@ -172,6 +181,7 @@ macOS x86_64, and glibc Linux x86_64. Other targets are rejected explicitly.
 
 - `target_runtime: float = 10.0`
 - `batch_size: int = 128`
+- `precision: int = 16`
 - `warmup_runs: int = 2`
 - `minimum_samples: int = 5`
 - `helicity_ids: list[str] = []`

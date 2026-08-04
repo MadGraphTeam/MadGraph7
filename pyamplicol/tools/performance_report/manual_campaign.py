@@ -8431,7 +8431,7 @@ def _selector_parent() -> argparse.ArgumentParser:
         action="append",
         metavar="ID",
         help=(
-            "Process family number 1..14, process key, or quoted concrete "
+            "Process family number 1..15, process key, or quoted concrete "
             "process. Numeric IDs follow the report's canonical process list."
         ),
     )

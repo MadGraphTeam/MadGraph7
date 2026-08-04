@@ -94,6 +94,7 @@ pyamplicol/_sdk/
   include/rusticol.h
   include/rusticol.hpp
   fortran/rusticol.f90
+  rust/rusticol.rs
   lib/librusticol_capi.a
   config.py
   metadata.json

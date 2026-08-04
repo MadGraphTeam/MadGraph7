@@ -97,10 +97,10 @@ pyamplicol benchmark.toml
 For direct CLI use:
 
 ```console
-pyamplicol generate "d d~ > z g" ./artifacts/ddbar_zg \
+pyamplicol generate "d d~ > z g" ./artifacts/builtin_ddbar_to_zg \
   --model built-in-sm
 
-pyamplicol inspect ./artifacts/ddbar_zg
+pyamplicol inspect ./artifacts/builtin_ddbar_to_zg
 ```
 
 The same runtime is available from Python:
