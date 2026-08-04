@@ -1137,6 +1137,12 @@ def test_selected_flow_excludes_cold_generator_bootstrap_from_generation(
     commands = measurement["provenance"]["commands"]
     assert commands[1]["args"] == ["make", "-j1", "amplicol_generate"]
     assert commands[1]["elapsed_seconds"] == 17.0
+    make_commands = [command for command in commands if command["args"][0] == "make"]
+    assert make_commands
+    assert all(
+        command["environment"] == {"PDF_BACKEND": "internal"}
+        for command in make_commands
+    )
 
 
 @pytest.mark.parametrize(

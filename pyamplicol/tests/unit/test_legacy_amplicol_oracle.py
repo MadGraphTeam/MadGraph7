@@ -730,7 +730,7 @@ def test_public_legacy_checkout_uses_noninteractive_https() -> None:
 
     assert module.checkout_url() == ("https://github.com/rikkert-frederix/AmpliCol.git")
     assert module.checkout_branch() == "amplicol_with_patches"
-    assert module.expected_revision() == "07f16be4fee70c2bd624eee76822c0bb322cb595"
+    assert module.expected_revision() == "dcb3efbcbe89c51969818cddf48113fba19ad763"
 
 
 def test_compiler_provenance_records_build_inputs_and_executable(
@@ -742,9 +742,11 @@ def test_compiler_provenance_records_build_inputs_and_executable(
     repository.mkdir()
     executable = repository / "amplicol_color_probe"
     executable.write_bytes(b"compiled probe")
+    commands: list[list[str]] = []
 
     def fake_run(command, *, cwd, capture=True):
         del cwd, capture
+        commands.append(command)
         if command[0] == "make":
             output = "FFLAGS = -ffast-math -O3\nFC = gfortran\n"
         elif command[-1] == "--version":
@@ -770,6 +772,14 @@ def test_compiler_provenance_records_build_inputs_and_executable(
         target="aarch64-apple-darwin24",
         executable_sha256=hashlib.sha256(b"compiled probe").hexdigest(),
     )
+    assert commands[0] == [
+        "make",
+        "-f",
+        "makefile",
+        "PDF_BACKEND=internal",
+        "-pn",
+        "amplicol_color_probe",
+    ]
 
 
 def test_run_wrapper_uses_the_facade_subprocess_object(

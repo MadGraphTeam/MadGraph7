@@ -108,7 +108,12 @@ def validate_checkout(repository: Path) -> None:
 def build_color_probe(repository: Path, *, jobs: int) -> None:
     validate_checkout(repository)
     _run(
-        ["make", f"-j{max(1, jobs)}", "amplicol_color_probe"],
+        [
+            "make",
+            f"-j{max(1, jobs)}",
+            "PDF_BACKEND=internal",
+            "amplicol_color_probe",
+        ],
         cwd=repository,
         capture=False,
     )
@@ -119,7 +124,12 @@ def build_selected_flow_library_probe(repository: Path, *, jobs: int) -> None:
 
     validate_checkout(repository)
     _run(
-        ["make", f"-j{max(1, jobs)}", "amplicol_library_benchmark"],
+        [
+            "make",
+            f"-j{max(1, jobs)}",
+            "PDF_BACKEND=internal",
+            "amplicol_library_benchmark",
+        ],
         cwd=repository,
         capture=False,
     )

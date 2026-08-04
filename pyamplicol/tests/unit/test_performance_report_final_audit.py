@@ -93,7 +93,7 @@ from tools.performance_report.render import VisibleCompleteness
 from tools.performance_report.service import ReportPaths, ReportService
 
 _REVISION = "a" * 40
-_LEGACY_REVISION = "07f16be4fee70c2bd624eee76822c0bb322cb595"
+_LEGACY_REVISION = "dcb3efbcbe89c51969818cddf48113fba19ad763"
 _ARTIFACT_ID = "b" * 64
 _CAPABILITY = "rusticol.recurrence-direct-arena.complex-f64.v1"
 _COLOR_CAPABILITY = "rusticol.recurrence-color.lc.v1"

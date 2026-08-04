@@ -70,6 +70,7 @@ LEGACY_IMODE2_DIAGNOSTIC_ABI = "pyamplicol-report-legacy-imode2-diagnostic-v1"
 LEGACY_NUMERICAL_AUTHORITY_FIELD = "legacy_numerical_authority"
 LEGACY_NUMERICAL_AUTHORITY_ABI = "pyamplicol-report-legacy-numerical-authority-v1"
 LEGACY_IMODE2_DIAGNOSTIC_MAX_COLOR_ORDERS = 5_000
+_ORIGINAL_AMPLICOL_BUILD_ENVIRONMENT = {"PDF_BACKEND": "internal"}
 _LIBRARY_COLOR_VALUE_RE = re.compile(
     r"^AMPICOL_COLOR_PROBE_VALUE\s+(\S+)\s+(\d+)\s+(\d+)\s+"
     r"([+\-0-9.EeDd]+)$",
@@ -2470,6 +2471,11 @@ class LegacyMeasurementAdapter:
         environment: Mapping[str, str] | None = None,
     ) -> CommandResult:
         rendered = tuple(os.fspath(item) for item in args)
+        if rendered and rendered[0] == "make":
+            environment = {
+                **({} if environment is None else dict(environment)),
+                **_ORIGINAL_AMPLICOL_BUILD_ENVIRONMENT,
+            }
         launch_record: dict[str, object] = {
             "args": list(rendered),
             "cwd": os.fspath(cwd.resolve(strict=False)),

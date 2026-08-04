@@ -149,7 +149,14 @@ def _compiler_provenance(
     shutil_module: Any = shutil,
 ) -> CompilerProvenance:
     database = run(
-        ["make", "-f", "makefile", "-pn", "amplicol_color_probe"],
+        [
+            "make",
+            "-f",
+            "makefile",
+            "PDF_BACKEND=internal",
+            "-pn",
+            "amplicol_color_probe",
+        ],
         cwd=repository,
     ).stdout
     compiler_tokens = shlex.split(_make_database_variable(database, "FC"))

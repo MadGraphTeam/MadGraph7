@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[3]
 LOCK = ROOT / "dependencies" / "contributor-lock.toml"
 DEFAULT_REPOSITORY = ROOT / "dependencies" / "checkouts" / "legacy-amplicol"
 DEFAULT_FIXTURE = ROOT / "tests" / "fixtures" / "reference" / "physics-v2.json"
-PINNED_REFERENCE_REVISION = "07f16be4fee70c2bd624eee76822c0bb322cb595"
+PINNED_REFERENCE_REVISION = "dcb3efbcbe89c51969818cddf48113fba19ad763"
 PINNED_REFERENCE_BRANCH = "amplicol_with_patches"
 PINNED_SOURCE_URL = "https://github.com/rikkert-frederix/AmpliCol.git"
 
