@@ -609,6 +609,98 @@ def split_quartic_vertex(vertex, is_last, pairing, cubic_id, model):
 _SUMMED = 'summed'
 
 
+def reroot_diagram(diagram, root, model):
+    """Return the same diagram decomposed around another final vertex.
+
+    A diagram is a tree, and which of its vertices is written last decides
+    which internal lines become currents: everything on the far side of the
+    final vertex is built up as a wavefunction, while the final vertex only
+    produces an amplitude. Re-rooting therefore changes which currents exist
+    without changing the diagram -- same vertices, same lines, same physics --
+    which is what lets a quartic current find the cubic current it has to be
+    summed with.
+
+    root is the index of the vertex to end on. Returns None if the diagram
+    does not decompose into a tree, which should not happen.
+    """
+
+    vertices = diagram.get('vertices')
+    last = len(vertices) - 1
+    if root == last:
+        return diagram
+
+    # Split every vertex into the external legs it holds and the internal
+    # lines it shares with another vertex. A line is recognised by its number
+    # being live, since a vertex reuses the smallest incoming number for the
+    # leg it produces.
+    live = {}
+    externals = [[] for _ in vertices]
+    lines = []
+    for i, vertex in enumerate(vertices):
+        incoming = vertex.get('legs') if i == last else vertex.get('legs')[:-1]
+        for leg in incoming:
+            producer = live.pop(leg.get('number'), None)
+            if producer is None:
+                externals[i].append(leg)
+            else:
+                lines.append((producer, i,
+                              vertices[producer].get('legs')[-1]))
+        if i != last:
+            live[vertex.get('legs')[-1].get('number')] = i
+    if live:
+        return None
+
+    neighbours = {}
+    line_of = {}
+    for producer, consumer, leg in lines:
+        neighbours.setdefault(producer, []).append(consumer)
+        neighbours.setdefault(consumer, []).append(producer)
+        line_of[(producer, consumer)] = (leg, True)
+        line_of[(consumer, producer)] = (leg, False)
+
+    # Walk out from the new root so that every vertex is emitted after the
+    # ones now feeding it.
+    order = []
+    parent = {root: None}
+    def visit(node):
+        for other in neighbours.get(node, []):
+            if other == parent[node]:
+                continue
+            parent[other] = node
+            visit(other)
+        order.append(node)
+    visit(root)
+    if len(order) != len(vertices):
+        return None
+
+    produced = {}
+    res = base_objects.VertexList()
+    for node in order:
+        incoming = list(externals[node])
+        for other in neighbours.get(node, []):
+            if other != parent[node]:
+                incoming.append(produced[other])
+        legs = base_objects.LegList(incoming)
+        if node != root:
+            leg, forwards = line_of[(node, parent[node])]
+            part = model.get('particle_dict')[leg.get('id')]
+            outgoing = base_objects.Leg({
+                # the line keeps its particle if it already pointed this way,
+                # and is flipped when the re-rooting reverses it
+                'id': leg.get('id') if forwards or part.get('self_antipart')
+                      else -leg.get('id'),
+                'number': min(l.get('number') for l in incoming),
+                'state': len([l for l in incoming
+                              if not l.get('state')]) != 1,
+                'from_group': True})
+            produced[node] = outgoing
+            legs.append(outgoing)
+        res.append(base_objects.Vertex({'legs': legs,
+                                        'id': vertices[node].get('id')}))
+
+    return base_objects.Diagram({'vertices': res})
+
+
 def diagram_colour_signature(diagram, model, color_chain, unrollable):
     """Canonical signature of the colour string of one colour structure choice.
 
