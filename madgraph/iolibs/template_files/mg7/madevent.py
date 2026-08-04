@@ -448,7 +448,7 @@ class MadgraphProcess:
 
     def survey(self) -> None:
         phasespace_mode = self.run_card["phasespace"]["mode"]
-        if phasespace_mode == "multichannel":
+        if phasespace_mode in ["multichannel", "both", "auto"]:
             self.phasespaces = [
                 subproc.build_multichannel_phasespace()
                 for subproc in self.subprocesses
@@ -460,86 +460,102 @@ class MadgraphProcess:
                 for subproc in self.subprocesses
             ]
             self.event_generator = self.survey_phasespaces(self.phasespaces)
-        elif phasespace_mode == "both":
-            phasespaces_multi = [
-                subproc.build_multichannel_phasespace()
-                for subproc in self.subprocesses
-            ]
-            evgen_multi = self.survey_phasespaces(phasespaces_multi)
-
-            channel_status = evgen_multi.channel_status()
-            cross_sections = []
-            index = 0
-            for phasespace in phasespaces_multi:
-                channel_count = len(phasespace.channels)
-                cross_sections.append([
-                    abs(status.mean)
-                    for status in channel_status[index:index + channel_count]
-                ])
-                index += channel_count
-
-            self.phasespaces = [
-                subproc.simplify_phasespace(ps_multi, cross_secs)
-                for subproc, ps_multi, cross_secs in zip(
-                    self.subprocesses, phasespaces_multi, cross_sections
-                )
-            ]
-            if any(
-                ps_multi is not ps_both
-                for ps_multi, ps_both in zip(phasespaces_multi, self.phasespaces)
-            ):
-                self.event_generator = self.survey_phasespaces(self.phasespaces)
-            else:
-                self.event_generator = evgen_multi
         else:
             raise ValueError("Unknown phasespace mode")
 
+        channel_status = self.event_generator.channel_status()
+        chan_offset = 0
+        madnis_enabled = False
+        for subproc, ps in zip(self.subprocesses, self.phasespaces):
+            mean = 0.
+            variance = 0.
+            count_opt = 0
+            for status in channel_status[chan_offset:chan_offset + len(ps.channels)]:
+                mean += status.mean
+                variance += status.error**2
+                count_opt += status.count_opt
+            rsd = (variance * count_opt)**0.5 / mean
+            subproc.set_madnis_auto_settings(rsd)
+            chan_offset += len(ps.channels)
+            if subproc.madnis_settings["enable"]:
+                madnis_enabled = True
+        if not (
+            phasespace_mode == "both" or (phasespace_mode == "auto" and madnis_enabled)
+        ):
+            return
+
+        phasespaces_multi = self.phasespaces
+        cross_sections = []
+        index = 0
+        for phasespace in phasespaces_multi:
+            channel_count = len(phasespace.channels)
+            cross_sections.append([
+                abs(status.mean)
+                for status in channel_status[index:index + channel_count]
+            ])
+            index += channel_count
+
+        self.phasespaces = [
+            subproc.simplify_phasespace(ps_multi, cross_secs)
+            for subproc, ps_multi, cross_secs in zip(
+                self.subprocesses, phasespaces_multi, cross_sections
+            )
+        ]
+        if any(
+            ps_multi is not ps_both
+            for ps_multi, ps_both in zip(phasespaces_multi, self.phasespaces)
+        ):
+            self.event_generator = self.survey_phasespaces(self.phasespaces)
+
     def train_madnis(self) -> None:
         madnis_args = self.run_card["madnis"]
-        if not madnis_args["enable"]:
+        if not any(subproc.madnis_settings["enable"] for subproc in self.subprocesses):
             return
 
         gen_args = self.run_card["generation"]
         run_args = self.run_card["run"]
 
-        config = ms.MadnisConfig()
-        config.verbosity = resolve_verbosity(run_args["verbosity"])
-        config.learning_rate = madnis_args["lr"]
-        config.batches = madnis_args["train_batches"]
-        config.log_interval = madnis_args["log_interval"]
-        config.integration_history_length = madnis_args["integration_history_length"]
-        config.channel_dropping_interval = madnis_args["channel_dropping_interval"]
-        config.channel_dropping_threshold = madnis_args["channel_dropping_threshold"]
-        config.cpu_generator_batch_size = gen_args["cpu_batch_size"]
-        config.gpu_generator_batch_size = gen_args["gpu_batch_size"]
-        config.gpu_generator_batch_granularity = madnis_args["gpu_generator_batch_granularity"]
-        config.generator_target_size_factor = madnis_args["generator_target_size_factor"]
-        config.batch_size_offset = madnis_args["batch_size_offset"]
-        config.batch_size_per_channel = madnis_args["batch_size_per_channel"]
-        config.uniform_channel_ratio = madnis_args["uniform_channel_ratio"]
-        config.lr_schedule = madnis_args["lr_scheduler"]
-        config.adam_beta1 = madnis_args["adam_beta1"]
-        config.adam_beta2 = madnis_args["adam_beta2"]
-        config.adam_eps = madnis_args["adam_eps"]
-        config.grad_clip_threshold = madnis_args["grad_clip_threshold"]
-        config.buffer_capacity = madnis_args["buffer_capacity"]
-        config.minimum_buffer_size = madnis_args["minimum_buffer_size"]
-        config.buffered_steps = madnis_args["buffered_steps"]
-        config.buffer_unweighting_quantile = madnis_args["buffer_unweighting_quantile"]
-        config.fixed_cwnet_fraction = madnis_args["fixed_cwnet_fraction"]
-        config.softclip_threshold = madnis_args["softclip_threshold"]
+        verbosity = resolve_verbosity(run_args["verbosity"])
         madnis_phasespaces = []
-        integrands = []
-        cwnets = []
+        training_args = []
         for subproc, phasespace in zip(self.subprocesses, self.phasespaces):
+            config = ms.MadnisConfig()
+            config.learning_rate = subproc.madnis_settings["lr"]
+            config.batches = subproc.madnis_settings["train_batches"]
+            config.log_interval = madnis_args["log_interval"]
+            config.integration_history_length = madnis_args["integration_history_length"]
+            config.channel_dropping_interval = madnis_args["channel_dropping_interval"]
+            config.channel_dropping_threshold = madnis_args["channel_dropping_threshold"]
+            config.cpu_generator_batch_size = gen_args["cpu_batch_size"]
+            config.gpu_generator_batch_size = gen_args["gpu_batch_size"]
+            config.gpu_generator_batch_granularity = madnis_args["gpu_generator_batch_granularity"]
+            config.generator_target_size_factor = madnis_args["generator_target_size_factor"]
+            config.batch_size_offset = madnis_args["batch_size_offset"]
+            config.batch_size_per_channel = madnis_args["batch_size_per_channel"]
+            config.uniform_channel_ratio = madnis_args["uniform_channel_ratio"]
+            config.lr_schedule = madnis_args["lr_scheduler"]
+            config.adam_beta1 = madnis_args["adam_beta1"]
+            config.adam_beta2 = madnis_args["adam_beta2"]
+            config.adam_eps = madnis_args["adam_eps"]
+            config.buffer_capacity = madnis_args["buffer_capacity"]
+            config.minimum_buffer_size = madnis_args["minimum_buffer_size"]
+            config.buffered_steps = madnis_args["buffered_steps"]
+            config.buffer_unweighting_quantile = madnis_args["buffer_unweighting_quantile"]
+            config.fixed_cwnet_fraction = madnis_args["fixed_cwnet_fraction"]
+            config.softclip_threshold = madnis_args["softclip_threshold"]
             phasespace = subproc.build_madnis(phasespace)
             madnis_phasespaces.append(phasespace)
-            integrands.append(subproc.build_integrands(
-                phasespace,
-                madnis_training=True,
-                drop_cuts_and_rescale=madnis_args["drop_zero_integrands"]
-            ))
-            cwnets.append(phasespace.cwnet)
+            training_args.append(
+                ms.TrainingArgs(
+                    config=config,
+                    integrands=subproc.build_integrands(
+                        phasespace,
+                        madnis_training=True,
+                        drop_cuts_and_rescale=madnis_args["drop_zero_integrands"]
+                    ),
+                    cwnet=phasespace.cwnet,
+                )
+            )
 
         gen_context = self.contexts[0]
         opt_context = ms.Context(
@@ -550,10 +566,8 @@ class MadgraphProcess:
         madnis_training = ms.MultiMadnisTraining(
             generator_context=gen_context,
             optimizer_context=opt_context,
-            config=config,
-            integrands=integrands,
-            cwnets=cwnets,
-            status_file=self.status_file,
+            training_args=training_args,
+            verbosity=verbosity,
         )
         madnis_training.train()
         for phasespace, active_channels in zip(
@@ -1258,6 +1272,35 @@ class MadgraphSubprocess:
             subchan_weights=multi_phasespace.subchan_weights,
         )
 
+    def set_madnis_auto_settings(self, rsd: float):
+        madnis_args = self.process.run_card["madnis"]
+        n_out = len(self.meta["outgoing"])
+        n_events = self.process.run_card["generation"]["events"]
+        is_gridpack = self.process.run_card["gridpack"]["save_gridpack"]
+        train_batches = madnis_args["train_batches"]
+        hidden_dim = min(max(int((7 * rsd) / 32) * 32 + 64, 64), 256)
+        flow_layers = 3 if rsd < 32 else 4
+        lr = min(max((10000 - train_batches) / 8000 * 7e-4 + 3e-4, 3e-4), 1e-3)
+        if n_out <= 2:
+            enable = False
+        elif n_out == 3:
+            enable = rsd > 10. or n_events > 1000000 or is_gridpack
+        else:
+            enable = True
+        self.madnis_settings = {
+            "enable": enable,
+            "flow_layers": flow_layers,
+            "flow_hidden_dim": hidden_dim,
+            "discrete_hidden_dim": hidden_dim,
+            "cwnet_hidden_dim": hidden_dim,
+            "train_batches": train_batches,
+            "lr": lr,
+        }
+        for key, value in self.madnis_settings.items():
+            run_card_value = madnis_args[key]
+            if run_card_value != "auto":
+                self.madnis_settings[key] = run_card_value
+
     def build_madnis(self, phasespace: PhaseSpace) -> PhaseSpace:
         madnis_args = self.process.run_card["madnis"]
         channels = []
@@ -1273,7 +1316,7 @@ class MadgraphSubprocess:
                     prefix=f"{prefix}.discrete_flow_before",
                     dims_with_prior=[],
                     condition_dim=0,
-                    subnet_hidden_dim=madnis_args["discrete_hidden_dim"],
+                    subnet_hidden_dim=self.madnis_settings["discrete_hidden_dim"],
                     subnet_layers=madnis_args["discrete_layers"],
                     subnet_activation=self.activation(madnis_args["discrete_activation"]),
                 )
@@ -1286,8 +1329,8 @@ class MadgraphSubprocess:
                 condition_dim=cond_dim,
                 prefix=prefix,
                 bin_count=madnis_args["flow_spline_bins"],
-                subnet_hidden_dim=madnis_args["flow_hidden_dim"],
-                subnet_layers=madnis_args["flow_layers"],
+                subnet_hidden_dim=self.madnis_settings["flow_hidden_dim"],
+                subnet_layers=self.madnis_settings["flow_layers"],
                 subnet_activation=self.activation(madnis_args["flow_activation"]),
                 invert_spline=madnis_args["flow_invert_spline"],
             )
@@ -1306,7 +1349,7 @@ class MadgraphSubprocess:
                     prefix=f"{prefix}.discrete_flow_after",
                     dims_with_prior=[0],
                     condition_dim=cond_dim,
-                    subnet_hidden_dim=madnis_args["discrete_hidden_dim"],
+                    subnet_hidden_dim=self.madnis_settings["discrete_hidden_dim"],
                     subnet_layers=madnis_args["discrete_layers"],
                     subnet_activation=self.activation(madnis_args["discrete_activation"]),
                 )
@@ -1374,7 +1417,7 @@ class MadgraphSubprocess:
         cwnet = ms.ChannelWeightNetwork(
             channel_count=channel_count,
             particle_count=self.particle_count,
-            hidden_dim=madnis_args["cwnet_hidden_dim"],
+            hidden_dim=self.madnis_settings["cwnet_hidden_dim"],
             layers=madnis_args["cwnet_layers"],
             activation=self.activation(madnis_args["cwnet_activation"]),
             prefix=f"subproc{self.subproc_id}.cwnet",

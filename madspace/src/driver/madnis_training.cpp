@@ -772,16 +772,19 @@ void MadnisTraining::freeze_cwnet() {
 MultiMadnisTraining::MultiMadnisTraining(
     ContextPtr generator_context,
     ContextPtr optimizer_context,
-    const MadnisTraining::Config& config,
-    const nested_vector2<std::shared_ptr<Integrand>>& integrands,
-    const std::vector<std::optional<ChannelWeightNetwork>>& cwnets,
+    const std::vector<TrainingArgs>& training_args,
+    Verbosity verbosity,
     std::shared_ptr<StatusFile> status_file
 ) :
-    _config(config), _status_file(status_file) {
-    _subprocesses.reserve(integrands.size());
-    for (auto [integ, cwnet] : zip(integrands, cwnets)) {
+    _verbosity(verbosity), _status_file(status_file) {
+    _subprocesses.reserve(training_args.size());
+    for (auto args : training_args) {
         _subprocesses.emplace_back(
-            generator_context, optimizer_context, config, integ, cwnet
+            generator_context,
+            optimizer_context,
+            args.config,
+            args.integrands,
+            args.cwnet
         );
     }
 }
@@ -791,14 +794,14 @@ void MultiMadnisTraining::train() {
     _start_time = std::chrono::steady_clock::now();
     _start_cpu_microsec = cpu_time_microsec();
     for (std::size_t subproc_index = 0; auto& subproc : _subprocesses) {
-        for (std::size_t batch_index = 0; batch_index < _config.batches;
+        for (std::size_t batch_index = 0; batch_index < subproc.config().batches;
              ++batch_index) {
             subproc.train_step(batch_index);
             double loss = subproc.average_loss();
             std::size_t chan_count = subproc.active_channel_count();
             print_progress_update(subproc_index, batch_index, loss, chan_count);
             bool done = subproc_index == _subprocesses.size() - 1 &&
-                batch_index + 1 == _config.batches;
+                batch_index + 1 == subproc.config().batches;
             write_status(subproc_index, batch_index, done);
         }
         ++subproc_index;
@@ -816,7 +819,7 @@ nested_vector2<std::size_t> MultiMadnisTraining::active_channels() const {
 
 void MultiMadnisTraining::print_progress_init() {
     _last_print_time = std::chrono::steady_clock::now();
-    if (_config.verbosity != Verbosity::pretty) {
+    if (_verbosity != Verbosity::pretty) {
         Logger::info("training started");
         return;
     }
@@ -844,8 +847,14 @@ void MultiMadnisTraining::print_progress_update(
     std::size_t chan_count
 ) {
     using namespace std::chrono_literals;
-    if (_config.verbosity == Verbosity::log) {
-        if ((batch_index + 1) % _config.log_interval != 0) {
+    std::size_t subproc_count = _subprocesses.size();
+    std::size_t subproc_batches = _subprocesses.at(subproc_index).config().batches;
+    bool is_last_batch = batch_index + 1 == subproc_batches;
+    bool is_done = is_last_batch && subproc_index == subproc_count - 1;
+
+    if (_verbosity == Verbosity::log) {
+        if ((batch_index + 1) % _subprocesses.at(subproc_index).config().log_interval !=
+            0) {
             return;
         }
         auto now = std::chrono::steady_clock::now();
@@ -854,15 +863,15 @@ void MultiMadnisTraining::print_progress_update(
                 "training, subproc: {} / {}, batch: {} / {}, loss: {:.4f}, channels: "
                 "{}, time: {:%H:%M:%S}",
                 subproc_index + 1,
-                _subprocesses.size(),
+                subproc_count,
                 batch_index + 1,
-                _config.batches,
+                subproc_batches,
                 loss,
                 chan_count,
                 std::chrono::round<std::chrono::seconds>(now - _start_time)
             )
         );
-        if (batch_index + 1 == _config.batches) {
+        if (is_done) {
             double wall_time_sec = (now - _start_time) / 1.0s;
             double cpu_time_sec = (cpu_time_microsec() - _start_cpu_microsec) / 1e6;
             Logger::info(
@@ -871,16 +880,12 @@ void MultiMadnisTraining::print_progress_update(
                 )
             );
         }
-    } else if (_config.verbosity == Verbosity::pretty) {
+    } else if (_verbosity == Verbosity::pretty) {
         auto now = std::chrono::steady_clock::now();
-        if (now - _last_print_time < 0.1s && batch_index + 1 != _config.batches) {
+        if (now - _last_print_time < 0.1s && !is_last_batch) {
             return;
         }
         _last_print_time = now;
-
-        std::size_t subproc_count = _subprocesses.size();
-        bool is_last_batch = batch_index + 1 == _config.batches;
-        bool is_done = is_last_batch && subproc_index == subproc_count - 1;
 
         std::string time_str;
         if (is_done) {
@@ -894,13 +899,13 @@ void MultiMadnisTraining::print_progress_update(
             );
         }
         std::string batch_str =
-            std::format("{} / {}", batch_index + 1, _config.batches);
+            std::format("{} / {}", batch_index + 1, subproc_batches);
 
         if (subproc_count == 1) {
             std::string progress_bar = is_done
                 ? ""
                 : format_progress(
-                      static_cast<double>(batch_index + 1) / _config.batches, 52
+                      static_cast<double>(batch_index + 1) / subproc_batches, 52
                   );
             _pretty_box_upper.set_column(
                 1,
@@ -911,23 +916,34 @@ void MultiMadnisTraining::print_progress_update(
             );
             _pretty_box_upper.print_update();
         } else {
+            // Weight each subprocess's contribution to the global progress bar by its
+            // own batch count, since subprocesses no longer share a single batch count.
+            std::size_t total_batches = 0;
+            std::size_t batches_before = 0;
+            for (std::size_t i = 0; i < subproc_count; ++i) {
+                std::size_t batches = _subprocesses.at(i).config().batches;
+                total_batches += batches;
+                if (i < subproc_index) {
+                    batches_before += batches;
+                }
+            }
+
             std::string progress_bar, progress_bar_all;
             std::string subproc_str =
-                std::format("{} / {}", subproc_index, subproc_count);
+                std::format("{} / {}", subproc_index + 1, subproc_count);
             if (!is_last_batch) {
                 progress_bar = format_progress(
-                    static_cast<double>(batch_index + 1) / _config.batches, 34
+                    static_cast<double>(batch_index + 1) / subproc_batches, 34
                 );
                 progress_bar_all = format_progress(
-                    static_cast<double>(
-                        subproc_index * _config.batches + batch_index + 1
-                    ) / (subproc_count * _config.batches),
+                    static_cast<double>(batches_before + batch_index + 1) /
+                        total_batches,
                     52
                 );
             } else if (!is_done) {
                 progress_bar_all = format_progress(
-                    static_cast<double>((subproc_index + 1) * _config.batches + 1) /
-                        (subproc_count * _config.batches),
+                    static_cast<double>(batches_before + subproc_batches + 1) /
+                        total_batches,
                     52
                 );
             }
@@ -953,7 +969,7 @@ void MultiMadnisTraining::write_status(
     if (!_status_file) {
         return;
     }
-    if (!done && (batch_index + 1) % _config.log_interval != 0) {
+    if (!done && (batch_index + 1) % _subprocesses.at(0).config().log_interval != 0) {
         return;
     }
     using namespace std::chrono_literals;
@@ -964,7 +980,7 @@ void MultiMadnisTraining::write_status(
         trainings.push_back(
             {{"subprocess", i},
              {"batch", subproc.status_batches()},
-             {"batch_count", _config.batches},
+             {"batch_count", subproc.config().batches},
              {"losses", subproc.status_losses()},
              {"channel_counts", subproc.status_channel_counts()},
              {"learning_rates", subproc.status_learning_rates()},

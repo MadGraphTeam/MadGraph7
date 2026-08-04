@@ -6425,11 +6425,19 @@ class RunCardMG7(RunCard):
     # ------------------------------------------------------------------
     # parameter declaration
     # ------------------------------------------------------------------
-    def add_toml_param(self, section, key, value, gridpack=False, **opts):
+    def add_toml_param(self, section, key, value, gridpack=False, auto=False, **opts):
         """Declare one fixed (typed) TOML parameter belonging to ``section``.
 
         ``gridpack=True`` marks the parameter as relevant during gridpack
-        execution; such params are written to ``grid_run_card.toml``."""
+        execution; such params are written to ``grid_run_card.toml``.
+
+        ``auto=True`` declares a numeric parameter whose default is
+        determined automatically: ``value`` fixes the accepted type (int/
+        float/...) and provides the internal placeholder default, but the
+        card reads/writes it as the string ``"auto"`` until the user sets an
+        explicit value of that type. This reuses the same ``auto_set``
+        machinery as typing ``auto`` for any other numeric parameter, so
+        type-checking for genuine numeric overrides is unaffected."""
         section = section.lower()
         key = key.lower()
         internal = '%s.%s' % (section, key)
@@ -6442,6 +6450,8 @@ class RunCardMG7(RunCard):
             self.toml_sections[section].append(key)
         if gridpack:
             self.gridpack_params.add(internal)
+        if auto:
+            self.auto_set.add(internal)
 
     def default_setup(self):
         """Define every parameter of the default ``run_card.toml``."""
@@ -6526,8 +6536,8 @@ class RunCardMG7(RunCard):
         self.add_toml_param('vegas', 'max_batch_size', 32000)
 
         # -------------------------- [phasespace] ----------------------
-        self.add_toml_param('phasespace', 'mode', "multichannel",
-            allowed=['multichannel', 'flat', 'both'])
+        self.add_toml_param('phasespace', 'mode', "auto",
+            allowed=['auto', 'multichannel', 'flat', 'both'])
         self.add_toml_param('phasespace', 'sde_strategy', "diagrams",
             allowed=['diagrams', 'denominators'])
         self.add_toml_param('phasespace', 'decays', "all",
@@ -6541,18 +6551,18 @@ class RunCardMG7(RunCard):
         self.add_toml_param('phasespace', 'bw_cutoff', 15)
 
         # ----------------------------- [madnis] -----------------------
-        self.add_toml_param('madnis', 'enable', False)
-        self.add_toml_param('madnis', 'flow_hidden_dim', 64)
-        self.add_toml_param('madnis', 'flow_layers', 3)
+        self.add_toml_param('madnis', 'enable', False, allowed=["auto", True, False], auto=True)
+        self.add_toml_param('madnis', 'flow_hidden_dim', 64, auto=True)
+        self.add_toml_param('madnis', 'flow_layers', 3, auto=True)
         self.add_toml_param('madnis', 'flow_spline_bins', 10)
         self.add_toml_param('madnis', 'flow_activation', "leaky_relu",
             allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'])
         self.add_toml_param('madnis', 'flow_invert_spline', False)
-        self.add_toml_param('madnis', 'discrete_hidden_dim', 64)
+        self.add_toml_param('madnis', 'discrete_hidden_dim', 64, auto=True)
         self.add_toml_param('madnis', 'discrete_layers', 3)
         self.add_toml_param('madnis', 'discrete_activation', "leaky_relu",
             allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'])
-        self.add_toml_param('madnis', 'cwnet_hidden_dim', 64)
+        self.add_toml_param('madnis', 'cwnet_hidden_dim', 64, auto=True)
         self.add_toml_param('madnis', 'cwnet_layers', 3)
         self.add_toml_param('madnis', 'cwnet_activation', "leaky_relu",
             allowed=['relu', 'leaky_relu', 'elu', 'gelu', 'sigmoid', 'softplus'])
@@ -6564,7 +6574,7 @@ class RunCardMG7(RunCard):
         self.add_toml_param('madnis', 'batch_size_per_channel', 128)
         self.add_toml_param('madnis', 'generator_target_size_factor', 32)
         self.add_toml_param('madnis', 'gpu_generator_batch_granularity', 1000)
-        self.add_toml_param('madnis', 'lr', 1e-3)
+        self.add_toml_param('madnis', 'lr', 3e-4, auto=True)
         self.add_toml_param('madnis', 'lr_decay', 0.01)
         self.add_toml_param('madnis', 'lr_max', 3e-3)
         self.add_toml_param('madnis', 'lr_scheduler', "cosine",

@@ -19,7 +19,6 @@ public:
     }
 
     struct Config {
-        Verbosity verbosity = Verbosity::log;
         double learning_rate = 1e-3;
         std::size_t batches = 1000;
         std::size_t log_interval = 100;
@@ -52,6 +51,7 @@ public:
         const std::vector<std::shared_ptr<Integrand>>& integrands,
         const std::optional<ChannelWeightNetwork>& cwnet
     );
+    const Config& config() const { return _config; }
     void train_step(std::size_t batch_index);
     std::vector<std::size_t> active_channels() const;
     std::size_t active_channel_count() const { return _channels.size(); }
@@ -160,12 +160,17 @@ private:
 
 class MultiMadnisTraining {
 public:
+    struct TrainingArgs {
+        MadnisTraining::Config config;
+        std::vector<std::shared_ptr<Integrand>> integrands;
+        std::optional<ChannelWeightNetwork> cwnet;
+    };
+
     MultiMadnisTraining(
         ContextPtr generator_context,
         ContextPtr optimizer_context,
-        const MadnisTraining::Config& config,
-        const nested_vector2<std::shared_ptr<Integrand>>& integrands,
-        const std::vector<std::optional<ChannelWeightNetwork>>& cwnets,
+        const std::vector<TrainingArgs>& training_args,
+        Verbosity verbosity = Verbosity::log,
         std::shared_ptr<StatusFile> status_file = nullptr
     );
     void train();
@@ -181,7 +186,7 @@ private:
     );
     void write_status(std::size_t subproc_index, std::size_t batch_index, bool done);
 
-    MadnisTraining::Config _config;
+    Verbosity _verbosity;
     std::vector<MadnisTraining> _subprocesses;
     std::chrono::time_point<std::chrono::steady_clock> _start_time;
     std::size_t _start_cpu_microsec;

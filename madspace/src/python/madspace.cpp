@@ -1308,7 +1308,6 @@ PYBIND11_MODULE(_madspace_py, m) {
 
     py::classh<MadnisTraining::Config>(m, "MadnisConfig")
         .def(py::init<>())
-        .def_readwrite("verbosity", &MadnisTraining::Config::verbosity)
         .def_readwrite("learning_rate", &MadnisTraining::Config::learning_rate)
         .def_readwrite("batches", &MadnisTraining::Config::batches)
         .def_readwrite("log_interval", &MadnisTraining::Config::log_interval)
@@ -1395,20 +1394,29 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("min_interval_sec") = 10.0
         );
 
+    py::classh<MultiMadnisTraining::TrainingArgs>(m, "TrainingArgs")
+        .def(
+            py::init<
+                const MadnisTraining::Config&,
+                const std::vector<std::shared_ptr<Integrand>>&,
+                const std::optional<ChannelWeightNetwork>&>(),
+            py::arg("config"),
+            py::arg("integrands"),
+            py::arg("cwnet")
+        );
+
     py::classh<MultiMadnisTraining>(m, "MultiMadnisTraining")
         .def(
             py::init<
                 ContextPtr,
                 ContextPtr,
-                const MadnisTraining::Config&,
-                const nested_vector2<std::shared_ptr<Integrand>>&,
-                const std::vector<std::optional<ChannelWeightNetwork>>&,
+                const std::vector<MultiMadnisTraining::TrainingArgs>&,
+                Verbosity,
                 std::shared_ptr<StatusFile>>(),
             py::arg("generator_context"),
             py::arg("optimizer_context"),
-            py::arg("config"),
-            py::arg("integrands"),
-            py::arg("cwnets"),
+            py::arg("training_args"),
+            py::arg("verbosity"),
             py::arg("status_file") = std::shared_ptr<StatusFile>()
         )
         .def("train", &MultiMadnisTraining::train)
