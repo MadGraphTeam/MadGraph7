@@ -55,7 +55,7 @@ struct ContractedReplayRoute {
 enum RecurrenceNativeSelectors {
     TopologyReplay {
         replay_selectors: Vec<DirectReplaySelectorPlan>,
-        destination_physics_helicity_by_flow: Vec<Vec<usize>>,
+        direct_helicity_to_physics: Vec<usize>,
     },
     AllFlowUnion {
         helicity_selectors_by_physics: Vec<Option<DirectUnionHelicitySelectorPlan>>,
@@ -148,14 +148,14 @@ impl RecurrenceNativeRuntime {
                     .into_iter()
                     .map(|public_flow_id| scheduler.prepare_replay_selector(public_flow_id))
                     .collect::<RusticolResult<Vec<_>>>()?;
-                let destination_physics_helicity_by_flow = replay_destination_helicity_maps(
+                validate_replay_destination_helicity_mappings(
                     scheduler.plan(),
                     &replay_selectors,
                     &direct_helicity_to_physics,
                 )?;
                 RecurrenceNativeSelectors::TopologyReplay {
                     replay_selectors,
-                    destination_physics_helicity_by_flow,
+                    direct_helicity_to_physics,
                 }
             }
             RecurrenceStrategy::AllFlowUnion => {
@@ -393,23 +393,17 @@ impl RecurrenceNativeRuntime {
                 let point_count =
                     self.flatten_external_tile_view(batch.subview(tile_start, tile_stop)?)?;
                 let input_len = self.external_tile_input_len(point_count)?;
-                let (replay_selector, destination_physics_helicity) = match &self.selectors {
+                let (replay_selector, direct_helicity_to_physics) = match &self.selectors {
                     RecurrenceNativeSelectors::TopologyReplay {
                         replay_selectors,
-                        destination_physics_helicity_by_flow,
+                        direct_helicity_to_physics,
                     } => (
                         replay_selectors.get(color_index).ok_or_else(|| {
                             RusticolError::integrity(
                                 "recurrence replay selector is outside the public color axis",
                             )
                         })?,
-                        destination_physics_helicity_by_flow
-                            .get(color_index)
-                            .ok_or_else(|| {
-                                RusticolError::integrity(
-                                    "recurrence replay flow has no destination-helicity mapping",
-                                )
-                            })?,
+                        direct_helicity_to_physics,
                     ),
                     RecurrenceNativeSelectors::AllFlowUnion { .. } => unreachable!(),
                     RecurrenceNativeSelectors::ContractedColorUnion { .. } => unreachable!(),
@@ -423,13 +417,12 @@ impl RecurrenceNativeRuntime {
                     )?;
 
                 for destination_id in direct_output.selected_destination_ids() {
-                    let helicity_index = *destination_physics_helicity
-                        .get(destination_id as usize)
-                        .ok_or_else(|| {
-                            RusticolError::integrity(
-                                "recurrence destination-helicity mapping is incomplete",
-                            )
-                        })?;
+                    let helicity_index = replay_output_destination_physics_helicity(
+                        &direct_output,
+                        replay_selector,
+                        direct_helicity_to_physics,
+                        destination_id,
+                    )?;
                     let helicity = &physics.manifest.helicities[helicity_index];
                     if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0
                     {
@@ -650,14 +643,18 @@ impl RecurrenceNativeRuntime {
                             "recurrence external-momentum tile length overflows",
                         )
                     })?;
-                let replay_selector = match &self.selectors {
+                let (replay_selector, direct_helicity_to_physics) = match &self.selectors {
                     RecurrenceNativeSelectors::TopologyReplay {
-                        replay_selectors, ..
-                    } => replay_selectors.get(color_index).ok_or_else(|| {
-                        RusticolError::integrity(
-                            "recurrence replay selector is outside the public color axis",
-                        )
-                    })?,
+                        replay_selectors,
+                        direct_helicity_to_physics,
+                    } => (
+                        replay_selectors.get(color_index).ok_or_else(|| {
+                            RusticolError::integrity(
+                                "recurrence replay selector is outside the public color axis",
+                            )
+                        })?,
+                        direct_helicity_to_physics,
+                    ),
                     RecurrenceNativeSelectors::AllFlowUnion { .. } => unreachable!(),
                     RecurrenceNativeSelectors::ContractedColorUnion { .. } => unreachable!(),
                 };
@@ -672,28 +669,13 @@ impl RecurrenceNativeRuntime {
                 )?;
 
                 let reduction_started = Instant::now();
-                let destination_physics_helicity = match &self.selectors {
-                    RecurrenceNativeSelectors::TopologyReplay {
-                        destination_physics_helicity_by_flow,
-                        ..
-                    } => destination_physics_helicity_by_flow
-                        .get(color_index)
-                        .ok_or_else(|| {
-                            RusticolError::integrity(
-                                "recurrence replay flow has no destination-helicity mapping",
-                            )
-                        })?,
-                    RecurrenceNativeSelectors::AllFlowUnion { .. } => unreachable!(),
-                    RecurrenceNativeSelectors::ContractedColorUnion { .. } => unreachable!(),
-                };
                 for destination_id in output.selected_destination_ids() {
-                    let helicity_index = *destination_physics_helicity
-                        .get(destination_id as usize)
-                        .ok_or_else(|| {
-                            RusticolError::integrity(
-                                "recurrence destination-helicity mapping is incomplete",
-                            )
-                        })?;
+                    let helicity_index = replay_output_destination_physics_helicity(
+                        &output,
+                        replay_selector,
+                        direct_helicity_to_physics,
+                        destination_id,
+                    )?;
                     let helicity = &physics.manifest.helicities[helicity_index];
                     if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0
                     {
@@ -823,14 +805,18 @@ impl RecurrenceNativeRuntime {
                             "recurrence external-momentum tile length overflows",
                         )
                     })?;
-                let replay_selector = match &self.selectors {
+                let (replay_selector, direct_helicity_to_physics) = match &self.selectors {
                     RecurrenceNativeSelectors::TopologyReplay {
-                        replay_selectors, ..
-                    } => replay_selectors.get(color_index).ok_or_else(|| {
-                        RusticolError::integrity(
-                            "recurrence replay selector is outside the public color axis",
-                        )
-                    })?,
+                        replay_selectors,
+                        direct_helicity_to_physics,
+                    } => (
+                        replay_selectors.get(color_index).ok_or_else(|| {
+                            RusticolError::integrity(
+                                "recurrence replay selector is outside the public color axis",
+                            )
+                        })?,
+                        direct_helicity_to_physics,
+                    ),
                     RecurrenceNativeSelectors::AllFlowUnion { .. } => unreachable!(),
                     RecurrenceNativeSelectors::ContractedColorUnion { .. } => unreachable!(),
                 };
@@ -845,28 +831,13 @@ impl RecurrenceNativeRuntime {
                 )?;
 
                 let reduction_started = Instant::now();
-                let destination_physics_helicity = match &self.selectors {
-                    RecurrenceNativeSelectors::TopologyReplay {
-                        destination_physics_helicity_by_flow,
-                        ..
-                    } => destination_physics_helicity_by_flow
-                        .get(color_index)
-                        .ok_or_else(|| {
-                            RusticolError::integrity(
-                                "recurrence replay flow has no destination-helicity mapping",
-                            )
-                        })?,
-                    RecurrenceNativeSelectors::AllFlowUnion { .. } => unreachable!(),
-                    RecurrenceNativeSelectors::ContractedColorUnion { .. } => unreachable!(),
-                };
                 for destination_id in output.selected_destination_ids() {
-                    let helicity_index = *destination_physics_helicity
-                        .get(destination_id as usize)
-                        .ok_or_else(|| {
-                            RusticolError::integrity(
-                                "recurrence destination-helicity mapping is incomplete",
-                            )
-                        })?;
+                    let helicity_index = replay_output_destination_physics_helicity(
+                        &output,
+                        replay_selector,
+                        direct_helicity_to_physics,
+                        destination_id,
+                    )?;
                     let helicity = &physics.manifest.helicities[helicity_index];
                     if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0
                     {
@@ -2272,12 +2243,18 @@ fn union_destination_ids(
     Ok(result)
 }
 
-fn replay_destination_helicity_maps(
+fn validate_replay_destination_helicity_mappings(
     plan: &DirectRecurrencePlan,
     replay_selectors: &[DirectReplaySelectorPlan],
     direct_helicity_to_physics: &[usize],
-) -> RusticolResult<Vec<Vec<usize>>> {
-    let mut result = Vec::with_capacity(replay_selectors.len());
+) -> RusticolResult<()> {
+    for destination in plan.amplitude_destinations() {
+        replay_target_helicity_index(
+            destination.target_helicity_id_or_sentinel,
+            plan.resolved_helicities().len(),
+        )?;
+    }
+
     for selector in replay_selectors {
         if selector.helicity_map().len() != plan.resolved_helicities().len() {
             return Err(RusticolError::integrity(format!(
@@ -2285,36 +2262,122 @@ fn replay_destination_helicity_maps(
                 selector.public_flow_id()
             )));
         }
-
-        let mut destinations = Vec::with_capacity(plan.amplitude_destinations().len());
-        for destination in plan.amplitude_destinations() {
-            if destination.target_helicity_id_or_sentinel == DIRECT_NONE_U32 {
-                return Err(RusticolError::integrity(
-                    "topology-replay amplitude destination lacks a resolved helicity",
-                ));
-            }
-            let mapped_direct_id = selector
-                .helicity_map()
-                .get(destination.target_helicity_id_or_sentinel as usize)
-                .copied()
-                .ok_or_else(|| {
-                    RusticolError::integrity(
-                        "recurrence amplitude destination helicity is not replay-mapped",
-                    )
-                })?;
-            let physics_index = direct_helicity_to_physics
-                .get(mapped_direct_id as usize)
-                .copied()
-                .ok_or_else(|| {
-                    RusticolError::integrity(
-                        "recurrence replay helicity has no public physics mapping",
-                    )
-                })?;
-            destinations.push(physics_index);
+        for mapped_direct_id in selector.helicity_map() {
+            replay_mapped_direct_physics_helicity(direct_helicity_to_physics, *mapped_direct_id)?;
         }
-        result.push(destinations);
     }
-    Ok(result)
+    Ok(())
+}
+
+fn replay_output_destination_physics_helicity(
+    output: &DirectRecurrenceTileOutput<'_>,
+    selector: &DirectReplaySelectorPlan,
+    direct_helicity_to_physics: &[usize],
+    destination_id: u32,
+) -> RusticolResult<usize> {
+    let target_helicity_id_or_sentinel = output
+        .destination_target_helicity_id_or_sentinel(destination_id)
+        .ok_or_else(|| {
+            RusticolError::integrity("recurrence destination-helicity mapping is incomplete")
+        })?;
+    replay_destination_physics_helicity(
+        selector.helicity_map(),
+        direct_helicity_to_physics,
+        target_helicity_id_or_sentinel,
+    )
+}
+
+fn replay_destination_physics_helicity(
+    replay_helicity_map: &[u32],
+    direct_helicity_to_physics: &[usize],
+    target_helicity_id_or_sentinel: u32,
+) -> RusticolResult<usize> {
+    let target_helicity_index =
+        replay_target_helicity_index(target_helicity_id_or_sentinel, replay_helicity_map.len())?;
+    let mapped_direct_id = replay_helicity_map[target_helicity_index];
+    replay_mapped_direct_physics_helicity(direct_helicity_to_physics, mapped_direct_id)
+}
+
+fn replay_target_helicity_index(
+    target_helicity_id_or_sentinel: u32,
+    helicity_count: usize,
+) -> RusticolResult<usize> {
+    if target_helicity_id_or_sentinel == DIRECT_NONE_U32 {
+        return Err(RusticolError::integrity(
+            "topology-replay amplitude destination lacks a resolved helicity",
+        ));
+    }
+    let target_helicity_index = target_helicity_id_or_sentinel as usize;
+    if target_helicity_index >= helicity_count {
+        return Err(RusticolError::integrity(
+            "recurrence amplitude destination helicity is not replay-mapped",
+        ));
+    }
+    Ok(target_helicity_index)
+}
+
+fn replay_mapped_direct_physics_helicity(
+    direct_helicity_to_physics: &[usize],
+    mapped_direct_id: u32,
+) -> RusticolResult<usize> {
+    direct_helicity_to_physics
+        .get(mapped_direct_id as usize)
+        .copied()
+        .ok_or_else(|| {
+            RusticolError::integrity("recurrence replay helicity has no public physics mapping")
+        })
+}
+
+#[cfg(test)]
+mod replay_destination_helicity_tests {
+    use super::*;
+
+    #[test]
+    fn composes_distinct_replay_flow_permutations_without_destination_tables() {
+        let direct_helicity_to_physics = [2, 0, 1];
+        let flow_zero = [0, 1, 2];
+        let flow_one = [2, 0, 1];
+
+        for (replay_helicity_map, expected) in
+            [(&flow_zero[..], [2, 0, 1]), (&flow_one[..], [1, 2, 0])]
+        {
+            let actual = (0..3)
+                .map(|target_helicity_id| {
+                    replay_destination_physics_helicity(
+                        replay_helicity_map,
+                        &direct_helicity_to_physics,
+                        target_helicity_id,
+                    )
+                    .expect("compose authenticated replay and physics mappings")
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(actual, expected);
+        }
+    }
+
+    #[test]
+    fn rejects_absent_or_out_of_range_replay_helicity_mappings() {
+        let missing = replay_destination_physics_helicity(&[0], &[0], DIRECT_NONE_U32)
+            .expect_err("sentinel destination helicity must fail closed");
+        assert_eq!(
+            missing.message(),
+            "topology-replay amplitude destination lacks a resolved helicity"
+        );
+
+        let incomplete = replay_destination_physics_helicity(&[0], &[0], 1)
+            .expect_err("incomplete replay permutation must fail closed");
+        assert_eq!(
+            incomplete.message(),
+            "recurrence amplitude destination helicity is not replay-mapped"
+        );
+
+        let out_of_range = replay_destination_physics_helicity(&[1], &[0], 0)
+            .expect_err("out-of-range direct helicity must fail closed");
+        assert_eq!(
+            out_of_range.message(),
+            "recurrence replay helicity has no public physics mapping"
+        );
+    }
 }
 
 #[derive(Clone, Copy)]

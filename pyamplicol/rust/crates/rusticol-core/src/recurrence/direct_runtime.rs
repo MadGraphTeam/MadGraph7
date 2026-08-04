@@ -96,6 +96,15 @@ impl<'a> DirectRecurrenceTileOutput<'a> {
             .map(|destination| destination.id)
     }
 
+    pub(crate) fn destination_target_helicity_id_or_sentinel(
+        &self,
+        destination_id: u32,
+    ) -> Option<u32> {
+        self.amplitude_destinations
+            .get(destination_id as usize)
+            .map(|destination| destination.target_helicity_id_or_sentinel)
+    }
+
     fn destination<'b>(&self, values: &'b [f64], destination_id: u32) -> Option<&'b [f64]> {
         if destination_id >= self.destination_count {
             return None;
