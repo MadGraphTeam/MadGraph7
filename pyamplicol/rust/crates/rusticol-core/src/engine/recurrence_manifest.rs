@@ -27,13 +27,10 @@ pub(super) const RECURRENCE_COLOR_CONTRACTION_PATH: &str = "recurrence-color.bin
 pub(super) const RECURRENCE_KERNEL_PACK_MANIFEST_PATH: &str = "model/eager-kernel-pack.json";
 pub(super) const RECURRENCE_KERNEL_PAYLOAD_ROOT: &str = "model/eager-kernels";
 
-const MAX_PROCESS_BINDING_BYTES: u64 = 1 << 20;
-const MAX_RUNTIME_CONTAINER_BYTES: u64 = 64 * 1024 * 1024 * 1024;
 const MAX_POINT_TILE_SIZE: u64 = 1_048_576;
 const MAX_WORKSPACE_MIB: u64 = 4096;
 const MAX_SUMMARY_COUNT: u64 = 1 << 48;
 const MAX_METADATA_ROWS: usize = 1 << 20;
-const MAX_TEXT_BYTES: usize = 4096;
 const MAX_SOURCE_COMPONENTS: u64 = 1 << 20;
 const MAX_RELATION_DISCOVERY_SAMPLES: usize = 16;
 
@@ -904,15 +901,12 @@ impl RecurrenceRuntimeContainer {
                 "Direct-Arena v2 recurrence runtime container must declare one or two members",
             ));
         }
-        if self.size_bytes == 0 || self.size_bytes > MAX_RUNTIME_CONTAINER_BYTES {
-            return Err(RusticolError::artifact(format!(
-                "recurrence runtime container size must be in 1..={MAX_RUNTIME_CONTAINER_BYTES} bytes"
-            )));
+        if self.size_bytes == 0 {
+            return Err(RusticolError::artifact(
+                "recurrence runtime container size must be positive",
+            ));
         }
-        if self.unpacked_size_bytes == 0
-            || self.unpacked_size_bytes > self.size_bytes
-            || self.unpacked_size_bytes > MAX_RUNTIME_CONTAINER_BYTES
-        {
+        if self.unpacked_size_bytes == 0 || self.unpacked_size_bytes > self.size_bytes {
             return Err(RusticolError::artifact(
                 "recurrence runtime unpacked size is outside canonical bounds",
             ));
@@ -962,7 +956,6 @@ impl RecurrenceProcessBinding {
                 .sum::<u32>()
                 != 1
             || self.size_bytes == 0
-            || self.size_bytes > MAX_PROCESS_BINDING_BYTES
         {
             return Err(RusticolError::integrity(
                 "recurrence process binding has invalid support words or size metadata",
@@ -1433,15 +1426,12 @@ impl RecurrenceRuntimeContainerMember {
                 "Direct-Arena v2 inspection member path must be exactly {RECURRENCE_DIRECT_SCHEDULE_MEMBER:?}"
             )));
         }
-        if self.size_bytes == 0 || self.size_bytes > MAX_RUNTIME_CONTAINER_BYTES {
+        if self.size_bytes == 0 {
             return Err(RusticolError::artifact(
                 "Direct-Arena v2 plan member size is outside canonical bounds",
             ));
         }
-        if self.container_size_bytes == 0
-            || self.container_size_bytes > MAX_RUNTIME_CONTAINER_BYTES
-            || self.size_bytes > self.container_size_bytes
-        {
+        if self.container_size_bytes == 0 || self.size_bytes > self.container_size_bytes {
             return Err(RusticolError::artifact(
                 "Direct-Arena v2 plan member/container sizes are inconsistent",
             ));
@@ -1462,10 +1452,7 @@ impl RecurrenceColorProjectionCertificate {
                 "unsupported recurrence color-projection certificate contract",
             ));
         }
-        if !self.publishable
-            || self.size_bytes == 0
-            || self.size_bytes > MAX_RUNTIME_CONTAINER_BYTES
-        {
+        if !self.publishable || self.size_bytes == 0 {
             return Err(RusticolError::integrity(
                 "recurrence color-projection certificate metadata is not publishable",
             ));
@@ -2333,7 +2320,6 @@ impl RecurrenceColorContractionReference {
         };
         if self.sha256 != self.semantic_digest
             || self.size_bytes == 0
-            || self.size_bytes > MAX_RUNTIME_CONTAINER_BYTES
             || self.sector_count != inspection.sector_count
             || self.component_count != inspection.schedule.resolved_helicity_count
             || self.destination_count != expected_destination_count
@@ -2665,10 +2651,8 @@ fn validate_counts(context: &str, counts: &[u64]) -> RusticolResult<()> {
 }
 
 fn validate_text(value: &str, context: &str) -> RusticolResult<()> {
-    if value.is_empty() || value.len() > MAX_TEXT_BYTES {
-        return Err(RusticolError::artifact(format!(
-            "{context} is empty or exceeds {MAX_TEXT_BYTES} bytes"
-        )));
+    if value.is_empty() {
+        return Err(RusticolError::artifact(format!("{context} is empty")));
     }
     Ok(())
 }
@@ -3768,6 +3752,121 @@ pub(super) mod tests {
         .unwrap();
 
         assert_eq!(parsed.key, "x_to_x");
+    }
+
+    #[test]
+    fn accepts_large_authenticated_recurrence_payload_metadata() {
+        let mut value = manifest();
+        add_python_selector_work_certificate(&mut value);
+        add_python_color_projection_certificate(&mut value);
+
+        let member_size = 1_u64 << 40;
+        let certificate_size = member_size + 1;
+        let unpacked_size = member_size + certificate_size;
+        let container_size = unpacked_size + 4096;
+        value["plan"]["runtime_schedule"]["size_bytes"] = json!(container_size);
+        value["plan"]["runtime_schedule"]["unpacked_size_bytes"] = json!(unpacked_size);
+        value["plan"]["process_binding"]["size_bytes"] = json!(1_u64 << 30);
+        value["plan"]["inspection_summary"]["runtime_container_member"]["size_bytes"] =
+            json!(member_size);
+        value["plan"]["inspection_summary"]["runtime_container_member"]["container_size_bytes"] =
+            json!(container_size);
+        value["plan"]["inspection_summary"]["color_projection_certificate"]["size_bytes"] =
+            json!(certificate_size);
+
+        let parsed = parse(&value).unwrap();
+
+        assert_eq!(parsed.plan.runtime_schedule.size_bytes, container_size);
+        assert_eq!(
+            parsed.plan.runtime_schedule.unpacked_size_bytes,
+            unpacked_size
+        );
+        assert_eq!(parsed.plan.process_binding.size_bytes, 1_u64 << 30);
+        assert_eq!(
+            parsed
+                .plan
+                .inspection_summary
+                .runtime_container_member
+                .size_bytes,
+            member_size
+        );
+        assert_eq!(
+            parsed
+                .plan
+                .inspection_summary
+                .color_projection_certificate
+                .unwrap()
+                .size_bytes,
+            certificate_size
+        );
+    }
+
+    #[test]
+    fn rejects_zero_recurrence_payload_metadata() {
+        let mut baseline = manifest();
+        add_python_selector_work_certificate(&mut baseline);
+        add_python_color_projection_certificate(&mut baseline);
+
+        for pointer in [
+            "/plan/runtime_schedule/size_bytes",
+            "/plan/runtime_schedule/unpacked_size_bytes",
+            "/plan/process_binding/size_bytes",
+            "/plan/inspection_summary/runtime_container_member/size_bytes",
+            "/plan/inspection_summary/runtime_container_member/container_size_bytes",
+            "/plan/inspection_summary/color_projection_certificate/size_bytes",
+        ] {
+            let mut value = baseline.clone();
+            *value.pointer_mut(pointer).unwrap() = json!(0);
+            assert!(
+                parse(&value).is_err(),
+                "accepted zero metadata at {pointer}"
+            );
+        }
+
+        let mut color = full_hzz_fixture_value();
+        color["runtime_metadata"]["color_contraction"]["size_bytes"] = json!(0);
+        assert!(
+            parse_hzz_fixture(&serde_json::to_vec(&color).unwrap(), "full").is_err(),
+            "accepted zero recurrence color payload size"
+        );
+    }
+
+    #[test]
+    fn accepts_large_recurrence_color_payload_metadata() {
+        let mut value = full_hzz_fixture_value();
+        value["runtime_metadata"]["color_contraction"]["size_bytes"] = json!(1_u64 << 40);
+
+        let parsed = parse_hzz_fixture(&serde_json::to_vec(&value).unwrap(), "full").unwrap();
+
+        assert_eq!(
+            parsed
+                .runtime_metadata
+                .color_contraction
+                .unwrap()
+                .size_bytes,
+            1_u64 << 40
+        );
+    }
+
+    #[test]
+    fn accepts_large_generated_text_but_still_rejects_empty_text() {
+        let mut value = manifest();
+        let coupling_policy = "x".repeat(4097);
+        value["runtime_metadata"]["normalization"]["coupling_policy"] = json!(coupling_policy);
+
+        let parsed = parse(&value).unwrap();
+        assert_eq!(
+            parsed.runtime_metadata.normalization.coupling_policy.len(),
+            4097
+        );
+
+        value["runtime_metadata"]["normalization"]["coupling_policy"] = json!("");
+        assert!(
+            parse(&value)
+                .unwrap_err()
+                .to_string()
+                .contains("recurrence normalization coupling policy is empty")
+        );
     }
 
     #[test]

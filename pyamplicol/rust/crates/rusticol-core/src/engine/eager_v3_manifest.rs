@@ -27,7 +27,6 @@ const LEGACY_EAGER_PLAN_ABI: &str = "pyamplicol-eager-plan-v2";
 const LEGACY_EAGER_RUNTIME_CAPABILITY: &str = "rusticol.eager-dag.complex-f64.v1";
 
 pub(super) const MAX_EXECUTION_MANIFEST_BYTES: usize = 1 << 20;
-const MAX_EAGER_RUNTIME_CONTAINER_BYTES: u64 = 64 * 1024 * 1024 * 1024;
 const MAX_POINT_TILE_SIZE: u64 = 1_048_576;
 const MAX_WORKSPACE_MIB: u64 = 4096;
 const MAX_SUMMARY_COUNT: u64 = 1 << 48;
@@ -288,17 +287,14 @@ impl EagerV3RuntimeContainer {
                 EXPECTED_EAGER_MEMBERS.len()
             )));
         }
-        if self.size_bytes == 0 || self.size_bytes > MAX_EAGER_RUNTIME_CONTAINER_BYTES {
-            return Err(RusticolError::artifact(format!(
-                "eager runtime container size must be in 1..={MAX_EAGER_RUNTIME_CONTAINER_BYTES} bytes"
-            )));
-        }
-        if self.unpacked_size_bytes == 0
-            || self.unpacked_size_bytes > self.size_bytes
-            || self.unpacked_size_bytes > MAX_EAGER_RUNTIME_CONTAINER_BYTES
-        {
+        if self.size_bytes == 0 {
             return Err(RusticolError::artifact(
-                "eager runtime unpacked size is outside canonical bounds",
+                "eager runtime container must not be empty",
+            ));
+        }
+        if self.unpacked_size_bytes == 0 || self.unpacked_size_bytes > self.size_bytes {
+            return Err(RusticolError::artifact(
+                "eager runtime unpacked size must be nonzero and not exceed the container size",
             ));
         }
         parse_sha256(&self.sha256, "eager runtime container")?;
@@ -391,9 +387,9 @@ impl EagerV3InspectionSummary {
                 "eager inspection process id does not match its execution manifest",
             ));
         }
-        if self.model_name.is_empty() || self.model_name.len() > 4096 {
+        if self.model_name.is_empty() {
             return Err(RusticolError::artifact(
-                "eager inspection model name is empty or exceeds 4096 bytes",
+                "eager inspection model name must not be empty",
             ));
         }
         validate_counts(

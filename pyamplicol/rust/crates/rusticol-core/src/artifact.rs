@@ -25,7 +25,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(feature = "f64-compiled")]
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const MAX_MANIFEST_BYTES: u64 = 16 * 1024 * 1024;
 const ARTIFACT_IDENTITY_EXTENSION: &str = "artifact_identity";
 const ARTIFACT_IDENTITY_KIND: &str = "pyamplicol-runtime-payload-identity";
 const ARTIFACT_IDENTITY_SCHEMA_VERSION: u64 = 1;
@@ -693,13 +692,6 @@ impl VerifiedArtifact {
             return Err(RusticolError::security(format!(
                 "artifact manifest {} is not a regular file",
                 manifest_path.display()
-            )));
-        }
-        if metadata.len() > MAX_MANIFEST_BYTES {
-            return Err(RusticolError::security(format!(
-                "artifact manifest {} exceeds the {} byte limit",
-                manifest_path.display(),
-                MAX_MANIFEST_BYTES
             )));
         }
         let bytes = fs::read(&manifest_path).map_err(|error| {

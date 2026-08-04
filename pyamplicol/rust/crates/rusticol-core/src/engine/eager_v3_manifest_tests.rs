@@ -206,6 +206,10 @@ fn container_contract_mismatches_fail_closed() {
             json!(0),
         ),
         (
+            &["plan", "runtime_container", "unpacked_size_bytes"],
+            json!(u64::MAX),
+        ),
+        (
             &["plan", "runtime_container", "index_sha256"],
             json!("A".repeat(64)),
         ),
@@ -218,6 +222,29 @@ fn container_contract_mismatches_fail_closed() {
             "mutation unexpectedly passed: {path:?}"
         );
     }
+}
+
+#[test]
+fn large_writer_representable_container_metadata_is_accepted() {
+    let mut fixture = Fixture::new();
+    let size_bytes = 1_u64 << 40;
+    fixture.manifest["plan"]["runtime_container"]["size_bytes"] = json!(size_bytes);
+    fixture.manifest["plan"]["runtime_container"]["unpacked_size_bytes"] = json!(size_bytes - 4096);
+
+    fixture.parse().unwrap();
+}
+
+#[test]
+fn long_writer_valid_model_name_within_compact_summary_profile_is_accepted() {
+    let mut fixture = Fixture::new();
+    fixture.manifest["plan"]["inspection_summary"]["model_name"] = json!("m".repeat(8192));
+    let bytes = serde_json::to_vec(&fixture.manifest).unwrap();
+    assert!(bytes.len() < MAX_EXECUTION_MANIFEST_BYTES);
+
+    fixture.parse().unwrap();
+
+    fixture.manifest["plan"]["inspection_summary"]["model_name"] = json!("");
+    assert!(fixture.parse().is_err());
 }
 
 #[test]

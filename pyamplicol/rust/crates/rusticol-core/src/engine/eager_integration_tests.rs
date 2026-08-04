@@ -190,6 +190,14 @@ fn eager_direct_table_manifest_is_explicit_and_fail_closed() {
     assert_eq!(direct.output_complex_count, 1);
     assert_eq!(direct.descriptor_size_bytes, Some(128));
 
+    let large_descriptor_size = (1_u64 << 30) + 1;
+    prepared.f64_evaluator_manifest["direct_table"]["descriptor_size_bytes"] =
+        json!(large_descriptor_size);
+    let direct = prepared
+        .eager_direct_table_manifest()
+        .expect("large writer-representable DirectTable descriptor metadata must remain valid");
+    assert_eq!(direct.descriptor_size_bytes, Some(large_descriptor_size));
+
     let mut predecessor = prepared.clone();
     predecessor.f64_evaluator_manifest["direct_table"]["descriptor_abi"] =
         json!(["symjit-direct-table-", "descriptor-v1"].concat());
@@ -204,6 +212,7 @@ fn eager_direct_table_manifest_is_explicit_and_fail_closed() {
         ("capability", json!("wrong-capability")),
         ("descriptor_abi", json!("wrong-descriptor-abi")),
         ("binding_abi", json!("wrong-binding-abi")),
+        ("descriptor_size_bytes", json!(0)),
         ("descriptor_sha256", json!("A".repeat(64))),
         ("input_complex_count", json!(2)),
     ] {

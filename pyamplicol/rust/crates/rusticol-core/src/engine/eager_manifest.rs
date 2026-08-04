@@ -1623,9 +1623,9 @@ impl PreparedKernelManifest {
                     )));
                 }
                 let size = direct.descriptor_size_bytes.unwrap_or(0);
-                if size == 0 || size > 64 * 1024 * 1024 {
+                if size == 0 {
                     return Err(RusticolError::artifact(format!(
-                        "prepared eager kernel {} DirectTable descriptor size is outside canonical bounds",
+                        "prepared eager kernel {} DirectTable descriptor must not be empty",
                         self.kernel_id
                     )));
                 }

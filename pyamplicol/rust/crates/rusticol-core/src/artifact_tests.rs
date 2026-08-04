@@ -1506,6 +1506,31 @@ fn valid_manifest_opens_trusted_payload_catalog() {
 }
 
 #[test]
+fn valid_manifest_larger_than_legacy_16_mib_guard_opens() {
+    let mut artifact = TestArtifact::new();
+    artifact.manifest["extensions"]["large_valid_metadata"] = json!("x".repeat(16 * 1024 * 1024));
+    artifact.write_manifest();
+    let manifest_path = artifact.root.join(ARTIFACT_MANIFEST_FILE);
+    assert!(
+        fs::metadata(&manifest_path)
+            .expect("large manifest metadata")
+            .len()
+            > 16 * 1024 * 1024
+    );
+
+    let verified = VerifiedArtifact::open(&artifact.root).expect("large valid artifact manifest");
+    assert_eq!(
+        verified
+            .manifest()
+            .extensions
+            .get("large_valid_metadata")
+            .and_then(Value::as_str)
+            .map(str::len),
+        Some(16 * 1024 * 1024)
+    );
+}
+
+#[test]
 fn artifact_without_current_identity_contract_fails_closed() {
     let mut artifact = TestArtifact::new();
     artifact.manifest["extensions"]
