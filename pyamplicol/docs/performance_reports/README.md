@@ -1,17 +1,16 @@
 <!-- SPDX-License-Identifier: 0BSD -->
-# Architecture Performance Reports
+# Performance Reports
 
-The repository retains four rendered snapshots from separate manual
+The repository publishes only two rendered snapshots from separate manual
 measurement campaigns:
 
-- [Consolidated report](../arxiv/pyAmpliCol.pdf)
-- [MacBook M3 report](macbook_M3/pyAmpliCol.pdf)
-- [MacBook M3 Z-process subset](macbook_M3/z_table/z_table.pdf)
-- [x86 EPYC report](x86_EPYC/pyAmpliCol.pdf)
+- [MacBook M3 report](macbook_M3_pyAmpliCol.pdf)
+- [AMD EPYC report](EPYC_pyAmpliCol.pdf)
 
-These PDFs are historical measurements, not release-CI results. Raw JSON,
+These PDFs are measurement-host results, not release-CI results. Raw JSON,
 generated TeX, build workspaces, attempts, logs, locks, and coordination state
-are not kept in the source tree.
+remain untracked. The blank/reset JSON and TeX resources installed by
+pyAmpliCol are campaign templates, not published measurements.
 
 Create or reset a self-contained campaign from any installed wheel with:
 
@@ -22,11 +21,14 @@ pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
   --color-approximation lc --generation-mode non-union-flow \
   --generation-engine recurrence --model built_in \
   --no-dependencies-added --no-dashboard
+./pyamplicol-profiling-campaign/steer_performance_campaign.py refresh-pdf
 ```
 
 The run above is the supported quick installation check: it measures only the
-final-state-multiplicity-one `d d~ > Z` recurrence cell. The retained reports
-come from much broader dedicated campaigns.
+final-state-multiplicity-one `d d~ > Z` recurrence cell. Broader selections
+produce the same report format as the two retained PDFs. Re-running
+`refresh-pdf` directly reproduces the PDF from the campaign's current results;
+no repository report data is required.
 
 Runtime attempts, artifacts, locks, and coordination state live visibly in
 `pyamplicol-profiling-campaign/campaign_artifacts/`. Moving or renaming the

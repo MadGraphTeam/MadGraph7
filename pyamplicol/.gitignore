@@ -21,8 +21,15 @@ src/pyamplicol/_rusticol*.so
 src/pyamplicol/_rusticol*.dylib
 src/pyamplicol/_rusticol*.pyd
 .artifacts/
-/docs/performance_reports/*/campaign_artifacts/
 .cargo/config.toml
+
+# Retain local performance campaigns and generated reports outside Git. The
+# repository publishes only the report index and two selected PDF snapshots.
+/docs/performance_reports/*
+!/docs/performance_reports/README.md
+!/docs/performance_reports/macbook_M3_pyAmpliCol.pdf
+!/docs/performance_reports/EPYC_pyAmpliCol.pdf
+/docs/arxiv/
 
 # Managed environments and deployment sandboxes
 .venv/

@@ -20,12 +20,14 @@ installation, import, metadata, and direct-runtime smoke test. The workflow
 also completed its source preflight and independent Fortran physics oracle.
 
 Performance campaigns are separate manual measurements and are not run in
-release CI. The repository retains only their four rendered PDFs; use
+release CI. The repository retains only two rendered PDFs, indexed in the
+[performance report documentation](../performance_reports/README.md); use
 `pyamplicol profiling-campaign copy DEST --force` to create or reset a
-self-contained campaign. Its visible `DEST/campaign_artifacts/` state moves
-with the campaign and never reuses legacy repository-level `.artifacts` state;
-the reset removes only its local state and managed generated outputs while
-preserving unrelated destination files.
+self-contained campaign and reproduce the report format directly. Its visible
+`DEST/campaign_artifacts/` state moves with the campaign and never reuses
+legacy repository-level `.artifacts` state; the reset removes only its local
+state and managed generated outputs while preserving unrelated destination
+files.
 
 Release dependencies use the official `siravan/symjit-crate` 2.22.0 repository
 at immutable revision `d8abfeeb4db98c13cdcf9dd39cf3e795fd5001a7`. There is no

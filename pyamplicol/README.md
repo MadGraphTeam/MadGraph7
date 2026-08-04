@@ -189,16 +189,17 @@ AmpliCol reference backend additionally requires
 checkout is not supplied. Neither pyAmpliCol nor the supported patched
 original-AmpliCol comparison checkout requires LHAPDF.
 
-Four rendered report snapshots are retained. Their raw measurements, generated
-tables, and report workspaces are intentionally not shipped in the source tree:
+The repository retains only two rendered performance snapshots. Raw JSON,
+generated tables, attempts, and campaign workspaces stay untracked:
 
-- [Consolidated report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/arxiv/pyAmpliCol.pdf)
-- [MacBook M3 report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/macbook_M3/pyAmpliCol.pdf)
-- [MacBook M3 Z-process subset](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/macbook_M3/z_table/z_table.pdf)
-- [x86 EPYC report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/x86_EPYC/pyAmpliCol.pdf)
+- [MacBook M3 report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
+- [AMD EPYC report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
 
 These reports come from separate manual measurement campaigns; they are not
-release-CI results.
+release-CI results. The report format is directly reproducible from an
+installed package: create the workspace with
+`pyamplicol profiling-campaign copy DEST --force`, run the desired selection,
+then execute `DEST/steer_performance_campaign.py refresh-pdf`.
 
 ## Documentation
 

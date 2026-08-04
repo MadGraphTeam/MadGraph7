@@ -7,12 +7,12 @@ Start with:
   runtime use, the native SDK, licensing, and release status;
 - the [packaged examples](../examples/README.md) for complete cards and API
   drivers;
-- the [performance reports](performance_reports/README.md) for the four
+- the [performance reports](performance_reports/README.md) for the two
   retained rendered snapshots;
 - the [development contracts](development/README.md) for stable API,
   configuration, physics-extraction, packaging, and architecture decisions.
 
-Only rendered report PDFs are retained in this repository. Raw measurements,
+Only two rendered report PDFs are retained in this repository. Raw measurements,
 generated report source, campaign workspaces, process artifacts, wheels, logs,
 locks, page images, and LaTeX auxiliary files are intentionally excluded. An
 installed package can create a new empty workspace with

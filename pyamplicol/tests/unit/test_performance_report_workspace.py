@@ -216,7 +216,7 @@ def test_profile_readme_requires_full_audited_five_second_campaign(
     assert "export-profile macbook_M3" in readme
 
 
-def test_documentation_index_links_separate_mac_and_cluster_campaigns() -> None:
+def test_documentation_index_links_only_the_two_published_report_pdfs() -> None:
     docs = Path(__file__).resolve().parents[2] / "docs"
     root_readme = (docs / "README.md").read_text(encoding="utf-8")
     report_readme = (docs / "performance_reports/README.md").read_text(
@@ -224,9 +224,11 @@ def test_documentation_index_links_separate_mac_and_cluster_campaigns() -> None:
     )
 
     assert "performance_reports/README.md" in root_readme
-    for profile in ("macbook_M3", "x86_EPYC"):
-        assert f"{profile}/TABLE_FILLING.md" in report_readme
-    assert "cluster_EPYC" not in report_readme
+    assert "macbook_M3_pyAmpliCol.pdf" in report_readme
+    assert "EPYC_pyAmpliCol.pdf" in report_readme
+    assert "results/" not in report_readme
+    assert "profiling-campaign copy" in report_readme
+    assert "refresh-pdf" in report_readme
 
 
 def _commit_all(repo: Path, message: str) -> str:
