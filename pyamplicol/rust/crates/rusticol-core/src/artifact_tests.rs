@@ -2116,6 +2116,80 @@ fn producer_and_payload_cpu_features_are_checked() {
 }
 
 #[test]
+fn portable_64le_target_accepts_only_feature_free_symjit_artifacts() {
+    let mut portable = TestArtifact::new();
+    portable.manifest["producer"]["target"] = json!({
+        "triple": PORTABLE_64LE_ARTIFACT_TARGET,
+        "cpu_features": [],
+    });
+    portable.write_manifest();
+    VerifiedArtifact::open(&portable.root).expect("portable O2 SymJIT target");
+
+    let mut feature_bound = TestArtifact::new();
+    feature_bound.manifest["producer"]["target"] = json!({
+        "triple": PORTABLE_64LE_ARTIFACT_TARGET,
+        "cpu_features": ["avx2"],
+    });
+    feature_bound.write_manifest();
+    let error = VerifiedArtifact::open(&feature_bound.root).unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+    assert!(error.to_string().contains("must not require CPU features"));
+
+    for capability in [
+        RuntimeCapability::SymbolicaLegacyJitContainerComplexF64V1.as_str(),
+        RuntimeCapability::SymbolicaCompiledCppComplexF64V1.as_str(),
+        RuntimeCapability::SymbolicaCompiledAsmComplexF64V1.as_str(),
+    ] {
+        let mut target_specific = TestArtifact::new();
+        target_specific.manifest["producer"]["target"] = json!({
+            "triple": PORTABLE_64LE_ARTIFACT_TARGET,
+            "cpu_features": [],
+        });
+        target_specific.manifest["runtime"]["required_runtime_capabilities"] = json!([capability]);
+        target_specific.manifest["processes"][0]["required_runtime_capabilities"] =
+            json!([capability]);
+        target_specific.write_manifest();
+        let error = VerifiedArtifact::open(&target_specific.root).unwrap_err();
+        assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+        assert!(error.to_string().contains("remain target-specific"));
+    }
+
+    for capability in [
+        RuntimeCapability::EagerDirectArenaV1.as_str(),
+        RuntimeCapability::RecurrenceRuntimeComplexF64V1.as_str(),
+    ] {
+        let mut direct = TestArtifact::new();
+        direct.manifest["producer"]["target"] = json!({
+            "triple": PORTABLE_64LE_ARTIFACT_TARGET,
+            "cpu_features": [],
+        });
+        direct.manifest["runtime"]["required_runtime_capabilities"] = json!([capability]);
+        direct.manifest["processes"][0]["required_runtime_capabilities"] = json!([capability]);
+        direct.write_manifest();
+        VerifiedArtifact::open(&direct.root)
+            .expect("portable eager/recurrence outer capability is pack-authenticated later");
+    }
+}
+
+#[cfg(feature = "f64-symjit")]
+#[test]
+fn packaged_portable_64le_o2_artifact_loads_through_native_runtime() {
+    let root = PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../src/pyamplicol/assets/selftest/portable-64le/artifact"
+    ));
+    let artifact = VerifiedArtifact::open(&root).expect("open portable source artifact");
+    assert_eq!(
+        artifact.manifest().producer.target.triple,
+        PORTABLE_64LE_ARTIFACT_TARGET
+    );
+
+    let runtime = crate::NativeRuntime::load(&root, Some("d_dbar_to_z"), None)
+        .expect("load portable O2 artifact through the authoritative runtime");
+    assert_eq!(runtime.metadata().execution_mode, "compiled");
+}
+
+#[test]
 fn target_metadata_requires_canonical_sorted_cpu_features() {
     let target = runtime_target_info();
     assert_eq!(target.triple, current_target_triple());

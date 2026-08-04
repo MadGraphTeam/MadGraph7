@@ -147,7 +147,7 @@ to compiled execution. Cards that require process-local compiled DAGs must set
 
 ### JIT
 
-- `optimization_level: 0 | 1 | 2 | 3 = 3`
+- `optimization_level: 0 | 1 | 2 | 3 = 2`
 - `compress: bool = true`
 
 JIT artifacts embed direct SymJIT applications. The defaults above apply to

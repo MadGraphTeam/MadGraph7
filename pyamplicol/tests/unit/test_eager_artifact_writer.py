@@ -17,7 +17,14 @@ from pyamplicol._internal.versions import (
 )
 from pyamplicol.api.requests import ModelSource
 from pyamplicol.artifacts import ArtifactBuilder, load_manifest
-from pyamplicol.config import Action, EvaluatorConfig, GenerationConfig, RunConfig
+from pyamplicol.artifacts.manifest import PORTABLE_64LE_TARGET
+from pyamplicol.config import (
+    Action,
+    EvaluatorConfig,
+    GenerationConfig,
+    JITConfig,
+    RunConfig,
+)
 from pyamplicol.generation.artifact_writer import (
     EagerPlanV3ProcessArtifact,
     _GenerationConfigProvenance,
@@ -355,7 +362,10 @@ def test_plan_v3_writer_filters_pack_and_appends_atomically(
         RunConfig(
             action=Action.GENERATE,
             generation=GenerationConfig(emit_api_bundle=False),
-            evaluator=EvaluatorConfig(execution_mode="eager"),
+            evaluator=EvaluatorConfig(
+                execution_mode="eager",
+                jit=JITConfig(optimization_level=2),
+            ),
         )
     )
     first = _v3_process(
@@ -385,6 +395,16 @@ def test_plan_v3_writer_filters_pack_and_appends_atomically(
         "publishing artifact",
     ]
     manifest = load_manifest(output)
+    portable_target = {
+        "triple": PORTABLE_64LE_TARGET,
+        "cpu_features": (),
+    }
+    assert manifest.producer["target"] == portable_target
+    targeted_payloads = [
+        record for record in manifest.payloads if record.target is not None
+    ]
+    assert targeted_payloads
+    assert all(record.target == portable_target for record in targeted_payloads)
     structural_records = [
         record
         for record in manifest.payloads

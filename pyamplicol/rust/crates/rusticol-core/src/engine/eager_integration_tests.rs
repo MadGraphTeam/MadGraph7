@@ -253,6 +253,64 @@ fn filtered_pack(kernels: Vec<PreparedKernelManifest>) -> PreparedKernelPackMani
     }
 }
 
+fn portable_outer_target() -> crate::Target {
+    crate::Target {
+        triple: crate::artifact::PORTABLE_64LE_ARTIFACT_TARGET.to_string(),
+        cpu_features: Vec::new(),
+    }
+}
+
+fn portable_jit_pack_for_outer_target_test() -> PreparedKernelPackManifest {
+    filtered_pack(vec![kernel(
+        50,
+        "closure",
+        vec![input("left-current", 0)],
+        "kernels/50/application.symjit",
+    )])
+}
+
+fn assert_portable_outer_pack_boundary(
+    validate: impl Fn(&crate::Target, &PreparedKernelPackManifest) -> RusticolResult<()>,
+    context: &str,
+) {
+    let target = portable_outer_target();
+    let jit = portable_jit_pack_for_outer_target_test();
+    jit.validate().expect("valid portable O2 JIT pack");
+    validate(&target, &jit).unwrap_or_else(|error| {
+        panic!("portable O2 JIT pack must satisfy {context} outer target: {error}")
+    });
+
+    for (backend, capability) in [
+        ("cpp", SYMBOLICA_COMPILED_CPP_RUNTIME_CAPABILITY),
+        ("asm", SYMBOLICA_COMPILED_ASM_RUNTIME_CAPABILITY),
+    ] {
+        let native = compiled_pack(backend, capability);
+        native
+            .validate()
+            .unwrap_or_else(|error| panic!("valid native {backend} pack: {error}"));
+        let error = validate(&target, &native)
+            .expect_err("portable outer artifact must reject a native prepared pack");
+        assert!(error.to_string().contains("portable O2 SymJIT"));
+        assert!(error.to_string().contains(context));
+    }
+}
+
+#[test]
+fn eager_portable_outer_target_requires_o2_jit_pack() {
+    assert_portable_outer_pack_boundary(
+        super::eager_v3_load::validate_eager_prepared_pack_outer_target,
+        "eager",
+    );
+}
+
+#[test]
+fn recurrence_portable_outer_target_requires_o2_jit_pack() {
+    assert_portable_outer_pack_boundary(
+        super::recurrence_load::validate_recurrence_prepared_pack_outer_target,
+        "recurrence",
+    );
+}
+
 #[test]
 fn prepared_jit_pack_rejects_nonportable_target_before_loading_payloads() {
     let mut pack = filtered_pack(vec![kernel(

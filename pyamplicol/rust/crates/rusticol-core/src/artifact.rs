@@ -45,6 +45,7 @@ const SUPPORTED_ARTIFACT_TARGETS: [&str; 3] = [
     "x86_64-apple-darwin",
     "x86_64-unknown-linux-gnu",
 ];
+pub(crate) const PORTABLE_64LE_ARTIFACT_TARGET: &str = "portable-64le";
 #[cfg(feature = "f64-compiled")]
 const NATIVE_LIBRARY_SNAPSHOT_ATTEMPTS: u64 = 128;
 #[cfg(feature = "f64-compiled")]
@@ -1716,6 +1717,7 @@ fn validate_manifest(manifest: &ArtifactManifest) -> RusticolResult<()> {
             "runtime.required_runtime_capabilities must equal the union of process capability declarations",
         ));
     }
+    validate_portable_runtime_capabilities(&manifest.producer.target, &runtime_capabilities)?;
     if let Some(default) = &manifest.default_process_id
         && !public_ids.contains(default)
     {
@@ -2329,19 +2331,55 @@ fn validate_target(target: &Target, description: &str) -> RusticolResult<()> {
             "Rusticol process artifacts are not supported on runtime target {current:?}"
         )));
     }
+    let required = normalized_cpu_features(target, description)?;
+    if target.triple == PORTABLE_64LE_ARTIFACT_TARGET {
+        if usize::BITS != 64 || !cfg!(target_endian = "little") {
+            return Err(RusticolError::compatibility(format!(
+                "{description} target {PORTABLE_64LE_ARTIFACT_TARGET:?} requires a 64-bit little-endian runtime"
+            )));
+        }
+        if !required.is_empty() {
+            return Err(RusticolError::compatibility(format!(
+                "{description} target {PORTABLE_64LE_ARTIFACT_TARGET:?} must not require CPU features"
+            )));
+        }
+        return Ok(());
+    }
     if target.triple != current {
         return Err(RusticolError::compatibility(format!(
             "{description} target {:?} is incompatible with runtime target {current:?}",
             target.triple
         )));
     }
-    let required = normalized_cpu_features(target, description)?;
     let available = detected_cpu_features().into_iter().collect::<BTreeSet<_>>();
     let unavailable = required.difference(&available).cloned().collect::<Vec<_>>();
     if !unavailable.is_empty() {
         return Err(RusticolError::compatibility(format!(
             "{description} requires unavailable CPU features {unavailable:?}"
         )));
+    }
+    Ok(())
+}
+
+fn validate_portable_runtime_capabilities(
+    target: &Target,
+    capabilities: &BTreeSet<String>,
+) -> RusticolResult<()> {
+    if target.triple != PORTABLE_64LE_ARTIFACT_TARGET {
+        return Ok(());
+    }
+    let forbidden = [
+        RuntimeCapability::SymbolicaLegacyJitContainerComplexF64V1.as_str(),
+        RuntimeCapability::SymbolicaCompiledCppComplexF64V1.as_str(),
+        RuntimeCapability::SymbolicaCompiledAsmComplexF64V1.as_str(),
+    ];
+    if forbidden
+        .iter()
+        .any(|capability| capabilities.contains(*capability))
+    {
+        return Err(RusticolError::compatibility(
+            "portable-64le process artifacts cannot contain C++, ASM, or legacy JIT evaluators; those evaluator families remain target-specific",
+        ));
     }
     Ok(())
 }

@@ -89,7 +89,9 @@ The primary example generates a multiprocess `p p > Z j j` artifact from the
 packaged serialized Standard Model, then evaluates and profiles one concrete
 subprocess. Its 19 ordered candidates collapse to eight side-permutation
 classes; it stores the seven tree-level representatives and reports the
-omitted loop-induced `g g > Z g g` class:
+omitted loop-induced `g g > Z g g` class. The card inherits the portable JIT
+O2 default, so its process artifact can be moved between supported 64-bit
+little-endian macOS arm64, macOS x86_64, and Linux x86_64 hosts:
 
 ```console
 pyamplicol generate_pp_zjj_from_ufo_sm.toml

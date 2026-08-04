@@ -3504,7 +3504,8 @@ def render_scalar_ladder(
         ("generation [s]", "generation_seconds"),
         (r"wall [\(\mu\mathrm{s}/\mathrm{pt}\)]", "wall_seconds_per_point"),
         (
-            r"evaluator total [\(\mu\mathrm{s}/\mathrm{pt}\)]",
+            r"{\fontsize{6.4pt}{7.4pt}\selectfont"
+            r"\mbox{evaluator total [\(\mu\mathrm{s}/\mathrm{pt}\)]}}",
             "evaluator_total_seconds_per_point",
         ),
         ("matrix element", "matrix_element"),

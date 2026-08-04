@@ -206,7 +206,7 @@ def test_default_model_compile_prepares_one_requested_backend_pack(
     config = invocation.resolve().effective
 
     assert config.evaluator.backend is EvaluatorBackend.JIT
-    assert config.evaluator.jit.optimization_level == 3
+    assert config.evaluator.jit.optimization_level == 2
     assert config.evaluator.jit.compress is False
     assert config.evaluator.optimization.horner_iterations == 7
     assert config.evaluator.optimization.cpe_iterations == 3

@@ -244,7 +244,7 @@ def test_dashboard_renders_elapsed_peak_rss_and_granular_status() -> None:
         8,
         None,
         "phases",
-        {"execution_mode": "compiled", "backend": "JIT", "optimization": "O3"},
+        {"execution_mode": "compiled", "backend": "JIT", "optimization": "O2"},
         started,
         started + 60.0,
         completed=3,

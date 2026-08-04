@@ -126,10 +126,11 @@ JIT bundles retain SymJIT application/MIR state and rebuild executable code for
 the receiving CPU when loaded. SymJIT storage-v3 prepared state is portable
 across supported `x86_64` and `aarch64` hosts at optimization level 2.
 pyAmpliCol therefore forces O2 for prepared JIT kernels, including when a
-different level was requested. This restriction does not apply to process-local
-compiled DAG evaluators, which retain their independently configured JIT level.
-C++ and ASM bundles are target-native. C++ and ASM receive batched inputs but
-do not gain SIMD from pyAmpliCol; SymJIT may auto-vectorize its JIT applications.
+different level was requested. Process-local compiled JIT artifacts also
+default to O2 and use the same portable outer target when every evaluator is
+O2 JIT. Explicit O1/O3 JIT and C++/ASM artifacts remain target-native. C++ and
+ASM receive batched inputs but do not gain SIMD from pyAmpliCol; SymJIT may
+auto-vectorize its JIT applications.
 
 ## Multiprocess Expansion
 

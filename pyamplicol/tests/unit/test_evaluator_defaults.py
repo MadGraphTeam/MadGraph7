@@ -15,7 +15,7 @@ def test_evaluator_defaults_preserve_production_optimization_policy() -> None:
     assert settings.backend == "jit"
     assert settings.iterations == 10
     assert settings.cpe_iterations is None
-    assert settings.jit_optimization_level == 3
+    assert settings.jit_optimization_level == 2
     assert settings.jit_compress is True
     assert settings.jit_direct_translation is False
     assert settings.max_horner_scheme_variables == 1000

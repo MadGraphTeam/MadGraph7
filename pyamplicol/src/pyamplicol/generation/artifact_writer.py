@@ -25,6 +25,7 @@ from pyamplicol.artifacts import (
     PayloadRecord,
     load_manifest,
 )
+from pyamplicol.artifacts.manifest import PORTABLE_64LE_TARGET
 from pyamplicol.artifacts.security import sha256_file
 from pyamplicol.config import (
     ConfigClamp,
@@ -596,7 +597,17 @@ def write_schema_v3_artifact(
         )
     requested_bytes = _toml_bytes(requested_config)
     effective_bytes = _toml_bytes(effective_config)
-    producer = _producer_metadata(configuration.effective)
+    required_runtime_capabilities = set(
+        _existing_required_runtime_capabilities(existing)
+    )
+    for process in processes:
+        required_runtime_capabilities.update(_process_runtime_capabilities(process))
+    canonical_runtime_capabilities = tuple(sorted(required_runtime_capabilities))
+    producer = _producer_metadata(
+        configuration.effective,
+        runtime_capabilities=canonical_runtime_capabilities,
+        implicit_o2_evidence=_implicit_generation_o2_evidence(processes),
+    )
     model = _model_metadata(source, compiled_model)
     dependencies = _dependency_metadata(source)
     eager_pack_identity = _eager_prepared_pack_identity(
@@ -638,12 +649,6 @@ def write_schema_v3_artifact(
     process_records = _existing_process_records(existing)
     evaluator_entries = _existing_evaluator_entries(existing)
     execution_manifest_sha256_by_process: dict[str, str] = {}
-    required_runtime_capabilities = set(
-        _existing_required_runtime_capabilities(existing)
-    )
-    for process in processes:
-        required_runtime_capabilities.update(_process_runtime_capabilities(process))
-    canonical_runtime_capabilities = tuple(sorted(required_runtime_capabilities))
     validation_records = tuple(process.validation_point for process in processes)
     validations = validation_point_map(validation_records)
     bundle_points = _existing_bundle_points(existing)
@@ -3325,9 +3330,18 @@ def _validation_four_vector(
     return values[0], values[1], values[2], values[3]
 
 
-def _producer_metadata(config: GenerationConfig | RunConfig) -> dict[str, object]:
+def _producer_metadata(
+    config: GenerationConfig | RunConfig,
+    *,
+    runtime_capabilities: Sequence[str] = (),
+    implicit_o2_evidence: bool = False,
+) -> dict[str, object]:
     version = package_version()
-    target, c_abi = _target_metadata(config)
+    target, c_abi = _artifact_target_metadata(
+        config,
+        runtime_capabilities=runtime_capabilities,
+        implicit_o2_evidence=implicit_o2_evidence,
+    )
     producer: dict[str, object] = {
         "distribution": "pyamplicol",
         "version": version,
@@ -3352,6 +3366,123 @@ def _producer_metadata(config: GenerationConfig | RunConfig) -> dict[str, object
             )
         producer["native_build_inputs_sha256"] = native_inputs
     return producer
+
+
+def _artifact_target_metadata(
+    config: GenerationConfig | RunConfig,
+    *,
+    runtime_capabilities: Sequence[str] = (),
+    implicit_o2_evidence: bool = False,
+) -> tuple[dict[str, object], int]:
+    target, c_abi = _target_metadata(config)
+    requested_o2_jit = (
+        implicit_o2_evidence
+        if isinstance(config, GenerationConfig)
+        else (
+            str(config.evaluator.backend) == "jit"
+            and config.evaluator.jit.optimization_level == 2
+        )
+    )
+    portable_64le = (
+        requested_o2_jit
+        and not {
+            SYMBOLICA_ASM_RUNTIME_CAPABILITY,
+            SYMBOLICA_CPP_RUNTIME_CAPABILITY,
+            SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
+        }.intersection(runtime_capabilities)
+    )
+    if portable_64le:
+        target = {
+            "triple": PORTABLE_64LE_TARGET,
+            "cpu_features": [],
+        }
+    return target, c_abi
+
+
+def _implicit_generation_o2_evidence(
+    processes: Sequence[ProcessArtifact],
+) -> bool:
+    if not processes or any(
+        not isinstance(process, CompiledProcessArtifact) for process in processes
+    ):
+        return False
+    records: list[Mapping[str, object]] = []
+    for process in cast(Sequence[CompiledProcessArtifact], processes):
+        records.append(process.stage_manifest)
+        if process.model_parameter_evaluator is not None:
+            records.append(process.model_parameter_evaluator)
+        for selector in process.color_selector_executions:
+            records.extend(_compiled_execution_evidence_records(selector.execution))
+        if process.helicity_sum_execution is not None:
+            records.extend(
+                _compiled_execution_evidence_records(process.helicity_sum_execution)
+            )
+        for selector in process.helicity_selector_executions:
+            records.extend(_compiled_execution_evidence_records(selector.execution))
+    evaluator_count = 0
+    for record in records:
+        valid, count = _mapping_has_only_o2_symjit_evaluators(record)
+        if not valid or count == 0:
+            return False
+        evaluator_count += count
+    return evaluator_count > 0
+
+
+def _compiled_execution_evidence_records(
+    execution: CompiledExecutionArtifact,
+) -> list[Mapping[str, object]]:
+    records: list[Mapping[str, object]] = [execution.stage_manifest]
+    if execution.model_parameter_evaluator is not None:
+        records.append(execution.model_parameter_evaluator)
+    for selector in execution.color_selector_executions:
+        records.extend(_compiled_execution_evidence_records(selector.execution))
+    for selector in execution.helicity_selector_executions:
+        records.extend(_compiled_execution_evidence_records(selector.execution))
+    return records
+
+
+def _mapping_has_only_o2_symjit_evaluators(
+    value: Mapping[str, object],
+) -> tuple[bool, int]:
+    evaluator_count = 0
+    valid = True
+
+    def visit(item: object) -> None:
+        nonlocal evaluator_count, valid
+        if not valid:
+            return
+        if isinstance(item, Mapping):
+            kind = item.get("kind")
+            if kind == "symjit-application-evaluator":
+                evaluator_count += 1
+                plane = item.get("plane_application")
+                if (
+                    item.get("optimization_level") != 2
+                    or not isinstance(plane, Mapping)
+                    or plane.get("optimization_level") != 2
+                ):
+                    valid = False
+                    return
+            elif kind in {"compiled-complex-evaluator", "jit-symbolica-evaluator"}:
+                valid = False
+                return
+            if item.get("source_application_abi") == SYMJIT_PLANE_APPLICATION_ABI:
+                for field in (
+                    "optimization_level",
+                    "direct_codegen_optimization_level",
+                ):
+                    if field in item and item[field] != 2:
+                        valid = False
+                        return
+            for nested in item.values():
+                visit(nested)
+            return
+        if isinstance(item, Sequence) and not isinstance(item, str | bytes):
+            for nested in item:
+                visit(nested)
+
+    visit(value)
+    return valid, evaluator_count
 
 
 def _target_metadata(

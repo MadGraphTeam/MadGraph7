@@ -45,8 +45,7 @@ Run it and override fields without editing the card:
 
 ```console
 pyamplicol generate_pp_zjj_from_ufo_sm.toml \
-  --set generation.workers=2 \
-  --set evaluator.jit.optimization_level=3
+  --set generation.workers=2
 ```
 
 The resolver applies defaults, card values, dedicated flags, repeated `--set`
@@ -244,7 +243,7 @@ Execution mode and evaluator backend are independent choices:
 
 | Backend | Use |
 | --- | --- |
-| `jit` | Default direct SymJIT application; compiled DAGs use optimization level 3 with compression enabled |
+| `jit` | Default direct SymJIT application; compiled DAGs use portable optimization level 2 with compression enabled |
 | `asm` | Symbolica assembly evaluator |
 | `cpp` | Generated/compiled C++ evaluator with `[evaluator.cpp]` options |
 
@@ -266,8 +265,11 @@ kernel pack, so eager generation reports the pack's value as the effective
 configuration when it differs from the request.
 
 `.pyAmplicol-model.json` model IR is architecture-independent. SymJIT
-storage-v3 prepared packs at optimization level 2 are portable across supported
+storage-v3 prepared packs and newly generated all-JIT process artifacts at
+optimization level 2 are portable across supported 64-bit little-endian
 `x86_64` and `aarch64` hosts and rebuild executable code for the receiving CPU.
+JIT O1/O3 and C++/ASM process artifacts remain target-specific. Campaign
+timing records remain machine/profile-specific measurements.
 pyAmpliCol therefore forces O2 when preparing JIT kernels, independently of the
 JIT level used for process-local compiled DAG evaluators. C++ and ASM prepared
 packs remain target-native.

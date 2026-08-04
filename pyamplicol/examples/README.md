@@ -43,7 +43,7 @@ These three showcase cards print colorized terminal tables by default. Add
 
 | File | Coverage |
 | --- | --- |
-| `generate_pp_zjj_from_ufo_sm.toml` | Generate a multiprocess `p p > Z j j` artifact from the portable serialized UFO SM |
+| `generate_pp_zjj_from_ufo_sm.toml` | Generate a portable compiled-JIT-O2 multiprocess `p p > Z j j` artifact from the serialized UFO SM |
 | `evaluate_total.toml` | Optimized total for one `pp_zjj` subprocess |
 | `evaluate_resolved.toml` | Helicity/color-resolved evaluation and explicit sum |
 | `benchmark.toml` | Short benchmark of the same selected subprocess |

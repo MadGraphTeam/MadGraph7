@@ -3825,6 +3825,15 @@ def test_dense_scalar_ladder_fits_narrower_columns(reset_caches) -> None:
     assert r"@{}L{1.00in}" in tex
     assert tex.count(r"L{0.72in}") == len(dataset.multiplicities)
     assert r"\setlength{\tabcolsep}{2.2pt}" in tex
+    assert (
+        r"{\fontsize{6.4pt}{7.4pt}\selectfont"
+        r"\mbox{evaluator total [\(\mu\mathrm{s}/\mathrm{pt}\)]}} & "
+        in tex
+    )
+    assert (
+        "\nevaluator total " r"[\(\mu\mathrm{s}/\mathrm{pt}\)] & "
+        not in tex
+    )
 
 
 @pytest.mark.parametrize("dataset_id", ("scalar_contact", "scalar_gravity"))
@@ -3855,7 +3864,11 @@ def test_scalar_timing_marks_unavailable_arena_attribution_not_exposed(
 
     tex = render_scalar_ladder(dataset, caches)
 
-    assert r"evaluator total [\(\mu\mathrm{s}/\mathrm{pt}\)]" in tex
+    assert (
+        r"{\fontsize{6.4pt}{7.4pt}\selectfont"
+        r"\mbox{evaluator total [\(\mu\mathrm{s}/\mathrm{pt}\)]}}"
+        in tex
+    )
     assert r"\matrixnotexposed{ReportMuted}" in tex
     assert "successful wall measurement" in tex
 
@@ -3901,7 +3914,10 @@ def test_scalar_timing_uses_dedicated_evaluator_total_not_wall(
     total_row = next(
         line
         for line in tex.splitlines()
-        if line.startswith(r"evaluator total [\(\mu\mathrm{s}/\mathrm{pt}\)]")
+        if line.startswith(
+            r"{\fontsize{6.4pt}{7.4pt}\selectfont"
+            r"\mbox{evaluator total [\(\mu\mathrm{s}/\mathrm{pt}\)]}}"
+        )
     )
 
     assert r"\texttt{218.105}" in wall_row
@@ -3936,7 +3952,10 @@ def test_scalar_unverified_retains_absolute_clocks_with_marker(
     expected = {
         "generation [s]": "4.00",
         r"wall [\(\mu\mathrm{s}/\mathrm{pt}\)]": "2.00",
-        r"evaluator total [\(\mu\mathrm{s}/\mathrm{pt}\)]": "1.00",
+        (
+            r"{\fontsize{6.4pt}{7.4pt}\selectfont"
+            r"\mbox{evaluator total [\(\mu\mathrm{s}/\mathrm{pt}\)]}}"
+        ): "1.00",
     }
     for prefix, value in expected.items():
         row = next(line for line in tex.splitlines() if line.startswith(prefix))

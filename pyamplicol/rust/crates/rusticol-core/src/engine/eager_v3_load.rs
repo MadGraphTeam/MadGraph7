@@ -71,6 +71,7 @@ pub(super) fn load_eager_v3_prepared_pack(
         ))
     })?;
     pack.validate()?;
+    validate_eager_prepared_pack_outer_target(&artifact.manifest().producer.target, &pack)?;
     let payload_root = confined_internal_path(
         &manifest.kernel_pack.payload_root,
         "eager plan-v3 prepared kernel payload root",
@@ -81,6 +82,13 @@ pub(super) fn load_eager_v3_prepared_pack(
         manifest: pack,
         payload_root,
     })
+}
+
+pub(super) fn validate_eager_prepared_pack_outer_target(
+    outer_target: &crate::Target,
+    pack: &PreparedKernelPackManifest,
+) -> RusticolResult<()> {
+    pack.validate_portable_process_artifact_target(outer_target, "eager")
 }
 
 pub(super) fn load_eager_v3_native_runtime(

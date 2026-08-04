@@ -27,6 +27,7 @@ from pyamplicol._internal.versions import (
 )
 from pyamplicol.api import ModelSource, ProcessRequest
 from pyamplicol.artifacts import load_manifest
+from pyamplicol.artifacts.manifest import PORTABLE_64LE_TARGET
 from pyamplicol.config import (
     ColorConfig,
     EvaluatorConfig,
@@ -85,7 +86,12 @@ def _evaluator_process(
     return backend, model, evaluator
 
 
-def _symjit_stage_manifest(root: Path, *, label: str) -> dict[str, object]:
+def _symjit_stage_manifest(
+    root: Path,
+    *,
+    label: str,
+    optimization_level: int = 3,
+) -> dict[str, object]:
     evaluator_dir = root / "evaluators"
     evaluator_dir.mkdir(parents=True, exist_ok=True)
     application = evaluator_dir / f"{label}.symjit"
@@ -116,7 +122,7 @@ def _symjit_stage_manifest(root: Path, *, label: str) -> dict[str, object]:
             "output_plane_count": 2,
             "compiler_type": "native",
             "translation_mode": "symbolica-structured-instructions",
-            "optimization_level": 3,
+            "optimization_level": optimization_level,
             "simd": True,
             "complex": True,
             "fast_math": True,
@@ -131,7 +137,7 @@ def _symjit_stage_manifest(root: Path, *, label: str) -> dict[str, object]:
         "batch_layout": "row-major",
         "compiler_type": "native",
         "translation_mode": "indirect",
-        "optimization_level": 3,
+        "optimization_level": optimization_level,
         "word_bits": 64,
         "endianness": "little",
         "required_defuns": [],
@@ -208,6 +214,7 @@ def _materialize_without_symbolica(
     expression: str = "d d~ > z g",
     selection: _ProcessSelection | None = None,
     config: GenerationConfig | RunConfig | None = None,
+    jit_optimization_level: int = 3,
 ) -> service_module.CompiledProcessArtifact:
     backend, model, evaluator = _evaluator_process(
         expression,
@@ -227,7 +234,11 @@ def _materialize_without_symbolica(
             "",
         )
         calls.append((root, len(stage_input.dag.currents)))  # type: ignore[attr-defined]
-        return object(), _symjit_stage_manifest(root, label=lane)
+        return object(), _symjit_stage_manifest(
+            root,
+            label=lane,
+            optimization_level=jit_optimization_level,
+        )
 
     monkeypatch.setattr(
         service_module,
@@ -507,6 +518,7 @@ def test_nested_helicity_closures_are_written_with_owned_payloads(
         monkeypatch,
         tmp_path,
         expression="d d~ > z g g g",
+        jit_optimization_level=2,
     )
     monkeypatch.setattr(
         artifact_writer,
@@ -544,6 +556,16 @@ def test_nested_helicity_closures_are_written_with_owned_payloads(
     assert any(path.startswith(f"{nested_prefix}class-0/") for path in referenced)
     assert any(path.startswith(f"{nested_prefix}class-1/") for path in referenced)
     manifest = load_manifest(output)
+    portable_target = {
+        "triple": PORTABLE_64LE_TARGET,
+        "cpu_features": (),
+    }
+    assert manifest.producer["target"] == portable_target
+    targeted_payloads = [
+        record for record in manifest.payloads if record.target is not None
+    ]
+    assert targeted_payloads
+    assert all(record.target == portable_target for record in targeted_payloads)
     declared = {record.path for record in manifest.payloads}
     assert "evaluators.pacbin" in declared
     with PacbinReader.open(output / "evaluators.pacbin") as container:

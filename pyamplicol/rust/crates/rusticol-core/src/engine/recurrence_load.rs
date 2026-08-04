@@ -413,11 +413,19 @@ fn load_prepared_pack(
         ))
     })?;
     pack.validate()?;
+    validate_recurrence_prepared_pack_outer_target(&artifact.manifest().producer.target, &pack)?;
     let payload_root = artifact.root().join(confined_internal_path(
         &manifest.kernel_pack.payload_root,
         "recurrence prepared kernel payload root",
     )?);
     Ok((bytes, pack, payload_root))
+}
+
+pub(super) fn validate_recurrence_prepared_pack_outer_target(
+    outer_target: &crate::Target,
+    pack: &PreparedKernelPackManifest,
+) -> RusticolResult<()> {
+    pack.validate_portable_process_artifact_target(outer_target, "recurrence")
 }
 
 fn load_plan(

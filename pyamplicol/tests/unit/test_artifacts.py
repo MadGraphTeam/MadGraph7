@@ -10,12 +10,17 @@ import pytest
 import pyamplicol.artifacts.manifest as manifest_module
 import pyamplicol.generation.artifact_writer as generation_artifact_writer
 from pyamplicol import ArtifactError, CompatibilityError
+from pyamplicol._internal.versions import (
+    SYMBOLICA_CPP_RUNTIME_CAPABILITY,
+    SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
+)
 from pyamplicol.artifacts import (
     ArtifactBuilder,
     ArtifactTransaction,
     load_manifest,
     normalize_relative_path,
 )
+from pyamplicol.artifacts.manifest import PORTABLE_64LE_TARGET
 from pyamplicol.generation.evaluator_container import PacbinReader
 
 
@@ -58,25 +63,36 @@ def _configuration() -> dict[str, object]:
     }
 
 
-def _process(identifier: str = "dd_to_z") -> dict[str, object]:
+def _process(
+    identifier: str = "dd_to_z",
+    *,
+    runtime_capabilities: tuple[str, ...] = (
+        "symjit.application.complex-f64.v1",
+    ),
+) -> dict[str, object]:
     return {
         "id": identifier,
         "expression": "d d~ > z",
         "color_accuracy": "lc",
         "external_pdgs": [1, -1, 23],
         "physics_path": "physics/process.json",
-        "required_runtime_capabilities": ["symjit.application.complex-f64.v1"],
+        "required_runtime_capabilities": list(runtime_capabilities),
         "aliases": [],
     }
 
 
-def _runtime() -> dict[str, object]:
+def _runtime(
+    *,
+    runtime_capabilities: tuple[str, ...] = (
+        "symjit.application.complex-f64.v1",
+    ),
+) -> dict[str, object]:
     return {
         "engine": "rusticol",
         "engine_version": "0.1.0",
         "evaluator_manifest_path": "physics/process.json",
         "api_bundle_path": None,
-        "required_runtime_capabilities": ["symjit.application.complex-f64.v1"],
+        "required_runtime_capabilities": list(runtime_capabilities),
     }
 
 
@@ -84,7 +100,12 @@ def _build(
     path: Path,
     *,
     mode: str = "error",
+    triple: str = "test-target",
     cpu_features: tuple[str, ...] = (),
+    runtime_capabilities: tuple[str, ...] = (
+        "symjit.application.complex-f64.v1",
+    ),
+    evaluator_state_target: dict[str, object] | None = None,
 ) -> None:
     with ArtifactBuilder(path, mode=mode) as builder:  # type: ignore[arg-type]
         builder.add_json(
@@ -93,14 +114,25 @@ def _build(
             role="runtime-physics",
             process_id="dd_to_z",
         )
+        if evaluator_state_target is not None:
+            builder.add_bytes(
+                "evaluators/state.symjit",
+                b"portable-state",
+                role="evaluator-state",
+                media_type="application/vnd.symjit.application",
+                target=evaluator_state_target,
+                process_id="dd_to_z",
+            )
         builder.finalize(
             kind="pyamplicol-process",
-            producer=_producer(cpu_features=cpu_features),
+            producer=_producer(triple=triple, cpu_features=cpu_features),
             model=_model(),
             configuration=_configuration(),
-            processes=[_process()],
+            processes=[
+                _process(runtime_capabilities=runtime_capabilities)
+            ],
             default_process_id="dd_to_z",
-            runtime=_runtime(),
+            runtime=_runtime(runtime_capabilities=runtime_capabilities),
         )
 
 
@@ -282,6 +314,133 @@ def test_python_loader_accepts_available_canonical_cpu_features(
         "triple": "test-target",
         "cpu_features": ("avx2", "fma"),
     }
+
+
+@pytest.mark.parametrize(
+    "runtime_target",
+    (
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+    ),
+)
+def test_python_loader_accepts_portable_o2_artifact_for_every_supported_target(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    runtime_target: str,
+) -> None:
+    root = tmp_path / "artifact"
+    target = {"triple": PORTABLE_64LE_TARGET, "cpu_features": []}
+    _build(
+        root,
+        triple=PORTABLE_64LE_TARGET,
+        evaluator_state_target=target,
+    )
+    monkeypatch.setattr(
+        manifest_module,
+        "_runtime_target_metadata",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("portable artifact inspection must not import Rusticol")
+        ),
+    )
+
+    manifest = load_manifest(
+        root,
+        expected_target=runtime_target,
+        verify_payloads=True,
+    )
+
+    assert manifest.producer["target"] == {
+        "triple": PORTABLE_64LE_TARGET,
+        "cpu_features": (),
+    }
+
+
+def test_python_loader_inspects_portable_artifact_without_native_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "artifact"
+    _build(root, triple=PORTABLE_64LE_TARGET)
+    monkeypatch.setattr(
+        manifest_module,
+        "_runtime_target_metadata",
+        lambda: (_ for _ in ()).throw(ImportError("native runtime unavailable")),
+    )
+
+    assert load_manifest(root).producer["target"]["triple"] == PORTABLE_64LE_TARGET
+
+
+def test_python_loader_rejects_portable_artifact_for_unsupported_target(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "artifact"
+    _build(root, triple=PORTABLE_64LE_TARGET)
+
+    with pytest.raises(CompatibilityError, match="aarch64-unknown-linux-gnu"):
+        load_manifest(root, expected_target="aarch64-unknown-linux-gnu")
+
+
+def test_python_loader_rejects_portable_artifact_with_cpu_features(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "artifact"
+    _build(
+        root,
+        triple=PORTABLE_64LE_TARGET,
+        cpu_features=("avx2",),
+    )
+
+    with pytest.raises(CompatibilityError, match="may not require CPU features"):
+        load_manifest(root)
+
+
+@pytest.mark.parametrize(
+    "runtime_capability",
+    (SYMBOLICA_CPP_RUNTIME_CAPABILITY, SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY),
+)
+def test_python_loader_rejects_target_specific_capability_under_portable_target(
+    tmp_path: Path,
+    runtime_capability: str,
+) -> None:
+    root = tmp_path / "artifact"
+    _build(
+        root,
+        triple=PORTABLE_64LE_TARGET,
+        runtime_capabilities=(runtime_capability,),
+    )
+
+    with pytest.raises(CompatibilityError, match="target-specific evaluator"):
+        load_manifest(root)
+
+
+def test_python_loader_rejects_mismatched_portable_payload_target(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "artifact"
+    _build(
+        root,
+        triple=PORTABLE_64LE_TARGET,
+        evaluator_state_target={
+            "triple": "aarch64-apple-darwin",
+            "cpu_features": [],
+        },
+    )
+
+    with pytest.raises(CompatibilityError, match="differs from producer target"):
+        load_manifest(root)
+
+
+def test_python_loader_rejects_portable_artifact_on_non_64_bit_runtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "artifact"
+    _build(root, triple=PORTABLE_64LE_TARGET)
+    monkeypatch.setattr(manifest_module.struct, "calcsize", lambda _format: 4)
+
+    with pytest.raises(CompatibilityError, match="64-bit little-endian"):
+        load_manifest(root)
 
 
 @pytest.mark.parametrize(

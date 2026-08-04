@@ -254,7 +254,7 @@ class _JITSymbolicaEvaluatorAdapter:
         }
 
     def _optimization_level(self) -> int:
-        optimization_level = self.settings.get("jit_optimization_level", 3)
+        optimization_level = self.settings.get("jit_optimization_level", 2)
         if (
             isinstance(optimization_level, bool)
             or not isinstance(optimization_level, int)

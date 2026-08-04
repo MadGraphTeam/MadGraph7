@@ -76,7 +76,7 @@ def main() -> int:
         "evaluator": {
             "backend": "jit",
             "execution_mode": "compiled",
-            "jit": {"optimization_level": 3, "compress": True},
+            "jit": {"compress": True},
         },
     }
     resolution = resolve_config(card)

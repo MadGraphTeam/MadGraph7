@@ -64,6 +64,18 @@ impl LoadedExecutionManifest {
             Self::Recurrence(value) => &value.required_runtime_capabilities,
         }
     }
+
+    fn validate_portable_o2(&self) -> RusticolResult<()> {
+        match self {
+            Self::Compiled(value) => validate_compiled_portable_o2(value).map(|_| ()),
+            // Eager and recurrence loaders authenticate their prepared backend,
+            // portable flag, target marker, and exact O2 level while loading
+            // the kernel pack. Their compact execution headers intentionally do
+            // not duplicate that backend identity.
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            Self::EagerV3(_) | Self::Recurrence(_) => Ok(()),
+        }
+    }
 }
 
 pub(super) fn load_verified_evaluator(
@@ -125,6 +137,7 @@ pub(super) fn load_verified_evaluator(
             manifest.required_runtime_capabilities(),
             "outer process and direct execution manifest",
         )?;
+        validate_portable_execution_contract(artifact, &manifest)?;
         let path = artifact.payload_path(root_manifest_path)?;
         let root = path.parent().ok_or_else(|| {
             RusticolError::artifact("evaluator manifest has no containing directory")
@@ -241,6 +254,7 @@ pub(super) fn load_verified_evaluator(
             manifest.required_runtime_capabilities(),
             &format!("execution-set entry {:?}", entry.process_id),
         )?;
+        validate_portable_execution_contract(artifact, &manifest)?;
         let path = artifact.payload_path(&manifest_path)?;
         let evaluator_root = path.parent().ok_or_else(|| {
             RusticolError::artifact("evaluator manifest has no containing directory")
@@ -256,6 +270,103 @@ pub(super) fn load_verified_evaluator(
             selection.process.id
         ))
     })
+}
+
+fn validate_portable_execution_contract(
+    artifact: &VerifiedArtifact,
+    manifest: &LoadedExecutionManifest,
+) -> RusticolResult<()> {
+    if artifact.manifest().producer.target.triple == crate::artifact::PORTABLE_64LE_ARTIFACT_TARGET
+    {
+        manifest.validate_portable_o2()?;
+    }
+    Ok(())
+}
+
+fn validate_compiled_portable_o2(manifest: &ExecutionManifest) -> RusticolResult<usize> {
+    let mut leaf_count = 0usize;
+    if let Some(model_parameters) = &manifest.compiled.model_parameter_evaluator {
+        leaf_count = leaf_count
+            .checked_add(model_parameters.evaluator.validate_portable_o2()?)
+            .ok_or_else(|| RusticolError::integrity("portable evaluator leaf count overflows"))?;
+    }
+    if let Some(stages) = &manifest.compiled.stage_evaluators {
+        for stage in stages
+            .stages
+            .iter()
+            .chain(std::iter::once(&stages.amplitude_stage))
+        {
+            leaf_count = leaf_count
+                .checked_add(stage.evaluator.validate_portable_o2()?)
+                .ok_or_else(|| {
+                    RusticolError::integrity("portable evaluator leaf count overflows")
+                })?;
+            if stage
+                .compiled_plane_arena
+                .as_ref()
+                .is_some_and(|arena| arena.leaves.iter().any(|leaf| leaf.optimization_level != 2))
+            {
+                return Err(nonportable_compiled_evaluator_error());
+            }
+        }
+    }
+    for nested in manifest
+        .helicity_sum_execution
+        .iter()
+        .map(Box::as_ref)
+        .chain(
+            manifest
+                .helicity_selector_executions
+                .iter()
+                .map(|record| record.execution.as_ref()),
+        )
+        .chain(
+            manifest
+                .color_selector_executions
+                .iter()
+                .map(|record| record.execution.as_ref()),
+        )
+    {
+        leaf_count = leaf_count
+            .checked_add(validate_compiled_portable_o2(nested)?)
+            .ok_or_else(|| RusticolError::integrity("portable evaluator leaf count overflows"))?;
+    }
+    if leaf_count == 0 && manifest.compiled.runtime_available {
+        return Err(nonportable_compiled_evaluator_error());
+    }
+    Ok(leaf_count)
+}
+
+impl EvaluatorManifest {
+    fn validate_portable_o2(&self) -> RusticolResult<usize> {
+        match self {
+            Self::SymjitApplication {
+                optimization_level,
+                plane_application,
+                ..
+            } if *optimization_level == 2
+                && plane_application
+                    .as_ref()
+                    .is_none_or(|application| application.optimization_level == 2) =>
+            {
+                Ok(1)
+            }
+            Self::Chunked { chunks, .. } => chunks.iter().try_fold(0usize, |count, chunk| {
+                count
+                    .checked_add(chunk.validate_portable_o2()?)
+                    .ok_or_else(|| {
+                        RusticolError::integrity("portable evaluator leaf count overflows")
+                    })
+            }),
+            _ => Err(nonportable_compiled_evaluator_error()),
+        }
+    }
+}
+
+fn nonportable_compiled_evaluator_error() -> RusticolError {
+    RusticolError::compatibility(
+        "portable-64le compiled artifacts require only canonical O2 SymJIT evaluators; O1, O3, C++, ASM, and legacy JIT evaluators remain target-specific",
+    )
 }
 
 pub(super) fn validate_capability_list_match(
@@ -787,6 +898,78 @@ pub(super) fn selector_set(
         )));
     }
     Ok(Some(selected))
+}
+
+#[cfg(test)]
+mod portable_execution_tests {
+    use super::*;
+
+    fn portable_fixture_value() -> Value {
+        serde_json::from_slice(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../src/pyamplicol/assets/selftest/portable-64le/artifact/processes/",
+            "d_dbar_to_z/execution.json"
+        )))
+        .expect("parse portable compiled execution fixture")
+    }
+
+    fn portable_fixture() -> ExecutionManifest {
+        serde_json::from_value(portable_fixture_value())
+            .expect("decode portable compiled execution fixture")
+    }
+
+    fn replace_symjit_optimization_level(value: &mut Value, level: u8) {
+        match value {
+            Value::Array(values) => {
+                for value in values {
+                    replace_symjit_optimization_level(value, level);
+                }
+            }
+            Value::Object(object) => {
+                if object.get("kind").and_then(Value::as_str)
+                    == Some("symjit-application-evaluator")
+                {
+                    object.insert("optimization_level".to_string(), level.into());
+                    if let Some(plane) = object
+                        .get_mut("plane_application")
+                        .and_then(Value::as_object_mut)
+                    {
+                        plane.insert("optimization_level".to_string(), level.into());
+                    }
+                }
+                if let Some(leaves) = object.get_mut("leaves").and_then(Value::as_array_mut) {
+                    for leaf in leaves {
+                        if let Some(leaf) = leaf.as_object_mut()
+                            && leaf.contains_key("optimization_level")
+                        {
+                            leaf.insert("optimization_level".to_string(), level.into());
+                        }
+                    }
+                }
+                for value in object.values_mut() {
+                    replace_symjit_optimization_level(value, level);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn compiled_portable_contract_accepts_o2_and_rejects_o1_o3() {
+        validate_compiled_portable_o2(&portable_fixture())
+            .expect("canonical O2 fixture is portable");
+
+        let fixture = portable_fixture_value();
+        for level in [1, 3] {
+            let mut value = fixture.clone();
+            replace_symjit_optimization_level(&mut value, level);
+            let manifest: ExecutionManifest =
+                serde_json::from_value(value).expect("parse modified fixture");
+            let error = validate_compiled_portable_o2(&manifest).unwrap_err();
+            assert_eq!(error.kind(), crate::RusticolErrorKind::Compatibility);
+            assert!(error.to_string().contains("O1, O3, C++, ASM"));
+        }
+    }
 }
 
 #[cfg(all(test, any(feature = "f64-compiled", feature = "f64-symjit")))]

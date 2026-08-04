@@ -927,6 +927,32 @@ impl PreparedKernelPackManifest {
             })
             .collect()
     }
+
+    pub(super) fn validate_portable_process_artifact_target(
+        &self,
+        outer_target: &crate::Target,
+        context: &str,
+    ) -> RusticolResult<()> {
+        if outer_target.triple != crate::artifact::PORTABLE_64LE_ARTIFACT_TARGET {
+            return Ok(());
+        }
+        let optimization_level = self
+            .optimization_settings
+            .get("jit_optimization_level")
+            .and_then(Value::as_u64);
+        if !outer_target.cpu_features.is_empty()
+            || self.backend != "jit"
+            || !self.target.portable
+            || self.target.target_triple != PREPARED_JIT_PORTABLE_TARGET
+            || !self.target.cpu_features.is_empty()
+            || optimization_level != Some(PREPARED_JIT_PORTABLE_OPTIMIZATION_LEVEL)
+        {
+            return Err(RusticolError::compatibility(format!(
+                "portable-64le {context} artifacts require an authenticated portable O2 SymJIT prepared kernel pack; C++ and ASM packs remain target-specific"
+            )));
+        }
+        Ok(())
+    }
 }
 
 impl RecurrenceDirectTemplateCatalogManifest {

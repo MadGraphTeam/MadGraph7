@@ -116,6 +116,8 @@ def test_example_matrix_covers_required_models_and_modes() -> None:
     assert primary.process.flavor_scheme == 2
     assert primary.model.restriction == "default"
     assert primary.generation.output == EXAMPLES / "artifacts/pp_zjj"
+    assert primary.evaluator.jit.optimization_level == 2
+    assert primary.color.lc_flow_layout.value == "topology-replay"
 
     external_sources = {
         "external_ufo_sm.toml": "models/ufo/sm",
@@ -331,7 +333,7 @@ def test_typed_external_model_example_selects_process_local_compiled_jit() -> No
 
     assert '"execution_mode": "compiled"' in source
     assert '"backend": "jit"' in source
-    assert '"optimization_level": 3' in source
+    assert '"optimization_level"' not in source
 
 
 def test_readme_states_current_release_boundary_and_public_surfaces() -> None:

@@ -27,6 +27,10 @@ JSON:
 pyamplicol inspect artifacts/pp_zjj --format json
 ```
 
+An all-JIT O2 artifact reports target `portable-64le`: its authenticated
+SymJIT state is recompiled for the receiving supported host. Concrete target
+triples identify target-specific JIT O1/O3, C++, or ASM artifacts.
+
 JIT artifacts store evaluator state in a single indexed
 `evaluators.pacbin` container. The terminal inventory therefore distinguishes
 the physical file count and on-disk size from the number and unpacked size of

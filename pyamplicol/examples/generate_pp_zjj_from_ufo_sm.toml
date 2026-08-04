@@ -21,6 +21,8 @@ j = ["d", "d~", "g"]
 
 [color]
 accuracy = "lc"
+# Omitted lc_flow_layout defaults to non-union "topology-replay".
+# Set it to "all-flow-union" to generate the LC union-flow layout instead.
 
 [generation]
 output = "artifacts/pp_zjj"
@@ -33,5 +35,5 @@ backend = "jit"
 execution_mode = "compiled"
 
 [evaluator.jit]
-optimization_level = 3
+# Omitted optimization_level uses the portable JIT O2 default.
 compress = true

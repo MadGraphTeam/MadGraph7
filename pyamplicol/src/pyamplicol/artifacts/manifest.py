@@ -6,6 +6,8 @@ from __future__ import annotations
 import importlib
 import json
 import re
+import struct
+import sys
 from collections.abc import Mapping, Sequence, Set
 from dataclasses import dataclass
 from datetime import datetime
@@ -15,6 +17,9 @@ from typing import Any, Literal, cast
 
 from pyamplicol._internal.versions import (
     KNOWN_EVALUATOR_RUNTIME_CAPABILITIES,
+    SYMBOLICA_ASM_RUNTIME_CAPABILITY,
+    SYMBOLICA_CPP_RUNTIME_CAPABILITY,
+    SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
     verify_native_module,
 )
 from pyamplicol.api.errors import ArtifactError, CompatibilityError
@@ -31,6 +36,7 @@ SCHEMA_VERSION = 3
 ARTIFACT_IDENTITY_EXTENSION = "artifact_identity"
 ARTIFACT_IDENTITY_KIND = "pyamplicol-runtime-payload-identity"
 ARTIFACT_IDENTITY_SCHEMA_VERSION = 1
+PORTABLE_64LE_TARGET = "portable-64le"
 _SHA256 = re.compile(r"^[a-f0-9]{64}$")
 _GIT_REVISION = re.compile(r"^[a-f0-9]{40}$")
 _PUBLIC_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:+,~-]{0,254}$")
@@ -40,6 +46,13 @@ _SUPPORTED_ARTIFACT_TARGETS = frozenset(
         "aarch64-apple-darwin",
         "x86_64-apple-darwin",
         "x86_64-unknown-linux-gnu",
+    }
+)
+_TARGET_SPECIFIC_EVALUATOR_RUNTIME_CAPABILITIES = frozenset(
+    {
+        SYMBOLICA_ASM_RUNTIME_CAPABILITY,
+        SYMBOLICA_CPP_RUNTIME_CAPABILITY,
+        SYMBOLICA_LEGACY_JIT_RUNTIME_CAPABILITY,
     }
 )
 _EXECUTABLE_ROLES = {"api-source", "api-build-file", "evaluator-state"}
@@ -819,7 +832,12 @@ def _validate_target_compatibility(
 ) -> None:
     producer_target = _target(manifest.producer.get("target"), "producer.target")
     target_triple = _string(producer_target.get("triple"), "producer.target.triple")
-    if expected_target is not None and target_triple != expected_target:
+    is_portable_64le = target_triple == PORTABLE_64LE_TARGET
+    if (
+        expected_target is not None
+        and not is_portable_64le
+        and target_triple != expected_target
+    ):
         raise CompatibilityError(
             f"artifact target {target_triple!r} is incompatible with "
             f"runtime target {expected_target!r}"
@@ -839,6 +857,37 @@ def _validate_target_compatibility(
             )
 
     required_features = cast(tuple[str, ...], producer_target["cpu_features"])
+    if is_portable_64le:
+        if required_features:
+            raise CompatibilityError(
+                f"{PORTABLE_64LE_TARGET} artifacts may not require CPU features"
+            )
+        runtime_capabilities = set(
+            cast(tuple[str, ...], manifest.runtime["required_runtime_capabilities"])
+        )
+        target_specific_capabilities = sorted(
+            runtime_capabilities & _TARGET_SPECIFIC_EVALUATOR_RUNTIME_CAPABILITIES
+        )
+        if target_specific_capabilities:
+            raise CompatibilityError(
+                f"{PORTABLE_64LE_TARGET} artifact declares target-specific "
+                "evaluator capabilities: "
+                + ", ".join(target_specific_capabilities)
+            )
+        if (
+            expected_target is not None
+            and expected_target not in _SUPPORTED_ARTIFACT_TARGETS
+        ):
+            raise CompatibilityError(
+                f"artifact target {PORTABLE_64LE_TARGET!r} is incompatible with "
+                f"runtime target {expected_target!r}"
+            )
+        if sys.byteorder != "little" or struct.calcsize("P") * 8 != 64:
+            raise CompatibilityError(
+                f"{PORTABLE_64LE_TARGET} artifacts require a 64-bit "
+                "little-endian runtime"
+            )
+        return
     if required_features:
         runtime_triple, runtime_features = _runtime_target_metadata()
         if target_triple != runtime_triple:
@@ -947,6 +996,7 @@ __all__ = [
     "ARTIFACT_IDENTITY_KIND",
     "ARTIFACT_IDENTITY_SCHEMA_VERSION",
     "MANIFEST_NAME",
+    "PORTABLE_64LE_TARGET",
     "SCHEMA_VERSION",
     "ArtifactManifest",
     "PayloadRecord",

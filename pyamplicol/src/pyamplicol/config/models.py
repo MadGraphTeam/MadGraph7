@@ -678,7 +678,7 @@ class EvaluatorOptimizationConfig:
 @dataclass(frozen=True, slots=True)
 class JITConfig:
     optimization_level: Literal[0, 1, 2, 3] = field(
-        default=3, metadata=_setting("int", choices=(0, 1, 2, 3))
+        default=2, metadata=_setting("int", choices=(0, 1, 2, 3))
     )
     compress: bool = field(default=True, metadata=_setting("bool"))
 

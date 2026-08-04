@@ -2228,7 +2228,7 @@ class GenerationBackend:
         numerical_current_warning_required = False
         backend = "jit" if run_config is None else str(run_config.evaluator.backend)
         if run_config is None:
-            optimization = "O3"
+            optimization = "O2"
         elif backend == "jit":
             optimization = f"O{run_config.evaluator.jit.optimization_level}"
         else:
