@@ -525,6 +525,14 @@ def _f_pair_split(col_str):
     return pairs
 
 
+def get_unrollable_cubic_ids(model):
+    """Interaction ids of the cubic vertices a factorisable quartic vertex
+    unrolls into -- the three gluon vertex for the four gluon one."""
+
+    return frozenset(cubic_id for cubic_id, pairings in
+                     get_unrollable_quartic_vertices(model).values())
+
+
 def colour_index_order(vertex, is_last, model):
     """Return the vertex legs in the order in which color_amp.ColorBasis maps
     them onto the colour indices of the interaction.
@@ -825,6 +833,11 @@ class Amplitude(base_objects.PhysicsObject):
     generate the diagrams for the amplitude
     """
 
+    # Interaction ids of the cubic vertices which the seed rule forbids to
+    # share a line, see generate_diagrams. Empty -- so the rule is inactive --
+    # unless madgraph.merge_quartic_vertices is set.
+    seed_forbidden_cubic_ids = frozenset()
+
     def default_setup(self):
         """Default values for all properties"""
 
@@ -1055,6 +1068,16 @@ class Amplitude(base_objects.PhysicsObject):
         # to restrict possible leg combinations
         max_multi_to1 = max([len(key) for key in \
                              model.get('ref_dict_to1').keys()])
+
+        # Seed rule: when the quartic vertices are to be put back afterwards
+        # by unrolling (see unroll_quartic_vertices), generate only the
+        # diagrams unrolling cannot produce. Unrolling a quartic vertex always
+        # yields two cubic vertices sharing the line which replaced it, so a
+        # diagram can be reconstructed exactly when two of its cubic vertices
+        # share a line -- and the seed is what is left over.
+        self.seed_forbidden_cubic_ids = frozenset()
+        if madgraph.merge_quartic_vertices and not self.has_loop_process():
+            self.seed_forbidden_cubic_ids = get_unrollable_cubic_ids(model)
 
 
         # Reduce the leg list and return the corresponding
@@ -1482,9 +1505,14 @@ class Amplitude(base_objects.PhysicsObject):
                 [ copy.copy(leg) for leg in legs ])
 
     def reduce_leglist(self, curr_leglist, max_multi_to1, ref_dict_to0,
-                       is_decay_proc = False, coupling_orders = None):
+                       is_decay_proc = False, coupling_orders = None,
+                       cubic_legs = frozenset()):
         """Recursive function to reduce N LegList to N-1
            For algorithm, see doc for generate_diagrams.
+
+           cubic_legs holds the numbers of the legs of curr_leglist which were
+           produced by a vertex the seed rule keeps apart, and is only ever
+           non-empty when that rule is active.
         """
 
         # Result variable which is a list of lists of vertices
@@ -1517,6 +1545,8 @@ class Amplitude(base_objects.PhysicsObject):
                               vertex_id in vertex_ids]
             # Check for coupling orders. If orders < 0, skip vertex
             for final_vertex in final_vertices:
+                if self.joins_two_cubics(final_vertex, cubic_legs):
+                    continue
                 if self.reduce_orders(coupling_orders, model,
                                       [final_vertex.get('id')]) != False:
                     res.append([final_vertex])
@@ -1554,13 +1584,24 @@ class Amplitude(base_objects.PhysicsObject):
                 # Some coupling order < 0
                 continue
 
+            # Seed rule: drop the combinations putting two of the cubic
+            # vertices to be kept apart on the same line
+            if any(self.shares_line_with_cubic(vertex.get('id'),
+                                               vertex.get('legs')[:-1],
+                                               cubic_legs)
+                   for vertex in leg_vertex_tuple[1]):
+                continue
+
             # This is where recursion happens
             # First, reduce again the leg part
             reduced_diagram = self.reduce_leglist(leg_vertex_tuple[0],
                                                   max_multi_to1,
                                                   ref_dict_to0,
                                                   is_decay_proc,
-                                                  new_coupling_orders)
+                                                  new_coupling_orders,
+                                                  self.mark_cubic_legs(\
+                                                      cubic_legs,
+                                                      leg_vertex_tuple[1]))
             # If there is a reduced diagram
             if reduced_diagram:
                 vertex_list_list = [list(leg_vertex_tuple[1])]
@@ -1569,6 +1610,49 @@ class Amplitude(base_objects.PhysicsObject):
                 res.extend(expanded_list)
 
         return res
+
+    def shares_line_with_cubic(self, vertex_id, incoming, cubic_legs):
+        """True when vertex_id is one of the cubic vertices the seed rule
+        keeps apart and one of the lines coming in was produced by another
+        one of them."""
+
+        if not self.seed_forbidden_cubic_ids or \
+           vertex_id not in self.seed_forbidden_cubic_ids:
+            return False
+        return any(leg.get('number') in cubic_legs for leg in incoming)
+
+    def joins_two_cubics(self, vertex, cubic_legs):
+        """True when the vertex closing the diagram puts two of the cubic
+        vertices the seed rule keeps apart on the same line.
+
+        The closing vertex is either a real n->0 interaction, whose incoming
+        lines are simply the legs left over, or the identity vertex, which
+        states that its two legs are the two ends of one and the same line --
+        and that line joins the two vertices which produced them."""
+
+        if not self.seed_forbidden_cubic_ids:
+            return False
+        legs = vertex.get('legs')
+        if vertex.get('id'):
+            return self.shares_line_with_cubic(vertex.get('id'), legs,
+                                               cubic_legs)
+        return all(leg.get('number') in cubic_legs for leg in legs)
+
+    def mark_cubic_legs(self, cubic_legs, vertices):
+        """Update the set of leg numbers standing for a line produced by one
+        of the cubic vertices the seed rule keeps apart.
+
+        A number is dropped as soon as the line is consumed, since a vertex
+        reuses the smallest number coming in for the leg it produces."""
+
+        if not self.seed_forbidden_cubic_ids:
+            return cubic_legs
+        consumed = frozenset(leg.get('number') for vertex in vertices
+                             for leg in vertex.get('legs')[:-1])
+        produced = frozenset(vertex.get('legs')[-1].get('number')
+                             for vertex in vertices if vertex.get('id') in \
+                             self.seed_forbidden_cubic_ids)
+        return (cubic_legs - consumed) | produced
 
     def reduce_orders(self, coupling_orders, model, vertex_id_list):
         """Return False if the coupling orders for any coupling is <

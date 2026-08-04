@@ -25,6 +25,7 @@ import math
 
 import tests.unit_tests as unittest
 
+import madgraph
 import madgraph.core.base_objects as base_objects
 import madgraph.core.color_amp as color_amp
 import madgraph.core.diagram_generation as diagram_generation
@@ -4054,3 +4055,109 @@ class TestQuarticUnrolling(unittest.TestCase):
 
         amplitude = self.make_amplitude([5, -5], [5, -5])
         self.assertEqual(amplitude.unroll_quartic_vertices(), {})
+
+#===============================================================================
+# TestSeedRule
+#===============================================================================
+class TestSeedRule(unittest.TestCase):
+    """Test the seed rule: no two cubic gluon vertices sharing a line.
+
+    Unrolling a quartic vertex always yields two cubic vertices joined by the
+    line which replaced it, so the diagrams generation has to keep are exactly
+    those with no such pair to contract back."""
+
+    def setUp(self):
+        self.base_model = import_ufo.import_model('sm')
+        self.cubic_ids = diagram_generation.get_unrollable_cubic_ids(
+            self.base_model)
+        self.merge_quartic = madgraph.merge_quartic_vertices
+
+    def tearDown(self):
+        madgraph.merge_quartic_vertices = self.merge_quartic
+
+    def make_diagrams(self, initial, final, seed):
+        madgraph.merge_quartic_vertices = seed
+        myleglist = base_objects.LegList(
+            [base_objects.Leg({'id':pdg, 'state':False}) for pdg in initial] +
+            [base_objects.Leg({'id':pdg, 'state':True}) for pdg in final])
+        return diagram_generation.Amplitude(base_objects.Process(
+            {'legs':myleglist, 'model':self.base_model})).get('diagrams')
+
+    def cubic_adjacencies(self, diagram):
+        """Number of lines joining two cubic gluon vertices, counted without
+        any help from the generation. A line is recognised by its leg number
+        being live, a vertex reusing the smallest number coming in for the leg
+        it produces."""
+
+        vertices = diagram.get('vertices')
+        last = len(vertices) - 1
+        live = {}
+        count = 0
+        for i, vertex in enumerate(vertices):
+            legs = vertex.get('legs')
+            for leg in (legs if i == last else legs[:-1]):
+                producer = live.pop(leg.get('number'), None)
+                if producer is not None and \
+                   vertices[producer].get('id') in self.cubic_ids and \
+                   vertex.get('id') in self.cubic_ids:
+                    count += 1
+            if i != last:
+                live[legs[-1].get('number')] = i
+        self.assertFalse(live)
+        return count
+
+    def check_process(self, initial, final, nfull, nseed):
+        """The generated seed has to be exactly the full generation filtered
+        on the rule -- same diagrams, not merely the same count."""
+
+        full = self.make_diagrams(initial, final, False)
+        seed = self.make_diagrams(initial, final, True)
+        self.assertEqual(len(full), nfull)
+        self.assertEqual(len(seed), nseed)
+
+        def tags(diagrams):
+            return set(str(diagram_generation.UnrollDiagramTag(
+                diagram, self.base_model, len(initial)))
+                       for diagram in diagrams)
+
+        self.assertEqual(tags(seed),
+                         tags([d for d in full
+                               if not self.cubic_adjacencies(d)]))
+        self.assertFalse([d for d in seed if self.cubic_adjacencies(d)])
+
+    def test_seed_gg_gg(self):
+        """g g > g g: only the contact term has no cubic pair"""
+
+        self.check_process([21, 21], [21, 21], 4, 1)
+
+    def test_seed_gg_ggg(self):
+        """g g > g g g: the ten one quartic one cubic diagrams"""
+
+        self.check_process([21, 21], [21, 21, 21], 25, 10)
+
+    def test_seed_gg_gggg(self):
+        """g g > g g g g: 45 with a quartic in the middle, 10 with two"""
+
+        self.check_process([21, 21], [21, 21, 21, 21], 220, 55)
+
+    def test_seed_gg_ggggg(self):
+        """g g > g g g g g"""
+
+        self.check_process([21, 21], [21, 21, 21, 21, 21], 2485, 385)
+
+    def test_seed_gg_ttxgg(self):
+        """A cubic gluon vertex next to a quark line is not touched"""
+
+        self.check_process([21, 21], [6, -6, 21, 21], 123, 84)
+
+    def test_seed_inactive_by_default(self):
+        """Nothing changes unless madgraph.merge_quartic_vertices is set"""
+
+        madgraph.merge_quartic_vertices = False
+        amplitude = diagram_generation.Amplitude(base_objects.Process(
+            {'legs':base_objects.LegList(
+                [base_objects.Leg({'id':21, 'state':False})] * 2 +
+                [base_objects.Leg({'id':21, 'state':True})] * 2),
+             'model':self.base_model}))
+        self.assertEqual(amplitude.seed_forbidden_cubic_ids, frozenset())
+        self.assertEqual(len(amplitude.get('diagrams')), 4)
