@@ -525,6 +525,37 @@ def _f_pair_split(col_str):
     return pairs
 
 
+def glued_vertices(diagram):
+    """Vertices of the diagram with the trailing identity vertex glued into
+    the one before it.
+
+    The identity vertex only states that its two legs are the two ends of one
+    and the same line, so it is dropped once the diagram is complete, by
+    handing that line to the vertex before it. Until that is done the same
+    diagram can be written in several ways, and comparing two of them is
+    meaningless. Returns None when there is nothing to glue."""
+
+    vertices = diagram.get('vertices')
+    if len(vertices) <= 1 or vertices[-1].get('id') != 0:
+        return None
+
+    vertices = copy.copy(vertices)
+    lastvx = vertices.pop()
+    nexttolastvertex = copy.copy(vertices.pop())
+    legs = copy.copy(nexttolastvertex.get('legs'))
+    ntlnumber = legs[-1].get('number')
+    lastleg = [leg for leg in lastvx.get('legs')
+               if leg.get('number') != ntlnumber][0]
+    # Reset onshell in case we have forbidden s-channels
+    if lastleg.get('onshell') == False:
+        lastleg.set('onshell', None)
+    # Replace the last leg of nexttolastvertex
+    legs[-1] = lastleg
+    nexttolastvertex.set('legs', legs)
+    vertices.append(nexttolastvertex)
+    return vertices
+
+
 def get_unrollable_cubic_ids(model):
     """Interaction ids of the cubic vertices a factorisable quartic vertex
     unrolls into -- the three gluon vertex for the four gluon one."""
@@ -837,6 +868,8 @@ class Amplitude(base_objects.PhysicsObject):
     # share a line, see generate_diagrams. Empty -- so the rule is inactive --
     # unless madgraph.merge_quartic_vertices is set.
     seed_forbidden_cubic_ids = frozenset()
+    # Links recorded while the seed was expanded, see expand_seed_diagrams
+    quartic_unroll_tags = {}
 
     def default_setup(self):
         """Default values for all properties"""
@@ -1118,6 +1151,10 @@ class Amplitude(base_objects.PhysicsObject):
             for vertex_list in reduced_leglist:
                 res.append(self.create_diagram(base_objects.VertexList(vertex_list)))
 
+        # Put back the diagrams the seed rule left out
+        if self.seed_forbidden_cubic_ids:
+            res = self.expand_seed_diagrams(res)
+
         # Record whether or not we failed generation before required
         # s-channel propagators are taken into account
         failed_crossing = not res
@@ -1233,25 +1270,11 @@ class Amplitude(base_objects.PhysicsObject):
         # Replace final id=0 vertex if necessary
         if not process.get('is_decay_chain'):
             for diagram in res:
-                vertices = diagram.get('vertices')
-                if len(vertices) > 1 and vertices[-1].get('id') == 0:
-                    # Need to "glue together" last and next-to-last
-                    # vertex, by replacing the (incoming) last leg of the
-                    # next-to-last vertex with the (outgoing) leg in the
-                    # last vertex
-                    vertices = copy.copy(vertices)
-                    lastvx = vertices.pop()
-                    nexttolastvertex = copy.copy(vertices.pop())
-                    legs = copy.copy(nexttolastvertex.get('legs'))
-                    ntlnumber = legs[-1].get('number')
-                    lastleg = [leg for leg in lastvx.get('legs') if leg.get('number') != ntlnumber][0]
-                    # Reset onshell in case we have forbidden s-channels
-                    if lastleg.get('onshell') == False:
-                        lastleg.set('onshell', None)
-                    # Replace the last leg of nexttolastvertex
-                    legs[-1] = lastleg
-                    nexttolastvertex.set('legs', legs)
-                    vertices.append(nexttolastvertex)
+                # "glue together" last and next-to-last vertex, by replacing
+                # the (incoming) last leg of the next-to-last vertex with the
+                # (outgoing) leg in the last vertex
+                vertices = glued_vertices(diagram)
+                if vertices is not None:
                     diagram.set('vertices', vertices)
 
         if res and not returndiag:
@@ -1353,6 +1376,112 @@ class Amplitude(base_objects.PhysicsObject):
         if nb_removed:
             logger.warning('Diagram filter is ON and removed %s diagrams for this subprocess.' % nb_removed)
             
+        return res
+
+    def expand_seed_diagrams(self, seed):
+        """Put back the diagrams the seed rule left out of the generation.
+
+        A seed diagram stands for itself and for every diagram obtained by
+        replacing any subset of its quartic vertices by the pair of cubic
+        vertices one of their colour structures factorises into. Several seeds
+        reach the same diagram, hence the dedup, and the result is the full
+        diagram set again -- same diagrams, same count, so nothing
+        user-visible moves.
+
+        What the detour buys is the decomposition: an unrolled diagram is the
+        seed with one vertex taken apart, so it is rooted exactly like the
+        diagram it has to be summed with and shares every current except the
+        one being summed.
+
+        Also records the link between a quartic contribution and the diagram
+        it unrolls to, see get_quartic_unroll_links.
+        """
+
+        model = self.get('process').get('model')
+        unrollable = get_unrollable_quartic_vertices(model)
+        ninitial = self.get_ninitial()
+
+        def canonical_tag(diagram):
+            return str(UnrollDiagramTag(diagram, model, ninitial))
+
+        res = base_objects.DiagramList()
+        seen = set()
+        self.quartic_unroll_tags = {}
+        todo = []
+        for diagram in seed:
+            # The identity vertex is glued in right away rather than at the
+            # end of generate_diagrams. Until it is, the same diagram has
+            # several spellings and comparing two of them is meaningless, and
+            # a quartic vertex sitting just before it is not yet the last one
+            # -- which is what decides how its colour structures are indexed.
+            vertices = glued_vertices(diagram)
+            if vertices is not None:
+                diagram = self.create_diagram(vertices)
+            tag = canonical_tag(diagram)
+            seen.add(tag)
+            res.append(diagram)
+            todo.append((diagram, tag))
+
+        # Unrolling is confluent, so taking the diagrams it produces through
+        # the same treatment adds nothing to the set -- but it does give the
+        # link for the quartic vertices they have left.
+        cursor = 0
+        while cursor < len(todo):
+            diagram, own_tag = todo[cursor]
+            cursor += 1
+            vertices = diagram.get('vertices')
+            positions = [i for i, vertex in enumerate(vertices)
+                         if vertex.get('id') in unrollable]
+            if not positions:
+                continue
+            # None leaves the vertex alone, the other entries are the colour
+            # structures carrying a coupling, as kept by ColorBasis.colorize
+            allowed = [[None] + sorted(misc.make_unique(
+                [key[0] for key in model.get_interaction(
+                    vertices[p].get('id')).get('couplings')]))
+                       for p in positions]
+
+            for keys in itertools.product(*allowed):
+                choice = dict((position, key) for position, key
+                              in zip(positions, keys) if key is not None)
+                if not choice:
+                    continue
+                unrolled = self.unrolled_diagram(diagram, choice, unrollable)
+                tag = canonical_tag(unrolled)
+                if tag not in seen:
+                    seen.add(tag)
+                    res.append(unrolled)
+                    todo.append((unrolled, tag))
+                if len(choice) == len(positions):
+                    chain = tuple(choice.get(i, 0)
+                                  for i in range(len(vertices)))
+                    self.quartic_unroll_tags[(own_tag, chain)] = tag
+
+        return res
+
+    def get_quartic_unroll_links(self, diaglist=None):
+        """Return {(diagram index, colour chain): target index} recorded while
+        the seed was expanded, resolved against the diagram list as it stands.
+
+        This is the same map as the one unroll_quartic_vertices reconstructs
+        from the colour algebra, but obtained for free: the two diagrams are
+        one and the same seed unrolled differently. Empty when the diagrams
+        were not generated from a seed."""
+
+        if not self.quartic_unroll_tags:
+            return {}
+
+        model = self.get('process').get('model')
+        if diaglist is None:
+            diaglist = self.get('diagrams')
+        ninitial = self.get_ninitial()
+        index = dict((str(UnrollDiagramTag(diagram, model, ninitial)), i)
+                     for i, diagram in enumerate(diaglist))
+
+        res = {}
+        for (seed_tag, chain), tag in self.quartic_unroll_tags.items():
+            if seed_tag in index and tag in index:
+                res[(index[seed_tag], chain)] = index[tag]
         return res
 
     def unroll_quartic_vertices(self, diaglist=None):

@@ -4076,12 +4076,24 @@ class TestSeedRule(unittest.TestCase):
         madgraph.merge_quartic_vertices = self.merge_quartic
 
     def make_diagrams(self, initial, final, seed):
+        """The generated diagrams, either the full set or -- with the seed
+        rule on and the expansion stopped -- the seed it starts from."""
+
         madgraph.merge_quartic_vertices = seed
         myleglist = base_objects.LegList(
             [base_objects.Leg({'id':pdg, 'state':False}) for pdg in initial] +
             [base_objects.Leg({'id':pdg, 'state':True}) for pdg in final])
-        return diagram_generation.Amplitude(base_objects.Process(
-            {'legs':myleglist, 'model':self.base_model})).get('diagrams')
+        process = base_objects.Process({'legs':myleglist,
+                                        'model':self.base_model})
+        if not seed:
+            return diagram_generation.Amplitude(process).get('diagrams')
+
+        class SeedOnlyAmplitude(diagram_generation.Amplitude):
+            """Stops after the seed, so that it can be looked at"""
+            def expand_seed_diagrams(self, seed):
+                return seed
+
+        return SeedOnlyAmplitude(process).get('diagrams')
 
     def cubic_adjacencies(self, diagram):
         """Number of lines joining two cubic gluon vertices, counted without
@@ -4149,6 +4161,58 @@ class TestSeedRule(unittest.TestCase):
         """A cubic gluon vertex next to a quark line is not touched"""
 
         self.check_process([21, 21], [6, -6, 21, 21], 123, 84)
+
+    def check_expansion(self, initial, final, nfull, nlink):
+        """Expanding the seed has to give the baseline diagram set back, and
+        the links it records have to be the ones the colour algebra gives."""
+
+        base = self.make_diagrams(initial, final, False)
+        madgraph.merge_quartic_vertices = True
+        myleglist = base_objects.LegList(
+            [base_objects.Leg({'id':pdg, 'state':False}) for pdg in initial] +
+            [base_objects.Leg({'id':pdg, 'state':True}) for pdg in final])
+        amplitude = diagram_generation.Amplitude(base_objects.Process(
+            {'legs':myleglist, 'model':self.base_model}))
+        expanded = amplitude.get('diagrams')
+
+        def tags(diagrams):
+            return set(str(diagram_generation.UnrollDiagramTag(
+                diagram, self.base_model, len(initial)))
+                       for diagram in diagrams)
+
+        # same diagrams, and no diagram reached twice
+        self.assertEqual(len(expanded), nfull)
+        self.assertEqual(len(base), nfull)
+        self.assertEqual(tags(expanded), tags(base))
+        self.assertEqual(len(tags(expanded)), nfull)
+
+        # the links recorded while expanding, and the independent ones
+        recorded = amplitude.get_quartic_unroll_links()
+        colour = amplitude.unroll_quartic_vertices()
+        self.assertEqual(len(recorded), nlink)
+        self.assertEqual(set(recorded), set(colour))
+        for key, target in recorded.items():
+            self.assertEqual(target, colour[key][0])
+
+    def test_expand_gg_gg(self):
+        """g g > g g: the contact term unrolls into s, t and u"""
+
+        self.check_expansion([21, 21], [21, 21], 4, 3)
+
+    def test_expand_gg_ggg(self):
+        """g g > g g g"""
+
+        self.check_expansion([21, 21], [21, 21, 21], 25, 30)
+
+    def test_expand_gg_gggg(self):
+        """g g > g g g g: 55 seeds reach all 220 diagrams"""
+
+        self.check_expansion([21, 21], [21, 21, 21, 21], 220, 405)
+
+    def test_expand_gg_ttxgg(self):
+        """Expansion leaves the quark lines alone"""
+
+        self.check_expansion([21, 21], [6, -6, 21, 21], 123, 54)
 
     def test_seed_inactive_by_default(self):
         """Nothing changes unless madgraph.merge_quartic_vertices is set"""
