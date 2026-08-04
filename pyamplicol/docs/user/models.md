@@ -66,6 +66,13 @@ expression IR remains private. Use `compiled.write(path)` to retain a compiled
 model or `compiled.write_parameter_card(path)` to create an editable JSON card
 containing its external parameter defaults.
 
+That parameter card has the same flat shape as the serialized JSON form of a
+UFO restriction: parameter names map to finite real numbers or explicit
+`[real, imaginary]` pairs. It can be passed as `--model-parameters` to the
+runtime CLI and every generated standalone API driver. Direct
+`--set-parameter NAME REAL IMAG` updates are applied after the card and take
+precedence; unknown, immutable, or invalid values reject the entire update.
+
 With `ModelSource.from_path`, a relative restriction filename is resolved from
 the model directory and validated. In a TOML card, use the restriction name
 (`default`, `no_widths`, `none`) because the loader derives the conventional
@@ -141,11 +148,13 @@ j = ["d", "d~", "g"]
 ```
 
 The UFO SM uses its declared particle names when parsing generation requests.
-The primary expansion produces 19 concrete candidates and retains the 18 with
-tree-level amplitudes. Candidate 19, `g g > Z g g`, is loop-induced in the
-Standard Model and is reported and omitted. A runtime may select a retained
-process through the concrete expression recorded by artifact inspection or a
-stable name such as `p_p_to_z_j_j_4`; neither is an output directory name.
+The primary expansion produces 19 ordered candidates, then retains one
+representative for each incoming/outgoing permutation class. Seven of the
+eight representatives have tree-level amplitudes. Candidate 19,
+`g g > Z g g`, is loop-induced in the Standard Model and is reported and
+omitted. A runtime may select a retained process in any side-preserving order
+or by a stable name such as `p_p_to_z_j_j_4`; neither is an output directory
+name.
 
 Explicit process sets are also supported:
 
@@ -161,10 +170,26 @@ processes = ProcessSet(
 ```
 
 Names must be unique. Repetition such as `3*scalar_0` is available for model
-particle names. External models receive generic model-derived particle
-catalogs and may define `p`/`j`; they do not inherit the complete legacy alias
-table of the built-in SM. Define multiparticles explicitly whenever exact
-expansion is part of a reproducible workflow.
+particle names. Every model also receives the generic multiparticle `all`, in
+model declaration order. It contains every valid propagating physical external
+state and excludes ghosts, Goldstones, non-propagating records, and auxiliary
+states. Explicit multiparticle definitions are merged over defaults, so
+defining `p` or `j` does not remove `all`; an explicit `all` replaces the
+default.
+
+For example, the following is valid for the built-in SM and compiled JSON/UFO
+models:
+
+```console
+pyamplicol model processes "p p > all all" \
+  --model built-in-sm \
+  --flavor-scheme 1 --max-quark-lines 0
+```
+
+`all` is intentionally broad. Products such as `p p > all all` may expand to
+many candidates for a large UFO model; define a narrower multiparticle label
+for routine production generation. External models do not inherit the complete
+legacy alias table of the built-in SM.
 
 ## Built-In Compatibility Model
 

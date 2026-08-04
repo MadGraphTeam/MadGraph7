@@ -2773,7 +2773,14 @@ class GenerationBackend:
                     f"process aliases for {request.name!r} are ambiguous after "
                     f"expansion into {len(expanded)} concrete processes"
                 )
+            side_permutation_classes: set[
+                tuple[tuple[str, ...], tuple[str, ...]]
+            ] = set()
             for concrete_index, process_ir in enumerate(expanded, start=1):
+                permutation_class = _process_side_permutation_class(process_ir)
+                if permutation_class in side_permutation_classes:
+                    continue
+                side_permutation_classes.add(permutation_class)
                 name = _expanded_name(
                     request.name,
                     concrete_index,
@@ -2793,10 +2800,14 @@ class GenerationBackend:
                             f"alias {alias.name!r} permutation has length "
                             f"{len(permutation)}, expected {len(process_ir.legs)}"
                         )
-                    if permutation[:2] != (0, 1):
+                    if any(
+                        process_ir.legs[representative_index].side
+                        != process_ir.legs[public_index].side
+                        for representative_index, public_index in enumerate(permutation)
+                    ):
                         raise GenerationError(
-                            f"alias {alias.name!r} may only permute final-state "
-                            "particles; genuine crossing reuse is not enabled"
+                            f"alias {alias.name!r} may only permute particles "
+                            "within the incoming and outgoing sides"
                         )
                     alias_expression, alias_pdgs = _permuted_process_identity(
                         process_ir,
@@ -5450,13 +5461,25 @@ class GenerationBackend:
             resolved_model.compiled is None
             or not resolved_model.use_compiled_process_catalog
         ):
+            from ..models.builtin.process_catalog import PDGS
             from ..models.builtin.process_ir import build_process_ir
             from ..models.builtin.process_selection import (
                 enumerate_generic_process_set,
             )
+            from ..processes.core_syntax import expand_process_variants
+
+            multiparticles = {"all": tuple(PDGS)}
+            if self._run_config is not None:
+                multiparticles.update(self._run_config.process.multiparticles)
+            expanded_request = " | ".join(
+                expand_process_variants(
+                    request.expression,
+                    aliases=multiparticles,
+                )
+            )
 
             enumeration = enumerate_generic_process_set(
-                request.expression,
+                expanded_request,
                 self._builtin_process_options,
                 max_quark_pairs=self._max_quark_pairs,
             )
@@ -5981,11 +6004,22 @@ def _expanded_name(base: str, index: int, count: int) -> str:
     return base if count == 1 else f"{base}_{index}"
 
 
+def _process_side_permutation_class(
+    process: CanonicalProcessIR,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Identify one reusable representative per unordered external side."""
+
+    return (
+        tuple(sorted(leg.particle.casefold() for leg in process.initial_legs)),
+        tuple(sorted(leg.particle.casefold() for leg in process.final_legs)),
+    )
+
+
 def _permuted_process_identity(
     process: CanonicalProcessIR,
     representative_to_alias: Sequence[int],
 ) -> tuple[str, tuple[int, ...]]:
-    """Return public process metadata in a final-state alias's external order."""
+    """Return public process metadata in a side-preserving alias order."""
 
     legs = process.legs
     if len(representative_to_alias) != len(legs) or sorted(

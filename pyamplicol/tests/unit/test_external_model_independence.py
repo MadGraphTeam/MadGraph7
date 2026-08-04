@@ -12,7 +12,11 @@ from pyamplicol.models.contracts import (
     CompiledParameterRecord,
     CompiledParticleRecord,
 )
-from pyamplicol.processes.model import ModelParticleCatalog, build_model_process_ir
+from pyamplicol.processes.model import (
+    ModelParticleCatalog,
+    build_model_process_ir,
+    expand_model_processes,
+)
 
 
 def _particle(
@@ -27,6 +31,9 @@ def _particle(
     exact_charge: str = "0",
     component_dimension: int | None = None,
     auxiliary_kind: str | None = None,
+    ghost_number: int = 0,
+    propagating: bool = True,
+    goldstoneboson: bool = False,
 ) -> CompiledParticleRecord:
     return CompiledParticleRecord(
         name=name,
@@ -38,9 +45,9 @@ def _particle(
         width="ZERO",
         charge=charge,
         quantum_numbers=(("electric_charge", exact_charge),),
-        ghost_number=0,
-        propagating=True,
-        goldstoneboson=False,
+        ghost_number=ghost_number,
+        propagating=propagating,
+        goldstoneboson=goldstoneboson,
         propagator=None,
         component_dimension=component_dimension,
         auxiliary_kind=auxiliary_kind,
@@ -239,7 +246,76 @@ def test_default_parton_aliases_are_derived_from_particle_metadata() -> None:
     assert aliases == {
         "p": ("octet_vector", "chi", "chi_bar", "restricted_massless"),
         "j": ("octet_vector", "chi", "chi_bar", "restricted_massless"),
+        "all": (
+            "octet_vector",
+            "chi",
+            "chi_bar",
+            "heavy_colored",
+            "restricted_massless",
+            "mutable_zero",
+            "singlet",
+        ),
     }
+
+
+def test_all_alias_keeps_only_physical_external_particles_in_order() -> None:
+    physical = _particle("physical", "physical", 710_101, spin=1, color=1)
+    ghost = _particle("ghost", "ghost", 710_102, spin=1, color=1, ghost_number=1)
+    goldstone = _particle(
+        "goldstone", "goldstone", 710_103, spin=1, color=1, goldstoneboson=True
+    )
+    nonpropagating = _particle(
+        "nonpropagating",
+        "nonpropagating",
+        710_104,
+        spin=1,
+        color=1,
+        propagating=False,
+    )
+    auxiliary = _particle(
+        "auxiliary",
+        "auxiliary",
+        710_105,
+        spin=1,
+        color=1,
+        auxiliary_kind="synthetic-contact-current",
+    )
+    second = _particle("second", "second", 710_106, spin=1, color=1)
+
+    catalog = ModelParticleCatalog(
+        "external-filter-model",
+        (physical, ghost, goldstone, nonpropagating, auxiliary, second),
+    )
+
+    assert tuple(particle.name for particle in catalog.external_particles) == (
+        "physical",
+        "second",
+    )
+    assert catalog.default_multiparticles() == {"all": ("physical", "second")}
+
+
+def test_explicit_multiparticles_extend_defaults_and_can_override_all() -> None:
+    particles = (
+        _particle("parton", "parton", 810_101, spin=3, color=8),
+        _particle("first", "first", 710_101, spin=1, color=1),
+        _particle("second", "second", 710_102, spin=1, color=1),
+    )
+    catalog = ModelParticleCatalog("override-model", particles)
+
+    assert expand_model_processes(
+        "beam beam > all",
+        catalog,
+        multiparticles={"beam": ("parton",)},
+    ) == (
+        "parton parton > parton",
+        "parton parton > first",
+        "parton parton > second",
+    )
+    assert expand_model_processes(
+        "p p > all",
+        catalog,
+        multiparticles={"all": ("second",)},
+    ) == ("parton parton > second",)
 
 
 @pytest.mark.parametrize(
@@ -357,6 +433,13 @@ def test_sm_like_pdgs_and_fractional_charges_use_only_external_metadata() -> Non
     assert catalog.default_multiparticles() == {
         "p": ("fundamental_21", "antifundamental_21", "adjoint_1"),
         "j": ("fundamental_21", "antifundamental_21", "adjoint_1"),
+        "all": (
+            "fundamental_21",
+            "antifundamental_21",
+            "adjoint_1",
+            "scalar_24",
+            "antiscalar_24",
+        ),
     }
     assert unrelated_auxiliary.statistics == "auxiliary"
     assert unrelated_auxiliary not in catalog.external_particles

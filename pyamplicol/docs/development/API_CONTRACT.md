@@ -51,8 +51,11 @@ records, while `write(path)` serializes the complete private payload and
 
 `ProcessRequest.parse(expression, *, name=None)` validates one process string.
 `ProcessSet` contains a non-empty tuple of uniquely named requests and
-explicit aliases. Public aliases use physical process metadata; internal
-representatives remain hidden.
+explicit aliases. At runtime, stored aliases and uniquely inferred
+side-preserving permutations use the same Rusticol mapping; incoming and
+outgoing legs never cross the process boundary. Public physics, helicity,
+color-flow, reduction, and momentum ordering follow the requested expression,
+while internal representatives remain hidden.
 
 ## Generation
 

@@ -14,12 +14,16 @@ from pyamplicol.api.results import ResolvedEvaluation
 from pyamplicol.artifacts import load_manifest
 from pyamplicol.artifacts.security import confined_path
 from pyamplicol.runtime._evaluator_payloads import ExactEvaluatorPayloadResolver
+from pyamplicol.runtime._native_selection import (
+    native_physics_axes,
+    native_process_selection,
+    representative_vector_to_public,
+)
 from pyamplicol.runtime.eager_exact._contracts import (
     _KernelLoader,
     _mapping,
     _PayloadIndex,
     _read_json,
-    _selected_process,
     _sequence,
 )
 from pyamplicol.runtime.symbolica_exact import (
@@ -147,8 +151,10 @@ class RecurrenceExactExecutor:
         self._native_runtime = native_runtime
         manifest = load_manifest(self._artifact)
         exact_payloads = ExactEvaluatorPayloadResolver(manifest)
-        process, permutation = _selected_process(manifest.processes, process_id)
-        representative_id = str(process["id"])
+        selection = native_process_selection(native_runtime, manifest.processes)
+        process = selection.process
+        permutation = selection.external_permutation
+        representative_id = selection.representative_process_id
         execution_records = tuple(
             record
             for record in manifest.payloads
@@ -173,10 +179,16 @@ class RecurrenceExactExecutor:
             confined_path(self._artifact, execution_records[0].path),
             "recurrence execution metadata",
         )
-        physics = _read_json(
+        representative_physics = _read_json(
             confined_path(self._artifact, physics_path),
             "runtime physics metadata",
         )
+        axes = native_physics_axes(native_runtime, representative_physics)
+        if execution.get("key") != selection.representative_process_key:
+            raise ArtifactError(
+                "recurrence exact execution disagrees with Rusticol's representative "
+                "process key"
+            )
         self._plan = _RecurrenceExactPlan.load(
             artifact_root=self._artifact,
             process_id=representative_id,
@@ -187,12 +199,13 @@ class RecurrenceExactExecutor:
             exact_payloads=exact_payloads,
             native_sections_loader=native_sections_loader,
         )
-        self._physics = physics
+        self._permutation = permutation
+        self._representative_physics = representative_physics
+        self._physics = axes.public_physics
         (
             self._helicity_representative,
             self._helicity_orbit_members,
         ) = self._helicity_reduction_indices()
-        self._permutation = permutation
         self._replay_by_color: tuple[_ReplayTarget, ...] = ()
         self._destination_helicities: tuple[tuple[int, ...], ...] = ()
         self._union_destination_by_color: tuple[_AmplitudeDestination, ...] = ()
@@ -239,7 +252,7 @@ class RecurrenceExactExecutor:
             )
         return _diagnostic_project_onshell_points(
             momenta,
-            physics=self._physics,
+            physics=self._representative_physics,
             artifact_mass_bindings=bindings,
             permutation=self._permutation,
             precision=precision,
@@ -678,7 +691,7 @@ class RecurrenceExactExecutor:
                 )
             try:
                 direct_to_physics[descriptor.helicity_id] = physics_by_values[
-                    tuple(vector)
+                    representative_vector_to_public(vector, self._permutation)
                 ]
             except KeyError as exc:
                 raise ArtifactError(
@@ -763,7 +776,9 @@ class RecurrenceExactExecutor:
         for descriptor in sections.resolved_helicities:
             start = descriptor.public_helicity_start
             stop = start + descriptor.public_helicity_count
-            vector = tuple(sections.public_helicities[start:stop])
+            vector = representative_vector_to_public(
+                sections.public_helicities[start:stop], self._permutation
+            )
             if len(vector) != sections.external_source_count:
                 raise ArtifactError(
                     "all-flow-union helicity has incomplete source coverage"
@@ -900,7 +915,9 @@ class RecurrenceExactExecutor:
         for descriptor in sections.resolved_helicities:
             start = descriptor.public_helicity_start
             stop = start + descriptor.public_helicity_count
-            vector = tuple(sections.public_helicities[start:stop])
+            vector = representative_vector_to_public(
+                sections.public_helicities[start:stop], self._permutation
+            )
             if len(
                 vector
             ) != sections.external_source_count or descriptor.helicity_id >= len(

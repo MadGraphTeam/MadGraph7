@@ -70,12 +70,14 @@ name; unnamed multiparticle requests receive generated concrete names:
 entries = [{ expression = "p p > Z j j" }]
 ```
 
-For the primary two-flavor expansion, the physical filter produces 19 concrete
-candidates. Generation retains `p_p_to_z_j_j_1` through
-`p_p_to_z_j_j_18`; candidate 19 is `g g > Z g g`, which has no tree-level
-Standard Model amplitude and is reported and omitted. The name is not a
-filesystem path. Either `p_p_to_z_j_j_4` or the concrete expression
-`d d~ > z g g` selects that process from the shared `artifacts/pp_zjj` root.
+For the primary two-flavor expansion, the physical filter finds 19 ordered
+candidates and collapses incoming/outgoing permutations to eight reusable
+representatives. Candidate 19, `g g > Z g g`, has no tree-level Standard Model
+amplitude and is reported and omitted, leaving seven stored processes. The
+stable name is not a filesystem path. Either `p_p_to_z_j_j_4` or the concrete expression
+`d d~ > g z g` selects that representative from the shared
+`artifacts/pp_zjj` root; Rusticol remaps all public axes to the requested
+side-preserving order.
 
 Explicit named requests can mix multiplicities in one artifact:
 
@@ -91,6 +93,14 @@ entries = [
 expansion. Coupling-order names are model data and are filtering/scheduling
 hints; the generic engine does not assign fixed QCD or electroweak semantics to
 arbitrary names.
+
+Every model defines `all` as its declaration-ordered set of valid propagating
+physical external particles, excluding ghosts, Goldstones, non-propagating
+records, and auxiliary states. User multiparticles are merged over model
+defaults, so defining `p` or `j` leaves `all` available; defining `all`
+explicitly overrides it. Requests such as `p p > all all` are valid, but can
+expand combinatorially for large UFO models. Prefer a narrower custom label
+when the full physical catalog is not required.
 
 ## Direct Commands
 

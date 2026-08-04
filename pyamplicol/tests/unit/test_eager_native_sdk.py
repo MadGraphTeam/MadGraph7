@@ -24,6 +24,31 @@ def test_native_sdk_wrappers_expose_the_runtime_execution_mode() -> None:
     assert "rusticol_runtime_execution_mode" in rust
 
 
+def test_native_sdk_wrappers_expose_process_permutations_and_kinematics() -> None:
+    header = _read("rust/crates/rusticol-capi/include/rusticol.h")
+    cpp = _read("rust/crates/rusticol-capi/include/rusticol.hpp")
+    fortran = _read("rust/crates/rusticol-capi/fortran/rusticol.f90")
+    rust = _read("src/pyamplicol/_sdk/rust/rusticol.rs")
+
+    for symbol in (
+        "rusticol_runtime_representative_process_key",
+        "rusticol_runtime_external_permutation",
+        "rusticol_runtime_load_kinematics_json",
+    ):
+        assert symbol in header
+        assert symbol in fortran
+        assert symbol in rust
+    assert "std::string representative_process_key() const" in cpp
+    assert "std::vector<std::size_t> external_permutation() const" in cpp
+    assert "std::vector<double> load_kinematics_json" in cpp
+    assert "procedure, public :: representative_process_key" in fortran
+    assert "procedure, public :: external_permutation" in fortran
+    assert "procedure, public :: load_kinematics_json" in fortran
+    assert "pub fn representative_process_key(&self) -> Result<String>" in rust
+    assert "pub fn external_permutation(&self) -> Result<Vec<usize>>" in rust
+    assert "pub fn load_kinematics_json" in rust
+
+
 def test_native_sdk_wrappers_expose_per_point_runtime_selectors() -> None:
     header = _read("rust/crates/rusticol-capi/include/rusticol.h")
     cpp = _read("rust/crates/rusticol-capi/include/rusticol.hpp")

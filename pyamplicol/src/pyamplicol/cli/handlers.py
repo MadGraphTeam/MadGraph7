@@ -232,7 +232,14 @@ class DefaultCliServices:
             raise ConfigurationError("evaluate requires evaluation.artifact")
         if config.evaluation.momenta is None:
             raise ConfigurationError("evaluate requires evaluation.momenta")
-        parameters: Mapping[str, complex | float | int] | None = None
+        parameters: Mapping[
+            str,
+            complex
+            | float
+            | int
+            | list[float | int]
+            | tuple[float | int, float | int],
+        ] | None = None
         if config.evaluation.model_parameters is not None:
             raw_parameters = _read_json(config.evaluation.model_parameters)
             if not isinstance(raw_parameters, Mapping):

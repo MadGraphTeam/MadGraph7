@@ -15,7 +15,7 @@ use pyo3::IntoPyObjectExt;
 use pyo3::create_exception;
 use pyo3::exceptions::{PyException, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyAny, PyBool, PyBytes, PyDict, PyList};
+use pyo3::types::{PyAny, PyBool, PyBytes, PyDict, PyList, PyTuple};
 use rusticol_core::__private::compile_symbolica_program_to_plane_application_bytes;
 use rusticol_core::{
     ColorAccuracy, ColorComponent as CoreColorComponent, ModelParameter as CoreModelParameter,
@@ -846,14 +846,35 @@ fn parse_complex_value(value: &Bound<'_, PyAny>, name: &str) -> PyResult<(f64, f
     if let Ok(real) = value.extract::<f64>() {
         return Ok((real, 0.0));
     }
+    if value.is_instance_of::<PyList>() || value.is_instance_of::<PyTuple>() {
+        if value.len()? != 2 {
+            return Err(PyValueError::new_err(format!(
+                "model parameter {name:?} array must contain [real, imaginary]"
+            )));
+        }
+        let component = |index: usize, label: &str| -> PyResult<f64> {
+            let item = value.get_item(index)?;
+            if item.is_instance_of::<PyBool>() {
+                return Err(PyTypeError::new_err(format!(
+                    "model parameter {name:?} {label} component must be numeric, not bool"
+                )));
+            }
+            item.extract::<f64>().map_err(|_| {
+                PyTypeError::new_err(format!(
+                    "model parameter {name:?} {label} component must be numeric"
+                ))
+            })
+        };
+        return Ok((component(0, "real")?, component(1, "imaginary")?));
+    }
     let real = value.getattr("real")?.extract::<f64>().map_err(|_| {
         PyTypeError::new_err(format!(
-            "model parameter {name:?} must be a real or complex number"
+            "model parameter {name:?} must be a number or [real, imaginary]"
         ))
     })?;
     let imaginary = value.getattr("imag")?.extract::<f64>().map_err(|_| {
         PyTypeError::new_err(format!(
-            "model parameter {name:?} must be a real or complex number"
+            "model parameter {name:?} must be a number or [real, imaginary]"
         ))
     })?;
     Ok((real, imaginary))

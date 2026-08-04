@@ -70,6 +70,14 @@ def test_all_options_is_an_exhaustive_commented_registry_snapshot() -> None:
         assert f"# {path}:" in text, f"missing all-options comment for {path}"
 
 
+def test_example_parameter_card_uses_serialized_ufo_pair_shape() -> None:
+    payload = json.loads(
+        (EXAMPLES / "data/model_parameters.json").read_text(encoding="utf-8")
+    )
+
+    assert payload == {"aS": [0.117, 0.0], "MZ": [91.188, 0.0]}
+
+
 def test_example_matrix_covers_required_models_and_modes() -> None:
     color_cards = {
         "builtin_sm_lc.toml": "lc",
@@ -132,7 +140,7 @@ def test_example_matrix_covers_required_models_and_modes() -> None:
     resolved = resolve_config(EXAMPLES / "evaluate_resolved.toml").effective
     assert not total.evaluation.resolved
     assert resolved.evaluation.resolved
-    assert total.evaluation.process == resolved.evaluation.process == "d d~ > z g g"
+    assert total.evaluation.process == resolved.evaluation.process == "d d~ > g z g"
     assert resolve_config(EXAMPLES / "benchmark.toml").effective.action == "benchmark"
 
 
@@ -224,15 +232,27 @@ def test_example_data_has_finite_momenta_and_scalar_parameters() -> None:
             sum(particle[index] for particle in point[2:]) for index in range(4)
         ]
         assert incoming == pytest.approx(outgoing, rel=1e-13, abs=1e-13)
+        invariant_masses_squared = [
+            particle[0] ** 2 - sum(component**2 for component in particle[1:])
+            for particle in point[2:]
+        ]
+        assert invariant_masses_squared[0] == pytest.approx(0.0, abs=1.0e-10)
+        assert invariant_masses_squared[1] == pytest.approx(91.188**2, rel=1.0e-12)
+        assert invariant_masses_squared[2] == pytest.approx(0.0, abs=1.0e-10)
 
     parameters = json.loads(
         (EXAMPLES / "data/model_parameters.json").read_text(encoding="utf-8")
     )
     assert set(parameters) == {"aS", "MZ"}
     assert all(
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and math.isfinite(value)
+        isinstance(value, list)
+        and len(value) == 2
+        and all(
+            isinstance(component, (int, float))
+            and not isinstance(component, bool)
+            and math.isfinite(component)
+            for component in value
+        )
         for value in parameters.values()
     )
 

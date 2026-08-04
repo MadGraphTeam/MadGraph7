@@ -35,6 +35,7 @@ from pyamplicol.api.results import (
     ResolvedEvaluation,
 )
 from pyamplicol.artifacts import MANIFEST_NAME, ArtifactManifest, load_manifest
+from pyamplicol.runtime._native_selection import native_process_selection
 
 if TYPE_CHECKING:
     from .eager_exact import EagerExactExecutor
@@ -330,6 +331,34 @@ class RusticolRuntimeBackend:
         """Return the native execution lane selected by the artifact."""
 
         return self._execution_mode
+
+    @property
+    def representative_process_key(self) -> str:
+        """Stable artifact process whose payload implements this selection."""
+
+        value = self._native_metadata.get("representative_process_key")
+        if not isinstance(value, str) or not value:
+            raise CompatibilityError(
+                "native runtime metadata has no representative process key"
+            )
+        return value
+
+    @property
+    def external_permutation(self) -> tuple[int, ...]:
+        """Representative-index to public-index external-leg permutation."""
+
+        raw = self._native_metadata.get("external_permutation")
+        count = len(self.physics.external_particles)
+        if not isinstance(raw, list) or any(
+            isinstance(value, bool) or not isinstance(value, int) for value in raw
+        ):
+            raise CompatibilityError(
+                "native runtime metadata has no external process permutation"
+            )
+        permutation = tuple(raw)
+        if len(permutation) != count or sorted(permutation) != list(range(count)):
+            raise ArtifactError("native runtime external permutation is invalid")
+        return permutation
 
     @property
     def artifact_id(self) -> str:
@@ -958,29 +987,10 @@ class RusticolRuntimeBackend:
 
         manifest = load_manifest(self._artifact_path)
         selected_id = self.physics.process_id
-        representative: Mapping[str, object] | None = None
-        permutation: tuple[int, ...] | None = None
-        for process in manifest.processes:
-            if process["id"] == selected_id:
-                representative = process
-                break
-            for alias in cast(Sequence[Mapping[str, object]], process["aliases"]):
-                if alias["id"] == selected_id:
-                    representative = process
-                    permutation = tuple(
-                        _manifest_integer(index, "alias external permutation entry")
-                        for index in cast(
-                            Sequence[object], alias["external_permutation"]
-                        )
-                    )
-                    break
-            if representative is not None:
-                break
-        if representative is None:
-            raise ArtifactError(
-                f"runtime selected process {selected_id!r} is absent from its artifact"
-            )
-        process_id = str(representative["id"])
+        selection = native_process_selection(self._runtime, manifest.processes)
+        representative = selection.process
+        permutation = selection.external_permutation
+        process_id = selection.representative_process_id
         payloads = tuple(
             payload
             for payload in manifest.payloads
@@ -1040,17 +1050,16 @@ class RusticolRuntimeBackend:
             raise ArtifactError(
                 f"process {process_id!r} validation PDGs do not match its metadata"
             )
-        if permutation is not None:
-            reordered: list[tuple[float, float, float, float] | None] = [None] * len(
-                vectors
+        reordered: list[tuple[float, float, float, float] | None] = [None] * len(
+            vectors
+        )
+        for representative_index, public_index in enumerate(permutation):
+            reordered[public_index] = vectors[representative_index]
+        if any(vector is None for vector in reordered):
+            raise ArtifactError(
+                f"selected process {selected_id!r} has an incomplete permutation"
             )
-            for representative_index, alias_index in enumerate(permutation):
-                reordered[alias_index] = vectors[representative_index]
-            if any(vector is None for vector in reordered):
-                raise ArtifactError(
-                    f"process alias {selected_id!r} has an incomplete permutation"
-                )
-            vectors = cast(list[tuple[float, float, float, float]], reordered)
+        vectors = cast(list[tuple[float, float, float, float]], reordered)
         return (tuple(vectors),)
 
 

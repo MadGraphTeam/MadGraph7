@@ -32,6 +32,7 @@ from pyamplicol.config import (
     EvaluatorOptimizationConfig,
     GenerationConfig,
     ModelConfig,
+    ProcessConfig,
     RunConfig,
 )
 from pyamplicol.licensing import SymbolicaLicenseState
@@ -89,6 +90,42 @@ def test_external_multiparticle_filter_keeps_only_color_ready_children() -> None
     )
     assert len(rejected) == 1
     assert rejected[0].startswith("d d > z d d~:")
+
+
+def test_external_multiparticle_expansion_reuses_side_permuted_representatives(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
+    compiled = ModelSource.built_in_sm().compile(use_cache=False)
+    plan = Generator(
+        RunConfig(
+            action=Action.GENERATE,
+            process=ProcessConfig(
+                multiparticles={"p": ("d", "d~", "g"), "j": ("d", "d~", "g")},
+                flavor_scheme=2,
+                max_quark_lines=2,
+            ),
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
+        )
+    ).plan(
+        ProcessSet.from_expressions(
+            ("p p > z j j",),
+            names=("p_p_to_z_j_j",),
+        ),
+        model=compiled,
+    )
+
+    assert tuple(
+        (process.name, process.expression) for process in plan.concrete_processes
+    ) == (
+        ("p_p_to_z_j_j_1", "d d > z d d"),
+        ("p_p_to_z_j_j_2", "d d~ > z d d~"),
+        ("p_p_to_z_j_j_3", "d d~ > z g g"),
+        ("p_p_to_z_j_j_4", "d g > z d g"),
+        ("p_p_to_z_j_j_7", "d~ d~ > z d~ d~"),
+        ("p_p_to_z_j_j_8", "d~ g > z d~ g"),
+        ("p_p_to_z_j_j_11", "g g > z d d~"),
+    )
 
 
 def test_model_compilation_returns_the_canonical_public_model(tmp_path: Path) -> None:
@@ -439,3 +476,63 @@ def test_plan_uses_licensed_concrete_process_resource_partition(
         "evaluator.optimization.cores",
     ]
     assert all(adjustment.reason for adjustment in plan.adjustments)
+
+
+def test_builtin_all_plan_can_be_bounded_to_one_concrete_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
+
+    plan = Generator(
+        RunConfig(
+            action=Action.GENERATE,
+            process=ProcessConfig(flavor_scheme=1, max_quark_lines=0),
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
+        )
+    ).plan("p p > all all")
+
+    assert tuple(process.expression for process in plan.concrete_processes) == (
+        "g g > g g",
+    )
+
+
+@pytest.mark.parametrize("expression", ("p p > 2*all", "p p > [all g] all"))
+def test_builtin_all_expands_token_aware_before_the_prefilter(
+    monkeypatch: pytest.MonkeyPatch,
+    expression: str,
+) -> None:
+    monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
+
+    plan = Generator(
+        RunConfig(
+            action=Action.GENERATE,
+            process=ProcessConfig(flavor_scheme=1, max_quark_lines=0),
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
+        )
+    ).plan(expression)
+
+    assert tuple(process.expression for process in plan.concrete_processes) == (
+        "g g > g g",
+    )
+
+
+def test_builtin_explicit_multiparticles_extend_defaults_and_override_all(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(licensing, "detect_symbolica_license", _restricted_license)
+
+    plan = Generator(
+        RunConfig(
+            action=Action.GENERATE,
+            process=ProcessConfig(
+                multiparticles={"beam": ("g",), "all": ("g",)},
+                flavor_scheme=1,
+                max_quark_lines=0,
+            ),
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
+        )
+    ).plan("beam beam > all all")
+
+    assert tuple(process.expression for process in plan.concrete_processes) == (
+        "g g > g g",
+    )

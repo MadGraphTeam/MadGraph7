@@ -46,11 +46,14 @@ module rusticol
     procedure, public :: is_loaded => rusticol_is_loaded
     procedure, public :: process => rusticol_process
     procedure, public :: process_key => rusticol_process_key
+    procedure, public :: representative_process_key => rusticol_representative_process_key
     procedure, public :: color_accuracy => rusticol_color_accuracy
     procedure, public :: execution_mode => rusticol_execution_mode
     procedure, public :: metadata_json => rusticol_metadata_json
     procedure, public :: physics_json => rusticol_physics_json
     procedure, public :: external_particles => rusticol_external_particles
+    procedure, public :: external_permutation => rusticol_external_permutation
+    procedure, public :: load_kinematics_json => rusticol_load_kinematics_json
     procedure, public :: helicities => rusticol_helicities
     procedure, public :: colors => rusticol_colors
     procedure, public :: model_parameters => rusticol_model_parameters
@@ -141,6 +144,15 @@ module rusticol
       integer(c_int) :: status
     end function c_rusticol_runtime_process_key
 
+    function c_rusticol_runtime_representative_process_key(handle, buffer, capacity, required) &
+        bind(C, name="rusticol_runtime_representative_process_key") result(status)
+      import :: c_ptr, c_size_t, c_int
+      type(c_ptr), value :: handle, buffer
+      integer(c_size_t), value :: capacity
+      integer(c_size_t) :: required
+      integer(c_int) :: status
+    end function c_rusticol_runtime_representative_process_key
+
     function c_rusticol_runtime_color_accuracy(handle, buffer, capacity, required) &
         bind(C, name="rusticol_runtime_color_accuracy") result(status)
       import :: c_ptr, c_size_t, c_int
@@ -166,6 +178,24 @@ module rusticol
       integer(c_int32_t) :: output
       integer(c_int) :: status
     end function c_rusticol_runtime_external_pdg
+
+    function c_rusticol_runtime_external_permutation(handle, output, capacity, required) &
+        bind(C, name="rusticol_runtime_external_permutation") result(status)
+      import :: c_ptr, c_size_t, c_int
+      type(c_ptr), value :: handle, output
+      integer(c_size_t), value :: capacity
+      integer(c_size_t) :: required
+      integer(c_int) :: status
+    end function c_rusticol_runtime_external_permutation
+
+    function c_rusticol_runtime_load_kinematics_json(handle, path, output, capacity, required) &
+        bind(C, name="rusticol_runtime_load_kinematics_json") result(status)
+      import :: c_ptr, c_size_t, c_int
+      type(c_ptr), value :: handle, path, output
+      integer(c_size_t), value :: capacity
+      integer(c_size_t) :: required
+      integer(c_int) :: status
+    end function c_rusticol_runtime_load_kinematics_json
 
     function c_rusticol_runtime_helicity_count(handle, output) &
         bind(C, name="rusticol_runtime_helicity_count") result(status)
@@ -547,6 +577,13 @@ contains
     value = runtime_string(self, c_rusticol_runtime_process_key, ierr)
   end function rusticol_process_key
 
+  function rusticol_representative_process_key(self, ierr) result(value)
+    class(rusticol_runtime), intent(in) :: self
+    integer(c_int), intent(out), optional :: ierr
+    character(len=:), allocatable :: value
+    value = runtime_string(self, c_rusticol_runtime_representative_process_key, ierr)
+  end function rusticol_representative_process_key
+
   function rusticol_color_accuracy(self, ierr) result(value)
     class(rusticol_runtime), intent(in) :: self
     integer(c_int), intent(out), optional :: ierr
@@ -594,6 +631,53 @@ contains
       if (.not. status_ok(status, ierr)) return
     end do
   end function rusticol_external_particles
+
+  function rusticol_external_permutation(self, ierr) result(permutation)
+    class(rusticol_runtime), intent(in) :: self
+    integer(c_int), intent(out), optional :: ierr
+    integer(c_size_t), allocatable, target :: permutation(:)
+    integer(c_size_t) :: required
+    integer(c_int) :: status
+
+    required = 0_c_size_t
+    status = c_rusticol_runtime_external_permutation( &
+        self%handle, c_null_ptr, 0_c_size_t, required)
+    if (.not. status_ok(status, ierr)) then
+      allocate(permutation(0))
+      return
+    end if
+    allocate(permutation(required))
+    if (required > 0) then
+      status = c_rusticol_runtime_external_permutation( &
+          self%handle, c_loc(permutation(1)), required, required)
+      if (.not. status_ok(status, ierr)) permutation = 0_c_size_t
+    end if
+  end function rusticol_external_permutation
+
+  subroutine rusticol_load_kinematics_json(self, path, momenta, ierr)
+    class(rusticol_runtime), intent(in) :: self
+    character(len=*), intent(in) :: path
+    real(c_double), allocatable, target, intent(out) :: momenta(:)
+    integer(c_int), intent(out), optional :: ierr
+    character(kind=c_char), allocatable, target :: path_c(:)
+    integer(c_size_t) :: required
+    integer(c_int) :: status
+
+    call build_c_string(path, path_c)
+    required = 0_c_size_t
+    status = c_rusticol_runtime_load_kinematics_json( &
+        self%handle, c_loc(path_c(1)), c_null_ptr, 0_c_size_t, required)
+    if (.not. status_ok(status, ierr)) then
+      allocate(momenta(0))
+      return
+    end if
+    allocate(momenta(required))
+    if (required > 0) then
+      status = c_rusticol_runtime_load_kinematics_json( &
+          self%handle, c_loc(path_c(1)), c_loc(momenta(1)), required, required)
+      if (.not. status_ok(status, ierr)) momenta = 0.0_c_double
+    end if
+  end subroutine rusticol_load_kinematics_json
 
   function rusticol_helicities(self, ierr) result(items)
     class(rusticol_runtime), intent(in) :: self

@@ -19,7 +19,13 @@ from pyamplicol.config import (
 )
 from pyamplicol.reporting import ProgressSink
 
-from .errors import ArtifactError, DependencyError, EvaluationError, GenerationError
+from .errors import (
+    ArtifactError,
+    CompatibilityError,
+    DependencyError,
+    EvaluationError,
+    GenerationError,
+)
 from .protocols import (
     BenchmarkBackend,
     BenchmarkFactory,
@@ -555,6 +561,33 @@ class Runtime:
         """Validate and atomically apply a batch of runtime model parameters."""
 
         self._backend.set_model_parameters(dict(mapping))
+
+    @property
+    def representative_process_key(self) -> str:
+        """Stable artifact process implementing the selected public ordering."""
+
+        value = getattr(self._backend, "representative_process_key", None)
+        return value if isinstance(value, str) and value else self.physics.process_id
+
+    @property
+    def external_permutation(self) -> tuple[int, ...]:
+        """Representative-index to public-index external-leg permutation."""
+
+        value = getattr(self._backend, "external_permutation", None)
+        if value is None:
+            return tuple(range(len(self.physics.external_particles)))
+        permutation = tuple(value)
+        count = len(self.physics.external_particles)
+        if any(
+            isinstance(index, bool) or not isinstance(index, int)
+            for index in permutation
+        ):
+            raise CompatibilityError(
+                "runtime external permutation must contain integers"
+            )
+        if len(permutation) != count or sorted(permutation) != list(range(count)):
+            raise CompatibilityError("runtime external permutation is invalid")
+        return permutation
 
     def set_model_parameter(self, name: str, value: complex | float | int) -> None:
         self.set_model_parameters({name: value})

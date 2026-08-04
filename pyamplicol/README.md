@@ -87,8 +87,9 @@ precedence.
 
 The primary example generates a multiprocess `p p > Z j j` artifact from the
 packaged serialized Standard Model, then evaluates and profiles one concrete
-subprocess. It retains the 18 model-supported tree-level channels and reports
-the omitted loop-induced `g g > Z g g` candidate:
+subprocess. Its 19 ordered candidates collapse to eight side-permutation
+classes; it stores the seven tree-level representatives and reports the
+omitted loop-induced `g g > Z g g` class:
 
 ```console
 pyamplicol generate_pp_zjj_from_ufo_sm.toml
@@ -115,11 +116,17 @@ from pathlib import Path
 from pyamplicol import Runtime
 
 momenta = json.loads(Path("data/pp_zjj_momenta.json").read_text())
-runtime = Runtime.load("artifacts/pp_zjj", process="d d~ > z g g")
+runtime = Runtime.load("artifacts/pp_zjj", process="d d~ > g z g")
 total = runtime.evaluate(momenta)
 resolved = runtime.evaluate_resolved(momenta)
 assert resolved.total() == total
 ```
+
+Concrete process expressions may reorder particles within the incoming side or
+within the outgoing side. Rusticol maps momenta, helicities, color flows, and
+resolved metadata to that requested order; particles never cross the `>`
+boundary. Stable process IDs remain available when more than one generated
+representative could match an expression.
 
 See the
 [examples guide](https://github.com/mg5amcnlo/pyamplicol/blob/main/examples/README.md)

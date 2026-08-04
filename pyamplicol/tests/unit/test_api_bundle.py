@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import runpy
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,8 @@ from pyamplicol.artifacts.api_bundle import (
     api_bundle_payloads,
     format_validation_points,
 )
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_api_bundle_has_one_complete_root_layout() -> None:
@@ -81,6 +84,10 @@ def test_api_bundle_has_one_complete_root_layout() -> None:
     assert "Runtime::load" in rust_source
     assert "Selectors::all()" in rust_source
     assert ".set_model_parameters(&options.overrides)" in rust_source
+    assert "--kinematics" in rust_source
+    assert ".representative_process_key()" in rust_source
+    assert ".external_permutation()" in rust_source
+    assert ".load_kinematics_json(" in rust_source
     assert ".evaluate_f64(&momenta, 1)" in rust_source
     assert ".evaluate_resolved_f64(&momenta, 1" in rust_source
     assert r"\"language\":\"rust\"" in rust_source
@@ -99,6 +106,13 @@ def test_api_bundle_has_one_complete_root_layout() -> None:
     assert "rusticol_runtime_load" in c_source
     assert "rusticol_runtime_evaluate_f64" in c_source
     assert "rusticol_runtime_evaluate_resolved_f64" in c_source
+    assert "rusticol_runtime_representative_process_key" in c_source
+    assert "rusticol_runtime_external_permutation" in c_source
+    assert "rusticol_runtime_load_kinematics_json" in c_source
+
+    for payload in payloads:
+        if "check_standalone" in payload.path:
+            assert b"--kinematics" in payload.content
 
 
 def _write_api_bundle(root: Path) -> Path:
@@ -240,3 +254,19 @@ def test_validation_points_are_sorted_and_require_four_vectors() -> None:
         format_validation_points({"broken": ((1, 2, 3),)})
     with pytest.raises(ValueError, match="non-empty tokens"):
         format_validation_points({"not valid": ((1, 2, 3, 4),)})
+
+
+def test_python_api_driver_enforces_canonical_model_parameter_card_values() -> None:
+    namespace = runpy.run_path(
+        str(
+            ROOT
+            / "src/pyamplicol/assets/api_templates/python/check_standalone.py"
+        )
+    )
+    convert = namespace["_parameter_value"]
+
+    assert convert(0.117) == 0.117
+    assert convert([2.5, -0.25]) == complex(2.5, -0.25)
+    for invalid in (True, "0.117", [True, 0], [0, False], [1], {}, float("inf")):
+        with pytest.raises(SystemExit):
+            convert(invalid)

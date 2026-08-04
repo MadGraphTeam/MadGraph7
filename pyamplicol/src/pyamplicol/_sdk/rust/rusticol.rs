@@ -273,6 +273,10 @@ impl Runtime {
         self.get_string(ffi::runtime_process_key)
     }
 
+    pub fn representative_process_key(&self) -> Result<String> {
+        self.get_string(ffi::runtime_representative_process_key)
+    }
+
     pub fn color_accuracy(&self) -> Result<String> {
         self.get_string(ffi::runtime_color_accuracy)
     }
@@ -301,6 +305,38 @@ impl Runtime {
             particles.push(ExternalParticle { index, pdg });
         }
         Ok(particles)
+    }
+
+    /// Representative-index to public/requested-index external-leg permutation.
+    pub fn external_permutation(&self) -> Result<Vec<usize>> {
+        read_usize_vector(|output, capacity, required| {
+            // SAFETY: The helper owns a correctly sized output buffer for the live handle.
+            unsafe {
+                ffi::runtime_external_permutation(
+                    self.handle.as_ptr(),
+                    output,
+                    capacity,
+                    required,
+                )
+            }
+        })
+    }
+
+    /// Load one public-order JSON kinematic point as flattened f64 components.
+    pub fn load_kinematics_json(&self, path: impl AsRef<Path>) -> Result<Vec<f64>> {
+        let path = path_cstring(path.as_ref(), "kinematics path")?;
+        read_f64_vector(|output, capacity, required| {
+            // SAFETY: The path and output storage remain live for the call.
+            unsafe {
+                ffi::runtime_load_kinematics_json(
+                    self.handle.as_ptr(),
+                    path.as_ptr(),
+                    output,
+                    capacity,
+                    required,
+                )
+            }
+        })
     }
 
     pub fn helicities(&self) -> Result<Vec<HelicityConfiguration>> {
@@ -808,6 +844,30 @@ fn read_usize_vector(
     Ok(values)
 }
 
+fn read_f64_vector(
+    mut getter: impl FnMut(*mut f64, usize, *mut usize) -> c_int,
+) -> Result<Vec<f64>> {
+    let mut required = 0;
+    check(getter(ptr::null_mut(), 0, &mut required))?;
+    if required == 0 {
+        return Ok(Vec::new());
+    }
+    let mut values = vec![0.0_f64; required];
+    let mut copied_required = required;
+    check(getter(
+        values.as_mut_ptr(),
+        values.len(),
+        &mut copied_required,
+    ))?;
+    if copied_required != values.len() {
+        return Err(Error::new(
+            ErrorKind::InvalidResponse,
+            "Rusticol returned an inconsistent f64 vector size",
+        ));
+    }
+    Ok(values)
+}
+
 fn checked_cstring(value: &str, description: &str) -> Result<CString> {
     CString::new(value).map_err(|_| {
         Error::new(
@@ -956,6 +1016,12 @@ mod ffi {
             capacity: usize,
             required: *mut usize,
         ) -> c_int;
+        pub(super) fn rusticol_runtime_representative_process_key(
+            handle: *const RuntimeHandle,
+            buffer: *mut c_char,
+            capacity: usize,
+            required: *mut usize,
+        ) -> c_int;
         pub(super) fn rusticol_runtime_color_accuracy(
             handle: *const RuntimeHandle,
             buffer: *mut c_char,
@@ -970,6 +1036,19 @@ mod ffi {
             handle: *const RuntimeHandle,
             index: usize,
             output: *mut i32,
+        ) -> c_int;
+        pub(super) fn rusticol_runtime_external_permutation(
+            handle: *const RuntimeHandle,
+            output: *mut usize,
+            capacity: usize,
+            required: *mut usize,
+        ) -> c_int;
+        pub(super) fn rusticol_runtime_load_kinematics_json(
+            handle: *const RuntimeHandle,
+            path: *const c_char,
+            output: *mut f64,
+            capacity: usize,
+            required: *mut usize,
         ) -> c_int;
         pub(super) fn rusticol_runtime_helicity_count(
             handle: *const RuntimeHandle,
@@ -1114,11 +1193,13 @@ mod ffi {
     pub(super) use rusticol_runtime_execution_mode as runtime_execution_mode;
     pub(super) use rusticol_runtime_external_count as runtime_external_count;
     pub(super) use rusticol_runtime_external_pdg as runtime_external_pdg;
+    pub(super) use rusticol_runtime_external_permutation as runtime_external_permutation;
     pub(super) use rusticol_runtime_free as runtime_free;
     pub(super) use rusticol_runtime_helicity_count as runtime_helicity_count;
     pub(super) use rusticol_runtime_helicity_id as runtime_helicity_id;
     pub(super) use rusticol_runtime_helicity_vector as runtime_helicity_vector;
     pub(super) use rusticol_runtime_load as runtime_load;
+    pub(super) use rusticol_runtime_load_kinematics_json as runtime_load_kinematics_json;
     pub(super) use rusticol_runtime_metadata_json as runtime_metadata_json;
     pub(super) use rusticol_runtime_model_parameter_count as runtime_model_parameter_count;
     pub(super) use rusticol_runtime_model_parameter_name as runtime_model_parameter_name;
@@ -1126,6 +1207,7 @@ mod ffi {
     pub(super) use rusticol_runtime_physics_json as runtime_physics_json;
     pub(super) use rusticol_runtime_process as runtime_process;
     pub(super) use rusticol_runtime_process_key as runtime_process_key;
+    pub(super) use rusticol_runtime_representative_process_key as runtime_representative_process_key;
     pub(super) use rusticol_runtime_resolved_shape as runtime_resolved_shape;
     pub(super) use rusticol_runtime_set_model_parameter as runtime_set_model_parameter;
     pub(super) use rusticol_runtime_set_model_parameters as runtime_set_model_parameters;

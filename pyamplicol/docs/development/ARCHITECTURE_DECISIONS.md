@@ -48,8 +48,10 @@ and a model-independent fallback.
 
 One process request may expand into many concrete processes. Stable process
 names are artifact selectors and remain distinct from the output directory.
-Generic `p`/`j` behavior is model/config data; the complete legacy alias table
-belongs only to the built-in compatibility model.
+Generic `p`/`j` behavior is model/config data. Every model-derived catalog also
+defines `all` from its propagating physical external states, excluding ghosts,
+Goldstones, and auxiliary/non-propagating records. The complete legacy alias
+table belongs only to the built-in compatibility model.
 
 Schema-v3 artifacts are transactionally written executable inputs. Their
 manifest verifies payload paths, digests, producer/runtime ABI, target, and

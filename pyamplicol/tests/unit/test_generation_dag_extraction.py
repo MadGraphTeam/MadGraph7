@@ -216,6 +216,33 @@ def test_generation_plan_uses_production_alias_validation() -> None:
     assert plan.estimated_coverage["alias_count"] == 1
     assert plan.concrete_processes == (request,)
 
+    both_sides = ProcessSet(
+        (request,),
+        aliases=(
+            ProcessAlias(
+                name="both_sides",
+                process_name="base",
+                particle_permutation=(1, 0, 3, 2),
+            ),
+        ),
+    )
+    assert Generator(compiled_config).plan(both_sides).estimated_coverage[
+        "alias_count"
+    ] == 1
+
+    crossing = ProcessSet(
+        (request,),
+        aliases=(
+            ProcessAlias(
+                name="crossing",
+                process_name="base",
+                particle_permutation=(0, 2, 1, 3),
+            ),
+        ),
+    )
+    with pytest.raises(GenerationError, match="incoming and outgoing sides"):
+        Generator(compiled_config).plan(crossing)
+
     invalid = ProcessSet(
         (request,),
         aliases=(

@@ -348,9 +348,10 @@ class ProcessRequest:
 class ProcessAlias:
     """A public process alias backed by a generated concrete process.
 
-    ``particle_permutation`` maps the alias's external-particle order onto the
-    stored concrete process. Runtime selectors and metadata are remapped to the
-    alias automatically.
+    ``particle_permutation`` maps each stored representative external index to
+    its public alias index. Incoming and outgoing legs may each be reordered,
+    but a leg may not cross the process arrow. Runtime selectors and metadata
+    are remapped to the alias automatically.
     """
 
     name: str

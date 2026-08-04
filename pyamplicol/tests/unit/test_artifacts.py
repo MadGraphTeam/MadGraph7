@@ -732,7 +732,7 @@ def test_manifest_rejects_runtime_capabilities_not_owned_by_a_process(
     (
         ([0, 1], "complete permutation"),
         ([0, 0, 2], "complete permutation"),
-        ([1, 0, 2], "final-state"),
+        ([0, 2, 1], "incoming and outgoing sides"),
     ),
 )
 def test_manifest_rejects_invalid_alias_permutations(
@@ -756,6 +756,27 @@ def test_manifest_rejects_invalid_alias_permutations(
 
     with pytest.raises(ArtifactError, match=message):
         load_manifest(root, verify_payloads=False)
+
+
+def test_manifest_accepts_alias_permutations_on_both_sides(tmp_path: Path) -> None:
+    root = tmp_path / "artifact"
+    _build(root)
+    path = root / "artifact.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["processes"][0]["aliases"] = [
+        {
+            "id": "incoming_swap",
+            "expression": "d~ d > z",
+            "external_pdgs": [-1, 1, 23],
+            "external_permutation": [1, 0, 2],
+        }
+    ]
+    payload["artifact_id"] = manifest_module.compute_artifact_id(payload)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    manifest = load_manifest(root, verify_payloads=False)
+
+    assert manifest.processes[0]["aliases"][0]["external_permutation"] == (1, 0, 2)
 
 
 def test_manifest_alias_records_permuted_public_particle_order(tmp_path: Path) -> None:

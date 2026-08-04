@@ -17,6 +17,7 @@
 typedef struct {
     const char *process;
     const char *model_parameters;
+    const char *kinematics;
     const char *parameter_names[MAX_OVERRIDES];
     double parameter_real[MAX_OVERRIDES];
     double parameter_imaginary[MAX_OVERRIDES];
@@ -148,6 +149,11 @@ static Options parse_options(int argc, char **argv) {
                 fail("missing value after --model-parameters");
             }
             options.model_parameters = argv[index];
+        } else if (strcmp(argument, "--kinematics") == 0) {
+            if (++index >= argc) {
+                fail("missing value after --kinematics");
+            }
+            options.kinematics = argv[index];
         } else if (strcmp(argument, "--set-parameter") == 0) {
             size_t slot = options.parameter_count;
             if (index + 3 >= argc) {
@@ -178,6 +184,7 @@ static Options parse_options(int argc, char **argv) {
             puts(
                 "usage: check_standalone [--process ID|EXPRESSION] "
                 "[--model-parameters PATH] "
+                "[--kinematics PATH] "
                 "[--set-parameter NAME REAL IMAG] "
                 "[--precision 16] [--json]"
             );
@@ -354,6 +361,84 @@ static double *load_validation_point(
         fail_errno("close API/validation_points.dat");
     }
     return NULL;
+}
+
+static size_t *load_external_permutation(
+    const RusticolRuntimeHandle *runtime,
+    size_t expected_count
+) {
+    size_t required = 0;
+    size_t *permutation;
+    check_rusticol(
+        rusticol_runtime_external_permutation(runtime, NULL, 0, &required),
+        "query external permutation size"
+    );
+    if (required != expected_count) {
+        fail("external permutation has an incompatible size");
+    }
+    permutation = allocate(required, sizeof(*permutation));
+    check_rusticol(
+        rusticol_runtime_external_permutation(
+            runtime, permutation, required, &required
+        ),
+        "query external permutation"
+    );
+    return permutation;
+}
+
+static double *reorder_validation_point(
+    double *representative,
+    const size_t *permutation,
+    size_t external_count
+) {
+    double *public_point = allocate(4 * external_count, sizeof(*public_point));
+    bool *seen = allocate(external_count, sizeof(*seen));
+    size_t representative_index;
+    for (representative_index = 0; representative_index < external_count;
+         ++representative_index) {
+        size_t public_index = permutation[representative_index];
+        if (public_index >= external_count || seen[public_index]) {
+            free(seen);
+            free(public_point);
+            free(representative);
+            fail("runtime returned an invalid external permutation");
+        }
+        seen[public_index] = true;
+        memcpy(
+            &public_point[4 * public_index],
+            &representative[4 * representative_index],
+            4 * sizeof(*public_point)
+        );
+    }
+    free(seen);
+    free(representative);
+    return public_point;
+}
+
+static double *load_kinematics_json(
+    const RusticolRuntimeHandle *runtime,
+    const char *path,
+    size_t expected_count
+) {
+    size_t required = 0;
+    double *momenta;
+    check_rusticol(
+        rusticol_runtime_load_kinematics_json(
+            runtime, path, NULL, 0, &required
+        ),
+        "query kinematics JSON size"
+    );
+    if (required != 4 * expected_count) {
+        fail("kinematics JSON has an incompatible external-particle count");
+    }
+    momenta = allocate(required, sizeof(*momenta));
+    check_rusticol(
+        rusticol_runtime_load_kinematics_json(
+            runtime, path, momenta, required, &required
+        ),
+        "load kinematics JSON"
+    );
+    return momenta;
 }
 
 static int32_t *load_external_particles(
@@ -570,6 +655,7 @@ int main(int argc, char **argv) {
     FILE *manifest;
     char *process;
     char *process_key;
+    char *representative_process_key;
     char *color_accuracy;
     int32_t *particles;
     HelicityMetadata *helicities;
@@ -578,6 +664,7 @@ int main(int argc, char **argv) {
     size_t helicity_count = 0;
     size_t color_count = 0;
     double *momenta;
+    size_t *external_permutation = NULL;
     double total = NAN;
     double *resolved = NULL;
     size_t resolved_helicity_count = 0;
@@ -616,15 +703,30 @@ int main(int argc, char **argv) {
     process = runtime_string(runtime, rusticol_runtime_process, "query process");
     process_key =
         runtime_string(runtime, rusticol_runtime_process_key, "query process key");
+    representative_process_key = runtime_string(
+        runtime,
+        rusticol_runtime_representative_process_key,
+        "query representative process key"
+    );
     color_accuracy = runtime_string(
         runtime, rusticol_runtime_color_accuracy, "query color accuracy"
     );
     particles = load_external_particles(runtime, &particle_count);
     helicities = load_helicities(runtime, &helicity_count);
     colors = load_colors(runtime, &color_count);
-    momenta = load_validation_point(
-        "API/validation_points.dat", process_key, particle_count
-    );
+    if (options.kinematics != NULL) {
+        momenta = load_kinematics_json(runtime, options.kinematics, particle_count);
+    } else {
+        external_permutation = load_external_permutation(runtime, particle_count);
+        momenta = load_validation_point(
+            "API/validation_points.dat", representative_process_key, particle_count
+        );
+        if (momenta != NULL) {
+            momenta = reorder_validation_point(
+                momenta, external_permutation, particle_count
+            );
+        }
+    }
 
     if (momenta == NULL) {
         if (options.json) {
@@ -773,6 +875,8 @@ int main(int argc, char **argv) {
     free(resolved);
     free(process);
     free(process_key);
+    free(representative_process_key);
+    free(external_permutation);
     free(color_accuracy);
     free(particles);
     free_helicities(helicities, helicity_count);

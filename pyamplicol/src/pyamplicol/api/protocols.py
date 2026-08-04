@@ -27,7 +27,10 @@ from .results import (
 ScalarInput = float | int | str | Decimal
 ScalarValue = complex | Decimal
 Momenta = Sequence[Sequence[Sequence[ScalarInput]]]
-ModelParameters = Mapping[str, complex | float | int]
+ModelParameters = Mapping[
+    str,
+    complex | float | int | list[float | int] | tuple[float | int, float | int],
+]
 
 
 @runtime_checkable

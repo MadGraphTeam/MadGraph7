@@ -129,6 +129,9 @@ public:
 
     std::string process() const { return get_string(rusticol_runtime_process); }
     std::string process_key() const { return get_string(rusticol_runtime_process_key); }
+    std::string representative_process_key() const {
+        return get_string(rusticol_runtime_representative_process_key);
+    }
     std::string color_accuracy() const { return get_string(rusticol_runtime_color_accuracy); }
     std::string execution_mode() const { return get_string(rusticol_runtime_execution_mode); }
     std::string metadata_json() const { return get_string(rusticol_runtime_metadata_json); }
@@ -143,6 +146,30 @@ public:
             std::int32_t pdg = 0;
             check(rusticol_runtime_external_pdg(handle_, index, &pdg));
             result.push_back({index, pdg});
+        }
+        return result;
+    }
+
+    std::vector<std::size_t> external_permutation() const {
+        std::size_t required = 0;
+        check(rusticol_runtime_external_permutation(
+            handle_, nullptr, 0, &required));
+        std::vector<std::size_t> result(required);
+        if (required != 0) {
+            check(rusticol_runtime_external_permutation(
+                handle_, result.data(), result.size(), &required));
+        }
+        return result;
+    }
+
+    std::vector<double> load_kinematics_json(const std::string &path) const {
+        std::size_t required = 0;
+        check(rusticol_runtime_load_kinematics_json(
+            handle_, path.c_str(), nullptr, 0, &required));
+        std::vector<double> result(required);
+        if (required != 0) {
+            check(rusticol_runtime_load_kinematics_json(
+                handle_, path.c_str(), result.data(), result.size(), &required));
         }
         return result;
     }

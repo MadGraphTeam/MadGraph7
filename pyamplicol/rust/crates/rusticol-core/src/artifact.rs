@@ -233,6 +233,15 @@ pub struct ArtifactSelection {
     pub process: ArtifactProcess,
     pub requested_id: String,
     pub alias: Option<ProcessAlias>,
+    /// Canonical public process expression selected by the caller.
+    pub public_expression: String,
+    /// Public external-particle order selected by the caller.
+    pub external_pdgs: Vec<i32>,
+    /// Representative external index to public external index.
+    pub external_permutation: Vec<usize>,
+    /// Whether the permutation was inferred from a concrete expression rather
+    /// than persisted as an explicit artifact alias.
+    pub inferred_permutation: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -990,45 +999,30 @@ impl ArtifactManifest {
         };
         for process in &self.processes {
             if process.id == selected_id {
-                return Ok(ArtifactSelection {
-                    process: process.clone(),
-                    requested_id: selected_id.to_string(),
-                    alias: None,
-                });
+                return Ok(representative_selection(process));
             }
             if let Some(alias) = process.aliases.iter().find(|alias| alias.id == selected_id) {
-                return Ok(ArtifactSelection {
-                    process: process.clone(),
-                    requested_id: selected_id.to_string(),
-                    alias: Some(alias.clone()),
-                });
+                return Ok(alias_selection(process, alias));
             }
         }
 
         let requested_expression = normalize_process_expression(selected_id);
-        let mut expression_matches = Vec::new();
-        for process in &self.processes {
-            if normalize_process_expression(&process.expression) == requested_expression {
-                expression_matches.push(ArtifactSelection {
-                    process: process.clone(),
-                    requested_id: process.id.clone(),
-                    alias: None,
-                });
+        let mut process_expression_matches = self
+            .processes
+            .iter()
+            .filter(|process| {
+                normalize_process_expression(&process.expression) == requested_expression
+            })
+            .map(representative_selection)
+            .collect::<Vec<_>>();
+        match process_expression_matches.len() {
+            1 => {
+                return Ok(process_expression_matches
+                    .pop()
+                    .expect("one process expression match"));
             }
-            for alias in &process.aliases {
-                if normalize_process_expression(&alias.expression) == requested_expression {
-                    expression_matches.push(ArtifactSelection {
-                        process: process.clone(),
-                        requested_id: alias.id.clone(),
-                        alias: Some(alias.clone()),
-                    });
-                }
-            }
-        }
-        match expression_matches.len() {
-            1 => return Ok(expression_matches.pop().expect("one expression match")),
             count if count > 1 => {
-                let mut matching_ids = expression_matches
+                let mut matching_ids = process_expression_matches
                     .iter()
                     .map(|selection| selection.requested_id.as_str())
                     .collect::<Vec<_>>();
@@ -1040,10 +1034,245 @@ impl ArtifactManifest {
             }
             _ => {}
         }
+        let mut alias_expression_matches = self
+            .processes
+            .iter()
+            .flat_map(|process| {
+                process.aliases.iter().filter_map(|alias| {
+                    (normalize_process_expression(&alias.expression) == requested_expression)
+                        .then(|| alias_selection(process, alias))
+                })
+            })
+            .collect::<Vec<_>>();
+        match alias_expression_matches.len() {
+            1 => {
+                return Ok(alias_expression_matches
+                    .pop()
+                    .expect("one alias expression match"));
+            }
+            count if count > 1 => {
+                let mut matching_ids = alias_expression_matches
+                    .iter()
+                    .map(|selection| selection.requested_id.as_str())
+                    .collect::<Vec<_>>();
+                matching_ids.sort_unstable();
+                return Err(RusticolError::selector(format!(
+                    "process expression {selected_id:?} is ambiguous; select one of these stable ids: {}",
+                    matching_ids.join(", ")
+                )));
+            }
+            _ => {}
+        }
+
+        let Some(requested_tokens) = parse_process_expression(selected_id) else {
+            if selected_id.contains('>') {
+                return Err(RusticolError::selector(format!(
+                    "concrete process expression {selected_id:?} must contain one '>' with at least one particle on each side"
+                )));
+            }
+            return Err(RusticolError::selector(format!(
+                "unknown process id or alias id {selected_id:?}"
+            )));
+        };
+        let mut permutation_matches = Vec::new();
+        let mut crossing_only_matches = Vec::new();
+        for process in &self.processes {
+            let Some(representative_tokens) = parse_process_expression(&process.expression) else {
+                continue;
+            };
+            if let Some(permutation) =
+                side_preserving_process_permutation(&representative_tokens, &requested_tokens)
+            {
+                let mut external_pdgs = vec![0; process.external_pdgs.len()];
+                for (representative_index, public_index) in permutation.iter().copied().enumerate()
+                {
+                    external_pdgs[public_index] = process.external_pdgs[representative_index];
+                }
+                permutation_matches.push(ArtifactSelection {
+                    process: process.clone(),
+                    // An inferred expression has no persisted alias identity;
+                    // retain the representative stable process id.
+                    requested_id: process.id.clone(),
+                    alias: None,
+                    public_expression: requested_tokens.canonical.clone(),
+                    external_pdgs,
+                    external_permutation: permutation,
+                    inferred_permutation: true,
+                });
+            } else if process_tokens_are_permutation_equivalent_ignoring_sides(
+                &representative_tokens,
+                &requested_tokens,
+            ) {
+                crossing_only_matches.push(process.id.as_str());
+            }
+        }
+        if permutation_matches.len() > 1 {
+            // Multiprocess artifacts commonly retain both incoming orderings
+            // of the same physical channel. Prefer the representative that
+            // already agrees with the requested ordering in the most slots;
+            // only genuinely tied representatives remain ambiguous.
+            let minimum_displacement = permutation_matches
+                .iter()
+                .map(|selection| permutation_displacement(&selection.external_permutation))
+                .min()
+                .expect("more than one permutation match");
+            permutation_matches.retain(|selection| {
+                permutation_displacement(&selection.external_permutation) == minimum_displacement
+            });
+        }
+        match permutation_matches.len() {
+            1 => return Ok(permutation_matches.pop().expect("one permutation match")),
+            count if count > 1 => {
+                let mut matching_ids = permutation_matches
+                    .iter()
+                    .map(|selection| selection.process.id.as_str())
+                    .collect::<Vec<_>>();
+                matching_ids.sort_unstable();
+                matching_ids.dedup();
+                return Err(RusticolError::selector(format!(
+                    "process expression {selected_id:?} is permutation-ambiguous; select one of these stable ids: {}",
+                    matching_ids.join(", ")
+                )));
+            }
+            _ => {}
+        }
+        if !crossing_only_matches.is_empty() {
+            crossing_only_matches.sort_unstable();
+            crossing_only_matches.dedup();
+            return Err(RusticolError::selector(format!(
+                "process expression {selected_id:?} would move a particle across the '>' boundary; only permutations within the incoming and outgoing sides are supported (matching stable ids: {})",
+                crossing_only_matches.join(", ")
+            )));
+        }
         Err(RusticolError::selector(format!(
             "unknown process id, alias id, or concrete process expression {selected_id:?}"
         )))
     }
+}
+
+fn representative_selection(process: &ArtifactProcess) -> ArtifactSelection {
+    ArtifactSelection {
+        process: process.clone(),
+        requested_id: process.id.clone(),
+        alias: None,
+        public_expression: process.expression.clone(),
+        external_pdgs: process.external_pdgs.clone(),
+        external_permutation: (0..process.external_pdgs.len()).collect(),
+        inferred_permutation: false,
+    }
+}
+
+fn alias_selection(process: &ArtifactProcess, alias: &ProcessAlias) -> ArtifactSelection {
+    ArtifactSelection {
+        process: process.clone(),
+        requested_id: alias.id.clone(),
+        alias: Some(alias.clone()),
+        public_expression: alias.expression.clone(),
+        external_pdgs: alias.external_pdgs.clone(),
+        external_permutation: alias.external_permutation.clone(),
+        inferred_permutation: false,
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ProcessExpressionTokens {
+    initial: Vec<String>,
+    final_state: Vec<String>,
+    canonical: String,
+}
+
+fn parse_process_expression(expression: &str) -> Option<ProcessExpressionTokens> {
+    let tokens = expression
+        .split_whitespace()
+        .map(str::to_lowercase)
+        .collect::<Vec<_>>();
+    let separators = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(index, token)| (token == ">").then_some(index))
+        .collect::<Vec<_>>();
+    let [separator] = separators.as_slice() else {
+        return None;
+    };
+    if *separator == 0 || *separator + 1 == tokens.len() {
+        return None;
+    }
+    let initial = tokens[..*separator].to_vec();
+    let final_state = tokens[*separator + 1..].to_vec();
+    Some(ProcessExpressionTokens {
+        canonical: format!("{} > {}", initial.join(" "), final_state.join(" ")),
+        initial,
+        final_state,
+    })
+}
+
+fn side_preserving_process_permutation(
+    representative: &ProcessExpressionTokens,
+    public: &ProcessExpressionTokens,
+) -> Option<Vec<usize>> {
+    if representative.initial.len() != public.initial.len()
+        || representative.final_state.len() != public.final_state.len()
+    {
+        return None;
+    }
+    let initial = deterministic_side_permutation(&representative.initial, &public.initial, 0)?;
+    let final_offset = representative.initial.len();
+    let final_state = deterministic_side_permutation(
+        &representative.final_state,
+        &public.final_state,
+        final_offset,
+    )?;
+    Some(initial.into_iter().chain(final_state).collect())
+}
+
+/// Match repeated particles deterministically by assigning each representative
+/// occurrence to the first still-unused equal public occurrence.
+fn deterministic_side_permutation(
+    representative: &[String],
+    public: &[String],
+    offset: usize,
+) -> Option<Vec<usize>> {
+    let mut used = vec![false; public.len()];
+    representative
+        .iter()
+        .map(|particle| {
+            let public_index = public.iter().enumerate().find_map(|(index, candidate)| {
+                (!used[index] && candidate == particle).then_some(index)
+            })?;
+            used[public_index] = true;
+            Some(offset + public_index)
+        })
+        .collect()
+}
+
+fn permutation_displacement(permutation: &[usize]) -> usize {
+    permutation
+        .iter()
+        .copied()
+        .enumerate()
+        .filter(|(representative_index, public_index)| representative_index != public_index)
+        .count()
+}
+
+fn process_tokens_are_permutation_equivalent_ignoring_sides(
+    representative: &ProcessExpressionTokens,
+    public: &ProcessExpressionTokens,
+) -> bool {
+    let mut representative = representative
+        .initial
+        .iter()
+        .chain(&representative.final_state)
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut public = public
+        .initial
+        .iter()
+        .chain(&public.final_state)
+        .cloned()
+        .collect::<Vec<_>>();
+    representative.sort_unstable();
+    public.sort_unstable();
+    representative == public
 }
 
 fn normalize_process_expression(expression: &str) -> String {
@@ -1396,9 +1625,24 @@ fn validate_manifest(manifest: &ArtifactManifest) -> RusticolResult<()> {
     for process in &manifest.processes {
         validate_public_id(&process.id, "process id")?;
         validate_relative_path(&process.physics_path, "runtime physics path")?;
+        let process_expression = parse_process_expression(&process.expression);
         if process.expression.is_empty() || process.external_pdgs.len() < 3 {
             return Err(RusticolError::artifact(format!(
                 "process {} has an empty expression or fewer than three external particles",
+                process.id
+            )));
+        }
+        let process_expression = process_expression.ok_or_else(|| {
+            RusticolError::artifact(format!(
+                "process {:?} expression must contain one '>' with particles on both sides",
+                process.id
+            ))
+        })?;
+        if process_expression.initial.len() + process_expression.final_state.len()
+            != process.external_pdgs.len()
+        {
+            return Err(RusticolError::artifact(format!(
+                "process {:?} expression particle count does not match external_pdgs",
                 process.id
             )));
         }
@@ -1431,9 +1675,22 @@ fn validate_manifest(manifest: &ArtifactManifest) -> RusticolResult<()> {
                 process.external_pdgs.len(),
                 &alias.id,
             )?;
-            if alias.external_permutation[0] != 0 || alias.external_permutation[1] != 1 {
+            let alias_expression =
+                parse_process_expression(&alias.expression).ok_or_else(|| {
+                    RusticolError::artifact(format!(
+                        "alias {:?} expression must contain one '>' with particles on both sides",
+                        alias.id
+                    ))
+                })?;
+            if alias_expression.initial.len() != process_expression.initial.len()
+                || alias_expression.final_state.len() != process_expression.final_state.len()
+                || !permutation_preserves_process_sides(
+                    &alias.external_permutation,
+                    process_expression.initial.len(),
+                )
+            {
                 return Err(RusticolError::artifact(format!(
-                    "alias {:?} may only permute final-state particles",
+                    "alias {:?} may only permute particles within the incoming and outgoing sides",
                     alias.id
                 )));
             }
@@ -1995,6 +2252,16 @@ fn validate_permutation(values: &[usize], size: usize, alias_id: &str) -> Rustic
         )));
     }
     Ok(())
+}
+
+fn permutation_preserves_process_sides(values: &[usize], initial_count: usize) -> bool {
+    values
+        .iter()
+        .copied()
+        .enumerate()
+        .all(|(representative_index, public_index)| {
+            (representative_index < initial_count) == (public_index < initial_count)
+        })
 }
 
 fn validate_runtime_capabilities(

@@ -33,6 +33,11 @@ overrides in order, then recorded license/resource clamping.
 - `selected_color_sector_ids: list[int] = []`
 - `selected_source_helicities: table[int, int] = {}`
 
+Model defaults and this explicit table are merged by name. Every model supplies
+`all` for its declaration-ordered valid physical external states; an explicit
+`all` entry overrides it. Broad products such as `p p > all all` may expand
+combinatorially.
+
 The explicit color-sector, reference-order, and source-helicity controls are
 developer-facing generation constraints. Ordinary users should leave them at
 their defaults and use the runtime selectors below.

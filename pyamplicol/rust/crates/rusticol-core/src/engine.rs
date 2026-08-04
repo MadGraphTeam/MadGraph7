@@ -3176,6 +3176,10 @@ pub struct NativeRuntimeMetadata {
     pub process_key: String,
     pub representative_process: String,
     pub representative_process_key: String,
+    /// Full representative-index to public-index external permutation.
+    pub external_permutation: Vec<usize>,
+    /// Representative process key when a stored or inferred permutation is active.
+    pub permutation_alias_of: Option<String>,
     pub final_state_permutation_alias_of: Option<String>,
     pub color_accuracy: String,
     pub external_pdg_order: Vec<i32>,
@@ -3197,8 +3201,23 @@ pub struct NativeRuntimeMetadata {
 pub struct NativeRecurrenceSelectorPlan {
     artifact_root: PathBuf,
     process_key: String,
+    external_permutation: Vec<usize>,
     selected_helicities: Option<BTreeSet<String>>,
     selected_colors: Option<BTreeSet<String>>,
+}
+
+impl NativeRecurrenceSelectorPlan {
+    fn ensure_matches(&self, runtime: &NativeRuntime) -> RusticolResult<()> {
+        if self.artifact_root != runtime.root
+            || self.process_key != runtime.process_key
+            || self.external_permutation != runtime.external_permutation
+        {
+            return Err(RusticolError::selector(
+                "recurrence selector plan belongs to a different artifact, process, or external ordering",
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Exact-required sections decoded lazily from one authenticated eager plan-v3
@@ -4040,7 +4059,10 @@ pub struct NativeRuntime {
     execution_lane: NativeExecutionLane,
     process: String,
     process_key: String,
+    representative_process_id: String,
+    external_permutation: Vec<usize>,
     input_crossing_map: Option<Vec<InputCrossingMapEntry>>,
+    permutation_alias_of: Option<String>,
     final_state_permutation_alias_of: Option<String>,
     physics_v1: ProcessPhysicsV1,
     warnings_muted: bool,

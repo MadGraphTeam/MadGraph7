@@ -378,6 +378,11 @@ def _process(value: object, index: int) -> Mapping[str, object]:
         raise ArtifactError(
             f"{context}.external_pdgs must contain at least three integers"
         )
+    process_initial_count = _process_initial_count(
+        _string(raw.get("expression"), f"{context}.expression"),
+        context,
+        len(pdgs),
+    )
     aliases: list[Mapping[str, object]] = []
     for alias_index, item in enumerate(
         _sequence(raw.get("aliases"), f"{context}.aliases")
@@ -407,10 +412,19 @@ def _process(value: object, index: int) -> Mapping[str, object]:
                 f"{alias_context}.external_permutation must be a complete "
                 f"permutation of {len(pdgs)} external particles"
             )
-        if permutation[:2] != (0, 1):
+        alias_initial_count = _process_initial_count(
+            _string(alias.get("expression"), f"{alias_context}.expression"),
+            alias_context,
+            len(pdgs),
+        )
+        if alias_initial_count != process_initial_count or any(
+            (representative_index < process_initial_count)
+            != (public_index < process_initial_count)
+            for representative_index, public_index in enumerate(permutation)
+        ):
             raise ArtifactError(
                 f"{alias_context}.external_permutation may only permute "
-                "final-state particles"
+                "particles within the incoming and outgoing sides"
             )
         alias_pdgs = tuple(
             _sequence(alias.get("external_pdgs"), f"{alias_context}.external_pdgs")
@@ -457,6 +471,25 @@ def _process(value: object, index: int) -> Mapping[str, object]:
             "aliases": tuple(aliases),
         }
     )
+
+
+def _process_initial_count(expression: str, context: str, particle_count: int) -> int:
+    sides = expression.split(">")
+    if len(sides) != 2:
+        raise ArtifactError(
+            f"{context}.expression must contain exactly one '>' separator"
+        )
+    initial_count = len(sides[0].split())
+    final_count = len(sides[1].split())
+    if (
+        initial_count < 1
+        or final_count < 1
+        or initial_count + final_count != particle_count
+    ):
+        raise ArtifactError(
+            f"{context}.expression particle count does not match external_pdgs"
+        )
+    return initial_count
 
 
 def _runtime(value: object) -> Mapping[str, object]:

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import itertools
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 ParticleName = str
 ProcessTuple = tuple[ParticleName, ...]
@@ -38,12 +38,17 @@ def split_process_set(process_string: str) -> tuple[str, ...]:
     return tuple(parts)
 
 
-def expand_process_variants(process_string: str) -> tuple[str, ...]:
+def expand_process_variants(
+    process_string: str,
+    *,
+    aliases: Mapping[str, Sequence[str]] | None = None,
+) -> tuple[str, ...]:
     """Expand anonymous multiparticle slots and repetition syntax.
 
     Built-in inclusive labels such as ``p`` and ``j`` are kept symbolic for the
     enumerator. Anonymous slots like ``[d g]`` are expanded by cartesian product,
     and each repeated slot in ``3*[d g]`` is treated independently.
+    Optional named aliases are expanded through the same token-aware path.
     """
 
     variants: list[str] = []
@@ -51,8 +56,12 @@ def expand_process_variants(process_string: str) -> tuple[str, ...]:
         parts = process.lower().replace("bar", "~").split(">")
         if len(parts) != 2:
             raise ValueError("invalid collision format; expected 'initial > final'")
-        initial_options = _expand_side_tokens(_tokenize_side(parts[0].strip()))
-        final_options = _expand_side_tokens(_tokenize_side(parts[1].strip()))
+        initial_options = _expand_side_tokens(
+            _tokenize_side(parts[0].strip()), aliases=aliases
+        )
+        final_options = _expand_side_tokens(
+            _tokenize_side(parts[1].strip()), aliases=aliases
+        )
         for initial in itertools.product(*initial_options):
             for final in itertools.product(*final_options):
                 variants.append(f"{' '.join(initial)} > {' '.join(final)}")
@@ -100,11 +109,23 @@ def _tokenize_side(side: str) -> list[str]:
     return tokens
 
 
-def _expand_side_tokens(tokens: Sequence[str]) -> tuple[tuple[str, ...], ...]:
+def _expand_side_tokens(
+    tokens: Sequence[str],
+    *,
+    aliases: Mapping[str, Sequence[str]] | None = None,
+) -> tuple[tuple[str, ...], ...]:
     expanded: list[tuple[str, ...]] = []
+    normalized_aliases = {
+        str(name).casefold(): tuple(str(value).casefold() for value in values)
+        for name, values in (aliases or {}).items()
+    }
     for token in tokens:
         repeat, item = _split_repeat_token(token)
-        options = _anonymous_options(item)
+        options = tuple(
+            member
+            for option in _anonymous_options(item)
+            for member in normalized_aliases.get(option.casefold(), (option,))
+        )
         expanded.extend(options for _ in range(repeat))
     return tuple(expanded)
 

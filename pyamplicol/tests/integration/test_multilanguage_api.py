@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Any, Literal
 
@@ -532,16 +533,22 @@ def _run_driver(
     *,
     process: str | None,
     model_card: Path | None = None,
+    kinematics: Path | None = None,
     override: float | None = None,
     parameter_id: str = _PARAMETER_ID,
+    precision: int = 16,
 ) -> dict[str, Any]:
     command = [*_driver_command(bundle, language), "--json"]
     if process is not None:
         command.extend(("--process", process))
     if model_card is not None:
         command.extend(("--model-parameters", str(model_card)))
+    if kinematics is not None:
+        command.extend(("--kinematics", str(kinematics)))
     if override is not None:
         command.extend(("--set-parameter", parameter_id, f"{override:.17g}", "0"))
+    if precision != 16:
+        command.extend(("--precision", str(precision)))
     completed = subprocess.run(
         command,
         cwd=bundle.artifact,
@@ -564,7 +571,7 @@ def _run_driver(
         )
     assert payload["language"] == language
     assert payload["available"] is True
-    assert payload["precision"] == 16
+    assert payload["precision"] == precision
     return payload
 
 
@@ -596,6 +603,7 @@ def _all_languages(
     *,
     process: str | None,
     model_card: Path | None = None,
+    kinematics: Path | None = None,
     override: float | None = None,
     parameter_id: str = _PARAMETER_ID,
 ) -> dict[str, dict[str, Any]]:
@@ -605,11 +613,72 @@ def _all_languages(
             language,
             process=process,
             model_card=model_card,
+            kinematics=kinematics,
             override=override,
             parameter_id=parameter_id,
         )
         for language in _LANGUAGES
     }
+
+
+def _validation_point(bundle: _BuiltBundle, process_id: str) -> list[list[float]]:
+    lines = (bundle.artifact / "API/validation_points.dat").read_text(
+        encoding="ascii"
+    ).splitlines()
+    assert lines[0] == "RUSTICOL_VALIDATION_POINTS_V1"
+    for line in lines[1:]:
+        fields = line.split("\t")
+        if not fields or fields[0] != process_id:
+            continue
+        external_count = int(fields[1])
+        components = tuple(float(value) for value in fields[2:])
+        assert len(components) == external_count * 4
+        return [
+            list(components[offset : offset + 4])
+            for offset in range(0, len(components), 4)
+        ]
+    raise AssertionError(f"no validation point for {process_id!r}")
+
+
+def _reorder_point(
+    point: list[list[float]], permutation: tuple[int, ...]
+) -> list[list[float]]:
+    reordered: list[list[float] | None] = [None] * len(point)
+    for representative_index, public_index in enumerate(permutation):
+        reordered[public_index] = point[representative_index]
+    assert all(vector is not None for vector in reordered)
+    return [vector for vector in reordered if vector is not None]
+
+
+def _assert_public_metadata_permutation(
+    representative: dict[str, Any],
+    public: dict[str, Any],
+    permutation: tuple[int, ...],
+) -> None:
+    expected_particles: list[dict[str, Any] | None] = [None] * len(permutation)
+    for representative_index, public_index in enumerate(permutation):
+        expected_particles[public_index] = {
+            **representative["external_particles"][representative_index],
+            "index": public_index,
+        }
+    assert public["external_particles"] == expected_particles
+
+    for representative_helicity, public_helicity in zip(
+        representative["helicities"], public["helicities"], strict=True
+    ):
+        expected_values: list[int | None] = [None] * len(permutation)
+        for representative_index, public_index in enumerate(permutation):
+            expected_values[public_index] = representative_helicity["helicities"][
+                representative_index
+            ]
+        assert public_helicity["helicities"] == expected_values
+
+    def remap_word(word: list[int]) -> list[int]:
+        return [permutation[label - 1] + 1 for label in word]
+
+    assert [color["word"] for color in public["colors"]] == [
+        remap_word(color["word"]) for color in representative["colors"]
+    ]
 
 
 def test_all_generated_clients_load_and_evaluate_the_same_eager_artifact(
@@ -730,6 +799,95 @@ def test_all_languages_select_processes_by_concrete_expression(
     _assert_language_payloads(payloads)
     assert payloads["python"]["process"].casefold() == expression.casefold()
     assert payloads["python"]["process_key"] == stable_id
+
+
+def test_all_languages_infer_public_order_and_accept_custom_kinematics(
+    generated_bundles: dict[str, _BuiltBundle],
+    tmp_path: Path,
+) -> None:
+    bundle = generated_bundles["mixed"]
+    representative_id = _MIXED_NAMES[1]
+    requested_process = "d d~ > g z g"
+    permutation = (0, 1, 3, 2, 4)
+
+    representative = _all_languages(bundle, process=representative_id)
+    public_default = _all_languages(bundle, process=requested_process)
+    for payloads in (representative, public_default):
+        _assert_language_payloads(payloads)
+    for language in _LANGUAGES:
+        public = public_default[language]
+        source = representative[language]
+        assert public["process"].casefold() == requested_process.casefold()
+        assert public["process_key"] == representative_id
+        _assert_public_metadata_permutation(source, public, permutation)
+        _assert_numeric_sequence(public["values"], source["values"])
+        _assert_numeric_sequence(
+            public["compatibility_total"], source["compatibility_total"]
+        )
+
+    representative_point = _validation_point(bundle, representative_id)
+    public_point = _reorder_point(representative_point, permutation)
+    numeric_path = tmp_path / "public-numeric-kinematics.json"
+    numeric_path.write_text(json.dumps(public_point) + "\n", encoding="utf-8")
+    string_path = tmp_path / "public-string-kinematics.json"
+    string_point = [[format(value, ".17g") for value in leg] for leg in public_point]
+    string_path.write_text(json.dumps([string_point]) + "\n", encoding="utf-8")
+
+    numeric = _all_languages(
+        bundle,
+        process=requested_process,
+        kinematics=numeric_path,
+    )
+    strings = _all_languages(
+        bundle,
+        process=requested_process,
+        kinematics=string_path,
+    )
+    for payloads in (numeric, strings):
+        _assert_language_payloads(payloads)
+        _assert_numeric_sequence(
+            payloads["python"]["values"], public_default["python"]["values"]
+        )
+
+    model_card = tmp_path / "ufo-model-parameters.json"
+    model_card.write_text(
+        json.dumps({_PARAMETER_ID: [0.109, 0.0]}) + "\n",
+        encoding="utf-8",
+    )
+    overridden = _all_languages(
+        bundle,
+        process=requested_process,
+        model_card=model_card,
+        override=0.127,
+    )
+    direct = _all_languages(bundle, process=requested_process, override=0.127)
+    for payloads in (overridden, direct):
+        _assert_language_payloads(payloads)
+    _assert_numeric_sequence(
+        overridden["python"]["values"], direct["python"]["values"]
+    )
+
+    high_precision_a = tmp_path / "public-high-precision-a.json"
+    high_precision_b = tmp_path / "public-high-precision-b.json"
+    perturbed = [list(leg) for leg in string_point]
+    perturbed[0][0] = str(Decimal(perturbed[0][0]) + Decimal("1e-25"))
+    high_precision_a.write_text(json.dumps(string_point) + "\n", encoding="utf-8")
+    high_precision_b.write_text(json.dumps(perturbed) + "\n", encoding="utf-8")
+    exact_a = _run_driver(
+        bundle,
+        "python",
+        process=requested_process,
+        kinematics=high_precision_a,
+        precision=50,
+    )
+    exact_b = _run_driver(
+        bundle,
+        "python",
+        process=requested_process,
+        kinematics=high_precision_b,
+        precision=50,
+    )
+    assert exact_a["compatibility_total"] != exact_b["compatibility_total"]
 
 
 def test_single_process_bundle_uses_default_process_without_selector(

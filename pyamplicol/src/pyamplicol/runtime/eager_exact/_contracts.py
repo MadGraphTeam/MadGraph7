@@ -526,22 +526,3 @@ def _validate_execution_header(execution: Mapping[str, object]) -> None:
         raise CompatibilityError("unsupported eager runtime capability contract")
     if plan.get("required_runtime_capabilities") != expected_capabilities:
         raise CompatibilityError("unsupported eager plan capability contract")
-
-
-def _selected_process(
-    processes: Sequence[Mapping[str, object]],
-    selected_id: str,
-) -> tuple[Mapping[str, object], tuple[int, ...] | None]:
-    for process in processes:
-        if process["id"] == selected_id:
-            return process, None
-        for raw_alias in cast(Sequence[Mapping[str, object]], process["aliases"]):
-            if raw_alias["id"] == selected_id:
-                permutation = tuple(
-                    _integer(value, "alias external permutation")
-                    for value in cast(
-                        Sequence[object], raw_alias["external_permutation"]
-                    )
-                )
-                return process, permutation
-    raise ArtifactError(f"selected process {selected_id!r} is absent from artifact")

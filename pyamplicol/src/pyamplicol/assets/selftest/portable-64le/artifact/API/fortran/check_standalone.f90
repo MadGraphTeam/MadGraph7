@@ -11,7 +11,8 @@ program check_standalone
   type(rusticol_external_particle), allocatable :: particles(:)
   type(rusticol_helicity_configuration), allocatable :: helicities(:)
   type(rusticol_color_component), allocatable :: colors(:)
-  character(len=4096) :: process_dir, process_key, model_parameters
+  character(len=4096) :: process_dir, process_key, representative_process_key
+  character(len=4096) :: model_parameters, kinematics
   character(len=4096) :: executable
   character(len=256) :: override_names_buffer(MAX_OVERRIDES)
   character(len=256), allocatable :: override_names(:)
@@ -19,13 +20,14 @@ program check_standalone
   real(c_double) :: override_imaginary_buffer(MAX_OVERRIDES)
   real(c_double), allocatable :: override_real(:), override_imaginary(:)
   real(c_double), allocatable, target :: momenta(:), totals(:), resolved(:, :, :)
+  integer(c_size_t), allocatable :: external_permutation(:)
   logical :: json_output, point_available
   integer :: precision, override_count
   integer(c_int) :: status
   integer :: color_index, helicity_index
   real(c_double) :: explicit_total, scale
 
-  call parse_options(process_key, model_parameters, precision, json_output, &
+  call parse_options(process_key, model_parameters, kinematics, precision, json_output, &
       override_names_buffer, override_real_buffer, override_imaginary_buffer, &
       override_count)
   if (precision /= 16) call fail( &
@@ -64,9 +66,20 @@ program check_standalone
   if (status /= RUSTICOL_STATUS_OK) call fail(rusticol_last_error())
   process_key = runtime%process_key(ierr=status)
   if (status /= RUSTICOL_STATUS_OK) call fail(rusticol_last_error())
-  call load_validation_point( &
-      trim(process_dir) // "/API/validation_points.dat", trim(process_key), &
-      size(particles), momenta, point_available)
+  if (len_trim(kinematics) > 0) then
+    call runtime%load_kinematics_json(trim(kinematics), momenta, ierr=status)
+    if (status /= RUSTICOL_STATUS_OK) call fail(rusticol_last_error())
+    point_available = .true.
+  else
+    representative_process_key = runtime%representative_process_key(ierr=status)
+    if (status /= RUSTICOL_STATUS_OK) call fail(rusticol_last_error())
+    external_permutation = runtime%external_permutation(ierr=status)
+    if (status /= RUSTICOL_STATUS_OK) call fail(rusticol_last_error())
+    call load_validation_point( &
+        trim(process_dir) // "/API/validation_points.dat", &
+        trim(representative_process_key), size(particles), momenta, point_available)
+    if (point_available) call reorder_validation_point(momenta, external_permutation)
+  end if
 
   if (.not. point_available) then
     if (json_output) then
@@ -131,9 +144,9 @@ contains
     stop 1
   end subroutine fail
 
-  subroutine parse_options(selected_process, model_card, selected_precision, &
+  subroutine parse_options(selected_process, model_card, kinematics_path, selected_precision, &
       json, names, real_values, imaginary_values, count)
-    character(len=*), intent(out) :: selected_process, model_card
+    character(len=*), intent(out) :: selected_process, model_card, kinematics_path
     integer, intent(out) :: selected_precision, count
     logical, intent(out) :: json
     character(len=*), intent(out) :: names(:)
@@ -143,6 +156,7 @@ contains
 
     selected_process = ""
     model_card = ""
+    kinematics_path = ""
     selected_precision = 16
     count = 0
     json = .false.
@@ -160,6 +174,10 @@ contains
             "missing value after --model-parameters")
         index = index + 1
         call get_command_argument(index, model_card)
+      case ("--kinematics")
+        if (index + 1 > argc) call fail("missing value after --kinematics")
+        index = index + 1
+        call get_command_argument(index, kinematics_path)
       case ("--set-parameter")
         if (index + 3 > argc) call fail( &
             "--set-parameter requires NAME REAL IMAG")
@@ -188,7 +206,8 @@ contains
         json = .true.
       case ("--help", "-h")
         write(*, '(A)') "usage: check_standalone [--process ID|EXPRESSION] " // &
-            "[--model-parameters PATH] [--set-parameter NAME REAL IMAG] " // &
+            "[--model-parameters PATH] [--kinematics PATH] " // &
+            "[--set-parameter NAME REAL IMAG] " // &
             "[--precision 16] [--json]"
         stop 0
       case default
@@ -257,6 +276,29 @@ contains
     end do
     close(unit)
   end subroutine load_validation_point
+
+  subroutine reorder_validation_point(values, permutation)
+    real(c_double), allocatable, intent(inout) :: values(:)
+    integer(c_size_t), intent(in) :: permutation(:)
+    real(c_double), allocatable :: reordered(:)
+    logical, allocatable :: seen(:)
+    integer :: representative_index, public_index
+
+    if (size(values) /= 4 * size(permutation)) call fail( &
+        "validation point does not match external permutation")
+    allocate(reordered(size(values)), seen(size(permutation)))
+    seen = .false.
+    do representative_index = 1, size(permutation)
+      public_index = int(permutation(representative_index)) + 1
+      if (public_index < 1 .or. public_index > size(permutation) .or. &
+          seen(public_index)) call fail( &
+          "runtime returned an invalid external permutation")
+      seen(public_index) = .true.
+      reordered(4 * public_index - 3:4 * public_index) = &
+          values(4 * representative_index - 3:4 * representative_index)
+    end do
+    call move_alloc(reordered, values)
+  end subroutine reorder_validation_point
 
   function json_escape(value) result(escaped)
     character(len=*), intent(in) :: value

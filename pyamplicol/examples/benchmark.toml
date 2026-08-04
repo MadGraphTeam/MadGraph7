@@ -6,7 +6,7 @@ action = "benchmark"
 
 [evaluation]
 artifact = "artifacts/pp_zjj"
-process = "d d~ > z g g"
+process = "d d~ > g z g"
 momenta = "data/pp_zjj_momenta.json"
 
 [benchmark]

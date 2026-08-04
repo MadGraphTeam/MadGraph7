@@ -27,8 +27,14 @@ from pyamplicol.api.errors import (
 from pyamplicol.api.protocols import Momenta
 from pyamplicol.api.results import ResolvedEvaluation
 from pyamplicol.artifacts import load_manifest
-from pyamplicol.artifacts.security import normalize_relative_path
+from pyamplicol.artifacts.security import confined_path, normalize_relative_path
 from pyamplicol.runtime._evaluator_payloads import ExactEvaluatorPayloadResolver
+from pyamplicol.runtime._native_selection import (
+    exact_runtime_state_payload,
+    native_physics_axes,
+    native_process_selection,
+    remap_reduction,
+)
 
 _ComplexDecimal = tuple[Decimal, Decimal]
 _ZERO = Decimal(0)
@@ -391,8 +397,9 @@ class SymbolicaExactExecutor:
         self._native_runtime = native_runtime
         manifest = load_manifest(artifact)
         self._payloads = ExactEvaluatorPayloadResolver(manifest)
-        process, permutation = _selected_process(manifest.processes, process_id)
-        representative_id = str(process["id"])
+        selection = native_process_selection(native_runtime, manifest.processes)
+        representative_id = selection.representative_process_id
+        permutation = selection.external_permutation
         self._representative_id = representative_id
         records = tuple(
             record
@@ -406,17 +413,34 @@ class SymbolicaExactExecutor:
             )
         self._process_root = artifact / "processes" / representative_id
         self._process_prefix = normalize_relative_path(f"processes/{representative_id}")
+        physics_path = selection.process.get("physics_path")
+        if not isinstance(physics_path, str) or not physics_path:
+            raise ArtifactError(
+                f"representative process {representative_id!r} has no physics path"
+            )
         try:
             self._execution = json.loads(
                 (artifact / records[0].path).read_text(encoding="utf-8")
             )
-            self._physics = json.loads(native_runtime.physics_json())
+            representative_physics = json.loads(
+                confined_path(artifact, physics_path).read_text(encoding="utf-8")
+            )
         except (OSError, json.JSONDecodeError) as exc:
             raise ArtifactError(
                 f"could not load exact-runtime metadata: {exc}"
             ) from exc
-        if not isinstance(self._execution, dict) or not isinstance(self._physics, dict):
+        if not isinstance(self._execution, dict) or not isinstance(
+            representative_physics, dict
+        ):
             raise ArtifactError("exact-runtime metadata is not an object")
+        axes = native_physics_axes(native_runtime, representative_physics)
+        self._representative_physics = representative_physics
+        self._physics = axes.public_physics
+        if self._execution.get("key") != selection.representative_process_key:
+            raise ArtifactError(
+                "compiled exact execution disagrees with Rusticol's "
+                "representative process key"
+            )
         self._primary_execution = self._execution
         self._primary_physics = self._physics
         helicity_sum_execution = self._execution.get("helicity_sum_execution")
@@ -433,7 +457,7 @@ class SymbolicaExactExecutor:
             )
             self._helicity_sum_physics: dict[str, object] | None = {
                 **self._physics,
-                "reduction": physics_reduction,
+                "reduction": remap_reduction(physics_reduction, axes),
             }
         else:
             self._helicity_sum_execution = None
@@ -755,24 +779,6 @@ class SymbolicaExactExecutor:
             tuple(helicity_ids[index] for index in selected_h),
             tuple(color_ids[index] for index in selected_c),
         )
-
-
-def _selected_process(
-    processes: Sequence[Mapping[str, object]],
-    selected_id: str,
-) -> tuple[Mapping[str, object], tuple[int, ...] | None]:
-    for process in processes:
-        if process["id"] == selected_id:
-            return process, None
-        for raw_alias in cast(Sequence[Mapping[str, object]], process["aliases"]):
-            if raw_alias["id"] == selected_id:
-                return process, tuple(
-                    _json_integer(value)
-                    for value in cast(
-                        Sequence[object], raw_alias["external_permutation"]
-                    )
-                )
-    raise ArtifactError(f"selected process {selected_id!r} is absent from artifact")
 
 
 def _exact_helicity_plan(
@@ -2388,16 +2394,7 @@ def _evaluator_manifest(stage: object) -> Mapping[str, object]:
 
 
 def _runtime_state(native_runtime: Any) -> _RuntimeState:
-    try:
-        payload = json.loads(native_runtime._exact_runtime_state_json())
-    except AttributeError as exc:
-        raise CompatibilityError(
-            "the installed Rusticol extension is too old for high-precision evaluation"
-        ) from exc
-    except (TypeError, json.JSONDecodeError) as exc:
-        raise ArtifactError("Rusticol returned invalid exact-runtime state") from exc
-    if not isinstance(payload, Mapping):
-        raise ArtifactError("Rusticol exact-runtime state is not an object")
+    payload = exact_runtime_state_payload(native_runtime)
     values = payload.get("model_parameter_values")
     if isinstance(values, str | bytes) or not isinstance(values, Sequence):
         raise ArtifactError("Rusticol exact-runtime model parameters are invalid")

@@ -497,6 +497,26 @@ pub unsafe extern "C" fn rusticol_runtime_process_key(
     }
 }
 
+/// Copies the stable representative process key implementing this selection.
+///
+/// # Safety
+///
+/// Pointer requirements are identical to [`rusticol_runtime_process_key`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_representative_process_key(
+    handle: *const RusticolRuntimeHandle,
+    buffer: *mut c_char,
+    capacity: size_t,
+    required: *mut size_t,
+) -> c_int {
+    // SAFETY: The caller upholds this function's pointer contract.
+    unsafe {
+        runtime_string(handle, buffer, capacity, required, |runtime| {
+            Ok(runtime.metadata().representative_process_key)
+        })
+    }
+}
+
 /// Copies the runtime color-accuracy label.
 ///
 /// # Safety
@@ -580,6 +600,92 @@ pub unsafe extern "C" fn rusticol_runtime_external_pdg(
             .get(index)
             .ok_or_else(|| invalid(format!("external particle index {index} is out of range")))?;
         unsafe { write_i32(particle.pdg, output, "external PDG output") }
+    })
+}
+
+/// Copies the representative-index to public-index external permutation.
+///
+/// # Safety
+///
+/// A non-null `handle` must remain live. If non-null, `required` must be writable for one
+/// `size_t`; `output` must be writable for `capacity` `size_t` values. A null output is valid
+/// only for a zero-capacity query.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_external_permutation(
+    handle: *const RusticolRuntimeHandle,
+    output: *mut size_t,
+    capacity: size_t,
+    required: *mut size_t,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate pointers.
+        let handle = unsafe { required_handle(handle) }?;
+        let permutation = handle.runtime.metadata().external_permutation;
+        unsafe { write_size(permutation.len(), required, "external permutation length")? };
+        if output.is_null() {
+            if capacity == 0 {
+                return Ok(());
+            }
+            return Err(invalid("external permutation output is null"));
+        }
+        if capacity < permutation.len() {
+            return Err(buffer_too_small(format!(
+                "external permutation capacity {capacity} is smaller than {}",
+                permutation.len()
+            )));
+        }
+        // SAFETY: Capacity was checked and usize matches C size_t.
+        unsafe { ptr::copy_nonoverlapping(permutation.as_ptr(), output, permutation.len()) };
+        Ok(())
+    })
+}
+
+/// Loads one JSON kinematic point in public/requested external order.
+///
+/// # Safety
+///
+/// `path` must reference a readable NUL-terminated string. Other pointer requirements match
+/// [`rusticol_runtime_external_permutation`], with `output` containing f64 values.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rusticol_runtime_load_kinematics_json(
+    handle: *const RusticolRuntimeHandle,
+    path: *const c_char,
+    output: *mut c_double,
+    capacity: size_t,
+    required: *mut size_t,
+) -> c_int {
+    guard(|| {
+        // SAFETY: Helpers validate pointers.
+        let handle = unsafe { required_handle(handle) }?;
+        let value_count = handle
+            .runtime
+            .external_count()
+            .checked_mul(4)
+            .ok_or_else(|| invalid("kinematics value count overflows size_t"))?;
+        unsafe { write_size(value_count, required, "kinematics value count")? };
+        if output.is_null() {
+            if capacity == 0 {
+                return Ok(());
+            }
+            return Err(invalid("kinematics output is null"));
+        }
+        if capacity < value_count {
+            return Err(buffer_too_small(format!(
+                "kinematics capacity {capacity} is smaller than {}",
+                value_count
+            )));
+        }
+        let path = unsafe { required_c_string(path, "kinematics path") }?;
+        let values = handle.runtime.load_kinematics_json(Path::new(path))?;
+        if values.len() != value_count {
+            return Err(invalid(format!(
+                "kinematics JSON contains {} values, expected {value_count}",
+                values.len()
+            )));
+        }
+        // SAFETY: Capacity was checked.
+        unsafe { ptr::copy_nonoverlapping(values.as_ptr(), output, value_count) };
+        Ok(())
     })
 }
 

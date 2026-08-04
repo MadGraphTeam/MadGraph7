@@ -738,14 +738,44 @@ fn three_cycle_alias() -> crate::ProcessAlias {
     }
 }
 
+fn stored_alias_selection(
+    physics: &ProcessPhysicsV1,
+    alias: &crate::ProcessAlias,
+) -> crate::ArtifactSelection {
+    crate::ArtifactSelection {
+        process: crate::ArtifactProcess {
+            id: physics.process_id.clone(),
+            expression: physics.process.clone(),
+            color_accuracy: physics.color_accuracy.as_str().to_string(),
+            external_pdgs: physics
+                .external_particles
+                .iter()
+                .map(|particle| particle.pdg)
+                .collect(),
+            physics_path: "processes/test/physics.json".to_string(),
+            required_runtime_capabilities: vec!["symjit.application.complex-f64.v1".to_string()],
+            aliases: vec![alias.clone()],
+        },
+        requested_id: alias.id.clone(),
+        alias: Some(alias.clone()),
+        public_expression: alias.expression.clone(),
+        external_pdgs: alias.external_pdgs.clone(),
+        external_permutation: alias.external_permutation.clone(),
+        inferred_permutation: false,
+    }
+}
+
 #[test]
 fn final_state_alias_three_cycle_remaps_lc_metadata_and_selectors() {
     let representative_manifest = alias_test_physics("lc");
     representative_manifest.validate().unwrap();
     let representative_physics = PhysicsRuntime::new(representative_manifest.clone()).unwrap();
     let alias = three_cycle_alias();
-    let alias_manifest =
-        apply_final_state_alias_metadata(representative_manifest.clone(), &alias).unwrap();
+    let alias_manifest = apply_process_permutation_metadata(
+        representative_manifest.clone(),
+        &stored_alias_selection(&representative_manifest, &alias),
+    )
+    .unwrap();
 
     let helicity_id_map = representative_manifest
         .helicities
@@ -890,7 +920,10 @@ fn final_state_alias_three_cycle_remaps_lc_metadata_and_selectors() {
         execution_lane: NativeExecutionLane::Compiled,
         process: alias.expression,
         process_key: alias.id,
+        representative_process_id: "representative".to_string(),
+        external_permutation: alias.external_permutation,
         input_crossing_map: Some(crossing_map),
+        permutation_alias_of: Some("representative".to_string()),
         final_state_permutation_alias_of: Some("representative".to_string()),
         physics_v1: alias_manifest,
         warnings_muted: false,
@@ -899,9 +932,69 @@ fn final_state_alias_three_cycle_remaps_lc_metadata_and_selectors() {
         point_selector_scratch: PointSelectorExecutionScratch::default(),
         selector_simd_lane_width: 1,
     };
+    let metadata = runtime.metadata();
+    assert_eq!(metadata.external_pdg_order, vec![1, -1, 22, 23, 21]);
+    assert_eq!(metadata.external_permutation, vec![0, 1, 3, 4, 2]);
     assert_eq!(
-        runtime.metadata().external_pdg_order,
-        vec![1, -1, 22, 23, 21]
+        metadata.permutation_alias_of.as_deref(),
+        Some("representative")
+    );
+    assert_eq!(
+        metadata.final_state_permutation_alias_of.as_deref(),
+        Some("representative")
+    );
+    let exact_state: serde_json::Value =
+        serde_json::from_str(&runtime.exact_runtime_state_json().unwrap()).unwrap();
+    assert_eq!(exact_state["representative_process_id"], "representative");
+    assert_eq!(exact_state["representative_process_key"], "p0");
+    assert_eq!(
+        exact_state["external_permutation"],
+        serde_json::json!([0, 1, 3, 4, 2])
+    );
+}
+
+#[test]
+fn incoming_and_outgoing_process_permutation_remaps_all_resolved_metadata() {
+    let representative = alias_test_physics("lc");
+    let alias = crate::ProcessAlias {
+        id: "both-sides".to_string(),
+        expression: "d~ d > a z g".to_string(),
+        external_pdgs: vec![-1, 1, 22, 23, 21],
+        external_permutation: vec![1, 0, 3, 4, 2],
+    };
+    let selection = stored_alias_selection(&representative, &alias);
+    let public = apply_process_permutation_metadata(representative, &selection).unwrap();
+
+    assert_eq!(public.process_id, "both-sides");
+    assert_eq!(public.process, "d~ d > a z g");
+    assert_eq!(
+        public
+            .external_particles
+            .iter()
+            .map(|particle| (particle.index, particle.pdg, particle.role))
+            .collect::<Vec<_>>(),
+        vec![
+            (0, -1, crate::ParticleRole::Initial),
+            (1, 1, crate::ParticleRole::Initial),
+            (2, 22, crate::ParticleRole::Final),
+            (3, 23, crate::ParticleRole::Final),
+            (4, 21, crate::ParticleRole::Final),
+        ]
+    );
+    assert_eq!(public.helicities[0].values, [-1, 1, -1, 0, 1]);
+    assert_eq!(public.helicities[0].id, "h:-1,+1,-1,+0,+1");
+    let PhysicsColorComponentV1::LcFlow(flow) = &public.color_components[0] else {
+        panic!("expected LC flow");
+    };
+    assert_eq!(flow.word, [2, 4, 5, 3, 1]);
+    assert_eq!(flow.id, "flow:2,4,5,3,1");
+    assert_eq!(
+        public.reduction.groups[0].representative_helicity_id,
+        "h:-1,+1,-1,+0,+1"
+    );
+    assert_eq!(
+        public.reduction.groups[0].representative_color_id,
+        "flow:2,4,5,3,1"
     );
 }
 
@@ -910,8 +1003,12 @@ fn final_state_alias_three_cycle_preserves_contracted_color_reduction() {
     let representative_manifest = alias_test_physics("full");
     representative_manifest.validate().unwrap();
     let representative_physics = PhysicsRuntime::new(representative_manifest.clone()).unwrap();
-    let alias_manifest =
-        apply_final_state_alias_metadata(representative_manifest, &three_cycle_alias()).unwrap();
+    let alias = three_cycle_alias();
+    let alias_manifest = apply_process_permutation_metadata(
+        representative_manifest.clone(),
+        &stored_alias_selection(&representative_manifest, &alias),
+    )
+    .unwrap();
     let alias_physics = PhysicsRuntime::new(alias_manifest.clone()).unwrap();
 
     assert_eq!(alias_manifest.color_components[0].id(), "color:contracted");
@@ -3457,7 +3554,10 @@ fn contracted_color_coverage_does_not_warn_as_incomplete() {
             execution_lane: NativeExecutionLane::Compiled,
             process: "x x > y".to_string(),
             process_key: "x_x_to_y".to_string(),
+            representative_process_id: "x_x_to_y".to_string(),
+            external_permutation: vec![0, 1, 2],
             input_crossing_map: None,
+            permutation_alias_of: None,
             final_state_permutation_alias_of: None,
             physics_v1,
             warnings_muted: false,
@@ -3762,7 +3862,10 @@ fn zero_native_runtime() -> NativeRuntime {
         execution_lane: NativeExecutionLane::Compiled,
         process: "x x > y".to_string(),
         process_key: "x_x_to_y".to_string(),
+        representative_process_id: "x_x_to_y".to_string(),
+        external_permutation: vec![0, 1, 2],
         input_crossing_map: None,
+        permutation_alias_of: None,
         final_state_permutation_alias_of: None,
         physics_v1,
         warnings_muted: false,
@@ -3770,6 +3873,61 @@ fn zero_native_runtime() -> NativeRuntime {
         pending_warnings: Vec::new(),
         point_selector_scratch: PointSelectorExecutionScratch::default(),
         selector_simd_lane_width: 1,
+    }
+}
+
+#[test]
+fn recurrence_selector_plan_is_bound_to_the_public_external_ordering() {
+    let runtime = zero_native_runtime();
+    let plan = NativeRecurrenceSelectorPlan {
+        artifact_root: runtime.root.clone(),
+        process_key: runtime.process_key.clone(),
+        external_permutation: runtime.external_permutation.clone(),
+        selected_helicities: None,
+        selected_colors: None,
+    };
+    plan.ensure_matches(&runtime).unwrap();
+
+    let mut reordered_runtime = zero_native_runtime();
+    reordered_runtime.external_permutation = vec![1, 0, 2];
+    let error = plan.ensure_matches(&reordered_runtime).unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Selector);
+    assert!(error.to_string().contains("external ordering"));
+}
+
+#[test]
+fn native_kinematics_json_accepts_one_numeric_or_decimal_string_point() {
+    let direct = serde_json::json!([
+        ["10.0000000000000001", 0, 0.0, "10"],
+        [10, 0, 0, -10],
+        [20, "0", 0, 0]
+    ]);
+    let flat = native_runtime::parse_public_kinematics_point(&direct, 3).unwrap();
+    assert_eq!(flat.len(), 12);
+    assert_eq!(flat[0], 10.0);
+    assert_eq!(flat[3], 10.0);
+    assert_eq!(flat[7], -10.0);
+    assert_eq!(flat[8], 20.0);
+
+    let singleton = serde_json::json!([direct]);
+    assert_eq!(
+        native_runtime::parse_public_kinematics_point(&singleton, 3).unwrap(),
+        flat
+    );
+}
+
+#[test]
+fn native_kinematics_json_rejects_multiple_points_and_invalid_components() {
+    let point = serde_json::json!([[1, 0, 0, 1], [1, 0, 0, -1], [2, 0, 0, 0]]);
+    for invalid in [
+        serde_json::json!([point.clone(), point]),
+        serde_json::json!([[1, 0, 0, 1], [1, 0, 0, -1]]),
+        serde_json::json!([[1, 0, 0, true], [1, 0, 0, -1], [2, 0, 0, 0]]),
+        serde_json::json!([[1, 0, 0, "1e400"], [1, 0, 0, -1], [2, 0, 0, 0]]),
+        serde_json::json!([[1, 0, 1], [1, 0, 0, -1], [2, 0, 0, 0]]),
+    ] {
+        let error = native_runtime::parse_public_kinematics_point(&invalid, 3).unwrap_err();
+        assert_eq!(error.kind(), crate::RusticolErrorKind::InvalidArgument);
     }
 }
 

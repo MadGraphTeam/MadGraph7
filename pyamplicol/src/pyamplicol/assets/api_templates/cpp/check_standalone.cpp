@@ -20,6 +20,7 @@ namespace fs = std::filesystem;
 struct Options {
     std::string process;
     std::string model_parameters;
+    std::string kinematics;
     std::vector<std::string> parameter_names;
     std::vector<double> parameter_real;
     std::vector<double> parameter_imaginary;
@@ -65,6 +66,9 @@ Options parse_options(int argc, char **argv) {
         } else if (argument == "--model-parameters") {
             require(1);
             options.model_parameters = argv[++index];
+        } else if (argument == "--kinematics") {
+            require(1);
+            options.kinematics = argv[++index];
         } else if (argument == "--set-parameter") {
             require(3);
             options.parameter_names.emplace_back(argv[++index]);
@@ -78,6 +82,7 @@ Options parse_options(int argc, char **argv) {
         } else if (argument == "--help" || argument == "-h") {
             std::cout << "usage: check_standalone [--process ID|EXPRESSION] "
                          "[--model-parameters PATH] "
+                         "[--kinematics PATH] "
                          "[--set-parameter NAME REAL IMAG] "
                          "[--precision 16] [--json]\n";
             std::exit(0);
@@ -130,6 +135,30 @@ std::vector<double> load_validation_point(
         return values;
     }
     return {};
+}
+
+std::vector<double> reorder_validation_point(
+    const std::vector<double> &representative,
+    const std::vector<std::size_t> &permutation) {
+    if (representative.empty()) return {};
+    if (representative.size() != 4 * permutation.size()) {
+        throw std::runtime_error("validation point does not match external permutation");
+    }
+    std::vector<double> public_point(representative.size());
+    std::vector<bool> seen(permutation.size(), false);
+    for (std::size_t representative_index = 0;
+         representative_index < permutation.size(); ++representative_index) {
+        const auto public_index = permutation[representative_index];
+        if (public_index >= permutation.size() || seen[public_index]) {
+            throw std::runtime_error("runtime returned an invalid external permutation");
+        }
+        seen[public_index] = true;
+        std::copy_n(
+            representative.begin() + 4 * representative_index,
+            4,
+            public_point.begin() + 4 * public_index);
+    }
+    return public_point;
 }
 
 template <typename Integer>
@@ -195,10 +224,14 @@ int main(int argc, char **argv) {
         const auto particles = runtime.external_particles();
         const auto helicities = runtime.helicities();
         const auto colors = runtime.colors();
-        const auto momenta = load_validation_point(
-            root / "API" / "validation_points.dat",
-            runtime.process_key(),
-            particles.size());
+        const auto momenta = options.kinematics.empty()
+            ? reorder_validation_point(
+                  load_validation_point(
+                      root / "API" / "validation_points.dat",
+                      runtime.representative_process_key(),
+                      particles.size()),
+                  runtime.external_permutation())
+            : runtime.load_kinematics_json(options.kinematics);
         if (momenta.empty()) {
             if (options.json) {
                 std::cout << "{\"language\":\"cpp\",\"available\":false,";

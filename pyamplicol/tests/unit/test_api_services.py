@@ -196,6 +196,27 @@ def test_runtime_and_benchmark_facades_use_typed_backends(
     assert result.sample_count == 5
 
 
+def test_runtime_forwards_ufo_style_complex_parameter_pairs(
+    monkeypatch: object, tmp_path: Path
+) -> None:
+    backend = _RuntimeBackend()
+    received: list[object] = []
+
+    def loader(path: Path, **kwargs: object) -> _RuntimeBackend:
+        del path
+        received.append(kwargs["model_parameters"])
+        return backend
+
+    monkeypatch.setattr(service_module, "_runtime_loader", loader)  # type: ignore[attr-defined]
+
+    Runtime.load(
+        tmp_path / "artifact",
+        model_parameters={"aS": [0.117, 0.0], "complex": [2.5, -0.25]},
+    )
+
+    assert received == [{"aS": [0.117, 0.0], "complex": [2.5, -0.25]}]
+
+
 def test_runtime_accepts_typed_physics_selectors(
     monkeypatch: object, tmp_path: Path
 ) -> None:

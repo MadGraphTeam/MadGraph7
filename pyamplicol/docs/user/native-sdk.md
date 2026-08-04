@@ -75,33 +75,54 @@ artifacts/pp_zjj/API/
 The drivers load metadata, select a concrete process, accept a JSON
 model-parameter card and direct overrides, evaluate all resolved components,
 sum them explicitly, and compare with the optimized total. `--process` accepts
-either the exact concrete expression stored in the artifact or its stable
-process/alias ID. These selectors are equivalent:
+a stable process/alias ID, a stored expression, or any unique side-preserving
+permutation of a generated expression. For example, both selectors use the
+same representative evaluator, while the expression exposes its requested
+public ordering:
 
 ```console
---process 'd d~ > z g g'
+--process 'd d~ > g z g'
 --process p_p_to_z_j_j_4
 ```
 
-Case and whitespace are normalized for expression selectors, while particle
-labels and ordering remain significant. Ambiguous expressions are rejected
-with the matching stable IDs. Run the primary subprocess with:
+Case and whitespace are normalized. Incoming legs may permute only with other
+incoming legs, and outgoing legs only with outgoing legs; no leg crosses `>`.
+Repeated particles are matched deterministically. Rusticol applies the chosen
+mapping to momenta, external PDGs, helicities, LC-flow labels, reductions, and
+resolved selectors. If more than one generated representative matches, the
+selection fails with the matching stable IDs. Run the primary subprocess with:
 
 ```console
 python artifacts/pp_zjj/API/python/check_standalone.py \
-  --process 'd d~ > z g g' \
+  --process 'd d~ > g z g' \
   --set-parameter aS 0.117 0 \
   --json
 
 make -C artifacts/pp_zjj/API/c run \
-  ARGS='--process "d d~ > z g g" --set-parameter aS 0.117 0 --json'
+  ARGS='--process "d d~ > g z g" --set-parameter aS 0.117 0 --json'
 make -C artifacts/pp_zjj/API/rust run \
-  ARGS='--process "d d~ > z g g" --set-parameter aS 0.117 0 --precision 16 --json'
+  ARGS='--process "d d~ > g z g" --set-parameter aS 0.117 0 --precision 16 --json'
 make -C artifacts/pp_zjj/API/cpp run \
-  ARGS='--process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --json'
+  ARGS='--process "d d~ > g z g" --set-parameter aS 0.117 0 --json'
 make -C artifacts/pp_zjj/API/fortran run \
-  ARGS='--process p_p_to_z_j_j_4 --set-parameter aS 0.117 0 --json'
+  ARGS='--process "d d~ > g z g" --set-parameter aS 0.117 0 --json'
 ```
+
+Every driver also accepts `--kinematics PATH`. The file must contain one point
+as `[external][4]`, or a singleton batch `[[external][4]]`, in the ordering
+written in `--process`. Components may be finite JSON numbers or decimal
+strings. The Python driver preserves decimal strings for arbitrary-precision
+execution; native drivers convert the same input to f64. Multiple points,
+booleans, non-finite values, and wrong ranks or particle counts are rejected.
+When the option is omitted, the bundled representative validation point is
+reordered into the requested public process order.
+
+`--model-parameters PATH` reads the canonical UFO-style card: one flat JSON
+object mapping mutable external parameter names to finite numbers or
+`[real, imaginary]` pairs. It is the same shape emitted by
+`CompiledModel.write_parameter_card()`. Direct
+`--set-parameter NAME REAL IMAG` updates are applied after the card and win over
+the same names from that card; the complete update remains atomic.
 
 Each Makefile writes binaries, objects, and Fortran modules to a sibling
 `.pyamplicol-api-build/` directory, leaving the integrity-checked process
@@ -152,7 +173,7 @@ published Rusticol crate. Its primary Makefile target invokes `rustc` directly:
 ```console
 make -C artifacts/pp_zjj/API/rust check_standalone
 make -C artifacts/pp_zjj/API/rust run \
-  ARGS='--process "d d~ > z g g" --precision 16 --json'
+  ARGS='--process "d d~ > g z g" --precision 16 --json'
 ```
 
 The equivalent direct compilation is reproducible from the artifact root:

@@ -563,37 +563,45 @@ pub(super) fn parse_reduction_group_id(value: &str) -> RusticolResult<i64> {
         })
 }
 
-pub(super) fn apply_final_state_alias_metadata(
+pub(super) fn apply_process_permutation_metadata(
     mut physics: ProcessPhysicsV1,
-    alias: &crate::ProcessAlias,
+    selection: &crate::ArtifactSelection,
 ) -> RusticolResult<ProcessPhysicsV1> {
     physics.validate()?;
-    let permutation = &alias.external_permutation;
+    let permutation = &selection.external_permutation;
     let particle_count = physics.external_particles.len();
     if permutation.len() != particle_count
-        || alias.external_pdgs.len() != particle_count
+        || selection.external_pdgs.len() != particle_count
         || permutation.iter().copied().collect::<BTreeSet<_>>()
             != (0..particle_count).collect::<BTreeSet<_>>()
     {
         return Err(RusticolError::integrity(format!(
-            "alias {:?} does not define a complete particle permutation and PDG order",
-            alias.id
+            "process selection {:?} does not define a complete particle permutation and PDG order",
+            selection.public_expression
         )));
     }
-    if particle_count < 2 || permutation[0] != 0 || permutation[1] != 1 {
+    if permutation
+        .iter()
+        .copied()
+        .enumerate()
+        .any(|(representative_index, public_index)| {
+            physics.external_particles[representative_index].role
+                != physics.external_particles[public_index].role
+        })
+    {
         return Err(RusticolError::compatibility(format!(
-            "alias {:?} is not a final-state permutation; crossing reuse is unsupported",
-            alias.id
+            "process selection {:?} moves a particle across the incoming/outgoing boundary",
+            selection.public_expression
         )));
     }
     let mut expected_alias_pdgs = vec![0; particle_count];
     for (representative_index, alias_index) in permutation.iter().copied().enumerate() {
         expected_alias_pdgs[alias_index] = physics.external_particles[representative_index].pdg;
     }
-    if alias.external_pdgs != expected_alias_pdgs {
+    if selection.external_pdgs != expected_alias_pdgs {
         return Err(RusticolError::integrity(format!(
-            "alias {:?} PDG order {:?} does not match the representative physics payload and permutation; expected {:?}",
-            alias.id, alias.external_pdgs, expected_alias_pdgs
+            "process selection {:?} PDG order {:?} does not match the representative physics payload and permutation; expected {:?}",
+            selection.public_expression, selection.external_pdgs, expected_alias_pdgs
         )));
     }
 
@@ -707,17 +715,17 @@ pub(super) fn apply_final_state_alias_metadata(
         }
     }
 
-    physics.process_id = alias.id.clone();
-    physics.process = alias.expression.clone();
+    physics.process_id = selection.requested_id.clone();
+    physics.process = selection.public_expression.clone();
     if physics
         .external_particles
         .iter()
         .map(|particle| particle.pdg)
-        .ne(alias.external_pdgs.iter().copied())
+        .ne(selection.external_pdgs.iter().copied())
     {
         return Err(RusticolError::integrity(format!(
-            "alias {:?} external particle metadata does not match its public PDG order",
-            alias.id
+            "process selection {:?} external particle metadata does not match its public PDG order",
+            selection.public_expression
         )));
     }
     physics.validate()?;

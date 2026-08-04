@@ -14,12 +14,16 @@ from pyamplicol.api.results import ResolvedEvaluation
 from pyamplicol.artifacts import load_manifest
 from pyamplicol.artifacts.security import confined_path
 from pyamplicol.runtime._evaluator_payloads import ExactEvaluatorPayloadResolver
+from pyamplicol.runtime._native_selection import (
+    native_physics_axes,
+    native_process_selection,
+    remap_reduction_group,
+)
 from pyamplicol.runtime.eager_exact._contracts import (
     _KernelLoader,
     _mapping,
     _PayloadIndex,
     _read_json,
-    _selected_process,
 )
 from pyamplicol.runtime.eager_exact._execution import _evaluate_point
 from pyamplicol.runtime.eager_exact._plan import _EagerExactPlan
@@ -54,8 +58,10 @@ class EagerExactExecutor:
         self._native_runtime = native_runtime
         manifest = load_manifest(self._artifact)
         exact_payloads = ExactEvaluatorPayloadResolver(manifest)
-        process, permutation = _selected_process(manifest.processes, process_id)
-        representative_id = str(process["id"])
+        selection = native_process_selection(native_runtime, manifest.processes)
+        process = selection.process
+        permutation = selection.external_permutation
+        representative_id = selection.representative_process_id
         execution_records = tuple(
             record
             for record in manifest.payloads
@@ -78,12 +84,20 @@ class EagerExactExecutor:
             confined_path(self._artifact, execution_records[0].path),
             "eager execution metadata",
         )
-        physics = _read_json(
+        representative_physics = _read_json(
             confined_path(self._artifact, physics_path), "runtime physics metadata"
         )
+        axes = native_physics_axes(native_runtime, representative_physics)
+        physics = axes.public_physics
+        if execution.get("key") != selection.representative_process_key:
+            raise ArtifactError(
+                "eager exact execution disagrees with Rusticol's representative "
+                "process key"
+            )
         process_root = self._artifact / "processes" / representative_id
         self._execution = execution
         self._permutation = permutation
+        self._representative_physics = representative_physics
         self._plan = _EagerExactPlan.load_for_execution(
             artifact_root=self._artifact,
             process_root=process_root,
@@ -97,7 +111,10 @@ class EagerExactExecutor:
         if self._plan.physics_reduction_groups is not None:
             physics = dict(physics)
             reduction = dict(_mapping(physics.get("reduction"), "physics reduction"))
-            reduction["groups"] = list(self._plan.physics_reduction_groups)
+            reduction["groups"] = [
+                remap_reduction_group(group, axes, index=index)
+                for index, group in enumerate(self._plan.physics_reduction_groups)
+            ]
             physics["reduction"] = reduction
         self._physics = physics
         if "runtime_schema" in execution:
@@ -136,7 +153,9 @@ class EagerExactExecutor:
             momenta,
             physics=self._physics,
             artifact_mass_bindings=bindings,
-            permutation=self._permutation,
+            # Both public physics and its PDG-derived bindings already follow
+            # the caller's selected ordering.
+            permutation=None,
             precision=precision,
         )
 

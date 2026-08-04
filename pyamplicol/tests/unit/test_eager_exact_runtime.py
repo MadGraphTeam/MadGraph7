@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from decimal import Decimal, localcontext
 from pathlib import Path
 from types import SimpleNamespace
@@ -83,17 +83,32 @@ class _NativeRuntime:
         self,
         model_parameter_values: Sequence[float] = (),
         normalization_factor: float = 1.0,
+        *,
+        representative_process_id: str = "synthetic",
+        representative_process_key: str = "synthetic",
+        external_permutation: Sequence[int] = (0, 1, 2),
+        physics: Mapping[str, object] | None = None,
     ) -> None:
         self._model_parameter_values = tuple(model_parameter_values)
         self._normalization_factor = normalization_factor
+        self._representative_process_id = representative_process_id
+        self._representative_process_key = representative_process_key
+        self._external_permutation = tuple(external_permutation)
+        self._public_physics = physics
 
     def _exact_runtime_state_json(self) -> str:
         return json.dumps(
             {
                 "model_parameter_values": self._model_parameter_values,
                 "normalization_factor": self._normalization_factor,
+                "representative_process_id": self._representative_process_id,
+                "representative_process_key": self._representative_process_key,
+                "external_permutation": self._external_permutation,
             }
         )
+
+    def physics_json(self) -> str:
+        return json.dumps(self._public_physics or _physics())
 
 
 def test_eager_diagnostic_projection_maps_alias_masses_to_caller_order() -> None:
@@ -113,11 +128,12 @@ def test_eager_diagnostic_projection_maps_alias_masses_to_caller_order() -> None
     executor._exact_execution = {"runtime_schema": schema}
     executor._physics = {
         "external_particles": [
-            {"label": 1, "pdg": 25, "role": "final"},
-            {"label": 2, "pdg": 21, "role": "initial"},
+            {"label": 1, "pdg": 21, "role": "final"},
+            {"label": 2, "pdg": 25, "role": "final"},
         ]
     }
-    # Artifact order is (H, g), while the caller provides (g, H).
+    # Native public physics and its PDG-derived bindings are already (g, H).
+    # The retained representative permutation must not be applied a second time.
     executor._permutation = (1, 0)
 
     projected, metadata = executor._diagnostic_project_onshell(
@@ -378,10 +394,10 @@ def _physics() -> dict[str, object]:
         "schema_version": 1,
         "kind": "pyamplicol-runtime-physics",
         "process_id": "synthetic",
-        "process": "s > s",
+        "process": "s > s s",
         "color_accuracy": "lc",
-        "external_particles": [{}],
-        "helicities": [{"id": "h:0", "values": [0], "coefficient": 1.0}],
+        "external_particles": [{}, {}, {}],
+        "helicities": [{"id": "h:0", "values": [0, 0, 0], "coefficient": 1.0}],
         "color_components": [
             {
                 "id": "flow:1",
@@ -403,6 +419,13 @@ def _physics() -> dict[str, object]:
             ],
         },
     }
+
+
+def _momenta(*energies: int) -> list[list[tuple[int, int, int, int]]]:
+    return [
+        [(energy, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0)]
+        for energy in energies
+    ]
 
 
 def _producer() -> dict[str, object]:
@@ -764,7 +787,7 @@ def _build_artifact(
             processes=[
                 {
                     "id": "synthetic",
-                    "expression": "s > s",
+                    "expression": "s > s s",
                     "color_accuracy": "lc",
                     "external_pdgs": [9000001, 9000001, 9000001],
                     "physics_path": "processes/synthetic/physics.json",
@@ -877,7 +900,7 @@ def test_eager_exact_accumulates_then_finalizes_once(tmp_path: Path) -> None:
     )
 
     result = executor.evaluate_resolved(
-        [[(5, 0, 0, 0)]],
+        _momenta(5),
         helicities=None,
         color_flows=None,
         precision=50,
@@ -887,6 +910,21 @@ def test_eager_exact_accumulates_then_finalizes_once(tmp_path: Path) -> None:
     assert result.values == (((Decimal(9409),),),)
     assert result.helicity_ids == ("h:0",)
     assert result.color_ids == ("flow:1",)
+
+
+def test_eager_exact_uses_native_representative_for_inferred_expression(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact"
+    _build_artifact(artifact)
+    executor = EagerExactExecutor(
+        artifact,
+        "s > x s",
+        _NativeRuntime(external_permutation=(0, 2, 1)),
+        kernel_loader=_loader([]),
+    )
+
+    assert executor._permutation == (0, 2, 1)
 
 
 def test_eager_exact_plan_v3_uses_native_compact_sections(
@@ -921,7 +959,7 @@ def test_eager_exact_plan_v3_uses_native_compact_sections(
     )
 
     result = executor.evaluate_resolved(
-        [[(5, 0, 0, 0)]],
+        _momenta(5),
         helicities=None,
         color_flows=None,
         precision=50,
@@ -1073,7 +1111,7 @@ def test_eager_exact_applies_dynamic_output_factor_after_kernel(
         kernel_loader=load,
     )
     executor.evaluate_resolved(
-        [[(5, 0, 0, 0)]],
+        _momenta(5),
         helicities=None,
         color_flows=None,
         precision=50,
@@ -1248,7 +1286,7 @@ def test_eager_exact_derives_complex_parameters_at_requested_precision(
     assert loaded_kernel_ids == []
 
     result = executor.evaluate_resolved(
-        [[(5, 0, 0, 0)], [(7, 0, 0, 0)]],
+        _momenta(5, 7),
         helicities=None,
         color_flows=None,
         precision=60,
@@ -1354,7 +1392,7 @@ def test_eager_exact_preserves_native_derived_values_without_kernel(
         kernel_loader=load,
     )
     executor.evaluate_resolved(
-        [[(5, 0, 0, 0)]],
+        _momenta(5),
         helicities=None,
         color_flows=None,
         precision=50,
@@ -1578,7 +1616,7 @@ def test_eager_exact_rejects_parameter_evaluator_output_arity(tmp_path: Path) ->
     )
     with pytest.raises(EvaluationError, match="produced 0 outputs, expected 1"):
         executor.evaluate_resolved(
-            [[(5, 0, 0, 0)]],
+            _momenta(5),
             helicities=None,
             color_flows=None,
             precision=40,
@@ -1597,7 +1635,7 @@ def test_eager_exact_executes_direct_contraction(tmp_path: Path) -> None:
     )
 
     result = executor.evaluate_resolved(
-        [[(5, 0, 0, 0)]],
+        _momenta(5),
         helicities=("h:0",),
         color_flows=("flow:1",),
         precision=40,
@@ -1701,7 +1739,7 @@ def test_eager_exact_rejects_loaded_evaluator_arity_mismatch(tmp_path: Path) -> 
 
     with pytest.raises(ArtifactError, match="input arity 999"):
         executor.evaluate_resolved(
-            [[(5, 0, 0, 0)]],
+            _momenta(5),
             helicities=None,
             color_flows=None,
             precision=40,

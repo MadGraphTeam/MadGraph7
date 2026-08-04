@@ -20,6 +20,13 @@ SOURCE_APPLICATION_ABI = "symjit-application-storage-v3"
 PLANE_APPLICATION_ABI = "pyamplicol-symjit-plane-application-v2"
 DIRECT_APPLICATION_ABI = "pyamplicol-compiled-plane-kernel-v2"
 SYMJIT_CAPABILITY = "symjit.application.complex-f64.v1"
+SELFTEST_API_DRIVERS = (
+    Path("python/check_standalone.py"),
+    Path("c/check_standalone.c"),
+    Path("cpp/check_standalone.cpp"),
+    Path("fortran/check_standalone.f90"),
+    Path("rust/check_standalone.rs"),
+)
 
 
 def _module() -> ModuleType:
@@ -303,6 +310,26 @@ def test_source_selftest_fixture_is_one_portable_64bit_template() -> None:
         )
         > 0
     )
+
+
+def test_selftest_api_drivers_match_the_public_templates() -> None:
+    template_root = ROOT / "src/pyamplicol/assets/api_templates"
+    artifact = FIXTURE / "artifact"
+    manifest = json.loads((artifact / "artifact.json").read_text(encoding="utf-8"))
+    payloads = {
+        payload["path"]: payload
+        for payload in manifest["payloads"]
+        if payload.get("role") == "api-source"
+    }
+    for relative in SELFTEST_API_DRIVERS:
+        expected = (template_root / relative).read_bytes()
+        artifact_relative = Path("API") / relative
+        actual = (artifact / artifact_relative).read_bytes()
+        payload = payloads[artifact_relative.as_posix()]
+
+        assert actual == expected
+        assert payload["size_bytes"] == len(actual)
+        assert payload["sha256"] == hashlib.sha256(actual).hexdigest()
 
 
 @pytest.mark.parametrize("optimization_level", (0, 1, 3))

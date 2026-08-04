@@ -21,6 +21,7 @@ use rusticol::{ParameterUpdate, PhysicsMetadata, ResolvedEvaluation, Runtime, Se
 struct Options {
     process: Option<String>,
     model_parameters: Option<String>,
+    kinematics: Option<String>,
     overrides: Vec<ParameterUpdate>,
     precision: u32,
     json: bool,
@@ -33,7 +34,7 @@ fn sdk<T>(result: rusticol::Result<T>) -> Result<T, String> {
 
 fn usage() -> &'static str {
     "usage: check_standalone [--process ID|EXPRESSION] [--model-parameters PATH] \
-[--set-parameter NAME REAL IMAG] [--precision 16] [--json]"
+[--kinematics PATH] [--set-parameter NAME REAL IMAG] [--precision 16] [--json]"
 }
 
 fn parse_options() -> Result<Options, String> {
@@ -55,6 +56,11 @@ fn parse_options() -> Result<Options, String> {
             }
             "--model-parameters" => {
                 options.model_parameters =
+                    Some(required_argument(&arguments, index, 1)?.to_owned());
+                index += 2;
+            }
+            "--kinematics" => {
+                options.kinematics =
                     Some(required_argument(&arguments, index, 1)?.to_owned());
                 index += 2;
             }
@@ -188,6 +194,27 @@ fn load_validation_point(
         return Ok(Some(momenta));
     }
     Ok(None)
+}
+
+fn reorder_validation_point(
+    representative: Vec<f64>,
+    permutation: &[usize],
+) -> Result<Vec<f64>, String> {
+    if representative.len() != 4 * permutation.len() {
+        return Err("validation point does not match external permutation".to_owned());
+    }
+    let mut public_point = vec![0.0; representative.len()];
+    let mut seen = vec![false; permutation.len()];
+    for (representative_index, &public_index) in permutation.iter().enumerate() {
+        if public_index >= permutation.len() || seen[public_index] {
+            return Err("runtime returned an invalid external permutation".to_owned());
+        }
+        seen[public_index] = true;
+        public_point[4 * public_index..4 * public_index + 4].copy_from_slice(
+            &representative[4 * representative_index..4 * representative_index + 4],
+        );
+    }
+    Ok(public_point)
 }
 
 fn json_string(value: &str) -> String {
@@ -351,11 +378,20 @@ fn run() -> Result<(), String> {
     ))?;
     sdk(runtime.set_model_parameters(&options.overrides))?;
     let metadata = sdk(runtime.physics())?;
-    let point = load_validation_point(
-        &root.join("API/validation_points.dat"),
-        &metadata.process_key,
-        metadata.external_particles.len(),
-    )?;
+    let point = if let Some(path) = options.kinematics.as_deref() {
+        Some(sdk(runtime.load_kinematics_json(path))?)
+    } else {
+        load_validation_point(
+            &root.join("API/validation_points.dat"),
+            &sdk(runtime.representative_process_key())?,
+            metadata.external_particles.len(),
+        )?
+        .map(|point| {
+            let permutation = sdk(runtime.external_permutation())?;
+            reorder_validation_point(point, &permutation)
+        })
+        .transpose()?
+    };
     let Some(momenta) = point else {
         if options.json {
             print!("{}", unavailable_json(&metadata));

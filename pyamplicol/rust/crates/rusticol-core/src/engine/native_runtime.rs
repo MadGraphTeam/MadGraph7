@@ -297,7 +297,7 @@ impl NativeRuntime {
             )
         })?;
         let selection = artifact.select_process(Some(process_id))?;
-        if selection.alias.is_some() {
+        if selection.alias.is_some() || selection.inferred_permutation {
             return Err(RusticolError::invalid_argument(
                 "compact eager reduction groups must be requested by representative process ID",
             ));
@@ -356,7 +356,7 @@ impl NativeRuntime {
             )
         })?;
         let selection = artifact.select_process(Some(process_id))?;
-        if selection.alias.is_some() {
+        if selection.alias.is_some() || selection.inferred_permutation {
             return Err(RusticolError::invalid_argument(
                 "compact eager exact sections must be requested by representative process ID",
             ));
@@ -413,7 +413,7 @@ impl NativeRuntime {
             )
         })?;
         let selection = artifact.select_process(Some(process_id))?;
-        if selection.alias.is_some() {
+        if selection.alias.is_some() || selection.inferred_permutation {
             return Err(RusticolError::invalid_argument(
                 "compact recurrence exact sections must be requested by representative process ID",
             ));
@@ -481,7 +481,7 @@ impl NativeRuntime {
                 selection.process.physics_path, selection.process.id
             )));
         }
-        let (representative_process, representative_key, mut runtime, execution_lane) =
+        let (_representative_process, representative_key, mut runtime, execution_lane) =
             match manifest {
                 LoadedExecutionManifest::Compiled(manifest) => {
                     super::eager_v3_load::reject_native_reduction_groups_for_compiled(&physics_v1)?;
@@ -540,48 +540,65 @@ impl NativeRuntime {
                     )
                 }
             };
-        let process = selection
-            .alias
-            .as_ref()
-            .map(|alias| alias.expression.clone())
-            .unwrap_or_else(|| representative_process.clone());
+        let process = selection.public_expression.clone();
         let process_key = selection.requested_id.clone();
-        let input_crossing_map = if let Some(alias) = &selection.alias {
+        let representative_process_id = selection.process.id.clone();
+        let public_remap = selection.alias.is_some() || selection.inferred_permutation;
+        let nonidentity_permutation = selection
+            .external_permutation
+            .iter()
+            .copied()
+            .enumerate()
+            .any(|(representative_index, public_index)| representative_index != public_index);
+        let initial_count = physics_v1
+            .external_particles
+            .iter()
+            .take_while(|particle| particle.role == crate::ParticleRole::Initial)
+            .count();
+        let final_state_only = public_remap
+            && selection
+                .external_permutation
+                .iter()
+                .take(initial_count)
+                .copied()
+                .enumerate()
+                .all(|(index, public_index)| index == public_index);
+        let input_crossing_map = if public_remap {
             let representative_physics = physics_v1.clone();
-            let alias_physics =
-                apply_final_state_alias_metadata(physics_v1, alias).map_err(|error| {
+            let public_physics = apply_process_permutation_metadata(physics_v1, &selection)
+                .map_err(|error| {
                     RusticolError::with_kind(
                         error.kind(),
-                        format!("could not remap alias physics metadata: {error}"),
+                        format!("could not remap process physics metadata: {error}"),
                     )
                 })?;
             let helicity_id_map = representative_physics
                 .helicities
                 .iter()
-                .zip(&alias_physics.helicities)
+                .zip(&public_physics.helicities)
                 .map(|(representative, public)| (representative.id.clone(), public.id.clone()))
                 .collect::<BTreeMap<_, _>>();
             let color_id_map = representative_physics
                 .color_components
                 .iter()
-                .zip(&alias_physics.color_components)
+                .zip(&public_physics.color_components)
                 .map(|(representative, public)| {
                     (representative.id().to_string(), public.id().to_string())
                 })
                 .collect::<BTreeMap<_, _>>();
             runtime
-                .remap_lc_topology_replay_public_labels(&alias.external_permutation)
+                .remap_lc_topology_replay_public_labels(&selection.external_permutation)
                 .map_err(|error| {
                     RusticolError::with_kind(
                         error.kind(),
-                        format!("could not remap alias execution metadata: {error}"),
+                        format!("could not remap process execution metadata: {error}"),
                     )
                 })?;
             runtime.remap_physics_reduction_overrides(&helicity_id_map, &color_id_map)?;
-            physics_v1 = alias_physics;
-            runtime.set_external_pdg_order_recursive(&alias.external_pdgs);
-            Some(
-                alias
+            physics_v1 = public_physics;
+            runtime.set_external_pdg_order_recursive(&selection.external_pdgs);
+            nonidentity_permutation.then(|| {
+                selection
                     .external_permutation
                     .iter()
                     .copied()
@@ -591,8 +608,8 @@ impl NativeRuntime {
                         source_index,
                         sign: 1.0,
                     })
-                    .collect(),
-            )
+                    .collect()
+            })
         } else {
             None
         };
@@ -601,10 +618,7 @@ impl NativeRuntime {
         runtime.attach_physics(Arc::new(PhysicsRuntime::new(physics_v1.clone())?))?;
         if matches!(&execution_lane, NativeExecutionLane::Compiled) {
             runtime.initialize_compiled_helicity_execution_plan(
-                selection
-                    .alias
-                    .as_ref()
-                    .map(|alias| alias.external_permutation.as_slice()),
+                public_remap.then_some(selection.external_permutation.as_slice()),
             )?;
         }
         let selector_simd_lane_width = {
@@ -628,8 +642,11 @@ impl NativeRuntime {
             execution_lane,
             process,
             process_key,
+            representative_process_id,
+            external_permutation: selection.external_permutation.clone(),
             input_crossing_map,
-            final_state_permutation_alias_of: selection.alias.as_ref().map(|_| representative_key),
+            permutation_alias_of: public_remap.then(|| representative_key.clone()),
+            final_state_permutation_alias_of: final_state_only.then_some(representative_key),
             physics_v1,
             warnings_muted: false,
             warned_kinds: BTreeSet::new(),
@@ -710,6 +727,8 @@ impl NativeRuntime {
             process_key: self.process_key.clone(),
             representative_process: self.runtime.process.clone(),
             representative_process_key: self.runtime.key.clone(),
+            external_permutation: self.external_permutation.clone(),
+            permutation_alias_of: self.permutation_alias_of.clone(),
             final_state_permutation_alias_of: self.final_state_permutation_alias_of.clone(),
             color_accuracy: self.runtime.color_accuracy.clone(),
             external_pdg_order: self.runtime.external_pdg_order.clone(),
@@ -749,6 +768,9 @@ impl NativeRuntime {
         serde_json::to_string(&serde_json::json!({
             "model_parameter_values": self.runtime.model_parameter_values_f64,
             "normalization_factor": self.runtime.normalization_factor,
+            "representative_process_id": self.representative_process_id,
+            "representative_process_key": self.runtime.key,
+            "external_permutation": self.external_permutation,
         }))
         .map_err(|error| {
             RusticolError::serialization(format!(
@@ -763,6 +785,39 @@ impl NativeRuntime {
 
     pub fn external_count(&self) -> usize {
         self.runtime.external_count
+    }
+
+    pub fn representative_process_key(&self) -> &str {
+        &self.runtime.key
+    }
+
+    /// Full representative-index to public-index external permutation.
+    pub fn external_permutation(&self) -> &[usize] {
+        &self.external_permutation
+    }
+
+    /// Load one public-order kinematic point from JSON.
+    ///
+    /// The accepted shapes are `[external][4]` and a singleton batch
+    /// `[[external][4]]`. Components may be JSON numbers or decimal strings.
+    /// The returned flat values retain the caller's public process ordering;
+    /// the ordinary evaluation entry points apply any active process
+    /// permutation when packing runtime inputs.
+    pub fn load_kinematics_json(&self, path: impl AsRef<Path>) -> Result<Vec<f64>, RusticolError> {
+        let path = path.as_ref();
+        let bytes = fs::read(path).map_err(|error| {
+            RusticolError::invalid_argument(format!(
+                "could not read kinematics JSON {}: {error}",
+                path.display()
+            ))
+        })?;
+        let value: Value = serde_json::from_slice(&bytes).map_err(|error| {
+            RusticolError::invalid_argument(format!(
+                "could not parse kinematics JSON {}: {error}",
+                path.display()
+            ))
+        })?;
+        parse_public_kinematics_point(&value, self.external_count())
     }
 
     pub fn external_particles(&self) -> Result<Vec<NativeExternalParticle>, RusticolError> {
@@ -926,6 +981,7 @@ impl NativeRuntime {
         Ok(NativeRecurrenceSelectorPlan {
             artifact_root: self.root.clone(),
             process_key: self.process_key.clone(),
+            external_permutation: self.external_permutation.clone(),
             selected_helicities,
             selected_colors,
         })
@@ -961,11 +1017,7 @@ impl NativeRuntime {
                 "recurrence selector plans require a recurrence artifact",
             ));
         }
-        if plan.artifact_root != self.root || plan.process_key != self.process_key {
-            return Err(RusticolError::selector(
-                "recurrence selector plan belongs to a different artifact or process",
-            ));
-        }
+        plan.ensure_matches(self)?;
         validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
         if output.len() != point_count {
             return Err(RusticolError::invalid_argument(format!(
@@ -2526,6 +2578,76 @@ where
         helicity_ids,
         color_ids,
         decimal_digits,
+    })
+}
+
+pub(super) fn parse_public_kinematics_point(
+    value: &Value,
+    external_count: usize,
+) -> RusticolResult<Vec<f64>> {
+    let outer = value.as_array().ok_or_else(|| {
+        RusticolError::invalid_argument(
+            "kinematics JSON must be one [external][4] point or a singleton batch",
+        )
+    })?;
+    let point = if looks_like_kinematics_point(outer) {
+        outer.as_slice()
+    } else if outer.len() == 1 {
+        outer[0].as_array().map(Vec::as_slice).ok_or_else(|| {
+            RusticolError::invalid_argument(
+                "kinematics JSON singleton batch must contain one [external][4] point",
+            )
+        })?
+    } else {
+        return Err(RusticolError::invalid_argument(
+            "kinematics JSON must contain exactly one point",
+        ));
+    };
+    if point.len() != external_count {
+        return Err(RusticolError::invalid_argument(format!(
+            "kinematics point has {} external momenta, expected {external_count}",
+            point.len()
+        )));
+    }
+    let mut flat = Vec::with_capacity(external_count.saturating_mul(4));
+    for (external_index, momentum) in point.iter().enumerate() {
+        let components = momentum.as_array().ok_or_else(|| {
+            RusticolError::invalid_argument(format!(
+                "kinematics momentum {external_index} must be an array of four components"
+            ))
+        })?;
+        if components.len() != 4 {
+            return Err(RusticolError::invalid_argument(format!(
+                "kinematics momentum {external_index} has {} components, expected 4",
+                components.len()
+            )));
+        }
+        for (component_index, component) in components.iter().enumerate() {
+            let parsed = match component {
+                Value::Number(number) => number.as_f64(),
+                Value::String(number) => number.parse::<f64>().ok(),
+                _ => None,
+            }
+            .filter(|number| number.is_finite())
+            .ok_or_else(|| {
+                RusticolError::invalid_argument(format!(
+                    "kinematics component [{external_index}][{component_index}] must be a finite JSON number or decimal string"
+                ))
+            })?;
+            flat.push(parsed);
+        }
+    }
+    Ok(flat)
+}
+
+fn looks_like_kinematics_point(values: &[Value]) -> bool {
+    values.iter().all(|momentum| {
+        momentum.as_array().is_some_and(|components| {
+            components.len() == 4
+                && components
+                    .iter()
+                    .all(|component| matches!(component, Value::Number(_) | Value::String(_)))
+        })
     })
 }
 

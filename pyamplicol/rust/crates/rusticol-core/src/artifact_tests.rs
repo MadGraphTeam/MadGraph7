@@ -2138,7 +2138,7 @@ fn target_metadata_requires_canonical_sorted_cpu_features() {
 }
 
 #[test]
-fn malformed_timestamp_and_initial_state_alias_are_rejected() {
+fn malformed_timestamp_and_crossing_alias_are_rejected() {
     let mut timestamp = TestArtifact::new();
     timestamp.manifest["created_utc"] = json!("2026-02-30T25:00:00Z");
     timestamp.write_manifest();
@@ -2153,9 +2153,97 @@ fn malformed_timestamp_and_initial_state_alias_are_rejected() {
         "external_permutation": [1, 0, 2],
     }]);
     alias.write_manifest();
+    VerifiedArtifact::open(&alias.root)
+        .expect("incoming particles may be permuted within their side");
+
+    alias.manifest["processes"][0]["aliases"] = json!([{
+        "id": "alias0",
+        "expression": "a c > b",
+        "external_pdgs": [1, 22, -1],
+        "external_permutation": [0, 2, 1],
+    }]);
+    alias.write_manifest();
     let error = VerifiedArtifact::open(&alias.root).unwrap_err();
     assert_eq!(error.kind(), crate::RusticolErrorKind::Artifact);
-    assert!(error.to_string().contains("final-state"));
+    assert!(error.to_string().contains("incoming and outgoing sides"));
+}
+
+#[test]
+fn concrete_process_expression_infers_a_deterministic_side_preserving_permutation() {
+    let mut artifact = TestArtifact::new();
+    artifact.manifest["processes"][0]["expression"] = json!("d d~ > z g g");
+    artifact.manifest["processes"][0]["external_pdgs"] = json!([1, -1, 23, 21, 21]);
+    artifact.write_manifest();
+
+    let verified = VerifiedArtifact::open(&artifact.root).unwrap();
+    let selection = verified
+        .select_process(Some(" d~   d > g z g "))
+        .expect("unique permutation-equivalent expression");
+    assert_eq!(selection.requested_id, "p0");
+    assert!(selection.alias.is_none());
+    assert!(selection.inferred_permutation);
+    assert_eq!(selection.public_expression, "d~ d > g z g");
+    assert_eq!(selection.external_permutation, [1, 0, 3, 2, 4]);
+    assert_eq!(selection.external_pdgs, [-1, 1, 21, 23, 21]);
+
+    let crossing = verified.select_process(Some("d z > d~ g g")).unwrap_err();
+    assert_eq!(crossing.kind(), crate::RusticolErrorKind::Selector);
+    assert!(crossing.to_string().contains("across the '>' boundary"));
+}
+
+#[test]
+fn inferred_expression_prefers_the_least_reordered_representative() {
+    let artifact = TestArtifact::new();
+    let mut manifest: ArtifactManifest = serde_json::from_value(artifact.manifest.clone()).unwrap();
+    manifest.processes[0].expression = "d d~ > z g g".to_string();
+    manifest.processes[0].external_pdgs = vec![1, -1, 23, 21, 21];
+    let mut reversed = manifest.processes[0].clone();
+    reversed.id = "p1".to_string();
+    reversed.expression = "d~ d > z g g".to_string();
+    reversed.external_pdgs = vec![-1, 1, 23, 21, 21];
+    manifest.processes.push(reversed);
+
+    let forward = manifest.select_process(Some("d d~ > g z g")).unwrap();
+    assert_eq!(forward.process.id, "p0");
+    assert_eq!(forward.external_permutation, [0, 1, 3, 2, 4]);
+
+    let reversed = manifest.select_process(Some("d~ d > g z g")).unwrap();
+    assert_eq!(reversed.process.id, "p1");
+    assert_eq!(reversed.external_permutation, [0, 1, 3, 2, 4]);
+}
+
+#[test]
+fn exact_representative_expression_precedes_an_equal_alias_expression() {
+    let mut artifact = TestArtifact::new();
+    artifact.manifest["processes"][0]["aliases"] = json!([{
+        "id": "same-expression-alias",
+        "expression": "a b > c",
+        "external_pdgs": [1, -1, 22],
+        "external_permutation": [0, 1, 2],
+    }]);
+    artifact.write_manifest();
+
+    let verified = VerifiedArtifact::open(&artifact.root).unwrap();
+    let selection = verified.select_process(Some("a b > c")).unwrap();
+
+    assert_eq!(selection.requested_id, "p0");
+    assert!(selection.alias.is_none());
+}
+
+#[test]
+fn inferred_process_expression_fails_on_multiple_representatives() {
+    let artifact = TestArtifact::new();
+    let mut manifest: ArtifactManifest = serde_json::from_value(artifact.manifest.clone()).unwrap();
+    manifest.processes[0].expression = "d d~ > z g g".to_string();
+    manifest.processes[0].external_pdgs = vec![1, -1, 23, 21, 21];
+    let mut duplicate = manifest.processes[0].clone();
+    duplicate.id = "p1".to_string();
+    manifest.processes.push(duplicate);
+
+    let error = manifest.select_process(Some("d d~ > g z g")).unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Selector);
+    assert!(error.to_string().contains("permutation-ambiguous"));
+    assert!(error.to_string().contains("p0, p1"));
 }
 
 #[test]

@@ -145,6 +145,8 @@ class _NativeRuntime:
             {
                 "execution_mode": self.execution_mode,
                 "process_key": "uux_g",
+                "representative_process_key": "uux_g",
+                "external_permutation": [0, 1, 2],
             }
         )
 
@@ -335,6 +337,8 @@ def test_adapter_maps_typed_metadata_totals_and_runtime_state(
     assert isinstance(backend.physics.color_flows[0], ColorFlow)
     assert isinstance(backend.physics.model_parameters[0], ModelParameter)
     assert backend.artifact_id == "a" * 64
+    assert backend.representative_process_key == "uux_g"
+    assert backend.external_permutation == (0, 1, 2)
     assert backend.physics.external_particles[0].name == "u"
     assert backend.physics.external_particles[0].pdg_id == 2
     assert backend.physics.external_particles[0].state == "incoming"
@@ -366,6 +370,8 @@ def test_adapter_maps_typed_metadata_totals_and_runtime_state(
     public = Runtime.load(tmp_path, process="uux_g")
     assert public.artifact_id == "a" * 64
     assert public.execution_mode == "compiled"
+    assert public.representative_process_key == "uux_g"
+    assert public.external_permutation == (0, 1, 2)
     assert isinstance(public.physics, ProcessPhysics)
     assert public.evaluate([], precision=32) == (Decimal("1.25"),)
     for invalid_artifact_id in ("g" * 64, "A" * 64):

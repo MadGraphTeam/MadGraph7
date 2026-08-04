@@ -43,7 +43,7 @@ To inspect the detailed resolved-physics metadata for one process, select it by
 expression or stable ID:
 
 ```console
-pyamplicol inspect artifacts/pp_zjj --process 'd d~ > z g g'
+pyamplicol inspect artifacts/pp_zjj --process 'd d~ > g z g'
 pyamplicol inspect artifacts/pp_zjj --process p_p_to_z_j_j_4
 ```
 
@@ -55,18 +55,22 @@ stable process/alias ID:
 ```python
 from pyamplicol import Runtime
 
-runtime = Runtime.load("artifacts/pp_zjj", process="d d~ > z g g")
+runtime = Runtime.load("artifacts/pp_zjj", process="d d~ > g z g")
 print(runtime.artifact_id)      # 64-character runtime-payload content label
 print(runtime.execution_mode)  # compiled, eager, or recurrence
-print(runtime.physics.process)  # d d~ > Z g g
+print(runtime.physics.process)  # d d~ > g Z g
 print(runtime.physics.external_particles)
 print(runtime.physics.helicity_ids)
 print(runtime.physics.color_flow_ids)
 ```
 
-The equivalent stable selector is `process="p_p_to_z_j_j_4"`. Expression
-matching normalizes whitespace but preserves concrete particle names and
-ordering.
+The representative stable selector is `process="p_p_to_z_j_j_4"`. Expression
+matching normalizes case and whitespace, then permits a unique permutation
+within the incoming side and within the outgoing side. No particle crosses the
+`>` boundary. Rusticol consistently remaps input momenta, helicities, LC color
+flows, reductions, and resolved selector metadata to the requested public
+order. Ambiguous representative matches fail with their stable IDs rather than
+choosing one silently.
 
 Process artifacts are trusted executable inputs. Normal loading checks the
 schema, confined paths, references, target compatibility, and runtime ABI, but
@@ -113,7 +117,7 @@ Apply a complete JSON object while loading:
 ```python
 runtime = Runtime.load(
     "artifacts/pp_zjj",
-    process="d d~ > z g g",
+    process="d d~ > g z g",
     model_parameters={"aS": 0.117, "MZ": 91.188},
 )
 ```
@@ -127,12 +131,15 @@ runtime.set_model_parameter("MT", 172.5)
 
 Derived couplings and dependent parameters are refreshed before the update is
 committed. An unknown, immutable, non-finite, or otherwise invalid entry rejects
-the full batch; no prefix is applied. The CLI and all generated API drivers use
-the same contract:
+the full batch; no prefix is applied. A JSON parameter card uses the same flat
+mapping as a serialized UFO restriction: each mutable external parameter maps
+to a finite number or `[real, imaginary]`. Card values are applied first;
+later direct `--set-parameter` updates win over the same card names, atomically. The
+CLI and all generated API drivers use the same contract:
 
 ```console
 pyamplicol evaluate artifacts/pp_zjj \
-  --process 'd d~ > z g g' \
+  --process 'd d~ > g z g' \
   --model-parameters data/model_parameters.json \
   --momenta data/pp_zjj_momenta.json
 ```
@@ -237,17 +244,18 @@ total path used by `Runtime.evaluate()`:
 
 ```console
 pyamplicol profile artifacts/pp_zjj \
-  --process p_p_to_z_j_j_4 \
+  --process 'd d~ > g z g' \
   --momenta data/pp_zjj_momenta.json \
   --target-runtime 1.0 \
   --batch-size 128 \
   --precision 16
 ```
 
-`--process` accepts a stable process or alias ID, or the exact concrete
-expression such as `--process 'd d~ > z g g'`. If `--momenta` is omitted, the
-artifact's deterministic validation point is repeated to the requested runtime
-batch size.
+`--process` accepts a stable process or alias ID, a stored concrete expression,
+or a unique side-preserving permutation such as
+`--process 'd d~ > g z g'`. If `--momenta` is omitted, the artifact's
+deterministic validation point is reordered to the requested particle order
+and repeated to the requested runtime batch size.
 
 The profiler performs configured warmups and uses their timing, or a dedicated
 probe when warmups are disabled, to calibrate both the number of independent

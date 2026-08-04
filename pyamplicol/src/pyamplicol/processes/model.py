@@ -59,6 +59,7 @@ class ModelParticleCatalog:
             and particle.ghost_number == 0
             and not particle.goldstoneboson
             and particle.propagating
+            and particle.auxiliary_kind is None
         )
 
     def resolve(self, name: str, *, external: bool = True) -> CompiledParticleRecord:
@@ -128,7 +129,9 @@ class ModelParticleCatalog:
                 )
             )
         )
-        return {} if not partons else {"p": partons, "j": partons}
+        result = {} if not partons else {"p": partons, "j": partons}
+        result["all"] = tuple(particle.name for particle in self.external_particles)
+        return result
 
     def _mass_is_compile_time_zero(self, name: str) -> bool:
         if name.casefold() == "zero":
@@ -180,9 +183,10 @@ def expand_model_processes(
     multiparticles: Mapping[str, Sequence[str]] | None = None,
 ) -> tuple[str, ...]:
     aliases = {
-        name: tuple(values)
-        for name, values in (multiparticles or catalog.default_multiparticles()).items()
+        name: tuple(values) for name, values in catalog.default_multiparticles().items()
     }
+    if multiparticles is not None:
+        aliases.update({name: tuple(values) for name, values in multiparticles.items()})
     expanded: dict[str, None] = {}
     for process in split_process_set(process_set):
         initial_text, separator, final_text = process.partition(">")

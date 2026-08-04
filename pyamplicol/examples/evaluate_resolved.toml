@@ -7,7 +7,7 @@ action = "evaluate"
 
 [evaluation]
 artifact = "artifacts/pp_zjj"
-process = "d d~ > z g g"
+process = "d d~ > g z g"
 precision = 16
 resolved = true
 helicity_ids = []

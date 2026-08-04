@@ -80,6 +80,12 @@ int rusticol_runtime_process_key(
     size_t capacity,
     size_t *required
 );
+int rusticol_runtime_representative_process_key(
+    const RusticolRuntimeHandle *handle,
+    char *buffer,
+    size_t capacity,
+    size_t *required
+);
 int rusticol_runtime_color_accuracy(
     const RusticolRuntimeHandle *handle,
     char *buffer,
@@ -95,6 +101,21 @@ int rusticol_runtime_external_pdg(
     const RusticolRuntimeHandle *handle,
     size_t index,
     int32_t *output
+);
+/* Representative-index to public/requested-index external-leg permutation. */
+int rusticol_runtime_external_permutation(
+    const RusticolRuntimeHandle *handle,
+    size_t *output,
+    size_t capacity,
+    size_t *required
+);
+/* Load one public-order [external][4] JSON point into a flat f64 buffer. */
+int rusticol_runtime_load_kinematics_json(
+    const RusticolRuntimeHandle *handle,
+    const char *path,
+    double *output,
+    size_t capacity,
+    size_t *required
 );
 
 int rusticol_runtime_helicity_count(

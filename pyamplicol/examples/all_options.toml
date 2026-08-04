@@ -47,7 +47,10 @@ selected_color_sector_ids = [0]
 # one-based external-leg label. Default is an empty table.
 selected_source_helicities = { "1" = -1, "2" = 1 }
 
-# process.multiparticles: User-defined particle-name expansions.
+# process.multiparticles: User-defined particle-name expansions, merged over
+# model defaults. Every model supplies "all" for its valid propagating physical
+# external states (excluding ghosts, Goldstones, and auxiliary/non-propagating
+# records); an explicit all entry overrides that broad default.
 [process.multiparticles]
 p = ["d", "d~", "u", "u~", "g"]
 j = ["d", "d~", "u", "u~", "g"]
@@ -178,8 +181,10 @@ extra_flags = ["-fno-math-errno"]
 [evaluation]
 # evaluation.artifact: Optional schema-v3 artifact path. Default null.
 artifact = "artifacts/pp_zjj_all_options"
-# evaluation.process: Optional stable ID/alias or concrete expression. Default null.
-process = "d d~ > z g g"
+# evaluation.process: Optional stable ID/alias, concrete expression, or unique
+# permutation within each side of a concrete process. Legs never cross ">".
+# Default null.
+process = "d d~ > g z g"
 # evaluation.precision: Positive decimal-digit request. Default 16.
 precision = 16
 # evaluation.resolved: Return physical resolved components. Default false.
@@ -188,7 +193,9 @@ resolved = true
 helicity_ids = []
 # evaluation.color_flow_ids: Stable LC flow selectors. Default empty.
 color_flow_ids = []
-# evaluation.model_parameters: Optional JSON parameter card path. Default null.
+# evaluation.model_parameters: Optional flat UFO-style JSON parameter card.
+# Values are finite numbers or [real, imaginary] pairs. Direct parameter
+# overrides are applied afterward. Default null.
 model_parameters = "data/model_parameters.json"
 # evaluation.momenta: Optional JSON phase-space points path. Default null.
 momenta = "data/pp_zjj_momenta.json"
