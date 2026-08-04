@@ -40,7 +40,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, TextIO
 
 from colorama import Fore, Style, just_fix_windows_console
 from prettytable import PrettyTable
@@ -109,6 +109,9 @@ DEFAULT_WARMUP_RUNS = 2
 DEFAULT_MINIMUM_SAMPLES = 5
 DEFAULT_WORKER_STALE_SECONDS = 15.0
 DEFAULT_MANUAL_EXPECTED_PAGE_COUNT = 59
+_REPORT_SECTION_MARKER = re.compile(
+    r"^% pyamplicol-report-section-(begin|end): ([a-z][a-z0-9-]*)$"
+)
 _ORIGINAL_AMPLICOL_REQUIRED_FILES = (
     "makefile",
     "process_list.py",
@@ -394,6 +397,37 @@ class HelpFormatter(argparse.RawDescriptionHelpFormatter):
         return text
 
 
+@dataclass(frozen=True, slots=True)
+class ReportSection:
+    """One stable top-level section that can be omitted from a PDF build."""
+
+    identifier: str
+    title: str
+
+
+REPORT_SECTIONS = (
+    ReportSection("scope", "Scope"),
+    ReportSection("recursion", "Current Recursion and Model Lowering"),
+    ReportSection("colour-runtime", "Colour and Runtime Semantics"),
+    ReportSection("methodology", "Benchmark Methodology"),
+    ReportSection("process-matrices", "Standard-Model Process Matrices"),
+    ReportSection("z-ladders", "Z-plus-Jets Evaluator Ladders"),
+    ReportSection("scalar-ladders", "Colour-Singlet Model Ladders"),
+    ReportSection("interpretation", "Interpretation"),
+    ReportSection("worked-zgg", "Worked d dbar -> Z g g Example"),
+    ReportSection(
+        "shared-current-dag",
+        "Shared-Current DAG and Numerical Execution",
+    ),
+    ReportSection("lc-layouts", "Reusable Leading-Colour Execution Layouts"),
+    ReportSection(
+        "execution-modes",
+        "Compiled, Eager, and Recurrence Execution",
+    ),
+    ReportSection("ufo-support", "Supported UFO and Serialized-JSON Models"),
+)
+
+
 class Palette:
     def __init__(self, enabled: bool) -> None:
         self.enabled = enabled
@@ -420,6 +454,72 @@ class Palette:
 
     def neutral(self, value: object) -> str:
         return str(value)
+
+
+class _SnapshotProgress(Protocol):
+    def begin(self, *, total: int, attempt: int, maximum_attempts: int) -> None: ...
+
+    def update(self, completed: int, total: int, message: str) -> None: ...
+
+    def end(self, *, success: bool, message: str, elapsed_seconds: float) -> None: ...
+
+    def close(self) -> None: ...
+
+
+@dataclass(slots=True)
+class _RefreshScanProgress:
+    """One compact coloured progress line owned by ``refresh-pdf``."""
+
+    stream: TextIO
+    palette: Palette
+    _active: bool = False
+    _completed: int = 0
+    _total: int = 0
+    _last_width: int = 0
+
+    def begin(self, *, total: int, attempt: int, maximum_attempts: int) -> None:
+        self._active = True
+        self._completed = 0
+        self._total = total
+        self.update(
+            0,
+            total,
+            f"starting snapshot attempt {attempt}/{maximum_attempts}",
+        )
+
+    def update(self, completed: int, total: int, message: str) -> None:
+        self._completed = completed
+        self._total = total
+        fraction = 1.0 if total == 0 else min(1.0, completed / total)
+        width = 28
+        filled = min(width, int(fraction * width))
+        bar = self.palette.key("█" * filled) + "·" * (width - filled)
+        line = (
+            f"{self.palette.key('Scanning campaign artifacts')} "
+            f"[{bar}] {completed:>{len(str(max(total, 1)))}}/{total} {message}"
+        )
+        visible_padding = max(0, self._last_width - len(line))
+        self.stream.write("\r" + line + " " * visible_padding)
+        self.stream.flush()
+        self._last_width = len(line)
+
+    def end(self, *, success: bool, message: str, elapsed_seconds: float) -> None:
+        if not self._active:
+            return
+        color = self.palette.success if success else self.palette.failure
+        suffix = color(f"{message} in {elapsed_seconds:.2f}s")
+        self.update(self._completed, self._total, suffix)
+        self.stream.write("\n")
+        self.stream.flush()
+        self._active = False
+        self._last_width = 0
+
+    def close(self) -> None:
+        if self._active:
+            self.stream.write("\n")
+            self.stream.flush()
+            self._active = False
+            self._last_width = 0
 
 
 def _color_enabled(arguments: argparse.Namespace, *, json_output: bool = False) -> bool:
@@ -2057,9 +2157,11 @@ def lightweight_presentation_outcomes(
     *,
     source_revision: str,
     accept_historical_source: bool = False,
+    progress: Callable[[int, int], None] | None = None,
 ) -> dict[str, LightweightPresentationOutcome]:
     result: dict[str, LightweightPresentationOutcome] = {}
-    for cell in cells:
+    total = len(cells)
+    for completed, cell in enumerate(cells, start=1):
         outcome = lightweight_presentation_outcome(
             service,
             cell,
@@ -2068,6 +2170,8 @@ def lightweight_presentation_outcomes(
         )
         if outcome is not None:
             result[cell.cell_id] = outcome
+        if progress is not None:
+            progress(completed, total)
     return result
 
 
@@ -2665,9 +2769,11 @@ def lightweight_currents(
     *,
     source_revision: str,
     accept_historical_source: bool = False,
+    progress: Callable[[int, int], None] | None = None,
 ) -> dict[str, LightweightCurrent]:
     result: dict[str, LightweightCurrent] = {}
-    for cell in cells:
+    total = len(cells)
+    for completed, cell in enumerate(cells, start=1):
         current = lightweight_current(
             service.store,
             cell,
@@ -2676,6 +2782,8 @@ def lightweight_currents(
         )
         if current is not None:
             result[cell.cell_id] = current
+        if progress is not None:
+            progress(completed, total)
     return result
 
 
@@ -7895,67 +8003,143 @@ def _capture_lightweight_snapshot(
     *,
     source_revision: str,
     accept_historical_source: bool = False,
+    progress: _SnapshotProgress | None = None,
 ) -> tuple[
     dict[str, LightweightCurrent],
     dict[str, LightweightPresentationOutcome],
     tuple[tuple[str, str], ...],
 ]:
     cells = tuple(service.catalog.measurement_cells())
-    for _attempt in range(3):
-        currents = lightweight_currents(
-            service,
-            cells,
-            source_revision=source_revision,
-            accept_historical_source=accept_historical_source,
-        )
-        outcomes = lightweight_presentation_outcomes(
-            service,
-            cells,
-            source_revision=source_revision,
-            accept_historical_source=accept_historical_source,
-        )
-        identity = tuple(
-            sorted(
-                (cell_id, current.attempt_id)
-                for cell_id, current in currents.items()
-                if current.reusable
+    total = 4 * len(cells)
+    for attempt in range(3):
+        started_at = time.monotonic()
+        completed_offset = 0
+        last_update = 0.0
+
+        if progress is not None:
+            progress.begin(
+                total=total,
+                attempt=attempt + 1,
+                maximum_attempts=3,
             )
-        )
-        outcome_identity = tuple(
-            sorted(
-                (cell_id, outcome.ordering_key)
-                for cell_id, outcome in outcomes.items()
+
+        def callback(
+            stage: str,
+            stage_offset: int,
+        ) -> Callable[[int, int], None] | None:
+            nonlocal last_update
+            if progress is None:
+                return None
+            progress.update(stage_offset, total, stage)
+
+            def update(completed: int, _stage_total: int) -> None:
+                nonlocal last_update
+                now = time.monotonic()
+                overall = stage_offset + completed
+                if completed == 1 or overall == total or now - last_update >= 0.08:
+                    progress.update(overall, total, stage)
+                    last_update = now
+
+            return update
+
+        try:
+            currents = lightweight_currents(
+                service,
+                cells,
+                source_revision=source_revision,
+                accept_historical_source=accept_historical_source,
+                progress=callback(
+                    "Reading current records",
+                    completed_offset,
+                ),
             )
-        )
-        confirmed = lightweight_currents(
-            service,
-            cells,
-            source_revision=source_revision,
-            accept_historical_source=accept_historical_source,
-        )
-        confirmed_outcomes = lightweight_presentation_outcomes(
-            service,
-            cells,
-            source_revision=source_revision,
-            accept_historical_source=accept_historical_source,
-        )
-        confirmed_identity = tuple(
-            sorted(
-                (cell_id, current.attempt_id)
-                for cell_id, current in confirmed.items()
-                if current.reusable
+            completed_offset += len(cells)
+            outcomes = lightweight_presentation_outcomes(
+                service,
+                cells,
+                source_revision=source_revision,
+                accept_historical_source=accept_historical_source,
+                progress=callback(
+                    "Reading terminal outcomes",
+                    completed_offset,
+                ),
             )
-        )
-        confirmed_outcome_identity = tuple(
-            sorted(
-                (cell_id, outcome.ordering_key)
-                for cell_id, outcome in confirmed_outcomes.items()
+            completed_offset += len(cells)
+            identity = tuple(
+                sorted(
+                    (cell_id, current.attempt_id)
+                    for cell_id, current in currents.items()
+                    if current.reusable
+                )
             )
-        )
-        if (
-            identity == confirmed_identity
-            and outcome_identity == confirmed_outcome_identity
-        ):
+            outcome_identity = tuple(
+                sorted(
+                    (cell_id, outcome.ordering_key)
+                    for cell_id, outcome in outcomes.items()
+                )
+            )
+            confirmed = lightweight_currents(
+                service,
+                cells,
+                source_revision=source_revision,
+                accept_historical_source=accept_historical_source,
+                progress=callback(
+                    "Confirming current records",
+                    completed_offset,
+                ),
+            )
+            completed_offset += len(cells)
+            confirmed_outcomes = lightweight_presentation_outcomes(
+                service,
+                cells,
+                source_revision=source_revision,
+                accept_historical_source=accept_historical_source,
+                progress=callback(
+                    "Confirming terminal outcomes",
+                    completed_offset,
+                ),
+            )
+            confirmed_identity = tuple(
+                sorted(
+                    (cell_id, current.attempt_id)
+                    for cell_id, current in confirmed.items()
+                    if current.reusable
+                )
+            )
+            confirmed_outcome_identity = tuple(
+                sorted(
+                    (cell_id, outcome.ordering_key)
+                    for cell_id, outcome in confirmed_outcomes.items()
+                )
+            )
+            stable = (
+                identity == confirmed_identity
+                and outcome_identity == confirmed_outcome_identity
+            )
+        except BaseException:
+            if progress is not None:
+                progress.end(
+                    success=False,
+                    message="artifact scan failed",
+                    elapsed_seconds=time.monotonic() - started_at,
+                )
+            raise
+        final_attempt = attempt + 1 == 3
+        if progress is not None:
+            progress.end(
+                success=stable or not final_attempt,
+                message=(
+                    "stable snapshot captured"
+                    if stable
+                    else (
+                        "campaign state remained unstable after three scans"
+                        if final_attempt
+                        else "campaign state changed; rescanning"
+                    )
+                ),
+                elapsed_seconds=time.monotonic() - started_at,
+            )
+        if stable:
             return currents, outcomes, identity
     raise ManualCampaignError(
         "current pointers or presentation outcomes changed during three "
@@ -8034,6 +8218,84 @@ def _copy_report_sources(source: Path, destination: Path) -> None:
             "*.synctex.gz",
             "*.toc",
         ),
+    )
+
+
+def _selected_report_sections(raw: Sequence[str] | None) -> tuple[ReportSection, ...]:
+    requested = set(raw or ())
+    known = {section.identifier for section in REPORT_SECTIONS}
+    unknown = tuple(sorted(requested - known))
+    if unknown:
+        raise ManualCampaignError(
+            "unknown report section ID(s): "
+            + ", ".join(unknown)
+            + "; run `refresh-pdf --list-sections` to list valid IDs"
+        )
+    return tuple(
+        section for section in REPORT_SECTIONS if section.identifier in requested
+    )
+
+
+def _filter_report_sections(
+    master: Path,
+    removed: Sequence[ReportSection],
+) -> None:
+    """Remove selected marked sections from one private staged TeX source."""
+
+    removed_ids = {section.identifier for section in removed}
+    if not removed_ids:
+        return
+    try:
+        lines = master.read_text(encoding="utf-8").splitlines(keepends=True)
+    except OSError as error:
+        raise ManualCampaignError(
+            f"cannot read staged report source {master}"
+        ) from error
+    events = tuple(
+        (match.group(1), match.group(2))
+        for line in lines
+        if (match := _REPORT_SECTION_MARKER.fullmatch(line.rstrip("\r\n")))
+        is not None
+    )
+    expected = tuple(
+        event
+        for section in REPORT_SECTIONS
+        for event in (("begin", section.identifier), ("end", section.identifier))
+    )
+    if events != expected:
+        raise ManualCampaignError(
+            "report section markers differ from the installed section registry; "
+            "refresh the copied campaign template before using --remove-sections"
+        )
+    output: list[str] = []
+    active: str | None = None
+    for line in lines:
+        match = _REPORT_SECTION_MARKER.fullmatch(line.rstrip("\r\n"))
+        if match is not None:
+            event, identifier = match.groups()
+            if event == "begin":
+                active = identifier
+                if identifier not in removed_ids:
+                    output.append(line)
+            else:
+                if identifier not in removed_ids:
+                    output.append(line)
+                active = None
+            continue
+        if active not in removed_ids:
+            output.append(line)
+    master.write_text("".join(output), encoding="utf-8")
+
+
+def _print_report_sections(palette: Palette) -> None:
+    print(
+        _table(
+            ("section ID", "PDF section"),
+            (
+                (palette.key(section.identifier), section.title)
+                for section in REPORT_SECTIONS
+            ),
+        )
     )
 
 
@@ -8146,15 +8408,37 @@ def _refresh_pdf(
     source: ReportSourceIdentity,
     palette: Palette,
 ) -> int:
+    removed_sections = _selected_report_sections(arguments.remove_sections)
     source_policy = recorded_measurement_source_policy(
         service,
         checkout_revision=source.revision,
     )
-    currents, outcomes, snapshot = _capture_lightweight_snapshot(
-        service,
-        source_revision=source_policy.source_revision,
-        accept_historical_source=source_policy.continue_across_revisions,
-    )
+    scan_progress: _SnapshotProgress | None = None
+    if not bool(arguments.quiet) and bool(
+        getattr(sys.stderr, "isatty", lambda: False)()
+    ):
+        scan_progress = _RefreshScanProgress(sys.stderr, palette)
+    try:
+        snapshot_arguments = {
+            "source_revision": source_policy.source_revision,
+            "accept_historical_source": (
+                source_policy.continue_across_revisions
+            ),
+        }
+        if scan_progress is None:
+            currents, outcomes, snapshot = _capture_lightweight_snapshot(
+                service,
+                **snapshot_arguments,
+            )
+        else:
+            currents, outcomes, snapshot = _capture_lightweight_snapshot(
+                service,
+                progress=scan_progress,
+                **snapshot_arguments,
+            )
+    finally:
+        if scan_progress is not None:
+            scan_progress.close()
     source_cohorts = _source_cohort_counts(currents)
     publication_caches, merged = _merge_lightweight_snapshot(
         service,
@@ -8174,6 +8458,10 @@ def _refresh_pdf(
         _stage_copied_profile_identity(
             staging_docs,
             service.paths.docs_dir.name,
+        )
+        _filter_report_sections(
+            staging_docs / "pyAmpliCol.tex",
+            removed_sections,
         )
         staging_service = ReportService(
             ReportPaths.from_repo(
@@ -8222,6 +8510,15 @@ def _refresh_pdf(
                 (palette.key("current snapshot"), len(snapshot)),
                 (palette.key("measurements merged"), merged),
                 (palette.key("tables rebuilt"), len(tables)),
+                (
+                    palette.key("sections omitted"),
+                    (
+                        ", ".join(
+                            section.identifier for section in removed_sections
+                        )
+                        or "none"
+                    ),
+                ),
                 (palette.key("PDF pages"), page_count),
                 (
                     palette.key("installed"),
@@ -8385,6 +8682,11 @@ Common recipes
 
   Rebuild every JSON/TeX table and the PDF:
     steer_performance_campaign.py refresh-pdf
+
+  List stable PDF section IDs or omit selected sections from one build:
+    steer_performance_campaign.py refresh-pdf --list-sections
+    steer_performance_campaign.py refresh-pdf \\
+      --remove-sections worked-zgg shared-current-dag
 
   Deterministic dashboard fixture for layout review:
     steer_performance_campaign.py dashboard-snapshot --width 120 --height 36
@@ -8819,8 +9121,27 @@ def build_parser() -> argparse.ArgumentParser:
         "--quiet",
         action="store_true",
         help=(
-            "Suppress live latexmk stdout/stderr. The final publication "
-            "summary and absolute PDF path are still printed."
+            "Suppress the live artifact-scan progress display and latexmk "
+            "stdout/stderr. The final publication summary and absolute PDF "
+            "path are still printed."
+        ),
+    )
+    sections = refresh.add_mutually_exclusive_group()
+    sections.add_argument(
+        "--list-sections",
+        action="store_true",
+        help=(
+            "List stable section IDs and exit without reading campaign "
+            "artifacts or rebuilding the PDF."
+        ),
+    )
+    sections.add_argument(
+        "--remove-sections",
+        nargs="+",
+        metavar="SECTION_ID",
+        help=(
+            "Omit one or more listed top-level sections from this PDF build. "
+            "Measurements, caches, tables, and the source template are unchanged."
         ),
     )
 
@@ -8936,6 +9257,9 @@ def main(
         _require_launcher_working_directory_identity(
             launcher_path_checked=launcher_path_checked,
         )
+        if arguments.command == "refresh-pdf" and arguments.list_sections:
+            _print_report_sections(palette)
+            return 0
         paths = _campaign_report_paths(root, campaign_docs)
         campaign_lock = _acquire_campaign_directory_lock(paths.docs_dir)
         dashboard_disabled = _configure_dashboard_capability(

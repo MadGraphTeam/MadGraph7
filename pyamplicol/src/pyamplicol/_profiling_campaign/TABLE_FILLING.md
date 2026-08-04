@@ -164,6 +164,21 @@ Rebuild all current JSON/TeX tables and atomically replace the PDF:
 ./steer_performance_campaign.py refresh-pdf
 ```
 
+Interactive refreshes show a coloured progress bar while the controller reads
+and confirms the complete current-record snapshot. To discover stable
+top-level section IDs or build a shorter PDF without changing campaign data:
+
+```console
+./steer_performance_campaign.py refresh-pdf --list-sections
+./steer_performance_campaign.py refresh-pdf \
+  --remove-sections worked-zgg shared-current-dag
+```
+
+The omission applies only to that PDF build. Measurements, JSON caches, table
+TeX, and the canonical source remain present; a later plain refresh restores
+the full report. Use `--quiet` to suppress the scan progress display and live
+LaTeX output.
+
 Human output is coloured by default. Use `--no-color` or `NO_COLOR`; JSON is
 always uncoloured. Consult each subcommand’s `--help` for all selectors,
 aliases, resource controls, profiling parameters, reuse rules, and examples.

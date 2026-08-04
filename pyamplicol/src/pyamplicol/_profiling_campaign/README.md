@@ -76,6 +76,21 @@ Rebuild every table and the PDF from one stable current-result snapshot with:
 ./steer_performance_campaign.py refresh-pdf
 ```
 
+The refresh shows a coloured progress bar while it reads and confirms the
+campaign's current records. List the stable top-level PDF section IDs, or omit
+selected sections from one generated PDF, with:
+
+```console
+./steer_performance_campaign.py refresh-pdf --list-sections
+./steer_performance_campaign.py refresh-pdf \
+  --remove-sections worked-zgg shared-current-dag
+```
+
+Section removal changes only that staged PDF build. It does not remove
+measurements, result JSON, generated table TeX, or source material; the next
+plain `refresh-pdf` restores the complete report. `--quiet` suppresses both the
+scan progress display and live LaTeX output.
+
 Review the deterministic dashboard fixture, or capture the newest running
 campaign's read-only informational lease, with:
 

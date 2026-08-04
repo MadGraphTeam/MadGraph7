@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ast
 import base64
+import io
 import json
 import os
 import shutil
@@ -465,6 +466,8 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
         "every heavy attempt payload is retained",
         "sealed with compact diagnostics",
         "--no-dependencies-added",
+        "--list-sections",
+        "--remove-sections",
         "dependency-only work",
         "AmpliCol, recurrence, then compiled/eager",
         "quoted `*`",
@@ -515,7 +518,23 @@ def test_help_is_exhaustive_and_run_defaults_match_contract() -> None:
     refresh = _parse("refresh-pdf")
     assert refresh.expected_page_count is None
     assert refresh.quiet is False
+    assert refresh.list_sections is False
+    assert refresh.remove_sections is None
     assert _parse("refresh-pdf", "--quiet").quiet is True
+    assert _parse("refresh-pdf", "--list-sections").list_sections is True
+    assert _parse(
+        "refresh-pdf",
+        "--remove-sections",
+        "worked-zgg",
+        "ufo-support",
+    ).remove_sections == ["worked-zgg", "ufo-support"]
+    with pytest.raises(SystemExit):
+        _parse(
+            "refresh-pdf",
+            "--list-sections",
+            "--remove-sections",
+            "scope",
+        )
     assert DEFAULT_MANUAL_EXPECTED_PAGE_COUNT == 59
     underscore = _parse("inspect", "--color_approximation", "lc")
     _selection, cells = selection_from_arguments(underscore)
@@ -542,6 +561,246 @@ def test_colours_are_default_and_only_explicitly_disabled(
     assert not manual_campaign._color_enabled(arguments)
     monkeypatch.delenv("NO_COLOR")
     assert not manual_campaign._color_enabled(arguments, json_output=True)
+
+
+def test_refresh_list_sections_exits_before_campaign_or_source_reads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("section listing touched campaign state")
+
+    monkeypatch.setattr(manual_campaign, "_campaign_report_paths", forbidden)
+    monkeypatch.setattr(manual_campaign, "lightweight_source_identity", forbidden)
+
+    assert (
+        campaign_main(
+            ("refresh-pdf", "--list-sections", "--no-color"),
+            repo_root=tmp_path,
+            docs_dir=tmp_path / "campaign",
+            launcher_path_checked=True,
+        )
+        == 0
+    )
+    output = capsys.readouterr().out
+    for section in manual_campaign.REPORT_SECTIONS:
+        assert section.identifier in output
+        assert section.title in output
+
+
+def test_report_section_filter_changes_only_the_staged_master(tmp_path: Path) -> None:
+    source = PROFILE / "pyAmpliCol.tex"
+    original = source.read_text(encoding="utf-8")
+    staged = tmp_path / "pyAmpliCol.tex"
+    staged.write_text(original, encoding="utf-8")
+    removed = manual_campaign._selected_report_sections(
+        ("scalar-ladders", "worked-zgg", "scalar-ladders")
+    )
+
+    manual_campaign._filter_report_sections(staged, removed)
+
+    filtered = staged.read_text(encoding="utf-8")
+    assert "\\section{Colour-Singlet Model Ladders}" not in filtered
+    assert "\\input{section_zgg_example.tex}" not in filtered
+    assert "\\input{section_three_mode_performance_tables.tex}" in filtered
+    assert "\\input{section_ufo_support.tex}" in filtered
+    assert "\\begin{thebibliography}{9}" in filtered
+    assert source.read_text(encoding="utf-8") == original
+    assert tuple(section.identifier for section in removed) == (
+        "scalar-ladders",
+        "worked-zgg",
+    )
+
+
+def test_independently_removable_sections_leave_no_dangling_references() -> None:
+    assert r"\ref{sec:zgg-example}" not in (
+        PROFILE / "section_zgg_dag.tex"
+    ).read_text(encoding="utf-8")
+    for source in (
+        PROFILE / "section_zgg_example.tex",
+        PROFILE / "section_eager_execution.tex",
+    ):
+        assert r"\ref{sec:lc-flow-layouts}" not in source.read_text(
+            encoding="utf-8"
+        )
+
+
+def test_unknown_report_section_fails_before_pdf_work() -> None:
+    with pytest.raises(ManualCampaignError, match="--list-sections"):
+        manual_campaign._selected_report_sections(("not-a-section",))
+
+
+def test_lightweight_snapshot_reports_four_throttled_scan_stages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cells = (object(), object())
+
+    class Catalog:
+        @staticmethod
+        def measurement_cells() -> tuple[object, ...]:
+            return cells
+
+    class Service:
+        catalog = Catalog()
+
+    class Sink:
+        def __init__(self) -> None:
+            self.events: list[tuple[object, ...]] = []
+
+        def begin(
+            self,
+            *,
+            total: int,
+            attempt: int,
+            maximum_attempts: int,
+        ) -> None:
+            self.events.append(("begin", total, attempt, maximum_attempts))
+
+        def update(self, completed: int, total: int, message: str) -> None:
+            self.events.append(("update", completed, total, message))
+
+        def end(
+            self,
+            *,
+            success: bool,
+            message: str,
+            elapsed_seconds: float,
+        ) -> None:
+            self.events.append(("end", success, message, elapsed_seconds))
+
+        def close(self) -> None:
+            self.events.append(("close",))
+
+    def scan(
+        *_args: object,
+        progress=None,
+        **_kwargs: object,
+    ) -> dict[str, object]:
+        if progress is not None:
+            for completed in range(1, len(cells) + 1):
+                progress(completed, len(cells))
+        return {}
+
+    monkeypatch.setattr(manual_campaign, "lightweight_currents", scan)
+    monkeypatch.setattr(
+        manual_campaign,
+        "lightweight_presentation_outcomes",
+        scan,
+    )
+    sink = Sink()
+
+    assert manual_campaign._capture_lightweight_snapshot(
+        Service(),  # type: ignore[arg-type]
+        source_revision="a" * 40,
+        progress=sink,  # type: ignore[arg-type]
+    ) == ({}, {}, ())
+
+    starts = [event for event in sink.events if event[0] == "begin"]
+    updates = [event for event in sink.events if event[0] == "update"]
+    ends = [event for event in sink.events if event[0] == "end"]
+    assert len(starts) == 1
+    assert starts[0][1:] == (4 * len(cells), 1, 3)
+    assert {event[3] for event in updates} == {
+        "Reading current records",
+        "Reading terminal outcomes",
+        "Confirming current records",
+        "Confirming terminal outcomes",
+    }
+    assert max(int(event[1]) for event in updates) == 4 * len(cells)
+    assert len(ends) == 1
+    assert ends[0][1] is True
+    assert ends[0][2] == "stable snapshot captured"
+
+
+def test_refresh_scan_progress_is_coloured_and_closes_its_line() -> None:
+    stream = io.StringIO()
+    progress = manual_campaign._RefreshScanProgress(
+        stream,
+        manual_campaign.Palette(True),
+    )
+
+    progress.begin(total=8, attempt=1, maximum_attempts=3)
+    progress.update(4, 8, "Confirming current records")
+    progress.end(success=True, message="stable snapshot captured", elapsed_seconds=1.2)
+
+    output = stream.getvalue()
+    assert "\x1b[" in output
+    assert "Scanning campaign artifacts" in output
+    assert "██████████████" in output
+    assert "4/8 Confirming current records" in output
+    assert output.endswith("\n")
+
+
+def test_final_unstable_snapshot_reports_failure_instead_of_rescan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cells = (object(),)
+
+    class Catalog:
+        @staticmethod
+        def measurement_cells() -> tuple[object, ...]:
+            return cells
+
+    class Service:
+        catalog = Catalog()
+
+    class Current:
+        reusable = True
+
+        def __init__(self, attempt_id: str) -> None:
+            self.attempt_id = attempt_id
+
+    class Sink:
+        def __init__(self) -> None:
+            self.ends: list[tuple[bool, str]] = []
+
+        def begin(self, **_kwargs: object) -> None:
+            pass
+
+        def update(self, *_args: object) -> None:
+            pass
+
+        def end(
+            self,
+            *,
+            success: bool,
+            message: str,
+            elapsed_seconds: float,
+        ) -> None:
+            assert elapsed_seconds >= 0.0
+            self.ends.append((success, message))
+
+        def close(self) -> None:
+            pass
+
+    current_call = 0
+
+    def changing_currents(*_args: object, **_kwargs: object) -> dict[str, Current]:
+        nonlocal current_call
+        current_call += 1
+        return {"cell": Current(f"attempt-{current_call}")}
+
+    monkeypatch.setattr(manual_campaign, "lightweight_currents", changing_currents)
+    monkeypatch.setattr(
+        manual_campaign,
+        "lightweight_presentation_outcomes",
+        lambda *_args, **_kwargs: {},
+    )
+    sink = Sink()
+
+    with pytest.raises(ManualCampaignError, match="changed during three"):
+        manual_campaign._capture_lightweight_snapshot(
+            Service(),  # type: ignore[arg-type]
+            source_revision="a" * 40,
+            progress=sink,  # type: ignore[arg-type]
+        )
+
+    assert sink.ends == [
+        (True, "campaign state changed; rescanning"),
+        (True, "campaign state changed; rescanning"),
+        (False, "campaign state remained unstable after three scans"),
+    ]
 
 
 def test_reproduction_recipe_uses_public_generate_and_profile() -> None:
