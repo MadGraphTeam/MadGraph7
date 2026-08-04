@@ -62,8 +62,10 @@ python -m pip install .
 This runs the same in-tree PEP 517/Maturin backend used for release artifacts
 and resolves exact published packages/crates plus SymJIT 2.22.0 from its
 official repository at the immutable revision recorded in the release lock. It
-requires Python 3.11+, Rust 1.89+ and a C/C++ toolchain. The build checks that
-release dependency contract and does not substitute contributor inputs.
+requires Python 3.11+, Rust 1.89+ and a C/C++ toolchain. Rust 1.89.0 is the
+minimum supported version; contributor builds, CI, and release wheels use the
+repository-pinned Rust 1.97.1 toolchain. The build checks that release
+dependency contract and does not substitute contributor inputs.
 
 An unpacked release source distribution supports the same command:
 
@@ -127,7 +129,7 @@ just dev-install
 PYTHON=.venv/bin/python just dev-test
 ```
 
-The flake provides Python 3.11, Rust 1.89, C/C++ and Fortran compilers, native
+The flake provides Python 3.11, Rust 1.97.1, C/C++ and Fortran compilers, native
 build libraries, PDF inspection utilities, and the TeX tools used to render a
 fresh installed profiling campaign. It intentionally omits pyAmpliCol's Python
 runtime, test, and pinned candidate packages: `just dev-install` installs

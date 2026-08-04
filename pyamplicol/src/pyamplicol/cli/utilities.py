@@ -108,8 +108,18 @@ def _utility_parser() -> argparse.ArgumentParser:
     copy = example_commands.add_parser("copy")
     copy.add_argument("destination", type=Path)
     copy.add_argument("--force", action="store_true")
-    run = example_commands.add_parser("run")
-    run.add_argument("name")
+    runnable_names = _runnable_example_names()
+    run = example_commands.add_parser(
+        "run",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="available names:\n  " + "\n  ".join(runnable_names),
+    )
+    run.add_argument(
+        "name",
+        choices=runnable_names,
+        metavar="NAME",
+        help="packaged example to run",
+    )
     run.add_argument("--set", dest="overrides", action="append", default=[])
     run.add_argument("--format", choices=("human", "json"), default="human")
 
@@ -208,6 +218,14 @@ def examples_root() -> Path:
     if (path / "all_options.toml").is_file():
         return path.resolve()
     return _source_examples_root()
+
+
+def _runnable_example_names() -> tuple[str, ...]:
+    return tuple(
+        card.stem
+        for card in sorted(examples_root().glob("*.toml"))
+        if card.name != "all_options.toml"
+    )
 
 
 def _profiling_campaign_inventory(source: Path) -> tuple[Path, ...]:

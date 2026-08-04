@@ -9,8 +9,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
 JUSTFILE = ROOT / "justfile"
-RUST_TOOLCHAIN = "1.89.0"
-RUST_TOOLCHAIN_ACTION_SHA = "c1709d61444fb708e6ed87924f95626398d8d115"
+RUST_TOOLCHAIN = "1.97.1"
+RUST_TOOLCHAIN_ACTION_SHA = "46511b1c83438f0dd37c02d843619ece5a4abb5b"
 RUSTUP_INIT_URL = (
     "https://static.rust-lang.org/rustup/archive/1.28.2/"
     "x86_64-unknown-linux-gnu/rustup-init"
@@ -51,10 +51,20 @@ def test_native_toolchains_and_manylinux_image_are_immutable() -> None:
         (WORKFLOWS / name).read_text(encoding="utf-8")
         for name in ("candidate.yml", "release-artifacts.yml")
     )
-    assert "rust-toolchain@stable" not in workflows
+    rust_workflows = "\n".join(
+        (WORKFLOWS / name).read_text(encoding="utf-8")
+        for name in (
+            "candidate.yml",
+            "eager-portability.yml",
+            "release-artifacts.yml",
+            "release-prepared-models.yml",
+            "tests.yml",
+        )
+    )
+    assert "rust-toolchain@stable" not in rust_workflows
     assert "default-toolchain stable" not in workflows
     assert "manylinux_2_28_x86_64:latest" not in workflows
-    assert workflows.count(f"rust-toolchain@{RUST_TOOLCHAIN_ACTION_SHA}") == 3
+    assert rust_workflows.count(f"rust-toolchain@{RUST_TOOLCHAIN_ACTION_SHA}") == 7
     assert workflows.count(f"default-toolchain {RUST_TOOLCHAIN}") == 2
     assert workflows.count(f"export RUSTUP_TOOLCHAIN={RUST_TOOLCHAIN}") == 2
     assert workflows.count(MANYLINUX_IMAGE) == 2

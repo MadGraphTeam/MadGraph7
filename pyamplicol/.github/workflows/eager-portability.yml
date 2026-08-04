@@ -105,7 +105,7 @@ jobs:
             pyproject.toml
             dependencies/contributor-lock.toml
             dependencies/python-runtime-lock.toml
-      - uses: dtolnay/rust-toolchain@c1709d61444fb708e6ed87924f95626398d8d115 # 1.89.0
+      - uses: dtolnay/rust-toolchain@46511b1c83438f0dd37c02d843619ece5a4abb5b # 1.97.1
       - name: Build the pinned non-publishable contributor environment
         run: >-
           python tools/ci/memory_watchdog.py --limit-gib 30 --
@@ -167,7 +167,7 @@ jobs:
             pyproject.toml
             dependencies/contributor-lock.toml
             dependencies/python-runtime-lock.toml
-      - uses: dtolnay/rust-toolchain@c1709d61444fb708e6ed87924f95626398d8d115 # 1.89.0
+      - uses: dtolnay/rust-toolchain@46511b1c83438f0dd37c02d843619ece5a4abb5b # 1.97.1
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           name: pyamplicol-eager-jit-transfer-${{ matrix.pack_architecture }}

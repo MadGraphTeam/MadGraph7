@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from pyamplicol.cli import UtilityInvocation, parse_cli, run_cli
-from pyamplicol.cli.utilities import profiling_campaign_root
+from pyamplicol.cli.utilities import list_examples, profiling_campaign_root
 
 
 def test_examples_list_is_checkout_independent_and_descriptive() -> None:
@@ -22,6 +22,22 @@ def test_examples_list_is_checkout_independent_and_descriptive() -> None:
     entries = json.loads(stdout.getvalue())
     assert any(entry["name"] == "builtin_sm_lc" for entry in entries)
     assert all("SPDX" not in entry["description"] for entry in entries)
+
+
+def test_examples_run_help_lists_every_runnable_card(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        parse_cli(("examples", "run", "--help"))
+
+    assert exc_info.value.code == 0
+    help_text = capsys.readouterr().out
+    runnable_names = {
+        entry.name for entry in list_examples() if entry.action != "reference"
+    }
+    assert runnable_names
+    assert all(f"  {name}\n" in help_text for name in runnable_names)
+    assert "all_options" not in help_text
 
 
 def test_examples_copy_requires_force_for_nonempty_destination(

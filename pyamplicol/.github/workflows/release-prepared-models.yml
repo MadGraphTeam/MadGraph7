@@ -40,7 +40,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - uses: dtolnay/rust-toolchain@c1709d61444fb708e6ed87924f95626398d8d115 # 1.89.0
+      - uses: dtolnay/rust-toolchain@46511b1c83438f0dd37c02d843619ece5a4abb5b # 1.97.1
       - name: Verify exact release dependency inputs
         run: python tools/release/check_dependencies.py
       - name: Install pinned build tools

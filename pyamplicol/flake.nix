@@ -124,7 +124,7 @@
             );
 
             shellHook = ''
-              echo "pyAmpliCol developer shell (Python 3.11, Rust 1.89, native SDK, TeX)"
+              echo "pyAmpliCol developer shell (Python 3.11, Rust 1.97.1, native SDK, TeX)"
               echo "Run 'just dev-install' to create the pinned contributor environment."
             '';
           };

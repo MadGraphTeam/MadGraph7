@@ -103,7 +103,7 @@ jobs:
             pyproject.toml
             dependencies/contributor-lock.toml
             dependencies/python-runtime-lock.toml
-      - uses: dtolnay/rust-toolchain@c1709d61444fb708e6ed87924f95626398d8d115 # 1.89.0
+      - uses: dtolnay/rust-toolchain@46511b1c83438f0dd37c02d843619ece5a4abb5b # 1.97.1
       - name: Cache Cargo downloads
         uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
@@ -111,9 +111,9 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: ${{ runner.os }}-cargo-1.89.0-${{ hashFiles('Cargo.lock', 'dependencies/candidate-Cargo.lock', 'dependencies/contributor-lock.toml') }}
+          key: ${{ runner.os }}-cargo-1.97.1-${{ hashFiles('Cargo.lock', 'dependencies/candidate-Cargo.lock', 'dependencies/contributor-lock.toml') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-1.89.0-
+            ${{ runner.os }}-cargo-1.97.1-
       - name: Install C++17 and Fortran 2008 toolchains
         run: |
           sudo apt-get update
