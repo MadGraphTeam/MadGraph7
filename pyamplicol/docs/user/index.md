@@ -22,7 +22,7 @@ Start with:
 6. [Symbolica Licensing](symbolica.md) for restricted generation and the
    Symbolica-independent direct-JIT f64 runtime path.
 7. [Release Status](release-status.md) for the tagged and validated `0.1.0`
-   artifacts and the pending upload step.
+   artifacts, TestPyPI availability, and the pending PyPI upload.
 
 Every packaged card and source example is indexed in
 [examples/README.md](../../examples/README.md). `pyamplicol examples copy`

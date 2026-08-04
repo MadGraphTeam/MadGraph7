@@ -339,8 +339,9 @@ def test_typed_external_model_example_selects_process_local_compiled_jit() -> No
 def test_readme_states_current_release_boundary_and_public_surfaces() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     status = (ROOT / "docs/user/release-status.md").read_text(encoding="utf-8")
-    assert "Version `0.1.0` has been tagged" in readme
-    assert "has not yet been uploaded to PyPI or TestPyPI" in readme
+    assert "Version `0.1.0` is available for testing" in readme
+    assert "has not yet been uploaded to PyPI" in readme
+    assert "Generator(GenerationConfig(workers=4))" in readme
     assert "p p > Z j j" in readme
     assert "Runtime.load" in readme
     assert "pyamplicol examples copy" in readme

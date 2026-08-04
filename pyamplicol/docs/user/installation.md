@@ -18,10 +18,9 @@ Fortran, or Rust compiler is needed only when compiling that language's native
 consumer against the included Rusticol SDK. pyAmpliCol has no LHAPDF
 dependency.
 
-The immutable `v0.1.0` source tag exists, but `pyamplicol==0.1.0` has not yet
-been uploaded to PyPI or TestPyPI. See
-[Release Status](release-status.md) before treating a locally built artifact
-as a release.
+The immutable `v0.1.0` source tag exists and `pyamplicol==0.1.0` is available
+for testing from TestPyPI, but it has not yet been uploaded to PyPI. See
+[Release Status](release-status.md) for the current publication boundary.
 
 An installed wheel can also populate a self-contained profiling campaign:
 

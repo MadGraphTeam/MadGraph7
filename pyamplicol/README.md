@@ -11,8 +11,9 @@ Python, C11, C++17, Fortran 2008, and Rust 2021 interfaces.
 
 ## Release status
 
-Version `0.1.0` has been tagged as an immutable archival source snapshot but
-has not yet been uploaded to PyPI or TestPyPI. The
+Version `0.1.0` is available for testing from
+[TestPyPI](https://test.pypi.org/project/pyamplicol/0.1.0/) and is tagged as an
+immutable archival source snapshot. It has not yet been uploaded to PyPI. The
 [validated release-artifacts workflow](https://github.com/mg5amcnlo/pyamplicol/actions/workflows/release-artifacts.yml)
 produces one source distribution and three `cp311-abi3` wheels; publication
 uses a successful run whose head SHA is the intended release source:
@@ -28,7 +29,7 @@ workflow did not run the separate performance campaigns.
 
 See the
 [release status](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/release-status.md)
-for the remaining upload step.
+for the remaining PyPI upload step.
 
 ## Installation
 
@@ -109,6 +110,21 @@ pyamplicol generate "d d~ > z g" ./artifacts/builtin_ddbar_to_zg \
 pyamplicol inspect ./artifacts/builtin_ddbar_to_zg
 ```
 
+Process generation can also be steered directly from Python:
+
+```python
+from pyamplicol import GenerationConfig, Generator
+
+generator = Generator(GenerationConfig(workers=4))
+plan = generator.plan("d d~ > z g")  # Resolve without writing an artifact.
+result = generator.generate(
+    "d d~ > z g",
+    "artifacts/builtin_ddbar_to_zg",
+    mode="replace",
+)
+print(result.output)
+```
+
 The same runtime is available from Python:
 
 ```python
@@ -167,8 +183,7 @@ cd ./pyamplicol-profiling-campaign
 ./steer_performance_campaign.py run \
   --workers 1 --table matrix --process-id 1 --multiplicity 1 \
   --color-approximation lc --generation-mode non-union-flow \
-  --generation-engine recurrence --model built_in \
-  --no-dependencies-added --no-dashboard
+  --generation-engine recurrence --model built_in
 ```
 
 That deliberately small real campaign measures only the final-state-
