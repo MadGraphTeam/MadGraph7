@@ -60,6 +60,8 @@ def test_generation_mode_is_labelled_as_existing_output_policy() -> None:
     assert rendered is not None
     assert "existing-output policy" in rendered
     assert "error" in rendered
+    assert "\x1b[36mexisting-output policy" in rendered
+    assert "\x1b[33merror" in rendered
     assert "\x1b[31merror" not in rendered
 
 
@@ -881,4 +883,9 @@ def test_artifact_inspection_color_is_optional() -> None:
     rendered = render_summary(_artifact_inspection(), color=True)
 
     assert rendered is not None
-    assert "\x1b[" in rendered
+    assert "\x1b[36mddbar_zg" in rendered
+    assert "\x1b[32md d~ > z g" in rendered
+    assert "\x1b[35mmode / backend" in rendered
+    assert "\x1b[36mcompiled" in rendered
+    assert "\x1b[36msymbolica" in rendered
+    assert "\x1b[33mSymbolica Software License Agreement" in rendered

@@ -584,7 +584,7 @@ def test_all_twelve_matrices_render_in_catalog_order(reset_caches) -> None:
     assert r"\multicolumn{8}{c}{\textbf{n=2}}" in lc_tex
     assert r"\multicolumn{3}{c}{\textbf{n=1}}" in contracted_tex
     assert r"\multicolumn{3}{c}{\textbf{n=2}}" in contracted_tex
-    assert r"\makebox[\linewidth][c]{%" in lc_tex
+    assert r"\matrixfitwidth{%" in lc_tex
     assert r"\rowcolor{refblue}" in lc_tex
     assert lc_tex.count(r"\multicolumn{8}{c}") >= 4
     tabular_spec = next(
@@ -2723,6 +2723,12 @@ def test_matrix_tables_are_fixed_nonsplittable_blocks(reset_caches) -> None:
         )
         assert tex.count(r"\clearpage") == tex.count(r"\begin{minipage}{\linewidth}")
         assert r"\begin{tabular}" in tex
+        assert r"\ifdim\wd0>\linewidth" in tex
+        assert r"\resizebox{\linewidth}{!}{\usebox0}" in tex
+        assert tex.count(r"\matrixfitwidth{%") == tex.count(
+            r"\begin{minipage}{\linewidth}"
+        )
+        assert r"\makebox[\linewidth][c]{%" not in tex
         assert r"\fontsize{6.5pt}{7.5pt}\selectfont" in tex
         assert r"\begingroup\matrixsummaryfont" in tex
         assert r"\hspace{0.014in}" in tex

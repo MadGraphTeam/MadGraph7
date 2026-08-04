@@ -1520,6 +1520,12 @@ def _matrix_macros() -> list[str]:
         r"\providecommand{\matrixentryfont}{\fontsize{6.8pt}{7.8pt}\selectfont}",
         r"\providecommand{\matrixentryfontlc}{\fontsize{6.5pt}{7.5pt}\selectfont}",
         r"\providecommand{\matrixsummaryfont}{\fontsize{6.2pt}{7.4pt}\selectfont}",
+        (
+            r"\providecommand{\matrixfitwidth}[1]{\begingroup"
+            r"\sbox0{#1}\ifdim\wd0>\linewidth"
+            r"\resizebox{\linewidth}{!}{\usebox0}"
+            r"\else\makebox[\linewidth][c]{\usebox0}\fi\endgroup}"
+        ),
         r"\providecommand{\matrixpunct}[1]{\textcolor{black}{\texttt{#1}}}",
         (
             r"\providecommand{\matrixratio}[2]{\matrixpunct{(}"
@@ -2055,7 +2061,7 @@ def _matrix_block(
         r"\footnotesize",
         r"\setlength{\tabcolsep}{2.1pt}",
         r"\renewcommand{\arraystretch}{1.04}",
-        r"\makebox[\linewidth][c]{%",
+        r"\matrixfitwidth{%",
         rf"\begin{{tabular}}{{{column_spec}}}",
         r"\toprule",
         (
@@ -2921,7 +2927,7 @@ def _best_mode_block(
         r"\footnotesize",
         r"\setlength{\tabcolsep}{2.1pt}",
         r"\renewcommand{\arraystretch}{1.00}",
-        r"\makebox[\linewidth][c]{%",
+        r"\matrixfitwidth{%",
         rf"\begin{{tabular}}{{{column_spec}}}",
         r"\toprule",
         (

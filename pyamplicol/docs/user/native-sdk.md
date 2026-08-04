@@ -117,6 +117,31 @@ booleans, non-finite values, and wrong ranks or particle counts are rejected.
 When the option is omitted, the bundled representative validation point is
 reordered into the requested public process order.
 
+For example, `my_sample_point.json` for `d d~ > g z g` may contain the five
+four-momenta below, each ordered as `[E, px, py, pz]` and each leg ordered
+exactly as it appears in that process expression:
+
+```json
+[
+  ["250.0", "0", "0", "250.0"],
+  ["250.0", "0", "0", "-250.0"],
+  ["204.406", "204.406", "0", "0"],
+  ["91.188", "0", "0", "0"],
+  ["204.406", "-204.406", "0", "0"]
+]
+```
+
+JSON numbers are also accepted. Decimal strings are useful with the Python
+driver because a non-binary64 `--precision` keeps them as `Decimal` values all
+the way into exact evaluation, without an intermediate f64 conversion:
+
+```console
+python artifacts/pp_zjj/API/python/check_standalone.py \
+  --process 'd d~ > g z g' \
+  --kinematics my_sample_point.json \
+  --precision 80
+```
+
 `--model-parameters PATH` reads the canonical UFO-style card: one flat JSON
 object mapping mutable external parameter names to finite numbers or
 `[real, imaginary]` pairs. It is the same shape emitted by

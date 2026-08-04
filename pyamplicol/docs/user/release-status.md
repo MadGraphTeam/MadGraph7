@@ -2,9 +2,9 @@
 
 # Release Status
 
-Version `0.1.0` is tagged as an immutable archival source snapshot at commit
-`863a228915ebe236551b31849a1bad3dc2cb12d9`. It has not yet been uploaded to
-PyPI or TestPyPI.
+Version `0.1.0` is tagged as the immutable
+[`v0.1.0` source snapshot](https://github.com/mg5amcnlo/pyamplicol/tree/v0.1.0).
+It has not yet been uploaded to PyPI or TestPyPI.
 
 The [validated release-artifacts
 workflow](https://github.com/mg5amcnlo/pyamplicol/actions/workflows/release-artifacts.yml)

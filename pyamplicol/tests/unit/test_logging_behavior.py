@@ -62,3 +62,22 @@ def test_cli_logging_restores_embedding_application_state() -> None:
         logger.removeHandler(external_handler)
         logger.setLevel(original_level)
         logger.propagate = original_propagate
+
+
+def test_cli_logging_colors_terminal_warnings_without_coloring_plain_output() -> None:
+    colored = io.StringIO()
+    plain = io.StringIO()
+    reset_cli_logging()
+    try:
+        configure_cli_logging("warning", stream=colored, color=True)
+        get_logger("generation").warning("skipped unsupported process")
+        configure_cli_logging("warning", stream=plain, color=False)
+        get_logger("generation").warning("skipped unsupported process")
+    finally:
+        reset_cli_logging()
+
+    assert colored.getvalue().startswith("\x1b[33mWARNING pyamplicol.generation")
+    assert colored.getvalue().endswith("\x1b[0m\n")
+    assert plain.getvalue() == (
+        "WARNING pyamplicol.generation: skipped unsupported process\n"
+    )

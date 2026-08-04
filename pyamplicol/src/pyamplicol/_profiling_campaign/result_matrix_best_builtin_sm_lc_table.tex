@@ -3,6 +3,7 @@
 \providecommand{\matrixentryfont}{\fontsize{6.8pt}{7.8pt}\selectfont}
 \providecommand{\matrixentryfontlc}{\fontsize{6.5pt}{7.5pt}\selectfont}
 \providecommand{\matrixsummaryfont}{\fontsize{6.2pt}{7.4pt}\selectfont}
+\providecommand{\matrixfitwidth}[1]{\begingroup\sbox0{#1}\ifdim\wd0>\linewidth\resizebox{\linewidth}{!}{\usebox0}\else\makebox[\linewidth][c]{\usebox0}\fi\endgroup}
 \providecommand{\matrixpunct}[1]{\textcolor{black}{\texttt{#1}}}
 \providecommand{\matrixratio}[2]{\matrixpunct{(}\textcolor{#1}{\texttt{x#2}}\matrixpunct{)}}
 \providecommand{\matrixna}[1]{\textcolor{#1}{\texttt{N/A}}}
@@ -46,7 +47,7 @@
 \footnotesize
 \setlength{\tabcolsep}{2.1pt}
 \renewcommand{\arraystretch}{1.00}
-\makebox[\linewidth][c]{%
+\matrixfitwidth{%
 \begin{tabular}{@{}rL{1.45in}l>{\matrixentryfontlc}l>{\matrixentryfontlc}c>{\matrixentryfontlc}l>{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l>{\matrixentryfontlc}c>{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l>{\matrixentryfontlc}l>{\matrixentryfontlc}c>{\matrixentryfontlc}l>{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l>{\matrixentryfontlc}c>{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l>{\matrixentryfontlc}l>{\matrixentryfontlc}c>{\matrixentryfontlc}l>{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l>{\matrixentryfontlc}c>{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l@{}}
 \toprule
 \textbf{ID} & \textbf{base process} & \textbf{metric} & \multicolumn{8}{c}{\textbf{n=1}} & \multicolumn{8}{c}{\textbf{n=2}} & \multicolumn{8}{c}{\textbf{n=3}} \\
@@ -130,7 +131,7 @@
 \footnotesize
 \setlength{\tabcolsep}{2.1pt}
 \renewcommand{\arraystretch}{1.00}
-\makebox[\linewidth][c]{%
+\matrixfitwidth{%
 \begin{tabular}{@{}rL{1.45in}l>{\matrixentryfontlc}l>{\matrixentryfontlc}c>{\matrixentryfontlc}l>{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l>{\matrixentryfontlc}c>{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l>{\matrixentryfontlc}l>{\matrixentryfontlc}c>{\matrixentryfontlc}l>{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l>{\matrixentryfontlc}c>{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l>{\matrixentryfontlc}l>{\matrixentryfontlc}c>{\matrixentryfontlc}l>{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l>{\matrixentryfontlc}c>{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l@{}}
 \toprule
 \textbf{ID} & \textbf{base process} & \textbf{metric} & \multicolumn{8}{c}{\textbf{n=4}} & \multicolumn{8}{c}{\textbf{n=5}} & \multicolumn{8}{c}{\textbf{n=6}} \\
@@ -214,7 +215,7 @@
 \footnotesize
 \setlength{\tabcolsep}{2.1pt}
 \renewcommand{\arraystretch}{1.00}
-\makebox[\linewidth][c]{%
+\matrixfitwidth{%
 \begin{tabular}{@{}rL{1.45in}l>{\matrixentryfontlc}l>{\matrixentryfontlc}c>{\matrixentryfontlc}l>{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l>{\matrixentryfontlc}c>{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l>{\matrixentryfontlc}l>{\matrixentryfontlc}c>{\matrixentryfontlc}l>{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l>{\matrixentryfontlc}c>{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l>{\matrixentryfontlc}l>{\matrixentryfontlc}c>{\matrixentryfontlc}l>{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l>{\matrixentryfontlc}c>{\matrixentryfontlc}r@{}>{\matrixentryfontlc}l@{}}
 \toprule
 \textbf{ID} & \textbf{base process} & \textbf{metric} & \multicolumn{8}{c}{\textbf{n=7}} & \multicolumn{8}{c}{\textbf{n=8}} & \multicolumn{8}{c}{\textbf{n=9}} \\

@@ -5,11 +5,33 @@ import logging
 import sys
 from typing import TextIO
 
+import colorama
+
 LOGGER_NAME = "pyamplicol"
 DEFAULT_LOG_FORMAT = "%(levelname)s %(name)s: %(message)s"
 _HANDLER_MARKER = "_pyamplicol_cli_handler"
 _NULL_MARKER = "_pyamplicol_null_handler"
 _PREVIOUS_STATE_MARKER = "_pyamplicol_cli_previous_state"
+
+
+class _CliFormatter(logging.Formatter):
+    """Color terminal diagnostics while leaving ordinary informational logs alone."""
+
+    def __init__(self, fmt: str, *, color: bool) -> None:
+        super().__init__(fmt)
+        self._color = color
+
+    def format(self, record: logging.LogRecord) -> str:
+        rendered = super().format(record)
+        if not self._color:
+            return rendered
+        if record.levelno >= logging.ERROR:
+            foreground = colorama.Fore.RED
+        elif record.levelno >= logging.WARNING:
+            foreground = colorama.Fore.YELLOW
+        else:
+            return rendered
+        return f"{foreground}{rendered}{colorama.Style.RESET_ALL}"
 
 
 def get_logger(name: str | None = None) -> logging.Logger:
@@ -49,6 +71,7 @@ def configure_cli_logging(
     *,
     stream: TextIO | None = None,
     fmt: str = DEFAULT_LOG_FORMAT,
+    color: bool = False,
 ) -> logging.Logger:
     """Install one package-local CLI handler, leaving the root logger untouched."""
 
@@ -74,7 +97,7 @@ def configure_cli_logging(
     elif stream is not None and isinstance(handler, logging.StreamHandler):
         handler.setStream(stream)
     handler.setLevel(selected_level)
-    handler.setFormatter(logging.Formatter(fmt))
+    handler.setFormatter(_CliFormatter(fmt, color=color))
     logger.setLevel(selected_level)
     logger.propagate = False
     return logger

@@ -163,7 +163,15 @@ def _colored(text: str, *, key: str, enabled: bool) -> str:
         colorama: Any = importlib.import_module("colorama")
     except ImportError:
         return text
-    if normalized in {"yes", "ok", "passed", "complete", "completed", "valid"}:
+    if normalized in {
+        "yes",
+        "ok",
+        "passed",
+        "complete",
+        "completed",
+        "valid",
+        "verified",
+    }:
         color = colorama.Fore.GREEN
     elif normalized in {"no", "failed", "error", "invalid"}:
         color = colorama.Fore.RED
@@ -1301,6 +1309,7 @@ def _generation_summary(
     result: object,
     *,
     prettytable: Any,
+    color: bool,
 ) -> str:
     from pyamplicol.api.results import GenerationResult
 
@@ -1350,8 +1359,20 @@ def _generation_summary(
     table.max_width["field"] = 30
     table.max_width["value"] = 88
     table.hrules = prettytable.HRuleStyle.FRAME
-    for row in rows:
-        table.add_row(row)
+    value_colors = {
+        "output": "GREEN",
+        "processes": "CYAN",
+        "existing-output policy": "YELLOW",
+        "schema version": "MAGENTA",
+        "files": "GREEN",
+    }
+    for field, value in rows:
+        table.add_row(
+            (
+                _paint(field, "CYAN", enabled=color),
+                _paint(value, value_colors[field], enabled=color),
+            )
+        )
     return cast(str, table.get_string())
 
 
@@ -1429,7 +1450,12 @@ def _artifact_inspection_summary(
     )
     for key, value in summary_rows:
         text = _value_text(value)
-        summary.add_row((key, _colored(text, key=key, enabled=color)))
+        summary.add_row(
+            (
+                _paint(key, "CYAN", enabled=color),
+                _colored(text, key=key, enabled=color),
+            )
+        )
 
     process_table = prettytable.PrettyTable(
         (
@@ -1465,17 +1491,29 @@ def _artifact_inspection_summary(
         process_table.add_row(
             (
                 _paint(marker, "GREEN", enabled=color),
-                process["id"],
-                process["expression"],
+                _paint(str(process["id"]), "CYAN", enabled=color),
+                _paint(str(process["expression"]), "GREEN", enabled=color),
                 _paint(
                     accuracy,
                     accuracy_colors.get(accuracy, "WHITE"),
                     enabled=color,
                 ),
-                _component_count(process, "helicities"),
-                _component_count(process, "color_components"),
+                _paint(
+                    _component_count(process, "helicities"),
+                    "MAGENTA",
+                    enabled=color,
+                ),
+                _paint(
+                    _component_count(process, "color_components"),
+                    "MAGENTA",
+                    enabled=color,
+                ),
                 coverage_text,
-                len(cast(list[object], process["aliases"])),
+                _paint(
+                    str(len(cast(list[object], process["aliases"]))),
+                    "MAGENTA",
+                    enabled=color,
+                ),
             )
         )
 
@@ -1492,18 +1530,29 @@ def _artifact_inspection_summary(
     execution_table.max_width["execution field"] = 26
     execution_table.max_width["value"] = 72
     execution_table.hrules = prettytable.HRuleStyle.FRAME
+
+    def add_execution_row(row: tuple[object, object, object]) -> None:
+        process_id, field, value = row
+        execution_table.add_row(
+            (
+                _paint(str(process_id), "CYAN", enabled=color),
+                _paint(str(field), "MAGENTA", enabled=color),
+                _paint(_value_text(value), "CYAN", enabled=color),
+            )
+        )
+
     for process in processes:
         process_id = str(process["id"])
         mode = str(process.get("execution_mode", "compiled"))
         backend = process.get("prepared_backend")
         mode_text = mode if backend is None else f"{mode} ({backend})"
-        execution_table.add_row((process_id, "mode / backend", mode_text))
+        add_execution_row((process_id, "mode / backend", mode_text))
         lc_flow_layout = process.get("lc_flow_layout")
         if lc_flow_layout is not None:
-            execution_table.add_row((process_id, "LC flow layout", str(lc_flow_layout)))
+            add_execution_row((process_id, "LC flow layout", str(lc_flow_layout)))
         union_sector_count = process.get("lc_union_sector_count")
         if union_sector_count is not None:
-            execution_table.add_row(
+            add_execution_row(
                 (
                     process_id,
                     "LC union sectors",
@@ -1511,7 +1560,7 @@ def _artifact_inspection_summary(
                 )
             )
         phases = cast(Sequence[object], process.get("native_profile_phases", ()))
-        execution_table.add_row(
+        add_execution_row(
             (
                 process_id,
                 "native profile phases",
@@ -1520,7 +1569,7 @@ def _artifact_inspection_summary(
         )
         selector_provenance = process.get("selector_provenance")
         if selector_provenance is not None:
-            execution_table.add_row(
+            add_execution_row(
                 (
                     process_id,
                     "runtime selectors",
@@ -1534,7 +1583,7 @@ def _artifact_inspection_summary(
             specialized_axes = cast(
                 Sequence[object], process.get("generation_specialized_axes", ())
             )
-            execution_table.add_row(
+            add_execution_row(
                 (
                     process_id,
                     "generation specialization",
@@ -1558,18 +1607,18 @@ def _artifact_inspection_summary(
                 selection_parts.append(
                     "color sectors " + ", ".join(str(value) for value in color_sectors)
                 )
-            execution_table.add_row(
+            add_execution_row(
                 (
                     process_id,
                     "generation selection",
                     "; ".join(selection_parts) or "none",
                 )
             )
-            execution_table.add_row(
+            add_execution_row(
                 (process_id, "selector provenance", selector_provenance)
             )
         if process.get("lc_physical_sector_count") is not None:
-            execution_table.add_row(
+            add_execution_row(
                 (
                     process_id,
                     "LC replay sectors",
@@ -1605,9 +1654,9 @@ def _artifact_inspection_summary(
                     f"; materialized {materialized_currents} currents / "
                     f"{process.get('helicity_materialized_amplitude_count')} roots"
                 )
-            execution_table.add_row((process_id, "helicity recurrence", recurrence))
+            add_execution_row((process_id, "helicity recurrence", recurrence))
         if mode == "recurrence":
-            execution_table.add_row(
+            add_execution_row(
                 (
                     process_id,
                     "direct recurrence rows",
@@ -1633,7 +1682,7 @@ def _artifact_inspection_summary(
                         "cosets"
                     )
                 )
-                execution_table.add_row(
+                add_execution_row(
                     (
                         process_id,
                         "contracted color",
@@ -1657,7 +1706,7 @@ def _artifact_inspection_summary(
             continue
         pack_kernels = process.get("prepared_kernel_count")
         referenced_kernels = process.get("referenced_kernel_count")
-        execution_table.add_row(
+        add_execution_row(
             (
                 process_id,
                 "prepared kernels",
@@ -1668,7 +1717,7 @@ def _artifact_inspection_summary(
         attachment_count = process.get("attachment_count")
         alias_count = process.get("evaluation_alias_count")
         maximum_fanout = process.get("maximum_fanout")
-        execution_table.add_row(
+        add_execution_row(
             (
                 process_id,
                 "invocations / reuse",
@@ -1678,7 +1727,7 @@ def _artifact_inspection_summary(
                 ),
             )
         )
-        execution_table.add_row(
+        add_execution_row(
             (
                 process_id,
                 "finalization / closure",
@@ -1688,7 +1737,7 @@ def _artifact_inspection_summary(
                 ),
             )
         )
-        execution_table.add_row(
+        add_execution_row(
             (
                 process_id,
                 "selector closures",
@@ -1705,7 +1754,7 @@ def _artifact_inspection_summary(
         )
         requested_tile = process.get("requested_point_tile_size")
         effective_tile = process.get("effective_point_tile_size")
-        execution_table.add_row(
+        add_execution_row(
             (
                 process_id,
                 "point tile requested / effective",
@@ -1721,7 +1770,7 @@ def _artifact_inspection_summary(
         )
         workspace_limit = process.get("workspace_limit_bytes")
         workspace_used = process.get("workspace_bytes")
-        execution_table.add_row(
+        add_execution_row(
             (
                 process_id,
                 "workspace limit / allocated",
@@ -1753,7 +1802,15 @@ def _artifact_inspection_summary(
         alias_table.hrules = prettytable.HRuleStyle.FRAME
         for alias in aliases:
             alias_table.add_row(
-                (alias["id"], alias["expression"], alias["representative_id"])
+                (
+                    _paint(str(alias["id"]), "CYAN", enabled=color),
+                    _paint(str(alias["expression"]), "GREEN", enabled=color),
+                    _paint(
+                        str(alias["representative_id"]),
+                        "MAGENTA",
+                        enabled=color,
+                    ),
+                )
             )
         sections.extend(
             (
@@ -1769,7 +1826,11 @@ def _artifact_inspection_summary(
         dependency_table.hrules = prettytable.HRuleStyle.FRAME
         for dependency in dependencies:
             dependency_table.add_row(
-                (dependency["name"], dependency["version"], dependency["license"])
+                (
+                    _paint(str(dependency["name"]), "CYAN", enabled=color),
+                    _paint(str(dependency["version"]), "GREEN", enabled=color),
+                    _paint(str(dependency["license"]), "YELLOW", enabled=color),
+                )
             )
         sections.extend(
             (
@@ -1794,7 +1855,7 @@ def render_summary(value: object, *, color: bool = False) -> str | None:
     )
 
     if isinstance(value, GenerationResult):
-        return _generation_summary(value, prettytable=prettytable)
+        return _generation_summary(value, prettytable=prettytable, color=color)
     if isinstance(value, ResolvedEvaluation):
         return _resolved_evaluation_summary(
             value,

@@ -135,7 +135,11 @@ def run_cli(
             if isinstance(sink, TtyProgressSink)
             else diagnostic_stream
         )
-        configure_cli_logging(config.output.log_level, stream=logging_stream)
+        configure_cli_logging(
+            config.output.log_level,
+            stream=logging_stream,
+            color=progress_color,
+        )
         logging_configured = True
         selected_services = (
             DefaultCliServices(resolution=resolution) if services is None else services
