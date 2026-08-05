@@ -81,6 +81,9 @@ pub use layout::{
     CurrentSourceBinding, DynamicLCColorStateId, LCColorWitnessTermId, MomentumTerm,
     RecurrenceNodeKind, RecurrenceStrategy, SemanticDigest, SourceStateAssignment,
 };
+#[cfg(feature = "on-the-fly-test-support")]
+#[doc(hidden)]
+pub use on_the_fly::{OnTheFlyTestSupportReportV1, on_the_fly_test_support_probe_v1};
 pub use program::{
     ClosureCandidateDomainCertificateV1, ClosureExecutionProofGroupV2, ClosureProofContributionV2,
     ClosureProofMetadataV2, RecurrenceAmplitudeDestination, RecurrenceClosureTerm,

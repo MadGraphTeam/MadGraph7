@@ -47,6 +47,70 @@ const REFLECTION_PROOF_ALGORITHM_ID: u32 = 1;
 const THREE_LINE_DIRECT_CERTIFICATE_ID: u32 = 0;
 const THREE_LINE_PARTNER_CERTIFICATE_ID: u32 = 1;
 
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+thread_local! {
+    static ESTABLISHED_PAIRING_OWNER_OBSERVATION_ACTIVE: Cell<bool> = const { Cell::new(false) };
+    static ESTABLISHED_PAIRING_OWNER_OBSERVATION:
+        RefCell<Option<RusticolResult<Option<u32>>>> = const { RefCell::new(None) };
+}
+
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+pub(crate) fn begin_established_pairing_owner_observation() {
+    ESTABLISHED_PAIRING_OWNER_OBSERVATION_ACTIVE.with(|active| active.set(true));
+    ESTABLISHED_PAIRING_OWNER_OBSERVATION.with(|observation| {
+        *observation.borrow_mut() = None;
+    });
+}
+
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+pub(crate) fn take_established_pairing_owner_observation() -> RusticolResult<Option<u32>> {
+    ESTABLISHED_PAIRING_OWNER_OBSERVATION_ACTIVE.with(|active| active.set(false));
+    ESTABLISHED_PAIRING_OWNER_OBSERVATION.with(|observation| {
+        observation.borrow_mut().take().ok_or_else(|| {
+            invalid("established builder did not publish its retained pairing owner")
+        })?
+    })
+}
+
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+fn observe_established_pairing_owner(
+    projection: Option<&PendingColorProjection>,
+    pending_closures: &BTreeMap<PendingClosureKey, PendingClosureGroup>,
+) {
+    if !ESTABLISHED_PAIRING_OWNER_OBSERVATION_ACTIVE.with(Cell::get) {
+        return;
+    }
+    let mut rule_ids = BTreeSet::new();
+    if let Some(projection) = projection {
+        for projected in projection.closures.values() {
+            for contribution in &projected.representative_group.contributions {
+                rule_ids.extend(contribution.pairing_certificate_ids.iter().copied());
+            }
+        }
+    } else {
+        for group in pending_closures
+            .values()
+            .filter(|group| !group.exact_factor.is_zero())
+        {
+            for contribution in &group.contributions {
+                rule_ids.extend(contribution.pairing_certificate_ids.iter().copied());
+            }
+        }
+    }
+    let result = match rule_ids.len() {
+        0 => Ok(None),
+        1 => Ok(rule_ids.iter().next().copied()),
+        _ => Err(invalid(format!(
+            "established retained closures disagree across {} pairing owners",
+            rule_ids.len(),
+        ))),
+    };
+    ESTABLISHED_PAIRING_OWNER_OBSERVATION_ACTIVE.with(|active| active.set(false));
+    ESTABLISHED_PAIRING_OWNER_OBSERVATION.with(|observation| {
+        *observation.borrow_mut() = Some(result);
+    });
+}
+
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(message)
 }
@@ -4939,7 +5003,7 @@ fn source_reflection(
     })
 }
 
-fn validate_crossed_source_state(
+pub(super) fn validate_crossed_source_state(
     is_initial: bool,
     process_state: &super::process::ProcessSourceStateRow,
     source: SourceRow,
@@ -6010,7 +6074,7 @@ fn add_transition_contributions(
     Ok(())
 }
 
-fn current_key_with_dynamic_color(
+pub(super) fn current_key_with_dynamic_color(
     key: &CurrentCoreKey,
     dynamic_lc_color_state_id: DynamicLCColorStateId,
 ) -> RusticolResult<CurrentCoreKey> {
@@ -8128,6 +8192,8 @@ fn finish_program(
     } else {
         None
     };
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    observe_established_pairing_owner(color_projection.as_ref(), &pending_closures);
     let materialized = if let Some(projection) = color_projection.as_ref() {
         materialize_projected_pending_rows(&pending, projection)?
     } else {

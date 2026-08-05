@@ -14,12 +14,14 @@ use sha2::{Digest, Sha256};
 use super::construct::{
     TemplateCatalog, aggregate_factor, combined_coupling_orders, merged_helicity_identity,
     merged_momentum, multiply_factors, output_factor_from_binding, quantum_parent_spin_matches,
+    validate_crossed_source_state,
 };
 use super::direct_backend::{DirectExecutorHandle, clear_direct_executor_error_detail};
 use super::direct_plan::{
     DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION, DirectClosureRow, DirectContributionRow,
     DirectExecutorRole, DirectFinalizationRow, DirectSourceRow,
 };
+use super::process::ProcessSourceStateRow;
 use super::template::{
     ClosureRow, EvaluatorContractKind, LCColorTransitionWitnessRow, QuantumFlowRow, SourceRow,
     TransitionRow, ValidatedRecurrenceTemplateInput,
@@ -80,28 +82,34 @@ fn final_digest(hash: Sha256) -> RusticolResult<SemanticDigest> {
 }
 
 mod interpreter;
+mod projection;
 mod public_query;
 mod source_seed;
 mod sweep;
 mod templates;
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+mod test_support;
 mod trace;
 
 pub(crate) use interpreter::{
     OnTheFlyPreparedExecutorResolver, OnTheFlyStructuralInterpreter, OnTheFlyWorkspaceV1,
     ResolvedOnTheFlyExecutor,
 };
+pub(crate) use public_query::OnTheFlyLcSelectorV1;
 pub(crate) use public_query::{DecodedLcQueryV1, OnTheFlySelectedSourceV1};
-pub(crate) use public_query::{OnTheFlyLcSelectorV1, OnTheFlyPairingClassProofV1};
 pub(crate) use source_seed::{
     OnTheFlyExternalColorRoleV1, OnTheFlyPairingClassV1, OnTheFlyPairingEndpointV1,
     OnTheFlyProcessSeedV1, OnTheFlySourceAnchorV1, OnTheFlySourceExecutionSpecV1,
     OnTheFlySourceOrientationV1, OnTheFlySourceStateV1, OnTheFlySourceWavefunctionFamilyV1,
 };
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+pub use test_support::{OnTheFlyTestSupportReportV1, on_the_fly_test_support_probe_v1};
 pub(crate) use trace::{
     OnTheFlyExecutorKeyV1, OnTheFlyOperationKindV1, OnTheFlyStructuralProofV1,
     OnTheFlyStructuralTraceV1, OnTheFlyWorkspaceLayoutV1,
 };
 
+use projection::*;
 use sweep::*;
 use templates::*;
 use trace::*;
@@ -138,7 +146,6 @@ pub(crate) fn build_selected_lc_trace(
         templates,
         &transitions,
         seed,
-        query,
         &propagators,
         &mut colors,
         &mut currents,
@@ -153,8 +160,19 @@ pub(crate) fn build_selected_lc_trace(
                 .ok_or_else(|| invalid("constructed contribution count exceeds usize"))
         })?;
     let selected_closures =
-        build_selected_closures(templates, &closures, query, &colors, &currents)?;
+        build_selected_closures(templates, &closures, seed, query, &colors, &currents)?;
     let live = live_current_ids(&currents, &selected_closures)?;
+    let projected = project_query_local_color_aliases(&currents, &selected_closures, &live)?;
+    let (currents, selected_closures, live) = match projected {
+        Some(projected) => {
+            let live = (0..projected.currents.len())
+                .map(|index| checked_u32(index, "projected query-local current ID"))
+                .collect::<RusticolResult<BTreeSet<_>>>()?;
+            (projected.currents, projected.closures, live)
+        }
+        None => (currents, selected_closures, live),
+    };
+    let pairing_owner = resolve_projected_pairing_owner(seed, &selected_closures)?;
     lower_trace(
         templates,
         &catalog,
@@ -163,6 +181,7 @@ pub(crate) fn build_selected_lc_trace(
         &colors,
         &currents,
         &selected_closures,
+        &pairing_owner,
         &transitions,
         &closures,
         &live,

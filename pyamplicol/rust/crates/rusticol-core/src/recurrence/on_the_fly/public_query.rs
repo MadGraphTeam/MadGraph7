@@ -12,45 +12,13 @@ pub(crate) struct OnTheFlySelectedSourceV1 {
     pub(crate) public_helicity: i32,
 }
 
-/// O(k) proof for one selected permutation of an identical-species pairing
-/// class.  No factorial-size pairing catalog or numeric permutation rank is
-/// retained.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct OnTheFlyPairingClassProofV1 {
-    pub(crate) pairing_class_digest: SemanticDigest,
-    /// Public antifundamental slots, in canonical fundamental-endpoint order.
-    pub(crate) selected_antifundamental_public_slots: Box<[u32]>,
-    /// Lehmer digits for the same selected sequence.
-    pub(crate) reference_to_selected_ranks: Box<[u32]>,
-}
-
-impl OnTheFlyPairingClassProofV1 {
-    pub(crate) fn new(
-        pairing_class_digest: SemanticDigest,
-        selected_antifundamental_public_slots: Vec<u32>,
-        reference_to_selected_ranks: Vec<u32>,
-    ) -> Self {
-        Self {
-            pairing_class_digest,
-            selected_antifundamental_public_slots: selected_antifundamental_public_slots
-                .into_boxed_slice(),
-            reference_to_selected_ranks: reference_to_selected_ranks.into_boxed_slice(),
-        }
-    }
-}
-
 /// One already-decoded public LC selector.  Slots use public external order;
 /// [`DecodedLcQueryV1::new`] authenticates and maps them to construction order.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum OnTheFlyLcSelectorV1 {
     Singlet,
-    SingleTrace {
-        public_word: Box<[u32]>,
-    },
-    OpenLines {
-        public_blocks: Box<[Box<[u32]>]>,
-        pairing_proofs: Box<[OnTheFlyPairingClassProofV1]>,
-    },
+    SingleTrace { public_word: Box<[u32]> },
+    OpenLines { public_blocks: Box<[Box<[u32]>]> },
 }
 
 impl OnTheFlyLcSelectorV1 {
@@ -60,17 +28,13 @@ impl OnTheFlyLcSelectorV1 {
         }
     }
 
-    pub(crate) fn open_lines(
-        public_blocks: Vec<Vec<u32>>,
-        pairing_proofs: Vec<OnTheFlyPairingClassProofV1>,
-    ) -> Self {
+    pub(crate) fn open_lines(public_blocks: Vec<Vec<u32>>) -> Self {
         Self::OpenLines {
             public_blocks: public_blocks
                 .into_iter()
                 .map(Vec::into_boxed_slice)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
-            pairing_proofs: pairing_proofs.into_boxed_slice(),
         }
     }
 }
@@ -84,11 +48,6 @@ pub(crate) struct DecodedLcQueryV1 {
     pub(super) selected_sources: Box<[OnTheFlySelectedSourceV1]>,
     pub(super) target_components: Box<[LCColorComponent]>,
     pub(super) closure_anchor_slot: u32,
-    pub(super) pairing_endpoint_pairs: Box<[[u32; 2]]>,
-    pub(super) pairing_proof_digest: Option<SemanticDigest>,
-    pub(super) pairing_source_slot_permutation: Box<[u32]>,
-    pub(super) pairing_source_lineage: Box<[u32]>,
-    pub(super) pairing_fermion_parity: i32,
     pub(super) selector_digest: SemanticDigest,
     pub(super) semantic_digest: SemanticDigest,
 }
@@ -125,13 +84,6 @@ impl DecodedLcQueryV1 {
             selected_sources: selected_sources.into_boxed_slice(),
             target_components: decoded.target_components.into_boxed_slice(),
             closure_anchor_slot: decoded.closure_anchor_slot,
-            pairing_endpoint_pairs: decoded.pairing_endpoint_pairs.into_boxed_slice(),
-            pairing_proof_digest: decoded.pairing_proof_digest,
-            pairing_source_slot_permutation: decoded
-                .pairing_source_slot_permutation
-                .into_boxed_slice(),
-            pairing_source_lineage: decoded.pairing_source_lineage.into_boxed_slice(),
-            pairing_fermion_parity: decoded.pairing_fermion_parity,
             selector_digest: decoded.selector_digest,
             semantic_digest: SemanticDigest::new([1; 32])?,
         };
@@ -153,39 +105,6 @@ impl DecodedLcQueryV1 {
             hash.update(source_slot.to_le_bytes());
         }
         hash.update(self.closure_anchor_slot.to_le_bytes());
-        match self.pairing_proof_digest {
-            None => hash.update([0]),
-            Some(digest) => {
-                hash.update([1]);
-                hash_digest(&mut hash, digest);
-            }
-        }
-        hash.update(self.pairing_fermion_parity.to_le_bytes());
-        hash_len(
-            &mut hash,
-            self.pairing_endpoint_pairs.len(),
-            "query pairing endpoint pairs",
-        )?;
-        for pair in &self.pairing_endpoint_pairs {
-            hash.update(pair[0].to_le_bytes());
-            hash.update(pair[1].to_le_bytes());
-        }
-        hash_len(
-            &mut hash,
-            self.pairing_source_slot_permutation.len(),
-            "query pairing source permutation",
-        )?;
-        for source_slot in &self.pairing_source_slot_permutation {
-            hash.update(source_slot.to_le_bytes());
-        }
-        hash_len(
-            &mut hash,
-            self.pairing_source_lineage.len(),
-            "query pairing source lineage",
-        )?;
-        for lineage in &self.pairing_source_lineage {
-            hash.update(lineage.to_le_bytes());
-        }
         hash_len(&mut hash, self.selected_sources.len(), "selected sources")?;
         for selected in &self.selected_sources {
             hash.update(selected.source_slot.to_le_bytes());
@@ -206,32 +125,11 @@ impl DecodedLcQueryV1 {
     pub(crate) const fn semantic_digest(&self) -> SemanticDigest {
         self.semantic_digest
     }
-
-    pub(super) fn selected_pairing_compatible(
-        &self,
-        support_source_slots: &[u32],
-        carries_colored_fermion_line: bool,
-    ) -> bool {
-        let crossing_count = self
-            .pairing_endpoint_pairs
-            .iter()
-            .filter(|pair| {
-                support_source_slots.binary_search(&pair[0]).is_ok()
-                    != support_source_slots.binary_search(&pair[1]).is_ok()
-            })
-            .count();
-        crossing_count == usize::from(carries_colored_fermion_line)
-    }
 }
 
 struct DecodedSelector {
     target_components: Vec<LCColorComponent>,
     closure_anchor_slot: u32,
-    pairing_endpoint_pairs: Vec<[u32; 2]>,
-    pairing_proof_digest: Option<SemanticDigest>,
-    pairing_source_slot_permutation: Vec<u32>,
-    pairing_source_lineage: Vec<u32>,
-    pairing_fermion_parity: i32,
     selector_digest: SemanticDigest,
 }
 
@@ -335,10 +233,9 @@ fn decode_selector(
         OnTheFlyLcSelectorV1::SingleTrace { public_word } => {
             decode_single_trace(seed, inverse, &public_word)
         }
-        OnTheFlyLcSelectorV1::OpenLines {
-            public_blocks,
-            pairing_proofs,
-        } => decode_open_lines(seed, inverse, &public_blocks, &pairing_proofs),
+        OnTheFlyLcSelectorV1::OpenLines { public_blocks } => {
+            decode_open_lines(seed, inverse, &public_blocks)
+        }
     }
 }
 
@@ -363,15 +260,10 @@ fn decode_singlet(seed: &OnTheFlyProcessSeedV1) -> RusticolResult<DecodedSelecto
         .find(|anchor| anchor.is_fermionic)
         .unwrap_or(&seed.source_anchors[0])
         .source_slot;
-    let selector_digest = selector_digest(&[], &[], None)?;
+    let selector_digest = selector_digest(&[])?;
     Ok(DecodedSelector {
         target_components: Vec::new(),
         closure_anchor_slot,
-        pairing_endpoint_pairs: Vec::new(),
-        pairing_proof_digest: None,
-        pairing_source_slot_permutation: identity_permutation(seed.source_anchors.len())?,
-        pairing_source_lineage: vec![MISSING_U32; seed.source_anchors.len()],
-        pairing_fermion_parity: 1,
         selector_digest,
     })
 }
@@ -395,19 +287,15 @@ fn decode_single_trace(
             "single-trace selector contains a non-adjoint external source",
         ));
     }
-    let closure_anchor_slot = *word
+    let component = LCColorComponent::new(LCColorComponentKind::Trace, word)?;
+    let closure_anchor_slot = *component
+        .source_slots()
         .last()
         .ok_or_else(|| invalid("single-trace word is empty"))?;
-    let component = LCColorComponent::new(LCColorComponentKind::Trace, word)?;
-    let selector_digest = selector_digest(std::slice::from_ref(&component), &[], None)?;
+    let selector_digest = selector_digest(std::slice::from_ref(&component))?;
     Ok(DecodedSelector {
         target_components: vec![component],
         closure_anchor_slot,
-        pairing_endpoint_pairs: Vec::new(),
-        pairing_proof_digest: None,
-        pairing_source_slot_permutation: identity_permutation(seed.source_anchors.len())?,
-        pairing_source_lineage: vec![MISSING_U32; seed.source_anchors.len()],
-        pairing_fermion_parity: 1,
         selector_digest,
     })
 }
@@ -416,7 +304,6 @@ fn decode_open_lines(
     seed: &OnTheFlyProcessSeedV1,
     inverse: &[u32],
     public_blocks: &[Box<[u32]>],
-    pairing_proofs: &[OnTheFlyPairingClassProofV1],
 ) -> RusticolResult<DecodedSelector> {
     if seed.pairing_classes.is_empty() || public_blocks.is_empty() {
         return Err(invalid(
@@ -445,8 +332,13 @@ fn decode_open_lines(
         }
     }
 
-    let (endpoint_pairs, proof_digest, source_permutation, source_lineage, parity) =
-        validate_pairing_proofs(seed, inverse, &blocks, pairing_proofs)?;
+    // Public callers may enumerate the same tensor product in any block
+    // order.  Map into construction slots first, then recover the canonical
+    // product order used by the established LC builder before choosing its
+    // cyclic closure anchor.  Reversing a block remains a distinct (and
+    // invalid above) selector; only whole-block enumeration order is erased.
+    blocks.sort_unstable_by(|left, right| left[0].cmp(&right[0]).then_with(|| left.cmp(right)));
+
     let minimum_colored_slot = colored_source_slots(seed)
         .into_iter()
         .next()
@@ -465,194 +357,15 @@ fn decode_open_lines(
         .map(|block| LCColorComponent::new(LCColorComponentKind::OpenString, block))
         .collect::<RusticolResult<Vec<_>>>()?;
     components.sort_unstable();
-    let selector_digest = selector_digest(&components, &endpoint_pairs, Some(proof_digest))?;
+    let selector_digest = selector_digest(&components)?;
     Ok(DecodedSelector {
         target_components: components,
         closure_anchor_slot,
-        pairing_endpoint_pairs: endpoint_pairs,
-        pairing_proof_digest: Some(proof_digest),
-        pairing_source_slot_permutation: source_permutation,
-        pairing_source_lineage: source_lineage,
-        pairing_fermion_parity: parity,
         selector_digest,
     })
 }
 
-type PairingValidation = (Vec<[u32; 2]>, SemanticDigest, Vec<u32>, Vec<u32>, i32);
-
-fn validate_pairing_proofs(
-    seed: &OnTheFlyProcessSeedV1,
-    inverse: &[u32],
-    blocks: &[Vec<u32>],
-    pairing_proofs: &[OnTheFlyPairingClassProofV1],
-) -> RusticolResult<PairingValidation> {
-    let mut proof_by_digest = BTreeMap::new();
-    for proof in pairing_proofs {
-        if proof_by_digest
-            .insert(proof.pairing_class_digest, proof)
-            .is_some()
-        {
-            return Err(invalid("pairing proof repeats a class digest"));
-        }
-    }
-    if proof_by_digest.len() != seed.pairing_classes.len() {
-        return Err(invalid(
-            "pairing proofs do not cover every compact pairing class exactly once",
-        ));
-    }
-    let selected_by_fundamental = blocks
-        .iter()
-        .map(|block| (block[0], *block.last().expect("validated nonempty")))
-        .collect::<BTreeMap<_, _>>();
-    if selected_by_fundamental.len() != blocks.len() {
-        return Err(invalid("open-line blocks repeat a fundamental endpoint"));
-    }
-
-    let mut endpoint_pairs = Vec::new();
-    let mut source_permutation = identity_permutation(seed.source_anchors.len())?;
-    let mut source_lineage = vec![MISSING_U32; seed.source_anchors.len()];
-    let mut parity = 1_i32;
-    let mut proof_hash = Sha256::new();
-    proof_hash.update(b"pyamplicol-on-the-fly-pairing-proof-v1\0");
-    for pairing_class in &seed.pairing_classes {
-        let proof = proof_by_digest
-            .remove(&pairing_class.semantic_digest)
-            .ok_or_else(|| invalid("pairing class proof digest is absent"))?;
-        let selected_antifundamentals = proof
-            .selected_antifundamental_public_slots
-            .iter()
-            .map(|public_slot| {
-                inverse
-                    .get(*public_slot as usize)
-                    .copied()
-                    .ok_or_else(|| invalid("pairing proof public slot is out of bounds"))
-            })
-            .collect::<RusticolResult<Vec<_>>>()?;
-        let derived_antifundamentals = pairing_class
-            .fundamental_endpoints
-            .iter()
-            .map(|endpoint| {
-                selected_by_fundamental
-                    .get(&endpoint.source_slot)
-                    .copied()
-                    .ok_or_else(|| invalid("pairing class fundamental has no open-line block"))
-            })
-            .collect::<RusticolResult<Vec<_>>>()?;
-        if selected_antifundamentals != derived_antifundamentals {
-            return Err(integrity(
-                "pairing proof selected endpoints differ from the open-line blocks",
-            ));
-        }
-        let reference = pairing_class
-            .antifundamental_endpoints
-            .iter()
-            .map(|endpoint| endpoint.source_slot)
-            .collect::<Vec<_>>();
-        let digits = lehmer_digits_for_selected(&reference, &selected_antifundamentals)?;
-        if digits.as_slice() != proof.reference_to_selected_ranks.as_ref() {
-            return Err(integrity("pairing proof Lehmer digits are invalid"));
-        }
-        if digits.iter().map(|digit| u64::from(*digit)).sum::<u64>() % 2 == 1 {
-            parity = -parity;
-        }
-        hash_digest(&mut proof_hash, pairing_class.semantic_digest);
-        hash_len(
-            &mut proof_hash,
-            selected_antifundamentals.len(),
-            "selected pairing",
-        )?;
-        for (reference_slot, selected_slot) in reference
-            .iter()
-            .copied()
-            .zip(selected_antifundamentals.iter().copied())
-        {
-            source_permutation[reference_slot as usize] = selected_slot;
-            proof_hash.update(reference_slot.to_le_bytes());
-            proof_hash.update(selected_slot.to_le_bytes());
-        }
-        for digit in &digits {
-            proof_hash.update(digit.to_le_bytes());
-        }
-        endpoint_pairs.extend(
-            pairing_class
-                .fundamental_endpoints
-                .iter()
-                .map(|endpoint| endpoint.source_slot)
-                .zip(selected_antifundamentals)
-                .map(|(fundamental, antifundamental)| [fundamental, antifundamental]),
-        );
-    }
-    if !proof_by_digest.is_empty() {
-        return Err(invalid("pairing proof contains an unknown class digest"));
-    }
-    endpoint_pairs.sort_unstable();
-    for (line_id, pair) in endpoint_pairs.iter().copied().enumerate() {
-        let line_id = checked_u32(line_id, "pairing line ID")?;
-        for source_slot in pair {
-            let entry = source_lineage
-                .get_mut(source_slot as usize)
-                .ok_or_else(|| integrity("pairing endpoint is outside the source domain"))?;
-            if *entry != MISSING_U32 {
-                return Err(integrity("pairing endpoint belongs to multiple lines"));
-            }
-            *entry = line_id;
-        }
-    }
-    validate_permutation(
-        &source_permutation,
-        seed.source_anchors.len(),
-        "pairing source permutation",
-    )?;
-    proof_hash.update(parity.to_le_bytes());
-    Ok((
-        endpoint_pairs,
-        final_digest(proof_hash)?,
-        source_permutation,
-        source_lineage,
-        parity,
-    ))
-}
-
-fn lehmer_digits_for_selected(reference: &[u32], selected: &[u32]) -> RusticolResult<Vec<u32>> {
-    if reference.len() != selected.len() {
-        return Err(invalid("selected pairing length differs from its class"));
-    }
-    let mut remaining = reference.to_vec();
-    let mut digits = Vec::new();
-    digits
-        .try_reserve_exact(selected.len())
-        .map_err(|error| invalid(format!("Lehmer digit allocation failed: {error}")))?;
-    for selected_slot in selected {
-        let position = remaining
-            .iter()
-            .position(|candidate| candidate == selected_slot)
-            .ok_or_else(|| invalid("selected pairing is not a class permutation"))?;
-        digits.push(checked_u32(position, "Lehmer digit")?);
-        remaining.remove(position);
-    }
-    if !remaining.is_empty() {
-        return Err(invalid("selected pairing omits a class endpoint"));
-    }
-    for (index, digit) in digits.iter().copied().enumerate() {
-        let remaining_len = digits.len() - index;
-        if digit as usize >= remaining_len {
-            return Err(integrity("Lehmer digit exceeds its remaining class domain"));
-        }
-    }
-    Ok(digits)
-}
-
-fn identity_permutation(len: usize) -> RusticolResult<Vec<u32>> {
-    (0..len)
-        .map(|value| checked_u32(value, "identity source permutation"))
-        .collect()
-}
-
-fn selector_digest(
-    components: &[LCColorComponent],
-    endpoint_pairs: &[[u32; 2]],
-    pairing_proof_digest: Option<SemanticDigest>,
-) -> RusticolResult<SemanticDigest> {
+fn selector_digest(components: &[LCColorComponent]) -> RusticolResult<SemanticDigest> {
     let mut hash = Sha256::new();
     hash.update(b"pyamplicol-on-the-fly-structural-selector-v1\0");
     hash_len(&mut hash, components.len(), "selector components")?;
@@ -661,18 +374,6 @@ fn selector_digest(
         hash_len(&mut hash, component.source_slots().len(), "selector word")?;
         for source_slot in component.source_slots() {
             hash.update(source_slot.to_le_bytes());
-        }
-    }
-    hash_len(&mut hash, endpoint_pairs.len(), "selector endpoint pairs")?;
-    for pair in endpoint_pairs {
-        hash.update(pair[0].to_le_bytes());
-        hash.update(pair[1].to_le_bytes());
-    }
-    match pairing_proof_digest {
-        None => hash.update([0]),
-        Some(digest) => {
-            hash.update([1]);
-            hash_digest(&mut hash, digest);
         }
     }
     final_digest(hash)
@@ -729,6 +430,7 @@ mod tests {
         OnTheFlySourceAnchorV1::new(
             source_slot,
             100 + source_slot,
+            false,
             role,
             fermionic,
             contract,
@@ -790,103 +492,11 @@ mod tests {
         .unwrap()
     }
 
-    fn permutations(values: &[u32]) -> Vec<Vec<u32>> {
-        fn visit(values: &mut Vec<u32>, at: usize, output: &mut Vec<Vec<u32>>) {
-            if at == values.len() {
-                output.push(values.clone());
-                return;
-            }
-            for index in at..values.len() {
-                values.swap(at, index);
-                visit(values, at + 1, output);
-                values.swap(at, index);
-            }
-        }
-        let mut values = values.to_vec();
-        let mut output = Vec::new();
-        visit(&mut values, 0, &mut output);
-        output
-    }
-
-    fn inversion_parity(values: &[u32]) -> i32 {
-        let inversions = values
-            .iter()
-            .enumerate()
-            .map(|(left, value)| {
-                values[left + 1..]
-                    .iter()
-                    .filter(|right| value > *right)
-                    .count()
-            })
-            .sum::<usize>();
-        if inversions % 2 == 0 { 1 } else { -1 }
-    }
-
-    #[test]
-    fn lehmer_proof_is_bounded_and_has_exact_permutation_parity() {
-        for size in 0..=7_u32 {
-            let reference = (0..size).collect::<Vec<_>>();
-            for selected in permutations(&reference) {
-                let digits = lehmer_digits_for_selected(&reference, &selected).unwrap();
-                assert_eq!(digits.len(), selected.len());
-                assert!(digits.iter().enumerate().all(|(index, digit)| {
-                    (*digit as usize) < digits.len().saturating_sub(index)
-                }));
-                let parity = if digits.iter().map(|digit| u64::from(*digit)).sum::<u64>() % 2 == 0 {
-                    1
-                } else {
-                    -1
-                };
-                assert_eq!(parity, inversion_parity(&selected));
-            }
-        }
-    }
-
-    #[test]
-    fn lehmer_proof_rejects_duplicates_omissions_and_foreign_endpoints() {
-        assert!(lehmer_digits_for_selected(&[3, 7, 11], &[3, 3, 11]).is_err());
-        assert!(lehmer_digits_for_selected(&[3, 7, 11], &[3, 7]).is_err());
-        assert!(lehmer_digits_for_selected(&[3, 7, 11], &[3, 7, 13]).is_err());
-    }
-
-    #[test]
-    fn lehmer_proof_has_no_numeric_rank_ceiling() {
-        let reference = (0..64_u32).collect::<Vec<_>>();
-        let selected = reference.iter().rev().copied().collect::<Vec<_>>();
-        let digits = lehmer_digits_for_selected(&reference, &selected).unwrap();
-        assert_eq!(digits, (0..64_u32).rev().collect::<Vec<_>>());
-        assert_eq!(
-            digits.iter().map(|digit| u64::from(*digit)).sum::<u64>() % 2,
-            0
-        );
-    }
-
     #[test]
     fn inverse_permutation_binds_public_and_construction_slots_exactly() {
         assert_eq!(inverse_permutation(&[2, 0, 3, 1]).unwrap(), [1, 3, 0, 2]);
         assert!(inverse_permutation(&[0, 0]).is_err());
         assert!(inverse_permutation(&[0, 2]).is_err());
-    }
-
-    #[test]
-    fn selected_pairing_compatibility_tracks_only_the_requested_pairing() {
-        let query = DecodedLcQueryV1 {
-            seed_digest: SemanticDigest::new([1; 32]).unwrap(),
-            external_permutation: vec![0, 1, 2, 3].into_boxed_slice(),
-            selected_sources: Box::new([]),
-            target_components: Box::new([]),
-            closure_anchor_slot: 0,
-            pairing_endpoint_pairs: vec![[0, 2], [1, 3]].into_boxed_slice(),
-            pairing_proof_digest: None,
-            pairing_source_slot_permutation: vec![0, 1, 2, 3].into_boxed_slice(),
-            pairing_source_lineage: vec![0, 1, 0, 1].into_boxed_slice(),
-            pairing_fermion_parity: 1,
-            selector_digest: SemanticDigest::new([2; 32]).unwrap(),
-            semantic_digest: SemanticDigest::new([3; 32]).unwrap(),
-        };
-        assert!(query.selected_pairing_compatible(&[0], true));
-        assert!(query.selected_pairing_compatible(&[0, 2], false));
-        assert!(!query.selected_pairing_compatible(&[0, 1], true));
     }
 
     #[test]
@@ -936,7 +546,38 @@ mod tests {
     }
 
     #[test]
-    fn open_line_proof_binds_blocks_permutation_and_parity() {
+    fn single_trace_anchor_is_cyclic_invariant_but_reversal_remains_distinct() {
+        let trace_seed = seed(
+            &[
+                OnTheFlyExternalColorRoleV1::Adjoint,
+                OnTheFlyExternalColorRoleV1::Adjoint,
+                OnTheFlyExternalColorRoleV1::Adjoint,
+            ],
+            vec![0, 1, 2],
+        );
+        let decode = |word| {
+            DecodedLcQueryV1::new(
+                &trace_seed,
+                vec![0, 1, 2],
+                &[1, 1, 1],
+                OnTheFlyLcSelectorV1::single_trace(word),
+            )
+            .unwrap()
+        };
+        let canonical = decode(vec![0, 1, 2]);
+        let rotated = decode(vec![1, 2, 0]);
+        let reversed = decode(vec![0, 2, 1]);
+        assert_eq!(canonical.target_components, rotated.target_components);
+        assert_eq!(canonical.closure_anchor_slot, rotated.closure_anchor_slot);
+        assert_eq!(canonical.selector_digest, rotated.selector_digest);
+        assert_eq!(canonical.semantic_digest(), rotated.semantic_digest());
+        assert_ne!(canonical.target_components, reversed.target_components);
+        assert_ne!(canonical.selector_digest, reversed.selector_digest);
+        assert_ne!(canonical.closure_anchor_slot, reversed.closure_anchor_slot);
+    }
+
+    #[test]
+    fn open_line_selector_binds_only_the_selected_color_tensor() {
         let open_seed = seed(
             &[
                 OnTheFlyExternalColorRoleV1::Fundamental,
@@ -945,42 +586,14 @@ mod tests {
             ],
             vec![2, 0, 1],
         );
-        let class_digest = open_seed.pairing_classes[0].semantic_digest;
         let query = DecodedLcQueryV1::new(
             &open_seed,
             vec![2, 0, 1],
             &[1, 1, 1],
-            OnTheFlyLcSelectorV1::open_lines(
-                vec![vec![2, 0, 1]],
-                vec![OnTheFlyPairingClassProofV1::new(
-                    class_digest,
-                    vec![1],
-                    vec![0],
-                )],
-            ),
+            OnTheFlyLcSelectorV1::open_lines(vec![vec![2, 0, 1]]),
         )
         .unwrap();
         assert_eq!(query.target_components[0].source_slots(), [0, 1, 2]);
-        assert_eq!(query.pairing_endpoint_pairs.as_ref(), [[0, 2]]);
-        assert_eq!(query.pairing_source_slot_permutation.as_ref(), [0, 1, 2]);
-        assert_eq!(query.pairing_source_lineage.as_ref(), [0, MISSING_U32, 0]);
-        assert_eq!(query.pairing_fermion_parity, 1);
-
-        assert!(
-            DecodedLcQueryV1::new(
-                &open_seed,
-                vec![2, 0, 1],
-                &[1, 1, 1],
-                OnTheFlyLcSelectorV1::open_lines(
-                    vec![vec![2, 0, 1]],
-                    vec![OnTheFlyPairingClassProofV1::new(
-                        class_digest,
-                        vec![1],
-                        vec![1],
-                    )],
-                ),
-            )
-            .is_err()
-        );
+        assert_eq!(query.closure_anchor_slot, 2);
     }
 }

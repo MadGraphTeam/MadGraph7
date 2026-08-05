@@ -157,6 +157,7 @@ impl OnTheFlySourceStateV1 {
 pub(crate) struct OnTheFlySourceAnchorV1 {
     pub(super) source_slot: u32,
     pub(super) external_label: u32,
+    pub(super) is_initial: bool,
     pub(super) color_role: OnTheFlyExternalColorRoleV1,
     pub(super) is_fermionic: bool,
     pub(super) pairing_source_contract_digest: Option<SemanticDigest>,
@@ -167,6 +168,7 @@ impl OnTheFlySourceAnchorV1 {
     pub(crate) fn new(
         source_slot: u32,
         external_label: u32,
+        is_initial: bool,
         color_role: OnTheFlyExternalColorRoleV1,
         is_fermionic: bool,
         pairing_source_contract_digest: Option<SemanticDigest>,
@@ -200,6 +202,7 @@ impl OnTheFlySourceAnchorV1 {
         Ok(Self {
             source_slot,
             external_label,
+            is_initial,
             color_role,
             is_fermionic,
             pairing_source_contract_digest,
@@ -454,7 +457,11 @@ impl OnTheFlyProcessSeedV1 {
         for anchor in &self.source_anchors {
             hash.update(anchor.source_slot.to_le_bytes());
             hash.update(anchor.external_label.to_le_bytes());
-            hash.update([anchor.color_role as u8, u8::from(anchor.is_fermionic)]);
+            hash.update([
+                anchor.color_role as u8,
+                u8::from(anchor.is_fermionic),
+                u8::from(anchor.is_initial),
+            ]);
             match anchor.pairing_source_contract_digest {
                 None => hash.update([0]),
                 Some(value) => {
@@ -527,7 +534,7 @@ impl OnTheFlyProcessSeedV1 {
                     spin_state_class: state.spin_state,
                     family: state.source_family,
                     orientation: state.source_orientation,
-                    helicity: state.public_helicity,
+                    helicity: state.source_helicity,
                     chirality: state.chirality,
                     prepared_mass_parameter_slot: state.prepared_mass_parameter_slot,
                 })

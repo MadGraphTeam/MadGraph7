@@ -28,6 +28,8 @@ use rusticol_core::recurrence::{
     lower_recurrence_direct_plan_v2_with_relation_discovery,
     write_recurrence_direct_plan_pacbin_with_projection_certificate,
 };
+#[cfg(feature = "on-the-fly-test-support")]
+use rusticol_core::recurrence::{OnTheFlyTestSupportReportV1, on_the_fly_test_support_probe_v1};
 use rusticol_core::{
     NativeRecurrenceExactExecutor, NativeRecurrenceExactFactor, NativeRecurrenceExactSections,
     RusticolError, RusticolResult,
@@ -992,6 +994,132 @@ pub(crate) fn _lower_recurrence_direct_v2(
         })
         .map_err(python_error)?;
     direct_lowering_mapping(py, native)
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+#[pyfunction(signature = (
+    builder_input,
+    prepared_template_input,
+    direct_template_catalog_json,
+    prepared_kernel_pack_digest,
+    selected_public_flow_id,
+    public_helicities
+))]
+pub(crate) fn _on_the_fly_test_support_probe_v1(
+    py: Python<'_>,
+    builder_input: &Bound<'_, PyAny>,
+    prepared_template_input: &Bound<'_, PyAny>,
+    direct_template_catalog_json: &Bound<'_, PyBytes>,
+    prepared_kernel_pack_digest: String,
+    selected_public_flow_id: u32,
+    public_helicities: Vec<i32>,
+) -> PyResult<Py<PyAny>> {
+    let input = parse_input(builder_input)?;
+    let prepared_template = parse_prepared_template_input(prepared_template_input)?;
+    let direct_template_catalog_json = direct_template_catalog_json.as_bytes().to_vec();
+    validate_sha256_text(&prepared_kernel_pack_digest, "prepared kernel pack digest")?;
+    let native = py
+        .detach(move || {
+            let expected_pack_digest = semantic_digest_from_hex(
+                &prepared_kernel_pack_digest,
+                "prepared kernel pack digest",
+            )?;
+            let authenticated =
+                authenticate_builder_inputs(input, prepared_template, expected_pack_digest)?
+                    .authenticated;
+            let direct_catalog = parse_direct_template_catalog(
+                &direct_template_catalog_json,
+                expected_pack_digest,
+                authenticated.template().summary().catalog_digest,
+                authenticated.template().summary().compiled_model_digest,
+            )?;
+            on_the_fly_test_support_probe_v1(
+                &authenticated,
+                direct_catalog.catalog_digest,
+                selected_public_flow_id,
+                &public_helicities,
+            )
+        })
+        .map_err(python_error)?;
+    on_the_fly_test_support_mapping(py, native)
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+fn on_the_fly_test_support_mapping(
+    py: Python<'_>,
+    native: OnTheFlyTestSupportReportV1,
+) -> PyResult<Py<PyAny>> {
+    let result = PyDict::new(py);
+    result.set_item("seed_digest", native.seed_digest.to_string())?;
+    result.set_item("query_digest", native.query_digest.to_string())?;
+    result.set_item("selector_digest", native.selector_digest.to_string())?;
+    result.set_item("trace_digest", native.trace_digest.to_string())?;
+    result.set_item("current_count", native.current_count)?;
+    result.set_item("contribution_count", native.contribution_count)?;
+    result.set_item("closure_count", native.closure_count)?;
+    result.set_item(
+        "established_current_count",
+        native.established_current_count,
+    )?;
+    result.set_item(
+        "established_contribution_count",
+        native.established_contribution_count,
+    )?;
+    result.set_item(
+        "established_closure_count",
+        native.established_closure_count,
+    )?;
+    result.set_item(
+        "current_multiset_digest",
+        native.current_multiset_digest.to_string(),
+    )?;
+    result.set_item(
+        "established_current_multiset_digest",
+        native.established_current_multiset_digest.to_string(),
+    )?;
+    result.set_item(
+        "contribution_multiset_digest",
+        native.contribution_multiset_digest.to_string(),
+    )?;
+    result.set_item(
+        "established_contribution_multiset_digest",
+        native.established_contribution_multiset_digest.to_string(),
+    )?;
+    result.set_item(
+        "closure_multiset_digest",
+        native.closure_multiset_digest.to_string(),
+    )?;
+    result.set_item(
+        "closure_parity_multiset_digest",
+        native.closure_parity_multiset_digest.to_string(),
+    )?;
+    result.set_item(
+        "established_closure_parity_multiset_digest",
+        native
+            .established_closure_parity_multiset_digest
+            .to_string(),
+    )?;
+    result.set_item(
+        "negative_contribution_factor_count",
+        native.negative_contribution_factor_count,
+    )?;
+    result.set_item(
+        "established_negative_contribution_factor_count",
+        native.established_negative_contribution_factor_count,
+    )?;
+    result.set_item("source_domain_equal", native.source_domain_equal)?;
+    result.set_item("pairing_oracle_equal", native.pairing_oracle_equal)?;
+    result.set_item("pairing_fermion_parity", native.pairing_fermion_parity)?;
+    result.set_item(
+        "established_pairing_fermion_parity",
+        native.established_pairing_fermion_parity,
+    )?;
+    result.set_item(
+        "workspace_capacity_independent",
+        native.workspace_capacity_independent,
+    )?;
+    result.set_item("structural_parity", native.structural_parity())?;
+    Ok(result.into_any().unbind())
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -84,6 +84,9 @@ pub(super) struct PreparedTransition {
     canonical_input_order: [u32; 2],
     input_exchange_factor: Option<ExactComplexRational>,
     pub(super) base_factor: ExactComplexRational,
+    coupling_authenticated: bool,
+    binding_coupling: ExactComplexRational,
+    output_factor_source: u8,
     pub(super) flavour: PreparedFlavourFlow,
     pub(super) quantum_semantic_digest: SemanticDigest,
     pub(super) transition_semantic_digest: SemanticDigest,
@@ -136,19 +139,11 @@ impl PreparedTransition {
             row.binding_coupling_factor_id,
             "transition binding coupling",
         )?;
-        if quantum_coupling != binding_coupling {
-            return Err(invalid("transition binding and quantum coupling disagree"));
-        }
         let base_factor = multiply_factors(&[
             catalog.factor(row.exact_factor_id, "transition exact")?,
             catalog.factor(
                 contraction.exact_coefficient_factor_id,
                 "transition color contraction",
-            )?,
-            output_factor_from_binding(
-                binding_coupling,
-                row.output_factor_source,
-                "on-the-fly transition",
             )?,
         ])?;
         let binding = input
@@ -183,6 +178,9 @@ impl PreparedTransition {
             canonical_input_order,
             input_exchange_factor,
             base_factor,
+            coupling_authenticated: quantum_coupling == binding_coupling,
+            binding_coupling,
+            output_factor_source: row.output_factor_source,
             flavour: PreparedFlavourFlow::new(quantum, catalog)?,
             quantum_semantic_digest: catalog
                 .digest(quantum.semantic_digest_id, "quantum semantic")?,
@@ -225,6 +223,19 @@ impl PreparedTransition {
         }
         (ordered, factor)
     }
+
+    pub(super) fn output_factor(&self) -> RusticolResult<ExactComplexRational> {
+        if !self.coupling_authenticated {
+            return Err(invalid(
+                "transition binding coupling does not match its quantum-flow coupling witness",
+            ));
+        }
+        output_factor_from_binding(
+            self.binding_coupling,
+            self.output_factor_source,
+            "on-the-fly transition",
+        )
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -232,7 +243,24 @@ pub(super) struct PreparedClosureQuantum {
     pub(super) row: Option<QuantumFlowRow>,
     pub(super) input_states: Option<[u32; 2]>,
     pub(super) input_spins: Option<[i32; 2]>,
-    pub(super) output_factor: ExactComplexRational,
+    coupling_authenticated: bool,
+    binding_coupling: ExactComplexRational,
+    output_factor_source: u8,
+}
+
+impl PreparedClosureQuantum {
+    pub(super) fn output_factor(&self) -> RusticolResult<ExactComplexRational> {
+        if !self.coupling_authenticated {
+            return Err(invalid(
+                "closure binding coupling does not match its quantum-flow coupling witness",
+            ));
+        }
+        output_factor_from_binding(
+            self.binding_coupling,
+            self.output_factor_source,
+            "on-the-fly closure quantum flow",
+        )
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -302,11 +330,9 @@ impl PreparedClosure {
                 row: None,
                 input_states: None,
                 input_spins: None,
-                output_factor: output_factor_from_binding(
-                    binding_coupling,
-                    row.output_factor_source,
-                    "on-the-fly closure",
-                )?,
+                coupling_authenticated: true,
+                binding_coupling,
+                output_factor_source: row.output_factor_source,
             }]
         } else {
             eligible
@@ -327,20 +353,13 @@ impl PreparedClosure {
                         .map_err(|_| invalid("closure quantum flow must be binary"))?;
                     let quantum_coupling = catalog
                         .factor(quantum.exact_coupling_factor_id, "closure quantum coupling")?;
-                    if quantum_coupling != binding_coupling {
-                        return Err(invalid(
-                            "closure binding and quantum-flow coupling disagree",
-                        ));
-                    }
                     Ok(PreparedClosureQuantum {
                         row: Some(quantum),
                         input_states: Some(states),
                         input_spins: Some(spins),
-                        output_factor: output_factor_from_binding(
-                            binding_coupling,
-                            row.output_factor_source,
-                            "on-the-fly closure quantum flow",
-                        )?,
+                        coupling_authenticated: quantum_coupling == binding_coupling,
+                        binding_coupling,
+                        output_factor_source: row.output_factor_source,
                     })
                 })
                 .collect::<RusticolResult<Vec<_>>>()?

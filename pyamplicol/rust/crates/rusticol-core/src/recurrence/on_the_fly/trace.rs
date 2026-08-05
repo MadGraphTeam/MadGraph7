@@ -180,6 +180,21 @@ impl OnTheFlyStructuralProofV1 {
     pub(crate) const fn semantic_digest(self) -> SemanticDigest {
         self.semantic_digest
     }
+
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    pub(super) const fn current_multiset_digest(self) -> SemanticDigest {
+        self.current_multiset_digest
+    }
+
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    pub(super) const fn contribution_multiset_digest(self) -> SemanticDigest {
+        self.contribution_multiset_digest
+    }
+
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    pub(super) const fn closure_multiset_digest(self) -> SemanticDigest {
+        self.closure_multiset_digest
+    }
 }
 
 /// Immutable selected-query trace.  Exact current keys remain available for
@@ -193,12 +208,13 @@ pub(crate) struct OnTheFlyStructuralTraceV1 {
     pub(super) operations: Box<[OnTheFlyTraceOperationV1]>,
     pub(super) momentum_forms: Box<[CanonicalMomentumLinearForm]>,
     pub(super) exact_factors: Box<[ExactComplexRational]>,
+    pub(super) pairing_owner: ResolvedPairingOwnerV1,
     pub(super) layout: OnTheFlyWorkspaceLayoutV1,
     pub(super) proof: OnTheFlyStructuralProofV1,
     pub(super) semantic_digest: SemanticDigest,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     pub(super) current_component_ranges: Box<[[u32; 2]]>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     pub(super) current_semantic_digests: Box<[SemanticDigest]>,
 }
 
@@ -227,7 +243,7 @@ impl OnTheFlyStructuralTraceV1 {
         self.semantic_digest
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     pub(crate) fn current_component_range(&self, current_id: u32) -> RusticolResult<[u32; 2]> {
         self.current_component_ranges
             .get(current_id as usize)
@@ -235,7 +251,7 @@ impl OnTheFlyStructuralTraceV1 {
             .ok_or_else(|| invalid("observed current ID is outside the trace"))
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     pub(crate) fn current_semantic_digest(
         &self,
         current_id: u32,
@@ -247,7 +263,7 @@ impl OnTheFlyStructuralTraceV1 {
     }
 }
 
-fn hash_current_key(
+pub(super) fn hash_current_key(
     key: &CurrentCoreKey,
     color: &DynamicLCColorState,
 ) -> RusticolResult<SemanticDigest> {
@@ -341,7 +357,10 @@ fn hash_current_key(
     final_digest(hash)
 }
 
-fn multiset_digest(domain: &[u8], mut rows: Vec<SemanticDigest>) -> RusticolResult<SemanticDigest> {
+pub(super) fn multiset_digest(
+    domain: &[u8],
+    mut rows: Vec<SemanticDigest>,
+) -> RusticolResult<SemanticDigest> {
     rows.sort_unstable();
     let mut hash = Sha256::new();
     hash.update(domain);
@@ -352,7 +371,7 @@ fn multiset_digest(domain: &[u8], mut rows: Vec<SemanticDigest>) -> RusticolResu
     final_digest(hash)
 }
 
-fn contribution_proof_digest(
+pub(super) fn contribution_proof_digest(
     result_digest: SemanticDigest,
     parent_digests: [SemanticDigest; 2],
     key: &ContributionKey,
@@ -561,6 +580,7 @@ pub(super) fn lower_trace(
     colors: &DynamicLCColorStateInterner,
     currents: &[PendingCurrent],
     closures: &[PendingClosure],
+    pairing_owner: &ResolvedPairingOwnerV1,
     transitions: &BTreeMap<(u32, u32), Vec<PreparedTransition>>,
     prepared_closures: &BTreeMap<(u32, u32), Vec<PreparedClosure>>,
     live: &BTreeSet<u32>,
@@ -815,7 +835,7 @@ pub(super) fn lower_trace(
     hash_digest(&mut owner_hash, query.semantic_digest());
     owner_hash.update(query.closure_anchor_slot.to_le_bytes());
     hash_digest(&mut owner_hash, query.selector_digest);
-    match query.pairing_proof_digest {
+    match pairing_owner.proof_digest {
         None => owner_hash.update([0]),
         Some(digest) => {
             owner_hash.update([1]);
@@ -888,7 +908,7 @@ pub(super) fn lower_trace(
         trace_hash.update(value.to_le_bytes());
     }
     let semantic_digest = final_digest(trace_hash)?;
-    #[cfg(test)]
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     let current_component_ranges = live
         .iter()
         .copied()
@@ -900,7 +920,7 @@ pub(super) fn lower_trace(
         })
         .collect::<Vec<_>>()
         .into_boxed_slice();
-    #[cfg(test)]
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     let current_semantic_digests = live
         .iter()
         .copied()
@@ -915,12 +935,13 @@ pub(super) fn lower_trace(
         operations: operations.into_boxed_slice(),
         momentum_forms: momentum_forms.into_boxed_slice(),
         exact_factors: exact_factors.into_boxed_slice(),
+        pairing_owner: pairing_owner.clone(),
         layout,
         proof,
         semantic_digest,
-        #[cfg(test)]
+        #[cfg(any(test, feature = "on-the-fly-test-support"))]
         current_component_ranges,
-        #[cfg(test)]
+        #[cfg(any(test, feature = "on-the-fly-test-support"))]
         current_semantic_digests,
     })
 }
@@ -950,6 +971,13 @@ mod tests {
             ]
             .into_boxed_slice(),
             exact_factors: vec![ExactComplexRational::ONE].into_boxed_slice(),
+            pairing_owner: ResolvedPairingOwnerV1 {
+                endpoint_pairs: Box::new([]),
+                proof_digest: None,
+                source_slot_permutation: Box::new([]),
+                source_lineage: Box::new([]),
+                fermion_parity: 1,
+            },
             layout: OnTheFlyWorkspaceLayoutV1 {
                 source_count: 1,
                 lorentz_component_count: 4,
