@@ -216,6 +216,54 @@ unchanged for `g g > t t~ g g` and `u u~ > g g g`.
 
 With the flag off, `matrix.f` is byte-identical to `3b3ed9e85` for N=2..5.
 
+## Step 6 — madevent, and what it does to AMP2
+
+`29b0c670e`. Two things had to give before the optimisation survived the
+madevent path, neither of them about AMP2:
+
+1. **The sum has to be a `CALL`.** Helicity recycling rebuilds the whole DAG
+   from the calls alone, so a bare assignment was invisible to it — the summed
+   current never entered the graph and the amplitude reading it died on a
+   `KeyError`. Written as `CALL SUMW_1(W(a),W(b),W(c))` it is an ordinary
+   internal wavefunction with two mothers and everything downstream handles
+   it. `sumw_1`/`subw_1` live in `aloha_functions.f`; the coefficient is
+   restricted to ±1, which is all it has ever been.
+2. **`hel_recycle.add_indices` could not index a statement-initial `AMP(`.**
+   The pattern ate the character in front of it and there is none at the
+   start of a line, so `AMP(31) = AMP(31) + AMP(1)` came out as
+   `AMP(31) = AMP( K,31) + AMP( K,1)`. Latent until now: nothing had ever
+   emitted a line beginning with `AMP(`.
+
+**AMP2 is left alone and picks up the merged amplitude**, which is the right
+thing and turns out to matter more than the matrix element speedup. The fold
+lines run before the AMP2 block, so the channel weight is
+`|AMP_cubic + AMP_quartic|^2`. Nothing else was needed: `get_amp2_lines`
+already skips any diagram with a four point vertex, so the folded amplitudes
+were never referenced.
+
+That skip is the point. With the flag off, at six gluons:
+
+| | amplitudes computed | distinct AMP reaching AMP2 |
+|---|---|---|
+| flag off | 510 | **105** |
+| flag on | 450 (+30 sums) | 105, now carrying all 510 |
+
+so four fifths of the amplitude — every quartic contribution — used to enter
+**no** channel weight at all. Folding puts each of them in the channel whose
+colour factor it shares, which is exactly where it belongs.
+
+`g g > g g g` through madevent, 10000 events, three seeds:
+
+| | cross section | rel. error | ME cpu |
+|---|---|---|---|
+| flag off | 3.680-3.694e+07 pb | 0.326% | 52.7 s |
+| flag on | 3.684-3.694e+07 pb | 0.300% | 49.0 s |
+
+8% less error for 7% less cpu, consistently across the three seeds. At six
+gluons the end-to-end runs are far noisier — the refine stage adapts, and the
+same configuration swings by a factor two between seeds — so that comparison
+needs a fixed-work measurement rather than `generate_events` wall time.
+
 ## Where to go next
 
 What is left is the sums which do not sit at an amplitude, and they need a
