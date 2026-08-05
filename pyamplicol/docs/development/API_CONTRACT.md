@@ -1,3 +1,9 @@
+---
+title: "Public API Contract"
+nav_order: 1
+parent: "Development Documentation"
+---
+<!-- SPDX-License-Identifier: 0BSD -->
 # Public API Contract
 
 This document is normative for Python API version 1. Implementations may add

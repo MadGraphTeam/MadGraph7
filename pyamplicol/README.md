@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://pypi.org/project/pyamplicol/"><img src="https://img.shields.io/pypi/v/pyamplicol.svg" alt="PyPI"></a>
   <a href="https://pypi.org/project/pyamplicol/"><img src="https://img.shields.io/pypi/pyversions/pyamplicol.svg" alt="Python versions"></a>
-  <a href="https://github.com/mg5amcnlo/pyamplicol/wiki"><img src="https://img.shields.io/badge/docs-Wiki-2f81f7.svg?logo=github" alt="pyAmpliCol Wiki"></a>
+  <a href="https://mg5amcnlo.github.io/pyamplicol/"><img src="https://img.shields.io/badge/docs-User%20Guide-2f81f7.svg?logo=githubpages" alt="pyAmpliCol documentation"></a>
   <a href="https://github.com/mg5amcnlo/pyamplicol/actions/workflows/tests.yml"><img src="https://github.com/mg5amcnlo/pyamplicol/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
   <a href="https://github.com/mg5amcnlo/pyamplicol/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-0BSD-blue.svg" alt="License: 0BSD"></a>
 </p>
@@ -19,11 +19,8 @@ built-in, JSON, or UFO models. It provides a typed Python API and CLI, fast
 Rust-backed execution, runtime helicity and color-flow selection, and generated
 Python, C11, C++17, Fortran 2008, and Rust 2021 interfaces.
 
-Explore the complete [pyAmpliCol Wiki](https://github.com/mg5amcnlo/pyamplicol/wiki)
-for guided workflows, API examples, and technical reference.
-
-See the [release status](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/release-status.md)
-for build, validation, and publication details.
+Explore the complete [pyAmpliCol documentation](https://mg5amcnlo.github.io/pyamplicol/)
+for guided workflows, API examples, technical reference, and release support.
 
 ## Installation
 
@@ -41,7 +38,7 @@ need a Rust compiler. pyAmpliCol has no LHAPDF dependency.
 To build the tagged source snapshot:
 
 ```console
-git clone --branch v0.1.2 --depth 1 https://github.com/mg5amcnlo/pyamplicol.git
+git clone --branch v0.1.3 --depth 1 https://github.com/mg5amcnlo/pyamplicol.git
 cd pyamplicol
 python -m pip install .
 ```
@@ -62,7 +59,7 @@ The first `just dev-install` native build can take several minutes. Repeated
 installs reuse the workspace-local Cargo cache and are substantially faster.
 
 Full installation details are in the
-[installation guide](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/installation.md).
+[documentation](https://mg5amcnlo.github.io/pyamplicol/).
 
 ## Quick start
 
@@ -183,9 +180,9 @@ cd ./pyamplicol-profiling-campaign
 That deliberately small real campaign measures only the final-state-
 multiplicity-one `d d~ > Z` recurrence cell. Broader campaign selections are
 intended for dedicated profiling hosts. The
-[profiling-campaign guide](https://github.com/mg5amcnlo/pyamplicol/wiki/Profiling-Campaigns)
-documents selection, continuation, optional original-AmpliCol comparisons,
-artifact retention, and PDF generation.
+[documentation](https://mg5amcnlo.github.io/pyamplicol/) covers selection,
+continuation, optional original-AmpliCol comparisons, artifact retention, and
+PDF generation.
 
 The repository retains only two rendered performance snapshots. Raw JSON,
 generated tables, attempts, and campaign workspaces stay untracked:
@@ -199,14 +196,7 @@ installed package.
 
 ## Documentation
 
-- [Wiki](https://github.com/mg5amcnlo/pyamplicol/wiki)
-- [User guide](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/index.md)
-- [Configuration](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/configuration.md)
-- [Models and processes](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/models.md)
-- [Runtime](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/runtime.md)
-- [Native SDK](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/native-sdk.md)
-- [Symbolica licensing](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/symbolica.md)
-- [Performance reports](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/README.md)
+Read the complete [pyAmpliCol documentation](https://mg5amcnlo.github.io/pyamplicol/).
 
 ## Dependencies and license
 

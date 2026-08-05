@@ -1,127 +1,127 @@
+---
+title: "Installation"
+nav_order: 2
+has_children: true
+---
 <!-- SPDX-License-Identifier: 0BSD -->
-
 # Installation
 
-## Binary Wheel
+pyAmpliCol is distributed as a Python package with a Rust-backed runtime. For
+most users, installation is a normal `pip` operation: the published wheel
+already contains the Python extension and the Rusticol native SDK.
 
-Install `0.1.2` from PyPI with:
+> **Recommended path:** use Python 3.11 or newer in a fresh virtual
+> environment and install from PyPI.
+
+## Install from PyPI
+
+### macOS and Linux
 
 ```console
-python -m venv .venv
+python3 -m venv .venv
 . .venv/bin/activate
+python -m pip install --upgrade pip
 python -m pip install pyamplicol
 ```
 
-The validated `cp311-abi3` wheels target Python 3.11 and newer on macOS arm64,
-macOS x86_64, and manylinux x86_64. Wheel users do not need Rust. A C, C++,
-Fortran, or Rust compiler is needed only when compiling that language's native
-consumer against the included Rusticol SDK. pyAmpliCol has no LHAPDF
-dependency.
-
-The immutable `v0.1.2` source tag and `pyamplicol==0.1.2` PyPI release contain
-the same validated source and runtime artifacts. See
-[Release Status](release-status.md) for the publication boundary.
-
-An installed wheel can also populate a self-contained profiling campaign:
+Verify the installation without generating a process:
 
 ```console
-pyamplicol profiling-campaign copy ./pyamplicol-profiling-campaign --force
-./pyamplicol-profiling-campaign/steer_performance_campaign.py run \
-  --workers 1 --table matrix --process-id 1 --multiplicity 1 \
-  --color-approximation lc --generation-mode non-union-flow \
-  --generation-engine recurrence --model built_in \
-  --no-dependencies-added --no-dashboard
+python -c 'import pyamplicol; print(pyamplicol.__version__)'
+pyamplicol doctor
+pyamplicol examples list
 ```
 
-This installation smoke measures only the final-state-multiplicity-one
-`d d~ > Z` recurrence cell. Use broader selections only for an intentional
-performance campaign.
+`pyamplicol doctor` reports the package, Python, runtime, platform, and
+Symbolica environment that pyAmpliCol can see. `examples list` confirms that
+the packaged run cards and data files are available.
 
-The visible `campaign_artifacts/` directory inside the destination holds all
-attempts, prepared artifacts, logs, locks, and leases. It moves with the whole
-campaign and does not share or consult legacy `.artifacts` state. `--force`
-resets that campaign-local state plus the managed PDF, summary IDs, measurement
-lineage, and known LaTeX byproducts, while preserving unrelated files and a
-recorded original-AmpliCol checkout. Stop an active campaign before resetting
-its destination.
+## Supported binary-wheel platforms
 
-Its launcher uses installed resources and runs headlessly when the optional
-Ratatui bindings are absent. An original-AmpliCol checkout is needed only when
-that reference backend is selected. Record its default while copying with
-`--local-amplicol /path/to/clean/complete/checkout`, or provide/override it on
-the copied launcher's `run` command with `--original-amplicol PATH`.
+The current release provides `cp311-abi3` wheels for Python 3.11 and newer on:
 
-## Source Install
+| Platform | Architecture | Minimum deployment target |
+| --- | --- | --- |
+| macOS | Apple silicon (`arm64`) | macOS 11 |
+| macOS | Intel (`x86_64`) | macOS 11 |
+| Linux | `x86_64` | manylinux 2.28 |
+
+Wheel users do **not** need a Rust compiler. pyAmpliCol does not depend on
+LHAPDF.
+
+The generated C11, C++17, Fortran 2008, and Rust 2021 examples compile against
+the wheel-owned Rusticol SDK. Install the compiler only for the language you
+intend to use:
+
+- C/C++ compiler for C11 or C++17 consumers;
+- Fortran compiler for Fortran 2008 consumers;
+- Rust compiler for the standalone Rust driver.
+
+See [Native APIs](native-apis.md) for the generated driver workflow.
+
+## Create an editable examples workspace
+
+The examples are package resources. Copy them before editing or running them:
 
 ```console
-git clone --branch v0.1.2 --depth 1 https://github.com/mg5amcnlo/pyamplicol.git
+pyamplicol examples copy ./pyamplicol-examples --force
+cd pyamplicol-examples
+```
+
+Paths inside the supplied TOML cards are relative to the card, so the copied
+workspace can be moved. Keep the environment containing pyAmpliCol activated,
+or invoke its executable by absolute path.
+
+Continue with [Quick Start](quick-start.md).
+
+## Install a tagged source release
+
+Use a tagged snapshot when your platform has no compatible wheel or when you
+need a source build:
+
+```console
+git clone --branch v0.1.3 --depth 1 \
+  https://github.com/mg5amcnlo/pyamplicol.git
 cd pyamplicol
 python -m pip install .
 ```
 
-This runs the same in-tree PEP 517/Maturin backend used for release artifacts
-and resolves exact published packages/crates plus SymJIT 2.22.0 from its
-official repository at the immutable revision recorded in the release lock. It
-requires Python 3.11+, Rust 1.89+ and a C/C++ toolchain. Rust 1.89.0 is the
-minimum supported version; contributor builds, CI, and release wheels use the
-repository-pinned Rust 1.97.1 toolchain. The build checks that release
-dependency contract and does not substitute contributor inputs.
+A source build requires:
 
-An unpacked release source distribution supports the same command:
+- Python 3.11 or newer;
+- Rust 1.89 or newer;
+- a C/C++ toolchain;
+- network access to the release-locked Python, Cargo, and SymJIT inputs.
+
+The repository-pinned CI toolchain may be newer than the minimum supported
+Rust version. A Fortran compiler remains optional unless you build a Fortran
+consumer.
+
+To build from the source distribution published on PyPI:
 
 ```console
 python -m pip download --no-binary pyamplicol pyamplicol
-tar -xf pyamplicol-0.1.2.tar.gz
-cd pyamplicol-0.1.2
+tar -xf pyamplicol-*.tar.gz
+cd pyamplicol-*/
 python -m pip install .
 ```
 
-The source distribution contains the build backend, locked Rust workspace,
-tests, docs, examples, and release tooling required for this build. Candidate
-dependency setup is intentionally source-checkout-only and is not distributed.
+## Contributor installation
 
-## Retained Local Wheel
-
-```console
-just wheel
-python -m pip install dist/pyamplicol-*.whl
-```
-
-To select an interpreter and build a matching wheel when necessary:
+For development from a checkout, use the repository-managed candidate
+environment rather than an editable installation:
 
 ```console
-just install-wheel PYTHON=/path/to/python
-```
-
-The wheel owns the Python extension and target-specific static SDK. Running
-`rusticol-config` from an unstaged source tree therefore reports that the SDK
-is unavailable.
-
-Useful release-equivalent checks are:
-
-```console
-just check
-just test
-just sdist
-just wheel-from-sdist
-just test-deployment
-just publish-dry-run
-```
-
-`publish-dry-run` builds and checks ordinary Python package files, performs
-platform and clean-install smoke tests, and prints the upload command without
-publishing.
-
-## Contributor Environment
-
-For contributor development, prepare the isolated managed environment with:
-
-```console
+git clone https://github.com/mg5amcnlo/pyamplicol.git
+cd pyamplicol
 just dev-install
 PYTHON=.venv/bin/python just dev-test
 ```
 
-On Nix or NixOS, the repository includes a developer shell:
+The first native build can take several minutes. Later invocations reuse the
+workspace-local Cargo cache.
+
+On Nix or NixOS:
 
 ```console
 nix develop
@@ -129,41 +129,72 @@ just dev-install
 PYTHON=.venv/bin/python just dev-test
 ```
 
-The flake provides Python 3.11, Rust 1.97.1, C/C++ and Fortran compilers, native
-build libraries, PDF inspection utilities, and the TeX tools used to render a
-fresh installed profiling campaign. It intentionally omits pyAmpliCol's Python
-runtime, test, and pinned candidate packages: `just dev-install` installs
-those into `.venv` from the repository's contributor locks.
+The Nix shell supplies Python, Rust, C/C++, Fortran, build libraries, and the
+documentation/PDF tools. `just dev-install` installs the pinned Python and
+native inputs into `.venv`.
 
-The first native `just dev-install` can take several minutes. Later runs reuse
-the workspace-local Cargo cache under `.artifacts/dev-install` and are normally
-substantially faster.
+> Candidate wheels are deliberately marked non-publishable. Published builds
+> use the release dependency lock and CI workflow instead.
 
-The same command stages the candidate wheel's Rust extension and native SDK
-beside the Python source. Contributor imports verify a lightweight native-source
-build ID and the staged extension hash. If Rust or native build inputs change,
-or another extension is found, imports fail with `just dev-install` as the
-refresh command. This check is limited to source and candidate builds; normal
-published-wheel imports are unchanged.
+## Symbolica licensing
 
-The flake is a source-checkout contributor tool rather than part of the PyPI
-source distribution, because that distribution excludes the candidate
-dependency installer and accepts only the release-locked published
-packages/crates plus the official immutable SymJIT Git revision.
+Generation and Python arbitrary-precision execution use Symbolica. The native
+binary64 runtime embedded in generated artifacts does not import Symbolica.
+Restricted Symbolica mode may clamp generation resources; pyAmpliCol records
+the requested and effective settings separately.
 
-This mode uses pinned candidate dependency inputs and marks its wheels
-non-publishable. To omit the optional independent legacy-Fortran oracle:
+For licensing details and the built-in license-request helpers, see
+[Symbolica and Licensing](symbolica-and-licensing.md).
+
+## Common installation issues
+
+### `No matching distribution found`
+
+Check your Python version and platform:
 
 ```console
-python dependencies/install_dependencies.py --without-legacy-amplicol
-PYTHON=.venv/bin/python PYAMPLICOL_BUILD_MODE=candidate just source-gate
+python -VV
+python -c 'import platform; print(platform.system(), platform.machine())'
 ```
 
-Contributor-only dependency setup is excluded from release package files.
-Release builds remain governed by `dependencies/release-lock.toml`; candidate
-state is not a fallback for `python -m pip install .`, `just wheel`, or
-`just test-deployment`.
+If no wheel matches, use the tagged source installation above.
 
-Use `just --list` for the complete recipe inventory. Validation should run in
-the managed environment without an inherited `PYTHONPATH` or an editable
-installation from another checkout.
+### `pyamplicol: command not found`
+
+Activate the environment where the package was installed:
+
+```console
+. .venv/bin/activate
+python -m pyamplicol --help
+```
+
+### Generated native driver cannot find `rusticol-config`
+
+The SDK discovery command belongs to the installed wheel. Activate that wheel's
+environment before invoking `make`, or set `RUSTICOL_CONFIG` to its executable:
+
+```console
+export RUSTICOL_CONFIG="$(python -c 'import sys; print(sys.prefix + "/bin/rusticol-config")')"
+make -C artifacts/pp_zjj/API/c run
+```
+
+### A contributor import says the candidate wheel is stale
+
+The native build inputs changed after the local candidate was staged. Refresh
+the same checkout once:
+
+```console
+just dev-install
+```
+
+Do not work around this by mixing an extension from a different checkout.
+
+## Next steps
+
+- [Quick Start](quick-start.md) — generate, inspect, evaluate, and profile a process.
+- [Configuration](configuration.md) — run cards, overrides, color modes, and evaluators.
+- [Models and Processes](models-and-processes.md) — built-in, JSON, UFO, and prepared models.
+- [Troubleshooting](troubleshooting.md) — focused solutions for runtime and generation failures.
+
+The exact build and publication boundary is recorded in
+[Release and Support](release-and-support.md).

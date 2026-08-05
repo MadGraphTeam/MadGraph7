@@ -1,5 +1,9 @@
+---
+title: "Architecture Decisions"
+nav_order: 3
+parent: "Development Documentation"
+---
 <!-- SPDX-License-Identifier: 0BSD -->
-
 # Architecture Decisions
 
 ## Standalone Repository

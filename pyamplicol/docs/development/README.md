@@ -1,3 +1,8 @@
+---
+title: "Development Documentation"
+nav_order: 7
+has_children: true
+---
 <!-- SPDX-License-Identifier: 0BSD -->
 # Development Documentation
 

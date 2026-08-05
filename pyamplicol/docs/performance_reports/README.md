@@ -1,3 +1,8 @@
+---
+title: "Performance Reports"
+nav_order: 2
+parent: "Profiling and Benchmarking"
+---
 <!-- SPDX-License-Identifier: 0BSD -->
 # Performance Reports
 

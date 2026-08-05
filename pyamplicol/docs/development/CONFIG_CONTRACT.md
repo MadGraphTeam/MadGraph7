@@ -1,3 +1,9 @@
+---
+title: "Configuration Contract"
+nav_order: 2
+parent: "Development Documentation"
+---
+<!-- SPDX-License-Identifier: 0BSD -->
 # Configuration Contract
 
 TOML schema version 1 and the Python configuration dataclasses share one field

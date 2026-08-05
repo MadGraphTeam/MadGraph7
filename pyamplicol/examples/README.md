@@ -288,4 +288,4 @@ Both examples apply a direct `aS` override, evaluate the five-particle
 validation point, and verify that resolved components reproduce the total.
 
 Current release validation and upload status are listed in
-the [release-status guide](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/release-status.md).
+the [release and support guide](https://mg5amcnlo.github.io/pyamplicol/user/release-and-support/).

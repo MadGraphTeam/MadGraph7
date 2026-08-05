@@ -1,3 +1,10 @@
+---
+title: "Packaged Model Assets"
+nav_order: 7
+parent: "Development Documentation"
+has_children: true
+---
+<!-- SPDX-License-Identifier: 0BSD -->
 # Packaged Model Assets
 
 This directory records the release classification for the model resources under
