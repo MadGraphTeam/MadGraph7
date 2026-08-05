@@ -1062,7 +1062,11 @@ pub(crate) fn _on_the_fly_test_support_probe_v1(
     point_count,
     *,
     parameter_overrides=None,
-    tamper_executor_key=false
+    tamper_executor_key=false,
+    benchmark=false,
+    benchmark_warmup_repetitions=0,
+    benchmark_repetitions=0,
+    collect_current_diagnostics=true
 ))]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn _on_the_fly_artifact_probe_v1(
@@ -1079,6 +1083,10 @@ pub(crate) fn _on_the_fly_artifact_probe_v1(
     point_count: u32,
     parameter_overrides: Option<BTreeMap<String, Vec<f64>>>,
     tamper_executor_key: bool,
+    benchmark: bool,
+    benchmark_warmup_repetitions: u32,
+    benchmark_repetitions: u32,
+    collect_current_diagnostics: bool,
 ) -> PyResult<Py<PyAny>> {
     let input = parse_input(builder_input)?;
     let prepared_template = parse_prepared_template_input(prepared_template_input)?;
@@ -1123,6 +1131,10 @@ pub(crate) fn _on_the_fly_artifact_probe_v1(
                 point_count,
                 &parameter_overrides,
                 tamper_executor_key,
+                benchmark,
+                benchmark_warmup_repetitions,
+                benchmark_repetitions,
+                collect_current_diagnostics,
             )
         })
         .map_err(python_error)?;
@@ -1144,6 +1156,22 @@ fn on_the_fly_artifact_probe_mapping(
     result.set_item("raw_amplitudes", native.raw_amplitudes)?;
     result.set_item("normalized_values", native.normalized_values)?;
     result.set_item("normalization_factor", native.normalization_factor)?;
+    result.set_item("trace_build_count", native.trace_build_count)?;
+    result.set_item("trace_cache_hit_count", native.trace_cache_hit_count)?;
+    result.set_item("momentum_fill_count", native.momentum_fill_count)?;
+    result.set_item(
+        "benchmark_warmup_repetitions",
+        native.benchmark_warmup_repetitions,
+    )?;
+    result.set_item("benchmark_repetitions", native.benchmark_repetitions)?;
+    result.set_item(
+        "benchmark_elapsed_seconds",
+        native.benchmark_elapsed_seconds,
+    )?;
+    result.set_item(
+        "benchmark_seconds_per_point",
+        native.benchmark_seconds_per_point,
+    )?;
     result.set_item(
         "direct_plan_load_attempts",
         native.direct_plan_load_attempts,

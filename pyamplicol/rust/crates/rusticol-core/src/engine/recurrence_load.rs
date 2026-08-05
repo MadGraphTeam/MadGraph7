@@ -1315,6 +1315,103 @@ fn on_the_fly_source_major_momenta(
 }
 
 #[cfg(feature = "on-the-fly-test-support")]
+struct OnTheFlyQueryTraceCacheV1<T> {
+    entries: BTreeMap<SemanticDigest, T>,
+    trace_build_count: u32,
+    trace_cache_hit_count: std::cell::Cell<u32>,
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+impl<T> Default for OnTheFlyQueryTraceCacheV1<T> {
+    fn default() -> Self {
+        Self {
+            entries: BTreeMap::new(),
+            trace_build_count: 0,
+            trace_cache_hit_count: std::cell::Cell::new(0),
+        }
+    }
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+impl<T> OnTheFlyQueryTraceCacheV1<T> {
+    fn insert_built(&mut self, query_digest: SemanticDigest, trace: T) -> RusticolResult<()> {
+        match self.entries.entry(query_digest) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(trace);
+            }
+            std::collections::btree_map::Entry::Occupied(_) => {
+                return Err(RusticolError::integrity(
+                    "on-the-fly trace cache repeated a fresh query digest",
+                ));
+            }
+        }
+        self.trace_build_count = self
+            .trace_build_count
+            .checked_add(1)
+            .ok_or_else(|| RusticolError::integrity("on-the-fly trace-build counter overflowed"))?;
+        Ok(())
+    }
+
+    fn prepared(&self, query_digest: SemanticDigest) -> RusticolResult<&T> {
+        self.entries.get(&query_digest).ok_or_else(|| {
+            RusticolError::integrity("fresh on-the-fly trace disappeared from its cache")
+        })
+    }
+
+    fn prepared_mut(&mut self, query_digest: SemanticDigest) -> RusticolResult<&mut T> {
+        self.entries.get_mut(&query_digest).ok_or_else(|| {
+            RusticolError::integrity("fresh on-the-fly trace disappeared from its cache")
+        })
+    }
+
+    fn lookup(&self, query_digest: SemanticDigest) -> RusticolResult<&T> {
+        let trace = self.entries.get(&query_digest).ok_or_else(|| {
+            RusticolError::integrity("on-the-fly benchmark query disappeared from its trace cache")
+        })?;
+        self.trace_cache_hit_count.set(
+            self.trace_cache_hit_count
+                .get()
+                .checked_add(1)
+                .ok_or_else(|| {
+                    RusticolError::integrity("on-the-fly trace-cache-hit counter overflowed")
+                })?,
+        );
+        Ok(trace)
+    }
+
+    fn counts(&self) -> (u32, u32) {
+        (self.trace_build_count, self.trace_cache_hit_count.get())
+    }
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+fn validate_on_the_fly_probe_outputs(
+    raw_amplitudes: &[[f64; 2]],
+    normalized_values: &[f64],
+) -> RusticolResult<()> {
+    if raw_amplitudes.len() != normalized_values.len() {
+        return Err(RusticolError::integrity(
+            "on-the-fly probe output lengths disagree",
+        ));
+    }
+    for (point, ([real, imaginary], normalized)) in
+        raw_amplitudes.iter().zip(normalized_values).enumerate()
+    {
+        if !real.is_finite() || !imaginary.is_finite() {
+            return Err(RusticolError::evaluation(format!(
+                "on-the-fly probe produced a non-finite raw amplitude at point {point}"
+            )));
+        }
+        if !normalized.is_finite() {
+            return Err(RusticolError::evaluation(format!(
+                "on-the-fly probe produced a non-finite normalized value at point {point}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
 impl NativeRuntime {
     /// Execute one authenticated selector-local recurrence trace directly from
     /// a genuine artifact without loading or decoding its DirectPlan.
@@ -1331,7 +1428,21 @@ impl NativeRuntime {
         point_count: u32,
         parameter_overrides: &BTreeMap<String, [f64; 2]>,
         tamper_executor_key: bool,
+        benchmark: bool,
+        benchmark_warmup_repetitions: u32,
+        benchmark_repetitions: u32,
+        collect_current_diagnostics: bool,
     ) -> RusticolResult<NativeOnTheFlyArtifactProbeV1> {
+        if benchmark && benchmark_repetitions == 0 {
+            return Err(RusticolError::invalid_argument(
+                "on-the-fly benchmark requires at least one timed repetition",
+            ));
+        }
+        if !benchmark && (benchmark_warmup_repetitions != 0 || benchmark_repetitions != 0) {
+            return Err(RusticolError::invalid_argument(
+                "on-the-fly benchmark repetitions require benchmark=true",
+            ));
+        }
         let guard = OnTheFlyForbiddenWorkGuardV1::begin()?;
         let result = (|| {
             let artifact = VerifiedArtifact::open(artifact_path)?;
@@ -1387,17 +1498,22 @@ impl NativeRuntime {
                 ));
             }
 
-            let mut selected = build_on_the_fly_selected_trace_v1(
+            let mut trace_cache = OnTheFlyQueryTraceCacheV1::default();
+            let selected = build_on_the_fly_selected_trace_v1(
                 authenticated,
                 direct.direct_template_catalog_digest(),
                 selected_public_flow_id,
                 public_helicities,
             )?;
+            let query_digest = selected.query.semantic_digest();
+            trace_cache.insert_built(query_digest, selected)?;
             if tamper_executor_key {
-                selected
+                trace_cache
+                    .prepared_mut(query_digest)?
                     .trace
                     .tamper_first_prepared_executor_key_for_probe()?;
             }
+            let selected = trace_cache.prepared(query_digest)?;
 
             let (pack_json, pack, payload_root) = load_prepared_pack(&artifact, &manifest)?;
             let payloads = artifact.evaluator_payload_store(&payload_root)?;
@@ -1455,50 +1571,111 @@ impl NativeRuntime {
                 point_count,
                 selected.trace.layout().lorentz_component_count(),
             )?;
-            workspace.fill_momenta_from_external(&selected.trace, &source_major, point_count)?;
-            OnTheFlyStructuralInterpreter::execute(
-                &selected.trace,
-                &resolver,
-                &mut workspace,
-                point_count,
-            )?;
+            let mut momentum_fill_count = 0_u32;
+            let benchmark_elapsed_seconds = if !benchmark {
+                workspace.fill_momenta_from_external(
+                    &selected.trace,
+                    &source_major,
+                    point_count,
+                )?;
+                momentum_fill_count = 1;
+                OnTheFlyStructuralInterpreter::execute(
+                    &selected.trace,
+                    &resolver,
+                    &mut workspace,
+                    point_count,
+                )?;
+                None
+            } else {
+                for _ in 0..benchmark_warmup_repetitions {
+                    let cached = trace_cache.lookup(std::hint::black_box(query_digest))?;
+                    workspace.fill_momenta_from_external(
+                        &cached.trace,
+                        &source_major,
+                        point_count,
+                    )?;
+                    momentum_fill_count = momentum_fill_count.checked_add(1).ok_or_else(|| {
+                        RusticolError::integrity("on-the-fly momentum-fill counter overflowed")
+                    })?;
+                    OnTheFlyStructuralInterpreter::execute(
+                        &cached.trace,
+                        &resolver,
+                        &mut workspace,
+                        point_count,
+                    )?;
+                    std::hint::black_box(workspace.amplitude(0)?);
+                }
+                let started = Instant::now();
+                for _ in 0..benchmark_repetitions {
+                    let cached = trace_cache.lookup(std::hint::black_box(query_digest))?;
+                    workspace.fill_momenta_from_external(
+                        &cached.trace,
+                        &source_major,
+                        point_count,
+                    )?;
+                    momentum_fill_count = momentum_fill_count.checked_add(1).ok_or_else(|| {
+                        RusticolError::integrity("on-the-fly momentum-fill counter overflowed")
+                    })?;
+                    OnTheFlyStructuralInterpreter::execute(
+                        &cached.trace,
+                        &resolver,
+                        &mut workspace,
+                        point_count,
+                    )?;
+                    std::hint::black_box(workspace.amplitude(0)?);
+                }
+                Some(profile_duration_seconds(started.elapsed()))
+            };
+            let benchmark_seconds_per_point = benchmark_elapsed_seconds.map(|elapsed| {
+                elapsed / (f64::from(benchmark_repetitions) * f64::from(point_count))
+            });
+            let (trace_build_count, trace_cache_hit_count) = trace_cache.counts();
 
             let raw_amplitudes = (0..point_count)
                 .map(|point| workspace.amplitude(point).map(|(real, imag)| [real, imag]))
                 .collect::<RusticolResult<Vec<_>>>()?;
             let normalization_factor =
                 recurrence_normalization_values(&manifest.runtime_metadata)?.factor;
-            let normalized_values = raw_amplitudes
+            let normalized_values: Vec<f64> = raw_amplitudes
                 .iter()
                 .map(|[real, imaginary]| {
                     (real.mul_add(*real, imaginary * imaginary)) * normalization_factor
                 })
                 .collect();
+            validate_on_the_fly_probe_outputs(&raw_amplitudes, &normalized_values)?;
             let current_count = selected.trace.proof().current_count();
-            let currents = (0..current_count)
-                .map(|current_id| {
-                    let [_, component_count] =
-                        selected.trace.current_component_range(current_id)?;
-                    let mut values =
-                        Vec::with_capacity(point_count as usize * component_count as usize);
-                    for point in 0..point_count {
-                        values.extend(
-                            workspace
-                                .observed_current_components(&selected.trace, current_id, point)?
-                                .into_iter()
-                                .map(|(real, imaginary)| [real, imaginary]),
-                        );
-                    }
-                    Ok(NativeOnTheFlyCurrentProbeV1 {
-                        semantic_digest: selected
-                            .trace
-                            .current_semantic_digest(current_id)?
-                            .to_string(),
-                        component_count,
-                        values,
+            let currents = if collect_current_diagnostics {
+                (0..current_count)
+                    .map(|current_id| {
+                        let [_, component_count] =
+                            selected.trace.current_component_range(current_id)?;
+                        let mut values =
+                            Vec::with_capacity(point_count as usize * component_count as usize);
+                        for point in 0..point_count {
+                            values.extend(
+                                workspace
+                                    .observed_current_components(
+                                        &selected.trace,
+                                        current_id,
+                                        point,
+                                    )?
+                                    .into_iter()
+                                    .map(|(real, imaginary)| [real, imaginary]),
+                            );
+                        }
+                        Ok(NativeOnTheFlyCurrentProbeV1 {
+                            semantic_digest: selected
+                                .trace
+                                .current_semantic_digest(current_id)?
+                                .to_string(),
+                            component_count,
+                            values,
+                        })
                     })
-                })
-                .collect::<RusticolResult<Vec<_>>>()?;
+                    .collect::<RusticolResult<Vec<_>>>()?
+            } else {
+                Vec::new()
+            };
 
             Ok(NativeOnTheFlyArtifactProbeV1 {
                 artifact_id: artifact.manifest().artifact_id.clone(),
@@ -1511,6 +1688,13 @@ impl NativeRuntime {
                 normalized_values,
                 normalization_factor,
                 currents,
+                trace_build_count,
+                trace_cache_hit_count,
+                momentum_fill_count,
+                benchmark_warmup_repetitions,
+                benchmark_repetitions,
+                benchmark_elapsed_seconds,
+                benchmark_seconds_per_point,
                 direct_plan_load_attempts: 0,
                 direct_plan_decode_attempts: 0,
                 direct_plan_materialization_attempts: 0,
@@ -2214,9 +2398,52 @@ mod binding_decode_tests {
         RecurrenceMomentumTransform, RecurrenceNormalization, RecurrenceParameterProjection,
         RecurrenceParticleMass, RecurrenceParticleStatistics, RecurrenceRuntimeMetadata,
         RecurrenceSourceOrientation, RecurrenceSourceTemplate, RecurrenceWavefunctionFamily,
-        RuntimeParameterSlots, build_on_the_fly_source_domains_from_specs, read_u64_values,
+        RuntimeParameterSlots, SemanticDigest, build_on_the_fly_source_domains_from_specs,
+        read_u64_values,
     };
+    #[cfg(feature = "on-the-fly-test-support")]
+    use super::{OnTheFlyQueryTraceCacheV1, validate_on_the_fly_probe_outputs};
     use std::collections::BTreeMap;
+
+    #[cfg(feature = "on-the-fly-test-support")]
+    #[test]
+    fn on_the_fly_query_cache_counts_builds_and_real_digest_lookups() {
+        let digest = SemanticDigest::new([7; 32]).unwrap();
+        let mut cache = OnTheFlyQueryTraceCacheV1::default();
+
+        cache.insert_built(digest, 41_u32).unwrap();
+        assert_eq!(cache.counts(), (1, 0));
+        assert_eq!(*cache.prepared(digest).unwrap(), 41);
+        assert_eq!(cache.counts(), (1, 0));
+        assert_eq!(*cache.lookup(digest).unwrap(), 41);
+        assert_eq!(*cache.lookup(digest).unwrap(), 41);
+        assert_eq!(cache.counts(), (1, 2));
+
+        let error = cache
+            .insert_built(digest, 99)
+            .expect_err("one query digest must not be rebuilt");
+        assert!(error.to_string().contains("repeated a fresh query digest"));
+        assert_eq!(*cache.prepared(digest).unwrap(), 41);
+        assert_eq!(cache.counts(), (1, 2));
+    }
+
+    #[cfg(feature = "on-the-fly-test-support")]
+    #[test]
+    fn on_the_fly_probe_rejects_non_finite_outputs() {
+        validate_on_the_fly_probe_outputs(&[[0.0, 1.0]], &[1.0]).unwrap();
+
+        let raw_error = validate_on_the_fly_probe_outputs(&[[f64::NAN, 1.0]], &[1.0])
+            .expect_err("non-finite raw amplitude must fail closed");
+        assert!(raw_error.to_string().contains("non-finite raw amplitude"));
+
+        let normalized_error = validate_on_the_fly_probe_outputs(&[[0.0, 1.0]], &[f64::INFINITY])
+            .expect_err("non-finite normalized value must fail closed");
+        assert!(
+            normalized_error
+                .to_string()
+                .contains("non-finite normalized value")
+        );
+    }
 
     fn source_ir(
         name: &str,

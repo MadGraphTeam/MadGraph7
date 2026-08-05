@@ -170,6 +170,10 @@ def _invoke_probe(
     overrides: dict[str, list[float]] | None = None,
     pack_digest: str | None = None,
     tamper: bool = False,
+    benchmark: bool = False,
+    benchmark_warmup_repetitions: int = 0,
+    benchmark_repetitions: int = 0,
+    collect_current_diagnostics: bool = True,
 ) -> dict[str, Any]:
     return probe(
         str(artifact),
@@ -184,6 +188,10 @@ def _invoke_probe(
         len(points),
         parameter_overrides=overrides,
         tamper_executor_key=tamper,
+        benchmark=benchmark,
+        benchmark_warmup_repetitions=benchmark_warmup_repetitions,
+        benchmark_repetitions=benchmark_repetitions,
+        collect_current_diagnostics=collect_current_diagnostics,
     )
 
 
@@ -318,6 +326,13 @@ def test_hidden_on_the_fly_probe_executes_genuine_scalar_artifact(
         )
         for report in (*singles, many):
             _assert_zero_poison_counts(report)
+            assert report["trace_build_count"] == 1
+            assert report["trace_cache_hit_count"] == 0
+            assert report["momentum_fill_count"] == 1
+            assert report["benchmark_warmup_repetitions"] == 0
+            assert report["benchmark_repetitions"] == 0
+            assert report["benchmark_elapsed_seconds"] is None
+            assert report["benchmark_seconds_per_point"] is None
             _assert_raw_i_lambda(report, 1.0)
             for raw, normalized in zip(
                 report["raw_amplitudes"],
@@ -378,6 +393,44 @@ def test_hidden_on_the_fly_probe_executes_genuine_scalar_artifact(
         assert mutated["raw_amplitudes"][0][1] == pytest.approx(
             3.0 * one["raw_amplitudes"][0][1]
         )
+
+        benchmark = _invoke_probe(
+            probe,
+            artifact,
+            case,
+            retained,
+            direct_json,
+            (case.point,),
+            benchmark=True,
+            benchmark_warmup_repetitions=2,
+            benchmark_repetitions=5,
+            collect_current_diagnostics=False,
+        )
+        _assert_zero_poison_counts(benchmark)
+        _assert_raw_i_lambda(benchmark, 1.0)
+        assert benchmark["normalized_values"] == pytest.approx((expected_default,))
+        assert benchmark["currents"] == []
+        assert benchmark["trace_build_count"] == 1
+        assert benchmark["trace_cache_hit_count"] == 7
+        assert benchmark["momentum_fill_count"] == 7
+        assert benchmark["benchmark_warmup_repetitions"] == 2
+        assert benchmark["benchmark_repetitions"] == 5
+        assert math.isfinite(benchmark["benchmark_elapsed_seconds"])
+        assert benchmark["benchmark_elapsed_seconds"] >= 0.0
+        assert benchmark["benchmark_seconds_per_point"] == pytest.approx(
+            benchmark["benchmark_elapsed_seconds"] / 5.0
+        )
+
+        with pytest.raises(ValueError, match="at least one timed repetition"):
+            _invoke_probe(
+                probe,
+                artifact,
+                case,
+                retained,
+                direct_json,
+                (case.point,),
+                benchmark=True,
+            )
 
         with pytest.raises(ValueError, match="not used by the process"):
             _invoke_probe(
