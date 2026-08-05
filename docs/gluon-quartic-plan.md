@@ -473,14 +473,37 @@ multisets:
 | standalone Fortran | 450 | **0** |
 | madmatrix | 450 | **40** |
 
-**The folding is ordering sensitive in madmatrix and not in Fortran.** The
-madmatrix matrix element carries 20 wavefunctions listed by two diagrams —
-two objects for the same current, which a directly built matrix element does
-not have — and `match_quartic_mothers` compares mothers by number, so which
-copy an amplitude happens to hold decides which pairs get matched. The
-committed order happens to give a correct folding; the reordering does not.
+**The folding is ordering sensitive in madmatrix and not in Fortran**, and
+running that down gives the root cause. It is a latent bug in MG5 itself,
+which the reordering exposes rather than causes:
 
-So the duplicate wavefunctions are the thing to fix, not the order.
+1. The reconstruction can build the same cubic current with its two mothers
+   in either order — the colliding pairs are `interaction 3, colour_key 0,
+   mothers [7,3]` against `[3,7]`. `sorted_mothers` leaves them alone,
+   because for two identical gluons its key ties and the sort is stable.
+2. **`VVV1P0_1` is antisymmetric under exchanging its two inputs.** Measured,
+   not read off the source: with a fixed pair of wavefunctions,
+   `VVV1P0_1(a,b) + VVV1P0_1(b,a) = 0` exactly. So the two objects are
+   *negatives* of each other and write out calls differing by a sign.
+3. **`HelasWavefunction.__eq__` compares mothers by sorted number**, so it
+   calls them equal — "the number for this wavefunction, the pdg code, and
+   the interaction id are irrelevant".
+4. `export_cpp.generate_process_files` renumbers wavefunctions by that
+   equality, to share them between matrix elements. The two therefore end up
+   on **one number and one slot inside a single matrix element**, and
+   whichever is written last wins — with the wrong sign for the other.
+
+The Fortran writer never hits it because it does not renumber by equality.
+With the committed diagram order the collisions happen not to matter; the
+reordering moves them somewhere they do.
+
+The fix is upstream of this optimisation: either `__eq__` compares mothers in
+order rather than sorted (safe for every vertex whose particles differ, since
+`sorted_mothers` then fixes the order anyway, but it changes the wavefunction
+CSE everywhere and needs validating with the flag off), or the reconstruction
+is made to produce only one of the two orders. Canonicalising the pair inside
+`split_quartic_vertex` alone is *not* enough — the other copy can come from a
+vertex the reconstruction did not build.
 
 Worth doing: at six gluons it would take the wavefunction store from 6600 B to
 2700 B, *under* the 5100 B of the unoptimised code, with every current sum
