@@ -65,7 +65,7 @@ topology, replay, and reference-order IDs are not configurable.
 - `seed: int = 12345`
 - `relative_tolerance: float = 1e-12`
 - `absolute_tolerance: float = 1e-300`
-- `post_build_validation: bool = true`
+- `post_build_validation: bool = false`
 
 ### Relation Discovery
 
@@ -78,8 +78,14 @@ topology, replay, and reference-order IDs are not configurable.
 - `seed: int >= 0 = 1348026701`
 
 Candidate and independent verification probes are bounded and deterministic.
-The two post-build validation samples use the native binary64 runtime and are
-independent of the 96-digit relation-discovery certification probes below.
+Artifact writing always validates the schema, declared payloads, references,
+and digests. Optional post-build validation additionally re-opens the completed
+artifact and compares native binary64 optimized and resolved evaluation. It is
+off by default because that second runtime pass does not alter the artifact and
+can be disproportionately expensive for large resolved axes; enable it with
+`--post-build-validation` when an immediate runtime smoke is wanted. Its
+configured samples are independent of the 96-digit relation-discovery
+certification probes below.
 Exact binary64 term-vector or `ExactComplexRational` schedule proofs remain the
 preferred promotion path. When no exact structural proof exists,
 `certified-reuse` may apply equal, opposite, or zero-current reuse only after

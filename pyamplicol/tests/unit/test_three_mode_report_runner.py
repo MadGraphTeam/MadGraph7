@@ -1878,6 +1878,14 @@ def test_config_threads_manual_profile_sampling_settings() -> None:
 
     assert values["benchmark"]["warmup_runs"] == 7  # type: ignore[index]
     assert values["benchmark"]["minimum_samples"] == 11  # type: ignore[index]
+    assert values["generation"]["validation"] == {  # type: ignore[index]
+        "enabled": True,
+        "samples": 1,
+        "seed": 12345,
+        "relative_tolerance": 1.0e-12,
+        "absolute_tolerance": 1.0e-300,
+        "post_build_validation": False,
+    }
 
 
 @pytest.mark.parametrize(

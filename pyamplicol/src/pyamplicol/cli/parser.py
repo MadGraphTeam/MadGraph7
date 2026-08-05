@@ -320,6 +320,10 @@ def _add_generation_options(parser: argparse.ArgumentParser) -> None:
         dest="generation.validation.post_build_validation",
         action=argparse.BooleanOptionalAction,
         default=argparse.SUPPRESS,
+        help=(
+            "re-open and numerically smoke-test the written artifact "
+            "(off by default)"
+        ),
     )
     numerical_reuse = parser.add_mutually_exclusive_group()
     numerical_reuse.add_argument(

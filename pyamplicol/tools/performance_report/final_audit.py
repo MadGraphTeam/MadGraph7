@@ -2606,10 +2606,6 @@ def _audit_effective_config_mapping(
 ) -> None:
     evaluator = _mapping(effective.get("evaluator"), f"{context}.evaluator")
     color = _mapping(effective.get("color"), f"{context}.color")
-    generation = _mapping(effective.get("generation"), f"{context}.generation")
-    validation = _mapping(
-        generation.get("validation"), f"{context}.generation.validation"
-    )
     expected_layout = (
         "all-flow-union" if cell.workload is Workload.ALL_FLOW else "topology-replay"
     )
@@ -2631,19 +2627,6 @@ def _audit_effective_config_mapping(
         jit = _mapping(evaluator.get("jit"), f"{context}.evaluator.jit")
         if jit.get("optimization_level") != cell.measurement.jit_optimization_level:
             mismatches.append("evaluator.jit.optimization_level")
-    expected_validation = {
-        "enabled": True,
-        "samples": 10,
-        "seed": 12345,
-        "relative_tolerance": RELATIVE_TOLERANCE,
-        "absolute_tolerance": 1.0e-300,
-        "post_build_validation": True,
-    }
-    mismatches.extend(
-        f"generation.validation.{field}"
-        for field, value in expected_validation.items()
-        if validation.get(field) != value
-    )
     if mismatches:
         raise FinalAuditError(
             f"{context} differs from the report contract: " + ", ".join(mismatches)

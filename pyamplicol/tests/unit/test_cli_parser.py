@@ -60,6 +60,16 @@ def test_generate_validation_samples_default_and_override() -> None:
     assert explicit.generation.validation.samples == 10
 
 
+def test_generate_post_build_validation_is_opt_in() -> None:
+    default = parse_cli(("generate",)).resolve().effective
+    explicit = parse_cli(
+        ("generate", "--post-build-validation")
+    ).resolve().effective
+
+    assert not default.generation.validation.post_build_validation
+    assert explicit.generation.validation.post_build_validation
+
+
 def test_generate_defaults_to_certified_numerical_current_reuse() -> None:
     config = parse_cli(("generate",)).resolve().effective
     assert (

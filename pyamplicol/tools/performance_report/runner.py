@@ -779,11 +779,13 @@ def config_values(
             "emit_api_bundle": True,
             "validation": {
                 "enabled": True,
-                "samples": 10,
+                "samples": 1,
                 "seed": GENERATION_VALIDATION_SEED,
                 "relative_tolerance": RELATIVE_TOLERANCE,
                 "absolute_tolerance": 1.0e-300,
-                "post_build_validation": True,
+                # The campaign immediately loads the artifact and performs its
+                # own resolved, high-precision, and authority validation.
+                "post_build_validation": False,
             },
         },
         "evaluator": {
