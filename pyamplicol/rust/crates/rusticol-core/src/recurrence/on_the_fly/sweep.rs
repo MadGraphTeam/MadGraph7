@@ -1471,7 +1471,7 @@ mod tests {
         )
     }
 
-    fn three_scalar_contact_seed() -> OnTheFlyProcessSeedV1 {
+    fn scalar_contact_seed(source_count: u32) -> OnTheFlyProcessSeedV1 {
         let state = OnTheFlySourceStateV1::new(
             0,
             0,
@@ -1492,7 +1492,7 @@ mod tests {
             None,
         )
         .unwrap();
-        let anchors = (0_u32..3)
+        let anchors = (0_u32..source_count)
             .map(|source_slot| {
                 OnTheFlySourceAnchorV1::new(
                     source_slot,
@@ -1516,7 +1516,7 @@ mod tests {
             "raw-amplitude-contact-test",
             ExactComplexRational::ONE,
             anchors,
-            vec![0, 1, 2],
+            (0_u32..source_count).collect(),
             vec![Some(0)],
             Vec::new(),
         )
@@ -1525,14 +1525,68 @@ mod tests {
 
     fn production_contact_barrier_case(
         reverse_transition_order: bool,
-    ) -> (Vec<(Vec<u32>, Vec<u32>)>, (usize, usize)) {
-        let templates = contact_orbit_test_template(ContactOrbitTestBinding::One)
-            .validate()
-            .unwrap();
+    ) -> (Vec<(Vec<u32>, u32, Vec<u32>)>, (usize, usize), bool) {
+        let mut template_input = contact_orbit_test_template(ContactOrbitTestBinding::One);
+        let mut intermediate_state = template_input.current_states[0];
+        intermediate_state.id = 1;
+        let mut append_canonical_string = |value: &[u8]| {
+            let previous_string = template_input.string_ranges.last().unwrap();
+            let previous_range = previous_string
+                .as_usize_range(template_input.string_bytes.len(), "test string")
+                .unwrap();
+            assert!(
+                &template_input.string_bytes[previous_range] < value,
+                "the intermediate-state fixture must extend the canonical string catalog"
+            );
+            let id = u32::try_from(template_input.string_ranges.len()).unwrap();
+            template_input
+                .string_ranges
+                .push(crate::recurrence::CheckedTableRange::new(
+                    u64::try_from(template_input.string_bytes.len()).unwrap(),
+                    u64::try_from(value.len()).unwrap(),
+                ));
+            template_input.string_bytes.extend_from_slice(value);
+            id
+        };
+        let intermediate_propagator_template_id =
+            append_canonical_string(b"zz-on-the-fly-intermediate-propagator");
+        let intermediate_state_template_id =
+            append_canonical_string(b"zz-on-the-fly-intermediate-state");
+        intermediate_state.template_string_id = intermediate_state_template_id;
+        let intermediate_digest_id = u32::try_from(template_input.digest_catalog.len()).unwrap();
+        template_input
+            .digest_catalog
+            .push(crate::recurrence::template::DigestCatalogRow {
+                id: intermediate_digest_id,
+                value: [240; 32],
+            });
+        intermediate_state.semantic_digest_id = intermediate_digest_id;
+        template_input.current_states.push(intermediate_state);
+        let intermediate_propagator_digest_id =
+            u32::try_from(template_input.digest_catalog.len()).unwrap();
+        template_input
+            .digest_catalog
+            .push(crate::recurrence::template::DigestCatalogRow {
+                id: intermediate_propagator_digest_id,
+                value: [241; 32],
+            });
+        let mut intermediate_propagator = template_input.propagators[0];
+        intermediate_propagator.id = 1;
+        intermediate_propagator.template_string_id = intermediate_propagator_template_id;
+        intermediate_propagator.state_template_id = 1;
+        intermediate_propagator.applies_propagator = 0;
+        intermediate_propagator.evaluator_binding_id = MISSING_U32;
+        intermediate_propagator.numerator_expression_digest_id = MISSING_U32;
+        intermediate_propagator.denominator_expression_digest_id = MISSING_U32;
+        intermediate_propagator.semantic_digest_id = intermediate_propagator_digest_id;
+        template_input.propagators.push(intermediate_propagator);
+        template_input.catalog_header[0].current_state_count = 2;
+        template_input.catalog_header[0].propagator_count = 2;
+        let templates = template_input.validate().unwrap();
         let catalog = TemplateCatalog::new(templates.input()).unwrap();
         let prepared = prepared_transitions(&templates, &catalog).unwrap();
         let base = prepared.values().next().unwrap()[0].clone();
-        let steps = [
+        let partial_steps = [
             partial_contact_orbit_step_for_test(0, 1, 2, 20, [0, 0, 0, 0]),
             partial_contact_orbit_step_for_test(1, 0, 2, 30, [0, 0, 0, 0]),
             partial_contact_orbit_step_for_test(0, 2, 1, 21, [0, 0, 0, 0]),
@@ -1540,34 +1594,55 @@ mod tests {
             partial_contact_orbit_step_for_test(0, 3, 1, 22, [0, 0, 0, 0]),
             partial_contact_orbit_step_for_test(3, 0, 1, 32, [0, 0, 0, 0]),
         ];
+        let final_steps = [
+            final_contact_orbit_step_for_test(&[0], &[1, 2], 3, 60, [0, 0, 0, 0]),
+            final_contact_orbit_step_for_test(&[1, 2], &[0], 3, 70, [0, 0, 0, 0]),
+            final_contact_orbit_step_for_test(&[0], &[1, 3], 2, 61, [0, 0, 0, 0]),
+            final_contact_orbit_step_for_test(&[1, 3], &[0], 2, 71, [0, 0, 0, 0]),
+            final_contact_orbit_step_for_test(&[0], &[2, 3], 1, 62, [0, 0, 0, 0]),
+            final_contact_orbit_step_for_test(&[2, 3], &[0], 1, 72, [0, 0, 0, 0]),
+        ];
         let transition_order = if reverse_transition_order {
-            (0_usize..steps.len()).rev().collect::<Vec<_>>()
+            (0_usize..partial_steps.len()).rev().collect::<Vec<_>>()
         } else {
-            (0_usize..steps.len()).collect::<Vec<_>>()
+            (0_usize..partial_steps.len()).collect::<Vec<_>>()
         };
-        let rows = transition_order
-            .into_iter()
-            .map(|index| {
-                let id = u32::try_from(index).unwrap();
-                let digest_byte = 40 + u8::try_from(index).unwrap();
-                let mut row = base.clone();
-                row.row.id = id;
-                row.local_orders = vec![0].into_boxed_slice();
-                row.transition_semantic_digest = contact_digest(digest_byte);
-                row.contact_orbit = Some(contact_transition_with_witness(
-                    steps[index].clone(),
-                    digest_byte,
-                    LCColorWitnessTermId::new(
-                        row.row.color_contraction_template_id,
-                        row.witnesses[0].row.ordinal,
-                    ),
-                ));
-                row
-            })
+        let build_row = |index: usize,
+                         id_offset: u32,
+                         step: ContactOrbitStepProof,
+                         input_states: [u32; 2],
+                         result_state: u32| {
+            let id = id_offset + u32::try_from(index).unwrap();
+            let digest_byte = 40 + u8::try_from(id).unwrap();
+            let mut row = base.clone();
+            row.row.id = id;
+            row.input_states = input_states;
+            row.row.result_state_template_id = result_state;
+            row.quantum.result_state_template_id = result_state;
+            row.local_orders = vec![0].into_boxed_slice();
+            row.transition_semantic_digest = contact_digest(digest_byte);
+            row.contact_orbit = Some(contact_transition_with_witness(
+                step,
+                digest_byte,
+                LCColorWitnessTermId::new(
+                    row.row.color_contraction_template_id,
+                    row.witnesses[0].row.ordinal,
+                ),
+            ));
+            row
+        };
+        let partial_rows = transition_order
+            .iter()
+            .copied()
+            .map(|index| build_row(index, 0, partial_steps[index].clone(), [0, 0], 1))
             .collect::<Vec<_>>();
-        let transitions = BTreeMap::from([((0, 0), rows)]);
+        let final_rows = transition_order
+            .into_iter()
+            .map(|index| build_row(index, 6, final_steps[index].clone(), [0, 1], 1))
+            .collect::<Vec<_>>();
+        let transitions = BTreeMap::from([((0, 0), partial_rows), ((0, 1), final_rows)]);
         let propagators = propagator_by_state(&templates).unwrap();
-        let seed = three_scalar_contact_seed();
+        let seed = scalar_contact_seed(4);
         let mut colors = DynamicLCColorStateInterner::default();
         let color_id = colors
             .intern(
@@ -1580,7 +1655,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(color_id, DynamicLCColorStateId::from_interner(0));
-        let mut currents = (0_u32..3)
+        let mut currents = (0_u32..4)
             .map(|source_slot| contact_current(RecurrenceNodeKind::Source, 0, 0, &[source_slot]))
             .collect::<Vec<_>>();
         let mut current_ids = currents
@@ -1600,16 +1675,46 @@ mod tests {
         )
         .unwrap();
 
-        let staged = currents[3..]
+        let staged = currents[4..]
             .iter()
             .map(|current| {
                 (
                     current.key.support_source_slots().to_vec(),
+                    current.stage,
                     contact_transition_ids(current),
                 )
             })
             .collect();
-        (staged, pending_contact_counts(&currents))
+        let retained_partial_is_consumed = currents[10..].iter().all(|current| {
+            current.contributions.keys().all(|contribution| {
+                let mut partial_parents = contribution
+                    .parent_current_ids
+                    .iter()
+                    .copied()
+                    .filter(|parent| (4..10).contains(&usize::try_from(*parent).unwrap()));
+                let Some(partial_parent) = partial_parents.next() else {
+                    return false;
+                };
+                partial_parents.next().is_none()
+                    && currents[partial_parent as usize]
+                        .key
+                        .current_state_template_id()
+                        == 1
+                    && contribution
+                        .parent_current_ids
+                        .iter()
+                        .copied()
+                        .any(|parent| {
+                            parent != partial_parent
+                                && currents[parent as usize].key.current_state_template_id() == 0
+                        })
+            })
+        });
+        (
+            staged,
+            pending_contact_counts(&currents),
+            retained_partial_is_consumed,
+        )
     }
 
     fn commit_contact_plan(
@@ -1727,11 +1832,19 @@ mod tests {
             forward,
             (
                 vec![
-                    (vec![0, 1], vec![0, 2, 4]),
-                    (vec![0, 2], vec![0, 2, 4]),
-                    (vec![1, 2], vec![0, 2, 4]),
+                    (vec![0, 1], 1, vec![0, 2, 4]),
+                    (vec![0, 2], 1, vec![0, 2, 4]),
+                    (vec![0, 3], 1, vec![0, 2, 4]),
+                    (vec![1, 2], 1, vec![0, 2, 4]),
+                    (vec![1, 3], 1, vec![0, 2, 4]),
+                    (vec![2, 3], 1, vec![0, 2, 4]),
+                    (vec![0, 1, 2], 2, vec![6, 8, 10, 6, 8, 10, 6, 8, 10]),
+                    (vec![0, 1, 3], 2, vec![6, 8, 10, 6, 8, 10, 6, 8, 10]),
+                    (vec![0, 2, 3], 2, vec![6, 8, 10, 6, 8, 10, 6, 8, 10]),
+                    (vec![1, 2, 3], 2, vec![6, 8, 10, 6, 8, 10, 6, 8, 10]),
                 ],
-                (6, 9),
+                (14, 54),
+                true,
             )
         );
     }
