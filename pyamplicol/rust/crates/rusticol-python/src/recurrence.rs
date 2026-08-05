@@ -732,6 +732,41 @@ struct PreparedTemplateInput {
     prepared_kernel_pack_digest: SemanticDigest,
 }
 
+struct AuthenticatedBuilderInputs {
+    builder_input_digest: String,
+    template_input_digest: String,
+    authenticated: AuthenticatedRecurrenceBuilderInput,
+}
+
+fn authenticate_builder_inputs(
+    input: OwnedInput,
+    prepared_template: PreparedTemplateInput,
+    expected_pack_digest: SemanticDigest,
+) -> RusticolResult<AuthenticatedBuilderInputs> {
+    validate_inventory(&input)?;
+    let builder_input_digest = canonical_digest(&input)?;
+    if builder_input_digest != input.declared_digest {
+        return Err(invalid(format!(
+            "recurrence builder input digest mismatch: declared {}, found {builder_input_digest}",
+            input.declared_digest
+        )));
+    }
+    let template_input_digest = prepared_template.canonical_digest()?;
+    if prepared_template.prepared_kernel_pack_digest != expected_pack_digest {
+        return Err(RusticolError::integrity(
+            "recurrence prepared-kernel pack digest does not match the authenticated template",
+        ));
+    }
+    let process = decode_process_input(&input)?.validate()?;
+    let template = prepared_template.into_core()?.validate()?;
+    let authenticated = AuthenticatedRecurrenceBuilderInput::new(process, template)?;
+    Ok(AuthenticatedBuilderInputs {
+        builder_input_digest,
+        template_input_digest,
+        authenticated,
+    })
+}
+
 impl PreparedTemplateInput {
     fn canonical_digest(&self) -> RusticolResult<String> {
         let mut digest = Sha256::new();
@@ -984,45 +1019,36 @@ fn lower_recurrence_direct(
         )));
     }
 
-    validate_inventory(&input)?;
-    let builder_input_digest = canonical_digest(&input)?;
-    if builder_input_digest != input.declared_digest {
-        return Err(invalid(format!(
-            "recurrence builder input digest mismatch: declared {}, found {builder_input_digest}",
-            input.declared_digest
-        )));
-    }
-    let template_input_digest = prepared_template.canonical_digest()?;
     let expected_pack_digest =
         semantic_digest_from_hex(prepared_kernel_pack_digest, "prepared kernel pack digest")?;
-    if prepared_template.prepared_kernel_pack_digest != expected_pack_digest {
-        return Err(RusticolError::integrity(
-            "recurrence prepared-kernel pack digest does not match the authenticated template",
-        ));
-    }
+    let authenticated_inputs =
+        authenticate_builder_inputs(input, prepared_template, expected_pack_digest)?;
+    let builder_input_digest = authenticated_inputs.builder_input_digest;
+    let template_input_digest = authenticated_inputs.template_input_digest;
+    let authenticated = authenticated_inputs.authenticated;
 
     let catalog_started = Instant::now();
     let direct_catalog = parse_direct_template_catalog(
         direct_template_catalog_json,
         expected_pack_digest,
-        prepared_template.catalog_digest,
-        prepared_template.compiled_model_digest,
+        authenticated.template().summary().catalog_digest,
+        authenticated.template().summary().compiled_model_digest,
     )?;
     let catalog_authentication_seconds = catalog_started.elapsed().as_secs_f64();
 
-    let process = decode_process_input(&input)?.validate()?;
-    let process_id = process.summary().process_id().to_owned();
-    let strategy = process.summary().strategy();
+    let process_id = authenticated.process().summary().process_id().to_owned();
+    let strategy = authenticated.process().summary().strategy();
     let semantic_digest =
         semantic_digest_from_hex(schedule_semantic_digest, "recurrence schedule digest")?;
-    let template = prepared_template.into_core()?.validate()?;
     if let Some(raw_evidence) = relation_discovery_evidence_json {
-        let parameter_contract = authenticated_runtime_parameter_contract(&process, &template)?;
+        let parameter_contract = authenticated_runtime_parameter_contract(
+            authenticated.process(),
+            authenticated.template(),
+        )?;
         relation_discovery = relation_discovery.with_numerical_evidence(
             parse_numerical_relation_evidence(&raw_evidence, &parameter_contract)?,
         )?;
     }
-    let authenticated = AuthenticatedRecurrenceBuilderInput::new(process, template)?;
 
     let semantic_started = Instant::now();
     let mut construction = RecurrenceConstructionMetrics::default();
