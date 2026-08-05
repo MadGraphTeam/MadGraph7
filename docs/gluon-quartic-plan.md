@@ -619,6 +619,39 @@ instead of the amplitude's trips the lifetime assert in
 seen in emission order; and restoring only `from_group` on the base diagrams
 is not enough to undo an export.
 
+## Why `auto` is not the default: FKS
+
+Making `auto` the default was tried and **reverted**: it breaks NLO generation
+wherever the real emission has four gluons, which includes `p p > j j [QCD]`.
+
+```
+born  g g > g g     QCD<=2 QED=0
+real  g g > g g g   QCD<=3 QED=0
+fks_common.link_rb_configs(born, real, 5, 4, 4)
+  flag off -> [2, 5, 12]
+  'auto'   -> FKSProcessError: could not link born diagram
+```
+
+It is not the generation: with the flag on, `g g > g g g` still has its 25
+diagrams and the *same* tag set, under both `DiagramTag` and
+`UnrollDiagramTag`. It is `link_rb_configs`, which is order dependent by
+accident. It builds `real_tags` deduplicated but leaves `good_diags` as it
+is, then walks the two in lockstep -- `real_tags.remove(btag)` beside
+`good_diags.pop(ir)` -- so the two only stay aligned while the dedup drops
+nothing. Which representative of a duplicated tag survives is decided by the
+diagram order, and reordering makes a born diagram fail to find its real one.
+The vestigial `real_tags = [...]` assignment immediately overwritten by
+`real_tags = []` just above suggests this was patched once already.
+
+So the default stays `False`. Moving it to `auto` needs `link_rb_configs`
+fixed first -- keeping the diagrams beside the tags they were deduplicated
+with is the obvious repair -- and that is an NLO change, which nothing in this
+work validates. Nine unit tests also encode the old diagram order and would
+have to be re-based: `test_diagram_tag_gg_ggg`, `test_colorize_uux_ggg`,
+`test_sextet_color_flow_output`, `test_generate_helas_diagrams_gg_gg`,
+`test_FKSRealProcess_init`, `test_link_gghgg_gghg`, `test_helas_diagrams_gd_ggd`,
+`test_helas_diagrams_gg_ggg`, `test_helas_diagrams_ud_ggdu`.
+
 ## Where to go next
 
 **Give madmatrix the amplitude sums too.** It is the only backend without
