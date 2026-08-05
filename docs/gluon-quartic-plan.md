@@ -290,9 +290,60 @@ hurt the integration, and may help it slightly — but the seed to seed scatter
 is far larger than the effect, and nothing here is established at more than
 two sigma. A campaign of tens of seeds would be needed to call it either way.
 
+## Step 7 — madmatrix
+
+`e93dfa1b1`. `SUMW_1`/`SUBW_1` as C++ templates next to `ALOHAOBJ` in
+`cpp_hel_amps_h.inc` (they cannot use the `INLINE` macro, which the ALOHA
+generated block defines further down the header), and the madmatrix writer
+emits them exactly as the Fortran one does.
+
+**The colour amplitudes had to be sorted out first, and that was a live bug.**
+`get_color_amplitudes` dropped every merge source from the JAMPs on the
+assumption that the caller writes the amplitude sums to put them back. Only
+the Fortran writer does, so C++ and python output with `MG_MERGE_QUARTIC` set
+was quietly losing four fifths of the amplitude. It now takes
+`merge_quartic_amplitudes`; a backend which writes no sums keeps those
+amplitudes in the JAMPs, where their own colour coefficients give the
+identical result. So madmatrix gets the current sums, which really do remove
+work, and leaves the amplitude level merges alone — there is no `AMP` array
+there to fold into anyway, each amplitude going straight into the JAMPs.
+
+One bug in the shared writer surfaced here: a wavefunction number can be
+listed by more than one diagram in the madmatrix matrix element (two objects
+for the same current with the mothers ordered differently), so a sum was
+written twice — 50 lines for 30 sums at six gluons. Harmless numerically, both
+write the same value to the same slot, but wasted. Both writers now write each
+sum once.
+
+|M|^2 to 1e-14 at five and six gluons (`FPTYPE=d`; the default mixed
+precision build rounds the two to the same value), `CPPProcess.cc`
+byte-identical with the flag off.
+
+**Speed is mixed, and worse than Fortran:**
+
+| | amp calls | nwf | evt/s (sse4, FPTYPE=d) | |
+|---|---|---|---|---|
+| `g g > g g g` | 45 -> 38 | 12 -> 26 | 72950 -> 66800 | **-8.4%** |
+| `g g > g g g g` | 510 -> 450 | 51 -> 111 | 2702 -> 2726 | **+0.9%** |
+
+The wavefunction array more than doubles, because the sums take a slot each at
+the end and are never recycled, and there is no JAMP fold here to pay for it.
+At five gluons that loses outright. Note the base slot count with the flag on
+is worse in madmatrix than in Fortran too (81 against 61 at six gluons),
+because its matrix element carries duplicate wavefunctions which confuse
+`reuse_outdated_wavefunctions`.
+
 ## Where to go next
 
-What is left is the sums which do not sit at an amplitude, and they need a
+**Recycle the slots the sums take.** Cheapest and now the most valuable:
+`get_number_of_wavefunctions` hands each sum a slot at the end which is never
+reused, so `NWAVEFUNCS` goes 51 -> 91 in Fortran and 51 -> 111 in madmatrix at
+six gluons. That is what makes madmatrix lose 8.4% at five gluons. A sum is
+written at a known point and dead after its last target amplitude, so a linear
+scan over those lifetimes would fit them into a handful of slots — or, better,
+feed them to `reuse_outdated_wavefunctions` as ordinary producers.
+
+Then there are the sums which do not sit at an amplitude, and they need a
 node to have exactly one rooting *per merge*, which a diagram list cannot
 give. Three ways on, in increasing size:
 
