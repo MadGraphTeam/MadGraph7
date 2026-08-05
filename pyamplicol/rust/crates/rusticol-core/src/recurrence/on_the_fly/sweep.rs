@@ -21,6 +21,223 @@ pub(super) struct PendingCurrent {
     pub(super) stage: u32,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct PreparedContactOrbitLocation<'a> {
+    transition_id: u32,
+    contact_orbit: Option<&'a PreparedContactOrbitTransition>,
+}
+
+#[derive(Debug, Default)]
+struct PreparedContactOrbitIndex<'a> {
+    locations: Vec<PreparedContactOrbitLocation<'a>>,
+}
+
+fn reserve_on_the_fly_contact_locations<T>(
+    locations: &mut Vec<T>,
+    count: usize,
+) -> RusticolResult<()> {
+    locations.try_reserve_exact(count).map_err(|error| {
+        invalid(format!(
+            "contact-orbit transition-index allocation failed: {error}"
+        ))
+    })
+}
+
+impl<'a> PreparedContactOrbitIndex<'a> {
+    fn new(transitions: &'a BTreeMap<(u32, u32), Vec<PreparedTransition>>) -> RusticolResult<Self> {
+        if !transitions
+            .values()
+            .flatten()
+            .any(|prepared| prepared.contact_orbit.is_some())
+        {
+            return Ok(Self::default());
+        }
+        let transition_count = transitions.values().try_fold(0usize, |count, rows| {
+            count
+                .checked_add(rows.len())
+                .ok_or_else(|| invalid("contact-orbit transition count exceeds usize"))
+        })?;
+        let mut locations = Vec::new();
+        reserve_on_the_fly_contact_locations(&mut locations, transition_count)?;
+        for prepared in transitions.values().flatten() {
+            locations.push(PreparedContactOrbitLocation {
+                transition_id: prepared.row.id,
+                contact_orbit: prepared.contact_orbit.as_ref(),
+            });
+        }
+        locations.sort_unstable_by_key(|location| location.transition_id);
+        if locations
+            .windows(2)
+            .any(|rows| rows[0].transition_id == rows[1].transition_id)
+        {
+            return Err(integrity(
+                "contact-orbit transition index contains duplicate IDs",
+            ));
+        }
+        Ok(Self { locations })
+    }
+
+    fn is_empty(&self) -> bool {
+        self.locations.is_empty()
+    }
+
+    fn get(&self, transition_id: u32) -> Option<&'a PreparedContactOrbitTransition> {
+        self.locations
+            .binary_search_by_key(&transition_id, |location| location.transition_id)
+            .ok()
+            .and_then(|index| self.locations.get(index))
+            .and_then(|location| location.contact_orbit)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct OnTheFlyContactContributionToken {
+    destination_id: usize,
+    contribution_ordinal: usize,
+}
+
+#[derive(Debug)]
+struct OnTheFlyContactOwnerPlan {
+    stage_current_start: usize,
+    selected_tokens: Vec<OnTheFlyContactContributionToken>,
+    staged_contribution_count: usize,
+    retained_contribution_count: usize,
+}
+
+impl OnTheFlyContactOwnerPlan {
+    /// Apply a completely selected plan without allocating or failing.
+    fn commit(self, currents: &mut [PendingCurrent]) {
+        let mut selected_index = 0usize;
+        let mut observed_count = 0usize;
+        let mut retained_count = 0usize;
+        for (destination_id, current) in currents
+            .iter_mut()
+            .enumerate()
+            .skip(self.stage_current_start)
+        {
+            let mut contribution_ordinal = 0usize;
+            current.contributions.retain(|_, _| {
+                let token = OnTheFlyContactContributionToken {
+                    destination_id,
+                    contribution_ordinal,
+                };
+                contribution_ordinal += 1;
+                observed_count += 1;
+                let selected = self.selected_tokens.get(selected_index) == Some(&token);
+                if selected {
+                    selected_index += 1;
+                    retained_count += 1;
+                }
+                selected
+            });
+        }
+        debug_assert_eq!(observed_count, self.staged_contribution_count);
+        debug_assert_eq!(retained_count, self.retained_contribution_count);
+        debug_assert_eq!(selected_index, self.selected_tokens.len());
+    }
+}
+
+fn reserve_on_the_fly_contact_candidates<T>(
+    candidates: &mut Vec<T>,
+    count: usize,
+) -> RusticolResult<()> {
+    candidates.try_reserve_exact(count).map_err(|error| {
+        invalid(format!(
+            "contact-orbit candidate allocation failed: {error}"
+        ))
+    })
+}
+
+fn plan_on_the_fly_contact_orbit_owners(
+    stage_current_start: usize,
+    contact_orbits: &PreparedContactOrbitIndex<'_>,
+    currents: &[PendingCurrent],
+) -> RusticolResult<Option<OnTheFlyContactOwnerPlan>> {
+    plan_on_the_fly_contact_orbit_owners_with_resolver(
+        stage_current_start,
+        currents,
+        |transition_id| contact_orbits.get(transition_id),
+    )
+}
+
+fn plan_on_the_fly_contact_orbit_owners_with_resolver<'a, F>(
+    stage_current_start: usize,
+    currents: &'a [PendingCurrent],
+    mut contact_orbit: F,
+) -> RusticolResult<Option<OnTheFlyContactOwnerPlan>>
+where
+    F: FnMut(u32) -> Option<&'a PreparedContactOrbitTransition>,
+{
+    if stage_current_start > currents.len() {
+        return Err(invalid(
+            "contact-orbit stage current boundary exceeds current storage",
+        ));
+    }
+    let has_certified_contact = currents[stage_current_start..].iter().any(|current| {
+        current
+            .contributions
+            .keys()
+            .any(|pending| contact_orbit(pending.key.transition_template_id()).is_some())
+    });
+    if !has_certified_contact {
+        return Ok(None);
+    }
+    let staged_contribution_count =
+        currents[stage_current_start..]
+            .iter()
+            .try_fold(0usize, |count, current| {
+                count
+                    .checked_add(current.contributions.len())
+                    .ok_or_else(|| invalid("contact-orbit staged contribution count exceeds usize"))
+            })?;
+    let mut candidates = Vec::new();
+    reserve_on_the_fly_contact_candidates(&mut candidates, staged_contribution_count)?;
+    for (destination_id, current) in currents.iter().enumerate().skip(stage_current_start) {
+        for (contribution_ordinal, pending) in current.contributions.keys().enumerate() {
+            let token = OnTheFlyContactContributionToken {
+                destination_id,
+                contribution_ordinal,
+            };
+            let candidate = contact_orbit(pending.key.transition_template_id())
+                .map(|contact_orbit| {
+                    let left = currents
+                        .get(pending.parent_current_ids[0] as usize)
+                        .map(|parent| &parent.key)
+                        .ok_or_else(|| integrity("contact-orbit left parent is absent"))?;
+                    let right = currents
+                        .get(pending.parent_current_ids[1] as usize)
+                        .map(|parent| &parent.key)
+                        .ok_or_else(|| integrity("contact-orbit right parent is absent"))?;
+                    contact_orbit.owner_candidate(
+                        &current.key,
+                        [left, right],
+                        pending.key.color_witness_term_id(),
+                    )
+                })
+                .transpose()?;
+            candidates.push((token, candidate));
+        }
+    }
+    if candidates.len() != staged_contribution_count {
+        return Err(integrity(
+            "contact-orbit staged contribution snapshot changed length",
+        ));
+    }
+    let selected_tokens = selected_contact_orbit_owner_tokens(candidates.into_iter())?;
+    let retained_contribution_count = selected_tokens.len();
+    if retained_contribution_count > staged_contribution_count {
+        return Err(integrity(
+            "contact-orbit retained contribution count exceeds snapshot",
+        ));
+    }
+    Ok(Some(OnTheFlyContactOwnerPlan {
+        stage_current_start,
+        selected_tokens,
+        staged_contribution_count,
+        retained_contribution_count,
+    }))
+}
+
 #[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) struct PendingPairingLineage {
     pub(super) completed_pairs: Vec<[u32; 2]>,
@@ -836,7 +1053,9 @@ pub(super) fn build_forward_currents(
     current_ids: &mut BTreeMap<CurrentCoreKey, u32>,
 ) -> RusticolResult<()> {
     let source_count = seed.source_anchors.len();
+    let contact_orbits = PreparedContactOrbitIndex::new(transitions)?;
     for target_size in 2..source_count {
+        let stage_current_start = currents.len();
         let eligible = currents
             .iter()
             .enumerate()
@@ -883,6 +1102,15 @@ pub(super) fn build_forward_currents(
                     )?;
                 }
             }
+        }
+        if !contact_orbits.is_empty()
+            && let Some(plan) = plan_on_the_fly_contact_orbit_owners(
+                stage_current_start,
+                &contact_orbits,
+                currents,
+            )?
+        {
+            plan.commit(currents);
         }
     }
     Ok(())
@@ -1095,7 +1323,369 @@ pub(super) fn live_current_ids(
 
 #[cfg(test)]
 mod tests {
+    use crate::recurrence::DynamicLCColorStateId;
+    use crate::recurrence::contact_orbit_owner::{
+        ContactOrbitStepProof, ContactOrbitTestBinding, contact_orbit_application_for_test,
+        contact_orbit_test_template, final_contact_orbit_step_for_test,
+        partial_contact_orbit_step_for_test, prepared_contact_orbit_transition_for_test,
+    };
+
     use super::*;
+
+    fn contact_digest(byte: u8) -> SemanticDigest {
+        SemanticDigest::new([byte; 32]).expect("test digest must be nonzero")
+    }
+
+    fn contact_current(
+        node_kind: RecurrenceNodeKind,
+        state: u32,
+        color: u32,
+        support: &[u32],
+    ) -> PendingCurrent {
+        let key = CurrentCoreKey::new(
+            contact_digest(230),
+            node_kind,
+            state,
+            DynamicLCColorStateId::from_interner(color),
+            support.to_vec(),
+            CanonicalMomentumLinearForm::new(
+                support
+                    .iter()
+                    .copied()
+                    .map(|source_slot| MomentumTerm {
+                        source_slot,
+                        coefficient: 1,
+                    })
+                    .collect(),
+            )
+            .unwrap(),
+            CurrentHelicityIdentity::topology_replay(
+                0,
+                support
+                    .iter()
+                    .copied()
+                    .map(|source_slot| SourceStateAssignment::new(source_slot, 0))
+                    .collect(),
+            )
+            .unwrap(),
+            vec![state as i32],
+            0,
+            vec![0],
+            if node_kind == RecurrenceNodeKind::Source {
+                CurrentSourceBinding::FixedTemplate(support[0])
+            } else {
+                CurrentSourceBinding::None
+            },
+            None,
+        )
+        .unwrap();
+        PendingCurrent {
+            key,
+            source_factor: (node_kind == RecurrenceNodeKind::Source)
+                .then_some(ExactComplexRational::ONE),
+            contributions: BTreeMap::new(),
+            pairing_lineages: vec![PendingPairingLineage {
+                completed_pairs: Vec::new(),
+                unmatched_endpoint: None,
+            }],
+            stage: u32::try_from(support.len().saturating_sub(1)).unwrap(),
+        }
+    }
+
+    fn contact_transition(
+        step: ContactOrbitStepProof,
+        transition_digest: u8,
+    ) -> PreparedContactOrbitTransition {
+        contact_transition_with_witness(step, transition_digest, LCColorWitnessTermId::new(4, 0))
+    }
+
+    fn contact_transition_with_witness(
+        step: ContactOrbitStepProof,
+        transition_digest: u8,
+        color_witness_term_id: LCColorWitnessTermId,
+    ) -> PreparedContactOrbitTransition {
+        let mut application = contact_orbit_application_for_test();
+        application.color_witness_term_id = color_witness_term_id;
+        prepared_contact_orbit_transition_for_test(
+            step,
+            contact_digest(transition_digest),
+            application,
+        )
+    }
+
+    fn add_contact_contribution(
+        currents: &mut [PendingCurrent],
+        destination: u32,
+        transition: u32,
+        parents: [u32; 2],
+    ) {
+        let parent_keys = parents.map(|id| &currents[id as usize].key);
+        let destination_key = &currents[destination as usize].key;
+        let key = ContributionKey::new(
+            transition,
+            parents.to_vec(),
+            parent_keys
+                .iter()
+                .map(|key| key.current_state_template_id())
+                .collect(),
+            parent_keys
+                .iter()
+                .map(|key| key.momentum().clone())
+                .collect(),
+            destination_key.current_state_template_id(),
+            0,
+            LCColorWitnessTermId::new(4, 0),
+            contact_digest(2),
+            8,
+        )
+        .unwrap();
+        assert!(
+            currents[destination as usize]
+                .contributions
+                .insert(
+                    PendingContributionKey {
+                        parent_current_ids: parents,
+                        key,
+                    },
+                    ExactComplexRational::ONE,
+                )
+                .is_none()
+        );
+    }
+
+    fn contact_transition_ids(current: &PendingCurrent) -> Vec<u32> {
+        current
+            .contributions
+            .keys()
+            .map(|pending| pending.key.transition_template_id())
+            .collect()
+    }
+
+    fn pending_contact_counts(currents: &[PendingCurrent]) -> (usize, usize) {
+        (
+            currents.len(),
+            currents
+                .iter()
+                .map(|current| current.contributions.len())
+                .sum(),
+        )
+    }
+
+    fn three_scalar_contact_seed() -> OnTheFlyProcessSeedV1 {
+        let state = OnTheFlySourceStateV1::new(
+            0,
+            0,
+            0,
+            0,
+            0,
+            contact_digest(231),
+            contact_digest(232),
+            1,
+            ExactComplexRational::ONE,
+            0,
+            0,
+            vec![1],
+            0,
+            contact_digest(233),
+            OnTheFlySourceWavefunctionFamilyV1::Scalar,
+            OnTheFlySourceOrientationV1::SelfConjugate,
+            None,
+        )
+        .unwrap();
+        let anchors = (0_u32..3)
+            .map(|source_slot| {
+                OnTheFlySourceAnchorV1::new(
+                    source_slot,
+                    source_slot,
+                    false,
+                    OnTheFlyExternalColorRoleV1::Singlet,
+                    false,
+                    None,
+                    vec![state.clone()],
+                )
+                .unwrap()
+            })
+            .collect();
+        OnTheFlyProcessSeedV1::new(
+            contact_digest(234),
+            contact_digest(235),
+            contact_digest(230),
+            contact_digest(236),
+            contact_digest(237),
+            contact_digest(238),
+            "raw-amplitude-contact-test",
+            ExactComplexRational::ONE,
+            anchors,
+            vec![0, 1, 2],
+            vec![Some(0)],
+            Vec::new(),
+        )
+        .unwrap()
+    }
+
+    fn production_contact_barrier_case(
+        reverse_transition_order: bool,
+    ) -> (Vec<(Vec<u32>, Vec<u32>)>, (usize, usize)) {
+        let templates = contact_orbit_test_template(ContactOrbitTestBinding::One)
+            .validate()
+            .unwrap();
+        let catalog = TemplateCatalog::new(templates.input()).unwrap();
+        let prepared = prepared_transitions(&templates, &catalog).unwrap();
+        let base = prepared.values().next().unwrap()[0].clone();
+        let steps = [
+            partial_contact_orbit_step_for_test(0, 1, 2, 20, [0, 0, 0, 0]),
+            partial_contact_orbit_step_for_test(1, 0, 2, 30, [0, 0, 0, 0]),
+            partial_contact_orbit_step_for_test(0, 2, 1, 21, [0, 0, 0, 0]),
+            partial_contact_orbit_step_for_test(2, 0, 1, 31, [0, 0, 0, 0]),
+            partial_contact_orbit_step_for_test(0, 3, 1, 22, [0, 0, 0, 0]),
+            partial_contact_orbit_step_for_test(3, 0, 1, 32, [0, 0, 0, 0]),
+        ];
+        let transition_order = if reverse_transition_order {
+            (0_usize..steps.len()).rev().collect::<Vec<_>>()
+        } else {
+            (0_usize..steps.len()).collect::<Vec<_>>()
+        };
+        let rows = transition_order
+            .into_iter()
+            .map(|index| {
+                let id = u32::try_from(index).unwrap();
+                let digest_byte = 40 + u8::try_from(index).unwrap();
+                let mut row = base.clone();
+                row.row.id = id;
+                row.local_orders = vec![0].into_boxed_slice();
+                row.transition_semantic_digest = contact_digest(digest_byte);
+                row.contact_orbit = Some(contact_transition_with_witness(
+                    steps[index].clone(),
+                    digest_byte,
+                    LCColorWitnessTermId::new(
+                        row.row.color_contraction_template_id,
+                        row.witnesses[0].row.ordinal,
+                    ),
+                ));
+                row
+            })
+            .collect::<Vec<_>>();
+        let transitions = BTreeMap::from([((0, 0), rows)]);
+        let propagators = propagator_by_state(&templates).unwrap();
+        let seed = three_scalar_contact_seed();
+        let mut colors = DynamicLCColorStateInterner::default();
+        let color_id = colors
+            .intern(
+                DynamicLCColorState::new(
+                    base.witnesses[0].row.left_shape_string_id,
+                    None,
+                    Vec::new(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(color_id, DynamicLCColorStateId::from_interner(0));
+        let mut currents = (0_u32..3)
+            .map(|source_slot| contact_current(RecurrenceNodeKind::Source, 0, 0, &[source_slot]))
+            .collect::<Vec<_>>();
+        let mut current_ids = currents
+            .iter()
+            .enumerate()
+            .map(|(id, current)| (current.key.clone(), u32::try_from(id).unwrap()))
+            .collect::<BTreeMap<_, _>>();
+
+        build_forward_currents(
+            &templates,
+            &transitions,
+            &seed,
+            &propagators,
+            &mut colors,
+            &mut currents,
+            &mut current_ids,
+        )
+        .unwrap();
+
+        let staged = currents[3..]
+            .iter()
+            .map(|current| {
+                (
+                    current.key.support_source_slots().to_vec(),
+                    contact_transition_ids(current),
+                )
+            })
+            .collect();
+        (staged, pending_contact_counts(&currents))
+    }
+
+    fn commit_contact_plan(
+        currents: &mut [PendingCurrent],
+        contacts: &BTreeMap<u32, PreparedContactOrbitTransition>,
+        stage_current_start: usize,
+    ) -> RusticolResult<()> {
+        if let Some(plan) = plan_on_the_fly_contact_orbit_owners_with_resolver(
+            stage_current_start,
+            currents,
+            |transition_id| contacts.get(&transition_id),
+        )? {
+            plan.commit(currents);
+        }
+        Ok(())
+    }
+
+    fn contact_0000_case(final_stage: bool, reverse_insertion: bool) -> (Vec<u32>, (usize, usize)) {
+        let (mut currents, steps) = if final_stage {
+            (
+                vec![
+                    contact_current(RecurrenceNodeKind::Current, 10, 0, &[10]),
+                    contact_current(RecurrenceNodeKind::Current, 11, 1, &[11, 12]),
+                    contact_current(RecurrenceNodeKind::Current, 20, 2, &[10, 11, 12]),
+                ],
+                vec![
+                    final_contact_orbit_step_for_test(&[0], &[1, 2], 3, 60, [0, 0, 0, 0]),
+                    final_contact_orbit_step_for_test(&[1, 2], &[0], 3, 70, [0, 0, 0, 0]),
+                    final_contact_orbit_step_for_test(&[0], &[1, 3], 2, 61, [0, 0, 0, 0]),
+                    final_contact_orbit_step_for_test(&[1, 3], &[0], 2, 71, [0, 0, 0, 0]),
+                    final_contact_orbit_step_for_test(&[0], &[2, 3], 1, 62, [0, 0, 0, 0]),
+                    final_contact_orbit_step_for_test(&[2, 3], &[0], 1, 72, [0, 0, 0, 0]),
+                ],
+            )
+        } else {
+            (
+                vec![
+                    contact_current(RecurrenceNodeKind::Source, 10, 0, &[10]),
+                    contact_current(RecurrenceNodeKind::Source, 10, 1, &[11]),
+                    contact_current(RecurrenceNodeKind::Current, 20, 2, &[10, 11]),
+                ],
+                vec![
+                    partial_contact_orbit_step_for_test(0, 1, 2, 20, [0, 0, 0, 0]),
+                    partial_contact_orbit_step_for_test(1, 0, 2, 30, [0, 0, 0, 0]),
+                    partial_contact_orbit_step_for_test(0, 2, 1, 21, [0, 0, 0, 0]),
+                    partial_contact_orbit_step_for_test(2, 0, 1, 31, [0, 0, 0, 0]),
+                    partial_contact_orbit_step_for_test(0, 3, 1, 22, [0, 0, 0, 0]),
+                    partial_contact_orbit_step_for_test(3, 0, 1, 32, [0, 0, 0, 0]),
+                ],
+            )
+        };
+        let contacts = steps
+            .into_iter()
+            .enumerate()
+            .map(|(transition, step)| {
+                let transition = u32::try_from(transition).unwrap();
+                (
+                    transition,
+                    contact_transition(step, 40 + u8::try_from(transition).unwrap()),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let order = if reverse_insertion {
+            (0_u32..6).rev().collect::<Vec<_>>()
+        } else {
+            (0_u32..6).collect::<Vec<_>>()
+        };
+        for transition in order {
+            add_contact_contribution(&mut currents, 2, transition, [0, 1]);
+        }
+        commit_contact_plan(&mut currents, &contacts, 2).unwrap();
+        (
+            contact_transition_ids(&currents[2]),
+            pending_contact_counts(&currents),
+        )
+    }
 
     fn closure(lineages: Vec<PendingPairingLineage>) -> PendingClosure {
         PendingClosure {
@@ -1116,6 +1706,206 @@ mod tests {
             completed_pairs: vec![pair],
             unmatched_endpoint: None,
         }
+    }
+
+    #[test]
+    fn contact_0000_partial_and_final_fan_in_keep_three_owners_deterministically() {
+        for final_stage in [false, true] {
+            let forward = contact_0000_case(final_stage, false);
+            let reverse = contact_0000_case(final_stage, true);
+            assert_eq!(forward, (vec![0, 2, 4], (3, 3)));
+            assert_eq!(reverse, forward);
+        }
+    }
+
+    #[test]
+    fn forward_sweep_barrier_prunes_complete_contact_fan_in_before_next_stage() {
+        let forward = production_contact_barrier_case(false);
+        let reverse = production_contact_barrier_case(true);
+        assert_eq!(reverse, forward);
+        assert_eq!(
+            forward,
+            (
+                vec![
+                    (vec![0, 1], vec![0, 2, 4]),
+                    (vec![0, 2], vec![0, 2, 4]),
+                    (vec![1, 2], vec![0, 2, 4]),
+                ],
+                (6, 9),
+            )
+        );
+    }
+
+    #[test]
+    fn contact_0012_partial_and_final_fan_in_each_keep_one_owner() {
+        let mut partial_currents = vec![
+            contact_current(RecurrenceNodeKind::Source, 10, 0, &[10]),
+            contact_current(RecurrenceNodeKind::Source, 10, 1, &[11]),
+            contact_current(RecurrenceNodeKind::Current, 20, 2, &[10, 11]),
+        ];
+        let partial_contacts = BTreeMap::from([
+            (
+                10,
+                contact_transition(
+                    partial_contact_orbit_step_for_test(0, 1, 2, 50, [0, 0, 1, 2]),
+                    52,
+                ),
+            ),
+            (
+                11,
+                contact_transition(
+                    partial_contact_orbit_step_for_test(1, 0, 2, 51, [0, 0, 1, 2]),
+                    53,
+                ),
+            ),
+        ]);
+        add_contact_contribution(&mut partial_currents, 2, 11, [0, 1]);
+        add_contact_contribution(&mut partial_currents, 2, 10, [0, 1]);
+        commit_contact_plan(&mut partial_currents, &partial_contacts, 2).unwrap();
+        assert_eq!(contact_transition_ids(&partial_currents[2]), [10]);
+        assert_eq!(pending_contact_counts(&partial_currents), (3, 1));
+
+        let mut final_currents = vec![
+            contact_current(RecurrenceNodeKind::Current, 20, 0, &[10, 11]),
+            contact_current(RecurrenceNodeKind::Source, 30, 1, &[12]),
+            contact_current(RecurrenceNodeKind::Current, 40, 2, &[10, 11, 12]),
+        ];
+        let final_contacts = BTreeMap::from([
+            (
+                20,
+                contact_transition(
+                    final_contact_orbit_step_for_test(&[0, 1], &[2], 3, 54, [0, 0, 1, 2]),
+                    56,
+                ),
+            ),
+            (
+                21,
+                contact_transition(
+                    final_contact_orbit_step_for_test(&[2], &[0, 1], 3, 55, [0, 0, 1, 2]),
+                    57,
+                ),
+            ),
+        ]);
+        add_contact_contribution(&mut final_currents, 2, 20, [0, 1]);
+        add_contact_contribution(&mut final_currents, 2, 21, [0, 1]);
+        commit_contact_plan(&mut final_currents, &final_contacts, 2).unwrap();
+        assert_eq!(contact_transition_ids(&final_currents[2]), [21]);
+        assert_eq!(pending_contact_counts(&final_currents), (3, 1));
+    }
+
+    #[test]
+    fn contact_owner_planning_rolls_back_conflict_decode_and_allocation_errors() {
+        let mut currents = vec![
+            contact_current(RecurrenceNodeKind::Source, 10, 0, &[10]),
+            contact_current(RecurrenceNodeKind::Source, 10, 1, &[11]),
+            contact_current(RecurrenceNodeKind::Current, 20, 2, &[10, 11]),
+        ];
+        let duplicate_step = partial_contact_orbit_step_for_test(0, 1, 2, 60, [0, 0, 0, 0]);
+        let contacts = BTreeMap::from([
+            (30, contact_transition(duplicate_step.clone(), 61)),
+            (31, contact_transition(duplicate_step, 61)),
+        ]);
+        add_contact_contribution(&mut currents, 2, 30, [0, 1]);
+        add_contact_contribution(&mut currents, 2, 31, [0, 1]);
+        let before = currents[2].contributions.clone();
+        assert!(
+            plan_on_the_fly_contact_orbit_owners_with_resolver(2, &currents, |transition_id| {
+                contacts.get(&transition_id)
+            })
+            .unwrap_err()
+            .to_string()
+            .contains("conflicting exact rank")
+        );
+        assert_eq!(currents[2].contributions, before);
+
+        let mut malformed = currents;
+        let (pending, factor) = malformed[2]
+            .contributions
+            .first_key_value()
+            .map(|(pending, factor)| (pending.clone(), *factor))
+            .unwrap();
+        malformed[2].contributions.remove(&pending);
+        malformed[2].contributions.insert(
+            PendingContributionKey {
+                parent_current_ids: [u32::MAX, pending.parent_current_ids[1]],
+                key: pending.key,
+            },
+            factor,
+        );
+        let malformed_before = malformed[2].contributions.clone();
+        assert!(
+            plan_on_the_fly_contact_orbit_owners_with_resolver(2, &malformed, |transition_id| {
+                contacts.get(&transition_id)
+            },)
+            .unwrap_err()
+            .to_string()
+            .contains("left parent is absent")
+        );
+        assert_eq!(malformed[2].contributions, malformed_before);
+
+        let mut candidate_reservation = Vec::<OnTheFlyContactContributionToken>::new();
+        assert!(
+            reserve_on_the_fly_contact_candidates(&mut candidate_reservation, usize::MAX)
+                .unwrap_err()
+                .to_string()
+                .contains("candidate allocation failed")
+        );
+        assert!(candidate_reservation.is_empty());
+        let mut location_reservation = Vec::<u8>::new();
+        assert!(
+            reserve_on_the_fly_contact_locations(&mut location_reservation, usize::MAX)
+                .unwrap_err()
+                .to_string()
+                .contains("transition-index allocation failed")
+        );
+        assert!(location_reservation.is_empty());
+    }
+
+    #[test]
+    fn contact_index_and_uncertified_controls_use_production_lookup_and_fast_path() {
+        let none = contact_orbit_test_template(ContactOrbitTestBinding::None)
+            .validate()
+            .unwrap();
+        let none_catalog = TemplateCatalog::new(none.input()).unwrap();
+        let none_transitions = prepared_transitions(&none, &none_catalog).unwrap();
+        assert!(
+            PreparedContactOrbitIndex::new(&none_transitions)
+                .unwrap()
+                .is_empty()
+        );
+
+        let one = contact_orbit_test_template(ContactOrbitTestBinding::One)
+            .validate()
+            .unwrap();
+        let one_catalog = TemplateCatalog::new(one.input()).unwrap();
+        let one_transitions = prepared_transitions(&one, &one_catalog).unwrap();
+        let index = PreparedContactOrbitIndex::new(&one_transitions).unwrap();
+        assert!(!index.is_empty());
+        assert!(index.get(0).is_some());
+        assert!(index.get(u32::MAX).is_none());
+
+        let mut currents = vec![
+            contact_current(RecurrenceNodeKind::Source, 10, 0, &[10]),
+            contact_current(RecurrenceNodeKind::Source, 11, 1, &[11]),
+            contact_current(RecurrenceNodeKind::Current, 20, 2, &[10, 11]),
+        ];
+        // Distinct uncertified rows represent ordinary V3, vector, fermion,
+        // and QCD controls. No model-level class is inspected by this path.
+        for transition in 70..74 {
+            add_contact_contribution(&mut currents, 2, transition, [0, 1]);
+        }
+        let before = currents[2].contributions.clone();
+        assert!(
+            plan_on_the_fly_contact_orbit_owners(
+                2,
+                &PreparedContactOrbitIndex::default(),
+                &currents
+            )
+            .unwrap()
+            .is_none()
+        );
+        assert_eq!(currents[2].contributions, before);
+        assert_eq!(pending_contact_counts(&currents), (3, 4));
     }
 
     #[test]
