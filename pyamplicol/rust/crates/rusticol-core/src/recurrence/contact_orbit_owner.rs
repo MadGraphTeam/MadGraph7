@@ -67,6 +67,7 @@ impl ContactOrbitCoveredLegs {
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) struct ContactOrbitStepProof {
+    pub(super) certificate_id: u32,
     pub(super) certificate_semantic_digest: SemanticDigest,
     pub(super) step_semantic_digest: SemanticDigest,
     pub(super) stage: ContactOrbitStage,
@@ -218,6 +219,7 @@ fn strict_contact_orbit_step(
         .try_into()
         .map_err(|_| integrity("contact-orbit step does not describe three source legs"))?;
     let proof = ContactOrbitStepProof {
+        certificate_id: certificate.id,
         certificate_semantic_digest: catalog.digest(
             certificate.semantic_digest_id,
             "contact-orbit certificate semantic",
@@ -509,6 +511,7 @@ pub(super) fn partial_contact_orbit_step_for_test(
     equivalence_classes: [u32; 4],
 ) -> ContactOrbitStepProof {
     ContactOrbitStepProof {
+        certificate_id: 0,
         certificate_semantic_digest: contact_orbit_test_digest(9),
         step_semantic_digest: contact_orbit_test_digest(digest_byte),
         stage: ContactOrbitStage::Partial,
@@ -532,6 +535,7 @@ pub(super) fn final_contact_orbit_step_for_test(
     equivalence_classes: [u32; 4],
 ) -> ContactOrbitStepProof {
     ContactOrbitStepProof {
+        certificate_id: 0,
         certificate_semantic_digest: contact_orbit_test_digest(9),
         step_semantic_digest: contact_orbit_test_digest(digest_byte),
         stage: ContactOrbitStage::Final,
@@ -614,6 +618,7 @@ struct ContactOrbitParentGroup<'a> {
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct ContactOrbitOwnerGroupKey<'a> {
+    certificate_id: u32,
     certificate_semantic_digest: SemanticDigest,
     stage: ContactOrbitStage,
     result_leg_equivalence_class: u32,
@@ -621,7 +626,12 @@ struct ContactOrbitOwnerGroupKey<'a> {
     parents: [ContactOrbitParentGroup<'a>; 2],
     output_source_particle_equivalence_class: Option<u32>,
     evaluator_class: &'a str,
-    application: &'a ContactOrbitApplicationWitness,
+    coupling_parameter_ids: &'a [u32],
+    binding_coupling: ExactComplexRational,
+    transition_exact_factor: ExactComplexRational,
+    color_exact_factor: ExactComplexRational,
+    witness_exact_factor: ExactComplexRational,
+    input_exchange_factor: Option<ExactComplexRational>,
     certificate_reconstruction_factor: ExactComplexRational,
     step_reconstruction_factor: ExactComplexRational,
 }
@@ -632,6 +642,7 @@ struct ContactOrbitOwnerRank<'a> {
     parents: [&'a CurrentCoreKey; 2],
     oriented_covered_legs: [ContactOrbitCoveredLegs; 2],
     oriented_source_particle_legs: [i32; 3],
+    application: &'a ContactOrbitApplicationWitness,
     step_semantic_digest: SemanticDigest,
     transition_semantic_digest: SemanticDigest,
 }
@@ -874,6 +885,7 @@ pub(super) fn contact_orbit_owner_candidate<'a>(
         step.physical_leg_equivalence_classes[step.result_leg as usize];
     Ok(Some(ContactOrbitOwnerCandidate {
         group: ContactOrbitOwnerGroupKey {
+            certificate_id: step.certificate_id,
             certificate_semantic_digest: step.certificate_semantic_digest,
             stage: step.stage,
             result_leg_equivalence_class,
@@ -885,7 +897,12 @@ pub(super) fn contact_orbit_owner_candidate<'a>(
                 "output source particle leg",
             )?,
             evaluator_class: &step.evaluator_class,
-            application,
+            coupling_parameter_ids: &application.coupling_parameter_ids,
+            binding_coupling: application.binding_coupling,
+            transition_exact_factor: application.transition_exact_factor,
+            color_exact_factor: application.color_exact_factor,
+            witness_exact_factor: application.witness_exact_factor,
+            input_exchange_factor: application.input_exchange_factor,
             certificate_reconstruction_factor: step.certificate_reconstruction_factor,
             step_reconstruction_factor: step.step_reconstruction_factor,
         },
@@ -894,6 +911,7 @@ pub(super) fn contact_orbit_owner_candidate<'a>(
             parents,
             oriented_covered_legs: [step.left_covered_legs, step.right_covered_legs],
             oriented_source_particle_legs: step.source_particle_legs,
+            application,
             step_semantic_digest: step.step_semantic_digest,
             transition_semantic_digest,
         },
@@ -1362,6 +1380,7 @@ mod tests {
 
     fn partial_step(left: u32, right: u32, result: u32, digest_byte: u8) -> ContactOrbitStepProof {
         ContactOrbitStepProof {
+            certificate_id: 0,
             certificate_semantic_digest: digest(9),
             step_semantic_digest: digest(digest_byte),
             stage: ContactOrbitStage::Partial,
@@ -1384,6 +1403,7 @@ mod tests {
         equivalence_classes: [u32; 4],
     ) -> ContactOrbitStepProof {
         ContactOrbitStepProof {
+            certificate_id: 0,
             certificate_semantic_digest: digest(9),
             step_semantic_digest: digest(digest_byte),
             stage: ContactOrbitStage::Final,
@@ -1784,7 +1804,7 @@ mod tests {
     }
 
     #[test]
-    fn owner_group_binds_every_physical_and_evaluator_witness() {
+    fn owner_group_quotients_application_metadata_but_keeps_physics_boundaries() {
         let left = current(1, 1, &[10]);
         let right = current(1, 1, &[11]);
         let destination = current(2, 2, &[10, 11]);
@@ -1792,82 +1812,93 @@ mod tests {
         let base_application = application();
         let base = candidate(&step, &destination, [&left, &right], &base_application, 12);
 
-        let mut variants = Vec::new();
-        let mut value = base_application.clone();
-        value.quantum_semantic_digest = digest(20);
-        variants.push(value);
-        let mut value = base_application.clone();
-        value.color_contraction_semantic_digest = digest(21);
-        variants.push(value);
-        let mut value = base_application.clone();
-        value.color_witness_term_id = LCColorWitnessTermId::new(4, 1);
-        variants.push(value);
-        let mut value = base_application.clone();
-        value.color_witness_proof_digest = digest(22);
-        variants.push(value);
-        let mut value = base_application.clone();
-        value.coupling_orders = vec![2];
-        variants.push(value);
-        let mut value = base_application.clone();
-        value.coupling_parameter_ids = vec![3];
-        variants.push(value);
-        let mut value = base_application.clone();
-        value.momentum_convention = vec![1, 0];
-        variants.push(value);
+        let mut traversal_application = base_application.clone();
+        traversal_application.transition_equivalence_class = "alternate-traversal".into();
+        traversal_application.quantum_semantic_digest = digest(20);
+        traversal_application.color_contraction_semantic_digest = digest(21);
+        traversal_application.color_witness_term_id = LCColorWitnessTermId::new(4, 1);
+        traversal_application.color_witness_proof_digest = digest(22);
+        traversal_application.momentum_convention = vec![1, 0];
+        traversal_application.output_factor_source = 1;
+        traversal_application.evaluator_contract_kind = EvaluatorContractKind::Closure as u8;
+        traversal_application.evaluator_callable_kind =
+            EvaluatorCallableKind::RusticolTemplate as u8;
+        traversal_application.evaluator_callable_signature = digest(23);
+        traversal_application.evaluator_input_layout = vec![13, 14];
+        traversal_application.evaluator_output_layout = vec![15];
+        traversal_application.evaluator_exact_expression_digests = vec![digest(24)];
+        traversal_application.evaluator_runtime_template =
+            Some("alternate-runtime-template".into());
+        traversal_application.output_projection_id = 9;
+        let traversal = candidate(
+            &step,
+            &destination,
+            [&left, &right],
+            &traversal_application,
+            13,
+        );
+
+        assert_eq!(base.group, traversal.group);
+        assert_ne!(base.rank, traversal.rank);
+        let forward =
+            selected_contact_orbit_owner_tokens([(0_u32, Some(base)), (1_u32, Some(traversal))])
+                .unwrap();
+        let reverse =
+            selected_contact_orbit_owner_tokens([(1_u32, Some(traversal)), (0_u32, Some(base))])
+                .unwrap();
+        assert_eq!(forward, reverse);
+        assert_eq!(forward.len(), 1);
+
+        let mut exact_factor_variants = Vec::new();
         let mut value = base_application.clone();
         value.binding_coupling = exact(2);
-        variants.push(value);
+        exact_factor_variants.push(value);
         let mut value = base_application.clone();
         value.transition_exact_factor = exact(2);
-        variants.push(value);
+        exact_factor_variants.push(value);
         let mut value = base_application.clone();
         value.color_exact_factor = exact(2);
-        variants.push(value);
+        exact_factor_variants.push(value);
         let mut value = base_application.clone();
         value.witness_exact_factor = exact(2);
-        variants.push(value);
+        exact_factor_variants.push(value);
         let mut value = base_application.clone();
         value.input_exchange_factor = Some(exact(-1));
-        variants.push(value);
-        let mut value = base_application.clone();
-        value.output_factor_source = 1;
-        variants.push(value);
-        let mut value = base_application.clone();
-        value.transition_equivalence_class = "different-equivalence".into();
-        variants.push(value);
-        let mut value = base_application.clone();
-        value.evaluator_contract_kind = EvaluatorContractKind::Closure as u8;
-        variants.push(value);
-        let mut value = base_application.clone();
-        value.evaluator_callable_kind = EvaluatorCallableKind::RusticolTemplate as u8;
-        variants.push(value);
-        let mut value = base_application.clone();
-        value.evaluator_callable_signature = digest(23);
-        variants.push(value);
-        let mut value = base_application.clone();
-        value.evaluator_input_layout = vec![13, 14];
-        variants.push(value);
-        let mut value = base_application.clone();
-        value.evaluator_output_layout = vec![15];
-        variants.push(value);
-        let mut value = base_application.clone();
-        value.evaluator_exact_expression_digests = vec![digest(24)];
-        variants.push(value);
-        let mut value = base_application.clone();
-        value.evaluator_runtime_template = Some("different-runtime-template".into());
-        variants.push(value);
-        let mut value = base_application.clone();
-        value.output_projection_id = 9;
-        variants.push(value);
-
-        for (index, variant) in variants.iter().enumerate() {
+        exact_factor_variants.push(value);
+        for variant in &exact_factor_variants {
             assert_ne!(
                 base.group,
                 candidate(&step, &destination, [&left, &right], variant, 12).group,
-                "application witness variant {index} coalesced",
             );
         }
 
+        let mut different_parameters = base_application.clone();
+        different_parameters.coupling_parameter_ids = vec![99];
+        assert_ne!(
+            base.group,
+            candidate(
+                &step,
+                &destination,
+                [&left, &right],
+                &different_parameters,
+                12,
+            )
+            .group,
+        );
+
+        let mut certificate_row = step.clone();
+        certificate_row.certificate_id = 1;
+        assert_ne!(
+            base.group,
+            candidate(
+                &certificate_row,
+                &destination,
+                [&left, &right],
+                &base_application,
+                12,
+            )
+            .group,
+        );
         let mut certificate = step.clone();
         certificate.certificate_semantic_digest = digest(30);
         assert_ne!(
@@ -1980,13 +2011,13 @@ mod tests {
         .unwrap_err();
         assert!(error.to_string().contains("conflicting exact rank"));
 
-        let mut different_application = application.clone();
-        different_application.output_projection_id = 1;
+        let mut different_group_step = step.clone();
+        different_group_step.evaluator_class = "different-contact-class".into();
         let different_group = candidate(
-            &step,
+            &different_group_step,
             &destination,
             [&left, &right],
-            &different_application,
+            &application,
             13,
         );
         let error = selected_contact_orbit_owner_tokens([
