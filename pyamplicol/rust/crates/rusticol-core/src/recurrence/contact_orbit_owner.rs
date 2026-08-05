@@ -434,6 +434,26 @@ pub(super) fn prepare_contact_orbit_transition(
 }
 
 impl PreparedContactOrbitTransition {
+    /// Whether these concrete parents belong to the certified contact step's
+    /// physical construction domain.
+    ///
+    /// The established builder reaches this point only after its process-wide
+    /// structural-demand filter, so a missing mapping remains an integrity
+    /// error in [`Self::owner_candidate`].  The query-local on-the-fly sweep
+    /// deliberately has no such global demand graph and uses this predicate to
+    /// avoid instantiating a certified auxiliary step on wider, otherwise
+    /// state-compatible currents.
+    pub(super) fn accepts_parent_domain(
+        &self,
+        parents: [&CurrentCoreKey; 2],
+    ) -> RusticolResult<bool> {
+        validate_step(&self.step)?;
+        Ok(
+            contact_orbit_parent_mapping(&self.step, parents, self.input_state_template_ids)?
+                .is_some(),
+        )
+    }
+
     pub(super) fn owner_candidate<'a>(
         &'a self,
         destination: &'a CurrentCoreKey,
@@ -899,19 +919,11 @@ fn source_particle_actual_source_slot(
     }
 }
 
-pub(super) fn contact_orbit_owner_candidate<'a>(
-    step: Option<&'a ContactOrbitStepProof>,
-    destination: &'a CurrentCoreKey,
-    parents: [&'a CurrentCoreKey; 2],
+fn contact_orbit_parent_mapping(
+    step: &ContactOrbitStepProof,
+    parents: [&CurrentCoreKey; 2],
     input_state_template_ids: [u32; 2],
-    application: &'a ContactOrbitApplicationWitness,
-    transition_semantic_digest: SemanticDigest,
-) -> RusticolResult<Option<ContactOrbitOwnerCandidate<'a>>> {
-    let Some(step) = step else {
-        return Ok(None);
-    };
-    validate_step(step)?;
-    validate_support_union(destination, parents)?;
+) -> RusticolResult<Option<([ContactOrbitParentSide; 2], [usize; 2])>> {
     let sides = [
         ContactOrbitParentSide {
             expected_state_template_id: input_state_template_ids[0],
@@ -952,10 +964,27 @@ pub(super) fn contact_orbit_owner_candidate<'a>(
                 "contact-orbit parent-to-side mapping is ambiguous across distinct physical assignments",
             ));
         }
-        (false, false) => {
-            return Err(integrity("contact-orbit parent-to-side mapping is absent"));
-        }
+        (false, false) => return Ok(None),
     };
+    Ok(Some((sides, parent_by_side)))
+}
+
+pub(super) fn contact_orbit_owner_candidate<'a>(
+    step: Option<&'a ContactOrbitStepProof>,
+    destination: &'a CurrentCoreKey,
+    parents: [&'a CurrentCoreKey; 2],
+    input_state_template_ids: [u32; 2],
+    application: &'a ContactOrbitApplicationWitness,
+    transition_semantic_digest: SemanticDigest,
+) -> RusticolResult<Option<ContactOrbitOwnerCandidate<'a>>> {
+    let Some(step) = step else {
+        return Ok(None);
+    };
+    validate_step(step)?;
+    validate_support_union(destination, parents)?;
+    let (sides, parent_by_side) =
+        contact_orbit_parent_mapping(step, parents, input_state_template_ids)?
+            .ok_or_else(|| integrity("contact-orbit parent-to-side mapping is absent"))?;
     let mut canonical_parents = [
         ContactOrbitParentGroup {
             current: ContactOrbitCurrentPhysics::from_current(parents[parent_by_side[0]]),
@@ -1780,6 +1809,60 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("mapping is absent")
+        );
+    }
+
+    #[test]
+    fn prepared_parent_domain_accepts_only_the_certified_contact_shape() {
+        let source_a = current(10, 1, &[10]);
+        let source_b = current(10, 1, &[11]);
+        let source_c = current(10, 1, &[12]);
+        let composite_scalar = current(10, 1, &[10, 11]);
+        let auxiliary_pair = current(20, 1, &[10, 11]);
+
+        let partial = prepared_contact_orbit_transition_for_test(
+            partial_step(0, 1, 2, 35),
+            [10, 10],
+            digest(36),
+            application(),
+        );
+        assert!(
+            partial
+                .accepts_parent_domain([&source_a, &source_b])
+                .unwrap()
+        );
+        assert!(
+            !partial
+                .accepts_parent_domain([&composite_scalar, &source_c])
+                .unwrap()
+        );
+
+        let final_transition = prepared_contact_orbit_transition_for_test(
+            final_step(&[0, 1], &[2], 3, 37, [0, 0, 0, 0]),
+            [20, 10],
+            digest(38),
+            application(),
+        );
+        assert!(
+            final_transition
+                .accepts_parent_domain([&auxiliary_pair, &source_c])
+                .unwrap()
+        );
+
+        let mut ambiguous_step = partial_step(0, 1, 2, 39);
+        ambiguous_step.physical_leg_equivalence_classes = [0, 1, 2, 3];
+        let ambiguous = prepared_contact_orbit_transition_for_test(
+            ambiguous_step,
+            [10, 10],
+            digest(40),
+            application(),
+        );
+        assert!(
+            ambiguous
+                .accepts_parent_domain([&source_a, &source_b])
+                .unwrap_err()
+                .to_string()
+                .contains("mapping is ambiguous")
         );
     }
 

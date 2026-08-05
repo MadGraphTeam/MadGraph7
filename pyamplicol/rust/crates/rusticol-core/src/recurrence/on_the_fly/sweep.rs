@@ -898,6 +898,11 @@ fn include_transition(
     }) {
         return Ok(());
     }
+    if let Some(contact_orbit) = prepared.contact_orbit.as_ref()
+        && !contact_orbit.accepts_parent_domain(parents)?
+    {
+        return Ok(());
+    }
     let Some(coupling_orders) = combined_coupling_orders(
         parents[0].coupling_orders(),
         parents[1].coupling_orders(),
@@ -1549,6 +1554,7 @@ mod tests {
 
     fn production_contact_barrier_case(
         reverse_transition_order: bool,
+        include_ordinary_scalar_transition: bool,
     ) -> (Vec<(Vec<u32>, u32, Vec<u32>)>, (usize, usize), bool) {
         let mut template_input = contact_orbit_test_template(ContactOrbitTestBinding::One);
         let mut intermediate_state = template_input.current_states[0];
@@ -1656,7 +1662,7 @@ mod tests {
             ));
             row
         };
-        let partial_rows = transition_order
+        let mut partial_rows = transition_order
             .iter()
             .copied()
             .map(|index| build_row(index, 0, partial_steps[index].clone(), [0, 0], 1))
@@ -1668,6 +1674,17 @@ mod tests {
                 build_row(index, 6, final_steps[index].clone(), input_states, 1)
             })
             .collect::<Vec<_>>();
+        if include_ordinary_scalar_transition {
+            let mut ordinary = base.clone();
+            ordinary.row.id = 12;
+            ordinary.input_states = [0, 0];
+            ordinary.row.result_state_template_id = 0;
+            ordinary.quantum.result_state_template_id = 0;
+            ordinary.local_orders = vec![0].into_boxed_slice();
+            ordinary.transition_semantic_digest = contact_digest(120);
+            ordinary.contact_orbit = None;
+            partial_rows.push(ordinary);
+        }
         let transitions = BTreeMap::from([((0, 0), partial_rows), ((0, 1), final_rows)]);
         let propagators = propagator_by_state(&templates).unwrap();
         let seed = scalar_contact_seed(4);
@@ -1903,8 +1920,8 @@ mod tests {
 
     #[test]
     fn forward_sweep_barrier_prunes_complete_contact_fan_in_before_next_stage() {
-        let forward = production_contact_barrier_case(false);
-        let reverse = production_contact_barrier_case(true);
+        let forward = production_contact_barrier_case(false, false);
+        let reverse = production_contact_barrier_case(true, false);
         assert_eq!(reverse, forward);
         let (staged, counts, retained_partial_is_consumed) = forward;
         assert_eq!(
@@ -1930,6 +1947,49 @@ mod tests {
         }));
         assert_eq!(counts, (14, 18));
         assert!(retained_partial_is_consumed);
+    }
+
+    #[test]
+    fn forward_sweep_skips_contact_partial_outside_its_certified_parent_domain() {
+        let forward = production_contact_barrier_case(false, true);
+        let reverse = production_contact_barrier_case(true, true);
+        assert_eq!(reverse, forward);
+        let (staged, _, _) = forward;
+
+        assert!(
+            staged
+                .iter()
+                .filter(|(_, stage, _)| *stage == 1)
+                .any(|(_, _, transition_ids)| {
+                    transition_ids
+                        .iter()
+                        .any(|transition_id| *transition_id < 6)
+                }),
+            "one-plus-one source parents must retain a certified contact partial",
+        );
+        assert!(
+            staged
+                .iter()
+                .filter(|(_, stage, _)| *stage == 1)
+                .any(|(_, _, transition_ids)| transition_ids.as_slice() == [12]),
+            "the ordinary scalar transition must construct a composite scalar parent",
+        );
+        assert!(
+            staged
+                .iter()
+                .filter(|(_, stage, _)| *stage == 2)
+                .flat_map(|(_, _, transition_ids)| transition_ids)
+                .all(|transition_id| *transition_id >= 6),
+            "a certified one-plus-one contact partial must not be reapplied to a composite scalar parent",
+        );
+        assert!(
+            staged
+                .iter()
+                .filter(|(_, stage, _)| *stage == 2)
+                .flat_map(|(_, _, transition_ids)| transition_ids)
+                .any(|transition_id| (6..12).contains(transition_id)),
+            "a one-plus-two certified contact final must remain available",
+        );
     }
 
     #[test]
