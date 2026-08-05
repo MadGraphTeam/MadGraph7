@@ -824,6 +824,7 @@ def _deduplicate_contact_partials(
             kernel.color_source,
             kernel.lc_color_normalization_power,
             normalized_components,
+            auxiliary.auxiliary_kind if kernel.contact_orbit_steps else None,
         )
         representative = representative_by_signature.get(signature)
         if representative is None:

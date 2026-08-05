@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from pyamplicol._internal.physics.symbols import symbols
+from pyamplicol._internal.physics.symbols import ModelSymbolRegistry, symbols
 from pyamplicol.models import compiler_contacts
 from pyamplicol.models import compiler_symbolica as _sym
 from pyamplicol.models.compiler_contact_trees import _deduplicate_contact_partials
@@ -230,13 +230,8 @@ def test_contact_orbit_contract_rejects_tampering_and_uncertified_classes() -> N
     )[0].contact_orbit_certificate is None
 
 
-@pytest.mark.parametrize(
-    "particle_names",
-    (("a", "a", "a", "a"), ("a", "a", "b", "c")),
-)
-def test_contact_orbit_metadata_preserves_parent_numerical_fusion(
-    particle_names: tuple[str, str, str, str],
-) -> None:
+def test_single_lineage_contact_orbit_metadata_preserves_numerical_fusion() -> None:
+    particle_names = ("a", "a", "a", "a")
     particle_by_name = {
         name: _scalar(name, 9_519_000 + index)
         for index, name in enumerate(dict.fromkeys(particle_names))
@@ -288,6 +283,133 @@ def test_contact_orbit_metadata_preserves_parent_numerical_fusion(
         len(split.orientations) for split in proof.splits
     )
     assert len(actual_steps) == len(set(actual_steps))
+
+
+def _mixed_scalar_contact_partials(
+    *,
+    certified: bool,
+    model_name: str,
+) -> tuple[
+    tuple[CompiledParticleRecord, ...],
+    tuple[CompiledOrientedKernel, ...],
+    CompiledVertexTerm,
+    ModelSymbolRegistry,
+]:
+    particles = tuple(
+        _scalar(name, 9_519_100 + index)
+        for index, name in enumerate(("a", "b", "c"))
+    )
+    term = replace(
+        _term(color_source="1", color_expression="1"),
+        particles=("a", "a", "b", "c"),
+    )
+    term = _proof_term(term, particles, model_name=model_name)
+    if not certified:
+        term = replace(term, contact_orbit_certificate=None)
+    registry = symbols.model(model_name)
+    auxiliaries, kernels = _compile_four_point_contact_kernels(
+        (term,), particles, start_kind=0, model_symbols=registry
+    )
+    return auxiliaries, kernels, term, registry
+
+
+def test_certified_contact_partials_keep_distinct_compiler_lineages() -> None:
+    auxiliaries, kernels, term, registry = _mixed_scalar_contact_partials(
+        certified=True,
+        model_name="orbit-lineage-distinct",
+    )
+
+    retained_auxiliaries, retained_kernels = _deduplicate_contact_partials(
+        auxiliaries,
+        kernels,
+        (term,),
+        model_symbols=registry,
+    )
+
+    lineages = {
+        particle.auxiliary_kind
+        for particle in retained_auxiliaries
+        if particle.auxiliary_kind in {
+            "ufo-contact:901:result-2:2,3",
+            "ufo-contact:901:result-3:2,3",
+        }
+    }
+    assert lineages == {
+        "ufo-contact:901:result-2:2,3",
+        "ufo-contact:901:result-3:2,3",
+    }
+    same_input_partials = tuple(
+        kernel
+        for kernel in retained_kernels
+        if kernel.vertex.endswith("::contact-partial")
+        and kernel.particles[:2] == ("a", "a")
+    )
+    assert len(same_input_partials) == 2
+    assert all(len(kernel.contact_orbit_steps) == 1 for kernel in same_input_partials)
+    assert {
+        kernel.contact_orbit_steps[0].result_leg for kernel in same_input_partials
+    } == {2, 3}
+
+
+def test_certified_contact_partial_aliases_with_same_lineage_still_deduplicate(
+) -> None:
+    auxiliaries, kernels, term, registry = _mixed_scalar_contact_partials(
+        certified=True,
+        model_name="orbit-lineage-alias",
+    )
+    auxiliary_by_name = {particle.name: particle for particle in auxiliaries}
+    original_kernel = next(
+        kernel
+        for kernel in kernels
+        if kernel.vertex.endswith("::contact-partial")
+        and kernel.particles[:2] == ("a", "a")
+    )
+    original_auxiliary = auxiliary_by_name[original_kernel.particles[2]]
+    alias_name = f"{original_auxiliary.name}_alias"
+    alias_auxiliary = replace(
+        original_auxiliary,
+        name=alias_name,
+        antiname=alias_name,
+        pdg_code=original_auxiliary.pdg_code + 100,
+    )
+    alias_kernel = replace(
+        original_kernel,
+        particles=(*original_kernel.particles[:2], alias_name),
+    )
+
+    retained_auxiliaries, retained_kernels = _deduplicate_contact_partials(
+        (original_auxiliary, alias_auxiliary),
+        (original_kernel, alias_kernel),
+        (term,),
+        model_symbols=registry,
+    )
+
+    assert retained_auxiliaries == (original_auxiliary,)
+    assert retained_kernels == (original_kernel,)
+
+
+def test_uncertified_contact_partial_numeric_deduplication_is_unchanged() -> None:
+    auxiliaries, kernels, term, registry = _mixed_scalar_contact_partials(
+        certified=False,
+        model_name="orbit-lineage-uncertified",
+    )
+
+    retained_auxiliaries, retained_kernels = _deduplicate_contact_partials(
+        auxiliaries,
+        kernels,
+        (term,),
+        model_symbols=registry,
+    )
+
+    assert len(retained_auxiliaries) == len(auxiliaries) - 1
+    same_input_partials = tuple(
+        kernel
+        for kernel in retained_kernels
+        if kernel.vertex.endswith("::contact-partial")
+        and kernel.particles[:2] == ("a", "a")
+    )
+    assert len(same_input_partials) == 1
+    assert same_input_partials[0].contact_orbit_steps == ()
 
 
 def test_compiled_ir_requires_orbit_certificate_exactly_for_certifiable_class() -> None:
