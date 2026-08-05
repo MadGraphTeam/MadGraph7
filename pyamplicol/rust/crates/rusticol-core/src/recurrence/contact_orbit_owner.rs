@@ -110,6 +110,7 @@ pub(super) struct ContactOrbitApplicationWitness {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct PreparedContactOrbitTransition {
     step: ContactOrbitStepProof,
+    input_state_template_ids: [u32; 2],
     transition_semantic_digest: SemanticDigest,
     applications: Vec<ContactOrbitApplicationWitness>,
 }
@@ -274,6 +275,11 @@ pub(super) fn prepare_contact_orbit_transition(
     let Some(step) = strict_contact_orbit_step(input, catalog, transition)? else {
         return Ok(None);
     };
+    let input_state_template_ids = <[u32; 2]>::try_from(catalog.u32_sequence(
+        transition.input_state_sequence_id,
+        "contact-orbit transition input states",
+    )?)
+    .map_err(|_| integrity("certified contact-orbit transition is not binary"))?;
     let contraction = input
         .color_contractions
         .get(transition.color_contraction_template_id as usize)
@@ -418,6 +424,7 @@ pub(super) fn prepare_contact_orbit_transition(
     }
     Ok(Some(PreparedContactOrbitTransition {
         step,
+        input_state_template_ids,
         transition_semantic_digest: catalog.digest(
             transition.semantic_digest_id,
             "contact-orbit transition semantic",
@@ -449,6 +456,7 @@ impl PreparedContactOrbitTransition {
             Some(&self.step),
             destination,
             parents,
+            self.input_state_template_ids,
             application,
             self.transition_semantic_digest,
         )?
@@ -459,11 +467,13 @@ impl PreparedContactOrbitTransition {
 #[cfg(test)]
 pub(super) fn prepared_contact_orbit_transition_for_test(
     step: ContactOrbitStepProof,
+    input_state_template_ids: [u32; 2],
     transition_semantic_digest: SemanticDigest,
     application: ContactOrbitApplicationWitness,
 ) -> PreparedContactOrbitTransition {
     PreparedContactOrbitTransition {
         step,
+        input_state_template_ids,
         transition_semantic_digest,
         applications: vec![application],
     }
@@ -613,6 +623,14 @@ impl<'a> ContactOrbitCurrentPhysics<'a> {
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct ContactOrbitParentGroup<'a> {
     current: ContactOrbitCurrentPhysics<'a>,
+    assignment: ContactOrbitPhysicalAssignment,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ContactOrbitParentSide {
+    expected_state_template_id: u32,
+    covered_legs: ContactOrbitCoveredLegs,
+    source_particle_leg: i32,
     assignment: ContactOrbitPhysicalAssignment,
 }
 
@@ -836,10 +854,34 @@ fn validate_support_union(
     Ok(())
 }
 
+fn parent_matches_contact_orbit_side(
+    parent: &CurrentCoreKey,
+    side: ContactOrbitParentSide,
+) -> bool {
+    if parent.current_state_template_id() != side.expected_state_template_id
+        || parent.support_source_slots().len() != side.covered_legs.len()
+    {
+        return false;
+    }
+    match side.source_particle_leg {
+        -1 => {
+            parent.node_kind() == RecurrenceNodeKind::Current
+                && matches!(parent.source_binding(), &CurrentSourceBinding::None)
+        }
+        leg if leg >= 0 => {
+            parent.node_kind() == RecurrenceNodeKind::Source
+                && !matches!(parent.source_binding(), &CurrentSourceBinding::None)
+                && parent.support_source_slots().len() == 1
+        }
+        _ => false,
+    }
+}
+
 pub(super) fn contact_orbit_owner_candidate<'a>(
     step: Option<&'a ContactOrbitStepProof>,
     destination: &'a CurrentCoreKey,
     parents: [&'a CurrentCoreKey; 2],
+    input_state_template_ids: [u32; 2],
     application: &'a ContactOrbitApplicationWitness,
     transition_semantic_digest: SemanticDigest,
 ) -> RusticolResult<Option<ContactOrbitOwnerCandidate<'a>>> {
@@ -848,34 +890,58 @@ pub(super) fn contact_orbit_owner_candidate<'a>(
     };
     validate_step(step)?;
     validate_support_union(destination, parents)?;
-    let mut parent_support_lengths = [
-        parents[0].support_source_slots().len(),
-        parents[1].support_source_slots().len(),
-    ];
-    parent_support_lengths.sort_unstable();
-    let mut covered_lengths = [step.left_covered_legs.len(), step.right_covered_legs.len()];
-    covered_lengths.sort_unstable();
-    if parent_support_lengths != covered_lengths {
-        return Err(integrity(
-            "contact-orbit covered-leg cardinalities differ from parent supports",
-        ));
-    }
-    let mut canonical_parents = [
-        ContactOrbitParentGroup {
-            current: ContactOrbitCurrentPhysics::from_current(parents[0]),
+    let sides = [
+        ContactOrbitParentSide {
+            expected_state_template_id: input_state_template_ids[0],
+            covered_legs: step.left_covered_legs,
+            source_particle_leg: step.source_particle_legs[0],
             assignment: canonical_physical_assignment(
                 step.left_covered_legs,
                 &step.physical_leg_equivalence_classes,
                 step.source_particle_legs[0],
             )?,
         },
-        ContactOrbitParentGroup {
-            current: ContactOrbitCurrentPhysics::from_current(parents[1]),
+        ContactOrbitParentSide {
+            expected_state_template_id: input_state_template_ids[1],
+            covered_legs: step.right_covered_legs,
+            source_particle_leg: step.source_particle_legs[1],
             assignment: canonical_physical_assignment(
                 step.right_covered_legs,
                 &step.physical_leg_equivalence_classes,
                 step.source_particle_legs[1],
             )?,
+        },
+    ];
+    let direct = parent_matches_contact_orbit_side(parents[0], sides[0])
+        && parent_matches_contact_orbit_side(parents[1], sides[1]);
+    let exchanged = parent_matches_contact_orbit_side(parents[1], sides[0])
+        && parent_matches_contact_orbit_side(parents[0], sides[1]);
+    let parent_by_side = match (direct, exchanged) {
+        (true, false) => [0_usize, 1_usize],
+        (false, true) => [1_usize, 0_usize],
+        (true, true)
+            if sides[0].expected_state_template_id == sides[1].expected_state_template_id
+                && sides[0].assignment == sides[1].assignment =>
+        {
+            [0_usize, 1_usize]
+        }
+        (true, true) => {
+            return Err(integrity(
+                "contact-orbit parent-to-side mapping is ambiguous across distinct physical assignments",
+            ));
+        }
+        (false, false) => {
+            return Err(integrity("contact-orbit parent-to-side mapping is absent"));
+        }
+    };
+    let mut canonical_parents = [
+        ContactOrbitParentGroup {
+            current: ContactOrbitCurrentPhysics::from_current(parents[parent_by_side[0]]),
+            assignment: sides[0].assignment,
+        },
+        ContactOrbitParentGroup {
+            current: ContactOrbitCurrentPhysics::from_current(parents[parent_by_side[1]]),
+            assignment: sides[1].assignment,
         },
     ];
     canonical_parents.sort_unstable();
@@ -1180,17 +1246,30 @@ mod tests {
     }
 
     fn current(state: u32, color: u32, support: &[u32]) -> CurrentCoreKey {
+        let is_source = support.len() == 1;
         current_with_physics(
-            RecurrenceNodeKind::Current,
+            if is_source {
+                RecurrenceNodeKind::Source
+            } else {
+                RecurrenceNodeKind::Current
+            },
             state,
             color,
             support,
-            RecurrenceStrategy::AllFlowUnion,
+            if is_source {
+                RecurrenceStrategy::TopologyReplay
+            } else {
+                RecurrenceStrategy::AllFlowUnion
+            },
             0,
             vec![state as i32],
             0,
             vec![0],
-            CurrentSourceBinding::None,
+            if is_source {
+                CurrentSourceBinding::FixedTemplate(support[0])
+            } else {
+                CurrentSourceBinding::None
+            },
             None,
         )
     }
@@ -1262,8 +1341,13 @@ mod tests {
     }
 
     fn topology_current(state: u32, color: u32, support: &[u32]) -> CurrentCoreKey {
+        let is_source = support.len() == 1;
         current_with_physics(
-            RecurrenceNodeKind::Current,
+            if is_source {
+                RecurrenceNodeKind::Source
+            } else {
+                RecurrenceNodeKind::Current
+            },
             state,
             color,
             support,
@@ -1272,7 +1356,11 @@ mod tests {
             vec![state as i32],
             0,
             vec![0],
-            CurrentSourceBinding::None,
+            if is_source {
+                CurrentSourceBinding::FixedTemplate(0)
+            } else {
+                CurrentSourceBinding::None
+            },
             None,
         )
     }
@@ -1444,11 +1532,30 @@ mod tests {
             Some(step),
             destination,
             parents,
+            parents.map(|parent| parent.current_state_template_id()),
             application,
             digest(transition_digest),
         )
         .unwrap()
         .unwrap()
+    }
+
+    fn candidate_with_input_states<'a>(
+        step: &'a ContactOrbitStepProof,
+        destination: &'a CurrentCoreKey,
+        parents: [&'a CurrentCoreKey; 2],
+        input_state_template_ids: [u32; 2],
+        application: &'a ContactOrbitApplicationWitness,
+        transition_digest: u8,
+    ) -> RusticolResult<Option<ContactOrbitOwnerCandidate<'a>>> {
+        contact_orbit_owner_candidate(
+            Some(step),
+            destination,
+            parents,
+            input_state_template_ids,
+            application,
+            digest(transition_digest),
+        )
     }
 
     #[test]
@@ -1485,6 +1592,164 @@ mod tests {
             selected_contact_orbit_owner_tokens([(0_u32, Some(forward)), (1_u32, Some(reverse)),])
                 .unwrap(),
             vec![0],
+        );
+    }
+
+    #[test]
+    fn parent_assignment_binds_evaluator_swaps_to_certified_final_sides() {
+        let pair = current(20, 2, &[10, 11]);
+        let source = current(30, 1, &[12]);
+        let destination = current(40, 3, &[10, 11, 12]);
+        let application = application();
+        let forward_step = final_step(&[0, 1], &[2], 3, 20, [0, 0, 1, 2]);
+        let mirror_step = final_step(&[2], &[0, 1], 3, 21, [0, 0, 1, 2]);
+
+        let forward = candidate_with_input_states(
+            &forward_step,
+            &destination,
+            [&source, &pair],
+            [20, 30],
+            &application,
+            22,
+        )
+        .unwrap()
+        .unwrap();
+        let mirror = candidate_with_input_states(
+            &mirror_step,
+            &destination,
+            [&pair, &source],
+            [30, 20],
+            &application,
+            23,
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(forward.group, mirror.group);
+        assert_ne!(forward.rank, mirror.rank);
+    }
+
+    #[test]
+    fn parent_assignment_handles_distinct_states_and_identical_ambiguity() {
+        let left = current(10, 1, &[10]);
+        let right = current(20, 1, &[11]);
+        let destination = current(30, 2, &[10, 11]);
+        let application = application();
+        let distinct_step = partial_step(0, 1, 2, 24);
+        let direct = candidate_with_input_states(
+            &distinct_step,
+            &destination,
+            [&left, &right],
+            [10, 20],
+            &application,
+            25,
+        )
+        .unwrap()
+        .unwrap();
+        let swapped = candidate_with_input_states(
+            &distinct_step,
+            &destination,
+            [&right, &left],
+            [10, 20],
+            &application,
+            26,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(direct.group, swapped.group);
+
+        let identical_right = current(10, 1, &[11]);
+        let identical_step = partial_step(0, 1, 2, 27);
+        assert!(
+            candidate_with_input_states(
+                &identical_step,
+                &destination,
+                [&left, &identical_right],
+                [10, 10],
+                &application,
+                28,
+            )
+            .unwrap()
+            .is_some()
+        );
+    }
+
+    #[test]
+    fn parent_assignment_rejects_ambiguous_or_invalid_side_semantics() {
+        let left = current(10, 1, &[10]);
+        let right = current(10, 1, &[11]);
+        let destination = current(30, 2, &[10, 11]);
+        let application = application();
+        let mut non_equivalent = partial_step(0, 1, 2, 29);
+        non_equivalent.physical_leg_equivalence_classes = [0, 1, 2, 3];
+        assert!(
+            candidate_with_input_states(
+                &non_equivalent,
+                &destination,
+                [&left, &right],
+                [10, 10],
+                &application,
+                30,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("mapping is ambiguous")
+        );
+
+        let step = partial_step(0, 1, 2, 31);
+        assert!(
+            candidate_with_input_states(
+                &step,
+                &destination,
+                [&left, &right],
+                [90, 91],
+                &application,
+                32,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("mapping is absent")
+        );
+        let invalid_source = current_with_physics(
+            RecurrenceNodeKind::Current,
+            10,
+            1,
+            &[10],
+            RecurrenceStrategy::TopologyReplay,
+            0,
+            vec![10],
+            0,
+            vec![0],
+            CurrentSourceBinding::None,
+            None,
+        );
+        assert!(
+            candidate_with_input_states(
+                &step,
+                &destination,
+                [&invalid_source, &right],
+                [10, 10],
+                &application,
+                33,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("mapping is absent")
+        );
+        let pair = current(10, 1, &[11, 12]);
+        let wide_destination = current(30, 2, &[10, 11, 12]);
+        assert!(
+            candidate_with_input_states(
+                &step,
+                &wide_destination,
+                [&left, &pair],
+                [10, 10],
+                &application,
+                34,
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("mapping is absent")
         );
     }
 
@@ -1751,15 +2016,15 @@ mod tests {
             57,
         );
         assert_eq!(final_forward.group, final_reverse.group);
-        // The concrete rank orders the forward parent traversal first; owner
-        // choice therefore stays deterministic independently of insertion.
+        // The concrete rank orders the source-first mirror traversal first;
+        // owner choice therefore stays deterministic independently of insertion.
         assert_eq!(
             selected_contact_orbit_owner_tokens([
                 (0_u32, Some(final_forward)),
                 (1_u32, Some(final_reverse)),
             ])
             .unwrap(),
-            vec![0],
+            vec![1],
         );
         assert_eq!(
             selected_contact_orbit_owner_tokens([
@@ -1767,7 +2032,7 @@ mod tests {
                 (0_u32, Some(final_forward)),
             ])
             .unwrap(),
-            vec![0],
+            vec![1],
         );
     }
 
@@ -1963,16 +2228,21 @@ mod tests {
         );
         let mut parent_equivalence = step.clone();
         parent_equivalence.physical_leg_equivalence_classes[1] = 1;
-        assert_ne!(
-            base.group,
-            candidate(
+        assert!(
+            candidate_with_input_states(
                 &parent_equivalence,
                 &destination,
                 [&left, &right],
+                [
+                    left.current_state_template_id(),
+                    right.current_state_template_id(),
+                ],
                 &base_application,
                 12,
             )
-            .group,
+            .unwrap_err()
+            .to_string()
+            .contains("mapping is ambiguous"),
         );
         let mut evaluator_class = step.clone();
         evaluator_class.evaluator_class = "different-contact-class".into();
@@ -1995,6 +2265,10 @@ mod tests {
                 Some(&invalid_reconstruction),
                 &destination,
                 [&left, &right],
+                [
+                    left.current_state_template_id(),
+                    right.current_state_template_id()
+                ],
                 &base_application,
                 digest(12),
             )
@@ -2009,6 +2283,10 @@ mod tests {
                 Some(&invalid_reconstruction),
                 &destination,
                 [&left, &right],
+                [
+                    left.current_state_template_id(),
+                    right.current_state_template_id()
+                ],
                 &base_application,
                 digest(12),
             )

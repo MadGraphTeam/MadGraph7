@@ -13046,10 +13046,12 @@ mod tests {
 
     fn established_contact_test_transition(
         step: ContactOrbitStepProof,
+        input_state_template_ids: [u32; 2],
         transition_digest: u8,
     ) -> PreparedContactOrbitTransition {
         prepared_contact_orbit_transition_for_test(
             step,
+            input_state_template_ids,
             digest(transition_digest),
             contact_orbit_application_for_test(),
         )
@@ -13141,7 +13143,11 @@ mod tests {
                 let id = u32::try_from(id).unwrap();
                 (
                     id,
-                    established_contact_test_transition(step, 40 + u8::try_from(id).unwrap()),
+                    established_contact_test_transition(
+                        step,
+                        [10, 10],
+                        40 + u8::try_from(id).unwrap(),
+                    ),
                 )
             })
             .collect::<BTreeMap<_, _>>();
@@ -13192,6 +13198,7 @@ mod tests {
                 10,
                 established_contact_test_transition(
                     partial_contact_orbit_step_for_test(0, 1, 2, 50, [0, 0, 1, 2]),
+                    [10, 10],
                     52,
                 ),
             ),
@@ -13199,6 +13206,7 @@ mod tests {
                 11,
                 established_contact_test_transition(
                     partial_contact_orbit_step_for_test(1, 0, 2, 51, [0, 0, 1, 2]),
+                    [10, 10],
                     53,
                 ),
             ),
@@ -13233,6 +13241,7 @@ mod tests {
                 20,
                 established_contact_test_transition(
                     final_contact_orbit_step_for_test(&[0, 1], &[2], 3, 54, [0, 0, 1, 2]),
+                    [20, 30],
                     56,
                 ),
             ),
@@ -13240,6 +13249,7 @@ mod tests {
                 21,
                 established_contact_test_transition(
                     final_contact_orbit_step_for_test(&[2], &[0, 1], 3, 55, [0, 0, 1, 2]),
+                    [30, 20],
                     57,
                 ),
             ),
@@ -13273,9 +13283,12 @@ mod tests {
         let contacts = BTreeMap::from([
             (
                 30,
-                established_contact_test_transition(duplicate_step.clone(), 61),
+                established_contact_test_transition(duplicate_step.clone(), [10, 10], 61),
             ),
-            (31, established_contact_test_transition(duplicate_step, 61)),
+            (
+                31,
+                established_contact_test_transition(duplicate_step, [10, 10], 61),
+            ),
         ]);
         add_established_contact_test_contribution(&mut currents, 2, 30, [0, 1]);
         add_established_contact_test_contribution(&mut currents, 2, 31, [0, 1]);

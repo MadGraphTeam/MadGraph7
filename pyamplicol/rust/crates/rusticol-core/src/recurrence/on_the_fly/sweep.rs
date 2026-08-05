@@ -1410,13 +1410,20 @@ mod tests {
 
     fn contact_transition(
         step: ContactOrbitStepProof,
+        input_state_template_ids: [u32; 2],
         transition_digest: u8,
     ) -> PreparedContactOrbitTransition {
-        contact_transition_with_witness(step, transition_digest, LCColorWitnessTermId::new(4, 0))
+        contact_transition_with_witness(
+            step,
+            input_state_template_ids,
+            transition_digest,
+            LCColorWitnessTermId::new(4, 0),
+        )
     }
 
     fn contact_transition_with_witness(
         step: ContactOrbitStepProof,
+        input_state_template_ids: [u32; 2],
         transition_digest: u8,
         color_witness_term_id: LCColorWitnessTermId,
     ) -> PreparedContactOrbitTransition {
@@ -1424,6 +1431,7 @@ mod tests {
         application.color_witness_term_id = color_witness_term_id;
         prepared_contact_orbit_transition_for_test(
             step,
+            input_state_template_ids,
             contact_digest(transition_digest),
             application,
         )
@@ -1639,6 +1647,7 @@ mod tests {
             row.transition_semantic_digest = contact_digest(digest_byte);
             row.contact_orbit = Some(contact_transition_with_witness(
                 step,
+                input_states,
                 digest_byte,
                 LCColorWitnessTermId::new(
                     row.row.color_contraction_template_id,
@@ -1781,7 +1790,7 @@ mod tests {
         let (mut currents, steps) = if final_stage {
             (
                 vec![
-                    contact_current(RecurrenceNodeKind::Current, 10, 0, &[10]),
+                    contact_current(RecurrenceNodeKind::Source, 10, 0, &[10]),
                     contact_current(RecurrenceNodeKind::Current, 11, 1, &[11, 12]),
                     contact_current(RecurrenceNodeKind::Current, 20, 2, &[10, 11, 12]),
                 ],
@@ -1818,7 +1827,17 @@ mod tests {
                 let transition = u32::try_from(transition).unwrap();
                 (
                     transition,
-                    contact_transition(step, 40 + u8::try_from(transition).unwrap()),
+                    contact_transition(
+                        step,
+                        if final_stage && transition % 2 == 0 {
+                            [10, 11]
+                        } else if final_stage {
+                            [11, 10]
+                        } else {
+                            [10, 10]
+                        },
+                        40 + u8::try_from(transition).unwrap(),
+                    ),
                 )
             })
             .collect::<BTreeMap<_, _>>();
@@ -1914,6 +1933,7 @@ mod tests {
                 10,
                 contact_transition(
                     partial_contact_orbit_step_for_test(0, 1, 2, 50, [0, 0, 1, 2]),
+                    [10, 10],
                     52,
                 ),
             ),
@@ -1921,6 +1941,7 @@ mod tests {
                 11,
                 contact_transition(
                     partial_contact_orbit_step_for_test(1, 0, 2, 51, [0, 0, 1, 2]),
+                    [10, 10],
                     53,
                 ),
             ),
@@ -1941,6 +1962,7 @@ mod tests {
                 20,
                 contact_transition(
                     final_contact_orbit_step_for_test(&[0, 1], &[2], 3, 54, [0, 0, 1, 2]),
+                    [20, 30],
                     56,
                 ),
             ),
@@ -1948,6 +1970,7 @@ mod tests {
                 21,
                 contact_transition(
                     final_contact_orbit_step_for_test(&[2], &[0, 1], 3, 55, [0, 0, 1, 2]),
+                    [30, 20],
                     57,
                 ),
             ),
@@ -1968,8 +1991,8 @@ mod tests {
         ];
         let duplicate_step = partial_contact_orbit_step_for_test(0, 1, 2, 60, [0, 0, 0, 0]);
         let contacts = BTreeMap::from([
-            (30, contact_transition(duplicate_step.clone(), 61)),
-            (31, contact_transition(duplicate_step, 61)),
+            (30, contact_transition(duplicate_step.clone(), [10, 10], 61)),
+            (31, contact_transition(duplicate_step, [10, 10], 61)),
         ]);
         add_contact_contribution(&mut currents, 2, 30, [0, 1]);
         add_contact_contribution(&mut currents, 2, 31, [0, 1]);
