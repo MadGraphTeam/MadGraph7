@@ -180,7 +180,8 @@ The same counting is what leaves the two-substitution cases at seven gluons
 on the table: their target has a source with both mothers substituted, but
 the source with only the *other* one substituted is spelled with a different
 rooting, so the subset check refuses it. 432 of the 864 amplitude calls the
-structure allows.
+structure allows — and the rest are not simply waiting to be picked up, see
+"where to go next".
 
 **Step 5 — validate and time.** DONE. `|M|^2` for `g g > N g`, N=2..5, and
 per-call timing from the shipped `check` driver, which already loops
@@ -221,11 +222,26 @@ What is left is the sums which do not sit at an amplitude, and they need a
 node to have exactly one rooting *per merge*, which a diagram list cannot
 give. Three ways on, in increasing size:
 
-1. **The second substitution.** Cheapest of the three and worth another 432
-   amplitude calls at seven gluons. The subset check refuses a
-   two-substitution target because the single it needs is spelled with a
-   different rooting; finding that amplitude by its diagram and colour chain
-   rather than by its mothers would take it.
+1. **The second substitution.** Cheapest of the three, ceiling 432 amplitude
+   calls at seven gluons, but measured to be at most 282 of them and possibly
+   much less. Two things stand in the way and only the first is bookkeeping:
+
+   *Identification.* All 432 targets which have a two-substitution source have
+   exactly one of the two singles present; the other is the same diagram
+   rooted differently, so it is a different amplitude object with different
+   mothers and `match_quartic_mothers` cannot see it. Finding it by its
+   diagram and colour chain — the frame `compute_quartic_amplitude_merges`
+   already works in — rather than by its mothers would take it.
+
+   *The coefficients have to multiply.* Substituting two mothers also produces
+   the amplitude with both substituted, weighing the product of the two
+   coefficients, so the merge map has to agree. It does not always: taking the
+   double's coefficient over the known single's, the missing single would have
+   to weigh -1 for 360 of the 432 targets and +1 for 72, and for **150 of them
+   no merge source into that target weighs that at all**. The sign from
+   `diagram_colour_signature` does not factorise over two contractions in
+   general. `subset_is_merged` already refuses those, which is what keeps the
+   present code sound; extending the identification does not remove the check.
 2. **Partial CSE.** Keep the DAG, add `TMP = W1 + W4` alongside W1 and W4,
    and split the consumers. Bounded gain: at six gluons only 2 of the 6
    quartic consumers correspond, so it saves 2 subtrees per node out of 50
