@@ -1156,6 +1156,35 @@ fn on_the_fly_artifact_probe_mapping(
     result.set_item("raw_amplitudes", native.raw_amplitudes)?;
     result.set_item("normalized_values", native.normalized_values)?;
     result.set_item("normalization_factor", native.normalization_factor)?;
+    result.set_item("work_census_basis", native.work_census_basis)?;
+    result.set_item("logical_current_count", native.logical_current_count)?;
+    result.set_item("resident_current_count", native.resident_current_count)?;
+    result.set_item(
+        "resident_current_component_count",
+        native.resident_current_component_count,
+    )?;
+    result.set_item("source_operation_count", native.source_operation_count)?;
+    result.set_item(
+        "contribution_operation_count",
+        native.contribution_operation_count,
+    )?;
+    result.set_item(
+        "finalization_operation_count",
+        native.finalization_operation_count,
+    )?;
+    result.set_item("closure_operation_count", native.closure_operation_count)?;
+    result.set_item(
+        "total_kernel_application_count",
+        native.total_kernel_application_count,
+    )?;
+    result.set_item(
+        "semantic_executor_binding_count",
+        native.semantic_executor_binding_count,
+    )?;
+    result.set_item(
+        "distinct_prepared_executor_count",
+        native.distinct_prepared_executor_count,
+    )?;
     result.set_item("trace_build_count", native.trace_build_count)?;
     result.set_item("trace_cache_hit_count", native.trace_cache_hit_count)?;
     result.set_item("momentum_fill_count", native.momentum_fill_count)?;

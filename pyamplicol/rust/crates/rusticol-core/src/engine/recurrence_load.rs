@@ -15,8 +15,8 @@ use super::*;
 use crate::pacbin::{PacbinMemberKind, PacbinReader};
 #[cfg(feature = "on-the-fly-test-support")]
 use crate::recurrence::on_the_fly::{
-    OnTheFlyForbiddenWorkGuardV1, OnTheFlyStructuralInterpreter, OnTheFlyWorkspaceV1,
-    build_on_the_fly_selected_trace_v1,
+    ON_THE_FLY_WORK_CENSUS_BASIS_V1, OnTheFlyForbiddenWorkGuardV1, OnTheFlyStructuralInterpreter,
+    OnTheFlyWorkspaceV1, build_on_the_fly_selected_trace_v1,
 };
 use crate::recurrence::on_the_fly::{
     OnTheFlyProcessSeedV1, OnTheFlySourceExecutionSpecV1, OnTheFlySourceOrientationV1,
@@ -1547,6 +1547,9 @@ impl NativeRuntime {
                 &selected.trace,
                 &sources,
             )?;
+            let work_census = selected.trace.execution_work_census()?;
+            let semantic_executor_binding_count = resolver.semantic_executor_binding_count()?;
+            let distinct_prepared_executor_count = resolver.distinct_prepared_executor_count()?;
             let mut workspace = OnTheFlyWorkspaceV1::new(&selected.trace, point_count)?;
             for (parameter_id, value) in on_the_fly_prepared_parameters(
                 &manifest.runtime_metadata,
@@ -1688,6 +1691,17 @@ impl NativeRuntime {
                 normalized_values,
                 normalization_factor,
                 currents,
+                work_census_basis: ON_THE_FLY_WORK_CENSUS_BASIS_V1.to_owned(),
+                logical_current_count: work_census.logical_current_count,
+                resident_current_count: work_census.resident_current_count,
+                resident_current_component_count: work_census.resident_current_component_count,
+                source_operation_count: work_census.source_operation_count,
+                contribution_operation_count: work_census.contribution_operation_count,
+                finalization_operation_count: work_census.finalization_operation_count,
+                closure_operation_count: work_census.closure_operation_count,
+                total_kernel_application_count: work_census.total_kernel_application_count,
+                semantic_executor_binding_count,
+                distinct_prepared_executor_count,
                 trace_build_count,
                 trace_cache_hit_count,
                 momentum_fill_count,

@@ -115,6 +115,17 @@ def test_hidden_timing_contract_counts_lookup_fill_execute_and_no_poison() -> No
         return {
             "process_id": gate.PROCESS_ID,
             "point_count": 2,
+            "work_census_basis": gate.WORK_CENSUS_BASIS,
+            "logical_current_count": 5,
+            "resident_current_count": 5,
+            "resident_current_component_count": 8,
+            "source_operation_count": 2,
+            "contribution_operation_count": 3,
+            "finalization_operation_count": 1,
+            "closure_operation_count": 1,
+            "total_kernel_application_count": 7,
+            "semantic_executor_binding_count": 4,
+            "distinct_prepared_executor_count": 3,
             "trace_build_count": 1,
             "trace_cache_hit_count": cycles if benchmark else 0,
             "momentum_fill_count": cycles,
@@ -132,6 +143,19 @@ def test_hidden_timing_contract_counts_lookup_fill_execute_and_no_poison() -> No
 
     assert gate._probe_values(report(0), 2) == (1.0, 2.0)
     assert gate._probe_values(report(5), 2, 5) == (1.0, 2.0)
+    assert gate._work_census(report(5)) == {
+        "work_census_basis": gate.WORK_CENSUS_BASIS,
+        "logical_current_count": 5,
+        "resident_current_count": 5,
+        "resident_current_component_count": 8,
+        "source_operation_count": 2,
+        "contribution_operation_count": 3,
+        "finalization_operation_count": 1,
+        "closure_operation_count": 1,
+        "total_kernel_application_count": 7,
+        "semantic_executor_binding_count": 4,
+        "distinct_prepared_executor_count": 3,
+    }
     assert gate._calibrate(0.25, 1.0) == 4
 
     poisoned = report(0)
@@ -142,6 +166,119 @@ def test_hidden_timing_contract_counts_lookup_fill_execute_and_no_poison() -> No
     wrong_fill["momentum_fill_count"] = 6
     with pytest.raises(gate.GateError, match="contract"):
         gate._probe_values(wrong_fill, 2, 5)
+    inconsistent_work = report(0)
+    inconsistent_work["total_kernel_application_count"] = 8
+    with pytest.raises(gate.GateError, match="kernel and operation"):
+        gate._probe_values(inconsistent_work, 2)
+
+
+def test_workload_census_sums_operations_and_keeps_recurrence_calls_distinct() -> None:
+    first = {
+        "work_census_basis": gate.WORK_CENSUS_BASIS,
+        "source_operation_count": 2,
+        "contribution_operation_count": 3,
+        "finalization_operation_count": 1,
+        "closure_operation_count": 1,
+        "total_kernel_application_count": 7,
+    }
+    second = {
+        "work_census_basis": gate.WORK_CENSUS_BASIS,
+        "source_operation_count": 2,
+        "contribution_operation_count": 5,
+        "finalization_operation_count": 2,
+        "closure_operation_count": 1,
+        "total_kernel_application_count": 10,
+    }
+    assert gate._workload_operation_census(
+        ({"work_census": first}, {"work_census": second})
+    ) == {
+        "aggregation_basis": "sum-one-execution-per-serialized-query-v1",
+        "query_census_basis": gate.WORK_CENSUS_BASIS,
+        "query_count": 2,
+        "source_operation_count": 4,
+        "contribution_operation_count": 8,
+        "finalization_operation_count": 3,
+        "closure_operation_count": 2,
+        "total_kernel_application_count": 17,
+    }
+
+    counters = SimpleNamespace(
+        normalization="mean_per_profiled_point_or_runtime_call_v1",
+        recurrence_source_calls_per_call=2.0,
+        recurrence_source_rows_per_call=4.0,
+        recurrence_contribution_calls_per_call=3.0,
+        recurrence_contribution_rows_per_call=8.0,
+        recurrence_finalization_calls_per_call=1.0,
+        recurrence_finalization_rows_per_call=3.0,
+        recurrence_closure_calls_per_call=1.0,
+        recurrence_closure_rows_per_call=2.0,
+    )
+    established = gate._public_recurrence_work(
+        SimpleNamespace(timing_breakdown=SimpleNamespace(counters=counters))
+    )
+    assert established is not None
+    assert established["source_calls_per_runtime_call"] == 2.0
+    assert established["source_rows_per_runtime_call"] == 4.0
+    assert "grouped prepared-backend invocations" in str(established["semantics"])
+    assert gate._public_recurrence_work(SimpleNamespace(timing_breakdown=None)) is None
+
+
+def test_hidden_timing_serializes_one_query_census_and_workload_sum() -> None:
+    def probe(*args: object, **kwargs: object) -> dict[str, object]:
+        point_count = int(args[9])
+        repetitions = int(kwargs["benchmark_repetitions"])
+        cycles = gate.WARMUPS + repetitions
+        elapsed = repetitions * point_count * 0.01
+        return {
+            "process_id": gate.PROCESS_ID,
+            "point_count": point_count,
+            "work_census_basis": gate.WORK_CENSUS_BASIS,
+            "logical_current_count": 5,
+            "resident_current_count": 5,
+            "resident_current_component_count": 8,
+            "source_operation_count": 2,
+            "contribution_operation_count": 3,
+            "finalization_operation_count": 1,
+            "closure_operation_count": 1,
+            "total_kernel_application_count": 7,
+            "semantic_executor_binding_count": 4,
+            "distinct_prepared_executor_count": 3,
+            "trace_build_count": 1,
+            "trace_cache_hit_count": cycles,
+            "momentum_fill_count": cycles,
+            "currents": [],
+            "direct_plan_load_attempts": 0,
+            "direct_plan_decode_attempts": 0,
+            "direct_plan_materialization_attempts": 0,
+            "established_builder_attempts": 0,
+            "normalized_values": [1.0] * point_count,
+            "benchmark_elapsed_seconds": elapsed,
+            "benchmark_seconds_per_point": 0.01,
+            "trace_digest": "a" * 64,
+        }
+
+    retained = gate.RetainedInputs(object(), object(), b"{}", "a" * 64)
+    query = gate.Query("flow", 0, "helicity", (1, -1))
+    result = gate._hidden_timing(
+        probe,
+        Path("artifact"),
+        retained,
+        (query,),
+        (((1.0,),), ((2.0,),)),
+        target=0.04,
+    )
+    row = result["queries"][0]
+    assert row["work_census"]["logical_current_count"] == 5
+    assert result["workload_operation_census"] == {
+        "aggregation_basis": "sum-one-execution-per-serialized-query-v1",
+        "query_census_basis": gate.WORK_CENSUS_BASIS,
+        "query_count": 1,
+        "source_operation_count": 2,
+        "contribution_operation_count": 3,
+        "finalization_operation_count": 1,
+        "closure_operation_count": 1,
+        "total_kernel_application_count": 7,
+    }
 
 
 def test_cli_launches_one_worker_with_cross_platform_30_gib_guard(

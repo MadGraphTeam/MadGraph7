@@ -3,6 +3,9 @@
 use super::sweep::*;
 use super::*;
 
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+pub(crate) const ON_THE_FLY_WORK_CENSUS_BASIS_V1: &str = "fully-resident-query-local-trace-v1";
+
 /// Authenticated model operation addressed by one semantic executor key.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 #[repr(u8)]
@@ -215,6 +218,25 @@ pub(crate) struct OnTheFlyStructuralProofV1 {
     semantic_digest: SemanticDigest,
 }
 
+/// Warming-independent work represented by one selected-query trace.
+///
+/// The current arena is fully resident for the lifetime of the trace.  These
+/// current counts therefore describe allocated resident work, not a temporal
+/// liveness estimate.  Operation counts describe one execution of the trace;
+/// the probe must not multiply them by warm-up or benchmark repetitions.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+pub(crate) struct OnTheFlyExecutionWorkCensusV1 {
+    pub(crate) logical_current_count: u32,
+    pub(crate) resident_current_count: u32,
+    pub(crate) resident_current_component_count: u32,
+    pub(crate) source_operation_count: u32,
+    pub(crate) contribution_operation_count: u32,
+    pub(crate) finalization_operation_count: u32,
+    pub(crate) closure_operation_count: u32,
+    pub(crate) total_kernel_application_count: u32,
+}
+
 impl OnTheFlyStructuralProofV1 {
     pub(crate) const fn current_count(self) -> u32 {
         self.current_count
@@ -288,6 +310,50 @@ impl OnTheFlyStructuralTraceV1 {
 
     pub(crate) const fn layout(&self) -> OnTheFlyWorkspaceLayoutV1 {
         self.layout
+    }
+
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    pub(crate) fn execution_work_census(&self) -> RusticolResult<OnTheFlyExecutionWorkCensusV1> {
+        let mut source_operation_count = 0_u32;
+        let mut contribution_operation_count = 0_u32;
+        let mut finalization_operation_count = 0_u32;
+        let mut closure_operation_count = 0_u32;
+        for operation in &self.operations {
+            let count = match operation.key().role() {
+                DirectExecutorRole::Source => &mut source_operation_count,
+                DirectExecutorRole::Contribution => &mut contribution_operation_count,
+                DirectExecutorRole::Finalization => &mut finalization_operation_count,
+                DirectExecutorRole::Closure => &mut closure_operation_count,
+            };
+            *count = count
+                .checked_add(1)
+                .ok_or_else(|| invalid("execution operation count overflows u32"))?;
+        }
+        let total_kernel_application_count = checked_u32(
+            self.operations.len(),
+            "selected-query kernel application count",
+        )?;
+        let counted = source_operation_count
+            .checked_add(contribution_operation_count)
+            .and_then(|value| value.checked_add(finalization_operation_count))
+            .and_then(|value| value.checked_add(closure_operation_count))
+            .ok_or_else(|| invalid("execution operation total overflows u32"))?;
+        if counted != total_kernel_application_count {
+            return Err(integrity(
+                "execution operation census does not cover the selected-query trace",
+            ));
+        }
+        let logical_current_count = self.proof.current_count();
+        Ok(OnTheFlyExecutionWorkCensusV1 {
+            logical_current_count,
+            resident_current_count: logical_current_count,
+            resident_current_component_count: self.layout.current_component_count(),
+            source_operation_count,
+            contribution_operation_count,
+            finalization_operation_count,
+            closure_operation_count,
+            total_kernel_application_count,
+        })
     }
 
     pub(crate) fn momentum_forms(&self) -> &[CanonicalMomentumLinearForm] {

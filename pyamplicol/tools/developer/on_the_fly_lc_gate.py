@@ -68,6 +68,22 @@ AMPICOL_REL_TOL = 1.0e-8
 WATCHDOG_BYTES = 30 * GIB
 WARMUPS = 2
 MINIMUM_SAMPLES = 5
+WORK_CENSUS_BASIS = "fully-resident-query-local-trace-v1"
+OPERATION_COUNT_FIELDS = (
+    "source_operation_count",
+    "contribution_operation_count",
+    "finalization_operation_count",
+    "closure_operation_count",
+)
+WORK_CENSUS_COUNT_FIELDS = (
+    "logical_current_count",
+    "resident_current_count",
+    "resident_current_component_count",
+    *OPERATION_COUNT_FIELDS,
+    "total_kernel_application_count",
+    "semantic_executor_binding_count",
+    "distinct_prepared_executor_count",
+)
 Point = tuple[tuple[float, ...], ...]
 Points = tuple[Point, ...]
 
@@ -395,6 +411,7 @@ def _probe_values(
         or any(report.get(name) != 0 for name in poison)
     ):
         raise GateError("hidden query violated its build/cache/fill/poison contract")
+    _work_census(report)
     values = report.get("normalized_values")
     if not isinstance(values, Sequence) or isinstance(values, (str, bytes)):
         raise GateError("hidden query has no normalized values")
@@ -421,6 +438,31 @@ def _probe_values(
     elif elapsed is not None or per_point is not None:
         raise GateError("untimed hidden query returned timings")
     return parsed
+
+
+def _work_census(report: Mapping[str, object]) -> dict[str, object]:
+    if report.get("work_census_basis") != WORK_CENSUS_BASIS:
+        raise GateError("hidden query has an unknown work-census basis")
+    counts: dict[str, int] = {}
+    for name in WORK_CENSUS_COUNT_FIELDS:
+        value = report.get(name)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise GateError(f"hidden query work census has invalid {name}")
+        counts[name] = value
+    if counts["resident_current_count"] != counts["logical_current_count"]:
+        raise GateError("hidden query does not use a fully resident current arena")
+    if counts["resident_current_component_count"] < counts["resident_current_count"]:
+        raise GateError("hidden query resident current components are inconsistent")
+    if counts["total_kernel_application_count"] != sum(
+        counts[name] for name in OPERATION_COUNT_FIELDS
+    ):
+        raise GateError("hidden query kernel and operation counts disagree")
+    semantic = counts["semantic_executor_binding_count"]
+    prepared = counts["distinct_prepared_executor_count"]
+    total = counts["total_kernel_application_count"]
+    if not 0 < prepared <= semantic <= total:
+        raise GateError("hidden query prepared-executor counts are inconsistent")
+    return {"work_census_basis": WORK_CENSUS_BASIS, **counts}
 
 
 def _axes(resolved: object) -> tuple[dict[str, int], dict[str, int]]:
@@ -470,6 +512,41 @@ def _benchmark_config(
     )
 
 
+def _public_recurrence_work(result: object) -> dict[str, object] | None:
+    breakdown = result.timing_breakdown
+    counters = None if breakdown is None else breakdown.counters
+    if counters is None:
+        return None
+    role_counts = {
+        "source_calls_per_runtime_call": counters.recurrence_source_calls_per_call,
+        "source_rows_per_runtime_call": counters.recurrence_source_rows_per_call,
+        "contribution_calls_per_runtime_call": (
+            counters.recurrence_contribution_calls_per_call
+        ),
+        "contribution_rows_per_runtime_call": (
+            counters.recurrence_contribution_rows_per_call
+        ),
+        "finalization_calls_per_runtime_call": (
+            counters.recurrence_finalization_calls_per_call
+        ),
+        "finalization_rows_per_runtime_call": (
+            counters.recurrence_finalization_rows_per_call
+        ),
+        "closure_calls_per_runtime_call": counters.recurrence_closure_calls_per_call,
+        "closure_rows_per_runtime_call": counters.recurrence_closure_rows_per_call,
+    }
+    if not any(value is not None for value in role_counts.values()):
+        return None
+    return {
+        "basis": counters.normalization,
+        "semantics": (
+            "rows are logical DirectPlan applications; calls are grouped "
+            "prepared-backend invocations"
+        ),
+        **role_counts,
+    }
+
+
 def _public_timing(result: object) -> dict[str, object]:
     return {
         "sample_count": result.sample_count,
@@ -480,6 +557,43 @@ def _public_timing(result: object) -> dict[str, object]:
         "interrupted": result.interrupted,
         "effective_config": dataclasses.asdict(result.effective_config),
         "uncertainty": dataclasses.asdict(result.uncertainty),
+        "recurrence_runtime_work": _public_recurrence_work(result),
+    }
+
+
+def _workload_operation_census(
+    rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    sums = {name: 0 for name in OPERATION_COUNT_FIELDS}
+    total = 0
+    for row in rows:
+        census = row.get("work_census")
+        if (
+            not isinstance(census, Mapping)
+            or census.get("work_census_basis") != WORK_CENSUS_BASIS
+        ):
+            raise GateError("timed query has no valid work census")
+        for name in OPERATION_COUNT_FIELDS:
+            value = census.get(name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise GateError("timed query operation census is invalid")
+            sums[name] += value
+        kernel_count = census.get("total_kernel_application_count")
+        if (
+            isinstance(kernel_count, bool)
+            or not isinstance(kernel_count, int)
+            or kernel_count < 0
+        ):
+            raise GateError("timed query kernel-application census is invalid")
+        total += kernel_count
+    if total != sum(sums.values()):
+        raise GateError("workload kernel and operation sums disagree")
+    return {
+        "aggregation_basis": "sum-one-execution-per-serialized-query-v1",
+        "query_census_basis": WORK_CENSUS_BASIS,
+        "query_count": len(rows),
+        **sums,
+        "total_kernel_application_count": total,
     }
 
 
@@ -494,9 +608,11 @@ def _hidden_timing(
     if not queries:
         raise GateError("workload has no physical queries")
     pilot_seconds = 0.0
+    pilot_census: dict[Query, dict[str, object]] = {}
     for query in queries:
         report = _invoke(probe, artifact, retained, query, points, repetitions=1)
         _probe_values(report, len(points), 1)
+        pilot_census[query] = _work_census(report)
         pilot_seconds += float(report["benchmark_elapsed_seconds"])
     repetitions = _calibrate(pilot_seconds, target)
     rows = []
@@ -505,6 +621,9 @@ def _hidden_timing(
             probe, artifact, retained, query, points, repetitions=repetitions
         )
         _probe_values(report, len(points), repetitions)
+        work_census = _work_census(report)
+        if work_census != pilot_census[query]:
+            raise GateError("query work census changed between benchmark passes")
         rows.append(
             {
                 "query": query.label,
@@ -514,6 +633,7 @@ def _hidden_timing(
                 "trace_build_count": 1,
                 "trace_cache_hit_count": WARMUPS + repetitions,
                 "momentum_fill_count": WARMUPS + repetitions,
+                "work_census": work_census,
             }
         )
     return {
@@ -528,6 +648,7 @@ def _hidden_timing(
             float(row["seconds_per_point"]) for row in rows
         ),
         "queries": rows,
+        "workload_operation_census": _workload_operation_census(rows),
         "timer_includes": (
             "trace-cache lookup",
             "momentum fill",

@@ -208,6 +208,46 @@ def _assert_raw_i_lambda(report: dict[str, Any], coupling: float) -> None:
         assert raw[1] == pytest.approx(coupling)
 
 
+_WORK_CENSUS_FIELDS = (
+    "work_census_basis",
+    "logical_current_count",
+    "resident_current_count",
+    "resident_current_component_count",
+    "source_operation_count",
+    "contribution_operation_count",
+    "finalization_operation_count",
+    "closure_operation_count",
+    "total_kernel_application_count",
+    "semantic_executor_binding_count",
+    "distinct_prepared_executor_count",
+)
+
+
+def _work_census(report: dict[str, Any]) -> tuple[object, ...]:
+    assert report["work_census_basis"] == "fully-resident-query-local-trace-v1"
+    assert report["logical_current_count"] == report["resident_current_count"]
+    resident_components = report["resident_current_component_count"]
+    assert resident_components >= report["resident_current_count"]
+    assert report["source_operation_count"] == 4
+    assert report["closure_operation_count"] >= 1
+    assert report["total_kernel_application_count"] == sum(
+        report[name]
+        for name in (
+            "source_operation_count",
+            "contribution_operation_count",
+            "finalization_operation_count",
+            "closure_operation_count",
+        )
+    )
+    assert (
+        0
+        < report["distinct_prepared_executor_count"]
+        <= report["semantic_executor_binding_count"]
+        <= report["total_kernel_application_count"]
+    )
+    return tuple(report[name] for name in _WORK_CENSUS_FIELDS)
+
+
 def test_hidden_on_the_fly_probe_executes_genuine_scalar_artifact(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -320,11 +360,13 @@ def test_hidden_on_the_fly_probe_executes_genuine_scalar_artifact(
         assert one["normalization_factor"] == pytest.approx(
             case.normalization_factor
         )
+        work_census = _work_census(one)
         assert one["normalized_values"] == pytest.approx((expected_default,))
         assert many["normalized_values"] == pytest.approx(
             (expected_default,) * len(batch_order)
         )
         for report in (*singles, many):
+            assert _work_census(report) == work_census
             _assert_zero_poison_counts(report)
             assert report["trace_build_count"] == 1
             assert report["trace_cache_hit_count"] == 0
@@ -379,6 +421,7 @@ def test_hidden_on_the_fly_probe_executes_genuine_scalar_artifact(
             (case.point,),
             overrides={"lam": [3.0, 0.0]},
         )
+        assert _work_census(mutated) == work_census
         _assert_zero_poison_counts(mutated)
         _assert_raw_i_lambda(mutated, 3.0)
         assert mutated["trace_digest"] == one["trace_digest"]
@@ -406,6 +449,7 @@ def test_hidden_on_the_fly_probe_executes_genuine_scalar_artifact(
             benchmark_repetitions=5,
             collect_current_diagnostics=False,
         )
+        assert _work_census(benchmark) == work_census
         _assert_zero_poison_counts(benchmark)
         _assert_raw_i_lambda(benchmark, 1.0)
         assert benchmark["normalized_values"] == pytest.approx((expected_default,))
@@ -455,7 +499,7 @@ def test_hidden_on_the_fly_probe_executes_genuine_scalar_artifact(
                 pack_digest="1" * 64,
             )
         with pytest.raises(
-            rusticol.ArtifactError, match="executor|semantic|mapping"
+            rusticol.ArtifactError, match=r"executor|semantic|mapping"
         ):
             _invoke_probe(
                 probe,
@@ -487,7 +531,9 @@ def test_hidden_on_the_fly_probe_executes_genuine_scalar_artifact(
 
     case_0000, artifact_0000, _, _ = generated["scalars_0000"]
     _, _, retained_0012, direct_json_0012 = generated["scalars_0012"]
-    with pytest.raises(rusticol.ArtifactError, match="do not belong|selected artifact"):
+    with pytest.raises(
+        rusticol.ArtifactError, match=r"do not belong|selected artifact"
+    ):
         _invoke_probe(
             probe,
             artifact_0000,

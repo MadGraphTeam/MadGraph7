@@ -33,6 +33,8 @@ use crate::{RusticolError, RusticolResult, VerifiedArtifact};
 #[cfg(feature = "f64-symjit")]
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+use std::collections::BTreeSet;
 use std::path::Path;
 #[cfg(feature = "f64-symjit")]
 use std::path::PathBuf;
@@ -108,6 +110,25 @@ pub(super) struct NativeOnTheFlyPreparedExecutorResolver<'a> {
     _pool: &'a NativeRecurrencePreparedExecutorPool,
     _sources: &'a OnTheFlySourceDomainBinding,
     resolved: BTreeMap<OnTheFlyExecutorKeyV1, ResolvedOnTheFlyExecutor>,
+}
+
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+impl NativeOnTheFlyPreparedExecutorResolver<'_> {
+    pub(super) fn semantic_executor_binding_count(&self) -> RusticolResult<u32> {
+        u32::try_from(self.resolved.len()).map_err(|_| {
+            RusticolError::integrity("on-the-fly semantic executor binding count exceeds u32")
+        })
+    }
+
+    pub(super) fn distinct_prepared_executor_count(&self) -> RusticolResult<u32> {
+        let direct_executor_ids = self
+            .resolved
+            .values()
+            .map(|resolved| resolved.direct_executor_id)
+            .collect::<BTreeSet<_>>();
+        u32::try_from(direct_executor_ids.len())
+            .map_err(|_| RusticolError::integrity("on-the-fly prepared executor count exceeds u32"))
+    }
 }
 
 /// Immutable context ownership retained beside the native recurrence scheduler.
@@ -1141,6 +1162,17 @@ mod on_the_fly_adapter_tests {
         let resolver = pool
             .bind_on_the_fly_trace(&templates, &direct, &seed, &trace, &sources)
             .unwrap();
+        let work = trace.execution_work_census().unwrap();
+        assert_eq!(work.logical_current_count, 2);
+        assert_eq!(work.resident_current_count, 2);
+        assert_eq!(work.resident_current_component_count, 2);
+        assert_eq!(work.source_operation_count, 2);
+        assert_eq!(work.contribution_operation_count, 0);
+        assert_eq!(work.finalization_operation_count, 1);
+        assert_eq!(work.closure_operation_count, 1);
+        assert_eq!(work.total_kernel_application_count, 4);
+        assert_eq!(resolver.semantic_executor_binding_count().unwrap(), 3);
+        assert_eq!(resolver.distinct_prepared_executor_count().unwrap(), 3);
         let mut workspace = OnTheFlyWorkspaceV1::new(&trace, 1).unwrap();
         workspace
             .fill_momenta_from_external(&trace, &[0.0; 8], 1)
