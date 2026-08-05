@@ -384,6 +384,51 @@ vertex is the whole amplitude). Five gluons loses on madmatrix, where the
 wavefunction store grows by half and there is no JAMP fold to pay for it. Six
 and seven gluons win on both, and the gain grows with the multiplicity.
 
+**Where it came from.** Three states: the flag off (what an unoptimised build
+gives), the branch as it stood before this work (`3b3ed9e85`, only the
+amplitude merges of `fcd8218b6`), and the flag on today. The generated code at
+the time the pull request was opened (`fefb1159b`) is **byte-identical** to
+today's in both backends for N=2..5 -- the only code change since is the
+colour-structure check in `is_unrolled_pair`, which provably moves nothing --
+so those two are one column.
+
+standalone Fortran, `slots / wavefunction calls + sums / amplitude calls`:
+
+| | flag off | before this work | at PR open = now |
+|---|---|---|---|
+| `g g > g g` | 5 / 7 / 6 | 5 / 7 / 6 | 5 / 7 / 6 |
+| `g g > g g g` | 12 / 33 / 45 | 12 / 33 / 45 | **19 / 39+7 / 38** |
+| `g g > g g g g` | 51 / 111 / 510 | 51 / 111 / 510 | **66 / 146+30 / 450** |
+| `g g > 5 g` | 268 / 898 / 7245 | 268 / 898 / 7245 | **290 / 955+60 / 6813** |
+
+madmatrix, `slots / amplitude calls`:
+
+| | flag off | before this work | at PR open = now |
+|---|---|---|---|
+| `g g > g g` | 5 / 6 | *wrong* | 5 / 6 |
+| `g g > g g g` | 12 / 45 | *wrong* | **19 / 38** |
+| `g g > g g g g` | 51 / 510 | *wrong* | **86 / 450** |
+| `g g > 5 g` | 268 / 7245 | *wrong* | **320 / 6813** |
+
+"wrong" is not a figure of speech: at `3b3ed9e85` `get_color_amplitudes` dropped
+every merge source from the JAMPs unconditionally, and only the Fortran writer
+wrote the sums putting them back, so with the flag set any C++ or python output
+lost 405 of its 510 amplitudes at six gluons, silently. That is fixed here.
+
+Per-call time, standalone Fortran (lower is better) and madmatrix in evt/s
+(higher is better):
+
+| | fortran off | fortran before | fortran now | madmatrix off | madmatrix now |
+|---|---|---|---|---|---|
+| `g g > g g` | 11.00 s | 11.28 s | 11.04 s | 875150 | 878724 |
+| `g g > g g g` | 34.90 s | 33.98 s | 34.99 s | 72359 | 66757 |
+| `g g > g g g g` | 47.35 s | 48.12 s | **45.61 s** | 2699 | **2784** |
+| `g g > 5 g` | 43.05 s | 40.88 s | **39.98 s** | 41.75 | **43.33** |
+
+The "before" column was taken in its own batch and carries about 1% of drift
+against the other two, which were measured together -- so compare off against
+now, and read "before" only for the shape.
+
 **Memory — the wavefunction store**, which is what the optimisation costs.
 `NWAVEFUNCS` in Fortran, `nwf` in madmatrix; bytes are 100 per wavefunction in
 Fortran (4 complex, 4 reals, one int) and 192 in madmatrix on sse4 in double
