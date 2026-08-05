@@ -128,7 +128,6 @@ impl OnTheFlyTraceOperationV1 {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct OnTheFlyWorkspaceLayoutV1 {
     pub(super) source_count: u32,
-    pub(super) logical_point_capacity: u32,
     pub(super) lorentz_component_count: u16,
     pub(super) parameter_count: u32,
     pub(super) current_component_count: u32,
@@ -140,10 +139,6 @@ pub(crate) struct OnTheFlyWorkspaceLayoutV1 {
 impl OnTheFlyWorkspaceLayoutV1 {
     pub(crate) const fn source_count(self) -> u32 {
         self.source_count
-    }
-
-    pub(crate) const fn logical_point_capacity(self) -> u32 {
-        self.logical_point_capacity
     }
 
     pub(crate) const fn current_component_count(self) -> u32 {
@@ -570,7 +565,6 @@ pub(super) fn lower_trace(
     prepared_closures: &BTreeMap<(u32, u32), Vec<PreparedClosure>>,
     live: &BTreeSet<u32>,
     constructed_contribution_count: usize,
-    logical_point_capacity: u32,
 ) -> RusticolResult<OnTheFlyStructuralTraceV1> {
     let input = templates.input();
     let mut old_to_new = BTreeMap::new();
@@ -820,8 +814,14 @@ pub(super) fn lower_trace(
     hash_digest(&mut owner_hash, seed.semantic_digest());
     hash_digest(&mut owner_hash, query.semantic_digest());
     owner_hash.update(query.closure_anchor_slot.to_le_bytes());
-    owner_hash.update(query.public_flow_id.to_le_bytes());
-    owner_hash.update(query.pairing_rule_id.unwrap_or(MISSING_U32).to_le_bytes());
+    hash_digest(&mut owner_hash, query.selector_digest);
+    match query.pairing_proof_digest {
+        None => owner_hash.update([0]),
+        Some(digest) => {
+            owner_hash.update([1]);
+            hash_digest(&mut owner_hash, digest);
+        }
+    }
     let owner_digest = final_digest(owner_hash)?;
     let mut proof_hash = Sha256::new();
     proof_hash.update(ON_THE_FLY_PROOF_DOMAIN);
@@ -864,7 +864,6 @@ pub(super) fn lower_trace(
     let exact_factor_count = checked_u32(exact_factors.len(), "exact factor count")?;
     let layout = OnTheFlyWorkspaceLayoutV1 {
         source_count: checked_u32(query.selected_sources.len(), "selected source count")?,
-        logical_point_capacity,
         lorentz_component_count: 4,
         parameter_count: checked_u32(templates.input().parameters.len(), "parameter count")?,
         current_component_count,
@@ -879,7 +878,6 @@ pub(super) fn lower_trace(
     hash_digest(&mut trace_hash, proof.semantic_digest());
     for value in [
         layout.source_count,
-        layout.logical_point_capacity,
         u32::from(layout.lorentz_component_count),
         layout.parameter_count,
         layout.current_component_count,
@@ -925,4 +923,61 @@ pub(super) fn lower_trace(
         #[cfg(test)]
         current_semantic_digests,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn digest(byte: u8) -> SemanticDigest {
+        SemanticDigest::new([byte; 32]).unwrap()
+    }
+
+    #[test]
+    fn logical_batch_capacity_belongs_to_workspace_not_structural_trace() {
+        let trace = OnTheFlyStructuralTraceV1 {
+            seed_digest: digest(1),
+            query_digest: digest(2),
+            current_keys: Box::new([]),
+            current_colors: Box::new([]),
+            operations: Box::new([]),
+            momentum_forms: vec![
+                CanonicalMomentumLinearForm::new(vec![MomentumTerm {
+                    source_slot: 0,
+                    coefficient: 1,
+                }])
+                .unwrap(),
+            ]
+            .into_boxed_slice(),
+            exact_factors: vec![ExactComplexRational::ONE].into_boxed_slice(),
+            layout: OnTheFlyWorkspaceLayoutV1 {
+                source_count: 1,
+                lorentz_component_count: 4,
+                parameter_count: 0,
+                current_component_count: 1,
+                amplitude_component_count: 1,
+                momentum_form_count: 1,
+                exact_factor_count: 1,
+            },
+            proof: OnTheFlyStructuralProofV1 {
+                current_count: 0,
+                contribution_count: 0,
+                closure_count: 0,
+                constructed_current_count: 0,
+                constructed_contribution_count: 0,
+                current_multiset_digest: digest(3),
+                contribution_multiset_digest: digest(4),
+                closure_multiset_digest: digest(5),
+                owner_digest: digest(6),
+                semantic_digest: digest(7),
+            },
+            semantic_digest: digest(8),
+            current_component_ranges: Box::new([]),
+            current_semantic_digests: Box::new([]),
+        };
+        let small = OnTheFlyWorkspaceV1::new(&trace, 1).unwrap();
+        let large = OnTheFlyWorkspaceV1::new(&trace, 65).unwrap();
+        assert_ne!(small.point_stride(), large.point_stride());
+        assert_eq!(trace.semantic_digest(), digest(8));
+    }
 }

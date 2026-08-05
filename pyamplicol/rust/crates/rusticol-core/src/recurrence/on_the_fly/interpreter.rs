@@ -55,10 +55,13 @@ pub(crate) struct OnTheFlyWorkspaceV1 {
 }
 
 impl OnTheFlyWorkspaceV1 {
-    pub(crate) fn new(trace: &OnTheFlyStructuralTraceV1) -> RusticolResult<Self> {
+    pub(crate) fn new(
+        trace: &OnTheFlyStructuralTraceV1,
+        logical_point_capacity: u32,
+    ) -> RusticolResult<Self> {
         let layout = trace.layout;
         if layout.source_count == 0
-            || layout.logical_point_capacity == 0
+            || logical_point_capacity == 0
             || layout.lorentz_component_count == 0
         {
             return Err(integrity(
@@ -70,7 +73,7 @@ impl OnTheFlyWorkspaceV1 {
         {
             return Err(integrity("trace workspace layout is inconsistent"));
         }
-        let point_stride = checked_aligned_point_stride(layout.logical_point_capacity)?;
+        let point_stride = checked_aligned_point_stride(logical_point_capacity)?;
         let current_len = checked_scalar_len(
             trace.layout.current_component_count,
             point_stride,
@@ -118,7 +121,7 @@ impl OnTheFlyWorkspaceV1 {
             factors_im,
             trace_digest: trace.semantic_digest(),
             source_count: layout.source_count,
-            logical_point_capacity: layout.logical_point_capacity,
+            logical_point_capacity,
             active_point_count: 0,
             momentum_form_count: trace.layout.momentum_form_count,
             lorentz_component_count: layout.lorentz_component_count,

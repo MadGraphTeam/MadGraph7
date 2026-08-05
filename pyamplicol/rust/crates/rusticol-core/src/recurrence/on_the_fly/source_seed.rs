@@ -2,82 +2,7 @@
 
 use super::*;
 
-fn process_string<'a>(
-    process: &'a crate::recurrence::process::OwnedRecurrenceProcessInput,
-    string_id: u32,
-    label: &str,
-) -> RusticolResult<&'a str> {
-    let range = process
-        .string_ranges
-        .get(string_id as usize)
-        .copied()
-        .ok_or_else(|| integrity(format!("{label} string is absent")))?;
-    let bytes = &process.string_bytes[range.as_usize_range(process.string_bytes.len(), label)?];
-    std::str::from_utf8(bytes)
-        .map_err(|error| integrity(format!("{label} string is not UTF-8: {error}")))
-}
-
-fn process_factor(
-    process: &crate::recurrence::process::OwnedRecurrenceProcessInput,
-    factor_id: u32,
-    label: &str,
-) -> RusticolResult<ExactComplexRational> {
-    let row = process
-        .exact_factors
-        .get(factor_id as usize)
-        .ok_or_else(|| integrity(format!("{label} factor is absent")))?;
-    if row.id != factor_id {
-        return Err(integrity(format!(
-            "{label} factor catalog is not canonical"
-        )));
-    }
-    ExactComplexRational::parse_parts(
-        process_string(process, row.real_numerator_string_id, label)?,
-        process_string(process, row.real_denominator_string_id, label)?,
-        process_string(process, row.imag_numerator_string_id, label)?,
-        process_string(process, row.imag_denominator_string_id, label)?,
-    )
-    .map_err(|error| integrity(format!("{label} exact factor is invalid: {error}")))
-}
-
-fn process_sequence<'a>(
-    process: &'a crate::recurrence::process::OwnedRecurrenceProcessInput,
-    sequence_id: u32,
-    label: &str,
-) -> RusticolResult<&'a [u32]> {
-    let range = process
-        .u32_sequence_ranges
-        .get(sequence_id as usize)
-        .copied()
-        .ok_or_else(|| integrity(format!("{label} sequence is absent")))?;
-    Ok(&process.u32_sequence_values
-        [range.as_usize_range(process.u32_sequence_values.len(), label)?])
-}
-
-fn process_digest(
-    process: &crate::recurrence::process::OwnedRecurrenceProcessInput,
-    digest_id: u32,
-    label: &str,
-) -> RusticolResult<SemanticDigest> {
-    let row = process
-        .digest_catalog
-        .get(digest_id as usize)
-        .copied()
-        .ok_or_else(|| integrity(format!("{label} digest is absent")))?;
-    if row.id != digest_id {
-        return Err(integrity(format!(
-            "{label} digest catalog is not canonical"
-        )));
-    }
-    SemanticDigest::new(row.value)
-        .map_err(|error| integrity(format!("{label} digest is invalid: {error}")))
-}
-
 /// Model-neutral source family needed by the private direct-source adapter.
-///
-/// This deliberately stays independent of the evaluator module so the
-/// recurrence seed remains a compact authenticated physics contract rather
-/// than a loaded-executor object.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub(crate) enum OnTheFlySourceWavefunctionFamilyV1 {
@@ -87,6 +12,11 @@ pub(crate) enum OnTheFlySourceWavefunctionFamilyV1 {
     Vector = 3,
     Spin2 = 4,
 }
+impl OnTheFlySourceWavefunctionFamilyV1 {
+    pub(super) const fn is_fermionic(self) -> bool {
+        matches!(self, Self::WeylFermion | Self::DiracFermion)
+    }
+}
 
 /// Model-neutral particle orientation retained by one source state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -95,6 +25,26 @@ pub(crate) enum OnTheFlySourceOrientationV1 {
     Particle = 0,
     Antiparticle = 1,
     SelfConjugate = 2,
+}
+
+/// Exact external LC role; this is structural input, not a public-flow row.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[repr(u8)]
+pub(crate) enum OnTheFlyExternalColorRoleV1 {
+    Singlet = 0,
+    Fundamental = 1,
+    Antifundamental = 2,
+    Adjoint = 3,
+}
+
+impl OnTheFlyExternalColorRoleV1 {
+    pub(super) const fn is_colored(self) -> bool {
+        !matches!(self, Self::Singlet)
+    }
+
+    pub(super) const fn is_pairing_endpoint(self) -> bool {
+        matches!(self, Self::Fundamental | Self::Antifundamental)
+    }
 }
 
 /// One authenticated source execution row exposed to the eventual engine
@@ -135,7 +85,7 @@ pub(crate) struct OnTheFlySourceStateV1 {
 
 impl OnTheFlySourceStateV1 {
     #[allow(clippy::too_many_arguments)]
-    fn new(
+    pub(crate) fn new(
         state_index: u32,
         public_helicity: i32,
         source_helicity: i32,
@@ -163,6 +113,13 @@ impl OnTheFlySourceStateV1 {
         if crossing_phase.is_zero() || flavour_flow.is_empty() {
             return Err(invalid(
                 "source state requires a nonzero crossing phase and flavour ancestry",
+            ));
+        }
+        if source_family.is_fermionic()
+            && source_orientation == OnTheFlySourceOrientationV1::SelfConjugate
+        {
+            return Err(invalid(
+                "fermion source state cannot have self-conjugate orientation",
             ));
         }
         Ok(Self {
@@ -195,112 +152,24 @@ impl OnTheFlySourceStateV1 {
     }
 }
 
-fn authenticated_source_family(
-    catalog: &TemplateCatalog<'_>,
-    source: SourceRow,
-    current_state: CurrentStateRow,
-) -> RusticolResult<OnTheFlySourceWavefunctionFamilyV1> {
-    let family = catalog.string(
-        source.wavefunction_family_string_id,
-        "source wavefunction family",
-    )?;
-    let statistics = ParticleStatistics::try_from(current_state.statistics)?;
-    match (family, statistics, current_state.dimension) {
-        ("scalar", ParticleStatistics::Boson, 1) => Ok(OnTheFlySourceWavefunctionFamilyV1::Scalar),
-        ("fermion", ParticleStatistics::Fermion, 2) => {
-            Ok(OnTheFlySourceWavefunctionFamilyV1::WeylFermion)
-        }
-        ("fermion", ParticleStatistics::Fermion, 4) => {
-            Ok(OnTheFlySourceWavefunctionFamilyV1::DiracFermion)
-        }
-        ("vector", ParticleStatistics::Boson, 4) => Ok(OnTheFlySourceWavefunctionFamilyV1::Vector),
-        ("spin2", ParticleStatistics::Boson, 16) => Ok(OnTheFlySourceWavefunctionFamilyV1::Spin2),
-        ("ghost" | "auxiliary", _, _) => Err(invalid(
-            "on-the-fly source execution does not support ghost or auxiliary external states",
-        )),
-        _ => Err(integrity(
-            "authenticated source family, statistics, and component dimension disagree",
-        )),
-    }
-}
-
-fn authenticated_source_orientation(
-    current_state: CurrentStateRow,
-) -> RusticolResult<OnTheFlySourceOrientationV1> {
-    Ok(
-        match CurrentOrientation::try_from(current_state.orientation)? {
-            CurrentOrientation::Particle => OnTheFlySourceOrientationV1::Particle,
-            CurrentOrientation::Antiparticle => OnTheFlySourceOrientationV1::Antiparticle,
-            CurrentOrientation::SelfConjugate => OnTheFlySourceOrientationV1::SelfConjugate,
-        },
-    )
-}
-
-fn authenticated_prepared_mass_slot(
-    authenticated: &AuthenticatedRecurrenceBuilderInput,
-    source: SourceRow,
-    current_state: CurrentStateRow,
-) -> RusticolResult<Option<u32>> {
-    if source.mass_parameter_id != current_state.mass_parameter_id {
-        return Err(integrity(
-            "authenticated source and current state disagree on their mass parameter",
-        ));
-    }
-    if source.mass_parameter_id == MISSING_U32 {
-        return Ok(None);
-    }
-    let parameter = authenticated
-        .template()
-        .input()
-        .parameters
-        .get(source.mass_parameter_id as usize)
-        .copied()
-        .ok_or_else(|| integrity("authenticated source mass parameter is absent"))?;
-    if parameter.id != source.mass_parameter_id {
-        return Err(integrity(
-            "authenticated source mass-parameter catalog is not canonical",
-        ));
-    }
-    let matches = authenticated
-        .process()
-        .input()
-        .parameter_projection
-        .iter()
-        .filter(|row| row.parameter_template_id == source.mass_parameter_id && row.component == 0)
-        .collect::<Vec<_>>();
-    let [projection] = matches.as_slice() else {
-        return Err(integrity(format!(
-            "authenticated source mass parameter has {} real prepared projections, expected exactly one",
-            matches.len(),
-        )));
-    };
-    let prepared = projection.prepared_parameter_id().ok_or_else(|| {
-        invalid("authenticated source mass parameter has no prepared execution slot")
-    })?;
-    if parameter.prepared_parameter_id != prepared
-        || prepared as usize >= authenticated.template().input().parameters.len()
-    {
-        return Err(integrity(
-            "authenticated source mass projection disagrees with the prepared parameter catalog",
-        ));
-    }
-    Ok(Some(prepared))
-}
-
 /// All concrete source alternatives for one external source slot.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct OnTheFlySourceAnchorV1 {
     pub(super) source_slot: u32,
     pub(super) external_label: u32,
-    pub(super) color_role: i32,
+    pub(super) color_role: OnTheFlyExternalColorRoleV1,
+    pub(super) is_fermionic: bool,
+    pub(super) pairing_source_contract_digest: Option<SemanticDigest>,
     pub(super) states: Box<[OnTheFlySourceStateV1]>,
 }
 
 impl OnTheFlySourceAnchorV1 {
-    fn new(
+    pub(crate) fn new(
         source_slot: u32,
         external_label: u32,
-        color_role: i32,
+        color_role: OnTheFlyExternalColorRoleV1,
+        is_fermionic: bool,
+        pairing_source_contract_digest: Option<SemanticDigest>,
         mut states: Vec<OnTheFlySourceStateV1>,
     ) -> RusticolResult<Self> {
         if states.is_empty() {
@@ -313,10 +182,27 @@ impl OnTheFlySourceAnchorV1 {
         {
             return Err(invalid("source anchor repeats a state index"));
         }
+        if states
+            .iter()
+            .any(|state| state.source_family.is_fermionic() != is_fermionic)
+        {
+            return Err(invalid(
+                "source anchor statistics disagree with its execution states",
+            ));
+        }
+        if color_role.is_pairing_endpoint() != pairing_source_contract_digest.is_some()
+            || (color_role.is_pairing_endpoint() && !is_fermionic)
+        {
+            return Err(invalid(
+                "open-line endpoint role requires one fermionic source contract",
+            ));
+        }
         Ok(Self {
             source_slot,
             external_label,
             color_role,
+            is_fermionic,
+            pairing_source_contract_digest,
             states: states.into_boxed_slice(),
         })
     }
@@ -340,467 +226,76 @@ impl OnTheFlySourceAnchorV1 {
     }
 }
 
-/// One authenticated open-line pairing and permutation proof.
-///
-/// `fermion_parity` is retained as proof identity but is not multiplied at
-/// closure: canonical evaluator input-exchange factors already apply that
-/// sign exactly once, matching the established recurrence builder.
+/// One explicit endpoint in a compact species pairing class.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) struct OnTheFlyPairingEndpointV1 {
+    pub(crate) source_slot: u32,
+    pub(crate) source_contract_digest: SemanticDigest,
+}
+
+/// O(external-leg) pairing-class input. Rules and permutations are never
+/// enumerated: one selected permutation is validated from Lehmer digits.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct OnTheFlyPairingLineageV1 {
-    pub(super) rule_id: u32,
-    pub(super) endpoint_pairs: Box<[[u32; 2]]>,
-    pub(super) source_slot_permutation: Box<[u32]>,
-    pub(super) source_lineage: Box<[u32]>,
-    pub(super) fermion_parity: i32,
-    pub(super) proof_digest: SemanticDigest,
-}
-
-impl OnTheFlyPairingLineageV1 {
-    fn from_authenticated_rule(
-        catalog: crate::recurrence::process::ValidatedFermionPairingCatalog<'_>,
-        rule: crate::recurrence::process::FermionPairingRuleRow,
-    ) -> RusticolResult<Self> {
-        let endpoint_pairs = catalog
-            .endpoint_pairings(rule)?
-            .iter()
-            .map(|pair| {
-                [
-                    pair.fundamental_source_slot,
-                    pair.antifundamental_source_slot,
-                ]
-            })
-            .collect::<Vec<_>>();
-        for pair in &endpoint_pairs {
-            if pair[0] == pair[1] {
-                return Err(invalid("pairing lineage joins one source slot to itself"));
-            }
-        }
-        if endpoint_pairs.windows(2).any(|pair| pair[0] == pair[1]) {
-            return Err(invalid("pairing lineage repeats an endpoint pair"));
-        }
-        let mut endpoints = BTreeSet::new();
-        if endpoint_pairs
-            .iter()
-            .flatten()
-            .any(|endpoint| !endpoints.insert(*endpoint))
-        {
-            return Err(invalid("pairing lineage reuses one endpoint"));
-        }
-        let source_slot_permutation = catalog.source_slot_permutation(rule)?.to_vec();
-        let mut sorted_permutation = source_slot_permutation.clone();
-        sorted_permutation.sort_unstable();
-        if sorted_permutation != (0..catalog.summary().source_count()).collect::<Vec<_>>() {
-            return Err(integrity(
-                "authenticated pairing source-slot permutation is not complete",
-            ));
-        }
-        if !matches!(rule.fermion_parity, -1 | 1) {
-            return Err(integrity(
-                "authenticated pairing rule has a non-binary fermion parity",
-            ));
-        }
-        Ok(Self {
-            rule_id: rule.rule_id,
-            endpoint_pairs: endpoint_pairs.into_boxed_slice(),
-            source_slot_permutation: source_slot_permutation.into_boxed_slice(),
-            source_lineage: catalog.lineage(rule)?.to_vec().into_boxed_slice(),
-            fermion_parity: rule.fermion_parity,
-            proof_digest: SemanticDigest::new(rule.proof_digest).map_err(|error| {
-                integrity(format!(
-                    "authenticated pairing proof digest is invalid: {error}"
-                ))
-            })?,
-        })
-    }
-}
-
-fn authenticated_source_anchors(
-    authenticated: &AuthenticatedRecurrenceBuilderInput,
-) -> RusticolResult<Vec<OnTheFlySourceAnchorV1>> {
-    let process = authenticated.process().input();
-    let selected_source_mode = authenticated.process().summary().selected_source_mode();
-    let selected_source_states = process
-        .selected_source_coverage
-        .iter()
-        .map(|row| (row.source_slot, row.source_state_index))
-        .collect::<BTreeSet<_>>();
-    let templates = authenticated.template();
-    let input = templates.input();
-    let catalog = TemplateCatalog::new(input)?;
-    let mut anchors = Vec::new();
-    anchors
-        .try_reserve_exact(process.external_legs.len())
-        .map_err(|error| invalid(format!("source-anchor allocation failed: {error}")))?;
-    for (source_slot, leg) in process.external_legs.iter().copied().enumerate() {
-        if leg.source_slot as usize != source_slot {
-            return Err(integrity(
-                "authenticated external-leg source slots are not canonical",
-            ));
-        }
-        let range = leg.source_state_range.as_usize_range(
-            process.source_states.len(),
-            "on-the-fly authenticated source states",
-        )?;
-        let mut states = Vec::new();
-        states
-            .try_reserve_exact(range.len())
-            .map_err(|error| invalid(format!("source-state allocation failed: {error}")))?;
-        let mut color_role = None;
-        for process_state in process.source_states[range]
-            .iter()
-            .copied()
-            .filter(|state| {
-                !selected_source_mode
-                    || selected_source_states.contains(&(leg.source_slot, state.state_index))
-            })
-        {
-            let source = *input
-                .sources
-                .get(process_state.source_template_id as usize)
-                .ok_or_else(|| integrity("authenticated source template is absent"))?;
-            let current_state = *input
-                .current_states
-                .get(process_state.current_state_template_id as usize)
-                .ok_or_else(|| integrity("authenticated current-state template is absent"))?;
-            if source.id != process_state.source_template_id
-                || source.state_template_id != process_state.current_state_template_id
-                || current_state.id != process_state.current_state_template_id
-                || source.spin_state != process_state.spin_state
-                || current_state.chirality != process_state.chirality
-            {
-                return Err(integrity(
-                    "authenticated process source row differs from its template contract",
-                ));
-            }
-            match color_role {
-                None => color_role = Some(current_state.color_representation),
-                Some(previous) if previous == current_state.color_representation => {}
-                Some(_) => {
-                    return Err(integrity(
-                        "one external source anchor mixes color representations",
-                    ));
-                }
-            }
-            let seed = catalog.source_seed(source)?;
-            let source_family = authenticated_source_family(&catalog, source, current_state)?;
-            let source_orientation = authenticated_source_orientation(current_state)?;
-            let prepared_mass_parameter_slot =
-                authenticated_prepared_mass_slot(authenticated, source, current_state)?;
-            states.push(OnTheFlySourceStateV1::new(
-                process_state.state_index,
-                process_state.public_helicity,
-                source.helicity,
-                source.id,
-                current_state.id,
-                catalog.digest(source.semantic_digest_id, "source semantic")?,
-                catalog.digest(current_state.semantic_digest_id, "current-state semantic")?,
-                process_state.momentum_sign,
-                process_factor(
-                    process,
-                    process_state.crossing_phase_factor_id,
-                    "source crossing phase",
-                )?,
-                process_state.spin_state,
-                process_state.chirality,
-                catalog
-                    .flavour_flow(source.flavour_flow_id, "source flavour flow")?
-                    .to_vec(),
-                source.quantum_number_flow_id,
-                seed.proof_digest(),
-                source_family,
-                source_orientation,
-                prepared_mass_parameter_slot,
-            )?);
-        }
-        anchors.push(OnTheFlySourceAnchorV1::new(
-            leg.source_slot,
-            leg.public_label,
-            color_role.ok_or_else(|| integrity("authenticated source anchor is empty"))?,
-            states,
-        )?);
-    }
-    Ok(anchors)
-}
-
-/// One exact public-flow selector derived from the validated process payload.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct OnTheFlyPublicFlowV1 {
-    pub(super) flow_id: u32,
-    pub(super) construction_sector_id: u32,
-    pub(super) target_components: Box<[LCColorComponent]>,
-    pub(super) closure_anchor_slot: u32,
-    pub(super) source_slot_permutation: Box<[u32]>,
-    /// Authenticated squared-output reducer metadata. Raw amplitudes do not
-    /// apply this value.
-    pub(super) reduction_weight: ExactComplexRational,
-    pub(super) pairing_rule_id: Option<u32>,
-    pub(super) pairing_proof_digest: Option<SemanticDigest>,
-    pub(super) pairing_source_slot_permutation: Box<[u32]>,
-    pub(super) pairing_source_lineage: Box<[u32]>,
-    pub(super) pairing_fermion_parity: i32,
-    pub(super) closure_proof_digest: SemanticDigest,
+pub(crate) struct OnTheFlyPairingClassV1 {
+    pub(super) species: Box<str>,
+    pub(super) species_semantic_digest: SemanticDigest,
+    pub(super) fundamental_endpoints: Box<[OnTheFlyPairingEndpointV1]>,
+    pub(super) antifundamental_endpoints: Box<[OnTheFlyPairingEndpointV1]>,
     pub(super) semantic_digest: SemanticDigest,
 }
 
-impl OnTheFlyPublicFlowV1 {
+impl OnTheFlyPairingClassV1 {
+    pub(crate) fn new(
+        species: impl Into<Box<str>>,
+        species_semantic_digest: SemanticDigest,
+        mut fundamental_endpoints: Vec<OnTheFlyPairingEndpointV1>,
+        mut antifundamental_endpoints: Vec<OnTheFlyPairingEndpointV1>,
+    ) -> RusticolResult<Self> {
+        let species = species.into();
+        if species.is_empty() {
+            return Err(invalid("pairing class species identity is empty"));
+        }
+        fundamental_endpoints.sort_unstable_by_key(|endpoint| endpoint.source_slot);
+        antifundamental_endpoints.sort_unstable_by_key(|endpoint| endpoint.source_slot);
+        if fundamental_endpoints.is_empty()
+            || fundamental_endpoints.len() != antifundamental_endpoints.len()
+            || fundamental_endpoints
+                .windows(2)
+                .any(|pair| pair[0].source_slot == pair[1].source_slot)
+            || antifundamental_endpoints
+                .windows(2)
+                .any(|pair| pair[0].source_slot == pair[1].source_slot)
+        {
+            return Err(invalid(
+                "pairing class endpoints must be nonempty, balanced, and unique",
+            ));
+        }
+        let mut result = Self {
+            species,
+            species_semantic_digest,
+            fundamental_endpoints: fundamental_endpoints.into_boxed_slice(),
+            antifundamental_endpoints: antifundamental_endpoints.into_boxed_slice(),
+            semantic_digest: SemanticDigest::new([1; 32])?,
+        };
+        result.semantic_digest = result.compute_digest()?;
+        Ok(result)
+    }
+
     fn compute_digest(&self) -> RusticolResult<SemanticDigest> {
         let mut hash = Sha256::new();
-        hash.update(ON_THE_FLY_PUBLIC_FLOW_DOMAIN);
-        hash.update(self.flow_id.to_le_bytes());
-        hash.update(self.construction_sector_id.to_le_bytes());
-        hash.update(self.closure_anchor_slot.to_le_bytes());
-        hash_exact(&mut hash, self.reduction_weight);
-        hash.update(self.pairing_rule_id.unwrap_or(MISSING_U32).to_le_bytes());
-        match self.pairing_proof_digest {
-            None => hash.update([0]),
-            Some(digest) => {
-                hash.update([1]);
-                hash_digest(&mut hash, digest);
-            }
-        }
-        hash.update(self.pairing_fermion_parity.to_le_bytes());
-        hash_len(
-            &mut hash,
-            self.pairing_source_slot_permutation.len(),
-            "public-flow pairing source permutation",
-        )?;
-        for source_slot in &self.pairing_source_slot_permutation {
-            hash.update(source_slot.to_le_bytes());
-        }
-        hash_len(
-            &mut hash,
-            self.pairing_source_lineage.len(),
-            "public-flow pairing source lineage",
-        )?;
-        for lineage in &self.pairing_source_lineage {
-            hash.update(lineage.to_le_bytes());
-        }
-        hash_digest(&mut hash, self.closure_proof_digest);
-        hash_len(
-            &mut hash,
-            self.source_slot_permutation.len(),
-            "public-flow source permutation",
-        )?;
-        for source_slot in &self.source_slot_permutation {
-            hash.update(source_slot.to_le_bytes());
-        }
-        hash_len(
-            &mut hash,
-            self.target_components.len(),
-            "public-flow target components",
-        )?;
-        for component in &self.target_components {
-            hash.update([component.kind() as u8]);
-            hash_len(
-                &mut hash,
-                component.source_slots().len(),
-                "public-flow component word",
-            )?;
-            for source_slot in component.source_slots() {
-                hash.update(source_slot.to_le_bytes());
+        hash.update(b"pyamplicol-on-the-fly-pairing-class-v1\0");
+        hash_len(&mut hash, self.species.len(), "pairing species")?;
+        hash.update(self.species.as_bytes());
+        hash_digest(&mut hash, self.species_semantic_digest);
+        for endpoints in [&self.fundamental_endpoints, &self.antifundamental_endpoints] {
+            hash_len(&mut hash, endpoints.len(), "pairing endpoints")?;
+            for endpoint in endpoints.iter() {
+                hash.update(endpoint.source_slot.to_le_bytes());
+                hash_digest(&mut hash, endpoint.source_contract_digest);
             }
         }
         final_digest(hash)
     }
-}
-
-fn mapped_public_component(
-    kind: LCColorComponentKind,
-    source_slots: &[u32],
-    source_slot_permutation: &[u32],
-) -> RusticolResult<LCColorComponent> {
-    LCColorComponent::new(
-        kind,
-        source_slots
-            .iter()
-            .map(|source_slot| {
-                source_slot_permutation
-                    .get(*source_slot as usize)
-                    .copied()
-                    .ok_or_else(|| integrity("public-flow source permutation is out of range"))
-            })
-            .collect::<RusticolResult<Vec<_>>>()?,
-    )
-}
-
-fn authenticated_public_flows(
-    authenticated: &AuthenticatedRecurrenceBuilderInput,
-    pairing_lineages: &[OnTheFlyPairingLineageV1],
-) -> RusticolResult<Vec<OnTheFlyPublicFlowV1>> {
-    use crate::recurrence::process::ProcessLCSectorKind;
-
-    let validated = authenticated.process();
-    let process = validated.input();
-    let selected_flow_ids = process
-        .selected_public_flow_coverage
-        .iter()
-        .map(|row| row.flow_id)
-        .collect::<BTreeSet<_>>();
-    let selected_flow_mode = validated.summary().selected_flow_mode();
-    let mut result = Vec::new();
-    for flow in process
-        .public_lc_flows
-        .iter()
-        .copied()
-        .filter(|flow| !selected_flow_mode || selected_flow_ids.contains(&flow.flow_id))
-    {
-        let sector = process
-            .physical_lc_sectors
-            .get(flow.construction_sector_id as usize)
-            .copied()
-            .ok_or_else(|| integrity("public-flow construction sector is absent"))?;
-        if sector.sector_id != flow.construction_sector_id {
-            return Err(integrity(
-                "public-flow construction sector catalog is not canonical",
-            ));
-        }
-        let source_slot_permutation = process_sequence(
-            process,
-            flow.source_slot_permutation_sequence_id,
-            "public-flow source permutation",
-        )?
-        .to_vec();
-        let source_count = process.external_legs.len();
-        if source_slot_permutation.len() != source_count {
-            return Err(integrity(
-                "authenticated public-flow permutation has the wrong source count",
-            ));
-        }
-        let mut sorted_permutation = source_slot_permutation.clone();
-        sorted_permutation.sort_unstable();
-        if sorted_permutation
-            != (0..checked_u32(source_count, "public-flow source count")?).collect::<Vec<_>>()
-        {
-            return Err(integrity(
-                "authenticated public-flow source permutation is not complete",
-            ));
-        }
-        let closure_anchor_slot = source_slot_permutation
-            .get(sector.closure_source_slot as usize)
-            .copied()
-            .ok_or_else(|| integrity("public-flow closure anchor is out of range"))?;
-        let mut target_components = Vec::new();
-        match sector.kind()? {
-            ProcessLCSectorKind::Singlet => {}
-            ProcessLCSectorKind::SingleTrace => {
-                target_components.push(LCColorComponent::new(
-                    LCColorComponentKind::Trace,
-                    process_sequence(process, flow.word_sequence_id, "public LC flow word")?
-                        .to_vec(),
-                )?);
-            }
-            ProcessLCSectorKind::OpenLines => {
-                let range = sector.open_string_range.as_usize_range(
-                    process.lc_open_strings.len(),
-                    "public-flow construction open strings",
-                )?;
-                for row in &process.lc_open_strings[range] {
-                    let mut word = vec![row.fundamental_source_slot];
-                    word.extend_from_slice(process_sequence(
-                        process,
-                        row.adjoint_sequence_id,
-                        "public-flow open-string adjoints",
-                    )?);
-                    word.push(row.antifundamental_source_slot);
-                    target_components.push(mapped_public_component(
-                        LCColorComponentKind::OpenString,
-                        &word,
-                        &source_slot_permutation,
-                    )?);
-                }
-            }
-        }
-        target_components.sort_unstable();
-        if target_components.windows(2).any(|pair| pair[0] == pair[1]) {
-            return Err(integrity(
-                "authenticated public flow repeats one target component",
-            ));
-        }
-        let mut target_endpoint_pairs = target_components
-            .iter()
-            .filter(|component| component.kind() == LCColorComponentKind::OpenString)
-            .map(|component| {
-                let slots = component.source_slots();
-                Ok([
-                    *slots
-                        .first()
-                        .ok_or_else(|| integrity("public open string has no first endpoint"))?,
-                    *slots
-                        .last()
-                        .ok_or_else(|| integrity("public open string has no last endpoint"))?,
-                ])
-            })
-            .collect::<RusticolResult<Vec<_>>>()?;
-        target_endpoint_pairs.sort_unstable();
-        let pairing = if pairing_lineages.is_empty() {
-            None
-        } else {
-            let matches = pairing_lineages
-                .iter()
-                .filter(|lineage| {
-                    if target_endpoint_pairs.is_empty() {
-                        pairing_lineages.len() == 1
-                    } else {
-                        lineage.endpoint_pairs.as_ref() == target_endpoint_pairs.as_slice()
-                    }
-                })
-                .collect::<Vec<_>>();
-            let [lineage] = matches.as_slice() else {
-                return Err(invalid(format!(
-                    "public flow {} selects {} authenticated pairing rules, expected exactly one",
-                    flow.flow_id,
-                    matches.len(),
-                )));
-            };
-            Some(*lineage)
-        };
-        let reduction_weight = process_factor(
-            process,
-            flow.reduction_weight_factor_id,
-            "public-flow reduction weight",
-        )?;
-        if reduction_weight.is_zero() {
-            return Err(integrity("public-flow reduction weight is zero"));
-        }
-        let mut flow = OnTheFlyPublicFlowV1 {
-            flow_id: flow.flow_id,
-            construction_sector_id: flow.construction_sector_id,
-            target_components: target_components.into_boxed_slice(),
-            closure_anchor_slot,
-            source_slot_permutation: source_slot_permutation.into_boxed_slice(),
-            reduction_weight,
-            pairing_rule_id: pairing.map(|lineage| lineage.rule_id),
-            pairing_proof_digest: pairing.map(|lineage| lineage.proof_digest),
-            pairing_source_slot_permutation: pairing
-                .map(|lineage| lineage.source_slot_permutation.to_vec())
-                .unwrap_or_default()
-                .into_boxed_slice(),
-            pairing_source_lineage: pairing
-                .map(|lineage| lineage.source_lineage.to_vec())
-                .unwrap_or_default()
-                .into_boxed_slice(),
-            pairing_fermion_parity: pairing.map_or(1, |lineage| lineage.fermion_parity),
-            closure_proof_digest: process_digest(
-                process,
-                sector.closure_proof_digest_id,
-                "physical-sector closure proof",
-            )?,
-            semantic_digest: SemanticDigest::new([1; 32])?,
-        };
-        flow.semantic_digest = flow.compute_digest()?;
-        result.push(flow);
-    }
-    result.sort_unstable_by_key(|flow| flow.flow_id);
-    if result.is_empty()
-        || result
-            .windows(2)
-            .any(|pair| pair[0].flow_id == pair[1].flow_id)
-    {
-        return Err(integrity(
-            "authenticated public-flow selector catalog is empty or non-canonical",
-        ));
-    }
-    Ok(result)
 }
 
 /// Compact immutable process input for one on-the-fly lane.
@@ -814,127 +309,122 @@ pub(crate) struct OnTheFlyProcessSeedV1 {
     pub(super) normalization_semantic_digest: SemanticDigest,
     pub(super) normalization_convention: Box<str>,
     pub(super) source_anchors: Box<[OnTheFlySourceAnchorV1]>,
-    pub(super) public_flows: Box<[OnTheFlyPublicFlowV1]>,
+    /// Gather map: construction source slot i receives public external slot
+    /// external_permutation[i].
+    pub(super) external_permutation: Box<[u32]>,
     pub(super) coupling_limits: Box<[Option<u32>]>,
-    pub(super) pairing_catalog_digest: Option<SemanticDigest>,
-    pub(super) pairing_topology_digest: Option<SemanticDigest>,
-    pub(super) pairing_semantic_digest: Option<SemanticDigest>,
-    pub(super) pairing_lineages: Box<[OnTheFlyPairingLineageV1]>,
+    pub(super) pairing_classes: Box<[OnTheFlyPairingClassV1]>,
     pub(super) semantic_digest: SemanticDigest,
 }
 
 impl OnTheFlyProcessSeedV1 {
-    pub(crate) fn from_authenticated_process(
-        authenticated: &AuthenticatedRecurrenceBuilderInput,
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new(
+        process_digest: SemanticDigest,
+        model_digest: SemanticDigest,
+        template_catalog_digest: SemanticDigest,
+        prepared_pack_digest: SemanticDigest,
         direct_catalog_digest: SemanticDigest,
+        normalization_semantic_digest: SemanticDigest,
+        normalization_convention: impl Into<Box<str>>,
+        normalization_factor: ExactComplexRational,
+        mut source_anchors: Vec<OnTheFlySourceAnchorV1>,
+        external_permutation: Vec<u32>,
+        coupling_limits: Vec<Option<u32>>,
+        mut pairing_classes: Vec<OnTheFlyPairingClassV1>,
     ) -> RusticolResult<Self> {
-        if authenticated.process().summary().strategy() != RecurrenceStrategy::TopologyReplay {
-            return Err(invalid(
-                "the private on-the-fly slice requires selected-flow topology-replay input",
-            ));
-        }
-        let process = authenticated.process();
-        let templates = authenticated.template();
-        let normalization = process
-            .input()
-            .normalization
-            .first()
-            .copied()
-            .ok_or_else(|| integrity("authenticated process normalization is absent"))?;
-        if process.input().normalization.len() != 1
-            || process_factor(
-                process.input(),
-                normalization.factor_id,
-                "process normalization",
-            )? != ExactComplexRational::ONE
-        {
+        if normalization_factor != ExactComplexRational::ONE {
             return Err(integrity(
-                "on-the-fly raw-amplitude contract requires the authenticated process normalization factor to be exact one",
+                "raw-amplitude seed normalization factor must be exact one",
             ));
         }
-        let normalization_semantic_digest = process_digest(
-            process.input(),
-            normalization.semantic_digest_id,
-            "process normalization semantic",
-        )?;
-        let normalization_convention = process_string(
-            process.input(),
-            normalization.convention_string_id,
-            "process normalization convention",
-        )?
-        .to_owned()
-        .into_boxed_str();
-        let mut source_anchors = authenticated_source_anchors(authenticated)?;
-        let coupling_limits = process
-            .input()
-            .coupling_limits
-            .iter()
-            .map(|row| Some(row.maximum))
-            .collect::<Vec<_>>();
-        let pairing = process.fermion_pairing_catalog();
-        let mut pairing_lineages = pairing
-            .map(|catalog| {
-                catalog
-                    .rules()
-                    .iter()
-                    .copied()
-                    .map(|rule| OnTheFlyPairingLineageV1::from_authenticated_rule(catalog, rule))
-                    .collect::<RusticolResult<Vec<_>>>()
-            })
-            .transpose()?
-            .unwrap_or_default();
-        pairing_lineages.sort_unstable_by_key(|lineage| lineage.rule_id);
-        let public_flows = authenticated_public_flows(authenticated, &pairing_lineages)?;
-        let pairing_summary = process.fermion_pairing_summary();
-        if source_anchors.len() < 2 || coupling_limits.is_empty() {
+        let normalization_convention = normalization_convention.into();
+        if normalization_convention.is_empty() {
+            return Err(invalid("normalization convention is empty"));
+        }
+        source_anchors.sort_unstable_by_key(|anchor| anchor.source_slot);
+        if source_anchors.len() < 2
+            || source_anchors
+                .iter()
+                .enumerate()
+                .any(|(index, anchor)| anchor.source_slot as usize != index)
+        {
             return Err(invalid(
-                "process seed requires at least two sources and explicit coupling limits",
+                "source anchors must form a dense domain with at least two slots",
             ));
         }
-        if coupling_limits.iter().any(Option::is_none) {
+        if coupling_limits.is_empty() || coupling_limits.iter().any(Option::is_none) {
             return Err(invalid(
                 "on-the-fly coupling limits must be explicit for every model order",
             ));
         }
-        source_anchors.sort_unstable_by_key(|anchor| anchor.source_slot);
-        for (index, anchor) in source_anchors.iter().enumerate() {
-            if anchor.source_slot as usize != index {
-                return Err(invalid(
-                    "source anchors must form the canonical dense slot domain",
-                ));
-            }
+        validate_permutation(
+            &external_permutation,
+            source_anchors.len(),
+            "external source permutation",
+        )?;
+        pairing_classes.sort_unstable_by(|left, right| {
+            left.species
+                .cmp(&right.species)
+                .then_with(|| left.semantic_digest.cmp(&right.semantic_digest))
+        });
+        if pairing_classes
+            .windows(2)
+            .any(|pair| pair[0].species == pair[1].species)
+        {
+            return Err(invalid("pairing class repeats a species identity"));
         }
-        for lineage in &pairing_lineages {
-            for endpoint in lineage.endpoint_pairs.iter().flatten() {
-                if *endpoint as usize >= source_anchors.len() {
-                    return Err(invalid(
-                        "pairing lineage endpoint is outside the source domain",
-                    ));
+        let mut covered_endpoints = BTreeSet::new();
+        for pairing_class in &pairing_classes {
+            for (endpoints, role) in [
+                (
+                    pairing_class.fundamental_endpoints.as_ref(),
+                    OnTheFlyExternalColorRoleV1::Fundamental,
+                ),
+                (
+                    pairing_class.antifundamental_endpoints.as_ref(),
+                    OnTheFlyExternalColorRoleV1::Antifundamental,
+                ),
+            ] {
+                for endpoint in endpoints {
+                    let anchor = source_anchors
+                        .get(endpoint.source_slot as usize)
+                        .ok_or_else(|| invalid("pairing endpoint is outside the source domain"))?;
+                    if anchor.color_role != role
+                        || anchor.pairing_source_contract_digest
+                            != Some(endpoint.source_contract_digest)
+                        || !covered_endpoints.insert(endpoint.source_slot)
+                    {
+                        return Err(integrity(
+                            "pairing endpoint role or source-contract identity is inconsistent",
+                        ));
+                    }
                 }
             }
         }
-
-        if pairing_summary.is_some() != !pairing_lineages.is_empty() {
+        let required_endpoints = source_anchors
+            .iter()
+            .filter(|anchor| anchor.color_role.is_pairing_endpoint())
+            .map(|anchor| anchor.source_slot)
+            .collect::<BTreeSet<_>>();
+        if covered_endpoints != required_endpoints {
             return Err(integrity(
-                "authenticated pairing summary and rules disagree",
+                "pairing classes do not cover every open-line endpoint exactly once",
             ));
         }
+
         let mut result = Self {
-            process_digest: process.semantic_identity().process_digest(),
-            model_digest: templates.summary().compiled_model_digest,
-            template_catalog_digest: templates.summary().catalog_digest,
-            prepared_pack_digest: templates.summary().prepared_kernel_pack_digest,
+            process_digest,
+            model_digest,
+            template_catalog_digest,
+            prepared_pack_digest,
             direct_catalog_digest,
             normalization_semantic_digest,
             normalization_convention,
             source_anchors: source_anchors.into_boxed_slice(),
-            public_flows: public_flows.into_boxed_slice(),
+            external_permutation: external_permutation.into_boxed_slice(),
             coupling_limits: coupling_limits.into_boxed_slice(),
-            pairing_catalog_digest: pairing_summary.map(|summary| summary.columnar_digest()),
-            pairing_topology_digest: pairing_summary.map(|summary| summary.topology_digest()),
-            pairing_semantic_digest: pairing_summary.map(|summary| summary.semantic_digest()),
-            pairing_lineages: pairing_lineages.into_boxed_slice(),
-            // Replaced immediately below by the digest over every field.
+            pairing_classes: pairing_classes.into_boxed_slice(),
             semantic_digest: SemanticDigest::new([1; 32])?,
         };
         result.semantic_digest = result.compute_digest()?;
@@ -943,7 +433,7 @@ impl OnTheFlyProcessSeedV1 {
 
     fn compute_digest(&self) -> RusticolResult<SemanticDigest> {
         let mut hash = Sha256::new();
-        hash.update(ON_THE_FLY_SEED_DOMAIN);
+        hash.update(b"pyamplicol-on-the-fly-process-seed-v2\0");
         for digest in [
             self.process_digest,
             self.model_digest,
@@ -964,7 +454,14 @@ impl OnTheFlyProcessSeedV1 {
         for anchor in &self.source_anchors {
             hash.update(anchor.source_slot.to_le_bytes());
             hash.update(anchor.external_label.to_le_bytes());
-            hash.update(anchor.color_role.to_le_bytes());
+            hash.update([anchor.color_role as u8, u8::from(anchor.is_fermionic)]);
+            match anchor.pairing_source_contract_digest {
+                None => hash.update([0]),
+                Some(value) => {
+                    hash.update([1]);
+                    hash_digest(&mut hash, value);
+                }
+            }
             hash_len(&mut hash, anchor.states.len(), "source states")?;
             for state in &anchor.states {
                 hash.update(state.state_index.to_le_bytes());
@@ -984,8 +481,7 @@ impl OnTheFlyProcessSeedV1 {
                 }
                 hash.update(state.quantum_number_flow_id.to_le_bytes());
                 hash_digest(&mut hash, state.color_seed_proof_digest);
-                hash.update([state.source_family as u8]);
-                hash.update([state.source_orientation as u8]);
+                hash.update([state.source_family as u8, state.source_orientation as u8]);
                 match state.prepared_mass_parameter_slot {
                     None => hash.update([0]),
                     Some(slot) => {
@@ -995,57 +491,21 @@ impl OnTheFlyProcessSeedV1 {
                 }
             }
         }
+        hash_len(
+            &mut hash,
+            self.external_permutation.len(),
+            "external permutation",
+        )?;
+        for slot in &self.external_permutation {
+            hash.update(slot.to_le_bytes());
+        }
         hash_len(&mut hash, self.coupling_limits.len(), "coupling limits")?;
         for limit in &self.coupling_limits {
             hash.update(limit.unwrap_or(MISSING_U32).to_le_bytes());
         }
-        hash_len(&mut hash, self.public_flows.len(), "public flows")?;
-        for flow in &self.public_flows {
-            hash_digest(&mut hash, flow.semantic_digest);
-        }
-        for digest in [
-            self.pairing_catalog_digest,
-            self.pairing_topology_digest,
-            self.pairing_semantic_digest,
-        ] {
-            match digest {
-                None => hash.update([0]),
-                Some(value) => {
-                    hash.update([1]);
-                    hash_digest(&mut hash, value);
-                }
-            }
-        }
-        hash_len(&mut hash, self.pairing_lineages.len(), "pairing lineages")?;
-        for lineage in &self.pairing_lineages {
-            hash.update(lineage.rule_id.to_le_bytes());
-            hash_digest(&mut hash, lineage.proof_digest);
-            hash_len(
-                &mut hash,
-                lineage.endpoint_pairs.len(),
-                "pairing endpoint pairs",
-            )?;
-            for pair in &lineage.endpoint_pairs {
-                hash.update(pair[0].to_le_bytes());
-                hash.update(pair[1].to_le_bytes());
-            }
-            hash_len(
-                &mut hash,
-                lineage.source_slot_permutation.len(),
-                "pairing source permutation",
-            )?;
-            for slot in &lineage.source_slot_permutation {
-                hash.update(slot.to_le_bytes());
-            }
-            hash_len(
-                &mut hash,
-                lineage.source_lineage.len(),
-                "pairing source lineage",
-            )?;
-            for line in &lineage.source_lineage {
-                hash.update(line.to_le_bytes());
-            }
-            hash.update(lineage.fermion_parity.to_le_bytes());
+        hash_len(&mut hash, self.pairing_classes.len(), "pairing classes")?;
+        for pairing_class in &self.pairing_classes {
+            hash_digest(&mut hash, pairing_class.semantic_digest);
         }
         final_digest(hash)
     }
@@ -1054,8 +514,6 @@ impl OnTheFlyProcessSeedV1 {
         self.semantic_digest
     }
 
-    /// Iterate the exact source execution contracts without exposing seed
-    /// storage or importing evaluator-specific types into recurrence.
     pub(crate) fn source_execution_specs(
         &self,
     ) -> impl Iterator<Item = OnTheFlySourceExecutionSpecV1> + '_ {
@@ -1075,4 +533,27 @@ impl OnTheFlyProcessSeedV1 {
                 })
         })
     }
+}
+
+pub(super) fn validate_permutation(
+    values: &[u32],
+    expected_len: usize,
+    label: &str,
+) -> RusticolResult<()> {
+    if values.len() != expected_len {
+        return Err(invalid(format!(
+            "{label} has length {}, expected {expected_len}",
+            values.len(),
+        )));
+    }
+    let mut sorted = values.to_vec();
+    sorted.sort_unstable();
+    if sorted
+        != (0..expected_len)
+            .map(|value| checked_u32(value, label))
+            .collect::<RusticolResult<Vec<_>>>()?
+    {
+        return Err(invalid(format!("{label} is not a bijection")));
+    }
+    Ok(())
 }

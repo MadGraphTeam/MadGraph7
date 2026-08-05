@@ -21,16 +21,14 @@ use super::direct_plan::{
     DirectExecutorRole, DirectFinalizationRow, DirectSourceRow,
 };
 use super::template::{
-    ClosureRow, CurrentOrientation, CurrentStateRow, EvaluatorContractKind,
-    LCColorTransitionWitnessRow, ParticleStatistics, QuantumFlowRow, SourceRow, TransitionRow,
-    ValidatedRecurrenceTemplateInput,
+    ClosureRow, EvaluatorContractKind, LCColorTransitionWitnessRow, QuantumFlowRow, SourceRow,
+    TransitionRow, ValidatedRecurrenceTemplateInput,
 };
 use super::{
-    AuthenticatedRecurrenceBuilderInput, CanonicalMomentumLinearForm, ContributionKey,
-    CurrentCoreKey, CurrentHelicityIdentity, CurrentSourceBinding, DynamicLCColorState,
-    DynamicLCColorStateInterner, ExactComplexRational, LCColorComponent, LCColorComponentKind,
-    LCColorWitnessTermId, MomentumTerm, RecurrenceNodeKind, RecurrenceStrategy, SemanticDigest,
-    SourceStateAssignment,
+    CanonicalMomentumLinearForm, ContributionKey, CurrentCoreKey, CurrentHelicityIdentity,
+    CurrentSourceBinding, DynamicLCColorState, DynamicLCColorStateInterner, ExactComplexRational,
+    LCColorComponent, LCColorComponentKind, LCColorWitnessTermId, MomentumTerm, RecurrenceNodeKind,
+    SemanticDigest, SourceStateAssignment,
 };
 use crate::direct_arena::{
     AlignedF64Buffer, DirectArenaView, DirectFactorView, DirectMomentumView, DirectParameterView,
@@ -39,9 +37,6 @@ use crate::direct_arena::{
 use crate::{RusticolError, RusticolResult};
 
 const MISSING_U32: u32 = u32::MAX;
-const ON_THE_FLY_SEED_DOMAIN: &[u8] = b"pyamplicol-on-the-fly-process-seed-v1\0";
-const ON_THE_FLY_PUBLIC_FLOW_DOMAIN: &[u8] = b"pyamplicol-on-the-fly-public-flow-v1\0";
-const ON_THE_FLY_QUERY_DOMAIN: &[u8] = b"pyamplicol-on-the-fly-decoded-lc-query-v1\0";
 const ON_THE_FLY_PROOF_DOMAIN: &[u8] = b"pyamplicol-on-the-fly-structural-proof-v1\0";
 
 fn invalid(message: impl Into<String>) -> RusticolError {
@@ -96,10 +91,11 @@ pub(crate) use interpreter::{
     ResolvedOnTheFlyExecutor,
 };
 pub(crate) use public_query::{DecodedLcQueryV1, OnTheFlySelectedSourceV1};
+pub(crate) use public_query::{OnTheFlyLcSelectorV1, OnTheFlyPairingClassProofV1};
 pub(crate) use source_seed::{
-    OnTheFlyPairingLineageV1, OnTheFlyProcessSeedV1, OnTheFlyPublicFlowV1, OnTheFlySourceAnchorV1,
-    OnTheFlySourceExecutionSpecV1, OnTheFlySourceOrientationV1, OnTheFlySourceStateV1,
-    OnTheFlySourceWavefunctionFamilyV1,
+    OnTheFlyExternalColorRoleV1, OnTheFlyPairingClassV1, OnTheFlyPairingEndpointV1,
+    OnTheFlyProcessSeedV1, OnTheFlySourceAnchorV1, OnTheFlySourceExecutionSpecV1,
+    OnTheFlySourceOrientationV1, OnTheFlySourceStateV1, OnTheFlySourceWavefunctionFamilyV1,
 };
 pub(crate) use trace::{
     OnTheFlyExecutorKeyV1, OnTheFlyOperationKindV1, OnTheFlyStructuralProofV1,
@@ -116,11 +112,7 @@ pub(crate) fn build_selected_lc_trace(
     templates: &ValidatedRecurrenceTemplateInput,
     seed: &OnTheFlyProcessSeedV1,
     query: &DecodedLcQueryV1,
-    logical_point_capacity: u32,
 ) -> RusticolResult<OnTheFlyStructuralTraceV1> {
-    if logical_point_capacity == 0 {
-        return Err(invalid("logical point capacity must be nonzero"));
-    }
     if query.seed_digest != seed.semantic_digest() {
         return Err(integrity(
             "decoded query belongs to a different compact seed",
@@ -146,6 +138,7 @@ pub(crate) fn build_selected_lc_trace(
         templates,
         &transitions,
         seed,
+        query,
         &propagators,
         &mut colors,
         &mut currents,
@@ -160,7 +153,7 @@ pub(crate) fn build_selected_lc_trace(
                 .ok_or_else(|| invalid("constructed contribution count exceeds usize"))
         })?;
     let selected_closures =
-        build_selected_closures(templates, &closures, seed, query, &colors, &currents)?;
+        build_selected_closures(templates, &closures, query, &colors, &currents)?;
     let live = live_current_ids(&currents, &selected_closures)?;
     lower_trace(
         templates,
@@ -174,6 +167,5 @@ pub(crate) fn build_selected_lc_trace(
         &closures,
         &live,
         constructed_contribution_count,
-        logical_point_capacity,
     )
 }

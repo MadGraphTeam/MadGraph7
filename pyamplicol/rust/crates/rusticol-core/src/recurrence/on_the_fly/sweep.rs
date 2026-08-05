@@ -13,7 +13,7 @@ pub(super) struct PendingCurrent {
     pub(super) key: CurrentCoreKey,
     pub(super) source_factor: Option<ExactComplexRational>,
     pub(super) contributions: BTreeMap<PendingContributionKey, ExactComplexRational>,
-    pub(super) realized_pairing_rule_ids: BTreeSet<u32>,
+    pub(super) selected_pairing_compatible: bool,
     pub(super) stage: u16,
 }
 
@@ -144,47 +144,19 @@ fn query_target_matches(mut closed: Vec<LCColorComponent>, query: &DecodedLcQuer
     closed.as_slice() == query.target_components.as_ref()
 }
 
-fn compatible_pairing_rules_for_current(
-    seed: &OnTheFlyProcessSeedV1,
+fn selected_pairing_compatible_for_current(
+    query: &DecodedLcQueryV1,
     templates: &ValidatedRecurrenceTemplateInput,
     current_state_template_id: u32,
     support_source_slots: &[u32],
-) -> RusticolResult<BTreeSet<u32>> {
-    if seed.pairing_lineages.is_empty() {
-        return Ok(BTreeSet::new());
-    }
+) -> RusticolResult<bool> {
     let state = templates
         .input()
         .current_states
         .get(current_state_template_id as usize)
         .ok_or_else(|| integrity("pairing support current state is absent"))?;
     let carries_colored_fermion_line = state.statistics == 1 && state.color_representation != 1;
-    let support = support_source_slots
-        .iter()
-        .copied()
-        .collect::<BTreeSet<_>>();
-    Ok(seed
-        .pairing_lineages
-        .iter()
-        .filter_map(|lineage| {
-            let crossing_count = lineage
-                .endpoint_pairs
-                .iter()
-                .filter(|pair| support.contains(&pair[0]) != support.contains(&pair[1]))
-                .count();
-            (crossing_count == usize::from(carries_colored_fermion_line)).then_some(lineage.rule_id)
-        })
-        .collect())
-}
-
-fn realized_pairing_rules_for_transition(
-    compatible_result_rules: BTreeSet<u32>,
-    parent_rules: [&BTreeSet<u32>; 2],
-) -> BTreeSet<u32> {
-    compatible_result_rules
-        .into_iter()
-        .filter(|rule_id| parent_rules[0].contains(rule_id) && parent_rules[1].contains(rule_id))
-        .collect()
+    Ok(query.selected_pairing_compatible(support_source_slots, carries_colored_fermion_line))
 }
 
 pub(super) fn insert_selected_sources(
@@ -237,8 +209,8 @@ pub(super) fn insert_selected_sources(
             key,
             source_factor: Some(state.crossing_phase),
             contributions: BTreeMap::new(),
-            realized_pairing_rule_ids: compatible_pairing_rules_for_current(
-                seed,
+            selected_pairing_compatible: selected_pairing_compatible_for_current(
+                query,
                 templates,
                 state.current_state_template_id,
                 &[selected.source_slot],
@@ -256,6 +228,7 @@ fn include_transition(
     concrete_parent_ids: [u32; 2],
     source_count: usize,
     seed: &OnTheFlyProcessSeedV1,
+    query: &DecodedLcQueryV1,
     propagators: &BTreeMap<u32, Option<u32>>,
     colors: &mut DynamicLCColorStateInterner,
     currents: &mut Vec<PendingCurrent>,
@@ -305,18 +278,17 @@ fn include_transition(
             .clone(),
     ];
     let (evaluator_parent_ids, exchange_factor) = prepared.evaluator_parents(concrete_parent_ids);
-    let realized_pairing_rule_ids = realized_pairing_rules_for_transition(
-        compatible_pairing_rules_for_current(
-            seed,
-            templates,
-            prepared.row.result_state_template_id,
-            &support,
-        )?,
-        [
-            &currents[concrete_parent_ids[0] as usize].realized_pairing_rule_ids,
-            &currents[concrete_parent_ids[1] as usize].realized_pairing_rule_ids,
-        ],
-    );
+    let selected_pairing_compatible = selected_pairing_compatible_for_current(
+        query,
+        templates,
+        prepared.row.result_state_template_id,
+        &support,
+    )? && currents[concrete_parent_ids[0] as usize]
+        .selected_pairing_compatible
+        && currents[concrete_parent_ids[1] as usize].selected_pairing_compatible;
+    if !selected_pairing_compatible {
+        return Ok(());
+    }
     for prepared_witness in &prepared.witnesses {
         if prepared_witness.row.left_shape_string_id != parent_colors[0].output_color_shape_id()
             || prepared_witness.row.right_shape_string_id
@@ -362,15 +334,13 @@ fn include_transition(
                 key,
                 source_factor: None,
                 contributions: BTreeMap::new(),
-                realized_pairing_rule_ids: realized_pairing_rule_ids.clone(),
+                selected_pairing_compatible,
                 stage: u16::try_from(support.len() - 1)
                     .map_err(|_| invalid("query-local current stage exceeds u16"))?,
             });
             id
         };
-        currents[result_id as usize]
-            .realized_pairing_rule_ids
-            .extend(realized_pairing_rule_ids.iter().copied());
+        currents[result_id as usize].selected_pairing_compatible |= selected_pairing_compatible;
         let contribution_key = ContributionKey::new(
             prepared.row.id,
             evaluator_parent_ids.to_vec(),
@@ -413,6 +383,7 @@ pub(super) fn build_forward_currents(
     templates: &ValidatedRecurrenceTemplateInput,
     transitions: &BTreeMap<(u32, u32), Vec<PreparedTransition>>,
     seed: &OnTheFlyProcessSeedV1,
+    query: &DecodedLcQueryV1,
     propagators: &BTreeMap<u32, Option<u32>>,
     colors: &mut DynamicLCColorStateInterner,
     currents: &mut Vec<PendingCurrent>,
@@ -459,6 +430,7 @@ pub(super) fn build_forward_currents(
                         parent_ids,
                         source_count,
                         seed,
+                        query,
                         propagators,
                         colors,
                         currents,
@@ -488,7 +460,6 @@ fn closure_quantum_matches(
 pub(super) fn build_selected_closures(
     templates: &ValidatedRecurrenceTemplateInput,
     closures: &BTreeMap<(u32, u32), Vec<PreparedClosure>>,
-    seed: &OnTheFlyProcessSeedV1,
     query: &DecodedLcQueryV1,
     colors: &DynamicLCColorStateInterner,
     currents: &[PendingCurrent],
@@ -538,16 +509,9 @@ pub(super) fn build_selected_closures(
                 &currents[concrete_parent_ids[0] as usize].key,
                 &currents[concrete_parent_ids[1] as usize].key,
             ];
-            let closure_pairing_ids = currents[concrete_parent_ids[0] as usize]
-                .realized_pairing_rule_ids
-                .intersection(&currents[concrete_parent_ids[1] as usize].realized_pairing_rule_ids)
-                .copied()
-                .collect::<BTreeSet<_>>();
-            let pairing_realized = match query.pairing_rule_id {
-                None => seed.pairing_lineages.is_empty() && closure_pairing_ids.is_empty(),
-                Some(rule_id) => closure_pairing_ids == BTreeSet::from([rule_id]),
-            };
-            if !pairing_realized {
+            if !currents[concrete_parent_ids[0] as usize].selected_pairing_compatible
+                || !currents[concrete_parent_ids[1] as usize].selected_pairing_compatible
+            {
                 continue;
             }
             let parent_colors = [
