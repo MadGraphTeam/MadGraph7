@@ -621,7 +621,8 @@ def split_quartic_vertex(vertex, is_last, pairing, cubic_id, model):
         # the new internal line
         first, second = second, first
 
-    combined = [ordered[i] for i in first]
+    combined = sorted([ordered[i] for i in first],
+                      key=lambda leg: leg.get('number'))
     new_leg = base_objects.Leg({
         'id': combined[0].get('id'),
         'number': min(leg.get('number') for leg in combined),
@@ -632,11 +633,13 @@ def split_quartic_vertex(vertex, is_last, pairing, cubic_id, model):
         'legs': base_objects.LegList(combined + [new_leg]),
         'id': cubic_id})
     if is_last:
-        rest = [ordered[i] for i in second] + [new_leg]
+        rest = sorted([ordered[i] for i in second] + [new_leg],
+                      key=lambda leg: leg.get('number'))
     else:
         # the outgoing leg has to stay last
-        rest = [ordered[i] for i in second if i != out_position] + \
-               [new_leg, ordered[out_position]]
+        rest = sorted([ordered[i] for i in second if i != out_position] +
+                      [new_leg], key=lambda leg: leg.get('number')) + \
+               [ordered[out_position]]
     second_vx = base_objects.Vertex({'legs': base_objects.LegList(rest),
                                      'id': cubic_id})
 
@@ -1410,6 +1413,18 @@ class Amplitude(base_objects.PhysicsObject):
 
         res = base_objects.DiagramList()
         seen = set()
+        tag_of = []
+        last_seen = {}
+        clock = [0]
+
+        def touch(tag):
+            # A diagram is placed at its *last* discovery, so that it lands
+            # after every seed which can reach it -- and so after every
+            # quartic current which can be summed into it. Seeing it again
+            # only moves it later, it is never generated twice.
+            clock[0] += 1
+            last_seen[tag] = clock[0]
+
         self.quartic_unroll_tags = {}
         todo = []
         for diagram in seed:
@@ -1423,7 +1438,9 @@ class Amplitude(base_objects.PhysicsObject):
                 diagram = self.create_diagram(vertices)
             tag = canonical_tag(diagram)
             seen.add(tag)
+            touch(tag)
             res.append(diagram)
+            tag_of.append(tag)
             todo.append((diagram, tag))
 
         # Unrolling is confluent, so taking the diagrams it produces through
@@ -1452,16 +1469,19 @@ class Amplitude(base_objects.PhysicsObject):
                     continue
                 unrolled = self.unrolled_diagram(diagram, choice, unrollable)
                 tag = canonical_tag(unrolled)
+                touch(tag)
                 if tag not in seen:
                     seen.add(tag)
                     res.append(unrolled)
+                    tag_of.append(tag)
                     todo.append((unrolled, tag))
                 if len(choice) == len(positions):
                     chain = tuple(choice.get(i, 0)
                                   for i in range(len(vertices)))
                     self.quartic_unroll_tags[(own_tag, chain)] = tag
 
-        return res
+        order = sorted(range(len(res)), key=lambda i: (last_seen[tag_of[i]], i))
+        return base_objects.DiagramList([res[i] for i in order])
 
     def get_quartic_unroll_links(self, diaglist=None):
         """Return {(diagram index, colour chain): target index} recorded while
