@@ -582,7 +582,11 @@ class ALOHAWriterForFortran(WriteALOHA):
             if type.startswith('list'):
                 type = type[5:]
                 #determine the size of the list
-                if name[0] in ['F', 'V', 'S', 'T', 'R']:
+                if name.startswith('FD'):
+                    # FD gauge: 5-momentum and gauge direction of the inlined
+                    # propagator factor (no wavefunction, despite the F)
+                    out.write(' %s %s(0:4)\n' % (self.type2def[type], name))
+                elif name[0] in ['F', 'V', 'S', 'T', 'R']:
                     # All wavefunctions (inputs and outputs) are now passed and
                     # built as type(aloha) / type(aloha2d), regardless of
                     # loop_mode.  This keeps the body code (which uses %W / %P
@@ -718,8 +722,10 @@ class ALOHAWriterForFortran(WriteALOHA):
         
         if self.offshell and aloha.unitary_gauge == 3: # FD gauge
             type = self.particles[self.outgoing-1]
-            if type in ["S","V"]: 
-                out.write(" %(type)s%(out)s %% W(:) = CZERO \n" % {'type': type, 'out':self.outgoing}) 
+            if type in ["S","V"]:
+                out.write(" %(type)s%(out)s %% W(:) = CZERO \n" % {'type': type, 'out':self.outgoing})
+            if self.declaration.is_used('FDQ'):
+                out.write(self.get_fd_gauge_txt())
 
         # Returning result
         return out.getvalue()
@@ -1053,6 +1059,12 @@ class ALOHAWriterForFortran(WriteALOHA):
             # retry when removing the useless part.
             return self.define_expression()
 
+        if self.has_fd_propagator():
+            # the FD gauge propagator factor is part of the wavefunction this
+            # routine builds, not a post-treatment
+            self.declare_fd_propagator()
+            txt += self.get_fd_propagator_txt()
+
         return txt
 
     def define_symmetry(self, new_nb, couplings=None):
@@ -1064,19 +1076,73 @@ class ALOHAWriterForFortran(WriteALOHA):
         #    (self.get_header_txt(new_name, couplings), self.name, ','.join(arguments))
 
     def get_foot_txt(self, combine=False):
-        text = ' ' 
-    
-        if not combine and aloha.unitary_gauge == 3: # FD gauge
-            if self.outgoing and 'P1N' not in self.tag:
-                name = self.particles[self.outgoing-1]
-                if name.startswith(('V','S')):
-                    # need to be smarter for Higgs
-                    text += 'CALL MULTIPLY_PROPAGATOR_FACTOR(%(name)s%(i)s,%(mass)s%(i)s, %(name)s%(i)s)\n' %\
-                    {'name':name, 'mass': 'M%s' % name[1:], 'i': self.outgoing }
+        text = ' '
 
-
-        text += 'end\n\n' 
+        text += 'end\n\n'
         return text
+
+    def has_fd_propagator(self):
+        """Does this routine have to apply the FD gauge propagator factor on
+        the wavefunction it builds?"""
+
+        if aloha.unitary_gauge != 3 or not self.offshell or 'P1N' in self.tag:
+            return False
+        return self.particles[self.outgoing-1].startswith(('V','S'))
+
+    def get_fd_gauge_txt(self):
+        """FD gauge: the part of the propagator factor that only depends on the
+        momentum of the outgoing wavefunction, i.e. the 5-momentum q (the mass
+        sits in its 5th component) and the gauge direction n.
+
+        This is the inlined counterpart of the head of
+        multiply_propagator_factor (aloha_functions_fd.f); it is written with
+        the momenta so that everything it defines stays out of the way of the
+        wavefunction dependent part (see get_fd_propagator_txt)."""
+
+        out = StringIO()
+        outname = self.outname
+        out.write('    FDQ(0:3) = -%s %% P(:)\n' % outname)
+        out.write('    FDQ(4) = -CI*M%s\n' % self.outgoing)
+        out.write('    CALL DEFINE_GAUGE_DIR(FDQ, FDN)\n')
+        out.write('    FDNQ = %s\n' % '-'.join(['FDN(%d)*DBLE(FDQ(%d))' % (i,i)
+                                                          for i in range(4)]))
+        return out.getvalue()
+
+    def get_fd_propagator_txt(self):
+        """FD gauge: the wavefunction dependent part of the propagator factor.
+
+        The 5 components built by the routine are projected on the physical
+        gauge: w -> w - q * js1 - n * js2. Inlining it (instead of calling
+        multiply_propagator_factor) keeps the routine a single expression: the
+        momentum only part is hoisted with the momenta, and what is left here
+        is linear in the wavefunction."""
+
+        out = StringIO()
+        outname = self.outname
+        # number of Lorentz components of the outgoing wavefunction: in FD
+        # gauge a vector and its Goldstone share the same 5 slots
+        size = self.type_to_size[self.particles[self.outgoing-1]] - 2
+        # js1 and js2 contract the wavefunction with n and q (the 5th component
+        # of q carries the mass, hence the conjugation)
+        out.write('    FDJS1 = (%s)/FDNQ\n' % '-'.join(
+            ['FDN(%d)*%s%%W(%d)' % (i, outname, i+1) for i in range(4)]))
+        out.write('    FDJS2 = (%s-DCONJG(FDQ(4))*%s%%W(5))/FDNQ\n' % (
+            '-'.join(['FDQ(%d)*%s%%W(%d)' % (i, outname, i+1) for i in range(4)]),
+            outname))
+        for i in range(size):
+            out.write('    %(o)s%%W(%(k)d) = %(o)s%%W(%(k)d)-FDQ(%(i)d)*FDJS1'
+                      '-FDN(%(i)d)*FDJS2\n' % {'o': outname, 'k': i+1, 'i': i})
+        return out.getvalue()
+
+    def declare_fd_propagator(self):
+        """Variables of the inlined FD gauge propagator factor. The mass it
+        needs is already an argument of any offshell routine."""
+
+        self.declaration.add(('list_complex', 'FDQ'))
+        self.declaration.add(('list_double', 'FDN'))
+        self.declaration.add(('double', 'FDNQ'))
+        self.declaration.add(('complex', 'FDJS1'))
+        self.declaration.add(('complex', 'FDJS2'))
 
     def write_combined(self, lor_names, mode='self', offshell=None):
         """Write routine for combine ALOHA call (more than one coupling).
