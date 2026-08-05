@@ -159,6 +159,63 @@ class AbstractRoutine(object):
         routine.tag = list(self.tag)
         return routine
 
+    def get_combined_routines(self, lor_names):
+        """Return the routines to sum -- one per Lorentz structure, this one
+        first -- when the structures do not act on the same spins, so that
+        get_combined_routine can not build a single expression for them.
+
+        This is the FD gauge situation: a massive vector and its Goldstone are
+        the very same wavefunction (components 1-4 and 5 of one object), so the
+        structures of a vertex mix V and S on a given leg. They still write
+        into one output and read one wavefunction per leg, so a writer can
+        assemble them into a single routine.
+        Return None when even that is not possible.
+        """
+
+        if not hasattr(self, 'combined_routines'):
+            self.combined_routines = {}
+
+        key = tuple(lor_names)
+        if key not in self.combined_routines:
+            try:
+                self.combined_routines[key] = self.compute_combined_routines(lor_names)
+            except Exception as error:
+                logger.debug('can not assemble the routines %s (%s): %s',
+                             self.name, ','.join(lor_names), error)
+                self.combined_routines[key] = None
+
+        routines = self.combined_routines[key]
+        if routines is not None:
+            for routine in routines:
+                routine.tag = list(self.tag)
+        return routines
+
+    def compute_combined_routines(self, lor_names):
+        """Compute the routines of get_combined_routines (no caching)"""
+
+        if self.model is None:
+            return None
+        if any(t.startswith('L') for t in self.tag):
+            return None
+
+        conjg = tuple(int(t[1:]) for t in self.tag if t.startswith('C'))
+        routines = [self]
+        for name in lor_names:
+            lorentz = getattr(self.model.lorentz, name)
+            if len(lorentz.spins) != len(self.spins):
+                # not the same legs: nothing to assemble them into
+                return None
+            key = (self.model, name, conjg)
+            if key in self.combined_builder:
+                builder = self.combined_builder[key]
+            else:
+                builder = AbstractRoutineBuilder(lorentz, self.model)
+                if conjg:
+                    builder = builder.define_conjugate_builder(conjg)
+                self.combined_builder[key] = builder
+            routines.append(builder.compute_routine(self.outgoing, list(self.tag)))
+        return routines
+
     def write(self, output_dir, language='Fortran', mode='self', combine=True, options=None, **opt):
         """ write the content of the object """
         # Set loop_mode based on the tag of this specific routine
