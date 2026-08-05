@@ -113,6 +113,17 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                                    'madanalysis5_hadron_card_default.dat',
                                    'rivet_card_default.dat'])}
 
+    # Backend split (step 1, not yet wired into the build): mirror
+    # template_files/madmatrix/backend/{cpu,simd,gpu}/ as a top-level
+    # backend/<variant>/ dir, sibling of SubProcesses/src/lib.
+    backend_variants = ('cpu', 'simd', 'gpu')
+    backend_template_dir = pjoin(madmatrix_templates, 'backend')
+    for _backend_variant in backend_variants:  # plain loop: comprehension wouldn't see the locals above
+        from_template[pjoin('backend', _backend_variant)] = relative_path_list(
+            pjoin(backend_template_dir, _backend_variant),
+            sorted(os.listdir(pjoin(backend_template_dir, _backend_variant))))
+    del _backend_variant
+
     to_link_in_P = ['nvtx.h', 'GpuRuntime.h', 'GpuAbstraction.h', 'color_sum.h',
                     'MemoryAccessHelpers.h', 'MemoryAccessVectors.h',
                     'MemoryAccessMatrixElements.h', 'MemoryAccessMomenta.h',
@@ -131,7 +142,11 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     template_src_make = pjoin(madmatrix_templates, 'madmatrix_src.mk')
     template_Sub_make = pjoin(madmatrix_templates, 'madmatrix.mk')
 
-    dirs_to_create = ['bin', 'src', 'lib', 'Cards', 'SubProcesses']
+    dirs_to_create = ['bin', 'src', 'lib', 'Cards', 'SubProcesses',
+                      'backend',
+                      'backend/cpu',
+                      'backend/simd',
+                      'backend/gpu']
 
     # AV - use a custom UFOModelConverter (model/aloha exporter)
     create_model_class = model_handling.MadMatrixUFOModelConverter
@@ -181,7 +196,20 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         if cpp_helas_call_writer is not None:
             cpp_helas_call_writer.use_flavor_mask = self.use_flavor_mask
         out = super().generate_subprocess_directory(matrix_element, cpp_helas_call_writer, proc_number)
+        self._link_backend_dirs_in_P(matrix_element)
         return out
+
+    # Symlink the top-level backend/<variant>/* into this P*'s own backend/<variant>/.
+    def _link_backend_dirs_in_P(self, matrix_element):
+        proc_dir_name = "P%s" % matrix_element.get('processes')[0].shell_string()
+        dirpath = pjoin(self.dir_path, 'SubProcesses', proc_dir_name)
+        with misc.chdir(dirpath):
+            for backend in self.backend_variants:
+                backend_rel = pjoin('backend', backend)
+                os.makedirs(backend_rel, exist_ok=True)
+                src_dir = pjoin('..', '..', 'backend', backend)
+                for fname in sorted(os.listdir(src_dir)):
+                    files.ln(pjoin(src_dir, fname), starting_dir=backend_rel)
 
     # AV (default from OM's tutorial) - add a debug printout
     def convert_model(self, model, wanted_lorentz=[], wanted_couplings=[]):

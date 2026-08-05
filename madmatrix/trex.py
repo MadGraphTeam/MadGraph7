@@ -269,7 +269,8 @@ class TREX_ProcessExporter(output.ProcessExporterMadMatrix):
             # Create the process .h and .cc files
             process_exporter_cpp.generate_process_files()
             for file in self.to_link_in_P:
-                files.ln('../%s' % file) 
+                files.ln('../%s' % file)
+        self._link_backend_dirs_in_P(matrix_element)
         return
     
     def export_driver(self):
