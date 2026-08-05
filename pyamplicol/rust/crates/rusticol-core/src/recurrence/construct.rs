@@ -13151,7 +13151,8 @@ mod tests {
             (0_u32..6).collect::<Vec<_>>()
         };
         for transition in insertion_order {
-            add_established_contact_test_contribution(&mut currents, 2, transition, [0, 1]);
+            let parent_ids = if transition % 2 == 0 { [0, 1] } else { [1, 0] };
+            add_established_contact_test_contribution(&mut currents, 2, transition, parent_ids);
         }
         let mut resident_contribution_count = 6;
         commit_established_contact_test_plan(
@@ -13172,10 +13173,10 @@ mod tests {
     }
 
     #[test]
-    fn established_contact_0000_fan_in_keeps_three_physical_channels_deterministically() {
+    fn established_contact_0000_fan_in_keeps_one_certified_owner_deterministically() {
         let forward = established_0000_contact_case(false);
         let reverse = established_0000_contact_case(true);
-        assert_eq!(forward, (vec![0, 2, 4], 3));
+        assert_eq!(forward, (vec![0], 1));
         assert_eq!(reverse, forward);
     }
 
@@ -13244,7 +13245,7 @@ mod tests {
             ),
         ]);
         add_established_contact_test_contribution(&mut final_currents, 2, 20, [0, 1]);
-        add_established_contact_test_contribution(&mut final_currents, 2, 21, [0, 1]);
+        add_established_contact_test_contribution(&mut final_currents, 2, 21, [1, 0]);
         let mut final_resident = 2;
         commit_established_contact_test_plan(
             &mut final_currents,

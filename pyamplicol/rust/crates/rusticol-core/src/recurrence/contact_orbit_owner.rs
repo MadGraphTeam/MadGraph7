@@ -11,7 +11,8 @@
 use std::{cmp::Ordering, mem::size_of};
 
 use super::{
-    CurrentCoreKey, ExactComplexRational, LCColorWitnessTermId, SemanticDigest,
+    CurrentCoreKey, CurrentSourceBinding, DynamicLCColorStateId, ExactComplexRational,
+    LCColorWitnessTermId, RecurrenceNodeKind, RecurrenceStrategy, SemanticDigest,
     construct::TemplateCatalog,
     template::{
         ContactOrbitStage, EvaluatorCallableKind, EvaluatorContractKind,
@@ -556,13 +557,59 @@ pub(super) fn final_contact_orbit_step_for_test(
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct PhysicalLegAssignments {
     len: u8,
-    values: [(u32, u32); 2],
+    values: [u32; 2],
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct ContactOrbitPhysicalAssignment {
     physical_leg_assignments: PhysicalLegAssignments,
-    source_particle_leg: i32,
+    source_particle_equivalence_class: Option<u32>,
+}
+
+/// Physics identity retained while quotienting a certified contact traversal orbit.
+///
+/// The compiler certificate is deliberately limited to a momentum-independent,
+/// literal-singlet scalar contact.  Within one concrete destination, source
+/// slots, momentum sums, and topology-replay ancestry on its parents select a
+/// traversal of the same vertex rather than different physics.  Every other
+/// current distinction stays in the owner key.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct ContactOrbitCurrentPhysics<'a> {
+    catalog_digest: SemanticDigest,
+    node_kind: RecurrenceNodeKind,
+    current_state_template_id: u32,
+    dynamic_lc_color_state_id: DynamicLCColorStateId,
+    recurrence_strategy: RecurrenceStrategy,
+    spin_state_class: i32,
+    flavour_flow: &'a [i32],
+    quantum_number_flow_id: u32,
+    coupling_orders: &'a [u32],
+    source_binding: &'a CurrentSourceBinding,
+    propagator_template_id: Option<u32>,
+}
+
+impl<'a> ContactOrbitCurrentPhysics<'a> {
+    fn from_current(current: &'a CurrentCoreKey) -> Self {
+        Self {
+            catalog_digest: current.catalog_digest(),
+            node_kind: current.node_kind(),
+            current_state_template_id: current.current_state_template_id(),
+            dynamic_lc_color_state_id: current.dynamic_lc_color_state_id(),
+            recurrence_strategy: current.helicity_identity().strategy(),
+            spin_state_class: current.spin_state_class(),
+            flavour_flow: current.flavour_flow(),
+            quantum_number_flow_id: current.quantum_number_flow_id(),
+            coupling_orders: current.coupling_orders(),
+            source_binding: current.source_binding(),
+            propagator_template_id: current.propagator_template_id(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct ContactOrbitParentGroup<'a> {
+    current: ContactOrbitCurrentPhysics<'a>,
+    assignment: ContactOrbitPhysicalAssignment,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -571,9 +618,8 @@ struct ContactOrbitOwnerGroupKey<'a> {
     stage: ContactOrbitStage,
     result_leg_equivalence_class: u32,
     destination: &'a CurrentCoreKey,
-    parents: [&'a CurrentCoreKey; 2],
-    physical_assignments: [ContactOrbitPhysicalAssignment; 2],
-    output_source_particle_leg: i32,
+    parents: [ContactOrbitParentGroup<'a>; 2],
+    output_source_particle_equivalence_class: Option<u32>,
     evaluator_class: &'a str,
     application: &'a ContactOrbitApplicationWitness,
     certificate_reconstruction_factor: ExactComplexRational,
@@ -581,7 +627,9 @@ struct ContactOrbitOwnerGroupKey<'a> {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct ContactOrbitOwnerRank {
+struct ContactOrbitOwnerRank<'a> {
+    destination: &'a CurrentCoreKey,
+    parents: [&'a CurrentCoreKey; 2],
     oriented_covered_legs: [ContactOrbitCoveredLegs; 2],
     oriented_source_particle_legs: [i32; 3],
     step_semantic_digest: SemanticDigest,
@@ -591,7 +639,7 @@ struct ContactOrbitOwnerRank {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct ContactOrbitOwnerCandidate<'a> {
     group: ContactOrbitOwnerGroupKey<'a>,
-    rank: ContactOrbitOwnerRank,
+    rank: ContactOrbitOwnerRank<'a>,
 }
 
 fn canonical_physical_assignment(
@@ -599,21 +647,51 @@ fn canonical_physical_assignment(
     equivalence_classes: &[u32; 4],
     source_particle_leg: i32,
 ) -> RusticolResult<ContactOrbitPhysicalAssignment> {
-    let mut assignments = [(0_u32, 0_u32); 2];
+    let mut assignments = [0_u32; 2];
     for (index, leg) in covered_legs.values().iter().copied().enumerate() {
-        let equivalence = *equivalence_classes
+        assignments[index] = *equivalence_classes
             .get(leg as usize)
             .ok_or_else(|| integrity("contact-orbit covered leg is outside arity"))?;
-        assignments[index] = (leg, equivalence);
     }
     assignments[..covered_legs.len()].sort_unstable();
+    let source_particle_equivalence_class = match source_particle_leg {
+        -1 => None,
+        leg if leg >= 0 => Some(
+            *equivalence_classes
+                .get(leg as usize)
+                .ok_or_else(|| integrity("contact-orbit source particle leg is outside arity"))?,
+        ),
+        _ => {
+            return Err(integrity(
+                "contact-orbit source particle leg uses an unknown sentinel",
+            ));
+        }
+    };
     Ok(ContactOrbitPhysicalAssignment {
         physical_leg_assignments: PhysicalLegAssignments {
             len: covered_legs.len,
             values: assignments,
         },
-        source_particle_leg,
+        source_particle_equivalence_class,
     })
+}
+
+fn physical_leg_equivalence_class(
+    leg: i32,
+    equivalence_classes: &[u32; 4],
+    label: &str,
+) -> RusticolResult<Option<u32>> {
+    match leg {
+        -1 => Ok(None),
+        leg if leg >= 0 => equivalence_classes
+            .get(leg as usize)
+            .copied()
+            .map(Some)
+            .ok_or_else(|| integrity(format!("contact-orbit {label} is outside arity"))),
+        _ => Err(integrity(format!(
+            "contact-orbit {label} uses an unknown sentinel"
+        ))),
+    }
 }
 
 fn validate_step(step: &ContactOrbitStepProof) -> RusticolResult<()> {
@@ -773,20 +851,24 @@ pub(super) fn contact_orbit_owner_candidate<'a>(
             "contact-orbit covered-leg cardinalities differ from parent supports",
         ));
     }
-    let mut physical_assignments = [
-        canonical_physical_assignment(
-            step.left_covered_legs,
-            &step.physical_leg_equivalence_classes,
-            step.source_particle_legs[0],
-        )?,
-        canonical_physical_assignment(
-            step.right_covered_legs,
-            &step.physical_leg_equivalence_classes,
-            step.source_particle_legs[1],
-        )?,
+    let mut canonical_parents = [
+        ContactOrbitParentGroup {
+            current: ContactOrbitCurrentPhysics::from_current(parents[0]),
+            assignment: canonical_physical_assignment(
+                step.left_covered_legs,
+                &step.physical_leg_equivalence_classes,
+                step.source_particle_legs[0],
+            )?,
+        },
+        ContactOrbitParentGroup {
+            current: ContactOrbitCurrentPhysics::from_current(parents[1]),
+            assignment: canonical_physical_assignment(
+                step.right_covered_legs,
+                &step.physical_leg_equivalence_classes,
+                step.source_particle_legs[1],
+            )?,
+        },
     ];
-    physical_assignments.sort_unstable();
-    let mut canonical_parents = parents;
     canonical_parents.sort_unstable();
     let result_leg_equivalence_class =
         step.physical_leg_equivalence_classes[step.result_leg as usize];
@@ -797,14 +879,19 @@ pub(super) fn contact_orbit_owner_candidate<'a>(
             result_leg_equivalence_class,
             destination,
             parents: canonical_parents,
-            physical_assignments,
-            output_source_particle_leg: step.source_particle_legs[2],
+            output_source_particle_equivalence_class: physical_leg_equivalence_class(
+                step.source_particle_legs[2],
+                &step.physical_leg_equivalence_classes,
+                "output source particle leg",
+            )?,
             evaluator_class: &step.evaluator_class,
             application,
             certificate_reconstruction_factor: step.certificate_reconstruction_factor,
             step_reconstruction_factor: step.step_reconstruction_factor,
         },
         rank: ContactOrbitOwnerRank {
+            destination,
+            parents,
             oriented_covered_legs: [step.left_covered_legs, step.right_covered_legs],
             oriented_source_particle_legs: step.source_particle_legs,
             step_semantic_digest: step.step_semantic_digest,
@@ -1056,6 +1143,7 @@ mod tests {
     use crate::recurrence::{
         CanonicalMomentumLinearForm, CurrentHelicityIdentity, CurrentSourceBinding,
         DynamicLCColorStateId, ExactRational, MomentumTerm, RecurrenceNodeKind,
+        SourceStateAssignment,
     };
 
     fn digest(value: u8) -> SemanticDigest {
@@ -1067,9 +1155,63 @@ mod tests {
     }
 
     fn current(state: u32, color: u32, support: &[u32]) -> CurrentCoreKey {
+        current_with_physics(
+            RecurrenceNodeKind::Current,
+            state,
+            color,
+            support,
+            RecurrenceStrategy::AllFlowUnion,
+            0,
+            vec![state as i32],
+            0,
+            vec![0],
+            CurrentSourceBinding::None,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn current_with_physics(
+        node_kind: RecurrenceNodeKind,
+        state: u32,
+        color: u32,
+        support: &[u32],
+        strategy: RecurrenceStrategy,
+        spin_state_class: i32,
+        flavour_flow: Vec<i32>,
+        quantum_number_flow_id: u32,
+        coupling_orders: Vec<u32>,
+        source_binding: CurrentSourceBinding,
+        propagator_template_id: Option<u32>,
+    ) -> CurrentCoreKey {
+        let helicity_identity = match strategy {
+            RecurrenceStrategy::TopologyReplay => CurrentHelicityIdentity::topology_replay(
+                spin_state_class,
+                support
+                    .iter()
+                    .copied()
+                    .map(|source_slot| SourceStateAssignment::new(source_slot, 0))
+                    .collect(),
+            )
+            .unwrap(),
+            RecurrenceStrategy::AllFlowUnion => {
+                CurrentHelicityIdentity::all_flow_union(spin_state_class)
+            }
+            RecurrenceStrategy::ContractedColorUnion => {
+                CurrentHelicityIdentity::contracted_color_union(
+                    spin_state_class,
+                    support
+                        .iter()
+                        .copied()
+                        .map(|source_slot| SourceStateAssignment::new(source_slot, 0))
+                        .collect(),
+                )
+                .unwrap()
+            }
+        };
         CurrentCoreKey::new(
             digest(1),
-            RecurrenceNodeKind::Current,
+            node_kind,
             state,
             DynamicLCColorStateId::from_interner(color),
             support.to_vec(),
@@ -1084,14 +1226,46 @@ mod tests {
                     .collect(),
             )
             .unwrap(),
-            CurrentHelicityIdentity::all_flow_union(0),
+            helicity_identity,
+            flavour_flow,
+            quantum_number_flow_id,
+            coupling_orders,
+            source_binding,
+            propagator_template_id,
+        )
+        .unwrap()
+    }
+
+    fn topology_current(state: u32, color: u32, support: &[u32]) -> CurrentCoreKey {
+        current_with_physics(
+            RecurrenceNodeKind::Current,
+            state,
+            color,
+            support,
+            RecurrenceStrategy::TopologyReplay,
+            0,
             vec![state as i32],
             0,
             vec![0],
             CurrentSourceBinding::None,
             None,
         )
-        .unwrap()
+    }
+
+    fn topology_source(source_slot: u32, source_template_id: u32) -> CurrentCoreKey {
+        current_with_physics(
+            RecurrenceNodeKind::Source,
+            1,
+            1,
+            &[source_slot],
+            RecurrenceStrategy::TopologyReplay,
+            0,
+            vec![1],
+            0,
+            vec![0],
+            CurrentSourceBinding::FixedTemplate(source_template_id),
+            None,
+        )
     }
 
     fn application() -> ContactOrbitApplicationWitness {
@@ -1268,7 +1442,7 @@ mod tests {
         let reverse = candidate(
             &reverse_step,
             &destination,
-            [&left, &right],
+            [&right, &left],
             &application,
             13,
         );
@@ -1288,7 +1462,7 @@ mod tests {
     }
 
     #[test]
-    fn same_core_four_scalar_channels_keep_three_physical_pairs() {
+    fn certified_four_identical_scalar_channels_share_one_physical_owner() {
         let left = current(1, 1, &[10]);
         let right = current(1, 1, &[11]);
         let destination = current(2, 2, &[10, 11]);
@@ -1319,7 +1493,7 @@ mod tests {
                 Some(candidate(
                     &reverse_steps[0],
                     &destination,
-                    [&left, &right],
+                    [&right, &left],
                     &application,
                     41,
                 )),
@@ -1339,7 +1513,7 @@ mod tests {
                 Some(candidate(
                     &reverse_steps[1],
                     &destination,
-                    [&left, &right],
+                    [&right, &left],
                     &application,
                     43,
                 )),
@@ -1359,7 +1533,7 @@ mod tests {
                 Some(candidate(
                     &reverse_steps[2],
                     &destination,
-                    [&left, &right],
+                    [&right, &left],
                     &application,
                     45,
                 )),
@@ -1371,11 +1545,11 @@ mod tests {
                 .map(|(_, value)| value.unwrap().group)
                 .collect::<std::collections::BTreeSet<_>>()
                 .len(),
-            3,
+            1,
         );
         assert_eq!(
             selected_contact_orbit_owner_tokens(candidates).unwrap(),
-            vec![0, 2, 4],
+            vec![0],
         );
 
         let single = current(3, 3, &[10]);
@@ -1409,7 +1583,7 @@ mod tests {
                         Some(candidate(
                             &final_reverse[index as usize],
                             &final_destination,
-                            [&single, &pair],
+                            [&pair, &single],
                             &application,
                             90 + index as u8,
                         )),
@@ -1419,7 +1593,72 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(
             selected_contact_orbit_owner_tokens(final_candidates.into_iter()).unwrap(),
-            vec![0, 2, 4],
+            vec![0],
+        );
+    }
+
+    #[test]
+    fn certified_owner_preserves_concrete_destination_across_contact_stages() {
+        let application = application();
+        let partial = partial_step(0, 1, 2, 10);
+        let first_left = topology_current(1, 1, &[10]);
+        let first_right = topology_current(1, 1, &[11]);
+        let first_destination = topology_current(2, 2, &[10, 11]);
+        let second_left = topology_current(1, 1, &[20]);
+        let second_right = topology_current(1, 1, &[21]);
+        let second_destination = topology_current(2, 2, &[20, 21]);
+        let first = candidate(
+            &partial,
+            &first_destination,
+            [&first_left, &first_right],
+            &application,
+            12,
+        );
+        let second = candidate(
+            &partial,
+            &second_destination,
+            [&second_left, &second_right],
+            &application,
+            12,
+        );
+
+        assert_ne!(first.group, second.group);
+        assert_ne!(first.rank, second.rank);
+        assert_eq!(
+            selected_contact_orbit_owner_tokens([(0_u32, Some(first)), (1_u32, Some(second)),])
+                .unwrap(),
+            vec![0, 1],
+        );
+
+        let final_step = final_step(&[0], &[1, 2], 3, 20, [0, 0, 0, 0]);
+        let first_pair = topology_current(3, 3, &[11, 12]);
+        let first_final_destination = topology_current(4, 4, &[10, 11, 12]);
+        let second_pair = topology_current(3, 3, &[21, 22]);
+        let second_final_destination = topology_current(4, 4, &[20, 21, 22]);
+        let first_final = candidate(
+            &final_step,
+            &first_final_destination,
+            [&first_left, &first_pair],
+            &application,
+            22,
+        );
+        let second_final = candidate(
+            &final_step,
+            &second_final_destination,
+            [&second_left, &second_pair],
+            &application,
+            22,
+        );
+
+        assert_ne!(first_final.group, second_final.group);
+        assert_ne!(first_final.rank, second_final.rank);
+        assert_eq!(
+            selected_contact_orbit_owner_tokens([
+                (0_u32, Some(first_final)),
+                (1_u32, Some(second_final)),
+            ])
+            .unwrap(),
+            vec![0, 1],
         );
     }
 
@@ -1443,7 +1682,7 @@ mod tests {
         let partial_reverse = candidate(
             &partial_reverse,
             &partial_destination,
-            [&scalar0_left, &scalar0_right],
+            [&scalar0_right, &scalar0_left],
             &application,
             53,
         );
@@ -1480,18 +1719,20 @@ mod tests {
         let final_reverse = candidate(
             &final_reverse,
             &final_destination,
-            [&pair, &scalar1],
+            [&scalar1, &pair],
             &application,
             57,
         );
         assert_eq!(final_forward.group, final_reverse.group);
+        // The concrete rank orders the forward parent traversal first; owner
+        // choice therefore stays deterministic independently of insertion.
         assert_eq!(
             selected_contact_orbit_owner_tokens([
                 (0_u32, Some(final_forward)),
                 (1_u32, Some(final_reverse)),
             ])
             .unwrap(),
-            vec![1],
+            vec![0],
         );
         assert_eq!(
             selected_contact_orbit_owner_tokens([
@@ -1499,7 +1740,46 @@ mod tests {
                 (0_u32, Some(final_forward)),
             ])
             .unwrap(),
-            vec![1],
+            vec![0],
+        );
+    }
+
+    #[test]
+    fn owner_current_projection_retains_non_traversal_physics() {
+        let destination = current(2, 2, &[10, 11]);
+        let base = ContactOrbitCurrentPhysics::from_current(&destination);
+        let mut changed = base;
+        changed.current_state_template_id = 3;
+        assert_ne!(base, changed);
+        changed = base;
+        changed.dynamic_lc_color_state_id = DynamicLCColorStateId::from_interner(3);
+        assert_ne!(base, changed);
+        changed = base;
+        changed.recurrence_strategy = RecurrenceStrategy::TopologyReplay;
+        assert_ne!(base, changed);
+        changed = base;
+        changed.spin_state_class = 1;
+        assert_ne!(base, changed);
+        let different_flavour = [3];
+        changed = base;
+        changed.flavour_flow = &different_flavour;
+        assert_ne!(base, changed);
+        changed = base;
+        changed.quantum_number_flow_id = 1;
+        assert_ne!(base, changed);
+        let different_orders = [1];
+        changed = base;
+        changed.coupling_orders = &different_orders;
+        assert_ne!(base, changed);
+        changed = base;
+        changed.propagator_template_id = Some(1);
+        assert_ne!(base, changed);
+
+        let source_a = topology_source(10, 7);
+        let source_b = topology_source(20, 8);
+        assert_ne!(
+            ContactOrbitCurrentPhysics::from_current(&source_a),
+            ContactOrbitCurrentPhysics::from_current(&source_b),
         );
     }
 
@@ -1614,6 +1894,19 @@ mod tests {
             )
             .group,
         );
+        let mut parent_equivalence = step.clone();
+        parent_equivalence.physical_leg_equivalence_classes[1] = 1;
+        assert_ne!(
+            base.group,
+            candidate(
+                &parent_equivalence,
+                &destination,
+                [&left, &right],
+                &base_application,
+                12,
+            )
+            .group,
+        );
         let mut evaluator_class = step.clone();
         evaluator_class.evaluator_class = "different-contact-class".into();
         assert_ne!(
@@ -1661,7 +1954,9 @@ mod tests {
         changed_stage.group.stage = ContactOrbitStage::Final;
         assert_ne!(base.group, changed_stage.group);
         let mut changed_output_source = base;
-        changed_output_source.group.output_source_particle_leg = 2;
+        changed_output_source
+            .group
+            .output_source_particle_equivalence_class = Some(2);
         assert_ne!(base.group, changed_output_source.group);
     }
 
@@ -1685,12 +1980,13 @@ mod tests {
         .unwrap_err();
         assert!(error.to_string().contains("conflicting exact rank"));
 
-        let different_group_step = partial_step(0, 2, 1, 11);
+        let mut different_application = application.clone();
+        different_application.output_projection_id = 1;
         let different_group = candidate(
-            &different_group_step,
+            &step,
             &destination,
             [&left, &right],
-            &application,
+            &different_application,
             13,
         );
         let error = selected_contact_orbit_owner_tokens([

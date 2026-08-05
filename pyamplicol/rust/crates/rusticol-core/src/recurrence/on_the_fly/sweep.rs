@@ -1342,6 +1342,22 @@ mod tests {
         color: u32,
         support: &[u32],
     ) -> PendingCurrent {
+        contact_current_with_source_template(
+            node_kind,
+            state,
+            color,
+            support,
+            support.first().copied().unwrap_or_default(),
+        )
+    }
+
+    fn contact_current_with_source_template(
+        node_kind: RecurrenceNodeKind,
+        state: u32,
+        color: u32,
+        support: &[u32],
+        source_template_id: u32,
+    ) -> PendingCurrent {
         let key = CurrentCoreKey::new(
             contact_digest(230),
             node_kind,
@@ -1372,7 +1388,7 @@ mod tests {
             0,
             vec![0],
             if node_kind == RecurrenceNodeKind::Source {
-                CurrentSourceBinding::FixedTemplate(support[0])
+                CurrentSourceBinding::FixedTemplate(source_template_id)
             } else {
                 CurrentSourceBinding::None
             },
@@ -1638,7 +1654,10 @@ mod tests {
             .collect::<Vec<_>>();
         let final_rows = transition_order
             .into_iter()
-            .map(|index| build_row(index, 6, final_steps[index].clone(), [0, 1], 1))
+            .map(|index| {
+                let input_states = if index % 2 == 0 { [0, 1] } else { [1, 0] };
+                build_row(index, 6, final_steps[index].clone(), input_states, 1)
+            })
             .collect::<Vec<_>>();
         let transitions = BTreeMap::from([((0, 0), partial_rows), ((0, 1), final_rows)]);
         let propagators = propagator_by_state(&templates).unwrap();
@@ -1656,7 +1675,15 @@ mod tests {
             .unwrap();
         assert_eq!(color_id, DynamicLCColorStateId::from_interner(0));
         let mut currents = (0_u32..4)
-            .map(|source_slot| contact_current(RecurrenceNodeKind::Source, 0, 0, &[source_slot]))
+            .map(|source_slot| {
+                contact_current_with_source_template(
+                    RecurrenceNodeKind::Source,
+                    0,
+                    0,
+                    &[source_slot],
+                    0,
+                )
+            })
             .collect::<Vec<_>>();
         let mut current_ids = currents
             .iter()
@@ -1674,6 +1701,24 @@ mod tests {
             &mut current_ids,
         )
         .unwrap();
+
+        assert!(
+            currents[4..]
+                .iter()
+                .all(|current| current.contributions.len() == 1),
+            "every certified pair and triple destination must retain one owner",
+        );
+        assert!(
+            currents[4..].iter().all(|current| {
+                current.contributions.keys().all(|contribution| {
+                    contribution.parent_current_ids.iter().all(|parent_id| {
+                        let parent = &currents[*parent_id as usize];
+                        parent.source_factor.is_some() || !parent.contributions.is_empty()
+                    })
+                })
+            }),
+            "a selected contact transition must not reference an empty parent",
+        );
 
         let staged = currents[4..]
             .iter()
@@ -1783,7 +1828,8 @@ mod tests {
             (0_u32..6).collect::<Vec<_>>()
         };
         for transition in order {
-            add_contact_contribution(&mut currents, 2, transition, [0, 1]);
+            let parent_ids = if transition % 2 == 0 { [0, 1] } else { [1, 0] };
+            add_contact_contribution(&mut currents, 2, transition, parent_ids);
         }
         commit_contact_plan(&mut currents, &contacts, 2).unwrap();
         (
@@ -1814,11 +1860,11 @@ mod tests {
     }
 
     #[test]
-    fn contact_0000_partial_and_final_fan_in_keep_three_owners_deterministically() {
+    fn contact_0000_partial_and_final_fan_in_keep_one_owner_deterministically() {
         for final_stage in [false, true] {
             let forward = contact_0000_case(final_stage, false);
             let reverse = contact_0000_case(final_stage, true);
-            assert_eq!(forward, (vec![0, 2, 4], (3, 3)));
+            assert_eq!(forward, (vec![0], (3, 1)));
             assert_eq!(reverse, forward);
         }
     }
@@ -1828,25 +1874,32 @@ mod tests {
         let forward = production_contact_barrier_case(false);
         let reverse = production_contact_barrier_case(true);
         assert_eq!(reverse, forward);
+        let (staged, counts, retained_partial_is_consumed) = forward;
         assert_eq!(
-            forward,
-            (
-                vec![
-                    (vec![0, 1], 1, vec![0, 2, 4]),
-                    (vec![0, 2], 1, vec![0, 2, 4]),
-                    (vec![0, 3], 1, vec![0, 2, 4]),
-                    (vec![1, 2], 1, vec![0, 2, 4]),
-                    (vec![1, 3], 1, vec![0, 2, 4]),
-                    (vec![2, 3], 1, vec![0, 2, 4]),
-                    (vec![0, 1, 2], 2, vec![6, 8, 10, 6, 8, 10, 6, 8, 10]),
-                    (vec![0, 1, 3], 2, vec![6, 8, 10, 6, 8, 10, 6, 8, 10]),
-                    (vec![0, 2, 3], 2, vec![6, 8, 10, 6, 8, 10, 6, 8, 10]),
-                    (vec![1, 2, 3], 2, vec![6, 8, 10, 6, 8, 10, 6, 8, 10]),
-                ],
-                (14, 54),
-                true,
-            )
+            staged
+                .iter()
+                .map(|(support, stage, _)| (support.clone(), *stage))
+                .collect::<Vec<_>>(),
+            vec![
+                (vec![0, 1], 1),
+                (vec![0, 2], 1),
+                (vec![0, 3], 1),
+                (vec![1, 2], 1),
+                (vec![1, 3], 1),
+                (vec![2, 3], 1),
+                (vec![0, 1, 2], 2),
+                (vec![0, 1, 3], 2),
+                (vec![0, 2, 3], 2),
+                (vec![1, 2, 3], 2),
+            ],
         );
+        assert!(
+            staged
+                .iter()
+                .all(|(_, _, transition_ids)| transition_ids.len() == 1)
+        );
+        assert_eq!(counts, (14, 10));
+        assert!(retained_partial_is_consumed);
     }
 
     #[test]
@@ -1900,7 +1953,7 @@ mod tests {
             ),
         ]);
         add_contact_contribution(&mut final_currents, 2, 20, [0, 1]);
-        add_contact_contribution(&mut final_currents, 2, 21, [0, 1]);
+        add_contact_contribution(&mut final_currents, 2, 21, [1, 0]);
         commit_contact_plan(&mut final_currents, &final_contacts, 2).unwrap();
         assert_eq!(contact_transition_ids(&final_currents[2]), [21]);
         assert_eq!(pending_contact_counts(&final_currents), (3, 1));
