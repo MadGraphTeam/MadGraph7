@@ -16,6 +16,9 @@ use super::construct::{
     merged_momentum, multiply_factors, output_factor_from_binding, quantum_parent_spin_matches,
     validate_crossed_source_state,
 };
+use super::contact_orbit_owner::{
+    PreparedContactOrbitTransition, prepare_contact_orbit_transition,
+};
 use super::direct_backend::{DirectExecutorHandle, clear_direct_executor_error_detail};
 use super::direct_plan::{
     DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION, DirectClosureRow, DirectContributionRow,

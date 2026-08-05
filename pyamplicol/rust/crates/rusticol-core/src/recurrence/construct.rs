@@ -9,6 +9,9 @@ use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
 
+use super::contact_orbit_owner::{
+    PreparedContactOrbitTransition, prepare_contact_orbit_transition,
+};
 use super::layout::RuntimeSourceVariantBinding;
 use super::process::{
     FermionPairingRuleRow, OwnedRecurrenceProcessInput, ProcessLCSectorKind,
@@ -1479,6 +1482,7 @@ struct PreparedTransition {
     output_factor_source: u8,
     result_flavour: PreparedFlavourFlow,
     quantum_semantic_digest: SemanticDigest,
+    contact_orbit: Option<PreparedContactOrbitTransition>,
     witnesses: Box<[PreparedTransitionWitness]>,
 }
 
@@ -1567,8 +1571,20 @@ impl PreparedTransition {
         let result_flavour = PreparedFlavourFlow::new(quantum, catalog)?;
         let quantum_semantic_digest =
             catalog.digest(quantum.semantic_digest_id, "quantum-flow semantic")?;
-        let witnesses = catalog
-            .witness_rows(row.color_contraction_template_id)?
+        let witness_rows = catalog.witness_rows(row.color_contraction_template_id)?;
+        let contact_orbit = prepare_contact_orbit_transition(
+            template,
+            catalog,
+            row,
+            quantum_semantic_digest,
+            &local_coupling_orders,
+            binding_coupling,
+            transition_exact_factor,
+            contraction_exact_factor,
+            input_exchange_factor,
+            witness_rows,
+        )?;
+        let witnesses = witness_rows
             .iter()
             .copied()
             .map(|witness_row| {
@@ -1596,6 +1612,7 @@ impl PreparedTransition {
             output_factor_source: row.output_factor_source,
             result_flavour,
             quantum_semantic_digest,
+            contact_orbit,
             witnesses,
         })
     }
@@ -10770,6 +10787,27 @@ mod tests {
             u32_sequence_ranges,
             u32_sequence_values,
         }
+    }
+
+    #[test]
+    fn established_prepared_transition_binds_only_certified_contact_metadata() {
+        use crate::recurrence::contact_orbit_owner::{
+            ContactOrbitTestBinding, contact_orbit_test_template,
+        };
+
+        let none = contact_orbit_test_template(ContactOrbitTestBinding::None)
+            .validate()
+            .unwrap();
+        let none_catalog = TemplateCatalog::new(none.input()).unwrap();
+        let none_prepared = PreparedTransitionCatalog::new(none.input(), &none_catalog).unwrap();
+        assert!(none_prepared.rows(0, 0)[0].contact_orbit.is_none());
+
+        let one = contact_orbit_test_template(ContactOrbitTestBinding::One)
+            .validate()
+            .unwrap();
+        let one_catalog = TemplateCatalog::new(one.input()).unwrap();
+        let one_prepared = PreparedTransitionCatalog::new(one.input(), &one_catalog).unwrap();
+        assert!(one_prepared.rows(0, 0)[0].contact_orbit.is_some());
     }
 
     #[test]

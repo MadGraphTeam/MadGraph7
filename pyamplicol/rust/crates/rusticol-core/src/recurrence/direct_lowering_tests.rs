@@ -123,6 +123,8 @@ pub(crate) fn validated_template() -> ValidatedRecurrenceTemplateInput {
         "a-color-transition",
         "b-color-close",
         "component",
+        "compiler-certified-contact-orbit",
+        "constant-scalar-literal-singlet-self-conjugate-boson",
         "constant-result",
         "crossing",
         "d-closure-a-resolver",
@@ -165,6 +167,13 @@ pub(crate) fn validated_template() -> ValidatedRecurrenceTemplateInput {
     let expression_propagator = vec![19];
     let expression_closure_a = vec![10];
     let expression_closure_b = vec![11];
+    let contact_particles = vec![sid("scalar"); 4];
+    let contact_equivalence = vec![0, 0, 0, 0];
+    let contact_right_leg = vec![1];
+    let contact_missing_step = vec![2];
+    let contact_first_digest = vec![26];
+    let contact_two_digests = vec![26, 27];
+    let contact_second_digest = vec![27];
     let sequences = vec![
         empty.clone(),
         state.clone(),
@@ -184,12 +193,19 @@ pub(crate) fn validated_template() -> ValidatedRecurrenceTemplateInput {
         expression_propagator.clone(),
         expression_closure_a.clone(),
         expression_closure_b.clone(),
+        contact_particles,
+        contact_equivalence,
+        contact_right_leg,
+        contact_missing_step,
+        contact_first_digest,
+        contact_two_digests,
+        contact_second_digest,
     ];
     let (u32_sequence_ranges, u32_sequence_values, sequence_ids) =
         indexed_u32_sequences(&sequences);
     let seq = |value: &Vec<u32>| *sequence_ids.get(value).unwrap();
     let (i32_sequence_ranges, i32_sequence_values) =
-        indexed_i32_sequences(&[vec![0, 0], vec![1, 1]]);
+        indexed_i32_sequences(&[vec![0, 0], vec![1, 1], vec![0, 1, -1], vec![1, 0, -1]]);
     let i32_seq = |value: &[i32]| {
         i32_sequence_ranges
             .iter()

@@ -802,6 +802,155 @@ where
 }
 
 #[cfg(test)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum ContactOrbitTestBinding {
+    None,
+    One,
+    Two,
+    MissingStep,
+    DigestMismatch,
+}
+
+#[cfg(test)]
+pub(super) fn contact_orbit_test_template(
+    binding: ContactOrbitTestBinding,
+) -> OwnedRecurrenceTemplateInput {
+    use super::{
+        template::{ContactOrbitCertificateRow, ContactOrbitStepRow, DigestCatalogRow},
+        validated_template_fixture,
+    };
+
+    fn string_id(input: &OwnedRecurrenceTemplateInput, value: &str) -> u32 {
+        input
+            .string_ranges
+            .iter()
+            .position(|range| {
+                let range = range
+                    .as_usize_range(input.string_bytes.len(), "test string")
+                    .unwrap();
+                input.string_bytes[range] == *value.as_bytes()
+            })
+            .unwrap() as u32
+    }
+
+    fn u32_sequence_id(input: &OwnedRecurrenceTemplateInput, values: &[u32]) -> u32 {
+        input
+            .u32_sequence_ranges
+            .iter()
+            .position(|row| {
+                let range = row
+                    .range
+                    .as_usize_range(input.u32_sequence_values.len(), "test u32 sequence")
+                    .unwrap();
+                &input.u32_sequence_values[range] == values
+            })
+            .unwrap() as u32
+    }
+
+    fn i32_sequence_id(input: &OwnedRecurrenceTemplateInput, values: &[i32]) -> u32 {
+        input
+            .i32_sequence_ranges
+            .iter()
+            .position(|row| {
+                let range = row
+                    .range
+                    .as_usize_range(input.i32_sequence_values.len(), "test i32 sequence")
+                    .unwrap();
+                &input.i32_sequence_values[range] == values
+            })
+            .unwrap() as u32
+    }
+
+    fn append_digest(input: &mut OwnedRecurrenceTemplateInput, byte: u8) -> u32 {
+        let id = input.digest_catalog.len() as u32;
+        input.digest_catalog.push(DigestCatalogRow {
+            id,
+            value: [byte; 32],
+        });
+        id
+    }
+
+    let mut input = validated_template_fixture().into_input();
+    if binding == ContactOrbitTestBinding::None {
+        return input;
+    }
+
+    let algorithm = string_id(&input, "compiler-certified-contact-orbit");
+    let evaluator_class = string_id(
+        &input,
+        "constant-scalar-literal-singlet-self-conjugate-boson",
+    );
+    let certificate_template = string_id(&input, "any");
+    let first_step_template = string_id(&input, "basis");
+    let second_step_template = string_id(&input, "component");
+    let particle = string_id(&input, "scalar");
+    let vertex = particle;
+    let particles = u32_sequence_id(&input, &[particle, particle, particle, particle]);
+    let equivalence = u32_sequence_id(&input, &[0, 0, 0, 0]);
+    let left_first = u32_sequence_id(&input, &[0]);
+    let right_first = u32_sequence_id(&input, &[1]);
+    let left_second = right_first;
+    let right_second = left_first;
+    let source_first = i32_sequence_id(&input, &[0, 1, -1]);
+    let source_second = i32_sequence_id(&input, &[1, 0, -1]);
+    let certificate_digest = append_digest(&mut input, 26);
+    let first_step_digest = append_digest(&mut input, 27);
+    let second_step_digest = append_digest(&mut input, 28);
+    input.contact_orbit_certificates = vec![ContactOrbitCertificateRow {
+        id: 0,
+        template_string_id: certificate_template,
+        algorithm_string_id: algorithm,
+        algorithm_version: 1,
+        term_id: 0,
+        vertex_string_id: vertex,
+        particle_string_sequence_id: particles,
+        evaluator_class_string_id: evaluator_class,
+        physical_leg_equivalence_sequence_id: equivalence,
+        reconstruction_factor_id: 0,
+        semantic_digest_id: certificate_digest,
+    }];
+    input.contact_orbit_steps = vec![
+        ContactOrbitStepRow {
+            id: 0,
+            template_string_id: first_step_template,
+            certificate_id: 0,
+            stage: ContactOrbitStage::Partial as u8,
+            result_leg: 2,
+            left_covered_leg_sequence_id: left_first,
+            right_covered_leg_sequence_id: right_first,
+            source_particle_leg_sequence_id: source_first,
+            reconstruction_factor_id: 0,
+            semantic_digest_id: first_step_digest,
+        },
+        ContactOrbitStepRow {
+            id: 1,
+            template_string_id: second_step_template,
+            certificate_id: 0,
+            stage: ContactOrbitStage::Partial as u8,
+            result_leg: 2,
+            left_covered_leg_sequence_id: left_second,
+            right_covered_leg_sequence_id: right_second,
+            source_particle_leg_sequence_id: source_second,
+            reconstruction_factor_id: 0,
+            semantic_digest_id: second_step_digest,
+        },
+    ];
+    input.catalog_header[0].contact_orbit_certificate_count = 1;
+    input.catalog_header[0].contact_orbit_step_count = 2;
+    let (step_ids, digest_ids) = match binding {
+        ContactOrbitTestBinding::None => unreachable!(),
+        ContactOrbitTestBinding::One => (vec![0], vec![first_step_digest]),
+        ContactOrbitTestBinding::Two => (vec![0, 1], vec![first_step_digest, second_step_digest]),
+        ContactOrbitTestBinding::MissingStep => (vec![2], vec![first_step_digest]),
+        ContactOrbitTestBinding::DigestMismatch => (vec![0], vec![second_step_digest]),
+    };
+    input.transitions[0].contact_orbit_step_sequence_id = u32_sequence_id(&input, &step_ids);
+    input.transitions[0].contact_orbit_step_semantic_digest_sequence_id =
+        u32_sequence_id(&input, &digest_ids);
+    input
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::recurrence::{
@@ -870,6 +1019,71 @@ mod tests {
             evaluator_runtime_template: None,
             output_projection_id: 8,
         }
+    }
+
+    fn prepare_test_contact_orbit(
+        input: &OwnedRecurrenceTemplateInput,
+    ) -> RusticolResult<Option<PreparedContactOrbitTransition>> {
+        let catalog = TemplateCatalog::new(input)?;
+        let transition = input.transitions[0];
+        let quantum = input.quantum_flows[transition.quantum_flow_template_id as usize];
+        let contraction =
+            input.color_contractions[transition.color_contraction_template_id as usize];
+        prepare_contact_orbit_transition(
+            input,
+            &catalog,
+            transition,
+            catalog.digest(quantum.semantic_digest_id, "test quantum semantic")?,
+            &catalog.coupling_orders(transition.coupling_order_set_id)?,
+            catalog.factor(
+                transition.binding_coupling_factor_id,
+                "test binding coupling",
+            )?,
+            catalog.factor(transition.exact_factor_id, "test transition exact")?,
+            catalog.factor(
+                contraction.exact_coefficient_factor_id,
+                "test contraction exact",
+            )?,
+            None,
+            catalog.witness_rows(transition.color_contraction_template_id)?,
+        )
+    }
+
+    #[test]
+    fn strict_prepared_contact_orbit_decode_is_zero_or_one_and_fail_closed() {
+        let none = contact_orbit_test_template(ContactOrbitTestBinding::None);
+        assert!(prepare_test_contact_orbit(&none).unwrap().is_none());
+
+        let one = contact_orbit_test_template(ContactOrbitTestBinding::One)
+            .validate()
+            .unwrap();
+        assert!(prepare_test_contact_orbit(one.input()).unwrap().is_some());
+
+        let two = contact_orbit_test_template(ContactOrbitTestBinding::Two)
+            .validate()
+            .unwrap();
+        assert!(
+            prepare_test_contact_orbit(two.input())
+                .unwrap_err()
+                .to_string()
+                .contains("exactly one contact-orbit step")
+        );
+
+        let missing = contact_orbit_test_template(ContactOrbitTestBinding::MissingStep);
+        assert!(
+            prepare_test_contact_orbit(&missing)
+                .unwrap_err()
+                .to_string()
+                .contains("contact-orbit step is absent")
+        );
+
+        let mismatch = contact_orbit_test_template(ContactOrbitTestBinding::DigestMismatch);
+        assert!(
+            prepare_test_contact_orbit(&mismatch)
+                .unwrap_err()
+                .to_string()
+                .contains("digest binding is stale")
+        );
     }
 
     fn partial_step(left: u32, right: u32, result: u32, digest_byte: u8) -> ContactOrbitStepProof {

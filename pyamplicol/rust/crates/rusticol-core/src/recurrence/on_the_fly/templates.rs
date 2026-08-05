@@ -91,6 +91,7 @@ pub(super) struct PreparedTransition {
     pub(super) quantum_semantic_digest: SemanticDigest,
     pub(super) transition_semantic_digest: SemanticDigest,
     pub(super) evaluator_binding_digest: SemanticDigest,
+    pub(super) contact_orbit: Option<PreparedContactOrbitTransition>,
     pub(super) witnesses: Box<[PreparedWitness]>,
 }
 
@@ -139,13 +140,12 @@ impl PreparedTransition {
             row.binding_coupling_factor_id,
             "transition binding coupling",
         )?;
-        let base_factor = multiply_factors(&[
-            catalog.factor(row.exact_factor_id, "transition exact")?,
-            catalog.factor(
-                contraction.exact_coefficient_factor_id,
-                "transition color contraction",
-            )?,
-        ])?;
+        let transition_exact_factor = catalog.factor(row.exact_factor_id, "transition exact")?;
+        let contraction_exact_factor = catalog.factor(
+            contraction.exact_coefficient_factor_id,
+            "transition color contraction",
+        )?;
+        let base_factor = multiply_factors(&[transition_exact_factor, contraction_exact_factor])?;
         let binding = input
             .evaluator_bindings
             .get(row.evaluator_binding_id as usize)
@@ -156,8 +156,25 @@ impl PreparedTransition {
         {
             return Err(invalid("transition evaluator binding has the wrong role"));
         }
-        let witnesses = catalog
-            .witness_rows(row.color_contraction_template_id)?
+        let local_orders = catalog
+            .coupling_orders(row.coupling_order_set_id)?
+            .into_boxed_slice();
+        let quantum_semantic_digest =
+            catalog.digest(quantum.semantic_digest_id, "quantum semantic")?;
+        let witness_rows = catalog.witness_rows(row.color_contraction_template_id)?;
+        let contact_orbit = prepare_contact_orbit_transition(
+            input,
+            catalog,
+            row,
+            quantum_semantic_digest,
+            &local_orders,
+            binding_coupling,
+            transition_exact_factor,
+            contraction_exact_factor,
+            input_exchange_factor,
+            witness_rows,
+        )?;
+        let witnesses = witness_rows
             .iter()
             .copied()
             .map(|witness_row| {
@@ -172,9 +189,7 @@ impl PreparedTransition {
             input_states,
             quantum,
             input_spins,
-            local_orders: catalog
-                .coupling_orders(row.coupling_order_set_id)?
-                .into_boxed_slice(),
+            local_orders,
             canonical_input_order,
             input_exchange_factor,
             base_factor,
@@ -182,12 +197,12 @@ impl PreparedTransition {
             binding_coupling,
             output_factor_source: row.output_factor_source,
             flavour: PreparedFlavourFlow::new(quantum, catalog)?,
-            quantum_semantic_digest: catalog
-                .digest(quantum.semantic_digest_id, "quantum semantic")?,
+            quantum_semantic_digest,
             transition_semantic_digest: catalog
                 .digest(row.semantic_digest_id, "transition semantic")?,
             evaluator_binding_digest: catalog
                 .digest(binding.semantic_digest_id, "transition evaluator binding")?,
+            contact_orbit,
             witnesses: witnesses.into_boxed_slice(),
         })
     }
@@ -482,4 +497,45 @@ pub(super) fn prepared_closures(
             .push(prepared);
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::recurrence::contact_orbit_owner::{
+        ContactOrbitTestBinding, contact_orbit_test_template,
+    };
+
+    #[test]
+    fn on_the_fly_prepared_transition_binds_only_certified_contact_metadata() {
+        let none = contact_orbit_test_template(ContactOrbitTestBinding::None)
+            .validate()
+            .unwrap();
+        let none_catalog = TemplateCatalog::new(none.input()).unwrap();
+        let none_prepared = prepared_transitions(&none, &none_catalog).unwrap();
+        assert!(
+            none_prepared
+                .values()
+                .flatten()
+                .next()
+                .unwrap()
+                .contact_orbit
+                .is_none()
+        );
+
+        let one = contact_orbit_test_template(ContactOrbitTestBinding::One)
+            .validate()
+            .unwrap();
+        let one_catalog = TemplateCatalog::new(one.input()).unwrap();
+        let one_prepared = prepared_transitions(&one, &one_catalog).unwrap();
+        assert!(
+            one_prepared
+                .values()
+                .flatten()
+                .next()
+                .unwrap()
+                .contact_orbit
+                .is_some()
+        );
+    }
 }
