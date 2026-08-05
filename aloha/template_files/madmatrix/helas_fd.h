@@ -569,7 +569,7 @@
         w[1] = cxmake( -vmass/nk * n[1], zero );
         w[2] = cxmake( -vmass/nk * n[2], zero );
         w[3] = cxmake( -vmass/nk * n[3], zero );
-        w[4] = static_cast<fptype>(nsv)*cI;
+        w[4] = -static_cast<fptype>(nsv)*cI; // as in fortran vxxxxx (vc%W(5) = -nsv*ci) and in the SIMD branch below
       }
 
 #else
