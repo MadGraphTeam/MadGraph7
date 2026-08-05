@@ -414,6 +414,46 @@ turns positive from six gluons on.
 and seven, in both backends. With the flag off, `matrix.f` and `CPPProcess.cc`
 are byte-identical to before any of this.
 
+## The diagram order — measured, and worth a lot
+
+`reuse_outdated_wavefunctions` is a linear scan allocator over lifetimes taken
+in **emission order**, so `NWAVEFUNCS` depends on the order the diagrams are
+written in. (The wavefunction *set* does not — that is content addressed,
+`wavefunctions[wavefunctions.index(new_wf)]` — but the number of slots very
+much does.) The shipped expansion emits every seed first and then the
+unrollings, which is the worst case for it: a quartic current is made early
+and its sum is not consumed until much later.
+
+Four orders were built and run. A sum can only be formed when its quartic
+current is emitted before the target amplitude, which is what makes this a
+trade rather than a free win:
+
+| `NWAVEFUNCS` / sums | off | seeds first (shipped) | by quartic count | seed then its own unrollings | last discovery |
+|---|---|---|---|---|---|
+| `g g > g g g` | 12 | 19 / 7 | 19 / 7 | 11 / 3 | **15 / 7** |
+| `g g > g g g g` | 51 | 66 / 30 | 64 / 30 | 33 / **0** | **27 / 30** |
+| `g g > 5 g` | 268 | 290 / 60 | 314 / 60 | 245 / 60 | **219 / 60** |
+
+Emitting a seed followed by its own unrollings gives the locality but loses
+the sums: the fully cubic target is usually claimed by an earlier seed, so the
+quartic current arrives after it. **Placing each diagram at its *last*
+discovery instead of its first fixes that** — the target then sits after every
+seed which can reach it — and takes both: all the sums, and a slot count
+*below* the flag off baseline (27 against 51 at six gluons, 219 against 268 at
+seven).
+
+It is not shipped, because it makes `g g > g g g g` come out **wrong in
+madmatrix** (2.43e-04 against 1.59e-04) while Fortran stays exact at N=2..5.
+The generated code has no read before write, and a matrix element built
+directly has no duplicate wavefunction listings — those appear only through
+the madmatrix exporter path, which is also what forced the `allocated` guard
+in step 8. So the reordering is exposing something latent on that side rather
+than being wrong itself, but that has to be understood before it can go in.
+
+Worth doing: at six gluons it would take the wavefunction store from 6600 B to
+2700 B, *under* the 5100 B of the unoptimised code, with every current sum
+kept.
+
 ## Where to go next
 
 **Give madmatrix the amplitude sums too.** It is the only backend without
