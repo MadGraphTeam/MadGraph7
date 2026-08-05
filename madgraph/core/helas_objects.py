@@ -6129,20 +6129,29 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         return col_amp_list
 
 
-    def get_color_amplitudes(self):
+    def get_color_amplitudes(self, merge_quartic_amplitudes=True):
         """Return a list of (coefficient, amplitude number) lists,
         corresponding to the JAMPs for this matrix element. The
         coefficients are given in the format (fermion factor, color
-        coeff (frac), imaginary, Nc power)."""
+        coeff (frac), imaginary, Nc power).
+
+        merge_quartic_amplitudes says whether the caller also writes out the
+        sums of get_quartic_amplitude_merges. Only the Fortran writer does.
+        A backend which does not has to leave those amplitudes in the JAMPs,
+        where their own colour coefficients give the identical result -- the
+        two carry the same colour factor, which is the whole premise."""
 
         col_amps = self.generate_color_amplitudes(self['color_basis'],
                                                   self['diagrams'])
-        merges = self.get_quartic_amplitude_merges()
-        if not merges:
+        # never computed at all: their current was summed instead
+        dropped = set(self.get_quartic_current_sums()[2])
+        if merge_quartic_amplitudes:
+            # summed into their partner by GET_AMP, so they must not enter the
+            # JAMPs a second time
+            dropped |= set(self.get_quartic_amplitude_merges())
+        if not dropped:
             return col_amps
-        # These have been summed into their partner by GET_AMP already, so
-        # they must not enter the JAMPs a second time.
-        return [[entry for entry in col_amp if entry[1] not in merges]
+        return [[entry for entry in col_amp if entry[1] not in dropped]
                 for col_amp in col_amps]
 
     def get_quartic_amplitude_merges(self):

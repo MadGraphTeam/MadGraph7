@@ -1727,7 +1727,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['all_helicities'] = replace_dict['all_helicities'] .replace('helicities', 'tHel')
         replace_dict['all_flavors'] = self.get_flavor_matrix(self.matrix_elements[0])
         replace_dict['all_flavors'] = replace_dict['all_flavors'].replace('flavors', 'tFlavors')
-        color_amplitudes = [me.get_color_amplitudes() for me in self.matrix_elements] # as in OneProcessExporterCPP.get_process_function_definitions
+        color_amplitudes = [me.get_color_amplitudes(merge_quartic_amplitudes=False)
+                            for me in self.matrix_elements] # as in OneProcessExporterCPP.get_process_function_definitions
         replace_dict['ncolor'] = len(color_amplitudes[0])
         # broken_symmetry_factor function: use the shared decay-aware symmetry
         # data (same as the Fortran / standalone_cpp exporters) instead of the
@@ -2531,6 +2532,23 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
             # Emit the opening of an `if` guard for a non-full grouped mask.
             return 'if( ( 0x%xULL >> iflavor ) & 0x1ULL ) {' % group_mask
 
+        # OM - the four gluon optimisation (MG_MERGE_QUARTIC). A quartic
+        # current and the cubic current carrying the same colour factor are
+        # summed into a third one, which the amplitude reads instead, so that
+        # one call gets both contributions and the quartic amplitude is never
+        # computed. The sum is written as soon as the later of the two
+        # currents is made. Unlike Fortran there is no AMP array here, so the
+        # amplitudes which cannot be reached this way are simply left alone:
+        # their own colour coefficients put them in the right JAMPs, which is
+        # why get_color_amplitudes is asked not to drop them.
+        sums, sum_uses, sum_folded = matrix_element.get_quartic_current_sums()
+        first_sum = matrix_element.get_number_of_wavefunctions() - len(sums)
+        sum_written = set()
+        sum_after = {}
+        for isum, (cubic, quartic, coeff) in enumerate(sums):
+            sum_after.setdefault(max(cubic.get('number'),
+                                     quartic.get('number')), []).append(isum)
+
         id_amp = 0
         for diagram in matrix_element.get('diagrams'):
             ###print('DIAGRAM %3d: #wavefunctions=%3d, #diagrams=%3d' %
@@ -2547,13 +2565,39 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                     res.append('}')
                 else:
                     res.append(call)
+                for isum in sum_after.get(wf.get('number'), []):
+                    # a wavefunction number can be listed by more than one
+                    # diagram here, and the sum must only be written once
+                    if isum in sum_written:
+                        continue
+                    sum_written.add(isum)
+                    cubic, quartic, coeff = sums[isum]
+                    res.append('%s<W_ACCESS>( aloha_obj[%d], aloha_obj[%d],'
+                               ' aloha_obj[%d] );'
+                               % ('SUMW_1' if coeff == 1 else 'SUBW_1',
+                                  cubic.get('me_id') - 1,
+                                  quartic.get('me_id') - 1,
+                                  first_sum + isum))
             if len(diagram.get('wavefunctions')) == 0 : res.append('// (none)') # AV
             res.append('\n      // Amplitude(s) for diagram number %d' % diagram.get('number'))
             for amplitude in diagram.get('amplitudes'):
                 id_amp +=1
+                if amplitude.get('number') in sum_folded:
+                    continue    # summed into another amplitude as a current
                 namp = amplitude.get('number')
                 amplitude.set('number', 1)
+                # OM - read the current sum in place of the cubic current it
+                # was built from, the same way the Fortran writer does
+                sum_original = []
+                for mother in amplitude.get('mothers'):
+                    isum = sum_uses.get(namp, {}).get(mother.get('number'))
+                    if isum is None:
+                        continue
+                    sum_original.append((mother, mother.get('me_id')))
+                    mother.set('me_id', first_sum + 1 + isum)
                 amp_block = [ self.get_amplitude_call(amplitude) ] # AV new: avoid format_call
+                for mother, me_id in sum_original:
+                    mother.set('me_id', me_id)
                 if id_amp in diag_to_config:
                     ###res.append("if( channelId == %i ) numerators_sv += cxabs2( amp_sv[0] );" % diag_to_config[id_amp]) # BUG #472
                     ###res.append("if( channelId == %i ) numerators_sv += cxabs2( amp_sv[0] );" % id_amp) # wrong fix for BUG #472

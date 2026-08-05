@@ -243,12 +243,18 @@ class HelasCallWriter(base_objects.PhysicsObject):
                              []).append(i)
 
         res = []
+        written = set()
         for diagram in matrix_element.get('diagrams'):
 
 
             for wf in diagram.get('wavefunctions'):
                 res.append(self.get_wavefunction_call(wf))
                 for i in after.get(wf.get('number'), []):
+                    # a wavefunction number can be listed by more than one
+                    # diagram, and the sum must only be written once
+                    if i in written:
+                        continue
+                    written.add(i)
                     cubic, quartic, coeff = sums[i]
                     res.extend(self.get_current_sum_lines(
                         first_sum + 1 + i, cubic, quartic, coeff))
