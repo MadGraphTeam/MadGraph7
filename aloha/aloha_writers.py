@@ -754,6 +754,19 @@ class ALOHAWriterForFortran(WriteALOHA):
 
             return out.getvalue()    
         
+        # a merged multiple coupling routine has one matrix coupling per Lorentz
+        # structure (MCOUP1, MCOUP2, ...). They all belong to the same vertex
+        # (same particles) so they share the flavour pairing, but a given
+        # flavour can be missing from some of them (vanishing coupling). The
+        # first coupling defines the flavour mapping of the routine, the others
+        # only contribute when they agree with it.
+        couplings = [name for ftype, name in self.declaration
+                                                       if name.startswith('COUP')]
+        couplings.sort(key=lambda x: int(x[4:]) if x[4:] else 0)
+        if not couplings:
+            couplings = ['COUP']
+        main = couplings[0]
+
         if self.outgoing == 0  or self.particles[self.outgoing-1] not in ['F']:
             if not self.outgoing:
                 fail = "VERTEX = (0d0,0d0)"
@@ -763,32 +776,41 @@ class ALOHAWriterForFortran(WriteALOHA):
             out.write('   flv_index1 = F1 %flv_index\n')
             out.write('   flv_index2 = F2 %flv_index\n')
             out.write('   if(flv_index1.eq.0.or.flv_index2.eq.0)then  \n %s\n  return\nendif\n' % fail)
-            out.write('   if(MCOUP %% PARTNER(flv_index1).ne.flv_index2)then \n %s\n return\n endif\n' %fail)
-        else:
-            incoming = [i+1 for i in range(len(self.particles)) if i+1 != self.outgoing and self.particles[self.outgoing-1] == 'F'][0]
-            if incoming %2 == 1:
-                outgoing = self.outgoing
-                out.write('   flv_index%i = F%i %%flv_index\n' % (incoming, incoming))
-                out.write('   if(flv_index%i.eq.0)then\n' %(incoming))
-                out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
-                out.write('   flv_index2 = MCOUP %% PARTNER(FLV_INDEX%i)\n' %(incoming))
-                out.write('   if(flv_index2.eq.0)then\n')
-                out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
-                out.write('   F%i %% FLV_INDEX = FLV_INDEX2\n' % outgoing)
-            else:
-                outgoing = self.outgoing
-                out.write('   flv_index%i = F%i %%flv_index\n' % (incoming,incoming))
-                out.write('   if(flv_index%i.eq.0)then\n' %(incoming))
-                out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
-                out.write('   flv_index1 = MCOUP %% PARTNER2(FLV_INDEX%i)\n' %(incoming))
-                out.write('   if(flv_index1.eq.0)then\n')
-                out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
-                out.write('   F%i %% FLV_INDEX = FLV_INDEX1\n' % outgoing)                
- 
-        for ftype, name in self.declaration:
-            if name.startswith('COUP'):
+            out.write('   if(%s)then \n %s\n return\n endif\n' %
+                      ('.and.'.join('M%s %% PARTNER(flv_index1).ne.flv_index2' % name
+                                                        for name in couplings), fail))
+            # the flavour of the outgoing particle is fixed by the incoming ones
+            for name in couplings:
+                if name == main:
+                    out.write(' %s = M%s %% VAL(flv_index1) %% p \n' % (name, name))
+                else:
+                    out.write(' %s = (0d0,0d0)\n' % name)
+                    out.write(' if(M%s %% PARTNER(flv_index1).eq.flv_index2) %s = M%s %% VAL(flv_index1) %% p \n'
+                              % (name, name, name))
+            return out.getvalue()
+
+        incoming = [i+1 for i in range(len(self.particles)) if i+1 != self.outgoing and self.particles[self.outgoing-1] == 'F'][0]
+        outgoing = self.outgoing
+        # PARTNER maps the odd fermion onto the even one, PARTNER2 the opposite
+        partner = 'PARTNER' if incoming % 2 == 1 else 'PARTNER2'
+        # index of the fermion built by this routine
+        out_index = 2 if incoming % 2 == 1 else 1
+        out.write('   flv_index%i = F%i %%flv_index\n' % (incoming, incoming))
+        out.write('   if(flv_index%i.eq.0)then\n' %(incoming))
+        out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
+        out.write('   flv_index%i = M%s %% %s(FLV_INDEX%i)\n' % (out_index, main, partner, incoming))
+        out.write('   if(flv_index%i.eq.0)then\n' % out_index)
+        out.write('        F%i %% W(:) = (0d0,0d0)\n F%i %% flv_index = 0 \n return\n endif\n' %(outgoing, outgoing))
+        out.write('   F%i %% FLV_INDEX = FLV_INDEX%i\n' % (outgoing, out_index))
+
+        for name in couplings:
+            if name == main:
                 out.write(' %s = M%s %% VAL(flv_index1) %% p \n' % (name, name))
-        return out.getvalue()     
+            else:
+                out.write(' %s = (0d0,0d0)\n' % name)
+                out.write(' if(M%s %% %s(flv_index%i).eq.flv_index%i) %s = M%s %% VAL(flv_index1) %% p \n'
+                          % (name, partner, incoming, out_index, name, name))
+        return out.getvalue()
 
     def get_one_momenta_def(self, i, strfile):
         
@@ -1057,12 +1079,60 @@ class ALOHAWriterForFortran(WriteALOHA):
         return text
 
     def write_combined(self, lor_names, mode='self', offshell=None):
-        """Write routine for combine ALOHA call (more than one coupling)"""
-        
+        """Write routine for combine ALOHA call (more than one coupling).
+
+        The routine is a genuine merge of the Lorentz structures: its body is
+        the sum of the structures, each multiplied by its own coupling, and it
+        is written exactly like a single coupling routine (contracted
+        temporaries, single propagator DENOM, one assignment per component).
+        When the merged expression can not be built, fall back on a wrapper
+        calling each single structure routine in turn.
+        """
+
+        if offshell is None:
+            offshell = self.offshell
+
+        merged = None
+        if offshell == self.offshell and not os.environ.get('MG_ALOHA_COMBINE_WRAPPER') \
+                               and hasattr(self.routine, 'get_combined_routine'):
+            merged = self.routine.get_combined_routine(lor_names)
+        if merged is None:
+            return self.write_combined_wrapper(lor_names, mode, offshell)
+
+        name = combine_name(self.routine.name, lor_names, offshell, self.tag)
+        # the merged routine is written by a dedicated writer (fresh
+        # declarations) through the standard path: it is a routine like any
+        # other one, only its name and its file are those of the combination.
+        writer = self.__class__(merged, None, options=self.options)
+        writer.name = name
+        # the caller passes one coupling per Lorentz structure: declare them all
+        # up-front so that the signature does not depend on a structure
+        # surviving the algebra for this outgoing particle.
+        for i in range(len(lor_names) + 1):
+            writer.declaration.add(('complex', 'COUP%s' % (i+1)))
+        text = writer.write(mode=mode)
+
+        if self.out_path:
+            fsock = self.writer(self.out_path, 'a')
+            commentstring = 'This File is Automatically generated by ALOHA \n'
+            commentstring += 'The process calculated in this file is: \n'
+            # indent: the merged expression starts with "Coup(1)" and a line
+            # starting with a 'C' is taken as an already formatted comment
+            commentstring += ' ' + merged.infostr + '\n'
+            fsock.write_comments(commentstring)
+            fsock.writelines(text)
+        return text
+
+    def write_combined_wrapper(self, lor_names, mode='self', offshell=None):
+        """Write a combine ALOHA routine (more than one coupling) as a wrapper
+        calling the routine of each Lorentz structure and summing the results.
+        Only used when the merged routine can not be built (see write_combined).
+        """
+
         # Set some usefull command
         if offshell is None:
             sym = 1
-            offshell = self.offshell  
+            offshell = self.offshell
         else:
             sym = None
         name = combine_name(self.routine.name, lor_names, offshell, self.tag)

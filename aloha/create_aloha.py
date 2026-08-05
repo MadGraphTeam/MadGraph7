@@ -59,7 +59,11 @@ ALOHAERROR = aloha.ALOHAERROR
 class AbstractRoutine(object):
     """ store the result of the computation of Helicity Routine
     this is use for storing and passing to writer """
-    
+
+    # builders of the merged multiple coupling routines, shared by all the
+    # outgoing of a given set of Lorentz structures (see get_combined_routine)
+    combined_builder = {}
+
     def __init__(self, expr, outgoing, spins, name, infostr, model, denom=None):
         """ store the information """
 
@@ -84,9 +88,76 @@ class AbstractRoutine(object):
     
     def add_combine(self, lor_list):
         """add a combine rule """
-        
+
         if lor_list not in self.combined:
             self.combined.append(lor_list)
+
+    def get_combined_routine(self, lor_names):
+        """Return the AbstractRoutine associated to the merged structure
+              Coup(1) * <structure of self> + Coup(i+1) * <structure of lor_names[i]>
+        i.e. the routine that a writer can output as a single subroutine (one
+        coupling argument per structure) instead of a wrapper calling each
+        single structure routine in turn.
+
+        The expression is built exactly like the one of a single coupling
+        routine, so the momenta, the propagator denominator and the temporary
+        variables are shared by all the structures.
+        Return None if such a merge is not possible (unknown Lorentz structure,
+        structures acting on different spins, loop routine, ...). In that case
+        the caller has to fall back on the wrapper form.
+        """
+
+        if not hasattr(self, 'combined_routine'):
+            self.combined_routine = {}
+
+        key = tuple(lor_names)
+        if key not in self.combined_routine:
+            try:
+                self.combined_routine[key] = self.compute_combined_routine(lor_names)
+            except Exception as error:
+                logger.debug('can not merge the routines %s (%s): %s',
+                             self.name, ','.join(lor_names), error)
+                self.combined_routine[key] = None
+
+        routine = self.combined_routine[key]
+        if routine is not None:
+            # the same merged routine is written once per tag set (the MP pass
+            # adds the 'MP' tag on the fly) -> keep the tag in sync.
+            routine.tag = list(self.tag)
+        return routine
+
+    def compute_combined_routine(self, lor_names):
+        """Compute the merged routine of get_combined_routine (no caching)"""
+
+        if self.model is None:
+            return None
+        if any(t.startswith('L') for t in self.tag):
+            # loop routines have their own (already explicit) combine mechanism
+            return None
+
+        l_lorentz = [getattr(self.model.lorentz, name)
+                     for name in (self.name,) + tuple(lor_names)]
+        if any(lor.spins != l_lorentz[0].spins for lor in l_lorentz[1:]):
+            return None
+
+        conjg = tuple(int(t[1:]) for t in self.tag if t.startswith('C'))
+        # the model is part of the key: two models can define different
+        # structures under the same Lorentz name
+        key = (self.model, tuple(lor.name for lor in l_lorentz), conjg)
+        if key in self.combined_builder:
+            builder = self.combined_builder[key]
+        else:
+            builder = CombineRoutineBuilder(l_lorentz, self.model)
+            if conjg:
+                builder = builder.define_conjugate_builder(conjg)
+            # the kernel is computed once and re-used for each outgoing
+            self.combined_builder[key] = builder
+
+        routine = builder.compute_routine(self.outgoing, list(self.tag))
+        # the merge does not change which particles are identical
+        routine.symmetries = list(self.symmetries)
+        routine.tag = list(self.tag)
+        return routine
 
     def write(self, output_dir, language='Fortran', mode='self', combine=True, options=None, **opt):
         """ write the content of the object """
@@ -699,7 +770,15 @@ class CombineRoutineBuilder(AbstractRoutineBuilder):
         self.outgoing = None
         self.lorentz_expr = []
         for i, lor in enumerate(l_lorentz):
-            self.lorentz_expr.append( 'Coup(%s) * (%s)' % (i+1, lor.structure))
+            structure = lor.structure
+            # AbstractRoutineBuilder.__init__ only expanded the formfactors of
+            # l_lorentz[0], and that expansion is overwritten here -> redo it
+            # for each structure entering the combination.
+            if getattr(lor, 'formfactors', None):
+                for formf in lor.formfactors:
+                    pat = re.compile(r'\b%s\b' % formf.name)
+                    structure = pat.sub('(%s)' % formf.value, structure)
+            self.lorentz_expr.append( 'Coup(%s) * (%s)' % (i+1, structure))
         self.lorentz_expr = ' + '.join(self.lorentz_expr)
         self.routine_kernel = None
         self.contracted = {}
