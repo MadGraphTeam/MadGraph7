@@ -6,7 +6,8 @@
 
 #include "umami.h"
 
-#include "CPPProcess.h"
+#include "ProcessData.h"
+#include "CPPProcess.h" // needed to construct/initProc the process object (umami_initialize)
 #include "GpuRuntime.h"
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
@@ -30,7 +31,7 @@ namespace
     fptype* denominators,
     std::size_t count )
   {
-    bool is_good_hel[CPPProcess::ncomb];
+    bool is_good_hel[ProcessData::ncomb];
     sigmaKin_getGoodHel(
       momenta, couplings, flavor_indices, matrix_elements, numerators, denominators,
       is_good_hel,
@@ -62,12 +63,12 @@ namespace
     std::size_t i_page = i_event_out / page_size;
     std::size_t i_vector = i_event_out % page_size;
 
-    for( std::size_t i_part = 0; i_part < CPPProcess::npar; ++i_part )
+    for( std::size_t i_part = 0; i_part < ProcessData::npar; ++i_part )
     {
       for( std::size_t i_mom = 0; i_mom < 4; ++i_mom )
       {
-        momenta_out[i_page * CPPProcess::npar * 4 * page_size +
-                    i_part * 4 * page_size + i_mom * page_size + i_vector] = momenta_in[stride * ( CPPProcess::npar * i_mom + i_part ) + i_event_in];
+        momenta_out[i_page * ProcessData::npar * 4 * page_size +
+                    i_part * 4 * page_size + i_mom * page_size + i_vector] = momenta_in[stride * ( ProcessData::npar * i_mom + i_part ) + i_event_in];
       }
     }
   }
@@ -95,21 +96,21 @@ extern "C"
         break;
       }
       case UMAMI_META_PARTICLE_COUNT:
-        *static_cast<int*>( result ) = CPPProcess::npar;
+        *static_cast<int*>( result ) = ProcessData::npar;
         break;
       case UMAMI_META_DIAGRAM_COUNT:
-        *static_cast<int*>( result ) = CPPProcess::ndiagrams;
+        *static_cast<int*>( result ) = ProcessData::ndiagrams;
         break;
       case UMAMI_META_HELICITY_COUNT:
-        *static_cast<int*>( result ) = CPPProcess::ncomb;
+        *static_cast<int*>( result ) = ProcessData::ncomb;
         break;
       case UMAMI_META_COLOR_COUNT:
         return UMAMI_ERROR_UNSUPPORTED_META;
       case UMAMI_META_MASSES:
       {
-        if( g_externalMasses.size() != (size_t)CPPProcess::npar ) return UMAMI_ERROR_UNINITIALIZED_META;
+        if( g_externalMasses.size() != (size_t)ProcessData::npar ) return UMAMI_ERROR_UNINITIALIZED_META;
 
-        for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
+        for( int ipar = 0; ipar < ProcessData::npar; ++ipar )
           static_cast<double*>( result )[ipar] = g_externalMasses[ipar];
         break;
       }
@@ -267,7 +268,7 @@ extern "C"
     std::vector<std::size_t> permutation;
     std::size_t rounded_count;
 
-    constexpr std::size_t flavor_count = CPPProcess::nmaxflavor;
+    constexpr std::size_t flavor_count = ProcessData::nmaxflavor;
     HostBufferBase<unsigned int, false> flavor_indices( ((count + page_size2 - 1) / page_size2 + flavor_count) * page_size2 );
     bool sort_flavors = vector_size > 1 && flavor_count > 1 && flavor_indices_in;
     if ( sort_flavors ) 
@@ -299,7 +300,7 @@ extern "C"
       rounded_count = ( count + page_size2 - 1 ) / page_size2 * page_size2;
     }
 
-    HostBufferBase<fptype, false> momenta( rounded_count * CPPProcess::npar * 4 );
+    HostBufferBase<fptype, false> momenta( rounded_count * ProcessData::npar * 4 );
     HostBufferBase<fptype, false> couplings( rounded_count * mg5amcCpu::Parameters_dependentCouplings::ndcoup * 2 );
     HostBufferBase<fptype, false> g_s( rounded_count );
     HostBufferBase<fptype, false> helicity_random( rounded_count );
@@ -307,7 +308,7 @@ extern "C"
     HostBufferBase<fptype, false> diagram_random( rounded_count );
     HostBufferBase<fptype, false> matrix_elements( rounded_count );
     HostBufferBase<unsigned int, false> diagram_index( rounded_count );
-    HostBufferBase<fptype, false> numerators( rounded_count * CPPProcess::ndiagrams );
+    HostBufferBase<fptype, false> numerators( rounded_count * ProcessData::ndiagrams );
     HostBufferBase<fptype, false> denominators( rounded_count );
     HostBufferBase<int, false> helicity_index( rounded_count );
     HostBufferBase<int, false> color_index( rounded_count );
@@ -384,9 +385,9 @@ extern "C"
         }
         if( amp2_out != nullptr )
         {
-          for( std::size_t i_diag = 0; i_diag < CPPProcess::ndiagrams; ++i_diag )
+          for( std::size_t i_diag = 0; i_diag < ProcessData::ndiagrams; ++i_diag )
           {
-            amp2_out[stride * i_diag + i_event + offset] = numerators[i_page * page_size * CPPProcess::ndiagrams + i_diag * page_size + i_vector] / denominator;
+            amp2_out[stride * i_diag + i_event + offset] = numerators[i_page * page_size * ProcessData::ndiagrams + i_diag * page_size + i_vector] / denominator;
           }
         }
         if( diagram_out != nullptr )
@@ -416,9 +417,9 @@ extern "C"
         }
         if( amp2_out != nullptr )
         {
-          for( std::size_t i_diag = 0; i_diag < CPPProcess::ndiagrams; ++i_diag )
+          for( std::size_t i_diag = 0; i_diag < ProcessData::ndiagrams; ++i_diag )
           {
-            amp2_out[stride * i_diag + i_event + offset] = numerators[i_page * page_size * CPPProcess::ndiagrams + i_diag * page_size + i_vector] / denominator;
+            amp2_out[stride * i_diag + i_event + offset] = numerators[i_page * page_size * ProcessData::ndiagrams + i_diag * page_size + i_vector] / denominator;
           }
         }
         if( diagram_out != nullptr )

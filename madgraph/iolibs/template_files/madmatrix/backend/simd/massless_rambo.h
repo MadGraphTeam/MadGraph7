@@ -15,7 +15,7 @@
 
 #include "mgOnGpuFptypes.h"
 
-#include "CPPProcess.h"
+#include "ProcessData.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -26,10 +26,10 @@ namespace mg5amcCpu
 {
 namespace massless_rambo {
 
-  constexpr int np4 = CPPProcess::np4;     // dimensions of 4-momenta (E,px,py,pz)
-  constexpr int npari = CPPProcess::npari; // #particles in the initial state (incoming): e.g. 2 (e+ e-) for e+ e- -> mu+ mu-
-  constexpr int nparf = CPPProcess::nparf; // #particles in the final state (outgoing): e.g. 2 (mu+ mu-) for e+ e- -> mu+ mu-
-  constexpr int npar = CPPProcess::npar;   // #particles in total (external = initial + final): e.g. 4 for e+ e- -> mu+ mu-
+  constexpr int np4 = ProcessData::np4;     // dimensions of 4-momenta (E,px,py,pz)
+  constexpr int npari = ProcessData::npari; // #particles in the initial state (incoming): e.g. 2 (e+ e-) for e+ e- -> mu+ mu-
+  constexpr int nparf = ProcessData::nparf; // #particles in the final state (outgoing): e.g. 2 (mu+ mu-) for e+ e- -> mu+ mu-
+  constexpr int npar = ProcessData::npar;   // #particles in total (external = initial + final): e.g. 4 for e+ e- -> mu+ mu-
 
   //--------------------------------------------------------------------------
 

@@ -6,7 +6,8 @@
 
 #include "MatrixElementKernels.h"
 
-#include "CPPProcess.h"
+#include "ProcessData.h"
+#include "CPPProcess.h" // TODO(backend_separation): drop once sigmaKin/getGoodHel/computeDependentCouplings move to backend/
 #include "GpuRuntime.h" // Includes the abstraction for Nvidia/AMD compilation
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
@@ -46,7 +47,7 @@ namespace mg5amcGpu
   {
     //std::cout << "DEBUG: MatrixElementKernelBase ctor " << this << std::endl;
 #ifdef MGONGPU_CHANNELID_DEBUG
-    for( size_t channelId = 0; channelId < CPPProcess::ndiagrams + 1; channelId++ ) // [0...ndiagrams] (TEMPORARY: 0=multichannel)
+    for( size_t channelId = 0; channelId < ProcessData::ndiagrams + 1; channelId++ ) // [0...ndiagrams] (TEMPORARY: 0=multichannel)
       m_nevtProcessedByChannel[channelId] = 0;
 #endif
   }
@@ -76,7 +77,7 @@ namespace mg5amcGpu
       {
         const size_t channelId = pHstChannelIds[ievt]; // Fortran indexing
         //assert( channelId > 0 );
-        //assert( channelId < CPPProcess::ndiagrams );
+        //assert( channelId < ProcessData::ndiagrams );
         m_nevtProcessedByChannel[channelId]++;
       }
     }
@@ -94,11 +95,11 @@ namespace mg5amcGpu
   void MatrixElementKernelBase::dumpNevtProcessedByChannel()
   {
     size_t nevtProcessed = 0;
-    for( size_t channelId = 0; channelId < CPPProcess::ndiagrams + 1; channelId++ ) // [0...ndiagrams] (TEMPORARY: 0=multichannel)
+    for( size_t channelId = 0; channelId < ProcessData::ndiagrams + 1; channelId++ ) // [0...ndiagrams] (TEMPORARY: 0=multichannel)
       nevtProcessed += m_nevtProcessedByChannel[channelId];
     std::ostringstream sstr;
     sstr << " {";
-    for( size_t channelId = 0; channelId < CPPProcess::ndiagrams + 1; channelId++ ) // [0...ndiagrams] (TEMPORARY: 0=multichannel)
+    for( size_t channelId = 0; channelId < ProcessData::ndiagrams + 1; channelId++ ) // [0...ndiagrams] (TEMPORARY: 0=multichannel)
     {
       if( m_nevtProcessedByChannel[channelId] > 0 )
       {
@@ -113,7 +114,7 @@ namespace mg5amcGpu
     sstr << " }";
     std::cout << "DEBUG: MEK " << this;
     if( m_tag != "" ) std::cout << " " << m_tag;
-    std::cout << " processed " << nevtProcessed << " events across " << CPPProcess::ndiagrams << " channels" << sstr.str() << std::endl;
+    std::cout << " processed " << nevtProcessed << " events across " << ProcessData::ndiagrams << " channels" << sstr.str() << std::endl;
   }
 #endif
 
@@ -168,7 +169,7 @@ namespace mg5amcGpu
     , m_pHelJamps()
     , m_pHelNumerators()
     , m_pHelDenominators()
-    , m_colJamp2s( CPPProcess::ncolor * this->nevt() )
+    , m_colJamp2s( ProcessData::ncolor * this->nevt() )
 #ifdef MGONGPU_CHANNELID_DEBUG
     , m_hstChannelIds( this->nevt() )
 #endif
@@ -203,9 +204,9 @@ namespace mg5amcGpu
       throw std::runtime_error( sstr.str() );
     }
     // Create the "one-helicity" jamp buffer that will be used for helicity filtering
-    m_pHelJamps.reset( new DeviceBufferSimple( CPPProcess::ncolor * mgOnGpu::nx2 * this->nevt() ) );
+    m_pHelJamps.reset( new DeviceBufferSimple( ProcessData::ncolor * mgOnGpu::nx2 * this->nevt() ) );
     // Create the "one-helicity" numerator and denominator buffers that will be used for helicity filtering
-    m_pHelNumerators.reset( new DeviceBufferSimple( this->nevt() * CPPProcess::ndiagrams ) );
+    m_pHelNumerators.reset( new DeviceBufferSimple( this->nevt() * ProcessData::ndiagrams ) );
     m_pHelDenominators.reset( new DeviceBufferSimple( this->nevt() ) );
     // Decide at runtime whether to use BLAS for color sums
     // Decide at runtime whether TF32TENSOR math should be used in cuBLAS
@@ -270,7 +271,7 @@ namespace mg5amcGpu
 #ifndef MGONGPU_HAS_NO_BLAS
     if( m_blasHandle ) gpuBlasDestroy( m_blasHandle );
 #endif
-    for( int ihel = 0; ihel < CPPProcess::ncomb; ihel++ )
+    for( int ihel = 0; ihel < ProcessData::ncomb; ihel++ )
     {
       if( m_helStreams[ihel] ) gpuStreamDestroy( m_helStreams[ihel] ); // do not destroy if nullptr
     }
@@ -290,7 +291,7 @@ namespace mg5amcGpu
 
   int MatrixElementKernelDevice::computeGoodHelicities()
   {
-    PinnedHostBufferHelicityMask hstIsGoodHel( CPPProcess::ncomb );
+    PinnedHostBufferHelicityMask hstIsGoodHel( ProcessData::ncomb );
     // ... 0d1. Compute good helicity mask (a host variable) on the device
     gpuLaunchKernel( computeDependentCouplings, m_gpublocks, m_gputhreads, m_gs.data(), m_couplings.data() );
     const int nevt = m_gpublocks * m_gputhreads;
@@ -316,19 +317,19 @@ namespace mg5amcGpu
     m_pHelMEs.reset( new DeviceBufferSimple( nGoodHel * nevt ) );
     // ... Create the "many-helicity" super-buffer of nGoodHel ME buffers (dynamically allocated because nGoodHel is determined at runtime)
     // ... (calling reset here deletes the previously created "one-helicity" buffers used for helicity filtering)
-    m_pHelJamps.reset( new DeviceBufferSimple( nGoodHel * CPPProcess::ncolor * mgOnGpu::nx2 * nevt ) );
+    m_pHelJamps.reset( new DeviceBufferSimple( nGoodHel * ProcessData::ncolor * mgOnGpu::nx2 * nevt ) );
     // ... Create the "many-helicity" super-buffers of nGoodHel numerator and denominator buffers (dynamically allocated)
     // ... (calling reset here deletes the previously created "one-helicity" buffers used for helicity filtering)
-    m_pHelNumerators.reset( new DeviceBufferSimple( nGoodHel * CPPProcess::ndiagrams * nevt ) );
+    m_pHelNumerators.reset( new DeviceBufferSimple( nGoodHel * ProcessData::ndiagrams * nevt ) );
     m_pHelDenominators.reset( new DeviceBufferSimple( nGoodHel * nevt ) );
 #ifndef MGONGPU_HAS_NO_BLAS
     // Create the "many-helicity" super-buffers of real/imag ncolor*nevt temporary buffers for cuBLAS/hipBLAS intermediate results in color_sum_blas
 #if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
     // Mixed precision mode: need two fptype2[ncolor*2*nevt] buffers and one fptype2[nevt] buffer per good helicity
-    if( m_blasColorSum ) m_pHelBlasTmp.reset( new DeviceBufferSimple2( nGoodHel * ( 2 * CPPProcess::ncolor * mgOnGpu::nx2 + 1 ) * nevt ) );
+    if( m_blasColorSum ) m_pHelBlasTmp.reset( new DeviceBufferSimple2( nGoodHel * ( 2 * ProcessData::ncolor * mgOnGpu::nx2 + 1 ) * nevt ) );
 #else
     // Standard single/double precision mode: need one fptype2[ncolor*2*nevt] buffer per good helicity
-    if( m_blasColorSum ) m_pHelBlasTmp.reset( new DeviceBufferSimple2( nGoodHel * CPPProcess::ncolor * mgOnGpu::nx2 * nevt ) );
+    if( m_blasColorSum ) m_pHelBlasTmp.reset( new DeviceBufferSimple2( nGoodHel * ProcessData::ncolor * mgOnGpu::nx2 * nevt ) );
 #endif
 #endif
     // Return the number of good helicities

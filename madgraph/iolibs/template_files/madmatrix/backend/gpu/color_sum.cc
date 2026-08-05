@@ -8,16 +8,14 @@
 
 #include "mgOnGpuConfig.h"
 
+#include "ColorMatrixData.h" // P1-generated: colorMatrix/colorDenom
 #include "MemoryAccessMatrixElements.h"
 
 namespace mg5amcGpu
 {
-  constexpr int ncolor = CPPProcess::ncolor; // the number of leading colors
+  using namespace ColorMatrixData; // colorMatrix, colorDenom, ncolor
 
   //--------------------------------------------------------------------------
-
-  // *** COLOR MATRIX BELOW ***
-%(color_matrix_lines)s
 
   // The normalized color matrix (divide each column by denom)
   template<typename T>

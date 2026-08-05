@@ -6,7 +6,8 @@
 
 #include "MatrixElementKernels.h"
 
-#include "CPPProcess.h"
+#include "ProcessData.h"
+#include "CPPProcess.h" // TODO(backend_separation): drop once sigmaKin/getGoodHel/computeDependentCouplings move to backend/
 #include "GpuRuntime.h" // Includes the abstraction for Nvidia/AMD compilation
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
@@ -46,7 +47,7 @@ namespace mg5amcCpu
   {
     //std::cout << "DEBUG: MatrixElementKernelBase ctor " << this << std::endl;
 #ifdef MGONGPU_CHANNELID_DEBUG
-    for( size_t channelId = 0; channelId < CPPProcess::ndiagrams + 1; channelId++ ) // [0...ndiagrams] (TEMPORARY: 0=multichannel)
+    for( size_t channelId = 0; channelId < ProcessData::ndiagrams + 1; channelId++ ) // [0...ndiagrams] (TEMPORARY: 0=multichannel)
       m_nevtProcessedByChannel[channelId] = 0;
 #endif
   }
@@ -76,7 +77,7 @@ namespace mg5amcCpu
       {
         const size_t channelId = pHstChannelIds[ievt]; // Fortran indexing
         //assert( channelId > 0 );
-        //assert( channelId < CPPProcess::ndiagrams );
+        //assert( channelId < ProcessData::ndiagrams );
         m_nevtProcessedByChannel[channelId]++;
       }
     }
@@ -94,11 +95,11 @@ namespace mg5amcCpu
   void MatrixElementKernelBase::dumpNevtProcessedByChannel()
   {
     size_t nevtProcessed = 0;
-    for( size_t channelId = 0; channelId < CPPProcess::ndiagrams + 1; channelId++ ) // [0...ndiagrams] (TEMPORARY: 0=multichannel)
+    for( size_t channelId = 0; channelId < ProcessData::ndiagrams + 1; channelId++ ) // [0...ndiagrams] (TEMPORARY: 0=multichannel)
       nevtProcessed += m_nevtProcessedByChannel[channelId];
     std::ostringstream sstr;
     sstr << " {";
-    for( size_t channelId = 0; channelId < CPPProcess::ndiagrams + 1; channelId++ ) // [0...ndiagrams] (TEMPORARY: 0=multichannel)
+    for( size_t channelId = 0; channelId < ProcessData::ndiagrams + 1; channelId++ ) // [0...ndiagrams] (TEMPORARY: 0=multichannel)
     {
       if( m_nevtProcessedByChannel[channelId] > 0 )
       {
@@ -113,7 +114,7 @@ namespace mg5amcCpu
     sstr << " }";
     std::cout << "DEBUG: MEK " << this;
     if( m_tag != "" ) std::cout << " " << m_tag;
-    std::cout << " processed " << nevtProcessed << " events across " << CPPProcess::ndiagrams << " channels" << sstr.str() << std::endl;
+    std::cout << " processed " << nevtProcessed << " events across " << ProcessData::ndiagrams << " channels" << sstr.str() << std::endl;
   }
 #endif
 
@@ -160,7 +161,7 @@ namespace mg5amcCpu
     : MatrixElementKernelBase( momenta, gs, iflavorVec, rndhel, rndcol, channelIds, matrixElements, selhel, selcol )
     , NumberOfEvents( nevt )
     , m_couplings( nevt )
-    , m_numerators( nevt * CPPProcess::ndiagrams )
+    , m_numerators( nevt * ProcessData::ndiagrams )
     , m_denominators( nevt )
   {
     //std::cout << "DEBUG: MatrixElementKernelHost::ctor " << this << std::endl;
@@ -198,7 +199,7 @@ namespace mg5amcCpu
 
   int MatrixElementKernelHost::computeGoodHelicities()
   {
-    HostBufferHelicityMask hstIsGoodHel( CPPProcess::ncomb );
+    HostBufferHelicityMask hstIsGoodHel( ProcessData::ncomb );
     // ... 0d1. Compute good helicity mask on the host
     computeDependentCouplings( m_gs.data(), m_couplings.data(), m_gs.size() );
     sigmaKin_getGoodHel( m_momenta.data(), m_couplings.data(), m_iflavorVec.data(), m_matrixElements.data(), m_numerators.data(), m_denominators.data(), hstIsGoodHel.data(), nevt() );

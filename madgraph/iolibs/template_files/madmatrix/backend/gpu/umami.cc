@@ -6,7 +6,8 @@
 
 #include "umami.h"
 
-#include "CPPProcess.h"
+#include "ProcessData.h"
+#include "CPPProcess.h" // needed to construct/initProc the process object (umami_initialize)
 #include "GpuRuntime.h"
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
@@ -31,7 +32,7 @@ namespace
     fptype* denominators,
     std::size_t count )
   {
-    bool is_good_hel[CPPProcess::ncomb];
+    bool is_good_hel[ProcessData::ncomb];
     sigmaKin_getGoodHel(
       momenta, couplings, flavor_indices, matrix_elements, numerators, denominators,
       color_jamps,
@@ -67,12 +68,12 @@ namespace
     std::size_t i_page = i_event_out / page_size;
     std::size_t i_vector = i_event_out % page_size;
 
-    for( std::size_t i_part = 0; i_part < CPPProcess::npar; ++i_part )
+    for( std::size_t i_part = 0; i_part < ProcessData::npar; ++i_part )
     {
       for( std::size_t i_mom = 0; i_mom < 4; ++i_mom )
       {
-        momenta_out[i_page * CPPProcess::npar * 4 * page_size +
-                    i_part * 4 * page_size + i_mom * page_size + i_vector] = momenta_in[stride * ( CPPProcess::npar * i_mom + i_part ) + i_event_in];
+        momenta_out[i_page * ProcessData::npar * 4 * page_size +
+                    i_part * 4 * page_size + i_mom * page_size + i_vector] = momenta_in[stride * ( ProcessData::npar * i_mom + i_part ) + i_event_in];
       }
     }
   }
@@ -129,9 +130,9 @@ namespace
     if( amp2_out )
     {
       double denominator = denominators[i_event];
-      for( std::size_t i_diag = 0; i_diag < CPPProcess::ndiagrams; ++i_diag )
+      for( std::size_t i_diag = 0; i_diag < ProcessData::ndiagrams; ++i_diag )
       {
-        amp2_out[stride * i_diag + i_event + offset] = numerators[i_event * CPPProcess::ndiagrams + i_diag] / denominator;
+        amp2_out[stride * i_diag + i_event + offset] = numerators[i_event * ProcessData::ndiagrams + i_diag] / denominator;
       }
     }
     if( diagram_out ) diagram_out[i_event + offset] = diagram_index[i_event] - 1;
@@ -166,21 +167,21 @@ extern "C"
         break;
       }
       case UMAMI_META_PARTICLE_COUNT:
-        *static_cast<int*>( result ) = CPPProcess::npar;
+        *static_cast<int*>( result ) = ProcessData::npar;
         break;
       case UMAMI_META_DIAGRAM_COUNT:
-        *static_cast<int*>( result ) = CPPProcess::ndiagrams;
+        *static_cast<int*>( result ) = ProcessData::ndiagrams;
         break;
       case UMAMI_META_HELICITY_COUNT:
-        *static_cast<int*>( result ) = CPPProcess::ncomb;
+        *static_cast<int*>( result ) = ProcessData::ncomb;
         break;
       case UMAMI_META_COLOR_COUNT:
         return UMAMI_ERROR_UNSUPPORTED_META;
       case UMAMI_META_MASSES:
       {
-        if( g_externalMasses.size() != (size_t)CPPProcess::npar ) return UMAMI_ERROR_UNINITIALIZED_META;
+        if( g_externalMasses.size() != (size_t)ProcessData::npar ) return UMAMI_ERROR_UNINITIALIZED_META;
 
-        for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
+        for( int ipar = 0; ipar < ProcessData::npar; ++ipar )
           static_cast<double*>( result )[ipar] = g_externalMasses[ipar];
         break;
       }
@@ -347,7 +348,7 @@ extern "C"
 
     std::size_t n_coup = mg5amcGpu::Parameters_dependentCouplings::ndcoup;
     std::array<std::pair<void**, std::size_t>, 16> ptrs_and_sizes = {{
-        {reinterpret_cast<void**>(&momenta), rounded_count * CPPProcess::npar * 4 * sizeof( fptype )},
+        {reinterpret_cast<void**>(&momenta), rounded_count * ProcessData::npar * 4 * sizeof( fptype )},
         {reinterpret_cast<void**>(&couplings), rounded_count * n_coup * 2 * sizeof( fptype )},
         {reinterpret_cast<void**>(&g_s), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&flavor_indices), rounded_count * sizeof( unsigned int )},
@@ -356,13 +357,13 @@ extern "C"
         {reinterpret_cast<void**>(&diagram_random), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&matrix_elements), rounded_count * sizeof( fptype )},
         {reinterpret_cast<void**>(&diagram_index), rounded_count * sizeof( unsigned int )},
-        {reinterpret_cast<void**>(&color_jamps), rounded_count * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype )},
-        {reinterpret_cast<void**>(&numerators), rounded_count * CPPProcess::ndiagrams * CPPProcess::ncomb * sizeof( fptype )},
-        {reinterpret_cast<void**>(&denominators), rounded_count * CPPProcess::ncomb * sizeof( fptype )},
+        {reinterpret_cast<void**>(&color_jamps), rounded_count * ProcessData::ncolor * mgOnGpu::nx2 * sizeof( fptype )},
+        {reinterpret_cast<void**>(&numerators), rounded_count * ProcessData::ndiagrams * ProcessData::ncomb * sizeof( fptype )},
+        {reinterpret_cast<void**>(&denominators), rounded_count * ProcessData::ncomb * sizeof( fptype )},
         {reinterpret_cast<void**>(&helicity_index), rounded_count * sizeof( int )},
         {reinterpret_cast<void**>(&color_index), rounded_count * sizeof( int )},
-        {reinterpret_cast<void**>(&ghel_matrix_elements), rounded_count * CPPProcess::ncomb * sizeof( fptype )},
-        {reinterpret_cast<void**>(&ghel_jamps), rounded_count * CPPProcess::ncomb * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype )},
+        {reinterpret_cast<void**>(&ghel_matrix_elements), rounded_count * ProcessData::ncomb * sizeof( fptype )},
+        {reinterpret_cast<void**>(&ghel_jamps), rounded_count * ProcessData::ncomb * ProcessData::ncolor * mgOnGpu::nx2 * sizeof( fptype )},
     }};
     std::size_t total_size = 0;
     constexpr std::size_t MAX_SIZE = std::max(sizeof(fptype), sizeof(int));

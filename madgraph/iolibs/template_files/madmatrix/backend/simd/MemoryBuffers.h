@@ -11,7 +11,7 @@
 
 #include "mgOnGpuCxtypes.h"
 
-#include "CPPProcess.h"
+#include "ProcessData.h"
 #include "GpuRuntime.h"
 #include "Parameters.h"
 #include "processConfig.h"
@@ -25,14 +25,14 @@ namespace mg5amcCpu
   namespace MemoryBuffers
   {
     // Process-independent compile-time constants
-    static constexpr size_t np4 = CPPProcess::np4;
-    static constexpr size_t nw6 = CPPProcess::nw6;
+    static constexpr size_t np4 = ProcessData::np4;
+    static constexpr size_t nw6 = ProcessData::nw6;
     static constexpr size_t nx2 = mgOnGpu::nx2;
     // Process-dependent compile-time constants
-    static constexpr size_t nparf = CPPProcess::nparf;
-    static constexpr size_t npar = CPPProcess::npar;
+    static constexpr size_t nparf = ProcessData::nparf;
+    static constexpr size_t npar = ProcessData::npar;
     static constexpr size_t ndcoup = Parameters_dependentCouplings::ndcoup;
-    static constexpr size_t ncolor = CPPProcess::ncolor;
+    static constexpr size_t ncolor = ProcessData::ncolor;
   }
 
   //--------------------------------------------------------------------------

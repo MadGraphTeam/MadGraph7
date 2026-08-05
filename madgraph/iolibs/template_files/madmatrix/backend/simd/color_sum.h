@@ -11,7 +11,7 @@
 
 #include "mgOnGpuVectors.h"
 
-#include "CPPProcess.h"
+#include "ProcessData.h"
 #include "GpuAbstraction.h"
 
 namespace mg5amcCpu

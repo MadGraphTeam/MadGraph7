@@ -45,24 +45,16 @@
 
   public:
 
-    // Process-independent compile-time constants
-    static constexpr int np4 = 4; // dimensions of 4-momenta (E,px,py,pz)
-    static constexpr int nw6 = %(nwave)d; // dimensions of each wavefunction (HELAS KEK 91-11): e.g. 6 for e+ e- -> mu+ mu- (fermions and vectors)
-
-    // Process-dependent compile-time constants
-    static constexpr int npari = %(nincoming)d; // #particles in the initial state (incoming): e.g. 2 (e+ e-) for e+ e- -> mu+ mu-
-    static constexpr int nparf = %(noutcoming)d; // #particles in the final state (outgoing): e.g. 2 (mu+ mu-) for e+ e- -> mu+ mu-
-    static constexpr int npar = npari + nparf; // #particles in total (external = initial + final): e.g. 4 for e+ e- -> mu+ mu-
-    static constexpr int ncomb = %(nbhel)d; // #helicity combinations: e.g. 16 for e+ e- -> mu+ mu- (2**4 = fermion spin up/down ** npar)
-    static constexpr int ndiagrams = %(ndiagrams)d; // #Feynman diagrams: e.g. 3 for e+ e- -> mu+ mu-
-    static constexpr int ncolor = %(ncolor)s; // the number of leading colors: e.g. 1 for e+ e- -> mu+ mu-
-    static constexpr int nmaxflavor = %(nmaxflavor)d; // the maximum number of flavor combinations
-
-    // Hardcoded parameters for this process (constant class variables)
-    // [NB: this class assumes nprocesses==1 i.e. a single DSIG1 and no DSIG2 in Fortran (#272 and #343)]
-    // [NB: these parameters (e.g. nwf) are P1-specific, i.e. they are different for different P1 subdirectories (#644)]
-    // [NB: I am currently unable to get the right value of nwf in CPPProcess.h - will hardcode it in CPPProcess.cc instead (#644)]
-    //static const int nwf = ??; // #wavefunctions = #external (npar) + #internal: e.g. 5 for e+ e- -> mu+ mu- (1 internal is gamma or Z)
+    // Compile-time constants: single source of truth is ProcessData.h
+    static constexpr int np4 = ProcessData::np4;
+    static constexpr int nw6 = ProcessData::nw6;
+    static constexpr int npari = ProcessData::npari;
+    static constexpr int nparf = ProcessData::nparf;
+    static constexpr int npar = ProcessData::npar;
+    static constexpr int ncomb = ProcessData::ncomb;
+    static constexpr int ndiagrams = ProcessData::ndiagrams;
+    static constexpr int ncolor = ProcessData::ncolor;
+    static constexpr int nmaxflavor = ProcessData::nmaxflavor;
 
   private: /* clang-format on */
 

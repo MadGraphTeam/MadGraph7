@@ -11,7 +11,7 @@
 
 #include "mgOnGpuVectors.h"
 
-#include "CPPProcess.h"
+#include "ProcessData.h"
 #include "GpuAbstraction.h"
 
 namespace mg5amcGpu
@@ -24,7 +24,7 @@ namespace mg5amcGpu
     static __device__ inline cxtype_ref
     kernelAccessIcolIhelNhel( fptype* buffer, const int icol, const int ihel, const int nhel )
     {
-      const int ncolor = CPPProcess::ncolor; // the number of leading colors
+      const int ncolor = ProcessData::ncolor; // the number of leading colors
       const int nevt = gridDim.x * blockDim.x;
       const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
       // (ONE HELICITY) Original "old" striding for CUDA kernels: ncolor separate 2*nevt matrices for each color (ievt last)
@@ -39,7 +39,7 @@ namespace mg5amcGpu
     static __device__ inline const cxtype
     kernelAccessIcolIhelNhelConst( const fptype* buffer, const int icol, const int ihel, const int nhel )
     {
-      const int ncolor = CPPProcess::ncolor; // the number of leading colors
+      const int ncolor = ProcessData::ncolor; // the number of leading colors
       const int nevt = gridDim.x * blockDim.x;
       const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
       // (ONE HELICITY) Original "old" striding for CUDA kernels: ncolor separate 2*nevt matrices for each color (ievt last)

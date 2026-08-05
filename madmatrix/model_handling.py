@@ -1952,9 +1952,34 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         self.edit_memorybuffers() # AV new file (NB this is generic in Subprocesses and then linked in Sigma-specific)
         self.edit_memoryaccesscouplings() # AV new file (NB this is generic in Subprocesses and then linked in Sigma-specific)
         super().generate_process_files()
+        # needs to be after get_matrix_element_calls to have nwf ready
+        self.edit_processdata()
         # NB: symlink of cudacpp.mk to makefile is overwritten by madevent makefile if this exists (#480)
         # NB: this relies on the assumption that cudacpp code is generated before madevent code
         files.ln(pjoin(self.path, "..", "makefile"), self.path, "makefile")
+
+    # seperate process constants to one truth file
+    def edit_processdata(self):
+        """Generate ProcessData.h"""
+        template = open(pjoin(self.template_path, 'madmatrix', 'ProcessData.h'), 'r').read()
+        me = self.matrix_elements[0]
+        replace_dict = {}
+        nexternal, nincoming = me.get_nexternal_ninitial()
+        replace_dict['nincoming'] = nincoming
+        replace_dict['noutcoming'] = nexternal - nincoming
+        replace_dict['nbhel'] = me.get_helicity_combinations()
+        replace_dict['ndiagrams'] = len(me.get('diagrams'))
+        replace_dict['nmaxflavor'] = len(me.get_external_flavors_with_iden())
+        replace_dict['nwave'] = 4 + (1 if fd_gauge else 0)
+        replace_dict['ncolor'] = len(me.get_color_amplitudes())
+        replace_dict['nwf'] = me.get_number_of_wavefunctions()
+        replace_dict['nproc'] = sum(2 if m.get('has_mirror_process') else 1 for m in self.matrix_elements)
+        replace_dict['proc_id'] = self.proc_id if self.proc_id > 0 else 1
+        den_factors = [str(m.get_denominator_factor()) for m in self.matrix_elements]
+        replace_dict['den_factors'] = ",".join(den_factors)
+        ff = open(pjoin(self.path, 'ProcessData.h'), 'w')
+        ff.write(template % replace_dict)
+        ff.close()
 
     # AV - replace the export_cpp.OneProcessExporterCPP method (add debug printouts and multichannel handling #473) 
     def edit_mgonGPU(self):
@@ -1984,15 +2009,15 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ff.write(template % replace_dict)
         ff.close()
 
-    # AV - new method
+    # generate process specific color matrix data - algo is backend owned
     def edit_colorsum(self):
-        """Generate color_sum.cc"""
+        """Generate ColorMatrixData.h"""
         ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_colorsum')
-        template = open(pjoin(self.template_path,'madmatrix','color_sum.cc'),'r').read()
+        template = open(pjoin(self.template_path,'madmatrix','ColorMatrixData.h'),'r').read()
         replace_dict = {}
         # Extract color matrix again (this was also in get_matrix_single_process called within get_all_sigmaKin_lines)
         replace_dict['color_matrix_lines'] = self.get_color_matrix_lines(self.matrix_elements[0])
-        ff = open(pjoin(self.path, 'color_sum.cc'),'w')
+        ff = open(pjoin(self.path, 'ColorMatrixData.h'),'w')
         ff.write(template % replace_dict)
         ff.close()
         
