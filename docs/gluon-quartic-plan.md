@@ -319,29 +319,57 @@ sum once.
 precision build rounds the two to the same value), `CPPProcess.cc`
 byte-identical with the flag off.
 
-**Speed is mixed, and worse than Fortran:**
+**Speed is mixed, and worse than Fortran** (after step 8):
 
 | | amp calls | nwf | evt/s (sse4, FPTYPE=d) | |
 |---|---|---|---|---|
-| `g g > g g g` | 45 -> 38 | 12 -> 26 | 72950 -> 66800 | **-8.4%** |
-| `g g > g g g g` | 510 -> 450 | 51 -> 111 | 2702 -> 2726 | **+0.9%** |
+| `g g > g g g` | 45 -> 38 | 12 -> 19 | 72820 -> 68010 | **-6.6%** |
+| `g g > g g g g` | 510 -> 450 | 51 -> 86 | 2696 -> 2748 | **+1.9%** |
 
-The wavefunction array more than doubles, because the sums take a slot each at
-the end and are never recycled, and there is no JAMP fold here to pay for it.
-At five gluons that loses outright. Note the base slot count with the flag on
-is worse in madmatrix than in Fortran too (81 against 61 at six gluons),
-because its matrix element carries duplicate wavefunctions which confuse
-`reuse_outdated_wavefunctions`.
+There is no JAMP fold here to pay for the extra wavefunctions, so five gluons
+loses outright: 7 sums against 7 saved amplitude calls does not cover a
+wavefunction array half again as large. Note the slot count with the flag on
+is worse in madmatrix than in Fortran (86 against 66 at six gluons), because
+its matrix element carries duplicate wavefunctions -- two objects for the same
+current with the mothers ordered differently, which MG5 does not merge.
+
+## Step 8 — recycle the slots the sums take
+
+`5b421bc80`. A sum used to get a slot of its own at the end, never reused,
+which more than doubled `NWAVEFUNCS`. But a sum is an ordinary producer --
+written as soon as the later of its two currents is made, dead after the last
+amplitude reading it -- so it goes through `reuse_outdated_wavefunctions` with
+everything else. That also lets the cubic current die at the sum rather than
+at the amplitude, since the amplitude no longer reads it.
+
+| | flag off | own slots | recycled |
+|---|---|---|---|
+| `g g > g g g` | 12 | 26 | **19** |
+| `g g > g g g g` | 51 | 91 | **66** |
+| `g g > g g g g` (madmatrix) | 51 | 111 | **86** |
+
+**A bug in `reuse_outdated_wavefunctions` had to be fixed first, and it was
+not introduced here.** The same wavefunction can be listed by more than one
+diagram in the madmatrix matrix element, and the allocator handed it a slot
+again on the second listing, leaking the first. Harmless while the sums had
+their own slots; once they shared the pool, `g g > g g g g` came out 0.2%
+wrong. A wavefunction now takes one slot at its first appearance and keeps it
+until its last use. Nothing moves with the flag off -- `matrix.f` and
+`CPPProcess.cc` are byte-identical for N=2..4 in both backends.
+
+Worth it for madmatrix (-8.4% -> -6.6% at five gluons, +0.9% -> +1.9% at six)
+and neutral for Fortran (+3.8% -> +3.9%): there the slot count was never the
+bottleneck. The madevent run is unchanged, same cross section and error.
 
 ## Where to go next
 
-**Recycle the slots the sums take.** Cheapest and now the most valuable:
-`get_number_of_wavefunctions` hands each sum a slot at the end which is never
-reused, so `NWAVEFUNCS` goes 51 -> 91 in Fortran and 51 -> 111 in madmatrix at
-six gluons. That is what makes madmatrix lose 8.4% at five gluons. A sum is
-written at a known point and dead after its last target amplitude, so a linear
-scan over those lifetimes would fit them into a handful of slots — or, better,
-feed them to `reuse_outdated_wavefunctions` as ordinary producers.
+**Give madmatrix the amplitude sums too.** It is the only backend without
+them, because there is no `AMP` array to fold into — each amplitude goes
+straight into the JAMPs. That is why it gains 1.9% where Fortran gains 3.9%,
+and why five gluons still loses. The sources for one target could be
+accumulated into a second `amp_sv` slot before the JAMP lines are written,
+which the seed ordering makes possible (the quartic diagrams come first), at
+the cost of one accumulator per open target.
 
 Then there are the sums which do not sit at an amplitude, and they need a
 node to have exactly one rooting *per merge*, which a diagram list cannot
