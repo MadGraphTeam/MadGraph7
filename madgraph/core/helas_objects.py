@@ -4002,6 +4002,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         self.quartic_amplitude_merges = None
         # Cache for get_quartic_current_sums(), same reason
         self.quartic_current_sums = None
+        # Slots the current sums were given by reuse_outdated_wavefunctions
+        self.quartic_sum_me_ids = None
 
     def filter(self, name, value):
         """Filter for valid diagram property values."""
@@ -4420,17 +4422,24 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             for diag in helas_diagrams:
                 for wf in diag['wavefunctions']:
                     wf.set('me_id',wf.get('number'))
+            self.quartic_sum_me_ids = None   # a fresh slot each, at the end
             return helas_diagrams
 
-        # A current sum is written out as soon as the later of the two
-        # currents it reads is made, so both have to still be there then --
-        # which this analysis has no way of knowing on its own.
-        sums = self.get_quartic_current_sums()[0]
+        # A current sum is a line of its own, written as soon as the later of
+        # the two currents it reads is made, and read by the amplitudes it was
+        # built for. Giving it a key here lets it take a slot from the same
+        # pool as everything else, rather than one of its own at the end --
+        # and lets the cubic current die at the sum rather than at the
+        # amplitude, since the amplitude no longer reads it.
+        sums, uses, folded = self.get_quartic_current_sums()
         read_after = {}
-        for cubic, quartic in [(entry[0], entry[1]) for entry in sums]:
+        for isum, (cubic, quartic, coeff) in enumerate(sums):
             read_after.setdefault(max(cubic.get('number'),
-                                      quartic.get('number')), []).append(
-                (cubic.get('number'), quartic.get('number')))
+                                      quartic.get('number')), []).append(isum)
+        # keys for the sums, above every wavefunction number
+        offset = max([wf.get('number') for diag in helas_diagrams
+                      for wf in diag['wavefunctions']] or [0])
+        sum_key = lambda isum: offset + 1 + isum
 
         # First compute the first/last appearance of each wavefunctions
         # first takes the line number and return the id of the created wf
@@ -4438,21 +4447,42 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         last_lign={}
         first={}
         pos=0
+        written = set()
+        allocated = set()
         for diag in helas_diagrams:
             for wf in diag['wavefunctions']:
                 pos+=1
                 for wfin in wf.get('mothers'):
                     last_lign[wfin.get('number')] = pos
                     assert wfin.get('number') in list(first.values())
+                # the same wavefunction can be listed by more than one
+                # diagram; it is written twice with the same value, so it owns
+                # one slot from its first appearance to its last use, and
+                # handing it a second one here would leak the first
+                if wf.get('number') in allocated:
+                    continue
+                allocated.add(wf.get('number'))
                 first[pos] = wf.get('number')
-                for cubic, quartic in read_after.get(wf.get('number'), []):
-                    last_lign[cubic] = pos
-                    last_lign[quartic] = pos
+                for isum in read_after.get(wf.get('number'), []):
+                    if isum in written:
+                        continue
+                    written.add(isum)
+                    pos+=1
+                    cubic, quartic, coeff = sums[isum]
+                    last_lign[cubic.get('number')] = pos
+                    last_lign[quartic.get('number')] = pos
+                    first[pos] = sum_key(isum)
             for amp in diag['amplitudes']:
                 pos+=1
+                substitution = uses.get(amp.get('number'), {})
                 for wfin in amp.get('mothers'):
-                    last_lign[wfin.get('number')] = pos
-        
+                    isum = substitution.get(wfin.get('number'))
+                    if isum is None:
+                        last_lign[wfin.get('number')] = pos
+                    else:
+                        # this amplitude reads the sum, not the cubic current
+                        last_lign[sum_key(isum)] = pos
+
         # last takes the line number and return the last appearing wf at
         #that particular line
         last=collections.defaultdict(list)
@@ -4481,7 +4511,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         for diag in helas_diagrams:
             for wf in diag['wavefunctions']:
                 wf.set('me_id', replace[wf.get('number')])
-        
+        self.quartic_sum_me_ids = [replace[sum_key(isum)]
+                                   for isum in range(len(sums))]
+
         return helas_diagrams
 
     def restore_original_wavefunctions(self):
@@ -4494,7 +4526,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         for diag in helas_diagrams:
             for wf in diag['wavefunctions']:
                 wf.set('me_id',wf.get('number'))
-        
+        self.quartic_sum_me_ids = None   # a fresh slot each, at the end
+
         return helas_diagrams
 
 
@@ -5332,15 +5365,15 @@ class HelasMatrixElement(base_objects.PhysicsObject):
     def get_number_of_wavefunctions(self):
         """Gives the total number of wavefunctions for this ME"""
 
-        # the current sums get a slot each, at the end and never reused
-        extra = self.get_number_of_quartic_current_sums()
+        # a current sum can hold the highest slot of all
+        extra = self.get_quartic_sum_me_ids()
 
         out =  max([wf.get('me_id') for wfs in self.get('diagrams')
                                     for wf in wfs.get('wavefunctions')])
         if out:
-            return out + extra
-        return sum([ len(d.get('wavefunctions')) for d in \
-                       self.get('diagrams')]) + extra
+            return max([out] + extra)
+        return max([sum([ len(d.get('wavefunctions')) for d in \
+                       self.get('diagrams')])] + extra)
         
     def get_all_wavefunctions(self):
         """Gives a list of all wavefunctions for this ME"""
@@ -6241,10 +6274,24 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             self.quartic_current_sums = self.compute_quartic_current_sums()
         return self.quartic_current_sums
 
-    def get_number_of_quartic_current_sums(self):
-        """How many extra wavefunction slots the current sums need."""
+    def get_quartic_sum_me_ids(self):
+        """Wavefunction slot of each current sum.
 
-        return len(self.get_quartic_current_sums()[0])
+        reuse_outdated_wavefunctions hands them out of the same pool as the
+        wavefunctions themselves, so a sum lands in whatever slot happens to
+        be free. When the wavefunctions were not recycled they get a fresh
+        slot each, at the end."""
+
+        sums = self.get_quartic_current_sums()[0]
+        if not sums:
+            return []
+        if self.quartic_sum_me_ids is not None:
+            return self.quartic_sum_me_ids
+        used = [wf.get('me_id') or wf.get('number')
+                for diagram in self.get('diagrams')
+                for wf in diagram.get('wavefunctions')]
+        base = max(used or [0])
+        return [base + 1 + isum for isum in range(len(sums))]
 
     def compute_quartic_current_sums(self):
         """Work out the current sums, see get_quartic_current_sums."""

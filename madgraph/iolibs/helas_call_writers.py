@@ -236,7 +236,7 @@ class HelasCallWriter(base_objects.PhysicsObject):
         # a slot is only handed on after its last use, and the cubic one is
         # still needed by the amplitude the sum is for.
         sums, uses, folded = self.get_quartic_current_sums(matrix_element)
-        first_sum = matrix_element.get_number_of_wavefunctions() - len(sums)
+        slots = matrix_element.get_quartic_sum_me_ids()
         after = {}
         for i, (cubic, quartic, coeff) in enumerate(sums):
             after.setdefault(max(cubic.get('number'), quartic.get('number')),
@@ -257,7 +257,7 @@ class HelasCallWriter(base_objects.PhysicsObject):
                     written.add(i)
                     cubic, quartic, coeff = sums[i]
                     res.extend(self.get_current_sum_lines(
-                        first_sum + 1 + i, cubic, quartic, coeff))
+                        slots[i], cubic, quartic, coeff))
             res.append("# Amplitude(s) for diagram number %d" % \
                        diagram.get('number'))
             for amplitude in diagram.get('amplitudes'):
@@ -265,7 +265,7 @@ class HelasCallWriter(base_objects.PhysicsObject):
                     # summed into another amplitude through a current sum
                     continue
                 res.append(self.get_amplitude_call_on_sums(
-                    amplitude, uses.get(amplitude.get('number')), first_sum))
+                    amplitude, uses.get(amplitude.get('number')), slots))
 
         res.extend(self.get_amplitude_merge_lines(matrix_element))
 
@@ -282,7 +282,7 @@ class HelasCallWriter(base_objects.PhysicsObject):
 
         raise NotImplementedError
 
-    def get_amplitude_call_on_sums(self, amplitude, substitution, first_sum):
+    def get_amplitude_call_on_sums(self, amplitude, substitution, slots):
         """The amplitude call, reading the current sums in place of the cubic
         currents they were built from.
 
@@ -298,7 +298,7 @@ class HelasCallWriter(base_objects.PhysicsObject):
             if index is None:
                 continue
             original.append((mother, mother.get('me_id')))
-            mother.set('me_id', first_sum + 1 + index)
+            mother.set('me_id', slots[index])
         try:
             return self.get_amplitude_call(amplitude)
         finally:

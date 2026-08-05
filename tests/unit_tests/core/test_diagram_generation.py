@@ -4238,8 +4238,7 @@ class TestSeedRule(unittest.TestCase):
                 {'legs':myleglist, 'model':self.base_model})))
         self.assertEqual(matrix_element.get_quartic_current_sums(),
                          ([], {}, set()))
-        self.assertEqual(
-            matrix_element.get_number_of_quartic_current_sums(), 0)
+        self.assertEqual(matrix_element.get_quartic_sum_me_ids(), [])
 
     def check_current_sums(self, initial, final, nsum, nfolded):
         """A current sum has to stand for exactly the amplitude it takes away:
@@ -4260,8 +4259,11 @@ class TestSeedRule(unittest.TestCase):
         merges = matrix_element.get_quartic_amplitude_merges()
         self.assertEqual(len(sums), nsum)
         self.assertEqual(len(folded), nfolded)
-        self.assertEqual(matrix_element.get_number_of_quartic_current_sums(),
-                         nsum)
+        # every sum gets a wavefunction slot, out of the same pool as the
+        # wavefunctions themselves
+        slots = matrix_element.get_quartic_sum_me_ids()
+        self.assertEqual(len(slots), nsum)
+        self.assertTrue(all(slot > 0 for slot in slots))
 
         amplitudes = dict((amplitude.get('number'), amplitude)
                           for diagram in matrix_element.get('diagrams')

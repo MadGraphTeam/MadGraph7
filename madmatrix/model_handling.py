@@ -2542,7 +2542,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
         # their own colour coefficients put them in the right JAMPs, which is
         # why get_color_amplitudes is asked not to drop them.
         sums, sum_uses, sum_folded = matrix_element.get_quartic_current_sums()
-        first_sum = matrix_element.get_number_of_wavefunctions() - len(sums)
+        sum_slots = matrix_element.get_quartic_sum_me_ids()
         sum_written = set()
         sum_after = {}
         for isum, (cubic, quartic, coeff) in enumerate(sums):
@@ -2577,7 +2577,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                                % ('SUMW_1' if coeff == 1 else 'SUBW_1',
                                   cubic.get('me_id') - 1,
                                   quartic.get('me_id') - 1,
-                                  first_sum + isum))
+                                  sum_slots[isum] - 1))
             if len(diagram.get('wavefunctions')) == 0 : res.append('// (none)') # AV
             res.append('\n      // Amplitude(s) for diagram number %d' % diagram.get('number'))
             for amplitude in diagram.get('amplitudes'):
@@ -2594,7 +2594,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
                     if isum is None:
                         continue
                     sum_original.append((mother, mother.get('me_id')))
-                    mother.set('me_id', first_sum + 1 + isum)
+                    mother.set('me_id', sum_slots[isum])
                 amp_block = [ self.get_amplitude_call(amplitude) ] # AV new: avoid format_call
                 for mother, me_id in sum_original:
                     mother.set('me_id', me_id)
