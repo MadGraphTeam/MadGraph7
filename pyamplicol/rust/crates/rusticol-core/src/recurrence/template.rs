@@ -20,10 +20,13 @@ use super::{
 use crate::{RusticolError, RusticolResult};
 
 pub const RECURRENCE_TEMPLATE_INPUT_ABI: &str = "pyamplicol-recurrence-template-input-v1";
-pub const RECURRENCE_TEMPLATE_INPUT_SCHEMA_VERSION: u32 = 1;
+pub const RECURRENCE_TEMPLATE_INPUT_SCHEMA_VERSION: u32 = 2;
 pub const RECURRENCE_TEMPLATE_CANONICALIZATION_ABI: &str = "pyamplicol-canonical-json-v1";
 pub const RECURRENCE_TEMPLATE_EXACT_SCALAR_ABI: &str = "pyamplicol-exact-complex-rational-v1";
 pub const MISSING_U32: u32 = u32::MAX;
+const CONTACT_ORBIT_ALGORITHM: &str = "compiler-certified-contact-orbit";
+const CONTACT_ORBIT_ALGORITHM_VERSION: u32 = 1;
+const CONTACT_ORBIT_EVALUATOR_CLASS: &str = "constant-scalar-literal-singlet-self-conjugate-boson";
 
 fn invalid(message: impl Into<String>) -> RusticolError {
     RusticolError::invalid_argument(message)
@@ -165,6 +168,25 @@ pub enum OutputFactorSource {
     CouplingImag = 2,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum ContactOrbitStage {
+    Partial = 0,
+    Final = 1,
+}
+
+impl TryFrom<u8> for ContactOrbitStage {
+    type Error = RusticolError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Partial),
+            1 => Ok(Self::Final),
+            _ => Err(invalid(format!("unsupported contact-orbit stage {value}"))),
+        }
+    }
+}
+
 impl TryFrom<u8> for OutputFactorSource {
     type Error = RusticolError;
 
@@ -197,6 +219,8 @@ pub struct CatalogHeaderRow {
     pub current_state_count: u32,
     pub source_count: u32,
     pub quantum_flow_count: u32,
+    pub contact_orbit_certificate_count: u32,
+    pub contact_orbit_step_count: u32,
     pub transition_count: u32,
     pub propagator_count: u32,
     pub closure_count: u32,
@@ -353,6 +377,35 @@ pub struct QuantumFlowRow {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ContactOrbitCertificateRow {
+    pub id: u32,
+    pub template_string_id: u32,
+    pub algorithm_string_id: u32,
+    pub algorithm_version: u32,
+    pub term_id: u32,
+    pub vertex_string_id: u32,
+    pub particle_string_sequence_id: u32,
+    pub evaluator_class_string_id: u32,
+    pub physical_leg_equivalence_sequence_id: u32,
+    pub reconstruction_factor_id: u32,
+    pub semantic_digest_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ContactOrbitStepRow {
+    pub id: u32,
+    pub template_string_id: u32,
+    pub certificate_id: u32,
+    pub stage: u8,
+    pub result_leg: u8,
+    pub left_covered_leg_sequence_id: u32,
+    pub right_covered_leg_sequence_id: u32,
+    pub source_particle_leg_sequence_id: u32,
+    pub reconstruction_factor_id: u32,
+    pub semantic_digest_id: u32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct TransitionRow {
     pub id: u32,
     pub template_string_id: u32,
@@ -371,6 +424,8 @@ pub struct TransitionRow {
     pub equivalence_class_string_id: u32,
     pub input_exchange_factor_id: u32,
     pub output_projection_string_id: u32,
+    pub contact_orbit_step_sequence_id: u32,
+    pub contact_orbit_step_semantic_digest_sequence_id: u32,
     pub semantic_digest_id: u32,
 }
 
@@ -532,6 +587,8 @@ define_template_inputs! {
     catalog_header: CatalogHeaderRow,
     coupling_order_ranges: IndexedRangeRow,
     coupling_order_terms: CouplingOrderTermRow,
+    contact_orbit_certificates: ContactOrbitCertificateRow,
+    contact_orbit_steps: ContactOrbitStepRow,
     current_states: CurrentStateRow,
     digest_catalog: DigestCatalogRow,
     evaluator_bindings: EvaluatorBindingRow,
@@ -571,6 +628,8 @@ pub struct RecurrenceTemplateValidationSummary {
     pub current_state_count: u32,
     pub source_count: u32,
     pub quantum_flow_count: u32,
+    pub contact_orbit_certificate_count: u32,
+    pub contact_orbit_step_count: u32,
     pub transition_count: u32,
     pub propagator_count: u32,
     pub closure_count: u32,
@@ -595,6 +654,8 @@ pub enum RecurrenceSemanticTemplateKind {
     CurrentState,
     Source,
     QuantumFlow,
+    ContactOrbitCertificate,
+    ContactOrbitStep,
     Transition,
     Propagator,
     Closure,
@@ -609,6 +670,8 @@ impl RecurrenceSemanticTemplateKind {
             Self::CurrentState => "current-state",
             Self::Source => "source",
             Self::QuantumFlow => "quantum-flow",
+            Self::ContactOrbitCertificate => "contact-orbit-certificate",
+            Self::ContactOrbitStep => "contact-orbit-step",
             Self::Transition => "transition",
             Self::Propagator => "propagator",
             Self::Closure => "closure",
@@ -623,6 +686,8 @@ impl RecurrenceSemanticTemplateKind {
             "current-state" => Ok(Self::CurrentState),
             "source" => Ok(Self::Source),
             "quantum-flow" => Ok(Self::QuantumFlow),
+            "contact-orbit-certificate" => Ok(Self::ContactOrbitCertificate),
+            "contact-orbit-step" => Ok(Self::ContactOrbitStep),
             "transition" => Ok(Self::Transition),
             "propagator" => Ok(Self::Propagator),
             "closure" => Ok(Self::Closure),
@@ -805,6 +870,14 @@ impl ValidatedRecurrenceTemplateInput {
             input.quantum_flows
         );
         register!(
+            RecurrenceSemanticTemplateKind::ContactOrbitCertificate,
+            input.contact_orbit_certificates
+        );
+        register!(
+            RecurrenceSemanticTemplateKind::ContactOrbitStep,
+            input.contact_orbit_steps
+        );
+        register!(
             RecurrenceSemanticTemplateKind::Transition,
             input.transitions
         );
@@ -837,6 +910,8 @@ enum TemplateKind {
     Source,
     RuntimeHelicity,
     QuantumFlow,
+    ContactOrbitCertificate,
+    ContactOrbitStep,
     Transition,
     Propagator,
     Closure,
@@ -855,6 +930,8 @@ impl TemplateKind {
             Self::CurrentState
             | Self::RuntimeHelicity
             | Self::QuantumFlow
+            | Self::ContactOrbitCertificate
+            | Self::ContactOrbitStep
             | Self::ColorContraction
             | Self::SymmetryProof => None,
         }
@@ -898,6 +975,7 @@ impl<'a> RecurrenceTemplateInputView<'a> {
             &mut semantic_digests,
         )?;
         self.validate_quantum_flows(&catalogs, &mut template_kinds, &mut semantic_digests)?;
+        self.validate_contact_orbit_records(&catalogs, &mut template_kinds, &mut semantic_digests)?;
         self.validate_color_contractions(&catalogs, &mut template_kinds, &mut semantic_digests)?;
         self.validate_symmetry_proofs_basic(&catalogs, &mut template_kinds, &mut semantic_digests)?;
         self.validate_transitions_basic(&catalogs, &mut template_kinds, &mut semantic_digests)?;
@@ -916,6 +994,14 @@ impl<'a> RecurrenceTemplateInputView<'a> {
             current_state_count: checked_len(self.current_states.len(), "current states")?,
             source_count: checked_len(self.sources.len(), "sources")?,
             quantum_flow_count: checked_len(self.quantum_flows.len(), "quantum flows")?,
+            contact_orbit_certificate_count: checked_len(
+                self.contact_orbit_certificates.len(),
+                "contact-orbit certificates",
+            )?,
+            contact_orbit_step_count: checked_len(
+                self.contact_orbit_steps.len(),
+                "contact-orbit steps",
+            )?,
             transition_count: checked_len(self.transitions.len(), "transitions")?,
             propagator_count: checked_len(self.propagators.len(), "propagators")?,
             closure_count: checked_len(self.closures.len(), "closures")?,
@@ -1248,6 +1334,16 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 "quantum flows",
                 header.quantum_flow_count,
                 self.quantum_flows.len(),
+            ),
+            (
+                "contact-orbit certificates",
+                header.contact_orbit_certificate_count,
+                self.contact_orbit_certificates.len(),
+            ),
+            (
+                "contact-orbit steps",
+                header.contact_orbit_step_count,
+                self.contact_orbit_steps.len(),
             ),
             (
                 "transitions",
@@ -2000,6 +2096,236 @@ impl<'a> RecurrenceTemplateInputView<'a> {
         Ok(())
     }
 
+    fn validate_contact_orbit_records(
+        self,
+        catalogs: &ValidatedCatalogs<'_>,
+        template_kinds: &mut BTreeMap<u32, TemplateKind>,
+        semantic_digests: &mut BTreeSet<u32>,
+    ) -> RusticolResult<()> {
+        validate_record_ids(
+            "contact-orbit certificate",
+            self.contact_orbit_certificates.iter().map(|row| row.id),
+            self.contact_orbit_certificates
+                .iter()
+                .map(|row| row.template_string_id),
+        )?;
+        for (index, row) in self.contact_orbit_certificates.iter().enumerate() {
+            register_template(
+                template_kinds,
+                row.template_string_id,
+                TemplateKind::ContactOrbitCertificate,
+                "contact-orbit certificate",
+            )?;
+            register_semantic_digest(
+                semantic_digests,
+                row.semantic_digest_id,
+                "contact-orbit certificate",
+            )?;
+            required_string(
+                &catalogs.strings,
+                row.template_string_id,
+                "contact-orbit certificate template",
+            )?;
+            require_string_value(
+                &catalogs.strings,
+                row.algorithm_string_id,
+                CONTACT_ORBIT_ALGORITHM,
+                "contact-orbit certificate algorithm",
+            )?;
+            if row.algorithm_version != CONTACT_ORBIT_ALGORITHM_VERSION {
+                return Err(invalid(format!(
+                    "contact-orbit certificate {index} has unsupported algorithm version {}",
+                    row.algorithm_version
+                )));
+            }
+            required_string(
+                &catalogs.strings,
+                row.vertex_string_id,
+                "contact-orbit certificate vertex",
+            )?;
+            require_string_value(
+                &catalogs.strings,
+                row.evaluator_class_string_id,
+                CONTACT_ORBIT_EVALUATOR_CLASS,
+                "contact-orbit evaluator class",
+            )?;
+            let particles = u32_sequence(
+                self,
+                row.particle_string_sequence_id,
+                "contact-orbit certificate particles",
+            )?;
+            let equivalence_classes = u32_sequence(
+                self,
+                row.physical_leg_equivalence_sequence_id,
+                "contact-orbit certificate physical-leg equivalence classes",
+            )?;
+            if particles.len() != 4 || equivalence_classes.len() != 4 {
+                return Err(invalid(format!(
+                    "contact-orbit certificate {index} must describe four physical legs"
+                )));
+            }
+            for particle in particles {
+                required_string(
+                    &catalogs.strings,
+                    *particle,
+                    "contact-orbit certificate particle",
+                )?;
+            }
+            let mut class_by_particle = BTreeMap::<u32, u32>::new();
+            let mut next_class = 0u32;
+            let expected_classes = particles
+                .iter()
+                .map(|particle| {
+                    *class_by_particle.entry(*particle).or_insert_with(|| {
+                        let class = next_class;
+                        next_class += 1;
+                        class
+                    })
+                })
+                .collect::<Vec<_>>();
+            if equivalence_classes != expected_classes.as_slice() {
+                return Err(invalid(format!(
+                    "contact-orbit certificate {index} has noncanonical physical-leg equivalence classes"
+                )));
+            }
+            let reconstruction = required_factor(
+                &catalogs.factors,
+                row.reconstruction_factor_id,
+                "contact-orbit certificate reconstruction factor",
+            )?;
+            if *reconstruction != ExactComplexRational::ONE {
+                return Err(invalid(format!(
+                    "contact-orbit certificate {index} reconstruction factor is not one"
+                )));
+            }
+            required_digest(
+                &catalogs.digests,
+                row.semantic_digest_id,
+                "contact-orbit certificate semantic digest",
+            )?;
+        }
+
+        validate_record_ids(
+            "contact-orbit step",
+            self.contact_orbit_steps.iter().map(|row| row.id),
+            self.contact_orbit_steps
+                .iter()
+                .map(|row| row.template_string_id),
+        )?;
+        for (index, row) in self.contact_orbit_steps.iter().enumerate() {
+            register_template(
+                template_kinds,
+                row.template_string_id,
+                TemplateKind::ContactOrbitStep,
+                "contact-orbit step",
+            )?;
+            register_semantic_digest(
+                semantic_digests,
+                row.semantic_digest_id,
+                "contact-orbit step",
+            )?;
+            required_string(
+                &catalogs.strings,
+                row.template_string_id,
+                "contact-orbit step template",
+            )?;
+            required_reference(
+                row.certificate_id,
+                self.contact_orbit_certificates.len(),
+                "contact-orbit step certificate",
+            )?;
+            let stage = ContactOrbitStage::try_from(row.stage)?;
+            if row.result_leg >= 4 {
+                return Err(invalid(format!(
+                    "contact-orbit step {index} result leg is outside arity"
+                )));
+            }
+            let left = u32_sequence(
+                self,
+                row.left_covered_leg_sequence_id,
+                "contact-orbit left covered legs",
+            )?;
+            let right = u32_sequence(
+                self,
+                row.right_covered_leg_sequence_id,
+                "contact-orbit right covered legs",
+            )?;
+            if left.is_empty() || right.is_empty() || left.iter().chain(right).any(|leg| *leg >= 4)
+            {
+                return Err(invalid(format!(
+                    "contact-orbit step {index} has invalid covered legs"
+                )));
+            }
+            let covered = left.iter().chain(right).copied().collect::<BTreeSet<_>>();
+            if covered.len() != left.len() + right.len() {
+                return Err(invalid(format!(
+                    "contact-orbit step {index} repeats a covered leg"
+                )));
+            }
+            let sources = i32_sequence(
+                self,
+                row.source_particle_leg_sequence_id,
+                "contact-orbit source-particle legs",
+            )?;
+            if sources.len() != 3 || sources.iter().any(|leg| !(-1..=3).contains(leg)) {
+                return Err(invalid(format!(
+                    "contact-orbit step {index} has invalid source-particle legs"
+                )));
+            }
+            let reconstruction = required_factor(
+                &catalogs.factors,
+                row.reconstruction_factor_id,
+                "contact-orbit step reconstruction factor",
+            )?;
+            if *reconstruction != ExactComplexRational::ONE {
+                return Err(invalid(format!(
+                    "contact-orbit step {index} reconstruction factor is not one"
+                )));
+            }
+            match stage {
+                ContactOrbitStage::Partial => {
+                    if left.len() != 1
+                        || right.len() != 1
+                        || sources != [left[0] as i32, right[0] as i32, -1]
+                        || covered.contains(&(row.result_leg as u32))
+                    {
+                        return Err(invalid(format!(
+                            "contact-orbit partial step {index} has inconsistent lineage"
+                        )));
+                    }
+                }
+                ContactOrbitStage::Final => {
+                    let expected_covered = (0u32..4)
+                        .filter(|leg| *leg != row.result_leg as u32)
+                        .collect::<BTreeSet<_>>();
+                    let expected_sources = [
+                        if left.len() == 2 { -1 } else { left[0] as i32 },
+                        if right.len() == 2 {
+                            -1
+                        } else {
+                            right[0] as i32
+                        },
+                        row.result_leg as i32,
+                    ];
+                    if covered != expected_covered
+                        || !matches!((left.len(), right.len()), (1, 2) | (2, 1))
+                        || sources != expected_sources
+                    {
+                        return Err(invalid(format!(
+                            "contact-orbit final step {index} has inconsistent lineage"
+                        )));
+                    }
+                }
+            }
+            required_digest(
+                &catalogs.digests,
+                row.semantic_digest_id,
+                "contact-orbit step semantic digest",
+            )?;
+        }
+        Ok(())
+    }
+
     fn validate_color_contractions(
         self,
         catalogs: &ValidatedCatalogs<'_>,
@@ -2561,6 +2887,49 @@ impl<'a> RecurrenceTemplateInputView<'a> {
                 row.output_projection_string_id,
                 "transition output projection",
             )?;
+            let contact_orbit_steps = u32_sequence(
+                self,
+                row.contact_orbit_step_sequence_id,
+                "transition contact-orbit steps",
+            )?;
+            let contact_orbit_step_digests = u32_sequence(
+                self,
+                row.contact_orbit_step_semantic_digest_sequence_id,
+                "transition contact-orbit step semantic digests",
+            )?;
+            if contact_orbit_steps.len() != contact_orbit_step_digests.len() {
+                return Err(invalid(format!(
+                    "transition {index} has incomplete contact-orbit step bindings"
+                )));
+            }
+            if contact_orbit_steps
+                .windows(2)
+                .any(|pair| pair[0] >= pair[1])
+            {
+                return Err(invalid(format!(
+                    "transition {index} contact-orbit steps are not canonical"
+                )));
+            }
+            for (&step_id, &step_digest_id) in
+                contact_orbit_steps.iter().zip(contact_orbit_step_digests)
+            {
+                let step_index = required_reference(
+                    step_id,
+                    self.contact_orbit_steps.len(),
+                    "transition contact-orbit step",
+                )?;
+                let expected_digest_id = self.contact_orbit_steps[step_index].semantic_digest_id;
+                if step_digest_id != expected_digest_id {
+                    return Err(invalid(format!(
+                        "transition {index} contact-orbit step digest does not match its record"
+                    )));
+                }
+                required_digest(
+                    &catalogs.digests,
+                    step_digest_id,
+                    "transition contact-orbit step semantic digest",
+                )?;
+            }
             required_digest(
                 &catalogs.digests,
                 row.semantic_digest_id,
@@ -3787,6 +4156,8 @@ mod tests {
                 current_state_count: 0,
                 source_count: 0,
                 quantum_flow_count: 0,
+                contact_orbit_certificate_count: 0,
+                contact_orbit_step_count: 0,
                 transition_count: 0,
                 propagator_count: 0,
                 closure_count: 0,
@@ -3800,6 +4171,8 @@ mod tests {
                 range: CheckedTableRange::new(0, 0),
             }],
             coupling_order_terms: vec![],
+            contact_orbit_certificates: vec![],
+            contact_orbit_steps: vec![],
             current_states: vec![],
             digest_catalog: vec![
                 DigestCatalogRow {

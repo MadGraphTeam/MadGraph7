@@ -693,10 +693,12 @@ impl OwnedInput {
 }
 
 const TEMPLATE_TABLE_INVENTORY: &[(&str, usize)] = &[
-    ("catalog_header", 18),
+    ("catalog_header", 20),
     ("closures", 20),
     ("color_contractions", 14),
     ("color_nc_terms", 3),
+    ("contact_orbit_certificates", 11),
+    ("contact_orbit_steps", 10),
     ("coupling_order_ranges", 3),
     ("coupling_order_terms", 3),
     ("current_states", 17),
@@ -721,7 +723,7 @@ const TEMPLATE_TABLE_INVENTORY: &[(&str, usize)] = &[
     ("string_bytes", 1),
     ("string_ranges", 2),
     ("symmetry_proofs", 9),
-    ("transitions", 18),
+    ("transitions", 20),
     ("u32_sequence_ranges", 3),
     ("u32_sequence_values", 1),
 ];
@@ -3993,8 +3995,9 @@ fn decode_template_input(
     prepared_kernel_pack_digest: SemanticDigest,
 ) -> RusticolResult<template::OwnedRecurrenceTemplateInput> {
     use template::{
-        CatalogHeaderRow, ClosureRow, ColorContractionRow, ColorNcTermRow, CouplingOrderTermRow,
-        CurrentStateRow, EvaluatorBindingRow, ExactFactorRow, LCColorTransitionWitnessRow,
+        CatalogHeaderRow, ClosureRow, ColorContractionRow, ColorNcTermRow,
+        ContactOrbitCertificateRow, ContactOrbitStepRow, CouplingOrderTermRow, CurrentStateRow,
+        EvaluatorBindingRow, ExactFactorRow, LCColorTransitionWitnessRow,
         OwnedRecurrenceTemplateInput, ParameterRow, PropagatorRow, QuantumFlowRow,
         QuantumNumberFlowTermRow, RuntimeHelicityContractRow, RuntimeHelicityEmbeddingRow,
         RuntimeHelicityProjectionRow, RuntimeHelicityVariantRow, SourceRow, SymmetryProofRow,
@@ -4013,6 +4016,8 @@ fn decode_template_input(
             current_state_count: table.u32("current_state_count")?[row],
             source_count: table.u32("source_count")?[row],
             quantum_flow_count: table.u32("quantum_flow_count")?[row],
+            contact_orbit_certificate_count: table.u32("contact_orbit_certificate_count")?[row],
+            contact_orbit_step_count: table.u32("contact_orbit_step_count")?[row],
             transition_count: table.u32("transition_count")?[row],
             propagator_count: table.u32("propagator_count")?[row],
             closure_count: table.u32("closure_count")?[row],
@@ -4029,6 +4034,38 @@ fn decode_template_input(
                 set_id: table.u32("set_id")?[row],
                 name_string_id: table.u32("name_string_id")?[row],
                 power: table.u32("power")?[row],
+            })
+        })?;
+    let contact_orbit_certificates =
+        decode_template_rows(input.table("contact_orbit_certificates")?, |table, row| {
+            Ok(ContactOrbitCertificateRow {
+                id: table.u32("id")?[row],
+                template_string_id: table.u32("template_string_id")?[row],
+                algorithm_string_id: table.u32("algorithm_string_id")?[row],
+                algorithm_version: table.u32("algorithm_version")?[row],
+                term_id: table.u32("term_id")?[row],
+                vertex_string_id: table.u32("vertex_string_id")?[row],
+                particle_string_sequence_id: table.u32("particle_string_sequence_id")?[row],
+                evaluator_class_string_id: table.u32("evaluator_class_string_id")?[row],
+                physical_leg_equivalence_sequence_id: table
+                    .u32("physical_leg_equivalence_sequence_id")?[row],
+                reconstruction_factor_id: table.u32("reconstruction_factor_id")?[row],
+                semantic_digest_id: table.u32("semantic_digest_id")?[row],
+            })
+        })?;
+    let contact_orbit_steps =
+        decode_template_rows(input.table("contact_orbit_steps")?, |table, row| {
+            Ok(ContactOrbitStepRow {
+                id: table.u32("id")?[row],
+                template_string_id: table.u32("template_string_id")?[row],
+                certificate_id: table.u32("certificate_id")?[row],
+                stage: table.u8("stage")?[row],
+                result_leg: table.u8("result_leg")?[row],
+                left_covered_leg_sequence_id: table.u32("left_covered_leg_sequence_id")?[row],
+                right_covered_leg_sequence_id: table.u32("right_covered_leg_sequence_id")?[row],
+                source_particle_leg_sequence_id: table.u32("source_particle_leg_sequence_id")?[row],
+                reconstruction_factor_id: table.u32("reconstruction_factor_id")?[row],
+                semantic_digest_id: table.u32("semantic_digest_id")?[row],
             })
         })?;
     let current_states = decode_template_rows(input.table("current_states")?, |table, row| {
@@ -4259,6 +4296,9 @@ fn decode_template_input(
             equivalence_class_string_id: table.u32("equivalence_class_string_id")?[row],
             input_exchange_factor_id: table.u32("input_exchange_factor_id")?[row],
             output_projection_string_id: table.u32("output_projection_string_id")?[row],
+            contact_orbit_step_sequence_id: table.u32("contact_orbit_step_sequence_id")?[row],
+            contact_orbit_step_semantic_digest_sequence_id: table
+                .u32("contact_orbit_step_semantic_digest_sequence_id")?[row],
             semantic_digest_id: table.u32("semantic_digest_id")?[row],
         })
     })?;
@@ -4346,6 +4386,8 @@ fn decode_template_input(
         catalog_header,
         coupling_order_ranges,
         coupling_order_terms,
+        contact_orbit_certificates,
+        contact_orbit_steps,
         current_states,
         digest_catalog,
         evaluator_bindings,

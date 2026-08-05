@@ -22,6 +22,10 @@ from .base import (
     VertexEvaluationEquivalence,
     VertexLoweringRule,
 )
+from .contact_decomposition import (
+    CompiledContactOrbitCertificate,
+    CompiledContactOrbitStep,
+)
 
 if TYPE_CHECKING:
     pass
@@ -424,6 +428,32 @@ class ExternalModelCatalogMixin:
             input_order=input_order,
             input_exchange_factor=(kernel.evaluation_input_exchange_factor),
             verified=True,
+        )
+
+    def vertex_contact_orbit_contracts(
+        self,
+        kind: int,
+    ) -> tuple[
+        tuple[CompiledContactOrbitCertificate, ...],
+        tuple[CompiledContactOrbitStep, ...],
+    ]:
+        kernel = self._kernel(kind)
+        steps = kernel.contact_orbit_steps
+        certificates = tuple(
+            self._vertex_terms[term_id].contact_orbit_certificate
+            for term_id in sorted({step.term_id for step in steps})
+        )
+        if any(certificate is None for certificate in certificates):
+            raise ValueError(
+                f"compiled kernel {kind} has an unpaired contact-orbit step"
+            )
+        return (
+            tuple(
+                certificate
+                for certificate in certificates
+                if certificate is not None
+            ),
+            steps,
         )
 
     def vertex_coupling_orders(

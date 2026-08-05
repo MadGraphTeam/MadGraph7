@@ -13,6 +13,11 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, TypeAlias
 
+from .contact_decomposition import (
+    CompiledContactOrbitCertificate,
+    CompiledContactOrbitStep,
+)
+
 if TYPE_CHECKING:
     from .base import Model
 
@@ -182,12 +187,38 @@ class PreparedVertexBinding:
     right_state: PreparedParticleState
     result_state: PreparedParticleState
     output_factor_source: PreparedOutputFactorSource = "none"
+    contact_orbit_certificates: tuple[CompiledContactOrbitCertificate, ...] = ()
+    contact_orbit_steps: tuple[CompiledContactOrbitStep, ...] = ()
 
     def __post_init__(self) -> None:
         if self.output_factor_source not in _OUTPUT_FACTOR_SOURCES:
             raise PreparedKernelCatalogError(
                 f"unsupported prepared output factor source "
                 f"{self.output_factor_source!r}"
+            )
+        if self.contact_orbit_certificates != tuple(
+            sorted(set(self.contact_orbit_certificates))
+        ) or self.contact_orbit_steps != tuple(sorted(set(self.contact_orbit_steps))):
+            raise PreparedKernelCatalogError(
+                "prepared contact-orbit contracts must be sorted and unique"
+            )
+        if any(
+            not isinstance(item, CompiledContactOrbitCertificate)
+            for item in self.contact_orbit_certificates
+        ) or any(
+            not isinstance(item, CompiledContactOrbitStep)
+            for item in self.contact_orbit_steps
+        ):
+            raise PreparedKernelCatalogError(
+                "prepared contact-orbit contract must contain typed records"
+            )
+        certificate_terms = {
+            certificate.term_id for certificate in self.contact_orbit_certificates
+        }
+        step_terms = {step.term_id for step in self.contact_orbit_steps}
+        if certificate_terms != step_terms:
+            raise PreparedKernelCatalogError(
+                "prepared contact-orbit certificates and steps disagree"
             )
 
 
@@ -400,6 +431,13 @@ class PreparedKernelCatalog:
                         else list(binding.input_exchange_factor)
                     ),
                     "output_factor_source": binding.output_factor_source,
+                    "contact_orbit_certificates": [
+                        item.to_dict()
+                        for item in binding.contact_orbit_certificates
+                    ],
+                    "contact_orbit_steps": [
+                        item.to_dict() for item in binding.contact_orbit_steps
+                    ],
                 }
                 for binding in self.vertex_bindings
             ],

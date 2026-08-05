@@ -29,11 +29,17 @@ from .compiler_records import _replace_evaluator_constants
 from .contact_decomposition import (
     CONTACT_DECOMPOSITION_ALGORITHM,
     CONTACT_DECOMPOSITION_ALGORITHM_VERSION,
+    CONTACT_ORBIT_ALGORITHM,
+    CONTACT_ORBIT_ALGORITHM_VERSION,
+    CONTACT_ORBIT_EVALUATOR_CLASS,
     CompiledContactDecompositionProof,
     CompiledContactDecompositionSplit,
     CompiledContactDummyIndexMapping,
+    CompiledContactOrbitCertificate,
     CompiledContactOrientationProof,
     CompiledContactUnsupportedReason,
+    canonical_contact_orbit_steps,
+    contact_orbit_evaluator_class_is_certifiable,
 )
 from .contracts import (
     CompiledOrientedKernel,
@@ -130,6 +136,9 @@ def _fuse_contact_finals(
                     term_id
                     for member in members
                     for term_id in (member.term_ids or (member.term_id,))
+                ),
+                contact_orbit_steps=canonical_contact_orbit_steps(
+                    *(member.contact_orbit_steps for member in members)
                 ),
             )
         )
@@ -386,8 +395,81 @@ def _record_contact_decomposition_proofs(
             particle_by_name,
             model_symbols=model_symbols,
         )
-        result.append(replace(term, contact_decomposition_proof=proof))
+        result.append(
+            replace(
+                term,
+                contact_decomposition_proof=proof,
+                contact_orbit_certificate=_build_contact_orbit_certificate(
+                    term,
+                    source_particles,
+                    proof,
+                ),
+            )
+        )
     return tuple(result)
+
+
+def _build_contact_orbit_certificate(
+    term: CompiledVertexTerm,
+    source_particles: Sequence[CompiledParticleRecord],
+    proof: CompiledContactDecompositionProof,
+) -> CompiledContactOrbitCertificate | None:
+    """Issue the deliberately narrow compiler-owned contact-orbit proof."""
+
+    if (
+        proof.status != "proven"
+        or not proof.matches(term)
+        or tuple(particle.name for particle in source_particles) != term.particles
+        or not contact_orbit_evaluator_class_is_certifiable(
+            color_source=term.color_source,
+            color_expression=term.color_expression,
+            lorentz_expression=term.lorentz_expression,
+            decomposition_kinds=tuple(
+                split.decomposition_kind for split in proof.splits
+            ),
+            particle_contracts=tuple(
+                (
+                    particle.spin,
+                    particle.color,
+                    particle.statistics,
+                    particle.wavefunction_family,
+                    particle.self_conjugate,
+                )
+                for particle in source_particles
+            ),
+        )
+    ):
+        return None
+    equivalence_classes: dict[str, int] = {}
+    leg_classes = tuple(
+        equivalence_classes.setdefault(particle.name, len(equivalence_classes))
+        for particle in source_particles
+    )
+    if len(leg_classes) != 4:
+        raise ValueError("contact-orbit certificate requires exactly four particles")
+    return CompiledContactOrbitCertificate(
+        algorithm=CONTACT_ORBIT_ALGORITHM,
+        algorithm_version=CONTACT_ORBIT_ALGORITHM_VERSION,
+        term_id=term.id,
+        vertex=term.vertex,
+        particles=(
+            source_particles[0].name,
+            source_particles[1].name,
+            source_particles[2].name,
+            source_particles[3].name,
+        ),
+        color_expression=term.color_expression,
+        lorentz_expression=term.lorentz_expression,
+        coupling_expression=term.coupling_expression,
+        evaluator_class=CONTACT_ORBIT_EVALUATOR_CLASS,
+        physical_leg_equivalence_classes=(
+            leg_classes[0],
+            leg_classes[1],
+            leg_classes[2],
+            leg_classes[3],
+        ),
+        reconstruction_factor="1",
+    )
 
 
 def _build_contact_decomposition_proof(

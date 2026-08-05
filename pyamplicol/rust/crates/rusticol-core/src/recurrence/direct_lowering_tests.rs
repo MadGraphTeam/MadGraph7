@@ -255,6 +255,8 @@ pub(crate) fn validated_template() -> ValidatedRecurrenceTemplateInput {
             current_state_count: 1,
             source_count: 1,
             quantum_flow_count: 1,
+            contact_orbit_certificate_count: 0,
+            contact_orbit_step_count: 0,
             transition_count: 1,
             propagator_count: 1,
             closure_count: 2,
@@ -268,6 +270,8 @@ pub(crate) fn validated_template() -> ValidatedRecurrenceTemplateInput {
             range: CheckedTableRange::new(0, 0),
         }],
         coupling_order_terms: vec![],
+        contact_orbit_certificates: vec![],
+        contact_orbit_steps: vec![],
         current_states: vec![CurrentStateRow {
             id: 0,
             template_string_id: sid("state"),
@@ -449,6 +453,8 @@ pub(crate) fn validated_template() -> ValidatedRecurrenceTemplateInput {
             equivalence_class_string_id: sid("equivalence"),
             input_exchange_factor_id: MISSING_U32,
             output_projection_string_id: sid("projection"),
+            contact_orbit_step_sequence_id: 0,
+            contact_orbit_step_semantic_digest_sequence_id: 0,
             semantic_digest_id: digest_id(9),
         }],
         closures: vec![

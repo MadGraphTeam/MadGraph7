@@ -36,6 +36,8 @@ from .prepared_catalog import (
 from .recurrence_template import (
     ClosureTemplateV1,
     ColorContractionTemplateV1,
+    ContactOrbitCertificateV1,
+    ContactOrbitStepV1,
     CurrentStateTemplateV1,
     EvaluatorBindingV1,
     ExactComplexRationalV1,
@@ -106,6 +108,9 @@ def build_recurrence_template_catalog(
         state_ids,
         parameter_ids,
     )
+    contact_orbit_certificates, contact_orbit_steps, contact_orbit_steps_by_binding = (
+        _build_contact_orbit_records(recurrence_catalog.vertex_bindings)
+    )
     (
         transition_quantum_flows,
         transitions,
@@ -118,6 +123,7 @@ def build_recurrence_template_catalog(
         parameter_ids,
         kernels,
         evaluator_builders,
+        contact_orbit_steps_by_binding,
     )
     propagators, propagator_proofs = _build_propagators(
         model,
@@ -180,6 +186,8 @@ def build_recurrence_template_catalog(
         current_states=current_states,
         sources=sources,
         quantum_flows=tuple(quantum_flows_by_id.values()),
+        contact_orbit_certificates=contact_orbit_certificates,
+        contact_orbit_steps=contact_orbit_steps,
         transitions=transitions,
         propagators=propagators,
         closures=closures,
@@ -1320,6 +1328,101 @@ def _canonical_source_ir(source_ir: Any) -> str:
     return _canonical_json(payload)
 
 
+def _build_contact_orbit_records(
+    bindings: Sequence[PreparedVertexBinding],
+) -> tuple[
+    tuple[ContactOrbitCertificateV1, ...],
+    tuple[ContactOrbitStepV1, ...],
+    Mapping[object, tuple[ContactOrbitStepV1, ...]],
+]:
+    certificates: dict[str, ContactOrbitCertificateV1] = {}
+    certificate_id_by_term: dict[int, str] = {}
+    steps: dict[str, ContactOrbitStepV1] = {}
+    steps_by_binding: dict[object, tuple[ContactOrbitStepV1, ...]] = {}
+    for binding in bindings:
+        for certificate in binding.contact_orbit_certificates:
+            if certificate.reconstruction_factor != "1":
+                raise RecurrenceTemplateError(
+                    "recurrence v1 supports only exact unit contact-orbit "
+                    "reconstruction"
+                )
+            certificate_id = _token(
+                "contact-orbit-certificate", certificate.to_dict()
+            )
+            previous_id = certificate_id_by_term.setdefault(
+                certificate.term_id, certificate_id
+            )
+            if previous_id != certificate_id:
+                raise RecurrenceTemplateError(
+                    "contact-orbit term has conflicting certificates"
+                )
+            certificate_record = ContactOrbitCertificateV1(
+                template_id=certificate_id,
+                algorithm=certificate.algorithm,
+                algorithm_version=certificate.algorithm_version,
+                term_id=certificate.term_id,
+                vertex=certificate.vertex,
+                particles=certificate.particles,
+                evaluator_class=certificate.evaluator_class,
+                physical_leg_equivalence_classes=(
+                    certificate.physical_leg_equivalence_classes
+                ),
+                reconstruction_factor=ExactComplexRationalV1.one(),
+            )
+            previous_certificate = certificates.setdefault(
+                certificate_id, certificate_record
+            )
+            if previous_certificate != certificate_record:
+                raise RecurrenceTemplateError(
+                    "contact-orbit certificate identity collision"
+                )
+    for binding in bindings:
+        binding_steps: list[ContactOrbitStepV1] = []
+        for step in binding.contact_orbit_steps:
+            if step.reconstruction_factor != "1":
+                raise RecurrenceTemplateError(
+                    "recurrence v1 supports only exact unit contact-orbit "
+                    "reconstruction"
+                )
+            certificate_id = certificate_id_by_term.get(step.term_id)
+            if certificate_id is None:
+                raise PreparedKernelCatalogError(
+                    "prepared contact-orbit step has no certificate"
+                )
+            step_id = _token(
+                "contact-orbit-step",
+                {
+                    "certificate_template_id": certificate_id,
+                    "step": step.to_dict(),
+                },
+            )
+            step_record = ContactOrbitStepV1(
+                template_id=step_id,
+                certificate_template_id=certificate_id,
+                stage=step.stage,
+                result_leg=step.result_leg,
+                left_covered_legs=step.left_covered_legs,
+                right_covered_legs=step.right_covered_legs,
+                source_particle_legs=step.source_particle_legs,
+                reconstruction_factor=ExactComplexRationalV1.one(),
+            )
+            previous_step = steps.setdefault(step_id, step_record)
+            if previous_step != step_record:
+                raise RecurrenceTemplateError(
+                    "contact-orbit step identity collision"
+                )
+            binding_steps.append(step_record)
+        if binding_steps:
+            steps_by_binding[binding.key] = tuple(
+                sorted(set(binding_steps), key=lambda item: item.template_id)
+            )
+    return (
+        tuple(sorted(certificates.values(), key=lambda item: item.template_id)),
+        tuple(sorted(steps.values(), key=lambda item: item.template_id)),
+        steps_by_binding,
+    )
+
+
 def _build_transitions(
     model: Model,
     bindings: Sequence[PreparedVertexBinding],
@@ -1327,6 +1430,9 @@ def _build_transitions(
     parameter_ids: Mapping[str, str],
     kernels: Mapping[int, Any],
     evaluator_requests: list[_EvaluatorRequest],
+    contact_orbit_steps_by_binding: Mapping[
+        object, tuple[ContactOrbitStepV1, ...]
+    ],
 ) -> tuple[
     tuple[QuantumFlowTemplateV1, ...],
     tuple[TransitionTemplateV1, ...],
@@ -1347,6 +1453,7 @@ def _build_transitions(
         ]
     ] = []
     for binding in sorted(bindings, key=lambda item: item.key):
+        contact_orbit_steps = contact_orbit_steps_by_binding.get(binding.key, ())
         vertex = Vertex(
             binding.key.kind,
             binding.key.particles,
@@ -1401,15 +1508,17 @@ def _build_transitions(
                 state_ids,
                 coupling_orders,
             )
-            transition_id = _token(
-                "transition",
-                {
-                    "binding": _vertex_binding_payload(binding),
-                    "flow": flow.semantic_digest,
-                    "color": color.semantic_digest,
-                    "kernel": kernel.canonical_signature,
-                },
-            )
+            transition_identity = {
+                "binding": _vertex_binding_payload(binding),
+                "flow": flow.semantic_digest,
+                "color": color.semantic_digest,
+                "kernel": kernel.canonical_signature,
+            }
+            if contact_orbit_steps:
+                transition_identity["contact_orbit_steps"] = [
+                    step.semantic_digest for step in contact_orbit_steps
+                ]
+            transition_id = _token("transition", transition_identity)
             resolver_key = _resolver_key(
                 kernel,
                 "vertex",
@@ -1446,6 +1555,12 @@ def _build_transitions(
                     )
                 ),
                 output_projection=f"{binding.result_state.basis}:chirality={binding.result_state.chirality}",
+                contact_orbit_step_template_ids=tuple(
+                    step.template_id for step in contact_orbit_steps
+                ),
+                contact_orbit_step_semantic_digests=tuple(
+                    step.semantic_digest for step in contact_orbit_steps
+                ),
             )
             candidates.append(
                 (
@@ -1877,6 +1992,12 @@ def _canonical_transition_alias_key(
             order,
         ),
         "coupling_parameter_ids": list(transition.coupling_parameter_ids),
+        "contact_orbit_step_template_ids": list(
+            transition.contact_orbit_step_template_ids
+        ),
+        "contact_orbit_step_semantic_digests": list(
+            transition.contact_orbit_step_semantic_digests
+        ),
         "coupling_orders": [list(item) for item in transition.coupling_orders],
         "binding_coupling": transition.binding_coupling.to_dict(),
         "output_factor_source": transition.output_factor_source,
@@ -2060,6 +2181,22 @@ def _validate_vertex_binding_against_model(
         raise PreparedKernelCatalogError(
             f"prepared vertex binding for kind {vertex.kind} has stale "
             "permutation/sign proof metadata"
+        )
+    expected_contact = _stable_callback(
+        f"contact-orbit contract for kind {vertex.kind}",
+        lambda: model.vertex_contact_orbit_contracts(vertex.kind),
+        serializer=lambda value: _canonical_json(
+            [[item.to_dict() for item in group] for group in value]
+        ),
+    )
+    actual_contact = (
+        binding.contact_orbit_certificates,
+        binding.contact_orbit_steps,
+    )
+    if expected_contact != actual_contact:
+        raise PreparedKernelCatalogError(
+            f"prepared vertex binding for kind {vertex.kind} has stale "
+            "contact-orbit proof metadata"
         )
 
 
@@ -3430,6 +3567,12 @@ def _vertex_binding_payload(binding: PreparedVertexBinding) -> dict[str, object]
             binding.equivalence_factor, "vertex equivalence factor"
         ).to_dict(),
         "output_factor_source": binding.output_factor_source,
+        "contact_orbit_certificates": [
+            item.to_dict() for item in binding.contact_orbit_certificates
+        ],
+        "contact_orbit_steps": [
+            item.to_dict() for item in binding.contact_orbit_steps
+        ],
     }
 
 

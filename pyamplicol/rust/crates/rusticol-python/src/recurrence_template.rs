@@ -15,10 +15,11 @@ use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyDict};
 use rusticol_core::recurrence::template::{
-    CatalogHeaderRow, ClosureRow, ColorContractionRow, ColorNcTermRow, CouplingOrderTermRow,
-    CurrentStateRow, DigestCatalogRow, EvaluatorBindingRow, ExactFactorRow, IndexedRangeRow,
-    LCColorTransitionWitnessRow, MISSING_U32, OwnedRecurrenceTemplateInput, ParameterRow,
-    PropagatorRow, QuantumFlowRow, QuantumNumberFlowTermRow, RECURRENCE_TEMPLATE_INPUT_ABI,
+    CatalogHeaderRow, ClosureRow, ColorContractionRow, ColorNcTermRow, ContactOrbitCertificateRow,
+    ContactOrbitStepRow, CouplingOrderTermRow, CurrentStateRow, DigestCatalogRow,
+    EvaluatorBindingRow, ExactFactorRow, IndexedRangeRow, LCColorTransitionWitnessRow, MISSING_U32,
+    OwnedRecurrenceTemplateInput, ParameterRow, PropagatorRow, QuantumFlowRow,
+    QuantumNumberFlowTermRow, RECURRENCE_TEMPLATE_INPUT_ABI,
     RECURRENCE_TEMPLATE_INPUT_SCHEMA_VERSION, RuntimeHelicityContractRow,
     RuntimeHelicityEmbeddingRow, RuntimeHelicityProjectionRow, RuntimeHelicityVariantRow,
     SourceRow, SymmetryProofRow, TransitionRow,
@@ -99,6 +100,8 @@ const TABLE_SPECS: &[TableSpec] = &[
             column("current_state_count", PrimitiveKind::U32),
             column("source_count", PrimitiveKind::U32),
             column("quantum_flow_count", PrimitiveKind::U32),
+            column("contact_orbit_certificate_count", PrimitiveKind::U32),
+            column("contact_orbit_step_count", PrimitiveKind::U32),
             column("transition_count", PrimitiveKind::U32),
             column("propagator_count", PrimitiveKind::U32),
             column("closure_count", PrimitiveKind::U32),
@@ -158,6 +161,37 @@ const TABLE_SPECS: &[TableSpec] = &[
             column("color_contraction_id", PrimitiveKind::U32),
             column("exponent", PrimitiveKind::I32),
             column("factor_id", PrimitiveKind::U32),
+        ],
+    },
+    TableSpec {
+        name: "contact_orbit_certificates",
+        columns: &[
+            column("id", PrimitiveKind::U32),
+            column("template_string_id", PrimitiveKind::U32),
+            column("algorithm_string_id", PrimitiveKind::U32),
+            column("algorithm_version", PrimitiveKind::U32),
+            column("term_id", PrimitiveKind::U32),
+            column("vertex_string_id", PrimitiveKind::U32),
+            column("particle_string_sequence_id", PrimitiveKind::U32),
+            column("evaluator_class_string_id", PrimitiveKind::U32),
+            column("physical_leg_equivalence_sequence_id", PrimitiveKind::U32),
+            column("reconstruction_factor_id", PrimitiveKind::U32),
+            column("semantic_digest_id", PrimitiveKind::U32),
+        ],
+    },
+    TableSpec {
+        name: "contact_orbit_steps",
+        columns: &[
+            column("id", PrimitiveKind::U32),
+            column("template_string_id", PrimitiveKind::U32),
+            column("certificate_id", PrimitiveKind::U32),
+            column("stage", PrimitiveKind::U8),
+            column("result_leg", PrimitiveKind::U8),
+            column("left_covered_leg_sequence_id", PrimitiveKind::U32),
+            column("right_covered_leg_sequence_id", PrimitiveKind::U32),
+            column("source_particle_leg_sequence_id", PrimitiveKind::U32),
+            column("reconstruction_factor_id", PrimitiveKind::U32),
+            column("semantic_digest_id", PrimitiveKind::U32),
         ],
     },
     TableSpec {
@@ -465,6 +499,11 @@ const TABLE_SPECS: &[TableSpec] = &[
             column("equivalence_class_string_id", PrimitiveKind::U32),
             column("input_exchange_factor_id", PrimitiveKind::U32),
             column("output_projection_string_id", PrimitiveKind::U32),
+            column("contact_orbit_step_sequence_id", PrimitiveKind::U32),
+            column(
+                "contact_orbit_step_semantic_digest_sequence_id",
+                PrimitiveKind::U32,
+            ),
             column("semantic_digest_id", PrimitiveKind::U32),
         ],
     },
@@ -665,6 +704,8 @@ impl DecodedInput {
                 current_state_count: table.u32("current_state_count")?[row],
                 source_count: table.u32("source_count")?[row],
                 quantum_flow_count: table.u32("quantum_flow_count")?[row],
+                contact_orbit_certificate_count: table.u32("contact_orbit_certificate_count")?[row],
+                contact_orbit_step_count: table.u32("contact_orbit_step_count")?[row],
                 transition_count: table.u32("transition_count")?[row],
                 propagator_count: table.u32("propagator_count")?[row],
                 closure_count: table.u32("closure_count")?[row],
@@ -683,6 +724,37 @@ impl DecodedInput {
                     power: table.u32("power")?[row],
                 })
             })?;
+        let contact_orbit_certificates =
+            decode_rows(self.table("contact_orbit_certificates")?, |table, row| {
+                Ok(ContactOrbitCertificateRow {
+                    id: table.u32("id")?[row],
+                    template_string_id: table.u32("template_string_id")?[row],
+                    algorithm_string_id: table.u32("algorithm_string_id")?[row],
+                    algorithm_version: table.u32("algorithm_version")?[row],
+                    term_id: table.u32("term_id")?[row],
+                    vertex_string_id: table.u32("vertex_string_id")?[row],
+                    particle_string_sequence_id: table.u32("particle_string_sequence_id")?[row],
+                    evaluator_class_string_id: table.u32("evaluator_class_string_id")?[row],
+                    physical_leg_equivalence_sequence_id: table
+                        .u32("physical_leg_equivalence_sequence_id")?[row],
+                    reconstruction_factor_id: table.u32("reconstruction_factor_id")?[row],
+                    semantic_digest_id: table.u32("semantic_digest_id")?[row],
+                })
+            })?;
+        let contact_orbit_steps = decode_rows(self.table("contact_orbit_steps")?, |table, row| {
+            Ok(ContactOrbitStepRow {
+                id: table.u32("id")?[row],
+                template_string_id: table.u32("template_string_id")?[row],
+                certificate_id: table.u32("certificate_id")?[row],
+                stage: table.u8("stage")?[row],
+                result_leg: table.u8("result_leg")?[row],
+                left_covered_leg_sequence_id: table.u32("left_covered_leg_sequence_id")?[row],
+                right_covered_leg_sequence_id: table.u32("right_covered_leg_sequence_id")?[row],
+                source_particle_leg_sequence_id: table.u32("source_particle_leg_sequence_id")?[row],
+                reconstruction_factor_id: table.u32("reconstruction_factor_id")?[row],
+                semantic_digest_id: table.u32("semantic_digest_id")?[row],
+            })
+        })?;
         let current_states = decode_rows(self.table("current_states")?, |table, row| {
             Ok(CurrentStateRow {
                 id: table.u32("id")?[row],
@@ -911,6 +983,9 @@ impl DecodedInput {
                 equivalence_class_string_id: table.u32("equivalence_class_string_id")?[row],
                 input_exchange_factor_id: table.u32("input_exchange_factor_id")?[row],
                 output_projection_string_id: table.u32("output_projection_string_id")?[row],
+                contact_orbit_step_sequence_id: table.u32("contact_orbit_step_sequence_id")?[row],
+                contact_orbit_step_semantic_digest_sequence_id: table
+                    .u32("contact_orbit_step_semantic_digest_sequence_id")?[row],
                 semantic_digest_id: table.u32("semantic_digest_id")?[row],
             })
         })?;
@@ -1002,6 +1077,8 @@ impl DecodedInput {
             catalog_header,
             coupling_order_ranges,
             coupling_order_terms,
+            contact_orbit_certificates,
+            contact_orbit_steps,
             current_states,
             digest_catalog,
             evaluator_bindings,
@@ -1049,6 +1126,8 @@ struct NativeValidationResult {
     current_state_count: u32,
     source_count: u32,
     quantum_flow_count: u32,
+    contact_orbit_certificate_count: u32,
+    contact_orbit_step_count: u32,
     transition_count: u32,
     propagator_count: u32,
     closure_count: u32,
@@ -1297,6 +1376,8 @@ fn validate_input(
         current_state_count: summary.current_state_count,
         source_count: summary.source_count,
         quantum_flow_count: summary.quantum_flow_count,
+        contact_orbit_certificate_count: summary.contact_orbit_certificate_count,
+        contact_orbit_step_count: summary.contact_orbit_step_count,
         transition_count: summary.transition_count,
         propagator_count: summary.propagator_count,
         closure_count: summary.closure_count,
@@ -1396,6 +1477,11 @@ fn result_mapping(py: Python<'_>, native: NativeValidationResult) -> PyResult<Py
     counts.set_item("current_states", native.current_state_count)?;
     counts.set_item("sources", native.source_count)?;
     counts.set_item("quantum_flows", native.quantum_flow_count)?;
+    counts.set_item(
+        "contact_orbit_certificates",
+        native.contact_orbit_certificate_count,
+    )?;
+    counts.set_item("contact_orbit_steps", native.contact_orbit_step_count)?;
     counts.set_item("transitions", native.transition_count)?;
     counts.set_item("propagators", native.propagator_count)?;
     counts.set_item("closures", native.closure_count)?;

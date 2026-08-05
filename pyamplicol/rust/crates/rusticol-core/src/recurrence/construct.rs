@@ -9616,6 +9616,8 @@ mod tests {
             equivalence_class_string_id: 0,
             input_exchange_factor_id: MISSING_U32,
             output_projection_string_id: 0,
+            contact_orbit_step_sequence_id: 0,
+            contact_orbit_step_semantic_digest_sequence_id: 0,
             semantic_digest_id: 0,
         }
     }
@@ -10611,6 +10613,8 @@ mod tests {
                 range: CheckedTableRange::new(0, 0),
             }],
             coupling_order_terms: vec![],
+            contact_orbit_certificates: vec![],
+            contact_orbit_steps: vec![],
             current_states: vec![],
             digest_catalog: vec![DigestCatalogRow {
                 id: 0,

@@ -52,6 +52,12 @@ from .compiler_records import (
     _sequence,
 )
 from .compiler_tensor_ordering import compile_tensor_ordering_metadata
+from .contact_decomposition import (
+    CompiledContactDecompositionSplit,
+    CompiledContactOrbitStep,
+    CompiledContactOrientationProof,
+    compiled_contact_orbit_step,
+)
 from .contracts import (
     CompiledModelIR,
     CompiledOrientedKernel,
@@ -899,6 +905,11 @@ def _compile_four_point_contact_kernels(
                         color_expression="1",
                         lc_color_normalization_power=0,
                         term_ids=(),
+                        contact_orbit_steps=_compiled_contact_orbit_steps(
+                            term,
+                            split,
+                            orientation,
+                        ),
                     )
                 )
 
@@ -961,6 +972,22 @@ def _compile_four_point_contact_kernels(
                             + split.final_color_normalization_power
                         ),
                         term_ids=(term.id,),
+                        contact_orbit_steps=_compiled_contact_orbit_steps(
+                            term,
+                            split,
+                            orientation,
+                        ),
                     )
                 )
     return tuple(auxiliary_particles), tuple(kernels)
+
+
+def _compiled_contact_orbit_steps(
+    term: CompiledVertexTerm,
+    split: CompiledContactDecompositionSplit,
+    orientation: CompiledContactOrientationProof,
+) -> tuple[CompiledContactOrbitStep, ...]:
+    certificate = term.contact_orbit_certificate
+    if certificate is None:
+        return ()
+    return (compiled_contact_orbit_step(certificate, split, orientation),)

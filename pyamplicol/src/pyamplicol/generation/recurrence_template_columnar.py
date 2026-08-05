@@ -29,7 +29,7 @@ from .recurrence_columnar import (
 )
 
 RECURRENCE_TEMPLATE_INPUT_ABI: Final = "pyamplicol-recurrence-template-input-v1"
-RECURRENCE_TEMPLATE_INPUT_SCHEMA_VERSION: Final = 1
+RECURRENCE_TEMPLATE_INPUT_SCHEMA_VERSION: Final = 2
 
 _U8 = np.dtype("u1")
 _U32 = np.dtype("<u4")
@@ -209,6 +209,8 @@ def build_recurrence_template_input_v1(
         "current_states": tuple(catalog.current_states),
         "sources": tuple(catalog.sources),
         "quantum_flows": tuple(catalog.quantum_flows),
+        "contact_orbit_certificates": tuple(catalog.contact_orbit_certificates),
+        "contact_orbit_steps": tuple(catalog.contact_orbit_steps),
         "transitions": tuple(catalog.transitions),
         "propagators": tuple(catalog.propagators),
         "closures": tuple(catalog.closures),
@@ -249,6 +251,12 @@ def build_recurrence_template_input_v1(
         _header_table(catalog, strings, digests, sections),
         _catalog_ranges("coupling_order", coupling_orders.values, 2),
         _coupling_order_terms(coupling_orders, strings),
+        _contact_orbit_certificates_table(
+            catalog, strings, digests, factors, u32_sequences
+        ),
+        _contact_orbit_steps_table(
+            catalog, ids, strings, digests, factors, u32_sequences, i32_sequences
+        ),
         _current_states_table(catalog, ids, strings, digests, u32_sequences),
         _digest_table(digests),
         _evaluator_bindings_table(catalog, ids, strings, digests, u32_sequences),
@@ -376,6 +384,20 @@ def _all_strings(catalog: RecurrenceTemplateCatalog) -> Iterable[str]:
                 yield name
                 yield expression
         yield from (name for name, _ in record.coupling_orders)
+    for record in catalog.contact_orbit_certificates:
+        yield from (
+            record.template_id,
+            record.algorithm,
+            record.vertex,
+            *record.particles,
+            record.evaluator_class,
+        )
+    for record in catalog.contact_orbit_steps:
+        yield from (
+            record.template_id,
+            record.certificate_template_id,
+            record.stage,
+        )
     for record in catalog.transitions:
         yield from (
             record.template_id,
@@ -444,6 +466,8 @@ def _all_digests(catalog: RecurrenceTemplateCatalog) -> Iterable[str]:
         catalog.current_states,
         catalog.sources,
         catalog.quantum_flows,
+        catalog.contact_orbit_certificates,
+        catalog.contact_orbit_steps,
         catalog.transitions,
         catalog.propagators,
         catalog.closures,
@@ -490,6 +514,10 @@ def _all_factors(
         yield record.exact_factor
         if record.input_exchange_factor is not None:
             yield record.input_exchange_factor
+    for record in catalog.contact_orbit_certificates:
+        yield record.reconstruction_factor
+    for record in catalog.contact_orbit_steps:
+        yield record.reconstruction_factor
     for record in catalog.quantum_flows:
         yield record.exact_coupling
     for record in catalog.closures:
@@ -556,6 +584,20 @@ def _all_u32_sequences(
         yield record.canonical_input_order
         yield tuple(strings.id(value) for value in record.momentum_convention)
         yield tuple(ids["parameters"][value] for value in record.coupling_parameter_ids)
+        yield tuple(
+            ids["contact_orbit_steps"][value]
+            for value in record.contact_orbit_step_template_ids
+        )
+        yield tuple(
+            digests.id(value)
+            for value in record.contact_orbit_step_semantic_digests
+        )
+    for record in catalog.contact_orbit_certificates:
+        yield tuple(strings.id(value) for value in record.particles)
+        yield record.physical_leg_equivalence_classes
+    for record in catalog.contact_orbit_steps:
+        yield record.left_covered_legs
+        yield record.right_covered_legs
     for record in catalog.closures:
         yield tuple(
             ids["current_states"][value] for value in record.input_state_template_ids
@@ -599,6 +641,9 @@ def _all_i32_sequences(catalog: RecurrenceTemplateCatalog) -> Iterable[Sequence[
     yield ()
     yield from (record.input_spin_states for record in catalog.quantum_flows)
     yield from (record.input_representations for record in catalog.color_contractions)
+    yield from (
+        record.source_particle_legs for record in catalog.contact_orbit_steps
+    )
 
 
 def _all_flavour_flows(
@@ -632,6 +677,8 @@ def _header_table(catalog, strings, digests, sections):
         "current_state_count",
         "source_count",
         "quantum_flow_count",
+        "contact_orbit_certificate_count",
+        "contact_orbit_step_count",
         "transition_count",
         "propagator_count",
         "closure_count",
@@ -1050,6 +1097,18 @@ def _transitions_table(
                 strings.id(record.equivalence_class),
                 factors.id(record.input_exchange_factor),
                 strings.id(record.output_projection),
+                sequences.id(
+                    tuple(
+                        ids["contact_orbit_steps"][value]
+                        for value in record.contact_orbit_step_template_ids
+                    )
+                ),
+                sequences.id(
+                    tuple(
+                        digests.id(value)
+                        for value in record.contact_orbit_step_semantic_digests
+                    )
+                ),
                 digests.id(record.semantic_digest),
             )
         )
@@ -1074,6 +1133,85 @@ def _transitions_table(
             ("equivalence_class_string_id", _U32),
             ("input_exchange_factor_id", _U32),
             ("output_projection_string_id", _U32),
+            ("contact_orbit_step_sequence_id", _U32),
+            ("contact_orbit_step_semantic_digest_sequence_id", _U32),
+            ("semantic_digest_id", _U32),
+        ),
+    )
+
+
+def _contact_orbit_certificates_table(
+    catalog, strings, digests, factors, sequences
+):
+    rows = []
+    for index, record in enumerate(catalog.contact_orbit_certificates):
+        rows.append(
+            (
+                index,
+                strings.id(record.template_id),
+                strings.id(record.algorithm),
+                record.algorithm_version,
+                record.term_id,
+                strings.id(record.vertex),
+                sequences.id(tuple(strings.id(value) for value in record.particles)),
+                strings.id(record.evaluator_class),
+                sequences.id(record.physical_leg_equivalence_classes),
+                factors.id(record.reconstruction_factor),
+                digests.id(record.semantic_digest),
+            )
+        )
+    return _rows(
+        "contact_orbit_certificates",
+        rows,
+        (
+            ("id", _U32),
+            ("template_string_id", _U32),
+            ("algorithm_string_id", _U32),
+            ("algorithm_version", _U32),
+            ("term_id", _U32),
+            ("vertex_string_id", _U32),
+            ("particle_string_sequence_id", _U32),
+            ("evaluator_class_string_id", _U32),
+            ("physical_leg_equivalence_sequence_id", _U32),
+            ("reconstruction_factor_id", _U32),
+            ("semantic_digest_id", _U32),
+        ),
+    )
+
+
+def _contact_orbit_steps_table(
+    catalog, ids, strings, digests, factors, u32_sequences, i32_sequences
+):
+    rows = []
+    stage_ids = {"partial": 0, "final": 1}
+    for index, record in enumerate(catalog.contact_orbit_steps):
+        rows.append(
+            (
+                index,
+                strings.id(record.template_id),
+                ids["contact_orbit_certificates"][record.certificate_template_id],
+                stage_ids[record.stage],
+                record.result_leg,
+                u32_sequences.id(record.left_covered_legs),
+                u32_sequences.id(record.right_covered_legs),
+                i32_sequences.id(record.source_particle_legs),
+                factors.id(record.reconstruction_factor),
+                digests.id(record.semantic_digest),
+            )
+        )
+    return _rows(
+        "contact_orbit_steps",
+        rows,
+        (
+            ("id", _U32),
+            ("template_string_id", _U32),
+            ("certificate_id", _U32),
+            ("stage", _U8),
+            ("result_leg", _U8),
+            ("left_covered_leg_sequence_id", _U32),
+            ("right_covered_leg_sequence_id", _U32),
+            ("source_particle_leg_sequence_id", _U32),
+            ("reconstruction_factor_id", _U32),
             ("semantic_digest_id", _U32),
         ),
     )

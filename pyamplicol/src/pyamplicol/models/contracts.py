@@ -20,8 +20,12 @@ from .contact_decomposition import (
     CompiledContactDecompositionProof,
     CompiledContactDecompositionSplit,
     CompiledContactDummyIndexMapping,
+    CompiledContactOrbitCertificate,
+    CompiledContactOrbitStep,
     CompiledContactOrientationProof,
     CompiledContactUnsupportedReason,
+    compiled_contact_orbit_step,
+    contact_orbit_evaluator_class_is_certifiable,
 )
 
 PROPAGATOR_SOURCE_FIELD = "pyamplicol_source"
@@ -441,6 +445,7 @@ class CompiledVertexTerm:
     backend: str = "ufo"
     lc_color_normalization_power: int = 0
     contact_decomposition_proof: CompiledContactDecompositionProof | None = None
+    contact_orbit_certificate: CompiledContactOrbitCertificate | None = None
     source_ordering_ids: tuple[str, ...] = ()
     index_bindings: tuple[TensorIndexBindingIR, ...] = ()
 
@@ -473,6 +478,11 @@ class CompiledVertexTerm:
             payload["contact_decomposition_proof"] = (
                 self.contact_decomposition_proof.to_dict()
             )
+        payload["contact_orbit_certificate"] = (
+            None
+            if self.contact_orbit_certificate is None
+            else self.contact_orbit_certificate.to_dict()
+        )
         return payload
 
 
@@ -807,8 +817,15 @@ class CompiledOrientedKernel:
     lc_recurrence_color_rule_kind: str | None = None
     lc_color_transition_terms: tuple[CompiledLCColorTransitionTerm, ...] = ()
     lc_color_closure_terms: tuple[CompiledLCColorTransitionTerm, ...] = ()
+    contact_orbit_steps: tuple[CompiledContactOrbitStep, ...] = ()
 
     def __post_init__(self) -> None:
+        if self.contact_orbit_steps != tuple(
+            sorted(set(self.contact_orbit_steps))
+        ):
+            raise ValueError(
+                "compiled contact-orbit steps must be sorted and unique"
+            )
         if self.lc_recurrence_color_rule_kind is not None and (
             not isinstance(self.lc_recurrence_color_rule_kind, str)
             or not self.lc_recurrence_color_rule_kind
@@ -919,6 +936,9 @@ class CompiledOrientedKernel:
             ],
             "lc_color_closure_terms": [
                 item.to_dict() for item in self.lc_color_closure_terms
+            ],
+            "contact_orbit_steps": [
+                step.to_dict() for step in self.contact_orbit_steps
             ],
         }
 
@@ -1062,6 +1082,7 @@ class CompiledModelIR:
         self._validate_goldstone_partners()
         self._validate_contractions()
         self._validate_contact_decomposition_proofs()
+        self._validate_contact_orbit_contracts()
         self._validate_tensor_orderings()
         for context, expression in self._executable_expressions():
             if "UFO::" in expression:
@@ -1176,6 +1197,94 @@ class CompiledModelIR:
                 raise ValueError(
                     f"contact decomposition proof identity mismatch for term {term.id}"
                 )
+
+    def _validate_contact_orbit_contracts(self) -> None:
+        particles = {particle.name: particle for particle in self.particles}
+        certificates: dict[int, CompiledContactOrbitCertificate] = {}
+        expected_steps: set[CompiledContactOrbitStep] = set()
+        for term in self.vertex_terms:
+            certificate = term.contact_orbit_certificate
+            proof = term.contact_decomposition_proof
+            source_particles = tuple(particles[name] for name in term.particles)
+            certifiable = (
+                proof is not None
+                and proof.status == "proven"
+                and proof.matches(term)
+                and contact_orbit_evaluator_class_is_certifiable(
+                    color_source=term.color_source,
+                    color_expression=term.color_expression,
+                    lorentz_expression=term.lorentz_expression,
+                    decomposition_kinds=tuple(
+                        split.decomposition_kind for split in proof.splits
+                    ),
+                    particle_contracts=tuple(
+                        (
+                            particle.spin,
+                            particle.color,
+                            particle.statistics,
+                            particle.wavefunction_family,
+                            particle.self_conjugate,
+                        )
+                        for particle in source_particles
+                    ),
+                )
+            )
+            if certificate is None:
+                if certifiable:
+                    raise ValueError(
+                        f"certifiable contact term {term.id} has no orbit certificate"
+                    )
+                continue
+            if not certifiable:
+                raise ValueError(
+                    f"contact-orbit certificate for term {term.id} names an "
+                    "excluded evaluator class"
+                )
+            if (
+                certificate.term_id != term.id
+                or certificate.vertex != term.vertex
+                or certificate.particles != term.particles
+                or certificate.color_expression != term.color_expression
+                or certificate.lorentz_expression != term.lorentz_expression
+                or certificate.coupling_expression != term.coupling_expression
+            ):
+                raise ValueError(
+                    f"contact-orbit certificate identity mismatch for term {term.id}"
+                )
+            certificates[term.id] = certificate
+            assert proof is not None
+            expected_steps.update(
+                compiled_contact_orbit_step(certificate, split, orientation)
+                for split in proof.splits
+                for orientation in split.orientations
+            )
+
+        actual_steps: list[CompiledContactOrbitStep] = []
+        for kernel in self.oriented_kernels:
+            for step in kernel.contact_orbit_steps:
+                if step.term_id not in certificates:
+                    raise ValueError(
+                        f"contact-orbit step on kernel {kernel.kind} has no "
+                        "certificate"
+                    )
+                expected_suffix = (
+                    "::contact-partial"
+                    if step.stage == "partial"
+                    else "::contact-final"
+                )
+                if expected_suffix not in kernel.vertex:
+                    raise ValueError(
+                        f"contact-orbit step stage mismatch for kernel {kernel.kind}"
+                    )
+                actual_steps.append(step)
+        if len(actual_steps) != len(set(actual_steps)):
+            raise ValueError(
+                "compiled contact-orbit lineage contains duplicate retained steps"
+            )
+        if set(actual_steps) != expected_steps:
+            raise ValueError(
+                "compiled contact-orbit lineage is incomplete after contact fusion"
+            )
 
     def _validate_contractions(self) -> None:
         particles = {particle.name: particle for particle in self.particles}
@@ -1722,6 +1831,21 @@ class CompiledModelIR:
                             )
                         )
                     ),
+                    contact_orbit_certificate=(
+                        None
+                        if _required_field(
+                            item,
+                            "contact_orbit_certificate",
+                            context="compiled vertex term",
+                        )
+                        is None
+                        else CompiledContactOrbitCertificate.from_dict(
+                            _strict_mapping(
+                                item["contact_orbit_certificate"],
+                                "contact-orbit certificate",
+                            )
+                        )
+                    ),
                     source_ordering_ids=tuple(
                         _strict_string(value, "vertex source ordering ID")
                         for value in _required_sequence_field(
@@ -1824,6 +1948,16 @@ class CompiledModelIR:
                     lc_color_closure_terms=(
                         _compiled_lc_color_closure_terms(
                             item.get("lc_color_closure_terms", ())
+                        )
+                    ),
+                    contact_orbit_steps=tuple(
+                        CompiledContactOrbitStep.from_dict(step)
+                        for step in _mappings(
+                            _required_field(
+                                item,
+                                "contact_orbit_steps",
+                                context="compiled oriented kernel",
+                            )
                         )
                     ),
                 )

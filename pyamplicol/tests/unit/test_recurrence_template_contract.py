@@ -21,6 +21,8 @@ from pyamplicol.generation.recurrence_template_columnar import (
 from pyamplicol.models.recurrence_template import (
     ClosureTemplateV1,
     ColorContractionTemplateV1,
+    ContactOrbitCertificateV1,
+    ContactOrbitStepV1,
     CurrentStateTemplateV1,
     EvaluatorBindingV1,
     EvaluatorCallableKind,
@@ -249,6 +251,88 @@ def _transition() -> TransitionTemplateV1:
     )
 
 
+def _contact_orbit_records() -> tuple[
+    tuple[ContactOrbitCertificateV1, ...],
+    tuple[ContactOrbitStepV1, ...],
+]:
+    certificates = (
+        ContactOrbitCertificateV1(
+            template_id="contact-orbit-certificate:scalar:0",
+            algorithm="compiler-certified-contact-orbit",
+            algorithm_version=1,
+            term_id=0,
+            vertex="V_scalar_0",
+            particles=("s", "s", "s", "s"),
+            evaluator_class=(
+                "constant-scalar-literal-singlet-self-conjugate-boson"
+            ),
+            physical_leg_equivalence_classes=(0, 0, 0, 0),
+            reconstruction_factor=ExactComplexRationalV1.one(),
+        ),
+        ContactOrbitCertificateV1(
+            template_id="contact-orbit-certificate:scalar:1",
+            algorithm="compiler-certified-contact-orbit",
+            algorithm_version=1,
+            term_id=1,
+            vertex="V_scalar_1",
+            particles=("s", "s", "t", "u"),
+            evaluator_class=(
+                "constant-scalar-literal-singlet-self-conjugate-boson"
+            ),
+            physical_leg_equivalence_classes=(0, 0, 1, 2),
+            reconstruction_factor=ExactComplexRationalV1.one(),
+        ),
+    )
+    steps = (
+        ContactOrbitStepV1(
+            template_id="contact-orbit-step:scalar:partial",
+            certificate_template_id=certificates[0].template_id,
+            stage="partial",
+            result_leg=2,
+            left_covered_legs=(0,),
+            right_covered_legs=(1,),
+            source_particle_legs=(0, 1, -1),
+            reconstruction_factor=ExactComplexRationalV1.one(),
+        ),
+        ContactOrbitStepV1(
+            template_id="contact-orbit-step:scalar:final",
+            certificate_template_id=certificates[1].template_id,
+            stage="final",
+            result_leg=3,
+            left_covered_legs=(0, 1),
+            right_covered_legs=(2,),
+            source_particle_legs=(-1, 2, 3),
+            reconstruction_factor=ExactComplexRationalV1.one(),
+        ),
+    )
+    return certificates, steps
+
+
+def _contact_orbit_catalog(
+    *, reverse_records: bool = False
+) -> RecurrenceTemplateCatalog:
+    certificates, steps = _contact_orbit_records()
+    bound_steps = tuple(sorted(steps, key=lambda item: item.template_id))
+    transition = replace(
+        _transition(),
+        contact_orbit_step_template_ids=tuple(
+            step.template_id for step in bound_steps
+        ),
+        contact_orbit_step_semantic_digests=tuple(
+            step.semantic_digest for step in bound_steps
+        ),
+        semantic_digest="",
+    )
+    if reverse_records:
+        certificates = tuple(reversed(certificates))
+        steps = tuple(reversed(steps))
+    return _catalog(
+        contact_orbit_certificates=certificates,
+        contact_orbit_steps=steps,
+        transitions=(transition,),
+    )
+
+
 def _propagator() -> PropagatorTemplateV1:
     return PropagatorTemplateV1(
         template_id="propagator:matter",
@@ -407,8 +491,11 @@ def _mutated_projected_input(
     value: int,
     *,
     row: int = 0,
+    catalog: RecurrenceTemplateCatalog | None = None,
 ) -> RecurrenceTemplateInputV1:
-    projected = build_recurrence_template_input_v1(_catalog())
+    projected = build_recurrence_template_input_v1(
+        _catalog() if catalog is None else catalog
+    )
     tables = list(projected.tables)
     table_index = next(
         index for index, table in enumerate(tables) if table.name == table_name
@@ -500,6 +587,178 @@ def test_catalog_round_trip_is_canonical_and_content_addressed() -> None:
     assert catalog.current_states[0].template_id == "state:adjoint"
     with pytest.raises(FrozenInstanceError):
         catalog.current_states[0].dimension = 3  # type: ignore[misc]
+
+
+def test_contact_orbit_records_round_trip_and_ignore_input_row_order() -> None:
+    catalog = _contact_orbit_catalog()
+    reordered = _contact_orbit_catalog(reverse_records=True)
+    restored = RecurrenceTemplateCatalog.from_dict(catalog.to_dict())
+
+    assert restored == catalog
+    assert reordered == catalog
+    assert reordered.canonical_json == catalog.canonical_json
+    assert reordered.catalog_digest == catalog.catalog_digest
+    assert restored.transitions[0].contact_orbit_step_template_ids == (
+        "contact-orbit-step:scalar:final",
+        "contact-orbit-step:scalar:partial",
+    )
+    assert restored.transitions[0].contact_orbit_step_semantic_digests == (
+        restored.contact_orbit_steps[0].semantic_digest,
+        restored.contact_orbit_steps[1].semantic_digest,
+    )
+
+
+def test_contact_orbit_semantic_tampering_fails_closed() -> None:
+    certificate, steps = _contact_orbit_records()
+    with pytest.raises(RecurrenceTemplateError, match="stale semantic digest"):
+        replace(certificate[0], term_id=17)
+
+    with pytest.raises(RecurrenceTemplateError, match="not canonical"):
+        replace(
+            certificate[0],
+            physical_leg_equivalence_classes=(0, 1, 2, 3),
+            semantic_digest="",
+        )
+
+    with pytest.raises(RecurrenceTemplateError, match="partial step lineage"):
+        replace(steps[0], source_particle_legs=(1, 0, -1), semantic_digest="")
+    with pytest.raises(RecurrenceTemplateError, match="final step lineage"):
+        replace(steps[1], left_covered_legs=(0,), semantic_digest="")
+
+
+def test_contact_orbit_columnar_contract_rejects_transition_digest_tampering() -> None:
+    catalog = _contact_orbit_catalog()
+    projected = build_recurrence_template_input_v1(catalog)
+    tables = {table.name: table for table in projected.tables}
+
+    assert tables["contact_orbit_certificates"].row_count == 2
+    assert tables["contact_orbit_steps"].row_count == 2
+    assert {
+        "contact_orbit_step_sequence_id",
+        "contact_orbit_step_semantic_digest_sequence_id",
+    } <= {column.name for column in tables["transitions"].columns}
+    result = _rusticol._validate_recurrence_template_input_v1(
+        projected,
+        [0, 1, 2, 3, 4],
+    )
+    assert result["counts"]["contact_orbit_certificates"] == 2
+    assert result["counts"]["contact_orbit_steps"] == 2
+
+    transition_table = tables["transitions"]
+    sequence_id = int(
+        transition_table.column(
+            "contact_orbit_step_semantic_digest_sequence_id"
+        )[0]
+    )
+    sequence_ranges = tables["u32_sequence_ranges"]
+    start = int(sequence_ranges.column("start")[sequence_id])
+    different_valid_digest_id = int(transition_table.column("semantic_digest_id")[0])
+    mismatched = _mutated_projected_input(
+        "u32_sequence_values",
+        "value",
+        different_valid_digest_id,
+        row=start,
+        catalog=catalog,
+    )
+    with pytest.raises(ValueError, match="step digest does not match"):
+        _rusticol._validate_recurrence_template_input_v1(
+            mismatched,
+            [0, 1, 2, 3, 4],
+        )
+
+
+def test_contact_orbit_native_certificate_contract_rejects_tampering() -> None:
+    catalog = _contact_orbit_catalog()
+    projected = build_recurrence_template_input_v1(catalog)
+    tables = {table.name: table for table in projected.tables}
+    certificates = tables["contact_orbit_certificates"]
+    cases = (
+        (
+            _rusticol.CompatibilityError,
+            "algorithm_string_id",
+            int(certificates.column("evaluator_class_string_id")[0]),
+            "contact-orbit certificate algorithm",
+        ),
+        (
+            _rusticol.CompatibilityError,
+            "evaluator_class_string_id",
+            int(certificates.column("algorithm_string_id")[0]),
+            "contact-orbit evaluator class",
+        ),
+        (
+            ValueError,
+            "reconstruction_factor_id",
+            int(tables["parameters"].column("default_factor_id")[0]),
+            "reconstruction factor is not one",
+        ),
+    )
+    for error_type, column_name, value, message in cases:
+        tampered = _mutated_projected_input(
+            "contact_orbit_certificates",
+            column_name,
+            value,
+            catalog=catalog,
+        )
+        with pytest.raises(error_type, match=message):
+            _rusticol._validate_recurrence_template_input_v1(
+                tampered,
+                [0, 1, 2, 3, 4],
+            )
+
+
+def test_contact_orbit_native_certificate_rows_reject_reordering() -> None:
+    projected = build_recurrence_template_input_v1(_contact_orbit_catalog())
+    tables = list(projected.tables)
+    table_index = next(
+        index
+        for index, table in enumerate(tables)
+        if table.name == "contact_orbit_certificates"
+    )
+    table = tables[table_index]
+    reversed_columns = []
+    for column in table.columns:
+        values = np.ascontiguousarray(column.values[::-1])
+        values.flags.writeable = False
+        reversed_columns.append(RecurrenceColumn(name=column.name, values=values))
+    columns = tuple(reversed_columns)
+    tables[table_index] = replace(table, columns=columns)
+    reordered = replace(projected, tables=tuple(tables))
+
+    with pytest.raises(
+        ValueError,
+        match="contact-orbit certificate row 0 has noncanonical id 1",
+    ):
+        _rusticol._validate_recurrence_template_input_v1(
+            reordered,
+            [0, 1, 2, 3, 4],
+        )
+
+
+def test_contact_orbit_native_step_lineage_tampering_fails_closed() -> None:
+    projected = build_recurrence_template_input_v1(_contact_orbit_catalog())
+    tables = list(projected.tables)
+    table_index = next(
+        index
+        for index, table in enumerate(tables)
+        if table.name == "contact_orbit_steps"
+    )
+    table = tables[table_index]
+    columns = list(table.columns)
+    stage_index = next(
+        index for index, column in enumerate(columns) if column.name == "stage"
+    )
+    values = np.array(columns[stage_index].values, copy=True, order="C")
+    values[0] = 0
+    values.flags.writeable = False
+    columns[stage_index] = RecurrenceColumn(name="stage", values=values)
+    tables[table_index] = replace(table, columns=tuple(columns))
+    tampered = replace(projected, tables=tuple(tables))
+
+    with pytest.raises(ValueError, match="partial step 0 has inconsistent lineage"):
+        _rusticol._validate_recurrence_template_input_v1(
+            tampered,
+            [0, 1, 2, 3, 4],
+        )
 
 
 def test_extended_recurrence_records_round_trip_exactly() -> None:

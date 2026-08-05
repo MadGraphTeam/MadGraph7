@@ -581,6 +581,187 @@ class _SemanticRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class ContactOrbitCertificateV1(_SemanticRecord):
+    _record_kind: ClassVar[str] = "contact-orbit-certificate"
+
+    template_id: str
+    algorithm: str
+    algorithm_version: int
+    term_id: int
+    vertex: str
+    particles: tuple[str, str, str, str]
+    evaluator_class: str
+    physical_leg_equivalence_classes: tuple[int, int, int, int]
+    reconstruction_factor: ExactComplexRationalV1
+    semantic_digest: str = ""
+
+    def __post_init__(self) -> None:
+        _require_nonempty("contact-orbit certificate template_id", self.template_id)
+        _require_nonempty("contact-orbit certificate algorithm", self.algorithm)
+        _require_int(
+            "contact-orbit certificate algorithm version",
+            self.algorithm_version,
+            minimum=1,
+        )
+        _require_int("contact-orbit certificate term ID", self.term_id, minimum=0)
+        _require_nonempty("contact-orbit certificate vertex", self.vertex)
+        _require_string_tuple(
+            "contact-orbit certificate particles", self.particles, nonempty=True
+        )
+        if len(self.particles) != 4:
+            raise RecurrenceTemplateError(
+                "contact-orbit certificate must describe four physical legs"
+            )
+        _require_nonempty(
+            "contact-orbit certificate evaluator class", self.evaluator_class
+        )
+        classes = self.physical_leg_equivalence_classes
+        if (
+            len(classes) != 4
+            or any(type(value) is not int or value < 0 for value in classes)
+        ):
+            raise RecurrenceTemplateError(
+                "contact-orbit certificate equivalence classes are invalid"
+            )
+        canonical: dict[str, int] = {}
+        expected = tuple(
+            canonical.setdefault(particle, len(canonical))
+            for particle in self.particles
+        )
+        if classes != expected:
+            raise RecurrenceTemplateError(
+                "contact-orbit certificate equivalence classes are not canonical"
+            )
+        if self.reconstruction_factor != ExactComplexRationalV1.one():
+            raise RecurrenceTemplateError(
+                "scalar contact-orbit reconstruction factor must be exactly one"
+            )
+        self._finish_semantic_record()
+
+    def _semantic_fields(self) -> dict[str, object]:
+        return {
+            "algorithm": self.algorithm,
+            "algorithm_version": self.algorithm_version,
+            "evaluator_class": self.evaluator_class,
+            "particles": list(self.particles),
+            "physical_leg_equivalence_classes": list(
+                self.physical_leg_equivalence_classes
+            ),
+            "reconstruction_factor": self.reconstruction_factor.to_dict(),
+            "template_id": self.template_id,
+            "term_id": self.term_id,
+            "vertex": self.vertex,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ContactOrbitStepV1(_SemanticRecord):
+    _record_kind: ClassVar[str] = "contact-orbit-step"
+
+    template_id: str
+    certificate_template_id: str
+    stage: str
+    result_leg: int
+    left_covered_legs: tuple[int, ...]
+    right_covered_legs: tuple[int, ...]
+    source_particle_legs: tuple[int, int, int]
+    reconstruction_factor: ExactComplexRationalV1
+    semantic_digest: str = ""
+
+    def __post_init__(self) -> None:
+        _require_nonempty("contact-orbit step template_id", self.template_id)
+        _require_nonempty(
+            "contact-orbit step certificate", self.certificate_template_id
+        )
+        if self.stage not in {"partial", "final"}:
+            raise RecurrenceTemplateError(
+                f"unsupported contact-orbit step stage {self.stage!r}"
+            )
+        _require_int("contact-orbit step result leg", self.result_leg, minimum=0)
+        if self.result_leg >= 4:
+            raise RecurrenceTemplateError("contact-orbit result leg is outside arity")
+        for name, values in (
+            ("left", self.left_covered_legs),
+            ("right", self.right_covered_legs),
+        ):
+            if (
+                not isinstance(values, tuple)
+                or not values
+                or any(
+                    type(value) is not int or value not in range(4)
+                    for value in values
+                )
+            ):
+                raise RecurrenceTemplateError(
+                    f"contact-orbit {name} covered legs are invalid"
+                )
+        if set(self.left_covered_legs) & set(self.right_covered_legs):
+            raise RecurrenceTemplateError(
+                "contact-orbit left and right covered legs must be disjoint"
+            )
+        if len(self.source_particle_legs) != 3 or any(
+            type(value) is not int or value not in {-1, 0, 1, 2, 3}
+            for value in self.source_particle_legs
+        ):
+            raise RecurrenceTemplateError(
+                "contact-orbit source-particle legs are invalid"
+            )
+        if self.reconstruction_factor != ExactComplexRationalV1.one():
+            raise RecurrenceTemplateError(
+                "contact-orbit step reconstruction factor must be exactly one"
+            )
+        covered = (*self.left_covered_legs, *self.right_covered_legs)
+        if len(covered) != len(set(covered)):
+            raise RecurrenceTemplateError(
+                "contact-orbit covered legs must be unique"
+            )
+        left_source, right_source, output_source = self.source_particle_legs
+        if self.stage == "partial":
+            if (
+                len(self.left_covered_legs) != 1
+                or len(self.right_covered_legs) != 1
+                or (left_source, right_source)
+                != (self.left_covered_legs[0], self.right_covered_legs[0])
+                or output_source != -1
+                or self.result_leg in covered
+            ):
+                raise RecurrenceTemplateError(
+                    "contact-orbit partial step lineage is inconsistent"
+                )
+        else:
+            if (
+                set(covered) != (set(range(4)) - {self.result_leg})
+                or output_source != self.result_leg
+                or {len(self.left_covered_legs), len(self.right_covered_legs)}
+                != {1, 2}
+            ):
+                raise RecurrenceTemplateError(
+                    "contact-orbit final step lineage is inconsistent"
+                )
+            expected_sources = tuple(
+                -1 if len(side) == 2 else side[0]
+                for side in (self.left_covered_legs, self.right_covered_legs)
+            )
+            if (left_source, right_source) != expected_sources:
+                raise RecurrenceTemplateError(
+                    "contact-orbit final source lineage is inconsistent"
+                )
+        self._finish_semantic_record()
+
+    def _semantic_fields(self) -> dict[str, object]:
+        return {
+            "certificate_template_id": self.certificate_template_id,
+            "left_covered_legs": list(self.left_covered_legs),
+            "reconstruction_factor": self.reconstruction_factor.to_dict(),
+            "result_leg": self.result_leg,
+            "right_covered_legs": list(self.right_covered_legs),
+            "source_particle_legs": list(self.source_particle_legs),
+            "stage": self.stage,
+            "template_id": self.template_id,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class ParameterTemplateV1(_SemanticRecord):
     _record_kind: ClassVar[str] = "parameter"
 
@@ -1043,6 +1224,8 @@ class TransitionTemplateV1(_SemanticRecord):
     equivalence_class: str
     input_exchange_factor: ExactComplexRationalV1 | None
     output_projection: str
+    contact_orbit_step_template_ids: tuple[str, ...] = ()
+    contact_orbit_step_semantic_digests: tuple[str, ...] = ()
     semantic_digest: str = ""
 
     def __post_init__(self) -> None:
@@ -1102,6 +1285,25 @@ class TransitionTemplateV1(_SemanticRecord):
                     "transition input-exchange factor must be nonzero"
                 )
         _require_nonempty("transition output projection", self.output_projection)
+        if len(self.contact_orbit_step_template_ids) != len(
+            self.contact_orbit_step_semantic_digests
+        ):
+            raise RecurrenceTemplateError(
+                "transition contact-orbit step IDs and digests must be paired"
+            )
+        _require_string_tuple(
+            "transition contact-orbit steps", self.contact_orbit_step_template_ids
+        )
+        if self.contact_orbit_step_template_ids != tuple(
+            sorted(set(self.contact_orbit_step_template_ids))
+        ):
+            raise RecurrenceTemplateError(
+                "transition contact-orbit step IDs must be sorted and unique"
+            )
+        for digest in self.contact_orbit_step_semantic_digests:
+            _require_sha256(
+                "transition contact-orbit step semantic digest", digest
+            )
         self._finish_semantic_record()
 
     def _semantic_fields(self) -> dict[str, object]:
@@ -1109,6 +1311,12 @@ class TransitionTemplateV1(_SemanticRecord):
             "canonical_input_order": list(self.canonical_input_order),
             "binding_coupling": self.binding_coupling.to_dict(),
             "color_contraction_template_id": self.color_contraction_template_id,
+            "contact_orbit_step_semantic_digests": list(
+                self.contact_orbit_step_semantic_digests
+            ),
+            "contact_orbit_step_template_ids": list(
+                self.contact_orbit_step_template_ids
+            ),
             "coupling_orders": [list(item) for item in self.coupling_orders],
             "coupling_parameter_ids": list(self.coupling_parameter_ids),
             "evaluator_resolver_key": self.evaluator_resolver_key,
@@ -1884,6 +2092,8 @@ _Record = (
     | CurrentStateTemplateV1
     | SourceTemplateV1
     | QuantumFlowTemplateV1
+    | ContactOrbitCertificateV1
+    | ContactOrbitStepV1
     | TransitionTemplateV1
     | PropagatorTemplateV1
     | ClosureTemplateV1
@@ -1903,6 +2113,8 @@ class RecurrenceTemplateCatalog:
     current_states: tuple[CurrentStateTemplateV1, ...]
     sources: tuple[SourceTemplateV1, ...]
     quantum_flows: tuple[QuantumFlowTemplateV1, ...]
+    contact_orbit_certificates: tuple[ContactOrbitCertificateV1, ...]
+    contact_orbit_steps: tuple[ContactOrbitStepV1, ...]
     transitions: tuple[TransitionTemplateV1, ...]
     propagators: tuple[PropagatorTemplateV1, ...]
     closures: tuple[ClosureTemplateV1, ...]
@@ -1964,6 +2176,8 @@ class RecurrenceTemplateCatalog:
         current_states: Sequence[CurrentStateTemplateV1] = (),
         sources: Sequence[SourceTemplateV1] = (),
         quantum_flows: Sequence[QuantumFlowTemplateV1] = (),
+        contact_orbit_certificates: Sequence[ContactOrbitCertificateV1] = (),
+        contact_orbit_steps: Sequence[ContactOrbitStepV1] = (),
         transitions: Sequence[TransitionTemplateV1] = (),
         propagators: Sequence[PropagatorTemplateV1] = (),
         closures: Sequence[ClosureTemplateV1] = (),
@@ -1979,6 +2193,12 @@ class RecurrenceTemplateCatalog:
             "current_states": tuple(sorted(current_states, key=_record_identity)),
             "sources": tuple(sorted(sources, key=_record_identity)),
             "quantum_flows": tuple(sorted(quantum_flows, key=_record_identity)),
+            "contact_orbit_certificates": tuple(
+                sorted(contact_orbit_certificates, key=_record_identity)
+            ),
+            "contact_orbit_steps": tuple(
+                sorted(contact_orbit_steps, key=_record_identity)
+            ),
             "transitions": tuple(sorted(transitions, key=_record_identity)),
             "propagators": tuple(sorted(propagators, key=_record_identity)),
             "closures": tuple(sorted(closures, key=_record_identity)),
@@ -2020,6 +2240,8 @@ class RecurrenceTemplateCatalog:
             ("current_states", self.current_states),
             ("sources", self.sources),
             ("quantum_flows", self.quantum_flows),
+            ("contact_orbit_certificates", self.contact_orbit_certificates),
+            ("contact_orbit_steps", self.contact_orbit_steps),
             ("transitions", self.transitions),
             ("propagators", self.propagators),
             ("closures", self.closures),
@@ -2080,6 +2302,12 @@ class RecurrenceTemplateCatalog:
         states = {record.template_id: record for record in self.current_states}
         sources = {record.template_id: record for record in self.sources}
         quantum_flows = {record.template_id: record for record in self.quantum_flows}
+        contact_orbit_certificates = {
+            record.template_id: record for record in self.contact_orbit_certificates
+        }
+        contact_orbit_steps = {
+            record.template_id: record for record in self.contact_orbit_steps
+        }
         colors = {record.template_id: record for record in self.color_contractions}
         proofs = {record.template_id: record for record in self.symmetry_proofs}
         templates = {
@@ -2102,6 +2330,12 @@ class RecurrenceTemplateCatalog:
                     "parameter cannot depend directly on itself"
                 )
         _require_acyclic_parameter_dependencies(parameters)
+        for step in self.contact_orbit_steps:
+            _require_reference(
+                "contact-orbit step certificate",
+                step.certificate_template_id,
+                contact_orbit_certificates,
+            )
         for state in self.current_states:
             _require_optional_reference(
                 "current mass parameter", state.mass_parameter_id, parameters
@@ -2208,6 +2442,18 @@ class RecurrenceTemplateCatalog:
                 output=transition.result_state_template_id,
                 semantic_template_id=transition.template_id,
             )
+            for step_id, step_digest in zip(
+                transition.contact_orbit_step_template_ids,
+                transition.contact_orbit_step_semantic_digests,
+                strict=True,
+            ):
+                step = _require_reference(
+                    "transition contact-orbit step", step_id, contact_orbit_steps
+                )
+                if step_digest != step.semantic_digest:
+                    raise RecurrenceTemplateError(
+                        "transition contact-orbit step digest is stale"
+                    )
         for propagator in self.propagators:
             _require_reference("propagator state", propagator.state_template_id, states)
             _require_optional_reference(
@@ -2466,6 +2712,8 @@ class RecurrenceTemplateCatalog:
                 "current_states",
                 "sources",
                 "quantum_flows",
+                "contact_orbit_certificates",
+                "contact_orbit_steps",
                 "transitions",
                 "propagators",
                 "closures",
@@ -2516,6 +2764,8 @@ class RecurrenceTemplateCatalog:
             "current_states": _current_state_from_dict,
             "sources": _source_from_dict,
             "quantum_flows": _quantum_flow_from_dict,
+            "contact_orbit_certificates": _contact_orbit_certificate_from_dict,
+            "contact_orbit_steps": _contact_orbit_step_from_dict,
             "transitions": _transition_from_dict,
             "propagators": _propagator_from_dict,
             "closures": _closure_from_dict,
@@ -2932,6 +3182,126 @@ def _quantum_flow_from_dict(payload: Mapping[str, object]) -> QuantumFlowTemplat
     )
 
 
+def _contact_orbit_certificate_from_dict(
+    payload: Mapping[str, object],
+) -> ContactOrbitCertificateV1:
+    fields = frozenset(
+        {
+            "template_id",
+            "algorithm",
+            "algorithm_version",
+            "term_id",
+            "vertex",
+            "particles",
+            "evaluator_class",
+            "physical_leg_equivalence_classes",
+            "reconstruction_factor",
+        }
+    )
+    value = _record_payload(
+        "contact-orbit certificate",
+        payload,
+        fields,
+        "contact-orbit-certificate",
+    )
+    particles = _decode_string_tuple(
+        "contact-orbit certificate particles", value["particles"]
+    )
+    classes = _decode_int_tuple(
+        "contact-orbit certificate equivalence classes",
+        value["physical_leg_equivalence_classes"],
+    )
+    if len(particles) != 4 or len(classes) != 4:
+        raise RecurrenceTemplateError(
+            "contact-orbit certificate must describe four legs"
+        )
+    return ContactOrbitCertificateV1(
+        template_id=_require_nonempty(
+            "contact-orbit certificate template_id", value["template_id"]
+        ),
+        algorithm=_require_nonempty(
+            "contact-orbit certificate algorithm", value["algorithm"]
+        ),
+        algorithm_version=_require_int(
+            "contact-orbit certificate algorithm version",
+            value["algorithm_version"],
+            minimum=1,
+        ),
+        term_id=_require_int(
+            "contact-orbit certificate term ID", value["term_id"], minimum=0
+        ),
+        vertex=_require_nonempty(
+            "contact-orbit certificate vertex", value["vertex"]
+        ),
+        particles=(particles[0], particles[1], particles[2], particles[3]),
+        evaluator_class=_require_nonempty(
+            "contact-orbit certificate evaluator class", value["evaluator_class"]
+        ),
+        physical_leg_equivalence_classes=(
+            classes[0],
+            classes[1],
+            classes[2],
+            classes[3],
+        ),
+        reconstruction_factor=_decode_ratio(
+            "contact-orbit certificate reconstruction factor",
+            value["reconstruction_factor"],
+        ),
+        semantic_digest=value["semantic_digest"],  # type: ignore[arg-type]
+    )
+
+
+def _contact_orbit_step_from_dict(
+    payload: Mapping[str, object],
+) -> ContactOrbitStepV1:
+    fields = frozenset(
+        {
+            "template_id",
+            "certificate_template_id",
+            "stage",
+            "result_leg",
+            "left_covered_legs",
+            "right_covered_legs",
+            "source_particle_legs",
+            "reconstruction_factor",
+        }
+    )
+    value = _record_payload(
+        "contact-orbit step", payload, fields, "contact-orbit-step"
+    )
+    source_legs = _decode_int_tuple(
+        "contact-orbit step source legs", value["source_particle_legs"]
+    )
+    if len(source_legs) != 3:
+        raise RecurrenceTemplateError(
+            "contact-orbit step must describe three kernel slots"
+        )
+    return ContactOrbitStepV1(
+        template_id=_require_nonempty(
+            "contact-orbit step template_id", value["template_id"]
+        ),
+        certificate_template_id=_require_nonempty(
+            "contact-orbit step certificate", value["certificate_template_id"]
+        ),
+        stage=_require_nonempty("contact-orbit step stage", value["stage"]),
+        result_leg=_require_int(
+            "contact-orbit step result leg", value["result_leg"], minimum=0
+        ),
+        left_covered_legs=_decode_int_tuple(
+            "contact-orbit left covered legs", value["left_covered_legs"]
+        ),
+        right_covered_legs=_decode_int_tuple(
+            "contact-orbit right covered legs", value["right_covered_legs"]
+        ),
+        source_particle_legs=(source_legs[0], source_legs[1], source_legs[2]),
+        reconstruction_factor=_decode_ratio(
+            "contact-orbit step reconstruction factor",
+            value["reconstruction_factor"],
+        ),
+        semantic_digest=value["semantic_digest"],  # type: ignore[arg-type]
+    )
+
+
 def _transition_from_dict(payload: Mapping[str, object]) -> TransitionTemplateV1:
     fields = frozenset(
         {
@@ -2951,6 +3321,8 @@ def _transition_from_dict(payload: Mapping[str, object]) -> TransitionTemplateV1
             "equivalence_class",
             "input_exchange_factor",
             "output_projection",
+            "contact_orbit_step_template_ids",
+            "contact_orbit_step_semantic_digests",
         }
     )
     value = _record_payload("transition template", payload, fields, "transition")
@@ -2998,6 +3370,14 @@ def _transition_from_dict(payload: Mapping[str, object]) -> TransitionTemplateV1
         ),
         output_projection=_require_nonempty(
             "transition projection", value["output_projection"]
+        ),
+        contact_orbit_step_template_ids=_decode_string_tuple(
+            "transition contact-orbit steps",
+            value["contact_orbit_step_template_ids"],
+        ),
+        contact_orbit_step_semantic_digests=_decode_string_tuple(
+            "transition contact-orbit step semantic digests",
+            value["contact_orbit_step_semantic_digests"],
         ),
         semantic_digest=value["semantic_digest"],  # type: ignore[arg-type]
     )

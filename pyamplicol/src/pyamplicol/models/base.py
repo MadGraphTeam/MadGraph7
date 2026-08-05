@@ -22,6 +22,10 @@ from ._physics_ir import (
     SourceStateIR,
     WavefunctionFamily,
 )
+from .contact_decomposition import (
+    CompiledContactOrbitCertificate,
+    CompiledContactOrbitStep,
+)
 
 
 @dataclass(frozen=True)
@@ -606,6 +610,18 @@ class Model:
 
         model_type = f"{type(self).__module__}.{type(self).__qualname__}"
         return VertexEvaluationEquivalence(class_id=f"{model_type}:{int(kind)}")
+
+    def vertex_contact_orbit_contracts(
+        self,
+        kind: int,
+    ) -> tuple[
+        tuple[CompiledContactOrbitCertificate, ...],
+        tuple[CompiledContactOrbitStep, ...],
+    ]:
+        """Return compiler-owned contact-path orbit proofs when they exist."""
+
+        del kind
+        return (), ()
 
     def global_helicity_flip_equivalence_is_proven(
         self,

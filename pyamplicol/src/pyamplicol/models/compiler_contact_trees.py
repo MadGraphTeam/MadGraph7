@@ -22,6 +22,7 @@ from .compiler_kernels import (
     _spin_slots,
 )
 from .compiler_records import _replace_evaluator_constants
+from .contact_decomposition import canonical_contact_orbit_steps
 from .contracts import (
     CompiledOrientedKernel,
     CompiledParticleRecord,
@@ -785,7 +786,7 @@ def _deduplicate_contact_partials(
 ) -> tuple[tuple[CompiledParticleRecord, ...], tuple[CompiledOrientedKernel, ...]]:
     term_by_id = {term.id: term for term in terms}
     auxiliary_by_name = {particle.name: particle for particle in auxiliary_particles}
-    representative_by_signature: dict[tuple[object, ...], str] = {}
+    representative_by_signature: dict[tuple[object, ...], tuple[str, int]] = {}
     replacement: dict[str, str] = {}
     retained: list[CompiledOrientedKernel] = []
 
@@ -826,10 +827,21 @@ def _deduplicate_contact_partials(
         )
         representative = representative_by_signature.get(signature)
         if representative is None:
-            representative_by_signature[signature] = auxiliary.name
+            representative_by_signature[signature] = (
+                auxiliary.name,
+                len(retained),
+            )
             retained.append(kernel)
         else:
-            replacement[auxiliary.name] = representative
+            representative_name, representative_index = representative
+            replacement[auxiliary.name] = representative_name
+            retained[representative_index] = replace(
+                retained[representative_index],
+                contact_orbit_steps=canonical_contact_orbit_steps(
+                    retained[representative_index].contact_orbit_steps,
+                    kernel.contact_orbit_steps,
+                ),
+            )
 
     if not replacement:
         return tuple(auxiliary_particles), tuple(kernels)

@@ -13,6 +13,10 @@ from .._internal.physics.symbols import symbols
 from . import compiler_symbolica as _sym
 from ._physics_ir import ContractionIR, PropagatorIR
 from .base import Model, Vertex, VertexEvaluationEquivalence
+from .contact_decomposition import (
+    CompiledContactOrbitCertificate,
+    CompiledContactOrbitStep,
+)
 from .expressions import _as_expression
 from .external import CompiledUFOModel
 from .prepared_catalog import (
@@ -104,6 +108,8 @@ class _VertexCandidateResult:
     right_state: PreparedParticleState
     result_state: PreparedParticleState
     output_factor_source: PreparedOutputFactorSource = "none"
+    contact_orbit_certificates: tuple[CompiledContactOrbitCertificate, ...] = ()
+    contact_orbit_steps: tuple[CompiledContactOrbitStep, ...] = ()
 
 
 class _RuntimeParameterizedModel:
@@ -321,6 +327,8 @@ def build_prepared_kernel_catalog(model: Model) -> PreparedKernelCatalog:
                     right_state=result.right_state,
                     result_state=result.result_state,
                     output_factor_source=result.output_factor_source,
+                    contact_orbit_certificates=result.contact_orbit_certificates,
+                    contact_orbit_steps=result.contact_orbit_steps,
                 )
                 for result in vertex_pending
             ),
@@ -562,6 +570,9 @@ def _vertex_candidate(
     contract_kind: Literal["vertex", "closure"],
 ) -> _VertexCandidateResult:
     equivalence = model.vertex_evaluation_equivalence(vertex.kind)
+    contact_orbit_certificates, contact_orbit_steps = (
+        model.vertex_contact_orbit_contracts(vertex.kind)
+    )
     if not equivalence.verified:
         raise PreparedKernelCatalogError(
             f"prepared vertex kind {vertex.kind} has an unverified equivalence"
@@ -691,6 +702,8 @@ def _vertex_candidate(
         right_state=concrete_states[1],
         result_state=output_state,
         output_factor_source=output_factor_source,
+        contact_orbit_certificates=contact_orbit_certificates,
+        contact_orbit_steps=contact_orbit_steps,
     )
 
 
@@ -910,6 +923,8 @@ def _closure_candidate(
         right_state=vertex.right_state,
         result_state=vertex.result_state,
         output_factor_source=vertex.output_factor_source,
+        contact_orbit_certificates=vertex.contact_orbit_certificates,
+        contact_orbit_steps=vertex.contact_orbit_steps,
     )
 
 

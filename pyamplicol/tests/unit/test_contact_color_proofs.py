@@ -10,10 +10,13 @@ import pytest
 from pyamplicol._internal.physics.symbols import symbols
 from pyamplicol.models import compiler_contacts
 from pyamplicol.models import compiler_symbolica as _sym
+from pyamplicol.models.compiler_contact_trees import _deduplicate_contact_partials
 from pyamplicol.models.compiler_contacts import (
     CONTACT_DECOMPOSITION_ALGORITHM,
     CONTACT_DECOMPOSITION_ALGORITHM_VERSION,
+    _build_contact_orbit_certificate,
     _four_point_contact_color_split,
+    _fuse_contact_finals,
     _record_contact_decomposition_proofs,
 )
 from pyamplicol.models.compiler_entry import (
@@ -22,6 +25,13 @@ from pyamplicol.models.compiler_entry import (
 )
 from pyamplicol.models.compiler_tensor_ordering import (
     compile_tensor_ordering_metadata,
+)
+from pyamplicol.models.contact_decomposition import (
+    CONTACT_ORBIT_ALGORITHM,
+    CONTACT_ORBIT_ALGORITHM_VERSION,
+    CONTACT_ORBIT_EVALUATOR_CLASS,
+    CompiledContactOrbitCertificate,
+    CompiledContactOrbitStep,
 )
 from pyamplicol.models.contracts import (
     CompiledModelIR,
@@ -43,6 +53,31 @@ def _adjoint(name: str, pdg: int, *, spin: int = 3) -> CompiledParticleRecord:
         pdg_code=pdg,
         spin=spin,
         color=8,
+        mass="ZERO",
+        width="ZERO",
+        charge=0.0,
+        quantum_numbers=(("electric_charge", "0"),),
+        ghost_number=0,
+        propagating=True,
+        goldstoneboson=False,
+        propagator=None,
+    )
+
+
+def _scalar(
+    name: str,
+    pdg: int,
+    *,
+    antiname: str | None = None,
+    spin: int = 1,
+    color: int = 1,
+) -> CompiledParticleRecord:
+    return CompiledParticleRecord(
+        name=name,
+        antiname=name if antiname is None else antiname,
+        pdg_code=pdg,
+        spin=spin,
+        color=color,
         mass="ZERO",
         width="ZERO",
         charge=0.0,
@@ -83,6 +118,259 @@ def _proof_term(
         particles,
         model_symbols=symbols.model(model_name),
     )[0]
+
+
+@pytest.mark.parametrize(
+    ("particle_names", "expected_classes"),
+    (
+        (("a", "a", "a", "a"), (0, 0, 0, 0)),
+        (("a", "a", "b", "c"), (0, 0, 1, 2)),
+    ),
+)
+def test_constant_scalar_contact_issues_deterministic_orbit_contract(
+    particle_names: tuple[str, str, str, str],
+    expected_classes: tuple[int, int, int, int],
+) -> None:
+    particle_by_name = {
+        name: _scalar(name, 9_510_000 + index)
+        for index, name in enumerate(dict.fromkeys(particle_names))
+    }
+    particles = tuple(particle_by_name.values())
+    term = replace(
+        _term(color_source="1", color_expression="1"),
+        particles=particle_names,
+    )
+
+    proved = _proof_term(term, particles, model_name="scalar-contact-orbit")
+    repeated = _proof_term(term, particles, model_name="scalar-contact-orbit")
+
+    certificate = proved.contact_orbit_certificate
+    assert certificate is not None
+    assert certificate == repeated.contact_orbit_certificate
+    assert certificate.algorithm == CONTACT_ORBIT_ALGORITHM
+    assert certificate.algorithm_version == CONTACT_ORBIT_ALGORITHM_VERSION
+    assert certificate.evaluator_class == CONTACT_ORBIT_EVALUATOR_CLASS
+    assert certificate.physical_leg_equivalence_classes == expected_classes
+    assert certificate.reconstruction_factor == "1"
+    assert CompiledContactOrbitCertificate.from_dict(
+        certificate.to_dict()
+    ) == certificate
+
+    _auxiliaries, kernels = _compile_four_point_contact_kernels(
+        (proved,),
+        particles,
+        start_kind=0,
+        model_symbols=symbols.model("scalar-contact-orbit"),
+    )
+    steps = tuple(
+        step
+        for kernel in kernels
+        for step in kernel.contact_orbit_steps
+    )
+    assert steps
+    assert {step.stage for step in steps} == {"partial", "final"}
+    assert all(step.term_id == term.id for step in steps)
+    assert all(step.reconstruction_factor == "1" for step in steps)
+    assert all(
+        CompiledContactOrbitStep.from_dict(step.to_dict()) == step for step in steps
+    )
+    for kernel in kernels:
+        if kernel.contact_orbit_steps:
+            assert len(kernel.contact_orbit_steps) == 1
+            assert (
+                kernel.contact_orbit_steps[0].source_particle_legs
+                == kernel.source_particle_legs
+            )
+
+
+def test_contact_orbit_contract_rejects_tampering_and_uncertified_classes() -> None:
+    scalar = _scalar("a", 9_520_000)
+    term = replace(
+        _term(color_source="1", color_expression="1"),
+        particles=("a", "a", "a", "a"),
+    )
+    proved = _proof_term(term, (scalar,), model_name="scalar-contact-tamper")
+    certificate = proved.contact_orbit_certificate
+    assert certificate is not None
+
+    payload = certificate.to_dict()
+    payload["physical_leg_equivalence_classes"] = [0, 1, 2, 3]
+    with pytest.raises(ValueError, match="not canonical"):
+        CompiledContactOrbitCertificate.from_dict(payload)
+    payload = certificate.to_dict()
+    payload["reconstruction_factor"] = "2"
+    with pytest.raises(ValueError, match="factor must be one"):
+        CompiledContactOrbitCertificate.from_dict(payload)
+    payload = certificate.to_dict()
+    payload["unexpected"] = True
+    with pytest.raises(ValueError, match="unknown fields"):
+        CompiledContactOrbitCertificate.from_dict(payload)
+
+    vector = _scalar("v", 9_520_001, spin=3)
+    colored = _scalar("g", 9_520_002, color=8)
+    charged = _scalar("s", 9_520_003, antiname="s~")
+    anti = _scalar("s~", -9_520_003, antiname="s")
+    proof = proved.contact_decomposition_proof
+    assert proof is not None
+    assert _build_contact_orbit_certificate(term, (vector,) * 4, proof) is None
+    assert _build_contact_orbit_certificate(term, (colored,) * 4, proof) is None
+    assert (
+        _build_contact_orbit_certificate(
+            replace(term, particles=("s", "s~", "s", "s~")),
+            (charged, anti, charged, anti),
+            proof,
+        )
+        is None
+    )
+    momentum = replace(term, lorentz_expression="ufo_momentum_1_0")
+    assert _record_contact_decomposition_proofs(
+        (momentum,),
+        (scalar,),
+        model_symbols=symbols.model("contact-orbit-excluded-momentum"),
+    )[0].contact_orbit_certificate is None
+
+
+@pytest.mark.parametrize(
+    "particle_names",
+    (("a", "a", "a", "a"), ("a", "a", "b", "c")),
+)
+def test_contact_orbit_metadata_preserves_parent_numerical_fusion(
+    particle_names: tuple[str, str, str, str],
+) -> None:
+    particle_by_name = {
+        name: _scalar(name, 9_519_000 + index)
+        for index, name in enumerate(dict.fromkeys(particle_names))
+    }
+    particles = tuple(particle_by_name.values())
+    term = replace(
+        _term(color_source="1", color_expression="1"),
+        particles=particle_names,
+    )
+    certified = _proof_term(term, particles, model_name="orbit-fusion-certified")
+    plain = replace(certified, contact_orbit_certificate=None)
+
+    def finalized(
+        value: CompiledVertexTerm,
+        model_name: str,
+    ) -> tuple[
+        tuple[CompiledParticleRecord, ...],
+        tuple[CompiledOrientedKernel, ...],
+    ]:
+        registry = symbols.model(model_name)
+        auxiliaries, kernels = _compile_four_point_contact_kernels(
+            (value,), particles, start_kind=0, model_symbols=registry
+        )
+        auxiliaries, kernels = _deduplicate_contact_partials(
+            auxiliaries, kernels, (value,), model_symbols=registry
+        )
+        return auxiliaries, _fuse_contact_finals(
+            kernels, (value,), model_symbols=registry
+        )
+
+    certified_auxiliaries, certified_kernels = finalized(
+        certified, "orbit-fusion-invariant"
+    )
+    plain_auxiliaries, plain_kernels = finalized(
+        plain, "orbit-fusion-invariant"
+    )
+
+    assert certified_auxiliaries == plain_auxiliaries
+    assert tuple(
+        replace(kernel, contact_orbit_steps=()) for kernel in certified_kernels
+    ) == plain_kernels
+    assert len(certified_kernels) == len(plain_kernels)
+    actual_steps = tuple(
+        step for kernel in certified_kernels for step in kernel.contact_orbit_steps
+    )
+    proof = certified.contact_decomposition_proof
+    assert proof is not None
+    assert len(actual_steps) == sum(
+        len(split.orientations) for split in proof.splits
+    )
+    assert len(actual_steps) == len(set(actual_steps))
+
+
+def test_compiled_ir_requires_orbit_certificate_exactly_for_certifiable_class() -> None:
+    scalar = _scalar("s", 9_520_010)
+    term = replace(
+        _term(color_source="1", color_expression="1"),
+        particles=("s", "s", "s", "s"),
+    )
+    proved = _proof_term(term, (scalar,), model_name="scalar-orbit-required")
+    auxiliaries, kernels = _compile_four_point_contact_kernels(
+        (proved,),
+        (scalar,),
+        start_kind=0,
+        model_symbols=symbols.model("scalar-orbit-required"),
+    )
+    particles = (scalar, *auxiliaries)
+    terms, kernels, orderings, current_orderings = compile_tensor_ordering_metadata(
+        (proved,),
+        particles,
+        kernels,
+        (),
+        (),
+    )
+    missing_term = replace(terms[0], contact_orbit_certificate=None)
+    missing_steps = tuple(replace(kernel, contact_orbit_steps=()) for kernel in kernels)
+    with pytest.raises(ValueError, match="has no orbit certificate"):
+        CompiledModelIR(
+            name="scalar-orbit-missing",
+            orders=(),
+            parameters=(),
+            particles=particles,
+            couplings=(),
+            propagators=(),
+            vertex_terms=(missing_term,),
+            oriented_kernels=missing_steps,
+            direct_contractions=(),
+            closure_contractions=(),
+            tensor_orderings=orderings,
+            current_orderings=current_orderings,
+        )
+
+    colored = _scalar("g", 9_520_011, color=8)
+    colored_term = replace(term, particles=("g", "g", "g", "g"))
+    colored_proved = _proof_term(
+        colored_term,
+        (colored,),
+        model_name="colored-orbit-excluded",
+    )
+    certificate = proved.contact_orbit_certificate
+    assert certificate is not None
+    forged = replace(
+        colored_proved,
+        contact_orbit_certificate=replace(
+            certificate,
+            term_id=colored_proved.id,
+            vertex=colored_proved.vertex,
+            particles=("g", "g", "g", "g"),
+        ),
+    )
+    forged_terms, _kernels, forged_orderings, forged_current_orderings = (
+        compile_tensor_ordering_metadata(
+            (forged,),
+            (colored,),
+            (),
+            (),
+            (),
+        )
+    )
+    with pytest.raises(ValueError, match="excluded evaluator class"):
+        CompiledModelIR(
+            name="vector-orbit-forged",
+            orders=(),
+            parameters=(),
+            particles=(colored,),
+            couplings=(),
+            propagators=(),
+            vertex_terms=forged_terms,
+            oriented_kernels=(),
+            direct_contractions=(),
+            closure_contractions=(),
+            tensor_orderings=forged_orderings,
+            current_orderings=forged_current_orderings,
+        )
 
 
 def test_contact_tree_uses_its_compiler_owned_singlet_contract() -> None:

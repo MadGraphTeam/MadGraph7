@@ -9,6 +9,41 @@ from typing import Protocol
 
 CONTACT_DECOMPOSITION_ALGORITHM = "ufo-four-point-contact-decomposition"
 CONTACT_DECOMPOSITION_ALGORITHM_VERSION = 2
+CONTACT_ORBIT_ALGORITHM = "compiler-certified-contact-orbit"
+CONTACT_ORBIT_ALGORITHM_VERSION = 1
+CONTACT_ORBIT_EVALUATOR_CLASS = (
+    "constant-scalar-literal-singlet-self-conjugate-boson"
+)
+
+
+def contact_orbit_evaluator_class_is_certifiable(
+    *,
+    color_source: str,
+    color_expression: str,
+    lorentz_expression: str,
+    decomposition_kinds: tuple[str, ...],
+    particle_contracts: tuple[tuple[int, int, str, str, bool | None], ...],
+) -> bool:
+    """Recognize the one compiler-owned evaluator class admitted by the proof."""
+
+    return (
+        len(particle_contracts) == 4
+        and color_expression == "1"
+        and lorentz_expression == "1"
+        and (color_source in {"1", "UFO::{}::1"} or color_expression == "1")
+        and bool(decomposition_kinds)
+        and all(kind == "literal-color-singlet" for kind in decomposition_kinds)
+        and all(
+            spin == 1
+            and color == 1
+            and statistics == "boson"
+            and wavefunction_family == "scalar"
+            and self_conjugate is True
+            for spin, color, statistics, wavefunction_family, self_conjugate in (
+                particle_contracts
+            )
+        )
+    )
 
 
 class _ContactTerm(Protocol):
@@ -619,6 +654,317 @@ class CompiledContactDecompositionProof:
                 )
             ),
         )
+
+
+@dataclass(frozen=True, order=True, slots=True)
+class CompiledContactOrbitCertificate:
+    """Compiler proof that contact paths describe one physical assignment orbit."""
+
+    algorithm: str
+    algorithm_version: int
+    term_id: int
+    vertex: str
+    particles: tuple[str, str, str, str]
+    color_expression: str
+    lorentz_expression: str
+    coupling_expression: str
+    evaluator_class: str
+    physical_leg_equivalence_classes: tuple[int, int, int, int]
+    reconstruction_factor: str
+
+    def __post_init__(self) -> None:
+        if (
+            self.algorithm != CONTACT_ORBIT_ALGORITHM
+            or self.algorithm_version != CONTACT_ORBIT_ALGORITHM_VERSION
+        ):
+            raise ValueError(
+                "unsupported contact-orbit certificate algorithm: "
+                f"{self.algorithm}/v{self.algorithm_version}"
+            )
+        if self.term_id < 0 or not self.vertex:
+            raise ValueError("contact-orbit certificate requires a term identity")
+        if any(not particle for particle in self.particles):
+            raise ValueError("contact-orbit certificate particles must be non-empty")
+        if self.color_expression != "1" or self.lorentz_expression != "1":
+            raise ValueError(
+                "contact-orbit certificate requires literal scalar-singlet tensors"
+            )
+        if not self.coupling_expression:
+            raise ValueError(
+                "contact-orbit certificate coupling expression must not be empty"
+            )
+        if self.evaluator_class != CONTACT_ORBIT_EVALUATOR_CLASS:
+            raise ValueError(
+                f"unsupported contact-orbit evaluator class {self.evaluator_class!r}"
+            )
+        classes = self.physical_leg_equivalence_classes
+        if any(value < 0 for value in classes):
+            raise ValueError("contact-orbit equivalence classes must be non-negative")
+        canonical: dict[str, int] = {}
+        expected = tuple(
+            canonical.setdefault(particle, len(canonical))
+            for particle in self.particles
+        )
+        if classes != expected:
+            raise ValueError(
+                "contact-orbit physical-leg equivalence classes are not canonical"
+            )
+        if self.reconstruction_factor != "1":
+            raise ValueError(
+                "constant scalar contact-orbit reconstruction factor must be one"
+            )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "algorithm": self.algorithm,
+            "algorithm_version": self.algorithm_version,
+            "term_id": self.term_id,
+            "vertex": self.vertex,
+            "particles": list(self.particles),
+            "color_expression": self.color_expression,
+            "lorentz_expression": self.lorentz_expression,
+            "coupling_expression": self.coupling_expression,
+            "evaluator_class": self.evaluator_class,
+            "physical_leg_equivalence_classes": list(
+                self.physical_leg_equivalence_classes
+            ),
+            "reconstruction_factor": self.reconstruction_factor,
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: Mapping[str, object],
+    ) -> CompiledContactOrbitCertificate:
+        fields = _strict_record_fields(
+            payload,
+            required={
+                "algorithm",
+                "algorithm_version",
+                "term_id",
+                "vertex",
+                "particles",
+                "color_expression",
+                "lorentz_expression",
+                "coupling_expression",
+                "evaluator_class",
+                "physical_leg_equivalence_classes",
+                "reconstruction_factor",
+            },
+            context="compiled contact-orbit certificate",
+        )
+        particles = _strict_string_tuple(
+            fields["particles"], "contact-orbit particles"
+        )
+        classes = _strict_int_tuple(
+            fields["physical_leg_equivalence_classes"],
+            "contact-orbit physical-leg equivalence classes",
+        )
+        if len(particles) != 4 or len(classes) != 4:
+            raise ValueError("contact-orbit certificate must describe four legs")
+        return cls(
+            algorithm=_strict_string(fields["algorithm"], "contact-orbit algorithm"),
+            algorithm_version=_strict_integer(
+                fields["algorithm_version"], "contact-orbit algorithm version"
+            ),
+            term_id=_strict_integer(fields["term_id"], "contact-orbit term ID"),
+            vertex=_strict_string(fields["vertex"], "contact-orbit vertex"),
+            particles=(particles[0], particles[1], particles[2], particles[3]),
+            color_expression=_strict_string(
+                fields["color_expression"], "contact-orbit color expression"
+            ),
+            lorentz_expression=_strict_string(
+                fields["lorentz_expression"], "contact-orbit Lorentz expression"
+            ),
+            coupling_expression=_strict_string(
+                fields["coupling_expression"], "contact-orbit coupling expression"
+            ),
+            evaluator_class=_strict_string(
+                fields["evaluator_class"], "contact-orbit evaluator class"
+            ),
+            physical_leg_equivalence_classes=(
+                classes[0],
+                classes[1],
+                classes[2],
+                classes[3],
+            ),
+            reconstruction_factor=_strict_string(
+                fields["reconstruction_factor"],
+                "contact-orbit reconstruction factor",
+            ),
+        )
+
+
+@dataclass(frozen=True, order=True, slots=True)
+class CompiledContactOrbitStep:
+    """Exact physical-leg lineage for one compiler-lowered contact kernel."""
+
+    algorithm: str
+    algorithm_version: int
+    term_id: int
+    stage: str
+    result_leg: int
+    left_covered_legs: tuple[int, ...]
+    right_covered_legs: tuple[int, ...]
+    source_particle_legs: tuple[int, int, int]
+    reconstruction_factor: str
+
+    def __post_init__(self) -> None:
+        if (
+            self.algorithm != CONTACT_ORBIT_ALGORITHM
+            or self.algorithm_version != CONTACT_ORBIT_ALGORITHM_VERSION
+        ):
+            raise ValueError(
+                "unsupported contact-orbit step algorithm: "
+                f"{self.algorithm}/v{self.algorithm_version}"
+            )
+        if self.term_id < 0 or self.stage not in {"partial", "final"}:
+            raise ValueError("contact-orbit step has an invalid term or stage")
+        if self.result_leg not in range(4):
+            raise ValueError("contact-orbit result leg must address four-point input")
+        if self.reconstruction_factor != "1":
+            raise ValueError("contact-orbit step reconstruction factor must be one")
+        covered = (*self.left_covered_legs, *self.right_covered_legs)
+        if (
+            not self.left_covered_legs
+            or not self.right_covered_legs
+            or any(leg not in range(4) for leg in covered)
+            or len(covered) != len(set(covered))
+        ):
+            raise ValueError("contact-orbit step has invalid covered physical legs")
+        left_source, right_source, output_source = self.source_particle_legs
+        if self.stage == "partial":
+            if (
+                len(self.left_covered_legs) != 1
+                or len(self.right_covered_legs) != 1
+                or (left_source, right_source)
+                != (self.left_covered_legs[0], self.right_covered_legs[0])
+                or output_source != -1
+                or self.result_leg in covered
+            ):
+                raise ValueError("contact-orbit partial step lineage is inconsistent")
+        else:
+            if (
+                set(covered) != (set(range(4)) - {self.result_leg})
+                or output_source != self.result_leg
+                or {len(self.left_covered_legs), len(self.right_covered_legs)}
+                != {1, 2}
+            ):
+                raise ValueError("contact-orbit final step lineage is inconsistent")
+            expected_sources = tuple(
+                -1 if len(side) == 2 else side[0]
+                for side in (self.left_covered_legs, self.right_covered_legs)
+            )
+            if (left_source, right_source) != expected_sources:
+                raise ValueError("contact-orbit final source lineage is inconsistent")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "algorithm": self.algorithm,
+            "algorithm_version": self.algorithm_version,
+            "term_id": self.term_id,
+            "stage": self.stage,
+            "result_leg": self.result_leg,
+            "left_covered_legs": list(self.left_covered_legs),
+            "right_covered_legs": list(self.right_covered_legs),
+            "source_particle_legs": list(self.source_particle_legs),
+            "reconstruction_factor": self.reconstruction_factor,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, object]) -> CompiledContactOrbitStep:
+        fields = _strict_record_fields(
+            payload,
+            required={
+                "algorithm",
+                "algorithm_version",
+                "term_id",
+                "stage",
+                "result_leg",
+                "left_covered_legs",
+                "right_covered_legs",
+                "source_particle_legs",
+                "reconstruction_factor",
+            },
+            context="compiled contact-orbit step",
+        )
+        source_legs = _strict_int_tuple(
+            fields["source_particle_legs"], "contact-orbit step source legs"
+        )
+        if len(source_legs) != 3:
+            raise ValueError("contact-orbit step must describe three kernel slots")
+        return cls(
+            algorithm=_strict_string(fields["algorithm"], "contact-orbit algorithm"),
+            algorithm_version=_strict_integer(
+                fields["algorithm_version"], "contact-orbit algorithm version"
+            ),
+            term_id=_strict_integer(fields["term_id"], "contact-orbit term ID"),
+            stage=_strict_string(fields["stage"], "contact-orbit stage"),
+            result_leg=_strict_integer(
+                fields["result_leg"], "contact-orbit result leg"
+            ),
+            left_covered_legs=_strict_int_tuple(
+                fields["left_covered_legs"], "contact-orbit left covered legs"
+            ),
+            right_covered_legs=_strict_int_tuple(
+                fields["right_covered_legs"], "contact-orbit right covered legs"
+            ),
+            source_particle_legs=(source_legs[0], source_legs[1], source_legs[2]),
+            reconstruction_factor=_strict_string(
+                fields["reconstruction_factor"],
+                "contact-orbit reconstruction factor",
+            ),
+        )
+
+
+def canonical_contact_orbit_steps(
+    *groups: tuple[CompiledContactOrbitStep, ...],
+) -> tuple[CompiledContactOrbitStep, ...]:
+    """Return the deterministic union carried by one retained compiler kernel."""
+
+    return tuple(sorted({step for group in groups for step in group}))
+
+
+def compiled_contact_orbit_step(
+    certificate: CompiledContactOrbitCertificate,
+    split: CompiledContactDecompositionSplit,
+    orientation: CompiledContactOrientationProof,
+) -> CompiledContactOrbitStep:
+    """Derive the exact compiler lineage named by one proven orientation."""
+
+    if orientation.stage == "partial":
+        left_covered = (orientation.input_legs[0],)
+        right_covered = (orientation.input_legs[1],)
+        source_particle_legs = (
+            orientation.input_legs[0],
+            orientation.input_legs[1],
+            -1,
+        )
+    else:
+        auxiliary_on_left = orientation.input_legs[0] == -1
+        pair_legs = tuple(sorted(split.pair_legs))
+        remaining = (split.remaining_leg,)
+        left_covered, right_covered = (
+            (pair_legs, remaining)
+            if auxiliary_on_left
+            else (remaining, pair_legs)
+        )
+        source_particle_legs = (
+            -1 if auxiliary_on_left else split.remaining_leg,
+            split.remaining_leg if auxiliary_on_left else -1,
+            split.result_leg,
+        )
+    return CompiledContactOrbitStep(
+        algorithm=CONTACT_ORBIT_ALGORITHM,
+        algorithm_version=CONTACT_ORBIT_ALGORITHM_VERSION,
+        term_id=certificate.term_id,
+        stage=orientation.stage,
+        result_leg=split.result_leg,
+        left_covered_legs=left_covered,
+        right_covered_legs=right_covered,
+        source_particle_legs=source_particle_legs,
+        reconstruction_factor=certificate.reconstruction_factor,
+    )
 
 
 
