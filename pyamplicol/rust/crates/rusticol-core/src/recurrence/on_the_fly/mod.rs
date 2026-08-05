@@ -91,6 +91,7 @@ mod interpreter;
 mod probe_guard;
 mod projection;
 mod public_query;
+pub(crate) mod seed_codec;
 mod source_seed;
 mod sweep;
 mod templates;
