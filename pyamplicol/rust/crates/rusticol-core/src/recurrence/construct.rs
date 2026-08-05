@@ -1754,12 +1754,17 @@ impl PreparedTransitionCatalog {
                 .or_default()
                 .push(prepared);
         }
+        // Template transition rows retain their authenticated source order in
+        // `rows_by_state_pair`.  Only this private lookup side index needs ID
+        // order for binary search, so sort the already-reserved locator rows
+        // without perturbing ordinary transition iteration or IDs.
+        transition_locations.sort_unstable_by_key(|location| location.transition_id);
         if !transition_locations
             .windows(2)
             .all(|rows| rows[0].transition_id < rows[1].transition_id)
         {
             return Err(invalid(
-                "prepared transition-location index is not canonical",
+                "prepared transition-location index contains duplicate IDs",
             ));
         }
         let result = Self {
@@ -1893,8 +1898,18 @@ fn plan_established_contact_orbit_owners(
         currents,
         resident_contribution_count,
         |transition_id| prepared_transitions.contact_orbit(transition_id),
-        None,
     )
+}
+
+fn reserve_established_contact_candidates<T>(
+    candidates: &mut Vec<T>,
+    count: usize,
+) -> RusticolResult<()> {
+    candidates.try_reserve_exact(count).map_err(|error| {
+        RusticolError::internal(format!(
+            "established contact-orbit candidate allocation failed: {error}"
+        ))
+    })
 }
 
 fn plan_established_contact_orbit_owners_with_resolver<'a, F>(
@@ -1902,7 +1917,6 @@ fn plan_established_contact_orbit_owners_with_resolver<'a, F>(
     currents: &'a [PendingCurrent],
     resident_contribution_count: usize,
     mut contact_orbit: F,
-    candidate_reservation_override: Option<usize>,
 ) -> RusticolResult<Option<EstablishedContactOwnerPlan>>
 where
     F: FnMut(u32) -> Option<&'a PreparedContactOrbitTransition>,
@@ -1930,20 +1944,7 @@ where
                     .ok_or_else(|| invalid("contact-orbit staged contribution count exceeds usize"))
             })?;
     let mut candidates = Vec::new();
-    let candidate_reservation_count =
-        candidate_reservation_override.unwrap_or(staged_contribution_count);
-    if candidate_reservation_count < staged_contribution_count {
-        return Err(invalid(
-            "established contact-orbit candidate reservation is incomplete",
-        ));
-    }
-    candidates
-        .try_reserve_exact(candidate_reservation_count)
-        .map_err(|error| {
-            RusticolError::internal(format!(
-                "established contact-orbit candidate allocation failed: {error}"
-            ))
-        })?;
+    reserve_established_contact_candidates(&mut candidates, staged_contribution_count)?;
     for (destination_id, current) in currents.iter().enumerate().skip(stage_current_start) {
         for (contribution_ordinal, pending) in current.contributions.keys().enumerate() {
             let token = EstablishedContactContributionToken {
@@ -11043,6 +11044,7 @@ mod tests {
         let none_catalog = TemplateCatalog::new(none.input()).unwrap();
         let none_prepared = PreparedTransitionCatalog::new(none.input(), &none_catalog).unwrap();
         assert!(none_prepared.rows(0, 0)[0].contact_orbit.is_none());
+        assert!(none_prepared.contact_orbit(0).is_none());
 
         let one = contact_orbit_test_template(ContactOrbitTestBinding::One)
             .validate()
@@ -11050,6 +11052,22 @@ mod tests {
         let one_catalog = TemplateCatalog::new(one.input()).unwrap();
         let one_prepared = PreparedTransitionCatalog::new(one.input(), &one_catalog).unwrap();
         assert!(one_prepared.rows(0, 0)[0].contact_orbit.is_some());
+        assert!(one_prepared.contact_orbit(0).is_some());
+        assert!(one_prepared.contact_orbit(u32::MAX).is_none());
+
+        let mut currents = vec![
+            projection_test_current(RecurrenceNodeKind::Source, 0, 0, &[0]),
+            projection_test_current(RecurrenceNodeKind::Source, 0, 1, &[1]),
+            projection_test_current(RecurrenceNodeKind::Current, 0, 2, &[0, 1]),
+        ];
+        add_projection_test_contribution(&mut currents, 2, 0, [0, 1], 0);
+        let plan = plan_established_contact_orbit_owners(2, &one_prepared, &currents, 1)
+            .unwrap()
+            .expect("certified transition must enter established owner planning");
+        let mut resident = 1;
+        plan.commit(&mut currents, &mut resident);
+        assert_eq!(resident, 1);
+        assert_eq!(established_contact_transition_ids(&currents[2]), [0]);
     }
 
     #[test]
@@ -11087,6 +11105,22 @@ mod tests {
                 .map(|prepared| prepared.row.id)
                 .collect::<Vec<_>>(),
             [2, 0, 1]
+        );
+        assert!(
+            [2, 0, 1]
+                .into_iter()
+                .all(|transition_id| prepared_catalog.contact_orbit(transition_id).is_none())
+        );
+        let mut uncertified_currents = vec![
+            projection_test_current(RecurrenceNodeKind::Source, 0, 0, &[0]),
+            projection_test_current(RecurrenceNodeKind::Source, 0, 1, &[1]),
+            projection_test_current(RecurrenceNodeKind::Current, 0, 2, &[0, 1]),
+        ];
+        add_projection_test_contribution(&mut uncertified_currents, 2, 0, [0, 1], 0);
+        assert!(
+            plan_established_contact_orbit_owners(2, &prepared_catalog, &uncertified_currents, 1,)
+                .unwrap()
+                .is_none()
         );
         assert_eq!(prepared_rows.len(), lazy_rows.len());
 
@@ -13071,7 +13105,6 @@ mod tests {
             currents,
             *resident_contribution_count,
             |transition_id| contacts.get(&transition_id),
-            None,
         )? {
             plan.commit(currents, resident_contribution_count);
         }
@@ -13244,7 +13277,6 @@ mod tests {
                 &currents,
                 resident_before,
                 |transition_id| contacts.get(&transition_id),
-                None,
             )
             .unwrap_err()
             .to_string()
@@ -13274,7 +13306,6 @@ mod tests {
                 &malformed,
                 resident_before,
                 |transition_id| contacts.get(&transition_id),
-                None,
             )
             .unwrap_err()
             .to_string()
@@ -13283,18 +13314,14 @@ mod tests {
         assert_eq!(malformed[2].contributions, malformed_before);
         assert_eq!(resident_before, 2);
 
+        let mut candidate_reservation = Vec::<EstablishedContactContributionToken>::new();
         assert!(
-            plan_established_contact_orbit_owners_with_resolver(
-                2,
-                &currents,
-                resident_before,
-                |transition_id| contacts.get(&transition_id),
-                Some(usize::MAX),
-            )
-            .unwrap_err()
-            .to_string()
-            .contains("candidate allocation failed")
+            reserve_established_contact_candidates(&mut candidate_reservation, usize::MAX)
+                .unwrap_err()
+                .to_string()
+                .contains("candidate allocation failed")
         );
+        assert!(candidate_reservation.is_empty());
         assert_eq!(currents[2].contributions, before);
         assert_eq!(resident_before, 2);
     }
