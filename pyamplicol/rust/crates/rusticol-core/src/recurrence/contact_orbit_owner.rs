@@ -628,9 +628,7 @@ struct ContactOrbitOwnerGroupKey<'a> {
     evaluator_class: &'a str,
     coupling_parameter_ids: &'a [u32],
     binding_coupling: ExactComplexRational,
-    transition_exact_factor: ExactComplexRational,
-    color_exact_factor: ExactComplexRational,
-    witness_exact_factor: ExactComplexRational,
+    application_exact_factor: ExactComplexRational,
     input_exchange_factor: Option<ExactComplexRational>,
     certificate_reconstruction_factor: ExactComplexRational,
     step_reconstruction_factor: ExactComplexRational,
@@ -883,6 +881,10 @@ pub(super) fn contact_orbit_owner_candidate<'a>(
     canonical_parents.sort_unstable();
     let result_leg_equivalence_class =
         step.physical_leg_equivalence_classes[step.result_leg as usize];
+    let application_exact_factor = application
+        .transition_exact_factor
+        .checked_mul(application.color_exact_factor)?
+        .checked_mul(application.witness_exact_factor)?;
     Ok(Some(ContactOrbitOwnerCandidate {
         group: ContactOrbitOwnerGroupKey {
             certificate_id: step.certificate_id,
@@ -899,9 +901,7 @@ pub(super) fn contact_orbit_owner_candidate<'a>(
             evaluator_class: &step.evaluator_class,
             coupling_parameter_ids: &application.coupling_parameter_ids,
             binding_coupling: application.binding_coupling,
-            transition_exact_factor: application.transition_exact_factor,
-            color_exact_factor: application.color_exact_factor,
-            witness_exact_factor: application.witness_exact_factor,
+            application_exact_factor,
             input_exchange_factor: application.input_exchange_factor,
             certificate_reconstruction_factor: step.certificate_reconstruction_factor,
             step_reconstruction_factor: step.step_reconstruction_factor,
@@ -1170,6 +1170,13 @@ mod tests {
 
     fn exact(value: i128) -> ExactComplexRational {
         ExactComplexRational::new(ExactRational::new(value, 1).unwrap(), ExactRational::ZERO)
+    }
+
+    fn exact_ratio(numerator: i128, denominator: i128) -> ExactComplexRational {
+        ExactComplexRational::new(
+            ExactRational::new(numerator, denominator).unwrap(),
+            ExactRational::ZERO,
+        )
     }
 
     fn current(state: u32, color: u32, support: &[u32]) -> CurrentCoreKey {
@@ -1849,28 +1856,57 @@ mod tests {
         assert_eq!(forward, reverse);
         assert_eq!(forward.len(), 1);
 
-        let mut exact_factor_variants = Vec::new();
-        let mut value = base_application.clone();
-        value.binding_coupling = exact(2);
-        exact_factor_variants.push(value);
-        let mut value = base_application.clone();
-        value.transition_exact_factor = exact(2);
-        exact_factor_variants.push(value);
-        let mut value = base_application.clone();
-        value.color_exact_factor = exact(2);
-        exact_factor_variants.push(value);
-        let mut value = base_application.clone();
-        value.witness_exact_factor = exact(2);
-        exact_factor_variants.push(value);
-        let mut value = base_application.clone();
-        value.input_exchange_factor = Some(exact(-1));
-        exact_factor_variants.push(value);
-        for variant in &exact_factor_variants {
-            assert_ne!(
-                base.group,
-                candidate(&step, &destination, [&left, &right], variant, 12).group,
-            );
-        }
+        let mut redistributed_factors = base_application.clone();
+        redistributed_factors.transition_exact_factor = exact(2);
+        redistributed_factors.color_exact_factor = exact(3);
+        redistributed_factors.witness_exact_factor = exact_ratio(1, 6);
+        let redistributed = candidate(
+            &step,
+            &destination,
+            [&left, &right],
+            &redistributed_factors,
+            12,
+        );
+        assert_eq!(base.group, redistributed.group);
+        assert_ne!(base.rank, redistributed.rank);
+        let forward = selected_contact_orbit_owner_tokens([
+            (0_u32, Some(base)),
+            (1_u32, Some(redistributed)),
+        ])
+        .unwrap();
+        let reverse = selected_contact_orbit_owner_tokens([
+            (1_u32, Some(redistributed)),
+            (0_u32, Some(base)),
+        ])
+        .unwrap();
+        assert_eq!(forward, reverse);
+        assert_eq!(forward.len(), 1);
+
+        let mut different_product = redistributed_factors.clone();
+        different_product.witness_exact_factor = exact_ratio(1, 5);
+        assert_ne!(
+            base.group,
+            candidate(&step, &destination, [&left, &right], &different_product, 12,).group,
+        );
+        let mut different_binding = base_application.clone();
+        different_binding.binding_coupling = exact(2);
+        assert_ne!(
+            base.group,
+            candidate(&step, &destination, [&left, &right], &different_binding, 12,).group,
+        );
+        let mut different_exchange = base_application.clone();
+        different_exchange.input_exchange_factor = Some(exact(-1));
+        assert_ne!(
+            base.group,
+            candidate(
+                &step,
+                &destination,
+                [&left, &right],
+                &different_exchange,
+                12,
+            )
+            .group,
+        );
 
         let mut different_parameters = base_application.clone();
         different_parameters.coupling_parameter_ids = vec![99];
