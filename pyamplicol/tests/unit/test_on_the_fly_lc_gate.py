@@ -282,12 +282,17 @@ def test_hidden_timing_serializes_one_query_census_and_workload_sum() -> None:
 
 
 def test_cli_launches_one_worker_with_cross_platform_30_gib_guard(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    prepared_model = tmp_path / "built-in-sm.pyamplicol-model"
+    prepared_model.write_bytes(b"prepared")
     arguments = gate._parser().parse_args(
         [
             "--output",
             "out",
+            "--prepared-model",
+            str(prepared_model),
             "--amplicol-result",
             "legacy.json",
             "--target-runtime",
@@ -300,6 +305,9 @@ def test_cli_launches_one_worker_with_cross_platform_30_gib_guard(
     command = gate._worker_command(arguments, Path("/tmp/gate"))
     assert command.count("--worker") == 1
     assert "all-flow-union" not in command
+    assert command[command.index("--prepared-model") + 1] == str(
+        prepared_model.resolve()
+    )
     assert command[command.index("--amplicol-result") + 1] == str(
         Path("legacy.json").resolve()
     )
@@ -329,3 +337,57 @@ def test_cli_launches_one_worker_with_cross_platform_30_gib_guard(
     assert gate._physical_footprint_probe() is probe
     monkeypatch.setattr(gate.platform, "system", lambda: "Linux")
     assert gate._physical_footprint_probe() is None
+
+
+def test_prepared_model_load_precedes_generation_and_is_forwarded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "built-in-sm.pyamplicol-model"
+    path.write_bytes(b"prepared")
+    events: list[object] = []
+    compiled = object()
+    retained = gate.RetainedInputs(object(), object(), b"{}", "a" * 64)
+
+    class Source:
+        def compile(self) -> object:
+            events.append("load")
+            return compiled
+
+    def from_path(candidate: Path) -> Source:
+        events.append(("path", candidate))
+        return Source()
+
+    def generate(artifact: Path, model: object) -> tuple[float, gate.RetainedInputs]:
+        events.append(("generate", artifact, model))
+        return 2.5, retained
+
+    monkeypatch.setattr(gate.ModelSource, "from_path", from_path)
+    monkeypatch.setattr(gate, "_generate", generate)
+
+    result = gate._generate_with_prepared_model(tmp_path / "artifact", path)
+
+    assert events == [
+        ("path", path.resolve()),
+        "load",
+        ("generate", tmp_path / "artifact", compiled),
+    ]
+    assert result[:3] == (2.5, retained, path.resolve())
+    assert result[3] >= 0.0
+
+
+def test_prepared_model_path_rejects_missing_non_file_and_wrong_suffix(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(gate.GateError, match="does not exist"):
+        gate._prepared_model_path(tmp_path / "missing.pyamplicol-model")
+
+    directory = tmp_path / "directory.pyamplicol-model"
+    directory.mkdir()
+    with pytest.raises(gate.GateError, match="not a regular file"):
+        gate._prepared_model_path(directory)
+
+    wrong_suffix = tmp_path / "prepared.bin"
+    wrong_suffix.write_bytes(b"prepared")
+    with pytest.raises(gate.GateError, match="must end"):
+        gate._prepared_model_path(wrong_suffix)

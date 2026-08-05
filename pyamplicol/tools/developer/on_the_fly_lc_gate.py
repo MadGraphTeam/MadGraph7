@@ -31,7 +31,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import pyamplicol.generation.service as generation_service  # noqa: E402
-from pyamplicol import BenchmarkRunner, Generator, ProcessRequest, Runtime  # noqa: E402
+from pyamplicol import (  # noqa: E402
+    BenchmarkRunner,
+    CompiledModel,
+    Generator,
+    ModelSource,
+    ProcessRequest,
+    Runtime,
+)
 from pyamplicol.config import (  # noqa: E402
     BenchmarkConfig,
     ColorConfig,
@@ -129,6 +136,12 @@ def _positive_int(text: str) -> int:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument(
+        "--prepared-model",
+        required=True,
+        type=Path,
+        help="explicit prepared built-in-SM .pyamplicol-model bundle",
+    )
     parser.add_argument(
         "--amplicol-result",
         type=Path,
@@ -292,7 +305,21 @@ def _canonical_direct(value: object) -> bytes:
     ).encode("ascii")
 
 
-def _generate(artifact: Path) -> tuple[float, RetainedInputs]:
+def _prepared_model_path(path: Path) -> Path:
+    try:
+        resolved = path.expanduser().resolve(strict=True)
+    except OSError as error:
+        raise GateError(f"prepared model does not exist: {path}") from error
+    if not resolved.is_file():
+        raise GateError(f"prepared model is not a regular file: {resolved}")
+    if not resolved.name.lower().endswith(".pyamplicol-model"):
+        raise GateError("prepared model must end with '.pyamplicol-model'")
+    return resolved
+
+
+def _generate(
+    artifact: Path, model: CompiledModel
+) -> tuple[float, RetainedInputs]:
     captured: list[RetainedInputs] = []
     original = generation_service._invoke_rust_recurrence_lowering_v2
 
@@ -311,12 +338,23 @@ def _generate(artifact: Path) -> tuple[float, RetainedInputs]:
         generation_service, "_invoke_rust_recurrence_lowering_v2", capture
     ):
         Generator(_config()).generate(
-            ProcessRequest.parse(PROCESS, name=PROCESS_ID), artifact
+            ProcessRequest.parse(PROCESS, name=PROCESS_ID), artifact, model=model
         )
     elapsed = time.perf_counter() - started
     if len(captured) != 1:
         raise GateError(f"expected one lowering call, observed {len(captured)}")
     return elapsed, captured[0]
+
+
+def _generate_with_prepared_model(
+    artifact: Path, prepared_model: Path
+) -> tuple[float, RetainedInputs, Path, float]:
+    resolved = _prepared_model_path(prepared_model)
+    started = time.perf_counter()
+    model = ModelSource.from_path(resolved).compile()
+    load_seconds = time.perf_counter() - started
+    generation_seconds, retained = _generate(artifact, model)
+    return generation_seconds, retained, resolved, load_seconds
 
 
 def _selectors(physics: object) -> tuple[object, object]:
@@ -762,10 +800,16 @@ def _anchor_checks(
 
 
 def _run(
-    output: Path, amplicol: Path | None, target: float, batch: int
+    output: Path,
+    prepared_model: Path,
+    amplicol: Path | None,
+    target: float,
+    batch: int,
 ) -> dict[str, object]:
     artifact = output / "artifact"
-    generation_seconds, retained = _generate(artifact)
+    generation_seconds, retained, prepared_path, prepared_load_seconds = (
+        _generate_with_prepared_model(artifact, prepared_model)
+    )
     started = time.perf_counter()
     runtime = Runtime.load(artifact, process=PROCESS_ID)
     load_seconds = time.perf_counter() - started
@@ -878,6 +922,10 @@ def _run(
         "artifact_id": runtime.artifact_id,
         "layout": "topology-replay",
         "dense_correctness_authority": _dense_authority(runtime, len(points)),
+        "prepared_model": {
+            "path": str(prepared_path),
+            "load_seconds": prepared_load_seconds,
+        },
         "generation_seconds": generation_seconds,
         "runtime_load_seconds": load_seconds,
         "points": {"seeds": SEEDS, "seed_101_digest": digest, "dense": len(points)},
@@ -978,6 +1026,8 @@ def _worker_command(arguments: argparse.Namespace, output: Path) -> list[str]:
         "--worker",
         "--output",
         str(output),
+        "--prepared-model",
+        str(_prepared_model_path(arguments.prepared_model)),
         "--target-runtime",
         str(arguments.target_runtime),
         "--batch-size",
@@ -994,6 +1044,7 @@ def _worker_main(arguments: argparse.Namespace) -> int:
     try:
         result = _run(
             arguments.output,
+            arguments.prepared_model,
             arguments.amplicol_result,
             arguments.target_runtime,
             arguments.batch_size,
