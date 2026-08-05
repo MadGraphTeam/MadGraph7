@@ -13,6 +13,8 @@
 
 #include "mgOnGpuConfig.h"
 #include "mgOnGpuCxtypes.h" // for cxtype
+#include "mgOnGpuVectors.h" // for fptype_sv
+#include "GpuAbstraction.h" // for gpuBlasHandle_t, gpuStream_t
 
 namespace mg5amcGpu
 {
