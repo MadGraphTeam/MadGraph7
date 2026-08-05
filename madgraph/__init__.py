@@ -76,5 +76,8 @@ else:
 #              the matrix elements go to a gpu backend, 'speed' otherwise. The
 #              interface resolves it to one of the two above before anything
 #              reads it again, so only the generation ever sees 'auto'.
+# Off by default: several consumers read the diagram or amplitude structure
+# rather than the result, see "Why this is not the default" in
+# docs/gluon-quartic-plan.md.
 merge_quartic_vertices = False
         

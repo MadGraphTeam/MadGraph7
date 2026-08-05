@@ -26,6 +26,7 @@ import math
 import tests.unit_tests as unittest
 
 import madgraph
+import madgraph.various.misc as misc
 import madgraph.core.base_objects as base_objects
 import madgraph.core.color_amp as color_amp
 import madgraph.core.diagram_generation as diagram_generation
@@ -3748,7 +3749,11 @@ class TestDiagramTag(unittest.TestCase):
         myproc = base_objects.Process({'legs':myleglist,
                                        'model':self.base_model})
 
-        myamplitude = diagram_generation.Amplitude(myproc)
+        # DiagramTag is what is checked here, against diagram numbers, so it
+        # wants the plain generation order -- the four gluon merging reorders
+        # them
+        with misc.TMP_variable(madgraph, 'merge_quartic_vertices', False):
+            myamplitude = diagram_generation.Amplitude(myproc)
 
         tags = []
         permutations = []

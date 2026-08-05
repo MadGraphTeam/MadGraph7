@@ -619,38 +619,56 @@ instead of the amplitude's trips the lifetime assert in
 seen in emission order; and restoring only `from_group` on the base diagrams
 is not enough to undo an export.
 
-## Why `auto` is not the default: FKS
+## Why this is not the default
 
-Making `auto` the default was tried and **reverted**: it breaks NLO generation
-wherever the real emission has four gluons, which includes `p p > j j [QCD]`.
+Defaulting `merge_quartic_vertices` to `auto` was tried and **reverted**. It is
+safe on the paths it was built for -- UFO Fortran, madmatrix, the python
+exporter -- and each of those is validated on `|M|^2`. Turning it on for
+everything found three consumers which read the diagram or amplitude
+*structure* rather than the result:
 
-```
-born  g g > g g     QCD<=2 QED=0
-real  g g > g g g   QCD<=3 QED=0
-fks_common.link_rb_configs(born, real, 5, 4, 4)
-  flag off -> [2, 5, 12]
-  'auto'   -> FKSProcessError: could not link born diagram
-```
+1. **FKS born/real linking.** `link_rb_configs` finds the vertex splitting
+   `ij` into `i` and `j` and takes it out. The unrolling re-roots the real
+   diagrams and can put that pair in the closing vertex, where there is
+   nothing to take out, so the remainder is malformed and no born
+   configuration matches it. Same 3 diagrams selected, same tag set, different
+   decomposition:
 
-It is not the generation: with the flag on, `g g > g g g` still has its 25
-diagrams and the *same* tag set, under both `DiagramTag` and
-`UnrollDiagramTag`. It is `link_rb_configs`, which is order dependent by
-accident. It builds `real_tags` deduplicated but leaves `good_diags` as it
-is, then walks the two in lockstep -- `real_tags.remove(btag)` beside
-`good_diags.pop(ir)` -- so the two only stay aligned while the dedup drops
-nothing. Which representative of a duplicated tag survives is decided by the
-diagram order, and reordering makes a born diagram fail to find its real one.
-The vestigial `real_tags = [...]` assignment immediately overwritten by
-`real_tags = []` just above suggests this was patched once already.
+   ```
+   off   ((1,2>1),(4,5>4),(1,3,4))     the 4-5 vertex is internal
+   auto  ((1,2>1),(1,3>1),(1,4,5))     the 4-5 pair closes the diagram
+   ```
 
-So the default stays `False`. Moving it to `auto` needs `link_rb_configs`
-fixed first -- keeping the diagrams beside the tags they were deduplicated
-with is the obvious repair -- and that is an NLO change, which nothing in this
-work validates. Nine unit tests also encode the old diagram order and would
-have to be re-based: `test_diagram_tag_gg_ggg`, `test_colorize_uux_ggg`,
-`test_sextet_color_flow_output`, `test_generate_helas_diagrams_gg_gg`,
-`test_FKSRealProcess_init`, `test_link_gghgg_gghg`, `test_helas_diagrams_gd_ggd`,
-`test_helas_diagrams_gg_ggg`, `test_helas_diagrams_ud_ggdu`.
+   `p p > j j [QCD]` raised `FKSProcessError`. **Fixed** by generating an NLO
+   process with the merging off, in `FKSMultiProcess.__init__`, so the option
+   is now safe for an NLO user rather than only for the default. `g g > g g
+   [QCD]` generates byte-identically with the option set and unset.
+
+2. **The legacy `FortranHelasCallWriter`.** Only `FortranUFOHelasCallWriter`
+   emits the amplitude folds which put the merged contributions back. The
+   MG4-style writer computes `AMP(1..3)` from `GGGGXX` and then leaves them out
+   of the JAMPs -- a **silently wrong** `|M|^2`, not a crash. Not fixed: like
+   `export_cpp` and `export_python` it needs `merge_quartic_amplitudes=False`,
+   but `get_JAMP_lines` is on the exporter and does not know which writer it
+   is paired with.
+
+3. **Anything pinning the diagram order.** Cosmetic but wide: `colorize` and
+   `DiagramTag` tests select diagrams by position, and the sextet colour basis
+   goes 13 -> 15 because folding amplitudes decomposes the same `|M|^2` over
+   more colour structures (`|M|^2` bit-identical, checked with
+   `MatrixElementEvaluator`).
+
+The pattern is that the optimisation changes the *representation* -- diagram
+order, rooting, which amplitudes survive into the JAMPs -- and every consumer
+which reads representation rather than result has to be checked. Three turned
+up in one pass, so defaulting it on wants an audit of those consumers, not
+another round of patching outward.
+
+Also fixed on the way, and independent of all this: `link_rb_configs` built
+`real_tags` deduplicated but left `good_diags` as it was, then walked the two
+in lockstep -- `real_tags.remove(btag)` beside `good_diags.pop(ir)` -- so they
+only stayed aligned while the dedup dropped nothing. A no-op on every process
+in the test suite, but it made the result order dependent for no reason.
 
 ## Where to go next
 
