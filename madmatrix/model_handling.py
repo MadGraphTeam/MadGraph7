@@ -1734,8 +1734,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         self.edit_processConfig() # sub process specific, not to be symlinked from the Subprocesses directory
         self.edit_colorsum() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
         self.edit_coloramps()
-        self.edit_memorybuffers() # AV new file (NB this is generic in Subprocesses and then linked in Sigma-specific)
-        self.edit_memoryaccesscouplings() # AV new file (NB this is generic in Subprocesses and then linked in Sigma-specific)
         super().generate_process_files()
         # needs to be after get_matrix_element_calls to have nwf ready
         self.edit_processdata()
@@ -1947,28 +1945,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
             icolamp_text += text % (iconfigc+1, iconfig_to_diag[iconfigc+1]-1) # diag - 1 is to follow MadSpace indexing
             icolamp.append(icolamp_text)
         replace_dict['is_LC'] = '\n'.join(icolamp)
-        ff.write(template % replace_dict)
-        ff.close()
-
-    # AV - new method
-    def edit_memorybuffers(self):
-        """Generate MemoryBuffers.h"""
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_memorybuffers')
-        template = open(pjoin(self.template_path,'madmatrix','MemoryBuffers.h'),'r').read()
-        replace_dict = {}
-        replace_dict['model_name'] = self.model_name
-        ff = open(pjoin(self.path, '..', 'MemoryBuffers.h'),'w')
-        ff.write(template % replace_dict)
-        ff.close()
-
-    # AV - new method
-    def edit_memoryaccesscouplings(self):
-        """Generate MemoryAccessCouplings.h"""
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_memoryaccesscouplings')
-        template = open(pjoin(self.template_path,'madmatrix','MemoryAccessCouplings.h'),'r').read()
-        replace_dict = {}
-        replace_dict['model_name'] = self.model_name
-        ff = open(pjoin(self.path, '..', 'MemoryAccessCouplings.h'),'w')
         ff.write(template % replace_dict)
         ff.close()
 

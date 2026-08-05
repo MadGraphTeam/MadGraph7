@@ -408,7 +408,7 @@ endif
 
 #=== Configure common compiler flags for C++ and CUDA/HIP
 
-INCFLAGS = -I. -Ibackend/$(BACKENDDIR)
+INCFLAGS = -I. -I../../backend/$(BACKENDDIR)
 OPTFLAGS = -O3
 
 # HIP requires -O2 to avoid "Memory access fault" in gq_ttq (#806)
@@ -715,8 +715,8 @@ processid_short=$(shell basename $(CURDIR))
 MADMATRIX_LIB = madmatrix_$(processid_short)_$(BACKEND)
 objects_lib=$(BUILDDIR)/CPPProcess.o $(BUILDDIR)/color_sum.o $(BUILDDIR)/MatrixElementKernels.o $(BUILDDIR)/CrossSectionKernels.o $(BUILDDIR)/umami.o $(BUILDDIR)/SigmaKin.o
 
-# Backend-owned sources 
-vpath %%.cc backend/$(BACKENDDIR)
+# Backend-owned sources
+vpath %%.cc ../../backend/$(BACKENDDIR)
 
 # Explicitly define the default goal (this is not necessary as it is the first target, which is implicitly the default goal)
 .DEFAULT_GOAL := all.$(TAG)
@@ -763,11 +763,11 @@ endif
 # incompatible backends (different BACKEND, FPTYPE, etc.) in the same directory.
 # Use USEBUILDDIR=1 to build for multiple backends simultaneously without cleaning.
 ifeq ($(GPUCC),)
-$(BUILDDIR)/%%.o : %%.cc *.h backend/$(BACKENDDIR)/*.h $(SRC)/*.h $(BUILDDIR)/.build.$(TAG)
+$(BUILDDIR)/%%.o : %%.cc *.h ../../backend/$(BACKENDDIR)/*.h $(SRC)/*.h $(BUILDDIR)/.build.$(TAG)
 	@if [ ! -d $(BUILDDIR) ]; then echo "mkdir -p $(BUILDDIR)"; mkdir -p $(BUILDDIR); fi
 	$(CXX) $(CPPFLAGS) $(INCFLAGS) $(CXXFLAGS) -c $< -o $@
 else
-$(BUILDDIR)/%%.o : %%.cc *.h backend/$(BACKENDDIR)/*.h $(SRC)/*.h $(BUILDDIR)/.build.$(TAG)
+$(BUILDDIR)/%%.o : %%.cc *.h ../../backend/$(BACKENDDIR)/*.h $(SRC)/*.h $(BUILDDIR)/.build.$(TAG)
 	@if [ ! -d $(BUILDDIR) ]; then echo "mkdir -p $(BUILDDIR)"; mkdir -p $(BUILDDIR); fi
 	$(GPUCC) $(CPPFLAGS) $(INCFLAGS) $(GPUFLAGS) -c -x $(GPULANGUAGE) $< -o $@
 endif

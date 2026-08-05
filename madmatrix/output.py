@@ -86,18 +86,10 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                          'mgOnGpuFptypes.h', 'mgOnGpuCxtypes.h', 'mgOnGpuVectors.h',
                          'constexpr_math.h', 'read_slha.h', 'read_slha.cc'
                      ]),
-                     'SubProcesses': relative_path_list(madmatrix_templates, ['nvtx.h', 'GpuRuntime.h', 'GpuAbstraction.h', 'color_sum.h', 'color_sum.cc',
-                                      'MemoryAccessHelpers.h', 'MemoryAccessVectors.h',
-                                      'MemoryAccessMatrixElements.h', 'MemoryAccessMomenta.h',
-                                      'MemoryAccessRandomNumbers.h', 'MemoryAccessWeights.h',
-                                      'MemoryAccessAmplitudes.h', 'MemoryAccessWavefunctions.h',
-                                      'MemoryAccessGs.h', 'MemoryAccessCouplingsFixed.h',
-                                      'MemoryAccessNumerators.h', 'MemoryAccessDenominators.h',
-                                      'MemoryAccessChannelIds.h', 'MemoryAccessIflavorVec.h',
-                                      'CrossSectionKernels.cc', 'CrossSectionKernels.h',
-                                      'MatrixElementKernels.cc', 'MatrixElementKernels.h',
-                                      'EventStatistics.h',
-                                      'umami.h', 'umami.cc', 'rambo.h']),
+                     # Backend-owned skeleton files live only under backend/<variant>/ now
+                     # (see backend_variants below); only genuinely backend-agnostic files
+                     # (no backend/ counterpart) are copied flat into SubProcesses/.
+                     'SubProcesses': relative_path_list(madmatrix_templates, ['nvtx.h', 'umami.h', 'rambo.h']),
                      # run_card.toml is generated in finalize() (ProcessExporterMG7.create_run_card)
                      # from the template, not copied verbatim.
                      # Default cards for the optional post-processing tools
@@ -126,10 +118,10 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 
     # Backend-owned skeleton files (GpuRuntime.h, color_sum.{h,cc}, the
     # MemoryAccess*.h family, MatrixElementKernels/CrossSectionKernels/umami.cc,
-    # etc.) are NOT linked flat into P* any more: they are only available via
-    # backend/<variant>/ (see _link_backend_dirs_in_P below), sourced by the
-    # Makefile's INCFLAGS/vpath (see BACKENDDIR in madmatrix.mk). Only files
-    # with no backend/ counterpart - genuinely backend-agnostic - stay here.
+    # etc.) are NOT linked into P* at all: they are compiled straight from the
+    # single top-level backend/<variant>/ dir via the Makefile's INCFLAGS/vpath
+    # (see BACKENDDIR in madmatrix.mk). Only files with no backend/ counterpart
+    # - genuinely backend-agnostic - stay here.
     to_link_in_P = ['nvtx.h', 'umami.h', 'rambo.h']
 
     template_src_make = pjoin(madmatrix_templates, 'madmatrix_src.mk')
@@ -188,21 +180,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
         # guarded wavefunction/amplitude calls.
         if cpp_helas_call_writer is not None:
             cpp_helas_call_writer.use_flavor_mask = self.use_flavor_mask
-        out = super().generate_subprocess_directory(matrix_element, cpp_helas_call_writer, proc_number)
-        self._link_backend_dirs_in_P(matrix_element)
-        return out
-
-    # Symlink the top-level backend/<variant>/* into this P*'s own backend/<variant>/.
-    def _link_backend_dirs_in_P(self, matrix_element):
-        proc_dir_name = "P%s" % matrix_element.get('processes')[0].shell_string()
-        dirpath = pjoin(self.dir_path, 'SubProcesses', proc_dir_name)
-        with misc.chdir(dirpath):
-            for backend in self.backend_variants:
-                backend_rel = pjoin('backend', backend)
-                os.makedirs(backend_rel, exist_ok=True)
-                src_dir = pjoin('..', '..', 'backend', backend)
-                for fname in sorted(os.listdir(src_dir)):
-                    files.ln(pjoin(src_dir, fname), starting_dir=backend_rel)
+        return super().generate_subprocess_directory(matrix_element, cpp_helas_call_writer, proc_number)
 
     # AV (default from OM's tutorial) - add a debug printout
     def convert_model(self, model, wanted_lorentz=[], wanted_couplings=[]):
