@@ -252,17 +252,43 @@ so four fifths of the amplitude — every quartic contribution — used to enter
 **no** channel weight at all. Folding puts each of them in the channel whose
 colour factor it shares, which is exactly where it belongs.
 
-`g g > g g g` through madevent, 10000 events, three seeds:
+**The integration is not measurably better or worse.** That is the answer, and
+it took some care to get to, because `generate_events` wall time is a bad
+metric here: the refine stage adapts, and the *same* configuration swings by a
+factor four between seeds (217 s to 877 s with the flag off). Every number
+below is mean +- standard error over independent seeds.
+
+`g g > g g g`, `generate_events`, 10000 events, three seeds:
 
 | | cross section | rel. error | ME cpu |
 |---|---|---|---|
-| flag off | 3.680-3.694e+07 pb | 0.326% | 52.7 s |
+| flag off | 3.680-3.694e+07 pb | 0.327% | 52.7 s |
 | flag on | 3.684-3.694e+07 pb | 0.300% | 49.0 s |
 
-8% less error for 7% less cpu, consistently across the three seeds. At six
-gluons the end-to-end runs are far noisier — the refine stage adapts, and the
-same configuration swings by a factor two between seeds — so that comparison
-needs a fixed-work measurement rather than `generate_events` wall time.
+`g g > g g g g`, `generate_events`, 2000 events, four seeds, and a survey-only
+run — the same fixed number of points both ways, so the error measures the
+channel weights and nothing else — over six seeds:
+
+| | rel. error (survey) | rel. error (full) | cpu (full) |
+|---|---|---|---|
+| flag off | 2.14% | 0.498% | 583 s |
+| flag on | 1.93% | 0.473% | 580 s |
+
+Every difference is favourable and none of them is significant:
+
+| | off - on | |
+|---|---|---|
+| `g g > g g g` error | -8% | 1.8 sigma |
+| `g g > g g g` cpu | -7% | 1.1 sigma |
+| `g g > g g g g` survey error | -10% | 1.1 sigma |
+| `g g > g g g g` full error | -5% | 0.8 sigma |
+| `g g > g g g g` full cpu | -1% | 0.0 sigma |
+
+Cross sections agree everywhere. So the honest reading is that handing the
+quartic contributions to the channel that shares their colour factor does not
+hurt the integration, and may help it slightly — but the seed to seed scatter
+is far larger than the effect, and nothing here is established at more than
+two sigma. A campaign of tens of seeds would be needed to call it either way.
 
 ## Where to go next
 
