@@ -12,7 +12,11 @@ use std::{cmp::Ordering, mem::size_of};
 
 use super::{
     CurrentCoreKey, ExactComplexRational, LCColorWitnessTermId, SemanticDigest,
-    template::ContactOrbitStage,
+    construct::TemplateCatalog,
+    template::{
+        ContactOrbitStage, EvaluatorCallableKind, EvaluatorContractKind,
+        LCColorTransitionWitnessRow, OwnedRecurrenceTemplateInput, TransitionRow,
+    },
 };
 use crate::{RusticolError, RusticolResult};
 
@@ -72,25 +76,381 @@ pub(super) struct ContactOrbitStepProof {
     pub(super) source_particle_legs: [i32; 3],
     pub(super) certificate_reconstruction_factor: ExactComplexRational,
     pub(super) step_reconstruction_factor: ExactComplexRational,
-    pub(super) evaluator_class: Box<str>,
+    pub(super) evaluator_class: String,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) struct ContactOrbitApplicationWitness {
+    pub(super) transition_equivalence_class: String,
     pub(super) quantum_semantic_digest: SemanticDigest,
     pub(super) color_contraction_semantic_digest: SemanticDigest,
     pub(super) color_witness_term_id: LCColorWitnessTermId,
     pub(super) color_witness_proof_digest: SemanticDigest,
-    pub(super) coupling_orders: Box<[u32]>,
+    pub(super) coupling_orders: Vec<u32>,
+    pub(super) coupling_parameter_ids: Vec<u32>,
+    pub(super) momentum_convention: Vec<u32>,
     pub(super) binding_coupling: ExactComplexRational,
     pub(super) transition_exact_factor: ExactComplexRational,
     pub(super) color_exact_factor: ExactComplexRational,
     pub(super) witness_exact_factor: ExactComplexRational,
     pub(super) input_exchange_factor: Option<ExactComplexRational>,
     pub(super) output_factor_source: u8,
+    pub(super) evaluator_contract_kind: u8,
+    pub(super) evaluator_callable_kind: u8,
     pub(super) evaluator_callable_signature: SemanticDigest,
-    pub(super) evaluator_exact_expression_digests: Box<[SemanticDigest]>,
+    pub(super) evaluator_input_layout: Vec<u32>,
+    pub(super) evaluator_output_layout: Vec<u32>,
+    pub(super) evaluator_exact_expression_digests: Vec<SemanticDigest>,
+    pub(super) evaluator_runtime_template: Option<String>,
     pub(super) output_projection_id: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct PreparedContactOrbitTransition {
+    step: ContactOrbitStepProof,
+    transition_semantic_digest: SemanticDigest,
+    applications: Vec<ContactOrbitApplicationWitness>,
+}
+
+fn try_copy_u32(values: &[u32], label: &str) -> RusticolResult<Vec<u32>> {
+    let mut copied = Vec::new();
+    copied
+        .try_reserve_exact(values.len())
+        .map_err(|error| allocation(format!("{label} allocation failed: {error}")))?;
+    copied.extend_from_slice(values);
+    Ok(copied)
+}
+
+fn try_copy_digests(
+    catalog: &TemplateCatalog<'_>,
+    digest_ids: &[u32],
+    label: &str,
+) -> RusticolResult<Vec<SemanticDigest>> {
+    let mut digests = Vec::new();
+    digests
+        .try_reserve_exact(digest_ids.len())
+        .map_err(|error| allocation(format!("{label} allocation failed: {error}")))?;
+    for digest_id in digest_ids {
+        digests.push(catalog.digest(*digest_id, label)?);
+    }
+    Ok(digests)
+}
+
+fn try_clone_digests(
+    values: &[SemanticDigest],
+    label: &str,
+) -> RusticolResult<Vec<SemanticDigest>> {
+    let mut copied = Vec::new();
+    copied
+        .try_reserve_exact(values.len())
+        .map_err(|error| allocation(format!("{label} allocation failed: {error}")))?;
+    copied.extend_from_slice(values);
+    Ok(copied)
+}
+
+fn try_copy_string(value: &str, label: &str) -> RusticolResult<String> {
+    let mut copied = String::new();
+    copied
+        .try_reserve_exact(value.len())
+        .map_err(|error| allocation(format!("{label} allocation failed: {error}")))?;
+    copied.push_str(value);
+    Ok(copied)
+}
+
+fn strict_contact_orbit_step(
+    input: &OwnedRecurrenceTemplateInput,
+    catalog: &TemplateCatalog<'_>,
+    transition: TransitionRow,
+) -> RusticolResult<Option<ContactOrbitStepProof>> {
+    let step_ids = catalog.u32_sequence(
+        transition.contact_orbit_step_sequence_id,
+        "transition contact-orbit steps",
+    )?;
+    let step_digest_ids = catalog.u32_sequence(
+        transition.contact_orbit_step_semantic_digest_sequence_id,
+        "transition contact-orbit step digests",
+    )?;
+    if step_ids.len() != step_digest_ids.len() {
+        return Err(integrity(
+            "transition contact-orbit step bindings are incomplete",
+        ));
+    }
+    match step_ids {
+        [] => return Ok(None),
+        [_] => {}
+        _ => {
+            return Err(integrity(
+                "certified transition must bind exactly one contact-orbit step",
+            ));
+        }
+    }
+    let step_id = step_ids[0];
+    let step = input
+        .contact_orbit_steps
+        .get(step_id as usize)
+        .copied()
+        .filter(|step| step.id == step_id)
+        .ok_or_else(|| integrity("transition contact-orbit step is absent"))?;
+    if step.semantic_digest_id != step_digest_ids[0] {
+        return Err(integrity(
+            "transition contact-orbit step digest binding is stale",
+        ));
+    }
+    let certificate = input
+        .contact_orbit_certificates
+        .get(step.certificate_id as usize)
+        .copied()
+        .filter(|certificate| certificate.id == step.certificate_id)
+        .ok_or_else(|| integrity("contact-orbit certificate is absent"))?;
+    let physical_leg_equivalence_classes: [u32; 4] = catalog
+        .u32_sequence(
+            certificate.physical_leg_equivalence_sequence_id,
+            "contact-orbit physical-leg equivalence classes",
+        )?
+        .try_into()
+        .map_err(|_| integrity("contact-orbit certificate does not describe four legs"))?;
+    let source_particle_legs: [i32; 3] = catalog
+        .i32_sequence(
+            step.source_particle_leg_sequence_id,
+            "contact-orbit source-particle legs",
+        )?
+        .try_into()
+        .map_err(|_| integrity("contact-orbit step does not describe three source legs"))?;
+    let proof = ContactOrbitStepProof {
+        certificate_semantic_digest: catalog.digest(
+            certificate.semantic_digest_id,
+            "contact-orbit certificate semantic",
+        )?,
+        step_semantic_digest: catalog
+            .digest(step.semantic_digest_id, "contact-orbit step semantic")?,
+        stage: ContactOrbitStage::try_from(step.stage)?,
+        result_leg: u32::from(step.result_leg),
+        physical_leg_equivalence_classes,
+        left_covered_legs: ContactOrbitCoveredLegs::new(catalog.u32_sequence(
+            step.left_covered_leg_sequence_id,
+            "contact-orbit left covered legs",
+        )?)?,
+        right_covered_legs: ContactOrbitCoveredLegs::new(catalog.u32_sequence(
+            step.right_covered_leg_sequence_id,
+            "contact-orbit right covered legs",
+        )?)?,
+        source_particle_legs,
+        certificate_reconstruction_factor: catalog.factor(
+            certificate.reconstruction_factor_id,
+            "contact-orbit certificate reconstruction",
+        )?,
+        step_reconstruction_factor: catalog.factor(
+            step.reconstruction_factor_id,
+            "contact-orbit step reconstruction",
+        )?,
+        evaluator_class: try_copy_string(
+            catalog.string(
+                certificate.evaluator_class_string_id,
+                "contact-orbit evaluator class",
+            )?,
+            "contact-orbit evaluator class",
+        )?,
+    };
+    validate_step(&proof)?;
+    Ok(Some(proof))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn prepare_contact_orbit_transition(
+    input: &OwnedRecurrenceTemplateInput,
+    catalog: &TemplateCatalog<'_>,
+    transition: TransitionRow,
+    quantum_semantic_digest: SemanticDigest,
+    local_coupling_orders: &[u32],
+    binding_coupling: ExactComplexRational,
+    transition_exact_factor: ExactComplexRational,
+    contraction_exact_factor: ExactComplexRational,
+    input_exchange_factor: Option<ExactComplexRational>,
+    witness_rows: &[LCColorTransitionWitnessRow],
+) -> RusticolResult<Option<PreparedContactOrbitTransition>> {
+    let Some(step) = strict_contact_orbit_step(input, catalog, transition)? else {
+        return Ok(None);
+    };
+    let contraction = input
+        .color_contractions
+        .get(transition.color_contraction_template_id as usize)
+        .copied()
+        .filter(|row| row.id == transition.color_contraction_template_id)
+        .ok_or_else(|| integrity("contact-orbit color contraction is absent"))?;
+    let binding = input
+        .evaluator_bindings
+        .get(transition.evaluator_binding_id as usize)
+        .copied()
+        .filter(|row| row.id == transition.evaluator_binding_id)
+        .ok_or_else(|| integrity("contact-orbit evaluator binding is absent"))?;
+    if EvaluatorContractKind::try_from(binding.contract_kind)? != EvaluatorContractKind::Vertex {
+        return Err(integrity("contact-orbit evaluator binding is not a vertex"));
+    }
+    let _ = EvaluatorCallableKind::try_from(binding.callable_kind)?;
+    let evaluator_input_layout = try_copy_u32(
+        catalog.u32_sequence(
+            binding.input_layout_sequence_id,
+            "contact-orbit evaluator input layout",
+        )?,
+        "contact-orbit evaluator input layout",
+    )?;
+    let evaluator_output_layout = try_copy_u32(
+        catalog.u32_sequence(
+            binding.output_layout_sequence_id,
+            "contact-orbit evaluator output layout",
+        )?,
+        "contact-orbit evaluator output layout",
+    )?;
+    let evaluator_exact_expression_digests = try_copy_digests(
+        catalog,
+        catalog.u32_sequence(
+            binding.exact_expression_digest_sequence_id,
+            "contact-orbit evaluator exact expressions",
+        )?,
+        "contact-orbit evaluator exact expression",
+    )?;
+    let coupling_orders =
+        try_copy_u32(local_coupling_orders, "contact-orbit local coupling orders")?;
+    let coupling_parameter_ids = try_copy_u32(
+        catalog.u32_sequence(
+            transition.coupling_parameter_sequence_id,
+            "contact-orbit coupling parameters",
+        )?,
+        "contact-orbit coupling parameters",
+    )?;
+    let momentum_convention = try_copy_u32(
+        catalog.u32_sequence(
+            transition.momentum_convention_sequence_id,
+            "contact-orbit momentum convention",
+        )?,
+        "contact-orbit momentum convention",
+    )?;
+    let transition_equivalence_class = try_copy_string(
+        catalog.string(
+            transition.equivalence_class_string_id,
+            "contact-orbit transition equivalence class",
+        )?,
+        "contact-orbit transition equivalence class",
+    )?;
+    let evaluator_runtime_template = if binding.runtime_template_string_id == u32::MAX {
+        None
+    } else {
+        Some(try_copy_string(
+            catalog.string(
+                binding.runtime_template_string_id,
+                "contact-orbit evaluator runtime template",
+            )?,
+            "contact-orbit evaluator runtime template",
+        )?)
+    };
+    let color_contraction_semantic_digest = catalog.digest(
+        contraction.semantic_digest_id,
+        "contact-orbit color-contraction semantic",
+    )?;
+    let evaluator_callable_signature = catalog.digest(
+        binding.callable_signature_digest_id,
+        "contact-orbit evaluator callable signature",
+    )?;
+    let mut applications = Vec::new();
+    applications
+        .try_reserve_exact(witness_rows.len())
+        .map_err(|error| {
+            allocation(format!(
+                "contact-orbit application allocation failed: {error}"
+            ))
+        })?;
+    for witness in witness_rows {
+        if witness.color_contraction_id != contraction.id {
+            return Err(integrity(
+                "contact-orbit witness belongs to another color contraction",
+            ));
+        }
+        applications.push(ContactOrbitApplicationWitness {
+            transition_equivalence_class: try_copy_string(
+                &transition_equivalence_class,
+                "contact-orbit transition equivalence class",
+            )?,
+            quantum_semantic_digest,
+            color_contraction_semantic_digest,
+            color_witness_term_id: LCColorWitnessTermId::new(contraction.id, witness.ordinal),
+            color_witness_proof_digest: catalog
+                .digest(witness.proof_digest_id, "contact-orbit color witness proof")?,
+            coupling_orders: try_copy_u32(&coupling_orders, "contact-orbit local coupling orders")?,
+            coupling_parameter_ids: try_copy_u32(
+                &coupling_parameter_ids,
+                "contact-orbit coupling parameters",
+            )?,
+            momentum_convention: try_copy_u32(
+                &momentum_convention,
+                "contact-orbit momentum convention",
+            )?,
+            binding_coupling,
+            transition_exact_factor,
+            color_exact_factor: contraction_exact_factor,
+            witness_exact_factor: catalog
+                .factor(witness.exact_factor_id, "contact-orbit color witness")?,
+            input_exchange_factor,
+            output_factor_source: transition.output_factor_source,
+            evaluator_contract_kind: binding.contract_kind,
+            evaluator_callable_kind: binding.callable_kind,
+            evaluator_callable_signature,
+            evaluator_input_layout: try_copy_u32(
+                &evaluator_input_layout,
+                "contact-orbit evaluator input layout",
+            )?,
+            evaluator_output_layout: try_copy_u32(
+                &evaluator_output_layout,
+                "contact-orbit evaluator output layout",
+            )?,
+            evaluator_exact_expression_digests: try_clone_digests(
+                &evaluator_exact_expression_digests,
+                "contact-orbit evaluator exact expressions",
+            )?,
+            evaluator_runtime_template: evaluator_runtime_template
+                .as_deref()
+                .map(|value| try_copy_string(value, "contact-orbit evaluator runtime template"))
+                .transpose()?,
+            output_projection_id: transition.output_projection_string_id,
+        });
+    }
+    Ok(Some(PreparedContactOrbitTransition {
+        step,
+        transition_semantic_digest: catalog.digest(
+            transition.semantic_digest_id,
+            "contact-orbit transition semantic",
+        )?,
+        applications,
+    }))
+}
+
+impl PreparedContactOrbitTransition {
+    pub(super) fn owner_candidate<'a>(
+        &'a self,
+        destination: &'a CurrentCoreKey,
+        parents: [&'a CurrentCoreKey; 2],
+        color_witness_term_id: LCColorWitnessTermId,
+    ) -> RusticolResult<ContactOrbitOwnerCandidate<'a>> {
+        let mut matches = self
+            .applications
+            .iter()
+            .filter(|application| application.color_witness_term_id == color_witness_term_id);
+        let application = matches
+            .next()
+            .ok_or_else(|| integrity("certified contact-orbit color witness is absent"))?;
+        if matches.next().is_some() {
+            return Err(integrity(
+                "certified contact-orbit color witness is ambiguous",
+            ));
+        }
+        contact_orbit_owner_candidate(
+            Some(&self.step),
+            destination,
+            parents,
+            application,
+            self.transition_semantic_digest,
+        )?
+        .ok_or_else(|| integrity("certified contact-orbit owner candidate disappeared"))
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -100,8 +460,7 @@ struct PhysicalLegAssignments {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct ContactOrbitParentAssignment<'a> {
-    current: &'a CurrentCoreKey,
+struct ContactOrbitPhysicalAssignment {
     physical_leg_assignments: PhysicalLegAssignments,
     source_particle_leg: i32,
 }
@@ -112,7 +471,8 @@ struct ContactOrbitOwnerGroupKey<'a> {
     stage: ContactOrbitStage,
     result_leg_equivalence_class: u32,
     destination: &'a CurrentCoreKey,
-    parents: [ContactOrbitParentAssignment<'a>; 2],
+    parents: [&'a CurrentCoreKey; 2],
+    physical_assignments: [ContactOrbitPhysicalAssignment; 2],
     output_source_particle_leg: i32,
     evaluator_class: &'a str,
     application: &'a ContactOrbitApplicationWitness,
@@ -134,17 +494,11 @@ pub(super) struct ContactOrbitOwnerCandidate<'a> {
     rank: ContactOrbitOwnerRank,
 }
 
-fn canonical_assignment<'a>(
-    current: &'a CurrentCoreKey,
+fn canonical_physical_assignment(
     covered_legs: ContactOrbitCoveredLegs,
     equivalence_classes: &[u32; 4],
     source_particle_leg: i32,
-) -> RusticolResult<ContactOrbitParentAssignment<'a>> {
-    if covered_legs.len() != current.support_source_slots().len() {
-        return Err(integrity(
-            "contact-orbit covered-leg cardinality differs from parent support",
-        ));
-    }
+) -> RusticolResult<ContactOrbitPhysicalAssignment> {
     let mut assignments = [(0_u32, 0_u32); 2];
     for (index, leg) in covered_legs.values().iter().copied().enumerate() {
         let equivalence = *equivalence_classes
@@ -153,8 +507,7 @@ fn canonical_assignment<'a>(
         assignments[index] = (leg, equivalence);
     }
     assignments[..covered_legs.len()].sort_unstable();
-    Ok(ContactOrbitParentAssignment {
-        current,
+    Ok(ContactOrbitPhysicalAssignment {
         physical_leg_assignments: PhysicalLegAssignments {
             len: covered_legs.len,
             values: assignments,
@@ -308,22 +661,33 @@ pub(super) fn contact_orbit_owner_candidate<'a>(
     };
     validate_step(step)?;
     validate_support_union(destination, parents)?;
-
-    let mut parent_assignments = [
-        canonical_assignment(
-            parents[0],
+    let mut parent_support_lengths = [
+        parents[0].support_source_slots().len(),
+        parents[1].support_source_slots().len(),
+    ];
+    parent_support_lengths.sort_unstable();
+    let mut covered_lengths = [step.left_covered_legs.len(), step.right_covered_legs.len()];
+    covered_lengths.sort_unstable();
+    if parent_support_lengths != covered_lengths {
+        return Err(integrity(
+            "contact-orbit covered-leg cardinalities differ from parent supports",
+        ));
+    }
+    let mut physical_assignments = [
+        canonical_physical_assignment(
             step.left_covered_legs,
             &step.physical_leg_equivalence_classes,
             step.source_particle_legs[0],
         )?,
-        canonical_assignment(
-            parents[1],
+        canonical_physical_assignment(
             step.right_covered_legs,
             &step.physical_leg_equivalence_classes,
             step.source_particle_legs[1],
         )?,
     ];
-    parent_assignments.sort_unstable();
+    physical_assignments.sort_unstable();
+    let mut canonical_parents = parents;
+    canonical_parents.sort_unstable();
     let result_leg_equivalence_class =
         step.physical_leg_equivalence_classes[step.result_leg as usize];
     Ok(Some(ContactOrbitOwnerCandidate {
@@ -332,7 +696,8 @@ pub(super) fn contact_orbit_owner_candidate<'a>(
             stage: step.stage,
             result_leg_equivalence_class,
             destination,
-            parents: parent_assignments,
+            parents: canonical_parents,
+            physical_assignments,
             output_source_particle_leg: step.source_particle_legs[2],
             evaluator_class: &step.evaluator_class,
             application,
@@ -482,19 +847,27 @@ mod tests {
 
     fn application() -> ContactOrbitApplicationWitness {
         ContactOrbitApplicationWitness {
+            transition_equivalence_class: "constant-scalar-contact".into(),
             quantum_semantic_digest: digest(2),
             color_contraction_semantic_digest: digest(3),
             color_witness_term_id: LCColorWitnessTermId::new(4, 0),
             color_witness_proof_digest: digest(5),
-            coupling_orders: vec![1].into_boxed_slice(),
+            coupling_orders: vec![1],
+            coupling_parameter_ids: vec![2],
+            momentum_convention: vec![0, 1],
             binding_coupling: ExactComplexRational::ONE,
             transition_exact_factor: ExactComplexRational::ONE,
             color_exact_factor: ExactComplexRational::ONE,
             witness_exact_factor: ExactComplexRational::ONE,
             input_exchange_factor: None,
             output_factor_source: 0,
+            evaluator_contract_kind: EvaluatorContractKind::Vertex as u8,
+            evaluator_callable_kind: EvaluatorCallableKind::PreparedKernel as u8,
             evaluator_callable_signature: digest(6),
-            evaluator_exact_expression_digests: vec![digest(7)].into_boxed_slice(),
+            evaluator_input_layout: vec![10, 11],
+            evaluator_output_layout: vec![12],
+            evaluator_exact_expression_digests: vec![digest(7)],
+            evaluator_runtime_template: None,
             output_projection_id: 8,
         }
     }
@@ -509,6 +882,36 @@ mod tests {
             left_covered_legs: ContactOrbitCoveredLegs::new(&[left]).unwrap(),
             right_covered_legs: ContactOrbitCoveredLegs::new(&[right]).unwrap(),
             source_particle_legs: [left as i32, right as i32, -1],
+            certificate_reconstruction_factor: ExactComplexRational::ONE,
+            step_reconstruction_factor: ExactComplexRational::ONE,
+            evaluator_class: "constant-scalar-contact-v1".into(),
+        }
+    }
+
+    fn final_step(
+        left: &[u32],
+        right: &[u32],
+        result: u32,
+        digest_byte: u8,
+        equivalence_classes: [u32; 4],
+    ) -> ContactOrbitStepProof {
+        ContactOrbitStepProof {
+            certificate_semantic_digest: digest(9),
+            step_semantic_digest: digest(digest_byte),
+            stage: ContactOrbitStage::Final,
+            result_leg: result,
+            physical_leg_equivalence_classes: equivalence_classes,
+            left_covered_legs: ContactOrbitCoveredLegs::new(left).unwrap(),
+            right_covered_legs: ContactOrbitCoveredLegs::new(right).unwrap(),
+            source_particle_legs: [
+                if left.len() == 2 { -1 } else { left[0] as i32 },
+                if right.len() == 2 {
+                    -1
+                } else {
+                    right[0] as i32
+                },
+                result as i32,
+            ],
             certificate_reconstruction_factor: ExactComplexRational::ONE,
             step_reconstruction_factor: ExactComplexRational::ONE,
             evaluator_class: "constant-scalar-contact-v1".into(),
@@ -551,7 +954,7 @@ mod tests {
         let reverse = candidate(
             &reverse_step,
             &destination,
-            [&right, &left],
+            [&left, &right],
             &application,
             13,
         );
@@ -602,7 +1005,7 @@ mod tests {
                 Some(candidate(
                     &reverse_steps[0],
                     &destination,
-                    [&right, &left],
+                    [&left, &right],
                     &application,
                     41,
                 )),
@@ -622,7 +1025,7 @@ mod tests {
                 Some(candidate(
                     &reverse_steps[1],
                     &destination,
-                    [&right, &left],
+                    [&left, &right],
                     &application,
                     43,
                 )),
@@ -642,7 +1045,7 @@ mod tests {
                 Some(candidate(
                     &reverse_steps[2],
                     &destination,
-                    [&right, &left],
+                    [&left, &right],
                     &application,
                     45,
                 )),
@@ -659,6 +1062,130 @@ mod tests {
         assert_eq!(
             selected_contact_orbit_owner_tokens(candidates).unwrap(),
             vec![0, 2, 4],
+        );
+
+        let single = current(3, 3, &[10]);
+        let pair = current(4, 4, &[11, 12]);
+        let final_destination = current(5, 5, &[10, 11, 12]);
+        let final_forward = [
+            final_step(&[0], &[1, 2], 3, 60, [0, 0, 0, 0]),
+            final_step(&[0], &[1, 3], 2, 61, [0, 0, 0, 0]),
+            final_step(&[0], &[2, 3], 1, 62, [0, 0, 0, 0]),
+        ];
+        let final_reverse = [
+            final_step(&[1, 2], &[0], 3, 70, [0, 0, 0, 0]),
+            final_step(&[1, 3], &[0], 2, 71, [0, 0, 0, 0]),
+            final_step(&[2, 3], &[0], 1, 72, [0, 0, 0, 0]),
+        ];
+        let final_candidates = (0..3)
+            .flat_map(|index| {
+                [
+                    (
+                        2 * index,
+                        Some(candidate(
+                            &final_forward[index as usize],
+                            &final_destination,
+                            [&single, &pair],
+                            &application,
+                            80 + index as u8,
+                        )),
+                    ),
+                    (
+                        2 * index + 1,
+                        Some(candidate(
+                            &final_reverse[index as usize],
+                            &final_destination,
+                            [&single, &pair],
+                            &application,
+                            90 + index as u8,
+                        )),
+                    ),
+                ]
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            selected_contact_orbit_owner_tokens(final_candidates.into_iter()).unwrap(),
+            vec![0, 2, 4],
+        );
+    }
+
+    #[test]
+    fn same_order_singleton_rows_collapse_partial_and_final_scalar_0012_aliases() {
+        let scalar0_left = current(10, 1, &[10]);
+        let scalar0_right = current(10, 1, &[11]);
+        let partial_destination = current(20, 2, &[10, 11]);
+        let application = application();
+        let mut partial_forward = partial_step(0, 1, 2, 50);
+        partial_forward.physical_leg_equivalence_classes = [0, 0, 1, 2];
+        let mut partial_reverse = partial_step(1, 0, 2, 51);
+        partial_reverse.physical_leg_equivalence_classes = [0, 0, 1, 2];
+        let partial_forward = candidate(
+            &partial_forward,
+            &partial_destination,
+            [&scalar0_left, &scalar0_right],
+            &application,
+            52,
+        );
+        let partial_reverse = candidate(
+            &partial_reverse,
+            &partial_destination,
+            [&scalar0_left, &scalar0_right],
+            &application,
+            53,
+        );
+        assert_eq!(partial_forward.group, partial_reverse.group);
+        assert_eq!(
+            selected_contact_orbit_owner_tokens([
+                (0_u32, Some(partial_forward)),
+                (1_u32, Some(partial_reverse)),
+            ])
+            .unwrap(),
+            vec![0],
+        );
+        assert_eq!(
+            selected_contact_orbit_owner_tokens([
+                (1_u32, Some(partial_reverse)),
+                (0_u32, Some(partial_forward)),
+            ])
+            .unwrap(),
+            vec![0],
+        );
+
+        let pair = current(20, 2, &[10, 11]);
+        let scalar1 = current(30, 3, &[12]);
+        let final_destination = current(40, 4, &[10, 11, 12]);
+        let final_forward = final_step(&[0, 1], &[2], 3, 54, [0, 0, 1, 2]);
+        let final_reverse = final_step(&[2], &[0, 1], 3, 55, [0, 0, 1, 2]);
+        let final_forward = candidate(
+            &final_forward,
+            &final_destination,
+            [&pair, &scalar1],
+            &application,
+            56,
+        );
+        let final_reverse = candidate(
+            &final_reverse,
+            &final_destination,
+            [&pair, &scalar1],
+            &application,
+            57,
+        );
+        assert_eq!(final_forward.group, final_reverse.group);
+        assert_eq!(
+            selected_contact_orbit_owner_tokens([
+                (0_u32, Some(final_forward)),
+                (1_u32, Some(final_reverse)),
+            ])
+            .unwrap(),
+            vec![1],
+        );
+        assert_eq!(
+            selected_contact_orbit_owner_tokens([
+                (1_u32, Some(final_reverse)),
+                (0_u32, Some(final_forward)),
+            ])
+            .unwrap(),
+            vec![1],
         );
     }
 
@@ -685,7 +1212,13 @@ mod tests {
         value.color_witness_proof_digest = digest(22);
         variants.push(value);
         let mut value = base_application.clone();
-        value.coupling_orders = vec![2].into_boxed_slice();
+        value.coupling_orders = vec![2];
+        variants.push(value);
+        let mut value = base_application.clone();
+        value.coupling_parameter_ids = vec![3];
+        variants.push(value);
+        let mut value = base_application.clone();
+        value.momentum_convention = vec![1, 0];
         variants.push(value);
         let mut value = base_application.clone();
         value.binding_coupling = exact(2);
@@ -706,10 +1239,28 @@ mod tests {
         value.output_factor_source = 1;
         variants.push(value);
         let mut value = base_application.clone();
+        value.transition_equivalence_class = "different-equivalence".into();
+        variants.push(value);
+        let mut value = base_application.clone();
+        value.evaluator_contract_kind = EvaluatorContractKind::Closure as u8;
+        variants.push(value);
+        let mut value = base_application.clone();
+        value.evaluator_callable_kind = EvaluatorCallableKind::RusticolTemplate as u8;
+        variants.push(value);
+        let mut value = base_application.clone();
         value.evaluator_callable_signature = digest(23);
         variants.push(value);
         let mut value = base_application.clone();
-        value.evaluator_exact_expression_digests = vec![digest(24)].into_boxed_slice();
+        value.evaluator_input_layout = vec![13, 14];
+        variants.push(value);
+        let mut value = base_application.clone();
+        value.evaluator_output_layout = vec![15];
+        variants.push(value);
+        let mut value = base_application.clone();
+        value.evaluator_exact_expression_digests = vec![digest(24)];
+        variants.push(value);
+        let mut value = base_application.clone();
+        value.evaluator_runtime_template = Some("different-runtime-template".into());
         variants.push(value);
         let mut value = base_application.clone();
         value.output_projection_id = 9;
