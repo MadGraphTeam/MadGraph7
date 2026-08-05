@@ -231,20 +231,73 @@ class HelasCallWriter(base_objects.PhysicsObject):
         me = matrix_element.get('diagrams')
         matrix_element.reuse_outdated_wavefunctions(me)
 
+        # A current sum has to be written out once both currents are there.
+        # Doing it as soon as the later of the two is made keeps them alive:
+        # a slot is only handed on after its last use, and the cubic one is
+        # still needed by the amplitude the sum is for.
+        sums, uses, folded = self.get_quartic_current_sums(matrix_element)
+        first_sum = matrix_element.get_number_of_wavefunctions() - len(sums)
+        after = {}
+        for i, (cubic, quartic, coeff) in enumerate(sums):
+            after.setdefault(max(cubic.get('number'), quartic.get('number')),
+                             []).append(i)
+
         res = []
         for diagram in matrix_element.get('diagrams'):
-            
-            
-            res.extend([ self.get_wavefunction_call(wf) for \
-                         wf in diagram.get('wavefunctions') ])
+
+
+            for wf in diagram.get('wavefunctions'):
+                res.append(self.get_wavefunction_call(wf))
+                for i in after.get(wf.get('number'), []):
+                    cubic, quartic, coeff = sums[i]
+                    res.extend(self.get_current_sum_lines(
+                        first_sum + 1 + i, cubic, quartic, coeff))
             res.append("# Amplitude(s) for diagram number %d" % \
                        diagram.get('number'))
             for amplitude in diagram.get('amplitudes'):
-                res.append(self.get_amplitude_call(amplitude))
+                if amplitude.get('number') in folded:
+                    # summed into another amplitude through a current sum
+                    continue
+                res.append(self.get_amplitude_call_on_sums(
+                    amplitude, uses.get(amplitude.get('number')), first_sum))
 
         res.extend(self.get_amplitude_merge_lines(matrix_element))
 
         return res
+
+    def get_quartic_current_sums(self, matrix_element):
+        """The current sums to write out. Only the Fortran writer knows how to
+        emit one, see FortranUFOHelasCallWriter."""
+
+        return [], {}, set()
+
+    def get_current_sum_lines(self, number, cubic, quartic, coeff):
+        """Lines building one current sum. Fortran only."""
+
+        raise NotImplementedError
+
+    def get_amplitude_call_on_sums(self, amplitude, substitution, first_sum):
+        """The amplitude call, reading the current sums in place of the cubic
+        currents they were built from.
+
+        The slot is swapped on the mother itself and put back straight away,
+        the same way get_loop_amplitude_helas_calls relabels its externals."""
+
+        if not substitution:
+            return self.get_amplitude_call(amplitude)
+
+        original = []
+        for mother in amplitude.get('mothers'):
+            index = substitution.get(mother.get('number'))
+            if index is None:
+                continue
+            original.append((mother, mother.get('me_id')))
+            mother.set('me_id', first_sum + 1 + index)
+        try:
+            return self.get_amplitude_call(amplitude)
+        finally:
+            for mother, me_id in original:
+                mother.set('me_id', me_id)
 
     def get_amplitude_merge_lines(self, matrix_element):
         """Lines summing the quartic contributions into the amplitude which
@@ -1049,9 +1102,13 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
         merges = matrix_element.get_quartic_amplitude_merges()
         if not merges:
             return []
+        # these were never computed: their current was summed instead
+        folded = self.get_quartic_current_sums(matrix_element)[2]
 
         res = ['# Sum the quartic contributions into their cubic partner']
         for source in sorted(merges):
+            if source in folded:
+                continue
             target, coeff = merges[source]
             if coeff == 1:
                 res.append('AMP(%d) = AMP(%d) + AMP(%d)' %
@@ -1063,6 +1120,32 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
                 res.append('AMP(%d) = AMP(%d) + (%.15e)*AMP(%d)' %
                            (target, target, float(coeff), source))
         return res
+
+    def get_quartic_current_sums(self, matrix_element):
+        """The current sums, see HelasMatrixElement.get_quartic_current_sums"""
+
+        return matrix_element.get_quartic_current_sums()
+
+    def get_current_sum_lines(self, number, cubic, quartic, coeff):
+        """Sum the quartic current into the cubic one carrying the same colour
+        factor, so that the amplitude reading the sum gets both at once.
+
+        The two share their momentum, so only the wavefunction itself is
+        added; everything else is taken over from the cubic current."""
+
+        out = self.format_helas_object('W(', '%d') % number
+        from_cubic = self.format_helas_object('W(', '%d') % cubic.get('me_id')
+        from_quartic = self.format_helas_object('W(', '%d') % \
+            quartic.get('me_id')
+
+        if coeff == 1:
+            added = '%s%%W(:)' % from_quartic
+        elif coeff == -1:
+            added = '-%s%%W(:)' % from_quartic
+        else:
+            added = '(%.15e)*%s%%W(:)' % (float(coeff), from_quartic)
+        return ['%s = %s' % (out, from_cubic),
+                '%s%%W(:) = %s%%W(:) + %s' % (out, from_cubic, added)]
 
     def __init__(self, argument={}, hel_sum = False, options={}):
         """Allow generating a HelasCallWriter from a Model.The hel_sum argument

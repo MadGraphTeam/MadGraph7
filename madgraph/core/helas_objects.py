@@ -4000,6 +4000,8 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         # Cache for get_quartic_amplitude_merges(), needed both by the helas
         # calls and by the colour amplitudes. Runtime only, like the above.
         self.quartic_amplitude_merges = None
+        # Cache for get_quartic_current_sums(), same reason
+        self.quartic_current_sums = None
 
     def filter(self, name, value):
         """Filter for valid diagram property values."""
@@ -4420,6 +4422,16 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                     wf.set('me_id',wf.get('number'))
             return helas_diagrams
 
+        # A current sum is written out as soon as the later of the two
+        # currents it reads is made, so both have to still be there then --
+        # which this analysis has no way of knowing on its own.
+        sums = self.get_quartic_current_sums()[0]
+        read_after = {}
+        for cubic, quartic in [(entry[0], entry[1]) for entry in sums]:
+            read_after.setdefault(max(cubic.get('number'),
+                                      quartic.get('number')), []).append(
+                (cubic.get('number'), quartic.get('number')))
+
         # First compute the first/last appearance of each wavefunctions
         # first takes the line number and return the id of the created wf
         # last_lign takes the id of the wf and return the line number
@@ -4433,6 +4445,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                     last_lign[wfin.get('number')] = pos
                     assert wfin.get('number') in list(first.values())
                 first[pos] = wf.get('number')
+                for cubic, quartic in read_after.get(wf.get('number'), []):
+                    last_lign[cubic] = pos
+                    last_lign[quartic] = pos
             for amp in diag['amplitudes']:
                 pos+=1
                 for wfin in amp.get('mothers'):
@@ -5317,12 +5332,15 @@ class HelasMatrixElement(base_objects.PhysicsObject):
     def get_number_of_wavefunctions(self):
         """Gives the total number of wavefunctions for this ME"""
 
-        out =  max([wf.get('me_id') for wfs in self.get('diagrams') 
+        # the current sums get a slot each, at the end and never reused
+        extra = self.get_number_of_quartic_current_sums()
+
+        out =  max([wf.get('me_id') for wfs in self.get('diagrams')
                                     for wf in wfs.get('wavefunctions')])
-        if out: 
-            return out
+        if out:
+            return out + extra
         return sum([ len(d.get('wavefunctions')) for d in \
-                       self.get('diagrams')])
+                       self.get('diagrams')]) + extra
         
     def get_all_wavefunctions(self):
         """Gives a list of all wavefunctions for this ME"""
@@ -6182,6 +6200,187 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         targets = set(target for target, _ in res.values())
         return dict((source, value) for source, value in res.items()
                     if source not in targets)
+
+    def get_quartic_current_sums(self):
+        """Return the current sums which take a quartic amplitude away.
+
+        Where a quartic current and the cubic current carrying the same colour
+        factor feed the same vertex, the two amplitudes they give differ by
+        that one line and by nothing else. Summing the two currents once and
+        calling the amplitude on the sum therefore gets both contributions out
+        of a single call:
+
+            TMP = W1 + c*W4
+            CALL VVV1_0(..., TMP, AMP(t))
+
+        instead of one call for AMP(t) and one for the quartic AMP(s) which is
+        then added to it. The sum is one addition and is shared by every
+        amplitude which uses it, so it replaces as many calls as it has users.
+
+        Only the amplitudes are treated. A sum sitting deeper would have to be
+        carried through every current above it, and those currents are shared
+        with diagrams which must not get the extra term -- see
+        docs/gluon-quartic-plan.md.
+
+        Returns (sums, uses, folded):
+          sums   [(cubic wavefunction, quartic wavefunction, coefficient)]
+          uses   {amplitude number: {cubic wavefunction number: sums index}}
+          folded set of amplitude numbers the sums make unnecessary
+        """
+
+        if self.quartic_current_sums is None:
+            self.quartic_current_sums = self.compute_quartic_current_sums()
+        return self.quartic_current_sums
+
+    def get_number_of_quartic_current_sums(self):
+        """How many extra wavefunction slots the current sums need."""
+
+        return len(self.get_quartic_current_sums()[0])
+
+    def compute_quartic_current_sums(self):
+        """Work out the current sums, see get_quartic_current_sums."""
+
+        merges = self.get_quartic_amplitude_merges()
+        if not merges:
+            return [], {}, set()
+
+        model = self.get('processes')[0].get('model')
+        unrollable = diagram_generation.get_unrollable_quartic_vertices(model)
+        cubic_ids = diagram_generation.get_unrollable_cubic_ids(model)
+
+        amplitudes = {}
+        available = {}
+        written = set()
+        for diagram in self.get('diagrams'):
+            for wavefunction in diagram.get('wavefunctions'):
+                written.add(wavefunction.get('number'))
+            for amplitude in diagram.get('amplitudes'):
+                amplitudes[amplitude.get('number')] = amplitude
+                # the currents which exist by the time it is written out
+                available[amplitude.get('number')] = frozenset(written)
+
+        # For each target, the substitutions each of its merges asks for
+        candidates = {}
+        for source, (target, coeff) in merges.items():
+            pairs = self.match_quartic_mothers(amplitudes[source],
+                                               amplitudes[target],
+                                               unrollable, cubic_ids)
+            if not pairs:
+                continue
+            # the quartic current has to be there when the target is written
+            if any(quartic.get('number') not in available[target]
+                   for cubic, quartic in pairs):
+                continue
+            key = frozenset((cubic.get('number'), quartic.get('number'))
+                            for cubic, quartic in pairs)
+            candidates.setdefault(target, {})[key] = (source, coeff, pairs)
+
+        sums, uses, folded = [], {}, set()
+        index = {}
+        for target in sorted(candidates):
+            entries = candidates[target]
+            singles = dict((next(iter(key)), value)
+                           for key, value in entries.items() if len(key) == 1)
+
+            # Substituting several mothers at once also produces the amplitude
+            # with all of them substituted, so every subset has to be a merge
+            # into this same target, with the product of the coefficients.
+            # Keep the substitutions which pass, drop the ones which do not.
+            chosen = []
+            for pair in sorted(singles):
+                trial = chosen + [pair]
+                if all(self.subset_is_merged(entries, singles, combination)
+                       for size in range(2, len(trial) + 1)
+                       for combination in itertools.combinations(trial, size)):
+                    chosen = trial
+            if not chosen:
+                continue
+
+            for size in range(1, len(chosen) + 1):
+                for combination in itertools.combinations(chosen, size):
+                    folded.add(entries[frozenset(combination)][0])
+            for pair in chosen:
+                source, coeff, pairs = singles[pair]
+                cubic, quartic = pairs[0]
+                if (pair, coeff) not in index:
+                    index[(pair, coeff)] = len(sums)
+                    sums.append((cubic, quartic, coeff))
+                uses.setdefault(target, {})[cubic.get('number')] = \
+                    index[(pair, coeff)]
+
+        return sums, uses, folded
+
+    @staticmethod
+    def subset_is_merged(entries, singles, combination):
+        """Is the amplitude with all of combination substituted a merge into
+        the same target, weighing the product of the single coefficients?"""
+
+        entry = entries.get(frozenset(combination))
+        if entry is None:
+            return False
+        weight = 1
+        for pair in combination:
+            weight *= singles[pair][1]
+        return entry[1] == weight
+
+    @staticmethod
+    def match_quartic_mothers(source, target, unrollable, cubic_ids):
+        """Pair the mothers up where the source amplitude carries the quartic
+        current and the target the cubic one taking the same four lines.
+
+        Returns [] unless the two are otherwise one and the same vertex, which
+        is what makes the substitution a plain swap of one argument."""
+
+        if source.get('interaction_id') != target.get('interaction_id') or \
+           source.get('color_key') != target.get('color_key'):
+            return []
+
+        source_mothers = dict((mother.get('number'), mother)
+                              for mother in source.get('mothers'))
+        target_mothers = dict((mother.get('number'), mother)
+                              for mother in target.get('mothers'))
+        only_source = [source_mothers[number] for number in source_mothers
+                       if number not in target_mothers]
+        only_target = [target_mothers[number] for number in target_mothers
+                       if number not in source_mothers]
+        if not only_source or len(only_source) != len(only_target):
+            return []
+
+        res = []
+        for quartic in only_source:
+            hit = [cubic for cubic in only_target
+                   if HelasMatrixElement.is_unrolled_pair(quartic, cubic,
+                                                          unrollable,
+                                                          cubic_ids)]
+            if len(hit) != 1:
+                return []
+            res.append((hit[0], quartic))
+        if len(set(cubic.get('number') for cubic, quartic in res)) != len(res):
+            return []
+        return res
+
+    @staticmethod
+    def is_unrolled_pair(quartic, cubic, unrollable, cubic_ids):
+        """True when the cubic current is the pair of vertices the quartic one
+        factorises into: same four lines coming in, same line going out."""
+
+        if quartic.get('interaction_id') not in unrollable or \
+           cubic.get('interaction_id') not in cubic_ids or \
+           quartic.get('number_external') != cubic.get('number_external'):
+            return False
+
+        wanted = sorted(mother.get('number')
+                        for mother in quartic.get('mothers'))
+        for inner in cubic.get('mothers'):
+            if inner.get('interaction_id') not in cubic_ids or \
+               len(inner.get('mothers')) != 2:
+                continue
+            if sorted([mother.get('number')
+                       for mother in inner.get('mothers')] +
+                      [other.get('number') for other in cubic.get('mothers')
+                       if other is not inner]) == wanted:
+                return True
+        return False
 
     def sort_split_orders(self, split_orders):
         """ Sort the 'split_orders' list given in argument so that the orders of

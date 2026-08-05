@@ -4214,6 +4214,90 @@ class TestSeedRule(unittest.TestCase):
 
         self.check_expansion([21, 21], [6, -6, 21, 21], 123, 54)
 
+    def test_current_sums_gg_ggg(self):
+        """g g > g g g: seven quartic amplitudes become a current sum"""
+
+        self.check_current_sums([21, 21], [21, 21, 21], 7, 7)
+
+    def test_current_sums_gg_gggg(self):
+        """g g > g g g g: thirty sums take sixty amplitude calls away"""
+
+        self.check_current_sums([21, 21], [21, 21, 21, 21], 30, 60)
+
+    def test_current_sums_inactive_by_default(self):
+        """No current sum unless madgraph.merge_quartic_vertices is set"""
+
+        import madgraph.core.helas_objects as helas_objects
+
+        madgraph.merge_quartic_vertices = False
+        myleglist = base_objects.LegList(
+            [base_objects.Leg({'id':21, 'state':False})] * 2 +
+            [base_objects.Leg({'id':21, 'state':True})] * 3)
+        matrix_element = helas_objects.HelasMatrixElement(
+            diagram_generation.Amplitude(base_objects.Process(
+                {'legs':myleglist, 'model':self.base_model})))
+        self.assertEqual(matrix_element.get_quartic_current_sums(),
+                         ([], {}, set()))
+        self.assertEqual(
+            matrix_element.get_number_of_quartic_current_sums(), 0)
+
+    def check_current_sums(self, initial, final, nsum, nfolded):
+        """A current sum has to stand for exactly the amplitude it takes away:
+        the same vertex, with the quartic current where the target has the
+        cubic one."""
+
+        import madgraph.core.helas_objects as helas_objects
+
+        madgraph.merge_quartic_vertices = True
+        myleglist = base_objects.LegList(
+            [base_objects.Leg({'id':pdg, 'state':False}) for pdg in initial] +
+            [base_objects.Leg({'id':pdg, 'state':True}) for pdg in final])
+        matrix_element = helas_objects.HelasMatrixElement(
+            diagram_generation.Amplitude(base_objects.Process(
+                {'legs':myleglist, 'model':self.base_model})))
+
+        sums, uses, folded = matrix_element.get_quartic_current_sums()
+        merges = matrix_element.get_quartic_amplitude_merges()
+        self.assertEqual(len(sums), nsum)
+        self.assertEqual(len(folded), nfolded)
+        self.assertEqual(matrix_element.get_number_of_quartic_current_sums(),
+                         nsum)
+
+        amplitudes = dict((amplitude.get('number'), amplitude)
+                          for diagram in matrix_element.get('diagrams')
+                          for amplitude in diagram.get('amplitudes'))
+        unrollable = diagram_generation.get_unrollable_quartic_vertices(
+            self.base_model)
+
+        # every sum is a quartic current against the cubic pair it splits into
+        for cubic, quartic, coeff in sums:
+            self.assertTrue(helas_objects.HelasMatrixElement.is_unrolled_pair(
+                quartic, cubic, unrollable, self.cubic_ids))
+
+        # and every amplitude taken away is the target with some of the
+        # substitutions applied, which is exactly what reading the sums gives
+        for source in folded:
+            self.assertIn(source, merges)
+            target, coeff = merges[source]
+            self.assertIn(target, uses)
+            swap = dict((cubic, sums[index][1].get('number'))
+                        for cubic, index in uses[target].items())
+            mothers = [mother.get('number')
+                       for mother in amplitudes[target].get('mothers')]
+            options = []
+            for size in range(1, len(swap) + 1):
+                for combination in itertools.combinations(sorted(swap), size):
+                    options.append(sorted(swap[number]
+                                          if number in combination else number
+                                          for number in mothers))
+            self.assertIn(sorted(mother.get('number') for mother in
+                                 amplitudes[source].get('mothers')), options)
+            self.assertEqual(amplitudes[source].get('interaction_id'),
+                             amplitudes[target].get('interaction_id'))
+
+        # a folded amplitude must not also be a target
+        self.assertFalse(folded & set(uses))
+
     def test_seed_inactive_by_default(self):
         """Nothing changes unless madgraph.merge_quartic_vertices is set"""
 
