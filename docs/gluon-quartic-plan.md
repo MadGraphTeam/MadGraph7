@@ -2,18 +2,27 @@
 
 Branch `claude/gluon-amplitude-optimization-8706f5`. Everything is behind
 `set merge_quartic_vertices` (off by default), so nothing changes until it is
-set. It takes three values:
+set. It takes four values:
 
 | | |
 |---|---|
 | `False` | off, the default |
 | `speed` | the current sums, and the diagram order which allows them |
 | `slots` | the order which keeps fewest currents alive; no current sums |
+| `auto` | `slots` when the matrix elements go to a gpu backend, `speed` otherwise, decided per output |
 
 It has to be a `set` option and not an `output` one, because the diagram order
 is fixed while the diagrams are generated -- by `output` time it is already
 too late. The interface pushes it onto `madgraph.merge_quartic_vertices`,
 which is what the generation and the exporters read.
+
+`auto` is the exception, and only because `slots` is the `speed` order
+reversed: it generates the `speed` order and
+`MadGraphCmd.apply_quartic_diagram_order` reverses it at `output` time, once
+the backend about to be handed the matrix elements is known. The choice is
+made from the *matrix element* exporter rather than the output format, so
+`output madevent --me_exporter=<gpu backend>` -- one output feeding two
+backends off a single `_curr_matrix_elements` -- follows the gpu.
 
 **speed against slots.** The wavefunction store is a stack frame on cpu and is
 per thread on gpu, where at seven gluons it is about 24 kB a thread and caps
@@ -570,6 +579,45 @@ each step take the one leaving fewest currents alive. It buys 19 -> 18 and
 takes generation from 0.88 s to 3.24 s at seven gluons and would cost minutes
 at eight. Not worth it; the shipped order is within a couple of slots of what
 the search finds.
+
+## The backend-chosen order (`auto`)
+
+`speed` suits a cpu and `slots` suits a gpu, but one generation can feed both,
+so `auto` defers the choice to `output`. It works only because the two modes
+differ in nothing but the diagram order, and `slots` is `speed` reversed --
+verified byte for byte: generating in the `speed` order and reversing at
+output time reproduces a native `slots` generation exactly, in both backends,
+and a session going standalone -> standalone_mg7 -> standalone reproduces its
+first output for the third.
+
+**The choice comes from the matrix element exporter, not the output format.**
+`output madevent --me_exporter=<gpu backend>` hands one
+`self._curr_matrix_elements` to both exporters in a single `export_processes`
+call, so the fortran driver and the gpu matrix elements *cannot* carry
+different orders. Keying on the format would give that output the cpu order,
+which is the one case the whole thing exists for; keying on the me exporter
+gives it `slots` (measured: `NWAVEFUNCS=54` rather than 78 at six gluons).
+
+Two things had to be worked around, both pre-existing and neither specific to
+this option:
+
+* **An export mutates the diagrams it is given** -- 345 of 757 vertex leg
+  records change on `g g > g g g g`. Reversing mutated diagrams gives an
+  equivalent but differently numbered result, so `apply_quartic_diagram_order`
+  reverses a copy taken before the first export. `copy.deepcopy` of the
+  *amplitudes* is not an option: it drags the model along and trips
+  `assert type(col_obj) != array.array` in `color_algebra.create_copy`. The
+  diagrams alone copy cleanly and cost 0.011 s at seven gluons.
+* **An export also drops the marks saying the diagrams came from a seed** --
+  after it, `seed_forbidden_cubic_ids` is empty and `quartic_unroll_tags` has
+  0 entries instead of 405. So whether an amplitude may be reordered has to be
+  read before the first export, not at the output which wants to reorder.
+
+Two dead ends, both measured: reversing the `HelasMatrixElement` diagrams
+instead of the amplitude's trips the lifetime assert in
+`reuse_outdated_wavefunctions`, since a wavefunction number has to be first
+seen in emission order; and restoring only `from_group` on the base diagrams
+is not enough to undo an export.
 
 ## Where to go next
 

@@ -4300,6 +4300,56 @@ class TestSeedRule(unittest.TestCase):
         # a folded amplitude must not also be a target
         self.assertFalse(folded & set(uses))
 
+    def check_auto_order(self, initial, final):
+        """'auto' has to generate the 'speed' order, and 'slots' has to be
+        that same order reversed.
+
+        This is what lets an output pick between the two: by then the diagrams
+        exist and only their order can still be changed, so the two modes are
+        only interchangeable at that point if one is the other backwards."""
+
+        def tags(mode):
+            madgraph.merge_quartic_vertices = mode
+            amplitude = diagram_generation.Amplitude(base_objects.Process(
+                {'legs':base_objects.LegList(
+                    [base_objects.Leg({'id':pdg, 'state':False})
+                     for pdg in initial] +
+                    [base_objects.Leg({'id':pdg, 'state':True})
+                     for pdg in final]),
+                 'model':self.base_model}))
+            return [str(diagram_generation.UnrollDiagramTag(
+                        diagram, self.base_model, len(initial)))
+                    for diagram in amplitude.get('diagrams')]
+
+        speed, slots, auto = tags('speed'), tags('slots'), tags('auto')
+        self.assertEqual(auto, speed)
+        self.assertEqual(slots, speed[::-1])
+        # and it is a reordering, nothing gained or lost
+        self.assertEqual(sorted(slots), sorted(speed))
+        self.assertEqual(len(set(speed)), len(speed))
+
+    def test_auto_order_gg_ggg(self):
+        self.check_auto_order([21, 21], [21, 21, 21])
+
+    def test_auto_order_gg_gggg(self):
+        self.check_auto_order([21, 21], [21, 21, 21, 21])
+
+    def test_auto_current_sums(self):
+        """'auto' keeps the sums, being the 'speed' order; 'slots' drops them
+        because reversing puts every target ahead of what feeds it"""
+
+        import madgraph.core.helas_objects as helas_objects
+
+        for mode, wanted in (('auto', 7), ('speed', 7), ('slots', 0)):
+            madgraph.merge_quartic_vertices = mode
+            amplitude = diagram_generation.Amplitude(base_objects.Process(
+                {'legs':base_objects.LegList(
+                    [base_objects.Leg({'id':21, 'state':False})] * 2 +
+                    [base_objects.Leg({'id':21, 'state':True})] * 3),
+                 'model':self.base_model}))
+            element = helas_objects.HelasMatrixElement(amplitude)
+            self.assertEqual(len(element.get_quartic_current_sums()[0]), wanted)
+
     def test_seed_inactive_by_default(self):
         """Nothing changes unless madgraph.merge_quartic_vertices is set"""
 

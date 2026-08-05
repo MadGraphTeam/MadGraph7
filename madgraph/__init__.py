@@ -72,5 +72,9 @@ else:
 #              alive. Trades 6% more amplitude calls for 23% fewer
 #              wavefunction slots at seven gluons, which is the trade a gpu
 #              wants when occupancy is the limit.
+#   'auto'  -- generate as for 'speed', and let each output pick: 'slots' when
+#              the matrix elements go to a gpu backend, 'speed' otherwise. The
+#              interface resolves it to one of the two above before anything
+#              reads it again, so only the generation ever sees 'auto'.
 merge_quartic_vertices = False
         
