@@ -49,7 +49,7 @@ struct ProjectedClosureIdentity {
     component_coefficients: Box<[ExactComplexRational]>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct ProjectedClosure {
     identity: ProjectedClosureIdentity,
     representative_order: ProjectedClosureRepresentativeOrder,
@@ -258,7 +258,7 @@ pub(super) fn project_query_local_color_aliases(
                     representative_order,
                     representative_key: closure.key.clone(),
                     builder_parent_tuples: BTreeSet::from([closure.key.parent_current_ids]),
-                    pairing_lineages: closure.pairing_lineages.clone(),
+                    pairing_lineages: try_clone_pairing_lineages(&closure.pairing_lineages)?,
                 });
             }
             std::collections::btree_map::Entry::Occupied(mut entry) => {
@@ -277,7 +277,8 @@ pub(super) fn project_query_local_color_aliases(
                     let projected = entry.get_mut();
                     projected.representative_order = representative_order;
                     projected.representative_key = closure.key.clone();
-                    projected.pairing_lineages = closure.pairing_lineages.clone();
+                    projected.pairing_lineages =
+                        try_clone_pairing_lineages(&closure.pairing_lineages)?;
                 }
             }
         }
@@ -300,9 +301,13 @@ pub(super) fn project_query_local_color_aliases(
             .first()
             .ok_or_else(|| integrity("query-local projection class is empty"))?;
         let representative = &pending[representative_id as usize];
-        let mut projected = representative.clone();
-        projected.contributions.clear();
-        projected.pairing_lineages.clear();
+        let mut projected = PendingCurrent {
+            key: representative.key.clone(),
+            source_factor: representative.source_factor,
+            contributions: BTreeMap::new(),
+            pairing_lineages: Vec::new(),
+            stage: representative.stage,
+        };
         for member in members {
             extend_pairing_lineages(
                 &mut projected.pairing_lineages,
@@ -403,7 +408,7 @@ mod tests {
             source_factor: None,
             contributions: BTreeMap::new(),
             pairing_lineages: vec![PendingPairingLineage {
-                completed_pairs: Box::new([]),
+                completed_pairs: Vec::new(),
                 unmatched_endpoint: None,
             }],
             stage: 0,
@@ -411,10 +416,10 @@ mod tests {
     }
 
     fn closure(alias_parent: u32) -> PendingClosure {
-        closure_with_lineage(alias_parent, Box::new([]))
+        closure_with_lineage(alias_parent, Vec::new())
     }
 
-    fn closure_with_lineage(alias_parent: u32, completed_pairs: Box<[[u32; 2]]>) -> PendingClosure {
+    fn closure_with_lineage(alias_parent: u32, completed_pairs: Vec<[u32; 2]>) -> PendingClosure {
         PendingClosure {
             key: PendingClosureKey {
                 closure_template_id: 7,
@@ -478,11 +483,15 @@ mod tests {
     fn projected_pairing_owner_uses_semantic_representative_not_input_order() {
         let pending = vec![current(1, 0, 0), current(2, 2, 1), current(2, 1, 1)];
         let live = BTreeSet::from([0, 1, 2]);
-        let high = closure_with_lineage(1, vec![[0, 5]].into_boxed_slice());
-        let low = closure_with_lineage(2, vec![[0, 3]].into_boxed_slice());
         for closures in [
-            vec![high.clone(), low.clone()],
-            vec![low.clone(), high.clone()],
+            vec![
+                closure_with_lineage(1, vec![[0, 5]]),
+                closure_with_lineage(2, vec![[0, 3]]),
+            ],
+            vec![
+                closure_with_lineage(2, vec![[0, 3]]),
+                closure_with_lineage(1, vec![[0, 5]]),
+            ],
         ] {
             let projected = project_query_local_color_aliases(&pending, &closures, &live)
                 .unwrap()
@@ -490,7 +499,7 @@ mod tests {
             assert_eq!(
                 projected.closures[0].pairing_lineages,
                 vec![PendingPairingLineage {
-                    completed_pairs: vec![[0, 3]].into_boxed_slice(),
+                    completed_pairs: vec![[0, 3]],
                     unmatched_endpoint: None,
                 }]
             );

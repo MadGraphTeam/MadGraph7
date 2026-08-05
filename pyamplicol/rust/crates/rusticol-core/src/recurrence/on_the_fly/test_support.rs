@@ -892,7 +892,7 @@ fn pairing_oracle_equal(
             .collect::<RusticolResult<Vec<_>>>()?;
         return Ok((
             owner.endpoint_pairs.is_empty()
-                && owner.source_slot_permutation.as_ref() == identity
+                && owner.source_slot_permutation.as_slice() == identity
                 && owner
                     .source_lineage
                     .iter()
@@ -917,9 +917,9 @@ fn pairing_oracle_equal(
         .collect::<Vec<_>>();
     endpoint_pairs.sort_unstable();
     Ok((
-        owner.endpoint_pairs.as_ref() == endpoint_pairs
-            && owner.source_slot_permutation.as_ref() == catalog.source_slot_permutation(rule)?
-            && owner.source_lineage.as_ref() == catalog.lineage(rule)?
+        owner.endpoint_pairs.as_slice() == endpoint_pairs
+            && owner.source_slot_permutation.as_slice() == catalog.source_slot_permutation(rule)?
+            && owner.source_lineage.as_slice() == catalog.lineage(rule)?
             && owner.fermion_parity == rule.fermion_parity,
         rule.fermion_parity,
     ))

@@ -181,7 +181,7 @@ pub(crate) fn build_selected_lc_trace(
         &colors,
         &currents,
         &selected_closures,
-        &pairing_owner,
+        pairing_owner,
         &transitions,
         &closures,
         &live,

@@ -9,7 +9,7 @@ pub(super) struct PendingContributionKey {
     pub(super) key: ContributionKey,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub(super) struct PendingCurrent {
     pub(super) key: CurrentCoreKey,
     pub(super) source_factor: Option<ExactComplexRational>,
@@ -21,9 +21,9 @@ pub(super) struct PendingCurrent {
     pub(super) stage: u32,
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) struct PendingPairingLineage {
-    pub(super) completed_pairs: Box<[[u32; 2]]>,
+    pub(super) completed_pairs: Vec<[u32; 2]>,
     pub(super) unmatched_endpoint: Option<u32>,
 }
 
@@ -34,7 +34,7 @@ impl PendingPairingLineage {
             .is_pairing_endpoint()
             .then_some(source_slot);
         Self {
-            completed_pairs: Box::new([]),
+            completed_pairs: Vec::new(),
             unmatched_endpoint,
         }
     }
@@ -48,7 +48,7 @@ pub(super) struct PendingClosureKey {
     pub(super) color_witness_term_id: LCColorWitnessTermId,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub(super) struct PendingClosure {
     pub(super) key: PendingClosureKey,
     pub(super) factor: ExactComplexRational,
@@ -59,13 +59,50 @@ pub(super) struct PendingClosure {
 /// Query-local Wick-lineage proof selected only after physical closure and
 /// complete-rectangle color-alias projection have identified a canonical
 /// root-bearing representative.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub(super) struct ResolvedPairingOwnerV1 {
-    pub(super) endpoint_pairs: Box<[[u32; 2]]>,
+    pub(super) endpoint_pairs: Vec<[u32; 2]>,
     pub(super) proof_digest: Option<SemanticDigest>,
-    pub(super) source_slot_permutation: Box<[u32]>,
-    pub(super) source_lineage: Box<[u32]>,
+    pub(super) source_slot_permutation: Vec<u32>,
+    pub(super) source_lineage: Vec<u32>,
     pub(super) fermion_parity: i32,
+}
+
+fn checked_pairing_capacity(left: usize, right: usize, extra: usize) -> RusticolResult<usize> {
+    left.checked_add(right)
+        .and_then(|combined| combined.checked_add(extra))
+        .ok_or_else(|| invalid("pairing-lineage length exceeds usize"))
+}
+
+fn try_copy_pairing_pairs(source: &[[u32; 2]]) -> RusticolResult<Vec<[u32; 2]>> {
+    let mut copied = Vec::new();
+    copied
+        .try_reserve_exact(source.len())
+        .map_err(|error| invalid(format!("pairing-lineage allocation failed: {error}")))?;
+    copied.extend_from_slice(source);
+    Ok(copied)
+}
+
+fn try_clone_pairing_lineage(
+    source: &PendingPairingLineage,
+) -> RusticolResult<PendingPairingLineage> {
+    Ok(PendingPairingLineage {
+        completed_pairs: try_copy_pairing_pairs(&source.completed_pairs)?,
+        unmatched_endpoint: source.unmatched_endpoint,
+    })
+}
+
+pub(super) fn try_clone_pairing_lineages(
+    source: &[PendingPairingLineage],
+) -> RusticolResult<Vec<PendingPairingLineage>> {
+    let mut copied = Vec::new();
+    copied
+        .try_reserve_exact(source.len())
+        .map_err(|error| invalid(format!("pairing-lineage set allocation failed: {error}")))?;
+    for lineage in source {
+        copied.push(try_clone_pairing_lineage(lineage)?);
+    }
+    Ok(copied)
 }
 
 fn pairing_endpoint_class(
@@ -133,12 +170,22 @@ fn combine_pairing_lineage(
     right: &PendingPairingLineage,
     carries_colored_fermion_line: bool,
 ) -> RusticolResult<Option<PendingPairingLineage>> {
-    let mut completed_pairs = left
-        .completed_pairs
-        .iter()
-        .chain(right.completed_pairs.iter())
-        .copied()
-        .collect::<Vec<_>>();
+    let possible_new_pair = usize::from(
+        left.unmatched_endpoint.is_some()
+            && right.unmatched_endpoint.is_some()
+            && !carries_colored_fermion_line,
+    );
+    let capacity = checked_pairing_capacity(
+        left.completed_pairs.len(),
+        right.completed_pairs.len(),
+        possible_new_pair,
+    )?;
+    let mut completed_pairs = Vec::new();
+    completed_pairs
+        .try_reserve_exact(capacity)
+        .map_err(|error| invalid(format!("pairing-lineage allocation failed: {error}")))?;
+    completed_pairs.extend_from_slice(&left.completed_pairs);
+    completed_pairs.extend_from_slice(&right.completed_pairs);
     let unmatched_endpoint = match (
         left.unmatched_endpoint,
         right.unmatched_endpoint,
@@ -162,7 +209,7 @@ fn combine_pairing_lineage(
         ));
     }
     Ok(Some(PendingPairingLineage {
-        completed_pairs: completed_pairs.into_boxed_slice(),
+        completed_pairs,
         unmatched_endpoint,
     }))
 }
@@ -199,10 +246,11 @@ pub(super) fn extend_pairing_lineages(
     target: &mut Vec<PendingPairingLineage>,
     source: &[PendingPairingLineage],
 ) -> RusticolResult<()> {
+    let mut additions = try_clone_pairing_lineages(source)?;
     target
-        .try_reserve(source.len())
+        .try_reserve(additions.len())
         .map_err(|error| invalid(format!("pairing-lineage merge allocation failed: {error}")))?;
-    target.extend_from_slice(source);
+    target.append(&mut additions);
     target.sort_unstable();
     target.dedup();
     Ok(())
@@ -215,28 +263,43 @@ fn complete_pairing_lineage(
     if lineage.unmatched_endpoint.is_some() {
         return Ok(false);
     }
-    let expected = seed
+    let expected_endpoint_count = seed
         .source_anchors
         .iter()
         .filter(|anchor| anchor.color_role.is_pairing_endpoint())
-        .map(|anchor| anchor.source_slot)
-        .collect::<BTreeSet<_>>();
-    let mut observed = BTreeSet::new();
-    for pair in lineage.completed_pairs.iter().copied() {
-        if close_pairing_endpoints(seed, pair[0], pair[1])? != Some(pair)
-            || !observed.insert(pair[0])
-            || !observed.insert(pair[1])
+        .count();
+    let observed_endpoint_count = lineage
+        .completed_pairs
+        .len()
+        .checked_mul(2)
+        .ok_or_else(|| invalid("pairing endpoint count exceeds usize"))?;
+    if observed_endpoint_count != expected_endpoint_count {
+        return Ok(false);
+    }
+    for (index, pair) in lineage.completed_pairs.iter().copied().enumerate() {
+        if close_pairing_endpoints(seed, pair[0], pair[1])? != Some(pair) {
+            return Ok(false);
+        }
+        if lineage.completed_pairs[..index]
+            .iter()
+            .flatten()
+            .any(|endpoint| *endpoint == pair[0] || *endpoint == pair[1])
         {
             return Ok(false);
         }
     }
-    Ok(observed == expected)
+    Ok(true)
 }
 
 fn identity_source_permutation(source_count: usize) -> RusticolResult<Vec<u32>> {
-    (0..source_count)
-        .map(|value| checked_u32(value, "pairing identity source slot"))
-        .collect()
+    let mut result = Vec::new();
+    result
+        .try_reserve_exact(source_count)
+        .map_err(|error| invalid(format!("pairing identity allocation failed: {error}")))?;
+    for value in 0..source_count {
+        result.push(checked_u32(value, "pairing identity source slot")?);
+    }
+    Ok(result)
 }
 
 fn lehmer_digits(reference: &[u32], selected: &[u32]) -> RusticolResult<Vec<u32>> {
@@ -245,7 +308,11 @@ fn lehmer_digits(reference: &[u32], selected: &[u32]) -> RusticolResult<Vec<u32>
             "discovered pairing length differs from its compact class",
         ));
     }
-    let mut remaining = reference.to_vec();
+    let mut remaining = Vec::new();
+    remaining
+        .try_reserve_exact(reference.len())
+        .map_err(|error| invalid(format!("pairing permutation allocation failed: {error}")))?;
+    remaining.extend_from_slice(reference);
     let mut digits = Vec::new();
     digits
         .try_reserve_exact(selected.len())
@@ -271,12 +338,16 @@ pub(super) fn resolve_projected_pairing_owner(
     closures: &[PendingClosure],
 ) -> RusticolResult<ResolvedPairingOwnerV1> {
     let mut source_slot_permutation = identity_source_permutation(seed.source_anchors.len())?;
-    let mut source_lineage = vec![MISSING_U32; seed.source_anchors.len()];
+    let mut source_lineage = Vec::new();
+    source_lineage
+        .try_reserve_exact(seed.source_anchors.len())
+        .map_err(|error| invalid(format!("pairing source-lineage allocation failed: {error}")))?;
+    source_lineage.resize(seed.source_anchors.len(), MISSING_U32);
     if seed.pairing_classes.is_empty() {
         if closures.iter().any(|closure| {
             closure.pairing_lineages.as_slice()
                 != [PendingPairingLineage {
-                    completed_pairs: Box::new([]),
+                    completed_pairs: Vec::new(),
                     unmatched_endpoint: None,
                 }]
         }) {
@@ -285,26 +356,25 @@ pub(super) fn resolve_projected_pairing_owner(
             ));
         }
         return Ok(ResolvedPairingOwnerV1 {
-            endpoint_pairs: Box::new([]),
+            endpoint_pairs: Vec::new(),
             proof_digest: None,
-            source_slot_permutation: source_slot_permutation.into_boxed_slice(),
-            source_lineage: source_lineage.into_boxed_slice(),
+            source_slot_permutation,
+            source_lineage,
             fermion_parity: 1,
         });
     }
     let owner = unique_projected_pairing_owner(closures)?;
-    if !complete_pairing_lineage(seed, &owner)? {
+    if !complete_pairing_lineage(seed, owner)? {
         return Err(integrity(
             "canonical projected closure has an incomplete Wick lineage",
         ));
     }
-    let endpoint_pairs = owner.completed_pairs.to_vec();
-    let pairing_by_fundamental = endpoint_pairs
-        .iter()
-        .copied()
-        .map(|[fundamental, antifundamental]| (fundamental, antifundamental))
-        .collect::<BTreeMap<_, _>>();
-    if pairing_by_fundamental.len() != endpoint_pairs.len() {
+    let endpoint_pairs = try_copy_pairing_pairs(&owner.completed_pairs)?;
+    if endpoint_pairs.iter().enumerate().any(|(index, pair)| {
+        endpoint_pairs[..index]
+            .iter()
+            .any(|other| other[0] == pair[0])
+    }) {
         return Err(integrity(
             "canonical projected closure repeats a fundamental endpoint",
         ));
@@ -313,23 +383,30 @@ pub(super) fn resolve_projected_pairing_owner(
     let mut proof_hash = Sha256::new();
     proof_hash.update(b"pyamplicol-on-the-fly-discovered-pairing-owner-v1\0");
     for pairing_class in &seed.pairing_classes {
-        let reference = pairing_class
-            .antifundamental_endpoints
-            .iter()
-            .map(|endpoint| endpoint.source_slot)
-            .collect::<Vec<_>>();
-        let selected = pairing_class
-            .fundamental_endpoints
-            .iter()
-            .map(|endpoint| {
-                pairing_by_fundamental
-                    .get(&endpoint.source_slot)
-                    .copied()
-                    .ok_or_else(|| {
-                        integrity("canonical Wick lineage omits a pairing-class fundamental")
-                    })
-            })
-            .collect::<RusticolResult<Vec<_>>>()?;
+        let mut reference = Vec::new();
+        reference
+            .try_reserve_exact(pairing_class.antifundamental_endpoints.len())
+            .map_err(|error| invalid(format!("pairing reference allocation failed: {error}")))?;
+        reference.extend(
+            pairing_class
+                .antifundamental_endpoints
+                .iter()
+                .map(|endpoint| endpoint.source_slot),
+        );
+        let mut selected = Vec::new();
+        selected
+            .try_reserve_exact(pairing_class.fundamental_endpoints.len())
+            .map_err(|error| invalid(format!("selected pairing allocation failed: {error}")))?;
+        for endpoint in &pairing_class.fundamental_endpoints {
+            let selected_slot = endpoint_pairs
+                .iter()
+                .find(|pair| pair[0] == endpoint.source_slot)
+                .map(|pair| pair[1])
+                .ok_or_else(|| {
+                    integrity("canonical Wick lineage omits a pairing-class fundamental")
+                })?;
+            selected.push(selected_slot);
+        }
         let digits = lehmer_digits(&reference, &selected)?;
         if digits.iter().map(|digit| u64::from(*digit)).sum::<u64>() % 2 == 1 {
             parity = -parity;
@@ -368,40 +445,33 @@ pub(super) fn resolve_projected_pairing_owner(
     }
     proof_hash.update(parity.to_le_bytes());
     Ok(ResolvedPairingOwnerV1 {
-        endpoint_pairs: endpoint_pairs.into_boxed_slice(),
+        endpoint_pairs,
         proof_digest: Some(final_digest(proof_hash)?),
-        source_slot_permutation: source_slot_permutation.into_boxed_slice(),
-        source_lineage: source_lineage.into_boxed_slice(),
+        source_slot_permutation,
+        source_lineage,
         fermion_parity: parity,
     })
 }
 
 fn unique_projected_pairing_owner(
     closures: &[PendingClosure],
-) -> RusticolResult<PendingPairingLineage> {
-    let owners = closures
-        .iter()
-        .map(|closure| {
-            let [lineage] = closure.pairing_lineages.as_slice() else {
-                return Err(integrity(format!(
-                    "canonical projected closure has {} Wick lineages, expected exactly one",
-                    closure.pairing_lineages.len(),
-                )));
-            };
-            Ok(lineage.clone())
-        })
-        .collect::<RusticolResult<BTreeSet<_>>>()?;
-    if owners.len() != 1 {
-        return Err(integrity(format!(
-            "canonical projected closures disagree across {} Wick lineages",
-            owners.len(),
-        )));
+) -> RusticolResult<&PendingPairingLineage> {
+    let mut owner = None;
+    for closure in closures {
+        let [lineage] = closure.pairing_lineages.as_slice() else {
+            return Err(integrity(format!(
+                "canonical projected closure has {} Wick lineages, expected exactly one",
+                closure.pairing_lineages.len(),
+            )));
+        };
+        if owner.is_some_and(|previous| previous != lineage) {
+            return Err(integrity(
+                "canonical projected closures disagree across Wick lineages",
+            ));
+        }
+        owner = Some(lineage);
     }
-    let owner = owners
-        .iter()
-        .next()
-        .ok_or_else(|| integrity("canonical projected closure has no Wick lineage"))?;
-    Ok(owner.clone())
+    owner.ok_or_else(|| integrity("canonical projected closure has no Wick lineage"))
 }
 
 fn supports_are_disjoint(left: &[u32], right: &[u32]) -> bool {
@@ -701,14 +771,16 @@ fn include_transition(
             id
         } else {
             let id = checked_u32(currents.len(), "query-local current count")?;
-            current_ids.insert(key.clone(), id);
-            currents.push(PendingCurrent {
+            let map_key = key.clone();
+            let pending = PendingCurrent {
                 key,
                 source_factor: None,
                 contributions: BTreeMap::new(),
-                pairing_lineages: pairing_lineages.clone(),
+                pairing_lineages: try_clone_pairing_lineages(&pairing_lineages)?,
                 stage: checked_u32(support.len() - 1, "query-local current stage")?,
-            });
+            };
+            current_ids.insert(map_key, id);
+            currents.push(pending);
             id
         };
         extend_pairing_lineages(
@@ -961,7 +1033,7 @@ pub(super) fn build_selected_closures(
                                 key,
                                 factor,
                                 component_coefficients: coefficients,
-                                pairing_lineages: pairing_lineages.clone(),
+                                pairing_lineages: try_clone_pairing_lineages(&pairing_lineages)?,
                             });
                         }
                         std::collections::btree_map::Entry::Occupied(mut entry) => {
@@ -1041,9 +1113,34 @@ mod tests {
 
     fn lineage(pair: [u32; 2]) -> PendingPairingLineage {
         PendingPairingLineage {
-            completed_pairs: vec![pair].into_boxed_slice(),
+            completed_pairs: vec![pair],
             unmatched_endpoint: None,
         }
+    }
+
+    #[test]
+    fn pairing_lineage_capacity_is_checked_without_an_arbitrary_limit() {
+        assert_eq!(
+            checked_pairing_capacity(1 << 20, 1 << 20, 1).unwrap(),
+            2_097_153
+        );
+        assert!(checked_pairing_capacity(usize::MAX, 1, 0).is_err());
+    }
+
+    #[test]
+    fn large_pairing_lineage_clone_is_fallible_and_exact() {
+        let pair_count = 16_384usize;
+        let mut completed_pairs = Vec::new();
+        completed_pairs.try_reserve_exact(pair_count).unwrap();
+        for index in 0..pair_count {
+            completed_pairs.push([index as u32, (index + pair_count) as u32]);
+        }
+        let lineage = PendingPairingLineage {
+            completed_pairs,
+            unmatched_endpoint: None,
+        };
+        let copied = try_clone_pairing_lineage(&lineage).unwrap();
+        assert_eq!(copied, lineage);
     }
 
     #[test]

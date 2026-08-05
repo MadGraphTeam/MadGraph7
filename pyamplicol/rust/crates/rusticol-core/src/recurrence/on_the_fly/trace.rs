@@ -199,7 +199,7 @@ impl OnTheFlyStructuralProofV1 {
 
 /// Immutable selected-query trace.  Exact current keys remain available for
 /// development parity joins; numeric IDs are deliberately query-local.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub(crate) struct OnTheFlyStructuralTraceV1 {
     pub(super) seed_digest: SemanticDigest,
     pub(super) query_digest: SemanticDigest,
@@ -580,7 +580,7 @@ pub(super) fn lower_trace(
     colors: &DynamicLCColorStateInterner,
     currents: &[PendingCurrent],
     closures: &[PendingClosure],
-    pairing_owner: &ResolvedPairingOwnerV1,
+    pairing_owner: ResolvedPairingOwnerV1,
     transitions: &BTreeMap<(u32, u32), Vec<PreparedTransition>>,
     prepared_closures: &BTreeMap<(u32, u32), Vec<PreparedClosure>>,
     live: &BTreeSet<u32>,
@@ -935,7 +935,7 @@ pub(super) fn lower_trace(
         operations: operations.into_boxed_slice(),
         momentum_forms: momentum_forms.into_boxed_slice(),
         exact_factors: exact_factors.into_boxed_slice(),
-        pairing_owner: pairing_owner.clone(),
+        pairing_owner,
         layout,
         proof,
         semantic_digest,
@@ -972,10 +972,10 @@ mod tests {
             .into_boxed_slice(),
             exact_factors: vec![ExactComplexRational::ONE].into_boxed_slice(),
             pairing_owner: ResolvedPairingOwnerV1 {
-                endpoint_pairs: Box::new([]),
+                endpoint_pairs: Vec::new(),
                 proof_digest: None,
-                source_slot_permutation: Box::new([]),
-                source_lineage: Box::new([]),
+                source_slot_permutation: Vec::new(),
+                source_lineage: Vec::new(),
                 fermion_parity: 1,
             },
             layout: OnTheFlyWorkspaceLayoutV1 {
