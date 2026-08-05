@@ -88,8 +88,11 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
                      ]),
                      # Backend-owned skeleton files live only under backend/<variant>/ now
                      # (see backend_variants below); only genuinely backend-agnostic files
-                     # (no backend/ counterpart) are copied flat into SubProcesses/.
-                     'SubProcesses': relative_path_list(madmatrix_templates, ['nvtx.h', 'umami.h', 'rambo.h']),
+                     # (no backend/ counterpart) are copied flat into SubProcesses/. umami.h
+                     # is the only one needed outside standalone mode too (it's the header
+                     # for backend/<variant>/umami.cc's UMAMI API); nvtx.h/rambo.h are
+                     # standalone-driver-only (see _standalone_extra_files below).
+                     'SubProcesses': relative_path_list(madmatrix_templates, ['umami.h']),
                      # run_card.toml is generated in finalize() (ProcessExporterMG7.create_run_card)
                      # from the template, not copied verbatim.
                      # Default cards for the optional post-processing tools
@@ -122,7 +125,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
     # single top-level backend/<variant>/ dir via the Makefile's INCFLAGS/vpath
     # (see BACKENDDIR in madmatrix.mk). Only files with no backend/ counterpart
     # - genuinely backend-agnostic - stay here.
-    to_link_in_P = ['nvtx.h', 'umami.h', 'rambo.h']
+    to_link_in_P = ['umami.h']
 
     template_src_make = pjoin(madmatrix_templates, 'madmatrix_src.mk')
     template_Sub_make = pjoin(madmatrix_templates, 'madmatrix.mk')
@@ -209,7 +212,7 @@ class ProcessExporterMadMatrixStandalone(ProcessExporterMadMatrix):
     template_Sub_make = pjoin(ProcessExporterMadMatrix.madmatrix_templates, 'madmatrix_standalone.mk')
 
     # Standalone-only template files needed to build check_sa.exe
-    _standalone_extra_files = ['check_sa.cc',
+    _standalone_extra_files = ['check_sa.cc', 'nvtx.h', 'rambo.h',
                                'RamboSamplingKernels.cc', 'RamboSamplingKernels.h',
                                'CommonRandomNumberKernel.cc', 'CommonRandomNumbers.h',
                                'RandomNumberKernels.h',

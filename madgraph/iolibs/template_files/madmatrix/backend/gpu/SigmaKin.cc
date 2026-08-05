@@ -24,7 +24,7 @@
 #include "MemoryAccessNumerators.h"
 #include "MemoryAccessWavefunctions.h"
 #include "color_sum.h"
-#include "coloramps.h"
+#include "ColorData.h"
 
 namespace mg5amcGpu
 {

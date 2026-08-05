@@ -8,7 +8,7 @@
 
 #include "mgOnGpuConfig.h"
 
-#include "ColorMatrixData.h" // P1-generated: colorMatrix/colorDenom
+#include "ColorData.h" // P1-generated: colorMatrix/colorDenom, channel/config maps
 #include "MemoryAccessMatrixElements.h"
 
 namespace mg5amcGpu
