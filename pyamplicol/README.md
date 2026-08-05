@@ -1,8 +1,17 @@
 <!-- SPDX-License-Identifier: 0BSD -->
 
-# pyAmpliCol
+<p align="center">
+  <img src="https://raw.githubusercontent.com/mg5amcnlo/pyamplicol/main/docs/assets/pyamplicol_logo.png" alt="pyAmpliCol" width="760">
+</p>
 
-[![Tests](https://github.com/mg5amcnlo/pyamplicol/actions/workflows/tests.yml/badge.svg)](https://github.com/mg5amcnlo/pyamplicol/actions/workflows/tests.yml)
+<p align="center">
+  <a href="https://pypi.org/project/pyamplicol/"><img src="https://img.shields.io/pypi/v/pyamplicol.svg" alt="PyPI"></a>
+  <a href="https://pypi.org/project/pyamplicol/"><img src="https://img.shields.io/pypi/pyversions/pyamplicol.svg" alt="Python versions"></a>
+  <a href="https://github.com/mg5amcnlo/pyamplicol/actions/workflows/tests.yml"><img src="https://github.com/mg5amcnlo/pyamplicol/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
+  <a href="https://github.com/mg5amcnlo/pyamplicol/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-0BSD-blue.svg" alt="License: 0BSD"></a>
+</p>
+
+<p align="center"><strong>Fast color-ordered scattering amplitudes from Python and native APIs.</strong></p>
 
 pyAmpliCol generates and evaluates color-ordered scattering amplitudes from
 built-in, JSON, or UFO models. It provides a typed Python API and CLI, fast
@@ -11,9 +20,9 @@ Python, C11, C++17, Fortran 2008, and Rust 2021 interfaces.
 
 ## Release status
 
-Version `0.1.1` is available for testing from
-[TestPyPI](https://test.pypi.org/project/pyamplicol/0.1.1/) and is tagged as an
-immutable archival source snapshot. It has not yet been uploaded to PyPI. The
+Version `0.1.1` is available from
+[PyPI](https://pypi.org/project/pyamplicol/0.1.1/) and is tagged as an
+immutable archival source snapshot. The
 [validated release-artifacts workflow](https://github.com/mg5amcnlo/pyamplicol/actions/workflows/release-artifacts.yml)
 produces one source distribution and three `cp311-abi3` wheels; publication
 uses a successful run whose head SHA is the intended release source:
@@ -29,11 +38,11 @@ workflow did not run the separate performance campaigns.
 
 See the
 [release status](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/release-status.md)
-for the remaining PyPI upload step.
+for build, validation, and publication details.
 
 ## Installation
 
-Once the release is uploaded:
+Install the release from PyPI:
 
 ```console
 python -m venv .venv
@@ -44,7 +53,7 @@ python -m pip install pyamplicol
 The binary wheels include the Rust runtime and native SDK; wheel users do not
 need a Rust compiler. pyAmpliCol has no LHAPDF dependency.
 
-To build the tagged source snapshot before the PyPI upload:
+To build the tagged source snapshot:
 
 ```console
 git clone --branch v0.1.1 --depth 1 https://github.com/mg5amcnlo/pyamplicol.git
