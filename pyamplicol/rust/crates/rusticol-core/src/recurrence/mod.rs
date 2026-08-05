@@ -16,6 +16,7 @@ pub mod direct_runtime;
 mod exact;
 mod input;
 mod layout;
+pub(crate) mod on_the_fly;
 pub mod process;
 mod program;
 mod relation;

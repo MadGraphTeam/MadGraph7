@@ -2718,11 +2718,11 @@ impl<'a> TemplateCatalog<'a> {
         })
     }
 
-    fn string(&self, id: u32, label: &str) -> RusticolResult<&'a str> {
+    pub(super) fn string(&self, id: u32, label: &str) -> RusticolResult<&'a str> {
         required_string(&self.strings, id, label)
     }
 
-    fn digest(&self, id: u32, label: &str) -> RusticolResult<SemanticDigest> {
+    pub(super) fn digest(&self, id: u32, label: &str) -> RusticolResult<SemanticDigest> {
         self.digests
             .get(id as usize)
             .copied()
@@ -2745,7 +2745,7 @@ impl<'a> TemplateCatalog<'a> {
         )
     }
 
-    fn i32_sequence(&self, id: u32, label: &str) -> RusticolResult<&'a [i32]> {
+    pub(super) fn i32_sequence(&self, id: u32, label: &str) -> RusticolResult<&'a [i32]> {
         indexed_sequence(
             &self.input.i32_sequence_ranges,
             &self.input.i32_sequence_values,
@@ -2754,7 +2754,7 @@ impl<'a> TemplateCatalog<'a> {
         )
     }
 
-    fn flavour_flow(&self, id: u32, label: &str) -> RusticolResult<&'a [i32]> {
+    pub(super) fn flavour_flow(&self, id: u32, label: &str) -> RusticolResult<&'a [i32]> {
         indexed_sequence(
             &self.input.flavour_flow_ranges,
             &self.input.flavour_flow_values,
@@ -2763,7 +2763,7 @@ impl<'a> TemplateCatalog<'a> {
         )
     }
 
-    fn source_seed(&self, row: SourceRow) -> RusticolResult<LCColorSourceSeed> {
+    pub(super) fn source_seed(&self, row: SourceRow) -> RusticolResult<LCColorSourceSeed> {
         let operation = LCColorSourceSeedOperation::try_from(row.lc_color_seed_operation)?;
         let kind = (row.lc_color_seed_component_kind != u8::MAX)
             .then(|| LCColorComponentKind::try_from(row.lc_color_seed_component_kind))
@@ -2777,7 +2777,7 @@ impl<'a> TemplateCatalog<'a> {
         )
     }
 
-    fn witness(
+    pub(super) fn witness(
         &self,
         row: LCColorTransitionWitnessRow,
     ) -> RusticolResult<LCColorTransitionWitness> {
@@ -2857,7 +2857,7 @@ impl<'a> TemplateCatalog<'a> {
         )
     }
 
-    fn witness_rows(
+    pub(super) fn witness_rows(
         &self,
         color_contraction_id: u32,
     ) -> RusticolResult<&'a [LCColorTransitionWitnessRow]> {
@@ -2873,7 +2873,7 @@ impl<'a> TemplateCatalog<'a> {
         Ok(&self.input.lc_color_transition_witnesses[range])
     }
 
-    fn coupling_orders(&self, set_id: u32) -> RusticolResult<Vec<u32>> {
+    pub(super) fn coupling_orders(&self, set_id: u32) -> RusticolResult<Vec<u32>> {
         let range = self
             .input
             .coupling_order_ranges
@@ -2891,6 +2891,10 @@ impl<'a> TemplateCatalog<'a> {
             result[index] = term.power;
         }
         Ok(result)
+    }
+
+    pub(super) fn coupling_order_dimension(&self) -> usize {
+        self.coupling_names.len()
     }
 }
 
@@ -8769,7 +8773,7 @@ fn quantum_flow_matches(
     Ok(true)
 }
 
-fn quantum_parent_spin_matches(required_spin: i32, parent: &CurrentCoreKey) -> bool {
+pub(super) fn quantum_parent_spin_matches(required_spin: i32, parent: &CurrentCoreKey) -> bool {
     required_spin == parent.spin_state_class()
         || (parent.node_kind() == RecurrenceNodeKind::Source
             && parent.helicity_identity().strategy() == RecurrenceStrategy::AllFlowUnion
@@ -9185,7 +9189,7 @@ fn coupling_limits(
     Ok(limits)
 }
 
-fn combined_coupling_orders(
+pub(super) fn combined_coupling_orders(
     left: &[u32],
     right: &[u32],
     local: &[u32],
@@ -9210,7 +9214,7 @@ fn combined_coupling_orders(
     Ok(Some(result))
 }
 
-fn merged_helicity_identity(
+pub(super) fn merged_helicity_identity(
     left: &CurrentHelicityIdentity,
     right: &CurrentHelicityIdentity,
     result_spin: i32,
@@ -9297,7 +9301,7 @@ fn disjoint_support(left: &[u32], right: &[u32]) -> bool {
     left.iter().all(|slot| right.binary_search(slot).is_err())
 }
 
-fn merged_momentum(
+pub(super) fn merged_momentum(
     left: &CanonicalMomentumLinearForm,
     right: &CanonicalMomentumLinearForm,
 ) -> RusticolResult<CanonicalMomentumLinearForm> {
@@ -9334,7 +9338,7 @@ fn authenticate_runtime_coupling(
     Ok(binding_coupling)
 }
 
-fn output_factor_from_binding(
+pub(super) fn output_factor_from_binding(
     binding_coupling: ExactComplexRational,
     output_factor_source: u8,
     label: &str,
@@ -9377,14 +9381,16 @@ fn canonical_evaluator_parents(
     Ok((ordered, factor))
 }
 
-fn multiply_factors(values: &[ExactComplexRational]) -> RusticolResult<ExactComplexRational> {
+pub(super) fn multiply_factors(
+    values: &[ExactComplexRational],
+) -> RusticolResult<ExactComplexRational> {
     values
         .iter()
         .copied()
         .try_fold(ExactComplexRational::ONE, ExactComplexRational::checked_mul)
 }
 
-fn aggregate_factor(
+pub(super) fn aggregate_factor(
     target: &mut ExactComplexRational,
     value: ExactComplexRational,
 ) -> RusticolResult<()> {
