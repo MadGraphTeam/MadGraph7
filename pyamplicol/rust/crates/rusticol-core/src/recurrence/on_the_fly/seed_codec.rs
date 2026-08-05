@@ -27,10 +27,7 @@ const RETAINED_DIGEST_COUNT: u64 = 6;
 const DIGEST_BYTES: u64 = 32;
 
 fn invalid(message: impl Into<String>) -> RusticolError {
-    RusticolError::invalid_argument(format!(
-        "on-the-fly process-seed codec: {}",
-        message.into()
-    ))
+    RusticolError::invalid_argument(format!("on-the-fly process-seed codec: {}", message.into()))
 }
 
 struct Writer<W> {
@@ -55,8 +52,8 @@ impl<W: Write> Writer<W> {
     }
 
     fn raw(&mut self, bytes: &[u8]) -> RusticolResult<()> {
-        let byte_count = u64::try_from(bytes.len())
-            .map_err(|_| invalid("payload write length exceeds u64"))?;
+        let byte_count =
+            u64::try_from(bytes.len()).map_err(|_| invalid("payload write length exceeds u64"))?;
         let end = self
             .bytes_written
             .checked_add(byte_count)
@@ -91,9 +88,7 @@ impl<W: Write> Writer<W> {
     }
 
     fn count(&mut self, value: usize, label: &str) -> RusticolResult<()> {
-        self.u64(
-            u64::try_from(value).map_err(|_| invalid(format!("{label} count exceeds u64")))?,
-        )
+        self.u64(u64::try_from(value).map_err(|_| invalid(format!("{label} count exceeds u64")))?)
     }
 
     fn boolean(&mut self, value: bool) -> RusticolResult<()> {
@@ -174,8 +169,8 @@ impl<'a> Reader<'a> {
             .bytes
             .get(start..end)
             .ok_or_else(|| invalid(format!("{label} byte range is outside the payload")))?;
-        self.offset = u64::try_from(end)
-            .map_err(|_| invalid(format!("{label} end offset exceeds u64")))?;
+        self.offset =
+            u64::try_from(end).map_err(|_| invalid(format!("{label} end offset exceeds u64")))?;
         Ok(result)
     }
 
@@ -209,9 +204,9 @@ impl<'a> Reader<'a> {
 
     fn count(&mut self, minimum_item_bytes: u64, label: &str) -> RusticolResult<usize> {
         let count = self.u64(&format!("{label} count"))?;
-        let minimum_bytes = count.checked_mul(minimum_item_bytes).ok_or_else(|| {
-            invalid(format!("{label} minimum byte length overflows u64"))
-        })?;
+        let minimum_bytes = count
+            .checked_mul(minimum_item_bytes)
+            .ok_or_else(|| invalid(format!("{label} minimum byte length overflows u64")))?;
         if minimum_bytes > self.length.saturating_sub(self.offset) {
             return Err(invalid(format!(
                 "{label} count cannot fit in the remaining payload"
@@ -268,8 +263,8 @@ impl<'a> Reader<'a> {
     fn rational(&mut self, label: &str) -> RusticolResult<ExactRational> {
         let numerator = self.i128(&format!("{label} numerator"))?;
         let denominator = self.i128(&format!("{label} denominator"))?;
-        let value = ExactRational::new(numerator, denominator)
-            .map_err(|error| invalid(error.message()))?;
+        let value =
+            ExactRational::new(numerator, denominator).map_err(|error| invalid(error.message()))?;
         if value.numerator() != numerator || value.denominator() != denominator {
             return Err(invalid(format!("{label} is not canonically reduced")));
         }
@@ -314,10 +309,7 @@ fn reserved_vec<T>(count: usize, label: &str) -> RusticolResult<Vec<T>> {
     Ok(result)
 }
 
-fn encode_to_writer<W: Write>(
-    seed: &OnTheFlyProcessSeedV1,
-    destination: W,
-) -> RusticolResult<u64> {
+fn encode_to_writer<W: Write>(seed: &OnTheFlyProcessSeedV1, destination: W) -> RusticolResult<u64> {
     let mut writer = Writer::new(destination);
     writer.raw(MAGIC)?;
     writer.u32(SCHEMA_VERSION)?;
@@ -374,9 +366,10 @@ fn encode_to_writer<W: Write>(
     }
     writer.count(seed.coupling_limits.len(), "coupling limits")?;
     for limit in &seed.coupling_limits {
-        writer.u32(limit.ok_or_else(|| {
-            invalid("coupling limits are not explicit for every model order")
-        })?)?;
+        writer
+            .u32(limit.ok_or_else(|| {
+                invalid("coupling limits are not explicit for every model order")
+            })?)?;
     }
     writer.count(seed.pairing_classes.len(), "pairing classes")?;
     for pairing_class in &seed.pairing_classes {
@@ -410,8 +403,8 @@ pub(crate) fn encode_on_the_fly_process_seed_v1(
     seed: &OnTheFlyProcessSeedV1,
 ) -> RusticolResult<Vec<u8>> {
     let byte_count = encode_to_writer(seed, io::sink())?;
-    let capacity = usize::try_from(byte_count)
-        .map_err(|_| invalid("encoded payload length exceeds usize"))?;
+    let capacity =
+        usize::try_from(byte_count).map_err(|_| invalid("encoded payload length exceeds usize"))?;
     let mut payload = Vec::new();
     payload.try_reserve_exact(capacity).map_err(|error| {
         invalid(format!(
@@ -454,9 +447,7 @@ fn read_source_family(
     }
 }
 
-fn read_source_orientation(
-    reader: &mut Reader<'_>,
-) -> RusticolResult<OnTheFlySourceOrientationV1> {
+fn read_source_orientation(reader: &mut Reader<'_>) -> RusticolResult<OnTheFlySourceOrientationV1> {
     match reader.u8("source orientation")? {
         0 => Ok(OnTheFlySourceOrientationV1::Particle),
         1 => Ok(OnTheFlySourceOrientationV1::Antiparticle),
@@ -474,8 +465,7 @@ fn read_source_state(reader: &mut Reader<'_>) -> RusticolResult<OnTheFlySourceSt
     let source_template_id = reader.u32("source state source-template ID")?;
     let current_state_template_id = reader.u32("source state current-template ID")?;
     let source_semantic_digest = reader.digest("source state source semantic digest")?;
-    let current_state_semantic_digest =
-        reader.digest("source state current semantic digest")?;
+    let current_state_semantic_digest = reader.digest("source state current semantic digest")?;
     let momentum_sign = reader.i32("source state momentum sign")?;
     let crossing_phase = reader.exact("source state crossing phase")?;
     let spin_state = reader.i32("source state spin state")?;
@@ -544,21 +534,12 @@ fn read_pairing_endpoints(
 pub(crate) fn decode_on_the_fly_process_seed_v1(
     bytes: &[u8],
 ) -> RusticolResult<OnTheFlyProcessSeedV1> {
-    const MINIMUM_STATE_BYTES: u64 = 5 * 4 + 2 * DIGEST_BYTES + 4 + 4 * 16 + 2 * 4 + 8 + 4
-        + DIGEST_BYTES
-        + 1
-        + 1
-        + 1
-        + 4;
+    const MINIMUM_STATE_BYTES: u64 =
+        5 * 4 + 2 * DIGEST_BYTES + 4 + 4 * 16 + 2 * 4 + 8 + 4 + DIGEST_BYTES + 1 + 1 + 1 + 4;
     const MINIMUM_ANCHOR_BYTES: u64 = 4 + 4 + 1 + 1 + 1 + 1 + 8 + MINIMUM_STATE_BYTES;
     const MINIMUM_ENDPOINT_BYTES: u64 = 4 + DIGEST_BYTES;
-    const MINIMUM_PAIRING_CLASS_BYTES: u64 = 8
-        + 1
-        + DIGEST_BYTES
-        + 8
-        + MINIMUM_ENDPOINT_BYTES
-        + 8
-        + MINIMUM_ENDPOINT_BYTES;
+    const MINIMUM_PAIRING_CLASS_BYTES: u64 =
+        8 + 1 + DIGEST_BYTES + 8 + MINIMUM_ENDPOINT_BYTES + 8 + MINIMUM_ENDPOINT_BYTES;
 
     let mut reader = Reader::new(bytes)?;
     if reader.take(8, "magic")? != MAGIC {
@@ -629,8 +610,7 @@ pub(crate) fn decode_on_the_fly_process_seed_v1(
     }
 
     let permutation_count = reader.count(4, "external gather permutation")?;
-    let mut external_permutation =
-        reserved_vec(permutation_count, "external gather permutation")?;
+    let mut external_permutation = reserved_vec(permutation_count, "external gather permutation")?;
     for _ in 0..permutation_count {
         external_permutation.push(reader.u32("external gather-permutation slot")?);
     }
@@ -641,8 +621,7 @@ pub(crate) fn decode_on_the_fly_process_seed_v1(
         coupling_limits.push(Some(reader.u32("explicit coupling limit")?));
     }
 
-    let pairing_class_count =
-        reader.count(MINIMUM_PAIRING_CLASS_BYTES, "pairing classes")?;
+    let pairing_class_count = reader.count(MINIMUM_PAIRING_CLASS_BYTES, "pairing classes")?;
     let mut pairing_classes = reserved_vec(pairing_class_count, "pairing classes")?;
     for _ in 0..pairing_class_count {
         let species = reader.string("pairing species")?;
@@ -689,6 +668,7 @@ pub(crate) fn decode_on_the_fly_process_seed_v1(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::recurrence::on_the_fly::scalar_adapter_test_seed;
 
     #[derive(Default)]
     struct CountingWriter {
@@ -839,9 +819,7 @@ mod tests {
 
     fn source_anchor_count_offset(bytes: &[u8]) -> usize {
         let normalization_length_offset = normalization_length_offset();
-        normalization_length_offset
-            + 8
-            + little_u64(bytes, normalization_length_offset) as usize
+        normalization_length_offset + 8 + little_u64(bytes, normalization_length_offset) as usize
     }
 
     fn first_source_anchor_offset(bytes: &[u8]) -> usize {
@@ -873,13 +851,21 @@ mod tests {
     }
 
     #[test]
+    fn on_the_fly_seed_codec_preserves_live_scalar_seed_identity() {
+        let original =
+            scalar_adapter_test_seed(digest(81), digest(82), digest(83), digest(84)).unwrap();
+        let payload = encode_on_the_fly_process_seed_v1(&original).unwrap();
+        let decoded = decode_on_the_fly_process_seed_v1(&payload).unwrap();
+
+        assert_eq!(decoded.semantic_digest(), original.semantic_digest());
+        assert_eq!(decoded, original);
+    }
+
+    #[test]
     fn on_the_fly_seed_codec_decode_encode_is_byte_identical() {
         let bytes = encode_on_the_fly_process_seed_v1(&ordinary_seed(false)).unwrap();
         let decoded = decode_on_the_fly_process_seed_v1(&bytes).unwrap();
-        assert_eq!(
-            encode_on_the_fly_process_seed_v1(&decoded).unwrap(),
-            bytes
-        );
+        assert_eq!(encode_on_the_fly_process_seed_v1(&decoded).unwrap(), bytes);
     }
 
     #[test]
@@ -990,8 +976,7 @@ mod tests {
 
     #[test]
     fn on_the_fly_seed_codec_checked_writer_rejects_injected_u64_overflow() {
-        let mut writer =
-            Writer::with_bytes_written(CountingWriter::default(), u64::MAX - 1);
+        let mut writer = Writer::with_bytes_written(CountingWriter::default(), u64::MAX - 1);
         let error = writer.raw(&[1, 2]).unwrap_err();
         assert!(error.to_string().contains("accounting overflows u64"));
         assert_eq!(writer.destination.bytes_written, 0);
