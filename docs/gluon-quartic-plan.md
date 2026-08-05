@@ -516,6 +516,36 @@ can reach it, hence after every quartic current summable into it, so all the
 sums survive. `NWAVEFUNCS` at seven gluons ends up **below** the unoptimised
 build: 259 against 268.
 
+## The slot ordering, searched
+
+Once the twins are gone the slot count is the same in both backends (78 and
+259 at six and seven gluons), so the order is one shared problem rather than a
+per-backend one. Six orders were built and measured. The wavefunction count is
+the same in all of them -- reordering the diagrams never changes *which*
+currents exist, only how long each stays alive:
+
+| order | `g g > g g g` | `g g > g g g g` | `g g > 5 g` | sums kept |
+|---|---|---|---|---|
+| last discovery (shipped) | 19 | 78 | 259 | yes |
+| first discovery | 19 | 81 | 314 | yes |
+| by quartic count | 19 | 81 | 314 | yes |
+| by quartic count, then last | 19 | 81 | 259 | yes |
+| last discovery, then quartic count | 19 | 78 | 259 | yes |
+| **reversed last discovery** | **12** | **54** | **199** | **no -- all lost** |
+
+The last row is the interesting one: it is far the best on slots and useless,
+because reversing puts each target ahead of the quartic currents which feed
+it, so no sum can be built. That is the trade in one line -- the constraint
+that makes the sums possible is what costs the slots.
+
+A proper register-pressure greedy was also written: order the diagrams under
+the precedence "everything which unrolls to a diagram comes before it", and at
+each step take the one leaving fewest currents alive. It buys 19 -> 18 and
+78 -> 76 and **nothing at all** at seven gluons, for an O(n^2) pass which
+takes generation from 0.88 s to 3.24 s at seven gluons and would cost minutes
+at eight. Not worth it; the shipped order is within a couple of slots of what
+the search finds.
+
 ## Where to go next
 
 **Give madmatrix the amplitude sums too.** It is the only backend without
