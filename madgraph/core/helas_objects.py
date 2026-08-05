@@ -6421,12 +6421,28 @@ class HelasMatrixElement(base_objects.PhysicsObject):
     @staticmethod
     def is_unrolled_pair(quartic, cubic, unrollable, cubic_ids):
         """True when the cubic current is the pair of vertices the quartic one
-        factorises into: same four lines coming in, same line going out."""
+        factorises into: same four lines coming in, same line going out, and
+        the colour structure the quartic carries is the one which separates
+        the two lines the inner cubic vertex joins.
+
+        That last condition is the one which is easy to forget. A quartic
+        vertex makes one current per colour structure, and all of them take
+        the same lines and make the same line, so the lines alone cannot tell
+        them apart -- only the pairing can, and it has to be read against
+        sorted_mothers, the order ALOHA receives the legs in."""
 
         if quartic.get('interaction_id') not in unrollable or \
            cubic.get('interaction_id') not in cubic_ids or \
            quartic.get('number_external') != cubic.get('number_external'):
             return False
+
+        pairings = unrollable[quartic.get('interaction_id')][1]
+        if quartic.get('color_key') >= len(pairings):
+            return False
+        pairing = pairings[quartic.get('color_key')]
+        mothers = HelasMatrixElement.sorted_mothers(quartic)
+        outgoing = quartic.find_outgoing_number() - 1
+        slots = [i for i in range(len(mothers) + 1) if i != outgoing]
 
         wanted = sorted(mother.get('number')
                         for mother in quartic.get('mothers'))
@@ -6437,7 +6453,14 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             if sorted([mother.get('number')
                        for mother in inner.get('mothers')] +
                       [other.get('number') for other in cubic.get('mothers')
-                       if other is not inner]) == wanted:
+                       if other is not inner]) != wanted:
+                continue
+            joined = set(mother.get('number')
+                         for mother in inner.get('mothers'))
+            separated = frozenset(slots[i] for i, mother in enumerate(mothers)
+                                  if mother.get('number') in joined)
+            if frozenset(pairing[0]) == separated or \
+               frozenset(pairing[1]) == separated:
                 return True
         return False
 

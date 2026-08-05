@@ -445,11 +445,42 @@ seven).
 
 It is not shipped, because it makes `g g > g g g g` come out **wrong in
 madmatrix** (2.43e-04 against 1.59e-04) while Fortran stays exact at N=2..5.
-The generated code has no read before write, and a matrix element built
-directly has no duplicate wavefunction listings — those appear only through
-the madmatrix exporter path, which is also what forced the `allocated` guard
-in step 8. So the reordering is exposing something latent on that side rather
-than being wrong itself, but that has to be understood before it can go in.
+Investigated, and the cause is now located even if not yet fixed.
+
+Ruled out, each by measurement rather than argument:
+
+* not the reordering itself — with the current sums switched off, the
+  reordered madmatrix is exact;
+* not slot corruption — replaying the emission against the slot map gives no
+  read before write, no sum aliasing one of its own inputs, and `nwf` covers
+  every index used;
+* not `coloramps.h` — the only difference there is the channel to iconfig map
+  (`nchannels` 160 against 220, since it is taken as the *largest diagram
+  number carrying a channel*, which the reordering moves), while `icolamp` is
+  identical and the plain matrix element reads neither;
+* not the `merge_quartic_amplitudes=False` path — forcing the Fortran writer
+  into the same semantics, no amplitude folds and the merges left in the
+  JAMPs, is exact under the reordering;
+* not the duplicate wavefunction listings on their own — suppressing the
+  second emission moves the wrong answer (2.36e-04) without fixing it.
+
+What it *is*, from replaying both generated files symbolically — every slot
+carrying an expression tree, every amplitude reduced to one, compared as
+multisets:
+
+| | amplitudes | differing under the reordering |
+|---|---|---|
+| standalone Fortran | 450 | **0** |
+| madmatrix | 450 | **40** |
+
+**The folding is ordering sensitive in madmatrix and not in Fortran.** The
+madmatrix matrix element carries 20 wavefunctions listed by two diagrams —
+two objects for the same current, which a directly built matrix element does
+not have — and `match_quartic_mothers` compares mothers by number, so which
+copy an amplitude happens to hold decides which pairs get matched. The
+committed order happens to give a correct folding; the reordering does not.
+
+So the duplicate wavefunctions are the thing to fix, not the order.
 
 Worth doing: at six gluons it would take the wavefunction store from 6600 B to
 2700 B, *under* the 5100 B of the unoptimised code, with every current sum
