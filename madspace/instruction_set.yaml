@@ -1661,6 +1661,41 @@ apply_subchannel_weights:
       type: [float, d]
       desc:
 
+compress_channel_weights:
+  inputs:
+    - name: channel_index
+      type: [int]
+      desc:
+    - name: channel_weights
+      type: [float, n]
+      desc:
+    - name: keep_count
+      type: [size, k]
+      desc:
+  outputs:
+    - name: chan_weight_values
+      type: [float, k]
+      desc:
+    - name: chan_weight_indices
+      type: [int, k]
+      desc:
+
+restore_channel_weights:
+  inputs:
+    - name: chan_weight_values
+      type: [float, k]
+      desc:
+    - name: chan_weight_indices
+      type: [int, k]
+      desc:
+    - name: full_count
+      type: [size, n]
+      desc:
+  outputs:
+    - name: channel_weights
+      type: [float, n]
+      desc:
+
 pt_eta_phi_x:
   inputs:
     - name: p_ext

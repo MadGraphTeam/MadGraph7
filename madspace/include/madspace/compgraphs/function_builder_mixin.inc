@@ -370,6 +370,15 @@ Value apply_subchannel_weights(Value channel_weights_in, Value subchannel_weight
     return instruction("apply_subchannel_weights", {channel_weights_in, subchannel_weights, channel_indices, subchannel_indices})[0];
 }
 
+std::array<Value, 2> compress_channel_weights(Value channel_index, Value channel_weights, Value keep_count) {
+    auto output_vector = instruction("compress_channel_weights", {channel_index, channel_weights, keep_count});
+    return {output_vector[0], output_vector[1]};
+}
+
+Value restore_channel_weights(Value chan_weight_values, Value chan_weight_indices, Value full_count) {
+    return instruction("restore_channel_weights", {chan_weight_values, chan_weight_indices, full_count})[0];
+}
+
 Value pt_eta_phi_x(Value p_ext, Value x1, Value x2) {
     return instruction("pt_eta_phi_x", {p_ext, x1, x2})[0];
 }
