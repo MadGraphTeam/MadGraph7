@@ -394,7 +394,9 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
 
         out = StringIO()
         wf = '%s%s' % (self.particles[self.outgoing-1], self.outgoing)
-        out.write('    cxtype_sv FDQ[5] = { %s, -cI * M%s };\n' %
+        # the 5th component is -i * m: built from broadcast reals, since a
+        # scalar complex has no conversion to the vector type (cxtype_sv)
+        out.write('    cxtype_sv FDQ[5] = { %s, cxmake( fptype_sv{ 0 }, -M%s + fptype_sv{ 0 } ) };\n' %
                   (', '.join('cxmake( -%s.pvec[%d], 0. )' % (wf, i) for i in range(4)),
                    self.outgoing))
         out.write('    fptype_sv FDN[5];\n')
