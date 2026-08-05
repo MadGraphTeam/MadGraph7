@@ -212,9 +212,11 @@ precision = 16
 warmup_runs = 2
 # benchmark.minimum_samples: Positive minimum measured samples. Default 5.
 minimum_samples = 5
-# benchmark.helicity_ids: Optional benchmark helicity selectors. Default empty.
+# benchmark.helicity_ids: Optional benchmark helicity selectors. With both
+# selector lists empty, profiling chooses the generated layout's hot workload.
 helicity_ids = []
-# benchmark.color_flow_ids: Optional benchmark LC flow selectors. Default empty.
+# benchmark.color_flow_ids: Optional benchmark LC flow selectors. With both
+# selector lists empty, profiling chooses the generated layout's hot workload.
 color_flow_ids = []
 
 [output]

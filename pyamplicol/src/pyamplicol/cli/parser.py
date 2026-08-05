@@ -564,6 +564,10 @@ def _add_profile_options(parser: argparse.ArgumentParser) -> None:
         action="append",
         default=argparse.SUPPRESS,
         metavar="ID",
+        help=(
+            "stable helicity ID; omitting both selector options chooses the "
+            "artifact layout's optimized profiling workload"
+        ),
     )
     parser.add_argument(
         "--color-flow",
@@ -571,7 +575,11 @@ def _add_profile_options(parser: argparse.ArgumentParser) -> None:
         action="append",
         default=argparse.SUPPRESS,
         metavar="ID_OR_NUMBER",
-        help="stable color-flow ID or one-based ordinal shown by inspect",
+        help=(
+            "stable color-flow ID or one-based ordinal shown by inspect; "
+            "omitting both selector options chooses the artifact layout's "
+            "optimized profiling workload"
+        ),
     )
     parser.add_argument(
         "--momenta",

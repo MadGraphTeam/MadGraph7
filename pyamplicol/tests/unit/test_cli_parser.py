@@ -50,6 +50,19 @@ def test_generate_defaults_to_recurrence_execution() -> None:
     assert config.evaluator.execution_mode is EvaluatorExecutionMode.RECURRENCE
 
 
+def test_profile_help_explains_layout_aware_selector_default(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        build_parser().parse_args(("profile", "--help"))
+
+    assert exit_info.value.code == 0
+    help_text = capsys.readouterr().out
+    assert help_text.count("omitting both selector options") == 2
+    assert "--helicity ID" in help_text
+    assert "--color-flow ID_OR_NUMBER" in help_text
+
+
 def test_generate_validation_samples_default_and_override() -> None:
     default = parse_cli(("generate",)).resolve().effective
     explicit = parse_cli(

@@ -253,6 +253,7 @@ pyamplicol profile artifacts/pp_zjj \
   --momenta data/pp_zjj_momenta.json \
   --target-runtime 1.0 \
   --batch-size 128 \
+  --color-flow 1 \
   --precision 16
 ```
 
@@ -261,6 +262,24 @@ or a unique side-preserving permutation such as
 `--process 'd d~ > g z g'`. If `--momenta` is omitted, the artifact's
 deterministic validation point is reordered to the requested particle order
 and repeated to the requested runtime batch size.
+
+For LC profiling, omitting both selector axes chooses a deterministic workload
+that matches the generated layout: one flow with the helicity sum for
+`topology-replay`, or all flows at one nonzero helicity for `all-flow-union`.
+Explicit subsets and selected-axis lists are preserved; a complete summed-axis
+list is normalized to equivalent omission. A profile outside that generated
+hot shape is allowed, but emits at most one warning per loaded process, before
+the timing loop, so a broader valid workload is not mistaken for the optimized
+one. Ordinary `Runtime.evaluate()` defaults remain the complete matrix element
+and are not changed by this profiling policy.
+
+There is no special `all` selector value. A complete explicit list on the
+layout's summed axis is equivalent to omission and still permits hot-selector
+inference. A complete list on the layout's selected axis explicitly requests
+the broader all-entry workload and suppresses inference. Repeat the CLI option
+for every stable ID reported by `inspect`, or pass
+`runtime.physics.color_ids` and/or `runtime.physics.helicity_ids` through
+`BenchmarkConfig`.
 
 The profiler performs configured warmups and uses their timing, or a dedicated
 probe when warmups are disabled, to calibrate both the number of independent
@@ -346,7 +365,12 @@ from pyamplicol import BenchmarkConfig, BenchmarkRunner, Runtime
 
 runtime = Runtime.load("artifacts/pp_zjj", process="p_p_to_z_j_j_4")
 runner = BenchmarkRunner(
-    BenchmarkConfig(target_runtime=1.0, batch_size=128, precision=16)
+    BenchmarkConfig(
+        target_runtime=1.0,
+        batch_size=128,
+        precision=16,
+        color_flow_ids=("1",),
+    )
 )
 result = runner.run(runtime, points=momenta)
 print(

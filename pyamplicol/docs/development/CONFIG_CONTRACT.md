@@ -198,6 +198,14 @@ macOS x86_64, and glibc Linux x86_64. Other targets are rejected explicitly.
 - `helicity_ids: list[str] = []`
 - `color_flow_ids: list[str] = []`
 
+For LC profiling, empty benchmark selector lists resolve at runtime to the
+generated layout's optimized workload: one physical flow and the helicity sum
+for `topology-replay`, or all physical flows and one computed helicity for
+`all-flow-union`. Explicit subsets and selected-axis lists are preserved; a
+complete summed-axis list is normalized to equivalent omission. A valid
+non-hot shape emits at most one pre-loop warning per loaded process. Evaluation
+selector defaults remain the complete matrix element.
+
 ## Output And Symbolica
 
 - `output.format: human | json = human`

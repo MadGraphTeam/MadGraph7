@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -72,6 +74,78 @@ class _Runtime:
 
     def unmute_warnings(self) -> None:
         pass
+
+
+class _RuntimeTwoAxes(_Runtime):
+    @property
+    def physics(self) -> ProcessPhysics:
+        helicities = (
+            HelicityConfiguration("h0", 0, (1, -1), True, False, "h0", 1.0),
+            HelicityConfiguration("h1", 1, (-1, 1), True, False, "h1", 1.0),
+        )
+        flows = (
+            ColorFlow("c0", 0, (1,), True, "c0", 1.0),
+            ColorFlow("c1", 1, (2,), True, "c1", 1.0),
+        )
+        return ProcessPhysics(
+            "test",
+            "d d~ > z",
+            "lc",
+            "all",
+            "all",
+            "flow",
+            0,
+            (),
+            helicities,
+            flows,
+            (),
+            PhysicsReduction(
+                "lc-diagonal",
+                (
+                    ReductionGroup(
+                        "g0",
+                        "h0",
+                        "c0",
+                        tuple(item.id for item in helicities),
+                        tuple(item.id for item in flows),
+                    ),
+                ),
+            ),
+            (),
+            (),
+        )
+
+
+class _ImmutableRuntime:
+    __slots__ = ("_artifact_path", "_delegate")
+
+    def __init__(self, delegate: _RuntimeTwoAxes, artifact_path: Path) -> None:
+        self._delegate = delegate
+        self._artifact_path = artifact_path
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._delegate, name)
+
+    @property
+    def physics(self) -> ProcessPhysics:
+        return self._delegate.physics
+
+    def evaluate(self, momenta: object, **selectors: object) -> tuple[complex, ...]:
+        return self._delegate.evaluate(momenta, **selectors)
+
+    def evaluate_resolved(
+        self, momenta: object, **selectors: object
+    ) -> ResolvedEvaluation:
+        return self._delegate.evaluate_resolved(momenta, **selectors)
+
+    def set_model_parameters(self, mapping: object) -> None:
+        self._delegate.set_model_parameters(mapping)
+
+    def mute_warnings(self) -> None:
+        self._delegate.mute_warnings()
+
+    def unmute_warnings(self) -> None:
+        self._delegate.unmute_warnings()
 
 
 class _RuntimeWithValidation(_Runtime):
@@ -448,13 +522,155 @@ def _write_effective_color_config(
     )
 
 
+@pytest.mark.parametrize(
+    ("layout", "expected_helicities", "expected_color_flows"),
+    (
+        ("topology-replay", None, ("c0",)),
+        ("all-flow-union", ("h0",), None),
+    ),
+)
+def test_benchmark_defaults_to_generated_lc_hot_workload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    layout: str,
+    expected_helicities: tuple[str, ...] | None,
+    expected_color_flows: tuple[str, ...] | None,
+) -> None:
+    artifact = tmp_path / "artifact"
+    _write_effective_color_config(artifact, layout=layout)
+    runtime = _RuntimeTwoAxes()
+    config = BenchmarkConfig(
+        target_runtime=1.0e-12,
+        batch_size=1,
+        warmup_runs=0,
+        minimum_samples=1,
+    )
+    backend = BenchmarkBackend(config, None)
+    monkeypatch.setattr(backend, "_runtime", lambda _target: runtime)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = backend.run(
+            artifact,
+            points=(((1.0, 0.0, 0.0, 1.0),),),
+        )
+
+    assert caught == []
+    assert runtime.last_options == {
+        "helicities": expected_helicities,
+        "color_flows": expected_color_flows,
+        "precision": 16,
+    }
+    assert result.requested_config.helicity_ids == ()
+    assert result.requested_config.color_flow_ids == ()
+    assert result.effective_config.helicity_ids == tuple(expected_helicities or ())
+    assert result.effective_config.color_flow_ids == tuple(expected_color_flows or ())
+    assert result.environment["selected_helicity_ids"] == tuple(
+        expected_helicities or ()
+    )
+    assert result.environment["selected_color_ids"] == tuple(
+        expected_color_flows or ()
+    )
+
+
+def test_loaded_runtime_recovers_artifact_layout_for_profile_default(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact"
+    _write_effective_color_config(artifact, layout="topology-replay")
+    runtime = _RuntimeTwoAxes()
+    runtime._artifact_path = artifact
+
+    result = BenchmarkBackend(
+        BenchmarkConfig(
+            target_runtime=1.0e-12,
+            batch_size=1,
+            warmup_runs=0,
+            minimum_samples=1,
+        ),
+        None,
+    ).run(runtime, points=(((1.0, 0.0, 0.0, 1.0),),))
+
+    assert result.effective_config.color_flow_ids == ("c0",)
+    assert runtime.last_options is not None
+    assert runtime.last_options["color_flows"] == ("c0",)
+
+
+def test_lc_profile_defaults_respect_complete_and_subset_axis_intent() -> None:
+    physics = SimpleNamespace(
+        color_accuracy="lc",
+        color_flows=(
+            ColorFlow("c0", 0, (1,), True, "c0", 1.0),
+            ColorFlow("c1", 1, (2,), True, "c1", 1.0),
+        ),
+        color_ids=("c0", "c1"),
+        helicities=(
+            HelicityConfiguration("h0", 0, (1, -1), True, False, "h0", 1.0),
+            HelicityConfiguration("h1", 1, (-1, 1), True, False, "h1", 1.0),
+        ),
+        helicity_ids=("h0", "h1"),
+    )
+
+    resolve = benchmark_module._default_lc_profile_selectors
+    assert resolve(
+        physics=physics,
+        lc_flow_layout="topology-replay",
+        selected_helicity_ids=("h1", "h0"),
+        selected_color_ids=(),
+    ) == (None, ("c0",))
+    assert resolve(
+        physics=physics,
+        lc_flow_layout="all-flow-union",
+        selected_helicity_ids=(),
+        selected_color_ids=("c1", "c0"),
+    ) == (("h0",), None)
+    assert resolve(
+        physics=physics,
+        lc_flow_layout="topology-replay",
+        selected_helicity_ids=("h0", "h1"),
+        selected_color_ids=("c1",),
+    ) == (None, ("c1",))
+    assert resolve(
+        physics=physics,
+        lc_flow_layout="all-flow-union",
+        selected_helicity_ids=("h1",),
+        selected_color_ids=("c0", "c1"),
+    ) == (("h1",), None)
+
+    assert resolve(
+        physics=physics,
+        lc_flow_layout="topology-replay",
+        selected_helicity_ids=(),
+        selected_color_ids=("c0", "c1"),
+    ) == (None, None)
+    assert resolve(
+        physics=physics,
+        lc_flow_layout="all-flow-union",
+        selected_helicity_ids=("h0", "h1"),
+        selected_color_ids=(),
+    ) == (None, None)
+
+    assert resolve(
+        physics=physics,
+        lc_flow_layout="topology-replay",
+        selected_helicity_ids=("h0",),
+        selected_color_ids=(),
+    ) == (("h0",), None)
+    assert resolve(
+        physics=physics,
+        lc_flow_layout="all-flow-union",
+        selected_helicity_ids=(),
+        selected_color_ids=("c0",),
+    ) == (None, ("c0",))
+
+
 def test_benchmark_recommends_union_for_topology_replay_all_flow_profile(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     artifact = tmp_path / "artifact"
     _write_effective_color_config(artifact, layout=None)
-    runtime = _Runtime()
+    runtime = _RuntimeTwoAxes()
     backend = BenchmarkBackend(
         BenchmarkConfig(
             target_runtime=1.0e-12,
@@ -467,12 +683,15 @@ def test_benchmark_recommends_union_for_topology_replay_all_flow_profile(
     )
     monkeypatch.setattr(backend, "_runtime", lambda _target: runtime)
 
-    with pytest.warns(UserWarning, match="--lc-flow-layout all-flow-union"):
+    with pytest.warns(
+        UserWarning, match="--lc-flow-layout all-flow-union"
+    ) as warning_records:
         result = backend.run(
             artifact,
             points=(((1.0, 0.0, 0.0, 1.0),),),
         )
 
+    assert len(warning_records) == 1
     assert result.environment["lc_flow_layout"] == "topology-replay"
     recommendation = result.environment["lc_flow_layout_recommendation"]
     assert isinstance(recommendation, str)
@@ -480,12 +699,63 @@ def test_benchmark_recommends_union_for_topology_replay_all_flow_profile(
     assert "\x1b" not in recommendation
 
 
+def test_non_hot_profile_warning_is_once_per_loaded_process(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact"
+    _write_effective_color_config(artifact, layout="topology-replay")
+    runtime = _RuntimeTwoAxes()
+    runtime._artifact_path = artifact
+    config = BenchmarkConfig(
+        target_runtime=1.0e-12,
+        batch_size=1,
+        warmup_runs=0,
+        minimum_samples=1,
+        helicity_ids=("h0",),
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        for _ in range(2):
+            BenchmarkBackend(config, None).run(
+                runtime,
+                points=(((1.0, 0.0, 0.0, 1.0),),),
+            )
+
+    assert len(caught) == 1
+    assert "single-flow/helicity-sum" in str(caught[0].message)
+
+
+def test_non_hot_profile_warning_is_once_for_immutable_runtime(
+    tmp_path: Path,
+) -> None:
+    artifact = tmp_path / "artifact"
+    _write_effective_color_config(artifact, layout="topology-replay")
+    runtime = _ImmutableRuntime(_RuntimeTwoAxes(), artifact)
+    config = BenchmarkConfig(
+        target_runtime=1.0e-12,
+        batch_size=1,
+        warmup_runs=0,
+        minimum_samples=1,
+        helicity_ids=("h0",),
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        for _ in range(2):
+            BenchmarkBackend(config, None).run(
+                runtime,  # type: ignore[arg-type]
+                points=(((1.0, 0.0, 0.0, 1.0),),),
+            )
+
+    assert len(caught) == 1
+
+
 @pytest.mark.parametrize(
     ("layout", "color_accuracy", "helicity_ids", "color_flow_ids"),
     (
         ("all-flow-union", "lc", ("h0",), ()),
-        ("topology-replay", "lc", ("h0",), ("c0",)),
-        ("topology-replay", "lc", (), ()),
+        ("topology-replay", "lc", (), ("c0",)),
         ("topology-replay", "nlc", ("h0",), ()),
         ("topology-replay", "full", ("h0",), ()),
     ),
@@ -505,6 +775,29 @@ def test_lc_flow_layout_recommendation_exclusions(
         )
         is None
     )
+
+
+@pytest.mark.parametrize(
+    ("layout", "helicity_ids", "color_flow_ids", "message"),
+    (
+        ("topology-replay", ("h0",), ("c0",), "single-flow/helicity-sum"),
+        ("all-flow-union", (), ("c0",), "all-flows/single-helicity"),
+    ),
+)
+def test_non_hot_lc_profile_shapes_have_one_run_level_warning(
+    layout: str,
+    helicity_ids: tuple[str, ...],
+    color_flow_ids: tuple[str, ...],
+    message: str,
+) -> None:
+    recommendation = benchmark_module._lc_flow_layout_recommendation(
+        color_accuracy="lc",
+        lc_flow_layout=layout,
+        selected_helicity_ids=helicity_ids,
+        selected_color_ids=color_flow_ids,
+    )
+    assert recommendation is not None
+    assert message in recommendation
 
 
 def test_runtime_backend_has_no_artifact_layout_recommendation() -> None:

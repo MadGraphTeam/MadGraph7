@@ -143,7 +143,15 @@ def test_example_matrix_covers_required_models_and_modes() -> None:
     assert not total.evaluation.resolved
     assert resolved.evaluation.resolved
     assert total.evaluation.process == resolved.evaluation.process == "d d~ > g z g"
-    assert resolve_config(EXAMPLES / "benchmark.toml").effective.action == "benchmark"
+    benchmark = resolve_config(EXAMPLES / "benchmark.toml").effective
+    assert benchmark.action == "benchmark"
+    assert benchmark.benchmark.helicity_ids == ()
+    assert benchmark.benchmark.color_flow_ids == ("1",)
+    examples_readme = (EXAMPLES / "README.md").read_text(encoding="utf-8")
+    assert (
+        "--momenta data/pp_zjj_momenta.json \\\n  --color-flow 1"
+        in examples_readme
+    )
 
 
 def test_z6g_benchmark_examples_encode_reusable_runtime_selectors() -> None:

@@ -7,11 +7,12 @@ import math
 import os
 import platform
 import statistics
+import threading
 import time
 import tomllib
 import warnings
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -47,12 +48,20 @@ _MIN_CLOCK_INTERVAL_SECONDS = 1.0e-12
 _MAX_NATIVE_PROFILE_SAMPLES = 8
 _LC_TOPOLOGY_REPLAY_LAYOUT = "topology-replay"
 _LC_ALL_FLOW_UNION_LAYOUT = "all-flow-union"
-_LC_ALL_FLOW_PROFILE_RECOMMENDATION = (
-    "this LC topology-replay artifact is profiling all color flows with "
-    "runtime-selected helicities; regenerate with "
-    "--lc-flow-layout all-flow-union for the optimized "
+_LC_TOPOLOGY_REPLAY_PROFILE_RECOMMENDATION = (
+    "this LC topology-replay artifact is being profiled outside its optimized "
+    "single-flow/helicity-sum workload; pass exactly one --color-flow and no "
+    "--helicity, or regenerate with --lc-flow-layout all-flow-union for the "
     "all-flows/single-helicity workload"
 )
+_LC_ALL_FLOW_UNION_PROFILE_RECOMMENDATION = (
+    "this LC all-flow-union artifact is being profiled outside its optimized "
+    "all-flows/single-helicity workload; pass exactly one --helicity and no "
+    "--color-flow"
+)
+_LC_PROFILE_WARNING_ATTRIBUTE = "_pyamplicol_non_hot_profile_warning_emitted"
+_LC_PROFILE_WARNING_LOCK = threading.Lock()
+_LC_PROFILE_WARNING_FALLBACK_OWNERS: dict[int, object] = {}
 _EVALUATOR_TOTAL_SAMPLE_CONTRACT = "accumulated-repeated-warmed-evaluator-total-v1"
 _COMPILED_DIRECT_ARENA_COUNTER_KEYS = (
     "compiled_direct_arena_engine_count",
@@ -235,7 +244,14 @@ class BenchmarkBackend:
         color_flows = (
             _resolve_color_flow_ordinals(physics, self._config.color_flow_ids) or None
         )
-        lc_flow_layout = _artifact_lc_flow_layout(target_path)
+        artifact_path = target_path or _runtime_artifact_path(runtime)
+        lc_flow_layout = _artifact_lc_flow_layout(artifact_path)
+        helicities, color_flows = _default_lc_profile_selectors(
+            physics=physics,
+            lc_flow_layout=lc_flow_layout,
+            selected_helicity_ids=tuple(helicities or ()),
+            selected_color_ids=tuple(color_flows or ()),
+        )
         lc_flow_layout_recommendation = _lc_flow_layout_recommendation(
             color_accuracy=physics.color_accuracy,
             lc_flow_layout=lc_flow_layout,
@@ -243,10 +259,9 @@ class BenchmarkBackend:
             selected_color_ids=tuple(color_flows or ()),
         )
         if lc_flow_layout_recommendation is not None:
-            warnings.warn(
+            _warn_non_hot_lc_profile_once(
+                runtime,
                 lc_flow_layout_recommendation,
-                UserWarning,
-                stacklevel=2,
             )
         profiler = _native_profiler(runtime) if self._config.precision == 16 else None
         repeated_profiler = (
@@ -735,6 +750,11 @@ class BenchmarkBackend:
         )
         selected_helicity_ids = tuple(helicities or ())
         selected_color_ids = tuple(color_flows or ())
+        effective_config = replace(
+            self._config,
+            helicity_ids=selected_helicity_ids,
+            color_flow_ids=selected_color_ids,
+        )
         measured_evaluations = len(samples) * calibration.repetitions_per_sample
         measured_point_count = measured_evaluations * len(batch)
         evaluator_total_time_per_point = evaluator_total_elapsed / measured_point_count
@@ -746,7 +766,7 @@ class BenchmarkBackend:
             }
         return BenchmarkResult(
             requested_config=self._config,
-            effective_config=self._config,
+            effective_config=effective_config,
             sample_count=len(samples),
             wall_time_per_point=mean,
             evaluator_time_per_point=evaluator_time_per_point,
@@ -878,6 +898,126 @@ def _artifact_lc_flow_layout(target_path: Path | None) -> str | None:
     return str(layout)
 
 
+def _runtime_artifact_path(runtime: RuntimeBackend) -> Path | None:
+    """Recover the built-in runtime's artifact root without extending the protocol."""
+
+    candidate: object | None = runtime
+    seen: set[int] = set()
+    while candidate is not None and id(candidate) not in seen:
+        seen.add(id(candidate))
+        raw_path = getattr(candidate, "_artifact_path", None)
+        if isinstance(raw_path, (str, os.PathLike)):
+            return Path(os.fspath(raw_path)).expanduser().resolve(strict=False)
+        candidate = getattr(candidate, "_backend", None)
+    return None
+
+
+def _warn_non_hot_lc_profile_once(
+    runtime: RuntimeBackend,
+    message: str,
+) -> None:
+    """Warn once for one loaded process, never once per timing sample."""
+
+    owner: object = runtime
+    seen: set[int] = set()
+    while id(owner) not in seen:
+        seen.add(id(owner))
+        backend = getattr(owner, "_backend", None)
+        if backend is None:
+            break
+        owner = backend
+    with _LC_PROFILE_WARNING_LOCK:
+        if bool(getattr(owner, _LC_PROFILE_WARNING_ATTRIBUTE, False)):
+            return
+        try:
+            setattr(owner, _LC_PROFILE_WARNING_ATTRIBUTE, True)
+        except (AttributeError, TypeError):
+            # Keep an identity-stable fallback for immutable protocol
+            # implementations so they cannot emit once per benchmark run.
+            owner_id = id(owner)
+            if _LC_PROFILE_WARNING_FALLBACK_OWNERS.get(owner_id) is owner:
+                return
+            _LC_PROFILE_WARNING_FALLBACK_OWNERS[owner_id] = owner
+    warnings.warn(message, UserWarning, stacklevel=3)
+
+
+def _default_lc_profile_selectors(
+    *,
+    physics: ProcessPhysics,
+    lc_flow_layout: str | None,
+    selected_helicity_ids: Sequence[str],
+    selected_color_ids: Sequence[str],
+) -> tuple[tuple[str, ...] | None, tuple[str, ...] | None]:
+    """Choose the LC hot workload while preserving explicit subset intent."""
+
+    helicities = tuple(selected_helicity_ids)
+    color_flows = tuple(selected_color_ids)
+    if physics.color_accuracy != "lc" or lc_flow_layout is None:
+        return helicities or None, color_flows or None
+    complete_helicities = _is_complete_selector_set(
+        helicities, physics.helicity_ids
+    )
+    complete_color_flows = _is_complete_selector_set(
+        color_flows, physics.color_ids
+    )
+    if lc_flow_layout == _LC_TOPOLOGY_REPLAY_LAYOUT:
+        normalized_helicities = None if complete_helicities else helicities or None
+        normalized_color_flows = (
+            color_flows
+            if color_flows and (not complete_color_flows or len(color_flows) == 1)
+            else None
+        )
+        if color_flows or normalized_helicities is not None:
+            return normalized_helicities, normalized_color_flows
+        selectable_flows = tuple(
+            flow.id for flow in physics.color_flows if flow.computed
+        )
+        if not selectable_flows:
+            selectable_flows = physics.color_ids
+        if not selectable_flows:
+            raise EvaluationError("LC profiling requires at least one physical flow")
+        return None, (selectable_flows[0],)
+    if lc_flow_layout == _LC_ALL_FLOW_UNION_LAYOUT:
+        normalized_color_flows = None if complete_color_flows else color_flows or None
+        normalized_helicities = (
+            helicities
+            if helicities and (not complete_helicities or len(helicities) == 1)
+            else None
+        )
+        if helicities or normalized_color_flows is not None:
+            return normalized_helicities, normalized_color_flows
+        selectable = tuple(
+            helicity.id
+            for helicity in physics.helicities
+            if helicity.computed and not helicity.structural_zero
+        )
+        if not selectable:
+            selectable = tuple(
+                helicity.id for helicity in physics.helicities if helicity.computed
+            )
+        if not selectable:
+            selectable = physics.helicity_ids
+        if not selectable:
+            raise EvaluationError(
+                "LC profiling requires at least one physical helicity"
+            )
+        return (selectable[0],), None
+    return None, None
+
+
+def _is_complete_selector_set(
+    selected: Sequence[str],
+    available: Sequence[str],
+) -> bool:
+    """Return whether an explicit selector enumerates one complete physical axis."""
+
+    return (
+        bool(selected)
+        and len(selected) == len(available)
+        and set(selected) == set(available)
+    )
+
+
 def _lc_flow_layout_recommendation(
     *,
     color_accuracy: str,
@@ -885,13 +1025,16 @@ def _lc_flow_layout_recommendation(
     selected_helicity_ids: Sequence[str],
     selected_color_ids: Sequence[str],
 ) -> str | None:
-    if (
-        color_accuracy == "lc"
-        and lc_flow_layout == _LC_TOPOLOGY_REPLAY_LAYOUT
-        and selected_helicity_ids
-        and not selected_color_ids
-    ):
-        return _LC_ALL_FLOW_PROFILE_RECOMMENDATION
+    if color_accuracy != "lc":
+        return None
+    if lc_flow_layout == _LC_TOPOLOGY_REPLAY_LAYOUT:
+        if not selected_helicity_ids and len(selected_color_ids) == 1:
+            return None
+        return _LC_TOPOLOGY_REPLAY_PROFILE_RECOMMENDATION
+    if lc_flow_layout == _LC_ALL_FLOW_UNION_LAYOUT:
+        if len(selected_helicity_ids) == 1 and not selected_color_ids:
+            return None
+        return _LC_ALL_FLOW_UNION_PROFILE_RECOMMENDATION
     return None
 
 

@@ -21,6 +21,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--precision", type=int, default=16)
     parser.add_argument("--warmup-runs", type=int, default=2)
     parser.add_argument("--minimum-samples", type=int, default=5)
+    parser.add_argument("--helicity", action="append")
+    parser.add_argument("--color-flow", action="append")
     return parser
 
 
@@ -38,6 +40,8 @@ def main() -> int:
         precision=args.precision,
         warmup_runs=args.warmup_runs,
         minimum_samples=args.minimum_samples,
+        helicity_ids=tuple(args.helicity or ()),
+        color_flow_ids=tuple(args.color_flow or ()),
     )
     runtime = Runtime.load(args.artifact, process=args.process)
     result = BenchmarkRunner(config).run(
