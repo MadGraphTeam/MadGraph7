@@ -386,29 +386,25 @@ and seven gluons win on both, and the gain grows with the multiplicity.
 
 **Where it came from.** Three states: the flag off (what an unoptimised build
 gives), the branch as it stood before this work (`3b3ed9e85`, only the
-amplitude merges of `fcd8218b6`), and the flag on today. The generated code at
-the time the pull request was opened (`fefb1159b`) is **byte-identical** to
-today's in both backends for N=2..5 -- the only code change since is the
-colour-structure check in `is_unrolled_pair`, which provably moves nothing --
-so those two are one column.
+amplitude merges of `fcd8218b6`), and the flag on today.
 
 standalone Fortran, `slots / wavefunction calls + sums / amplitude calls`:
 
-| | flag off | before this work | at PR open = now |
-|---|---|---|---|
-| `g g > g g` | 5 / 7 / 6 | 5 / 7 / 6 | 5 / 7 / 6 |
-| `g g > g g g` | 12 / 33 / 45 | 12 / 33 / 45 | **19 / 39+7 / 38** |
-| `g g > g g g g` | 51 / 111 / 510 | 51 / 111 / 510 | **66 / 146+30 / 450** |
-| `g g > 5 g` | 268 / 898 / 7245 | 268 / 898 / 7245 | **290 / 955+60 / 6813** |
+| | flag off | before this work | at PR open | now |
+|---|---|---|---|---|
+| `g g > g g` | 5 / 7 / 6 | 5 / 7 / 6 | 5 / 7 / 6 | 5 / 7 / 6 |
+| `g g > g g g` | 12 / 33 / 45 | 12 / 33 / 45 | 19 / 39+7 / 38 | 19 / 39+7 / 38 |
+| `g g > g g g g` | 51 / 111 / 510 | 51 / 111 / 510 | 66 / 146+30 / 450 | **78 / 126+30 / 450** |
+| `g g > 5 g` | 268 / 898 / 7245 | 268 / 898 / 7245 | 290 / 955+60 / 6813 | **259 / 925+60 / 6813** |
 
 madmatrix, `slots / amplitude calls`:
 
-| | flag off | before this work | at PR open = now |
-|---|---|---|---|
-| `g g > g g` | 5 / 6 | *wrong* | 5 / 6 |
-| `g g > g g g` | 12 / 45 | *wrong* | **19 / 38** |
-| `g g > g g g g` | 51 / 510 | *wrong* | **86 / 450** |
-| `g g > 5 g` | 268 / 7245 | *wrong* | **320 / 6813** |
+| | flag off | before this work | at PR open | now |
+|---|---|---|---|---|
+| `g g > g g` | 5 / 6 | *wrong* | 5 / 6 | 5 / 6 |
+| `g g > g g g` | 12 / 45 | *wrong* | 19 / 38 | 19 / 38 |
+| `g g > g g g g` | 51 / 510 | *wrong* | 86 / 450 | **78 / 450** |
+| `g g > 5 g` | 268 / 7245 | *wrong* | 320 / 6813 | **259 / 6813** |
 
 "wrong" is not a figure of speech: at `3b3ed9e85` `get_color_amplitudes` dropped
 every merge source from the JAMPs unconditionally, and only the Fortran writer
@@ -418,16 +414,15 @@ lost 405 of its 510 amplitudes at six gluons, silently. That is fixed here.
 Per-call time, standalone Fortran (lower is better) and madmatrix in evt/s
 (higher is better):
 
-| | fortran off | fortran before | fortran now | madmatrix off | madmatrix now |
-|---|---|---|---|---|---|
-| `g g > g g` | 11.00 s | 11.28 s | 11.04 s | 875150 | 878724 |
-| `g g > g g g` | 34.90 s | 33.98 s | 34.99 s | 72359 | 66757 |
-| `g g > g g g g` | 47.35 s | 48.12 s | **45.61 s** | 2699 | **2784** |
-| `g g > 5 g` | 43.05 s | 40.88 s | **39.98 s** | 41.75 | **43.33** |
+| | off | before | at PR open | now |
+|---|---|---|---|---|
+| fortran `g g > g g g g` | 47.77 s | 48.12 s | 45.61 s | **45.25 s (+5.3%)** |
+| fortran `g g > 5 g` | 42.19 s | 40.88 s | 39.98 s | **40.10 s (+4.9%)** |
+| madmatrix `g g > g g g` | 74229 | *wrong* | 66757 | 67566 (-9.0%) |
+| madmatrix `g g > g g g g` | 2651 | *wrong* | 2784 | **2880 (+8.6%)** |
 
-The "before" column was taken in its own batch and carries about 1% of drift
-against the other two, which were measured together -- so compare off against
-now, and read "before" only for the shape.
+Timings taken in batches, and there is about 1% of drift between batches, so
+each column should be read against the `off` measured with it.
 
 **Memory — the wavefunction store**, which is what the optimisation costs.
 `NWAVEFUNCS` in Fortran, `nwf` in madmatrix; bytes are 100 per wavefunction in
@@ -488,71 +483,38 @@ seed which can reach it — and takes both: all the sums, and a slot count
 *below* the flag off baseline (27 against 51 at six gluons, 219 against 268 at
 seven).
 
-It is not shipped, because it makes `g g > g g g g` come out **wrong in
-madmatrix** (2.43e-04 against 1.59e-04) while Fortran stays exact at N=2..5.
-Investigated, and the cause is now located even if not yet fixed.
+**Shipped, once the reason it broke madmatrix was found.** The blocker was not
+the order at all:
 
-Ruled out, each by measurement rather than argument:
+1. The reconstruction could build the same cubic current with its two mothers
+   in either order. `sorted_mothers` leaves them alone, because for two
+   identical gluons its key ties and the sort is stable, so they stay two
+   objects.
+2. **`VVV1P0_1` is antisymmetric under exchanging its two inputs.** Measured:
+   `VVV1P0_1(a,b) + VVV1P0_1(b,a) = 0` exactly. So the two are *negatives* of
+   each other and write out calls differing by a sign.
+3. **`HelasWavefunction.__eq__` compares mothers by sorted number** and calls
+   them equal -- "the number for this wavefunction, the pdg code, and the
+   interaction id are irrelevant".
+4. `export_cpp` renumbers wavefunctions by that equality, so the two landed on
+   one number and one slot inside a single matrix element and one of them
+   silently carried the wrong sign. The Fortran writer never hits it because
+   it does not renumber by equality.
 
-* not the reordering itself — with the current sums switched off, the
-  reordered madmatrix is exact;
-* not slot corruption — replaying the emission against the slot map gives no
-  read before write, no sum aliasing one of its own inputs, and `nwf` covers
-  every index used;
-* not `coloramps.h` — the only difference there is the channel to iconfig map
-  (`nchannels` 160 against 220, since it is taken as the *largest diagram
-  number carrying a channel*, which the reordering moves), while `icolamp` is
-  identical and the plain matrix element reads neither;
-* not the `merge_quartic_amplitudes=False` path — forcing the Fortran writer
-  into the same semantics, no amplitude folds and the merges left in the
-  JAMPs, is exact under the reordering;
-* not the duplicate wavefunction listings on their own — suppressing the
-  second emission moves the wrong answer (2.36e-04) without fixing it.
+Taking the legs of both unrolled vertices in a canonical order removes every
+such pair -- 20 of the 35 extra wavefunctions at six gluons, 30 of 57 at seven
+-- so there is nothing left to collide, and the order goes in.
 
-What it *is*, from replaying both generated files symbolically — every slot
-carrying an expression tree, every amplitude reduced to one, compared as
-multisets:
-
-| | amplitudes | differing under the reordering |
+| | wavefunctions | order-flipped twins |
 |---|---|---|
-| standalone Fortran | 450 | **0** |
-| madmatrix | 450 | **40** |
+| `g g > g g g` | 33 -> 39 | 0 |
+| `g g > g g g g` | 111 -> 126 (was 146) | 20 -> 0 |
+| `g g > 5 g` | 898 -> 925 (was 955) | 30 -> 0 |
 
-**The folding is ordering sensitive in madmatrix and not in Fortran**, and
-running that down gives the root cause. It is a latent bug in MG5 itself,
-which the reordering exposes rather than causes:
-
-1. The reconstruction can build the same cubic current with its two mothers
-   in either order — the colliding pairs are `interaction 3, colour_key 0,
-   mothers [7,3]` against `[3,7]`. `sorted_mothers` leaves them alone,
-   because for two identical gluons its key ties and the sort is stable.
-2. **`VVV1P0_1` is antisymmetric under exchanging its two inputs.** Measured,
-   not read off the source: with a fixed pair of wavefunctions,
-   `VVV1P0_1(a,b) + VVV1P0_1(b,a) = 0` exactly. So the two objects are
-   *negatives* of each other and write out calls differing by a sign.
-3. **`HelasWavefunction.__eq__` compares mothers by sorted number**, so it
-   calls them equal — "the number for this wavefunction, the pdg code, and
-   the interaction id are irrelevant".
-4. `export_cpp.generate_process_files` renumbers wavefunctions by that
-   equality, to share them between matrix elements. The two therefore end up
-   on **one number and one slot inside a single matrix element**, and
-   whichever is written last wins — with the wrong sign for the other.
-
-The Fortran writer never hits it because it does not renumber by equality.
-With the committed diagram order the collisions happen not to matter; the
-reordering moves them somewhere they do.
-
-The fix is upstream of this optimisation: either `__eq__` compares mothers in
-order rather than sorted (safe for every vertex whose particles differ, since
-`sorted_mothers` then fixes the order anyway, but it changes the wavefunction
-CSE everywhere and needs validating with the flag off), or the reconstruction
-is made to produce only one of the two orders. Canonicalising the pair inside
-`split_quartic_vertex` alone is *not* enough — the other copy can come from a
-vertex the reconstruction did not build.
-
-Worth doing: at six gluons it would take the wavefunction store from 6600 B to
-2700 B, *under* the 5100 B of the unoptimised code, with every current sum
-kept.
+Placing each diagram at its last discovery then puts it after every seed which
+can reach it, hence after every quartic current summable into it, so all the
+sums survive. `NWAVEFUNCS` at seven gluons ends up **below** the unoptimised
+build: 259 against 268.
 
 ## Where to go next
 
