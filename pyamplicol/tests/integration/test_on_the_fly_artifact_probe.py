@@ -23,6 +23,7 @@ from pyamplicol.config import (
     GenerationRelationDiscoveryConfig,
     GenerationValidationConfig,
     JITConfig,
+    ProcessConfig,
     RunConfig,
 )
 
@@ -93,6 +94,10 @@ def _config() -> RunConfig:
     return RunConfig(
         action="generate",
         color=ColorConfig(accuracy="lc", lc_flow_layout="topology-replay"),
+        process=ProcessConfig(
+            coupling_order_policy="explicit",
+            max_coupling_orders={"QCD": 1, "QED": 0},
+        ),
         generation=GenerationConfig(
             workers=1,
             emit_api_bundle=False,
