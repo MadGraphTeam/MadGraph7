@@ -2532,7 +2532,7 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter):
             # Emit the opening of an `if` guard for a non-full grouped mask.
             return 'if( ( 0x%xULL >> iflavor ) & 0x1ULL ) {' % group_mask
 
-        # OM - the four gluon optimisation (MG_MERGE_QUARTIC). A quartic
+        # OM - the four gluon optimisation (set merge_quartic_vertices). A quartic
         # current and the cubic current carrying the same colour factor are
         # summed into a third one, which the amplitude reads instead, so that
         # one call gets both contributions and the quartic amplitude is never

@@ -6297,7 +6297,10 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         """Work out the current sums, see get_quartic_current_sums."""
 
         merges = self.get_quartic_amplitude_merges()
-        if not merges:
+        if not merges or madgraph.merge_quartic_vertices == 'slots':
+            # 'slots' orders the diagrams for the smallest wavefunction store
+            # instead, which puts a target ahead of the quartic currents
+            # feeding it, so no sum can be built
             return [], {}, set()
 
         model = self.get('processes')[0].get('model')

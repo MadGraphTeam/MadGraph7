@@ -1,7 +1,32 @@
 # Pure-gluon amplitude optimisation — plan
 
 Branch `claude/gluon-amplitude-optimization-8706f5`. Everything is behind
-`MG_MERGE_QUARTIC` (off by default), so nothing changes until it is set.
+`set merge_quartic_vertices` (off by default), so nothing changes until it is
+set. It takes three values:
+
+| | |
+|---|---|
+| `False` | off, the default |
+| `speed` | the current sums, and the diagram order which allows them |
+| `slots` | the order which keeps fewest currents alive; no current sums |
+
+It has to be a `set` option and not an `output` one, because the diagram order
+is fixed while the diagrams are generated -- by `output` time it is already
+too late. The interface pushes it onto `madgraph.merge_quartic_vertices`,
+which is what the generation and the exporters read.
+
+**speed against slots.** The wavefunction store is a stack frame on cpu and is
+per thread on gpu, where at seven gluons it is about 24 kB a thread and caps
+occupancy. So the trade goes opposite ways:
+
+| `g g > 5 g` | amplitude calls | slots | per thread |
+|---|---|---|---|
+| off | 7245 | 268 | 25.1 kB |
+| `speed` | 6813 | 259 | 24.3 kB |
+| `slots` | 7245 | **199** | **18.7 kB** |
+
+6% more arithmetic for 23% less memory. Measured on cpu `speed` wins; which
+one a gpu wants has *not* been measured -- there is no device here.
 
 ## Goal
 
@@ -300,7 +325,7 @@ emits them exactly as the Fortran one does.
 **The colour amplitudes had to be sorted out first, and that was a live bug.**
 `get_color_amplitudes` dropped every merge source from the JAMPs on the
 assumption that the caller writes the amplitude sums to put them back. Only
-the Fortran writer does, so C++ and python output with `MG_MERGE_QUARTIC` set
+the Fortran writer does, so C++ and python output with the flag set
 was quietly losing four fifths of the amplitude. It now takes
 `merge_quartic_amplitudes`; a backend which writes no sums keeps those
 amplitudes in the JAMPs, where their own colour coefficients give the
@@ -363,7 +388,7 @@ bottleneck. The madevent run is unchanged, same cross section and error.
 
 ## Results
 
-Everything below is `g g > N g` with `MG_MERGE_QUARTIC` off against on, on the
+Everything below is `g g > N g` with the flag off against `speed`, on the
 same machine. Standalone Fortran is the shipped `check` driver looping
 `SMATRIX`; madmatrix is `check_sa.exe perf` built `FPTYPE=d` on `cppsse4`
 (the default mixed precision build rounds the two to the same value and would
@@ -638,7 +663,7 @@ graph (225 instead of 105 at six gluons).
 
 ## Measuring
 
-Generation: `MG_MERGE_QUARTIC=1 ./bin/mg5_aMC` then `generate g g > g g g g`.
+Generation: `set merge_quartic_vertices speed` then `generate g g > g g g g`.
 Compare `matrix.f` against a run without the variable. Tests:
 `./tests/test_manager.py -p U test_diagram_generation test_color_amp
 test_helas_objects test_base_objects` (199, must stay green with the flag off).

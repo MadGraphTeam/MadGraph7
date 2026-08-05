@@ -63,7 +63,14 @@ else:
 
 # Sum the quartic gluon contributions into the cubic amplitude carrying the
 # same colour factor, see HelasMatrixElement.get_quartic_amplitude_merges.
-# Off by default while the optimisation is being benchmarked.
-merge_quartic_vertices = os.environ.get('MG_MERGE_QUARTIC', '') not in \
-                                                        ('', '0', 'False')
+# Set through the interface, "set merge_quartic_vertices <value>", and read
+# here because it is wanted while the diagrams are generated, long before any
+# exporter exists. False, or one of:
+#   'speed' -- the current sums, and the diagram order which allows them. Wins
+#              on cpu, where the amplitude calls dominate.
+#   'slots' -- no current sums, and the order which keeps fewest currents
+#              alive. Trades 6% more amplitude calls for 23% fewer
+#              wavefunction slots at seven gluons, which is the trade a gpu
+#              wants when occupancy is the limit.
+merge_quartic_vertices = False
         

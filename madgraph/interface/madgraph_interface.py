@@ -3155,7 +3155,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                     'max_t_for_channel',
                     'zerowidth_tchannel',
                     'default_unset_couplings',
-                    'nlo_mixed_expansion'
+                    'nlo_mixed_expansion',
+                    'merge_quartic_vertices'
                     ]
     _valid_nlo_modes = ['all','real','virt','sqrvirt','tree','noborn','LOonly', 'only']
     _valid_sqso_types = ['==','<=','=','>']
@@ -3238,7 +3239,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'max_t_for_channel': 99, # means no restrictions
                           'zerowidth_tchannel': True,
                           'nlo_mixed_expansion':True,
-                          'apply_flavor_grouping': True 
+                          'apply_flavor_grouping': True,
+                          'merge_quartic_vertices': False
                         }
 
     options_madevent = {'automatic_html_opening':True,
@@ -3361,7 +3363,14 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
         existing amplitudes
         or merge two model
         """
-        
+
+        # The four gluon merging is wanted while the diagrams are generated,
+        # which is below the interface, so it travels on the module. Synced
+        # here rather than only in the setter, since the option can also
+        # arrive from mg5_configuration.txt.
+        madgraph.merge_quartic_vertices = \
+                             self.options.get('merge_quartic_vertices', False)
+
         args = self.split_arg(line)
 
         
@@ -9145,6 +9154,44 @@ in the MG5aMC option 'samurai' (instead of leaving it to its default 'auto')."""
         args = ['zerowidth_tchannel'] + args
         self.check_set(args)
         self.options[args[0]] = banner_module.ConfigFile.format_variable(args[1], bool, args[0]) 
+
+    def help_set2_merge_quartic_vertices(self):
+        logger.info("merge_quartic_vertices <value>",'$MG:color:GREEN')
+        logger.info(" > (default: False) [pure gluon amplitudes]")
+        logger.info(" > Sum each four gluon contribution into the cubic")
+        logger.info(" >  amplitude carrying the same colour factor.")
+        logger.info(" > False  : off")
+        logger.info(" > speed  : fewest amplitude calls (best on cpu)")
+        logger.info(" > slots  : smallest wavefunction store (for gpu, where")
+        logger.info(" >          that store is per thread); costs the sums")
+
+    def set2_merge_quartic_vertices(self, args, log=True):
+        """Sum the four gluon contributions into the cubic amplitude carrying
+        the same colour factor.
+
+        Read while the diagrams are generated, so it has to be set before
+        'generate' -- an output time option would come too late, the diagram
+        order is already fixed by then.
+
+        Example: set merge_quartic_vertices speed
+        """
+        args = ['merge_quartic_vertices'] + args
+        self.check_set(args)
+        value = args[1].lower()
+        if value in ('slots', 'speed'):
+            pass
+        elif value in ('false', '0', 'none', 'off'):
+            value = False
+        elif value in ('true', '1', 'on'):
+            value = 'speed'
+        else:
+            raise self.InvalidCmd(
+                "merge_quartic_vertices takes False, speed or slots,"
+                " not '%s'" % args[1])
+        self.options[args[0]] = value
+        madgraph.merge_quartic_vertices = value
+        if log:
+            logger.info('set merge_quartic_vertices to %s' % value)
 
     def set2_store_rwgt_info(self,args, log=True):
         """Set whether the code should generate systematics information in the output LHE file at NLO

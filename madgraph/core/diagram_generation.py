@@ -1481,6 +1481,13 @@ class Amplitude(base_objects.PhysicsObject):
                     self.quartic_unroll_tags[(own_tag, chain)] = tag
 
         order = sorted(range(len(res)), key=lambda i: (last_seen[tag_of[i]], i))
+        if madgraph.merge_quartic_vertices == 'slots':
+            # Reversed, each diagram lands at its *first* discovery instead.
+            # That keeps far fewer currents alive -- 199 slots against 259 at
+            # seven gluons -- at the price of the current sums, since a target
+            # then comes before the quartic currents which feed it. The trade
+            # a gpu wants, where the wavefunction store is per thread.
+            order.reverse()
         return base_objects.DiagramList([res[i] for i in order])
 
     def get_quartic_unroll_links(self, diaglist=None):
