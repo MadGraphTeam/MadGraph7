@@ -21,7 +21,14 @@ use crate::artifact::EvaluatorPayloadStore;
 use crate::recurrence::direct_backend::{
     DirectExecutorCatalog, DirectExecutorHandle, DirectUnionSourceDispatchHandle,
 };
-use crate::recurrence::{DirectExecutorRole, DirectRecurrencePlan, SemanticDigest};
+use crate::recurrence::on_the_fly::{
+    OnTheFlyExecutorKeyV1, OnTheFlyPreparedExecutorResolver, OnTheFlyProcessSeedV1,
+    OnTheFlyStructuralTraceV1, ResolvedOnTheFlyExecutor, authenticated_prepared_executor_binding,
+};
+use crate::recurrence::template::ValidatedRecurrenceTemplateInput;
+use crate::recurrence::{
+    DirectExecutorRole, DirectRecurrencePlan, PreparedDirectExecutorCatalog, SemanticDigest,
+};
 use crate::{RusticolError, RusticolResult, VerifiedArtifact};
 #[cfg(feature = "f64-symjit")]
 use sha2::{Digest, Sha256};
@@ -71,6 +78,9 @@ pub(super) struct NativeRecurrencePreparedExecutorPool {
     executor_roles: Box<[DirectExecutorRole]>,
     identity_finalizer_id: Option<u32>,
     direct_template_catalog_digest: SemanticDigest,
+    recurrence_template_catalog_digest: SemanticDigest,
+    compiled_model_digest: SemanticDigest,
+    prepared_kernel_pack_digest: SemanticDigest,
     _intrinsics: Vec<LoadedRecurrenceIntrinsicDirectExecutor>,
     #[cfg(feature = "f64-symjit")]
     _symjit: Vec<LoadedSymjitDirectExecutor>,
@@ -94,9 +104,10 @@ pub(super) struct OnTheFlySourceDomainBinding {
 }
 
 /// Borrowed semantic resolver used by the private on-the-fly interpreter.
-pub(super) struct OnTheFlyPreparedExecutorResolver<'a> {
-    pool: &'a NativeRecurrencePreparedExecutorPool,
-    sources: &'a OnTheFlySourceDomainBinding,
+pub(super) struct NativeOnTheFlyPreparedExecutorResolver<'a> {
+    _pool: &'a NativeRecurrencePreparedExecutorPool,
+    _sources: &'a OnTheFlySourceDomainBinding,
+    resolved: BTreeMap<OnTheFlyExecutorKeyV1, ResolvedOnTheFlyExecutor>,
 }
 
 /// Immutable context ownership retained beside the native recurrence scheduler.
@@ -307,6 +318,14 @@ impl NativeRecurrencePreparedExecutorPool {
             executor_roles.push(role);
         }
         let digest = semantic_digest(&direct.catalog_digest, "Direct-Arena catalog")?;
+        let recurrence_template_catalog_digest = semantic_digest(
+            &direct.recurrence_template_catalog_digest,
+            "recurrence template catalog",
+        )?;
+        let compiled_model_digest =
+            semantic_digest(&direct.compiled_model_digest, "compiled model")?;
+        let prepared_kernel_pack_digest =
+            semantic_digest(&direct.prepared_kernel_pack_digest, "prepared kernel pack")?;
         let summary = NativeRecurrenceDirectBackendSummary {
             prepared_kernel_pack_digest: direct.prepared_kernel_pack_digest.clone(),
             direct_template_catalog_digest: direct.catalog_digest.clone(),
@@ -321,6 +340,9 @@ impl NativeRecurrencePreparedExecutorPool {
             executor_roles: executor_roles.into_boxed_slice(),
             identity_finalizer_id,
             direct_template_catalog_digest: digest,
+            recurrence_template_catalog_digest,
+            compiled_model_digest,
+            prepared_kernel_pack_digest,
             _intrinsics: intrinsics,
             #[cfg(feature = "f64-symjit")]
             _symjit: symjit,
@@ -351,14 +373,80 @@ impl NativeRecurrencePreparedExecutorPool {
         Ok(OnTheFlySourceDomainBinding { source })
     }
 
-    pub(super) fn resolver<'a>(
+    pub(super) fn bind_on_the_fly_trace<'a>(
         &'a self,
+        templates: &ValidatedRecurrenceTemplateInput,
+        direct: &PreparedDirectExecutorCatalog,
+        seed: &OnTheFlyProcessSeedV1,
+        trace: &OnTheFlyStructuralTraceV1,
         sources: &'a OnTheFlySourceDomainBinding,
-    ) -> OnTheFlyPreparedExecutorResolver<'a> {
-        OnTheFlyPreparedExecutorResolver {
-            pool: self,
-            sources,
+    ) -> RusticolResult<NativeOnTheFlyPreparedExecutorResolver<'a>> {
+        let summary = templates.summary();
+        if summary.catalog_digest != self.recurrence_template_catalog_digest
+            || summary.compiled_model_digest != self.compiled_model_digest
+            || summary.prepared_kernel_pack_digest != self.prepared_kernel_pack_digest
+        {
+            return Err(RusticolError::integrity(
+                "on-the-fly recurrence templates do not belong to the loaded prepared pack",
+            ));
         }
+        if direct.direct_template_catalog_digest() != self.direct_template_catalog_digest {
+            return Err(RusticolError::integrity(
+                "on-the-fly direct-template catalog does not match the loaded prepared pack",
+            ));
+        }
+        if seed.template_catalog_digest() != self.recurrence_template_catalog_digest
+            || seed.model_digest() != self.compiled_model_digest
+            || seed.prepared_pack_digest() != self.prepared_kernel_pack_digest
+            || seed.direct_catalog_digest() != self.direct_template_catalog_digest
+            || trace.seed_digest() != seed.semantic_digest()
+        {
+            return Err(RusticolError::integrity(
+                "on-the-fly compact process identity does not match the loaded prepared pack",
+            ));
+        }
+        let authenticate = authenticated_prepared_executor_binding(templates, direct)?;
+        let mut resolved = BTreeMap::new();
+        for key in trace.executor_keys() {
+            if resolved.contains_key(&key) {
+                continue;
+            }
+            let expected = authenticate(key)?;
+            let (direct_executor_id, handle, parent_permutation) =
+                if let Some(evaluator_binding_id) = key.evaluator_binding_id() {
+                    self.resolve_handle(sources, key.role(), evaluator_binding_id)?
+                } else {
+                    let (executor_id, handle) = self.identity_finalizer_handle()?;
+                    (executor_id, handle, [0, 1])
+                };
+            if direct_executor_id != expected.direct_executor_id
+                || parent_permutation != expected.parent_permutation
+            {
+                return Err(RusticolError::integrity(
+                    "prepared pool and authenticated direct-template mapping disagree",
+                ));
+            }
+            if resolved
+                .insert(
+                    key,
+                    ResolvedOnTheFlyExecutor {
+                        direct_executor_id,
+                        handle,
+                        parent_permutation,
+                    },
+                )
+                .is_some()
+            {
+                return Err(RusticolError::integrity(
+                    "on-the-fly prepared resolver repeats a full executor key",
+                ));
+            }
+        }
+        Ok(NativeOnTheFlyPreparedExecutorResolver {
+            _pool: self,
+            _sources: sources,
+            resolved,
+        })
     }
 
     fn resolve_handle(
@@ -470,22 +558,13 @@ impl OnTheFlySourceDomainBinding {
     }
 }
 
-impl OnTheFlyPreparedExecutorResolver<'_> {
-    pub(super) fn direct_template_catalog_digest(&self) -> SemanticDigest {
-        self.pool.direct_template_catalog_digest
-    }
-
-    pub(super) fn resolve_evaluator(
-        &self,
-        role: DirectExecutorRole,
-        evaluator_binding_id: u32,
-    ) -> RusticolResult<(u32, DirectExecutorHandle, [u8; 2])> {
-        self.pool
-            .resolve_handle(self.sources, role, evaluator_binding_id)
-    }
-
-    pub(super) fn resolve_identity_finalizer(&self) -> RusticolResult<(u32, DirectExecutorHandle)> {
-        self.pool.identity_finalizer_handle()
+impl OnTheFlyPreparedExecutorResolver for NativeOnTheFlyPreparedExecutorResolver<'_> {
+    fn resolve(&self, key: OnTheFlyExecutorKeyV1) -> RusticolResult<ResolvedOnTheFlyExecutor> {
+        self.resolved.get(&key).copied().ok_or_else(|| {
+            RusticolError::integrity(
+                "on-the-fly operation has no exact authenticated prepared executor",
+            )
+        })
     }
 }
 
@@ -930,5 +1009,244 @@ fn hex_nibble(value: u8) -> Option<u8> {
         b'0'..=b'9' => Some(value - b'0'),
         b'a'..=b'f' => Some(value - b'a' + 10),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod on_the_fly_adapter_tests {
+    use super::*;
+    use crate::engine::evaluator::recurrence_source_direct::{
+        DirectSourceDispatchKey, DirectSourceDispatchVariantSpec, DirectSourceOrientation,
+        DirectSourceTemplateSpec, DirectSourceWavefunctionFamily,
+    };
+    use crate::recurrence::on_the_fly::{
+        OnTheFlyStructuralInterpreter, OnTheFlyWorkspaceV1, scalar_adapter_test_seed,
+        scalar_adapter_test_trace,
+    };
+    use crate::recurrence::{
+        PreparedDirectExecutorBinding, PreparedDirectExecutorCatalog, validated_template_fixture,
+    };
+    use std::ptr;
+
+    fn digest(seed: u8) -> SemanticDigest {
+        SemanticDigest::new([seed; 32]).unwrap()
+    }
+
+    fn direct_catalog(direct_digest: SemanticDigest) -> PreparedDirectExecutorCatalog {
+        PreparedDirectExecutorCatalog::new(
+            direct_digest,
+            vec![
+                PreparedDirectExecutorBinding::evaluator(DirectExecutorRole::Source, 0, 0),
+                PreparedDirectExecutorBinding::evaluator(DirectExecutorRole::Closure, 3, 1),
+                PreparedDirectExecutorBinding::identity_finalizer(2),
+            ],
+        )
+        .unwrap()
+    }
+
+    fn prepared_pool(
+        templates: &ValidatedRecurrenceTemplateInput,
+        direct_digest: SemanticDigest,
+    ) -> NativeRecurrencePreparedExecutorPool {
+        let summary = templates.summary();
+        NativeRecurrencePreparedExecutorPool {
+            handles: vec![
+                None,
+                Some(DirectExecutorHandle::Closure {
+                    call: execute_closure_reduce_rows,
+                    context: ptr::null(),
+                }),
+                Some(DirectExecutorHandle::Finalization {
+                    call: execute_identity_finalization_rows,
+                    context: ptr::null(),
+                }),
+            ]
+            .into_boxed_slice(),
+            bindings: BTreeMap::from([
+                (
+                    (DirectExecutorRole::Source, 0),
+                    NativePreparedExecutorBinding {
+                        executor_id: 0,
+                        parent_permutation: [0, 1],
+                    },
+                ),
+                (
+                    (DirectExecutorRole::Closure, 3),
+                    NativePreparedExecutorBinding {
+                        executor_id: 1,
+                        parent_permutation: [0, 1],
+                    },
+                ),
+            ]),
+            executor_roles: vec![
+                DirectExecutorRole::Source,
+                DirectExecutorRole::Closure,
+                DirectExecutorRole::Finalization,
+            ]
+            .into_boxed_slice(),
+            identity_finalizer_id: Some(2),
+            direct_template_catalog_digest: direct_digest,
+            recurrence_template_catalog_digest: summary.catalog_digest,
+            compiled_model_digest: summary.compiled_model_digest,
+            prepared_kernel_pack_digest: summary.prepared_kernel_pack_digest,
+            _intrinsics: Vec::new(),
+            #[cfg(feature = "f64-symjit")]
+            _symjit: Vec::new(),
+            #[cfg(feature = "f64-compiled")]
+            _native: Vec::new(),
+            summary: NativeRecurrenceDirectBackendSummary {
+                prepared_kernel_pack_digest: summary.prepared_kernel_pack_digest.to_string(),
+                direct_template_catalog_digest: direct_digest.to_string(),
+                backend: "test-intrinsic".into(),
+                target_triple: "test".into(),
+                target_portable: true,
+                executor_count: 3,
+            },
+        }
+    }
+
+    fn source_domains() -> Vec<DirectSourceDispatchDomainSpec> {
+        vec![DirectSourceDispatchDomainSpec {
+            variants: vec![DirectSourceDispatchVariantSpec {
+                key: DirectSourceDispatchKey::SpinStateClass(50_000),
+                template: DirectSourceTemplateSpec {
+                    spin_state_class: 50_000,
+                    family: DirectSourceWavefunctionFamily::Scalar,
+                    orientation: DirectSourceOrientation::SelfConjugate,
+                    helicity: 0,
+                    chirality: 0,
+                    mass_parameter_index: None,
+                },
+            }],
+        }]
+    }
+
+    #[test]
+    fn genuine_scalar_sources_nonunit_identity_and_closure_execute_to_two() {
+        let templates = validated_template_fixture();
+        let summary = templates.summary();
+        let direct_digest = digest(40);
+        let direct = direct_catalog(direct_digest);
+        let seed = scalar_adapter_test_seed(
+            summary.compiled_model_digest,
+            summary.catalog_digest,
+            summary.prepared_kernel_pack_digest,
+            direct_digest,
+        )
+        .unwrap();
+        let mut trace = scalar_adapter_test_trace(&templates, &seed).unwrap();
+        trace.test_insert_identity_finalizer(direct_digest);
+        let pool = prepared_pool(&templates, direct_digest);
+        let sources = pool.bind_source_domains(source_domains()).unwrap();
+        let resolver = pool
+            .bind_on_the_fly_trace(&templates, &direct, &seed, &trace, &sources)
+            .unwrap();
+        let mut workspace = OnTheFlyWorkspaceV1::new(&trace, 1).unwrap();
+        workspace
+            .fill_momenta_from_external(&trace, &[0.0; 8], 1)
+            .unwrap();
+        OnTheFlyStructuralInterpreter::execute(&trace, &resolver, &mut workspace, 1).unwrap();
+        assert_eq!(workspace.amplitude(0).unwrap(), (2.0, 0.0));
+    }
+
+    #[test]
+    fn adapter_rejects_tampered_operation_and_identity_keys() {
+        let templates = validated_template_fixture();
+        let summary = templates.summary();
+        let direct_digest = digest(40);
+        let direct = direct_catalog(direct_digest);
+        let seed = scalar_adapter_test_seed(
+            summary.compiled_model_digest,
+            summary.catalog_digest,
+            summary.prepared_kernel_pack_digest,
+            direct_digest,
+        )
+        .unwrap();
+        let pool = prepared_pool(&templates, direct_digest);
+        let sources = pool.bind_source_domains(source_domains()).unwrap();
+
+        let mut operation_tamper = scalar_adapter_test_trace(&templates, &seed).unwrap();
+        operation_tamper.test_tamper_first_operation_semantic_digest(digest(99));
+        assert!(
+            pool.bind_on_the_fly_trace(&templates, &direct, &seed, &operation_tamper, &sources,)
+                .is_err()
+        );
+
+        let mut identity_tamper = scalar_adapter_test_trace(&templates, &seed).unwrap();
+        identity_tamper.test_insert_identity_finalizer(digest(99));
+        assert!(
+            pool.bind_on_the_fly_trace(&templates, &direct, &seed, &identity_tamper, &sources,)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn adapter_rejects_missing_binding_and_each_compact_catalog_identity_mismatch() {
+        let templates = validated_template_fixture();
+        let summary = templates.summary();
+        let direct_digest = digest(40);
+        let direct = direct_catalog(direct_digest);
+        let pool = prepared_pool(&templates, direct_digest);
+        let sources = pool.bind_source_domains(source_domains()).unwrap();
+        let seed = scalar_adapter_test_seed(
+            summary.compiled_model_digest,
+            summary.catalog_digest,
+            summary.prepared_kernel_pack_digest,
+            direct_digest,
+        )
+        .unwrap();
+        let trace = scalar_adapter_test_trace(&templates, &seed).unwrap();
+        let missing = PreparedDirectExecutorCatalog::new(
+            direct_digest,
+            vec![
+                PreparedDirectExecutorBinding::evaluator(DirectExecutorRole::Source, 0, 0),
+                PreparedDirectExecutorBinding::identity_finalizer(1),
+            ],
+        )
+        .unwrap();
+        assert!(
+            pool.bind_on_the_fly_trace(&templates, &missing, &seed, &trace, &sources)
+                .is_err()
+        );
+
+        for (model, template, pack, direct_id) in [
+            (
+                digest(90),
+                summary.catalog_digest,
+                summary.prepared_kernel_pack_digest,
+                direct_digest,
+            ),
+            (
+                summary.compiled_model_digest,
+                digest(90),
+                summary.prepared_kernel_pack_digest,
+                direct_digest,
+            ),
+            (
+                summary.compiled_model_digest,
+                summary.catalog_digest,
+                digest(90),
+                direct_digest,
+            ),
+            (
+                summary.compiled_model_digest,
+                summary.catalog_digest,
+                summary.prepared_kernel_pack_digest,
+                digest(90),
+            ),
+        ] {
+            let mismatched = scalar_adapter_test_seed(model, template, pack, direct_id).unwrap();
+            let mismatched_trace = scalar_adapter_test_trace(&templates, &mismatched).unwrap();
+            assert!(
+                pool.bind_on_the_fly_trace(
+                    &templates,
+                    &direct,
+                    &mismatched,
+                    &mismatched_trace,
+                    &sources,
+                )
+                .is_err()
+            );
+        }
     }
 }

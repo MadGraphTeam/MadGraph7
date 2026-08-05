@@ -29,7 +29,8 @@ use super::template::{
 use super::{
     CanonicalMomentumLinearForm, ContributionKey, CurrentCoreKey, CurrentHelicityIdentity,
     CurrentSourceBinding, DynamicLCColorState, DynamicLCColorStateInterner, ExactComplexRational,
-    LCColorComponent, LCColorComponentKind, LCColorWitnessTermId, MomentumTerm, RecurrenceNodeKind,
+    LCColorComponent, LCColorComponentKind, LCColorWitnessTermId, MomentumTerm,
+    PreparedDirectExecutorBinding, PreparedDirectExecutorCatalog, RecurrenceNodeKind,
     SemanticDigest, SourceStateAssignment,
 };
 use crate::direct_arena::{
@@ -97,6 +98,8 @@ pub(crate) use interpreter::{
 };
 pub(crate) use public_query::OnTheFlyLcSelectorV1;
 pub(crate) use public_query::{DecodedLcQueryV1, OnTheFlySelectedSourceV1};
+#[cfg(test)]
+pub(crate) use source_seed::scalar_adapter_test_seed;
 pub(crate) use source_seed::{
     OnTheFlyExternalColorRoleV1, OnTheFlyPairingClassV1, OnTheFlyPairingEndpointV1,
     OnTheFlyProcessSeedV1, OnTheFlySourceAnchorV1, OnTheFlySourceExecutionSpecV1,
@@ -104,9 +107,11 @@ pub(crate) use source_seed::{
 };
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 pub use test_support::{OnTheFlyTestSupportReportV1, on_the_fly_test_support_probe_v1};
+#[cfg(test)]
+pub(crate) use trace::scalar_adapter_test_trace;
 pub(crate) use trace::{
     OnTheFlyExecutorKeyV1, OnTheFlyOperationKindV1, OnTheFlyStructuralProofV1,
-    OnTheFlyStructuralTraceV1, OnTheFlyWorkspaceLayoutV1,
+    OnTheFlyStructuralTraceV1, OnTheFlyWorkspaceLayoutV1, authenticated_prepared_executor_binding,
 };
 
 use projection::*;

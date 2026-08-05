@@ -11,6 +11,10 @@ use super::recurrence_backend::NativeRecurrenceDirectExecutorBackend;
 use super::recurrence_manifest::*;
 use super::*;
 use crate::pacbin::{PacbinMemberKind, PacbinReader};
+use crate::recurrence::on_the_fly::{
+    OnTheFlyProcessSeedV1, OnTheFlySourceExecutionSpecV1, OnTheFlySourceOrientationV1,
+    OnTheFlySourceWavefunctionFamilyV1,
+};
 use crate::recurrence::{
     DirectRecurrencePlan, FactorizedColorContractionKind,
     RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER, RECURRENCE_DIRECT_SCHEDULE_MEMBER,
@@ -1402,6 +1406,12 @@ fn build_direct_source_domains(
         }
     }
 
+    finish_direct_source_domains(variants)
+}
+
+fn finish_direct_source_domains(
+    variants: Vec<BTreeMap<DirectSourceDispatchKey, DirectSourceTemplateSpec>>,
+) -> RusticolResult<Vec<DirectSourceDispatchDomainSpec>> {
     let inert = variants
         .iter()
         .flat_map(BTreeMap::iter)
@@ -1427,6 +1437,118 @@ fn build_direct_source_domains(
             },
         })
         .collect())
+}
+
+/// Bind the compact process seed to the same crossed SourceIR semantics used
+/// by the established direct-plan loader.  This boundary is deliberately
+/// plan-independent: source-template IDs remain the authenticated model-level
+/// IDs, including sparse slots that this process does not address.
+pub(super) fn build_on_the_fly_source_domains(
+    seed: &OnTheFlyProcessSeedV1,
+    templates: &crate::recurrence::template::ValidatedRecurrenceTemplateInput,
+    metadata: &RecurrenceRuntimeMetadata,
+    runtime_parameter_slots: &BTreeMap<String, RuntimeParameterSlots>,
+) -> RusticolResult<Vec<DirectSourceDispatchDomainSpec>> {
+    let summary = templates.summary();
+    if seed.template_catalog_digest() != summary.catalog_digest
+        || seed.model_digest() != summary.compiled_model_digest
+        || seed.prepared_pack_digest() != summary.prepared_kernel_pack_digest
+    {
+        return Err(RusticolError::integrity(
+            "on-the-fly source seed does not belong to the authenticated recurrence templates",
+        ));
+    }
+    let domain_count = usize::try_from(summary.source_count)
+        .map_err(|_| RusticolError::artifact("recurrence source-domain count exceeds usize"))?;
+    build_on_the_fly_source_domains_from_specs(
+        seed.source_execution_specs(),
+        domain_count,
+        summary.parameter_count,
+        metadata,
+        runtime_parameter_slots,
+    )
+}
+
+fn build_on_the_fly_source_domains_from_specs(
+    specs: impl IntoIterator<Item = OnTheFlySourceExecutionSpecV1>,
+    domain_count: usize,
+    parameter_count: u32,
+    metadata: &RecurrenceRuntimeMetadata,
+    runtime_parameter_slots: &BTreeMap<String, RuntimeParameterSlots>,
+) -> RusticolResult<Vec<DirectSourceDispatchDomainSpec>> {
+    let templates = metadata
+        .source_templates
+        .iter()
+        .map(|source| (source.source_template_id, source))
+        .collect::<BTreeMap<_, _>>();
+    let legs = metadata
+        .external_legs
+        .iter()
+        .map(|leg| (leg.source_slot, leg))
+        .collect::<BTreeMap<_, _>>();
+    let mut variants =
+        vec![BTreeMap::<DirectSourceDispatchKey, DirectSourceTemplateSpec>::new(); domain_count];
+    for compact in specs {
+        let source = templates.get(&compact.source_template_id).ok_or_else(|| {
+            RusticolError::integrity("on-the-fly source references an absent SourceIR template")
+        })?;
+        let leg = legs.get(&compact.source_slot).ok_or_else(|| {
+            RusticolError::integrity("on-the-fly source references an absent external leg")
+        })?;
+        let authoritative = direct_source_template_spec(
+            source,
+            leg,
+            metadata,
+            runtime_parameter_slots,
+            parameter_count,
+        )?;
+        let compact = DirectSourceTemplateSpec {
+            spin_state_class: compact.spin_state_class,
+            family: direct_on_the_fly_source_family(compact.family),
+            orientation: direct_on_the_fly_source_orientation(compact.orientation),
+            helicity: compact.helicity,
+            chirality: compact.chirality,
+            mass_parameter_index: compact.prepared_mass_parameter_slot,
+        };
+        if compact != authoritative {
+            return Err(RusticolError::integrity(
+                "on-the-fly source semantics disagree with crossed SourceIR metadata",
+            ));
+        }
+        insert_source_domain_variant(
+            &mut variants,
+            source.source_template_id,
+            DirectSourceDispatchKey::SpinStateClass(authoritative.spin_state_class),
+            authoritative,
+        )?;
+    }
+    finish_direct_source_domains(variants)
+}
+
+const fn direct_on_the_fly_source_family(
+    value: OnTheFlySourceWavefunctionFamilyV1,
+) -> DirectSourceWavefunctionFamily {
+    match value {
+        OnTheFlySourceWavefunctionFamilyV1::Scalar => DirectSourceWavefunctionFamily::Scalar,
+        OnTheFlySourceWavefunctionFamilyV1::WeylFermion => {
+            DirectSourceWavefunctionFamily::WeylFermion
+        }
+        OnTheFlySourceWavefunctionFamilyV1::DiracFermion => {
+            DirectSourceWavefunctionFamily::DiracFermion
+        }
+        OnTheFlySourceWavefunctionFamilyV1::Vector => DirectSourceWavefunctionFamily::Vector,
+        OnTheFlySourceWavefunctionFamilyV1::Spin2 => DirectSourceWavefunctionFamily::Spin2,
+    }
+}
+
+const fn direct_on_the_fly_source_orientation(
+    value: OnTheFlySourceOrientationV1,
+) -> DirectSourceOrientation {
+    match value {
+        OnTheFlySourceOrientationV1::Particle => DirectSourceOrientation::Particle,
+        OnTheFlySourceOrientationV1::Antiparticle => DirectSourceOrientation::Antiparticle,
+        OnTheFlySourceOrientationV1::SelfConjugate => DirectSourceOrientation::SelfConjugate,
+    }
 }
 
 fn insert_source_domain_variant(
@@ -1668,7 +1790,190 @@ fn decode_sha256(value: &str) -> RusticolResult<[u8; 32]> {
 
 #[cfg(test)]
 mod binding_decode_tests {
-    use super::read_u64_values;
+    use super::{
+        DirectSourceDispatchKey, DirectSourceOrientation, DirectSourceWavefunctionFamily,
+        OnTheFlySourceExecutionSpecV1, OnTheFlySourceOrientationV1,
+        OnTheFlySourceWavefunctionFamilyV1, RecurrenceExternalLeg, RecurrenceGenericCrossingIr,
+        RecurrenceGenericParticleIdentityIr, RecurrenceGenericSourceIr,
+        RecurrenceMomentumTransform, RecurrenceNormalization, RecurrenceParameterProjection,
+        RecurrenceParticleMass, RecurrenceParticleStatistics, RecurrenceRuntimeMetadata,
+        RecurrenceSourceOrientation, RecurrenceSourceTemplate, RecurrenceWavefunctionFamily,
+        RuntimeParameterSlots, build_on_the_fly_source_domains_from_specs, read_u64_values,
+    };
+    use std::collections::BTreeMap;
+
+    fn source_ir(
+        name: &str,
+        pdg: i32,
+        family: RecurrenceWavefunctionFamily,
+        statistics: RecurrenceParticleStatistics,
+        dimension: u64,
+        mass_parameter: Option<&str>,
+    ) -> RecurrenceGenericSourceIr {
+        RecurrenceGenericSourceIr {
+            identity: RecurrenceGenericParticleIdentityIr {
+                canonical_id: name.into(),
+                species_id: name.into(),
+                anti_canonical_id: format!("anti-{name}"),
+                display_name: name.into(),
+                anti_display_name: format!("anti-{name}"),
+                pdg_label: pdg,
+                anti_pdg_label: -pdg,
+                orientation: if statistics == RecurrenceParticleStatistics::Fermion {
+                    RecurrenceSourceOrientation::Particle
+                } else {
+                    RecurrenceSourceOrientation::SelfConjugate
+                },
+                self_conjugate: statistics != RecurrenceParticleStatistics::Fermion,
+            },
+            statistics,
+            wavefunction_family: family,
+            component_dimension: dimension,
+            states: Vec::new(),
+            crossing: RecurrenceGenericCrossingIr {
+                momentum_transform: RecurrenceMomentumTransform::Identity,
+                helicity_factor: 1,
+                chirality_factor: 1,
+                spin_state_factor: 1,
+                phase: [1.0, 0.0],
+            },
+            basis: "test".into(),
+            mass_parameter: mass_parameter.map(str::to_owned),
+            width_parameter: None,
+        }
+    }
+
+    fn source_domain_metadata() -> RecurrenceRuntimeMetadata {
+        RecurrenceRuntimeMetadata {
+            public_color_flows: Vec::new(),
+            runtime_parameters: Vec::new(),
+            prepared_parameter_defaults: vec![[0.0, 0.0]; 4],
+            parameter_projection: vec![RecurrenceParameterProjection {
+                runtime_slot: 0,
+                runtime_name: "MF".into(),
+                parameter_template_id: 0,
+                prepared_parameter_id: Some(3),
+                component: 0,
+            }],
+            source_templates: vec![
+                RecurrenceSourceTemplate {
+                    source_template_id: 0,
+                    _current_state_template_id: 0,
+                    dimension: 2,
+                    helicity: -1,
+                    chirality: 1,
+                    spin_state: 7,
+                    source_ir: source_ir(
+                        "f",
+                        1,
+                        RecurrenceWavefunctionFamily::Fermion,
+                        RecurrenceParticleStatistics::Fermion,
+                        2,
+                        Some("MF"),
+                    ),
+                    crossing: RecurrenceGenericCrossingIr {
+                        momentum_transform: RecurrenceMomentumTransform::NegateFourMomentum,
+                        helicity_factor: -1,
+                        chirality_factor: -1,
+                        spin_state_factor: 1,
+                        phase: [1.0, 0.0],
+                    },
+                },
+                RecurrenceSourceTemplate {
+                    source_template_id: 2,
+                    _current_state_template_id: 2,
+                    dimension: 1,
+                    helicity: 0,
+                    chirality: 0,
+                    spin_state: 0,
+                    source_ir: source_ir(
+                        "s",
+                        25,
+                        RecurrenceWavefunctionFamily::Scalar,
+                        RecurrenceParticleStatistics::Boson,
+                        1,
+                        None,
+                    ),
+                    crossing: RecurrenceGenericCrossingIr {
+                        momentum_transform: RecurrenceMomentumTransform::Identity,
+                        helicity_factor: 1,
+                        chirality_factor: 1,
+                        spin_state_factor: 1,
+                        phase: [1.0, 0.0],
+                    },
+                },
+            ],
+            external_legs: vec![
+                RecurrenceExternalLeg {
+                    source_slot: 0,
+                    public_label: 0,
+                    physical_pdg: 1,
+                    outgoing_pdg: 1,
+                    is_initial: true,
+                },
+                RecurrenceExternalLeg {
+                    source_slot: 1,
+                    public_label: 1,
+                    physical_pdg: 25,
+                    outgoing_pdg: 25,
+                    is_initial: false,
+                },
+                RecurrenceExternalLeg {
+                    source_slot: 2,
+                    public_label: 2,
+                    physical_pdg: 1,
+                    outgoing_pdg: 1,
+                    is_initial: false,
+                },
+            ],
+            particle_masses: vec![RecurrenceParticleMass {
+                outgoing_pdg: 1,
+                mass: 2.0,
+            }],
+            normalization: RecurrenceNormalization {
+                color_accuracy: "lc".into(),
+                color_factor: 1.0,
+                average_factor: 1.0,
+                identical_factor: 1.0,
+                global_coupling_factor: 1.0,
+                qcd_coupling_power: None,
+                electroweak_coupling_power: None,
+                couplings_in_stage_evaluators: true,
+                coupling_policy: "test".into(),
+            },
+            color_contraction: None,
+        }
+    }
+
+    fn crossed_fermion(
+        source_slot: u32,
+        helicity: i32,
+        chirality: i32,
+    ) -> OnTheFlySourceExecutionSpecV1 {
+        OnTheFlySourceExecutionSpecV1 {
+            source_slot,
+            source_template_id: 0,
+            spin_state_class: 7,
+            family: OnTheFlySourceWavefunctionFamilyV1::WeylFermion,
+            orientation: OnTheFlySourceOrientationV1::Particle,
+            helicity,
+            chirality,
+            prepared_mass_parameter_slot: Some(3),
+        }
+    }
+
+    fn scalar_source() -> OnTheFlySourceExecutionSpecV1 {
+        OnTheFlySourceExecutionSpecV1 {
+            source_slot: 1,
+            source_template_id: 2,
+            spin_state_class: 0,
+            family: OnTheFlySourceWavefunctionFamilyV1::Scalar,
+            orientation: OnTheFlySourceOrientationV1::SelfConjugate,
+            helicity: 0,
+            chirality: 0,
+            prepared_mass_parameter_slot: None,
+        }
+    }
 
     #[test]
     fn truncated_support_words_return_an_artifact_error() {
@@ -1681,5 +1986,65 @@ mod binding_decode_tests {
                 .contains("truncated recurrence support mask")
         );
         assert_eq!(cursor, 0);
+    }
+
+    #[test]
+    fn compact_sources_match_crossing_mass_and_sparse_inert_domains() {
+        let metadata = source_domain_metadata();
+        let slots = BTreeMap::from([(
+            "MF".into(),
+            RuntimeParameterSlots {
+                real: 0,
+                imaginary: None,
+            },
+        )]);
+        let fermion = crossed_fermion(0, 1, -1);
+        let domains = build_on_the_fly_source_domains_from_specs(
+            [fermion, fermion, scalar_source()],
+            4,
+            4,
+            &metadata,
+            &slots,
+        )
+        .unwrap();
+        assert_eq!(domains.len(), 4);
+        assert_eq!(domains[0].variants.len(), 1);
+        assert_eq!(
+            domains[0].variants[0].key,
+            DirectSourceDispatchKey::SpinStateClass(7)
+        );
+        let template = domains[0].variants[0].template;
+        assert_eq!(template.family, DirectSourceWavefunctionFamily::WeylFermion);
+        assert_eq!(template.orientation, DirectSourceOrientation::Particle);
+        assert_eq!((template.helicity, template.chirality), (1, -1));
+        assert_eq!(template.mass_parameter_index, Some(3));
+        assert_eq!(domains[1], domains[0]);
+        assert_eq!(domains[3], domains[0]);
+        assert_eq!(domains[2].variants.len(), 1);
+        assert_eq!(
+            domains[2].variants[0].template.family,
+            DirectSourceWavefunctionFamily::Scalar
+        );
+    }
+
+    #[test]
+    fn compact_sources_reject_one_key_with_conflicting_crossed_semantics() {
+        let metadata = source_domain_metadata();
+        let slots = BTreeMap::from([(
+            "MF".into(),
+            RuntimeParameterSlots {
+                real: 0,
+                imaginary: None,
+            },
+        )]);
+        let error = build_on_the_fly_source_domains_from_specs(
+            [crossed_fermion(0, 1, -1), crossed_fermion(2, -1, 1)],
+            4,
+            4,
+            &metadata,
+            &slots,
+        )
+        .expect_err("one dispatch key cannot have two crossed SourceIR meanings");
+        assert!(error.to_string().contains("maps one dispatch key"));
     }
 }

@@ -45,6 +45,8 @@ pub use construct::RecurrenceBuildProgress;
 #[doc(hidden)]
 pub use construct::RecurrenceGenerationTelemetry;
 pub use direct_codec::{decode_recurrence_direct_plan_v2, encode_recurrence_direct_plan_v2};
+#[cfg(test)]
+pub(crate) use direct_lowering::validated_template_fixture;
 pub use direct_lowering::{
     DirectRecurrenceRuntimeOptions, PreparedDirectExecutorBinding, PreparedDirectExecutorCatalog,
     PreparedDirectExecutorKey, lower_recurrence_direct_plan_v2,

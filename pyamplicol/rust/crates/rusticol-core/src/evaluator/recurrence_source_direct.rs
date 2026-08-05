@@ -133,13 +133,13 @@ pub(crate) enum DirectSourceDispatchKey {
     },
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct DirectSourceDispatchVariantSpec {
     pub(crate) key: DirectSourceDispatchKey,
     pub(crate) template: DirectSourceTemplateSpec,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct DirectSourceDispatchDomainSpec {
     pub(crate) variants: Vec<DirectSourceDispatchVariantSpec>,
 }

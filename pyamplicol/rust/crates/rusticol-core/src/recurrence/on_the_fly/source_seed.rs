@@ -521,6 +521,22 @@ impl OnTheFlyProcessSeedV1 {
         self.semantic_digest
     }
 
+    pub(crate) const fn model_digest(&self) -> SemanticDigest {
+        self.model_digest
+    }
+
+    pub(crate) const fn template_catalog_digest(&self) -> SemanticDigest {
+        self.template_catalog_digest
+    }
+
+    pub(crate) const fn prepared_pack_digest(&self) -> SemanticDigest {
+        self.prepared_pack_digest
+    }
+
+    pub(crate) const fn direct_catalog_digest(&self) -> SemanticDigest {
+        self.direct_catalog_digest
+    }
+
     pub(crate) fn source_execution_specs(
         &self,
     ) -> impl Iterator<Item = OnTheFlySourceExecutionSpecV1> + '_ {
@@ -540,6 +556,64 @@ impl OnTheFlyProcessSeedV1 {
                 })
         })
     }
+}
+
+#[cfg(test)]
+pub(crate) fn scalar_adapter_test_seed(
+    model_digest: SemanticDigest,
+    template_catalog_digest: SemanticDigest,
+    prepared_pack_digest: SemanticDigest,
+    direct_catalog_digest: SemanticDigest,
+) -> RusticolResult<OnTheFlyProcessSeedV1> {
+    let source_semantic_digest = SemanticDigest::new([5; 32])?;
+    let current_semantic_digest = SemanticDigest::new([4; 32])?;
+    let color_seed_digest = SemanticDigest::new([17; 32])?;
+    let anchors = (0..2)
+        .map(|source_slot| {
+            let state = OnTheFlySourceStateV1::new(
+                0,
+                0,
+                0,
+                0,
+                0,
+                source_semantic_digest,
+                current_semantic_digest,
+                1,
+                ExactComplexRational::ONE,
+                50_000,
+                0,
+                vec![1],
+                0,
+                color_seed_digest,
+                OnTheFlySourceWavefunctionFamilyV1::Scalar,
+                OnTheFlySourceOrientationV1::SelfConjugate,
+                None,
+            )?;
+            OnTheFlySourceAnchorV1::new(
+                source_slot,
+                source_slot,
+                false,
+                OnTheFlyExternalColorRoleV1::Singlet,
+                false,
+                None,
+                vec![state],
+            )
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    OnTheFlyProcessSeedV1::new(
+        SemanticDigest::new([91; 32])?,
+        model_digest,
+        template_catalog_digest,
+        prepared_pack_digest,
+        direct_catalog_digest,
+        SemanticDigest::new([92; 32])?,
+        "raw-amplitude-test",
+        ExactComplexRational::ONE,
+        anchors,
+        vec![0, 1],
+        vec![Some(0)],
+        Vec::new(),
+    )
 }
 
 pub(super) fn validate_permutation(

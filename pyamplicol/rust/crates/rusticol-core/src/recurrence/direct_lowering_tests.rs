@@ -109,7 +109,7 @@ fn indexed_i32_sequences(sequences: &[Vec<i32>]) -> (Vec<IndexedRangeRow>, Vec<i
     (ranges, values)
 }
 
-fn validated_template() -> ValidatedRecurrenceTemplateInput {
+pub(crate) fn validated_template() -> ValidatedRecurrenceTemplateInput {
     let strings = [
         "0",
         "1",

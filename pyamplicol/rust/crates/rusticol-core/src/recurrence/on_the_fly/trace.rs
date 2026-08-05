@@ -16,14 +16,22 @@ pub(crate) enum OnTheFlyOperationKindV1 {
 
 /// Plan-independent semantic address of one prepared Direct-Arena executor.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(crate) struct OnTheFlyExecutorKeyV1 {
-    direct_catalog_digest: SemanticDigest,
-    role: DirectExecutorRole,
-    operation_kind: OnTheFlyOperationKindV1,
-    operation_id: Option<u32>,
-    operation_semantic_digest: SemanticDigest,
-    evaluator_binding_id: Option<u32>,
-    evaluator_binding_semantic_digest: SemanticDigest,
+pub(crate) enum OnTheFlyExecutorKeyV1 {
+    PreparedOperation {
+        direct_catalog_digest: SemanticDigest,
+        role: DirectExecutorRole,
+        operation_kind: OnTheFlyOperationKindV1,
+        operation_id: u32,
+        operation_semantic_digest: SemanticDigest,
+        evaluator_binding_id: u32,
+        evaluator_binding_semantic_digest: SemanticDigest,
+    },
+    /// The prepared direct catalog authenticates this one typed synthetic
+    /// binding as a whole.  It has no recurrence-operation or evaluator row,
+    /// so no sentinel semantic digests are fabricated for it.
+    IdentityFinalizer {
+        direct_catalog_digest: SemanticDigest,
+    },
 }
 
 impl OnTheFlyExecutorKeyV1 {
@@ -32,29 +40,26 @@ impl OnTheFlyExecutorKeyV1 {
         direct_catalog_digest: SemanticDigest,
         role: DirectExecutorRole,
         operation_kind: OnTheFlyOperationKindV1,
-        operation_id: Option<u32>,
+        operation_id: u32,
         operation_semantic_digest: SemanticDigest,
-        evaluator_binding_id: Option<u32>,
+        evaluator_binding_id: u32,
         evaluator_binding_semantic_digest: SemanticDigest,
     ) -> RusticolResult<Self> {
         let expected_role = match operation_kind {
             OnTheFlyOperationKindV1::Source => DirectExecutorRole::Source,
             OnTheFlyOperationKindV1::Transition => DirectExecutorRole::Contribution,
-            OnTheFlyOperationKindV1::Propagator | OnTheFlyOperationKindV1::IdentityFinalizer => {
-                DirectExecutorRole::Finalization
-            }
+            OnTheFlyOperationKindV1::Propagator => DirectExecutorRole::Finalization,
             OnTheFlyOperationKindV1::Closure => DirectExecutorRole::Closure,
+            OnTheFlyOperationKindV1::IdentityFinalizer => {
+                return Err(invalid(
+                    "identity finalizer must use its typed semantic key",
+                ));
+            }
         };
         if role != expected_role {
             return Err(invalid("semantic executor key has an inconsistent role"));
         }
-        let identity = operation_kind == OnTheFlyOperationKindV1::IdentityFinalizer;
-        if identity != operation_id.is_none() || identity != evaluator_binding_id.is_none() {
-            return Err(invalid(
-                "only an identity finalizer may omit operation and evaluator IDs",
-            ));
-        }
-        Ok(Self {
+        Ok(Self::PreparedOperation {
             direct_catalog_digest,
             role,
             operation_kind,
@@ -65,32 +70,73 @@ impl OnTheFlyExecutorKeyV1 {
         })
     }
 
+    pub(crate) const fn identity_finalizer(direct_catalog_digest: SemanticDigest) -> Self {
+        Self::IdentityFinalizer {
+            direct_catalog_digest,
+        }
+    }
+
     pub(crate) const fn direct_catalog_digest(self) -> SemanticDigest {
-        self.direct_catalog_digest
+        match self {
+            Self::PreparedOperation {
+                direct_catalog_digest,
+                ..
+            }
+            | Self::IdentityFinalizer {
+                direct_catalog_digest,
+            } => direct_catalog_digest,
+        }
     }
 
     pub(crate) const fn role(self) -> DirectExecutorRole {
-        self.role
+        match self {
+            Self::PreparedOperation { role, .. } => role,
+            Self::IdentityFinalizer { .. } => DirectExecutorRole::Finalization,
+        }
     }
 
     pub(crate) const fn operation_kind(self) -> OnTheFlyOperationKindV1 {
-        self.operation_kind
+        match self {
+            Self::PreparedOperation { operation_kind, .. } => operation_kind,
+            Self::IdentityFinalizer { .. } => OnTheFlyOperationKindV1::IdentityFinalizer,
+        }
     }
 
     pub(crate) const fn operation_id(self) -> Option<u32> {
-        self.operation_id
+        match self {
+            Self::PreparedOperation { operation_id, .. } => Some(operation_id),
+            Self::IdentityFinalizer { .. } => None,
+        }
     }
 
-    pub(crate) const fn operation_semantic_digest(self) -> SemanticDigest {
-        self.operation_semantic_digest
+    pub(crate) const fn operation_semantic_digest(self) -> Option<SemanticDigest> {
+        match self {
+            Self::PreparedOperation {
+                operation_semantic_digest,
+                ..
+            } => Some(operation_semantic_digest),
+            Self::IdentityFinalizer { .. } => None,
+        }
     }
 
     pub(crate) const fn evaluator_binding_id(self) -> Option<u32> {
-        self.evaluator_binding_id
+        match self {
+            Self::PreparedOperation {
+                evaluator_binding_id,
+                ..
+            } => Some(evaluator_binding_id),
+            Self::IdentityFinalizer { .. } => None,
+        }
     }
 
-    pub(crate) const fn evaluator_binding_semantic_digest(self) -> SemanticDigest {
-        self.evaluator_binding_semantic_digest
+    pub(crate) const fn evaluator_binding_semantic_digest(self) -> Option<SemanticDigest> {
+        match self {
+            Self::PreparedOperation {
+                evaluator_binding_semantic_digest,
+                ..
+            } => Some(evaluator_binding_semantic_digest),
+            Self::IdentityFinalizer { .. } => None,
+        }
     }
 }
 
@@ -219,8 +265,16 @@ pub(crate) struct OnTheFlyStructuralTraceV1 {
 }
 
 impl OnTheFlyStructuralTraceV1 {
+    pub(crate) fn executor_keys(&self) -> impl Iterator<Item = OnTheFlyExecutorKeyV1> + '_ {
+        self.operations.iter().map(OnTheFlyTraceOperationV1::key)
+    }
+
     pub(crate) const fn proof(&self) -> OnTheFlyStructuralProofV1 {
         self.proof
+    }
+
+    pub(crate) const fn seed_digest(&self) -> SemanticDigest {
+        self.seed_digest
     }
 
     pub(crate) fn current_keys(&self) -> &[CurrentCoreKey] {
@@ -260,6 +314,348 @@ impl OnTheFlyStructuralTraceV1 {
             .get(current_id as usize)
             .copied()
             .ok_or_else(|| invalid("observed current ID is outside the trace"))
+    }
+}
+
+/// Join one query-local operation key to the exact authenticated recurrence
+/// row and prepared direct-template binding that implements it.  No global
+/// operation map or direct recurrence plan participates in the address.
+pub(crate) fn authenticated_prepared_executor_binding<'a>(
+    templates: &'a ValidatedRecurrenceTemplateInput,
+    direct: &'a PreparedDirectExecutorCatalog,
+) -> RusticolResult<
+    impl Fn(OnTheFlyExecutorKeyV1) -> RusticolResult<PreparedDirectExecutorBinding> + 'a,
+> {
+    let direct_digest = direct.direct_template_catalog_digest();
+    Ok(move |key: OnTheFlyExecutorKeyV1| {
+        if key.direct_catalog_digest() != direct_digest {
+            return Err(integrity(
+                "operation key belongs to a different direct-template catalog",
+            ));
+        }
+        if matches!(key, OnTheFlyExecutorKeyV1::IdentityFinalizer { .. }) {
+            return Ok(PreparedDirectExecutorBinding::identity_finalizer(
+                direct.resolve_identity_finalizer()?,
+            ));
+        }
+        let operation_id = key
+            .operation_id()
+            .ok_or_else(|| integrity("prepared operation key has no operation ID"))?;
+        let (row_id, semantic_digest_id, evaluator_binding_id, expected_role, label) =
+            match key.operation_kind() {
+                OnTheFlyOperationKindV1::Source => {
+                    let row = templates
+                        .input()
+                        .sources
+                        .get(operation_id as usize)
+                        .ok_or_else(|| integrity("source operation row is absent"))?;
+                    (
+                        row.id,
+                        row.semantic_digest_id,
+                        row.evaluator_binding_id,
+                        DirectExecutorRole::Source,
+                        "source",
+                    )
+                }
+                OnTheFlyOperationKindV1::Transition => {
+                    let row = templates
+                        .input()
+                        .transitions
+                        .get(operation_id as usize)
+                        .ok_or_else(|| integrity("transition operation row is absent"))?;
+                    (
+                        row.id,
+                        row.semantic_digest_id,
+                        row.evaluator_binding_id,
+                        DirectExecutorRole::Contribution,
+                        "transition",
+                    )
+                }
+                OnTheFlyOperationKindV1::Propagator => {
+                    let row = templates
+                        .input()
+                        .propagators
+                        .get(operation_id as usize)
+                        .ok_or_else(|| integrity("propagator operation row is absent"))?;
+                    (
+                        row.id,
+                        row.semantic_digest_id,
+                        row.evaluator_binding_id,
+                        DirectExecutorRole::Finalization,
+                        "propagator",
+                    )
+                }
+                OnTheFlyOperationKindV1::Closure => {
+                    let row = templates
+                        .input()
+                        .closures
+                        .get(operation_id as usize)
+                        .ok_or_else(|| integrity("closure operation row is absent"))?;
+                    (
+                        row.id,
+                        row.semantic_digest_id,
+                        row.evaluator_binding_id,
+                        DirectExecutorRole::Closure,
+                        "closure",
+                    )
+                }
+                OnTheFlyOperationKindV1::IdentityFinalizer => {
+                    return Err(integrity(
+                        "identity finalizer is not a prepared-operation key",
+                    ));
+                }
+            };
+        if row_id != operation_id || key.role() != expected_role {
+            return Err(integrity(format!(
+                "{label} operation catalog or executor role is not canonical"
+            )));
+        }
+        let evaluator = templates
+            .input()
+            .evaluator_bindings
+            .get(evaluator_binding_id as usize)
+            .ok_or_else(|| integrity(format!("{label} evaluator binding is absent")))?;
+        if evaluator.id != evaluator_binding_id
+            || key.operation_semantic_digest()
+                != Some(authenticated_digest_row(
+                    templates,
+                    semantic_digest_id,
+                    &format!("{label} semantic"),
+                )?)
+            || key.evaluator_binding_id() != Some(evaluator.id)
+            || key.evaluator_binding_semantic_digest()
+                != Some(authenticated_digest_row(
+                    templates,
+                    evaluator.semantic_digest_id,
+                    &format!("{label} evaluator semantic"),
+                )?)
+        {
+            return Err(integrity(format!(
+                "{label} operation key disagrees with authenticated template semantics"
+            )));
+        }
+        let binding = match expected_role {
+            DirectExecutorRole::Contribution => {
+                let (executor_id, parent_permutation) =
+                    direct.resolve_contribution(evaluator.id)?;
+                PreparedDirectExecutorBinding::evaluator_with_parent_permutation(
+                    expected_role,
+                    evaluator.id,
+                    executor_id,
+                    parent_permutation,
+                )
+            }
+            role => PreparedDirectExecutorBinding::evaluator(
+                role,
+                evaluator.id,
+                direct.resolve_evaluator(role, evaluator.id)?,
+            ),
+        };
+        Ok(binding)
+    })
+}
+
+fn authenticated_digest_row(
+    templates: &ValidatedRecurrenceTemplateInput,
+    digest_id: u32,
+    label: &str,
+) -> RusticolResult<SemanticDigest> {
+    let row = templates
+        .input()
+        .digest_catalog
+        .get(digest_id as usize)
+        .ok_or_else(|| integrity(format!("{label} digest is absent")))?;
+    if row.id != digest_id {
+        return Err(integrity(format!(
+            "{label} digest catalog is not canonical"
+        )));
+    }
+    SemanticDigest::new(row.value)
+        .map_err(|error| integrity(format!("{label} digest is invalid: {error}")))
+}
+
+#[cfg(test)]
+pub(crate) fn scalar_adapter_test_trace(
+    templates: &ValidatedRecurrenceTemplateInput,
+    seed: &OnTheFlyProcessSeedV1,
+) -> RusticolResult<OnTheFlyStructuralTraceV1> {
+    let source = templates
+        .input()
+        .sources
+        .first()
+        .ok_or_else(|| integrity("scalar adapter fixture has no source"))?;
+    let source_evaluator = templates
+        .input()
+        .evaluator_bindings
+        .get(source.evaluator_binding_id as usize)
+        .ok_or_else(|| integrity("scalar adapter source evaluator is absent"))?;
+    let source_key = OnTheFlyExecutorKeyV1::new(
+        seed.direct_catalog_digest(),
+        DirectExecutorRole::Source,
+        OnTheFlyOperationKindV1::Source,
+        source.id,
+        authenticated_digest_row(templates, source.semantic_digest_id, "source semantic")?,
+        source_evaluator.id,
+        authenticated_digest_row(
+            templates,
+            source_evaluator.semantic_digest_id,
+            "source evaluator semantic",
+        )?,
+    )?;
+    let closure = templates
+        .input()
+        .closures
+        .first()
+        .ok_or_else(|| integrity("scalar adapter fixture has no closure"))?;
+    let closure_evaluator = templates
+        .input()
+        .evaluator_bindings
+        .get(closure.evaluator_binding_id as usize)
+        .ok_or_else(|| integrity("scalar adapter closure evaluator is absent"))?;
+    let closure_key = OnTheFlyExecutorKeyV1::new(
+        seed.direct_catalog_digest(),
+        DirectExecutorRole::Closure,
+        OnTheFlyOperationKindV1::Closure,
+        closure.id,
+        authenticated_digest_row(templates, closure.semantic_digest_id, "closure semantic")?,
+        closure_evaluator.id,
+        authenticated_digest_row(
+            templates,
+            closure_evaluator.semantic_digest_id,
+            "closure evaluator semantic",
+        )?,
+    )?;
+    let momentum_forms = (0..2)
+        .map(|source_slot| {
+            CanonicalMomentumLinearForm::new(vec![MomentumTerm {
+                source_slot,
+                coefficient: 1,
+            }])
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let test_digest = SemanticDigest::new([93; 32])?;
+    Ok(OnTheFlyStructuralTraceV1 {
+        seed_digest: seed.semantic_digest(),
+        query_digest: SemanticDigest::new([94; 32])?,
+        current_keys: Vec::new().into_boxed_slice(),
+        current_colors: Vec::new().into_boxed_slice(),
+        operations: vec![
+            OnTheFlyTraceOperationV1::Source {
+                key: source_key,
+                row: DirectSourceRow {
+                    source_slot: 0,
+                    destination_component_base: 0,
+                    momentum_form_id: 0,
+                    source_template_or_dispatch_domain: 0,
+                    spin_state_class: 50_000,
+                    exact_factor_id: 0,
+                    selector_domain_id: 0,
+                },
+            },
+            OnTheFlyTraceOperationV1::Source {
+                key: source_key,
+                row: DirectSourceRow {
+                    source_slot: 1,
+                    destination_component_base: 1,
+                    momentum_form_id: 1,
+                    source_template_or_dispatch_domain: 0,
+                    spin_state_class: 50_000,
+                    exact_factor_id: 0,
+                    selector_domain_id: 0,
+                },
+            },
+            OnTheFlyTraceOperationV1::Closure {
+                key: closure_key,
+                row: DirectClosureRow {
+                    parent0_component_base: 0,
+                    parent1_component_base_or_sentinel: 1,
+                    parent0_momentum_form_id: 0,
+                    parent1_momentum_form_id_or_sentinel: 1,
+                    amplitude_destination_id: 0,
+                    exact_factor_id: 0,
+                    component_factor_start: 1,
+                    component_count: 1,
+                    selector_domain_id: 0,
+                    flags: 0,
+                },
+            },
+        ]
+        .into_boxed_slice(),
+        momentum_forms: momentum_forms.into_boxed_slice(),
+        exact_factors: vec![
+            ExactComplexRational::ONE,
+            ExactComplexRational::ONE,
+            ExactComplexRational::new(
+                crate::recurrence::ExactRational::new(2, 1)?,
+                crate::recurrence::ExactRational::ZERO,
+            ),
+        ]
+        .into_boxed_slice(),
+        pairing_owner: ResolvedPairingOwnerV1 {
+            endpoint_pairs: Vec::new(),
+            proof_digest: None,
+            source_slot_permutation: vec![0, 1],
+            source_lineage: vec![0, 1],
+            fermion_parity: 1,
+        },
+        layout: OnTheFlyWorkspaceLayoutV1 {
+            source_count: 2,
+            lorentz_component_count: 4,
+            parameter_count: 0,
+            current_component_count: 2,
+            amplitude_component_count: 1,
+            momentum_form_count: 2,
+            exact_factor_count: 3,
+        },
+        proof: OnTheFlyStructuralProofV1 {
+            current_count: 2,
+            contribution_count: 0,
+            closure_count: 1,
+            constructed_current_count: 2,
+            constructed_contribution_count: 0,
+            current_multiset_digest: test_digest,
+            contribution_multiset_digest: test_digest,
+            closure_multiset_digest: test_digest,
+            owner_digest: test_digest,
+            semantic_digest: test_digest,
+        },
+        semantic_digest: test_digest,
+        current_component_ranges: vec![[0, 1], [1, 1]].into_boxed_slice(),
+        current_semantic_digests: vec![test_digest; 2].into_boxed_slice(),
+    })
+}
+
+#[cfg(test)]
+impl OnTheFlyStructuralTraceV1 {
+    pub(crate) fn test_insert_identity_finalizer(&mut self, direct_catalog_digest: SemanticDigest) {
+        let operation = OnTheFlyTraceOperationV1::Finalization {
+            key: OnTheFlyExecutorKeyV1::identity_finalizer(direct_catalog_digest),
+            row: DirectFinalizationRow {
+                component_base: 0,
+                component_count: 1,
+                momentum_form_id: 0,
+                exact_factor_id: 2,
+                selector_domain_id: 0,
+                flags: 0,
+            },
+        };
+        let mut operations = std::mem::take(&mut self.operations).into_vec();
+        operations.insert(2, operation);
+        self.operations = operations.into_boxed_slice();
+    }
+
+    pub(crate) fn test_tamper_first_operation_semantic_digest(&mut self, digest: SemanticDigest) {
+        if let Some(OnTheFlyTraceOperationV1::Source {
+            key:
+                OnTheFlyExecutorKeyV1::PreparedOperation {
+                    operation_semantic_digest,
+                    ..
+                },
+            ..
+        }) = self.operations.first_mut()
+        {
+            *operation_semantic_digest = digest;
+        }
     }
 }
 
@@ -480,9 +876,9 @@ fn operation_key(
         seed.direct_catalog_digest,
         role,
         kind,
-        Some(operation_id),
+        operation_id,
         operation_semantic_digest,
-        Some(evaluator_binding_id),
+        evaluator_binding_id,
         evaluator_binding_semantic_digest,
     )
 }

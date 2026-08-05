@@ -3130,3 +3130,5 @@ fn u32_len(label: &str, value: usize) -> RusticolResult<u32> {
 #[cfg(test)]
 #[path = "direct_lowering_tests.rs"]
 mod tests;
+#[cfg(test)]
+pub(crate) use tests::validated_template as validated_template_fixture;
