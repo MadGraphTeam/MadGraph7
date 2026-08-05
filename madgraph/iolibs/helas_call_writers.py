@@ -1130,22 +1130,18 @@ class FortranUFOHelasCallWriter(UFOHelasCallWriter):
         """Sum the quartic current into the cubic one carrying the same colour
         factor, so that the amplitude reading the sum gets both at once.
 
-        The two share their momentum, so only the wavefunction itself is
-        added; everything else is taken over from the cubic current."""
+        Written as a call rather than as two assignments so that everything
+        reading these files -- the helicity recycling in particular, which
+        rebuilds the DAG from the calls alone -- sees an ordinary internal
+        wavefunction taking two mothers. sumw_1 and subw_1 live in
+        aloha_functions.f; the coefficient is always +-1, see
+        HelasMatrixElement.compute_quartic_current_sums."""
 
-        out = self.format_helas_object('W(', '%d') % number
-        from_cubic = self.format_helas_object('W(', '%d') % cubic.get('me_id')
-        from_quartic = self.format_helas_object('W(', '%d') % \
-            quartic.get('me_id')
-
-        if coeff == 1:
-            added = '%s%%W(:)' % from_quartic
-        elif coeff == -1:
-            added = '-%s%%W(:)' % from_quartic
-        else:
-            added = '(%.15e)*%s%%W(:)' % (float(coeff), from_quartic)
-        return ['%s = %s' % (out, from_cubic),
-                '%s%%W(:) = %s%%W(:) + %s' % (out, from_cubic, added)]
+        return ['CALL %s(%s,%s,%s)' % (
+            'SUMW_1' if coeff == 1 else 'SUBW_1',
+            self.format_helas_object('W(', '%d') % cubic.get('me_id'),
+            self.format_helas_object('W(', '%d') % quartic.get('me_id'),
+            self.format_helas_object('W(', '%d') % number)]
 
     def __init__(self, argument={}, hel_sum = False, options={}):
         """Allow generating a HelasCallWriter from a Model.The hel_sum argument

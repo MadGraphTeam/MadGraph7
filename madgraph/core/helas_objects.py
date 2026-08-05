@@ -6267,6 +6267,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                                                unrollable, cubic_ids)
             if not pairs:
                 continue
+            # the sum is written with sumw_1 / subw_1, which carry no weight
+            if abs(coeff) != 1:
+                continue
             # the quartic current has to be there when the target is written
             if any(quartic.get('number') not in available[target]
                    for cubic, quartic in pairs):
