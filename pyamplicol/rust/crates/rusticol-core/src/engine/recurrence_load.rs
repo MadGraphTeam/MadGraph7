@@ -2124,11 +2124,7 @@ fn build_on_the_fly_source_domains_from_specs(
             chirality: compact.chirality,
             mass_parameter_index: compact.prepared_mass_parameter_slot,
         };
-        if compact != authoritative {
-            return Err(RusticolError::integrity(
-                "on-the-fly source semantics disagree with crossed SourceIR metadata",
-            ));
-        }
+        let authoritative = bind_on_the_fly_source_spec(compact, authoritative)?;
         insert_source_domain_variant(
             &mut variants,
             source.source_template_id,
@@ -2137,6 +2133,45 @@ fn build_on_the_fly_source_domains_from_specs(
         )?;
     }
     finish_direct_source_domains(variants)
+}
+
+fn bind_on_the_fly_source_spec(
+    compact: DirectSourceTemplateSpec,
+    authoritative: DirectSourceTemplateSpec,
+) -> RusticolResult<DirectSourceTemplateSpec> {
+    if compact.spin_state_class != authoritative.spin_state_class {
+        return Err(RusticolError::integrity(
+            "on-the-fly source spin class disagrees with crossed SourceIR metadata",
+        ));
+    }
+    if compact.family != authoritative.family {
+        return Err(RusticolError::integrity(
+            "on-the-fly source family disagrees with crossed SourceIR metadata",
+        ));
+    }
+    if compact.orientation != authoritative.orientation {
+        return Err(RusticolError::integrity(
+            "on-the-fly source orientation disagrees with crossed SourceIR metadata",
+        ));
+    }
+    if compact.helicity != authoritative.helicity {
+        return Err(RusticolError::integrity(
+            "on-the-fly source helicity disagrees with crossed SourceIR metadata",
+        ));
+    }
+    if compact.chirality != authoritative.chirality {
+        return Err(RusticolError::integrity(
+            "on-the-fly source chirality disagrees with crossed SourceIR metadata",
+        ));
+    }
+    if compact.mass_parameter_index.is_some()
+        && compact.mass_parameter_index != authoritative.mass_parameter_index
+    {
+        return Err(RusticolError::integrity(
+            "on-the-fly source prepared mass parameter slot disagrees with SourceIR metadata",
+        ));
+    }
+    Ok(authoritative)
 }
 
 const fn direct_on_the_fly_source_family(
@@ -2682,6 +2717,66 @@ mod binding_decode_tests {
             domains[2].variants[0].template.family,
             DirectSourceWavefunctionFamily::Scalar
         );
+    }
+
+    #[test]
+    fn compact_source_without_prebound_mass_uses_authoritative_source_ir_slot() {
+        let metadata = source_domain_metadata();
+        let slots = BTreeMap::from([(
+            "MF".into(),
+            RuntimeParameterSlots {
+                real: 0,
+                imaginary: None,
+            },
+        )]);
+        let mut fermion = crossed_fermion(0, 1, -1);
+        fermion.prepared_mass_parameter_slot = None;
+
+        let domains =
+            build_on_the_fly_source_domains_from_specs([fermion], 4, 4, &metadata, &slots).unwrap();
+
+        assert_eq!(
+            domains[0].variants[0].template.mass_parameter_index,
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn compact_source_rejects_conflicting_prebound_mass_slot() {
+        let metadata = source_domain_metadata();
+        let slots = BTreeMap::from([(
+            "MF".into(),
+            RuntimeParameterSlots {
+                real: 0,
+                imaginary: None,
+            },
+        )]);
+        let mut fermion = crossed_fermion(0, 1, -1);
+        fermion.prepared_mass_parameter_slot = Some(2);
+
+        let error = build_on_the_fly_source_domains_from_specs([fermion], 4, 4, &metadata, &slots)
+            .expect_err("an explicit compact mass slot must match SourceIR");
+
+        assert!(error.to_string().contains("prepared mass parameter slot"));
+    }
+
+    #[test]
+    fn compact_source_still_rejects_non_mass_semantic_mismatch() {
+        let metadata = source_domain_metadata();
+        let slots = BTreeMap::from([(
+            "MF".into(),
+            RuntimeParameterSlots {
+                real: 0,
+                imaginary: None,
+            },
+        )]);
+        let mut fermion = crossed_fermion(0, 1, -1);
+        fermion.helicity = -1;
+
+        let error = build_on_the_fly_source_domains_from_specs([fermion], 4, 4, &metadata, &slots)
+            .expect_err("compact helicity must remain exact");
+
+        assert!(error.to_string().contains("source helicity"));
     }
 
     #[test]
