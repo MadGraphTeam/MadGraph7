@@ -22,7 +22,7 @@ pub use crate::direct_arena::{
 };
 use crate::{RusticolError, RusticolResult};
 use std::cell::RefCell;
-#[cfg(test)]
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{c_int, c_void};
 use std::time::{Duration, Instant};
@@ -33,13 +33,13 @@ pub const DIRECT_STATUS_OK: c_int = 0;
 
 thread_local! {
     static DIRECT_EXECUTOR_ERROR_DETAIL: RefCell<Option<RusticolError>> = const { RefCell::new(None) };
-    #[cfg(test)]
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     static DIRECT_CURRENT_OBSERVATION: RefCell<Option<DirectCurrentObservation>> = const { RefCell::new(None) };
 }
 
 /// One test-only semantic-current observation from the authenticated direct
 /// runtime.  This is deliberately absent from release builds and public ABIs.
-#[cfg(test)]
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct DirectObservedCurrentValue {
     pub descriptor: super::direct_plan::DirectCurrentDescriptor,
@@ -50,7 +50,7 @@ pub(super) struct DirectObservedCurrentValue {
 /// Test-only capture of the current values produced for one exact direct-plan
 /// execution.  The two plan digests and selected sector bind the values to the
 /// authenticated schedule and query which produced them.
-#[cfg(test)]
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct DirectCurrentObservation {
     pub plan_semantic_digest: SemanticDigest,
@@ -60,7 +60,7 @@ pub(super) struct DirectCurrentObservation {
     pub currents: BTreeMap<u32, DirectObservedCurrentValue>,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
 pub(super) fn begin_direct_current_observation(
     plan: &DirectRecurrencePlan,
     selected_sector_id: Option<u32>,
@@ -89,7 +89,7 @@ pub(super) fn begin_direct_current_observation(
     })
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
 pub(super) fn take_direct_current_observation() -> RusticolResult<DirectCurrentObservation> {
     DIRECT_CURRENT_OBSERVATION.with(|slot| {
         slot.borrow_mut().take().ok_or_else(|| {
@@ -802,7 +802,7 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
             }
         }
         check_status(descriptor.role, descriptor.direct_executor_id, status)?;
-        #[cfg(test)]
+        #[cfg(any(test, feature = "on-the-fly-test-support"))]
         observe_direct_current_rows(
             plan,
             descriptor,
@@ -816,7 +816,7 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
 #[allow(clippy::too_many_arguments)]
 fn observe_direct_current_rows(
     plan: &DirectRecurrencePlan,
