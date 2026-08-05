@@ -453,6 +453,106 @@ impl PreparedContactOrbitTransition {
     }
 }
 
+#[cfg(test)]
+pub(super) fn prepared_contact_orbit_transition_for_test(
+    step: ContactOrbitStepProof,
+    transition_semantic_digest: SemanticDigest,
+    application: ContactOrbitApplicationWitness,
+) -> PreparedContactOrbitTransition {
+    PreparedContactOrbitTransition {
+        step,
+        transition_semantic_digest,
+        applications: vec![application],
+    }
+}
+
+#[cfg(test)]
+fn contact_orbit_test_digest(byte: u8) -> SemanticDigest {
+    SemanticDigest::new([byte; 32]).expect("test digest must be nonzero")
+}
+
+#[cfg(test)]
+pub(super) fn contact_orbit_application_for_test() -> ContactOrbitApplicationWitness {
+    ContactOrbitApplicationWitness {
+        transition_equivalence_class: "constant-scalar-contact".into(),
+        quantum_semantic_digest: contact_orbit_test_digest(2),
+        color_contraction_semantic_digest: contact_orbit_test_digest(3),
+        color_witness_term_id: LCColorWitnessTermId::new(4, 0),
+        color_witness_proof_digest: contact_orbit_test_digest(5),
+        coupling_orders: vec![1],
+        coupling_parameter_ids: vec![2],
+        momentum_convention: vec![0, 1],
+        binding_coupling: ExactComplexRational::ONE,
+        transition_exact_factor: ExactComplexRational::ONE,
+        color_exact_factor: ExactComplexRational::ONE,
+        witness_exact_factor: ExactComplexRational::ONE,
+        input_exchange_factor: None,
+        output_factor_source: 0,
+        evaluator_contract_kind: EvaluatorContractKind::Vertex as u8,
+        evaluator_callable_kind: EvaluatorCallableKind::PreparedKernel as u8,
+        evaluator_callable_signature: contact_orbit_test_digest(6),
+        evaluator_input_layout: vec![10, 11],
+        evaluator_output_layout: vec![12],
+        evaluator_exact_expression_digests: vec![contact_orbit_test_digest(7)],
+        evaluator_runtime_template: None,
+        output_projection_id: 8,
+    }
+}
+
+#[cfg(test)]
+pub(super) fn partial_contact_orbit_step_for_test(
+    left: u32,
+    right: u32,
+    result: u32,
+    digest_byte: u8,
+    equivalence_classes: [u32; 4],
+) -> ContactOrbitStepProof {
+    ContactOrbitStepProof {
+        certificate_semantic_digest: contact_orbit_test_digest(9),
+        step_semantic_digest: contact_orbit_test_digest(digest_byte),
+        stage: ContactOrbitStage::Partial,
+        result_leg: result,
+        physical_leg_equivalence_classes: equivalence_classes,
+        left_covered_legs: ContactOrbitCoveredLegs::new(&[left]).unwrap(),
+        right_covered_legs: ContactOrbitCoveredLegs::new(&[right]).unwrap(),
+        source_particle_legs: [left as i32, right as i32, -1],
+        certificate_reconstruction_factor: ExactComplexRational::ONE,
+        step_reconstruction_factor: ExactComplexRational::ONE,
+        evaluator_class: "constant-scalar-contact-v1".into(),
+    }
+}
+
+#[cfg(test)]
+pub(super) fn final_contact_orbit_step_for_test(
+    left: &[u32],
+    right: &[u32],
+    result: u32,
+    digest_byte: u8,
+    equivalence_classes: [u32; 4],
+) -> ContactOrbitStepProof {
+    ContactOrbitStepProof {
+        certificate_semantic_digest: contact_orbit_test_digest(9),
+        step_semantic_digest: contact_orbit_test_digest(digest_byte),
+        stage: ContactOrbitStage::Final,
+        result_leg: result,
+        physical_leg_equivalence_classes: equivalence_classes,
+        left_covered_legs: ContactOrbitCoveredLegs::new(left).unwrap(),
+        right_covered_legs: ContactOrbitCoveredLegs::new(right).unwrap(),
+        source_particle_legs: [
+            if left.len() == 2 { -1 } else { left[0] as i32 },
+            if right.len() == 2 {
+                -1
+            } else {
+                right[0] as i32
+            },
+            result as i32,
+        ],
+        certificate_reconstruction_factor: ExactComplexRational::ONE,
+        step_reconstruction_factor: ExactComplexRational::ONE,
+        evaluator_class: "constant-scalar-contact-v1".into(),
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct PhysicalLegAssignments {
     len: u8,
