@@ -22,11 +22,7 @@
 #include <iostream>
 
 // Simplified rambo version for 2 to N (with N>=2) processes with massless particles
-#ifdef MGONGPUCPP_GPUIMPL
 namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
 {
 namespace massless_rambo {
 
@@ -89,7 +85,6 @@ namespace massless_rambo {
       static bool first = true;
       if( first )
       {
-#ifdef MGONGPUCPP_GPUIMPL
         if constexpr( M_ACCESS::isOnDevice() ) // avoid
         {
           const int ievt0 = 0;
@@ -98,7 +93,6 @@ namespace massless_rambo {
             printf( "WARNING! Rambo called with 1 final particle: random numbers will be ignored\n" );
         }
         else
-#endif
         {
           printf( "WARNING! Rambo called with 1 final particle: random numbers will be ignored\n" );
         }
@@ -172,20 +166,6 @@ namespace massless_rambo {
     wt = po2log;
     if( nparf != 2 ) wt = ( 2. * nparf - 4. ) * log( energy ) + z[nparf - 1];
 
-#ifndef MGONGPUCPP_GPUIMPL
-    // issue warnings if weight is too small or too large
-    static int iwarn[5] = { 0, 0, 0, 0, 0 };
-    if( wt < -180. )
-    {
-      if( iwarn[0] <= 5 ) std::cout << "Too small wt, risk for underflow: " << wt << std::endl;
-      iwarn[0] = iwarn[0] + 1;
-    }
-    if( wt > 174. )
-    {
-      if( iwarn[1] <= 5 ) std::cout << "Too large wt, risk for overflow: " << wt << std::endl;
-      iwarn[1] = iwarn[1] + 1;
-    }
-#endif
 
     // return for weighted massless momenta
     // nothing else to do in this event if all particles are massless (nm==0)

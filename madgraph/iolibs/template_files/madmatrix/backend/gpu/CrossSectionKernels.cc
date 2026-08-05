@@ -79,11 +79,7 @@ debug_me_is_abnormal( const fptype& me, size_t ievtALL )
 
 //============================================================================
 
-#ifdef MGONGPUCPP_GPUIMPL
 namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
 {
   //--------------------------------------------------------------------------
 
@@ -187,7 +183,6 @@ namespace mg5amcCpu
 
 //============================================================================
 
-#ifdef MGONGPUCPP_GPUIMPL
 namespace mg5amcGpu
 {
 
@@ -233,6 +228,5 @@ namespace mg5amcGpu
   */
 
 }
-#endif
 
 //============================================================================

@@ -163,11 +163,7 @@ namespace mgOnGpu /* clang-format off */
 using mgOnGpu::cxsmpl;
 
 // Printout to stream for user defined types
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
 namespace mg5amcCpu
-#endif
 {
   template<typename FP>
   inline __host__ std::ostream&
@@ -297,11 +293,7 @@ namespace mg5amcCpu
 //==========================================================================
 
 // NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
 namespace mg5amcCpu
-#endif
 {
   // --- Type definitions (complex type: cxtype)
 #ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
@@ -333,11 +325,7 @@ namespace mg5amcCpu
 //==========================================================================
 
 // NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
 namespace mg5amcCpu
-#endif
 {
 #if defined MGONGPU_CUCXTYPE_CXSMPL or defined MGONGPU_HIPCXTYPE_CXSMPL or defined MGONGPU_CPPCXTYPE_CXSMPL
 
@@ -699,11 +687,7 @@ namespace mg5amcCpu
 //==========================================================================
 
 // NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
 namespace mg5amcCpu
-#endif
 {
   // The cxtype_ref class (a const reference to two non-const fp variables) was originally designed for cxtype_v::operator[]
   // It used to be included in the code only when MGONGPU_HAS_CPPCXTYPEV_BRK (originally MGONGPU_HAS_CPPCXTYPE_REF) is defined

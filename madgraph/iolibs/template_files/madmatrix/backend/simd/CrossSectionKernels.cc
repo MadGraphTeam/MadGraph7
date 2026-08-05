@@ -79,11 +79,7 @@ debug_me_is_abnormal( const fptype& me, size_t ievtALL )
 
 //============================================================================
 
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
 namespace mg5amcCpu
-#endif
 {
   //--------------------------------------------------------------------------
 
@@ -187,52 +183,5 @@ namespace mg5amcCpu
 
 //============================================================================
 
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-{
-
-  /*
-  //--------------------------------------------------------------------------
-
-  CrossSectionKernelDevice::CrossSectionKernelDevice( const BufferWeights& samplingWeights,       // input: sampling weights
-                                                      const BufferMatrixElements& matrixElements, // input: matrix elements
-                                                      EventStatistics& stats,                     // output: event statistics
-                                                      const size_t gpublocks,
-                                                      const size_t gputhreads )
-    : CrossSectionKernelBase( samplingWeights, matrixElements, stats )
-    , NumberOfEvents( gpublocks*gputhreads )
-    , m_gpublocks( gpublocks )
-    , m_gputhreads( gputhreads )
-  {
-    if ( ! m_samplingWeights.isOnDevice() ) throw std::runtime_error( "CrossSectionKernelDevice: samplingWeights must be a device array" );
-    if ( ! m_matrixElements.isOnDevice() ) throw std::runtime_error( "CrossSectionKernelDevice: matrixElements must be a device array" );
-    if ( m_gpublocks == 0 ) throw std::runtime_error( "CrossSectionKernelDevice: gpublocks must be > 0" );
-    if ( m_gputhreads == 0 ) throw std::runtime_error( "CrossSectionKernelDevice: gputhreads must be > 0" );
-    if ( this->nevt() != m_samplingWeights.nevt() ) throw std::runtime_error( "CrossSectionKernelDevice: nevt mismatch with samplingWeights" );
-    if ( this->nevt() != m_matrixElements.nevt() ) throw std::runtime_error( "CrossSectionKernelDevice: nevt mismatch with matrixElements" );
-  }
-
-  //--------------------------------------------------------------------------
-
-  void CrossSectionKernelDevice::setGrid( const size_t gpublocks, const size_t gputhreads )
-  {
-    if ( m_gpublocks == 0 ) throw std::runtime_error( "CrossSectionKernelDevice: gpublocks must be > 0 in setGrid" );
-    if ( m_gputhreads == 0 ) throw std::runtime_error( "CrossSectionKernelDevice: gputhreads must be > 0 in setGrid" );
-    if ( this->nevt() != m_gpublocks * m_gputhreads ) throw std::runtime_error( "CrossSectionKernelDevice: nevt mismatch in setGrid" );
-  }
-
-  //--------------------------------------------------------------------------
-
-  void CrossSectionKernelDevice::updateEventStatistics( const bool debug )
-  {
-    // Increment the iterations counter
-    m_iter++;
-  }
-
-  //--------------------------------------------------------------------------
-  */
-
-}
-#endif
 
 //============================================================================

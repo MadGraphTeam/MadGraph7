@@ -16,11 +16,7 @@
 
 #include <sstream>
 
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
 namespace mg5amcCpu
-#endif
 {
   //--------------------------------------------------------------------------
 
@@ -155,92 +151,18 @@ namespace mg5amcCpu
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
-  MasslessRamboSamplingKernelDevice::MasslessRamboSamplingKernelDevice( const fptype energy,               // input: energy
-                                                        const BufferRndNumMomenta& rndmom, // input: random numbers in [0,1]
-                                                        BufferMomenta& momenta,            // output: momenta
-                                                        BufferWeights& weights,            // output: weights
-                                                        const size_t gpublocks,
-                                                        const size_t gputhreads )
-    : SamplingKernelBase( energy, rndmom, momenta, weights )
-    , NumberOfEvents( gpublocks * gputhreads )
-    , m_gpublocks( gpublocks )
-    , m_gputhreads( gputhreads )
-  {
-    if( !m_rndmom.isOnDevice() ) throw std::runtime_error( "MasslessRamboSamplingKernelDevice: rndmom must be a device array" );
-    if( !m_momenta.isOnDevice() ) throw std::runtime_error( "MasslessRamboSamplingKernelDevice: momenta must be a device array" );
-    if( !m_weights.isOnDevice() ) throw std::runtime_error( "MasslessRamboSamplingKernelDevice: weights must be a device array" );
-    if( m_gpublocks == 0 ) throw std::runtime_error( "MasslessRamboSamplingKernelDevice: gpublocks must be > 0" );
-    if( m_gputhreads == 0 ) throw std::runtime_error( "MasslessRamboSamplingKernelDevice: gputhreads must be > 0" );
-    if( this->nevt() != m_rndmom.nevt() ) throw std::runtime_error( "MasslessRamboSamplingKernelDevice: nevt mismatch with rndmom" );
-    if( this->nevt() != m_momenta.nevt() ) throw std::runtime_error( "MasslessRamboSamplingKernelDevice: nevt mismatch with momenta" );
-    if( this->nevt() != m_weights.nevt() ) throw std::runtime_error( "MasslessRamboSamplingKernelDevice: nevt mismatch with weights" );
-    // Sanity checks for memory access (momenta buffer)
-    constexpr int neppM = MemoryAccessMomenta::neppM; // AOSOA layout
-    static_assert( ispoweroftwo( neppM ), "neppM is not a power of 2" );
-    if( m_gputhreads % neppM != 0 )
-    {
-      std::ostringstream sstr;
-      sstr << "MasslessRamboSamplingKernelHost: gputhreads should be a multiple of neppM=" << neppM;
-      throw std::runtime_error( sstr.str() );
-    }
-    // Sanity checks for memory access (random number buffer)
-    constexpr int neppR = MemoryAccessRandomNumbers::neppR; // AOSOA layout
-    static_assert( ispoweroftwo( neppR ), "neppR is not a power of 2" );
-    if( m_gputhreads % neppR != 0 )
-    {
-      std::ostringstream sstr;
-      sstr << "MasslessRamboSamplingKernelDevice: gputhreads should be a multiple of neppR=" << neppR;
-      throw std::runtime_error( sstr.str() );
-    }
-  }
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
-  __global__ void
-  getMomentaInitialDevice( const fptype energy,
-                           fptype* momenta )
-  {
-    constexpr auto getMomentaInitial = massless_rambo::ramboGetMomentaInitial<DeviceAccessMomenta>;
-    return getMomentaInitial( energy, momenta );
-  }
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
-  void
-  MasslessRamboSamplingKernelDevice::getMomentaInitial()
-  {
-    gpuLaunchKernel( getMomentaInitialDevice, m_gpublocks, m_gputhreads, m_energy, m_momenta.data() );
-  }
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
-  __global__ void
-  getMomentaFinalDevice( const fptype energy,
-                         const fptype* rndmom,
-                         fptype* momenta,
-                         fptype* wgts )
-  {
-    constexpr auto getMomentaFinal = massless_rambo::ramboGetMomentaFinal<DeviceAccessRandomNumbers, DeviceAccessMomenta, DeviceAccessWeights>;
-    return getMomentaFinal( energy, rndmom, momenta, wgts );
-  }
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
-  void
-  MasslessRamboSamplingKernelDevice::getMomentaFinal()
-  {
-    gpuLaunchKernel( getMomentaFinalDevice, m_gpublocks, m_gputhreads, m_energy, m_rndmom.data(), m_momenta.data(), m_weights.data() );
-  }
-#endif
 
   //--------------------------------------------------------------------------
 }

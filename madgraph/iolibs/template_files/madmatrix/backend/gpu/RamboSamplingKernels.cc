@@ -16,11 +16,7 @@
 
 #include <sstream>
 
-#ifdef MGONGPUCPP_GPUIMPL
 namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
 {
   //--------------------------------------------------------------------------
 
@@ -155,7 +151,6 @@ namespace mg5amcCpu
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
   MasslessRamboSamplingKernelDevice::MasslessRamboSamplingKernelDevice( const fptype energy,               // input: energy
                                                         const BufferRndNumMomenta& rndmom, // input: random numbers in [0,1]
                                                         BufferMomenta& momenta,            // output: momenta
@@ -194,11 +189,9 @@ namespace mg5amcCpu
       throw std::runtime_error( sstr.str() );
     }
   }
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
   __global__ void
   getMomentaInitialDevice( const fptype energy,
                            fptype* momenta )
@@ -206,21 +199,17 @@ namespace mg5amcCpu
     constexpr auto getMomentaInitial = massless_rambo::ramboGetMomentaInitial<DeviceAccessMomenta>;
     return getMomentaInitial( energy, momenta );
   }
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
   void
   MasslessRamboSamplingKernelDevice::getMomentaInitial()
   {
     gpuLaunchKernel( getMomentaInitialDevice, m_gpublocks, m_gputhreads, m_energy, m_momenta.data() );
   }
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
   __global__ void
   getMomentaFinalDevice( const fptype energy,
                          const fptype* rndmom,
@@ -230,17 +219,14 @@ namespace mg5amcCpu
     constexpr auto getMomentaFinal = massless_rambo::ramboGetMomentaFinal<DeviceAccessRandomNumbers, DeviceAccessMomenta, DeviceAccessWeights>;
     return getMomentaFinal( energy, rndmom, momenta, wgts );
   }
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
   void
   MasslessRamboSamplingKernelDevice::getMomentaFinal()
   {
     gpuLaunchKernel( getMomentaFinalDevice, m_gpublocks, m_gputhreads, m_energy, m_rndmom.data(), m_momenta.data(), m_weights.data() );
   }
-#endif
 
   //--------------------------------------------------------------------------
 }

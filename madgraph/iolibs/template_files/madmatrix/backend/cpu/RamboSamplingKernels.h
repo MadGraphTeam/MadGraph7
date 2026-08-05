@@ -13,11 +13,7 @@
 
 #include <vector>
 
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
 namespace mg5amcCpu
-#endif
 {
   //--------------------------------------------------------------------------
 
@@ -132,41 +128,6 @@ namespace mg5amcCpu
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
-  // A class encapsulating RAMBO phase space sampling on a GPU device
-  class MasslessRamboSamplingKernelDevice final : public SamplingKernelBase, public NumberOfEvents
-  {
-  public:
-
-    // Constructor from existing input and output buffers
-    MasslessRamboSamplingKernelDevice( const fptype energy,               // input: energy
-                               const BufferRndNumMomenta& rndmom, // input: random numbers in [0,1]
-                               BufferMomenta& momenta,            // output: momenta
-                               BufferWeights& weights,            // output: weights
-                               const size_t gpublocks,
-                               const size_t gputhreads );
-
-    // Destructor
-    virtual ~MasslessRamboSamplingKernelDevice() {}
-
-    // Get momenta of initial state particles
-    void getMomentaInitial() override final;
-
-    // Get momenta of final state particles and weights
-    void getMomentaFinal() override final;
-
-    // Is this a host or device kernel?
-    bool isOnDevice() const override final { return true; }
-
-  private:
-
-    // The number of blocks in the GPU grid
-    size_t m_gpublocks;
-
-    // The number of threads in the GPU grid
-    size_t m_gputhreads;
-  };
-#endif
 
   //--------------------------------------------------------------------------
 }

@@ -152,10 +152,8 @@
 #endif
 
 // SANITY CHECKS (C++ complex number implementation)
-#ifndef MGONGPUCPP_GPUIMPL
 #if defined MGONGPU_CPPCXTYPE_STDCOMPLEX and defined MGONGPU_CPPCXTYPE_CXSMPL
 #error You must CHOOSE (ONE AND) ONLY ONE of MGONGPU_CPPCXTYPE_STDCOMPLEX or MGONGPU_CPPCXTYPE_CXSMPL for C++
-#endif
 #endif
 
 // NB: namespace mgOnGpu includes types which are defined in exactly the same way for CPU and GPU builds (see #318 and #725)
@@ -192,9 +190,7 @@ namespace mgOnGpu
   // Alignment requirement for using reinterpret_cast with SIMD vectorized code
   // (using reinterpret_cast with non aligned memory may lead to segmentation faults!)
   // Only needed for C++ code but can be enforced also in NVCC builds of C++ code using CUDA>=11.2 and C++17 (#318, #319, #333)
-#ifndef MGONGPUCPP_GPUIMPL
   constexpr int cppAlign = 64; // alignment requirement for SIMD vectorization (64-byte i.e. 512-bit)
-#endif
 
 }
 
@@ -208,9 +204,7 @@ using mgOnGpu::fptype2;
 #endif
 
 // C++ SIMD vectorization width (this will be used to set neppV)
-#ifdef MGONGPUCPP_GPUIMPL // CUDA and HIP implementations have no SIMD
-#undef MGONGPU_CPPSIMD
-#elif defined __AVX512VL__ && defined MGONGPU_PVW512 // C++ "512z" AVX512 with 512 width (512-bit ie 64-byte): 8 (DOUBLE) or 16 (FLOAT)
+#if defined __AVX512VL__ && defined MGONGPU_PVW512 // C++ "512z" AVX512 with 512 width (512-bit ie 64-byte): 8 (DOUBLE) or 16 (FLOAT)
 #ifdef MGONGPU_FPTYPE_DOUBLE
 #define MGONGPU_CPPSIMD 8
 #else
@@ -260,11 +254,9 @@ using mgOnGpu::fptype2;
 //#endif /* clang-format on */
 
 // Define empty CUDA/HIP declaration specifiers for C++
-#ifndef MGONGPUCPP_GPUIMPL
 #define __global__
 #define __host__
 #define __device__
-#endif
 
 // For SANITY CHECKS: check that neppR, neppM, neppV... are powers of two (https://stackoverflow.com/a/108360)
 inline constexpr bool

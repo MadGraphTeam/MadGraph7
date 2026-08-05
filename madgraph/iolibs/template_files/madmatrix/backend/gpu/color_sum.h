@@ -14,15 +14,10 @@
 #include "CPPProcess.h"
 #include "GpuAbstraction.h"
 
-#ifdef MGONGPUCPP_GPUIMPL
 namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
 {
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
   class DeviceAccessJamp
   {
   public:
@@ -57,26 +52,16 @@ namespace mg5amcCpu
                      buffer[1 * ncolor * nhel * nevt + icol * nhel * nevt + ihel * nevt + ievt] );
     }
   };
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
   void createNormalizedColorMatrix();
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifndef MGONGPUCPP_GPUIMPL
-  void
-  color_sum_cpu( fptype* allMEs,              // output: allMEs[nevt], add |M|^2 for one specific helicity
-                 const cxtype_sv* allJamp_sv, // input: jamp_sv[ncolor] (float/double) or jamp_sv[2*ncolor] (mixed) for one specific helicity
-                 const int ievt0 );           // input: first event number in current C++ event page (for CUDA, ievt depends on threadid)
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
   void
   color_sum_gpu( fptype* ghelAllMEs,               // output: allMEs super-buffer for nGoodHel <= ncomb individual helicities (index is ighel)
                  const fptype* ghelAllJamps,       // input: allJamps super-buffer[2][ncol][nGoodHel][nevt] for nGoodHel <= ncomb individual helicities
@@ -87,17 +72,14 @@ namespace mg5amcCpu
                  const int gpublocks,              // input: cuda gpublocks
                  const int gputhreads,             // input: cuda gputhreads
                  const bool processAllHelicities); // input: if true, use blockIdx.y to index helicities
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
   __global__ void
   color_sum_kernel( fptype* allMEs,                 // output: allMEs[nevt], add |M|^2 for one specific helicity
                     const fptype* allJamps,         // input: jamp[ncolor*2*nevt] for one specific helicity
                     const int nGoodHel,             // input: number of good helicities
                     const int nevtIfAllHelicities); // input: zero in single-helicity mode, number of events in multi-helicity mode
-#endif
 
   //--------------------------------------------------------------------------
 }

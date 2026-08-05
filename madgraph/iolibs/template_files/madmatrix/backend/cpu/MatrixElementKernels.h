@@ -16,11 +16,7 @@
 #include <map>
 #include <memory>
 
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
 namespace mg5amcCpu
-#endif
 {
   //--------------------------------------------------------------------------
 
@@ -109,7 +105,6 @@ namespace mg5amcCpu
 
   //--------------------------------------------------------------------------
 
-#ifndef MGONGPUCPP_GPUIMPL
   // A class encapsulating matrix element calculations on a CPU host
   class MatrixElementKernelHost final : public MatrixElementKernelBase, public NumberOfEvents
   {
@@ -156,94 +151,9 @@ namespace mg5amcCpu
     // The buffer for the event-by-event denominators of multichannel factors
     HostBufferDenominators m_denominators;
   };
-#endif
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
-  // A class encapsulating matrix element calculations on a GPU device
-  class MatrixElementKernelDevice : public MatrixElementKernelBase, public NumberOfEvents
-  {
-  public:
-
-    // Constructor from existing input and output buffers
-    MatrixElementKernelDevice( const BufferMomenta& momenta,         // input: momenta
-                               const BufferGs& gs,                   // input: gs for alphaS
-                               const BufferIflavorVec& iflavorVec,   // input: flavor indices for the flavor combination
-                               const BufferRndNumHelicity& rndhel,   // input: random numbers for helicity selection
-                               const BufferRndNumColor& rndcol,      // input: random numbers for color selection
-                               const BufferChannelIds& channelIds,   // input: channel ids for single-diagram enhancement
-                               BufferMatrixElements& matrixElements, // output: matrix elements
-                               BufferSelectedHelicity& selhel,       // output: helicity selection
-                               BufferSelectedColor& selcol,          // output: color selection
-                               const size_t gpublocks,
-                               const size_t gputhreads );
-
-    // Destructor
-    virtual ~MatrixElementKernelDevice();
-
-    // Reset gpublocks and gputhreads
-    void setGrid( const int gpublocks, const int gputhreads );
-
-    // Compute good helicities (returns nGoodHel, the number of good helicity combinations out of ncomb)
-    int computeGoodHelicities() override final;
-
-    // Compute matrix elements
-    void computeMatrixElements( const bool useChannelIds ) override final;
-
-    // Is this a host or device kernel?
-    bool isOnDevice() const override final { return true; }
-
-  private:
-
-    // The buffer for the event-by-event couplings that depends on alphas QCD
-    DeviceBufferCouplings m_couplings;
-
-    // The super-buffer of nGoodHel ME buffers (dynamically allocated because nGoodHel is determined at runtime)
-    std::unique_ptr<DeviceBufferSimple> m_pHelMEs;
-
-    // The super-buffer of nGoodHel jamp buffers (dynamically allocated because nGoodHel is determined at runtime)
-    std::unique_ptr<DeviceBufferSimple> m_pHelJamps;
-
-    // The super-buffer of nGoodHel numerator buffers (dynamically allocated because nGoodHel is determined at runtime)
-    std::unique_ptr<DeviceBufferSimple> m_pHelNumerators;
-
-    // The super-buffer of nGoodHel denominator buffers (dynamically allocated because nGoodHel is determined at runtime)
-    std::unique_ptr<DeviceBufferSimple> m_pHelDenominators;
-
-    // The super-buffer of ncolor jamp2 buffers
-    DeviceBufferSimple m_colJamp2s;
-
-#ifdef MGONGPU_CHANNELID_DEBUG
-    // The **host** buffer for the channelId array
-    // FIXME? MEKD should accept a host buffer as an argument instead of a device buffer, so that a second copy can be avoided?
-    PinnedHostBufferChannelIds m_hstChannelIds;
-#endif
-
-#ifndef MGONGPU_HAS_NO_BLAS
-    // Decide at runtime whether to use BLAS for color sums
-    bool m_blasColorSum;
-
-    // Decide at runtime whether TF32TENSOR math should be used in cuBLAS
-    bool m_blasTf32Tensor;
-
-    // The super-buffer of nGoodHel cuBLAS/hipBLAS temporary buffers
-    std::unique_ptr<DeviceBufferSimple2> m_pHelBlasTmp;
-
-    // The cuBLAS/hipBLAS handle (a single one for all good helicities)
-    gpuBlasHandle_t m_blasHandle;
-#endif
-
-    // The array of GPU streams (one for each good helicity)
-    gpuStream_t m_helStreams[CPPProcess::ncomb]; // reserve ncomb streams (but only nGoodHel <= ncomb will be used)
-
-    // The number of blocks in the GPU grid
-    size_t m_gpublocks;
-
-    // The number of threads in the GPU grid
-    size_t m_gputhreads;
-  };
-#endif
 
   //--------------------------------------------------------------------------
 }

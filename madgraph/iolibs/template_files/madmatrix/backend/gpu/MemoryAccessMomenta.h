@@ -14,11 +14,7 @@
 #include "MemoryAccessVectors.h"
 
 // NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
 namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
 {
   //----------------------------------------------------------------------------
 
@@ -31,7 +27,6 @@ namespace mg5amcCpu
 
     // Number of Events Per Page in the momenta AOSOA memory buffer layout
     // (these are all best kept as a compile-time constants: see issue #23)
-#ifdef MGONGPUCPP_GPUIMPL /* clang-format off */
     // -----------------------------------------------------------------------------------------------
     // --- GPUs: neppM is best set to a power of 2 times the number of fptype's in a 32-byte cacheline
     // --- This is relevant to ensure coalesced access to momenta in global memory
@@ -40,23 +35,6 @@ namespace mg5amcCpu
     //static constexpr int neppM = 64/sizeof(fptype); // 2x 32-byte GPU cache lines (512 bits): 8 (DOUBLE) or 16 (FLOAT)
     static constexpr int neppM = 32/sizeof(fptype); // (DEFAULT) 32-byte GPU cache line (256 bits): 4 (DOUBLE) or 8 (FLOAT)
     //static constexpr int neppM = 1; // *** NB: this is equivalent to AOS *** (slower: 1.03E9 instead of 1.11E9 in eemumu)
-#else
-    // -----------------------------------------------------------------------------------------------
-    // --- CPUs: neppM is best set equal to the number of fptype's (neppV) in a vector register
-    // --- This is relevant to ensure faster access to momenta from C++ memory cache lines
-    // --- However, neppM is now decoupled from neppV (issue #176) and can be separately hardcoded
-    // --- In practice, neppR, neppM and neppV could now (in principle) all be different
-    // -----------------------------------------------------------------------------------------------
-#ifdef MGONGPU_CPPSIMD
-    static constexpr int neppM = MGONGPU_CPPSIMD; // (DEFAULT) neppM=neppV for optimal performance
-    //static constexpr int neppM = 64/sizeof(fptype); // maximum CPU vector width (512 bits): 8 (DOUBLE) or 16 (FLOAT)
-    //static constexpr int neppM = 32/sizeof(fptype); // lower CPU vector width (256 bits): 4 (DOUBLE) or 8 (FLOAT)
-    //static constexpr int neppM = 1; // *** NB: this is equivalent to AOS *** (slower: 4.66E6 instead of 5.09E9 in eemumu)
-    //static constexpr int neppM = MGONGPU_CPPSIMD*2; // FOR TESTS
-#else
-    static constexpr int neppM = 1; // (DEFAULT) neppM=neppV for optimal performance (NB: this is equivalent to AOS)
-#endif
-#endif /* clang-format on */
 
     // SANITY CHECK: check that neppM is a power of two
     static_assert( ispoweroftwo( neppM ), "neppM is not a power of 2" );
@@ -208,51 +186,7 @@ namespace mg5amcCpu
                               const int ipar )
     {
       const fptype& out = kernelAccessIp4IparConst_s( buffer, ip4, ipar );
-#ifndef MGONGPU_CPPSIMD
       return out;
-#else
-      constexpr int neppM = MemoryAccessMomentaBase::neppM;
-      constexpr bool useContiguousEventsIfPossible = true; // DEFAULT
-      //constexpr bool useContiguousEventsIfPossible = false; // FOR PERFORMANCE TESTS (treat as arbitrary array even if it is an AOSOA)
-      // Use c++17 "if constexpr": compile-time branching
-      if constexpr( useContiguousEventsIfPossible && ( neppM >= neppV ) && ( neppM % neppV == 0 ) )
-      {
-        //constexpr bool skipAlignmentCheck = true; // FASTEST (SEGFAULTS IF MISALIGNED ACCESS, NEEDS A SANITY CHECK ELSEWHERE!)
-        constexpr bool skipAlignmentCheck = false; // DEFAULT: A BIT SLOWER BUT SAFER [ALLOWS MISALIGNED ACCESS]
-        if constexpr( skipAlignmentCheck )
-        {
-          //static bool first=true; if( first ){ std::cout << "WARNING! assume aligned AOSOA, skip check" << std::endl; first=false; } // SLOWER (5.06E6)
-          // FASTEST? (5.09E6 in eemumu 512y)
-          // This assumes alignment for momenta1d without checking - causes segmentation fault in reinterpret_cast if not aligned!
-          return mg5amcCpu::fptypevFromAlignedArray( out ); // use reinterpret_cast
-        }
-        else if( (size_t)( buffer ) % mgOnGpu::cppAlign == 0 )
-        {
-          //static bool first=true; if( first ){ std::cout << "WARNING! aligned AOSOA, reinterpret cast" << std::endl; first=false; } // SLOWER (5.00E6)
-          // DEFAULT! A tiny bit (<1%) slower because of the alignment check (5.07E6 in eemumu 512y)
-          // This explicitly checks buffer alignment to avoid segmentation faults in reinterpret_cast
-          return mg5amcCpu::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
-        }
-        else
-        {
-          //static bool first=true; if( first ){ std::cout << "WARNING! AOSOA but no reinterpret cast" << std::endl; first=false; } // SLOWER (4.93E6)
-          // A bit (1%) slower (5.05E6 in eemumu 512y)
-          // This does not require buffer alignment, but it requires AOSOA with neppM>=neppV and neppM%neppV==0
-          return mg5amcCpu::fptypevFromUnalignedArray( out ); // SIMD bulk load of neppV, do not use reinterpret_cast (fewer SIMD operations)
-        }
-      }
-      else
-      {
-        //static bool first=true; if( first ){ std::cout << "WARNING! arbitrary array" << std::endl; first=false; } // SLOWER (5.08E6)
-        // ?!Used to be much slower, now a tiny bit faster for AOSOA?! (5.11E6 for AOSOA, 4.64E6 for AOS in eemumu 512y)
-        // This does not even require AOSOA with neppM>=neppV and neppM%neppV==0 (e.g. can be used with AOS neppM==1)
-        constexpr int ievt0 = 0; // just make it explicit in the code that buffer refers to a given ievt0 and decoderIeppV fetches event ievt0+ieppV
-        auto decoderIeppv = [buffer, ip4, ipar]( int ieppV )
-          -> const fptype&
-        { return MemoryAccessMomenta::ieventAccessIp4IparConst( buffer, ievt0 + ieppV, ip4, ipar ); };
-        return mg5amcCpu::fptypevFromArbitraryArray( decoderIeppv ); // iterate over ieppV in neppV (no SIMD)
-      }
-#endif
     }
 
     // Is this a HostAccess or DeviceAccess class?

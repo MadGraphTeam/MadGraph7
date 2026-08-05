@@ -30,11 +30,7 @@ namespace mgOnGpu
   // The number of channels in the channel2iconfig array below
   // *** NB this is not guaranteed to be equal to ndiagrams, it can be lower as the remaining diagrams all have no associated SDE iconfig (#919) ***
   constexpr unsigned int nchannels = %(nb_diag)i;
-#ifdef MGONGPUCPP_GPUIMPL
   static_assert( nchannels <= mg5amcGpu::CPPProcess::ndiagrams, "nchannels should be <= ndiagrams" ); // sanity check #910 and #919
-#else
-  static_assert( nchannels <= mg5amcCpu::CPPProcess::ndiagrams, "nchannels should be <= ndiagrams" ); // sanity check #910 and #919
-#endif
   
   // Map channel to iconfig (e.g. "iconfig = channel2iconfig[channelId - 1]": input index uses C indexing, output index uses F indexing)
   // Note: iconfig=-1 indicates channels/diagrams with no associated iconfig for single-diagram enhancement in the MadEvent sampling algorithm (presence of 4-point interaction?)
@@ -45,13 +41,9 @@ namespace mgOnGpu
   };
 
   // Host copy of the channel2iconfig array (this is needed in runTest #917)
-#ifndef MGONGPUCPP_GPUIMPL
-  constexpr const int* hostChannel2iconfig = channel2iconfig;
-#else
   constexpr int hostChannel2iconfig[%(nb_diag)i] = { // note: a trailing comma in the initializer list is allowed
 %(channelc2iconfig_lines)s
   };
-#endif
 
   // The number N_config of channels/diagrams with an associated iconfig for single-diagram enhancement in the MadEvent sampling algorithm (#917)
   constexpr unsigned int nconfigSDE = %(nb_channel)s;

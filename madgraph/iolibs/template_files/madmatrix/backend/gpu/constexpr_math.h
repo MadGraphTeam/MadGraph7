@@ -28,11 +28,7 @@
 #endif
 
 // NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
 namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
 {
   // Constexpr implementation of sqrt (see https://stackoverflow.com/a/34134071)
   constexpr long double sqrtNewtonRaphson( const long double xx, const long double curr, const long double prev )

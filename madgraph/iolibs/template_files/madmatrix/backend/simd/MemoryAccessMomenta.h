@@ -14,11 +14,7 @@
 #include "MemoryAccessVectors.h"
 
 // NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
 namespace mg5amcCpu
-#endif
 {
   //----------------------------------------------------------------------------
 
@@ -31,32 +27,17 @@ namespace mg5amcCpu
 
     // Number of Events Per Page in the momenta AOSOA memory buffer layout
     // (these are all best kept as a compile-time constants: see issue #23)
-#ifdef MGONGPUCPP_GPUIMPL /* clang-format off */
-    // -----------------------------------------------------------------------------------------------
-    // --- GPUs: neppM is best set to a power of 2 times the number of fptype's in a 32-byte cacheline
-    // --- This is relevant to ensure coalesced access to momenta in global memory
-    // --- Note that neppR is hardcoded and may differ from neppM and neppV on some platforms
-    // -----------------------------------------------------------------------------------------------
-    //static constexpr int neppM = 64/sizeof(fptype); // 2x 32-byte GPU cache lines (512 bits): 8 (DOUBLE) or 16 (FLOAT)
-    static constexpr int neppM = 32/sizeof(fptype); // (DEFAULT) 32-byte GPU cache line (256 bits): 4 (DOUBLE) or 8 (FLOAT)
-    //static constexpr int neppM = 1; // *** NB: this is equivalent to AOS *** (slower: 1.03E9 instead of 1.11E9 in eemumu)
-#else
     // -----------------------------------------------------------------------------------------------
     // --- CPUs: neppM is best set equal to the number of fptype's (neppV) in a vector register
     // --- This is relevant to ensure faster access to momenta from C++ memory cache lines
     // --- However, neppM is now decoupled from neppV (issue #176) and can be separately hardcoded
     // --- In practice, neppR, neppM and neppV could now (in principle) all be different
     // -----------------------------------------------------------------------------------------------
-#ifdef MGONGPU_CPPSIMD
     static constexpr int neppM = MGONGPU_CPPSIMD; // (DEFAULT) neppM=neppV for optimal performance
     //static constexpr int neppM = 64/sizeof(fptype); // maximum CPU vector width (512 bits): 8 (DOUBLE) or 16 (FLOAT)
     //static constexpr int neppM = 32/sizeof(fptype); // lower CPU vector width (256 bits): 4 (DOUBLE) or 8 (FLOAT)
     //static constexpr int neppM = 1; // *** NB: this is equivalent to AOS *** (slower: 4.66E6 instead of 5.09E9 in eemumu)
     //static constexpr int neppM = MGONGPU_CPPSIMD*2; // FOR TESTS
-#else
-    static constexpr int neppM = 1; // (DEFAULT) neppM=neppV for optimal performance (NB: this is equivalent to AOS)
-#endif
-#endif /* clang-format on */
 
     // SANITY CHECK: check that neppM is a power of two
     static_assert( ispoweroftwo( neppM ), "neppM is not a power of 2" );
@@ -208,9 +189,6 @@ namespace mg5amcCpu
                               const int ipar )
     {
       const fptype& out = kernelAccessIp4IparConst_s( buffer, ip4, ipar );
-#ifndef MGONGPU_CPPSIMD
-      return out;
-#else
       constexpr int neppM = MemoryAccessMomentaBase::neppM;
       constexpr bool useContiguousEventsIfPossible = true; // DEFAULT
       //constexpr bool useContiguousEventsIfPossible = false; // FOR PERFORMANCE TESTS (treat as arbitrary array even if it is an AOSOA)
@@ -252,7 +230,6 @@ namespace mg5amcCpu
         { return MemoryAccessMomenta::ieventAccessIp4IparConst( buffer, ievt0 + ieppV, ip4, ipar ); };
         return mg5amcCpu::fptypevFromArbitraryArray( decoderIeppv ); // iterate over ieppV in neppV (no SIMD)
       }
-#endif
     }
 
     // Is this a HostAccess or DeviceAccess class?

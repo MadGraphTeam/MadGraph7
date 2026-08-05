@@ -28,11 +28,7 @@ inline void assertHiprand( hiprandStatus_t code, const char *file, int line, boo
 }
 #endif /* clang-format on */
 
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
 namespace mg5amcCpu
-#endif
 {
   //--------------------------------------------------------------------------
 #ifndef MGONGPU_HAS_NO_HIPRAND
@@ -42,12 +38,7 @@ namespace mg5amcCpu
   {
     if( m_isOnDevice )
     {
-#ifdef MGONGPUCPP_GPUIMPL
-      if( !m_rnarray.isOnDevice() )
-        throw std::runtime_error( "HiprandRandomNumberKernel on device with a host random number array" );
-#else
       throw std::runtime_error( "HiprandRandomNumberKernel does not support HiprandDevice on CPU host" );
-#endif
     }
     else
     {

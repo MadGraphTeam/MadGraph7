@@ -16,11 +16,7 @@
 #include "MemoryBuffers.h"       // for HostBufferCouplings::isaligned
 
 // NB: namespaces mg5amcGpu and mg5amcCpu includes types which are defined in different ways for CPU and GPU builds (see #318 and #725)
-#ifdef MGONGPUCPP_GPUIMPL
-namespace mg5amcGpu
-#else
 namespace mg5amcCpu
-#endif
 {
   //----------------------------------------------------------------------------
 
@@ -189,9 +185,6 @@ namespace mg5amcCpu
                      const int ix2 )
     {
       fptype& out = kernelAccessIx2_s( buffer, ix2 );
-#ifndef MGONGPU_CPPSIMD
-      return out;
-#else
       // NB: derived from MemoryAccessMomenta, restricting the implementation to contiguous aligned arrays
       constexpr int neppC = MemoryAccessCouplingsBase::neppC;
       static_assert( neppC >= neppV );                              // ASSUME CONTIGUOUS ARRAYS
@@ -199,7 +192,6 @@ namespace mg5amcCpu
       static_assert( mg5amcCpu::HostBufferCouplings::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
       //assert( (size_t)( buffer ) %% mgOnGpu::cppAlign == 0 );      // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
       return mg5amcCpu::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
-#endif
     }
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)

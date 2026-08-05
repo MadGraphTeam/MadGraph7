@@ -23,11 +23,7 @@
 
 #include <memory>
 
-#ifdef MGONGPUCPP_GPUIMPL
 using namespace mg5amcGpu;
-#else
-using namespace mg5amcCpu;
-#endif
 
 struct CUDA_CPU_TestBase : public TestDriverBase
 {
@@ -78,147 +74,7 @@ struct CUDA_CPU_TestBase : public TestDriverBase
   }
 };
 
-#ifndef MGONGPUCPP_GPUIMPL
-struct CPUTest : public CUDA_CPU_TestBase
-{
-  // Struct data members (process, and memory structures for random numbers, momenta, matrix elements and weights on host and device)
-  // [NB the hst/dev memory arrays must be initialised in the constructor, see issue #290]
-  CPPProcess process;
-  HostBufferRndNumMomenta hstRndMom;
-  HostBufferChannelIds hstChannelIds;
-  HostBufferMomenta hstMomenta;
-  HostBufferGs hstGs;
-  HostBufferRndNumHelicity hstRndHel;
-  HostBufferRndNumColor hstRndCol;
-  HostBufferWeights hstWeights;
-  HostBufferMatrixElements hstMatrixElements;
-  HostBufferSelectedHelicity hstSelHel;
-  HostBufferSelectedColor hstSelCol;
-  HostBufferHelicityMask hstIsGoodHel;
-  std::unique_ptr<MatrixElementKernelBase> pmek;
 
-  // Create a process object
-  // Read param_card and set parameters
-  // ** WARNING EVIL EVIL **
-  // The CPPProcess constructor has side effects on the globals Proc::cHel, which is needed in ME calculations.
-  // Don't remove!
-  CPUTest( const std::string& refFileName )
-    : CUDA_CPU_TestBase( refFileName )
-    , process( /*verbose=*/false )
-    , hstRndMom( nevt )
-    , hstChannelIds( nevt )
-    , hstMomenta( nevt )
-    , hstGs( nevt )
-    , hstRndHel( nevt )
-    , hstRndCol( nevt )
-    , hstWeights( nevt )
-    , hstMatrixElements( nevt )
-    , hstSelHel( nevt )
-    , hstSelCol( nevt )
-    , hstIsGoodHel( CPPProcess::ncomb )
-    , pmek( new MatrixElementKernelHost( hstMomenta, hstGs, hstRndHel, hstRndCol, hstChannelIds, hstMatrixElements, hstSelHel, hstSelCol, nevt ) )
-  {
-    // FIXME: the process instance can happily go out of scope because it is only needed to read parameters?
-    // FIXME: the CPPProcess should really be a singleton?
-    process.initProc( "../../Cards/param_card.dat" );
-  }
-
-  virtual ~CPUTest() {}
-
-  void prepareRandomNumbers( unsigned int iiter ) override
-  {
-    // Random numbers for momenta
-    CommonRandomNumberKernel rnk( hstRndMom );
-    rnk.seedGenerator( 1337 + iiter );
-    rnk.generateRnarray();
-    // Random numbers for helicity and color selection (fix #931)
-    CommonRandomNumberKernel rnk2( hstRndHel );
-    rnk2.seedGenerator( 1338 + iiter );
-    rnk2.generateRnarray();
-    CommonRandomNumberKernel rnk3( hstRndCol );
-    rnk3.seedGenerator( 1339 + iiter );
-    rnk3.generateRnarray();
-  }
-
-  void prepareMomenta( fptype energy ) override
-  {
-    RamboSamplingKernelHost rsk( energy, hstRndMom, hstMomenta, hstWeights, nevt );
-    // --- 2a. Fill in momenta of initial state particles on the device
-    rsk.getMomentaInitial();
-    // --- 2b. Fill in momenta of final state particles using the RAMBO algorithm on the device
-    // (i.e. map random numbers to final-state particle momenta for each of nevt events)
-    rsk.getMomentaFinal();
-  }
-
-  void runSigmaKin( std::size_t iiter ) override
-  {
-    constexpr fptype fixedG = 1.2177157847767195; // fixed G for aS=0.118 (hardcoded for now in check_sa.cc, fcheck_sa.f, runTest.cc)
-    for( unsigned int i = 0; i < nevt; ++i ) hstGs[i] = fixedG;
-    setChannelIds( hstChannelIds, iiter ); // fill channelIds for multi-channel tests #896
-    if( iiter == 0 ) pmek->computeGoodHelicities();
-    pmek->computeMatrixElements( useChannelIds() );
-  }
-
-  fptype getMomentum( std::size_t ievt, unsigned int ipar, unsigned int ip4 ) const override
-  {
-    assert( ipar < npar );
-    assert( ip4 < np4 );
-    return MemoryAccessMomenta::ieventAccessIp4IparConst( hstMomenta.data(), ievt, ip4, ipar );
-  }
-
-  fptype getMatrixElement( std::size_t ievt ) const override
-  {
-    return MemoryAccessMatrixElements::ieventAccessConst( hstMatrixElements.data(), ievt );
-  }
-
-  int getChannelId( std::size_t ievt ) const override
-  {
-    return MemoryAccessChannelIds::ieventAccessConst( hstChannelIds.data(), ievt );
-  }
-
-  int getSelectedHelicity( std::size_t ievt ) const override
-  {
-    //return MemoryAccessSelectedHelicity::ieventAccessConst( hstSelHel.data(), ievt ); // does not exist yet...
-    return hstSelHel.data()[ievt];
-  }
-
-  int getSelectedColor( std::size_t ievt ) const override
-  {
-    //return MemoryAccessSelectedColor::ieventAccessConst( hstSelCol.data(), ievt ); // does not exist yet...
-    return hstSelCol.data()[ievt];
-  }
-};
-
-// Old test with multi-channel disabled #466
-struct CPUTestNoMultiChannel : public CPUTest
-{
-  // Does this test use channelIds?
-  bool useChannelIds() const override final { return false; }
-
-  // Constructor
-  CPUTestNoMultiChannel( const std::string& refFileName )
-    : CPUTest( refFileName ) {} // suffix .txt
-
-  // Destructor
-  virtual ~CPUTestNoMultiChannel() {}
-};
-
-// New test with multi-channel enabled #896
-struct CPUTestMultiChannel : public CPUTest
-{
-  // Does this test use channelIds?
-  bool useChannelIds() const override final { return true; }
-
-  // Constructor
-  CPUTestMultiChannel( const std::string& refFileName )
-    : CPUTest( refFileName + "2" ) {} // suffix .txt2
-
-  // Destructor
-  virtual ~CPUTestMultiChannel() {}
-};
-#endif
-
-#ifdef MGONGPUCPP_GPUIMPL
 struct CUDATest : public CUDA_CPU_TestBase
 {
   // Struct data members (process, and memory structures for random numbers, momenta, matrix elements and weights on host and device)
@@ -390,24 +246,15 @@ struct CUDATestMultiChannel : public CUDATest
   // Destructor
   virtual ~CUDATestMultiChannel() {}
 };
-#endif /* clang-format off */
 
 // AV July 2024 much simpler class structure without the presently-unnecessary googletest templates
 // This is meant as a workaround to prevent not-understood segfault #907 when adding a second test
 // Note: instantiate test2 first and test1 second to ensure that the channelid printout from the dtors comes from test1 first and test2 second
-#ifdef MGONGPUCPP_GPUIMPL
 // CUDA test drivers
 CUDATestMultiChannel driver2( MG_EPOCH_REFERENCE_FILE_NAME );
 #define TESTID2( s ) s##_GPU_MULTICHANNEL
 CUDATestNoMultiChannel driver1( MG_EPOCH_REFERENCE_FILE_NAME );
 #define TESTID1( s ) s##_GPU_NOMULTICHANNEL
-#else
-// CPU test drivers
-CPUTestMultiChannel driver2( MG_EPOCH_REFERENCE_FILE_NAME );
-#define TESTID2( s ) s##_CPU_MULTICHANNEL
-CPUTestNoMultiChannel driver1( MG_EPOCH_REFERENCE_FILE_NAME );
-#define TESTID1( s ) s##_CPU_NOMULTICHANNEL
-#endif
 // Madgraph tests
 MadgraphTest mgTest2( driver2 );
 MadgraphTest mgTest1( driver1 );

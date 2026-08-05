@@ -17,11 +17,7 @@
 
 //============================================================================
 
-#ifdef MGONGPUCPP_GPUIMPL
 namespace mg5amcGpu
-#else
-namespace mg5amcCpu
-#endif
 {
   //--------------------------------------------------------------------------
 
@@ -146,147 +142,9 @@ namespace mg5amcCpu
 
 //============================================================================
 
-#ifndef MGONGPUCPP_GPUIMPL
-namespace mg5amcCpu
-{
-
-  //--------------------------------------------------------------------------
-
-  MatrixElementKernelHost::MatrixElementKernelHost( const BufferMomenta& momenta,         // input: momenta
-                                                    const BufferGs& gs,                   // input: gs for alphaS
-                                                    const BufferIflavorVec& iflavorVec,   // input: flavor indices for the flavor combination
-                                                    const BufferRndNumHelicity& rndhel,   // input: random numbers for helicity selection
-                                                    const BufferRndNumColor& rndcol,      // input: random numbers for color selection
-                                                    const BufferChannelIds& channelIds,   // input: channel ids for single-diagram enhancement
-                                                    BufferMatrixElements& matrixElements, // output: matrix elements
-                                                    BufferSelectedHelicity& selhel,       // output: helicity selection
-                                                    BufferSelectedColor& selcol,          // output: color selection
-                                                    const size_t nevt )
-    : MatrixElementKernelBase( momenta, gs, iflavorVec, rndhel, rndcol, channelIds, matrixElements, selhel, selcol )
-    , NumberOfEvents( nevt )
-    , m_couplings( nevt )
-    , m_numerators( nevt * CPPProcess::ndiagrams )
-    , m_denominators( nevt )
-  {
-    //std::cout << "DEBUG: MatrixElementKernelHost::ctor " << this << std::endl;
-    if( m_momenta.isOnDevice() ) throw std::runtime_error( "MatrixElementKernelHost: momenta must be a host array" );
-    if( m_matrixElements.isOnDevice() ) throw std::runtime_error( "MatrixElementKernelHost: matrixElements must be a host array" );
-    if( m_channelIds.isOnDevice() ) throw std::runtime_error( "MatrixElementKernelHost: channelIds must be a device array" );
-    if( this->nevt() != m_momenta.nevt() ) throw std::runtime_error( "MatrixElementKernelHost: nevt mismatch with momenta" );
-    if( this->nevt() != m_matrixElements.nevt() ) throw std::runtime_error( "MatrixElementKernelHost: nevt mismatch with matrixElements" );
-    if( this->nevt() != m_channelIds.nevt() ) throw std::runtime_error( "MatrixElementKernelHost: nevt mismatch with channelIds" );
-    if( this->nevt() != m_iflavorVec.nevt() ) throw std::runtime_error( "MatrixElementKernelHost: nevt mismatch with iflavorVec" );
-    // Sanity checks for memory access (momenta buffer)
-    constexpr int neppM = MemoryAccessMomenta::neppM; // AOSOA layout
-    static_assert( ispoweroftwo( neppM ), "neppM is not a power of 2" );
-    if( nevt % neppM != 0 )
-    {
-      std::ostringstream sstr;
-      sstr << "MatrixElementKernelHost: nevt should be a multiple of neppM=" << neppM;
-      throw std::runtime_error( sstr.str() );
-    }
-    // Fail gently and avoid "Illegal instruction (core dumped)" if the host does not support the SIMD used in the ME calculation
-    // Note: this prevents a crash on pmpe04 but not on some github CI nodes?
-    // [NB: SIMD vectorization in mg5amc C++ code is only used in the ME calculation below MatrixElementKernelHost!]
-    if( !MatrixElementKernelHost::hostSupportsSIMD() )
-      throw std::runtime_error( "Host does not support the SIMD implementation of MatrixElementKernelsHost" );
-  }
-
-  //--------------------------------------------------------------------------
-
-  MatrixElementKernelHost::~MatrixElementKernelHost()
-  {
-    //std::cout << "DEBUG: MatrixElementKernelBase::dtor " << this << std::endl;
-  }
-
-  //--------------------------------------------------------------------------
-
-  int MatrixElementKernelHost::computeGoodHelicities()
-  {
-    HostBufferHelicityMask hstIsGoodHel( CPPProcess::ncomb );
-    // ... 0d1. Compute good helicity mask on the host
-    computeDependentCouplings( m_gs.data(), m_couplings.data(), m_gs.size() );
-    sigmaKin_getGoodHel( m_momenta.data(), m_couplings.data(), m_iflavorVec.data(), m_matrixElements.data(), m_numerators.data(), m_denominators.data(), hstIsGoodHel.data(), nevt() );
-    // ... 0d2. Copy good helicity list to static memory on the host
-    // [FIXME! REMOVE THIS STATIC THAT BREAKS MULTITHREADING?]
-    return sigmaKin_setGoodHel( hstIsGoodHel.data() );
-  }
-
-  //--------------------------------------------------------------------------
-
-  void MatrixElementKernelHost::computeMatrixElements( const bool useChannelIds )
-  {
-    computeDependentCouplings( m_gs.data(), m_couplings.data(), m_gs.size() );
-    const unsigned int* pChannelIds = ( useChannelIds ? m_channelIds.data() : nullptr );
-    sigmaKin( m_momenta.data(), m_couplings.data(), m_iflavorVec.data(), m_rndhel.data(), m_rndcol.data(), pChannelIds, nullptr, m_matrixElements.data(), m_selhel.data(), m_selcol.data(), m_numerators.data(), m_denominators.data(), nullptr, true, nevt() );
-#ifdef MGONGPU_CHANNELID_DEBUG
-    //std::cout << "DEBUG: MatrixElementKernelHost::computeMatrixElements " << this << " " << ( useChannelIds ? "T" : "F" ) << " " << nevt() << std::endl;
-    MatrixElementKernelBase::updateNevtProcessedByChannel( pChannelIds, nevt() );
-#endif
-  }
-
-  //--------------------------------------------------------------------------
-
-  // Does this host system support the SIMD used in the matrix element calculation?
-  bool MatrixElementKernelHost::hostSupportsSIMD( const bool verbose )
-  {
-#if defined __AVX512VL__
-    bool known = true;
-    bool ok = __builtin_cpu_supports( "avx512vl" );
-    const std::string tag = "skylake-avx512 (AVX512VL)";
-#elif defined __AVX2__
-    bool known = true;
-    bool ok = __builtin_cpu_supports( "avx2" );
-    const std::string tag = "haswell (AVX2)";
-#elif defined __SSE4_2__
-#ifdef __PPC__
-    // See https://gcc.gnu.org/onlinedocs/gcc/Basic-PowerPC-Built-in-Functions-Available-on-all-Configurations.html
-    bool known = true;
-    bool ok = __builtin_cpu_supports( "vsx" );
-    const std::string tag = "powerpc vsx (128bit as in SSE4.2)";
-#elif defined( __x86_64__ ) || defined( __i386__ )
-    bool known = true;
-    bool ok = __builtin_cpu_supports( "sse4.2" );
-    const std::string tag = "nehalem (SSE4.2)";
-#else // AV FIXME! Added by OM for Mac, should identify the correct __xxx__ flag that should be targeted
-    // DM now we have an explicit NEON target for ARM
-    bool known = false; // __builtin_cpu_supports is not supported
-    bool ok = true;     // this is just an assumption!
-    const std::string tag = "simd arch not defined";
-#endif
-#elif defined __ARM_NEON // consider using __BUILTIN_CPU_SUPPORTS__
-    bool known = false; // __builtin_cpu_supports is not supported
-    // See https://stackoverflow.com/q/62783908
-    // See https://community.arm.com/arm-community-blogs/b/operating-systems-blog/posts/runtime-detection-of-cpu-features-on-an-armv8-a-cpu
-    bool ok = true; // this is just an assumption!
-    const std::string tag = "arm neon (128bit as in SSE4.2)";
-#else
-    bool known = true;
-    bool ok = true;
-    const std::string tag = "none";
-#endif
-    if( verbose )
-    {
-      if( tag == "none" )
-        std::cout << "INFO: The application does not require the host to support any AVX feature" << std::endl;
-      else if( ok && known )
-        std::cout << "INFO: The application is built for " << tag << " and the host supports it" << std::endl;
-      else if( ok )
-        std::cout << "WARNING: The application is built for " << tag << " but it is unknown if the host supports it" << std::endl;
-      else
-        std::cout << "ERROR! The application is built for " << tag << " but the host does not support it" << std::endl;
-    }
-    return ok;
-  }
-
-  //--------------------------------------------------------------------------
-
-}
-#endif
 
 //============================================================================
 
-#ifdef MGONGPUCPP_GPUIMPL
 namespace mg5amcGpu
 {
 
@@ -504,6 +362,5 @@ namespace mg5amcGpu
   //--------------------------------------------------------------------------
 
 }
-#endif
 
 //============================================================================

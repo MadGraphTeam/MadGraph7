@@ -16,11 +16,7 @@
 #include <array>
 #include <utility>
 
-#ifdef MGONGPUCPP_GPUIMPL
-using namespace mg5amcGpu;
-#else
 using namespace mg5amcCpu;
-#endif
 
 namespace
 {
@@ -30,9 +26,6 @@ namespace
     const fptype* couplings,
     const unsigned int* flavor_indices,
     fptype* matrix_elements,
-#ifdef MGONGPUCPP_GPUIMPL
-    fptype* color_jamps,
-#endif
     fptype* numerators,
     fptype* denominators,
     std::size_t count )
@@ -40,9 +33,6 @@ namespace
     bool is_good_hel[CPPProcess::ncomb];
     sigmaKin_getGoodHel(
       momenta, couplings, flavor_indices, matrix_elements, numerators, denominators,
-#ifdef MGONGPUCPP_GPUIMPL
-      color_jamps,
-#endif
       is_good_hel,
       count );
     sigmaKin_setGoodHel( is_good_hel );
@@ -54,26 +44,17 @@ namespace
     const fptype* couplings,
     const unsigned int* flavor_indices,
     fptype* matrix_elements,
-#ifdef MGONGPUCPP_GPUIMPL
-    fptype* color_jamps,
-#endif
     fptype* numerators,
     fptype* denominators,
     std::size_t count )
   {
     // static local initialization is called exactly once in a thread-safe way
     static void* dummy = initialize_impl( momenta, couplings, flavor_indices, matrix_elements,
-#ifdef MGONGPUCPP_GPUIMPL
-                                          color_jamps,
-#endif
                                           numerators,
                                           denominators,
                                           count );
   }
 
-#ifdef MGONGPUCPP_GPUIMPL
-  __device__
-#endif
     void
     transpose_momenta( const double* momenta_in, fptype* momenta_out, std::size_t i_event_in, std::size_t i_event_out, std::size_t stride )
   {
@@ -91,70 +72,6 @@ namespace
     }
   }
 
-#ifdef MGONGPUCPP_GPUIMPL
-
-  __global__ void copy_inputs(
-    const double* momenta_in,
-    const double* helicity_random_in,
-    const double* color_random_in,
-    const double* diagram_random_in,
-    const double* alpha_s_in,
-    const unsigned int* flavor_indices_in,
-    fptype* momenta,
-    fptype* helicity_random,
-    fptype* color_random,
-    fptype* diagram_random,
-    fptype* g_s,
-    unsigned int* flavor_indices,
-    std::size_t count,
-    std::size_t stride,
-    std::size_t offset )
-  {
-    std::size_t i_event = blockDim.x * blockIdx.x + threadIdx.x;
-    if( i_event >= count ) return;
-
-    transpose_momenta( &momenta_in[offset], momenta, i_event, i_event, stride );
-    diagram_random[i_event] = diagram_random_in ? diagram_random_in[i_event + offset] : 0.5;
-    helicity_random[i_event] = helicity_random_in ? helicity_random_in[i_event + offset] : 0.5;
-    color_random[i_event] = color_random_in ? color_random_in[i_event + offset] : 0.5;
-    g_s[i_event] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
-    flavor_indices[i_event] = flavor_indices_in ? flavor_indices_in[i_event + offset] : 0;
-  }
-
-  __global__ void copy_outputs(
-    fptype* denominators,
-    fptype* numerators,
-    fptype* matrix_elements,
-    unsigned int* diagram_index,
-    int* color_index,
-    int* helicity_index,
-    double* m2_out,
-    double* amp2_out,
-    int* diagram_out,
-    int* color_out,
-    int* helicity_out,
-    std::size_t count,
-    std::size_t stride,
-    std::size_t offset )
-  {
-    std::size_t i_event = blockDim.x * blockIdx.x + threadIdx.x;
-    if( i_event >= count ) return;
-
-    if( m2_out ) m2_out[i_event + offset] = matrix_elements[i_event];
-    if( amp2_out )
-    {
-      double denominator = denominators[i_event];
-      for( std::size_t i_diag = 0; i_diag < CPPProcess::ndiagrams; ++i_diag )
-      {
-        amp2_out[stride * i_diag + i_event + offset] = numerators[i_event * CPPProcess::ndiagrams + i_diag] / denominator;
-      }
-    }
-    if( diagram_out ) diagram_out[i_event + offset] = diagram_index[i_event] - 1;
-    if( color_out ) color_out[i_event + offset] = color_index[i_event] - 1;
-    if( helicity_out ) helicity_out[i_event + offset] = helicity_index[i_event] - 1;
-  }
-
-#endif // MGONGPUCPP_GPUIMPL
 
   struct InterfaceInstance
   {
@@ -174,15 +91,7 @@ extern "C"
       case UMAMI_META_DEVICE:
       {
         UmamiDevice& device = *static_cast<UmamiDevice*>( result );
-#ifdef MGONGPUCPP_GPUIMPL
-#ifdef __CUDACC__
-        device = UMAMI_DEVICE_CUDA;
-#elif defined( __HIPCC__ )
-        device = UMAMI_DEVICE_HIP;
-#endif
-#else
         device = UMAMI_DEVICE_CPU;
-#endif
         break;
       }
       case UMAMI_META_PARTICLE_COUNT:
@@ -231,11 +140,7 @@ extern "C"
   UmamiStatus umami_supported_outputs( bool const** supported, int* count )
   {
     // MATRIX_ELEMENT, DIAGRAM_AMP2, COLOR_INDEX, HELICITY_INDEX, DIAGRAM_INDEX, GPU_STREAM
-#ifdef MGONGPUCPP_GPUIMPL
-    static const bool data[UMAMI_OUTPUT_KEY_COUNT] = { true, true, true, true, true, true };
-#else
     static const bool data[UMAMI_OUTPUT_KEY_COUNT] = { true, true, true, true, true };
-#endif
     *supported = data;
     *count = UMAMI_OUTPUT_KEY_COUNT;
     return UMAMI_SUCCESS;
@@ -326,9 +231,6 @@ extern "C"
     }
     if( !momenta_in ) return UMAMI_ERROR_MISSING_INPUT;
 
-#ifdef MGONGPUCPP_GPUIMPL
-    gpuStream_t gpu_stream = nullptr;
-#endif
     double* m2_out = nullptr;
     double* amp2_out = nullptr;
     int* diagram_out = nullptr;
@@ -354,132 +256,11 @@ extern "C"
         case UMAMI_OUT_DIAGRAM_INDEX:
           diagram_out = static_cast<int*>( output );
           break;
-#ifdef MGONGPUCPP_GPUIMPL
-        case UMAMI_OUT_GPU_STREAM:
-          gpu_stream = static_cast<gpuStream_t>( output );
-          break;
-#endif
         default:
           return UMAMI_ERROR_UNSUPPORTED_OUTPUT;
       }
     }
 
-#ifdef MGONGPUCPP_GPUIMPL
-    std::size_t n_threads = 256;
-    std::size_t n_blocks = ( count + n_threads - 1 ) / n_threads;
-    std::size_t rounded_count = n_blocks * n_threads;
-
-    fptype *momenta, *couplings, *g_s, *helicity_random, *color_random, *diagram_random, *color_jamps;
-    fptype *matrix_elements, *numerators, *denominators, *ghel_matrix_elements, *ghel_jamps;
-    int *helicity_index, *color_index;
-    unsigned int *flavor_indices, *diagram_index;
-
-    std::size_t n_coup = mg5amcGpu::Parameters_dependentCouplings::ndcoup;
-    std::array<std::pair<void**, std::size_t>, 16> ptrs_and_sizes = {{
-        {reinterpret_cast<void**>(&momenta), rounded_count * CPPProcess::npar * 4 * sizeof( fptype )},
-        {reinterpret_cast<void**>(&couplings), rounded_count * n_coup * 2 * sizeof( fptype )},
-        {reinterpret_cast<void**>(&g_s), rounded_count * sizeof( fptype )},
-        {reinterpret_cast<void**>(&flavor_indices), rounded_count * sizeof( unsigned int )},
-        {reinterpret_cast<void**>(&helicity_random), rounded_count * sizeof( fptype )},
-        {reinterpret_cast<void**>(&color_random), rounded_count * sizeof( fptype )},
-        {reinterpret_cast<void**>(&diagram_random), rounded_count * sizeof( fptype )},
-        {reinterpret_cast<void**>(&matrix_elements), rounded_count * sizeof( fptype )},
-        {reinterpret_cast<void**>(&diagram_index), rounded_count * sizeof( unsigned int )},
-        {reinterpret_cast<void**>(&color_jamps), rounded_count * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype )},
-        {reinterpret_cast<void**>(&numerators), rounded_count * CPPProcess::ndiagrams * CPPProcess::ncomb * sizeof( fptype )},
-        {reinterpret_cast<void**>(&denominators), rounded_count * CPPProcess::ncomb * sizeof( fptype )},
-        {reinterpret_cast<void**>(&helicity_index), rounded_count * sizeof( int )},
-        {reinterpret_cast<void**>(&color_index), rounded_count * sizeof( int )},
-        {reinterpret_cast<void**>(&ghel_matrix_elements), rounded_count * CPPProcess::ncomb * sizeof( fptype )},
-        {reinterpret_cast<void**>(&ghel_jamps), rounded_count * CPPProcess::ncomb * CPPProcess::ncolor * mgOnGpu::nx2 * sizeof( fptype )},
-    }};
-    std::size_t total_size = 0;
-    constexpr std::size_t MAX_SIZE = std::max(sizeof(fptype), sizeof(int));
-    for (auto [ptr, size] : ptrs_and_sizes) {
-        std::size_t aligned_size = (size + MAX_SIZE - 1) / MAX_SIZE * MAX_SIZE;
-        total_size += aligned_size;
-    }
-    uint8_t* buffer;
-    // we can consider caching this between matrix element calls
-    gpuMallocAsync( &buffer, total_size, gpu_stream );
-    std::size_t buf_offset = 0;
-    for (auto [ptr, size] : ptrs_and_sizes) {
-        std::size_t aligned_size = (size + 7) / 8 * 8;
-        *ptr = buffer + buf_offset;
-        buf_offset += aligned_size;
-    }
-
-    copy_inputs<<<n_blocks, n_threads, 0, gpu_stream>>>(
-      momenta_in,
-      random_helicity_in,
-      random_color_in,
-      random_diagram_in,
-      alpha_s_in,
-      flavor_indices_in,
-      momenta,
-      helicity_random,
-      color_random,
-      diagram_random,
-      g_s,
-      flavor_indices,
-      count,
-      stride,
-      offset );
-    computeDependentCouplings<<<n_blocks, n_threads, 0, gpu_stream>>>( g_s, couplings );
-    checkGpu( gpuPeekAtLastError() );
-
-    InterfaceInstance* instance = static_cast<InterfaceInstance*>( handle );
-    if( !instance->initialized )
-    {
-      initialize(
-        momenta, couplings, flavor_indices, matrix_elements, color_jamps, numerators, denominators, rounded_count );
-      instance->initialized = true;
-    }
-
-    sigmaKin(
-      momenta,
-      couplings,
-      flavor_indices,
-      helicity_random,
-      color_random,
-      nullptr,
-      diagram_random,
-      matrix_elements,
-      helicity_index,
-      color_index,
-      color_jamps,
-      numerators,
-      denominators,
-      diagram_index,
-      false,
-      ghel_matrix_elements,
-      ghel_jamps,
-      nullptr,
-      nullptr,
-      &gpu_stream,
-      true,
-      n_blocks,
-      n_threads );
-
-    copy_outputs<<<n_blocks, n_threads, 0, gpu_stream>>>(
-      denominators,
-      numerators,
-      matrix_elements,
-      diagram_index,
-      color_index,
-      helicity_index,
-      m2_out,
-      amp2_out,
-      diagram_out,
-      color_out,
-      helicity_out,
-      count,
-      stride,
-      offset );
-    checkGpu( gpuPeekAtLastError() );
-
-    gpuFreeAsync( buffer, gpu_stream );
-#else  // MGONGPUCPP_GPUIMPL
     constexpr std::size_t vector_size = MemoryAccessMomentaBase::neppM;
     // need to round to round to double page size for some reason
     constexpr std::size_t page_size2 = 2 * vector_size;
@@ -654,7 +435,6 @@ extern "C"
         }
       }
     }
-#endif // MGONGPUCPP_GPUIMPL
     return UMAMI_SUCCESS;
   }
 
