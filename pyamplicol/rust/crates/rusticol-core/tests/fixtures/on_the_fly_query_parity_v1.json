@@ -221,6 +221,20 @@
       "closure_multiset_sha256": "f4ef144f5450601956c0fcc51afce5f698918bb6746251d12e830834eb7eda11"
     },
     {
+      "name": "pure_gluon_n8_first",
+      "process": "g g > g g g g g g",
+      "flow_cardinality": "5040",
+      "helicity_cardinality": "256",
+      "flow_rank": "0",
+      "helicity_rank": "0",
+      "current_count": 49,
+      "contribution_count": 176,
+      "closure_count": 1,
+      "peak_query_rows": 225,
+      "contribution_multiset_sha256": "79c27773475fa4543c10df44e3371f7abbd2a27f340196e4275a403fc13aba4a",
+      "closure_multiset_sha256": "e68bb34e7da958e3e45e9194c6691eef4a36d399a11d77da8c303411f5f54c85"
+    },
+    {
       "name": "pure_gluon_n10_first",
       "process": "g g > g g g g g g g g",
       "flow_cardinality": "362880",
@@ -247,6 +261,20 @@
       "peak_query_rows": 102,
       "contribution_multiset_sha256": "49644bb28ced5658e80a2a5262d8ce404d4b0fd3ccac4aaf8fef2c870b4036f6",
       "closure_multiset_sha256": "4665272ed07d193d107400aaf17812f7c6ed861017468360b5d5d12b49c23d7a"
+    },
+    {
+      "name": "one_open_line_n8_first_nonzero",
+      "process": "u u~ > g g g g g g",
+      "flow_cardinality": "720",
+      "helicity_cardinality": "256",
+      "flow_rank": "0",
+      "helicity_rank": "65",
+      "current_count": 43,
+      "contribution_count": 126,
+      "closure_count": 1,
+      "peak_query_rows": 169,
+      "contribution_multiset_sha256": "b51c1dc874e9fea6feaffdfe941c0aef9b982e53dc337726776201481986b8c0",
+      "closure_multiset_sha256": "8b996826605c4f10387d838e0256bb03455f13fa65d0fc97966bdd0dbb5b5dc3"
     },
     {
       "name": "one_open_line_n10_first_nonzero",
