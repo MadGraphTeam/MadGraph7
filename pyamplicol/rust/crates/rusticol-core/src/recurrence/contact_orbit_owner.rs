@@ -584,9 +584,10 @@ struct ContactOrbitPhysicalAssignment {
 ///
 /// The compiler certificate is deliberately limited to a momentum-independent,
 /// literal-singlet scalar contact.  Within one concrete destination, source
-/// slots, momentum sums, and topology-replay ancestry on its parents select a
-/// traversal of the same vertex rather than different physics.  Every other
-/// current distinction stays in the owner key.
+/// momentum sums and topology-replay ancestry on its auxiliary parents select
+/// a traversal of the same vertex rather than different physics.  A certified
+/// physical source leg remains bound to its concrete external source slot.
+/// Every other current distinction stays in the owner key.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct ContactOrbitCurrentPhysics<'a> {
     catalog_digest: SemanticDigest,
@@ -624,6 +625,7 @@ impl<'a> ContactOrbitCurrentPhysics<'a> {
 struct ContactOrbitParentGroup<'a> {
     current: ContactOrbitCurrentPhysics<'a>,
     assignment: ContactOrbitPhysicalAssignment,
+    source_particle_actual_source_slot: Option<u32>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -877,6 +879,26 @@ fn parent_matches_contact_orbit_side(
     }
 }
 
+fn source_particle_actual_source_slot(
+    parent: &CurrentCoreKey,
+    source_particle_leg: i32,
+) -> RusticolResult<Option<u32>> {
+    match source_particle_leg {
+        -1 => Ok(None),
+        leg if leg >= 0 => {
+            let [source_slot] = parent.support_source_slots() else {
+                return Err(integrity(
+                    "contact-orbit physical source parent does not bind exactly one source slot",
+                ));
+            };
+            Ok(Some(*source_slot))
+        }
+        _ => Err(integrity(
+            "contact-orbit source particle leg uses an unknown sentinel",
+        )),
+    }
+}
+
 pub(super) fn contact_orbit_owner_candidate<'a>(
     step: Option<&'a ContactOrbitStepProof>,
     destination: &'a CurrentCoreKey,
@@ -938,10 +960,18 @@ pub(super) fn contact_orbit_owner_candidate<'a>(
         ContactOrbitParentGroup {
             current: ContactOrbitCurrentPhysics::from_current(parents[parent_by_side[0]]),
             assignment: sides[0].assignment,
+            source_particle_actual_source_slot: source_particle_actual_source_slot(
+                parents[parent_by_side[0]],
+                sides[0].source_particle_leg,
+            )?,
         },
         ContactOrbitParentGroup {
             current: ContactOrbitCurrentPhysics::from_current(parents[parent_by_side[1]]),
             assignment: sides[1].assignment,
+            source_particle_actual_source_slot: source_particle_actual_source_slot(
+                parents[parent_by_side[1]],
+                sides[1].source_particle_leg,
+            )?,
         },
     ];
     canonical_parents.sort_unstable();
@@ -1754,7 +1784,7 @@ mod tests {
     }
 
     #[test]
-    fn certified_four_identical_scalar_channels_share_one_physical_owner() {
+    fn certified_four_identical_scalar_channels_keep_assignment_multiplicity() {
         let left = current(1, 1, &[10]);
         let right = current(1, 1, &[11]);
         let destination = current(2, 2, &[10, 11]);
@@ -1844,28 +1874,32 @@ mod tests {
             vec![0],
         );
 
-        let single = current(3, 3, &[10]);
-        let pair = current(4, 4, &[11, 12]);
+        let singles = [
+            current(3, 3, &[10]),
+            current(3, 3, &[11]),
+            current(3, 3, &[12]),
+        ];
+        let pairs = [
+            current(4, 4, &[11, 12]),
+            current(4, 4, &[10, 12]),
+            current(4, 4, &[10, 11]),
+        ];
         let final_destination = current(5, 5, &[10, 11, 12]);
-        let final_forward = [
-            final_step(&[0], &[1, 2], 3, 60, [0, 0, 0, 0]),
-            final_step(&[0], &[1, 3], 2, 61, [0, 0, 0, 0]),
-            final_step(&[0], &[2, 3], 1, 62, [0, 0, 0, 0]),
-        ];
-        let final_reverse = [
-            final_step(&[1, 2], &[0], 3, 70, [0, 0, 0, 0]),
-            final_step(&[1, 3], &[0], 2, 71, [0, 0, 0, 0]),
-            final_step(&[2, 3], &[0], 1, 72, [0, 0, 0, 0]),
-        ];
-        let final_candidates = (0..3)
-            .flat_map(|index| {
+        let final_forward = final_step(&[3], &[1, 2], 0, 60, [0, 0, 0, 0]);
+        let final_reverse = final_step(&[1, 2], &[3], 0, 70, [0, 0, 0, 0]);
+        let final_candidates = singles
+            .iter()
+            .zip(pairs.iter())
+            .enumerate()
+            .flat_map(|(index, (single, pair))| {
+                let index = u32::try_from(index).unwrap();
                 [
                     (
                         2 * index,
                         Some(candidate(
-                            &final_forward[index as usize],
+                            &final_forward,
                             &final_destination,
-                            [&single, &pair],
+                            [single, pair],
                             &application,
                             80 + index as u8,
                         )),
@@ -1873,9 +1907,9 @@ mod tests {
                     (
                         2 * index + 1,
                         Some(candidate(
-                            &final_reverse[index as usize],
+                            &final_reverse,
                             &final_destination,
-                            [&pair, &single],
+                            [pair, single],
                             &application,
                             90 + index as u8,
                         )),
@@ -1884,9 +1918,35 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert_eq!(
-            selected_contact_orbit_owner_tokens(final_candidates.into_iter()).unwrap(),
-            vec![0],
+            final_candidates[0].1.unwrap().group,
+            final_candidates[1].1.unwrap().group
         );
+        assert_eq!(
+            final_candidates[2].1.unwrap().group,
+            final_candidates[3].1.unwrap().group
+        );
+        assert_eq!(
+            final_candidates[4].1.unwrap().group,
+            final_candidates[5].1.unwrap().group
+        );
+        assert_ne!(
+            final_candidates[0].1.unwrap().group,
+            final_candidates[2].1.unwrap().group
+        );
+        assert_ne!(
+            final_candidates[0].1.unwrap().group,
+            final_candidates[4].1.unwrap().group
+        );
+        assert_ne!(
+            final_candidates[2].1.unwrap().group,
+            final_candidates[4].1.unwrap().group
+        );
+        let forward_selection =
+            selected_contact_orbit_owner_tokens(final_candidates.iter().copied()).unwrap();
+        let reverse_selection =
+            selected_contact_orbit_owner_tokens(final_candidates.iter().rev().copied()).unwrap();
+        assert_eq!(forward_selection, reverse_selection);
+        assert_eq!(forward_selection.len(), 3,);
     }
 
     #[test]

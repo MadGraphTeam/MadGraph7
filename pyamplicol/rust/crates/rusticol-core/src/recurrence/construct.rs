@@ -13178,12 +13178,89 @@ mod tests {
         )
     }
 
+    fn established_0000_final_contact_case(reverse_insertion: bool) -> (Vec<u32>, usize) {
+        let mut currents = vec![
+            projection_test_current(RecurrenceNodeKind::Source, 10, 0, &[10]),
+            projection_test_current(RecurrenceNodeKind::Source, 10, 1, &[11]),
+            projection_test_current(RecurrenceNodeKind::Source, 10, 2, &[12]),
+            projection_test_current(RecurrenceNodeKind::Current, 20, 3, &[11, 12]),
+            projection_test_current(RecurrenceNodeKind::Current, 20, 4, &[10, 12]),
+            projection_test_current(RecurrenceNodeKind::Current, 20, 5, &[10, 11]),
+            projection_test_current(RecurrenceNodeKind::Current, 30, 6, &[10, 11, 12]),
+        ];
+        let parent_ids = [[3, 0], [0, 3], [4, 1], [1, 4], [5, 2], [2, 5]];
+        let steps = [
+            final_contact_orbit_step_for_test(&[1, 2], &[3], 0, 60, [0, 0, 0, 0]),
+            final_contact_orbit_step_for_test(&[3], &[1, 2], 0, 70, [0, 0, 0, 0]),
+            final_contact_orbit_step_for_test(&[1, 2], &[3], 0, 61, [0, 0, 0, 0]),
+            final_contact_orbit_step_for_test(&[3], &[1, 2], 0, 71, [0, 0, 0, 0]),
+            final_contact_orbit_step_for_test(&[1, 2], &[3], 0, 62, [0, 0, 0, 0]),
+            final_contact_orbit_step_for_test(&[3], &[1, 2], 0, 72, [0, 0, 0, 0]),
+        ];
+        let contacts = steps
+            .into_iter()
+            .enumerate()
+            .map(|(id, step)| {
+                let id = u32::try_from(id).unwrap();
+                let parents = parent_ids[id as usize];
+                (
+                    id,
+                    established_contact_test_transition(
+                        step,
+                        parents.map(|parent| {
+                            currents[parent as usize].key.current_state_template_id()
+                        }),
+                        80 + u8::try_from(id).unwrap(),
+                    ),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        let insertion_order = if reverse_insertion {
+            (0_u32..6).rev().collect::<Vec<_>>()
+        } else {
+            (0_u32..6).collect::<Vec<_>>()
+        };
+        for transition in insertion_order {
+            add_established_contact_test_contribution(
+                &mut currents,
+                6,
+                transition,
+                parent_ids[transition as usize],
+            );
+        }
+        let mut resident_contribution_count = 6;
+        commit_established_contact_test_plan(
+            &mut currents,
+            &contacts,
+            6,
+            &mut resident_contribution_count,
+        )
+        .unwrap();
+        assert_eq!(
+            pending_contribution_entry_count(&currents).unwrap(),
+            resident_contribution_count
+        );
+        (
+            established_contact_transition_ids(&currents[6]),
+            resident_contribution_count,
+        )
+    }
+
     #[test]
     fn established_contact_0000_fan_in_keeps_one_certified_owner_deterministically() {
         let forward = established_0000_contact_case(false);
         let reverse = established_0000_contact_case(true);
         assert_eq!(forward, (vec![0], 1));
         assert_eq!(reverse, forward);
+    }
+
+    #[test]
+    fn established_contact_0000_final_fan_in_keeps_three_source_assignments() {
+        let forward = established_0000_final_contact_case(false);
+        let reverse = established_0000_final_contact_case(true);
+        assert_eq!(reverse, forward);
+        assert_eq!(forward.0.len(), 3);
+        assert_eq!(forward.1, 3);
     }
 
     #[test]

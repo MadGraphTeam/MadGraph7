@@ -1712,10 +1712,10 @@ mod tests {
         .unwrap();
 
         assert!(
-            currents[4..]
-                .iter()
-                .all(|current| current.contributions.len() == 1),
-            "every certified pair and triple destination must retain one owner",
+            currents[4..].iter().all(
+                |current| current.contributions.len() == if current.stage == 1 { 1 } else { 3 }
+            ),
+            "certified pair destinations retain one owner while final triples retain one owner per source assignment",
         );
         assert!(
             currents[4..].iter().all(|current| {
@@ -1787,21 +1787,27 @@ mod tests {
     }
 
     fn contact_0000_case(final_stage: bool, reverse_insertion: bool) -> (Vec<u32>, (usize, usize)) {
-        let (mut currents, steps) = if final_stage {
+        let (mut currents, steps, parent_ids, destination_id) = if final_stage {
             (
                 vec![
                     contact_current(RecurrenceNodeKind::Source, 10, 0, &[10]),
-                    contact_current(RecurrenceNodeKind::Current, 11, 1, &[11, 12]),
-                    contact_current(RecurrenceNodeKind::Current, 20, 2, &[10, 11, 12]),
+                    contact_current(RecurrenceNodeKind::Source, 10, 1, &[11]),
+                    contact_current(RecurrenceNodeKind::Source, 10, 2, &[12]),
+                    contact_current(RecurrenceNodeKind::Current, 11, 3, &[11, 12]),
+                    contact_current(RecurrenceNodeKind::Current, 11, 4, &[10, 12]),
+                    contact_current(RecurrenceNodeKind::Current, 11, 5, &[10, 11]),
+                    contact_current(RecurrenceNodeKind::Current, 20, 6, &[10, 11, 12]),
                 ],
                 vec![
-                    final_contact_orbit_step_for_test(&[0], &[1, 2], 3, 60, [0, 0, 0, 0]),
-                    final_contact_orbit_step_for_test(&[1, 2], &[0], 3, 70, [0, 0, 0, 0]),
-                    final_contact_orbit_step_for_test(&[0], &[1, 3], 2, 61, [0, 0, 0, 0]),
-                    final_contact_orbit_step_for_test(&[1, 3], &[0], 2, 71, [0, 0, 0, 0]),
-                    final_contact_orbit_step_for_test(&[0], &[2, 3], 1, 62, [0, 0, 0, 0]),
-                    final_contact_orbit_step_for_test(&[2, 3], &[0], 1, 72, [0, 0, 0, 0]),
+                    final_contact_orbit_step_for_test(&[1, 2], &[3], 0, 60, [0, 0, 0, 0]),
+                    final_contact_orbit_step_for_test(&[3], &[1, 2], 0, 70, [0, 0, 0, 0]),
+                    final_contact_orbit_step_for_test(&[1, 2], &[3], 0, 61, [0, 0, 0, 0]),
+                    final_contact_orbit_step_for_test(&[3], &[1, 2], 0, 71, [0, 0, 0, 0]),
+                    final_contact_orbit_step_for_test(&[1, 2], &[3], 0, 62, [0, 0, 0, 0]),
+                    final_contact_orbit_step_for_test(&[3], &[1, 2], 0, 72, [0, 0, 0, 0]),
                 ],
+                vec![[3, 0], [0, 3], [4, 1], [1, 4], [5, 2], [2, 5]],
+                6_u32,
             )
         } else {
             (
@@ -1818,6 +1824,8 @@ mod tests {
                     partial_contact_orbit_step_for_test(0, 3, 1, 22, [0, 0, 0, 0]),
                     partial_contact_orbit_step_for_test(3, 0, 1, 32, [0, 0, 0, 0]),
                 ],
+                vec![[0, 1], [1, 0], [0, 1], [1, 0], [0, 1], [1, 0]],
+                2_u32,
             )
         };
         let contacts = steps
@@ -1825,17 +1833,14 @@ mod tests {
             .enumerate()
             .map(|(transition, step)| {
                 let transition = u32::try_from(transition).unwrap();
+                let parents = parent_ids[transition as usize];
                 (
                     transition,
                     contact_transition(
                         step,
-                        if final_stage && transition % 2 == 0 {
-                            [10, 11]
-                        } else if final_stage {
-                            [11, 10]
-                        } else {
-                            [10, 10]
-                        },
+                        parents.map(|parent| {
+                            currents[parent as usize].key.current_state_template_id()
+                        }),
                         40 + u8::try_from(transition).unwrap(),
                     ),
                 )
@@ -1847,12 +1852,16 @@ mod tests {
             (0_u32..6).collect::<Vec<_>>()
         };
         for transition in order {
-            let parent_ids = if transition % 2 == 0 { [0, 1] } else { [1, 0] };
-            add_contact_contribution(&mut currents, 2, transition, parent_ids);
+            add_contact_contribution(
+                &mut currents,
+                destination_id,
+                transition,
+                parent_ids[transition as usize],
+            );
         }
-        commit_contact_plan(&mut currents, &contacts, 2).unwrap();
+        commit_contact_plan(&mut currents, &contacts, destination_id as usize).unwrap();
         (
-            contact_transition_ids(&currents[2]),
+            contact_transition_ids(&currents[destination_id as usize]),
             pending_contact_counts(&currents),
         )
     }
@@ -1879,13 +1888,17 @@ mod tests {
     }
 
     #[test]
-    fn contact_0000_partial_and_final_fan_in_keep_one_owner_deterministically() {
-        for final_stage in [false, true] {
-            let forward = contact_0000_case(final_stage, false);
-            let reverse = contact_0000_case(final_stage, true);
-            assert_eq!(forward, (vec![0], (3, 1)));
-            assert_eq!(reverse, forward);
-        }
+    fn contact_0000_fan_in_keeps_exact_assignment_multiplicity_deterministically() {
+        let partial_forward = contact_0000_case(false, false);
+        let partial_reverse = contact_0000_case(false, true);
+        assert_eq!(partial_forward, (vec![0], (3, 1)));
+        assert_eq!(partial_reverse, partial_forward);
+
+        let final_forward = contact_0000_case(true, false);
+        let final_reverse = contact_0000_case(true, true);
+        assert_eq!(final_reverse, final_forward);
+        assert_eq!(final_forward.0.len(), 3);
+        assert_eq!(final_forward.1, (7, 3));
     }
 
     #[test]
@@ -1912,12 +1925,10 @@ mod tests {
                 (vec![1, 2, 3], 2),
             ],
         );
-        assert!(
-            staged
-                .iter()
-                .all(|(_, _, transition_ids)| transition_ids.len() == 1)
-        );
-        assert_eq!(counts, (14, 10));
+        assert!(staged.iter().all(|(_, stage, transition_ids)| {
+            transition_ids.len() == if *stage == 1 { 1 } else { 3 }
+        }));
+        assert_eq!(counts, (14, 18));
         assert!(retained_partial_is_consumed);
     }
 
