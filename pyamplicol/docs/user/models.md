@@ -128,9 +128,9 @@ across supported `x86_64` and `aarch64` hosts at optimization level 2.
 pyAmpliCol therefore forces O2 for prepared JIT kernels, including when a
 different level was requested. Process-local compiled JIT artifacts also
 default to O2 and use the same portable outer target when every evaluator is
-O2 JIT. Explicit O1/O3 JIT and C++/ASM artifacts remain target-native. C++ and
-ASM receive batched inputs but do not gain SIMD from pyAmpliCol; SymJIT may
-auto-vectorize its JIT applications.
+O1 or O2 JIT. Explicit O0/O3 JIT and C++/ASM artifacts remain target-native.
+C++ and ASM receive batched inputs but do not gain SIMD from pyAmpliCol;
+SymJIT may auto-vectorize its JIT applications.
 
 ## Multiprocess Expansion
 

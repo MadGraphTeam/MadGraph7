@@ -264,15 +264,15 @@ measurements and debugging. Prepared bundles bake this choice into their
 kernel pack, so eager generation reports the pack's value as the effective
 configuration when it differs from the request.
 
-`.pyAmplicol-model.json` model IR is architecture-independent. SymJIT
-storage-v3 prepared packs and newly generated all-JIT process artifacts at
-optimization level 2 are portable across supported 64-bit little-endian
-`x86_64` and `aarch64` hosts and rebuild executable code for the receiving CPU.
-JIT O1/O3 and C++/ASM process artifacts remain target-specific. Campaign
-timing records remain machine/profile-specific measurements.
-pyAmpliCol therefore forces O2 when preparing JIT kernels, independently of the
-JIT level used for process-local compiled DAG evaluators. C++ and ASM prepared
-packs remain target-native.
+`.pyAmplicol-model.json` model IR is architecture-independent. Prepared JIT
+packs use portable SymJIT O2 storage-v3. Newly generated all-JIT process
+artifacts at optimization level 1 or 2 are also portable across supported
+64-bit little-endian `x86_64` and `aarch64` hosts and rebuild executable code
+for the receiving CPU. JIT O0/O3 and C++/ASM process artifacts remain
+target-specific. Campaign timing records remain machine/profile-specific
+measurements. pyAmpliCol still forces O2 when preparing JIT kernels,
+independently of the JIT level used for process-local compiled DAG evaluators.
+C++ and ASM prepared packs remain target-native.
 
 `evaluator.eager.point_tile_size` defaults to 1024 and is an upper bound. The
 runtime reduces it as needed to keep reusable storage within

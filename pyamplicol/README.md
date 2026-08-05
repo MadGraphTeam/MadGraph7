@@ -7,6 +7,7 @@
 <p align="center">
   <a href="https://pypi.org/project/pyamplicol/"><img src="https://img.shields.io/pypi/v/pyamplicol.svg" alt="PyPI"></a>
   <a href="https://pypi.org/project/pyamplicol/"><img src="https://img.shields.io/pypi/pyversions/pyamplicol.svg" alt="Python versions"></a>
+  <a href="https://github.com/mg5amcnlo/pyamplicol/wiki"><img src="https://img.shields.io/badge/docs-Wiki-2f81f7.svg?logo=github" alt="pyAmpliCol Wiki"></a>
   <a href="https://github.com/mg5amcnlo/pyamplicol/actions/workflows/tests.yml"><img src="https://github.com/mg5amcnlo/pyamplicol/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
   <a href="https://github.com/mg5amcnlo/pyamplicol/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-0BSD-blue.svg" alt="License: 0BSD"></a>
 </p>
@@ -17,6 +18,9 @@ pyAmpliCol generates and evaluates color-ordered scattering amplitudes from
 built-in, JSON, or UFO models. It provides a typed Python API and CLI, fast
 Rust-backed execution, runtime helicity and color-flow selection, and generated
 Python, C11, C++17, Fortran 2008, and Rust 2021 interfaces.
+
+Explore the complete [pyAmpliCol Wiki](https://github.com/mg5amcnlo/pyamplicol/wiki)
+for guided workflows, API examples, and technical reference.
 
 See the [release status](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/release-status.md)
 for build, validation, and publication details.
