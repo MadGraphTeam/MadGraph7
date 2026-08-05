@@ -62,7 +62,3 @@ callouts:
   important:
     title: Important
     color: purple
-
-exclude:
-  - Gemfile
-  - Gemfile.lock
