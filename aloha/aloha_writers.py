@@ -198,7 +198,24 @@ class WriteALOHA:
     def get_foot_txt(self):
         """Prototype for language specific footer"""
         return ''
-    
+
+    def has_fd_propagator(self):
+        """Does this routine have to apply the FD gauge propagator factor on
+        the wavefunction it builds? (language independent)"""
+
+        if aloha.unitary_gauge != 3 or not self.offshell or 'P1N' in self.tag:
+            return False
+        return self.particles[self.outgoing-1].startswith(('V','S'))
+
+    def rename_wf(self, name):
+        """Name under which a wavefunction is written. It is its own name
+        except in a term of an assembled multi-structure routine, where all the
+        structures share one name per leg: in FD gauge a leg can be a vector in
+        one structure and its Goldstone in the next one, and both are the same
+        argument."""
+
+        return self.wf_rename.get(name, name)
+
     def define_argument_list(self, couplings=None):
         """define a list with the string of object required as incoming argument"""
 
@@ -856,14 +873,6 @@ class ALOHAWriterForFortran(WriteALOHA):
             return '%s %% W(%s)' % (self.rename_wf(match.group('var')),
                                     int(match.group('num'))+ shift)
 
-    def rename_wf(self, name):
-        """Name under which a wavefunction is written. It is its own name
-        except in a term of an assembled multi-structure routine, where all the
-        structures share one name per leg: in FD gauge a leg can be a vector in
-        one structure and its Goldstone in the next one, and both are the same
-        argument."""
-
-        return self.wf_rename.get(name, name)
               
     def change_var_format(self, name): 
         """Formatting the variable name to Fortran format"""
@@ -1115,14 +1124,6 @@ class ALOHAWriterForFortran(WriteALOHA):
 
         text += 'end\n\n'
         return text
-
-    def has_fd_propagator(self):
-        """Does this routine have to apply the FD gauge propagator factor on
-        the wavefunction it builds?"""
-
-        if aloha.unitary_gauge != 3 or not self.offshell or 'P1N' in self.tag:
-            return False
-        return self.particles[self.outgoing-1].startswith(('V','S'))
 
     def get_fd_gauge_txt(self):
         """FD gauge: the part of the propagator factor that only depends on the
