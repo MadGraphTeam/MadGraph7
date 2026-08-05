@@ -377,7 +377,7 @@ hide any difference). Two runs each, reproducible to about 0.1%.
 | `g g > g g` | 11.00 -> 11.04 s | -0.4% | 875150 -> 878724 | +0.4% |
 | `g g > g g g` | 34.90 -> 34.99 s | -0.3% | 72359 -> 66757 | **-7.7%** |
 | `g g > g g g g` | 47.35 -> 45.61 s | **+3.7%** | 2699 -> 2784 | **+3.1%** |
-| `g g > 5 g` | 43.05 -> 39.98 s | **+7.1%** | not measured | |
+| `g g > 5 g` | 43.05 -> 39.98 s | **+7.1%** | 41.75 -> 43.33 | **+3.8%** |
 
 Four gluons is a wash on both (there is nothing to sum: the only quartic
 vertex is the whole amplitude). Five gluons loses on madmatrix, where the
@@ -397,9 +397,10 @@ Fortran (4 complex, 4 reals, one int) and 192 in madmatrix on sse4 in double
 | `g g > 5 g` | 268 | 321 | **290** | 29000 B (+8%) |
 
 madmatrix carries duplicate wavefunctions of its own, so its count with the
-flag on is higher: 19 / 86 at five and six gluons, against 19 / 66 in Fortran.
-The relative cost falls as the multiplicity rises, which is why the trade
-turns positive from six gluons on.
+flag on is higher: 19 / 86 / 320 at five, six and seven gluons, against
+19 / 66 / 290 in Fortran. The relative cost falls as the multiplicity rises
+(+58% at five gluons, +19% at seven), which is why the trade turns positive
+from six gluons on.
 
 **Work done per call**
 
@@ -408,7 +409,7 @@ turns positive from six gluons on.
 | `g g > g g` | 29 -> 29 | 23 -> 20 | 6 -> 6 | 34 -> 34 |
 | `g g > g g g` | 94 -> 100 (+7 sums) | 131 -> 101 | 45 -> 38 | 370 -> 314 |
 | `g g > g g g g` | 637 -> 642 (+30) | 1082 -> 688 | 510 -> 450 | 8170 -> 7210 |
-| `g g > 5 g` | 8159 -> 7844 (+60) | 23672 -> 7864 | | |
+| `g g > 5 g` | 8159 -> 7844 (+60) | 23672 -> 7864 | 7245 -> 6813 | 231850 -> 218026 |
 
 `|M|^2` is bit-identical at four and five gluons and agrees to 1e-14 at six
 and seven, in both backends. With the flag off, `matrix.f` and `CPPProcess.cc`
