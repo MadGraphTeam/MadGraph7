@@ -361,6 +361,59 @@ Worth it for madmatrix (-8.4% -> -6.6% at five gluons, +0.9% -> +1.9% at six)
 and neutral for Fortran (+3.8% -> +3.9%): there the slot count was never the
 bottleneck. The madevent run is unchanged, same cross section and error.
 
+## Results
+
+Everything below is `g g > N g` with `MG_MERGE_QUARTIC` off against on, on the
+same machine. Standalone Fortran is the shipped `check` driver looping
+`SMATRIX`; madmatrix is `check_sa.exe perf` built `FPTYPE=d` on `cppsse4`
+(the default mixed precision build rounds the two to the same value and would
+hide any difference). Two runs each, reproducible to about 0.1%.
+
+**Speed**
+
+| | standalone | | madmatrix | |
+|---|---|---|---|---|
+| | per call | | evt/s | |
+| `g g > g g` | 11.00 -> 11.04 s | -0.4% | 875150 -> 878724 | +0.4% |
+| `g g > g g g` | 34.90 -> 34.99 s | -0.3% | 72359 -> 66757 | **-7.7%** |
+| `g g > g g g g` | 47.35 -> 45.61 s | **+3.7%** | 2699 -> 2784 | **+3.1%** |
+| `g g > 5 g` | 43.05 -> 39.98 s | **+7.1%** | not measured | |
+
+Four gluons is a wash on both (there is nothing to sum: the only quartic
+vertex is the whole amplitude). Five gluons loses on madmatrix, where the
+wavefunction store grows by half and there is no JAMP fold to pay for it. Six
+and seven gluons win on both, and the gain grows with the multiplicity.
+
+**Memory — the wavefunction store**, which is what the optimisation costs.
+`NWAVEFUNCS` in Fortran, `nwf` in madmatrix; bytes are 100 per wavefunction in
+Fortran (4 complex, 4 reals, one int) and 192 in madmatrix on sse4 in double
+(4 complex plus a 4-momentum, over a 2 event vector).
+
+| | off | on, slot each | on, recycled | |
+|---|---|---|---|---|
+| `g g > g g` | 5 | 5 | 5 | 500 B |
+| `g g > g g g` | 12 | 26 | **19** | 1900 B (+58%) |
+| `g g > g g g g` | 51 | 91 | **66** | 6600 B (+29%) |
+| `g g > 5 g` | 268 | 321 | **290** | 29000 B (+8%) |
+
+madmatrix carries duplicate wavefunctions of its own, so its count with the
+flag on is higher: 19 / 86 at five and six gluons, against 19 / 66 in Fortran.
+The relative cost falls as the multiplicity rises, which is why the trade
+turns positive from six gluons on.
+
+**Work done per call**
+
+| | standalone helas calls | JAMP lines | madmatrix amplitude calls | jamp lines |
+|---|---|---|---|---|
+| `g g > g g` | 29 -> 29 | 23 -> 20 | 6 -> 6 | 34 -> 34 |
+| `g g > g g g` | 94 -> 100 (+7 sums) | 131 -> 101 | 45 -> 38 | 370 -> 314 |
+| `g g > g g g g` | 637 -> 642 (+30) | 1082 -> 688 | 510 -> 450 | 8170 -> 7210 |
+| `g g > 5 g` | 8159 -> 7844 (+60) | 23672 -> 7864 | | |
+
+`|M|^2` is bit-identical at four and five gluons and agrees to 1e-14 at six
+and seven, in both backends. With the flag off, `matrix.f` and `CPPProcess.cc`
+are byte-identical to before any of this.
+
 ## Where to go next
 
 **Give madmatrix the amplitude sums too.** It is the only backend without
