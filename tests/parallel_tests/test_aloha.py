@@ -3374,16 +3374,19 @@ COMPLEX*16 COUP2
 TYPE(ALOHA) F1
 TYPE(ALOHA) F2
 TYPE(ALOHA) V3
-COMPLEX*16 TMP
 COMPLEX*16 VERTEX
-CALL FFV1C1_0(F2,F1,V3,COUP1,VERTEX)
-CALL FFV2C1_0(F2,F1,V3,COUP2,TMP)
-VERTEX = VERTEX + TMP
 END"""
-    
+
             data = [ l.strip() for l in fsock.read().split('\n')]
             for line in goal.split('\n'):
                     self.assertIn(line.strip(), data)
+            # the combined routine is a merged expression, not a wrapper
+            # calling the routine of each single Lorentz structure: no call,
+            # and the two couplings enter the same expression. The names of
+            # the temporaries depend on what the kernel computed before, so
+            # they are not part of the comparison.
+            self.assertFalse([l for l in data if l.startswith('CALL ')])
+            self.assertTrue([l for l in data if 'COUP1' in l and 'COUP2' in l])
         
         
         
