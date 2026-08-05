@@ -22,6 +22,8 @@ pub use crate::direct_arena::{
 };
 use crate::{RusticolError, RusticolResult};
 use std::cell::RefCell;
+#[cfg(test)]
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{c_int, c_void};
 use std::time::{Duration, Instant};
 
@@ -31,6 +33,71 @@ pub const DIRECT_STATUS_OK: c_int = 0;
 
 thread_local! {
     static DIRECT_EXECUTOR_ERROR_DETAIL: RefCell<Option<RusticolError>> = const { RefCell::new(None) };
+    #[cfg(test)]
+    static DIRECT_CURRENT_OBSERVATION: RefCell<Option<DirectCurrentObservation>> = const { RefCell::new(None) };
+}
+
+/// One test-only semantic-current observation from the authenticated direct
+/// runtime.  This is deliberately absent from release builds and public ABIs.
+#[cfg(test)]
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct DirectObservedCurrentValue {
+    pub descriptor: super::direct_plan::DirectCurrentDescriptor,
+    /// Split-complex values in component-major, then point-major order.
+    pub values: Vec<(f64, f64)>,
+}
+
+/// Test-only capture of the current values produced for one exact direct-plan
+/// execution.  The two plan digests and selected sector bind the values to the
+/// authenticated schedule and query which produced them.
+#[cfg(test)]
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct DirectCurrentObservation {
+    pub plan_semantic_digest: SemanticDigest,
+    pub runtime_layout_digest: SemanticDigest,
+    pub selected_sector_id: Option<u32>,
+    pub point_count: u32,
+    pub currents: BTreeMap<u32, DirectObservedCurrentValue>,
+}
+
+#[cfg(test)]
+pub(super) fn begin_direct_current_observation(
+    plan: &DirectRecurrencePlan,
+    selected_sector_id: Option<u32>,
+    point_count: u32,
+) -> RusticolResult<()> {
+    if point_count == 0 {
+        return Err(RusticolError::invalid_argument(
+            "direct current observation requires at least one point",
+        ));
+    }
+    DIRECT_CURRENT_OBSERVATION.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if slot.is_some() {
+            return Err(RusticolError::invalid_argument(
+                "direct current observation is already active on this thread",
+            ));
+        }
+        *slot = Some(DirectCurrentObservation {
+            plan_semantic_digest: plan.semantic_digest(),
+            runtime_layout_digest: plan.runtime_layout_digest(),
+            selected_sector_id,
+            point_count,
+            currents: BTreeMap::new(),
+        });
+        Ok(())
+    })
+}
+
+#[cfg(test)]
+pub(super) fn take_direct_current_observation() -> RusticolResult<DirectCurrentObservation> {
+    DIRECT_CURRENT_OBSERVATION.with(|slot| {
+        slot.borrow_mut().take().ok_or_else(|| {
+            RusticolError::invalid_argument(
+                "direct current observation is not active on this thread",
+            )
+        })
+    })
 }
 
 /// Clear the synchronous detail channel before executing one direct plan.
@@ -607,6 +674,16 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
             })?;
             let started = PROFILE.then(Instant::now);
             execute_certified_reuse_rows(rows, workspace, point_count)?;
+            #[cfg(test)]
+            observe_direct_current_rows(
+                plan,
+                descriptor,
+                start,
+                end,
+                selected_sector_id,
+                workspace,
+                point_count,
+            )?;
             if PROFILE {
                 counters.contribution_calls += 1;
                 counters.contribution_rows += u64::from(descriptor.row_count);
@@ -725,8 +802,167 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
             }
         }
         check_status(descriptor.role, descriptor.direct_executor_id, status)?;
+        #[cfg(test)]
+        observe_direct_current_rows(
+            plan,
+            descriptor,
+            start,
+            end,
+            selected_sector_id,
+            workspace,
+            point_count,
+        )?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+fn observe_direct_current_rows(
+    plan: &DirectRecurrencePlan,
+    descriptor: &DirectRowGroupDescriptor,
+    start: usize,
+    end: usize,
+    selected_sector_id: Option<u32>,
+    workspace: &DirectWorkspace<'_>,
+    point_count: u32,
+) -> RusticolResult<()> {
+    let active = DIRECT_CURRENT_OBSERVATION.with(|slot| slot.borrow().is_some());
+    if !active || descriptor.role == DirectExecutorRole::Closure {
+        return Ok(());
+    }
+
+    let affected = match descriptor.role {
+        DirectExecutorRole::Source => plan
+            .currents()
+            .iter()
+            .filter(|current| {
+                current.source_row_or_sentinel != DIRECT_NONE_U32
+                    && (start..end).contains(&(current.source_row_or_sentinel as usize))
+            })
+            .map(|current| current.semantic_current_id)
+            .collect::<BTreeSet<_>>(),
+        DirectExecutorRole::Contribution => {
+            let destinations = plan
+                .contributions()
+                .get(start..end)
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "direct current observation contribution range is out of bounds",
+                    )
+                })?
+                .iter()
+                .map(|row| row.destination_component_base)
+                .collect::<BTreeSet<_>>();
+            plan.currents()
+                .iter()
+                .filter(|current| {
+                    current.node_kind == DirectNodeKind::Current
+                        && current.stage == descriptor.stage
+                        && destinations.iter().any(|destination| {
+                            *destination >= current.component_base
+                                && *destination
+                                    < current.component_base + u32::from(current.component_count)
+                        })
+                })
+                .map(|current| current.semantic_current_id)
+                .collect::<BTreeSet<_>>()
+        }
+        DirectExecutorRole::Finalization => plan
+            .currents()
+            .iter()
+            .filter(|current| {
+                current.finalization_row_or_sentinel != DIRECT_NONE_U32
+                    && (start..end).contains(&(current.finalization_row_or_sentinel as usize))
+            })
+            .map(|current| current.semantic_current_id)
+            .collect::<BTreeSet<_>>(),
+        DirectExecutorRole::Closure => BTreeSet::new(),
+    };
+    if affected.is_empty() {
+        return Ok(());
+    }
+
+    DIRECT_CURRENT_OBSERVATION.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let observation = slot.as_mut().ok_or_else(|| {
+            RusticolError::integrity("direct current observation disappeared during execution")
+        })?;
+        if observation.plan_semantic_digest != plan.semantic_digest()
+            || observation.runtime_layout_digest != plan.runtime_layout_digest()
+            || observation.selected_sector_id != selected_sector_id
+            || observation.point_count != point_count
+        {
+            return Err(RusticolError::integrity(
+                "direct current observation does not match this plan execution",
+            ));
+        }
+        let stride = workspace.point_stride as usize;
+        let active_points = point_count as usize;
+        for semantic_current_id in affected {
+            let current = plan
+                .currents()
+                .get(semantic_current_id as usize)
+                .filter(|current| current.semantic_current_id == semantic_current_id)
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "direct current observation semantic current is absent",
+                    )
+                })?;
+            if let Some(sector_id) = selected_sector_id
+                && !plan.selector_domain_contains(current.selector_domain_id, sector_id)?
+            {
+                continue;
+            }
+            let mut values = Vec::with_capacity(
+                usize::from(current.component_count)
+                    .checked_mul(active_points)
+                    .ok_or_else(|| {
+                        RusticolError::integrity(
+                            "direct current observation value count overflows usize",
+                        )
+                    })?,
+            );
+            for component in 0..usize::from(current.component_count) {
+                let plane = (current.component_base as usize)
+                    .checked_add(component)
+                    .ok_or_else(|| {
+                        RusticolError::integrity(
+                            "direct current observation component range overflows usize",
+                        )
+                    })?;
+                let begin = plane.checked_mul(stride).ok_or_else(|| {
+                    RusticolError::integrity(
+                        "direct current observation arena range overflows usize",
+                    )
+                })?;
+                let finish = begin.checked_add(active_points).ok_or_else(|| {
+                    RusticolError::integrity(
+                        "direct current observation arena range overflows usize",
+                    )
+                })?;
+                let real = workspace.current_re.get(begin..finish).ok_or_else(|| {
+                    RusticolError::integrity(
+                        "direct current observation real range is out of bounds",
+                    )
+                })?;
+                let imaginary = workspace.current_im.get(begin..finish).ok_or_else(|| {
+                    RusticolError::integrity(
+                        "direct current observation imaginary range is out of bounds",
+                    )
+                })?;
+                values.extend(real.iter().copied().zip(imaginary.iter().copied()));
+            }
+            observation.currents.insert(
+                semantic_current_id,
+                DirectObservedCurrentValue {
+                    descriptor: *current,
+                    values,
+                },
+            );
+        }
+        Ok(())
+    })
 }
 
 fn execute_certified_reuse_rows(

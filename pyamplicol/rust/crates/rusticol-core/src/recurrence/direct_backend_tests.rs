@@ -280,7 +280,9 @@ fn synthetic_program_reads_rows_and_accumulates_directly_into_arenas() {
     let amplitude_re_pointer = workspace.amplitude_re.as_ptr();
     let mut counters = DirectExecutionCounters::default();
 
+    begin_direct_current_observation(&plan, None, 4).unwrap();
     execute_direct_plan(&plan, &executors, &mut workspace, 4, &mut counters).unwrap();
+    let observation = take_direct_current_observation().unwrap();
 
     assert_eq!(workspace.current_re.as_ptr(), current_re_pointer);
     assert_eq!(workspace.amplitude_re.as_ptr(), amplitude_re_pointer);
@@ -289,6 +291,21 @@ fn synthetic_program_reads_rows_and_accumulates_directly_into_arenas() {
     assert_eq!(workspace.amplitude_re, &[-3.0, -6.0, -9.0, -12.0]);
     assert!(workspace.current_im.iter().all(|value| *value == 0.0));
     assert!(workspace.amplitude_im.iter().all(|value| *value == 0.0));
+    assert_eq!(observation.plan_semantic_digest, plan.semantic_digest());
+    assert_eq!(
+        observation.runtime_layout_digest,
+        plan.runtime_layout_digest()
+    );
+    assert_eq!(observation.selected_sector_id, None);
+    assert_eq!(observation.point_count, 4);
+    assert_eq!(
+        observation.currents[&0].values,
+        [(1.0, 0.0), (2.0, 0.0), (3.0, 0.0), (4.0, 0.0)]
+    );
+    assert_eq!(
+        observation.currents[&1].values,
+        [(3.0, 0.0), (6.0, 0.0), (9.0, 0.0), (12.0, 0.0)]
+    );
     assert_eq!(
         counters,
         DirectExecutionCounters {
