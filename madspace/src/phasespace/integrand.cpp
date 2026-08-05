@@ -501,6 +501,10 @@ NamedVector<Value> Integrand::build_channel_part(
     Value adaptive_prob = adaptive_probs.empty()
         ? fb.full({1., batch_size_val})
         : fb.product(adaptive_probs);
+    if (_drop_cuts_and_rescale) {
+        adaptive_prob =
+            fb.div(fb.accept_norm(indices_acc, adaptive_prob), adaptive_prob);
+    }
 
     NamedVector<Value> out;
 
@@ -671,12 +675,7 @@ NamedVector<Value> Integrand::build_common_part(
         outputs.push_back("full_weight", optional_cut(full_weight));
         outputs.push_back("weight", optional_cut(weight));
         outputs.push_back("latent", optional_cut(args.at("latent")));
-        Value norm = _drop_cuts_and_rescale
-            ? fb.accept_norm(indices_acc, args.at("adaptive_prob"))
-            : Value(1.);
-        outputs.push_back(
-            "adaptive_prob", fb.div(norm, optional_cut(args.at("adaptive_prob")))
-        );
+        outputs.push_back("adaptive_prob", optional_cut(args.at("adaptive_prob")));
         outputs.push_back("channel_index", optional_cut(args.at("chan_index")));
         if (channel_count > 1) {
             auto cw_flat = fb.full(
