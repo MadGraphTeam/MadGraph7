@@ -43,6 +43,7 @@ public:
         double buffer_unweighting_quantile = 0.99;
         double fixed_cwnet_fraction = 0.33;
         double softclip_threshold = 0.0;
+        std::size_t compressed_channel_weight_count = 50;
     };
     MadnisTraining(
         ContextPtr generator_context,

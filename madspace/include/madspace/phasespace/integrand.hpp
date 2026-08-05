@@ -60,7 +60,8 @@ public:
         const nested_vector2<std::size_t>& active_flavors = {},
         const std::vector<std::size_t>& flavor_remap = {},
         const std::vector<double>& flavor_factors = {},
-        const std::vector<bool>& flavor_mirror = {}
+        const std::vector<bool>& flavor_mirror = {},
+        std::size_t compressed_channel_weight_count = 50
     );
     std::size_t particle_count() const { return _mapping.particle_count(); }
     bool madnis_training() const { return _madnis_training; }
@@ -126,6 +127,7 @@ private:
     std::optional<ChannelWeightNetwork> _chan_weight_net;
     std::vector<me_int_t> _chan_weight_remap;
     me_int_t _remapped_chan_count;
+    std::size_t _compressed_channel_weight_count;
     bool _madnis_training;
     bool _drop_cuts_and_rescale;
     bool _partial_weights;

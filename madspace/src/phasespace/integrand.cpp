@@ -29,7 +29,8 @@ Integrand::Integrand(
     const nested_vector2<std::size_t>& active_flavors,
     const std::vector<std::size_t>& flavor_remap,
     const std::vector<double>& flavor_factors,
-    const std::vector<bool>& flavor_mirror
+    const std::vector<bool>& flavor_mirror,
+    std::size_t compressed_channel_weight_count
 ) :
     FunctionGenerator(
         "Integrand",
@@ -48,14 +49,26 @@ Integrand::Integrand(
                 ret_types.push_back("latent", batch_float_array(mapping.random_dim()));
                 ret_types.push_back("adaptive_prob", batch_float);
                 ret_types.push_back("channel_index", batch_int);
-                ret_types.push_back(
-                    "channel_weights",
-                    batch_float_array(
-                        chan_weight_remap.size() > 0 ? remapped_chan_count
-                            : subchan_weights        ? subchan_weights->channel_count()
-                                              : diff_xs.matrix_element().diagram_count()
-                    )
-                );
+                std::size_t madnis_channel_count = chan_weight_remap.size() > 0
+                    ? remapped_chan_count
+                    : subchan_weights
+                    ? subchan_weights->channel_count()
+                    : diff_xs.matrix_element().diagram_count();
+                if (madnis_channel_count > 1 &&
+                    madnis_channel_count * 8 > compressed_channel_weight_count * 12) {
+                    ret_types.push_back(
+                        "channel_weight_values",
+                        batch_float_array(compressed_channel_weight_count)
+                    );
+                    ret_types.push_back(
+                        "channel_weight_indices",
+                        batch_int_array(compressed_channel_weight_count)
+                    );
+                } else {
+                    ret_types.push_back(
+                        "channel_weights", batch_float_array(madnis_channel_count)
+                    );
+                }
                 ret_types.push_back(
                     "cwnet_input",
                     batch_float_array(
@@ -119,6 +132,7 @@ Integrand::Integrand(
     _chan_weight_net(chan_weight_net),
     _chan_weight_remap(chan_weight_remap),
     _remapped_chan_count(remapped_chan_count),
+    _compressed_channel_weight_count(compressed_channel_weight_count),
     _madnis_training(madnis_training),
     _drop_cuts_and_rescale(drop_cuts_and_rescale),
     _partial_weights(partial_weights),
@@ -587,6 +601,8 @@ NamedVector<Value> Integrand::build_common_part(
         : _subchan_weights
         ? _subchan_weights->channel_count()
         : _diff_xs.matrix_element().diagram_count();
+    bool use_compressed_channel_weights =
+        channel_count > 1 && channel_count * 8 > _compressed_channel_weight_count * 12;
     Value chan_weights_acc;
     if (channel_count > 1 && _prop_chan_weights) {
         chan_weights_acc = _prop_chan_weights->build_function(fb, {momenta_acc}).at(0);
@@ -678,14 +694,43 @@ NamedVector<Value> Integrand::build_common_part(
         outputs.push_back("adaptive_prob", optional_cut(args.at("adaptive_prob")));
         outputs.push_back("channel_index", optional_cut(args.at("chan_index")));
         if (channel_count > 1) {
-            auto cw_flat = fb.full(
-                {1. / channel_count,
-                 batch_size_val,
-                 static_cast<me_int_t>(channel_count)}
-            );
-            outputs.push_back(
-                "channel_weights", scatter_or_drop(cw_flat, prior_chan_weights_acc)
-            );
+            if (use_compressed_channel_weights) {
+                Value chan_index_acc =
+                    fb.batch_gather(indices_acc, args.at("chan_index"));
+                auto [chan_weight_values_acc, chan_weight_indices_acc] =
+                    fb.compress_channel_weights(
+                        chan_index_acc,
+                        prior_chan_weights_acc,
+                        static_cast<me_int_t>(_compressed_channel_weight_count)
+                    );
+                auto cw_values_default = fb.full(
+                    {0.,
+                     batch_size_val,
+                     static_cast<me_int_t>(_compressed_channel_weight_count)}
+                );
+                auto cw_indices_default = fb.full(
+                    {static_cast<me_int_t>(-1),
+                     batch_size_val,
+                     static_cast<me_int_t>(_compressed_channel_weight_count)}
+                );
+                outputs.push_back(
+                    "channel_weight_values",
+                    scatter_or_drop(cw_values_default, chan_weight_values_acc)
+                );
+                outputs.push_back(
+                    "channel_weight_indices",
+                    scatter_or_drop(cw_indices_default, chan_weight_indices_acc)
+                );
+            } else {
+                auto cw_flat = fb.full(
+                    {1. / channel_count,
+                     batch_size_val,
+                     static_cast<me_int_t>(channel_count)}
+                );
+                outputs.push_back(
+                    "channel_weights", scatter_or_drop(cw_flat, prior_chan_weights_acc)
+                );
+            }
         } else {
             outputs.push_back(
                 "channel_weights",

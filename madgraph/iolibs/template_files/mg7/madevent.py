@@ -543,6 +543,7 @@ class MadgraphProcess:
             config.buffer_unweighting_quantile = madnis_args["buffer_unweighting_quantile"]
             config.fixed_cwnet_fraction = madnis_args["fixed_cwnet_fraction"]
             config.softclip_threshold = madnis_args["softclip_threshold"]
+            config.compressed_channel_weight_count = madnis_args["compressed_channel_weight_count"]
             phasespace = subproc.build_madnis(phasespace)
             madnis_phasespaces.append(phasespace)
             training_args.append(
@@ -1494,6 +1495,7 @@ class MadgraphSubprocess:
             input_momentum_fraction=True,
         )
         partial_weights = self.process.run_card["generation"]["systematics"]
+        madnis_args = self.process.run_card["madnis"]
         integrands = []
         for channel in phasespace.channels:
             integrands.append(ms.Integrand(
@@ -1518,6 +1520,7 @@ class MadgraphSubprocess:
                 flavor_remap,
                 flavor_factors,
                 flavor_mirror,
+                madnis_args["compressed_channel_weight_count"],
             ))
         #print(integrands[0].function())
         #for i in integrands: print(i.function())

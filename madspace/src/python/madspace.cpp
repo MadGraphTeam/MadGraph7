@@ -1236,7 +1236,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const nested_vector2<std::size_t>&,
                 const std::vector<std::size_t>&,
                 const std::vector<double>&,
-                const std::vector<bool>&>(),
+                const std::vector<bool>&,
+                std::size_t>(),
             py::arg("mapping"),
             py::arg("diff_xs"),
             py::arg("adaptive_map") = std::monostate{},
@@ -1257,7 +1258,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("active_flavors") = nested_vector2<std::size_t>{},
             py::arg("flavor_remap") = std::vector<std::size_t>{},
             py::arg("flavor_factors") = std::vector<double>{},
-            py::arg("flavor_mirror") = std::vector<bool>{}
+            py::arg("flavor_mirror") = std::vector<bool>{},
+            py::arg("compressed_channel_weight_count") = 50
         )
         .def("particle_count", &Integrand::particle_count)
         .def("madnis_training", &Integrand::madnis_training)
@@ -1290,10 +1292,12 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init<
                 const std::vector<std::shared_ptr<FunctionGenerator>>&,
                 const std::optional<ChannelWeightNetwork>&,
-                double>(),
+                double,
+                std::size_t>(),
             py::arg("functions"),
             py::arg("cwnet"),
-            py::arg("softclip_threshold") = 0.0
+            py::arg("softclip_threshold") = 0.0,
+            py::arg("compressed_channel_weight_count") = 50
         );
 
     add_enum<Verbosity>(
@@ -1367,6 +1371,10 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def_readwrite(
             "softclip_threshold", &MadnisTraining::Config::softclip_threshold
+        )
+        .def_readwrite(
+            "compressed_channel_weight_count",
+            &MadnisTraining::Config::compressed_channel_weight_count
         );
 
     py::classh<MadnisTraining>(m, "MadnisTraining")

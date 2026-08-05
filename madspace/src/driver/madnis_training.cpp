@@ -27,7 +27,12 @@ MadnisTraining::MadnisTraining(
             _arg_permutation.push_back(integ_args.at("adaptive_prob"));
             if (cwnet) {
                 _arg_permutation.push_back(integ_args.at("cwnet_input"));
-                _arg_permutation.push_back(integ_args.at("channel_weights"));
+                if (integ_args.contains("channel_weight_values")) {
+                    _arg_permutation.push_back(integ_args.at("channel_weight_values"));
+                    _arg_permutation.push_back(integ_args.at("channel_weight_indices"));
+                } else {
+                    _arg_permutation.push_back(integ_args.at("channel_weights"));
+                }
                 _arg_permutation.push_back(integ_args.at("channel_index"));
             }
             for (auto key : channel.integrand_prob->arg_types().keys()) {
@@ -162,7 +167,13 @@ void MadnisTraining::build_runtimes_and_optimizer() {
         channel.generator_runtime.reset();
     }
     Function madnis_func =
-        MadnisLoss(functions, _cwnet, _config.softclip_threshold).function();
+        MadnisLoss(
+            functions,
+            _cwnet,
+            _config.softclip_threshold,
+            _config.compressed_channel_weight_count
+        )
+            .function();
     if (_optimizer) {
         _optimizer->replace_function(madnis_func);
     } else {
