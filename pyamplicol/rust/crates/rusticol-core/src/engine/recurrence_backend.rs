@@ -25,6 +25,7 @@ use crate::recurrence::{DirectExecutorRole, DirectRecurrencePlan, SemanticDigest
 use crate::{RusticolError, RusticolResult, VerifiedArtifact};
 #[cfg(feature = "f64-symjit")]
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::path::Path;
 #[cfg(feature = "f64-symjit")]
 use std::path::PathBuf;
@@ -57,15 +58,53 @@ pub(super) struct NativeRecurrenceDirectExecutorBackend {
     owners: NativeRecurrenceDirectExecutorOwners,
 }
 
-/// Immutable context ownership retained beside the native recurrence scheduler.
-pub(super) struct NativeRecurrenceDirectExecutorOwners {
-    source: Option<LoadedDirectSourceExecutor>,
+/// Model-level ownership of one authenticated prepared-executor catalog.
+///
+/// Source executors are deliberately absent: their contexts contain crossed
+/// source domains and therefore belong to a process/lane binding.  Every
+/// other handle addresses immutable contexts owned by this pool and can be
+/// shared by independent selector-local traces without constructing a direct
+/// recurrence plan.
+pub(super) struct NativeRecurrencePreparedExecutorPool {
+    handles: Box<[Option<DirectExecutorHandle>]>,
+    bindings: BTreeMap<(DirectExecutorRole, u32), NativePreparedExecutorBinding>,
+    executor_roles: Box<[DirectExecutorRole]>,
+    identity_finalizer_id: Option<u32>,
+    direct_template_catalog_digest: SemanticDigest,
     _intrinsics: Vec<LoadedRecurrenceIntrinsicDirectExecutor>,
     #[cfg(feature = "f64-symjit")]
     _symjit: Vec<LoadedSymjitDirectExecutor>,
     #[cfg(feature = "f64-compiled")]
     _native: Vec<LoadedNativeDirectExecutor>,
     summary: NativeRecurrenceDirectBackendSummary,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct NativePreparedExecutorBinding {
+    executor_id: u32,
+    parent_permutation: [u8; 2],
+}
+
+/// Process/lane-owned crossed-source dispatch binding.
+///
+/// This value must outlive every source handle obtained from it and must be
+/// dropped before the model-level prepared pool during lane teardown.
+pub(super) struct OnTheFlySourceDomainBinding {
+    source: Option<LoadedDirectSourceExecutor>,
+}
+
+/// Borrowed semantic resolver used by the private on-the-fly interpreter.
+pub(super) struct OnTheFlyPreparedExecutorResolver<'a> {
+    pool: &'a NativeRecurrencePreparedExecutorPool,
+    sources: &'a OnTheFlySourceDomainBinding,
+}
+
+/// Immutable context ownership retained beside the native recurrence scheduler.
+pub(super) struct NativeRecurrenceDirectExecutorOwners {
+    // Field order documents the required destruction order. Rust drops fields
+    // in declaration order: process-bound source contexts before model pool.
+    source_binding: OnTheFlySourceDomainBinding,
+    pool: NativeRecurrencePreparedExecutorPool,
 }
 
 impl NativeRecurrenceDirectExecutorBackend {
@@ -103,6 +142,44 @@ impl NativeRecurrenceDirectExecutorBackend {
         expected_catalog_digest: &str,
         source_domains: Vec<DirectSourceDispatchDomainSpec>,
     ) -> RusticolResult<Self> {
+        let pool = NativeRecurrencePreparedExecutorPool::load_from_store(
+            manifest_json,
+            payloads,
+            expected_prepared_pack_digest,
+            expected_catalog_digest,
+        )?;
+        let source_binding = pool.bind_source_domains(source_domains)?;
+        let catalog = pool.bind_direct_plan(plan, &source_binding)?;
+        Ok(Self {
+            catalog,
+            owners: NativeRecurrenceDirectExecutorOwners {
+                source_binding,
+                pool,
+            },
+        })
+    }
+
+    /// Split the lightweight handle catalog from the contexts that it addresses.
+    ///
+    /// The caller must retain `owners` for at least as long as `catalog` can be
+    /// invoked. Contexts are boxed, so moving either returned value cannot
+    /// invalidate a handle.
+    pub(super) fn into_parts(
+        self,
+    ) -> (DirectExecutorCatalog, NativeRecurrenceDirectExecutorOwners) {
+        (self.catalog, self.owners)
+    }
+}
+
+impl NativeRecurrencePreparedExecutorPool {
+    /// Load and authenticate model-level prepared executors without binding a
+    /// process source domain or a recurrence plan.
+    pub(super) fn load_from_store(
+        manifest_json: &[u8],
+        payloads: &EvaluatorPayloadStore,
+        expected_prepared_pack_digest: &str,
+        expected_catalog_digest: &str,
+    ) -> RusticolResult<Self> {
         #[cfg(not(any(feature = "f64-symjit", feature = "f64-compiled")))]
         let _ = payloads;
         let pack: PreparedKernelPackManifest =
@@ -116,40 +193,65 @@ impl NativeRecurrenceDirectExecutorBackend {
             expected_prepared_pack_digest,
             expected_catalog_digest,
         )?;
-        if direct.catalog_digest != plan.direct_template_catalog_digest().to_string() {
-            return Err(RusticolError::integrity(
-                "prepared Direct-Arena catalog digest does not match the recurrence plan",
-            ));
-        }
-        let source_needed = direct
-            .templates
-            .iter()
-            .any(|template| template.role == "source");
-        let source = if source_needed {
-            Some(LoadedDirectSourceExecutor::load(source_domains)?)
-        } else {
-            if !source_domains.is_empty() {
-                return Err(RusticolError::integrity(
-                    "Direct-Arena source domains were supplied to a catalog without source executors",
-                ));
-            }
-            None
-        };
         let mut intrinsics = Vec::new();
         #[cfg(feature = "f64-symjit")]
         let mut symjit = Vec::new();
         #[cfg(feature = "f64-compiled")]
         let mut native = Vec::new();
         let mut handles = Vec::with_capacity(direct.templates.len());
+        let mut bindings = BTreeMap::new();
+        let mut executor_roles = Vec::with_capacity(direct.templates.len());
+        let mut identity_finalizer_id = None;
         for template in &direct.templates {
+            let role = direct_role(&template.role)?;
+            let parent_permutation: [u8; 2] = template
+                .payload_binding
+                .contribution_parent_permutation
+                .as_slice()
+                .try_into()
+                .map_err(|_| {
+                    RusticolError::integrity(
+                        "prepared Direct-Arena executor has an invalid parent permutation",
+                    )
+                })?;
+            if bindings
+                .insert(
+                    (role, template.evaluator_binding_id),
+                    NativePreparedExecutorBinding {
+                        executor_id: template.direct_executor_id,
+                        parent_permutation,
+                    },
+                )
+                .is_some()
+            {
+                return Err(RusticolError::integrity(
+                    "prepared Direct-Arena catalog repeats a semantic executor binding",
+                ));
+            }
             let handle = match template.payload_binding.kind.as_str() {
                 "rusticol-intrinsic" if template.role == "contribution" => {
                     let loaded = load_contribution_intrinsic(template)?;
                     let handle = loaded.handle();
                     intrinsics.push(loaded);
-                    handle
+                    Some(handle)
                 }
-                "rusticol-intrinsic" => load_intrinsic_handle(template, source.as_ref())?,
+                "rusticol-intrinsic" if template.role == "source" => None,
+                "rusticol-intrinsic" => {
+                    let handle = load_intrinsic_handle(template)?;
+                    if template.payload_binding.runtime_template.as_deref()
+                        == Some("rusticol.identity-finalize-in-place.v1")
+                    {
+                        if identity_finalizer_id
+                            .replace(template.direct_executor_id)
+                            .is_some()
+                        {
+                            return Err(RusticolError::integrity(
+                                "prepared Direct-Arena catalog repeats the identity finalizer",
+                            ));
+                        }
+                    }
+                    Some(handle)
+                }
                 "prepared-direct-call" => match template.backend.as_str() {
                     "jit" => {
                         #[cfg(feature = "f64-symjit")]
@@ -157,7 +259,7 @@ impl NativeRecurrenceDirectExecutorBackend {
                             let loaded = load_symjit_executor(template, &pack, payloads)?;
                             let handle = loaded.handle();
                             symjit.push(loaded);
-                            handle
+                            Some(handle)
                         }
                         #[cfg(not(feature = "f64-symjit"))]
                         {
@@ -172,7 +274,7 @@ impl NativeRecurrenceDirectExecutorBackend {
                             let loaded = load_native_executor(template, &pack, payloads)?;
                             let handle = loaded.handle();
                             native.push(loaded);
-                            handle
+                            Some(handle)
                         }
                         #[cfg(not(feature = "f64-compiled"))]
                         {
@@ -193,16 +295,18 @@ impl NativeRecurrenceDirectExecutorBackend {
                     )));
                 }
             };
-            if handle.role() != direct_role(&template.role)? {
+            if let Some(handle) = handle
+                && handle.role() != role
+            {
                 return Err(RusticolError::integrity(format!(
                     "Direct-Arena executor {} resolved with the wrong role",
                     template.direct_executor_id
                 )));
             }
             handles.push(handle);
+            executor_roles.push(role);
         }
         let digest = semantic_digest(&direct.catalog_digest, "Direct-Arena catalog")?;
-        let catalog = DirectExecutorCatalog::new(plan, digest, handles)?;
         let summary = NativeRecurrenceDirectBackendSummary {
             prepared_kernel_pack_digest: direct.prepared_kernel_pack_digest.clone(),
             direct_template_catalog_digest: direct.catalog_digest.clone(),
@@ -212,40 +316,189 @@ impl NativeRecurrenceDirectExecutorBackend {
             executor_count: direct.templates.len(),
         };
         Ok(Self {
-            catalog,
-            owners: NativeRecurrenceDirectExecutorOwners {
-                source,
-                _intrinsics: intrinsics,
-                #[cfg(feature = "f64-symjit")]
-                _symjit: symjit,
-                #[cfg(feature = "f64-compiled")]
-                _native: native,
-                summary,
-            },
+            handles: handles.into_boxed_slice(),
+            bindings,
+            executor_roles: executor_roles.into_boxed_slice(),
+            identity_finalizer_id,
+            direct_template_catalog_digest: digest,
+            _intrinsics: intrinsics,
+            #[cfg(feature = "f64-symjit")]
+            _symjit: symjit,
+            #[cfg(feature = "f64-compiled")]
+            _native: native,
+            summary,
         })
     }
 
-    /// Split the lightweight handle catalog from the contexts that it addresses.
-    ///
-    /// The caller must retain `owners` for at least as long as `catalog` can be
-    /// invoked. Contexts are boxed, so moving either returned value cannot
-    /// invalidate a handle.
-    pub(super) fn into_parts(
-        self,
-    ) -> (DirectExecutorCatalog, NativeRecurrenceDirectExecutorOwners) {
-        (self.catalog, self.owners)
+    pub(super) fn bind_source_domains(
+        &self,
+        source_domains: Vec<DirectSourceDispatchDomainSpec>,
+    ) -> RusticolResult<OnTheFlySourceDomainBinding> {
+        let source_needed = self
+            .bindings
+            .keys()
+            .any(|(role, _)| *role == DirectExecutorRole::Source);
+        let source = if source_needed {
+            Some(LoadedDirectSourceExecutor::load(source_domains)?)
+        } else {
+            if !source_domains.is_empty() {
+                return Err(RusticolError::integrity(
+                    "source domains were supplied to a prepared catalog without source executors",
+                ));
+            }
+            None
+        };
+        Ok(OnTheFlySourceDomainBinding { source })
+    }
+
+    pub(super) fn resolver<'a>(
+        &'a self,
+        sources: &'a OnTheFlySourceDomainBinding,
+    ) -> OnTheFlyPreparedExecutorResolver<'a> {
+        OnTheFlyPreparedExecutorResolver {
+            pool: self,
+            sources,
+        }
+    }
+
+    fn resolve_handle(
+        &self,
+        sources: &OnTheFlySourceDomainBinding,
+        role: DirectExecutorRole,
+        evaluator_binding_id: u32,
+    ) -> RusticolResult<(u32, DirectExecutorHandle, [u8; 2])> {
+        let binding = self
+            .bindings
+            .get(&(role, evaluator_binding_id))
+            .copied()
+            .ok_or_else(|| {
+                RusticolError::integrity(format!(
+                    "prepared recurrence catalog has no {role:?} semantic binding {evaluator_binding_id}"
+                ))
+            })?;
+        let handle = match role {
+            DirectExecutorRole::Source => sources.source_handle()?,
+            _ => self
+                .handles
+                .get(binding.executor_id as usize)
+                .and_then(|handle| *handle)
+                .ok_or_else(|| {
+                    RusticolError::integrity(format!(
+                        "prepared recurrence executor {} is not loaded",
+                        binding.executor_id,
+                    ))
+                })?,
+        };
+        if handle.role() != role {
+            return Err(RusticolError::integrity(format!(
+                "prepared recurrence executor {} has role {:?}, expected {role:?}",
+                binding.executor_id,
+                handle.role()
+            )));
+        }
+        Ok((binding.executor_id, handle, binding.parent_permutation))
+    }
+
+    fn identity_finalizer_handle(&self) -> RusticolResult<(u32, DirectExecutorHandle)> {
+        let executor_id = self.identity_finalizer_id.ok_or_else(|| {
+            RusticolError::integrity("prepared recurrence catalog has no identity finalizer")
+        })?;
+        let handle = self
+            .handles
+            .get(executor_id as usize)
+            .and_then(|handle| *handle)
+            .ok_or_else(|| RusticolError::integrity("identity finalizer is not loaded"))?;
+        Ok((executor_id, handle))
+    }
+
+    fn bind_direct_plan(
+        &self,
+        plan: &DirectRecurrencePlan,
+        sources: &OnTheFlySourceDomainBinding,
+    ) -> RusticolResult<DirectExecutorCatalog> {
+        if self.direct_template_catalog_digest != plan.direct_template_catalog_digest() {
+            return Err(RusticolError::integrity(
+                "prepared Direct-Arena catalog digest does not match the recurrence plan",
+            ));
+        }
+        let mut handles = Vec::with_capacity(self.handles.len());
+        for (executor_id, handle) in self.handles.iter().copied().enumerate() {
+            let handle = if let Some(handle) = handle {
+                handle
+            } else {
+                let executor_id = u32::try_from(executor_id)
+                    .map_err(|_| RusticolError::integrity("prepared executor ID exceeds u32"))?;
+                let role = self
+                    .executor_roles
+                    .get(executor_id as usize)
+                    .copied()
+                    .ok_or_else(|| RusticolError::integrity("prepared executor role is absent"))?;
+                if role != DirectExecutorRole::Source {
+                    return Err(RusticolError::integrity(
+                        "prepared non-source executor has no loaded handle",
+                    ));
+                }
+                sources.source_handle()?
+            };
+            handles.push(handle);
+        }
+        DirectExecutorCatalog::new(plan, self.direct_template_catalog_digest, handles)
+    }
+}
+
+impl OnTheFlySourceDomainBinding {
+    fn source_handle(&self) -> RusticolResult<DirectExecutorHandle> {
+        let source = self.source.as_ref().ok_or_else(|| {
+            RusticolError::integrity("on-the-fly source-domain binding is absent")
+        })?;
+        let handle = source.handle();
+        Ok(DirectExecutorHandle::Source {
+            call: handle.call,
+            context: handle.context,
+        })
+    }
+
+    pub(super) fn union_source_dispatch(&self) -> RusticolResult<DirectUnionSourceDispatchHandle> {
+        self.source
+            .as_ref()
+            .map(LoadedDirectSourceExecutor::union_handle)
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "all-flow-union recurrence backend has no SourceIR dispatcher",
+                )
+            })
+    }
+}
+
+impl OnTheFlyPreparedExecutorResolver<'_> {
+    pub(super) fn direct_template_catalog_digest(&self) -> SemanticDigest {
+        self.pool.direct_template_catalog_digest
+    }
+
+    pub(super) fn resolve_evaluator(
+        &self,
+        role: DirectExecutorRole,
+        evaluator_binding_id: u32,
+    ) -> RusticolResult<(u32, DirectExecutorHandle, [u8; 2])> {
+        self.pool
+            .resolve_handle(self.sources, role, evaluator_binding_id)
+    }
+
+    pub(super) fn resolve_identity_finalizer(&self) -> RusticolResult<(u32, DirectExecutorHandle)> {
+        self.pool.identity_finalizer_handle()
     }
 }
 
 impl NativeRecurrenceDirectExecutorOwners {
     pub(super) fn summary(&self) -> &NativeRecurrenceDirectBackendSummary {
-        &self.summary
+        &self.pool.summary
     }
 
     pub(super) fn internal_traffic_bytes(&self) -> (u64, u64) {
         #[cfg(feature = "f64-symjit")]
         {
-            self._symjit
+            self.pool
+                ._symjit
                 .iter()
                 .map(LoadedSymjitDirectExecutor::internal_traffic_bytes)
                 .fold(
@@ -265,14 +518,7 @@ impl NativeRecurrenceDirectExecutorOwners {
     }
 
     pub(super) fn union_source_dispatch(&self) -> RusticolResult<DirectUnionSourceDispatchHandle> {
-        self.source
-            .as_ref()
-            .map(LoadedDirectSourceExecutor::union_handle)
-            .ok_or_else(|| {
-                RusticolError::integrity(
-                    "all-flow-union recurrence backend has no SourceIR dispatcher",
-                )
-            })
+        self.source_binding.union_source_dispatch()
     }
 }
 
@@ -431,7 +677,6 @@ fn load_contribution_intrinsic(
 
 fn load_intrinsic_handle(
     template: &RecurrenceDirectTemplateManifest,
-    source: Option<&LoadedDirectSourceExecutor>,
 ) -> RusticolResult<DirectExecutorHandle> {
     let runtime_template = template
         .payload_binding
@@ -439,16 +684,6 @@ fn load_intrinsic_handle(
         .as_deref()
         .ok_or_else(|| RusticolError::artifact("Direct-Arena intrinsic has no runtime template"))?;
     match template.role.as_str() {
-        "source" if runtime_template.starts_with("rusticol.source-fill.") => {
-            let source = source.ok_or_else(|| {
-                RusticolError::integrity("Direct-Arena source executor owner is absent")
-            })?;
-            let handle = source.handle();
-            Ok(DirectExecutorHandle::Source {
-                call: handle.call,
-                context: handle.context,
-            })
-        }
         "finalization" if runtime_template == "rusticol.identity-finalize-in-place.v1" => {
             Ok(DirectExecutorHandle::Finalization {
                 call: execute_identity_finalization_rows,
