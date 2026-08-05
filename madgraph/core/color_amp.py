@@ -21,6 +21,7 @@ from __future__ import absolute_import
 import collections
 import copy
 import fractions
+import itertools
 import operator
 import re
 import array
@@ -52,6 +53,13 @@ class ColorBasis(dict):
 
     # Dictionary store the raw colorize information
     _list_color_dict = []
+
+    # Whether relabel_canonical may take its shortcut, per canonical form
+    _fast_relabel_dict = {}
+
+    # Color objects whose canonical form is fully determined by
+    # permute_immutable (Tr is cyclic, T is an open chain, ColorOne is empty).
+    fast_relabel_objects = frozenset(['Tr', 'T', 'ColorOne'])
 
 
     class ColorBasisError(Exception):
@@ -237,6 +245,66 @@ class ColorBasis(dict):
         return (min_index, new_res_dict)
 
 
+    def _fast_relabel_possible(self, col_fact):
+        """The shortcut is only attempted on color factors made of objects
+        whose canonical form is known, and whose indices are all distinct
+        within a string so that no contraction identity can fire."""
+
+        for col_str in col_fact:
+            indices = []
+            for name, idx in col_str.to_immutable():
+                if name not in self.fast_relabel_objects:
+                    return False
+                indices.extend(idx)
+            if len(indices) != len(dict.fromkeys(indices)):
+                return False
+        return True
+
+    @staticmethod
+    def _canonicalize_strings(col_fact):
+        """Put every color string of col_fact back in canonical form in place
+        and drop the vanishing ones, mirroring what ColorFactor.simplify does
+        for an expression which is already simplified."""
+
+        for col_str in col_fact:
+            immutable = col_str.to_immutable()
+            canonical = permute_immutable(immutable, {})
+            if canonical != immutable:
+                col_str.from_immutable(canonical)
+                col_str.immutable = None
+                col_str.canonical = None
+        return color_algebra.ColorFactor([col_str for col_str in col_fact \
+                                          if col_str.coeff != 0])
+
+    def relabel_canonical(self, col_fact, canonical_rep):
+        """Return col_fact, which is an already simplified color factor with
+        relabelled indices, put back in canonical form. Equivalent to
+        col_fact.simplify().simplify(); which of the two is used is decided
+        once per canonical representation by running both and comparing."""
+
+        verdict = self._fast_relabel_dict.get(canonical_rep)
+        if verdict is True:
+            return self._canonicalize_strings(col_fact)
+        if verdict is False:
+            return col_fact.simplify().simplify()
+
+        # First time this color structure is recycled: check the shortcut
+        # against the full simplification before trusting it.
+        slow = col_fact.create_copy().simplify().simplify()
+        if not self._fast_relabel_possible(col_fact):
+            self._fast_relabel_dict[canonical_rep] = False
+            return slow
+        fast = self._canonicalize_strings(col_fact)
+        verdict = len(fast) == len(slow) and \
+                  all(f.to_immutable() == s.to_immutable() and
+                      f.coeff == s.coeff and
+                      f.is_imaginary == s.is_imaginary and
+                      f.Nc_power == s.Nc_power and
+                      f.loop_Nc_power == s.loop_Nc_power
+                      for f, s in zip(fast, slow))
+        self._fast_relabel_dict[canonical_rep] = verdict
+        return fast if verdict else slow
+
     def update_color_basis(self, colorize_dict, index):
         """Update the current color basis by adding information from 
         the colorize dictionary (produced by the colorize routine)
@@ -283,8 +351,18 @@ class ColorBasis(dict):
                 # can appear with a loop) to put traces in a canonical ordering.
                 # If it still causes issue, just do a full_simplify(), it would
                 # not bring any heavy additional computational load.
-                col_fact = col_fact.simplify().simplify()
-                
+                #
+                # What is recycled here is an already simplified color factor
+                # to which nothing but a relabelling of the indices has been
+                # applied. A relabelled simplified expression is still
+                # simplified, so this only has to put every color string back
+                # in canonical form, which relabel_canonical does directly
+                # instead of running the full simplification machinery over
+                # every term. The equivalence of the two is checked once per
+                # canonical representation, and the slow path is kept for any
+                # color structure where it does not hold.
+                col_fact = self.relabel_canonical(col_fact, canonical_rep)
+
                 # Here we need to force a specific order for the summed indices
                 # in case we have K6 or K6bar Clebsch Gordan coefficients
                 for colstr in col_fact: colstr.order_summation()
@@ -345,6 +423,9 @@ class ColorBasis(dict):
 
         # Dictionary store the raw colorize information
         self._list_color_dict = []
+
+        # Whether relabel_canonical may take its shortcut, per canonical form
+        self._fast_relabel_dict = {}
 
 
         if args:
@@ -529,43 +610,404 @@ class ColorBasis(dict):
         return res
 
 
+#===============================================================================
+# Permutation symmetry of a color basis
+#===============================================================================
+def permute_immutable(struct, perm):
+    """Apply the index permutation perm (a dict {old_index: new_index}) to the
+    immutable representation of a color structure, and bring the result back to
+    the canonical form used as a ColorBasis key: traces are cyclic, so they are
+    rotated to start on their smallest index, and the color objects are sorted
+    exactly as ColorString.to_immutable does."""
+
+    res = []
+    for name, indices in struct:
+        new_indices = tuple([perm.get(i, i) for i in indices])
+        if name == 'Tr' and len(new_indices) > 1:
+            # Tr is cyclic: rotate so that the smallest index comes first
+            start = min(range(len(new_indices)), key=new_indices.__getitem__)
+            new_indices = new_indices[start:] + new_indices[:start]
+        res.append((name, new_indices))
+    res.sort()
+    return tuple(res)
+
+
+class ColorBasisSymmetry(object):
+    """Permutations of the external color indices which map a color basis (or a
+    pair of color bases, for an asymmetric color matrix) onto itself.
+
+    A color matrix entry is the full contraction of two color structures, so it
+    depends only on the *relative* labelling of the indices: relabelling the
+    indices consistently in both structures leaves the entry unchanged. Hence
+    for any such permutation P,
+
+        C[P(i)][P(j)] = C[i][j]
+
+    and only one row per orbit of P-action on the basis has to be computed.
+
+    Note that the permutations found here are not required to be physical
+    permutations of identical particles: any index relabelling that maps the
+    basis onto itself is a symmetry of the color matrix. For g g > n g this
+    finds the full S_(n+2) rather than only the S_n of the final state, which
+    collapses the whole matrix to a single row."""
+
+    # Indices above this value are summed indices introduced internally
+    # (order_summation starts at 10000, colorize uses values below -1000);
+    # only genuine external indices are permuted.
+    max_external_index = 1000
+
+    def __init__(self, keys1, keys2=None):
+        """keys1/keys2 are the *sorted* lists of color basis keys, i.e. exactly
+        the ordering used to index the color matrix."""
+
+        self.keys1 = keys1
+        self.keys2 = keys2 if keys2 is not None else keys1
+        # permutation of the basis indices induced by each accepted generator
+        self.generators1 = []
+        self.generators2 = []
+        # representative of the orbit each row belongs to, and how to get there
+        # in one step: (parent row, index of the generator mapping it to here)
+        self.row_rep = list(range(len(keys1)))
+        self.row_parent = [None] * len(keys1)
+        self.representatives = list(range(len(keys1)))
+
+        if not keys1 or not self.keys2:
+            return
+
+        self._find_generators()
+        self._build_orbits()
+
+    def _external_indices(self, keys):
+        """Return the sorted list of indices which may be permuted. A plain
+        list is used rather than a set since 'set' is shadowed by an ordered
+        variant in this module when reproducible ordering is requested."""
+
+        indices = {}
+        for struct in keys:
+            for _, idx in struct:
+                for i in idx:
+                    if 0 < i < self.max_external_index:
+                        indices[i] = True
+        return sorted(indices)
+
+    def _index_signature(self, keys):
+        """Group indices by the way they appear in the basis: two indices can
+        only be exchanged if they occupy the same kind of slots. This is only
+        used to avoid testing hopeless candidates; every candidate is verified
+        explicitly afterwards."""
+
+        sig = collections.defaultdict(collections.Counter)
+        for struct in keys:
+            for name, idx in struct:
+                for pos, i in enumerate(idx):
+                    sig[i][(name, len(idx), pos)] += 1
+        return sig
+
+    def _find_generators(self):
+        """Find transpositions of external indices mapping every basis onto
+        itself, and store the induced permutation of the basis indices."""
+
+        candidates = self._external_indices(self.keys1)
+        if self.keys2 is not self.keys1:
+            other = dict((i, True) for i in self._external_indices(self.keys2))
+            candidates = [i for i in candidates if i in other]
+        if len(candidates) < 2:
+            return
+
+        sig1 = self._index_signature(self.keys1)
+        sig2 = self._index_signature(self.keys2) \
+                                if self.keys2 is not self.keys1 else sig1
+
+        pos1 = dict((k, i) for i, k in enumerate(self.keys1))
+        pos2 = pos1 if self.keys2 is self.keys1 else \
+                             dict((k, i) for i, k in enumerate(self.keys2))
+
+        for a, b in itertools.combinations(candidates, 2):
+            if sig1[a] != sig1[b] or sig2[a] != sig2[b]:
+                continue
+            perm = {a: b, b: a}
+            induced1 = self._induced_permutation(self.keys1, pos1, perm)
+            if induced1 is None:
+                continue
+            if self.keys2 is self.keys1:
+                induced2 = induced1
+            else:
+                induced2 = self._induced_permutation(self.keys2, pos2, perm)
+                if induced2 is None:
+                    continue
+            # A transposition is its own inverse, and so is the permutation it
+            # induces on the basis. Rows are gathered from their parent with
+            # the generator itself rather than with its inverse, so make sure
+            # of it instead of assuming it.
+            if any(induced1[induced1[i]] != i for i in range(len(induced1))) or \
+               any(induced2[induced2[i]] != i for i in range(len(induced2))):
+                continue
+            self.generators1.append(induced1)
+            self.generators2.append(induced2)
+
+    @staticmethod
+    def _induced_permutation(keys, positions, perm):
+        """Return the permutation of the basis indices induced by the index
+        permutation perm, or None if the basis is not mapped onto itself."""
+
+        induced = [0] * len(keys)
+        seen = [False] * len(keys)
+        for i, struct in enumerate(keys):
+            try:
+                j = positions[permute_immutable(struct, perm)]
+            except KeyError:
+                return None
+            if seen[j]:
+                return None
+            seen[j] = True
+            induced[i] = j
+        return induced
+
+    def _build_orbits(self):
+        """Breadth-first exploration of each orbit, recording for every row the
+        representative it comes from and the generator that reaches it from its
+        parent, so that the row can be obtained by a single gather."""
+
+        if not self.generators1:
+            return
+
+        n = len(self.keys1)
+        self.row_rep = [-1] * n
+        self.representatives = []
+        for start in range(n):
+            if self.row_rep[start] != -1:
+                continue
+            self.representatives.append(start)
+            self.row_rep[start] = start
+            self.row_parent[start] = None
+            queue = collections.deque([start])
+            while queue:
+                current = queue.popleft()
+                for gen_index, induced in enumerate(self.generators1):
+                    image = induced[current]
+                    if self.row_rep[image] == -1:
+                        self.row_rep[image] = start
+                        self.row_parent[image] = (current, gen_index)
+                        queue.append(image)
+
+    def has_symmetry(self):
+        """True if the symmetry actually reduces the number of rows."""
+
+        return bool(self.generators1) and \
+                              len(self.representatives) < len(self.keys1)
 
 
 #===============================================================================
 # ColorMatrix
 #===============================================================================
+class _ColorMatrixView(object):
+    """Read-only mapping presenting one of the two representations stored by a
+    ColorMatrix (the ColorFactor one, or the fixed Nc one) as the dictionary
+    keyed by (i1, i2) that it used to be."""
+
+    def __init__(self, matrix, entry):
+        self._matrix = matrix
+        self._entry = entry
+
+    def __getitem__(self, key):
+        return self._matrix._get_entry(key)[self._entry]
+
+    def __len__(self):
+        return len(self._matrix)
+
+    def __contains__(self, key):
+        try:
+            self[key]
+        except (KeyError, IndexError, TypeError):
+            return False
+        return True
+
+    def __iter__(self):
+        return iter(self._matrix)
+
+    def keys(self):
+        return list(self)
+
+    def values(self):
+        return [self[key] for key in self]
+
+    def items(self):
+        return [(key, self[key]) for key in self]
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except (KeyError, IndexError, TypeError):
+            return default
+
+    def __eq__(self, other):
+        if isinstance(other, _ColorMatrixView):
+            if len(self) != len(other):
+                return False
+            return all(self[key] == other[key] for key in self)
+        if isinstance(other, dict):
+            return dict(self.items()) == other
+        return NotImplemented
+
+    def __ne__(self, other):
+        result = self.__eq__(other)
+        return result if result is NotImplemented else not result
+
+
 class ColorMatrix(dict):
-    """A color matrix, meaning a dictionary with pairs (i,j) as keys where i
+    """A color matrix, meaning a mapping with pairs (i,j) as keys where i
     and j refer to elements of color basis objects. Values are Color Factor
-    objects. Also contains two additional dictionaries, one with the fixed Nc
-    representation of the matrix, and the other one with the "inverted" matrix,
-    i.e. a dictionary where keys are values of the color matrix."""
+    objects. The fixed Nc representation is available through the
+    col_matrix_fixed_Nc attribute.
+
+    The matrix is not stored entry by entry. A color matrix entry is the full
+    contraction of two color structures and therefore only depends on the
+    relative labelling of the color indices, so entries repeat massively: the
+    distinct values are stored once and the (i,j) grid only keeps an index into
+    them. On top of that, index permutations mapping the color basis onto
+    itself (see ColorBasisSymmetry) relate whole rows to each other, so only
+    one row per orbit is actually computed; the others are a gather away."""
 
     _col_basis1 = None
     _col_basis2 = None
     col_matrix_fixed_Nc = {}
-    inverted_col_matrix = {}
 
     def __init__(self, col_basis, col_basis2=None,
                  Nc=3, Nc_power_min=None, Nc_power_max=None):
         """Initialize a color matrix with one or two color basis objects. If
         only one color basis is given, the other one is assumed to be equal.
-        As options, any value of Nc and minimal/maximal power of Nc can also be 
+        As options, any value of Nc and minimal/maximal power of Nc can also be
         provided. Note that the min/max power constraint is applied
         only at the end, so that it does NOT speed up the calculation."""
 
-        self.col_matrix_fixed_Nc = {}
-        self.inverted_col_matrix = {}
-        
+        # Distinct entries, as (result, result_fixed_Nc) pairs, and the (i1,i2)
+        # grid of indices into that list, stored row-major in a compact array.
+        self._values = []
+        self._val_index = array.array('i')
+        self._sorted_keys1 = []
+        self._sorted_keys2 = []
+        self.col_matrix_fixed_Nc = _ColorMatrixView(self, 1)
+
         self._col_basis1 = col_basis
         if col_basis2:
             self._col_basis2 = col_basis2
             self.build_matrix(Nc, Nc_power_min, Nc_power_max)
         else:
             self._col_basis2 = col_basis
-            # If the two color basis are equal, assumes the color matrix is 
+            # If the two color basis are equal, assumes the color matrix is
             # symmetric
             self.build_matrix(Nc, Nc_power_min, Nc_power_max, is_symmetric=True)
+
+    #===========================================================================
+    # Mapping interface
+    #===========================================================================
+    def _get_entry(self, key):
+        """Return the (result, result_fixed_Nc) pair for the (i1, i2) key."""
+
+        i1, i2 = key
+        n1, n2 = len(self._sorted_keys1), len(self._sorted_keys2)
+        if not 0 <= i1 < n1 or not 0 <= i2 < n2:
+            raise KeyError(key)
+        return self._values[self._val_index[i1 * n2 + i2]]
+
+    def __getitem__(self, key):
+        return self._get_entry(key)[0]
+
+    def __len__(self):
+        return len(self._sorted_keys1) * len(self._sorted_keys2)
+
+    def __bool__(self):
+        return bool(self._sorted_keys1) and bool(self._sorted_keys2)
+
+    __nonzero__ = __bool__
+
+    def __contains__(self, key):
+        try:
+            self._get_entry(key)
+        except (KeyError, IndexError, TypeError):
+            return False
+        return True
+
+    def __iter__(self):
+        for i1 in range(len(self._sorted_keys1)):
+            for i2 in range(len(self._sorted_keys2)):
+                yield (i1, i2)
+
+    def keys(self):
+        return list(self)
+
+    def values(self):
+        return [self[key] for key in self]
+
+    def items(self):
+        return [(key, self[key]) for key in self]
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except (KeyError, IndexError, TypeError):
+            return default
+
+    def __eq__(self, other):
+        if isinstance(other, ColorMatrix):
+            if self._sorted_keys1 != other._sorted_keys1 or \
+                                self._sorted_keys2 != other._sorted_keys2:
+                return False
+            return all(self._get_entry(key) == other._get_entry(key)
+                       for key in self)
+        if isinstance(other, dict):
+            return dict(self.items()) == other
+        return NotImplemented
+
+    def __ne__(self, other):
+        result = self.__eq__(other)
+        return result if result is NotImplemented else not result
+
+    __hash__ = None
+
+    @property
+    def inverted_col_matrix(self):
+        """Dictionary mapping each fixed Nc value to the list of (i1,i2) it
+        appears at. Kept for backward compatibility, built on demand."""
+
+        inverted = {}
+        for key in self:
+            inverted.setdefault(self._get_entry(key)[1], []).append(key)
+        return inverted
+
+    #===========================================================================
+    # Construction
+    #===========================================================================
+    def _value_index(self, struct1, struct2, canonical_dict,
+                     Nc, Nc_power_min, Nc_power_max):
+        """Return the index in self._values of the entry for the two given
+        color structures, computing it if it is seen for the first time."""
+
+        # Fix indices in struct2 knowing summed indices in struct1
+        # to avoid duplicates
+        new_struct2 = self.fix_summed_indices(struct1, struct2)
+
+        # Build a canonical representation of the two immutable struct
+        canonical_entry, dummy = \
+                    color_algebra.ColorString().to_canonical(struct1 + \
+                                                            new_struct2)
+
+        try:
+            # If this has already been calculated, use the result
+            return canonical_dict[canonical_entry]
+        except KeyError:
+            pass
+
+        # Otherwise calculate the result
+        result, result_fixed_Nc = self.create_new_entry(struct1,
+                                                        new_struct2,
+                                                        Nc_power_min,
+                                                        Nc_power_max,
+                                                        Nc)
+        index = len(self._values)
+        self._values.append((result, result_fixed_Nc))
+        canonical_dict[canonical_entry] = index
+        return index
 
     def build_matrix(self, Nc=3,
                      Nc_power_min=None,
@@ -573,62 +1015,74 @@ class ColorMatrix(dict):
                      is_symmetric=False):
         """Create the matrix using internal color basis objects. Use the stored
         color basis objects and takes Nc and Nc_min/max parameters as __init__.
-        If is_isymmetric is True, build only half of the matrix which is assumed
-        to be symmetric."""
+        If is_symmetric is True, the matrix is assumed to be symmetric so that
+        only half of it needs to be computed."""
+
+        self._sorted_keys1 = sorted(self._col_basis1.keys())
+        if self._col_basis2 is self._col_basis1:
+            self._sorted_keys2 = self._sorted_keys1
+        else:
+            self._sorted_keys2 = sorted(self._col_basis2.keys())
+
+        keys1, keys2 = self._sorted_keys1, self._sorted_keys2
+        n1, n2 = len(keys1), len(keys2)
+        self._values = []
+        self._val_index = array.array('i', [0]) * (n1 * n2) if n1 * n2 else \
+                          array.array('i')
+        if not n1 or not n2:
+            return
 
         canonical_dict = {}
-        
-        for i1, struct1 in \
-                    enumerate(sorted(self._col_basis1.keys())):
-            for i2, struct2 in \
-                    enumerate(sorted(self._col_basis2.keys())):
-                # Only scan upper right triangle if symmetric
-                if is_symmetric and i2 < i1:
+        symmetry = ColorBasisSymmetry(keys1,
+                            None if keys2 is keys1 else keys2)
+
+        if not symmetry.has_symmetry():
+            # No index permutation maps the basis onto itself: fall back to the
+            # plain scan, using the symmetry of the matrix itself if available.
+            for i1, struct1 in enumerate(keys1):
+                for i2, struct2 in enumerate(keys2):
+                    if is_symmetric and i2 < i1:
+                        continue
+                    index = self._value_index(struct1, struct2, canonical_dict,
+                                              Nc, Nc_power_min, Nc_power_max)
+                    self._val_index[i1 * n2 + i2] = index
+                    if is_symmetric:
+                        self._val_index[i2 * n2 + i1] = index
+            return
+
+        # One row per orbit is computed explicitly; every other row is the
+        # image of an already known one under a single generator.
+        done = [False] * n1
+        for rep in symmetry.representatives:
+            struct1 = keys1[rep]
+            offset = rep * n2
+            for i2, struct2 in enumerate(keys2):
+                self._val_index[offset + i2] = \
+                        self._value_index(struct1, struct2, canonical_dict,
+                                          Nc, Nc_power_min, Nc_power_max)
+            done[rep] = True
+
+        # Breadth-first replay of the orbit exploration: a row whose parent is
+        # already filled is obtained by permuting the parent's columns.
+        remaining = [i for i in range(n1) if not done[i]]
+        while remaining:
+            progressed = False
+            still_missing = []
+            for row in remaining:
+                parent, gen_index = symmetry.row_parent[row]
+                if not done[parent]:
+                    still_missing.append(row)
                     continue
-
-                # Fix indices in struct2 knowing summed indices in struct1
-                # to avoid duplicates
-                new_struct2 = self.fix_summed_indices(struct1, struct2)
-
-                # Build a canonical representation of the two immutable struct
-                canonical_entry, dummy = \
-                            color_algebra.ColorString().to_canonical(struct1 + \
-                                                                   new_struct2)
-
-                try:
-                    # If this has already been calculated, use the result
-                    result, result_fixed_Nc = canonical_dict[canonical_entry]
-                except KeyError:
-                    # Otherwise calculate the result
-                    result, result_fixed_Nc = \
-                            self.create_new_entry(struct1,
-                                                  new_struct2,
-                                                  Nc_power_min,
-                                                  Nc_power_max,
-                                                  Nc)
-                    # Store both results
-                    canonical_dict[canonical_entry] = (result, result_fixed_Nc)
-
-                # Store the full result...
-                self[(i1, i2)] = result
-                if is_symmetric:
-                    self[(i2, i1)] = result
-
-                # the fixed Nc one ...
-                self.col_matrix_fixed_Nc[(i1, i2)] = result_fixed_Nc
-                if is_symmetric:
-                    self.col_matrix_fixed_Nc[(i2, i1)] = result_fixed_Nc
-                # and update the inverted dict
-                if result_fixed_Nc in list(self.inverted_col_matrix.keys()):
-                    self.inverted_col_matrix[result_fixed_Nc].append((i1,
-                                                                      i2))
-                    if is_symmetric:
-                        self.inverted_col_matrix[result_fixed_Nc].append((i2,
-                                                                          i1))
-                else:
-                    self.inverted_col_matrix[result_fixed_Nc] = [(i1, i2)]
-                    if is_symmetric:
-                        self.inverted_col_matrix[result_fixed_Nc] = [(i2, i1)]
+                induced2 = symmetry.generators2[gen_index]
+                src = parent * n2
+                dest = row * n2
+                val_index = self._val_index
+                for i2 in range(n2):
+                    val_index[dest + i2] = val_index[src + induced2[i2]]
+                done[row] = True
+                progressed = True
+            assert progressed, "Color matrix orbit exploration made no progress"
+            remaining = still_missing
 
     def create_new_entry(self, struct1, struct2,
                          Nc_power_min, Nc_power_max, Nc):
@@ -690,25 +1144,32 @@ class ColorMatrix(dict):
 
         return mystr
 
+    def _fixed_Nc_row(self, line_index):
+        """Return the fixed Nc entries of one line of the matrix."""
+
+        n2 = len(self._sorted_keys2)
+        offset = line_index * n2
+        values = self._values
+        val_index = self._val_index
+        return [values[val_index[offset + i2]][1] for i2 in range(n2)]
+
     def get_line_denominators(self):
         """Get a list with the denominators for the different lines in
         the color matrix"""
 
         den_list = []
-        for i1 in range(len(self._col_basis1)):
-            den_list.append(self.lcmm(*[\
-                        self.col_matrix_fixed_Nc[(i1, i2)][0].denominator for \
-                                        i2 in range(len(self._col_basis2))]))
-            
+        for i1 in range(len(self._sorted_keys1)):
+            den_list.append(self.lcmm(*[entry[0].denominator for entry in \
+                                        self._fixed_Nc_row(i1)]))
+
         return den_list
 
     def get_line_numerators(self, line_index, den):
         """Returns a list of numerator for line line_index, assuming a common
         denominator den."""
 
-        return [self.col_matrix_fixed_Nc[(line_index, i2)][0].numerator * \
-                den / self.col_matrix_fixed_Nc[(line_index, i2)][0].denominator \
-                for i2 in range(len(self._col_basis2))]
+        return [entry[0].numerator * den / entry[0].denominator \
+                for entry in self._fixed_Nc_row(line_index)]
 
     @classmethod
     def fix_summed_indices(self, struct1, struct2):
