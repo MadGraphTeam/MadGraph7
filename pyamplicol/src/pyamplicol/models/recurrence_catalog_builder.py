@@ -1423,6 +1423,23 @@ def _build_contact_orbit_records(
     )
 
 
+def _singleton_contact_orbit_step_groups(
+    steps: Sequence[ContactOrbitStepV1],
+) -> tuple[tuple[ContactOrbitStepV1, ...], ...]:
+    """Split certified semantic lineage while preserving one numerical kernel.
+
+    A prepared vertex binding can reuse one exact evaluator for several proven
+    contact-orbit orientations.  Recurrence transitions, however, must name
+    one such orientation apiece so native owner selection never suppresses an
+    unrelated member of a numerically fused binding.  Uncertified bindings
+    retain their single ordinary transition.
+    """
+
+    if not steps:
+        return ((),)
+    return tuple((step,) for step in sorted(steps, key=lambda item: item.template_id))
+
+
 def _build_transitions(
     model: Model,
     bindings: Sequence[PreparedVertexBinding],
@@ -1453,7 +1470,9 @@ def _build_transitions(
         ]
     ] = []
     for binding in sorted(bindings, key=lambda item: item.key):
-        contact_orbit_steps = contact_orbit_steps_by_binding.get(binding.key, ())
+        contact_orbit_step_groups = _singleton_contact_orbit_step_groups(
+            contact_orbit_steps_by_binding.get(binding.key, ())
+        )
         vertex = Vertex(
             binding.key.kind,
             binding.key.particles,
@@ -1508,79 +1527,80 @@ def _build_transitions(
                 state_ids,
                 coupling_orders,
             )
-            transition_identity = {
-                "binding": _vertex_binding_payload(binding),
-                "flow": flow.semantic_digest,
-                "color": color.semantic_digest,
-                "kernel": kernel.canonical_signature,
-            }
-            if contact_orbit_steps:
-                transition_identity["contact_orbit_steps"] = [
-                    step.semantic_digest for step in contact_orbit_steps
-                ]
-            transition_id = _token("transition", transition_identity)
-            resolver_key = _resolver_key(
-                kernel,
-                "vertex",
-                concrete_state_ids,
-                result_state_id,
-            )
-            transition = TransitionTemplateV1(
-                template_id=transition_id,
-                input_state_template_ids=concrete_state_ids,
-                result_state_template_id=result_state_id,
-                quantum_flow_template_id=flow.template_id,
-                evaluator_resolver_key=resolver_key,
-                canonical_input_order=tuple(binding.canonical_input_order),
-                momentum_convention=("incoming-left", "incoming-right"),
-                coupling_parameter_ids=coupling_parameters,
-                coupling_orders=coupling_orders,
-                color_contraction_template_id=color.template_id,
-                binding_coupling=_exact_pair(
-                    binding.key.coupling,
-                    f"vertex kind {vertex.kind} binding coupling",
-                ),
-                exact_factor=_exact_pair(
-                    binding.equivalence_factor,
-                    f"vertex kind {vertex.kind} equivalence factor",
-                ),
-                output_factor_source=binding.output_factor_source,
-                equivalence_class=binding.equivalence_class,
-                input_exchange_factor=(
-                    None
-                    if binding.input_exchange_factor is None
-                    else _exact_pair(
-                        binding.input_exchange_factor,
-                        f"vertex kind {vertex.kind} input-exchange factor",
-                    )
-                ),
-                output_projection=f"{binding.result_state.basis}:chirality={binding.result_state.chirality}",
-                contact_orbit_step_template_ids=tuple(
-                    step.template_id for step in contact_orbit_steps
-                ),
-                contact_orbit_step_semantic_digests=tuple(
-                    step.semantic_digest for step in contact_orbit_steps
-                ),
-            )
-            candidates.append(
-                (
-                    _canonical_transition_alias_key(
-                        binding=binding,
-                        kernel=kernel,
-                        flow=flow,
-                        color=color,
-                        transition=transition,
-                    ),
-                    _transition_alias_preference(model, binding, transition),
-                    transition,
-                    flow,
-                    color,
+            for contact_orbit_steps in contact_orbit_step_groups:
+                transition_identity = {
+                    "binding": _vertex_binding_payload(binding),
+                    "flow": flow.semantic_digest,
+                    "color": color.semantic_digest,
+                    "kernel": kernel.canonical_signature,
+                }
+                if contact_orbit_steps:
+                    transition_identity["contact_orbit_steps"] = [
+                        step.semantic_digest for step in contact_orbit_steps
+                    ]
+                transition_id = _token("transition", transition_identity)
+                resolver_key = _resolver_key(
                     kernel,
+                    "vertex",
                     concrete_state_ids,
                     result_state_id,
-                    reflection_claim,
                 )
-            )
+                transition = TransitionTemplateV1(
+                    template_id=transition_id,
+                    input_state_template_ids=concrete_state_ids,
+                    result_state_template_id=result_state_id,
+                    quantum_flow_template_id=flow.template_id,
+                    evaluator_resolver_key=resolver_key,
+                    canonical_input_order=tuple(binding.canonical_input_order),
+                    momentum_convention=("incoming-left", "incoming-right"),
+                    coupling_parameter_ids=coupling_parameters,
+                    coupling_orders=coupling_orders,
+                    color_contraction_template_id=color.template_id,
+                    binding_coupling=_exact_pair(
+                        binding.key.coupling,
+                        f"vertex kind {vertex.kind} binding coupling",
+                    ),
+                    exact_factor=_exact_pair(
+                        binding.equivalence_factor,
+                        f"vertex kind {vertex.kind} equivalence factor",
+                    ),
+                    output_factor_source=binding.output_factor_source,
+                    equivalence_class=binding.equivalence_class,
+                    input_exchange_factor=(
+                        None
+                        if binding.input_exchange_factor is None
+                        else _exact_pair(
+                            binding.input_exchange_factor,
+                            f"vertex kind {vertex.kind} input-exchange factor",
+                        )
+                    ),
+                    output_projection=f"{binding.result_state.basis}:chirality={binding.result_state.chirality}",
+                    contact_orbit_step_template_ids=tuple(
+                        step.template_id for step in contact_orbit_steps
+                    ),
+                    contact_orbit_step_semantic_digests=tuple(
+                        step.semantic_digest for step in contact_orbit_steps
+                    ),
+                )
+                candidates.append(
+                    (
+                        _canonical_transition_alias_key(
+                            binding=binding,
+                            kernel=kernel,
+                            flow=flow,
+                            color=color,
+                            transition=transition,
+                        ),
+                        _transition_alias_preference(model, binding, transition),
+                        transition,
+                        flow,
+                        color,
+                        kernel,
+                        concrete_state_ids,
+                        result_state_id,
+                        reflection_claim,
+                    )
+                )
 
     # Oriented model catalogs may contain exact mirrored aliases.  Collapse only
     # rows whose complete prepared callable, quantum-flow, color, coupling, and
@@ -3568,10 +3588,10 @@ def _vertex_binding_payload(binding: PreparedVertexBinding) -> dict[str, object]
         ).to_dict(),
         "output_factor_source": binding.output_factor_source,
         "contact_orbit_certificates": [
-            item.to_dict() for item in binding.contact_orbit_certificates
+            item.to_dict() for item in sorted(binding.contact_orbit_certificates)
         ],
         "contact_orbit_steps": [
-            item.to_dict() for item in binding.contact_orbit_steps
+            item.to_dict() for item in sorted(binding.contact_orbit_steps)
         ],
     }
 

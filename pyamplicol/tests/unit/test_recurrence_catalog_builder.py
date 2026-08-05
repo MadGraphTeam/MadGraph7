@@ -21,6 +21,13 @@ from pyamplicol.models.base import (
     VertexEvaluationEquivalence,
 )
 from pyamplicol.models.builtin.model import BuiltinSMModel
+from pyamplicol.models.contact_decomposition import (
+    CONTACT_ORBIT_ALGORITHM,
+    CONTACT_ORBIT_ALGORITHM_VERSION,
+    CONTACT_ORBIT_EVALUATOR_CLASS,
+    CompiledContactOrbitCertificate,
+    CompiledContactOrbitStep,
+)
 from pyamplicol.models.prepared_catalog import (
     PreparedKernelCatalog,
     PreparedKernelCatalogError,
@@ -35,6 +42,7 @@ from pyamplicol.models.prepared_catalog import (
 )
 from pyamplicol.models.recurrence_catalog_builder import (
     _canonical_transition_alias_key,
+    _singleton_contact_orbit_step_groups,
     build_recurrence_template_catalog,
 )
 from pyamplicol.models.recurrence_template import (
@@ -641,6 +649,244 @@ def _scalar_catalog(
         closure_bindings=(),
         model_parameter_kernel_id=None,
         unsupported_variants=(),
+    )
+
+
+def _scalar_contact_orbit_contract() -> tuple[
+    tuple[CompiledContactOrbitCertificate, ...],
+    tuple[CompiledContactOrbitStep, ...],
+]:
+    certificate = CompiledContactOrbitCertificate(
+        algorithm=CONTACT_ORBIT_ALGORITHM,
+        algorithm_version=CONTACT_ORBIT_ALGORITHM_VERSION,
+        term_id=0,
+        vertex="V_scalar_contact",
+        particles=("s", "s", "s", "s"),
+        color_expression="1",
+        lorentz_expression="1",
+        coupling_expression="i*lam",
+        evaluator_class=CONTACT_ORBIT_EVALUATOR_CLASS,
+        physical_leg_equivalence_classes=(0, 0, 0, 0),
+        reconstruction_factor="1",
+    )
+    steps = tuple(
+        sorted(
+            (
+                CompiledContactOrbitStep(
+                    algorithm=CONTACT_ORBIT_ALGORITHM,
+                    algorithm_version=CONTACT_ORBIT_ALGORITHM_VERSION,
+                    term_id=0,
+                    stage="partial",
+                    result_leg=0,
+                    left_covered_legs=(1,),
+                    right_covered_legs=(2,),
+                    source_particle_legs=(1, 2, -1),
+                    reconstruction_factor="1",
+                ),
+                CompiledContactOrbitStep(
+                    algorithm=CONTACT_ORBIT_ALGORITHM,
+                    algorithm_version=CONTACT_ORBIT_ALGORITHM_VERSION,
+                    term_id=0,
+                    stage="partial",
+                    result_leg=0,
+                    left_covered_legs=(2,),
+                    right_covered_legs=(1,),
+                    source_particle_legs=(2, 1, -1),
+                    reconstruction_factor="1",
+                ),
+                CompiledContactOrbitStep(
+                    algorithm=CONTACT_ORBIT_ALGORITHM,
+                    algorithm_version=CONTACT_ORBIT_ALGORITHM_VERSION,
+                    term_id=0,
+                    stage="final",
+                    result_leg=0,
+                    left_covered_legs=(1, 2),
+                    right_covered_legs=(3,),
+                    source_particle_legs=(-1, 3, 0),
+                    reconstruction_factor="1",
+                ),
+                CompiledContactOrbitStep(
+                    algorithm=CONTACT_ORBIT_ALGORITHM,
+                    algorithm_version=CONTACT_ORBIT_ALGORITHM_VERSION,
+                    term_id=0,
+                    stage="final",
+                    result_leg=0,
+                    left_covered_legs=(3,),
+                    right_covered_legs=(1, 2),
+                    source_particle_legs=(3, -1, 0),
+                    reconstruction_factor="1",
+                ),
+            )
+        )
+    )
+    return (certificate,), steps
+
+
+class _OrbitScalarModel(_ScalarModel):
+    def vertex_contact_orbit_contracts(self, kind):
+        assert kind == 0
+        return _scalar_contact_orbit_contract()
+
+
+class _ReverseOrbitScalarModel(_ScalarModel):
+    def vertex_contact_orbit_contracts(self, kind):
+        assert kind == 0
+        certificates, steps = _scalar_contact_orbit_contract()
+        return certificates, tuple(reversed(steps))
+
+
+def _prepared_orbit_scalar_catalog(model, *, reverse_steps: bool = False):
+    certificates, steps = _scalar_contact_orbit_contract()
+    prepared = _scalar_catalog(model)
+    binding = replace(
+        prepared.vertex_bindings[0],
+        contact_orbit_certificates=certificates,
+        contact_orbit_steps=steps,
+    )
+    if reverse_steps:
+        # Exercise the builder's canonicalization independently of the
+        # prepared-catalog constructor's normal sorted-input invariant.
+        object.__setattr__(binding, "contact_orbit_steps", tuple(reversed(steps)))
+    prepared.vertex_bindings = (binding,)
+    return prepared
+
+
+def test_certified_contact_orbit_transitions_are_singleton_and_share_evaluator(
+) -> None:
+    model = _OrbitScalarModel()
+    _, steps = _scalar_contact_orbit_contract()
+    prepared = _prepared_orbit_scalar_catalog(model)
+
+    first = build_recurrence_template_catalog(
+        model,
+        prepared,  # type: ignore[arg-type]
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
+    )
+    second = build_recurrence_template_catalog(
+        model,
+        prepared,  # type: ignore[arg-type]
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
+    )
+
+    assert first == second
+    assert first.catalog_digest == second.catalog_digest
+    assert len(first.transitions) == len(steps)
+    assert len({item.template_id for item in first.transitions}) == len(steps)
+    assert all(
+        len(item.contact_orbit_step_template_ids) == 1
+        and len(item.contact_orbit_step_semantic_digests) == 1
+        for item in first.transitions
+    )
+    assert {
+        item.contact_orbit_step_template_ids[0] for item in first.transitions
+    } == {item.template_id for item in first.contact_orbit_steps}
+    vertex_evaluators = tuple(
+        item
+        for item in first.evaluator_bindings
+        if item.contract_kind == "vertex"
+    )
+    assert len(vertex_evaluators) == 1
+    assert vertex_evaluators[0].semantic_template_ids == tuple(
+        sorted(item.template_id for item in first.transitions)
+    )
+    assert {
+        item.evaluator_resolver_key for item in first.transitions
+    } == {vertex_evaluators[0].resolver_key}
+
+
+def test_contact_orbit_singleton_expansion_ignores_step_input_order() -> None:
+    model = _OrbitScalarModel()
+    prepared = _prepared_orbit_scalar_catalog(model)
+    catalog = build_recurrence_template_catalog(
+        model,
+        prepared,  # type: ignore[arg-type]
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
+    )
+    steps = catalog.contact_orbit_steps
+    assert _singleton_contact_orbit_step_groups(steps) == (
+        _singleton_contact_orbit_step_groups(tuple(reversed(steps)))
+    )
+
+    reverse_model = _ReverseOrbitScalarModel()
+    reverse_catalog = build_recurrence_template_catalog(
+        reverse_model,
+        _prepared_orbit_scalar_catalog(reverse_model, reverse_steps=True),
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
+    )
+    assert reverse_catalog == catalog
+    assert reverse_catalog.catalog_digest == catalog.catalog_digest
+
+
+def test_contact_orbit_expansion_preserves_uncertified_catalog_identity() -> None:
+    ordinary_model = _ScalarModel()
+    ordinary = build_recurrence_template_catalog(
+        ordinary_model,
+        _scalar_catalog(ordinary_model),
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
+    )
+    assert ordinary.catalog_digest == (
+        "67c63dda28fc341b090f1b4477b5665d1717465e4282bff364409031176baab3"
+    )
+    assert tuple(item.template_id for item in ordinary.transitions) == (
+        "transition:b0dde38995251bc098e9e1d0",
+    )
+    ordinary_vertex = next(
+        item for item in ordinary.evaluator_bindings if item.contract_kind == "vertex"
+    )
+    assert (
+        ordinary_vertex.resolver_key,
+        ordinary_vertex.prepared_kernel_id,
+        ordinary_vertex.callable_signature,
+        ordinary_vertex.exact_expression_digests,
+        ordinary_vertex.semantic_template_ids,
+    ) == (
+        "evaluator:947ab283dac851256e1b9d95",
+        1,
+        "fa1ddc519b10118458d46aba316aa6115fea6f481bb06b9e763aca4be7083ef8",
+        ("ba1269aaec248bfeaab4026b5cd7694f7516905d4eb8cdbf0177842c5ea238de",),
+        ("transition:b0dde38995251bc098e9e1d0",),
+    )
+
+    orbit_model = _OrbitScalarModel()
+    orbit = build_recurrence_template_catalog(
+        orbit_model,
+        _prepared_orbit_scalar_catalog(orbit_model),
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
+    )
+    orbit_vertex = next(
+        item for item in orbit.evaluator_bindings if item.contract_kind == "vertex"
+    )
+    assert (
+        orbit_vertex.resolver_key,
+        orbit_vertex.prepared_kernel_id,
+        orbit_vertex.callable_signature,
+        orbit_vertex.input_state_template_ids,
+        orbit_vertex.output_state_template_id,
+        orbit_vertex.input_layout,
+        orbit_vertex.output_layout,
+        orbit_vertex.exact_expression_digests,
+        orbit_vertex.callable_kind,
+        orbit_vertex.runtime_template,
+    ) == (
+        ordinary_vertex.resolver_key,
+        ordinary_vertex.prepared_kernel_id,
+        ordinary_vertex.callable_signature,
+        ordinary_vertex.input_state_template_ids,
+        ordinary_vertex.output_state_template_id,
+        ordinary_vertex.input_layout,
+        ordinary_vertex.output_layout,
+        ordinary_vertex.exact_expression_digests,
+        ordinary_vertex.callable_kind,
+        ordinary_vertex.runtime_template,
+    )
+    assert orbit_vertex.semantic_template_ids == tuple(
+        sorted(item.template_id for item in orbit.transitions)
     )
 
 

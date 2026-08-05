@@ -7,6 +7,7 @@ mod builder;
 mod color;
 mod color_contraction;
 mod construct;
+mod contact_orbit_owner;
 pub mod direct_backend;
 mod direct_codec;
 mod direct_lowering;

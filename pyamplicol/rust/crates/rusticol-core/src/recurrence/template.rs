@@ -168,7 +168,7 @@ pub enum OutputFactorSource {
     CouplingImag = 2,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(u8)]
 pub enum ContactOrbitStage {
     Partial = 0,
