@@ -25,7 +25,6 @@
 #include "MemoryAccessWavefunctions.h"
 #include "color_sum.h"
 #include "coloramps.h"
-#include "processConfig.h"
 
 namespace mg5amcCpu
 {
@@ -194,7 +193,7 @@ namespace mg5amcCpu
         COUPs[idcoup] = CD_ACCESS::ieventAccessRecordConst( allCOUPs[idcoup], ievt0 ); // dependent couplings, vary event-by-event
       for( size_t iicoup = 0; iicoup < nIPC; iicoup++ )
         COUPs[ndcoup + iicoup] = allCOUPs[ndcoup + iicoup]; // independent couplings, fixed for all events
-      fptype* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * processConfig::ndiagrams );
+      fptype* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * ndiagrams );
       fptype* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
       // Create an array of views over the Flavor Couplings
       FLV_COUPLING_ARRAY<nIPF, nMF> flvCOUPs{ cIPF_partner1, cIPF_partner2, cIPF_value };
@@ -445,11 +444,11 @@ namespace mg5amcCpu
       fptype* MEs = E_ACCESS::ieventAccessRecord( allMEs, ievt0 );
       fptype_sv& MEs_sv = E_ACCESS::kernelAccess( MEs );
       MEs_sv = fptype_sv{ 0 };
-      fptype* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * processConfig::ndiagrams );
+      fptype* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * ndiagrams );
       fptype* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
       fptype_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
       fptype_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
-      for( int i = 0; i < processConfig::ndiagrams; ++i )
+      for( int i = 0; i < ndiagrams; ++i )
       {
         numerators_sv[i] = fptype_sv{ 0 };
       }
@@ -550,14 +549,14 @@ namespace mg5amcCpu
           for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
           {
             if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
-            normalization += allNumerators[ievt / neppV * neppV * processConfig::ndiagrams +
+            normalization += allNumerators[ievt / neppV * neppV * ndiagrams +
                                            ichan * neppV + ieppV % neppV];
           }
           channelIdVec[ieppV] = mgOnGpu::nchannels;
           for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
           {
             if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
-            numerator_sum += allNumerators[ievt / neppV * neppV * processConfig::ndiagrams +
+            numerator_sum += allNumerators[ievt / neppV * neppV * ndiagrams +
                                            ichan * neppV + ieppV % neppV];
             if( allrnddiagram[ievt] < numerator_sum / normalization )
             {
@@ -638,7 +637,7 @@ namespace mg5amcCpu
       if( mulChannelWeight && allChannelIds != nullptr ) // fix segfault #892 (not 'channelIds[0] != 0')
       {
         const unsigned int channelId = getChannelId( allChannelIds, ievt0, false );
-        fptype* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * processConfig::ndiagrams );
+        fptype* numerators = NUM_ACCESS::ieventAccessRecord( allNumerators, ievt0 * ndiagrams );
         fptype* denominators = DEN_ACCESS::ieventAccessRecord( allDenominators, ievt0 );
         fptype_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
         fptype_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );

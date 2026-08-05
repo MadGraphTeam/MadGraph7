@@ -19,7 +19,7 @@
 #include "RamboSamplingKernels.h"
 #include "RandomNumberKernels.h"
 #include "coloramps.h"
-#include "epoch_process_id.h"
+#include "ProcessData.h"
 
 #include <memory>
 

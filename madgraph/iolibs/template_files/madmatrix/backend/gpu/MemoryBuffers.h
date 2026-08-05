@@ -14,7 +14,6 @@
 #include "ProcessData.h"
 #include "GpuRuntime.h"
 #include "Parameters.h"
-#include "processConfig.h"
 
 #include <sstream>
 
@@ -225,7 +224,7 @@ namespace mg5amcGpu
 
   // The size (number of elements) per event in a memory buffer for numerators
   // (should be equal to the number of diagrams in the process)
-  constexpr size_t sizePerEventNumerators = processConfig::ndiagrams;
+  constexpr size_t sizePerEventNumerators = ProcessData::ndiagrams;
 
   // A class encapsulating a CUDA pinned host buffer for numerators
   typedef PinnedHostBuffer<fptype, sizePerEventNumerators> PinnedHostBufferNumerators;

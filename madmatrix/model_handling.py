@@ -1730,8 +1730,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         """Generate mgOnGpuConfig.h, CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
         ###misc.sprint('Entering OneProcessExporterMadMatrix.generate_process_files')
         self.edit_mgonGPU()
-        self.edit_processidfile() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
-        self.edit_processConfig() # sub process specific, not to be symlinked from the Subprocesses directory
         self.edit_colorsum() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
         self.edit_coloramps()
         super().generate_process_files()
@@ -1767,6 +1765,8 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['nipc'] = self._nipc
         replace_dict['nipf'] = self._nipf
         replace_dict['ndpf'] = self._ndpf
+        replace_dict['processid'] = self.name
+        replace_dict['processid_uppercase'] = self.name.upper()
         ff = open(pjoin(self.path, 'ProcessData.h'), 'w')
         ff.write(template % replace_dict)
         ff.close()
@@ -1848,18 +1848,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ff.write(template % replace_dict)
         ff.close()
 
-    # AV - new method
-    def edit_processidfile(self):
-        """Generate epoch_process_id.h"""
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_processidfile')
-        template = open(pjoin(self.template_path,'madmatrix','epoch_process_id.h'),'r').read()
-        replace_dict = {}
-        replace_dict['processid'] = self.name
-        replace_dict['processid_uppercase'] = self.name.upper()
-        ff = open(pjoin(self.path, 'epoch_process_id.h'),'w')
-        ff.write(template % replace_dict)
-        ff.close()
-
     # generate process specific color matrix data - algo is backend owned
     def edit_colorsum(self):
         """Generate ColorMatrixData.h"""
@@ -1872,17 +1860,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         ff.write(template % replace_dict)
         ff.close()
         
-    def edit_processConfig(self):
-        """Generate process_config.h"""
-        ###misc.sprint('Entering OneProcessExporterMadMatrix.edit_processConfig')
-        template = open(pjoin(self.template_path,'madmatrix','processConfig.h'),'r').read()
-        replace_dict = {}
-        replace_dict['ndiagrams'] = len(self.matrix_elements[0].get('diagrams'))
-        replace_dict['processid_uppercase'] = self.name.upper()
-        ff = open(pjoin(self.path, 'processConfig.h'),'w')
-        ff.write(template % replace_dict)
-        ff.close()
-
     # AV - new method
     def edit_coloramps(self):
         """Generate coloramps.h"""

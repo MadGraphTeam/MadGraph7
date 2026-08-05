@@ -25,7 +25,6 @@
 #include "MemoryAccessWavefunctions.h"
 #include "color_sum.h"
 #include "coloramps.h"
-#include "processConfig.h"
 
 namespace mg5amcGpu
 {
@@ -163,7 +162,7 @@ namespace mg5amcGpu
       int ighel = blockIdx.y;
       ihel = dcGoodHel[ighel];
       allJamps = allJamps + ighel * nevt;
-      allNumerators = allNumerators + ighel * nevt * processConfig::ndiagrams;
+      allNumerators = allNumerators + ighel * nevt * ndiagrams;
       allDenominators = allDenominators + ighel * nevt;
     }
 
@@ -197,7 +196,7 @@ namespace mg5amcGpu
       const fptype* COUPs[nxcoup];
       for( size_t ixcoup = 0; ixcoup < nxcoup; ixcoup++ ) COUPs[ixcoup] = allCOUPs[ixcoup];
       const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread) in grid
-      fptype* numerators = &allNumerators[ievt * processConfig::ndiagrams];
+      fptype* numerators = &allNumerators[ievt * ndiagrams];
       fptype* denominators = allDenominators;
       // Create an array of views over the Flavor Couplings
       FLV_COUPLING_ARRAY<nIPF, nMF> flvCOUPs{ cIPF_partner1, cIPF_partner2, cIPF_value };
@@ -404,9 +403,9 @@ namespace mg5amcGpu
       {
         fptype* hAllDenominators = ghelAllDenominators + ighel * nevt;
         totAllDenominators[ievt] += hAllDenominators[ievt];
-        fptype* hAllNumerators = ghelAllNumerators + ( ievt + ighel * nevt ) * processConfig::ndiagrams;
-        fptype* firstNumerator = ghelAllNumerators + ievt * processConfig::ndiagrams;
-        for( int idiag = 0; idiag < processConfig::ndiagrams; ++idiag )
+        fptype* hAllNumerators = ghelAllNumerators + ( ievt + ighel * nevt ) * ndiagrams;
+        fptype* firstNumerator = ghelAllNumerators + ievt * ndiagrams;
+        for( int idiag = 0; idiag < ndiagrams; ++idiag )
         {
           firstNumerator[idiag] += hAllNumerators[idiag];
         }
@@ -414,7 +413,7 @@ namespace mg5amcGpu
       if( mulChannelWeight )
       {
         unsigned int channelId = allChannelIds[ievt];
-        allMEs[ievt] *= totAllNumerators[channelId - 1 + ievt * processConfig::ndiagrams] / totAllDenominators[ievt];
+        allMEs[ievt] *= totAllNumerators[channelId - 1 + ievt * ndiagrams] / totAllDenominators[ievt];
       }
     }
     return;
@@ -472,13 +471,13 @@ namespace mg5amcGpu
       for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
       {
         if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
-        normalization += allNumerators[ievt * processConfig::ndiagrams + ichan];
+        normalization += allNumerators[ievt * ndiagrams + ichan];
       }
       channelId = mgOnGpu::nchannels;
       for( unsigned int ichan = 0; ichan < mgOnGpu::nchannels; ichan++ )
       {
         if( mgOnGpu::channel2iconfig[ichan] == -1 ) continue;
-        numerator_sum += allNumerators[ievt * processConfig::ndiagrams + ichan];
+        numerator_sum += allNumerators[ievt * ndiagrams + ichan];
         if( allrnddiagram[ievt] < numerator_sum / normalization )
         {
           channelId = ichan + 1;
@@ -579,7 +578,7 @@ namespace mg5amcGpu
     gpuMemset( allMEs, 0, nevt * sizeof( fptype ) );
     gpuMemset( ghelAllJamps, 0, cNGoodHel * ncolor * mgOnGpu::nx2 * nevt * sizeof( fptype ) );
     gpuMemset( colAllJamp2s, 0, ncolor * nevt * sizeof( fptype ) );
-    gpuMemset( ghelAllNumerators, 0, cNGoodHel * processConfig::ndiagrams * nevt * sizeof( fptype ) );
+    gpuMemset( ghelAllNumerators, 0, cNGoodHel * ndiagrams * nevt * sizeof( fptype ) );
     gpuMemset( ghelAllDenominators, 0, cNGoodHel * nevt * sizeof( fptype ) );
     gpuMemset( ghelAllMEs, 0, cNGoodHel * nevt * sizeof( fptype ) );
 
@@ -599,7 +598,7 @@ namespace mg5amcGpu
       {
         const int ihel = cGoodHel[ighel];
         fptype* hAllJamps = ghelAllJamps + ighel * nevt; // HACK: bypass DeviceAccessJamp (consistent with layout defined there)
-        fptype* hAllNumerators = ghelAllNumerators + ighel * nevt * processConfig::ndiagrams;
+        fptype* hAllNumerators = ghelAllNumerators + ighel * nevt * ndiagrams;
         fptype* hAllDenominators = ghelAllDenominators + ighel * nevt;
         gpuLaunchKernelStream( calculate_jamps, gpublocks, gputhreads, ghelStreams[ighel], ihel, allmomenta, allcouplings, iflavorVec, hAllJamps, storeChannelWeights, hAllNumerators, hAllDenominators, colAllJamp2s, nevt, false );
       }
