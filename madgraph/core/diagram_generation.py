@@ -1108,8 +1108,12 @@ class Amplitude(base_objects.PhysicsObject):
         # yields two cubic vertices sharing the line which replaced it, so a
         # diagram can be reconstructed exactly when two of its cubic vertices
         # share a line -- and the seed is what is left over.
+        # Left off for a decay chain, whose identity vertex is kept rather
+        # than glued in, and for loop amplitudes, whose diagram set is not the
+        # one the unrolling reasons about.
         self.seed_forbidden_cubic_ids = frozenset()
-        if madgraph.merge_quartic_vertices and not self.has_loop_process():
+        if madgraph.merge_quartic_vertices and not self.has_loop_process() \
+           and not process.get('is_decay_chain'):
             self.seed_forbidden_cubic_ids = get_unrollable_cubic_ids(model)
 
 
