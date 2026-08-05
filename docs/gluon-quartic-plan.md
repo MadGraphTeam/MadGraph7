@@ -67,7 +67,8 @@ property the whole optimisation needs.
 | `1c1722ae8` | revert of the auxiliary-particle generation |
 | `98d288f41` | `reroot_diagram`, validated 755/755 — probably NOT needed under the seed rule |
 | `25fc6d1cc` | step 1, the seed rule inside `reduce_leglist` |
-| `1b9474f69` | step 2+3, `expand_seed_diagrams` and the recorded links |
+| `7da06bac7` | step 2+3, `expand_seed_diagrams` and the recorded links |
+| `8e634cf9a` | step 4, `TMP = W1 + c*W4` at the amplitudes |
 
 Useful pieces to keep: `get_unrollable_quartic_vertices`,
 `unroll_quartic_vertices`, `diagram_colour_signature`, `UnrollDiagramTag`,
@@ -105,7 +106,36 @@ with the colour algebra.
 target for target with `unroll_quartic_vertices`, which stays as the
 independent colour-algebra cross-check.
 
-**Step 4 — the current sum.** BLOCKED, and the reason is structural. Measured
+**Step 4 — the current sum.** DONE at the amplitudes, `8e634cf9a`, and
+blocked deeper. `TMP = W1 + c*W4` where a quartic current and its cubic
+partner feed the same vertex; the amplitude reads the sum and the quartic
+amplitude is never computed:
+
+```
+W(20) = W(19)
+W(20)%W(:) = W(19)%W(:) + W(12)%W(:)
+CALL VVV1_0(W(4),W(5),W(20),GC_10,AMP(33))
+```
+
+The sum is shared by every amplitude reading it, so it pays for as many calls
+as it has users: 60 amplitude calls for 30 sums at six gluons, 432 for 60 at
+seven. Substituting several mothers of one amplitude also produces the
+amplitude with all of them substituted, so every subset has to be a merge into
+that same target weighing the product of the coefficients — that check is what
+keeps the count honest.
+
+Two things it costs. `reuse_outdated_wavefunctions` works out when a slot is
+free from the diagrams alone and cannot see the extra read, so it has to be
+told, or the two currents get handed the same slot (`W(11) + W(11)`). And the
+sums take a slot each, never reused: `NWAVEFUNCS` 51 -> 91 at six gluons.
+
+| | `g g > g g g` | `g g > g g g g` | `g g > 5 g` |
+|---|---|---|---|
+| helas calls | 94 -> 93 + 7 sums | 637 -> 612 + 30 | 8159 -> 7784 + 60 |
+| JAMP lines | 131 -> 101 | 1082 -> 688 | 23672 -> 7864 |
+| per call | 34.88 -> 35.12 s | 47.77 -> 46.02 s | 42.16 -> 39.80 s |
+
+**The sum stays at the amplitudes.** Measured
 on the reconstructed matrix element (`g g > g g g g`): of the 275 places where
 a cubic current is fed by another cubic current *and* the quartic partner
 taking the same four lines exists, 225 are the last vertex — the amplitude
@@ -137,10 +167,20 @@ fact 2 requires. Not fixable by choosing the spelling more cleverly: the
 counting alone rules it out, and `g g > g g` — the one row with no collision
 — is also the one process where the seed rule reaches every partner.
 
-What would work is a partial rewrite — build `TMP = W1 + W4` as a *third*
-current, hand it only to the consumers which do correspond, and leave W1 and
-W4 serving the rest. That splits shared consumers and cascades upward; it is
-a DAG rewriting problem, not this plan.
+That is why the sum is taken only where the vertex reading it is an
+*amplitude*: there is nothing above it, so no consumer can be handed a term
+it must not have and the substitution is a plain swap of one argument. A sum
+at a current would have to be carried through every current above it, and
+those are shared. What would work there is a partial rewrite — hand the sum
+only to the consumers which do correspond and leave W1 and W4 serving the
+rest — which splits shared consumers and cascades upward. That is a DAG
+rewriting problem, not this plan.
+
+The same counting is what leaves the two-substitution cases at seven gluons
+on the table: their target has a source with both mothers substituted, but
+the source with only the *other* one substituted is spelled with a different
+rooting, so the subset check refuses it. 432 of the 864 amplitude calls the
+structure allows.
 
 **Step 5 — validate and time.** DONE. `|M|^2` for `g g > N g`, N=2..5, and
 per-call timing from the shipped `check` driver, which already loops
@@ -148,42 +188,53 @@ per-call timing from the shipped `check` driver, which already loops
 
 | | `g g > g g g g` | `g g > 5 g` |
 |---|---|---|
-| flag off | 47.73 / 47.77 s | 42.15 s |
-| flag on, before steps 1-3 | 47.76 s | 40.86 s |
-| flag on, at HEAD | 48.03 / 48.07 s | 40.41 s |
+| flag off | 47.73 / 47.77 / 47.80 s | 42.15 / 42.16 s |
+| flag on, before steps 1-4 | 47.76 s | 40.86 s |
+| flag on, steps 1-3 only | 48.03 / 48.07 s | 40.41 s |
+| flag on, at HEAD | 46.14 / 45.90 s | 39.80 s |
 
 and the code that produces it:
 
 | | helas calls | JAMP lines |
 |---|---|---|
 | flag off | 637 / 8159 | 1082 / 23672 |
-| flag on, before steps 1-3 | 637 / 8159 | 688 / 8012 |
-| flag on, at HEAD | 672 / 8216 | 688 / 7864 |
+| flag on, before steps 1-4 | 637 / 8159 | 688 / 8012 |
+| flag on, steps 1-3 only | 672 / 8216 | 688 / 7864 |
+| flag on, at HEAD | 612 + 30 / 7784 + 60 | 688 / 7864 |
 
-So the flag is worth **+4.1% at seven gluons and -0.6% at six**, and nearly
-all of that is the amplitude sum from `fcd8218b6` shrinking the JAMP block.
-Steps 1-3 cost 35 helas calls at six gluons for nothing, and pay for
-themselves only at seven (57 more calls, 148 fewer JAMP lines, net +1.1%).
-The reconstruction deviates from the canonical decomposition, which is the
-whole point, but it also weakens the wavefunction CSE — and without step 4
-there is nothing on the other side of that trade.
+So the flag is worth **+3.8% at six gluons and +5.6% at seven**. The JAMP
+shrink from `fcd8218b6` carries seven gluons on its own; six gluons only
+turns positive with the current sum, because the reconstruction deviates from
+the canonical decomposition — which is the whole point — and thereby weakens
+the wavefunction CSE, 35 calls at six gluons and 57 at seven. Five gluons is
+a wash (34.88 -> 35.12 s): 7 sums against 7 calls is too little to pay for
+the 14 extra slots.
+
+`|M|^2` bit-identical at four and five gluons, 1e-15 at six and seven, and
+unchanged for `g g > t t~ g g` and `u u~ > g g g`.
 
 With the flag off, `matrix.f` is byte-identical to `3b3ed9e85` for N=2..5.
 
 ## Where to go next
 
-The current sum needs a node to have exactly one rooting *per merge*, which a
-diagram list cannot give. Two ways out, both bigger than this plan:
+What is left is the sums which do not sit at an amplitude, and they need a
+node to have exactly one rooting *per merge*, which a diagram list cannot
+give. Three ways on, in increasing size:
 
-1. **Drop the diagram list for the currents.** Build the wavefunctions by a
-   Berends-Giele recursion over subsets — at each node, cubic pair plus
-   quartic, which generates exactly the matchings and never double counts —
-   and keep the 220 diagrams only for what they are actually needed for
-   (multichannel, `matrix.ps`).
+1. **The second substitution.** Cheapest of the three and worth another 432
+   amplitude calls at seven gluons. The subset check refuses a
+   two-substitution target because the single it needs is spelled with a
+   different rooting; finding that amplitude by its diagram and colour chain
+   rather than by its mothers would take it.
 2. **Partial CSE.** Keep the DAG, add `TMP = W1 + W4` alongside W1 and W4,
    and split the consumers. Bounded gain: at six gluons only 2 of the 6
    quartic consumers correspond, so it saves 2 subtrees per node out of 50
    nodes.
+3. **Drop the diagram list for the currents.** Build the wavefunctions by a
+   Berends-Giele recursion over subsets — at each node, cubic pair plus
+   quartic, which generates exactly the matchings and never double counts —
+   and keep the 220 diagrams only for what they are actually needed for
+   (multichannel, `matrix.ps`).
 
 Anything that fragments the diagram list to get a per-rooting copy runs into
 pitfall 1, and anything that expands each seed independently double counts —
@@ -222,6 +273,14 @@ graph (225 instead of 105 at six gluons).
    those pairs (`TMP_JAMP(2) = AMP(1) + AMP(4)`). They do shrink the JAMP block
    (1091 -> 697 lines at six gluons), which helps the optimiser and compile
    time. Expect the speedup to come from the currents, not from these.
+   *Measured since:* wrong at seven gluons, where the JAMP block goes 23672 ->
+   7864 lines and that alone is +3.1%. Right at six, where it is a wash.
+8. **A wavefunction number is not a slot.** `reuse_outdated_wavefunctions`
+   hands the same `me_id` to wavefunctions whose lifetimes do not overlap, and
+   works those lifetimes out from the diagrams alone. Anything emitting an
+   extra read of a wavefunction has to extend the lifetime there, or it reads
+   whatever else has since been written into that slot -- which showed up as
+   `W(11)%W(:) = W(11)%W(:) + W(11)%W(:)`.
 
 ## Measuring
 
