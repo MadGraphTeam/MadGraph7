@@ -124,20 +124,13 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
             sorted(os.listdir(pjoin(backend_template_dir, _backend_variant))))
     del _backend_variant
 
-    to_link_in_P = ['nvtx.h', 'GpuRuntime.h', 'GpuAbstraction.h', 'color_sum.h',
-                    'MemoryAccessHelpers.h', 'MemoryAccessVectors.h',
-                    'MemoryAccessMatrixElements.h', 'MemoryAccessMomenta.h',
-                    'MemoryAccessRandomNumbers.h', 'MemoryAccessWeights.h',
-                    'MemoryAccessAmplitudes.h', 'MemoryAccessWavefunctions.h',
-                    'MemoryAccessGs.h', 'MemoryAccessCouplingsFixed.h',
-                    'MemoryAccessNumerators.h', 'MemoryAccessDenominators.h',
-                    'MemoryAccessChannelIds.h', 'MemoryAccessIflavorVec.h',
-                    'CrossSectionKernels.cc', 'CrossSectionKernels.h',
-                    'MatrixElementKernels.cc', 'MatrixElementKernels.h',
-                    'EventStatistics.h',
-                    'MemoryBuffers.h', # this is generated from a template in Subprocesses but we still link it in P1
-                    'MemoryAccessCouplings.h', # this is generated from a template in Subprocesses but we still link it in P1
-                    'umami.h', 'umami.cc', 'rambo.h']
+    # Backend-owned skeleton files (GpuRuntime.h, color_sum.{h,cc}, the
+    # MemoryAccess*.h family, MatrixElementKernels/CrossSectionKernels/umami.cc,
+    # etc.) are NOT linked flat into P* any more: they are only available via
+    # backend/<variant>/ (see _link_backend_dirs_in_P below), sourced by the
+    # Makefile's INCFLAGS/vpath (see BACKENDDIR in madmatrix.mk). Only files
+    # with no backend/ counterpart - genuinely backend-agnostic - stay here.
+    to_link_in_P = ['nvtx.h', 'umami.h', 'rambo.h']
 
     template_src_make = pjoin(madmatrix_templates, 'madmatrix_src.mk')
     template_Sub_make = pjoin(madmatrix_templates, 'madmatrix.mk')
