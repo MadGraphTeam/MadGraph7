@@ -79,7 +79,7 @@
 ////#define MGONGPU_INLINE_HELAMPS 1
 
 // Choose whether to hardcode the cIPD physics parameters rather than reading them from user cards
-// This optimization can gain 20%% in CUDA in eemumu (issue #39)
+// This optimization can gain 20% in CUDA in eemumu (issue #39)
 // By default, do not hardcode, but allow this macro to be set from outside with e.g. -DMGONGPU_HARDCODE_PARAM
 // ** NB: The option to use hardcoded cIPD physics parameters is supported again even now when alphas is running (#373)
 // ** NB: Note however that it now only refers to cIPD parameters (cIPC parameters are always accessed through global memory)
@@ -245,7 +245,7 @@ using mgOnGpu::fptype2;
 //#define mgDebugDeclare() __shared__ float mgDebugCounter[mgOnGpu::ntpbMAX];
 //#define mgDebugInitialise() { mgDebugCounter[threadIdx.x] = 0; }
 //#define mgDebug( code, text ) { mgDebugCounter[threadIdx.x] += 1; }
-//#define mgDebugFinalise() { if ( blockIdx.x == 0 && threadIdx.x == 0 ) printf( "MGDEBUG: counter=%%f\n", mgDebugCounter[threadIdx.x] ); }
+//#define mgDebugFinalise() { if ( blockIdx.x == 0 && threadIdx.x == 0 ) printf( "MGDEBUG: counter=%f\n", mgDebugCounter[threadIdx.x] ); }
 //#else
 #define mgDebugDeclare() /*noop*/
 #define mgDebugInitialise() /*noop*/

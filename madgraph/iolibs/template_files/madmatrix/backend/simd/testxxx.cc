@@ -53,8 +53,8 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
   constexpr int neppM = MemoryAccessMomenta::neppM; // AOSOA layout
   constexpr int np4 = CPPProcess::np4;
   const int nevt = 32;         // 12 independent tests plus 20 duplicates (need a multiple of 16 for floats '512z')
-  assert( nevt %% neppM == 0 ); // nevt must be a multiple of neppM
-  assert( nevt %% neppV == 0 ); // nevt must be a multiple of neppV
+  assert( nevt % neppM == 0 ); // nevt must be a multiple of neppM
+  assert( nevt % neppV == 0 ); // nevt must be a multiple of neppV
   // Fill in the input momenta
   mg5amcCpu::HostBufferMomenta hstMomenta( nevt ); // AOSOA[npagM][npar=4][np4=4][neppM]
   // NB NEW TESTS FOR DEBUGGING #701: KEEP TWO SEPARATE SETS (16-SIMD-VECTORS!) OF TESTS FOR M==0 AND M!=0!
@@ -147,7 +147,7 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
     out << "                                   // ---------" << std::endl;
     for( int iw6 = 0; iw6 < nw6; iw6++ )
     {
-      const int ieppV = ievt %% neppV; // #event in the current event vector in this iteration
+      const int ieppV = ievt % neppV; // #event in the current event vector in this iteration
 #ifdef MGONGPU_HAS_CPPCXTYPEV_BRK
       out << std::setw( 26 ) << cxreal( wf[iw6][ieppV] ) << ", ";
       out << std::setw( 22 ) << cximag( wf[iw6][ieppV] );
@@ -182,7 +182,7 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
         const fptype expImag = expwf[iw6 * 2 + 1];
         if( true )
         {
-          const int ieppV = ievt %% neppV; // #event in the current event vector in this iteration
+          const int ieppV = ievt % neppV; // #event in the current event vector in this iteration
 #ifdef MGONGPU_HAS_CPPCXTYPEV_BRK
           EXPECT_NEAR( cxreal( wf[iw6][ieppV] ), expReal, std::abs( expReal * toleranceXXXs ) )
             << " itest=" << itest << ": " << xxx << "#" << ievt;
@@ -214,7 +214,7 @@ TEST( XTESTID( MG_EPOCH_PROCESS_ID ), testxxx )
       {
         if( true )
         {
-          const int ieppV = ievt %% neppV; // #event in the current event vector in this iteration
+          const int ieppV = ievt % neppV; // #event in the current event vector in this iteration
 #ifdef MGONGPU_HAS_CPPCXTYPEV_BRK
           const fptype expReal = cxreal( expwf[iw6][ieppV] );
           const fptype expImag = cximag( expwf[iw6][ieppV] );

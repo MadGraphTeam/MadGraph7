@@ -49,7 +49,7 @@ namespace mg5amcCpu
     // we gain (not a factor 2...) in speed here as we only loop over the up diagonal part of the matrix.
     // Strangely, CUDA is slower instead, so keep the old implementation for the moment.
     fptype_sv deltaMEs = { 0 };
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
     fptype_sv deltaMEs_next = { 0 };
     // Mixed mode: merge two neppV vectors into one neppV2 vector
     fptype2_sv jampR_sv[ncolor];
@@ -66,7 +66,7 @@ namespace mg5amcCpu
     for( int icol = 0; icol < ncolor; icol++ )
     {
       // Diagonal terms
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
       fptype2_sv& jampRi_sv = jampR_sv[icol];
       fptype2_sv& jampIi_sv = jampI_sv[icol];
 #else
@@ -79,7 +79,7 @@ namespace mg5amcCpu
       for( int jcol = icol + 1; jcol < ncolor; jcol++ )
       {
         // Off-diagonal terms
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
         fptype2_sv& jampRj_sv = jampR_sv[jcol];
         fptype2_sv& jampIj_sv = jampI_sv[jcol];
 #else
@@ -90,7 +90,7 @@ namespace mg5amcCpu
         ztempI_sv += cf2.value[icol][jcol] * jampIj_sv;
       }
       fptype2_sv deltaMEs2 = ( jampRi_sv * ztempR_sv + jampIi_sv * ztempI_sv ); // may underflow #831
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
       deltaMEs += fpvsplit0( deltaMEs2 );
       deltaMEs_next += fpvsplit1( deltaMEs2 );
 #else
@@ -103,27 +103,12 @@ namespace mg5amcCpu
     // NB: color_sum ADDS |M|^2 for one helicity to the running sum of |M|^2 over helicities for the given event(s)
     fptype_sv& MEs_sv = E_ACCESS::kernelAccess( MEs );
     MEs_sv += deltaMEs; // fix #435
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
     fptype* MEs_next = E_ACCESS::ieventAccessRecord( allMEs, ievt0 + neppV );
     fptype_sv& MEs_sv_next = E_ACCESS::kernelAccess( MEs_next );
     MEs_sv_next += deltaMEs_next;
 #endif
   }
-
-  //--------------------------------------------------------------------------
-
-
-  //--------------------------------------------------------------------------
-
-
-  //--------------------------------------------------------------------------
-
-
-  //--------------------------------------------------------------------------
-
-
-  //--------------------------------------------------------------------------
-
 
   //--------------------------------------------------------------------------
 
