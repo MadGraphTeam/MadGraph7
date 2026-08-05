@@ -31,6 +31,11 @@ ifeq ($(HRDCOD),)
   override HRDCOD = 0
 endif
 
+# default USEBUILDDIR = 1
+ifeq ($(USEBUILDDIR),)
+  override USEBUILDDIR = 1
+endif
+
 # Check that the user-defined choices of BACKEND, FPTYPE, HELINL, HRDCOD are supported
 # (NB: use 'filter' and 'words' instead of 'findstring' because they properly handle whitespace-separated words)
 override SUPPORTED_BACKENDS = cuda hip cppnone cppsse4 cppavx2 cpp512y cpp512z cppauto
@@ -72,7 +77,7 @@ endif
 # Build directory "full" tag (used for build lockfiles to prevent mixing builds with different options)
 override DIRTAG := $(patsubst cpp%%,%%,$(BACKEND))_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCOD)
 
-# Build directory: current directory by default, or build.<BACKEND> if USEBUILDDIR==1
+# Build directory: build.<BACKEND> by default (USEBUILDDIR=1), or current directory if USEBUILDDIR=0
 # NB: using '=' (not ':=') ensures BACKEND is evaluated lazily after potential cppauto resolution
 ifeq ($(USEBUILDDIR),1)
   override MADMATRIX_BUILDDIR = build.$(BACKEND)
@@ -680,7 +685,7 @@ override TAG = $(patsubst cpp%%,%%,$(BACKEND))_$(FPTYPE)_inl$(HELINL)_hrd$(HRDCO
 # Export TAG (so that there is no need to check/define it again in src/Makefile)
 export TAG
 
-# Build directory for object files: current directory by default, or build.<BACKEND> if USEBUILDDIR==1
+# Build directory for object files: build.<BACKEND> by default, or current directory if USEBUILDDIR=0
 override BUILDDIR = $(MADMATRIX_BUILDDIR)
 
 ###override INCDIR = ../../include

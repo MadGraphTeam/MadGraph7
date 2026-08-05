@@ -179,6 +179,58 @@ namespace mg5amcGpu
 
     for( int iParity = 0; iParity < nParity; ++iParity )
     {
+      constexpr size_t nxcoup = ndcoup + nIPC; // both dependent and independent couplings
+      const fptype* allCOUPs[nxcoup];
+#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
+#pragma nv_diagnostic push
+#pragma nv_diag_suppress 186 // e.g. <<warning #186-D: pointless comparison of unsigned integer with zero>>
+#endif
+      for( size_t idcoup = 0; idcoup < ndcoup; idcoup++ )
+        allCOUPs[idcoup] = CD_ACCESS::idcoupAccessBufferConst( allcouplings, idcoup ); // dependent couplings, vary event-by-event
+      for( size_t iicoup = 0; iicoup < nIPC; iicoup++ )
+        allCOUPs[ndcoup + iicoup] = CI_ACCESS::iicoupAccessBufferConst( cIPC, iicoup ); // independent couplings, fixed for all events
+#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
+#pragma nv_diagnostic pop
+#endif
+      // CUDA kernels take input/output buffers with momenta/MEs for all events
+      const fptype* momenta = allmomenta;
+      const fptype* COUPs[nxcoup];
+      for( size_t ixcoup = 0; ixcoup < nxcoup; ixcoup++ ) COUPs[ixcoup] = allCOUPs[ixcoup];
+      const int ievt = blockDim.x * blockIdx.x + threadIdx.x; // index of event (thread) in grid
+      fptype* numerators = &allNumerators[ievt * processConfig::ndiagrams];
+      fptype* denominators = allDenominators;
+      // Create an array of views over the Flavor Couplings
+      FLV_COUPLING_ARRAY<nIPF, nMF> flvCOUPs{ cIPF_partner1, cIPF_partner2, cIPF_value };
+
+      // Dependent (event-by-event, running-alphas) flavor couplings (Step 3): the per-flavor
+      // values are NOT baked in (they run per event). Gather the current values of the
+      // underlying dependent couplings for this event page into an AOSOA buffer dpf_value
+      // (one nx2*neppC SIMD record per (coupling,flavor) slot, matching CD_ACCESS), then build
+      // an ordinary value-based view over it. The flavor index is constant across a SIMD lane
+      // (guaranteed by the phase-space integrator), so each lane gets its own running value
+      // while sharing the same flavor selection. This is the direct analogue of Fortran's
+      // FLV_xx%VAL(k)%P => GC_yyy(J). The vertex routines are instantiated with CD_ACCESS so
+      // get_coupling_def reads dpf_value with the right per-flavor stride (CD_ACCESS::flv_stride).
+      constexpr int ndpfbuf = ( nDPF > 0 ? nDPF * nMF * CD_ACCESS::flv_stride : 1 );
+      fptype dpf_value[ndpfbuf]{};
+      for( int idpf = 0; idpf < nDPF; idpf++ )
+        for( int imf = 0; imf < nMF; imf++ )
+        {
+          const int idc = cDPF_idcoup[idpf * nMF + imf];
+          if( idc >= 0 )
+            CD_ACCESS::kernelAccess( dpf_value + ( idpf * nMF + imf ) * CD_ACCESS::flv_stride ) =
+              CD_ACCESS::kernelAccessConst( COUPs[idc] );
+        }
+      FLV_COUPLING_ARRAY<nDPF, nMF, CD_ACCESS::flv_stride> flvCOUPs_dep{ cDPF_partner1, cDPF_partner2, dpf_value };
+
+      // Reset color flows (reset jamp_sv) at the beginning of a new event or event page
+      for( int i = 0; i < ncolor; i++ ) { jamp_sv[i] = cxzero_sv(); }
+
+      // Numerators and denominators for the current event (CUDA)
+      fptype_sv* numerators_sv = NUM_ACCESS::kernelAccessP( numerators );
+      fptype_sv& denominators_sv = DEN_ACCESS::kernelAccess( denominators );
+      // Scalar iflavor for the current event
+      const unsigned int iflavor = F_ACCESS::kernelAccessConst( iflavorVec );
 #include "EvaluateDiagrams.inc"
 
       // *** COLOR CHOICE BELOW ***
