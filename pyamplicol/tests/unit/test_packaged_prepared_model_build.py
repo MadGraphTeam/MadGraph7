@@ -307,7 +307,7 @@ def test_release_staging_accepts_older_package_producer(tmp_path: Path) -> None:
         for path in store.glob("*.metadata.json")
     }
     assert producer_versions == {"0.1.0"}
-    assert RELEASE_VERSION == "0.1.1"
+    assert RELEASE_VERSION == "0.1.2"
 
     assert project_release_packaged_prepared_model_store(
         overlay,

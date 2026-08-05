@@ -2,10 +2,9 @@
 
 # Release Status
 
-Version `0.1.1` is tagged as the immutable
-[`v0.1.1` source snapshot](https://github.com/mg5amcnlo/pyamplicol/tree/v0.1.1).
-It is available from [PyPI](https://pypi.org/project/pyamplicol/0.1.1/) and
-[TestPyPI](https://test.pypi.org/project/pyamplicol/0.1.1/).
+Version `0.1.2` is tagged as the immutable
+[`v0.1.2` source snapshot](https://github.com/mg5amcnlo/pyamplicol/tree/v0.1.2).
+It is available from [PyPI](https://pypi.org/project/pyamplicol/0.1.2/).
 
 The [validated release-artifacts
 workflow](https://github.com/mg5amcnlo/pyamplicol/actions/workflows/release-artifacts.yml)

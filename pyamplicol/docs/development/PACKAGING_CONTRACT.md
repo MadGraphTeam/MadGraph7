@@ -7,7 +7,7 @@ publication.
 
 ## Canonical Build
 
-- Distribution: `pyamplicol==0.1.1`, Python 3.11+, license `0BSD`.
+- Distribution: `pyamplicol==0.1.2`, Python 3.11+, license `0BSD`.
 - Backend: the in-tree PEP 517 wrapper delegates to pinned Maturin.
 - Python extension: `pyamplicol._rusticol`, built from `rusticol-python` with
   `abi3-py311`.

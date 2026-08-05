@@ -20,8 +20,8 @@ Python, C11, C++17, Fortran 2008, and Rust 2021 interfaces.
 
 ## Release status
 
-Version `0.1.1` is available from
-[PyPI](https://pypi.org/project/pyamplicol/0.1.1/) and is tagged as an
+Version `0.1.2` is available from
+[PyPI](https://pypi.org/project/pyamplicol/0.1.2/) and is tagged as an
 immutable archival source snapshot. The
 [validated release-artifacts workflow](https://github.com/mg5amcnlo/pyamplicol/actions/workflows/release-artifacts.yml)
 produces one source distribution and three `cp311-abi3` wheels; publication
@@ -56,7 +56,7 @@ need a Rust compiler. pyAmpliCol has no LHAPDF dependency.
 To build the tagged source snapshot:
 
 ```console
-git clone --branch v0.1.1 --depth 1 https://github.com/mg5amcnlo/pyamplicol.git
+git clone --branch v0.1.2 --depth 1 https://github.com/mg5amcnlo/pyamplicol.git
 cd pyamplicol
 python -m pip install .
 ```
