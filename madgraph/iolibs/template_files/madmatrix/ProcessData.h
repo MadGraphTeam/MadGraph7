@@ -1,0 +1,37 @@
+// Copyright (C) 2020-2026 CERN and UCLouvain.
+// Licensed under the GNU Lesser General Public License (version 3 or later).
+// Integrated with the MadGraph7 project in Feb 2026.
+//
+// Process-specific compile-time constants, generated once per subprocess.
+// This is the single source of truth for these values: CPPProcess (P1-generated)
+// and the backend-owned driver code (backend/{cpu,simd,gpu}/) both read from here
+// instead of duplicating the literals.
+
+#ifndef PROCESSDATA_H
+#define PROCESSDATA_H 1
+
+namespace ProcessData
+{
+  constexpr int np4 = 4; // dimensions of a 4-momentum (E,px,py,pz)
+  constexpr int nw6 = %(nwave)d; // dimensions of each wavefunction (HELAS KEK 91-11)
+  constexpr int npari = %(nincoming)d;
+  constexpr int nparf = %(noutcoming)d;
+  constexpr int npar = npari + nparf;
+  constexpr int ncomb = %(nbhel)d; // #helicity combinations
+  constexpr int ndiagrams = %(ndiagrams)d;
+  constexpr int ncolor = %(ncolor)d;
+  constexpr int nmaxflavor = %(nmaxflavor)d;
+  constexpr int nwf = %(nwf)d; // #wavefunctions = #external (npar) + #internal (see #644)
+  constexpr int nproc = %(nproc)d; // 2 if this process has a mirror process, else 1
+  constexpr int proc_id = %(proc_id)d;
+  constexpr int helcolDenominators[1] = { %(den_factors)s }; // spin/color/identical-particle denominators
+
+  // SM independent parameters/couplings/flavor-couplings used by this process
+  // (see #823: nIPC/nIPD/nIPF may vary per P1, unlike nicoup which is model-wide)
+  constexpr int nIPD = %(nipd)d;
+  constexpr int nIPC = %(nipc)d;
+  constexpr int nIPF = %(nipf)d;
+  constexpr int nDPF = %(ndpf)d;
+}
+
+#endif // PROCESSDATA_H
