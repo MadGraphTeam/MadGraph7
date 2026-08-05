@@ -120,13 +120,22 @@ the rest do not, because the same diagram is rooted differently on the two
 sides.
 
 That is forced, not a bug in the reconstruction. Expanding the seed produces
-more (seed, choice) unrollings than there are diagrams — about 340 for the
-220 at six gluons — so some diagrams are reached from several seeds. A
-diagram carries one decomposition, so it can be rooted to match at most one
+more (seed, choice) instances than there are diagrams, so some diagrams are
+reached from several seeds:
+
+| process | seeds | (seed, choice) instances | diagrams |
+|---|---|---|---|
+| `g g > g g`     | 1   | 4    | 4    |
+| `g g > g g g`   | 10  | 40   | 25   |
+| `g g > g g g g` | 55  | 340  | 220  |
+| `g g > 5 g`     | 385 | 4900 | 2485 |
+
+A diagram carries one decomposition, so it can be rooted to match at most one
 of its quartic partners, while the current sum needs the match at *every*
 node. Fact 3 above holds per (seed, choice) and breaks under the dedup that
 fact 2 requires. Not fixable by choosing the spelling more cleverly: the
-counting alone rules it out.
+counting alone rules it out, and `g g > g g` — the one row with no collision
+— is also the one process where the seed rule reaches every partner.
 
 What would work is a partial rewrite — build `TMP = W1 + W4` as a *third*
 current, hand it only to the consumers which do correspond, and leave W1 and
