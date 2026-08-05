@@ -1025,7 +1025,7 @@
       n[0] = fpternary( q[0].real() >= 0.f , one , -one );
       n[1] = zero;
       n[2] = zero;
-      n[3] = fpternary( q[0].real() >= 0.f , -one , one); //possible error in Fortran
+      n[3] = fpternary( q[0].real() >= 0.f , -one , one); // -sign(q0), as in fortran and python define_gauge_dir
       n[4] = zero;
     }
 #else
@@ -1034,7 +1034,7 @@
     n[0] = fpternary( q[0].real() >= 0.f , one , -one);
     n[1] = fpternary( qsign , -q[1].real() / qabs , zero );
     n[2] = fpternary( qsign , -q[2].real() / qabs , zero );
-    n[3] = fpternary( qsign , -q[3].real() / qabs , fpternary( q[0].real() >= 0.f , one , -one));
+    n[3] = fpternary( qsign , -q[3].real() / qabs , fpternary( q[0].real() >= 0.f , -one , one)); // same gauge as the branch above
     n[4] = zero;
 #endif
  }
