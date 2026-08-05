@@ -18,26 +18,7 @@ built-in, JSON, or UFO models. It provides a typed Python API and CLI, fast
 Rust-backed execution, runtime helicity and color-flow selection, and generated
 Python, C11, C++17, Fortran 2008, and Rust 2021 interfaces.
 
-## Release status
-
-Version `0.1.2` is available from
-[PyPI](https://pypi.org/project/pyamplicol/0.1.2/) and is tagged as an
-immutable archival source snapshot. The
-[validated release-artifacts workflow](https://github.com/mg5amcnlo/pyamplicol/actions/workflows/release-artifacts.yml)
-produces one source distribution and three `cp311-abi3` wheels; publication
-uses a successful run whose head SHA is the intended release source:
-
-- macOS 11 or newer on Apple silicon;
-- macOS 11 or newer on x86-64;
-- manylinux 2.28 x86-64.
-
-Each wheel completed the full installed Python, C11, C++17, Fortran 2008, and
-Rust 2021 API deployment on CPython 3.11. CPython 3.14 received a focused abi3
-installation, import, metadata, and direct-runtime smoke test. The release
-workflow did not run the separate performance campaigns.
-
-See the
-[release status](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/release-status.md)
+See the [release status](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/release-status.md)
 for build, validation, and publication details.
 
 ## Installation
@@ -197,21 +178,10 @@ cd ./pyamplicol-profiling-campaign
 
 That deliberately small real campaign measures only the final-state-
 multiplicity-one `d d~ > Z` recurrence cell. Broader campaign selections are
-intended for dedicated profiling hosts, not installation smoke tests.
-
-Each campaign keeps attempts, prepared artifacts, logs, locks, and leases in
-its visible `campaign_artifacts/` directory. Moving or renaming the whole
-campaign moves that state with it and never consults legacy repository-level
-`.artifacts` state. `--force` resets that local state plus the managed PDF,
-summary IDs, measurement lineage, and known LaTeX byproducts while preserving
-unrelated destination files and a previously recorded original-AmpliCol
-checkout. Stop active campaign processes before resetting their destination.
-
-All pyAmpliCol backends work from installed resources. The optional original
-AmpliCol reference backend additionally requires
-`--original-amplicol PATH_TO_COMPLETE_CHECKOUT`; it is unavailable when that
-checkout is not supplied. Neither pyAmpliCol nor the supported patched
-original-AmpliCol comparison checkout requires LHAPDF.
+intended for dedicated profiling hosts. The
+[profiling-campaign guide](https://github.com/mg5amcnlo/pyamplicol/wiki/Profiling-Campaigns)
+documents selection, continuation, optional original-AmpliCol comparisons,
+artifact retention, and PDF generation.
 
 The repository retains only two rendered performance snapshots. Raw JSON,
 generated tables, attempts, and campaign workspaces stay untracked:
@@ -219,14 +189,13 @@ generated tables, attempts, and campaign workspaces stay untracked:
 - [MacBook M3 report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/macbook_M3_pyAmpliCol.pdf)
 - [AMD EPYC report](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/performance_reports/EPYC_pyAmpliCol.pdf)
 
-These reports come from separate manual measurement campaigns; they are not
-release-CI results. The report format is directly reproducible from an
-installed package: create the workspace with
-`pyamplicol profiling-campaign copy DEST --force`, run the desired selection,
-then execute `DEST/steer_performance_campaign.py refresh-pdf`.
+These are manual measurement snapshots rather than release-CI results; raw
+campaign data remains local and the report format is reproducible from an
+installed package.
 
 ## Documentation
 
+- [Wiki](https://github.com/mg5amcnlo/pyamplicol/wiki)
 - [User guide](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/index.md)
 - [Configuration](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/configuration.md)
 - [Models and processes](https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/models.md)
@@ -239,8 +208,7 @@ then execute `DEST/steer_performance_campaign.py refresh-pdf`.
 
 Release builds use pinned published dependencies plus SymJIT 2.22.0 from an
 immutable revision of the official
-[symjit-crate repository](https://github.com/siravan/symjit-crate). pyAmpliCol
-does not carry a private SymJIT fork or a local SymJIT patch.
+[symjit-crate repository](https://github.com/siravan/symjit-crate).
 
 pyAmpliCol is distributed under the 0BSD license. Third-party components and
 model assets retain their own terms; see

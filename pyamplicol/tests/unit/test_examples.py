@@ -341,8 +341,11 @@ def test_typed_external_model_example_selects_process_local_compiled_jit() -> No
 def test_readme_states_current_release_boundary_and_public_surfaces() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     status = (ROOT / "docs/user/release-status.md").read_text(encoding="utf-8")
-    assert "Version `0.1.2` is available from" in readme
-    assert "https://pypi.org/project/pyamplicol/0.1.2/" in readme
+    assert (
+        "https://github.com/mg5amcnlo/pyamplicol/blob/main/docs/user/"
+        "release-status.md"
+    ) in readme
+    assert "https://github.com/mg5amcnlo/pyamplicol/wiki" in readme
     assert "Generator(GenerationConfig(workers=4))" in readme
     assert "p p > Z j j" in readme
     assert "Runtime.load" in readme
