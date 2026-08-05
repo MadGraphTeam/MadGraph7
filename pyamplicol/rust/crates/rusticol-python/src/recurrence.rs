@@ -30,6 +30,8 @@ use rusticol_core::recurrence::{
 };
 #[cfg(feature = "on-the-fly-test-support")]
 use rusticol_core::recurrence::{OnTheFlyTestSupportReportV1, on_the_fly_test_support_probe_v1};
+#[cfg(feature = "on-the-fly-test-support")]
+use rusticol_core::{NativeOnTheFlyArtifactProbeV1, NativeRuntime};
 use rusticol_core::{
     NativeRecurrenceExactExecutor, NativeRecurrenceExactFactor, NativeRecurrenceExactSections,
     RusticolError, RusticolResult,
@@ -1044,6 +1046,130 @@ pub(crate) fn _on_the_fly_test_support_probe_v1(
         })
         .map_err(python_error)?;
     on_the_fly_test_support_mapping(py, native)
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+#[pyfunction(signature = (
+    artifact_path,
+    process_id,
+    builder_input,
+    prepared_template_input,
+    direct_template_catalog_json,
+    prepared_kernel_pack_digest,
+    selected_public_flow_id,
+    public_helicities,
+    point_major_external_momenta,
+    point_count,
+    *,
+    parameter_overrides=None,
+    tamper_executor_key=false
+))]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn _on_the_fly_artifact_probe_v1(
+    py: Python<'_>,
+    artifact_path: PathBuf,
+    process_id: String,
+    builder_input: &Bound<'_, PyAny>,
+    prepared_template_input: &Bound<'_, PyAny>,
+    direct_template_catalog_json: &Bound<'_, PyBytes>,
+    prepared_kernel_pack_digest: String,
+    selected_public_flow_id: u32,
+    public_helicities: Vec<i32>,
+    point_major_external_momenta: Vec<f64>,
+    point_count: u32,
+    parameter_overrides: Option<BTreeMap<String, Vec<f64>>>,
+    tamper_executor_key: bool,
+) -> PyResult<Py<PyAny>> {
+    let input = parse_input(builder_input)?;
+    let prepared_template = parse_prepared_template_input(prepared_template_input)?;
+    let direct_template_catalog_json = direct_template_catalog_json.as_bytes().to_vec();
+    validate_sha256_text(&prepared_kernel_pack_digest, "prepared kernel pack digest")?;
+    let parameter_overrides = parameter_overrides
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(name, value)| {
+            let value: [f64; 2] = value.try_into().map_err(|value: Vec<f64>| {
+                PyValueError::new_err(format!(
+                    "on-the-fly parameter override {name:?} has {} components, expected 2",
+                    value.len()
+                ))
+            })?;
+            Ok((name, value))
+        })
+        .collect::<PyResult<BTreeMap<_, _>>>()?;
+    let native = py
+        .detach(move || {
+            let expected_pack_digest = semantic_digest_from_hex(
+                &prepared_kernel_pack_digest,
+                "prepared kernel pack digest",
+            )?;
+            let authenticated =
+                authenticate_builder_inputs(input, prepared_template, expected_pack_digest)?
+                    .authenticated;
+            let direct_catalog = parse_direct_template_catalog(
+                &direct_template_catalog_json,
+                expected_pack_digest,
+                authenticated.template().summary().catalog_digest,
+                authenticated.template().summary().compiled_model_digest,
+            )?;
+            NativeRuntime::on_the_fly_artifact_probe_v1(
+                artifact_path,
+                &process_id,
+                &authenticated,
+                &direct_catalog.catalog,
+                selected_public_flow_id,
+                &public_helicities,
+                &point_major_external_momenta,
+                point_count,
+                &parameter_overrides,
+                tamper_executor_key,
+            )
+        })
+        .map_err(python_error)?;
+    on_the_fly_artifact_probe_mapping(py, native)
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+fn on_the_fly_artifact_probe_mapping(
+    py: Python<'_>,
+    native: NativeOnTheFlyArtifactProbeV1,
+) -> PyResult<Py<PyAny>> {
+    let result = PyDict::new(py);
+    result.set_item("artifact_id", native.artifact_id)?;
+    result.set_item("process_id", native.process_id)?;
+    result.set_item("seed_digest", native.seed_digest)?;
+    result.set_item("query_digest", native.query_digest)?;
+    result.set_item("trace_digest", native.trace_digest)?;
+    result.set_item("point_count", native.point_count)?;
+    result.set_item("raw_amplitudes", native.raw_amplitudes)?;
+    result.set_item("normalized_values", native.normalized_values)?;
+    result.set_item("normalization_factor", native.normalization_factor)?;
+    result.set_item(
+        "direct_plan_load_attempts",
+        native.direct_plan_load_attempts,
+    )?;
+    result.set_item(
+        "direct_plan_decode_attempts",
+        native.direct_plan_decode_attempts,
+    )?;
+    result.set_item(
+        "direct_plan_materialization_attempts",
+        native.direct_plan_materialization_attempts,
+    )?;
+    result.set_item(
+        "established_builder_attempts",
+        native.established_builder_attempts,
+    )?;
+    let currents = PyList::empty(py);
+    for current in native.currents {
+        let row = PyDict::new(py);
+        row.set_item("semantic_digest", current.semantic_digest)?;
+        row.set_item("component_count", current.component_count)?;
+        row.set_item("values", current.values)?;
+        currents.append(row)?;
+    }
+    result.set_item("currents", currents)?;
+    Ok(result.into_any().unbind())
 }
 
 #[cfg(feature = "on-the-fly-test-support")]

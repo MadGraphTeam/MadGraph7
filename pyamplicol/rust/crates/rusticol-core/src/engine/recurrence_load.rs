@@ -8,13 +8,22 @@ use super::evaluator::recurrence_source_direct::{
     DirectSourceOrientation, DirectSourceTemplateSpec, DirectSourceWavefunctionFamily,
 };
 use super::recurrence_backend::NativeRecurrenceDirectExecutorBackend;
+#[cfg(feature = "on-the-fly-test-support")]
+use super::recurrence_backend::NativeRecurrencePreparedExecutorPool;
 use super::recurrence_manifest::*;
 use super::*;
 use crate::pacbin::{PacbinMemberKind, PacbinReader};
+#[cfg(feature = "on-the-fly-test-support")]
+use crate::recurrence::on_the_fly::{
+    OnTheFlyForbiddenWorkGuardV1, OnTheFlyStructuralInterpreter, OnTheFlyWorkspaceV1,
+    build_on_the_fly_selected_trace_v1,
+};
 use crate::recurrence::on_the_fly::{
     OnTheFlyProcessSeedV1, OnTheFlySourceExecutionSpecV1, OnTheFlySourceOrientationV1,
     OnTheFlySourceWavefunctionFamilyV1,
 };
+#[cfg(feature = "on-the-fly-test-support")]
+use crate::recurrence::{AuthenticatedRecurrenceBuilderInput, PreparedDirectExecutorCatalog};
 use crate::recurrence::{
     DirectRecurrencePlan, FactorizedColorContractionKind,
     RECURRENCE_COLOR_PROJECTION_CERTIFICATE_MEMBER, RECURRENCE_DIRECT_SCHEDULE_MEMBER,
@@ -437,6 +446,10 @@ fn load_plan(
     evaluator_root: &Path,
     manifest: &RecurrenceExecutionManifest,
 ) -> RusticolResult<DirectRecurrencePlan> {
+    #[cfg(feature = "on-the-fly-test-support")]
+    crate::recurrence::on_the_fly::reject_forbidden_work_if_probed(
+        crate::recurrence::on_the_fly::OnTheFlyForbiddenWorkV1::DirectPlanLoad,
+    )?;
     let container = &manifest.plan.runtime_schedule;
     let path = artifact.root().join(&container.path);
     let payload = artifact.payload(&container.path)?;
@@ -1091,13 +1104,10 @@ type RecurrenceCommonRuntimeParts = (
     Vec<DirectSourceDispatchDomainSpec>,
 );
 
-fn build_common_runtime(
-    plan: &DirectRecurrencePlan,
-    manifest: &RecurrenceExecutionManifest,
-    physics: &ProcessPhysicsV1,
-) -> RusticolResult<RecurrenceCommonRuntimeParts> {
-    let metadata = &manifest.runtime_metadata;
-    let runtime_parameters = metadata
+fn recurrence_runtime_parameters(
+    metadata: &RecurrenceRuntimeMetadata,
+) -> Vec<GenericRuntimeModelParameterManifest> {
+    metadata
         .runtime_parameters
         .iter()
         .map(|parameter| GenericRuntimeModelParameterManifest {
@@ -1109,7 +1119,431 @@ fn build_common_runtime(
             runtime_name: parameter.runtime_name.clone(),
             complex_component: parameter.complex_component.clone(),
         })
+        .collect()
+}
+
+#[derive(Clone, Copy)]
+struct RecurrenceNormalizationValues {
+    factor: f64,
+    color_factor: f64,
+}
+
+fn recurrence_normalization_values(
+    metadata: &RecurrenceRuntimeMetadata,
+) -> RusticolResult<RecurrenceNormalizationValues> {
+    let normalization = &metadata.normalization;
+    if !normalization.couplings_in_stage_evaluators {
+        return Err(RusticolError::compatibility(
+            "recurrence execution requires local vertex couplings in prepared kernel calls",
+        ));
+    }
+    let color_factor = if metadata
+        .color_contraction
+        .as_ref()
+        .is_some_and(|contraction| contraction.includes_color_factor)
+    {
+        1.0
+    } else {
+        normalization.color_factor
+    };
+    let factor = color_factor * normalization.global_coupling_factor
+        / (normalization.average_factor * normalization.identical_factor);
+    if !factor.is_finite() {
+        return Err(RusticolError::integrity(
+            "recurrence runtime normalization is not finite",
+        ));
+    }
+    Ok(RecurrenceNormalizationValues {
+        factor,
+        color_factor,
+    })
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+fn on_the_fly_prepared_parameters(
+    metadata: &RecurrenceRuntimeMetadata,
+    runtime_parameters: &[GenericRuntimeModelParameterManifest],
+    mut model_parameter_evaluator: Option<ModelParameterEvaluatorRuntime>,
+    overrides: &BTreeMap<String, [f64; 2]>,
+) -> RusticolResult<Vec<[f64; 2]>> {
+    let runtime_slots = runtime_parameter_slots(runtime_parameters)?;
+    let mut runtime_values = runtime_parameters
+        .iter()
+        .map(|parameter| parameter.default)
         .collect::<Vec<_>>();
+    for value in &runtime_values {
+        if !value.is_finite() {
+            return Err(RusticolError::integrity(
+                "recurrence runtime parameter default is not finite",
+            ));
+        }
+    }
+    for value in &metadata.prepared_parameter_defaults {
+        if !value[0].is_finite() || !value[1].is_finite() {
+            return Err(RusticolError::integrity(
+                "recurrence prepared parameter default is not finite",
+            ));
+        }
+    }
+    for (name, override_value) in overrides {
+        if !override_value[0].is_finite() || !override_value[1].is_finite() {
+            return Err(RusticolError::invalid_argument(format!(
+                "on-the-fly parameter override {name:?} is not finite"
+            )));
+        }
+        if runtime_parameters.iter().any(|parameter| {
+            parameter.kind == "derived_parameter_component"
+                && parameter
+                    .runtime_name
+                    .as_deref()
+                    .unwrap_or(&parameter.name)
+                    == name
+        }) {
+            return Err(RusticolError::invalid_argument(format!(
+                "derived on-the-fly parameter {name:?} is immutable"
+            )));
+        }
+        let Some(slots) = runtime_slots.get(name).copied() else {
+            return Err(RusticolError::invalid_argument(format!(
+                "on-the-fly parameter override {name:?} is not used by the process"
+            )));
+        };
+        let real = runtime_values.get_mut(slots.real).ok_or_else(|| {
+            RusticolError::integrity("on-the-fly runtime parameter real slot is absent")
+        })?;
+        *real = override_value[0];
+        if let Some(imaginary_slot) = slots.imaginary {
+            let imaginary = runtime_values.get_mut(imaginary_slot).ok_or_else(|| {
+                RusticolError::integrity("on-the-fly runtime parameter imaginary slot is absent")
+            })?;
+            *imaginary = override_value[1];
+        } else if override_value[1] != 0.0 {
+            return Err(RusticolError::invalid_argument(format!(
+                "real on-the-fly parameter {name:?} cannot receive an imaginary value"
+            )));
+        }
+    }
+    super::model_parameters::refresh_derived_model_parameter_values(
+        model_parameter_evaluator.as_mut(),
+        &mut runtime_values,
+    )?;
+
+    let mut prepared = metadata.prepared_parameter_defaults.clone();
+    for projection in &metadata.parameter_projection {
+        let Some(prepared_id) = projection.prepared_parameter_id else {
+            continue;
+        };
+        let runtime_value = *runtime_values
+            .get(usize::try_from(projection.runtime_slot).map_err(|_| {
+                RusticolError::integrity("on-the-fly runtime parameter slot exceeds usize")
+            })?)
+            .ok_or_else(|| {
+                RusticolError::integrity("on-the-fly runtime parameter projection is absent")
+            })?;
+        let prepared_value = prepared.get_mut(prepared_id as usize).ok_or_else(|| {
+            RusticolError::integrity(
+                "on-the-fly parameter projection is outside prepared defaults",
+            )
+        })?;
+        match projection.component {
+            0 => prepared_value[0] = runtime_value,
+            1 => prepared_value[1] = runtime_value,
+            _ => {
+                return Err(RusticolError::integrity(
+                    "on-the-fly parameter projection has an invalid complex component",
+                ));
+            }
+        }
+    }
+    Ok(prepared)
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+fn on_the_fly_source_major_momenta(
+    seed: &OnTheFlyProcessSeedV1,
+    point_major: &[f64],
+    point_count: u32,
+    lorentz_component_count: u16,
+) -> RusticolResult<Vec<f64>> {
+    let permutation = seed.external_permutation();
+    let point_count_usize = point_count as usize;
+    let lorentz_count = usize::from(lorentz_component_count);
+    let expected = point_count_usize
+        .checked_mul(permutation.len())
+        .and_then(|count| count.checked_mul(lorentz_count))
+        .ok_or_else(|| {
+            RusticolError::invalid_argument("on-the-fly momentum shape exceeds usize")
+        })?;
+    if point_count == 0 || point_major.len() != expected {
+        return Err(RusticolError::invalid_argument(format!(
+            "on-the-fly point-major momenta contain {} scalars, expected {expected}",
+            point_major.len()
+        )));
+    }
+    let mut source_major = vec![0.0; expected];
+    for (source_slot, public_slot) in permutation.iter().copied().enumerate() {
+        let public_slot = usize::try_from(public_slot).map_err(|_| {
+            RusticolError::integrity("on-the-fly public momentum slot exceeds usize")
+        })?;
+        for lorentz in 0..lorentz_count {
+            for point in 0..point_count_usize {
+                let input = point
+                    .checked_mul(permutation.len())
+                    .and_then(|base| base.checked_add(public_slot))
+                    .and_then(|base| base.checked_mul(lorentz_count))
+                    .and_then(|base| base.checked_add(lorentz))
+                    .ok_or_else(|| {
+                        RusticolError::invalid_argument(
+                            "on-the-fly point-major momentum index exceeds usize",
+                        )
+                    })?;
+                let output = source_slot
+                    .checked_mul(lorentz_count)
+                    .and_then(|base| base.checked_add(lorentz))
+                    .and_then(|base| base.checked_mul(point_count_usize))
+                    .and_then(|base| base.checked_add(point))
+                    .ok_or_else(|| {
+                        RusticolError::invalid_argument(
+                            "on-the-fly source-major momentum index exceeds usize",
+                        )
+                    })?;
+                source_major[output] = point_major[input];
+            }
+        }
+    }
+    Ok(source_major)
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+impl NativeRuntime {
+    /// Execute one authenticated selector-local recurrence trace directly from
+    /// a genuine artifact without loading or decoding its DirectPlan.
+    #[doc(hidden)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn on_the_fly_artifact_probe_v1(
+        artifact_path: impl AsRef<Path>,
+        process_id: &str,
+        authenticated: &AuthenticatedRecurrenceBuilderInput,
+        direct: &PreparedDirectExecutorCatalog,
+        selected_public_flow_id: u32,
+        public_helicities: &[i32],
+        point_major_external_momenta: &[f64],
+        point_count: u32,
+        parameter_overrides: &BTreeMap<String, [f64; 2]>,
+        tamper_executor_key: bool,
+    ) -> RusticolResult<NativeOnTheFlyArtifactProbeV1> {
+        let guard = OnTheFlyForbiddenWorkGuardV1::begin()?;
+        let result = (|| {
+            let artifact = VerifiedArtifact::open(artifact_path)?;
+            let selection = artifact.select_process(Some(process_id))?;
+            if selection.alias.is_some() || selection.inferred_permutation {
+                return Err(RusticolError::invalid_argument(
+                    "on-the-fly artifact probing requires a representative process ID",
+                ));
+            }
+            let (loaded, _evaluator_root) = load_verified_evaluator(&artifact, &selection)?;
+            let physics_bytes = artifact.read_payload(&selection.process.physics_path)?;
+            let physics =
+                ProcessPhysicsV1::from_json(&physics_bytes, &selection.process.physics_path)?;
+            if physics.process_id != selection.process.id
+                || physics.process != selection.process.expression
+                || physics.color_accuracy.as_str() != selection.process.color_accuracy
+                || physics
+                    .external_particles
+                    .iter()
+                    .map(|particle| particle.pdg)
+                    .ne(selection.process.external_pdgs.iter().copied())
+            {
+                return Err(RusticolError::integrity(format!(
+                    "runtime physics payload {:?} does not match process {:?}",
+                    selection.process.physics_path, selection.process.id
+                )));
+            }
+            let manifest = match loaded {
+                LoadedExecutionManifest::Recurrence(manifest) => manifest,
+                LoadedExecutionManifest::Compiled(_) | LoadedExecutionManifest::EagerV3(_) => {
+                    return Err(RusticolError::compatibility(
+                        "on-the-fly artifact probing requires a recurrence artifact",
+                    ));
+                }
+            };
+            if authenticated
+                .process()
+                .semantic_identity()
+                .input_digest()
+                .to_string()
+                != manifest.plan.builder_input_sha256
+                || direct.direct_template_catalog_digest().to_string()
+                    != manifest.direct_template_catalog_digest
+                || authenticated
+                    .template()
+                    .summary()
+                    .prepared_kernel_pack_digest
+                    .to_string()
+                    != manifest.prepared_kernel_pack_digest
+            {
+                return Err(RusticolError::integrity(
+                    "retained on-the-fly canonical inputs do not belong to the selected artifact",
+                ));
+            }
+
+            let mut selected = build_on_the_fly_selected_trace_v1(
+                authenticated,
+                direct.direct_template_catalog_digest(),
+                selected_public_flow_id,
+                public_helicities,
+            )?;
+            if tamper_executor_key {
+                selected
+                    .trace
+                    .tamper_first_prepared_executor_key_for_probe()?;
+            }
+
+            let (pack_json, pack, payload_root) = load_prepared_pack(&artifact, &manifest)?;
+            let payloads = artifact.evaluator_payload_store(&payload_root)?;
+            let runtime_parameters = recurrence_runtime_parameters(&manifest.runtime_metadata);
+            let model_parameter_evaluator =
+                super::eager_load::load_prepared_model_parameter_evaluator_for_runtime(
+                    &pack,
+                    &runtime_parameters,
+                    &payloads,
+                )?;
+            let pool = NativeRecurrencePreparedExecutorPool::load_from_store(
+                &pack_json,
+                &payloads,
+                &manifest.prepared_kernel_pack_digest,
+                &manifest.direct_template_catalog_digest,
+            )?;
+            let runtime_parameter_slots = runtime_parameter_slots(&runtime_parameters)?;
+            let source_domains = build_on_the_fly_source_domains(
+                &selected.seed,
+                authenticated.template(),
+                &manifest.runtime_metadata,
+                &runtime_parameter_slots,
+            )?;
+            // Keep this lexical ownership order: model pool, process sources,
+            // then resolver borrowing both.
+            let sources = pool.bind_source_domains(source_domains)?;
+            let resolver = pool.bind_on_the_fly_trace(
+                authenticated.template(),
+                direct,
+                &selected.seed,
+                &selected.trace,
+                &sources,
+            )?;
+            let mut workspace = OnTheFlyWorkspaceV1::new(&selected.trace, point_count)?;
+            for (parameter_id, value) in on_the_fly_prepared_parameters(
+                &manifest.runtime_metadata,
+                &runtime_parameters,
+                model_parameter_evaluator,
+                parameter_overrides,
+            )?
+            .into_iter()
+            .enumerate()
+            {
+                workspace.set_parameter(
+                    u32::try_from(parameter_id).map_err(|_| {
+                        RusticolError::artifact("on-the-fly prepared parameter count exceeds u32")
+                    })?,
+                    value[0],
+                    value[1],
+                )?;
+            }
+            let source_major = on_the_fly_source_major_momenta(
+                &selected.seed,
+                point_major_external_momenta,
+                point_count,
+                selected.trace.layout().lorentz_component_count(),
+            )?;
+            workspace.fill_momenta_from_external(&selected.trace, &source_major, point_count)?;
+            OnTheFlyStructuralInterpreter::execute(
+                &selected.trace,
+                &resolver,
+                &mut workspace,
+                point_count,
+            )?;
+
+            let raw_amplitudes = (0..point_count)
+                .map(|point| workspace.amplitude(point).map(|(real, imag)| [real, imag]))
+                .collect::<RusticolResult<Vec<_>>>()?;
+            let normalization_factor =
+                recurrence_normalization_values(&manifest.runtime_metadata)?.factor;
+            let normalized_values = raw_amplitudes
+                .iter()
+                .map(|[real, imaginary]| {
+                    (real.mul_add(*real, imaginary * imaginary)) * normalization_factor
+                })
+                .collect();
+            let current_count = selected.trace.proof().current_count();
+            let currents = (0..current_count)
+                .map(|current_id| {
+                    let [_, component_count] =
+                        selected.trace.current_component_range(current_id)?;
+                    let mut values =
+                        Vec::with_capacity(point_count as usize * component_count as usize);
+                    for point in 0..point_count {
+                        values.extend(
+                            workspace
+                                .observed_current_components(&selected.trace, current_id, point)?
+                                .into_iter()
+                                .map(|(real, imaginary)| [real, imaginary]),
+                        );
+                    }
+                    Ok(NativeOnTheFlyCurrentProbeV1 {
+                        semantic_digest: selected
+                            .trace
+                            .current_semantic_digest(current_id)?
+                            .to_string(),
+                        component_count,
+                        values,
+                    })
+                })
+                .collect::<RusticolResult<Vec<_>>>()?;
+
+            Ok(NativeOnTheFlyArtifactProbeV1 {
+                artifact_id: artifact.manifest().artifact_id.clone(),
+                process_id: manifest.key.clone(),
+                seed_digest: selected.seed.semantic_digest().to_string(),
+                query_digest: selected.query.semantic_digest().to_string(),
+                trace_digest: selected.trace.semantic_digest().to_string(),
+                point_count,
+                raw_amplitudes,
+                normalized_values,
+                normalization_factor,
+                currents,
+                direct_plan_load_attempts: 0,
+                direct_plan_decode_attempts: 0,
+                direct_plan_materialization_attempts: 0,
+                established_builder_attempts: 0,
+            })
+        })();
+        let counts = guard.finish()?;
+        let mut report = result?;
+        report.direct_plan_load_attempts = counts.direct_plan_load_attempts;
+        report.direct_plan_decode_attempts = counts.direct_plan_decode_attempts;
+        report.direct_plan_materialization_attempts =
+            counts.direct_plan_materialization_attempts;
+        report.established_builder_attempts = counts.established_builder_attempts;
+        if report.direct_plan_load_attempts != 0
+            || report.direct_plan_decode_attempts != 0
+            || report.direct_plan_materialization_attempts != 0
+            || report.established_builder_attempts != 0
+        {
+            return Err(RusticolError::integrity(
+                "on-the-fly artifact probe observed forbidden global work",
+            ));
+        }
+        Ok(report)
+    }
+}
+
+fn build_common_runtime(
+    plan: &DirectRecurrencePlan,
+    manifest: &RecurrenceExecutionManifest,
+    physics: &ProcessPhysicsV1,
+) -> RusticolResult<RecurrenceCommonRuntimeParts> {
+    let metadata = &manifest.runtime_metadata;
+    let runtime_parameters = recurrence_runtime_parameters(metadata);
     let model_parameter_runtime_slots = runtime_parameter_slots(&runtime_parameters)?;
     let model_parameter_values_f64 = runtime_parameters
         .iter()
@@ -1181,27 +1615,9 @@ fn build_common_runtime(
     let source_domains =
         build_direct_source_domains(plan, metadata, &model_parameter_runtime_slots)?;
     let normalization = &metadata.normalization;
-    if !normalization.couplings_in_stage_evaluators {
-        return Err(RusticolError::compatibility(
-            "recurrence execution requires local vertex couplings in prepared kernel calls",
-        ));
-    }
-    let color_factor = if metadata
-        .color_contraction
-        .as_ref()
-        .is_some_and(|contraction| contraction.includes_color_factor)
-    {
-        1.0
-    } else {
-        normalization.color_factor
-    };
-    let normalization_factor = color_factor * normalization.global_coupling_factor
-        / (normalization.average_factor * normalization.identical_factor);
-    if !normalization_factor.is_finite() {
-        return Err(RusticolError::integrity(
-            "recurrence runtime normalization is not finite",
-        ));
-    }
+    let normalization_values = recurrence_normalization_values(metadata)?;
+    let color_factor = normalization_values.color_factor;
+    let normalization_factor = normalization_values.factor;
     let external_count = manifest.external_pdg_order.len();
     if plan.external_source_count() as usize != external_count
         || metadata.external_legs.len() != external_count

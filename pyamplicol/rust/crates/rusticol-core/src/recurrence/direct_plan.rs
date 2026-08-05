@@ -409,6 +409,10 @@ fn selector_domain_contains_parts(
 
 impl DirectRecurrencePlan {
     pub fn new(mut parts: DirectRecurrencePlanParts) -> RusticolResult<Self> {
+        #[cfg(feature = "on-the-fly-test-support")]
+        super::on_the_fly::reject_forbidden_work_if_probed(
+            super::on_the_fly::OnTheFlyForbiddenWorkV1::DirectPlanMaterialization,
+        )?;
         canonicalize_contribution_initialization(&mut parts)?;
         validate_parts(&parts)?;
         let runtime_layout_digest = digest_parts(&parts)?;

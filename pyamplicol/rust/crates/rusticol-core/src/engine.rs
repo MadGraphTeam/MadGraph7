@@ -4047,6 +4047,36 @@ impl NativeDecimalResolvedEvaluation {
     }
 }
 
+#[cfg(feature = "on-the-fly-test-support")]
+#[derive(Clone, Debug)]
+#[doc(hidden)]
+pub struct NativeOnTheFlyCurrentProbeV1 {
+    pub semantic_digest: String,
+    pub component_count: u32,
+    /// Point-major, then component-major split-complex values.
+    pub values: Vec<[f64; 2]>,
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+#[derive(Clone, Debug)]
+#[doc(hidden)]
+pub struct NativeOnTheFlyArtifactProbeV1 {
+    pub artifact_id: String,
+    pub process_id: String,
+    pub seed_digest: String,
+    pub query_digest: String,
+    pub trace_digest: String,
+    pub point_count: u32,
+    pub raw_amplitudes: Vec<[f64; 2]>,
+    pub normalized_values: Vec<f64>,
+    pub normalization_factor: f64,
+    pub currents: Vec<NativeOnTheFlyCurrentProbeV1>,
+    pub direct_plan_load_attempts: u32,
+    pub direct_plan_decode_attempts: u32,
+    pub direct_plan_materialization_attempts: u32,
+    pub established_builder_attempts: u32,
+}
+
 /// Python-independent schema-v3 process runtime.
 ///
 /// The input momentum layout is `[point][external particle][E, px, py, pz]`.

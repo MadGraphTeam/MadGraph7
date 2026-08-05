@@ -635,6 +635,10 @@ pub(crate) fn encode_recurrence_direct_plan_v2_to_writer<W: Write>(
 }
 
 pub fn decode_recurrence_direct_plan_v2(bytes: &[u8]) -> RusticolResult<DirectRecurrencePlan> {
+    #[cfg(feature = "on-the-fly-test-support")]
+    super::on_the_fly::reject_forbidden_work_if_probed(
+        super::on_the_fly::OnTheFlyForbiddenWorkV1::DirectPlanDecode,
+    )?;
     let mut reader = Reader::new(bytes)?;
     if reader.take(8, "magic")? != MAGIC {
         return Err(invalid(

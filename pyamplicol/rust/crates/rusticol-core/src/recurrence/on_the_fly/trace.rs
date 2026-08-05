@@ -194,6 +194,11 @@ impl OnTheFlyWorkspaceLayoutV1 {
     pub(crate) const fn amplitude_component_count(self) -> u32 {
         self.amplitude_component_count
     }
+
+    #[cfg(feature = "on-the-fly-test-support")]
+    pub(crate) const fn lorentz_component_count(self) -> u16 {
+        self.lorentz_component_count
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -295,6 +300,50 @@ impl OnTheFlyStructuralTraceV1 {
 
     pub(crate) const fn semantic_digest(&self) -> SemanticDigest {
         self.semantic_digest
+    }
+
+    #[cfg(feature = "on-the-fly-test-support")]
+    pub(crate) fn tamper_first_prepared_executor_key_for_probe(&mut self) -> RusticolResult<()> {
+        let replacement = SemanticDigest::new([0xa5; 32])?;
+        for operation in self.operations.iter_mut() {
+            let key = operation.key();
+            let OnTheFlyExecutorKeyV1::PreparedOperation {
+                direct_catalog_digest,
+                role,
+                operation_kind,
+                operation_id,
+                operation_semantic_digest,
+                evaluator_binding_id,
+                evaluator_binding_semantic_digest,
+            } = key
+            else {
+                continue;
+            };
+            let replacement = if replacement != operation_semantic_digest {
+                replacement
+            } else {
+                SemanticDigest::new([0x5a; 32])?
+            };
+            let tampered = OnTheFlyExecutorKeyV1::PreparedOperation {
+                direct_catalog_digest,
+                role,
+                operation_kind,
+                operation_id,
+                operation_semantic_digest: replacement,
+                evaluator_binding_id,
+                evaluator_binding_semantic_digest,
+            };
+            match operation {
+                OnTheFlyTraceOperationV1::Source { key, .. }
+                | OnTheFlyTraceOperationV1::Contribution { key, .. }
+                | OnTheFlyTraceOperationV1::Finalization { key, .. }
+                | OnTheFlyTraceOperationV1::Closure { key, .. } => *key = tampered,
+            }
+            return Ok(());
+        }
+        Err(integrity(
+            "selected trace has no prepared executor key to tamper",
+        ))
     }
 
     #[cfg(any(test, feature = "on-the-fly-test-support"))]

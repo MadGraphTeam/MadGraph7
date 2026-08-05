@@ -482,7 +482,7 @@ impl OnTheFlyStructuralInterpreter {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
 impl OnTheFlyWorkspaceV1 {
     pub(crate) fn observed_current_components(
         &self,

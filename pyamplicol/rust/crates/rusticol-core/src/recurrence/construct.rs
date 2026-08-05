@@ -3207,6 +3207,11 @@ impl<'a> TemplateCatalog<'a> {
     pub(super) fn coupling_order_dimension(&self) -> usize {
         self.coupling_names.len()
     }
+
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    pub(super) fn coupling_order_names(&self) -> &[&'a str] {
+        &self.coupling_names
+    }
 }
 
 struct ProcessCatalog<'a> {
@@ -4359,6 +4364,10 @@ fn build_recurrence_program_impl(
     progress: &mut dyn FnMut(RecurrenceBuildProgress) -> RusticolResult<()>,
     collect_telemetry: bool,
 ) -> RusticolResult<(RecurrenceProgram, RecurrenceGenerationTelemetry)> {
+    #[cfg(feature = "on-the-fly-test-support")]
+    super::on_the_fly::reject_forbidden_work_if_probed(
+        super::on_the_fly::OnTheFlyForbiddenWorkV1::EstablishedBuilder,
+    )?;
     let mut telemetry = RecurrenceGenerationTelemetry::default();
     let strategy = authenticated.process().summary().strategy();
     let catalog_digest = authenticated.template().summary().catalog_digest;

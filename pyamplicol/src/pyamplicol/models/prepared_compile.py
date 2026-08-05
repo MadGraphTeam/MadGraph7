@@ -270,6 +270,8 @@ def _rebind_recurrence_template_pack_digest(
         current_states=catalog.current_states,
         sources=catalog.sources,
         quantum_flows=catalog.quantum_flows,
+        contact_orbit_certificates=catalog.contact_orbit_certificates,
+        contact_orbit_steps=catalog.contact_orbit_steps,
         transitions=catalog.transitions,
         propagators=catalog.propagators,
         closures=catalog.closures,

@@ -521,6 +521,11 @@ impl OnTheFlyProcessSeedV1 {
         self.semantic_digest
     }
 
+    #[cfg(feature = "on-the-fly-test-support")]
+    pub(crate) fn external_permutation(&self) -> &[u32] {
+        &self.external_permutation
+    }
+
     pub(crate) const fn model_digest(&self) -> SemanticDigest {
         self.model_digest
     }
@@ -637,4 +642,63 @@ pub(super) fn validate_permutation(
         return Err(invalid(format!("{label} is not a bijection")));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rebuild_with_coupling_limits(
+        seed: OnTheFlyProcessSeedV1,
+        coupling_limits: Vec<Option<u32>>,
+    ) -> RusticolResult<OnTheFlyProcessSeedV1> {
+        let OnTheFlyProcessSeedV1 {
+            process_digest,
+            model_digest,
+            template_catalog_digest,
+            prepared_pack_digest,
+            direct_catalog_digest,
+            normalization_semantic_digest,
+            normalization_convention,
+            source_anchors,
+            external_permutation,
+            coupling_limits: _,
+            pairing_classes,
+            semantic_digest: _,
+        } = seed;
+        OnTheFlyProcessSeedV1::new(
+            process_digest,
+            model_digest,
+            template_catalog_digest,
+            prepared_pack_digest,
+            direct_catalog_digest,
+            normalization_semantic_digest,
+            normalization_convention,
+            ExactComplexRational::ONE,
+            source_anchors.into_vec(),
+            external_permutation.into_vec(),
+            coupling_limits,
+            pairing_classes.into_vec(),
+        )
+    }
+
+    #[test]
+    fn genuine_probe_explicit_model_order_limits_fail_closed() {
+        let seed = scalar_adapter_test_seed(
+            SemanticDigest::new([1; 32]).unwrap(),
+            SemanticDigest::new([2; 32]).unwrap(),
+            SemanticDigest::new([3; 32]).unwrap(),
+            SemanticDigest::new([4; 32]).unwrap(),
+        )
+        .unwrap();
+        for limits in [vec![], vec![Some(0), None]] {
+            assert!(
+                rebuild_with_coupling_limits(seed.clone(), limits)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("coupling limits must be explicit for every model order")
+            );
+        }
+        assert!(rebuild_with_coupling_limits(seed, vec![Some(0), Some(3)]).is_ok());
+    }
 }

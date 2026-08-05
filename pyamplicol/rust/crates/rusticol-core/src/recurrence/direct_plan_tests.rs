@@ -277,6 +277,24 @@ pub(crate) fn valid_plan() -> DirectRecurrencePlan {
     DirectRecurrencePlan::new(valid_parts()).unwrap()
 }
 
+#[cfg(feature = "on-the-fly-test-support")]
+#[test]
+fn genuine_probe_direct_plan_materialization_is_poisoned() {
+    let guard = crate::recurrence::on_the_fly::OnTheFlyForbiddenWorkGuardV1::begin().unwrap();
+    assert!(
+        DirectRecurrencePlan::new(valid_parts())
+            .unwrap_err()
+            .to_string()
+            .contains("DirectRecurrencePlan materialization is poisoned")
+    );
+    let counts = guard.finish().unwrap();
+    assert_eq!(counts.direct_plan_load_attempts, 0);
+    assert_eq!(counts.direct_plan_decode_attempts, 0);
+    assert_eq!(counts.direct_plan_materialization_attempts, 1);
+    assert_eq!(counts.established_builder_attempts, 0);
+    assert!(DirectRecurrencePlan::new(valid_parts()).is_ok());
+}
+
 #[test]
 fn direct_descriptor_native_layouts_are_fixed_width() {
     assert_eq!(std::mem::size_of::<DirectCurrentDescriptor>(), 48);

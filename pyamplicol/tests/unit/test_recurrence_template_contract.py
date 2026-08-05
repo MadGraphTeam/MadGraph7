@@ -944,6 +944,20 @@ def test_prepared_pack_digest_rebind_preserves_runtime_helicity_contracts() -> N
     assert rebound.runtime_helicity_contracts == catalog.runtime_helicity_contracts
 
 
+def test_prepared_pack_digest_rebind_preserves_contact_orbit_records() -> None:
+    from pyamplicol.models.prepared_compile import (
+        _rebind_recurrence_template_pack_digest,
+    )
+
+    catalog = _contact_orbit_catalog()
+    rebound = _rebind_recurrence_template_pack_digest(catalog, "f" * 64)
+
+    assert rebound.header.prepared_kernel_pack_digest == "f" * 64
+    assert rebound.contact_orbit_certificates == catalog.contact_orbit_certificates
+    assert rebound.contact_orbit_steps == catalog.contact_orbit_steps
+    assert rebound.transitions == catalog.transitions
+
+
 def test_runtime_helicity_preflight_reports_uncertified_source() -> None:
     with pytest.raises(
         RecurrenceTemplateError,

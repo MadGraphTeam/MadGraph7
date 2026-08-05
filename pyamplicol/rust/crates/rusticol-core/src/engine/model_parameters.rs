@@ -284,7 +284,7 @@ impl ExecutionRuntime {
     }
 }
 
-fn refresh_derived_model_parameter_values(
+pub(super) fn refresh_derived_model_parameter_values(
     runtime: Option<&mut ModelParameterEvaluatorRuntime>,
     values: &mut [f64],
 ) -> RusticolResult<()> {

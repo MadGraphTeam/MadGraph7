@@ -68,6 +68,16 @@ struct OnePublicRowOracle {
     selector: OnTheFlyLcSelectorV1,
 }
 
+/// Exact compact inputs for one authenticated selector-local probe.
+///
+/// This value deliberately contains no materialized recurrence program or
+/// direct plan. It is visible only to the non-default artifact probe.
+pub(crate) struct OnTheFlySelectedTraceV1 {
+    pub(crate) seed: OnTheFlyProcessSeedV1,
+    pub(crate) query: DecodedLcQueryV1,
+    pub(crate) trace: OnTheFlyStructuralTraceV1,
+}
+
 fn process_string<'a>(
     process: &'a OwnedRecurrenceProcessInput,
     string_id: u32,
@@ -487,6 +497,23 @@ fn compact_seed(
         ));
     }
     let contracts = pairing_endpoint_contracts(authenticated)?;
+    let template_catalog = TemplateCatalog::new(authenticated.template().input())?;
+    let mut process_limits = BTreeMap::new();
+    for row in &process.coupling_limits {
+        let name = process_string(process, row.name_string_id, "process coupling limit")?;
+        process_limits.insert(name, row.maximum);
+    }
+    let coupling_limits = template_catalog
+        .coupling_order_names()
+        .iter()
+        .map(|name| {
+            process_limits.get(name).copied().map(Some).ok_or_else(|| {
+                integrity(format!(
+                    "authenticated process has no finalized coupling limit for model order {name:?} required by the prepared template catalog"
+                ))
+            })
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
     OnTheFlyProcessSeedV1::new(
         authenticated.process().semantic_identity().process_digest(),
         authenticated.template().summary().compiled_model_digest,
@@ -509,11 +536,7 @@ fn compact_seed(
         normalization_factor,
         authenticated_source_anchors(authenticated)?,
         external_permutation,
-        process
-            .coupling_limits
-            .iter()
-            .map(|row| Some(row.maximum))
-            .collect(),
+        coupling_limits,
         pairing_classes(authenticated, &contracts)?,
     )
 }
@@ -925,15 +948,12 @@ fn pairing_oracle_equal(
     ))
 }
 
-/// Build one compact selected query and compare it with the established
-/// materialized builder. This API exists only under `on-the-fly-test-support`.
-#[doc(hidden)]
-pub fn on_the_fly_test_support_probe_v1(
+pub(crate) fn build_on_the_fly_selected_trace_v1(
     authenticated: &AuthenticatedRecurrenceBuilderInput,
     direct_catalog_digest: SemanticDigest,
     selected_public_flow_id: u32,
     public_helicities: &[i32],
-) -> RusticolResult<OnTheFlyTestSupportReportV1> {
+) -> RusticolResult<OnTheFlySelectedTraceV1> {
     let oracle = one_public_row_oracle(authenticated, selected_public_flow_id, public_helicities)?;
     let seed = compact_seed(
         authenticated,
@@ -947,6 +967,25 @@ pub fn on_the_fly_test_support_probe_v1(
         oracle.selector,
     )?;
     let trace = build_selected_lc_trace(authenticated.template(), &seed, &query)?;
+    Ok(OnTheFlySelectedTraceV1 { seed, query, trace })
+}
+
+/// Build one compact selected query and compare it with the established
+/// materialized builder. This API exists only under `on-the-fly-test-support`.
+#[doc(hidden)]
+pub fn on_the_fly_test_support_probe_v1(
+    authenticated: &AuthenticatedRecurrenceBuilderInput,
+    direct_catalog_digest: SemanticDigest,
+    selected_public_flow_id: u32,
+    public_helicities: &[i32],
+) -> RusticolResult<OnTheFlyTestSupportReportV1> {
+    let selected = build_on_the_fly_selected_trace_v1(
+        authenticated,
+        direct_catalog_digest,
+        selected_public_flow_id,
+        public_helicities,
+    )?;
+    let OnTheFlySelectedTraceV1 { seed, query, trace } = selected;
     crate::recurrence::construct::begin_established_pairing_owner_observation();
     let established = authenticated.build()?;
     let established_pairing_rule = established_pairing_rule_by_id(

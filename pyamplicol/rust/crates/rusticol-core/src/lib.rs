@@ -57,6 +57,8 @@ pub use engine::{
     NativeResolvedEvaluation, NativeRuntime, NativeRuntimeMetadata, NativeRuntimeProfile,
     RuntimeCapability, preflight_prepared_kernel_pack, supported_runtime_capabilities,
 };
+#[cfg(feature = "on-the-fly-test-support")]
+pub use engine::{NativeOnTheFlyArtifactProbeV1, NativeOnTheFlyCurrentProbeV1};
 pub use error::{RusticolError, RusticolErrorKind, RusticolResult};
 pub use metadata::{
     ColorAccuracy, ColorComponent, ContractedColor, Coverage, ExternalParticle, Helicity,

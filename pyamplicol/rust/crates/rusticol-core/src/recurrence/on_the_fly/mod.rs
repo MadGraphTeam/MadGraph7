@@ -87,6 +87,8 @@ fn final_digest(hash: Sha256) -> RusticolResult<SemanticDigest> {
 }
 
 mod interpreter;
+#[cfg(feature = "on-the-fly-test-support")]
+mod probe_guard;
 mod projection;
 mod public_query;
 mod source_seed;
@@ -100,6 +102,10 @@ pub(crate) use interpreter::{
     OnTheFlyPreparedExecutorResolver, OnTheFlyStructuralInterpreter, OnTheFlyWorkspaceV1,
     ResolvedOnTheFlyExecutor,
 };
+#[cfg(feature = "on-the-fly-test-support")]
+pub(crate) use probe_guard::{
+    OnTheFlyForbiddenWorkGuardV1, OnTheFlyForbiddenWorkV1, reject_forbidden_work_if_probed,
+};
 pub(crate) use public_query::OnTheFlyLcSelectorV1;
 pub(crate) use public_query::{DecodedLcQueryV1, OnTheFlySelectedSourceV1};
 #[cfg(test)]
@@ -109,13 +115,14 @@ pub(crate) use source_seed::{
     OnTheFlyProcessSeedV1, OnTheFlySourceAnchorV1, OnTheFlySourceExecutionSpecV1,
     OnTheFlySourceOrientationV1, OnTheFlySourceStateV1, OnTheFlySourceWavefunctionFamilyV1,
 };
+#[cfg(feature = "on-the-fly-test-support")]
+pub(crate) use test_support::build_on_the_fly_selected_trace_v1;
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 pub use test_support::{OnTheFlyTestSupportReportV1, on_the_fly_test_support_probe_v1};
 #[cfg(test)]
 pub(crate) use trace::scalar_adapter_test_trace;
 pub(crate) use trace::{
-    OnTheFlyExecutorKeyV1, OnTheFlyOperationKindV1, OnTheFlyStructuralProofV1,
-    OnTheFlyStructuralTraceV1, OnTheFlyWorkspaceLayoutV1, authenticated_prepared_executor_binding,
+    OnTheFlyExecutorKeyV1, OnTheFlyStructuralTraceV1, authenticated_prepared_executor_binding,
 };
 
 use projection::*;
