@@ -284,13 +284,13 @@ jobs:
             ./tests/test_manager.py test_standalone_mg7_mssm_gogo -pA -t0 -l INFO
 
   acceptancetest_mg7_mssm_gogo_xsec:
-    # KNOWN-FAILING (not xfail): standalone_mg7 reproduces the per-flavor |M|^2
-    # for MSSM p p > go go (test_standalone_mg7_mssm_gogo), but full mg7 event
-    # generation for merged-flavor processes is not wired up yet -- the madspace
-    # integrator does not produce the cross-section. This pins the mg7 result to
-    # the madevent reference (4.541638 pb, run_01 of test_generation_from_file_1)
-    # and is expected to be red until the mg7 integrator handles merged-flavor
-    # p p > go go. Self-skips if the madspace + LHAPDF(NNPDF23) stack is absent.
+    # Pins the mg7 (madspace) cross-section for MSSM p p > go go to the madevent
+    # reference (5.024 pb, run_01 of test_generation_from_file_1), on top of the
+    # per-flavor |M|^2 check in test_standalone_mg7_mssm_gogo. This job used to
+    # be red at random rather than for a physics reason: the 1% assertion sat
+    # below the ~1.1% statistical error of a 2000-event run, so it failed on
+    # roughly 40% of runs. _run_mg7_xsec now runs 50000 events (error ~0.08%).
+    # Self-skips if the madspace + LHAPDF(NNPDF23) stack is absent.
     needs: build_madspace
     runs-on: ubuntu-24.04
     if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true

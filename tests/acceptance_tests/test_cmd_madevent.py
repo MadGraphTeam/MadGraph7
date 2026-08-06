@@ -104,9 +104,19 @@ def _mg7_datadir_or_skip(test):
 def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
     """Run an mg7 cross-section: execute `setup_cmds` (MG5 lines, ending with
     the generate), `output mg7 run_dir`, drive bin/generate_events with the
-    dynamical HT/2 scale + trimmed event target, and return (cross, error) from
-    the madspace info.json (process.mean / process.error). Assertions are made
-    on the *test* instance."""
+    dynamical HT/2 scale, and return (cross, error) from the madspace info.json
+    (process.mean / process.error). Assertions are made on the *test* instance.
+
+    The event target drives the statistical precision of the returned
+    cross-section: madspace quotes error = rel_std_dev / sqrt(count_opt), and
+    with only 2000 events VEGAS barely adapts, so rel_std_dev stays ~2.4 and the
+    error is ~1.1% -- larger than the tolerance some callers assert, which made
+    them fail at random. 50000 events lets the grid adapt (rel_std_dev ~0.37)
+    and brings the error down to ~0.08%. That costs nothing: the integration
+    itself is ~0.2s wall even at 100000 events. What used to dominate the run
+    time was the LHE systematics post-processing (145 weights per event), which
+    none of the callers look at -- they only read info.json -- so it is switched
+    off here and the higher statistics comes out free (<1s for 50000 events)."""
     import glob, json
     if os.path.isdir(run_dir):
         shutil.rmtree(run_dir)
@@ -119,7 +129,10 @@ def _run_mg7_xsec(test, setup_cmds, run_dir, datadir):
     t = open(toml).read()
     t = t.replace('fixed_ren_scale = true', 'fixed_ren_scale = false')
     t = t.replace('fixed_fact_scale = true', 'fixed_fact_scale = false')
-    t = re.sub(r'events = \d+', 'events = 2000', t)
+    t = re.sub(r'events = \d+', 'events = 50000', t)
+    # [postprocessing] systematics is the only key defaulting to true; the
+    # [generation] one is already false.
+    t = re.sub(r'^systematics = true$', 'systematics = false', t, flags=re.M)
     open(toml, 'w').write(t)
     env = dict(os.environ)
     env['LHAPDF_DATA_PATH'] = datadir
@@ -2989,21 +3002,19 @@ class TestMEfromfile(unittest.TestCase):
         """mg7 (madspace) cross-section for MSSM p p > go go, pinned to the
         madevent reference from test_generation_from_file_1.
 
-        KNOWN-FAILING, intentionally NOT marked xfail: standalone_mg7 already
-        reproduces the per-flavor |M|^2 for p p > go go
-        (test_standalone_mg7_mssm_gogo, ~1e-4), but full mg7 event generation
-        for merged-flavor processes is not wired up yet -- the madspace
-        integrator does not currently produce the cross-section (cf. the SM
-        tracker test_madevent_merged_flavor_uq_mg7, which segfaults). This pins
-        the mg7 cross-section to the madevent reference (run_01 of
-        test_generation_from_file_1, 4.541638 pb) and is expected to fail until
-        the mg7 integrator handles merged-flavor p p > go go; it is left
-        undecorated so the gap stays visible in the mg7 workflow rather than
-        being silently swallowed by expectedFailure. (The mg7 default
-        run_card.toml uses a dynamical HT/2 scale rather than the madevent
-        run_card_matching.dat settings, so a residual scale-driven difference is
-        expected even once the integrator works.) Self-skips where the mg7
-        runtime stack is unavailable.
+        standalone_mg7 reproduces the per-flavor |M|^2 for p p > go go
+        (test_standalone_mg7_mssm_gogo, ~1e-4) and the madspace integrator now
+        lands on the madevent cross-section as well, so this pins the mg7 result
+        to the madevent reference (run_01 of test_generation_from_file_1).
+
+        This used to be red at random rather than for a physics reason: the
+        assertion is at 1%, but with the old 2000-event target a single run
+        carried a ~1.1% statistical error, i.e. the tolerance sat below 1 sigma
+        and the test failed on roughly 40% of runs (observed spread over 12
+        identical local runs: 4.918-5.156, mean 5.030). _run_mg7_xsec now asks
+        for 50000 events, which brings the error to ~0.08% and makes the 1%
+        tolerance a ~13 sigma check. Self-skips where the mg7 runtime stack is
+        unavailable.
         """
         datadir = _mg7_datadir_or_skip(self)
         cross, error = _run_mg7_xsec(self,
