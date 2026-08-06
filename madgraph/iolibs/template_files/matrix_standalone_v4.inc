@@ -228,7 +228,8 @@ C
       INTEGER %(proc_prefix)sCF(%(ncolortriang)d)
       INTEGER %(proc_prefix)sDENOM
       common /%(proc_prefix)scolor_matrix/ %(proc_prefix)sCF,%(proc_prefix)sDENOM
-      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR), TMP_JAMP(%(nb_temp_jamp)i)
+      COMPLEX*16 AMP(%(namp_dim)s), JAMP(NCOLOR)
+%(jamp_tmp_decl)s
       type(aloha) W(NWAVEFUNCS)
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
@@ -344,7 +345,9 @@ C
       PARAMETER ( NCOLOR=%(ncolor)d)
       COMPLEX*16 IMAG1
       PARAMETER (IMAG1=(0D0,1D0))
-      COMPLEX*16 AMP(NGRAPHS), JAMP(NCOLOR), TMP_JAMP(%(nb_temp_jamp)i)
+      COMPLEX*16 AMP(%(namp_dim)s), JAMP(NCOLOR)
+%(jamp_tmp_decl)s
+%(jamp_decl)s
 
 %(jamp_lines)s
       END
@@ -376,7 +379,8 @@ C
       INTEGER %(proc_prefix)sCF(NCOLOR*(NCOLOR+1)/2)
       INTEGER %(proc_prefix)sDENOM
       common /%(proc_prefix)scolor_matrix/ %(proc_prefix)sCF,%(proc_prefix)sDENOM
-      COMPLEX*16 JAMP(NCOLOR), TMP_JAMP(%(nb_temp_jamp)i)
+      COMPLEX*16 JAMP(NCOLOR)
+%(jamp_tmp_decl)s
       COMPLEX*16 DUM0,DUM1
       DATA DUM0, DUM1/(0d0, 0d0), (1d0, 0d0)/
 C
@@ -415,6 +419,8 @@ C     changes the order the terms are summed in.
       END
 
 %(color_init_routine)s
+
+%(jamp_init_routine)s
 
 
 
@@ -568,7 +574,7 @@ c
       PARAMETER (NCOLOR=%(ncolor)d)
       INTEGER IC(NEXTERNAL)
 
-      DOUBLE COMPLEX AMP(NGRAPHS)
+      DOUBLE COMPLEX AMP(%(namp_dim)s)
       DOUBLE COMPLEX, ALLOCATABLE, SAVE :: JAMP(:,:)
       INTEGER, SAVE :: S_NCOMB = 0
 

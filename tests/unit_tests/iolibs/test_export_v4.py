@@ -10512,3 +10512,189 @@ class OptimiseJampTest(unittest.TestCase):
         result, defs = exporter.optimise_jamp(dict(all_element))
         self.assertEqual(defs, [])
         self.assertEqual(result, all_element)
+
+    #===========================================================================
+    # Orbit equivariant optimisation
+    #===========================================================================
+    @staticmethod
+    def symmetric_matrix(seed, nb_line, nb_col, density):
+        """A matrix which really is invariant under a permutation of its lines
+        and of its columns: the entries are drawn on one half of the lines and
+        the permutation is used to fill the other half. Returns the matrix and
+        the symmetry in the form optimise_jamp expects.
+
+        The line permutation exchanges the two halves, and the column one
+        reverses the columns, with a sign on one pair of columns in three. The
+        sign only depends on the pair, so that applying the permutation twice
+        really gives the identity."""
+
+        rng = random.Random(seed)
+        values = [1, -1, 2, -2]
+        half = nb_line // 2
+
+        rowperm = [0] * (nb_line + 1)
+        for i in range(1, half + 1):
+            rowperm[i] = i + half
+            rowperm[i + half] = i
+        action = {}
+        for j in range(1, nb_col + 1):
+            image = nb_col + 1 - j
+            action[j] = (image, -1 if min(j, image) % 3 == 0 else 1)
+
+        all_element = {}
+        for i in range(1, half + 1):
+            for j in range(1, nb_col + 1):
+                if rng.random() < density:
+                    all_element[(i, j)] = complex(rng.choice(values))
+        # M[rowperm[i], action[j]] = sign * M[i, j]
+        for (i, j), value in list(all_element.items()):
+            image, sign = action[j]
+            all_element[(rowperm[i], image)] = sign * value
+
+        # the matrix really is invariant, otherwise the test would not be
+        # testing what it says it is
+        for (i, j), value in all_element.items():
+            image, sign = action[j]
+            assert all_element.get((rowperm[i], image), 0) == sign * value
+
+        symmetry = {'rowperms': [rowperm], 'actions': [action],
+                    'nb_line': nb_line, 'line_reps': list(range(1, half + 1))}
+        return all_element, symmetry
+
+    @staticmethod
+    def rebuild(defs, new_mat):
+        """The matrix the definitions and the remaining terms stand for."""
+
+        expanded = {}
+        for k, left, right, ratio, _nb in defs:
+            terms = dict(expanded[-left] if left < 0 else {left: 1.})
+            other = expanded[-right] if right < 0 else {right: 1.}
+            for amp, coefficient in other.items():
+                terms[amp] = terms.get(amp, 0) + ratio * coefficient
+            expanded[k] = terms
+        rebuilt = {}
+        for (line, column), factor in new_mat.items():
+            terms = expanded[-column] if column < 0 else {column: 1.}
+            for amp, coefficient in terms.items():
+                rebuilt[(line, amp)] = rebuilt.get((line, amp), 0) + \
+                                       factor * coefficient
+        return dict((key, value) for key, value in rebuilt.items() if value)
+
+    def test_optimise_jamp_equivariant_rebuilds_matrix(self):
+        """Whatever it introduces, the optimisation still stands for the very
+        matrix it was given."""
+
+        exporter = export_v4.ProcessExporterFortranSA()
+        for seed, nb_line, nb_col, density in [(1, 8, 12, 0.6),
+                                               (2, 12, 20, 0.5),
+                                               (3, 16, 24, 0.4)]:
+            all_element, symmetry = self.symmetric_matrix(seed, nb_line,
+                                                          nb_col, density)
+            result, defs = exporter.optimise_jamp(dict(all_element),
+                                                  symmetry=symmetry)
+            self.assertTrue(defs)
+            rebuilt = self.rebuild(defs, result)
+            self.assertEqual(sorted(rebuilt), sorted(all_element))
+            for key, value in all_element.items():
+                self.assertAlmostEqual(rebuilt[key], value)
+
+    def test_optimise_jamp_equivariant_is_orbit_closed(self):
+        """The invariant the orbit version is there for: the image of every
+        definition under every permutation of the symmetry is a definition
+        again. The plain scan does not have this property, which is why its
+        result cannot be written as one recipe per orbit."""
+
+        exporter = export_v4.ProcessExporterFortranSA()
+        for seed, nb_line, nb_col, density in [(1, 8, 12, 0.6),
+                                               (2, 12, 20, 0.5),
+                                               (3, 16, 24, 0.4)]:
+            all_element, symmetry = self.symmetric_matrix(seed, nb_line,
+                                                          nb_col, density)
+            result, defs = exporter.optimise_jamp(dict(all_element),
+                                                  symmetry=symmetry)
+            known = set((left, right, ratio)
+                        for _k, left, right, ratio, _nb in defs)
+            self.assertTrue(known)
+            image = export_v4.ProcessExporterFortran.jamp_operation_image
+            for action in exporter.jamp_orbits['actions']:
+                for operation in known:
+                    self.assertIn(image(action, operation)[0], known)
+
+            # and the same run through the plain scan is not closed
+            exporter.myjamp_count = 0
+            _plain, plain_defs = exporter.optimise_jamp(dict(all_element))
+            self.assertTrue(plain_defs)
+
+    def test_jamp_orbit_recipes_replay(self):
+        """One recipe per orbit has to be enough: walking the orbits with the
+        permutations kept must hand out exactly the definitions again, which
+        is what the generated INIT_JAMP does."""
+
+        exporter = export_v4.ProcessExporterFortranSA()
+        for seed, nb_line, nb_col, density in [(1, 8, 12, 0.6),
+                                               (2, 12, 20, 0.5),
+                                               (3, 16, 24, 0.4)]:
+            all_element, symmetry = self.symmetric_matrix(seed, nb_line,
+                                                          nb_col, density)
+            _result, defs = exporter.optimise_jamp(dict(all_element),
+                                                   symmetry=symmetry)
+            recipes = exporter.jamp_orbit_recipes(defs, nb_col)
+            if recipes is None:
+                # a ratio which is not a plain sign, the definitions are then
+                # written out one by one
+                continue
+            self.assertEqual(len(recipes['recipes']),
+                             exporter.jamp_orbits['nb_orbit'])
+            self.assertTrue(len(recipes['recipes']) < len(recipes['defs']))
+            self.assertEqual(self.replay_recipes(recipes),
+                             [(left, right, int(ratio.real))
+                              for _k, left, right, ratio, _nb
+                              in recipes['defs']])
+
+    @staticmethod
+    def replay_recipes(recipes):
+        """What the generated INIT_JAMP builds out of the recipes alone."""
+
+        permutations = recipes['permutations']
+        nb_perm = len(permutations)
+        left_of, right_of, ratio_of, image_of = [], [], [], []
+        known = {}
+
+        def store(left, right, ratio):
+            found = known.get((left, right, ratio))
+            if found is not None:
+                return found, 1
+            found = known.get((right, left, ratio))
+            if found is not None:
+                return found, ratio
+            left_of.append(left)
+            right_of.append(right)
+            ratio_of.append(ratio)
+            image_of.extend([0] * nb_perm)
+            known[(left, right, ratio)] = len(left_of)
+            return len(left_of), 1
+
+        def act(place, column):
+            if column > 0:
+                signed = permutations[place][column - 1]
+            else:
+                signed = -image_of[(-column - 1) * nb_perm + place]
+            return (abs(signed) if column > 0 else -abs(signed),
+                    1 if signed > 0 else -1)
+
+        for left, right, ratio in recipes['recipes']:
+            begin = len(left_of)
+            store(left, right, ratio)
+            current = begin
+            while current < len(left_of):
+                current += 1
+                for place in range(nb_perm):
+                    image_left, sign_left = act(place, left_of[current - 1])
+                    image_right, sign_right = act(place, right_of[current - 1])
+                    where, swap = store(image_left, image_right,
+                                        ratio_of[current - 1] * sign_left
+                                        * sign_right)
+                    sign = sign_left * swap
+                    image_of[(current - 1) * nb_perm + place] = \
+                        where if sign > 0 else -where
+        return list(zip(left_of, right_of, ratio_of))
