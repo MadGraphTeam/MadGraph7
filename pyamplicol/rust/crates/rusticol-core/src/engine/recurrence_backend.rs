@@ -521,6 +521,10 @@ impl NativeRecurrencePreparedExecutorPool {
 }
 
 impl NativeOnTheFlyPreparedExecutorResolver {
+    pub(super) fn clear_resolved_bindings(&mut self) {
+        self.resolved.clear();
+    }
+
     pub(super) fn bind_on_the_fly_trace(
         &mut self,
         templates: &ValidatedRecurrenceTemplateInput,
@@ -1163,6 +1167,21 @@ pub(in crate::engine) mod on_the_fly_adapter_tests {
         .unwrap()
     }
 
+    pub(in crate::engine) fn complete_scalar_direct_catalog(
+        direct_digest: SemanticDigest,
+    ) -> PreparedDirectExecutorCatalog {
+        PreparedDirectExecutorCatalog::new(
+            direct_digest,
+            vec![
+                PreparedDirectExecutorBinding::evaluator(DirectExecutorRole::Source, 0, 0),
+                PreparedDirectExecutorBinding::evaluator(DirectExecutorRole::Closure, 3, 1),
+                PreparedDirectExecutorBinding::evaluator(DirectExecutorRole::Closure, 4, 1),
+                PreparedDirectExecutorBinding::identity_finalizer(2),
+            ],
+        )
+        .unwrap()
+    }
+
     pub(in crate::engine) fn prepared_pool(
         templates: &ValidatedRecurrenceTemplateInput,
         direct_digest: SemanticDigest,
@@ -1222,6 +1241,21 @@ pub(in crate::engine) mod on_the_fly_adapter_tests {
                 executor_count: 3,
             },
         }
+    }
+
+    pub(in crate::engine) fn complete_scalar_prepared_pool(
+        templates: &ValidatedRecurrenceTemplateInput,
+        direct_digest: SemanticDigest,
+    ) -> NativeRecurrencePreparedExecutorPool {
+        let mut pool = prepared_pool(templates, direct_digest);
+        pool.bindings.insert(
+            (DirectExecutorRole::Closure, 4),
+            NativePreparedExecutorBinding {
+                executor_id: 1,
+                parent_permutation: [0, 1],
+            },
+        );
+        pool
     }
 
     pub(in crate::engine) fn source_domains() -> Vec<DirectSourceDispatchDomainSpec> {

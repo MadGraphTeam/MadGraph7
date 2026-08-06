@@ -39,11 +39,12 @@ pub(super) struct LoadedOnTheFlyRuntime {
 
 pub(super) fn load_on_the_fly_native_runtime(
     artifact: &VerifiedArtifact,
+    evaluator_root: &Path,
     manifest: &OnTheFlyExecutionManifest,
     selection: &crate::ArtifactSelection,
 ) -> RusticolResult<LoadedOnTheFlyRuntime> {
     let public_metadata = load_public_metadata(artifact, manifest, &selection.process)?;
-    let seed = load_process_seed(artifact, manifest)?;
+    let seed = load_process_seed(artifact, evaluator_root, manifest)?;
     let (pack_bytes, pack, payload_root) = load_prepared_pack(artifact, manifest)?;
     let raw_templates = pack.recurrence_template.as_ref().ok_or_else(|| {
         RusticolError::compatibility(
@@ -146,10 +147,13 @@ fn selector_policy(manifest: &OnTheFlyExecutionManifest) -> OnTheFlyLcSelectorPo
 
 fn load_process_seed(
     artifact: &VerifiedArtifact,
+    evaluator_root: &Path,
     manifest: &OnTheFlyExecutionManifest,
 ) -> RusticolResult<crate::recurrence::on_the_fly::OnTheFlyProcessSeedV1> {
     let container = &manifest.runtime_container;
-    let record = artifact.payload(&container.path)?;
+    let payloads = artifact.evaluator_payload_store(evaluator_root)?;
+    let logical_path = payloads.logical_path(&container.path)?;
+    let record = artifact.payload(&logical_path)?;
     if record.role != PayloadRole::EvaluatorState
         || record.media_type != "application/octet-stream"
         || record.executable
@@ -159,8 +163,8 @@ fn load_process_seed(
             "on-the-fly runtime container has the wrong authenticated payload role",
         ));
     }
-    let path = artifact.root().join(&container.path);
-    let file = artifact.open_payload_file(&container.path)?;
+    let path = artifact.root().join(&logical_path);
+    let file = artifact.open_payload_file(&logical_path)?;
     let expected_sha = decode_sha256(&record.sha256)?;
     let reader = PacbinReader::open_file_with_sha256(file, &path, &expected_sha)?;
     if reader.members().len() != 1 {

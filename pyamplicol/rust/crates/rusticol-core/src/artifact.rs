@@ -586,10 +586,14 @@ impl EvaluatorPayloadStore {
         }
     }
 
-    pub(crate) fn source(&self, value: &str) -> RusticolResult<EvaluatorPayloadSource> {
+    pub(crate) fn logical_path(&self, value: &str) -> RusticolResult<String> {
         let relative = confined_evaluator_path(value)?;
-        let path = self.relative_root.join(relative);
-        let logical_path = artifact_logical_path(&self.artifact_root, &path)?;
+        artifact_logical_path(&self.artifact_root, &self.relative_root.join(relative))
+    }
+
+    pub(crate) fn source(&self, value: &str) -> RusticolResult<EvaluatorPayloadSource> {
+        let logical_path = self.logical_path(value)?;
+        let path = self.artifact_root.join(&logical_path);
         if let Some(container) = &self.container
             && container.member(&logical_path).is_ok()
         {
@@ -2294,6 +2298,8 @@ fn validate_runtime_capabilities(
         RuntimeCapability::RecurrenceRuntimeComplexF64V1,
         RuntimeCapability::RecurrenceLcColorV1,
         RuntimeCapability::RecurrenceContractedColorV1,
+        RuntimeCapability::OnTheFlyRuntimeComplexF64V1,
+        RuntimeCapability::OnTheFlyLcColorV1,
         RuntimeCapability::SymjitApplicationComplexF64V1,
         RuntimeCapability::SymbolicaLegacyJitContainerComplexF64V1,
         RuntimeCapability::SymbolicaCompiledCppComplexF64V1,

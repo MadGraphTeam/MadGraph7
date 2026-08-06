@@ -482,6 +482,72 @@ impl OnTheFlyProcessSeedV1 {
         Ok(result)
     }
 
+    #[cfg(test)]
+    pub(crate) fn with_selector_local_zero(self) -> RusticolResult<Self> {
+        let Self {
+            process_digest,
+            model_digest,
+            template_catalog_digest,
+            prepared_pack_digest,
+            direct_catalog_digest,
+            normalization_semantic_digest,
+            normalization_convention,
+            source_anchors,
+            external_permutation,
+            coupling_order_policy,
+            coupling_hierarchies,
+            coupling_limits,
+            pairing_classes,
+            semantic_digest: _,
+        } = self;
+        let source_anchors = source_anchors
+            .into_vec()
+            .into_iter()
+            .map(|anchor| {
+                let OnTheFlySourceAnchorV1 {
+                    source_slot,
+                    external_label,
+                    is_initial,
+                    color_role,
+                    is_fermionic,
+                    pairing_source_contract_digest,
+                    states,
+                } = anchor;
+                let mut states = states.into_vec();
+                let mut zero = states[0].clone();
+                zero.state_index = 1;
+                zero.public_helicity = 1;
+                zero.spin_state = 50_001;
+                states.push(zero);
+                OnTheFlySourceAnchorV1::new(
+                    source_slot,
+                    external_label,
+                    is_initial,
+                    color_role,
+                    is_fermionic,
+                    pairing_source_contract_digest,
+                    states,
+                )
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        Self::new(
+            process_digest,
+            model_digest,
+            template_catalog_digest,
+            prepared_pack_digest,
+            direct_catalog_digest,
+            normalization_semantic_digest,
+            normalization_convention,
+            ExactComplexRational::ONE,
+            source_anchors,
+            external_permutation.into_vec(),
+            coupling_order_policy,
+            coupling_hierarchies.into_vec(),
+            coupling_limits.into_vec(),
+            pairing_classes.into_vec(),
+        )
+    }
+
     fn compute_digest(&self) -> RusticolResult<SemanticDigest> {
         let mut hash = Sha256::new();
         hash.update(b"pyamplicol-on-the-fly-process-seed-v2\0");

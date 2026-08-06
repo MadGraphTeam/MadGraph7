@@ -13,7 +13,8 @@ import pytest
 import pyamplicol.generation.artifact_writer as artifact_writer
 import pyamplicol.generation.service as service_module
 from pyamplicol.api.errors import GenerationError
-from pyamplicol.api.requests import ModelSource, ProcessRequest
+from pyamplicol.api.requests import ModelSource, ProcessRequest, ProcessSet
+from pyamplicol.api.services import Generator
 from pyamplicol.artifacts import load_manifest
 from pyamplicol.config import (
     Action,
@@ -381,13 +382,11 @@ def test_on_the_fly_construction_rejects_generation_time_selector_trimming(
         GenerationError,
         match="retain complete runtime selector coverage",
     ):
-        backend._construct_on_the_fly_artifact(
+        backend._project_on_the_fly_process(
             expanded,
             BuiltinSMModel(),
             None,  # type: ignore[arg-type]
-            tmp_path,
             index=0,
-            phase=PhaseHandle("test", None, 1),
         )
 
 
@@ -406,17 +405,6 @@ def test_on_the_fly_construction_never_enters_materialized_process_lanes(
         ProcessRequest.parse(process.process, name=_PROCESS_ID),
         process,
     )
-    captured: dict[str, object] = {}
-
-    def seed_builder(*args: object) -> bytes:
-        captured["arguments"] = args
-        return b"native-compact-seed"
-
-    monkeypatch.setattr(
-        service_module,
-        "_invoke_rust_on_the_fly_seed_builder_v1",
-        seed_builder,
-    )
 
     def forbidden(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("on-the-fly construction materialized a process lane")
@@ -431,12 +419,18 @@ def test_on_the_fly_construction_never_enters_materialized_process_lanes(
         monkeypatch.setattr(service_module, name, forbidden)
     monkeypatch.setattr(backend, "_prepare_process_construction", forbidden)
 
-    generated = backend._construct_on_the_fly_artifact(
+    projected = backend._project_on_the_fly_process(
         expanded,
         model,
         model_inputs,
-        tmp_path,
         index=0,
+    )
+    generated = backend._construct_on_the_fly_artifact(
+        projected,
+        b"native-compact-seed",
+        model,
+        model_inputs,
+        tmp_path,
         phase=PhaseHandle("test", None, 1),
     )
 
@@ -444,10 +438,9 @@ def test_on_the_fly_construction_never_enters_materialized_process_lanes(
     assert generated.artifact.runtime_path.parent == (
         tmp_path / "on-the-fly-runtimes" / _PROCESS_ID
     )
-    assert captured["arguments"][1:] == (  # type: ignore[index]
-        model_inputs.template_catalog_json,
-        model_inputs.direct_template_catalog_json,
-        model_inputs.prepared_kernel_pack_digest,
+    source_projection = projected.projection.seed.to_json_dict()
+    assert not {"dag", "color_plan", "recurrence", "direct_plan"}.intersection(
+        source_projection
     )
     with PacbinReader.open(generated.artifact.runtime_path) as reader:
         member = reader.members[0]
@@ -466,6 +459,93 @@ def test_on_the_fly_construction_never_enters_materialized_process_lanes(
         "particle_masses",
         "normalization",
     }
+
+
+def test_multi_process_on_the_fly_writer_uses_one_ordered_native_batch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _prepare_writer_identity(monkeypatch)
+    calls: list[dict[str, object]] = []
+
+    def batch_builder(
+        ordered_sources: object,
+        recurrence_json: object,
+        direct_json: object,
+        pack_digest: object,
+        *,
+        process_identities: object = (),
+    ) -> tuple[bytes, ...]:
+        sources = tuple(ordered_sources)  # type: ignore[arg-type]
+        identities = tuple(process_identities)  # type: ignore[arg-type]
+        calls.append(
+            {
+                "sources": sources,
+                "recurrence_json": recurrence_json,
+                "direct_json": direct_json,
+                "pack_digest": pack_digest,
+                "identities": identities,
+            }
+        )
+        return tuple(
+            f"native-compact-seed-{index}".encode() for index in range(len(sources))
+        )
+
+    monkeypatch.setattr(
+        service_module,
+        "_invoke_rust_on_the_fly_seed_batch_builder_v1",
+        batch_builder,
+    )
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("on-the-fly generation materialized a process lane")
+
+    for name in (
+        "build_color_plan",
+        "compile_generic_dag",
+        "_invoke_rust_recurrence_lowering_v2",
+        "run_generic_dag_numerical_current_warmup",
+        "run_recurrence_numerical_current_warmup",
+    ):
+        monkeypatch.setattr(service_module, name, forbidden)
+    monkeypatch.setattr(
+        service_module.GenerationBackend,
+        "_prepare_process_construction",
+        forbidden,
+    )
+
+    process_ids = ("d_dbar_to_z", "u_ubar_to_z")
+    processes = ProcessSet.from_expressions(
+        ("d d~ > z", "u u~ > z"),
+        names=process_ids,
+    )
+    artifact = tmp_path / "multi-process-artifact"
+    Generator(_configuration().effective).generate(
+        processes,
+        artifact,
+        model=ModelSource.from_path(_prepared_model_path()),
+    )
+
+    assert len(calls) == 1
+    call = calls[0]
+    assert call["identities"] == process_ids
+    sources = call["sources"]
+    assert isinstance(sources, tuple) and len(sources) == 2
+    decoded_sources = tuple(json.loads(source) for source in sources)
+    assert [source["schema_version"] for source in decoded_sources] == [1, 1]
+    assert decoded_sources[0]["process_digest"] != decoded_sources[1]["process_digest"]
+    for source in decoded_sources:
+        assert not {"dag", "color_plan", "recurrence", "direct_plan"}.intersection(
+            source
+        )
+
+    for index, process_id in enumerate(process_ids):
+        runtime = artifact / "processes" / process_id / "on-the-fly-runtime.pacbin"
+        with PacbinReader.open(runtime, verify_payloads=True) as reader:
+            member = reader.members[0]
+            assert reader.read_member(_SEED_MEMBER, length=member.length) == (
+                f"native-compact-seed-{index}".encode()
+            )
 
 
 def test_on_the_fly_runtime_metadata_reuses_recurrence_support_contract() -> None:
@@ -516,12 +596,37 @@ def test_on_the_fly_runtime_metadata_reuses_recurrence_support_contract() -> Non
     assert "public_color_flows" not in metadata
 
 
+def test_on_the_fly_singleton_seed_bridge_wraps_plural_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[object] = []
+
+    def binding(*args: object) -> list[bytes]:
+        calls.append(args)
+        return [b"stable-seed-bytes"]
+
+    module = SimpleNamespace(_build_on_the_fly_process_seeds_v1=binding)
+    monkeypatch.setattr(service_module.importlib, "import_module", lambda _name: module)
+    monkeypatch.setattr(service_module, "verify_native_module", lambda _module: None)
+
+    result = service_module._invoke_rust_on_the_fly_seed_builder_v1(
+        b"source",
+        b"recurrence",
+        b"direct",
+        "a" * 64,
+    )
+
+    assert result == b"stable-seed-bytes"
+    assert calls == [((b"source",), b"recurrence", b"direct", "a" * 64)]
+
+
 @pytest.mark.parametrize(
     ("binding", "message"),
     (
         (None, "does not provide the private"),
-        (lambda *_args: b"", "returned an empty payload"),
-        (lambda *_args: "not-bytes", "returned an empty payload"),
+        (lambda *_args: [], "wrong process count"),
+        (lambda *_args: [b""], "empty payload for process index 0"),
+        (lambda *_args: ["not-bytes"], "empty payload for process index 0"),
         (
             lambda *_args: (_ for _ in ()).throw(RuntimeError("native failure")),
             "process-seed construction failed: native failure",
@@ -535,7 +640,7 @@ def test_on_the_fly_native_seed_bridge_fails_closed(
 ) -> None:
     module = SimpleNamespace()
     if binding is not None:
-        module._build_on_the_fly_process_seed_v1 = binding
+        module._build_on_the_fly_process_seeds_v1 = binding
     monkeypatch.setattr(service_module.importlib, "import_module", lambda _name: module)
     monkeypatch.setattr(service_module, "verify_native_module", lambda _module: None)
 
@@ -545,4 +650,30 @@ def test_on_the_fly_native_seed_bridge_fails_closed(
             b"{}",
             b"{}",
             "a" * 64,
+        )
+
+
+def test_on_the_fly_native_seed_bridge_preserves_indexed_process_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def binding(*_args: object) -> object:
+        raise RuntimeError(
+            "on-the-fly process seed at index 1 "
+            '(process digest "abc") failed: stale source'
+        )
+
+    module = SimpleNamespace(_build_on_the_fly_process_seeds_v1=binding)
+    monkeypatch.setattr(service_module.importlib, "import_module", lambda _name: module)
+    monkeypatch.setattr(service_module, "verify_native_module", lambda _module: None)
+
+    with pytest.raises(
+        GenerationError,
+        match=r"process index 1 'u_ubar_to_z'.*process digest.*stale source",
+    ):
+        service_module._invoke_rust_on_the_fly_seed_batch_builder_v1(
+            (b"{}", b"{}"),
+            b"{}",
+            b"{}",
+            "a" * 64,
+            process_identities=("d_dbar_to_z", "u_ubar_to_z"),
         )

@@ -19,8 +19,10 @@ import os
 import platform
 import statistics
 import sys
+import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -40,6 +42,12 @@ from pyamplicol import (  # noqa: E402
     ProcessRequest,
     Runtime,
 )
+from pyamplicol._internal.versions import (  # noqa: E402
+    ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+    ON_THE_FLY_RUNTIME_CAPABILITY,
+)
+from pyamplicol.api.errors import ArtifactError  # noqa: E402
+from pyamplicol.artifacts import confined_path, load_manifest  # noqa: E402
 from pyamplicol.config import (  # noqa: E402
     BenchmarkConfig,
     ColorConfig,
@@ -51,7 +59,13 @@ from pyamplicol.config import (  # noqa: E402
     JITConfig,
     RunConfig,
 )
+from pyamplicol.generation.evaluator_container import (  # noqa: E402
+    PacbinError,
+    PacbinMemberKind,
+    PacbinReader,
+)
 from pyamplicol.models.builtin.validation import generic_validation_point  # noqa: E402
+from pyamplicol.processes import canonical_process_key  # noqa: E402
 from tools.ci.memory_watchdog import (  # noqa: E402
     GIB,
     DarwinPhysicalFootprintProbe,
@@ -64,7 +78,17 @@ from tools.performance_report.runner import (  # noqa: E402
 )
 
 PROCESS = "d d~ > t t~ g g"
+PROCESS_KEY = canonical_process_key(PROCESS)
 PROCESS_ID = "otf_dd_tt_gg"
+ON_THE_FLY_CAPABILITIES = tuple(
+    sorted(
+        (
+            ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+            ON_THE_FLY_RUNTIME_CAPABILITY,
+        )
+    )
+)
+ON_THE_FLY_SEED_MEMBER_PATH = "on-the-fly/process-seed-v1.bin"
 FLOW_ID = "flow:2,5,6,4,3,1"
 FLOW_WORD = (2, 5, 6, 4, 3, 1)
 HELICITY_ID = "h:-1,+1,-1,+1,-1,+1"
@@ -92,6 +116,11 @@ WORK_CENSUS_COUNT_FIELDS = (
     "total_kernel_application_count",
     "semantic_executor_binding_count",
     "distinct_prepared_executor_count",
+)
+PUBLIC_PROFILE_WORK_FIELDS = tuple(
+    f"recurrence_{role}_{unit}_count"
+    for role in ("source", "contribution", "finalization", "closure")
+    for unit in ("call", "row")
 )
 FAMILY_CENSUS_COUNT_FIELDS = (
     "query_count",
@@ -124,6 +153,42 @@ FAMILY_CENSUS_COUNT_FIELDS = (
     "union_contribution_executor_call_groups",
     "union_finalization_executor_call_groups",
     "union_closure_executor_call_groups",
+)
+MATERIALIZED_PROCESS_LANE_SYMBOLS = (
+    "GenerationBackend._prepare_process_construction",
+    "build_color_plan",
+    "compile_generic_dag",
+    "_invoke_rust_eager_lowering_v1",
+    "_invoke_rust_recurrence_lowering_v2",
+    "run_generic_dag_numerical_current_warmup",
+    "run_recurrence_numerical_current_warmup",
+)
+_FORBIDDEN_MATERIALIZATION_FIELDS = frozenset(
+    {
+        "color_components",
+        "color_plan",
+        "compiled",
+        "compiled_execution",
+        "compiled_plan",
+        "dag",
+        "dag_summary",
+        "direct_plan",
+        "direct_recurrence_plan",
+        "eager",
+        "eager_plan",
+        "eager_runtime",
+        "generic_dag",
+        "helicity_components",
+        "lc_topology_replay",
+        "recurrence",
+        "recurrence_plan",
+        "recurrence_runtime",
+        "runtime_schema",
+        "stages",
+        "structural",
+        "structural_proof",
+        "structural_source_proof",
+    }
 )
 Point = tuple[tuple[float, ...], ...]
 Points = tuple[Point, ...]
@@ -217,15 +282,35 @@ def _parser() -> argparse.ArgumentParser:
         "--bypass-color-projection",
         action="store_true",
         help=(
-            "diagnostic: execute the selected graph before late color-alias "
-            "projection"
+            "diagnostic: execute the selected graph before late color-alias projection"
         ),
     )
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     return parser
 
 
-def _config() -> RunConfig:
+def _on_the_fly_config() -> RunConfig:
+    return RunConfig(
+        action="generate",
+        color=ColorConfig(accuracy="lc", lc_flow_layout="topology-replay"),
+        generation=GenerationConfig(
+            workers=1,
+            emit_api_bundle=False,
+            relation_discovery=GenerationRelationDiscoveryConfig(mode="off"),
+            validation=GenerationValidationConfig(
+                enabled=True, post_build_validation=True
+            ),
+        ),
+        evaluator=EvaluatorConfig(
+            backend="jit",
+            execution_mode="on-the-fly",
+            optimization=EvaluatorOptimizationConfig(cores=1),
+            jit=JITConfig(optimization_level=2),
+        ),
+    )
+
+
+def _recurrence_probe_config() -> RunConfig:
     return RunConfig(
         action="generate",
         color=ColorConfig(accuracy="lc", lc_flow_layout="topology-replay"),
@@ -326,9 +411,7 @@ def _summaries(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
     return {
         "component_count": len(rows),
         "checks": sum(int(row["checks"]) for row in rows),
-        "maximum_conditioned_residual": rows[worst][
-            "maximum_conditioned_residual"
-        ],
+        "maximum_conditioned_residual": rows[worst]["maximum_conditioned_residual"],
         "maximum_absolute_difference": max(
             float(row["maximum_absolute_difference"]) for row in rows
         ),
@@ -339,11 +422,7 @@ def _summaries(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
 
 def _sum(rows: Sequence[Sequence[object]], point_count: int) -> tuple[float, ...]:
     parsed = tuple(tuple(_real(value, "component") for value in row) for row in rows)
-    if (
-        not parsed
-        or point_count <= 0
-        or any(len(row) != point_count for row in parsed)
-    ):
+    if not parsed or point_count <= 0 or any(len(row) != point_count for row in parsed):
         raise GateError("component rows do not match the point count")
     return tuple(
         math.fsum(row[point] for row in parsed) for point in range(point_count)
@@ -389,9 +468,154 @@ def _prepared_model_path(path: Path) -> Path:
     return resolved
 
 
-def _generate(
+def _reject_materialization_fields(value: object, label: str) -> None:
+    if isinstance(value, Mapping):
+        for raw_name, nested in value.items():
+            name = str(raw_name).lower().replace("-", "_")
+            path = f"{label}.{raw_name}"
+            if name in _FORBIDDEN_MATERIALIZATION_FIELDS:
+                raise GateError(
+                    f"{label} contains forbidden materialization field {path!r}"
+                )
+            _reject_materialization_fields(nested, path)
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        for index, nested in enumerate(value):
+            _reject_materialization_fields(nested, f"{label}[{index}]")
+
+
+def _on_the_fly_source_projections(
+    args: tuple[object, ...], kwargs: Mapping[str, object]
+) -> tuple[Mapping[str, object], ...]:
+    raw = args[0] if args else kwargs.get("ordered_source_projection_jsons")
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)) or not raw:
+        raise GateError("on-the-fly batch seed binding omitted its source projections")
+    result: list[Mapping[str, object]] = []
+    for index, encoded in enumerate(raw):
+        if not isinstance(encoded, bytes):
+            raise GateError(
+                f"on-the-fly source projection {index} is not encoded bytes"
+            )
+        try:
+            projection = json.loads(encoded)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise GateError(
+                f"on-the-fly source projection {index} is not valid JSON"
+            ) from error
+        record = _mapping(projection, f"on-the-fly source projection {index}")
+        _reject_materialization_fields(record, f"on-the-fly source projection {index}")
+        result.append(record)
+    return tuple(result)
+
+
+def _materialized_process_lane_patch_targets() -> tuple[tuple[str, object, str], ...]:
+    return (
+        (
+            "GenerationBackend._prepare_process_construction",
+            generation_service.GenerationBackend,
+            "_prepare_process_construction",
+        ),
+        ("build_color_plan", generation_service, "build_color_plan"),
+        ("compile_generic_dag", generation_service, "compile_generic_dag"),
+        (
+            "_invoke_rust_eager_lowering_v1",
+            generation_service,
+            "_invoke_rust_eager_lowering_v1",
+        ),
+        (
+            "_invoke_rust_recurrence_lowering_v2",
+            generation_service,
+            "_invoke_rust_recurrence_lowering_v2",
+        ),
+        (
+            "run_generic_dag_numerical_current_warmup",
+            generation_service,
+            "run_generic_dag_numerical_current_warmup",
+        ),
+        (
+            "run_recurrence_numerical_current_warmup",
+            generation_service,
+            "run_recurrence_numerical_current_warmup",
+        ),
+    )
+
+
+def _generate_on_the_fly(
     artifact: Path, model: CompiledModel
-) -> tuple[float, RetainedInputs]:
+) -> tuple[float, dict[str, int]]:
+    seed_batch_binding_call_count = 0
+    seed_build_count = 0
+    original_seed_builder = (
+        generation_service._invoke_rust_on_the_fly_seed_batch_builder_v1
+    )
+
+    def capture_seed_batch(*args: object, **kwargs: object) -> object:
+        nonlocal seed_batch_binding_call_count, seed_build_count
+        seed_batch_binding_call_count += 1
+        projections = _on_the_fly_source_projections(args, kwargs)
+        result = original_seed_builder(*args, **kwargs)
+        if not isinstance(result, tuple):
+            raise GateError("on-the-fly batch seed binding returned a non-tuple")
+        if len(result) != len(projections):
+            raise GateError(
+                "on-the-fly batch seed binding changed the process count: "
+                f"{len(projections)} projection(s), {len(result)} seed(s)"
+            )
+        seed_build_count += len(result)
+        return result
+
+    materialized_lane_call_counts = {
+        name: 0 for name in MATERIALIZED_PROCESS_LANE_SYMBOLS
+    }
+
+    def reject_materialized_lane(
+        name: str,
+    ) -> Callable[..., object]:
+        def reject(*_args: object, **_kwargs: object) -> object:
+            materialized_lane_call_counts[name] += 1
+            raise GateError(
+                f"on-the-fly generation entered materialized process lane {name}"
+            )
+
+        return reject
+
+    started = time.perf_counter()
+    with ExitStack() as patches:
+        patches.enter_context(
+            mock.patch.object(
+                generation_service,
+                "_invoke_rust_on_the_fly_seed_batch_builder_v1",
+                capture_seed_batch,
+            )
+        )
+        for name, owner, attribute in _materialized_process_lane_patch_targets():
+            patches.enter_context(
+                mock.patch.object(
+                    owner,
+                    attribute,
+                    reject_materialized_lane(name),
+                )
+            )
+        Generator(_on_the_fly_config()).generate(
+            ProcessRequest.parse(PROCESS, name=PROCESS_ID), artifact, model=model
+        )
+    if seed_batch_binding_call_count != 1 or seed_build_count != 1:
+        raise GateError(
+            "expected one on-the-fly batch binding call producing one seed, "
+            f"observed {seed_batch_binding_call_count} call(s) and "
+            f"{seed_build_count} seed(s)"
+        )
+    return time.perf_counter() - started, {
+        "expanded_process_count": 1,
+        "on_the_fly_seed_batch_binding_call_count": (seed_batch_binding_call_count),
+        "on_the_fly_seed_build_count": seed_build_count,
+        "recurrence_lowering_call_count": materialized_lane_call_counts[
+            "_invoke_rust_recurrence_lowering_v2"
+        ],
+        "materialized_process_lane_count": sum(materialized_lane_call_counts.values()),
+    }
+
+
+def _generate_probe_carrier(artifact: Path, model: CompiledModel) -> RetainedInputs:
     captured: list[RetainedInputs] = []
     original = generation_service._invoke_rust_recurrence_lowering_v2
 
@@ -405,28 +629,27 @@ def _generate(
         captured.append(RetainedInputs(args[0], args[1], direct, str(args[3])))
         return original(*args, **kwargs)
 
-    started = time.perf_counter()
     with mock.patch.object(
         generation_service, "_invoke_rust_recurrence_lowering_v2", capture
     ):
-        Generator(_config()).generate(
+        Generator(_recurrence_probe_config()).generate(
             ProcessRequest.parse(PROCESS, name=PROCESS_ID), artifact, model=model
         )
-    elapsed = time.perf_counter() - started
     if len(captured) != 1:
         raise GateError(f"expected one lowering call, observed {len(captured)}")
-    return elapsed, captured[0]
+    return captured[0]
 
 
 def _generate_with_prepared_model(
-    artifact: Path, prepared_model: Path
-) -> tuple[float, RetainedInputs, Path, float]:
+    artifact: Path, probe_carrier: Path, prepared_model: Path
+) -> tuple[float, dict[str, int], RetainedInputs, Path, float]:
     resolved = _prepared_model_path(prepared_model)
     started = time.perf_counter()
     model = ModelSource.from_path(resolved).compile()
     load_seconds = time.perf_counter() - started
-    generation_seconds, retained = _generate(artifact, model)
-    return generation_seconds, retained, resolved, load_seconds
+    generation_seconds, generation_census = _generate_on_the_fly(artifact, model)
+    retained = _generate_probe_carrier(probe_carrier, model)
+    return generation_seconds, generation_census, retained, resolved, load_seconds
 
 
 def _selectors(physics: object) -> tuple[object, object]:
@@ -438,8 +661,7 @@ def _selectors(physics: object) -> tuple[object, object]:
     helicities = tuple(
         helicity
         for helicity in getattr(physics, "helicities", ())
-        if helicity.id == HELICITY_ID
-        and tuple(helicity.values) == HELICITY_VALUES
+        if helicity.id == HELICITY_ID and tuple(helicity.values) == HELICITY_VALUES
     )
     if len(flows) != 1 or len(helicities) != 1:
         raise GateError("artifact does not expose the exact fixed flow and helicity")
@@ -514,8 +736,7 @@ def _invoke(
             None
             if query_family is None
             else [
-                (member.flow_index, list(member.helicities))
-                for member in query_family
+                (member.flow_index, list(member.helicities)) for member in query_family
             ]
         ),
     )
@@ -561,9 +782,7 @@ def _probe_values(
         valid_timing = (
             math.isfinite(float(elapsed))
             and float(elapsed) >= 0.0
-            and math.isclose(
-                float(per_point), expected, rel_tol=1.0e-15, abs_tol=0.0
-            )
+            and math.isclose(float(per_point), expected, rel_tol=1.0e-15, abs_tol=0.0)
         )
         if not valid_timing:
             raise GateError("hidden benchmark timings are inconsistent")
@@ -767,11 +986,54 @@ def _axes(resolved: object) -> tuple[dict[str, int], dict[str, int]]:
     )
 
 
-def _dense_authority(runtime: object, point_count: int) -> dict[str, object]:
+def _resolved_component_checks(
+    candidate: object, reference: object, label: str
+) -> dict[str, object]:
+    candidate_helicities = tuple(candidate.helicity_ids)
+    candidate_colors = tuple(candidate.color_ids)
+    reference_helicities = tuple(reference.helicity_ids)
+    reference_colors = tuple(reference.color_ids)
+    if (
+        candidate_helicities != reference_helicities
+        or candidate_colors != reference_colors
+    ):
+        raise GateError(f"{label} resolved selector axes differ")
+    candidate_values = tuple(candidate.values)
+    reference_values = tuple(reference.values)
+    if not candidate_values or len(candidate_values) != len(reference_values):
+        raise GateError(f"{label} resolved point axes differ or are empty")
+    rows: list[dict[str, object]] = []
+    try:
+        for helicity_index, helicity_id in enumerate(candidate_helicities):
+            for color_index, color_id in enumerate(candidate_colors):
+                rows.append(
+                    _series(
+                        tuple(
+                            point[helicity_index][color_index]
+                            for point in candidate_values
+                        ),
+                        tuple(
+                            point[helicity_index][color_index]
+                            for point in reference_values
+                        ),
+                        f"{label} {helicity_id}/{color_id}",
+                    )
+                )
+    except (IndexError, TypeError) as error:
+        raise GateError(f"{label} resolved values have an invalid shape") from error
+    return _summaries(rows)
+
+
+def _dense_authority(
+    selected_runtime: object,
+    all_flow_runtime: object,
+    point_count: int,
+) -> dict[str, object]:
     return {
         "authority_kind": "validated_production_pyamplicol",
         "runtime_api": "Runtime.evaluate_resolved",
-        "artifact_id": runtime.artifact_id,
+        "selected_flow_artifact_id": selected_runtime.artifact_id,
+        "all_flow_artifact_id": all_flow_runtime.artifact_id,
         "point_count": point_count,
         "certifies": (
             "selected_flow_helicity_sum",
@@ -833,27 +1095,444 @@ def _public_recurrence_work(result: object) -> dict[str, object] | None:
     }
 
 
-def _public_timing(result: object) -> dict[str, object]:
+def _public_timing(result: object, execution_mode: str) -> dict[str, object]:
+    breakdown = result.timing_breakdown
+    if breakdown is None or breakdown.execution_mode != execution_mode:
+        raise GateError(
+            f"public {execution_mode} benchmark has no matching timing breakdown"
+        )
+    evaluator_label = (
+        "recurrence core"
+        if execution_mode == "recurrence"
+        else "warmed evaluator envelope"
+    )
     return {
+        "execution_mode": execution_mode,
         "sample_count": result.sample_count,
         "repetitions_per_sample": result.repetitions_per_sample,
         "wall_seconds_per_point": result.wall_time_per_point,
-        "recurrence_core_seconds_per_point": result.evaluator_time_per_point,
         "evaluator_seconds_per_point": result.evaluator_time_per_point,
         "evaluator_total_seconds_per_point": result.evaluator_total_time_per_point,
         "clock_attribution": {
             "wall_seconds_per_point": "BenchmarkRunner outer wall clock",
-            "recurrence_core_seconds_per_point": (
-                "recurrence runtime core clock reported by the comparator"
+            "evaluator_seconds_per_point": evaluator_label,
+            "evaluator_total_seconds_per_point": (
+                "independently accumulated warmed evaluator-total clock"
             ),
             "relationship": (
-                "independent clocks; equality is neither assumed nor asserted"
+                "all reported clocks are independent; equality is neither assumed "
+                "nor asserted"
             ),
         },
         "interrupted": result.interrupted,
         "effective_config": dataclasses.asdict(result.effective_config),
         "uncertainty": dataclasses.asdict(result.uncertainty),
-        "recurrence_runtime_work": _public_recurrence_work(result),
+        "recurrence_runtime_work": (
+            None if execution_mode == "compiled" else _public_recurrence_work(result)
+        ),
+    }
+
+
+def _exact_on_the_fly_capabilities(value: object, label: str) -> None:
+    capabilities = _items(value, label)
+    if capabilities != ON_THE_FLY_CAPABILITIES:
+        raise GateError(
+            f"{label} must contain exactly the two LC on-the-fly capabilities"
+        )
+
+
+def _manifest_payload_record(
+    manifest: Any,
+    relative: str,
+    *,
+    role: str,
+    process_id: str | None,
+) -> object:
+    records = tuple(
+        record
+        for record in getattr(manifest, "payloads", ())
+        if record.path == relative
+    )
+    if len(records) != 1:
+        raise GateError(
+            f"on-the-fly artifact must authenticate exactly one {relative!r} payload"
+        )
+    record = records[0]
+    if record.role != role or record.process_id != process_id or record.executable:
+        raise GateError(
+            f"authenticated on-the-fly payload {relative!r} has wrong ownership, "
+            "role, or executable state"
+        )
+    return record
+
+
+def _authenticated_json_payload(
+    manifest: Any,
+    relative: str,
+    *,
+    role: str,
+    process_id: str | None,
+    label: str,
+) -> Mapping[str, object]:
+    _manifest_payload_record(
+        manifest,
+        relative,
+        role=role,
+        process_id=process_id,
+    )
+    try:
+        path = confined_path(manifest.root, relative)
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (ArtifactError, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise GateError(f"cannot read authenticated {label}: {relative}") from error
+    return _mapping(payload, label)
+
+
+def _resolved_artifact_relative(
+    manifest: Any, base: Path, relative: object, label: str
+) -> str:
+    if not isinstance(relative, str) or not relative:
+        raise GateError(f"{label} is not a non-empty relative path")
+    joined = (base / relative).as_posix()
+    try:
+        path = confined_path(manifest.root, joined)
+    except ArtifactError as error:
+        raise GateError(f"{label} is not confined to the artifact") from error
+    return path.relative_to(manifest.root).as_posix()
+
+
+def _on_the_fly_artifact_contract(artifact: Path, runtime: object) -> dict[str, object]:
+    try:
+        manifest = load_manifest(artifact, verify_payloads=True)
+    except (ArtifactError, OSError) as error:
+        raise GateError(
+            f"cannot authenticate generated on-the-fly artifact: {artifact}"
+        ) from error
+
+    _exact_on_the_fly_capabilities(
+        manifest.runtime.get("required_runtime_capabilities"),
+        "artifact runtime capabilities",
+    )
+    processes = tuple(manifest.processes)
+    if len(processes) != 1 or processes[0].get("id") != PROCESS_ID:
+        raise GateError(
+            "generated on-the-fly artifact must contain exactly the fixed process"
+        )
+    process = processes[0]
+    expression = process.get("expression")
+    if (
+        not isinstance(expression, str)
+        or canonical_process_key(expression) != PROCESS_KEY
+        or process.get("color_accuracy") != "lc"
+    ):
+        raise GateError("generated on-the-fly artifact has wrong process identity")
+    _exact_on_the_fly_capabilities(
+        process.get("required_runtime_capabilities"),
+        "process runtime capabilities",
+    )
+
+    evaluator_relative = str(manifest.runtime["evaluator_manifest_path"])
+    evaluator_set = _authenticated_json_payload(
+        manifest,
+        evaluator_relative,
+        role="evaluator-manifest",
+        process_id=None,
+        label="on-the-fly evaluator set",
+    )
+    if set(evaluator_set) != {
+        "schema_version",
+        "kind",
+        "required_runtime_capabilities",
+        "processes",
+    } or (
+        evaluator_set.get("schema_version") != 3
+        or evaluator_set.get("kind") != "pyamplicol-runtime-execution-set"
+    ):
+        raise GateError("generated on-the-fly evaluator set is not compact v3")
+    _exact_on_the_fly_capabilities(
+        evaluator_set.get("required_runtime_capabilities"),
+        "evaluator-set runtime capabilities",
+    )
+    entries = _records(evaluator_set.get("processes"), "evaluator-set processes")
+    if len(entries) != 1:
+        raise GateError("on-the-fly evaluator set must select exactly one process")
+    entry = entries[0]
+    if (
+        set(entry)
+        != {
+            "process_id",
+            "manifest_path",
+            "required_runtime_capabilities",
+        }
+        or entry.get("process_id") != PROCESS_ID
+    ):
+        raise GateError("on-the-fly evaluator-set process entry is invalid")
+    _exact_on_the_fly_capabilities(
+        entry.get("required_runtime_capabilities"),
+        "evaluator-set process capabilities",
+    )
+    execution_relative = _resolved_artifact_relative(
+        manifest,
+        Path(evaluator_relative).parent,
+        entry.get("manifest_path"),
+        "on-the-fly execution path",
+    )
+    record = _authenticated_json_payload(
+        manifest,
+        execution_relative,
+        role="evaluator-manifest",
+        process_id=PROCESS_ID,
+        label="on-the-fly execution",
+    )
+    _reject_materialization_fields(record, "on-the-fly execution")
+    if set(record) != {
+        "schema_version",
+        "kind",
+        "required_runtime_capabilities",
+        "process",
+        "key",
+        "color_accuracy",
+        "external_pdg_order",
+        "kernel_pack",
+        "runtime_options",
+        "selector_policy",
+        "runtime_metadata",
+        "runtime_container",
+    }:
+        raise GateError("generated on-the-fly execution has non-compact fields")
+    _exact_on_the_fly_capabilities(
+        record.get("required_runtime_capabilities"),
+        "execution runtime capabilities",
+    )
+    container = _mapping(
+        record.get("runtime_container"), "on-the-fly runtime container"
+    )
+    if (
+        record.get("schema_version") != 3
+        or record.get("kind") != "pyamplicol-runtime-on-the-fly-execution"
+        or record.get("process") != expression
+        or record.get("key") != PROCESS_ID
+        or record.get("color_accuracy") != "lc"
+        or tuple(_items(record.get("external_pdg_order"), "external PDG order"))
+        != tuple(process["external_pdgs"])
+        or set(container)
+        != {
+            "kind",
+            "schema_version",
+            "storage_abi",
+            "path",
+            "seed_member_path",
+        }
+        or container.get("kind") != "pyamplicol-on-the-fly-runtime-container"
+        or container.get("schema_version") != 1
+        or container.get("storage_abi") != "pacbin-v1"
+        or container.get("path") != "on-the-fly-runtime.pacbin"
+        or container.get("seed_member_path") != ON_THE_FLY_SEED_MEMBER_PATH
+    ):
+        raise GateError("generated on-the-fly artifact has the wrong compact contract")
+    kernel_pack = _mapping(record.get("kernel_pack"), "on-the-fly kernel pack")
+    if kernel_pack != {
+        "manifest_path": "model/eager-kernel-pack.json",
+        "payload_root": "model/eager-kernels",
+    }:
+        raise GateError("generated on-the-fly kernel-pack paths are not canonical")
+
+    physics_relative = str(process["physics_path"])
+    public = _authenticated_json_payload(
+        manifest,
+        physics_relative,
+        role="runtime-physics",
+        process_id=PROCESS_ID,
+        label="on-the-fly public metadata",
+    )
+    _reject_materialization_fields(public, "on-the-fly public metadata")
+    if set(public) != {
+        "schema_version",
+        "kind",
+        "process_id",
+        "process",
+        "color_accuracy",
+        "external_particles",
+        "model_parameters",
+    } or (
+        public.get("schema_version") != 1
+        or public.get("kind") != "pyamplicol-on-the-fly-public-metadata"
+        or public.get("process_id") != PROCESS_ID
+        or public.get("process") != expression
+        or public.get("color_accuracy") != "lc"
+    ):
+        raise GateError("generated on-the-fly public metadata is not compact LC")
+
+    validation_relative = f"processes/{PROCESS_ID}/validation-momenta.json"
+    _manifest_payload_record(
+        manifest,
+        validation_relative,
+        role="validation-momenta",
+        process_id=PROCESS_ID,
+    )
+    runtime_relative = _resolved_artifact_relative(
+        manifest,
+        Path(execution_relative).parent,
+        container.get("path"),
+        "on-the-fly runtime container path",
+    )
+    runtime_record = _manifest_payload_record(
+        manifest,
+        runtime_relative,
+        role="evaluator-state",
+        process_id=PROCESS_ID,
+    )
+    process_evaluator_state = tuple(
+        payload
+        for payload in manifest.payloads
+        if payload.role == "evaluator-state" and payload.process_id == PROCESS_ID
+    )
+    if process_evaluator_state != (runtime_record,):
+        raise GateError(
+            "runtime PACBIN must be the sole process-owned evaluator-state payload"
+        )
+
+    expected_inventory = {
+        execution_relative,
+        physics_relative,
+        runtime_relative,
+        validation_relative,
+    }
+    process_prefix = f"processes/{PROCESS_ID}/"
+    authenticated_inventory = {
+        payload.path
+        for payload in manifest.payloads
+        if payload.process_id == PROCESS_ID or payload.path.startswith(process_prefix)
+    }
+    process_root = manifest.root / "processes" / PROCESS_ID
+    try:
+        physical_inventory = {
+            path.relative_to(manifest.root).as_posix()
+            for path in process_root.rglob("*")
+            if path.is_file()
+        }
+    except OSError as error:
+        raise GateError(
+            "cannot inventory generated on-the-fly process files"
+        ) from error
+    if (
+        authenticated_inventory != expected_inventory
+        or physical_inventory != expected_inventory
+    ):
+        unexpected = sorted(
+            (authenticated_inventory | physical_inventory) - expected_inventory
+        )
+        missing = sorted(
+            expected_inventory - (authenticated_inventory & physical_inventory)
+        )
+        raise GateError(
+            "generated on-the-fly process inventory contains materialized sidecars "
+            f"or omissions; unexpected={unexpected!r}, missing={missing!r}"
+        )
+
+    try:
+        runtime_path = confined_path(manifest.root, runtime_relative)
+        with PacbinReader.open(runtime_path, verify_payloads=True) as reader:
+            members = reader.members
+    except (ArtifactError, OSError, PacbinError) as error:
+        raise GateError("cannot authenticate on-the-fly runtime PACBIN") from error
+    if (
+        len(members) != 1
+        or members[0].logical_path != ON_THE_FLY_SEED_MEMBER_PATH
+        or members[0].kind is not PacbinMemberKind.ON_THE_FLY_PROCESS_SEED
+        or members[0].length <= 0
+    ):
+        raise GateError(
+            "on-the-fly runtime PACBIN must contain exactly one process seed"
+        )
+    if (
+        runtime.execution_mode != "on-the-fly"
+        or runtime.representative_process_key != PROCESS_ID
+        or runtime.artifact_id != manifest.artifact_id
+    ):
+        raise GateError("Runtime.load did not select the generated on-the-fly process")
+    return {
+        "artifact": str(manifest.root),
+        "artifact_id": runtime.artifact_id,
+        "execution_mode": runtime.execution_mode,
+        "representative_process_key": runtime.representative_process_key,
+        "execution_kind": record["kind"],
+        "required_runtime_capabilities": ON_THE_FLY_CAPABILITIES,
+        "process_file_inventory": tuple(sorted(expected_inventory)),
+        "process_evaluator_state_payload_count": len(process_evaluator_state),
+        "runtime_container_kind": container["kind"],
+        "runtime_container_authenticated": True,
+        "runtime_container_member_count": len(members),
+        "seed_member_path": container["seed_member_path"],
+        "seed_member_kind": members[0].kind.name,
+        "dense_physics_accessed": False,
+        "validation_boundary": (
+            "authenticated manifest/public/execution metadata and PACBIN followed "
+            "by compact post-build Runtime.load; candidate dense physics metadata "
+            "is never opened"
+        ),
+    }
+
+
+def _on_the_fly_public_profile(
+    runtime: object,
+    points: Points,
+    expected: Sequence[object],
+    *,
+    helicities: tuple[str, ...] = (),
+    flows: tuple[str, ...] = (),
+) -> dict[str, object]:
+    backend = getattr(runtime, "_backend", None)
+    profiler = getattr(backend, "profile", None)
+    if not callable(profiler):
+        raise GateError("public Runtime backend has no existing profile API")
+    payload = profiler(
+        points,
+        helicities=helicities or None,
+        color_flows=flows or None,
+        precision=16,
+        include_values=True,
+    )
+    if (
+        not isinstance(payload, Mapping)
+        or payload.get("execution_mode") != "on-the-fly"
+    ):
+        raise GateError("on-the-fly profile did not report its execution lane")
+    values = payload.get("values")
+    if not isinstance(values, Sequence) or isinstance(values, (str, bytes)):
+        raise GateError("on-the-fly profile omitted requested values")
+    value_check = _series(tuple(values), expected, "on-the-fly profile values")
+    counts: dict[str, int] = {}
+    for name in PUBLIC_PROFILE_WORK_FIELDS:
+        counts[name] = _count(payload.get(name), f"on-the-fly profile {name}")
+    if any(
+        counts[f"recurrence_{role}_call_count"] > counts[f"recurrence_{role}_row_count"]
+        for role in ("source", "contribution", "finalization", "closure")
+    ):
+        raise GateError("on-the-fly profile has more grouped calls than rows")
+    wall = payload.get("wall_time_s")
+    if (
+        isinstance(wall, bool)
+        or not isinstance(wall, (int, float))
+        or not math.isfinite(float(wall))
+        or float(wall) < 0.0
+    ):
+        raise GateError("on-the-fly profile wall clock is invalid")
+    return {
+        "api": "existing Runtime backend profile",
+        "execution_mode": "on-the-fly",
+        "point_count": len(points),
+        "selectors": {"helicities": helicities, "color_flows": flows},
+        "value_check": value_check,
+        "wall_seconds": float(wall),
+        "work": {
+            "basis": "one warmed public profile call",
+            "semantics": (
+                "rows are executed recurrence-style transitions; calls are grouped "
+                "prepared-executor invocations and are not current counts"
+            ),
+            **counts,
+        },
     }
 
 
@@ -961,8 +1640,7 @@ def _query_family_census(
     }
     if (
         counts["dynamic_current_occurrence_count"] != current_occurrences
-        or counts["dynamic_current_component_occurrence_count"]
-        != component_occurrences
+        or counts["dynamic_current_component_occurrence_count"] != component_occurrences
         or any(
             counts[native] != operation_census.get(query_local)
             for native, query_local in expected_rows.items()
@@ -978,9 +1656,7 @@ def _query_family_census(
     for role in ("source", "contribution", "finalization", "closure"):
         if counts[f"dynamic_{role}_calls"] != counts[f"dynamic_{role}_rows"]:
             raise GateError("query-local dynamic call census is inconsistent")
-        if counts[f"union_{role}_executor_call_groups"] > counts[
-            f"union_{role}_rows"
-        ]:
+        if counts[f"union_{role}_executor_call_groups"] > counts[f"union_{role}_rows"]:
             raise GateError("query-family executor groups outnumber union rows")
     if (
         counts["union_amplitude_destination_count"] != len(queries)
@@ -1052,8 +1728,10 @@ def _artifact_execution(
     runtime = Runtime.load(root)
     physics = runtime.physics
     if runtime.execution_mode != execution_mode or physics.color_accuracy != "lc":
+        raise GateError(f"comparator is not an LC {execution_mode} artifact: {root}")
+    if canonical_process_key(physics.process) != PROCESS_KEY:
         raise GateError(
-            f"comparator is not an LC {execution_mode} artifact: {root}"
+            f"comparator has the wrong canonical process identity: {physics.process!r}"
         )
     process_id = physics.process_id
     if not isinstance(process_id, str) or not process_id:
@@ -1139,9 +1817,7 @@ def _exact_public_index(records: object, selector_id: str, label: str) -> int:
     return index
 
 
-def _recurrence_artifact_census(
-    artifact: Path, *, layout: str
-) -> dict[str, object]:
+def _recurrence_artifact_census(artifact: Path, *, layout: str) -> dict[str, object]:
     runtime, payload, root = _artifact_execution(artifact, "recurrence")
     if payload.get("kind") != "pyamplicol-runtime-recurrence-execution":
         raise GateError("recurrence comparator has the wrong execution kind")
@@ -1254,9 +1930,7 @@ def _compiled_execution_counts(
     storage = _mapping(schema.get("current_storage"), f"{label} current storage")
     result = {
         "source_count": _count(summary.get("source_count"), f"{label} source count"),
-        "current_count": _count(
-            summary.get("current_count"), f"{label} current count"
-        ),
+        "current_count": _count(summary.get("current_count"), f"{label} current count"),
         "current_component_count": _count(
             storage.get("component_count"), f"{label} component count"
         ),
@@ -1278,9 +1952,7 @@ def _compiled_execution_counts(
     return result
 
 
-def _compiled_artifact_census(
-    artifact: Path, *, workload: str
-) -> dict[str, object]:
+def _compiled_artifact_census(artifact: Path, *, workload: str) -> dict[str, object]:
     runtime, payload, root = _artifact_execution(artifact, "compiled")
     primary = _compiled_execution_counts(payload, "compiled primary")
     physics = runtime.physics
@@ -1295,7 +1967,8 @@ def _compiled_artifact_census(
         matches = [
             record
             for record in _records(topology.get("groups"), "compiled topology groups")
-            if public_index in tuple(
+            if public_index
+            in tuple(
                 _count(value, "compiled active sector")
                 for value in _items(record.get("active_sector_ids"), "active sectors")
             )
@@ -1364,7 +2037,8 @@ def _compiled_artifact_census(
             matching = [
                 record
                 for record in children
-                if public_index in tuple(
+                if public_index
+                in tuple(
                     _count(value, "compiled selector-domain index")
                     for value in _items(
                         record.get("selector_domain_ids"),
@@ -1524,9 +2198,7 @@ def _hidden_family_timing(
         "warmups": WARMUPS,
         "repetitions": repetitions,
         "cold_prepare_seconds": measured["cold_prepare_seconds"],
-        "private_warmed_elapsed_seconds": measured[
-            "private_warmed_elapsed_seconds"
-        ],
+        "private_warmed_elapsed_seconds": measured["private_warmed_elapsed_seconds"],
         "private_warmed_seconds_per_point": measured[
             "private_warmed_seconds_per_point"
         ],
@@ -1693,11 +2365,18 @@ def _anchor(path: Path | None) -> dict[str, object]:
         "point_digest": common.get("point_digest"),
         "component": common.get("value"),
         "selected_flow_sum": payload.get("matrix_element"),
+        "execution_seconds_per_point": payload.get("execution_seconds_per_point"),
         "wall_seconds_per_point": payload.get("wall_seconds_per_point"),
-        "clock_attribution": (
-            "stored original-AmpliCol worker wall clock; independent of pyAmpliCol "
-            "and on-the-fly clocks"
-        ),
+        "clock_attribution": {
+            "execution_seconds_per_point": (
+                "stored original-AmpliCol direct execution clock"
+            ),
+            "wall_seconds_per_point": "stored original-AmpliCol worker wall clock",
+            "relationship": (
+                "independent clocks; equality is neither assumed nor asserted, and "
+                "both are independent of pyAmpliCol/on-the-fly clocks"
+            ),
+        },
         "selector_matches": selector_matches,
         "comparison_performed": False,
     }
@@ -1759,6 +2438,26 @@ def _anchor_checks(
     return result
 
 
+def _benchmark_runtime(
+    runtime: object,
+    execution_mode: str,
+    points: Points,
+    target: float,
+    batch: int,
+    *,
+    helicities: tuple[str, ...] = (),
+    flows: tuple[str, ...] = (),
+) -> dict[str, object]:
+    result = BenchmarkRunner(
+        _benchmark_config(target, batch, helicities=helicities, flows=flows)
+    ).run(runtime, points=points)
+    timing = _public_timing(result, execution_mode)
+    wall = float(timing["wall_seconds_per_point"])
+    if not math.isfinite(wall) or wall <= 0.0:
+        raise GateError(f"public {execution_mode} benchmark has non-positive wall time")
+    return timing
+
+
 def _run(
     output: Path,
     prepared_model: Path,
@@ -1772,319 +2471,633 @@ def _run(
     enable_color_projection: bool = True,
 ) -> dict[str, object]:
     artifact = output / "artifact"
-    generation_seconds, retained, prepared_path, prepared_load_seconds = (
-        _generate_with_prepared_model(artifact, prepared_model)
-    )
-    started = time.perf_counter()
-    runtime = Runtime.load(artifact, process=PROCESS_ID)
-    load_seconds = time.perf_counter() - started
-    if runtime.execution_mode != "recurrence" or runtime.physics.color_accuracy != "lc":
-        raise GateError("generated artifact is not an LC recurrence artifact")
-    fixed_flow, fixed_helicity = _selectors(runtime.physics)
-    points = _points()
-    resolved = runtime.evaluate_resolved(points)
-    helicity_axis, color_axis = _axes(resolved)
-    fixed_h = helicity_axis[HELICITY_ID]
-    fixed_c = color_axis[FLOW_ID]
-    probe = _probe()
-    family_probe = _family_probe()
-    cache: dict[Query, tuple[tuple[float, ...], float, dict[str, Any]]] = {}
+    with tempfile.TemporaryDirectory(
+        prefix=".on-the-fly-private-probe-", dir=output
+    ) as probe_directory:
+        probe_carrier = Path(probe_directory) / "recurrence-artifact"
+        (
+            generation_seconds,
+            generation_census,
+            retained,
+            prepared_path,
+            prepared_load_seconds,
+        ) = _generate_with_prepared_model(artifact, probe_carrier, prepared_model)
+        started = time.perf_counter()
+        runtime = Runtime.load(artifact, process=PROCESS_ID)
+        load_seconds = time.perf_counter() - started
+        artifact_contract = _on_the_fly_artifact_contract(artifact, runtime)
+        probe_runtime = Runtime.load(probe_carrier, process=PROCESS_ID)
+        if probe_runtime.execution_mode != "recurrence":
+            raise GateError("private probe carrier is not a recurrence artifact")
+        fixed_flow, fixed_helicity = _selectors(probe_runtime.physics)
 
-    def hidden(flow: object, helicity: object) -> tuple[float, ...]:
-        query = _query(flow, helicity)
-        if query not in cache:
-            before = time.perf_counter()
-            report = _invoke(
-                probe,
-                artifact,
-                retained,
-                query,
-                points,
-                enable_color_projection=enable_color_projection,
+        selected_recurrence_runtime = Runtime.load(recurrence_selected_artifact)
+        all_flow_recurrence_runtime = Runtime.load(recurrence_all_flow_artifact)
+        selected_fixed_flow, selected_fixed_helicity = _selectors(
+            selected_recurrence_runtime.physics
+        )
+        all_fixed_flow, all_fixed_helicity = _selectors(
+            all_flow_recurrence_runtime.physics
+        )
+        if (
+            selected_fixed_flow.id != all_fixed_flow.id
+            or selected_fixed_helicity.id != all_fixed_helicity.id
+            or fixed_flow.id != selected_fixed_flow.id
+            or fixed_helicity.id != selected_fixed_helicity.id
+        ):
+            raise GateError("probe carrier and recurrence authorities disagree")
+        points = _points()
+
+        selected_resolved = selected_recurrence_runtime.evaluate_resolved(
+            points, color_flows=(FLOW_ID,)
+        )
+        selected_helicity_axis, selected_color_axis = _axes(selected_resolved)
+        if tuple(selected_resolved.color_ids) != (FLOW_ID,):
+            raise GateError("selected recurrence authority returned the wrong flow")
+        selected_fixed_c = selected_color_axis[FLOW_ID]
+        all_resolved = all_flow_recurrence_runtime.evaluate_resolved(
+            points, helicities=(HELICITY_ID,)
+        )
+        all_helicity_axis, all_color_axis = _axes(all_resolved)
+        if tuple(all_resolved.helicity_ids) != (HELICITY_ID,):
+            raise GateError("all-flow recurrence authority returned the wrong helicity")
+        all_fixed_h = all_helicity_axis[HELICITY_ID]
+        selected_authority = selected_recurrence_runtime.evaluate(
+            points, color_flows=(FLOW_ID,)
+        )
+        all_authority = all_flow_recurrence_runtime.evaluate(
+            points, helicities=(HELICITY_ID,)
+        )
+
+        selected_public = runtime.evaluate(points, color_flows=(FLOW_ID,))
+        selected_public_resolved = runtime.evaluate_resolved(
+            points, color_flows=(FLOW_ID,)
+        )
+        all_public = runtime.evaluate(points, helicities=(HELICITY_ID,))
+        all_public_resolved = runtime.evaluate_resolved(
+            points, helicities=(HELICITY_ID,)
+        )
+        if (
+            tuple(selected_public_resolved.helicity_ids)
+            != tuple(selected_resolved.helicity_ids)
+            or tuple(selected_public_resolved.color_ids) != (FLOW_ID,)
+            or tuple(all_public_resolved.helicity_ids) != (HELICITY_ID,)
+            or tuple(all_public_resolved.color_ids) != tuple(all_resolved.color_ids)
+        ):
+            raise GateError("on-the-fly resolved selector axes differ from authority")
+        public_correctness = {
+            "selected_flow_helicity_sum": {
+                "total_authority": _series(
+                    selected_public,
+                    selected_authority,
+                    "on-the-fly selected total/recurrence authority",
+                ),
+                "resolved_authority": _resolved_component_checks(
+                    selected_public_resolved,
+                    selected_resolved,
+                    "on-the-fly selected resolved/recurrence authority",
+                ),
+                "total_resolved_identity": _series(
+                    selected_public,
+                    selected_public_resolved.total(),
+                    "on-the-fly selected total/resolved",
+                ),
+            },
+            "all_flow_single_helicity": {
+                "total_authority": _series(
+                    all_public,
+                    all_authority,
+                    "on-the-fly all-flow total/recurrence authority",
+                ),
+                "resolved_authority": _resolved_component_checks(
+                    all_public_resolved,
+                    all_resolved,
+                    "on-the-fly all-flow resolved/recurrence authority",
+                ),
+                "total_resolved_identity": _series(
+                    all_public,
+                    all_public_resolved.total(),
+                    "on-the-fly all-flow total/resolved",
+                ),
+            },
+        }
+        public_profiles = {
+            "selected_flow_helicity_sum": _on_the_fly_public_profile(
+                runtime, points, selected_public, flows=(FLOW_ID,)
+            ),
+            "all_flow_single_helicity": _on_the_fly_public_profile(
+                runtime, points, all_public, helicities=(HELICITY_ID,)
+            ),
+        }
+        runtime.clear()
+        clear_checks = {
+            "selected_total": _series(
+                runtime.evaluate(points, color_flows=(FLOW_ID,)),
+                selected_authority,
+                "on-the-fly selected total after clear",
+            ),
+            "selected_resolved": _resolved_component_checks(
+                runtime.evaluate_resolved(points, color_flows=(FLOW_ID,)),
+                selected_resolved,
+                "on-the-fly selected resolved after clear",
+            ),
+            "all_flow_total": _series(
+                runtime.evaluate(points, helicities=(HELICITY_ID,)),
+                all_authority,
+                "on-the-fly all-flow total after clear",
+            ),
+            "all_flow_resolved": _resolved_component_checks(
+                runtime.evaluate_resolved(points, helicities=(HELICITY_ID,)),
+                all_resolved,
+                "on-the-fly all-flow resolved after clear",
+            ),
+        }
+
+        probe = _probe()
+        family_probe = _family_probe()
+        cache: dict[Query, tuple[tuple[float, ...], float, dict[str, Any]]] = {}
+
+        def hidden(flow: object, helicity: object) -> tuple[float, ...]:
+            query = _query(flow, helicity)
+            if query not in cache:
+                before = time.perf_counter()
+                report = _invoke(
+                    probe,
+                    probe_carrier,
+                    retained,
+                    query,
+                    points,
+                    enable_color_projection=enable_color_projection,
+                )
+                cache[query] = (
+                    _probe_values(report, len(points)),
+                    time.perf_counter() - before,
+                    report,
+                )
+            return cache[query][0]
+
+        selected_hidden: list[tuple[float, ...]] = []
+        selected_reference: list[tuple[complex, ...]] = []
+        selected_queries: list[Query] = []
+        selected_checks: list[dict[str, object]] = []
+        for helicity in probe_runtime.physics.helicities:
+            if helicity.id not in selected_helicity_axis:
+                raise GateError("probe carrier helicity is absent from authority")
+            row = tuple(
+                complex(point[selected_helicity_axis[helicity.id]][selected_fixed_c])
+                for point in selected_resolved.values
             )
-            values = _probe_values(report, len(points))
-            cache[query] = (
-                values,
-                time.perf_counter() - before,
-                report,
+            if helicity.structural_zero:
+                selected_checks.append(_series((0.0,) * len(points), row, helicity.id))
+                continue
+            candidate = hidden(fixed_flow, helicity)
+            selected_hidden.append(candidate)
+            selected_reference.append(row)
+            selected_queries.append(_query(fixed_flow, helicity))
+            selected_checks.append(_series(candidate, row, helicity.id))
+
+        flow_hidden: list[tuple[float, ...]] = []
+        flow_reference: list[tuple[complex, ...]] = []
+        flow_queries: list[Query] = []
+        flow_checks: list[dict[str, object]] = []
+        for flow in probe_runtime.physics.color_flows:
+            if flow.id not in all_color_axis:
+                raise GateError("probe carrier color flow is absent from authority")
+            row = tuple(
+                complex(point[all_fixed_h][all_color_axis[flow.id]])
+                for point in all_resolved.values
             )
-        return cache[query][0]
+            try:
+                candidate = hidden(flow, fixed_helicity)
+            except Exception as error:
+                raise GateError(
+                    "the private topology carrier cannot serve the all-flow "
+                    f"single-helicity query {flow.id}; this is a design finding"
+                ) from error
+            flow_hidden.append(candidate)
+            flow_reference.append(row)
+            flow_queries.append(_query(flow, fixed_helicity))
+            flow_checks.append(_series(candidate, row, flow.id))
 
-    selected_hidden, selected_reference = [], []
-    selected_queries, selected_checks = [], []
-    for helicity in runtime.physics.helicities:
-        row = tuple(
-            complex(point[helicity_axis[helicity.id]][fixed_c])
-            for point in resolved.values
+        selected_hidden_sum = _sum(selected_hidden, len(points))
+        flow_hidden_sum = _sum(flow_hidden, len(points))
+        selected_family_rows, selected_family_correctness = _hidden_family_correctness(
+            probe,
+            probe_carrier,
+            retained,
+            selected_queries,
+            points,
+            selected_reference,
+            [cache[query][2] for query in selected_queries],
+            enable_color_projection,
         )
-        if helicity.structural_zero:
-            selected_checks.append(_series((0.0,) * len(points), row, helicity.id))
-            continue
-        candidate = hidden(fixed_flow, helicity)
-        selected_hidden.append(candidate)
-        selected_reference.append(row)
-        selected_queries.append(_query(fixed_flow, helicity))
-        selected_checks.append(_series(candidate, row, helicity.id))
-    selected_hidden_sum = _sum(selected_hidden, len(points))
-    selected_resolved_sum = _sum(selected_reference, len(points))
-    selected_public_sum = runtime.evaluate(points, color_flows=(FLOW_ID,))
-
-    flow_hidden, flow_reference, flow_queries, flow_checks = [], [], [], []
-    for flow in runtime.physics.color_flows:
-        row = tuple(
-            complex(point[fixed_h][color_axis[flow.id]]) for point in resolved.values
+        flow_family_rows, flow_family_correctness = _hidden_family_correctness(
+            probe,
+            probe_carrier,
+            retained,
+            flow_queries,
+            points,
+            flow_reference,
+            [cache[query][2] for query in flow_queries],
+            enable_color_projection,
         )
-        try:
-            candidate = hidden(flow, fixed_helicity)
-        except Exception as error:
-            raise GateError(
-                "the single topology-replay artifact cannot serve the all-flow "
-                f"single-helicity query {flow.id}; this is a design finding"
-            ) from error
-        flow_hidden.append(candidate)
-        flow_reference.append(row)
-        flow_queries.append(_query(flow, fixed_helicity))
-        flow_checks.append(_series(candidate, row, flow.id))
-    flow_hidden_sum = _sum(flow_hidden, len(points))
-    flow_resolved_sum = _sum(flow_reference, len(points))
-    flow_public_sum = runtime.evaluate(points, helicities=(HELICITY_ID,))
+        selected_family_sum = _sum(selected_family_rows, len(points))
+        flow_family_sum = _sum(flow_family_rows, len(points))
 
-    selected_family_rows, selected_family_correctness = _hidden_family_correctness(
-        probe,
-        artifact,
-        retained,
-        selected_queries,
-        points,
-        selected_reference,
-        [cache[query][2] for query in selected_queries],
-        enable_color_projection,
-    )
-    flow_family_rows, flow_family_correctness = _hidden_family_correctness(
-        probe,
-        artifact,
-        retained,
-        flow_queries,
-        points,
-        flow_reference,
-        [cache[query][2] for query in flow_queries],
-        enable_color_projection,
-    )
-    selected_family_sum = _sum(selected_family_rows, len(points))
-    flow_family_sum = _sum(flow_family_rows, len(points))
-
-    fixed_hidden = hidden(fixed_flow, fixed_helicity)
-    fixed_public = tuple(complex(point[fixed_h][fixed_c]) for point in resolved.values)
-    digest = point_digest((points[0],))
-    sanity = _anchor_checks(
-        _anchor(amplicol),
-        digest,
-        public_component=fixed_public[0],
-        hidden_component=fixed_hidden[0],
-        public_sum=selected_public_sum[0],
-        hidden_sum=selected_hidden_sum[0],
-    )
-
-    timing_points = _repeat(points, batch)
-    selected_hidden_timing = _hidden_timing(
-        probe,
-        artifact,
-        retained,
-        selected_queries,
-        timing_points,
-        target,
-        enable_color_projection,
-    )
-    flow_hidden_timing = _hidden_timing(
-        probe,
-        artifact,
-        retained,
-        flow_queries,
-        timing_points,
-        target,
-        enable_color_projection,
-    )
-    selected_structural_census = _query_family_census(
-        family_probe,
-        retained,
-        selected_queries,
-        selected_hidden_timing,
-        enable_color_projection,
-    )
-    selected_hidden_timing["structural_family_census"] = selected_structural_census
-    flow_structural_census = _query_family_census(
-        family_probe,
-        retained,
-        flow_queries,
-        flow_hidden_timing,
-        enable_color_projection,
-    )
-    flow_hidden_timing["structural_family_census"] = flow_structural_census
-    _, selected_family_timing = _hidden_family_timing(
-        probe,
-        artifact,
-        retained,
-        selected_queries,
-        timing_points,
-        target,
-        enable_color_projection,
-    )
-    _, flow_family_timing = _hidden_family_timing(
-        probe,
-        artifact,
-        retained,
-        flow_queries,
-        timing_points,
-        target,
-        enable_color_projection,
-    )
-    selected_family_census = selected_family_timing["work_census"]
-    flow_family_census = flow_family_timing["work_census"]
-    if not isinstance(selected_family_census, Mapping) or not isinstance(
-        flow_family_census, Mapping
-    ):
-        raise GateError("executable family timings lost their work census")
-    _assert_executable_family_matches_structural_census(
-        selected_family_census, selected_structural_census
-    )
-    _assert_executable_family_matches_structural_census(
-        flow_family_census, flow_structural_census
-    )
-    recurrence_selected_census = _recurrence_artifact_census(
-        recurrence_selected_artifact, layout="topology-replay"
-    )
-    recurrence_all_flow_census = _recurrence_artifact_census(
-        recurrence_all_flow_artifact, layout="all-flow-union"
-    )
-    compiled_selected_census = _compiled_artifact_census(
-        compiled_selected_artifact, workload="selected_flow_helicity_sum"
-    )
-    compiled_all_flow_census = _compiled_artifact_census(
-        compiled_all_flow_artifact, workload="all_flow_single_helicity"
-    )
-    selected_recurrence_runtime = Runtime.load(recurrence_selected_artifact)
-    all_flow_recurrence_runtime = Runtime.load(recurrence_all_flow_artifact)
-    selected_public_timing = _public_timing(
-        BenchmarkRunner(_benchmark_config(target, batch, flows=(FLOW_ID,))).run(
-            selected_recurrence_runtime, points=timing_points
+        fixed_hidden = hidden(fixed_flow, fixed_helicity)
+        public_helicity_axis, public_color_axis = _axes(selected_public_resolved)
+        fixed_public = tuple(
+            complex(
+                point[public_helicity_axis[HELICITY_ID]][public_color_axis[FLOW_ID]]
+            )
+            for point in selected_public_resolved.values
         )
-    )
-    flow_public_timing = _public_timing(
-        BenchmarkRunner(
-            _benchmark_config(target, batch, helicities=(HELICITY_ID,))
-        ).run(all_flow_recurrence_runtime, points=timing_points)
-    )
-    for hidden_timing, family_timing, public_timing in (
-        (selected_hidden_timing, selected_family_timing, selected_public_timing),
-        (flow_hidden_timing, flow_family_timing, flow_public_timing),
-    ):
-        wall = float(public_timing["wall_seconds_per_point"])
-        if not math.isfinite(wall) or wall <= 0.0:
-            raise GateError("public benchmark returned a non-positive wall time")
-        hidden_timing["provisional_wall_ratio"] = (
-            float(hidden_timing["additive_seconds_per_point"]) / wall
-        )
-        family_timing["provisional_wall_ratio"] = (
-            float(family_timing["private_warmed_seconds_per_point"]) / wall
+        digest = point_digest((points[0],))
+        sanity = _anchor_checks(
+            _anchor(amplicol),
+            digest,
+            public_component=fixed_public[0],
+            hidden_component=fixed_hidden[0],
+            public_sum=selected_public[0],
+            hidden_sum=selected_hidden_sum[0],
         )
 
-    cold = tuple(value[1] for value in cache.values())
-    return {
-        "kind": "pyamplicol-on-the-fly-lc-gate",
-        "status": "passed",
-        "process": PROCESS,
-        "process_id": PROCESS_ID,
-        "artifact": str(artifact),
-        "artifact_id": runtime.artifact_id,
-        "on_the_fly_topology_artifact": {
+        timing_points = _repeat(points, batch)
+        selected_hidden_timing = _hidden_timing(
+            probe,
+            probe_carrier,
+            retained,
+            selected_queries,
+            timing_points,
+            target,
+            enable_color_projection,
+        )
+        flow_hidden_timing = _hidden_timing(
+            probe,
+            probe_carrier,
+            retained,
+            flow_queries,
+            timing_points,
+            target,
+            enable_color_projection,
+        )
+        selected_structural = _query_family_census(
+            family_probe,
+            retained,
+            selected_queries,
+            selected_hidden_timing,
+            enable_color_projection,
+        )
+        flow_structural = _query_family_census(
+            family_probe,
+            retained,
+            flow_queries,
+            flow_hidden_timing,
+            enable_color_projection,
+        )
+        _, selected_family_timing = _hidden_family_timing(
+            probe,
+            probe_carrier,
+            retained,
+            selected_queries,
+            timing_points,
+            target,
+            enable_color_projection,
+        )
+        _, flow_family_timing = _hidden_family_timing(
+            probe,
+            probe_carrier,
+            retained,
+            flow_queries,
+            timing_points,
+            target,
+            enable_color_projection,
+        )
+        selected_family_census = _mapping(
+            selected_family_timing.get("work_census"),
+            "selected on-the-fly family census",
+        )
+        flow_family_census = _mapping(
+            flow_family_timing.get("work_census"),
+            "all-flow on-the-fly family census",
+        )
+        _assert_executable_family_matches_structural_census(
+            selected_family_census, selected_structural
+        )
+        _assert_executable_family_matches_structural_census(
+            flow_family_census, flow_structural
+        )
+
+        recurrence_selected_census = _recurrence_artifact_census(
+            recurrence_selected_artifact, layout="topology-replay"
+        )
+        recurrence_all_flow_census = _recurrence_artifact_census(
+            recurrence_all_flow_artifact, layout="all-flow-union"
+        )
+        compiled_selected_census = _compiled_artifact_census(
+            compiled_selected_artifact, workload="selected_flow_helicity_sum"
+        )
+        compiled_all_flow_census = _compiled_artifact_census(
+            compiled_all_flow_artifact, workload="all_flow_single_helicity"
+        )
+        compiled_selected_runtime = Runtime.load(compiled_selected_artifact)
+        compiled_all_flow_runtime = Runtime.load(compiled_all_flow_artifact)
+        timings = {
+            "on_the_fly": {
+                "selected_flow_helicity_sum": _benchmark_runtime(
+                    runtime,
+                    "on-the-fly",
+                    timing_points,
+                    target,
+                    batch,
+                    flows=(FLOW_ID,),
+                ),
+                "all_flow_single_helicity": _benchmark_runtime(
+                    runtime,
+                    "on-the-fly",
+                    timing_points,
+                    target,
+                    batch,
+                    helicities=(HELICITY_ID,),
+                ),
+            },
+            "recurrence": {
+                "selected_flow_helicity_sum": _benchmark_runtime(
+                    selected_recurrence_runtime,
+                    "recurrence",
+                    timing_points,
+                    target,
+                    batch,
+                    flows=(FLOW_ID,),
+                ),
+                "all_flow_single_helicity": _benchmark_runtime(
+                    all_flow_recurrence_runtime,
+                    "recurrence",
+                    timing_points,
+                    target,
+                    batch,
+                    helicities=(HELICITY_ID,),
+                ),
+            },
+            "compiled": {
+                "selected_flow_helicity_sum": _benchmark_runtime(
+                    compiled_selected_runtime,
+                    "compiled",
+                    timing_points,
+                    target,
+                    batch,
+                    flows=(FLOW_ID,),
+                ),
+                "all_flow_single_helicity": _benchmark_runtime(
+                    compiled_all_flow_runtime,
+                    "compiled",
+                    timing_points,
+                    target,
+                    batch,
+                    helicities=(HELICITY_ID,),
+                ),
+            },
+        }
+        for workload, private in (
+            ("selected_flow_helicity_sum", selected_family_timing),
+            ("all_flow_single_helicity", flow_family_timing),
+        ):
+            private["diagnostic_ratio_to_recurrence_outer_wall"] = float(
+                private["private_warmed_seconds_per_point"]
+            ) / float(timings["recurrence"][workload]["wall_seconds_per_point"])
+            private["ratio_is_acceptance_gate"] = False
+
+        def comparison(
+            workload: str,
+            family_census: Mapping[str, object],
+            recurrence_census: Mapping[str, object],
+            compiled_census: Mapping[str, object],
+        ) -> dict[str, object]:
+            recurrence_live = _mapping(
+                recurrence_census.get("selector_live"),
+                "recurrence selector-live census",
+            )
+            compiled_levels = _mapping(
+                compiled_census.get("levels"), "compiled DAG levels"
+            )
+            compiled_leaf = _mapping(
+                compiled_levels.get("executed_leaf"), "compiled executed-leaf census"
+            )
+            return {
+                "logical_current_counts": {
+                    "on_the_fly_warmed_family_unique": family_census[
+                        "union_unique_current_count"
+                    ],
+                    "recurrence_selector_live": recurrence_live["current_count"],
+                    "compiled_executed_leaf": compiled_leaf["current_count"],
+                },
+                "current_component_counts": {
+                    "on_the_fly_warmed_family_unique": family_census[
+                        "union_unique_current_component_count"
+                    ],
+                    "recurrence_selector_live": recurrence_live[
+                        "semantic_current_component_count"
+                    ],
+                    "compiled_executed_leaf": compiled_leaf["current_component_count"],
+                },
+                "role_native_operation_counts": {
+                    "on_the_fly_transition_rows": {
+                        role: family_census[f"union_{role}_rows"]
+                        for role in (
+                            "source",
+                            "contribution",
+                            "finalization",
+                            "closure",
+                        )
+                    },
+                    "recurrence_selector_live_rows": {
+                        "source": recurrence_live["source_row_count"],
+                        "contribution": recurrence_live["contribution_count"],
+                        "finalization": recurrence_live["finalization_count"],
+                        "closure": recurrence_live["closure_count"],
+                    },
+                    "compiled_executed_leaf": {
+                        "interaction_attachments": compiled_leaf[
+                            "interaction_attachment_count"
+                        ],
+                        "interaction_evaluations": compiled_leaf[
+                            "interaction_evaluation_count"
+                        ],
+                    },
+                },
+                "on_the_fly_private_warmed_unique_currents_and_rows": family_census,
+                "on_the_fly_public_warmed_rows_and_grouped_calls": (
+                    public_profiles[workload]["work"]
+                ),
+                "recurrence_public_warmed_rows_and_grouped_calls": timings[
+                    "recurrence"
+                ][workload]["recurrence_runtime_work"],
+                "recurrence_persisted_and_selector_live_plan": recurrence_census,
+                "compiled_primary_program_and_executed_leaf_dag": compiled_census,
+                "counter_warning": (
+                    "on-the-fly/recurrence rows are transitions and grouped executor "
+                    "calls; compiled counts are currents/components/interaction "
+                    "attachments/evaluations. Unlike counters are not equated."
+                ),
+            }
+
+        cold = tuple(value[1] for value in cache.values())
+        return {
+            "kind": "pyamplicol-on-the-fly-lc-gate",
+            "status": "passed",
+            "process": PROCESS,
+            "process_id": PROCESS_ID,
             "artifact": str(artifact),
             "artifact_id": runtime.artifact_id,
-            "role": "one topology source for both on-the-fly query families",
-        },
-        "layout": "topology-replay",
-        "color_projection": {
-            "query": _query(fixed_flow, fixed_helicity).label,
-            **{
-                name: value
-                for name, value in cache[_query(fixed_flow, fixed_helicity)][2].items()
-                if "projection_" in name
+            "on_the_fly_artifact": artifact_contract,
+            "private_probe_carrier": {
+                "execution_mode": "recurrence",
+                "artifact_id": probe_runtime.artifact_id,
+                "role": (
+                    "ephemeral topology carrier for private Rust diagnostics only; "
+                    "not the candidate, not an authority, and excluded from candidate "
+                    "generation/load timing"
+                ),
+                "retained_after_gate": False,
             },
-        },
-        "dense_correctness_authority": _dense_authority(runtime, len(points)),
-        "prepared_model": {
-            "path": str(prepared_path),
-            "load_seconds": prepared_load_seconds,
-        },
-        "generation_seconds": generation_seconds,
-        "runtime_load_seconds": load_seconds,
-        "comparator_artifacts": {
-            "recurrence_selected_flow_helicity_sum": recurrence_selected_census,
-            "recurrence_all_flow_single_helicity": recurrence_all_flow_census,
-            "compiled_selected_flow_helicity_sum": compiled_selected_census,
-            "compiled_all_flow_single_helicity": compiled_all_flow_census,
-        },
-        "points": {"seeds": SEEDS, "seed_101_digest": digest, "dense": len(points)},
-        "cold_query_outer_seconds": {
-            "queries": len(cold),
-            "minimum": min(cold),
-            "median": statistics.median(cold),
-            "maximum": max(cold),
-            "total": math.fsum(cold),
-        },
-        "selected_flow_helicity_sum": {
-            "component_checks": _summaries(selected_checks),
-            "hidden_aggregate": _series(
-                selected_hidden_sum, selected_public_sum, "selected-flow aggregate"
-            ),
-            "resolved_aggregate": _series(
-                selected_resolved_sum,
-                selected_public_sum,
-                "selected-flow resolved aggregate",
-            ),
-            "family_correctness": selected_family_correctness,
-            "family_aggregate": _series(
-                selected_family_sum,
-                selected_public_sum,
-                "selected-flow family aggregate",
-            ),
-            "hidden_warm": selected_hidden_timing,
-            "family_warm": selected_family_timing,
-            "public_warm": selected_public_timing,
-            "descriptive_work_comparison": {
-                "on_the_fly_selector_workload": selected_family_census,
-                "public_recurrence_selector_workload": selected_public_timing[
-                    "recurrence_runtime_work"
-                ],
-                "recurrence_comparator": recurrence_selected_census,
-                "compiled_comparator": compiled_selected_census,
+            "layout": "topology-replay",
+            "color_projection": {
+                "query": _query(fixed_flow, fixed_helicity).label,
+                **{
+                    name: value
+                    for name, value in cache[_query(fixed_flow, fixed_helicity)][
+                        2
+                    ].items()
+                    if "projection_" in name
+                },
             },
-        },
-        "all_flow_single_helicity": {
-            "component_checks": _summaries(flow_checks),
-            "hidden_aggregate": _series(
-                flow_hidden_sum, flow_public_sum, "all-flow aggregate"
+            "public_correctness": public_correctness,
+            "public_profiles": public_profiles,
+            "clear_and_rebuild": clear_checks,
+            "dense_correctness_authority": _dense_authority(
+                selected_recurrence_runtime,
+                all_flow_recurrence_runtime,
+                len(points),
             ),
-            "resolved_aggregate": _series(
-                flow_resolved_sum, flow_public_sum, "all-flow resolved aggregate"
-            ),
-            "family_correctness": flow_family_correctness,
-            "family_aggregate": _series(
-                flow_family_sum, flow_public_sum, "all-flow family aggregate"
-            ),
-            "hidden_warm": flow_hidden_timing,
-            "family_warm": flow_family_timing,
-            "public_warm": flow_public_timing,
-            "descriptive_work_comparison": {
-                "on_the_fly_selector_workload": flow_family_census,
-                "public_recurrence_selector_workload": flow_public_timing[
-                    "recurrence_runtime_work"
-                ],
-                "recurrence_comparator": recurrence_all_flow_census,
-                "compiled_comparator": compiled_all_flow_census,
+            "prepared_model": {
+                "path": str(prepared_path),
+                "load_seconds": prepared_load_seconds,
             },
-        },
-        "amplicol_sanity": sanity,
-        "performance_is_acceptance_gate": False,
-    }
+            "cold_boundaries": {
+                "on_the_fly_generation_seconds": generation_seconds,
+                "on_the_fly_runtime_load_seconds": load_seconds,
+                "generation_census": generation_census,
+                "semantics": (
+                    "cold service generation and Runtime.load/post-build work are not "
+                    "warmed work; the recurrence probe carrier is excluded"
+                ),
+            },
+            "explicit_artifact_roots": {
+                "on_the_fly_candidate": str(artifact),
+                "recurrence_selected": str(recurrence_selected_artifact),
+                "recurrence_all_flow": str(recurrence_all_flow_artifact),
+                "compiled_selected": str(compiled_selected_artifact),
+                "compiled_all_flow": str(compiled_all_flow_artifact),
+            },
+            "comparator_artifacts": {
+                "recurrence_selected_flow_helicity_sum": (recurrence_selected_census),
+                "recurrence_all_flow_single_helicity": recurrence_all_flow_census,
+                "compiled_selected_flow_helicity_sum": compiled_selected_census,
+                "compiled_all_flow_single_helicity": compiled_all_flow_census,
+            },
+            "points": {
+                "seeds": SEEDS,
+                "seed_101_digest": digest,
+                "dense": len(points),
+            },
+            "cold_private_query_outer_seconds": {
+                "queries": len(cold),
+                "minimum": min(cold),
+                "median": statistics.median(cold),
+                "maximum": max(cold),
+                "total": math.fsum(cold),
+                "not_warmed_work": True,
+            },
+            "selected_flow_helicity_sum": {
+                "private_component_checks": _summaries(selected_checks),
+                "private_probe_aggregate": _series(
+                    selected_hidden_sum,
+                    selected_authority,
+                    "selected-flow private probe/recurrence authority",
+                ),
+                "private_family_correctness": selected_family_correctness,
+                "private_family_aggregate": _series(
+                    selected_family_sum,
+                    selected_authority,
+                    "selected-flow private family/recurrence authority",
+                ),
+                "private_query_local_warm": selected_hidden_timing,
+                "private_family_warm": selected_family_timing,
+                "public_timings": {
+                    lane: value["selected_flow_helicity_sum"]
+                    for lane, value in timings.items()
+                },
+                "descriptive_work_comparison": comparison(
+                    "selected_flow_helicity_sum",
+                    selected_family_census,
+                    recurrence_selected_census,
+                    compiled_selected_census,
+                ),
+            },
+            "all_flow_single_helicity": {
+                "private_component_checks": _summaries(flow_checks),
+                "private_probe_aggregate": _series(
+                    flow_hidden_sum,
+                    all_authority,
+                    "all-flow private probe/recurrence authority",
+                ),
+                "private_family_correctness": flow_family_correctness,
+                "private_family_aggregate": _series(
+                    flow_family_sum,
+                    all_authority,
+                    "all-flow private family/recurrence authority",
+                ),
+                "private_query_local_warm": flow_hidden_timing,
+                "private_family_warm": flow_family_timing,
+                "public_timings": {
+                    lane: value["all_flow_single_helicity"]
+                    for lane, value in timings.items()
+                },
+                "descriptive_work_comparison": comparison(
+                    "all_flow_single_helicity",
+                    flow_family_census,
+                    recurrence_all_flow_census,
+                    compiled_all_flow_census,
+                ),
+            },
+            "amplicol_sanity": sanity,
+            "clock_contract": {
+                "on_the_fly_private_warmed": (
+                    "private Rust family clock excluding source crossing and Python"
+                ),
+                "on_the_fly_public": (
+                    "BenchmarkRunner evaluator/evaluator-total and outer wall clocks"
+                ),
+                "recurrence": ("recurrence core/evaluator-total and outer wall clocks"),
+                "compiled": (
+                    "compiled evaluator/evaluator-total and outer wall clocks"
+                ),
+                "amplicol": ("direct execution and worker wall clocks when supplied"),
+                "relationship": (
+                    "all scopes are independent; no equality or interchangeability "
+                    "is assumed"
+                ),
+            },
+            "integration_contract": {
+                "python_api": (
+                    "existing Generator, Runtime.load/evaluate/evaluate_resolved/"
+                    "clear, existing runtime profile backend, and BenchmarkRunner"
+                ),
+                "rust_lane": "separate native on-the-fly execution lane",
+                "new_public_evaluation_api": False,
+            },
+            "performance_is_acceptance_gate": False,
+        }
 
 
 def _write(path: Path, value: object) -> None:

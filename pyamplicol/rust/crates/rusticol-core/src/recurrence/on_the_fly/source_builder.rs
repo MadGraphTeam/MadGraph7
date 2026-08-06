@@ -7,6 +7,8 @@
 //! semantics are recovered from the already validated recurrence-template and
 //! prepared direct-executor catalogs before the existing seed codec is used.
 
+#[cfg(test)]
+use std::cell::Cell;
 use std::collections::BTreeMap;
 
 use serde::Deserialize;
@@ -18,6 +20,7 @@ use super::source_seed::{
     validate_permutation,
 };
 use super::{TemplateCatalog, integrity, invalid};
+use crate::recurrence::process::ProcessSourceStateRow;
 use crate::recurrence::template::{
     CurrentOrientation, CurrentStateRow, MISSING_U32, ParticleStatistics, SourceRow,
     ValidatedRecurrenceTemplateInput,
@@ -28,6 +31,11 @@ use crate::recurrence::{
 use crate::{RusticolError, RusticolResult};
 
 const SOURCE_PROJECTION_SCHEMA_VERSION: u32 = 1;
+
+#[cfg(test)]
+thread_local! {
+    static PROCESS_SEED_TEMPLATE_CATALOG_BUILD_COUNT: Cell<usize> = const { Cell::new(0) };
+}
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -144,6 +152,43 @@ struct ExactFactorProjection {
     imag_denominator: String,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourceCrossingProjection {
+    momentum_transform: SourceMomentumTransformProjection,
+    helicity_factor: i32,
+    chirality_factor: i32,
+    spin_state_factor: i32,
+    phase: ExactFactorProjection,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+enum SourceMomentumTransformProjection {
+    #[serde(rename = "identity")]
+    Identity,
+    #[serde(rename = "negate-four-momentum")]
+    NegateFourMomentum,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct AppliedSourceCrossing {
+    momentum_sign: i32,
+    helicity_factor: i32,
+    chirality_factor: i32,
+    spin_state_factor: i32,
+    phase: ExactComplexRational,
+}
+
+impl AppliedSourceCrossing {
+    const IDENTITY: Self = Self {
+        momentum_sign: 1,
+        helicity_factor: 1,
+        chirality_factor: 1,
+        spin_state_factor: 1,
+        phase: ExactComplexRational::ONE,
+    };
+}
+
 impl ExactFactorProjection {
     fn exact(&self, label: &str) -> RusticolResult<ExactComplexRational> {
         ExactComplexRational::parse_parts(
@@ -190,25 +235,81 @@ pub(crate) fn build_on_the_fly_process_seed_v1(
     direct: &PreparedDirectExecutorCatalog,
     prepared_pack_digest: SemanticDigest,
 ) -> RusticolResult<OnTheFlyProcessSeedV1> {
+    let mut seeds = build_on_the_fly_process_seeds_v1(
+        vec![projection],
+        templates,
+        direct,
+        prepared_pack_digest,
+    )?;
+    seeds
+        .pop()
+        .ok_or_else(|| RusticolError::internal("singleton process-seed batch returned no seed"))
+}
+
+/// Build ordered compact process seeds while authenticating and indexing the
+/// shared model catalogs exactly once.
+pub(crate) fn build_on_the_fly_process_seeds_v1(
+    projections: Vec<OnTheFlyProcessSeedProjectionV1>,
+    templates: &ValidatedRecurrenceTemplateInput,
+    direct: &PreparedDirectExecutorCatalog,
+    prepared_pack_digest: SemanticDigest,
+) -> RusticolResult<Vec<OnTheFlyProcessSeedV1>> {
     let summary = templates.summary();
     if prepared_pack_digest != summary.prepared_kernel_pack_digest {
         return Err(integrity(
             "on-the-fly source projection names a different prepared-kernel pack",
         ));
     }
+
+    #[cfg(test)]
+    PROCESS_SEED_TEMPLATE_CATALOG_BUILD_COUNT.with(|count| count.set(count.get() + 1));
+    let template_catalog = TemplateCatalog::new(templates.input())?;
+    let mut seeds = Vec::new();
+    seeds
+        .try_reserve_exact(projections.len())
+        .map_err(|error| invalid(format!("process-seed allocation failed: {error}")))?;
+    for (index, projection) in projections.into_iter().enumerate() {
+        let process_digest = projection.process_digest.clone();
+        let seed = build_on_the_fly_process_seed_from_catalog_v1(
+            projection,
+            templates,
+            &template_catalog,
+            direct,
+            prepared_pack_digest,
+        )
+        .map_err(|error| {
+            RusticolError::with_kind(
+                error.kind(),
+                format!(
+                    "on-the-fly process seed at index {index} (process digest {process_digest:?}) failed: {error}"
+                ),
+            )
+        })?;
+        seeds.push(seed);
+    }
+    Ok(seeds)
+}
+
+fn build_on_the_fly_process_seed_from_catalog_v1(
+    projection: OnTheFlyProcessSeedProjectionV1,
+    templates: &ValidatedRecurrenceTemplateInput,
+    template_catalog: &TemplateCatalog<'_>,
+    direct: &PreparedDirectExecutorCatalog,
+    prepared_pack_digest: SemanticDigest,
+) -> RusticolResult<OnTheFlyProcessSeedV1> {
+    let summary = templates.summary();
     validate_permutation(
         &projection.external_permutation,
         projection.external_sources.len(),
         "source-projection external permutation",
     )?;
 
-    let template_catalog = TemplateCatalog::new(templates.input())?;
     let endpoint_contracts = pairing_endpoint_contracts(projection.fermion_pairing.as_ref())?;
     let parameter_projection = parameter_projection(&projection.parameter_projection)?;
     let source_anchors = source_anchors(
         &projection.external_sources,
         templates,
-        &template_catalog,
+        template_catalog,
         direct,
         &endpoint_contracts,
         &parameter_projection,
@@ -219,7 +320,7 @@ pub(crate) fn build_on_the_fly_process_seed_v1(
         projection.coupling_order_policy,
         &projection.coupling_hierarchies,
         &projection.coupling_limits,
-        &template_catalog,
+        template_catalog,
     )?;
     let normalization_factor = projection
         .normalization
@@ -271,12 +372,14 @@ fn source_anchors(
         for state in &projection.states {
             let source = canonical_source(input, state.source_template_id)?;
             let current_state = canonical_current_state(input, state.current_state_template_id)?;
-            validate_crossed_source_state(
+            validate_source_projection(
+                projection.source_slot,
                 projection.is_initial,
                 state,
                 source,
                 current_state,
                 input,
+                catalog,
             )?;
             direct.resolve_evaluator(DirectExecutorRole::Source, source.evaluator_binding_id)?;
             let family = source_family(catalog, source, current_state)?;
@@ -359,41 +462,95 @@ fn canonical_current_state(
     Ok(state)
 }
 
-fn validate_crossed_source_state(
+fn validate_source_projection(
+    source_slot: u32,
     is_initial: bool,
     projected: &SourceStateProjection,
     source: SourceRow,
     effective: CurrentStateRow,
     input: &crate::recurrence::template::OwnedRecurrenceTemplateInput,
+    catalog: &TemplateCatalog<'_>,
 ) -> RusticolResult<()> {
     let canonical = canonical_current_state(input, source.state_template_id)?;
-    if projected.chirality != effective.chirality
-        || projected.source_helicity != source.helicity
-        || projected.spin_state != source.spin_state
+    super::validate_crossed_source_state(
+        is_initial,
+        &ProcessSourceStateRow {
+            source_slot,
+            state_index: projected.state_index,
+            public_helicity: projected.public_helicity,
+            chirality: projected.chirality,
+            spin_state: projected.spin_state,
+            current_state_template_id: projected.current_state_template_id,
+            source_template_id: projected.source_template_id,
+            momentum_sign: projected.momentum_sign,
+            crossing_phase_factor_id: 0,
+        },
+        source,
+        input,
+    )?;
+
+    let crossing = applied_source_crossing(is_initial, source, catalog)?;
+    let expected_helicity = source
+        .helicity
+        .checked_mul(crossing.helicity_factor)
+        .ok_or_else(|| integrity("source crossing overflows the helicity state"))?;
+    let expected_chirality = canonical
+        .chirality
+        .checked_mul(crossing.chirality_factor)
+        .ok_or_else(|| integrity("source crossing overflows the chirality state"))?;
+    let expected_spin_state = source
+        .spin_state
+        .checked_mul(crossing.spin_state_factor)
+        .ok_or_else(|| integrity("source crossing overflows the spin state"))?;
+    let projected_phase = projected.crossing_phase.exact("source crossing phase")?;
+    if projected.public_helicity != expected_helicity
+        || projected.source_helicity != expected_helicity
+        || projected.chirality != expected_chirality
+        || effective.chirality != expected_chirality
+        || projected.spin_state != expected_spin_state
+        || projected.momentum_sign != crossing.momentum_sign
+        || projected_phase != crossing.phase
     {
         return Err(integrity(
-            "source execution values disagree with their prepared source/current templates",
-        ));
-    }
-    let compatible = canonical.particle_id == effective.particle_id
-        && canonical.anti_particle_id == effective.anti_particle_id
-        && canonical.species_string_id == effective.species_string_id
-        && canonical.orientation == effective.orientation
-        && canonical.statistics == effective.statistics
-        && canonical.color_representation == effective.color_representation
-        && canonical.basis_string_id == effective.basis_string_id
-        && canonical.tensor_ordering_sequence_id == effective.tensor_ordering_sequence_id
-        && canonical.dimension == effective.dimension
-        && canonical.lc_color_shape_string_id == effective.lc_color_shape_string_id
-        && canonical.auxiliary_kind_string_id == effective.auxiliary_kind_string_id
-        && canonical.mass_parameter_id == effective.mass_parameter_id
-        && canonical.width_parameter_id == effective.width_parameter_id;
-    if !compatible || (!is_initial && canonical.id != effective.id) {
-        return Err(integrity(
-            "source and effective current-state templates are not crossing-compatible",
+            "crossed source execution values disagree with their prepared source/current templates",
         ));
     }
     Ok(())
+}
+
+fn applied_source_crossing(
+    is_initial: bool,
+    source: SourceRow,
+    catalog: &TemplateCatalog<'_>,
+) -> RusticolResult<AppliedSourceCrossing> {
+    if !is_initial {
+        return Ok(AppliedSourceCrossing::IDENTITY);
+    }
+    let encoded = catalog.string(source.crossing_string_id, "source crossing")?;
+    let crossing: SourceCrossingProjection = serde_json::from_str(encoded)
+        .map_err(|error| integrity(format!("source crossing contract is invalid: {error}")))?;
+    if !matches!(crossing.helicity_factor, -1 | 1)
+        || !matches!(crossing.chirality_factor, -1 | 1)
+        || !matches!(crossing.spin_state_factor, -1 | 1)
+    {
+        return Err(integrity(
+            "source crossing contract has a non-sign state factor",
+        ));
+    }
+    let phase = crossing.phase.exact("source crossing phase")?;
+    if phase.is_zero() {
+        return Err(integrity("source crossing phase is zero"));
+    }
+    Ok(AppliedSourceCrossing {
+        momentum_sign: match crossing.momentum_transform {
+            SourceMomentumTransformProjection::Identity => 1,
+            SourceMomentumTransformProjection::NegateFourMomentum => -1,
+        },
+        helicity_factor: crossing.helicity_factor,
+        chirality_factor: crossing.chirality_factor,
+        spin_state_factor: crossing.spin_state_factor,
+        phase,
+    })
 }
 
 fn source_family(
@@ -694,7 +851,9 @@ fn merge_equal_option<T: Copy + Eq>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::recurrence::on_the_fly::seed_codec::encode_on_the_fly_process_seed_v1;
+    use crate::recurrence::on_the_fly::seed_codec::{
+        decode_on_the_fly_process_seed_v1, encode_on_the_fly_process_seed_v1,
+    };
     use crate::recurrence::on_the_fly::{OnTheFlyForbiddenWorkGuardV1, scalar_adapter_test_seed};
     use crate::recurrence::template::{CouplingOrderTermRow, IndexedRangeRow};
     use crate::recurrence::{
@@ -792,6 +951,53 @@ mod tests {
         (source, templates, direct)
     }
 
+    fn crossed_scalar_inputs() -> (
+        Value,
+        ValidatedRecurrenceTemplateInput,
+        PreparedDirectExecutorCatalog,
+    ) {
+        let (mut projection, templates, direct) = scalar_inputs();
+        let mut input = templates.into_input();
+        let crossing = serde_json::to_vec(&json!({
+            "chirality_factor": -1,
+            "helicity_factor": -1,
+            "momentum_transform": "negate-four-momentum",
+            "phase": {
+                "imag_denominator": "1",
+                "imag_numerator": "0",
+                "real_denominator": "1",
+                "real_numerator": "-1"
+            },
+            "spin_state_factor": -1
+        }))
+        .unwrap();
+        let previous = input.string_ranges.last().unwrap();
+        let previous = previous
+            .as_usize_range(input.string_bytes.len(), "template string")
+            .unwrap();
+        assert!(&input.string_bytes[previous] < crossing.as_slice());
+        let crossing_string_id = u32::try_from(input.string_ranges.len()).unwrap();
+        input.string_ranges.push(CheckedTableRange::new(
+            u64::try_from(input.string_bytes.len()).unwrap(),
+            u64::try_from(crossing.len()).unwrap(),
+        ));
+        input.string_bytes.extend_from_slice(&crossing);
+        input.sources[0].crossing_string_id = crossing_string_id;
+        input.sources[0].helicity = 1;
+        let templates = input.validate().unwrap();
+
+        for source_slot in 0..2 {
+            projection["external_sources"][source_slot]["is_initial"] = json!(true);
+            let state = &mut projection["external_sources"][source_slot]["states"][0];
+            state["public_helicity"] = json!(-1);
+            state["source_helicity"] = json!(-1);
+            state["momentum_sign"] = json!(-1);
+            state["crossing_phase"]["real_numerator"] = json!("-1");
+            state["spin_state"] = json!(-50_000);
+        }
+        (projection, templates, direct)
+    }
+
     #[test]
     fn compact_projection_matches_the_established_seed_codec_exactly() {
         let (source, templates, direct) = scalar_inputs();
@@ -826,6 +1032,72 @@ mod tests {
     }
 
     #[test]
+    fn crossed_execution_state_is_authenticated_and_round_trips_exactly() {
+        let (source, templates, direct) = crossed_scalar_inputs();
+        let build = |value: &Value| {
+            build_on_the_fly_process_seed_v1(
+                parse_on_the_fly_process_seed_projection_v1(&serde_json::to_vec(value).unwrap())?,
+                &templates,
+                &direct,
+                templates.summary().prepared_kernel_pack_digest,
+            )
+        };
+        let seed = build(&source).unwrap();
+        for anchor in seed.source_anchors() {
+            let state = &anchor.states()[0];
+            assert!(anchor.is_initial());
+            assert_eq!(state.public_helicity, -1);
+            assert_eq!(state.source_helicity, -1);
+            assert_eq!(state.spin_state, -50_000);
+            assert_eq!(state.momentum_sign, -1);
+            assert_eq!(
+                state.crossing_phase,
+                ExactComplexRational::ONE.checked_neg().unwrap()
+            );
+        }
+        let encoded = encode_on_the_fly_process_seed_v1(&seed).unwrap();
+        let decoded = decode_on_the_fly_process_seed_v1(&encoded).unwrap();
+        assert_eq!(decoded, seed);
+        assert_eq!(
+            encode_on_the_fly_process_seed_v1(&decoded).unwrap(),
+            encoded
+        );
+
+        for (field, stale) in [
+            ("public_helicity", json!(1)),
+            ("source_helicity", json!(1)),
+            ("spin_state", json!(50_000)),
+            ("momentum_sign", json!(1)),
+        ] {
+            let mut tampered = source.clone();
+            tampered["external_sources"][0]["states"][0][field] = stale;
+            assert!(
+                build(&tampered)
+                    .unwrap_err()
+                    .message()
+                    .contains("crossed source execution values disagree")
+            );
+        }
+        let mut stale_phase = source.clone();
+        stale_phase["external_sources"][0]["states"][0]["crossing_phase"]["real_numerator"] =
+            json!("1");
+        assert!(
+            build(&stale_phase)
+                .unwrap_err()
+                .message()
+                .contains("crossed source execution values disagree")
+        );
+        let mut stale_chirality = source.clone();
+        stale_chirality["external_sources"][0]["states"][0]["chirality"] = json!(1);
+        assert!(
+            build(&stale_chirality)
+                .unwrap_err()
+                .message()
+                .contains("process source chirality")
+        );
+    }
+
+    #[test]
     fn minimal_projection_keeps_unspecified_model_orders_unbounded_for_cold_resolution() {
         let (mut source, templates, direct) = scalar_inputs();
         source["coupling_order_policy"] = json!("minimal");
@@ -847,6 +1119,149 @@ mod tests {
         );
         assert_eq!(seed.coupling_hierarchies(), [1]);
         assert_eq!(seed.explicit_coupling_limits(), [None]);
+    }
+
+    #[test]
+    fn ordered_process_seed_batch_is_deterministic_and_builds_one_template_catalog() {
+        let (first_source, templates, direct) = scalar_inputs();
+        let mut second_source = first_source.clone();
+        second_source["process_digest"] = json!(digest(93).to_string());
+        let pack_digest = templates.summary().prepared_kernel_pack_digest;
+        let parse = |value: &Value| {
+            parse_on_the_fly_process_seed_projection_v1(&serde_json::to_vec(value).unwrap())
+                .unwrap()
+        };
+        let singleton_bytes = |value: &Value| {
+            encode_on_the_fly_process_seed_v1(
+                &build_on_the_fly_process_seed_v1(parse(value), &templates, &direct, pack_digest)
+                    .unwrap(),
+            )
+            .unwrap()
+        };
+        let expected = [
+            singleton_bytes(&second_source),
+            singleton_bytes(&first_source),
+        ];
+
+        PROCESS_SEED_TEMPLATE_CATALOG_BUILD_COUNT.with(|count| count.set(0));
+        let guard = OnTheFlyForbiddenWorkGuardV1::begin().unwrap();
+        let first = build_on_the_fly_process_seeds_v1(
+            vec![parse(&second_source), parse(&first_source)],
+            &templates,
+            &direct,
+            pack_digest,
+        )
+        .unwrap()
+        .iter()
+        .map(encode_on_the_fly_process_seed_v1)
+        .collect::<RusticolResult<Vec<_>>>()
+        .unwrap();
+        let forbidden = guard.finish().unwrap();
+        PROCESS_SEED_TEMPLATE_CATALOG_BUILD_COUNT.with(|count| assert_eq!(count.get(), 1));
+
+        PROCESS_SEED_TEMPLATE_CATALOG_BUILD_COUNT.with(|count| count.set(0));
+        let second = build_on_the_fly_process_seeds_v1(
+            vec![parse(&second_source), parse(&first_source)],
+            &templates,
+            &direct,
+            pack_digest,
+        )
+        .unwrap()
+        .iter()
+        .map(encode_on_the_fly_process_seed_v1)
+        .collect::<RusticolResult<Vec<_>>>()
+        .unwrap();
+        PROCESS_SEED_TEMPLATE_CATALOG_BUILD_COUNT.with(|count| assert_eq!(count.get(), 1));
+
+        assert_eq!(first, expected);
+        assert_eq!(second, expected);
+        assert_eq!(forbidden.direct_plan_load_attempts, 0);
+        assert_eq!(forbidden.direct_plan_decode_attempts, 0);
+        assert_eq!(forbidden.direct_plan_materialization_attempts, 0);
+        assert_eq!(forbidden.established_builder_attempts, 0);
+    }
+
+    #[test]
+    fn ordered_process_seed_batch_attributes_failure_to_index_and_identity() {
+        let (source, templates, direct) = scalar_inputs();
+        let mut invalid_source = source.clone();
+        invalid_source["process_digest"] = json!(digest(93).to_string());
+        invalid_source["external_sources"][0]["states"][0]["source_template_id"] = json!(99);
+        let parse = |value: &Value| {
+            parse_on_the_fly_process_seed_projection_v1(&serde_json::to_vec(value).unwrap())
+                .unwrap()
+        };
+
+        let error = build_on_the_fly_process_seeds_v1(
+            vec![parse(&source), parse(&invalid_source)],
+            &templates,
+            &direct,
+            templates.summary().prepared_kernel_pack_digest,
+        )
+        .unwrap_err();
+
+        assert!(error.message().contains("process seed at index 1"));
+        assert!(error.message().contains(&digest(93).to_string()));
+        assert!(error.message().contains("source template is absent"));
+    }
+
+    #[cfg(feature = "python-generation-bridge")]
+    #[test]
+    fn process_seed_byte_singleton_matches_one_element_batch_exactly() {
+        let (source, templates, direct) = scalar_inputs();
+        let source_bytes = serde_json::to_vec(&source).unwrap();
+        let pack_digest = templates.summary().prepared_kernel_pack_digest;
+
+        let singleton = crate::__private::build_on_the_fly_process_seed_bytes_v1(
+            &source_bytes,
+            &templates,
+            &direct,
+            pack_digest,
+        )
+        .unwrap();
+        let batch = crate::__private::build_on_the_fly_process_seed_bytes_batch_v1(
+            &[source_bytes],
+            &templates,
+            &direct,
+            pack_digest,
+        )
+        .unwrap();
+        assert_eq!(batch, vec![singleton]);
+
+        let malformed = b"{".to_vec();
+        let singleton_error = crate::__private::build_on_the_fly_process_seed_bytes_v1(
+            &malformed,
+            &templates,
+            &direct,
+            pack_digest,
+        )
+        .unwrap_err();
+        let batch_error = crate::__private::build_on_the_fly_process_seed_bytes_batch_v1(
+            &[malformed],
+            &templates,
+            &direct,
+            pack_digest,
+        )
+        .unwrap_err();
+        assert_eq!(singleton_error, batch_error);
+    }
+
+    #[cfg(feature = "python-generation-bridge")]
+    #[test]
+    fn empty_process_seed_byte_batch_builds_one_template_catalog() {
+        let (_, templates, direct) = scalar_inputs();
+        PROCESS_SEED_TEMPLATE_CATALOG_BUILD_COUNT.with(|count| count.set(0));
+
+        let batch = crate::__private::build_on_the_fly_process_seed_bytes_batch_v1(
+            &[],
+            &templates,
+            &direct,
+            templates.summary().prepared_kernel_pack_digest,
+        )
+        .unwrap();
+
+        assert!(batch.is_empty());
+        PROCESS_SEED_TEMPLATE_CATALOG_BUILD_COUNT.with(|count| assert_eq!(count.get(), 1));
     }
 
     #[test]

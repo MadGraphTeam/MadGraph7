@@ -115,7 +115,66 @@ pub mod __private {
         crate::recurrence::template_json::project_recurrence_template_catalog_json_v1(value)
     }
 
-    /// Unstable cold-path bridge for encoding one validated compact seed.
+    /// Unstable cold-path bridge for encoding ordered validated compact seeds.
+    #[doc(hidden)]
+    pub fn build_on_the_fly_process_seed_bytes_batch_v1(
+        ordered_source_projection_jsons: &[Vec<u8>],
+        templates: &ValidatedRecurrenceTemplateInput,
+        direct_catalog: &PreparedDirectExecutorCatalog,
+        prepared_pack_digest: SemanticDigest,
+    ) -> RusticolResult<Vec<Vec<u8>>> {
+        let mut projections = Vec::new();
+        projections
+            .try_reserve_exact(ordered_source_projection_jsons.len())
+            .map_err(|error| {
+                crate::RusticolError::invalid_argument(format!(
+                    "process-projection allocation failed: {error}"
+                ))
+            })?;
+        for (index, source_projection_json) in ordered_source_projection_jsons.iter().enumerate() {
+            let projection =
+                crate::recurrence::on_the_fly::parse_on_the_fly_process_seed_projection_v1(
+                    source_projection_json,
+                )
+                .map_err(|error| {
+                    crate::RusticolError::with_kind(
+                        error.kind(),
+                        format!(
+                            "on-the-fly process seed projection at index {index} failed: {error}"
+                        ),
+                    )
+                })?;
+            projections.push(projection);
+        }
+        let seeds = crate::recurrence::on_the_fly::build_on_the_fly_process_seeds_v1(
+            projections,
+            templates,
+            direct_catalog,
+            prepared_pack_digest,
+        )?;
+        let mut encoded = Vec::new();
+        encoded.try_reserve_exact(seeds.len()).map_err(|error| {
+            crate::RusticolError::invalid_argument(format!(
+                "encoded process-seed allocation failed: {error}"
+            ))
+        })?;
+        for (index, seed) in seeds.iter().enumerate() {
+            encoded.push(
+                crate::recurrence::on_the_fly::seed_codec::encode_on_the_fly_process_seed_v1(seed)
+                    .map_err(|error| {
+                        crate::RusticolError::with_kind(
+                            error.kind(),
+                            format!(
+                                "on-the-fly process seed encoding at index {index} failed: {error}"
+                            ),
+                        )
+                    })?,
+            );
+        }
+        Ok(encoded)
+    }
+
+    /// Unstable singleton wrapper retained for the private PyO3 generator.
     #[doc(hidden)]
     pub fn build_on_the_fly_process_seed_bytes_v1(
         source_projection_json: &[u8],
@@ -123,17 +182,19 @@ pub mod __private {
         direct_catalog: &PreparedDirectExecutorCatalog,
         prepared_pack_digest: SemanticDigest,
     ) -> RusticolResult<Vec<u8>> {
-        let projection =
-            crate::recurrence::on_the_fly::parse_on_the_fly_process_seed_projection_v1(
-                source_projection_json,
-            )?;
-        let seed = crate::recurrence::on_the_fly::build_on_the_fly_process_seed_v1(
-            projection,
+        let payloads = build_on_the_fly_process_seed_bytes_batch_v1(
+            &[source_projection_json.to_vec()],
             templates,
             direct_catalog,
             prepared_pack_digest,
         )?;
-        crate::recurrence::on_the_fly::seed_codec::encode_on_the_fly_process_seed_v1(&seed)
+        let [payload] = <[Vec<u8>; 1]>::try_from(payloads).map_err(|payloads| {
+            crate::RusticolError::internal(format!(
+                "singleton process-seed byte batch returned {} payloads",
+                payloads.len()
+            ))
+        })?;
+        Ok(payload)
     }
 }
 pub const ARTIFACT_MANIFEST_FILE: &str = "artifact.json";

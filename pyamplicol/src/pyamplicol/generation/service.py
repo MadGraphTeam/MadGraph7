@@ -139,7 +139,10 @@ from .numerical_current_warmup import (
     generic_dag_numerical_current_opt_out_report,
     run_generic_dag_numerical_current_warmup,
 )
-from .on_the_fly_seed import project_on_the_fly_process_seed_v1
+from .on_the_fly_seed import (
+    OnTheFlyGenerationProjectionV1,
+    project_on_the_fly_process_seed_v1,
+)
 from .physics_metadata import build_resolved_physics_from_dag
 from .progress import GenerationPhaseReporter, PhaseHandle
 from .recurrence_color import (
@@ -464,15 +467,15 @@ class _RustRecurrenceLoweringBinding(Protocol):
     ) -> object: ...
 
 
-class _RustOnTheFlySeedBinding(Protocol):
+class _RustOnTheFlySeedsBinding(Protocol):
     def __call__(
         self,
-        source_projection_json: bytes,
+        ordered_source_projection_jsons: tuple[bytes, ...],
         recurrence_template_catalog_json: bytes,
         direct_template_catalog_json: bytes,
         prepared_kernel_pack_digest: str,
         /,
-    ) -> bytes: ...
+    ) -> object: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -970,43 +973,91 @@ def _invoke_rust_eager_lowering_v1(
     )
 
 
-def _invoke_rust_on_the_fly_seed_builder_v1(
-    source_projection_json: bytes,
+def _invoke_rust_on_the_fly_seed_batch_builder_v1(
+    ordered_source_projection_jsons: Sequence[bytes],
     recurrence_template_catalog_json: bytes,
     direct_template_catalog_json: bytes,
     prepared_kernel_pack_digest: str,
-) -> bytes:
+    *,
+    process_identities: Sequence[str] = (),
+) -> tuple[bytes, ...]:
+    ordered_sources = tuple(ordered_source_projection_jsons)
+    identities = tuple(process_identities)
+    if identities and len(identities) != len(ordered_sources):
+        raise GenerationError(
+            "on-the-fly process identities do not align with source projections"
+        )
     try:
         module = importlib.import_module("pyamplicol._rusticol")
         verify_native_module(module)
     except (ImportError, OSError, RuntimeError) as exc:
         raise GenerationError(
             "on-the-fly generation requires the current native "
-            "_build_on_the_fly_process_seed_v1 binding"
+            "_build_on_the_fly_process_seeds_v1 binding"
         ) from exc
-    candidate = getattr(module, "_build_on_the_fly_process_seed_v1", None)
+    candidate = getattr(module, "_build_on_the_fly_process_seeds_v1", None)
     if not callable(candidate):
         raise GenerationError(
             "pyamplicol._rusticol does not provide the private "
-            "_build_on_the_fly_process_seed_v1 binding"
+            "_build_on_the_fly_process_seeds_v1 binding"
         )
-    binding = cast(_RustOnTheFlySeedBinding, candidate)
+    binding = cast(_RustOnTheFlySeedsBinding, candidate)
     try:
-        payload = binding(
-            source_projection_json,
+        result = binding(
+            ordered_sources,
             recurrence_template_catalog_json,
             direct_template_catalog_json,
             prepared_kernel_pack_digest,
         )
     except Exception as exc:
-        raise GenerationError(
-            f"on-the-fly process-seed construction failed: {exc}"
-        ) from exc
-    if not isinstance(payload, bytes) or not payload:
-        raise GenerationError(
-            "native on-the-fly process-seed builder returned an empty payload"
+        detail = str(exc)
+        attributed = next(
+            (
+                (index, identities[index])
+                for index in range(len(identities) - 1, -1, -1)
+                if f"index {index} " in detail
+            ),
+            None,
         )
-    return payload
+        context = (
+            ""
+            if attributed is None
+            else f" for process index {attributed[0]} {attributed[1]!r}"
+        )
+        raise GenerationError(
+            f"on-the-fly process-seed construction failed{context}: {detail}"
+        ) from exc
+    if not isinstance(result, (list, tuple)) or len(result) != len(ordered_sources):
+        raise GenerationError(
+            "native on-the-fly process-seed builder returned a result with the "
+            "wrong process count"
+        )
+    payloads: list[bytes] = []
+    for index, payload in enumerate(result):
+        if not isinstance(payload, bytes) or not payload:
+            identity = "" if not identities else f" {identities[index]!r}"
+            raise GenerationError(
+                "native on-the-fly process-seed builder returned an empty payload "
+                f"for process index {index}{identity}"
+            )
+        payloads.append(payload)
+    return tuple(payloads)
+
+
+def _invoke_rust_on_the_fly_seed_builder_v1(
+    source_projection_json: bytes,
+    recurrence_template_catalog_json: bytes,
+    direct_template_catalog_json: bytes,
+    prepared_kernel_pack_digest: str,
+) -> bytes:
+    """Retain the original singleton bridge as a plural-path wrapper."""
+
+    return _invoke_rust_on_the_fly_seed_batch_builder_v1(
+        (source_projection_json,),
+        recurrence_template_catalog_json,
+        direct_template_catalog_json,
+        prepared_kernel_pack_digest,
+    )[0]
 
 
 def _invoke_rust_recurrence_lowering_v2(
@@ -1846,6 +1897,13 @@ class _GeneratedOnTheFlyProcess:
 
 
 @dataclass(frozen=True, slots=True)
+class _ProjectedOnTheFlyProcess:
+    index: int
+    expanded: _ExpandedProcess
+    projection: OnTheFlyGenerationProjectionV1
+
+
+@dataclass(frozen=True, slots=True)
 class _RecurrenceModelInputs:
     bundle: PreparedModelBundle
     catalog: RecurrenceTemplateCatalog
@@ -2670,40 +2728,50 @@ class GenerationBackend:
         )
         with TemporaryDirectory(prefix="pyamplicol-on-the-fly-generation-") as root:
             temporary_root = Path(root)
-            worker_count = self._process_worker_count(len(expanded))
-            executor = (
-                ThreadPoolExecutor(
-                    max_workers=worker_count,
-                    thread_name_prefix="pyamplicol-on-the-fly-generation",
+            indexed = tuple(enumerate(expanded))
+            with reporter.phase(
+                "on-the-fly-construction",
+                "Constructing compact on-the-fly process seeds",
+                total=len(indexed),
+            ) as phase:
+                projected = _map_process_phase(
+                    indexed,
+                    lambda item: self._project_on_the_fly_process(
+                        item[1],
+                        generation_model,
+                        model_inputs,
+                        index=item[0],
+                    ),
+                    executor=None,
+                    max_in_flight=1,
+                    phase_name="on-the-fly source projection",
+                    item_name=lambda item: item[1].request.name,
                 )
-                if worker_count > 1
-                else None
-            )
-            try:
-                indexed = tuple(enumerate(expanded))
-                with reporter.phase(
-                    "on-the-fly-construction",
-                    "Constructing compact on-the-fly process seeds",
-                    total=len(indexed),
-                ) as phase:
-                    generated = _map_process_phase(
-                        indexed,
-                        lambda item: self._construct_on_the_fly_artifact(
-                            item[1],
-                            generation_model,
-                            model_inputs,
-                            temporary_root,
-                            index=item[0],
-                            phase=phase,
-                        ),
-                        executor=executor,
-                        max_in_flight=worker_count,
-                        phase_name="on-the-fly seed construction",
-                        item_name=lambda item: item[1].request.name,
-                    )
-            finally:
-                if executor is not None:
-                    executor.shutdown(wait=True, cancel_futures=True)
+                seed_payloads = _invoke_rust_on_the_fly_seed_batch_builder_v1(
+                    tuple(item.projection.seed.to_json_bytes() for item in projected),
+                    model_inputs.template_catalog_json,
+                    model_inputs.direct_template_catalog_json,
+                    model_inputs.prepared_kernel_pack_digest,
+                    process_identities=tuple(
+                        item.expanded.request.name for item in projected
+                    ),
+                )
+                packaged = tuple(zip(projected, seed_payloads, strict=True))
+                generated = _map_process_phase(
+                    packaged,
+                    lambda item: self._construct_on_the_fly_artifact(
+                        item[0],
+                        item[1],
+                        generation_model,
+                        model_inputs,
+                        temporary_root,
+                        phase=phase,
+                    ),
+                    executor=None,
+                    max_in_flight=1,
+                    phase_name="on-the-fly artifact packaging",
+                    item_name=lambda item: item[0].expanded.request.name,
+                )
 
             artifact_processes = tuple(item.artifact for item in generated)
             with reporter.phase(
@@ -2792,17 +2860,14 @@ class GenerationBackend:
             files=write_result.files,
         )
 
-    def _construct_on_the_fly_artifact(
+    def _project_on_the_fly_process(
         self,
         expanded: _ExpandedProcess,
         model: Model,
         model_inputs: _RecurrenceModelInputs,
-        temporary_root: Path,
         *,
         index: int,
-        phase: PhaseHandle,
-    ) -> _GeneratedOnTheFlyProcess:
-        process_id = expanded.request.name
+    ) -> _ProjectedOnTheFlyProcess:
         run = self._run_config
         if run is None:  # pragma: no cover - guarded by execution mode
             raise GenerationError("on-the-fly generation requires RunConfig")
@@ -2831,12 +2896,32 @@ class GenerationBackend:
             ),
             coupling_order_limits=explicit_limits,
         )
-        seed_payload = _invoke_rust_on_the_fly_seed_builder_v1(
-            projection.seed.to_json_bytes(),
-            model_inputs.template_catalog_json,
-            model_inputs.direct_template_catalog_json,
-            model_inputs.prepared_kernel_pack_digest,
+        return _ProjectedOnTheFlyProcess(
+            index=index,
+            expanded=expanded,
+            projection=projection,
         )
+
+    def _construct_on_the_fly_artifact(
+        self,
+        projected: _ProjectedOnTheFlyProcess,
+        seed_payload: bytes,
+        model: Model,
+        model_inputs: _RecurrenceModelInputs,
+        temporary_root: Path,
+        *,
+        phase: PhaseHandle,
+    ) -> _GeneratedOnTheFlyProcess:
+        expanded = projected.expanded
+        projection = projected.projection
+        index = projected.index
+        process_id = expanded.request.name
+        run = self._run_config
+        if run is None:  # pragma: no cover - guarded by execution mode
+            raise GenerationError("on-the-fly generation requires RunConfig")
+        selection = self._process_selection
+        coupling_policy = str(run.process.coupling_order_policy)
+        explicit_limits = self._coupling_order_limits
         runtime_path = (
             temporary_root
             / "on-the-fly-runtimes"

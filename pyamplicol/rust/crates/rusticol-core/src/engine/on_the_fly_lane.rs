@@ -350,8 +350,8 @@ impl OnTheFlyNativeRuntime {
     }
 
     /// Cold selector/trace construction. Repeating an identical public
-    /// selection reuses the retained query-local traces and warmed row family;
-    /// increasing only the point capacity replaces its numeric workspace.
+    /// selection reuses its retained requests, projections, and warmed row
+    /// family; increasing only the point capacity replaces numeric workspace.
     pub(super) fn prepare_lc_queries(
         &mut self,
         requests: &[OnTheFlyLcQueryRequestV1],
@@ -605,6 +605,11 @@ impl OnTheFlyNativeRuntime {
     }
 
     #[cfg(test)]
+    pub(super) fn semantic_executor_binding_count(&self) -> RusticolResult<u32> {
+        self.executor.resolver().semantic_executor_binding_count()
+    }
+
+    #[cfg(test)]
     pub(super) fn retained_state_census(&self) -> OnTheFlyRetainedStateCensusV1 {
         self.families.iter().chain(self.pending_family.iter()).fold(
             OnTheFlyRetainedStateCensusV1::default(),
@@ -624,6 +629,7 @@ impl OnTheFlyNativeRuntime {
 
     pub(super) fn clear(&mut self) -> RusticolResult<()> {
         self.executor.clear_families()?;
+        self.executor.resolver_mut().clear_resolved_bindings();
         self.pending_family = None;
         self.last_family = None;
         self.family_lookup.clear();

@@ -2987,6 +2987,31 @@ impl RuntimeProfile {
         self.eager_copy_out_s += sector.eager_copy_out_s;
         self.eager_internal_scratch_bytes += sector.eager_internal_scratch_bytes;
         self.eager_internal_broadcast_bytes += sector.eager_internal_broadcast_bytes;
+        self.recurrence_momentum_fill_s += sector.recurrence_momentum_fill_s;
+        self.recurrence_union_source_fill_s += sector.recurrence_union_source_fill_s;
+        self.recurrence_schedule_s += sector.recurrence_schedule_s;
+        self.recurrence_source_kernel_s += sector.recurrence_source_kernel_s;
+        self.recurrence_contribution_kernel_s += sector.recurrence_contribution_kernel_s;
+        self.recurrence_finalization_s += sector.recurrence_finalization_s;
+        self.recurrence_closure_s += sector.recurrence_closure_s;
+        self.recurrence_replay_output_mapping_s += sector.recurrence_replay_output_mapping_s;
+        self.recurrence_momentum_scalar_value_count +=
+            sector.recurrence_momentum_scalar_value_count;
+        self.recurrence_schedule_execution_count += sector.recurrence_schedule_execution_count;
+        self.recurrence_replay_schedule_execution_count +=
+            sector.recurrence_replay_schedule_execution_count;
+        self.recurrence_union_schedule_execution_count +=
+            sector.recurrence_union_schedule_execution_count;
+        self.recurrence_union_source_row_count += sector.recurrence_union_source_row_count;
+        self.recurrence_replay_output_value_count += sector.recurrence_replay_output_value_count;
+        self.recurrence_source_call_count += sector.recurrence_source_call_count;
+        self.recurrence_source_row_count += sector.recurrence_source_row_count;
+        self.recurrence_contribution_call_count += sector.recurrence_contribution_call_count;
+        self.recurrence_contribution_row_count += sector.recurrence_contribution_row_count;
+        self.recurrence_finalization_call_count += sector.recurrence_finalization_call_count;
+        self.recurrence_finalization_row_count += sector.recurrence_finalization_row_count;
+        self.recurrence_closure_call_count += sector.recurrence_closure_call_count;
+        self.recurrence_closure_row_count += sector.recurrence_closure_row_count;
         self.recurrence_direct_packed_input_bytes += sector.recurrence_direct_packed_input_bytes;
         self.recurrence_direct_packed_output_bytes += sector.recurrence_direct_packed_output_bytes;
         self.recurrence_direct_scatter_bytes += sector.recurrence_direct_scatter_bytes;

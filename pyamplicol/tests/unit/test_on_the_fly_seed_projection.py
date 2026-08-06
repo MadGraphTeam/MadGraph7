@@ -13,7 +13,13 @@ from pyamplicol.generation.on_the_fly_seed import (
 from pyamplicol.generation.recurrence_fermion_pairing import (
     build_recurrence_fermion_pairing_roots_v1,
 )
+from pyamplicol.models import BuiltinSMModel
 from pyamplicol.models.base import Model
+from pyamplicol.models.builtin.process_ir import build_process_ir
+from pyamplicol.models.prepared_catalog import build_prepared_kernel_catalog
+from pyamplicol.models.recurrence_catalog_builder import (
+    build_recurrence_template_catalog,
+)
 from pyamplicol.models.recurrence_template import (
     CurrentStateTemplateV1,
     EvaluatorBindingV1,
@@ -332,6 +338,99 @@ def test_projection_is_deterministic_and_scales_with_external_sources_only() -> 
         sum(len(leg.source_states) for leg in item.external_sources)
         for item in projected
     ) == (8, 12, 16)
+
+
+def test_vector_execution_states_cross_only_for_initials() -> None:
+    catalog = _catalog()
+    projection = _project(_gluon_process(4)).seed
+    payload = projection.to_json_dict()
+    sources = tuple(sorted(catalog.sources, key=lambda row: row.template_id))
+
+    for leg, encoded in zip(
+        projection.external_sources,
+        payload["external_sources"],
+        strict=True,
+    ):
+        assert isinstance(encoded, dict)
+        states = encoded["states"]
+        assert isinstance(states, list)
+        for state, row in zip(leg.source_states, states, strict=True):
+            assert isinstance(row, dict)
+            declared = sources[state.source_template_id]
+            factor = -1 if leg.is_initial else 1
+            assert row["public_helicity"] == declared.helicity * factor
+            assert row["source_helicity"] == row["public_helicity"]
+            assert row["spin_state"] == declared.spin_state * factor
+            assert row["momentum_sign"] == (-1 if leg.is_initial else 1)
+
+
+def test_builtin_incoming_fermions_keep_crossed_execution_contract() -> None:
+    model = BuiltinSMModel()
+    process = build_process_ir("d d~ > z")
+    prepared = build_prepared_kernel_catalog(model)
+    catalog = build_recurrence_template_catalog(
+        model,
+        prepared,
+        compiled_model_digest="a" * 64,
+        prepared_kernel_pack_digest="b" * 64,
+    )
+    projection = project_on_the_fly_process_seed_v1(
+        process,
+        catalog,
+        model,
+        coupling_order_policy="minimal",
+        coupling_order_limits={"QED": 1},
+    ).seed
+
+    assert projection.process_digest == (
+        "8395a16bc0f605c05c7c746d7b428b07f175fb869ebd84f856f8886fe139d82f"
+    )
+    assert projection.external_permutation == (0, 1, 2)
+    assert tuple(leg.physical_pdg for leg in projection.external_sources[:2]) == (
+        1,
+        -1,
+    )
+    assert tuple(leg.outgoing_pdg for leg in projection.external_sources[:2]) == (
+        -1,
+        1,
+    )
+    source_rows = tuple(sorted(catalog.sources, key=lambda row: row.template_id))
+    current_rows = tuple(
+        sorted(catalog.current_states, key=lambda row: row.template_id)
+    )
+    current_by_name = {row.template_id: row for row in catalog.current_states}
+    encoded_legs = projection.to_json_dict()["external_sources"]
+    assert isinstance(encoded_legs, list)
+
+    for leg, encoded in zip(
+        projection.external_sources[:2],
+        encoded_legs[:2],
+        strict=True,
+    ):
+        assert leg.is_initial and leg.is_fermionic
+        assert tuple(state.spin_state for state in leg.source_states) == (1, -1)
+        assert isinstance(encoded, dict)
+        encoded_states = encoded["states"]
+        assert isinstance(encoded_states, list)
+        for state, row in zip(leg.source_states, encoded_states, strict=True):
+            assert isinstance(row, dict)
+            source = source_rows[state.source_template_id]
+            canonical_current = current_by_name[source.state_template_id]
+            effective_current = current_rows[state.current_state_template_id]
+            crossing = json.loads(source.crossing)
+            assert row["public_helicity"] == (
+                source.helicity * crossing["helicity_factor"]
+            )
+            assert row["source_helicity"] == row["public_helicity"]
+            assert row["spin_state"] == (
+                source.spin_state * crossing["spin_state_factor"]
+            )
+            assert row["chirality"] == effective_current.chirality
+            assert row["chirality"] == (
+                canonical_current.chirality * crossing["chirality_factor"]
+            )
+            assert row["momentum_sign"] == -1
+            assert row["crossing_phase"] == crossing["phase"]
 
 
 def test_compact_pairing_roots_do_not_enumerate_or_cap_runtime_pairings() -> None:

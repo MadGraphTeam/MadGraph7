@@ -132,56 +132,19 @@ fn validate_representative_physics(
 }
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-#[derive(Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct OnTheFlySelectionIdentityV1 {
-    helicity_ids: Option<Box<[String]>>,
-    color_ids: Option<Box<[String]>>,
+    helicity_ordinals: Option<Box<[usize]>>,
+    color_ordinals: Option<Box<[usize]>>,
 }
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 impl OnTheFlySelectionIdentityV1 {
-    fn from_sets(
-        helicity_ids: Option<&BTreeSet<String>>,
-        color_ids: Option<&BTreeSet<String>>,
-    ) -> Self {
+    fn from_slices(helicity_ordinals: Option<&[usize]>, color_ordinals: Option<&[usize]>) -> Self {
         Self {
-            helicity_ids: helicity_ids.map(|values| {
-                values
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice()
-            }),
-            color_ids: color_ids.map(|values| {
-                values
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .into_boxed_slice()
-            }),
+            helicity_ordinals: helicity_ordinals.map(|values| values.to_vec().into_boxed_slice()),
+            color_ordinals: color_ordinals.map(|values| values.to_vec().into_boxed_slice()),
         }
-    }
-
-    fn matches(
-        &self,
-        helicity_ids: Option<&BTreeSet<String>>,
-        color_ids: Option<&BTreeSet<String>>,
-    ) -> bool {
-        fn axis_matches(stored: Option<&[String]>, requested: Option<&BTreeSet<String>>) -> bool {
-            match (stored, requested) {
-                (None, None) => true,
-                (Some(stored), Some(requested)) => {
-                    stored.len() == requested.len()
-                        && stored
-                            .iter()
-                            .zip(requested)
-                            .all(|(left, right)| left == right)
-                }
-                _ => false,
-            }
-        }
-        axis_matches(self.helicity_ids.as_deref(), helicity_ids)
-            && axis_matches(self.color_ids.as_deref(), color_ids)
     }
 }
 
@@ -191,13 +154,17 @@ struct OnTheFlyPreparedSelectionV1 {
     identity: OnTheFlySelectionIdentityV1,
     helicity_indices: Box<[usize]>,
     color_indices: Box<[usize]>,
+    helicity_ids: Box<[String]>,
+    color_ids: Box<[String]>,
+    requests: Box<[super::on_the_fly_lane::OnTheFlyLcQueryRequestV1]>,
 }
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 pub(super) struct OnTheFlyExecutionRuntime {
     lane: super::on_the_fly_lane::OnTheFlyNativeRuntime,
     selectors: super::on_the_fly_selectors::OnTheFlyCompactSelectorAdapterV1,
-    prepared_selection: Option<OnTheFlyPreparedSelectionV1>,
+    prepared_selections: Vec<OnTheFlyPreparedSelectionV1>,
+    last_prepared_selection: Option<usize>,
     point_major_scratch: Vec<f64>,
 }
 
@@ -210,14 +177,16 @@ impl OnTheFlyExecutionRuntime {
         Self {
             lane,
             selectors,
-            prepared_selection: None,
+            prepared_selections: Vec::new(),
+            last_prepared_selection: None,
             point_major_scratch: Vec::new(),
         }
     }
 
     fn clear(&mut self) -> RusticolResult<()> {
         self.lane.clear()?;
-        self.prepared_selection = None;
+        self.prepared_selections.clear();
+        self.last_prepared_selection = None;
         self.point_major_scratch = Vec::new();
         Ok(())
     }
@@ -225,6 +194,16 @@ impl OnTheFlyExecutionRuntime {
     #[cfg(test)]
     pub(super) fn retained_family_count(&self) -> usize {
         self.lane.retained_family_count()
+    }
+
+    #[cfg(test)]
+    pub(super) fn retained_selection_count(&self) -> usize {
+        self.prepared_selections.len()
+    }
+
+    #[cfg(test)]
+    pub(super) fn semantic_executor_binding_count(&self) -> RusticolResult<u32> {
+        self.lane.semantic_executor_binding_count()
     }
 
     fn fill_point_major(&mut self, batch: F64MomentumBatchView<'_>) -> RusticolResult<usize> {
@@ -264,26 +243,72 @@ impl OnTheFlyExecutionRuntime {
         selected_colors: Option<&BTreeSet<String>>,
         point_count: usize,
     ) -> RusticolResult<(usize, usize)> {
+        let (helicity_ordinals, color_ordinals) = self
+            .selectors
+            .selected_ordinals(selected_helicities, selected_colors)?;
+        self.prepare_selection_identity(
+            OnTheFlySelectionIdentityV1 {
+                helicity_ordinals,
+                color_ordinals,
+            },
+            point_count,
+        )
+    }
+
+    fn prepare_selection_from_ordinals(
+        &mut self,
+        helicity_ordinals: Option<&[usize]>,
+        color_ordinals: Option<&[usize]>,
+        point_count: usize,
+    ) -> RusticolResult<(usize, usize)> {
+        self.prepare_selection_identity(
+            OnTheFlySelectionIdentityV1::from_slices(helicity_ordinals, color_ordinals),
+            point_count,
+        )
+    }
+
+    fn prepare_selection_identity(
+        &mut self,
+        identity: OnTheFlySelectionIdentityV1,
+        point_count: usize,
+    ) -> RusticolResult<(usize, usize)> {
         let point_capacity = u32::try_from(point_count)
             .map_err(|_| RusticolError::invalid_argument("on-the-fly point count exceeds u32"))?;
-        if self.prepared_selection.as_ref().is_some_and(|prepared| {
-            prepared
-                .identity
-                .matches(selected_helicities, selected_colors)
-        }) {
-            self.lane.reuse_current_lc_queries(point_capacity)?;
-            let prepared = self
-                .prepared_selection
-                .as_ref()
-                .expect("matching on-the-fly selection cache disappeared");
+        if let Some(index) = self
+            .last_prepared_selection
+            .filter(|index| self.prepared_selections[*index].identity == identity)
+            .or_else(|| {
+                self.prepared_selections
+                    .iter()
+                    .position(|prepared| prepared.identity == identity)
+            })
+        {
+            if self.last_prepared_selection == Some(index) {
+                self.lane.reuse_current_lc_queries(point_capacity)?;
+            } else {
+                self.lane.prepare_lc_queries(
+                    &self.prepared_selections[index].requests,
+                    point_capacity,
+                )?;
+                self.last_prepared_selection = Some(index);
+            }
+            let prepared = &self.prepared_selections[index];
             return Ok((
                 prepared.helicity_indices.len(),
                 prepared.color_indices.len(),
             ));
         }
-        let selection =
-            self.selectors
-                .selection(self.lane.seed(), selected_helicities, selected_colors)?;
+
+        self.prepared_selections.try_reserve(1).map_err(|error| {
+            RusticolError::invalid_argument(format!(
+                "on-the-fly prepared-selection allocation failed: {error}"
+            ))
+        })?;
+        let selection = self.selectors.selection_from_ordinals(
+            self.lane.seed(),
+            identity.helicity_ordinals.as_deref(),
+            identity.color_ordinals.as_deref(),
+        )?;
         let helicity_count = selection.helicity_count();
         let color_count = selection.color_count();
         let helicity_indices = (0..helicity_count)
@@ -292,31 +317,36 @@ impl OnTheFlyExecutionRuntime {
         let color_indices = (0..color_count)
             .map(|position| selection.color_ordinal_at(position))
             .collect::<RusticolResult<Vec<_>>>()?;
+        let helicity_ids = (0..helicity_count)
+            .map(|position| selection.helicity_id_at(position))
+            .collect::<RusticolResult<Vec<_>>>()?;
+        let color_ids = (0..color_count)
+            .map(|position| selection.color_id_at(position))
+            .collect::<RusticolResult<Vec<_>>>()?;
         let requests = selection.iter().collect::<RusticolResult<Vec<_>>>()?;
         self.lane.prepare_lc_queries(&requests, point_capacity)?;
-        self.prepared_selection = Some(OnTheFlyPreparedSelectionV1 {
-            identity: OnTheFlySelectionIdentityV1::from_sets(selected_helicities, selected_colors),
+        let index = self.prepared_selections.len();
+        self.prepared_selections.push(OnTheFlyPreparedSelectionV1 {
+            identity,
             helicity_indices: helicity_indices.into_boxed_slice(),
             color_indices: color_indices.into_boxed_slice(),
+            helicity_ids: helicity_ids.into_boxed_slice(),
+            color_ids: color_ids.into_boxed_slice(),
+            requests: requests.into_boxed_slice(),
         });
+        self.last_prepared_selection = Some(index);
         Ok((helicity_count, color_count))
     }
 
-    fn selected_axis_ids(
-        &self,
-        selected_helicities: Option<&BTreeSet<String>>,
-        selected_colors: Option<&BTreeSet<String>>,
-    ) -> RusticolResult<(Vec<String>, Vec<String>)> {
-        let selection =
-            self.selectors
-                .selection(self.lane.seed(), selected_helicities, selected_colors)?;
-        let helicities = (0..selection.helicity_count())
-            .map(|position| selection.helicity_id_at(position))
-            .collect::<RusticolResult<Vec<_>>>()?;
-        let colors = (0..selection.color_count())
-            .map(|position| selection.color_id_at(position))
-            .collect::<RusticolResult<Vec<_>>>()?;
-        Ok((helicities, colors))
+    fn current_prepared_selection(&self) -> RusticolResult<&OnTheFlyPreparedSelectionV1> {
+        self.last_prepared_selection
+            .and_then(|index| self.prepared_selections.get(index))
+            .ok_or_else(|| RusticolError::internal("on-the-fly selection was not retained"))
+    }
+
+    fn selected_axis_ids(&self) -> RusticolResult<(Vec<String>, Vec<String>)> {
+        let prepared = self.current_prepared_selection()?;
+        Ok((prepared.helicity_ids.to_vec(), prepared.color_ids.to_vec()))
     }
 
     fn run_total_into(
@@ -342,6 +372,29 @@ impl OnTheFlyExecutionRuntime {
         Ok(profile)
     }
 
+    fn run_total_into_by_ordinals(
+        &mut self,
+        common: &ExecutionRuntime,
+        batch: F64MomentumBatchView<'_>,
+        helicity_ordinals: Option<&[usize]>,
+        color_ordinals: Option<&[usize]>,
+        output: &mut [f64],
+    ) -> RusticolResult<RuntimeProfile> {
+        let point_count = batch.point_count();
+        self.prepare_selection_from_ordinals(helicity_ordinals, color_ordinals, point_count)?;
+        let input_len = self.fill_point_major(batch)?;
+        let (_, profile) = self.lane.run_f64_into(
+            &self.point_major_scratch[..input_len],
+            u32::try_from(point_count).map_err(|_| {
+                RusticolError::invalid_argument("on-the-fly point count exceeds u32")
+            })?,
+            &common.model_parameter_values_f64,
+            common.normalization_factor,
+            output,
+        )?;
+        Ok(profile)
+    }
+
     fn run_resolved(
         &mut self,
         common: &ExecutionRuntime,
@@ -352,10 +405,7 @@ impl OnTheFlyExecutionRuntime {
         let point_count = batch.point_count();
         let (helicity_count, color_count) =
             self.prepare_selection(selected_helicities, selected_colors, point_count)?;
-        let prepared = self
-            .prepared_selection
-            .as_ref()
-            .ok_or_else(|| RusticolError::internal("on-the-fly selection was not retained"))?;
+        let prepared = self.current_prepared_selection()?;
         let helicity_indices = prepared.helicity_indices.to_vec();
         let color_indices = prepared.color_indices.to_vec();
         let value_count = point_count
@@ -887,7 +937,10 @@ impl NativeRuntime {
                     .enumerate()
                     .all(|(index, public_index)| index == public_index);
             let loaded = super::on_the_fly_load::load_on_the_fly_native_runtime(
-                &artifact, on_the_fly, &selection,
+                &artifact,
+                &evaluator_root,
+                on_the_fly,
+                &selection,
             )?;
             let super::on_the_fly_load::LoadedOnTheFlyRuntime {
                 mut common,
@@ -1882,6 +1935,8 @@ impl NativeRuntime {
             } = &mut selector_scratch;
             let selected_helicities = helicity_selector_sets.resolve(helicity_ids, "helicity")?;
             let selected_colors = color_selector_sets.resolve(color_ids, "color component")?;
+            let (selected_helicity_ordinals, selected_color_ordinals) =
+                self.on_the_fly_selected_ordinals(selected_helicities, selected_colors)?;
             let batch = F64MomentumBatchView::from_contiguous_prevalidated(
                 momenta,
                 point_count,
@@ -1909,11 +1964,18 @@ impl NativeRuntime {
             output_totals.resize(point_count, 0.0);
             output_totals.fill(0.0);
             if let PointSelectorPlan::Homogeneous(key) = plan {
-                let (point_helicities, point_colors) = self.on_the_fly_point_selector_sets(key)?;
-                self.run_selected_f64_batch_into(
+                let point_helicity = key.helicity_index.map(|index| [index]);
+                let point_color = key.color_index.map(|index| [index]);
+                self.run_on_the_fly_f64_batch_into_by_ordinals(
                     batch,
-                    point_helicities.as_ref().or(selected_helicities),
-                    point_colors.as_ref().or(selected_colors),
+                    point_helicity
+                        .as_ref()
+                        .map(<[usize; 1]>::as_slice)
+                        .or(selected_helicity_ordinals.as_deref()),
+                    point_color
+                        .as_ref()
+                        .map(<[usize; 1]>::as_slice)
+                        .or(selected_color_ordinals.as_deref()),
                     output_totals,
                 )?;
                 output.copy_from_slice(output_totals);
@@ -1923,13 +1985,19 @@ impl NativeRuntime {
             let partition_count = planner.partitions().len();
             for partition_index in 0..partition_count {
                 let partition = planner.partitions()[partition_index];
-                let (point_helicities, point_colors) =
-                    self.on_the_fly_point_selector_sets(partition.key)?;
-                let effective_helicities = point_helicities.as_ref().or(selected_helicities);
-                let effective_colors = point_colors.as_ref().or(selected_colors);
+                let point_helicity = partition.key.helicity_index.map(|index| [index]);
+                let point_color = partition.key.color_index.map(|index| [index]);
+                let effective_helicities = point_helicity
+                    .as_ref()
+                    .map(<[usize; 1]>::as_slice)
+                    .or(selected_helicity_ordinals.as_deref());
+                let effective_colors = point_color
+                    .as_ref()
+                    .map(<[usize; 1]>::as_slice)
+                    .or(selected_color_ordinals.as_deref());
                 match partition.rows {
                     PointSelectorRows::Contiguous { start, end } => {
-                        self.run_selected_f64_batch_into(
+                        self.run_on_the_fly_f64_batch_into_by_ordinals(
                             batch.subview(start, end)?,
                             effective_helicities,
                             effective_colors,
@@ -1942,7 +2010,7 @@ impl NativeRuntime {
                             fill_gathered_batch_from_view(gathered_batch, batch, point_indices)?;
                         partition_totals.resize(partition.rows.len(), 0.0);
                         partition_totals.fill(0.0);
-                        self.run_selected_f64_batch_into(
+                        self.run_on_the_fly_f64_batch_into_by_ordinals(
                             F64MomentumBatchView::from_nested(
                                 gathered_batch,
                                 self.runtime.external_count,
@@ -1982,31 +2050,43 @@ impl NativeRuntime {
     }
 
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-    fn on_the_fly_point_selector_sets(
+    fn on_the_fly_selected_ordinals(
         &self,
-        key: PointSelectorKey,
-    ) -> RusticolResult<(Option<BTreeSet<String>>, Option<BTreeSet<String>>)> {
+        selected_helicities: Option<&BTreeSet<String>>,
+        selected_colors: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<(Option<Box<[usize]>>, Option<Box<[usize]>>)> {
         let NativeExecutionLane::OnTheFly(runtime) = &self.execution_lane else {
             return Err(RusticolError::internal(
-                "compact point selectors require an on-the-fly execution lane",
+                "compact selector ordinals require an on-the-fly execution lane",
             ));
         };
-        let selection = runtime
+        runtime
             .selectors
-            .selection(runtime.lane.seed(), None, None)?;
-        let helicities = key
-            .helicity_index
-            .map(|index| {
-                selection
-                    .helicity_id_at(index)
-                    .map(|id| BTreeSet::from([id]))
-            })
-            .transpose()?;
-        let colors = key
-            .color_index
-            .map(|index| selection.color_id_at(index).map(|id| BTreeSet::from([id])))
-            .transpose()?;
-        Ok((helicities, colors))
+            .selected_ordinals(selected_helicities, selected_colors)
+    }
+
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    fn run_on_the_fly_f64_batch_into_by_ordinals(
+        &mut self,
+        batch: F64MomentumBatchView<'_>,
+        helicity_ordinals: Option<&[usize]>,
+        color_ordinals: Option<&[usize]>,
+        output: &mut [f64],
+    ) -> RusticolResult<()> {
+        let NativeExecutionLane::OnTheFly(runtime) = &mut self.execution_lane else {
+            return Err(RusticolError::internal(
+                "compact selector ordinals require an on-the-fly execution lane",
+            ));
+        };
+        runtime
+            .run_total_into_by_ordinals(
+                &self.runtime,
+                batch,
+                helicity_ordinals,
+                color_ordinals,
+                output,
+            )
+            .map(drop)
     }
 
     fn run_f64_batch_into(
@@ -2228,6 +2308,31 @@ impl NativeRuntime {
                 Ok((values, profile))
             }
         }
+    }
+
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    fn run_on_the_fly_f64_batch_profile_by_ordinals(
+        &mut self,
+        batch: &[Vec<[f64; 4]>],
+        helicity_ordinals: Option<&[usize]>,
+        color_ordinals: Option<&[usize]>,
+    ) -> Result<(Vec<f64>, RuntimeProfile), RusticolError> {
+        let view = F64MomentumBatchView::from_nested(batch, self.runtime.external_count)?;
+        let mut values = vec![0.0; batch.len()];
+        let NativeExecutionLane::OnTheFly(runtime) = &mut self.execution_lane else {
+            return Err(RusticolError::internal(
+                "compact selector ordinals require an on-the-fly execution lane",
+            ));
+        };
+        let mut profile = runtime.run_total_into_by_ordinals(
+            &self.runtime,
+            view,
+            helicity_ordinals,
+            color_ordinals,
+            &mut values,
+        )?;
+        profile.total_materialized_value_count += values.len() as u64;
+        Ok((values, profile))
     }
 
     pub fn benchmark_f64_wall_time(
@@ -2629,6 +2734,15 @@ impl NativeRuntime {
         let on_the_fly = matches!(&self.execution_lane, NativeExecutionLane::OnTheFly(_));
         #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
         let on_the_fly = false;
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        let on_the_fly_selected_ordinals = if on_the_fly {
+            Some(self.on_the_fly_selected_ordinals(
+                selected_helicities.as_ref(),
+                selected_colors.as_ref(),
+            )?)
+        } else {
+            None
+        };
         let physics = if on_the_fly {
             None
         } else {
@@ -2675,10 +2789,25 @@ impl NativeRuntime {
             self.record_resolved_warnings(helicity_ids, color_ids)?;
 
             if let PointSelectorPlan::Homogeneous(key) = plan {
-                let (point_helicities, point_colors) = if on_the_fly {
+                let (values, runtime_profile) = if on_the_fly {
                     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                     {
-                        self.on_the_fly_point_selector_sets(key)?
+                        let (selected_helicities, selected_colors) = on_the_fly_selected_ordinals
+                            .as_ref()
+                            .expect("on-the-fly selected ordinals are absent");
+                        let point_helicity = key.helicity_index.map(|index| [index]);
+                        let point_color = key.color_index.map(|index| [index]);
+                        self.run_on_the_fly_f64_batch_profile_by_ordinals(
+                            &batch,
+                            point_helicity
+                                .as_ref()
+                                .map(<[usize; 1]>::as_slice)
+                                .or(selected_helicities.as_deref()),
+                            point_color
+                                .as_ref()
+                                .map(<[usize; 1]>::as_slice)
+                                .or(selected_colors.as_deref()),
+                        )?
                     }
                     #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
                     {
@@ -2688,25 +2817,21 @@ impl NativeRuntime {
                     let physics = physics
                         .as_ref()
                         .expect("non-on-the-fly profile has physics metadata");
-                    (
-                        key.helicity_index.map(|index| {
-                            BTreeSet::from([physics.manifest.helicities[index].id.clone()])
-                        }),
-                        key.color_index.map(|index| {
-                            BTreeSet::from([physics.manifest.color_components[index]
-                                .id()
-                                .to_string()])
-                        }),
-                    )
+                    let point_helicities = key.helicity_index.map(|index| {
+                        BTreeSet::from([physics.manifest.helicities[index].id.clone()])
+                    });
+                    let point_colors = key.color_index.map(|index| {
+                        BTreeSet::from([physics.manifest.color_components[index].id().to_string()])
+                    });
+                    let effective_helicities =
+                        point_helicities.as_ref().or(selected_helicities.as_ref());
+                    let effective_colors = point_colors.as_ref().or(selected_colors.as_ref());
+                    self.run_selected_f64_batch_profile(
+                        &batch,
+                        effective_helicities,
+                        effective_colors,
+                    )?
                 };
-                let effective_helicities =
-                    point_helicities.as_ref().or(selected_helicities.as_ref());
-                let effective_colors = point_colors.as_ref().or(selected_colors.as_ref());
-                let (values, runtime_profile) = self.run_selected_f64_batch_profile(
-                    &batch,
-                    effective_helicities,
-                    effective_colors,
-                )?;
                 runtime_profile.validate_recurrence_direct_boundary_traffic()?;
                 let mut profile: NativeRuntimeProfile = runtime_profile.into();
                 attach_point_selector_profile(
@@ -2749,10 +2874,46 @@ impl NativeRuntime {
             let partition_count = selector_scratch.planner.partitions().len();
             for partition_index in 0..partition_count {
                 let partition = selector_scratch.planner.partitions()[partition_index];
-                let (point_helicities, point_colors) = if on_the_fly {
+                let (partition_totals, partition_profile) = if on_the_fly {
                     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
                     {
-                        self.on_the_fly_point_selector_sets(partition.key)?
+                        let (selected_helicities, selected_colors) = on_the_fly_selected_ordinals
+                            .as_ref()
+                            .expect("on-the-fly selected ordinals are absent");
+                        let point_helicity = partition.key.helicity_index.map(|index| [index]);
+                        let point_color = partition.key.color_index.map(|index| [index]);
+                        let effective_helicities = point_helicity
+                            .as_ref()
+                            .map(<[usize; 1]>::as_slice)
+                            .or(selected_helicities.as_deref());
+                        let effective_colors = point_color
+                            .as_ref()
+                            .map(<[usize; 1]>::as_slice)
+                            .or(selected_colors.as_deref());
+                        match partition.rows {
+                            PointSelectorRows::Contiguous { start, end } => self
+                                .run_on_the_fly_f64_batch_profile_by_ordinals(
+                                    &batch[start..end],
+                                    effective_helicities,
+                                    effective_colors,
+                                )?,
+                            rows @ PointSelectorRows::Gathered { .. } => {
+                                let gather_started = Instant::now();
+                                let point_indices = selector_scratch.planner.gathered_rows(rows);
+                                gather_point_count += point_indices.len();
+                                let gathered_batch = fill_gathered_batch(
+                                    &mut selector_scratch.gathered_batch,
+                                    &batch,
+                                    point_indices,
+                                );
+                                gather += gather_started.elapsed();
+                                self.run_on_the_fly_f64_batch_profile_by_ordinals(
+                                    gathered_batch,
+                                    effective_helicities,
+                                    effective_colors,
+                                )?
+                            }
+                        }
                     }
                     #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
                     {
@@ -2762,42 +2923,38 @@ impl NativeRuntime {
                     let physics = physics
                         .as_ref()
                         .expect("non-on-the-fly profile has physics metadata");
-                    (
-                        partition.key.helicity_index.map(|index| {
-                            BTreeSet::from([physics.manifest.helicities[index].id.clone()])
-                        }),
-                        partition.key.color_index.map(|index| {
-                            BTreeSet::from([physics.manifest.color_components[index]
-                                .id()
-                                .to_string()])
-                        }),
-                    )
-                };
-                let effective_helicities =
-                    point_helicities.as_ref().or(selected_helicities.as_ref());
-                let effective_colors = point_colors.as_ref().or(selected_colors.as_ref());
-                let (partition_totals, partition_profile) = match partition.rows {
-                    PointSelectorRows::Contiguous { start, end } => self
-                        .run_selected_f64_batch_profile(
-                            &batch[start..end],
-                            effective_helicities,
-                            effective_colors,
-                        )?,
-                    rows @ PointSelectorRows::Gathered { .. } => {
-                        let gather_started = Instant::now();
-                        let point_indices = selector_scratch.planner.gathered_rows(rows);
-                        gather_point_count += point_indices.len();
-                        let gathered_batch = fill_gathered_batch(
-                            &mut selector_scratch.gathered_batch,
-                            &batch,
-                            point_indices,
-                        );
-                        gather += gather_started.elapsed();
-                        self.run_selected_f64_batch_profile(
-                            gathered_batch,
-                            effective_helicities,
-                            effective_colors,
-                        )?
+                    let point_helicities = partition.key.helicity_index.map(|index| {
+                        BTreeSet::from([physics.manifest.helicities[index].id.clone()])
+                    });
+                    let point_colors = partition.key.color_index.map(|index| {
+                        BTreeSet::from([physics.manifest.color_components[index].id().to_string()])
+                    });
+                    let effective_helicities =
+                        point_helicities.as_ref().or(selected_helicities.as_ref());
+                    let effective_colors = point_colors.as_ref().or(selected_colors.as_ref());
+                    match partition.rows {
+                        PointSelectorRows::Contiguous { start, end } => self
+                            .run_selected_f64_batch_profile(
+                                &batch[start..end],
+                                effective_helicities,
+                                effective_colors,
+                            )?,
+                        rows @ PointSelectorRows::Gathered { .. } => {
+                            let gather_started = Instant::now();
+                            let point_indices = selector_scratch.planner.gathered_rows(rows);
+                            gather_point_count += point_indices.len();
+                            let gathered_batch = fill_gathered_batch(
+                                &mut selector_scratch.gathered_batch,
+                                &batch,
+                                point_indices,
+                            );
+                            gather += gather_started.elapsed();
+                            self.run_selected_f64_batch_profile(
+                                gathered_batch,
+                                effective_helicities,
+                                effective_colors,
+                            )?
+                        }
                     }
                 };
                 if partition_totals.len() != partition.rows.len() {
@@ -2962,8 +3119,7 @@ impl NativeRuntime {
                 selected_helicities.as_ref(),
                 selected_colors.as_ref(),
             )?;
-            let (helicity_ids, color_ids) = runtime
-                .selected_axis_ids(selected_helicities.as_ref(), selected_colors.as_ref())?;
+            let (helicity_ids, color_ids) = runtime.selected_axis_ids()?;
             return Ok(NativeResolvedEvaluation {
                 values: resolved.values,
                 point_count: resolved.point_count,

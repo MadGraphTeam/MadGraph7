@@ -39,6 +39,7 @@ def exercise_native_runtime(artifact: Path) -> None:
     assert_type(runtime.physics.model_parameters, list[rusticol.ModelParameter])
     runtime.set_model_parameters({"normalization.alpha_s_me_check": 0.119})
     runtime.set_model_parameter("normalization.alpha_s_me_check", 0.120)
+    assert_type(runtime.clear(), None)
     assert_type(runtime.take_warnings(), list[str])
 
 

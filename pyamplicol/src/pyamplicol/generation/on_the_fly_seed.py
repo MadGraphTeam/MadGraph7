@@ -47,7 +47,6 @@ class OnTheFlyProcessSeedProjectionV1:
 
     process_digest: str
     external_sources: tuple[RecurrenceExternalLegV1, ...]
-    source_helicities: tuple[tuple[int, ...], ...]
     external_permutation: tuple[int, ...]
     parameter_projection: tuple[RecurrenceParameterProjectionV1, ...]
     coupling_order_policy: Literal["minimal", "explicit"]
@@ -72,9 +71,11 @@ class OnTheFlyProcessSeedProjectionV1:
                         {
                             "state_index": state.state_index,
                             "public_helicity": state.public_helicity,
-                            "source_helicity": self.source_helicities[
-                                leg.source_slot
-                            ][state.state_index],
+                            # The direct source executor consumes the same
+                            # crossed helicity as the public recurrence source
+                            # state.  The source template retains the declared
+                            # (outgoing-basis) helicity separately by ID.
+                            "source_helicity": state.public_helicity,
                             "source_template_id": state.source_template_id,
                             "current_state_template_id": (
                                 state.current_state_template_id
@@ -202,16 +203,6 @@ def project_on_the_fly_process_seed_v1(
     )
     if selected_sources is not None:  # pragma: no cover - fixed by this call
         raise AssertionError("complete on-the-fly source projection was trimmed")
-    source_rows = tuple(
-        sorted(template_catalog.sources, key=lambda row: row.template_id)
-    )
-    source_helicities = tuple(
-        tuple(
-            int(source_rows[state.source_template_id].helicity)
-            for state in leg.source_states
-        )
-        for leg in external_sources
-    )
     pairing = build_recurrence_fermion_pairing_roots_v1(
         process,
         template_catalog.current_states,
@@ -240,7 +231,6 @@ def project_on_the_fly_process_seed_v1(
     seed = OnTheFlyProcessSeedProjectionV1(
         process_digest=_digest(process.to_json_dict()),
         external_sources=external_sources,
-        source_helicities=source_helicities,
         external_permutation=tuple(range(len(process.legs))),
         parameter_projection=_project_parameters(template_catalog, template_ids),
         coupling_order_policy=coupling_order_policy,

@@ -923,12 +923,11 @@ impl OnTheFlyCompactSelectorAdapterV1 {
         })
     }
 
-    pub(super) fn selection<'a>(
-        &'a self,
-        seed: &'a OnTheFlyProcessSeedV1,
+    pub(super) fn selected_ordinals(
+        &self,
         selected_helicity_ids: Option<&BTreeSet<String>>,
         selected_color_ids: Option<&BTreeSet<String>>,
-    ) -> RusticolResult<OnTheFlyLazySelectionV1<'a>> {
+    ) -> RusticolResult<(Option<Box<[usize]>>, Option<Box<[usize]>>)> {
         let helicity_ordinals = match selected_helicity_ids {
             None => None,
             Some(ids) => {
@@ -965,11 +964,40 @@ impl OnTheFlyCompactSelectorAdapterV1 {
                 Some(ordinals.into_boxed_slice())
             }
         };
+        Ok((helicity_ordinals, color_ordinals))
+    }
+
+    pub(super) fn selection<'a>(
+        &'a self,
+        seed: &'a OnTheFlyProcessSeedV1,
+        selected_helicity_ids: Option<&BTreeSet<String>>,
+        selected_color_ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<OnTheFlyLazySelectionV1<'a>> {
+        let (helicity_ordinals, color_ordinals) =
+            self.selected_ordinals(selected_helicity_ids, selected_color_ids)?;
         Ok(OnTheFlyLazySelectionV1 {
             adapter: self,
             seed,
             helicity_ordinals,
             color_ordinals,
+        })
+    }
+
+    pub(super) fn selection_from_ordinals<'a>(
+        &'a self,
+        seed: &'a OnTheFlyProcessSeedV1,
+        helicity_ordinals: Option<&[usize]>,
+        color_ordinals: Option<&[usize]>,
+    ) -> RusticolResult<OnTheFlyLazySelectionV1<'a>> {
+        Ok(OnTheFlyLazySelectionV1 {
+            adapter: self,
+            seed,
+            helicity_ordinals: owned_selected_ordinals(
+                helicity_ordinals,
+                self.helicity_count,
+                "helicity",
+            )?,
+            color_ordinals: owned_selected_ordinals(color_ordinals, self.color_count, "color")?,
         })
     }
 }
@@ -1224,6 +1252,30 @@ fn selected_ordinal(
         None if position < all_count => Ok(position),
         None => Err(invalid(format!("{label} position is out of bounds"))),
     }
+}
+
+fn owned_selected_ordinals(
+    selected: Option<&[usize]>,
+    all_count: usize,
+    label: &str,
+) -> RusticolResult<Option<Box<[usize]>>> {
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    if selected.is_empty() {
+        return Err(invalid(format!("{label} selection is empty")));
+    }
+    if selected.iter().any(|ordinal| *ordinal >= all_count) {
+        return Err(invalid(format!(
+            "selected {label} ordinal is out of bounds"
+        )));
+    }
+    if selected.windows(2).any(|pair| pair[0] >= pair[1]) {
+        return Err(invalid(format!(
+            "selected {label} ordinals are not strictly increasing"
+        )));
+    }
+    Ok(Some(selected.to_vec().into_boxed_slice()))
 }
 
 fn canonical_helicity_id(values: &[i32]) -> String {

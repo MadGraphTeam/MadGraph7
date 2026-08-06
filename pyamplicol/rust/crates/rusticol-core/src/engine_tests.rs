@@ -3897,7 +3897,7 @@ fn scalar_on_the_fly_native_runtime() -> NativeRuntime {
         OnTheFlyCompactSelectorAdapterV1, OnTheFlyLcColorCoverageV1, OnTheFlyLcSelectorPolicyV1,
     };
     use super::recurrence_backend::on_the_fly_adapter_tests::{
-        digest, direct_catalog, prepared_pool, source_domains,
+        complete_scalar_direct_catalog, complete_scalar_prepared_pool, digest, source_domains,
     };
     use crate::recurrence::CheckedTableRange;
     use crate::recurrence::on_the_fly::scalar_adapter_test_seed;
@@ -3905,6 +3905,14 @@ fn scalar_on_the_fly_native_runtime() -> NativeRuntime {
     use crate::recurrence::validated_template_fixture;
 
     let mut template_input = validated_template_fixture().into_input();
+    let spin_start = u64::try_from(template_input.i32_sequence_values.len()).unwrap();
+    let spin_sequence_id = u32::try_from(template_input.i32_sequence_ranges.len()).unwrap();
+    template_input.i32_sequence_ranges.push(IndexedRangeRow {
+        id: spin_sequence_id,
+        range: CheckedTableRange::new(spin_start, 2),
+    });
+    template_input.i32_sequence_values.extend([50_000, 50_000]);
+    template_input.quantum_flows[0].input_spin_sequence_id = spin_sequence_id;
     template_input.coupling_order_ranges.push(IndexedRangeRow {
         id: 1,
         range: CheckedTableRange::new(0, 1),
@@ -3919,15 +3927,16 @@ fn scalar_on_the_fly_native_runtime() -> NativeRuntime {
     let templates = template_input.validate().unwrap();
     let summary = templates.summary();
     let direct_digest = digest(40);
-    let direct = direct_catalog(direct_digest);
+    let direct = complete_scalar_direct_catalog(direct_digest);
     let seed = scalar_adapter_test_seed(
         summary.compiled_model_digest,
         summary.catalog_digest,
         summary.prepared_kernel_pack_digest,
         direct_digest,
     )
+    .and_then(|seed| seed.with_selector_local_zero())
     .unwrap();
-    let pool = prepared_pool(&templates, direct_digest);
+    let pool = complete_scalar_prepared_pool(&templates, direct_digest);
     let sources = pool.bind_source_domains(source_domains()).unwrap();
     let resolver = pool.into_on_the_fly_resolver(sources);
     let defaults = vec![
@@ -3977,70 +3986,164 @@ fn scalar_on_the_fly_native_runtime() -> NativeRuntime {
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 #[test]
-fn on_the_fly_public_runtime_paths_reuse_one_family_without_dense_physics() {
-    let mut runtime = scalar_on_the_fly_native_runtime();
-    let momenta = vec![0.0; 2 * 2 * 4];
-    let global = runtime
-        .evaluate_f64_with_selectors(&momenta, 2, None, None, None, None)
-        .unwrap();
-    assert!(global.iter().all(|value| value.is_finite()));
+fn on_the_fly_public_paths_vectorize_and_reuse_all_seen_selections() {
+    let retained = |runtime: &NativeRuntime| {
+        let NativeExecutionLane::OnTheFly(lane) = &runtime.execution_lane else {
+            panic!("test runtime changed execution lane");
+        };
+        (
+            lane.retained_family_count(),
+            lane.retained_selection_count(),
+            lane.semantic_executor_binding_count().unwrap(),
+        )
+    };
 
+    let mut runtime = scalar_on_the_fly_native_runtime();
+    let point_count = 6;
+    let momenta = vec![0.0; point_count * 2 * 4];
+
+    // A: the complete compact selector domain. Only its first helicity is
+    // executable; the other three are authenticated selector-local zeros.
+    let global = runtime
+        .evaluate_f64_with_selectors(&momenta, point_count, None, None, None, None)
+        .unwrap();
+    assert_eq!(global.len(), point_count);
+    assert!(
+        global
+            .iter()
+            .all(|value| value.is_finite() && value.abs() > f64::EPSILON)
+    );
+    let (family_count, selection_count, binding_count) = retained(&runtime);
+    assert_eq!((family_count, selection_count), (1, 1));
+    assert!(binding_count > 0);
+
+    // B: one explicit nonzero selector. Switching A -> B -> A retains both
+    // public axes/request mappings and both lower-lane families.
     let helicity = vec!["h:+0,+0".to_string()];
     let color = vec!["flow:singlet".to_string()];
     let selected = runtime
-        .evaluate_f64_with_selectors(&momenta, 2, Some(&helicity), Some(&color), None, None)
+        .evaluate_f64_with_selectors(
+            &momenta,
+            point_count,
+            Some(&helicity),
+            Some(&color),
+            None,
+            None,
+        )
         .unwrap();
     assert_eq!(selected, global);
+    assert_eq!(retained(&runtime).0, 2);
+    assert_eq!(retained(&runtime).1, 2);
 
-    let per_point = runtime
-        .evaluate_f64_with_selectors(&momenta, 2, None, None, Some(&[0, 0]), Some(&[0, 0]))
+    let global_again = runtime
+        .evaluate_f64_with_selectors(&momenta, point_count, None, None, None, None)
         .unwrap();
-    assert_eq!(per_point, global);
+    assert_eq!(global_again, global);
+    assert_eq!(retained(&runtime).0, 2);
+    assert_eq!(retained(&runtime).1, 2);
+
     let resolved = runtime
-        .evaluate_resolved_f64(&momenta, 2, Some(&helicity), Some(&color))
+        .evaluate_resolved_f64(&momenta, point_count, None, None)
         .unwrap();
-    assert_eq!(resolved.values, global);
-    assert_eq!(resolved.helicity_ids, helicity);
+    assert_eq!(resolved.shape(), (point_count, 4, 1));
+    assert_eq!(resolved.totals(), global);
+    assert_eq!(
+        resolved.helicity_ids,
+        ["h:+0,+0", "h:+0,+1", "h:+1,+0", "h:+1,+1"]
+    );
     assert_eq!(resolved.color_ids, color);
-    let profiled = runtime
-        .evaluate_f64_profile_with_selectors(&momenta, 2, None, None, Some(&[0, 0]), Some(&[0, 0]))
+    assert_eq!(retained(&runtime).0, 2);
+    assert_eq!(retained(&runtime).1, 2);
+
+    // Alternating selectors form two stable three-point partitions. The
+    // nonzero partition reaches each prepared row group once, while the
+    // selector-local-zero partition remains exactly zero.
+    let helicity_by_point = [0, 3, 0, 3, 0, 3];
+    let color_by_point = [0; 6];
+    let expected_partitioned = global
+        .iter()
+        .enumerate()
+        .map(|(index, value)| if index % 2 == 0 { *value } else { 0.0 })
+        .collect::<Vec<_>>();
+    let per_point = runtime
+        .evaluate_f64_with_selectors(
+            &momenta,
+            point_count,
+            None,
+            None,
+            Some(&helicity_by_point),
+            Some(&color_by_point),
+        )
         .unwrap();
-    assert_eq!(profiled.values, global);
+    assert_eq!(per_point, expected_partitioned);
+    assert_eq!(retained(&runtime).0, 3);
+    assert_eq!(retained(&runtime).1, 3);
+
+    let per_point_again = runtime
+        .evaluate_f64_with_selectors(
+            &momenta,
+            point_count,
+            None,
+            None,
+            Some(&helicity_by_point),
+            Some(&color_by_point),
+        )
+        .unwrap();
+    assert_eq!(per_point_again, expected_partitioned);
+    assert_eq!(retained(&runtime).0, 3);
+    assert_eq!(retained(&runtime).1, 3);
+
+    let profiled = runtime
+        .evaluate_f64_profile_with_selectors(
+            &momenta,
+            point_count,
+            None,
+            None,
+            Some(&helicity_by_point),
+            Some(&color_by_point),
+        )
+        .unwrap();
+    assert_eq!(profiled.values, expected_partitioned);
+    assert_eq!(profiled.profile.selector_plan_kind, "stable-grouped");
+    assert_eq!(profiled.profile.selector_group_sizes, [3, 3]);
+    assert_eq!(profiled.profile.recurrence_schedule_execution_count, 2);
+    assert_eq!(
+        profiled.profile.recurrence_momentum_scalar_value_count,
+        u64::try_from(point_count * 2 * 4).unwrap()
+    );
+    assert!(profiled.profile.recurrence_source_call_count > 0);
+    assert!(profiled.profile.recurrence_closure_call_count > 0);
+    assert!(profiled.profile.recurrence_source_call_count < point_count as u64);
+    assert!(profiled.profile.recurrence_closure_call_count < point_count as u64);
     assert!(
         runtime
             .benchmark_f64_wall_time_with_selectors(
                 &momenta,
-                2,
+                point_count,
                 2,
                 None,
                 None,
-                Some(&[0, 0]),
-                Some(&[0, 0]),
+                Some(&helicity_by_point),
+                Some(&color_by_point),
             )
             .unwrap()
             >= 0.0
     );
+    assert_eq!(retained(&runtime).0, 3);
+    assert_eq!(retained(&runtime).1, 3);
 
-    let NativeExecutionLane::OnTheFly(lane) = &runtime.execution_lane else {
-        panic!("test runtime changed execution lane");
-    };
-    assert_eq!(lane.retained_family_count(), 1);
     assert!(runtime.physics_v1.get().is_err());
 
     runtime.clear().unwrap();
-    let NativeExecutionLane::OnTheFly(lane) = &runtime.execution_lane else {
-        panic!("test runtime changed execution lane");
-    };
-    assert_eq!(lane.retained_family_count(), 0);
+    assert_eq!(retained(&runtime), (0, 0, 0));
     assert!(runtime.physics_v1.get().is_err());
     let rebuilt = runtime
-        .evaluate_f64_with_selectors(&momenta, 2, None, None, None, None)
+        .evaluate_f64_with_selectors(&momenta, point_count, None, None, None, None)
         .unwrap();
     assert_eq!(rebuilt, global);
-    let NativeExecutionLane::OnTheFly(lane) = &runtime.execution_lane else {
-        panic!("test runtime changed execution lane");
-    };
-    assert_eq!(lane.retained_family_count(), 1);
+    let (family_count, selection_count, binding_count) = retained(&runtime);
+    assert_eq!((family_count, selection_count), (1, 1));
+    assert!(binding_count > 0);
 }
 
 #[test]

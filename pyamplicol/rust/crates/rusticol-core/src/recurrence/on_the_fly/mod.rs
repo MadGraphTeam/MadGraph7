@@ -127,7 +127,8 @@ pub(crate) use public_query::OnTheFlyLcSelectorV1;
 pub(crate) use public_query::{DecodedLcQueryV1, OnTheFlySelectedSourceV1};
 pub(crate) use seed_codec::decode_on_the_fly_process_seed_v1;
 pub(crate) use source_builder::{
-    build_on_the_fly_process_seed_v1, parse_on_the_fly_process_seed_projection_v1,
+    build_on_the_fly_process_seed_v1, build_on_the_fly_process_seeds_v1,
+    parse_on_the_fly_process_seed_projection_v1,
 };
 #[cfg(test)]
 pub(crate) use source_seed::scalar_adapter_test_seed;

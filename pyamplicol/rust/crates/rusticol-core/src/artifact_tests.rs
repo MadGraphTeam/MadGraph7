@@ -241,7 +241,6 @@ fn decode_hex(value: &str) -> Vec<u8> {
         .collect()
 }
 
-#[cfg(feature = "f64-symjit")]
 fn add_test_payload(
     artifact: &mut TestArtifact,
     path: &str,
@@ -1574,6 +1573,45 @@ fn verified_artifact_resolves_packed_evaluator_payloads() {
     );
 }
 
+#[test]
+fn evaluator_payload_store_resolves_process_relative_paths_and_rejects_escape() {
+    let mut artifact = TestArtifact::new();
+    let declared = "processes/p0/on-the-fly-runtime.pacbin";
+    add_test_payload(
+        &mut artifact,
+        declared,
+        "evaluator-state",
+        b"authenticated on-the-fly container",
+        Some("p0"),
+        true,
+    );
+    artifact.write_manifest();
+
+    let verified = VerifiedArtifact::open(&artifact.root).expect("process payload artifact");
+    let process_root = verified.root().join("processes/p0");
+    let store = verified
+        .evaluator_payload_store(&process_root)
+        .expect("process evaluator store");
+    let logical = store
+        .logical_path("on-the-fly-runtime.pacbin")
+        .expect("process-relative payload path");
+    assert_eq!(logical, declared);
+    assert_eq!(verified.payload(&logical).unwrap().path, declared);
+
+    let error = store.logical_path("../escape.pacbin").unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Security);
+
+    let missing = store
+        .logical_path("missing.pacbin")
+        .expect("confined undeclared path");
+    let error = verified.payload(&missing).unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Security);
+    assert!(
+        error.to_string().contains("not a declared payload"),
+        "{error}"
+    );
+}
+
 #[cfg(all(unix, feature = "f64-symjit"))]
 #[test]
 fn trusted_loose_evaluator_source_reads_replacement_bytes() {
@@ -1844,7 +1882,6 @@ fn process_capabilities_are_strict_and_form_the_runtime_union() {
             ]),
             "sorted",
         ),
-        (json!(["unknown.runtime.v1"]), "unsupported capabilities"),
     ] {
         let mut artifact = TestArtifact::new();
         artifact.manifest["processes"][0]["required_runtime_capabilities"] = capabilities.clone();
@@ -1887,6 +1924,33 @@ fn process_capabilities_are_strict_and_form_the_runtime_union() {
     let parsed: ArtifactManifest =
         serde_json::from_value(mixed.manifest.clone()).expect("parse mixed manifest");
     validate_manifest(&parsed).expect("mixed process capability union validates");
+}
+
+#[test]
+fn on_the_fly_capabilities_are_known_and_the_catalog_remains_closed() {
+    let capabilities = json!([
+        "rusticol.on-the-fly.complex-f64.v1",
+        "rusticol.on-the-fly.lc-color.v1"
+    ]);
+    let mut artifact = TestArtifact::new();
+    artifact.manifest["processes"][0]["required_runtime_capabilities"] = capabilities.clone();
+    artifact.manifest["runtime"]["required_runtime_capabilities"] = capabilities;
+    artifact.write_manifest();
+
+    VerifiedArtifact::open(&artifact.root)
+        .expect("on-the-fly capabilities pass outer artifact validation");
+
+    let unknown = json!(["rusticol.on-the-fly.unknown.v1"]);
+    artifact.manifest["processes"][0]["required_runtime_capabilities"] = unknown.clone();
+    artifact.manifest["runtime"]["required_runtime_capabilities"] = unknown;
+    artifact.write_manifest();
+
+    let error = VerifiedArtifact::open(&artifact.root).unwrap_err();
+    assert_eq!(error.kind(), crate::RusticolErrorKind::Artifact);
+    assert!(
+        error.to_string().contains("unsupported capabilities"),
+        "{error}"
+    );
 }
 
 #[test]
