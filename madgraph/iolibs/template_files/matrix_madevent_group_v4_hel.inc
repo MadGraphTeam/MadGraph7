@@ -207,8 +207,9 @@ C
     include 'genps.inc'
     include 'nexternal.inc'
     include 'maxamps.inc'
-    INTEGER    NWAVEFUNCS,     NCOLOR
+    INTEGER    NWAVEFUNCS,     NCOLOR, NCOLORFOLD
     PARAMETER (NWAVEFUNCS=${nwavefuncs}, NCOLOR=%(ncolor)d) 
+    PARAMETER (NCOLORFOLD=%(ncolorfold)d)
     REAL*8     ZERO
     PARAMETER (ZERO=0D0)
     COMPLEX*16 IMAG1
@@ -238,9 +239,10 @@ C
 %(jamp_tmp_decl)s
 %(jamp_decl)s
     COMPLEX*16 TMP(%(wavefunctionsize)d)
-    INTEGER CF(NCOLOR*(NCOLOR+1))
+    INTEGER CF(NCOLORFOLD*(NCOLORFOLD+1))
     INTEGER DENOM, CF_INDEX
     COMPLEX*16 AMP(NCOMB,NGRAPHS), JAMP(NCOLOR,NAMPSO)
+%(color_fold_decl)s
     type(aloha) W(NWAVEFUNCS)
 C   Needed for v4 models
     COMPLEX*16 DUM0,DUM1
@@ -274,6 +276,7 @@ C
 C COLOR DATA
 C  
 %(color_data_lines)s
+%(color_fold_index)s
 C ----------
 C BEGIN CODE
 C ----------
@@ -290,18 +293,19 @@ ${helas_calls}
     JAMP(:,:)  = (0d0,0d0)
     DO K = 1, NCOMB
 ${jamp_lines}
+%(color_fold_gather)s
         TS(K) = 0.D0 
     	DO M = 1, NAMPSO
           CF_INDEX = 0
-          DO I = 1, NCOLOR
+          DO I = 1, NCOLORFOLD
             ZTEMP = (0.D0,0.D0)
-            DO J = I, NCOLOR
+            DO J = I, NCOLORFOLD
               CF_INDEX = CF_INDEX + 1
-              ZTEMP = ZTEMP + CF(CF_INDEX)*JAMP(J,M)
+              ZTEMP = ZTEMP + CF(CF_INDEX)*%(color_fold_array)s(J,M)
             ENDDO ! J
     		DO N = 1, NAMPSO
 			%(select_configs_if)s
-    		     TS(K) = TS(K) + REAL(ZTEMP*DCONJG(JAMP(I,N)))
+    		     TS(K) = TS(K) + REAL(ZTEMP*DCONJG(%(color_fold_array)s(I,N)))
 			  %(select_configs_endif)s
     		ENDDO ! N
         ENDDO ! I

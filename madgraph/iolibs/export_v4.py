@@ -3230,6 +3230,34 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         return {'reverse': reverse, 'sign': sign,
                 'representatives': representatives, 'slot': slot}
 
+    def get_color_fold_ampso(self, folding, ncolor):
+        """Template replacements for a color sum over one line per reversal
+        pair, where JAMP carries a second index for the split orders. Without a
+        folding the sum is left on JAMP itself, so nothing is copied."""
+
+        if not folding:
+            return {'ncolorfold': ncolor,
+                    'color_fold_decl': '',
+                    'color_fold_index': '',
+                    'color_fold_gather': '',
+                    'color_fold_array': 'JAMP'}
+        lines = [line + 1 for line in folding['representatives']]
+        return {
+            'ncolorfold': len(lines),
+            'color_fold_decl': (
+                "    COMPLEX*16 JFOLD(NCOLORFOLD,NAMPSO)\n"
+                "    INTEGER COLREP(NCOLORFOLD)\n"
+                "    INTEGER ICF, ICFSO"),
+            'color_fold_index': "\n".join(
+                self.get_int_data_lines("COLREP", lines, var='ICF')),
+            'color_fold_gather': (
+                "    DO ICFSO = 1, NAMPSO\n"
+                "      DO ICF = 1, NCOLORFOLD\n"
+                "        JFOLD(ICF,ICFSO) = JAMP(COLREP(ICF),ICFSO)\n"
+                "      ENDDO\n"
+                "    ENDDO"),
+            'color_fold_array': 'JFOLD'}
+
     def jamp_folded_color_matrix(self, matrix_element, reverse, sign):
         """The color matrix over one line per reversal pair. Summing |M|^2 over
         the pairs instead of over every line gives the same number, since the
@@ -7065,6 +7093,9 @@ class ProcessExporterFortranME(ProcessExporterFortran):
     MadEvent format."""
 
     matrix_file = "matrix_madevent_v4.inc"
+    # The templates carry the folded color sum, but the numbers come out
+    # wrong (g g > g g is 6x too large), so it stays off until that is found.
+    jamp_fold = False
     jamp_orbit = True
     # AMP is indexed by helicity once the matrix element is rewritten for
     # helicity recycling, so the definitions cannot sit at the end of it
@@ -7798,6 +7829,11 @@ class ProcessExporterFortranME(ProcessExporterFortran):
         # Extract ncolor
         ncolor = max(1, len(matrix_element.get('color_basis')))
         replace_dict['ncolor'] = ncolor
+        # |M|^2 is summed over one color flow per reversal pair when the basis
+        # allows it. JAMP itself keeps every flow: jamp2 and the color flow
+        # selection below read all of them.
+        folding = self.get_jamp_folding(matrix_element)
+        replace_dict.update(self.get_color_fold_ampso(folding, ncolor))
 
         # Extract color data lines
         color_data_lines = self.get_color_data_lines(matrix_element)
