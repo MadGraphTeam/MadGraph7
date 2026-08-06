@@ -3034,6 +3034,102 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
     # does, leaves the matrix invariant at every step, and the definitions can
     # be written as one recipe per orbit.
 
+    def get_jamp_reflection(self, matrix_element, all_element):
+        """Reversing every color basis element maps the basis onto itself, and
+        for a pure gluon process the color coefficients of a line and of its
+        reverse differ by one overall sign, so half the color flows carry no
+        information of their own:
+
+            JAMP[reverse(i)] = sign * JAMP[i]
+
+        Return (reverse, sign) or None. The relation is read off the color
+        coefficients themselves rather than assumed, so a process where it does
+        not hold -- a quark line, where reversing does not commute with the
+        fermion flow -- simply gets None."""
+
+        if not isinstance(matrix_element, helas_objects.HelasMatrixElement):
+            return None
+        color_basis = matrix_element.get('color_basis')
+        if not color_basis or len(color_basis) < 2:
+            return None
+        keys = sorted(color_basis.keys())
+        position = dict((key, i) for i, key in enumerate(keys))
+
+        reverse = []
+        for key in keys:
+            other = color_amp.reverse_immutable(key)
+            if other is None or other not in position:
+                return None
+            reverse.append(position[other])
+        if any(reverse[reverse[i]] != i for i in range(len(keys))):
+            return None
+
+        columns = collections.defaultdict(dict)
+        for (i, j), value in all_element.items():
+            if value:
+                columns[i][j] = value
+
+        sign = None
+        for i in range(len(keys)):
+            here, there = columns.get(i + 1, {}), columns.get(reverse[i] + 1, {})
+            if set(here) != set(there):
+                return None
+            for amp, value in here.items():
+                ratio = there[amp] / value
+                if ratio not in (1, -1):
+                    return None
+                if sign is None:
+                    sign = int(ratio.real)
+                elif sign != int(ratio.real):
+                    return None
+        if sign is None:
+            return None
+        return reverse, sign
+
+    def jamp_folded_color_matrix(self, matrix_element, reverse, sign):
+        """The color matrix over one line per reversal pair. Summing |M|^2 over
+        the pairs instead of over every line gives the same number, since the
+        two lines of a pair only differ by the overall sign:
+
+            C'[a][b] = sum over the two lines of a and the two of b, each
+                       weighted by its sign relative to the line kept
+
+        Returns (denominator, rows) with rows[a][b] integer, a and b indexing
+        the representatives."""
+
+        color_matrix = matrix_element.get('color_matrix')
+        representatives, _slot = self.jamp_reflection_representatives(reverse)
+        denominator = max(color_matrix.get_line_denominators())
+        full = [color_matrix.get_line_numerators(i, denominator)
+                for i in range(len(reverse))]
+
+        def pair(a):
+            return [(a, 1)] if reverse[a] == a else [(a, 1), (reverse[a], sign)]
+
+        rows = []
+        for a in representatives:
+            row = []
+            for b in representatives:
+                total = 0
+                for i, ci in pair(a):
+                    for j, cj in pair(b):
+                        total += ci * cj * full[i][j]
+                assert int(total) == total
+                row.append(int(total))
+            rows.append(row)
+        return denominator, rows
+
+    @staticmethod
+    def jamp_reflection_representatives(reverse):
+        """One line per pair, and for every line the pair it belongs to."""
+
+        representatives = [i for i in range(len(reverse)) if i <= reverse[i]]
+        slot = {}
+        for index, line in enumerate(representatives):
+            slot[line] = index
+            slot[reverse[line]] = index
+        return representatives, slot
+
     @staticmethod
     def jamp_column_form(column):
         """Canonical form of one column of the JAMP matrix up to a global sign,
