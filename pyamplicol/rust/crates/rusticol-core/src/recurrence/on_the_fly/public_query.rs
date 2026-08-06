@@ -125,6 +125,10 @@ impl DecodedLcQueryV1 {
     pub(crate) const fn semantic_digest(&self) -> SemanticDigest {
         self.semantic_digest
     }
+
+    pub(crate) const fn process_seed_digest(&self) -> SemanticDigest {
+        self.seed_digest
+    }
 }
 
 struct DecodedSelector {
@@ -595,5 +599,45 @@ mod tests {
         .unwrap();
         assert_eq!(query.target_components[0].source_slots(), [0, 1, 2]);
         assert_eq!(query.closure_anchor_slot, 2);
+    }
+
+    #[test]
+    fn multi_open_line_block_order_is_canonical_after_public_alias_permutation() {
+        let roles = [
+            OnTheFlyExternalColorRoleV1::Fundamental,
+            OnTheFlyExternalColorRoleV1::Adjoint,
+            OnTheFlyExternalColorRoleV1::Antifundamental,
+            OnTheFlyExternalColorRoleV1::Fundamental,
+            OnTheFlyExternalColorRoleV1::Adjoint,
+            OnTheFlyExternalColorRoleV1::Antifundamental,
+        ];
+        // Construction slot -> public slot. The two physical open strings are
+        // [0,1,2] and [3,4,5], hence [3,0,5] and [2,1,4] publicly.
+        let permutation = vec![3, 0, 5, 2, 1, 4];
+        let open_seed = seed(&roles, permutation.clone());
+        let decode = |blocks| {
+            DecodedLcQueryV1::new(
+                &open_seed,
+                permutation.clone(),
+                &[1; 6],
+                OnTheFlyLcSelectorV1::open_lines(blocks),
+            )
+            .unwrap()
+        };
+        let forward = decode(vec![vec![3, 0, 5], vec![2, 1, 4]]);
+        let reversed_blocks = decode(vec![vec![2, 1, 4], vec![3, 0, 5]]);
+
+        assert_eq!(forward.target_components, reversed_blocks.target_components);
+        assert_eq!(forward.selector_digest, reversed_blocks.selector_digest);
+        assert_eq!(forward.semantic_digest(), reversed_blocks.semantic_digest());
+        assert_eq!(forward.closure_anchor_slot, 5);
+        assert_eq!(
+            forward
+                .target_components
+                .iter()
+                .map(|component| component.source_slots())
+                .collect::<Vec<_>>(),
+            vec![&[0, 1, 2][..], &[3, 4, 5][..]],
+        );
     }
 }

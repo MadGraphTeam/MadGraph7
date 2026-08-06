@@ -125,7 +125,7 @@ pub(crate) use source_seed::{
     OnTheFlySourceOrientationV1, OnTheFlySourceStateV1, OnTheFlySourceWavefunctionFamilyV1,
 };
 #[cfg(feature = "on-the-fly-test-support")]
-pub(crate) use test_support::{OnTheFlySelectedTraceV1, build_on_the_fly_selected_trace_v1};
+pub(crate) use test_support::build_on_the_fly_selected_trace_v1;
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 pub use test_support::{OnTheFlyTestSupportReportV1, on_the_fly_test_support_probe_v1};
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
@@ -147,6 +147,59 @@ pub(crate) struct OnTheFlyProjectionProbeV1 {
     pub(crate) applied: bool,
     pub(crate) pre: [u32; 3],
     pub(crate) post: [u32; 3],
+}
+
+/// One compact, selector-local LC trace ready for prepared-executor binding.
+///
+/// This production seam owns no global recurrence builder or direct plan. Its
+/// inputs are precisely the compact process seed, one already-decoded public
+/// query, and the authenticated prepared template catalogs.
+pub(crate) struct OnTheFlySelectedQueryTraceV1 {
+    pub(crate) query: DecodedLcQueryV1,
+    pub(crate) trace: OnTheFlyStructuralTraceV1,
+    pub(crate) projection: OnTheFlyProjectionProbeV1,
+}
+
+pub(crate) fn build_selected_lc_query_trace_v1(
+    templates: &ValidatedRecurrenceTemplateInput,
+    direct: &PreparedDirectExecutorCatalog,
+    seed: &OnTheFlyProcessSeedV1,
+    query: DecodedLcQueryV1,
+) -> RusticolResult<OnTheFlySelectedQueryTraceV1> {
+    build_selected_lc_query_trace_impl(templates, direct, seed, query, true)
+}
+
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+pub(crate) fn build_selected_lc_query_trace_for_probe_v1(
+    templates: &ValidatedRecurrenceTemplateInput,
+    direct: &PreparedDirectExecutorCatalog,
+    seed: &OnTheFlyProcessSeedV1,
+    query: DecodedLcQueryV1,
+    enable_projection: bool,
+) -> RusticolResult<OnTheFlySelectedQueryTraceV1> {
+    build_selected_lc_query_trace_impl(templates, direct, seed, query, enable_projection)
+}
+
+fn build_selected_lc_query_trace_impl(
+    templates: &ValidatedRecurrenceTemplateInput,
+    direct: &PreparedDirectExecutorCatalog,
+    seed: &OnTheFlyProcessSeedV1,
+    query: DecodedLcQueryV1,
+    enable_projection: bool,
+) -> RusticolResult<OnTheFlySelectedQueryTraceV1> {
+    if seed.direct_catalog_digest() != direct.direct_template_catalog_digest() {
+        return Err(integrity(
+            "compact query direct-template catalog differs from its prepared catalog",
+        ));
+    }
+    let (trace, projection) =
+        build_selected_lc_trace_impl(templates, &seed, &query, enable_projection, true)?;
+    Ok(OnTheFlySelectedQueryTraceV1 {
+        query,
+        trace,
+        projection: projection
+            .ok_or_else(|| integrity("compact query projection proof was not collected"))?,
+    })
 }
 
 fn selected_graph_counts(

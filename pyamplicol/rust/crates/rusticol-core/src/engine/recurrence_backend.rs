@@ -21,11 +21,10 @@ use crate::artifact::EvaluatorPayloadStore;
 use crate::recurrence::direct_backend::{
     DirectExecutorCatalog, DirectExecutorHandle, DirectUnionSourceDispatchHandle,
 };
-#[cfg(feature = "on-the-fly-test-support")]
-use crate::recurrence::on_the_fly::OnTheFlySelectedTraceV1;
 use crate::recurrence::on_the_fly::{
     OnTheFlyExecutorKeyV1, OnTheFlyPreparedExecutorResolver, OnTheFlyProcessSeedV1,
-    OnTheFlyStructuralTraceV1, ResolvedOnTheFlyExecutor, authenticated_prepared_executor_binding,
+    OnTheFlySelectedQueryTraceV1, OnTheFlyStructuralTraceV1, ResolvedOnTheFlyExecutor,
+    authenticated_prepared_executor_binding,
 };
 use crate::recurrence::template::ValidatedRecurrenceTemplateInput;
 use crate::recurrence::{
@@ -107,15 +106,19 @@ pub(super) struct OnTheFlySourceDomainBinding {
     source: Option<LoadedDirectSourceExecutor>,
 }
 
-/// Borrowed semantic resolver used by the private on-the-fly interpreter.
-pub(super) struct NativeOnTheFlyPreparedExecutorResolver<'a> {
-    _pool: &'a NativeRecurrencePreparedExecutorPool,
-    _sources: &'a OnTheFlySourceDomainBinding,
+/// Owning semantic resolver used by the private on-the-fly interpreter.
+///
+/// The copied direct handles address heap-stable contexts owned by `sources`
+/// and `pool`. Declaration order is intentional: resolved handles disappear
+/// first, then process-bound source contexts, then the model-level pool.
+pub(super) struct NativeOnTheFlyPreparedExecutorResolver {
     resolved: BTreeMap<OnTheFlyExecutorKeyV1, ResolvedOnTheFlyExecutor>,
+    sources: OnTheFlySourceDomainBinding,
+    pool: NativeRecurrencePreparedExecutorPool,
 }
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
-impl NativeOnTheFlyPreparedExecutorResolver<'_> {
+impl NativeOnTheFlyPreparedExecutorResolver {
     pub(super) fn semantic_executor_binding_count(&self) -> RusticolResult<u32> {
         u32::try_from(self.resolved.len()).map_err(|_| {
             RusticolError::integrity("on-the-fly semantic executor binding count exceeds u32")
@@ -396,120 +399,15 @@ impl NativeRecurrencePreparedExecutorPool {
         Ok(OnTheFlySourceDomainBinding { source })
     }
 
-    pub(super) fn bind_on_the_fly_trace<'a>(
-        &'a self,
-        templates: &ValidatedRecurrenceTemplateInput,
-        direct: &PreparedDirectExecutorCatalog,
-        seed: &OnTheFlyProcessSeedV1,
-        trace: &mut OnTheFlyStructuralTraceV1,
-        sources: &'a OnTheFlySourceDomainBinding,
-    ) -> RusticolResult<NativeOnTheFlyPreparedExecutorResolver<'a>> {
-        self.bind_on_the_fly_traces(templates, direct, std::iter::once((seed, trace)), sources)
-    }
-
-    #[cfg(feature = "on-the-fly-test-support")]
-    pub(super) fn bind_on_the_fly_family<'a>(
-        &'a self,
-        templates: &ValidatedRecurrenceTemplateInput,
-        direct: &PreparedDirectExecutorCatalog,
-        selected: &mut [OnTheFlySelectedTraceV1],
-        sources: &'a OnTheFlySourceDomainBinding,
-    ) -> RusticolResult<NativeOnTheFlyPreparedExecutorResolver<'a>> {
-        self.bind_on_the_fly_traces(
-            templates,
-            direct,
-            selected
-                .iter_mut()
-                .map(|selected| (&selected.seed, &mut selected.trace)),
+    pub(super) fn into_on_the_fly_resolver(
+        self,
+        sources: OnTheFlySourceDomainBinding,
+    ) -> NativeOnTheFlyPreparedExecutorResolver {
+        NativeOnTheFlyPreparedExecutorResolver {
+            resolved: BTreeMap::new(),
             sources,
-        )
-    }
-
-    fn bind_on_the_fly_traces<'a, 'trace>(
-        &'a self,
-        templates: &ValidatedRecurrenceTemplateInput,
-        direct: &PreparedDirectExecutorCatalog,
-        traces: impl IntoIterator<
-            Item = (
-                &'trace OnTheFlyProcessSeedV1,
-                &'trace mut OnTheFlyStructuralTraceV1,
-            ),
-        >,
-        sources: &'a OnTheFlySourceDomainBinding,
-    ) -> RusticolResult<NativeOnTheFlyPreparedExecutorResolver<'a>> {
-        let summary = templates.summary();
-        if summary.catalog_digest != self.recurrence_template_catalog_digest
-            || summary.compiled_model_digest != self.compiled_model_digest
-            || summary.prepared_kernel_pack_digest != self.prepared_kernel_pack_digest
-        {
-            return Err(RusticolError::integrity(
-                "on-the-fly recurrence templates do not belong to the loaded prepared pack",
-            ));
+            pool: self,
         }
-        if direct.direct_template_catalog_digest() != self.direct_template_catalog_digest {
-            return Err(RusticolError::integrity(
-                "on-the-fly direct-template catalog does not match the loaded prepared pack",
-            ));
-        }
-        let authenticate = authenticated_prepared_executor_binding(templates, direct)?;
-        let mut resolved = BTreeMap::new();
-        let mut trace_count = 0_u32;
-        for (seed, trace) in traces {
-            trace_count = trace_count.checked_add(1).ok_or_else(|| {
-                RusticolError::integrity("on-the-fly trace-family count exceeds u32")
-            })?;
-            if seed.template_catalog_digest() != self.recurrence_template_catalog_digest
-                || seed.model_digest() != self.compiled_model_digest
-                || seed.prepared_pack_digest() != self.prepared_kernel_pack_digest
-                || seed.direct_catalog_digest() != self.direct_template_catalog_digest
-                || trace.seed_digest() != seed.semantic_digest()
-            {
-                return Err(RusticolError::integrity(
-                    "on-the-fly compact process identity does not match the loaded prepared pack",
-                ));
-            }
-            let mut parent_permutations = BTreeMap::new();
-            for key in trace.executor_keys() {
-                let resolved_executor = if let Some(resolved) = resolved.get(&key).copied() {
-                    resolved
-                } else {
-                    let expected = authenticate(key)?;
-                    let (direct_executor_id, handle, parent_permutation) =
-                        if let Some(evaluator_binding_id) = key.evaluator_binding_id() {
-                            self.resolve_handle(sources, key.role(), evaluator_binding_id)?
-                        } else {
-                            let (executor_id, handle) = self.identity_finalizer_handle()?;
-                            (executor_id, handle, [0, 1])
-                        };
-                    if direct_executor_id != expected.direct_executor_id
-                        || parent_permutation != expected.parent_permutation
-                    {
-                        return Err(RusticolError::integrity(
-                            "prepared pool and authenticated direct-template mapping disagree",
-                        ));
-                    }
-                    let resolved_executor = ResolvedOnTheFlyExecutor {
-                        direct_executor_id,
-                        handle,
-                        parent_permutation,
-                    };
-                    resolved.insert(key, resolved_executor);
-                    resolved_executor
-                };
-                parent_permutations.insert(key, resolved_executor.parent_permutation);
-            }
-            trace.bind_prepared_executor_rows(&parent_permutations)?;
-        }
-        if trace_count == 0 {
-            return Err(RusticolError::invalid_argument(
-                "on-the-fly prepared executor family is empty",
-            ));
-        }
-        Ok(NativeOnTheFlyPreparedExecutorResolver {
-            _pool: self,
-            _sources: sources,
-            resolved,
-        })
     }
 
     fn resolve_handle(
@@ -597,6 +495,123 @@ impl NativeRecurrencePreparedExecutorPool {
     }
 }
 
+impl NativeOnTheFlyPreparedExecutorResolver {
+    pub(super) fn bind_on_the_fly_trace(
+        &mut self,
+        templates: &ValidatedRecurrenceTemplateInput,
+        direct: &PreparedDirectExecutorCatalog,
+        seed: &OnTheFlyProcessSeedV1,
+        trace: &mut OnTheFlyStructuralTraceV1,
+    ) -> RusticolResult<()> {
+        self.bind_on_the_fly_traces(templates, direct, std::iter::once((seed, trace)))
+    }
+
+    pub(super) fn bind_on_the_fly_family(
+        &mut self,
+        templates: &ValidatedRecurrenceTemplateInput,
+        direct: &PreparedDirectExecutorCatalog,
+        seed: &OnTheFlyProcessSeedV1,
+        selected: &mut [OnTheFlySelectedQueryTraceV1],
+    ) -> RusticolResult<()> {
+        self.bind_on_the_fly_traces(
+            templates,
+            direct,
+            selected
+                .iter_mut()
+                .map(|selected| (seed, &mut selected.trace)),
+        )
+    }
+
+    fn bind_on_the_fly_traces<'trace>(
+        &mut self,
+        templates: &ValidatedRecurrenceTemplateInput,
+        direct: &PreparedDirectExecutorCatalog,
+        traces: impl IntoIterator<
+            Item = (
+                &'trace OnTheFlyProcessSeedV1,
+                &'trace mut OnTheFlyStructuralTraceV1,
+            ),
+        >,
+    ) -> RusticolResult<()> {
+        let summary = templates.summary();
+        if summary.catalog_digest != self.pool.recurrence_template_catalog_digest
+            || summary.compiled_model_digest != self.pool.compiled_model_digest
+            || summary.prepared_kernel_pack_digest != self.pool.prepared_kernel_pack_digest
+        {
+            return Err(RusticolError::integrity(
+                "on-the-fly recurrence templates do not belong to the loaded prepared pack",
+            ));
+        }
+        if direct.direct_template_catalog_digest() != self.pool.direct_template_catalog_digest {
+            return Err(RusticolError::integrity(
+                "on-the-fly direct-template catalog does not match the loaded prepared pack",
+            ));
+        }
+        let authenticate = authenticated_prepared_executor_binding(templates, direct)?;
+        // Bind transactionally: a malformed candidate cannot leave partial
+        // semantic handles available to a later cold family.
+        let mut resolved = self.resolved.clone();
+        let mut trace_count = 0_u32;
+        for (seed, trace) in traces {
+            trace_count = trace_count.checked_add(1).ok_or_else(|| {
+                RusticolError::integrity("on-the-fly trace-family count exceeds u32")
+            })?;
+            if seed.template_catalog_digest() != self.pool.recurrence_template_catalog_digest
+                || seed.model_digest() != self.pool.compiled_model_digest
+                || seed.prepared_pack_digest() != self.pool.prepared_kernel_pack_digest
+                || seed.direct_catalog_digest() != self.pool.direct_template_catalog_digest
+                || trace.seed_digest() != seed.semantic_digest()
+            {
+                return Err(RusticolError::integrity(
+                    "on-the-fly compact process identity does not match the loaded prepared pack",
+                ));
+            }
+            let mut parent_permutations = BTreeMap::new();
+            for key in trace.executor_keys() {
+                let resolved_executor = if let Some(resolved) = resolved.get(&key).copied() {
+                    resolved
+                } else {
+                    let expected = authenticate(key)?;
+                    let (direct_executor_id, handle, parent_permutation) =
+                        if let Some(evaluator_binding_id) = key.evaluator_binding_id() {
+                            self.pool.resolve_handle(
+                                &self.sources,
+                                key.role(),
+                                evaluator_binding_id,
+                            )?
+                        } else {
+                            let (executor_id, handle) = self.pool.identity_finalizer_handle()?;
+                            (executor_id, handle, [0, 1])
+                        };
+                    if direct_executor_id != expected.direct_executor_id
+                        || parent_permutation != expected.parent_permutation
+                    {
+                        return Err(RusticolError::integrity(
+                            "prepared pool and authenticated direct-template mapping disagree",
+                        ));
+                    }
+                    let resolved_executor = ResolvedOnTheFlyExecutor {
+                        direct_executor_id,
+                        handle,
+                        parent_permutation,
+                    };
+                    resolved.insert(key, resolved_executor);
+                    resolved_executor
+                };
+                parent_permutations.insert(key, resolved_executor.parent_permutation);
+            }
+            trace.bind_prepared_executor_rows(&parent_permutations)?;
+        }
+        if trace_count == 0 {
+            return Err(RusticolError::invalid_argument(
+                "on-the-fly prepared executor family is empty",
+            ));
+        }
+        self.resolved = resolved;
+        Ok(())
+    }
+}
+
 impl OnTheFlySourceDomainBinding {
     fn source_handle(&self) -> RusticolResult<DirectExecutorHandle> {
         let source = self.source.as_ref().ok_or_else(|| {
@@ -621,7 +636,7 @@ impl OnTheFlySourceDomainBinding {
     }
 }
 
-impl OnTheFlyPreparedExecutorResolver for NativeOnTheFlyPreparedExecutorResolver<'_> {
+impl OnTheFlyPreparedExecutorResolver for NativeOnTheFlyPreparedExecutorResolver {
     fn resolve(&self, key: OnTheFlyExecutorKeyV1) -> RusticolResult<ResolvedOnTheFlyExecutor> {
         self.resolved.get(&key).copied().ok_or_else(|| {
             RusticolError::integrity(
@@ -631,7 +646,7 @@ impl OnTheFlyPreparedExecutorResolver for NativeOnTheFlyPreparedExecutorResolver
     }
 
     fn invalidate_row_tables(&self) -> RusticolResult<()> {
-        self._pool.invalidate_on_the_fly_row_tables()
+        self.pool.invalidate_on_the_fly_row_tables()
     }
 }
 
@@ -1215,8 +1230,9 @@ mod on_the_fly_adapter_tests {
         trace.test_insert_identity_finalizer(direct_digest);
         let pool = prepared_pool(&templates, direct_digest);
         let sources = pool.bind_source_domains(source_domains()).unwrap();
-        let resolver = pool
-            .bind_on_the_fly_trace(&templates, &direct, &seed, &mut trace, &sources)
+        let mut resolver = pool.into_on_the_fly_resolver(sources);
+        resolver
+            .bind_on_the_fly_trace(&templates, &direct, &seed, &mut trace)
             .unwrap();
         let work = trace.execution_work_census().unwrap();
         assert_eq!(work.logical_current_count, 2);
@@ -1252,26 +1268,30 @@ mod on_the_fly_adapter_tests {
         .unwrap();
         let pool = prepared_pool(&templates, direct_digest);
         let sources = pool.bind_source_domains(source_domains()).unwrap();
+        let mut resolver = pool.into_on_the_fly_resolver(sources);
 
         let mut operation_tamper = scalar_adapter_test_trace(&templates, &seed).unwrap();
         operation_tamper.test_tamper_first_operation_semantic_digest(digest(99));
         assert!(
-            pool.bind_on_the_fly_trace(
-                &templates,
-                &direct,
-                &seed,
-                &mut operation_tamper,
-                &sources,
-            )
+            resolver
+                .bind_on_the_fly_trace(&templates, &direct, &seed, &mut operation_tamper)
                 .is_err()
         );
 
         let mut identity_tamper = scalar_adapter_test_trace(&templates, &seed).unwrap();
         identity_tamper.test_insert_identity_finalizer(digest(99));
         assert!(
-            pool.bind_on_the_fly_trace(&templates, &direct, &seed, &mut identity_tamper, &sources,)
+            resolver
+                .bind_on_the_fly_trace(&templates, &direct, &seed, &mut identity_tamper)
                 .is_err()
         );
+        assert_eq!(resolver.semantic_executor_binding_count().unwrap(), 0);
+
+        let mut retained = scalar_adapter_test_trace(&templates, &seed).unwrap();
+        resolver
+            .bind_on_the_fly_trace(&templates, &direct, &seed, &mut retained)
+            .unwrap();
+        assert_eq!(resolver.semantic_executor_binding_count().unwrap(), 2);
     }
 
     #[test]
@@ -1282,6 +1302,7 @@ mod on_the_fly_adapter_tests {
         let direct = direct_catalog(direct_digest);
         let pool = prepared_pool(&templates, direct_digest);
         let sources = pool.bind_source_domains(source_domains()).unwrap();
+        let mut resolver = pool.into_on_the_fly_resolver(sources);
         let seed = scalar_adapter_test_seed(
             summary.compiled_model_digest,
             summary.catalog_digest,
@@ -1299,7 +1320,8 @@ mod on_the_fly_adapter_tests {
         )
         .unwrap();
         assert!(
-            pool.bind_on_the_fly_trace(&templates, &missing, &seed, &mut trace, &sources)
+            resolver
+                .bind_on_the_fly_trace(&templates, &missing, &seed, &mut trace)
                 .is_err()
         );
 
@@ -1332,14 +1354,9 @@ mod on_the_fly_adapter_tests {
             let mismatched = scalar_adapter_test_seed(model, template, pack, direct_id).unwrap();
             let mut mismatched_trace = scalar_adapter_test_trace(&templates, &mismatched).unwrap();
             assert!(
-                pool.bind_on_the_fly_trace(
-                    &templates,
-                    &direct,
-                    &mismatched,
-                    &mut mismatched_trace,
-                    &sources,
-                )
-                .is_err()
+                resolver
+                    .bind_on_the_fly_trace(&templates, &direct, &mismatched, &mut mismatched_trace,)
+                    .is_err()
             );
         }
     }

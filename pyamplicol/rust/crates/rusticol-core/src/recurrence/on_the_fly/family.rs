@@ -1895,17 +1895,19 @@ struct BoundOnTheFlyQueryFamilyV1 {
     descriptor_exposed: bool,
 }
 
-pub(crate) struct OnTheFlyQueryFamilyExecutorV1<'a, R: OnTheFlyPreparedExecutorResolver> {
-    // These fields must be destroyed before the borrowed prepared resolver/owners.
+pub(crate) struct OnTheFlyQueryFamilyExecutorV1<R: OnTheFlyPreparedExecutorResolver> {
+    // Field order is part of the ownership contract. Cached and pending rows
+    // must disappear before the resolver drops the prepared contexts that
+    // their copied handles address.
     cached: Option<BoundOnTheFlyQueryFamilyV1>,
     pending: Option<BoundOnTheFlyQueryFamilyV1>,
-    resolver: &'a R,
+    resolver: R,
     parameter_state: Vec<(f64, f64)>,
     parameter_version: u64,
 }
 
-impl<'a, R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<'a, R> {
-    pub(crate) const fn new(resolver: &'a R) -> Self {
+impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
+    pub(crate) const fn new(resolver: R) -> Self {
         Self {
             cached: None,
             pending: None,
@@ -1913,6 +1915,14 @@ impl<'a, R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<'a, 
             parameter_state: Vec::new(),
             parameter_version: 0,
         }
+    }
+
+    pub(crate) const fn resolver(&self) -> &R {
+        &self.resolver
+    }
+
+    pub(crate) const fn resolver_mut(&mut self) -> &mut R {
+        &mut self.resolver
     }
 
     pub(crate) fn set_parameters(&mut self, parameters: &[(f64, f64)]) -> RusticolResult<()> {
@@ -2169,7 +2179,7 @@ impl<'a, R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<'a, 
     }
 }
 
-impl<R: OnTheFlyPreparedExecutorResolver> Drop for OnTheFlyQueryFamilyExecutorV1<'_, R> {
+impl<R: OnTheFlyPreparedExecutorResolver> Drop for OnTheFlyQueryFamilyExecutorV1<R> {
     fn drop(&mut self) {
         if self.invalidate_exposed_row_tables().is_ok() {
             return;
@@ -2330,7 +2340,7 @@ pub fn on_the_fly_query_family_census_v1(
         .map(|(flow, helicities)| {
             super::test_support::build_on_the_fly_selected_trace_v1(
                 authenticated,
-                direct_catalog.direct_template_catalog_digest(),
+                direct_catalog,
                 *flow,
                 helicities,
                 enable_projection,
@@ -2859,7 +2869,7 @@ mod tests {
                 projection: second_projection,
             },
         ];
-        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(&resolver);
+        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(resolver);
         assert!(!executor.prepare(&catalog, &selected, 1).unwrap());
         let census = executor.prepared_census().unwrap();
         assert_eq!(census.union_unique_current_count, 3);
@@ -2885,7 +2895,7 @@ mod tests {
             }
         );
         assert_eq!(outputs, [(46.0, 0.0), (46.0, 0.0)]);
-        let first_calls = resolver.state.calls.borrow().clone();
+        let first_calls = executor.resolver().state.calls.borrow().clone();
         assert_eq!(
             first_calls.iter().map(|call| call.0).collect::<Vec<_>>(),
             vec![
@@ -2903,7 +2913,7 @@ mod tests {
             .unwrap();
         assert!(warm.cache_hit);
         assert_eq!(outputs, [(92.0, 0.0), (92.0, 0.0)]);
-        let calls = resolver.state.calls.borrow();
+        let calls = executor.resolver().state.calls.borrow();
         assert_eq!(calls.len(), 8);
         assert_eq!(
             calls[..4]
@@ -3014,7 +3024,7 @@ mod tests {
             1
         );
 
-        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(&resolver);
+        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(resolver);
         assert!(!executor.prepare(&catalog, &selected, 1).unwrap());
         let mut output = [(0.0, 0.0)];
         let report = executor
@@ -3067,7 +3077,7 @@ mod tests {
             BTreeSet::from([(0, 1), (1, 0)])
         );
 
-        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(&resolver);
+        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(resolver);
         executor.prepare(&catalog, &selected, 1).unwrap();
         let mut output = [(0.0, 0.0)];
         let report = executor
@@ -3116,9 +3126,10 @@ mod tests {
             trace: &trace,
             projection,
         }];
-        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(&resolver);
+        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(resolver);
         executor.prepare(&catalog, &selected, 1).unwrap();
-        resolver
+        executor
+            .resolver_mut()
             .state
             .fail_role
             .set(Some(DirectExecutorRole::Contribution));
@@ -3138,7 +3149,7 @@ mod tests {
                 .contains("last successful execution")
         );
 
-        resolver.state.fail_role.set(None);
+        executor.resolver().state.fail_role.set(None);
         let report = executor
             .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
             .unwrap();
@@ -3156,9 +3167,10 @@ mod tests {
             trace: &first,
             projection: first_projection,
         }];
-        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(&resolver);
+        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(resolver);
         executor.prepare(&catalog, &first_selected, 1).unwrap();
-        resolver
+        executor
+            .resolver()
             .state
             .fail_role
             .set(Some(DirectExecutorRole::Finalization));
@@ -3166,9 +3178,9 @@ mod tests {
         executor
             .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
             .unwrap_err();
-        let failed_calls = resolver.state.calls.borrow().clone();
+        let failed_calls = executor.resolver().state.calls.borrow().clone();
         assert_eq!(failed_calls.len(), 3);
-        assert_eq!(resolver.state.invalidations.get(), 0);
+        assert_eq!(executor.resolver().state.invalidations.get(), 0);
 
         let (second, second_projection) =
             OnTheFlyStructuralTraceV1::test_query_family_trace(0x82, factor(1));
@@ -3177,13 +3189,13 @@ mod tests {
             projection: second_projection,
         }];
         assert!(!executor.prepare(&catalog, &second_selected, 1).unwrap());
-        assert_eq!(resolver.state.invalidations.get(), 1);
-        resolver.state.fail_role.set(None);
+        assert_eq!(executor.resolver().state.invalidations.get(), 1);
+        executor.resolver().state.fail_role.set(None);
         executor
             .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
             .unwrap();
         assert_eq!(output, [(46.0, 0.0)]);
-        let calls = resolver.state.calls.borrow();
+        let calls = executor.resolver().state.calls.borrow();
         assert_ne!(failed_calls[0].1, calls[3].1);
         assert_ne!(failed_calls[1].1, calls[4].1);
     }
@@ -3198,14 +3210,14 @@ mod tests {
             trace: &first,
             projection: first_projection,
         }];
-        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(&resolver);
+        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(resolver);
         executor.prepare(&catalog, &first_selected, 1).unwrap();
         let mut output = [(0.0, 0.0)];
         executor
             .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
             .unwrap();
-        assert_eq!(resolver.state.invalidations.get(), 0);
-        let calls_before_prepare = resolver.state.calls.borrow().len();
+        assert_eq!(executor.resolver().state.invalidations.get(), 0);
+        let calls_before_prepare = executor.resolver().state.calls.borrow().len();
 
         let (second, second_projection) =
             OnTheFlyStructuralTraceV1::test_query_family_trace(0x82, factor(1));
@@ -3214,8 +3226,11 @@ mod tests {
             projection: second_projection,
         }];
         executor.prepare(&catalog, &second_selected, 1).unwrap();
-        assert_eq!(resolver.state.invalidations.get(), 1);
-        assert_eq!(resolver.state.calls.borrow().len(), calls_before_prepare);
+        assert_eq!(executor.resolver().state.invalidations.get(), 1);
+        assert_eq!(
+            executor.resolver().state.calls.borrow().len(),
+            calls_before_prepare
+        );
         assert!(!executor.cached.as_ref().unwrap().descriptor_exposed);
         let report = executor
             .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
@@ -3234,13 +3249,13 @@ mod tests {
             trace: &trace,
             projection,
         }];
-        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(&resolver);
+        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(resolver);
         executor.prepare(&catalog, &selected, 1).unwrap();
         let error = executor
             .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut [])
             .unwrap_err();
         assert!(error.to_string().contains("expected 1"));
-        assert!(resolver.state.calls.borrow().is_empty());
+        assert!(executor.resolver().state.calls.borrow().is_empty());
         assert!(!executor.pending.as_ref().unwrap().descriptor_exposed);
 
         let mut output = [(0.0, 0.0)];
@@ -3259,7 +3274,7 @@ mod tests {
         let (mut second, second_projection) =
             OnTheFlyStructuralTraceV1::test_query_family_trace(0x82, factor(1));
         second.seed_digest = SemanticDigest::new([0x83; 32]).unwrap();
-        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(&resolver);
+        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(resolver);
         let error = executor
             .prepare(
                 &catalog,

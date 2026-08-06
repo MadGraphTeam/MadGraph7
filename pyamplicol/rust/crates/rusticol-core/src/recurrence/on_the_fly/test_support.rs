@@ -68,10 +68,9 @@ struct OnePublicRowOracle {
     selector: OnTheFlyLcSelectorV1,
 }
 
-/// Exact compact inputs for one authenticated selector-local probe.
-///
-/// This value deliberately contains no materialized recurrence program or
-/// direct plan. It is visible only to the non-default artifact probe.
+/// Test-support convenience bundle retaining one generated compact seed.
+/// Production families instead keep one lane-owned seed and build borrowed
+/// [`OnTheFlySelectedQueryTraceV1`] values for each selected query.
 pub(crate) struct OnTheFlySelectedTraceV1 {
     pub(crate) seed: OnTheFlyProcessSeedV1,
     pub(crate) query: DecodedLcQueryV1,
@@ -951,7 +950,7 @@ fn pairing_oracle_equal(
 
 pub(crate) fn build_on_the_fly_selected_trace_v1(
     authenticated: &AuthenticatedRecurrenceBuilderInput,
-    direct_catalog_digest: SemanticDigest,
+    direct: &PreparedDirectExecutorCatalog,
     selected_public_flow_id: u32,
     public_helicities: &[i32],
     enable_projection: bool,
@@ -959,7 +958,7 @@ pub(crate) fn build_on_the_fly_selected_trace_v1(
     let oracle = one_public_row_oracle(authenticated, selected_public_flow_id, public_helicities)?;
     let seed = compact_seed(
         authenticated,
-        direct_catalog_digest,
+        direct.direct_template_catalog_digest(),
         oracle.external_permutation.clone(),
     )?;
     let query = DecodedLcQueryV1::new(
@@ -968,17 +967,18 @@ pub(crate) fn build_on_the_fly_selected_trace_v1(
         &oracle.public_helicities,
         oracle.selector,
     )?;
-    let (trace, projection) = build_selected_lc_trace_for_probe(
+    let selected = build_selected_lc_query_trace_for_probe_v1(
         authenticated.template(),
+        direct,
         &seed,
-        &query,
+        query,
         enable_projection,
     )?;
     Ok(OnTheFlySelectedTraceV1 {
         seed,
-        query,
-        trace,
-        projection,
+        query: selected.query,
+        trace: selected.trace,
+        projection: selected.projection,
     })
 }
 
@@ -987,13 +987,13 @@ pub(crate) fn build_on_the_fly_selected_trace_v1(
 #[doc(hidden)]
 pub fn on_the_fly_test_support_probe_v1(
     authenticated: &AuthenticatedRecurrenceBuilderInput,
-    direct_catalog_digest: SemanticDigest,
+    direct: &PreparedDirectExecutorCatalog,
     selected_public_flow_id: u32,
     public_helicities: &[i32],
 ) -> RusticolResult<OnTheFlyTestSupportReportV1> {
     let selected = build_on_the_fly_selected_trace_v1(
         authenticated,
-        direct_catalog_digest,
+        direct,
         selected_public_flow_id,
         public_helicities,
         true,

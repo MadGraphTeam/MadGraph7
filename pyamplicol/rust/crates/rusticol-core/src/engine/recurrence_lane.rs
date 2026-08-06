@@ -68,6 +68,174 @@ enum RecurrenceNativeSelectors {
     },
 }
 
+/// Borrowed LC selector and reduction state shared by topology replay and the
+/// future compact on-the-fly lane.
+///
+/// Constructing this view is allocation-free. It deliberately exposes only
+/// the public axes and orbit weights needed after an amplitude is computed;
+/// an on-the-fly runtime can therefore provide the same backing slices/maps
+/// without materializing a dense [`ProcessPhysicsV1`].
+#[derive(Clone, Copy)]
+pub(super) struct LcSelectorReductionView<'a> {
+    helicities: &'a [crate::Helicity],
+    color_components: &'a [crate::ColorComponent],
+    helicity_index_by_id: &'a BTreeMap<String, usize>,
+    color_index_by_id: &'a BTreeMap<String, usize>,
+    helicity_members_by_representative: &'a [Vec<usize>],
+}
+
+impl<'a> LcSelectorReductionView<'a> {
+    pub(super) const fn from_parts(
+        helicities: &'a [crate::Helicity],
+        color_components: &'a [crate::ColorComponent],
+        helicity_index_by_id: &'a BTreeMap<String, usize>,
+        color_index_by_id: &'a BTreeMap<String, usize>,
+        helicity_members_by_representative: &'a [Vec<usize>],
+    ) -> Self {
+        Self {
+            helicities,
+            color_components,
+            helicity_index_by_id,
+            color_index_by_id,
+            helicity_members_by_representative,
+        }
+    }
+
+    fn validate_selector_ids(
+        self,
+        selected_helicities: Option<&BTreeSet<String>>,
+        selected_colors: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<()> {
+        if let Some(id) = selected_helicities.and_then(|ids| {
+            ids.iter()
+                .find(|id| !self.helicity_index_by_id.contains_key(*id))
+        }) {
+            return Err(RusticolError::selector(format!(
+                "unknown resolved helicity id {id:?}"
+            )));
+        }
+        if let Some(id) = selected_colors.and_then(|ids| {
+            ids.iter()
+                .find(|id| !self.color_index_by_id.contains_key(*id))
+        }) {
+            return Err(RusticolError::selector(format!(
+                "unknown resolved color component id {id:?}"
+            )));
+        }
+        Ok(())
+    }
+
+    fn selected_indices(
+        available: &BTreeMap<String, usize>,
+        ids: Option<&BTreeSet<String>>,
+        kind: &str,
+    ) -> RusticolResult<Vec<usize>> {
+        let mut indices = if let Some(ids) = ids {
+            ids.iter()
+                .map(|id| {
+                    available.get(id).copied().ok_or_else(|| {
+                        RusticolError::selector(format!("unknown resolved {kind} id {id:?}"))
+                    })
+                })
+                .collect::<RusticolResult<Vec<_>>>()?
+        } else {
+            (0..available.len()).collect()
+        };
+        indices.sort_unstable();
+        Ok(indices)
+    }
+
+    fn selected_helicity_indices(
+        self,
+        ids: Option<&BTreeSet<String>>,
+    ) -> RusticolResult<Vec<usize>> {
+        Self::selected_indices(self.helicity_index_by_id, ids, "helicity")
+    }
+
+    fn selected_color_indices(self, ids: Option<&BTreeSet<String>>) -> RusticolResult<Vec<usize>> {
+        Self::selected_indices(self.color_index_by_id, ids, "color component")
+    }
+
+    #[inline(always)]
+    fn helicity(self, index: usize) -> &'a crate::Helicity {
+        &self.helicities[index]
+    }
+
+    #[inline(always)]
+    fn color(self, index: usize) -> &'a crate::ColorComponent {
+        &self.color_components[index]
+    }
+
+    #[inline(always)]
+    fn color_is_computed(self, index: usize) -> bool {
+        match self.color(index) {
+            crate::ColorComponent::LcFlow(flow) => flow.computed,
+            crate::ColorComponent::ContractedColor(_) => true,
+        }
+    }
+
+    #[inline(always)]
+    fn helicity_orbit_members(self, representative: usize) -> &'a [usize] {
+        self.helicity_members_by_representative
+            .get(representative)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
+
+    #[inline(always)]
+    fn helicity_is_selected(self, selected: Option<&BTreeSet<String>>, index: usize) -> bool {
+        selected.is_none_or(|ids| ids.contains(&self.helicity(index).id))
+    }
+
+    #[inline(always)]
+    fn helicity_orbit_weight(
+        self,
+        selected: Option<&BTreeSet<String>>,
+        representative_index: usize,
+    ) -> f64 {
+        self.helicity_orbit_members(representative_index)
+            .iter()
+            .copied()
+            .filter(|index| self.helicity_is_selected(selected, *index))
+            .map(|index| self.helicity(index).coefficient)
+            .sum()
+    }
+
+    #[inline(always)]
+    fn color_is_selected(self, selected: Option<&BTreeSet<String>>, index: usize) -> bool {
+        selected.is_none_or(|ids| ids.contains(self.color(index).id()))
+    }
+}
+
+impl PhysicsRuntime {
+    pub(super) fn lc_selector_reduction_view(&self) -> LcSelectorReductionView<'_> {
+        LcSelectorReductionView::from_parts(
+            &self.manifest.helicities,
+            &self.manifest.color_components,
+            &self.helicity_index_by_id,
+            &self.color_index_by_id,
+            &self.helicity_members_by_representative,
+        )
+    }
+}
+
+/// Apply the established LC diagonal reduction to one complex amplitude
+/// stream. Both topology replay's split real/imaginary planes and the future
+/// on-the-fly query-major output can provide their native storage through the
+/// inlined accessor without copying or changing the reduction formula.
+#[inline(always)]
+pub(super) fn accumulate_lc_diagonal_amplitude(
+    point_count: usize,
+    weight: f64,
+    mut value: impl FnMut(usize) -> (f64, f64),
+    mut accumulate: impl FnMut(usize, f64),
+) {
+    for point in 0..point_count {
+        let (real, imaginary) = value(point);
+        accumulate(point, weight * real.mul_add(real, imaginary * imaginary));
+    }
+}
+
 impl RecurrenceNativeRuntime {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
@@ -286,7 +454,16 @@ impl RecurrenceNativeRuntime {
         selected_colors: Option<&BTreeSet<String>>,
     ) -> RusticolResult<()> {
         self.validate_public_axis_lengths(physics)?;
-        validate_recurrence_selector_ids(physics, selected_helicities, selected_colors)?;
+        if matches!(
+            &self.selectors,
+            RecurrenceNativeSelectors::TopologyReplay { .. }
+        ) {
+            physics
+                .lc_selector_reduction_view()
+                .validate_selector_ids(selected_helicities, selected_colors)?;
+        } else {
+            validate_recurrence_selector_ids(physics, selected_helicities, selected_colors)?;
+        }
         if matches!(
             &self.selectors,
             RecurrenceNativeSelectors::ContractedColorUnion { .. }
@@ -342,7 +519,7 @@ impl RecurrenceNativeRuntime {
         match &self.selectors {
             RecurrenceNativeSelectors::TopologyReplay { .. } => self
                 .run_replay_view_into_unprofiled(
-                    physics,
+                    physics.lc_selector_reduction_view(),
                     common.normalization_factor,
                     batch,
                     selected_helicities,
@@ -371,20 +548,20 @@ impl RecurrenceNativeRuntime {
 
     fn run_replay_view_into_unprofiled(
         &mut self,
-        physics: &PhysicsRuntime,
+        reduction: LcSelectorReductionView<'_>,
         normalization_factor: f64,
         batch: F64MomentumBatchView<'_>,
         selected_helicities: Option<&BTreeSet<String>>,
         selected_colors: Option<&BTreeSet<String>>,
         output: &mut [f64],
     ) -> RusticolResult<()> {
-        for color_index in 0..physics.manifest.color_components.len() {
-            if !physics.color_is_computed(color_index)
-                || !recurrence_color_is_selected(physics, selected_colors, color_index)
+        for color_index in 0..reduction.color_components.len() {
+            if !reduction.color_is_computed(color_index)
+                || !reduction.color_is_selected(selected_colors, color_index)
             {
                 continue;
             }
-            let color_weight = physics.manifest.color_components[color_index].coefficient();
+            let color_weight = reduction.color(color_index).coefficient();
 
             let mut tile_start = 0usize;
             while tile_start < batch.point_count() {
@@ -423,16 +600,13 @@ impl RecurrenceNativeRuntime {
                         direct_helicity_to_physics,
                         destination_id,
                     )?;
-                    let helicity = &physics.manifest.helicities[helicity_index];
+                    let helicity = reduction.helicity(helicity_index);
                     if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0
                     {
                         continue;
                     }
-                    let helicity_weight = recurrence_helicity_orbit_weight(
-                        physics,
-                        selected_helicities,
-                        helicity_index,
-                    );
+                    let helicity_weight =
+                        reduction.helicity_orbit_weight(selected_helicities, helicity_index);
                     if helicity_weight == 0.0 {
                         continue;
                     }
@@ -453,11 +627,12 @@ impl RecurrenceNativeRuntime {
                                 )
                             })?;
                     let weight = helicity_weight * color_weight * normalization_factor;
-                    for point in 0..point_count {
-                        output[tile_start + point] += weight
-                            * values_re[point]
-                                .mul_add(values_re[point], values_im[point] * values_im[point]);
-                    }
+                    accumulate_lc_diagonal_amplitude(
+                        point_count,
+                        weight,
+                        |point| (values_re[point], values_im[point]),
+                        |point, value| output[tile_start + point] += value,
+                    );
                 }
                 tile_start = tile_stop;
             }
@@ -612,8 +787,9 @@ impl RecurrenceNativeRuntime {
         let physics = common.physics.clone().ok_or_else(|| {
             RusticolError::artifact("recurrence execution requires physics metadata")
         })?;
-        let helicity_indices = physics.selected_helicity_indices(selected_helicities)?;
-        let color_indices = physics.selected_color_indices(selected_colors)?;
+        let reduction_view = physics.lc_selector_reduction_view();
+        let helicity_indices = reduction_view.selected_helicity_indices(selected_helicities)?;
+        let color_indices = reduction_view.selected_color_indices(selected_colors)?;
         self.validate_public_axes(&physics, &helicity_indices, &color_indices)?;
 
         let mut values = vec![0.0; batch.len()];
@@ -625,10 +801,10 @@ impl RecurrenceNativeRuntime {
         let mut reduction = Duration::ZERO;
 
         for color_index in color_indices {
-            if !physics.color_is_computed(color_index) {
+            if !reduction_view.color_is_computed(color_index) {
                 continue;
             }
-            let color_weight = physics.manifest.color_components[color_index].coefficient();
+            let color_weight = reduction_view.color(color_index).coefficient();
             let mut tile_start = 0usize;
             while tile_start < batch.len() {
                 let tile_stop = (tile_start + self.effective_point_tile_size()).min(batch.len());
@@ -676,16 +852,13 @@ impl RecurrenceNativeRuntime {
                         direct_helicity_to_physics,
                         destination_id,
                     )?;
-                    let helicity = &physics.manifest.helicities[helicity_index];
+                    let helicity = reduction_view.helicity(helicity_index);
                     if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0
                     {
                         continue;
                     }
-                    let helicity_weight = recurrence_helicity_orbit_weight(
-                        &physics,
-                        selected_helicities,
-                        helicity_index,
-                    );
+                    let helicity_weight =
+                        reduction_view.helicity_orbit_weight(selected_helicities, helicity_index);
                     if helicity_weight == 0.0 {
                         continue;
                     }
@@ -700,11 +873,12 @@ impl RecurrenceNativeRuntime {
                         )
                     })?;
                     let weight = helicity_weight * color_weight * common.normalization_factor;
-                    for point in 0..point_count {
-                        values[tile_start + point] += weight
-                            * values_re[point]
-                                .mul_add(values_re[point], values_im[point] * values_im[point]);
-                    }
+                    accumulate_lc_diagonal_amplitude(
+                        point_count,
+                        weight,
+                        |point| (values_re[point], values_im[point]),
+                        |point, value| values[tile_start + point] += value,
+                    );
                 }
                 reduction += reduction_started.elapsed();
                 tile_start = tile_stop;
@@ -759,8 +933,9 @@ impl RecurrenceNativeRuntime {
         let physics = common.physics.clone().ok_or_else(|| {
             RusticolError::artifact("resolved recurrence execution requires physics metadata")
         })?;
-        let helicity_indices = physics.selected_helicity_indices(selected_helicities)?;
-        let color_indices = physics.selected_color_indices(selected_colors)?;
+        let reduction_view = physics.lc_selector_reduction_view();
+        let helicity_indices = reduction_view.selected_helicity_indices(selected_helicities)?;
+        let color_indices = reduction_view.selected_color_indices(selected_colors)?;
         self.validate_public_axes(&physics, &helicity_indices, &color_indices)?;
         let component_count = helicity_indices
             .len()
@@ -774,7 +949,7 @@ impl RecurrenceNativeRuntime {
                 RusticolError::invalid_argument("recurrence resolved output overflows")
             })?
         ];
-        let mut helicity_position = vec![None; physics.manifest.helicities.len()];
+        let mut helicity_position = vec![None; reduction_view.helicities.len()];
         for (position, index) in helicity_indices.iter().copied().enumerate() {
             helicity_position[index] = Some(position);
         }
@@ -787,10 +962,10 @@ impl RecurrenceNativeRuntime {
         let mut reduction = Duration::ZERO;
 
         for (color_position, color_index) in color_indices.iter().copied().enumerate() {
-            if !physics.color_is_computed(color_index) {
+            if !reduction_view.color_is_computed(color_index) {
                 continue;
             }
-            let color_weight = physics.manifest.color_components[color_index].coefficient();
+            let color_weight = reduction_view.color(color_index).coefficient();
             let mut tile_start = 0usize;
             while tile_start < batch.len() {
                 let tile_stop = (tile_start + self.effective_point_tile_size()).min(batch.len());
@@ -838,7 +1013,7 @@ impl RecurrenceNativeRuntime {
                         direct_helicity_to_physics,
                         destination_id,
                     )?;
-                    let helicity = &physics.manifest.helicities[helicity_index];
+                    let helicity = reduction_view.helicity(helicity_index);
                     if !helicity.computed || helicity.structural_zero || helicity.coefficient == 0.0
                     {
                         continue;
@@ -853,21 +1028,24 @@ impl RecurrenceNativeRuntime {
                             "recurrence selected amplitude destination is absent",
                         )
                     })?;
-                    for physical_helicity in physics.helicity_orbit_members(helicity_index) {
+                    for physical_helicity in reduction_view.helicity_orbit_members(helicity_index) {
                         let Some(helicity_position) = helicity_position[*physical_helicity] else {
                             continue;
                         };
-                        let weight = physics.manifest.helicities[*physical_helicity].coefficient
+                        let weight = reduction_view.helicity(*physical_helicity).coefficient
                             * color_weight
                             * common.normalization_factor;
-                        for point in 0..point_count {
-                            let target = (tile_start + point) * component_count
-                                + helicity_position * color_indices.len()
-                                + color_position;
-                            values[target] += weight
-                                * values_re[point]
-                                    .mul_add(values_re[point], values_im[point] * values_im[point]);
-                        }
+                        accumulate_lc_diagonal_amplitude(
+                            point_count,
+                            weight,
+                            |point| (values_re[point], values_im[point]),
+                            |point, value| {
+                                let target = (tile_start + point) * component_count
+                                    + helicity_position * color_indices.len()
+                                    + color_position;
+                                values[target] += value;
+                            },
+                        );
                     }
                 }
                 reduction += reduction_started.elapsed();
@@ -2331,6 +2509,84 @@ fn replay_mapped_direct_physics_helicity(
 #[cfg(test)]
 mod replay_destination_helicity_tests {
     use super::*;
+
+    #[test]
+    fn compact_lc_selector_reduction_view_matches_topology_replay_semantics() {
+        let helicities = vec![
+            crate::Helicity {
+                id: "h0".into(),
+                index: 0,
+                values: vec![1, -1],
+                computed: true,
+                structural_zero: false,
+                representative_id: "h0".into(),
+                coefficient: 0.25,
+            },
+            crate::Helicity {
+                id: "h1".into(),
+                index: 1,
+                values: vec![-1, 1],
+                computed: false,
+                structural_zero: false,
+                representative_id: "h0".into(),
+                coefficient: 0.75,
+            },
+        ];
+        let colors = vec![
+            crate::ColorComponent::LcFlow(crate::LcColorFlow {
+                id: "c0".into(),
+                index: 0,
+                word: vec![0, 1],
+                computed: true,
+                representative_id: "c0".into(),
+                coefficient: 2.0,
+            }),
+            crate::ColorComponent::LcFlow(crate::LcColorFlow {
+                id: "c1".into(),
+                index: 1,
+                word: vec![1, 0],
+                computed: false,
+                representative_id: "c0".into(),
+                coefficient: 3.0,
+            }),
+        ];
+        let helicity_ids = BTreeMap::from([("h0".into(), 0), ("h1".into(), 1)]);
+        let color_ids = BTreeMap::from([("c0".into(), 0), ("c1".into(), 1)]);
+        let orbits = vec![vec![0, 1], Vec::new()];
+        let view = LcSelectorReductionView::from_parts(
+            &helicities,
+            &colors,
+            &helicity_ids,
+            &color_ids,
+            &orbits,
+        );
+        let selected_helicities = BTreeSet::from(["h1".to_string()]);
+        let selected_colors = BTreeSet::from(["c0".to_string()]);
+
+        view.validate_selector_ids(Some(&selected_helicities), Some(&selected_colors))
+            .unwrap();
+        assert_eq!(
+            view.selected_helicity_indices(Some(&selected_helicities))
+                .unwrap(),
+            [1]
+        );
+        assert_eq!(
+            view.selected_color_indices(Some(&selected_colors)).unwrap(),
+            [0]
+        );
+        assert_eq!(view.helicity_orbit_weight(None, 0), 1.0);
+        assert_eq!(
+            view.helicity_orbit_weight(Some(&selected_helicities), 0),
+            0.75
+        );
+        assert!(view.color_is_computed(0));
+        assert!(!view.color_is_computed(1));
+        assert!(view.color_is_selected(Some(&selected_colors), 0));
+        assert!(
+            view.validate_selector_ids(Some(&BTreeSet::from(["missing".into()])), None)
+                .is_err()
+        );
+    }
 
     #[test]
     fn composes_distinct_replay_flow_permutations_without_destination_tables() {

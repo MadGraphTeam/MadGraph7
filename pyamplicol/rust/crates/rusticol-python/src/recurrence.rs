@@ -1042,7 +1042,7 @@ pub(crate) fn _on_the_fly_test_support_probe_v1(
             )?;
             on_the_fly_test_support_probe_v1(
                 &authenticated,
-                direct_catalog.catalog_digest,
+                &direct_catalog.catalog,
                 selected_public_flow_id,
                 &public_helicities,
             )

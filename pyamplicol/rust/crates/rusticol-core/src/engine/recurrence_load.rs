@@ -16,8 +16,8 @@ use crate::pacbin::{PacbinMemberKind, PacbinReader};
 #[cfg(feature = "on-the-fly-test-support")]
 use crate::recurrence::on_the_fly::{
     ON_THE_FLY_WORK_CENSUS_BASIS_V1, OnTheFlyForbiddenWorkGuardV1, OnTheFlyQueryFamilyExecutorV1,
-    OnTheFlyStructuralInterpreter, OnTheFlyWorkspaceV1, QueryFamilyTraceInput,
-    build_on_the_fly_selected_trace_v1,
+    OnTheFlySelectedQueryTraceV1, OnTheFlyStructuralInterpreter, OnTheFlyWorkspaceV1,
+    QueryFamilyTraceInput, build_on_the_fly_selected_trace_v1,
 };
 use crate::recurrence::on_the_fly::{
     OnTheFlyProcessSeedV1, OnTheFlySourceExecutionSpecV1, OnTheFlySourceOrientationV1,
@@ -1197,11 +1197,7 @@ fn on_the_fly_prepared_parameters(
         }
         if runtime_parameters.iter().any(|parameter| {
             parameter.kind == "derived_parameter_component"
-                && parameter
-                    .runtime_name
-                    .as_deref()
-                    .unwrap_or(&parameter.name)
-                    == name
+                && parameter.runtime_name.as_deref().unwrap_or(&parameter.name) == name
         }) {
             return Err(RusticolError::invalid_argument(format!(
                 "derived on-the-fly parameter {name:?} is immutable"
@@ -1245,9 +1241,7 @@ fn on_the_fly_prepared_parameters(
                 RusticolError::integrity("on-the-fly runtime parameter projection is absent")
             })?;
         let prepared_value = prepared.get_mut(prepared_id as usize).ok_or_else(|| {
-            RusticolError::integrity(
-                "on-the-fly parameter projection is outside prepared defaults",
-            )
+            RusticolError::integrity("on-the-fly parameter projection is outside prepared defaults")
         })?;
         match projection.component {
             0 => prepared_value[0] = runtime_value,
@@ -1474,16 +1468,40 @@ fn execute_on_the_fly_query_family_v1(
         ));
     }
 
-    let mut selected = query_family
+    let selected_with_seed = query_family
         .iter()
         .map(|(flow, helicities)| {
             build_on_the_fly_selected_trace_v1(
                 authenticated,
-                direct.direct_template_catalog_digest(),
+                direct,
                 *flow,
                 helicities,
                 enable_color_projection,
             )
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let seed = selected_with_seed
+        .first()
+        .ok_or_else(|| RusticolError::integrity("on-the-fly family compact seed is absent"))?
+        .seed
+        .clone();
+    let seed_digest = seed.semantic_digest();
+    let mut selected = selected_with_seed
+        .into_iter()
+        .map(|selected| {
+            if selected.seed.semantic_digest() != seed_digest
+                || selected.query.process_seed_digest() != seed_digest
+                || selected.trace.seed_digest() != seed_digest
+            {
+                return Err(RusticolError::integrity(
+                    "on-the-fly query family does not share one compact process identity",
+                ));
+            }
+            Ok(OnTheFlySelectedQueryTraceV1 {
+                query: selected.query,
+                trace: selected.trace,
+                projection: selected.projection,
+            })
         })
         .collect::<RusticolResult<Vec<_>>>()?;
     let (pack_json, pack, payload_root) = load_prepared_pack(artifact, manifest)?;
@@ -1503,14 +1521,14 @@ fn execute_on_the_fly_query_family_v1(
     )?;
     let runtime_parameter_slots = runtime_parameter_slots(&runtime_parameters)?;
     let source_domains = build_on_the_fly_source_domains(
-        &selected[0].seed,
+        &seed,
         authenticated.template(),
         &manifest.runtime_metadata,
         &runtime_parameter_slots,
     )?;
     let sources = pool.bind_source_domains(source_domains)?;
-    let resolver =
-        pool.bind_on_the_fly_family(authenticated.template(), direct, &mut selected, &sources)?;
+    let mut resolver = pool.into_on_the_fly_resolver(sources);
+    resolver.bind_on_the_fly_family(authenticated.template(), direct, &seed, &mut selected)?;
     let semantic_executor_binding_count = resolver.semantic_executor_binding_count()?;
     let distinct_prepared_executor_count = resolver.distinct_prepared_executor_count()?;
     let trace_inputs = selected
@@ -1520,7 +1538,7 @@ fn execute_on_the_fly_query_family_v1(
             projection: selected.projection,
         })
         .collect::<Vec<_>>();
-    let mut executor = OnTheFlyQueryFamilyExecutorV1::new(&resolver);
+    let mut executor = OnTheFlyQueryFamilyExecutorV1::new(resolver);
     let prepare_started = Instant::now();
     if executor.prepare(direct, &trace_inputs, point_count)? {
         return Err(RusticolError::integrity(
@@ -1542,7 +1560,7 @@ fn execute_on_the_fly_query_family_v1(
     .collect::<Vec<_>>();
     executor.set_parameters(&prepared_parameters)?;
     let source_major = on_the_fly_source_major_momenta(
-        &selected[0].seed,
+        &seed,
         point_major_external_momenta,
         point_count,
         selected[0].trace.layout().lorentz_component_count(),
@@ -1622,7 +1640,7 @@ fn execute_on_the_fly_query_family_v1(
     Ok(NativeOnTheFlyArtifactProbeV1 {
         artifact_id: artifact.manifest().artifact_id.clone(),
         process_id: manifest.key.clone(),
-        seed_digest: first_selected.seed.semantic_digest().to_string(),
+        seed_digest: seed.semantic_digest().to_string(),
         query_digest: first_selected.query.semantic_digest().to_string(),
         trace_digest: first_selected.trace.semantic_digest().to_string(),
         point_count,
@@ -1802,7 +1820,7 @@ impl NativeRuntime {
             let mut trace_cache = OnTheFlyQueryTraceCacheV1::default();
             let selected = build_on_the_fly_selected_trace_v1(
                 authenticated,
-                direct.direct_template_catalog_digest(),
+                direct,
                 selected_public_flow_id,
                 public_helicities,
                 enable_color_projection,
@@ -1838,19 +1856,17 @@ impl NativeRuntime {
                 &manifest.runtime_metadata,
                 &runtime_parameter_slots,
             )?;
-            // Keep this lexical ownership order: model pool, process sources,
-            // then resolver borrowing both.
             let sources = pool.bind_source_domains(source_domains)?;
-            let resolver = {
+            let mut resolver = pool.into_on_the_fly_resolver(sources);
+            {
                 let selected = trace_cache.prepared_mut(query_digest)?;
-                pool.bind_on_the_fly_trace(
+                resolver.bind_on_the_fly_trace(
                     authenticated.template(),
                     direct,
                     &selected.seed,
                     &mut selected.trace,
-                    &sources,
-                )?
-            };
+                )?;
+            }
             let selected = trace_cache.prepared(query_digest)?;
             let work_census = selected.trace.execution_work_census()?;
             let semantic_executor_binding_count = resolver.semantic_executor_binding_count()?;
@@ -2028,8 +2044,7 @@ impl NativeRuntime {
         let mut report = result?;
         report.direct_plan_load_attempts = counts.direct_plan_load_attempts;
         report.direct_plan_decode_attempts = counts.direct_plan_decode_attempts;
-        report.direct_plan_materialization_attempts =
-            counts.direct_plan_materialization_attempts;
+        report.direct_plan_materialization_attempts = counts.direct_plan_materialization_attempts;
         report.established_builder_attempts = counts.established_builder_attempts;
         if report.direct_plan_load_attempts != 0
             || report.direct_plan_decode_attempts != 0
