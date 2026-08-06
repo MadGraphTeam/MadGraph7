@@ -234,7 +234,7 @@ namespace mg5amcGpu
 #endif
       }
 #ifndef MGONGPU_HAS_NO_BLAS
-#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
+#ifdef __CUDACC__ // this must be __CUDACC__
       // Analyse environment variable CUDACPP_RUNTIME_CUBLASTF32TENSOR
       const char* blasEnv2 = getenv( "CUDACPP_RUNTIME_CUBLASTF32TENSOR" );
       if( blasEnv2 && std::string( blasEnv2 ) != "" )
@@ -307,7 +307,7 @@ namespace mg5amcGpu
     if( m_blasColorSum )
     {
       checkGpuBlas( gpuBlasCreate( &m_blasHandle ) );
-#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
+#ifdef __CUDACC__ // this must be __CUDACC__
       if( m_blasTf32Tensor )
         checkGpuBlas( cublasSetMathMode( m_blasHandle, CUBLAS_TF32_TENSOR_OP_MATH ) ); // enable TF32 tensor cores
 #endif

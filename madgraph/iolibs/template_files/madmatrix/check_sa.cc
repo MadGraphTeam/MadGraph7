@@ -26,8 +26,10 @@
 #include "mgOnGpuConfig.h"
 
 #include "CPPProcess.h"
+#ifdef MGONGPUCPP_GPUIMPL
 #include "GpuAbstraction.h"
 #include "GpuRuntime.h"
+#endif
 #include "MemoryAccessMomenta.h"
 #include "MemoryBuffers.h"
 #include "RamboSamplingKernels.h"

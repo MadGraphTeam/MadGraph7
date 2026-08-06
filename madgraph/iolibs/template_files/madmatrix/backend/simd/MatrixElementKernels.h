@@ -9,7 +9,6 @@
 
 #include "mgOnGpuConfig.h"
 
-#include "GpuAbstraction.h"
 #include "MemoryBuffers.h"
 
 #include <map>

@@ -15,7 +15,6 @@
 
 #include "mgOnGpuConfig.h"
 
-#include "GpuRuntime.h"
 %(hel_amps_h)s
 #include "MemoryAccessAmplitudes.h"
 #include "MemoryAccessIflavorVec.h"

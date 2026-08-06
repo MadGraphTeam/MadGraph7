@@ -92,43 +92,6 @@ namespace mg5amcGpu
 
   //--------------------------------------------------------------------------
 
-  /*
-#ifdef MGONGPUCPP_GPUIMPL
-  // A class encapsulating the calculation of event statistics on a GPU device
-  class CrossSectionKernelDevice : public CrossSectionKernelBase, public NumberOfEvents
-  {
-  public:
-
-    // Constructor from existing input and output buffers
-    CrossSectionKernelDevice( const BufferWeights& samplingWeights,       // input: sampling weights
-                              const BufferMatrixElements& matrixElements, // input: matrix elements
-                              EventStatistics& stats,                     // output: event statistics
-                              const size_t gpublocks,
-                              const size_t gputhreads );
-
-    // Destructor
-    virtual ~CrossSectionKernelDevice(){}
-
-    // Reset gpublocks and gputhreads
-    void setGrid( const size_t gpublocks, const size_t gputhreads );
-
-    // Update event statistics
-    void updateEventStatistics( const bool debug=false ) override final;
-
-    // Is this a host or device kernel?
-    bool isOnDevice() const override final { return true; }
-
-  private:
-
-    // The number of blocks in the GPU grid
-    size_t m_gpublocks;
-
-    // The number of threads in the GPU grid
-    size_t m_gputhreads;
-
-  };
-#endif
-  */
 
   //--------------------------------------------------------------------------
 }

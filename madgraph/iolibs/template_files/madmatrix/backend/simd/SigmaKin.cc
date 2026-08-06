@@ -11,7 +11,6 @@
 #include "CPPProcess.h" // ProcessData.h, Parameters.h, HelAmps_<model>.h transitively
 #include "ProcessTables.h"
 
-#include "GpuRuntime.h"
 #include "MemoryAccessAmplitudes.h"
 #include "MemoryAccessChannelIds.h"
 #include "MemoryAccessCouplings.h"
@@ -25,6 +24,8 @@
 #include "MemoryAccessWavefunctions.h"
 #include "color_sum.h"
 #include "ColorData.h"
+
+#include <cassert>
 
 namespace mg5amcCpu
 {

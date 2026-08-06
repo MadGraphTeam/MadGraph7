@@ -8,7 +8,7 @@
 #define MGONGPUCONFIG_H 1
 
 // Is this a GPU (CUDA, HIP) or CPU implementation?
-#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
+#ifdef __CUDACC__ // this must be __CUDACC__
 #define MGONGPUCPP_GPUIMPL cuda
 #elif defined __HIPCC__
 #define MGONGPUCPP_GPUIMPL hip
@@ -31,7 +31,7 @@
 #if defined __HIPCC__
 #define MGONGPU_HAS_NO_CURAND 1
 #else
-//#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
+//#ifdef __CUDACC__ // this must be __CUDACC__
 //#undef MGONGPU_HAS_NO_CURAND // default
 ////#define MGONGPU_HAS_NO_CURAND 1
 //#else
@@ -44,7 +44,7 @@
 // For CUDA, by default, do not allow hiprand to be used (curand or common random numbers will be used instead)
 // For both HIP and C++, by default, do not inline, but allow this macro to be set from outside with e.g. -DMGONGPU_HAS_NO_HIPRAND
 // (there may exist HIP installations which do not include hiprand?)
-#if defined __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
+#if defined __CUDACC__ // this must be __CUDACC__
 #define MGONGPU_HAS_NO_HIPRAND 1
 #else
 //#ifdef __HIPCC__
@@ -89,7 +89,7 @@
 /* clang-format off */
 // Complex type in CUDA: thrust or cucomplex or cxsmpl (CHOOSE ONLY ONE)
 // (NB THIS IS MGONGPU_*CU*CXTYPE_xxx)
-#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
+#ifdef __CUDACC__ // this must be __CUDACC__
 #define MGONGPU_CUCXTYPE_THRUST 1 // default (~1.15E9/double, ~3.2E9/float)
 //#define MGONGPU_CUCXTYPE_CUCOMPLEX 1 // ~10 percent slower (1.03E9/double, ~2.8E9/float)
 //#define MGONGPU_CUCXTYPE_CXSMPL 1 // ~10 percent slower (1.00E9/double, ~2.9E9/float)
@@ -109,7 +109,7 @@
 // Choose if cuBLAS and hipBLAS are supported for generating random numbers
 // For both CUDA and HIP, by default, do not inline, but allow this macro to be set from outside with e.g. -DMGONGPU_HAS_NO_BLAS
 // (there may exist CUDA/HIP installations, e.g. using the HPC package, which do not include cuBLAS/hipBLAS?)
-#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
+#ifdef __CUDACC__ // this must be __CUDACC__
 //#undef MGONGPU_HAS_NO_BLAS // default
 ////#define MGONGPU_HAS_NO_BLAS 1
 #elif defined __HIPCC__
@@ -120,7 +120,7 @@
 #endif
 
 // CUDA nsight compute (ncu) debug: add dummy lines to ease SASS program flow navigation
-#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
+#ifdef __CUDACC__ // this must be __CUDACC__
 #undef MGONGPU_NSIGHT_DEBUG // default in CUDA
 //#define MGONGPU_NSIGHT_DEBUG 1 // CURRENTLY NO LONGER SUPPORTED!
 #else
@@ -141,7 +141,7 @@
 #endif
 
 // SANITY CHECKS (CUDA complex number implementation)
-#ifdef __CUDACC__ // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
+#ifdef __CUDACC__ // this must be __CUDACC__
 #if defined MGONGPU_CUCXTYPE_THRUST and defined MGONGPU_CUCXTYPE_CUCOMPLEX
 #error You must CHOOSE (ONE AND) ONLY ONE of MGONGPU_CUCXTYPE_THRUST or MGONGPU_CUCXTYPE_CUCOMPLEX for CUDA
 #elif defined MGONGPU_CUCXTYPE_THRUST and defined MGONGPU_CUCXTYPE_CXSMPL
@@ -205,7 +205,7 @@ using mgOnGpu::fptype2;
 /* clang-format off */
 // CUDA nsight compute (ncu) debug: add dummy lines to ease SASS program flow navigation [NB: CURRENTLY NO LONGER SUPPORTED!]
 // Arguments (not used so far): text is __FUNCTION__, code is 0 (start) or 1 (end)
-//#if defined __CUDACC__ && defined MGONGPU_NSIGHT_DEBUG // this must be __CUDACC__ (not MGONGPUCPP_GPUIMPL)
+//#if defined __CUDACC__ && defined MGONGPU_NSIGHT_DEBUG // this must be __CUDACC__
 //#define mgDebugDeclare() __shared__ float mgDebugCounter[mgOnGpu::ntpbMAX];
 //#define mgDebugInitialise() { mgDebugCounter[threadIdx.x] = 0; }
 //#define mgDebug( code, text ) { mgDebugCounter[threadIdx.x] += 1; }
