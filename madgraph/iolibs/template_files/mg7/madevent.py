@@ -921,8 +921,10 @@ def clean_pids(pids: list[int]) -> list[int]:
         pid = abs(pid)
         if pid == 81:
             pid = 1
-        if pid == 82:
+        elif pid == 82:
             pid = 11
+        elif pid == 83:
+            pid = 12
         pids_out.append(pid)
     return pids_out
 
@@ -1288,6 +1290,7 @@ class MadgraphSubprocess:
         tot_cs = sum(cross_sections)
         cum_cs = 0.
         seen_active_flavors = set()
+        #seen_resonances = set()
         for index, (cs, chan) in sorted(
             enumerate(zip(cross_sections, multi_phasespace.channels)),
             key=lambda pair: pair[1][0],
@@ -1295,14 +1298,19 @@ class MadgraphSubprocess:
         ):
             cum_cs += cs
             has_unseen_flavors = False
+            has_unseen_resonances = False
             for flavs in chan.active_flavors:
                 for flav in flavs:
                     if flav not in seen_active_flavors:
                         has_unseen_flavors = True
                         seen_active_flavors.add(flav)
-            if has_unseen_flavors or cum_cs / tot_cs < threshold:
+            #for resonance in chan.resonances:
+            #    if resonance not in seen_resonances:
+            #        has_unseen_resonances = True
+            #        seen_resonances.add(flav)
+            if has_unseen_flavors or has_unseen_resonances or cum_cs / tot_cs < threshold:
                 kept_channels.append(index)
-        if len(kept_channels) == len(cross_sections):
+        if len(kept_channels) >= len(cross_sections) - 1:
             return multi_phasespace
 
         channels = []
