@@ -1432,6 +1432,7 @@ impl NativeRuntime {
         benchmark_warmup_repetitions: u32,
         benchmark_repetitions: u32,
         collect_current_diagnostics: bool,
+        enable_color_projection: bool,
     ) -> RusticolResult<NativeOnTheFlyArtifactProbeV1> {
         if benchmark && benchmark_repetitions == 0 {
             return Err(RusticolError::invalid_argument(
@@ -1504,6 +1505,7 @@ impl NativeRuntime {
                 direct.direct_template_catalog_digest(),
                 selected_public_flow_id,
                 public_helicities,
+                enable_color_projection,
             )?;
             let query_digest = selected.query.semantic_digest();
             trace_cache.insert_built(query_digest, selected)?;
@@ -1691,6 +1693,9 @@ impl NativeRuntime {
                 normalized_values,
                 normalization_factor,
                 currents,
+                projection_enabled: selected.projection.enabled,
+                projection_applied: selected.projection.applied,
+                projection_counts: [selected.projection.pre, selected.projection.post],
                 work_census_basis: ON_THE_FLY_WORK_CENSUS_BASIS_V1.to_owned(),
                 logical_current_count: work_census.logical_current_count,
                 resident_current_count: work_census.resident_current_count,

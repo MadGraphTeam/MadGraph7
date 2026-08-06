@@ -1066,7 +1066,8 @@ pub(crate) fn _on_the_fly_test_support_probe_v1(
     benchmark=false,
     benchmark_warmup_repetitions=0,
     benchmark_repetitions=0,
-    collect_current_diagnostics=true
+    collect_current_diagnostics=true,
+    enable_color_projection=true
 ))]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn _on_the_fly_artifact_probe_v1(
@@ -1087,6 +1088,7 @@ pub(crate) fn _on_the_fly_artifact_probe_v1(
     benchmark_warmup_repetitions: u32,
     benchmark_repetitions: u32,
     collect_current_diagnostics: bool,
+    enable_color_projection: bool,
 ) -> PyResult<Py<PyAny>> {
     let input = parse_input(builder_input)?;
     let prepared_template = parse_prepared_template_input(prepared_template_input)?;
@@ -1135,6 +1137,7 @@ pub(crate) fn _on_the_fly_artifact_probe_v1(
                 benchmark_warmup_repetitions,
                 benchmark_repetitions,
                 collect_current_diagnostics,
+                enable_color_projection,
             )
         })
         .map_err(python_error)?;
@@ -1156,6 +1159,19 @@ fn on_the_fly_artifact_probe_mapping(
     result.set_item("raw_amplitudes", native.raw_amplitudes)?;
     result.set_item("normalized_values", native.normalized_values)?;
     result.set_item("normalization_factor", native.normalization_factor)?;
+    result.set_item("projection_enabled", native.projection_enabled)?;
+    result.set_item("projection_applied", native.projection_applied)?;
+    for (prefix, counts) in [
+        ("pre", native.projection_counts[0]),
+        ("post", native.projection_counts[1]),
+    ] {
+        for (name, value) in ["current", "contribution", "closure"]
+            .into_iter()
+            .zip(counts)
+        {
+            result.set_item(format!("{prefix}_projection_{name}_count"), value)?;
+        }
+    }
     result.set_item("work_census_basis", native.work_census_basis)?;
     result.set_item("logical_current_count", native.logical_current_count)?;
     result.set_item("resident_current_count", native.resident_current_count)?;

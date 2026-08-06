@@ -76,6 +76,7 @@ pub(crate) struct OnTheFlySelectedTraceV1 {
     pub(crate) seed: OnTheFlyProcessSeedV1,
     pub(crate) query: DecodedLcQueryV1,
     pub(crate) trace: OnTheFlyStructuralTraceV1,
+    pub(crate) projection: OnTheFlyProjectionProbeV1,
 }
 
 fn process_string<'a>(
@@ -953,6 +954,7 @@ pub(crate) fn build_on_the_fly_selected_trace_v1(
     direct_catalog_digest: SemanticDigest,
     selected_public_flow_id: u32,
     public_helicities: &[i32],
+    enable_projection: bool,
 ) -> RusticolResult<OnTheFlySelectedTraceV1> {
     let oracle = one_public_row_oracle(authenticated, selected_public_flow_id, public_helicities)?;
     let seed = compact_seed(
@@ -966,8 +968,18 @@ pub(crate) fn build_on_the_fly_selected_trace_v1(
         &oracle.public_helicities,
         oracle.selector,
     )?;
-    let trace = build_selected_lc_trace(authenticated.template(), &seed, &query)?;
-    Ok(OnTheFlySelectedTraceV1 { seed, query, trace })
+    let (trace, projection) = build_selected_lc_trace_for_probe(
+        authenticated.template(),
+        &seed,
+        &query,
+        enable_projection,
+    )?;
+    Ok(OnTheFlySelectedTraceV1 {
+        seed,
+        query,
+        trace,
+        projection,
+    })
 }
 
 /// Build one compact selected query and compare it with the established
@@ -984,8 +996,14 @@ pub fn on_the_fly_test_support_probe_v1(
         direct_catalog_digest,
         selected_public_flow_id,
         public_helicities,
+        true,
     )?;
-    let OnTheFlySelectedTraceV1 { seed, query, trace } = selected;
+    let OnTheFlySelectedTraceV1 {
+        seed,
+        query,
+        trace,
+        projection: _,
+    } = selected;
     crate::recurrence::construct::begin_established_pairing_owner_observation();
     let established = authenticated.build()?;
     let established_pairing_rule = established_pairing_rule_by_id(

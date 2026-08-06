@@ -174,6 +174,7 @@ def _invoke_probe(
     benchmark_warmup_repetitions: int = 0,
     benchmark_repetitions: int = 0,
     collect_current_diagnostics: bool = True,
+    enable_color_projection: bool = True,
 ) -> dict[str, Any]:
     return probe(
         str(artifact),
@@ -192,6 +193,7 @@ def _invoke_probe(
         benchmark_warmup_repetitions=benchmark_warmup_repetitions,
         benchmark_repetitions=benchmark_repetitions,
         collect_current_diagnostics=collect_current_diagnostics,
+        enable_color_projection=enable_color_projection,
     )
 
 
@@ -336,6 +338,23 @@ def test_hidden_on_the_fly_probe_executes_genuine_scalar_artifact(
             )
             for points in single_points
         )
+        bypass = _invoke_probe(
+            probe,
+            artifact,
+            case,
+            retained,
+            direct_json,
+            single_points[0],
+            enable_color_projection=False,
+        )
+        assert singles[0]["projection_enabled"] is True
+        assert bypass["projection_enabled"] is False
+        assert bypass["projection_applied"] is False
+        for name in ("current_count", "contribution_count", "closure_count"):
+            assert (
+                bypass[f"pre_projection_{name}"] == singles[0][f"pre_projection_{name}"]
+            )
+        assert bypass["raw_amplitudes"] == singles[0]["raw_amplitudes"]
         batch_order = (0, 1, 1, 0, 1, 0, 0)
         batch_points = tuple(single_points[index][0] for index in batch_order)
         many = _invoke_probe(

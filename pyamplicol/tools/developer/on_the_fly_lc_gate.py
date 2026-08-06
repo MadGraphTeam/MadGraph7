@@ -22,6 +22,7 @@ import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any
 from unittest import mock
@@ -149,6 +150,14 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--target-runtime", type=_positive_float, default=1.0)
     parser.add_argument("--batch-size", type=_positive_int, default=128)
+    parser.add_argument(
+        "--bypass-color-projection",
+        action="store_true",
+        help=(
+            "diagnostic: execute the selected graph before late color-alias "
+            "projection"
+        ),
+    )
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     return parser
 
@@ -407,6 +416,7 @@ def _invoke(
     points: Points,
     *,
     repetitions: int = 0,
+    enable_color_projection: bool = True,
 ) -> dict[str, Any]:
     benchmark = repetitions > 0
     return probe(
@@ -424,6 +434,7 @@ def _invoke(
         benchmark_warmup_repetitions=WARMUPS if benchmark else 0,
         benchmark_repetitions=repetitions,
         collect_current_diagnostics=False,
+        enable_color_projection=enable_color_projection,
     )
 
 
@@ -642,22 +653,29 @@ def _hidden_timing(
     queries: Sequence[Query],
     points: Points,
     target: float,
+    enable_color_projection: bool = True,
 ) -> dict[str, object]:
     if not queries:
         raise GateError("workload has no physical queries")
+    invoke = partial(
+        _invoke,
+        probe,
+        artifact,
+        retained,
+        points=points,
+        enable_color_projection=enable_color_projection,
+    )
     pilot_seconds = 0.0
     pilot_census: dict[Query, dict[str, object]] = {}
     for query in queries:
-        report = _invoke(probe, artifact, retained, query, points, repetitions=1)
+        report = invoke(query, repetitions=1)
         _probe_values(report, len(points), 1)
         pilot_census[query] = _work_census(report)
         pilot_seconds += float(report["benchmark_elapsed_seconds"])
     repetitions = _calibrate(pilot_seconds, target)
     rows = []
     for query in queries:
-        report = _invoke(
-            probe, artifact, retained, query, points, repetitions=repetitions
-        )
+        report = invoke(query, repetitions=repetitions)
         _probe_values(report, len(points), repetitions)
         work_census = _work_census(report)
         if work_census != pilot_census[query]:
@@ -805,6 +823,7 @@ def _run(
     amplicol: Path | None,
     target: float,
     batch: int,
+    enable_color_projection: bool = True,
 ) -> dict[str, object]:
     artifact = output / "artifact"
     generation_seconds, retained, prepared_path, prepared_load_seconds = (
@@ -822,15 +841,26 @@ def _run(
     fixed_h = helicity_axis[HELICITY_ID]
     fixed_c = color_axis[FLOW_ID]
     probe = _probe()
-    cache: dict[Query, tuple[tuple[float, ...], float]] = {}
+    cache: dict[Query, tuple[tuple[float, ...], float, dict[str, Any]]] = {}
 
     def hidden(flow: object, helicity: object) -> tuple[float, ...]:
         query = _query(flow, helicity)
         if query not in cache:
             before = time.perf_counter()
-            report = _invoke(probe, artifact, retained, query, points)
+            report = _invoke(
+                probe,
+                artifact,
+                retained,
+                query,
+                points,
+                enable_color_projection=enable_color_projection,
+            )
             values = _probe_values(report, len(points))
-            cache[query] = (values, time.perf_counter() - before)
+            cache[query] = (
+                values,
+                time.perf_counter() - before,
+                report,
+            )
         return cache[query][0]
 
     selected_hidden, selected_reference = [], []
@@ -886,10 +916,22 @@ def _run(
 
     timing_points = _repeat(points, batch)
     selected_hidden_timing = _hidden_timing(
-        probe, artifact, retained, selected_queries, timing_points, target
+        probe,
+        artifact,
+        retained,
+        selected_queries,
+        timing_points,
+        target,
+        enable_color_projection,
     )
     flow_hidden_timing = _hidden_timing(
-        probe, artifact, retained, flow_queries, timing_points, target
+        probe,
+        artifact,
+        retained,
+        flow_queries,
+        timing_points,
+        target,
+        enable_color_projection,
     )
     selected_public_timing = _public_timing(
         BenchmarkRunner(_benchmark_config(target, batch, flows=(FLOW_ID,))).run(
@@ -921,6 +963,14 @@ def _run(
         "artifact": str(artifact),
         "artifact_id": runtime.artifact_id,
         "layout": "topology-replay",
+        "color_projection": {
+            "query": _query(fixed_flow, fixed_helicity).label,
+            **{
+                name: value
+                for name, value in cache[_query(fixed_flow, fixed_helicity)][2].items()
+                if "projection_" in name
+            },
+        },
         "dense_correctness_authority": _dense_authority(runtime, len(points)),
         "prepared_model": {
             "path": str(prepared_path),
@@ -1036,6 +1086,8 @@ def _worker_command(arguments: argparse.Namespace, output: Path) -> list[str]:
     if arguments.amplicol_result is not None:
         amplicol = Path(os.path.abspath(arguments.amplicol_result.expanduser()))
         command.extend(("--amplicol-result", str(amplicol)))
+    if arguments.bypass_color_projection:
+        command.append("--bypass-color-projection")
     return command
 
 
@@ -1048,6 +1100,7 @@ def _worker_main(arguments: argparse.Namespace) -> int:
             arguments.amplicol_result,
             arguments.target_runtime,
             arguments.batch_size,
+            not arguments.bypass_color_projection,
         )
     except Exception as error:
         _write(destination, {"status": "failed", "error": str(error)})

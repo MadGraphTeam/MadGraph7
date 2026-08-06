@@ -133,6 +133,38 @@ use sweep::*;
 use templates::*;
 use trace::*;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct OnTheFlyProjectionProbeV1 {
+    pub(crate) enabled: bool,
+    pub(crate) applied: bool,
+    pub(crate) pre: [u32; 3],
+    pub(crate) post: [u32; 3],
+}
+
+fn selected_graph_counts(
+    currents: &[PendingCurrent],
+    closures: &[PendingClosure],
+    live: &BTreeSet<u32>,
+) -> RusticolResult<[u32; 3]> {
+    let contributions = live.iter().try_fold(0usize, |total, id| {
+        let count = currents
+            .get(*id as usize)
+            .ok_or_else(|| integrity("selected graph current is absent"))?
+            .contributions
+            .values()
+            .filter(|factor| !factor.is_zero())
+            .count();
+        total
+            .checked_add(count)
+            .ok_or_else(|| invalid("selected graph contribution count exceeds usize"))
+    })?;
+    Ok([
+        checked_u32(live.len(), "selected graph current count")?,
+        checked_u32(contributions, "selected graph contribution count")?,
+        checked_u32(closures.len(), "selected graph closure count")?,
+    ])
+}
+
 /// Build one selected LC structural trace without constructing any global
 /// recurrence/process projection.
 pub(crate) fn build_selected_lc_trace(
@@ -140,6 +172,31 @@ pub(crate) fn build_selected_lc_trace(
     seed: &OnTheFlyProcessSeedV1,
     query: &DecodedLcQueryV1,
 ) -> RusticolResult<OnTheFlyStructuralTraceV1> {
+    build_selected_lc_trace_impl(templates, seed, query, true, false).map(|(trace, _)| trace)
+}
+
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+pub(crate) fn build_selected_lc_trace_for_probe(
+    templates: &ValidatedRecurrenceTemplateInput,
+    seed: &OnTheFlyProcessSeedV1,
+    query: &DecodedLcQueryV1,
+    enable_projection: bool,
+) -> RusticolResult<(OnTheFlyStructuralTraceV1, OnTheFlyProjectionProbeV1)> {
+    let (trace, probe) =
+        build_selected_lc_trace_impl(templates, seed, query, enable_projection, true)?;
+    Ok((
+        trace,
+        probe.ok_or_else(|| integrity("projection probe was not collected"))?,
+    ))
+}
+
+fn build_selected_lc_trace_impl(
+    templates: &ValidatedRecurrenceTemplateInput,
+    seed: &OnTheFlyProcessSeedV1,
+    query: &DecodedLcQueryV1,
+    enable_projection: bool,
+    collect_projection_probe: bool,
+) -> RusticolResult<(OnTheFlyStructuralTraceV1, Option<OnTheFlyProjectionProbeV1>)> {
     if query.seed_digest != seed.semantic_digest() {
         return Err(integrity(
             "decoded query belongs to a different compact seed",
@@ -181,7 +238,14 @@ pub(crate) fn build_selected_lc_trace(
     let selected_closures =
         build_selected_closures(templates, &closures, seed, query, &colors, &currents)?;
     let live = live_current_ids(&currents, &selected_closures)?;
-    let projected = project_query_local_color_aliases(&currents, &selected_closures, &live)?;
+    let pre_counts = collect_projection_probe
+        .then(|| selected_graph_counts(&currents, &selected_closures, &live))
+        .transpose()?;
+    let projected = enable_projection
+        .then(|| project_query_local_color_aliases(&currents, &selected_closures, &live))
+        .transpose()?
+        .flatten();
+    let projection_applied = projected.is_some();
     let (currents, selected_closures, live) = match projected {
         Some(projected) => {
             let live = (0..projected.currents.len())
@@ -191,8 +255,11 @@ pub(crate) fn build_selected_lc_trace(
         }
         None => (currents, selected_closures, live),
     };
+    let post_counts = collect_projection_probe
+        .then(|| selected_graph_counts(&currents, &selected_closures, &live))
+        .transpose()?;
     let pairing_owner = resolve_projected_pairing_owner(seed, &selected_closures)?;
-    lower_trace(
+    let trace = lower_trace(
         templates,
         &catalog,
         seed,
@@ -205,5 +272,16 @@ pub(crate) fn build_selected_lc_trace(
         &closures,
         &live,
         constructed_contribution_count,
-    )
+    )?;
+    Ok((
+        trace,
+        pre_counts
+            .zip(post_counts)
+            .map(|(pre, post)| OnTheFlyProjectionProbeV1 {
+                enabled: enable_projection,
+                applied: projection_applied,
+                pre,
+                post,
+            }),
+    ))
 }

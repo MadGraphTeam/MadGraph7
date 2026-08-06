@@ -311,6 +311,13 @@ def test_cli_launches_one_worker_with_cross_platform_30_gib_guard(
     assert command[command.index("--amplicol-result") + 1] == str(
         Path("legacy.json").resolve()
     )
+    assert arguments.bypass_color_projection is False
+    assert "--bypass-color-projection" not in command
+    bypass = arguments
+    bypass.bypass_color_projection = True
+    assert "--bypass-color-projection" in gate._worker_command(
+        bypass, Path("/tmp/gate")
+    )
     assert gate.WATCHDOG_BYTES == 30 * gate.GIB
 
     summary = gate._watchdog_summary(
