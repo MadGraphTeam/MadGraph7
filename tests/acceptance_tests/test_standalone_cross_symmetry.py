@@ -2429,6 +2429,118 @@ class TestCrossingPartition(unittest.TestCase):
                         'no module was eliminated by crossing in p p > j j')
 
 
+class TestCrossingRecycledHelicityUnion(unittest.TestCase):
+    """crossgroup_helunion.dat must carry the helicity map the RECYCLED optim can
+    actually realise: the crossing's NSF SIGN flips, with NO slot permutation.
+
+    A crossing base's matrix<b>_optim.f is entered by every member of its class,
+    so gen_ximprove has to bake it over a helicity set that covers them all. The
+    trap is that there are two different base->base helicity maps and only one of
+    them applies here. matrix<b>_optim.f bakes its configs into the HELAS calls
+    and receives only (PUSE, IC): IC carries the crossing's sign flips, and
+    NOTHING carries its slot permutation. So the transform it realises is
+    tau[h][k] = base_row[h][k]*SGN[k], and optim row h is non-zero for the
+    crossing iff tau[h] is good for the base -- the union to bake is
+    G_base U tau(G_base).
+
+    Feeding it the other map instead -- the GHREMAP sigma[h][k] =
+    base_row[h][PERM[k]]*SGN[k], which matrix<b>_orig.f does realise because it
+    takes NHEL at run time -- looks equally plausible and is silently wrong. It
+    cost -28.5% on the q q~ > q q~ cross section (5.19e6 -> 3.71e6 pb): the
+    routed t-channel subprocess needs 4 of the base's 16 rows and the sigma union
+    supplied 2 of them. Both maps are permutations, both are involutions here,
+    and both give a set that is invariant under themselves, so nothing about the
+    set's shape gives the mistake away -- hence this test on the map itself.
+
+    Run-free (no integration): it checks the generation-time map directly, on the
+    same q q~ > q q~ class whose cross section paid for it.
+    """
+
+    PROCESS = 'q q~ > q q~'
+
+    def _class(self, proc):
+        """(exporter, base matrix element, cross) for a routed crossing of `proc`
+        that moves at least one leg between the initial and the final state."""
+        import madgraph.iolibs.group_subprocs as group_subprocs
+        import madgraph.iolibs.export_v4 as export_v4
+        cmd = cmd_interface.MasterCmd()
+        # apply_flavor_grouping False is the setting that puts q q~ > q q~ in ONE
+        # group of three matrix elements with a crossing router -- and the one
+        # whose cross section the sigma union broke. --no_save keeps it out of the
+        # user's configuration.
+        cmd.run_cmd('set apply_flavor_grouping False --no_save')
+        cmd.run_cmd('import model sm')
+        cmd.run_cmd('define q = u d s c')
+        cmd.run_cmd('define q~ = u~ d~ s~ c~')
+        # As in TestCrossingPartition: route the UNMERGED list, which is what the
+        # madevent output reconstructs before grouping.
+        old = os.environ.get('MG_MERGE_CROSSING')
+        os.environ['MG_MERGE_CROSSING'] = 'off'
+        try:
+            cmd.run_cmd('generate %s' % proc)
+        finally:
+            if old is None:
+                os.environ.pop('MG_MERGE_CROSSING', None)
+            else:
+                os.environ['MG_MERGE_CROSSING'] = old
+        groups = group_subprocs.SubProcessGroup.group_amplitudes(
+            cmd._curr_amps, 'madevent')
+        exp = export_v4.ProcessExporterFortranMEGroup()
+        out = []
+        for g in groups:
+            g.generate_matrix_elements()
+            mes = g.get('matrix_elements')
+            bases, routing = exp.partition_crossing_classes(mes)
+            for idep, route in enumerate(routing or []):
+                if route is None or idep in bases:
+                    continue
+                for (base_index, iflav) in route:
+                    base_me = mes[base_index]
+                    nflav = len(base_me.get_external_flavors_with_iden())
+                    out.append((exp, base_me, (iflav - 1) // nflav))
+        return out
+
+    def test_helunion_map_is_the_sign_flip_not_the_permutation(self):
+        classes = self._class(self.PROCESS)
+        self.assertTrue(classes,
+                        'no subprocess of %s is routed through a crossing, so '
+                        'this test checks nothing' % self.PROCESS)
+        differs = 0
+        for exp, base_me, cross in classes:
+            bh = [tuple(x) for x in base_me.get_helicity_matrix()]
+            tables = exp.compute_crossing_tables(base_me)
+            nx = tables['nexternal']
+            perm = [tables['perm'][cross * nx + k] for k in range(nx)]
+            sgn = [tables['ic'][cross * nx + k] for k in range(nx)]
+
+            tau = exp._crossgroup_base_helsignmap(base_me, cross)
+            self.assertIsNotNone(
+                tau, 'tau is not a permutation for cross %d: the helicity states '
+                'of the crossed legs must be closed under negation' % cross)
+
+            # The defining property: tau moves NO helicity between slots. Row
+            # tau[h] is row h with the crossed legs' helicity negated in place.
+            # Baking sigma instead breaks exactly this.
+            for h, row in enumerate(bh, 1):
+                self.assertEqual(
+                    bh[tau[h - 1] - 1],
+                    tuple(row[k] * sgn[k] for k in range(nx)),
+                    'crossgroup_helunion row %d of cross %d is not the pure '
+                    'sign flip: a recycled optim cannot apply a slot '
+                    'permutation' % (h, cross))
+
+            # ... and for a crossing that does move legs across, sigma is a
+            # genuinely different map, so getting this wrong is not academic.
+            sigma = exp._helicity_row_permutation(
+                *exp._crossed_helicity_configs(base_me, cross))
+            if perm != list(range(nx)) and sigma is not None and sigma != tau:
+                differs += 1
+        self.assertTrue(
+            differs,
+            'sigma and tau coincide for every crossing of %s, so this process '
+            'cannot tell the two apart -- pick one that can' % self.PROCESS)
+
+
 class TestCrossingConfigMap(unittest.TestCase):
     """_crossgroup_configmap must send a crossed subprocess's multi-channel
     CONFIG to the base diagram of the same topology under the crossing.

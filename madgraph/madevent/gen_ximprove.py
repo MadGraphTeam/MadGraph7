@@ -332,13 +332,19 @@ class gensym(object):
                 base_good = set(all_good_hels[me_index])
                 good_set = set(base_good)
                 # Crossing base: the shared optim is also evaluated with each
-                # dependent's CROSSED helicity configs, but the recycled MATRIX
+                # dependent's CROSSED momenta and IC, but the recycled MATRIX
                 # bakes the base's helicity configs (it takes no runtime NHEL), so
                 # the base's own good-hel SUBSET is not the dependent's and
                 # filtering on it alone would bias a crossed dependent. Keep the
                 # UNION over the class: h survives if it is good for the base, or
-                # if some dependent reaches a base-good config through its
-                # crossing (perm[h] good).
+                # if some dependent's crossing makes h non-zero, which is exactly
+                # tau[h] good for the base -- tau being the crossing's helicity
+                # SIGN map, the part of the transform IC can carry. The lines of
+                # crossgroup_helunion.dat are those tau (an all-zero row is the
+                # sentinel for "not a clean permutation": keep everything).
+                # Note it must be tau and not the GHREMAP sigma, which also
+                # permutes the slots: matrix<b>_orig.f applies sigma because it
+                # reads NHEL at run time, the recycled optim cannot.
                 # Keeping EVERY config instead is NOT a safe over-approximation.
                 # The recycled K loop also accumulates AMP2 (the single-diagram
                 # multi-channel weights) and JAMP2 (the colour-flow weights) from
@@ -350,6 +356,9 @@ class gensym(object):
                 # helicities, and diluted the colour flow toward 50/50.
                 perms = helunion.get(me_index, [])
                 for perm in perms:
+                    if not all(perm):
+                        good_set = set(range(1, len(perm) + 1))
+                        break
                     good_set |= set(h for h, p in enumerate(perm, 1)
                                     if p in base_good)
                 good_hels = [str(x) for x in sorted(good_set)]
@@ -404,6 +413,26 @@ class gensym(object):
                     recycler.template_dict['csym_reuse'] = '\n'.join(
                         '      TS(%d) = TS(%d)' % (flip, rep)
                         for rep, flip in sorted(csym_reuse_pairs)) + '\n'
+                # A crossing base's optim holds configs that are dead for
+                # whichever member is calling it: dead for the crossing when the
+                # base evaluates its own flavors, dead for the base when a
+                # dependent's crossing enters. Their |M|^2 is zero and costs the
+                # sum nothing, but their individual diagrams and JAMPs are not
+                # zero, so letting them into AMP2 (multi-channel) and JAMP2
+                # (colour flow) reweights channel and colour selection -- the
+                # g g > q q~ defect. Gate both on |M|^2 being non-zero, which is
+                # the same test the good-hel filter itself is trained on, so each
+                # caller accumulates over exactly its own good set as the
+                # unrecycled path does.
+                # Keyed on perms rather than on the union having grown, because
+                # base_good is not the base's own good set either: the good-hel
+                # scan prints the RAW loop index of matrix<i>_orig.f, which for a
+                # crossed flavor is a row of sigma-space, so a crossing base's
+                # reported set already carries rows that are dead uncrossed.
+                if perms:
+                    recycler.template_dict['dead_row_if'] = \
+                        'IF (TS(%s).NE.0D0) THEN' % recycler.loop_var
+                    recycler.template_dict['dead_row_endif'] = 'ENDIF'
                 # In case of bugs you can play around with these:
                 recycler.hel_filt = self.run_card['hel_filtering']
                 recycler.amp_splt = self.run_card['hel_splitamp']

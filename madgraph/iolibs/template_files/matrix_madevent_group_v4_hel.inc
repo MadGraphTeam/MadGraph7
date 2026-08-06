@@ -315,6 +315,7 @@ ${jamp_lines}
         ENDDO ! I
     ENDDO ! M
     TS(K) = TS(K) / DENOM
+    ${dead_row_if}
 	if(sde_strat.eq.1) then
         ${amp2_lines}
 	endif
@@ -327,6 +328,7 @@ ${jamp_lines}
     		enddo
     	  enddo
         Enddo
+    ${dead_row_endif}
     ENDDO ! K
 
     END
