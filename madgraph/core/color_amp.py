@@ -796,6 +796,63 @@ class ColorBasisSymmetry(object):
         return bool(self.generators1) and \
                               len(self.representatives) < len(self.keys1)
 
+    def spanning_generators(self):
+        """Indices of a subset of the generators which still reaches every
+        line of every orbit. Anything which writes the permutations out has to
+        store one array of basis indices per generator, so dropping those which
+        connect nothing new makes a large difference."""
+
+        parent = list(range(len(self.keys1)))
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        kept = []
+        for index, induced in enumerate(self.generators1):
+            used = False
+            for i, j in enumerate(induced):
+                ri, rj = find(i), find(j)
+                if ri != rj:
+                    parent[ri] = rj
+                    used = True
+            if used:
+                kept.append(index)
+        return kept
+
+    def spanning_tree(self, gen_indices=None):
+        """Describe every line as one generator applied to another line:
+        returns the orbit representatives, the representative of each line, the
+        (parent line, position in gen_indices) pair reaching each line, and the
+        generators actually used. Following the parents back to the
+        representative gives the permutation relating the two lines."""
+
+        if gen_indices is None:
+            gen_indices = self.spanning_generators()
+        gens = [self.generators1[i] for i in gen_indices]
+
+        n = len(self.keys1)
+        representative = [-1] * n
+        parent = [None] * n
+        representatives = []
+        for start in range(n):
+            if representative[start] != -1:
+                continue
+            representatives.append(start)
+            representative[start] = start
+            queue = collections.deque([start])
+            while queue:
+                current = queue.popleft()
+                for local, induced in enumerate(gens):
+                    image = induced[current]
+                    if representative[image] == -1:
+                        representative[image] = start
+                        parent[image] = (current, local)
+                        queue.append(image)
+        return representatives, representative, parent, gens
+
 
 #===============================================================================
 # ColorMatrix

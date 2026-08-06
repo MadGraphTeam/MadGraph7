@@ -369,8 +369,8 @@ C
 
 C LOCAL VARIABLES
 C
-      INTEGER I,J
-      COMPLEX*16 ZTEMP
+      INTEGER I,J,NJ,NB
+      COMPLEX*16 ZTEMP,Z1,Z2,Z3,Z4
 
       INTEGER CF_INDEX
       INTEGER %(proc_prefix)sCF(NCOLOR*(NCOLOR+1)/2)
@@ -383,18 +383,38 @@ C
 
 C COLOR DATA
 C
+      CALL %(proc_prefix)sINIT_CF()
 
       MATRIX = 0.D0
       CF_INDEX = 0
+C     Four accumulators, not one: with a single one every
+C     term waits for the one before it to come out of the
+C     adder, and that latency is what the loop spends its
+C     time on. No compiler does this by itself, since it
+C     changes the order the terms are summed in.
       DO I = 1, NCOLOR
-        ZTEMP = (0.D0,0.D0)
-        DO J = I, NCOLOR
-          CF_INDEX = CF_INDEX + 1
-          ZTEMP = ZTEMP + %(proc_prefix)sCF(CF_INDEX)*JAMP(J)
+        Z1 = (0.D0,0.D0)
+        Z2 = (0.D0,0.D0)
+        Z3 = (0.D0,0.D0)
+        Z4 = (0.D0,0.D0)
+        NJ = NCOLOR - I + 1
+        NB = (NJ/4)*4
+        DO J = 0, NB-4, 4
+          Z1 = Z1 + %(proc_prefix)sCF(CF_INDEX+J+1)*JAMP(I+J)
+          Z2 = Z2 + %(proc_prefix)sCF(CF_INDEX+J+2)*JAMP(I+J+1)
+          Z3 = Z3 + %(proc_prefix)sCF(CF_INDEX+J+3)*JAMP(I+J+2)
+          Z4 = Z4 + %(proc_prefix)sCF(CF_INDEX+J+4)*JAMP(I+J+3)
         ENDDO
+        ZTEMP = (Z1+Z2)+(Z3+Z4)
+        DO J = NB, NJ-1
+          ZTEMP = ZTEMP + %(proc_prefix)sCF(CF_INDEX+J+1)*JAMP(I+J)
+        ENDDO
+        CF_INDEX = CF_INDEX + NJ
         MATRIX = MATRIX+ZTEMP*DCONJG(JAMP(I))/%(proc_prefix)sDENOM
       ENDDO
       END
+
+%(color_init_routine)s
 
 
 
@@ -416,6 +436,7 @@ CF2PY INTENT(IN) :: JAMP_2
 
 C COLOR DATA
 C
+      CALL %(proc_prefix)sINIT_CF()
 
       INTER = (0.D0,0.D0)
       CF_INDEX = 0

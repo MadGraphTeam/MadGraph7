@@ -945,3 +945,55 @@ class ColorSquareTest(unittest.TestCase):
                 color.ColorString([color.T(1, 2, 3)],
                                   coeff=fractions.Fraction(-1, 3))])
         self.assertEqual(len(col_fact.simplify()), 0)
+
+    def test_spanning_generators(self):
+        """The spanning subset has to still reach every line, and dropping the
+        redundant generators has to make a real difference."""
+
+        col_basis = color_amp.ColorBasis(self.get_gluon_amplitude(3))
+        keys = sorted(col_basis.keys())
+        symmetry = color_amp.ColorBasisSymmetry(keys)
+        kept = symmetry.spanning_generators()
+        self.assertTrue(0 < len(kept) < len(symmetry.generators1))
+
+        representatives, representative, parent, gens = symmetry.spanning_tree()
+        self.assertEqual(len(gens), len(kept))
+        # a single orbit, and every line but the representative has a parent
+        self.assertEqual(representatives, [0])
+        self.assertEqual(representative, [0] * len(keys))
+        self.assertEqual(parent[0], None)
+        self.assertTrue(all(parent[i] is not None
+                            for i in range(1, len(keys))))
+        # every parent link is a generator applied to the parent line
+        for line in range(1, len(keys)):
+            origin, local = parent[line]
+            self.assertEqual(gens[local][origin], line)
+
+    def test_spanning_tree_rebuilds_color_matrix(self):
+        """Following the parents back to the representative gives the column
+        permutation relating the two lines, which has to rebuild the matrix."""
+
+        for amplitude in [self.get_gluon_amplitude(2),
+                          self.get_gluon_amplitude(3),
+                          self.get_quark_amplitude(1)]:
+            col_basis = color_amp.ColorBasis(amplitude)
+            col_matrix = color_amp.ColorMatrix(col_basis, Nc=3)
+            keys = sorted(col_basis.keys())
+            symmetry = color_amp.ColorBasisSymmetry(keys)
+            representatives, representative, parent, gens = \
+                                                    symmetry.spanning_tree()
+            denominator = max(col_matrix.get_line_denominators())
+            rows = [col_matrix.get_line_numerators(i, denominator)
+                    for i in range(len(keys))]
+
+            for line in range(len(keys)):
+                # walk up to the representative, permuting the columns
+                perm = list(range(len(keys)))
+                node = line
+                while parent[node] is not None:
+                    origin, local = parent[node]
+                    perm = [gens[local][p] for p in perm]
+                    node = origin
+                self.assertEqual(node, representative[line])
+                self.assertEqual([rows[node][perm[j]]
+                                  for j in range(len(keys))], rows[line])

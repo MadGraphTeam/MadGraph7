@@ -42,6 +42,7 @@ import madgraph
 import models
 import madgraph.core.base_objects as base_objects
 import madgraph.core.color_algebra as color
+import madgraph.core.color_amp as color_amp
 import madgraph.core.helas_objects as helas_objects
 import madgraph.iolibs.drawing_eps as draw
 import madgraph.iolibs.files as files
@@ -226,6 +227,9 @@ class ProcessExporterFortran(VirtualExporter):
                         }
     grouped_mode = False
     jamp_optim = False
+    # how much smaller the compressed color matrix has to be before it is used
+    # instead of writing every entry out (see get_color_matrix_encoding)
+    color_encoding_margin = 4
     run_card_class = None
     use_flavor_mask = True
 
@@ -2062,12 +2066,72 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
 
 
+    def get_color_matrix_encoding(self, matrix_element):
+        """Describe the color matrix by one line per orbit of the index
+        permutations leaving the color basis invariant, plus the permutations
+        needed to reach every other line from it (see ColorBasisSymmetry).
+
+        Every line of the matrix is one of those lines with its columns
+        permuted, so this replaces the N*(N+1)/2 entries by (nrep+ngen+3)*N
+        numbers. That is only a gain once the basis is large enough, and None
+        is returned otherwise so that the entries are written out as before."""
+
+        color_matrix = matrix_element.get('color_matrix')
+        if not color_matrix:
+            return None
+        # an asymmetric matrix does not have the line structure exploited here
+        if color_matrix._col_basis1 is not color_matrix._col_basis2:
+            return None
+
+        keys = color_matrix._sorted_keys1
+        nb_color = len(keys)
+        symmetry = color_amp.ColorBasisSymmetry(keys)
+        if not symmetry.has_symmetry():
+            return None
+        representatives, representative, parent, gens = symmetry.spanning_tree()
+
+        # Writing the entries out is well trodden and the compressed form
+        # carries a routine of its own, so only take it when it pays clearly.
+        # In practice this leaves everything below about a hundred color
+        # structures alone, which is where the matrix is not the bulk of the
+        # generated file anyway.
+        size = (len(representatives) + len(gens) + 3) * nb_color
+        if size * self.color_encoding_margin > nb_color * (nb_color + 1) // 2:
+            return None
+
+        denominator = max(color_matrix.get_line_denominators())
+        slot = dict((line, index) for index, line in enumerate(representatives))
+        rows = []
+        for line in representatives:
+            num_list = color_matrix.get_line_numerators(line, denominator)
+            assert all(int(i) == i for i in num_list)
+            rows.append([int(i) for i in num_list])
+
+        return {'denom': denominator,
+                'nb_color': nb_color,
+                'rows': rows,
+                'gens': gens,
+                # for each line, the line it comes from and the generator
+                # reaching it, or (0,0) when the line is a representative
+                'parent': [(0, 0) if p is None else (p[0] + 1, p[1] + 1)
+                           for p in parent],
+                'slot': [slot[representative[i]] + 1
+                         for i in range(nb_color)]}
+
     def get_color_data_lines(self, matrix_element, n=128):
         """Return the color matrix definition lines for this matrix element. Split
         rows in chunks of size n."""
 
         if not matrix_element.get('color_matrix'):
             return ["DATA %(proc_prefix)sDenom/1/", "DATA %(proc_prefix)sCF/1/"]
+
+        if self.get_color_matrix_encoding(matrix_element):
+            # the entries are rebuilt at run time by INIT_CF, only the overall
+            # denominator is still needed here
+            denominator = max(matrix_element.get('color_matrix').\
+                                                    get_line_denominators())
+            return ["DATA %%(proc_prefix)sDenom/%(denom)i/" % \
+                                                       {'denom': denominator}]
 
         ret_list = []
         my_cs = color.ColorString()
@@ -2100,6 +2164,93 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             ret_list.append("C %s" % repr(my_cs))
 
         return ret_list
+
+    @staticmethod
+    def get_int_data_lines(name, values, n=128):
+        """DATA statements filling the one dimensional integer array name."""
+
+        lines = []
+        for start in range(0, len(values), n):
+            chunk = values[start:start + n]
+            lines.append("      DATA (%s(i),i=%d,%d) /%s/" % \
+                         (name, start + 1, start + len(chunk),
+                          ','.join(str(int(v)) for v in chunk)))
+        return lines
+
+    def get_color_init_routine(self, matrix_element, proc_prefix):
+        """Fortran source rebuilding the color matrix from its compressed
+        description, or an empty routine when the entries are written out."""
+
+        encoding = self.get_color_matrix_encoding(matrix_element)
+        nb_color = len(matrix_element.get('color_matrix')._sorted_keys1) \
+                   if matrix_element.get('color_matrix') else 0
+        header = ["      SUBROUTINE %sINIT_CF()" % proc_prefix]
+        if not encoding:
+            return header + ["      RETURN", "      END"]
+
+        nb_rep = len(encoding['rows'])
+        nb_gen = len(encoding['gens'])
+        body = header + [
+            "C     Rebuild the color matrix from one line per",
+            "C     orbit of the index permutations leaving the",
+            "C     color basis invariant. Every other line is one",
+            "C     of those with its columns permuted, which is",
+            "C     what following CFPAR back to the representative",
+            "C     line gives. Done once, on the first call.",
+            "      IMPLICIT NONE",
+            "      INTEGER NCOLOR, NCFREP, NCFGEN",
+            "      PARAMETER (NCOLOR=%d)" % nb_color,
+            "      PARAMETER (NCFREP=%d)" % nb_rep,
+            "      PARAMETER (NCFGEN=%d)" % nb_gen,
+            "      INTEGER %sCF(NCOLOR*(NCOLOR+1)/2)" % proc_prefix,
+            "      INTEGER %sDENOM" % proc_prefix,
+            "      COMMON /%scolor_matrix/ %sCF,%sDENOM" % \
+                                    (proc_prefix, proc_prefix, proc_prefix),
+            "      INTEGER CFROW(NCOLOR*NCFREP)",
+            "      INTEGER CFGEN(NCOLOR*NCFGEN)",
+            "      INTEGER CFPAR(2*NCOLOR)",
+            "      INTEGER CFSLOT(NCOLOR)",
+            "      INTEGER PERM(NCOLOR)",
+            "      INTEGER I,J,NODE,G,CF_INDEX,BASE",
+            "      LOGICAL CF_DONE",
+            "      DATA CF_DONE/.FALSE./",
+            "      SAVE CF_DONE",
+        ]
+        body += self.get_int_data_lines("CFROW",
+                            sum(encoding['rows'], []))
+        body += self.get_int_data_lines("CFGEN",
+                            sum(([x + 1 for x in g] for g in encoding['gens']),
+                                []))
+        body += self.get_int_data_lines("CFPAR",
+                            sum(([p[0], p[1]] for p in encoding['parent']), []))
+        body += self.get_int_data_lines("CFSLOT", encoding['slot'])
+        body += [
+            "      IF (CF_DONE) RETURN",
+            "      CF_DONE = .TRUE.",
+            "      CF_INDEX = 0",
+            "      DO I = 1, NCOLOR",
+            "        DO J = 1, NCOLOR",
+            "          PERM(J) = J",
+            "        ENDDO",
+            "        NODE = I",
+            "        DO WHILE (CFPAR(2*NODE-1) .NE. 0)",
+            "          G = (CFPAR(2*NODE)-1)*NCOLOR",
+            "          DO J = 1, NCOLOR",
+            "            PERM(J) = CFGEN(G+PERM(J))",
+            "          ENDDO",
+            "          NODE = CFPAR(2*NODE-1)",
+            "        ENDDO",
+            "        BASE = (CFSLOT(NODE)-1)*NCOLOR",
+            "        CF_INDEX = CF_INDEX + 1",
+            "        %sCF(CF_INDEX) = CFROW(BASE+PERM(I))" % proc_prefix,
+            "        DO J = I+1, NCOLOR",
+            "          CF_INDEX = CF_INDEX + 1",
+            "          %sCF(CF_INDEX) = 2*CFROW(BASE+PERM(J))" % proc_prefix,
+            "        ENDDO",
+            "      ENDDO",
+            "      END",
+        ]
+        return body
 
     def get_den_factor_line(self, matrix_element):
         """Return the denominator factor line for this matrix element"""
@@ -4324,6 +4475,9 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
         # Extract color data lines
         color_data_lines = self.get_color_data_lines(matrix_element)
         replace_dict['color_data_lines'] = "\n".join(color_data_lines) % {'proc_prefix': replace_dict['proc_prefix']}
+        replace_dict['color_init_routine'] = "\n".join(
+                self.get_color_init_routine(matrix_element,
+                                            replace_dict['proc_prefix']))
 
         if self.opt['export_format']=='standalone_msP':
         # For MadSpin need to return the AMP2
