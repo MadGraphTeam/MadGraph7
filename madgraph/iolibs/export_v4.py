@@ -2409,6 +2409,10 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
         all_element = {}
         res_list = []
+        # Every single amplitude carries a power of the number of colors in its
+        # coefficient, but a process only uses a handful of distinct powers, so
+        # build the corresponding fractions once instead of once per amplitude.
+        nc_powers = {}
         for i, coeff_list in enumerate(color_amplitudes):
             # It might happen that coeff_list is empty if this function was
             # called from get_JAMP_lines_split_order (i.e. if some color flow
@@ -2442,7 +2446,12 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                 for (coefficient, amp_number) in coefs:
                     if not coefficient:
                         continue
-                    value = (1j if coefficient[2] else 1)* coefficient[0] * coefficient[1] * fractions.Fraction(3)**coefficient[3]
+                    try:
+                        nc_power = nc_powers[coefficient[3]]
+                    except KeyError:
+                        nc_power = fractions.Fraction(3)**coefficient[3]
+                        nc_powers[coefficient[3]] = nc_power
+                    value = (1j if coefficient[2] else 1)* coefficient[0] * coefficient[1] * nc_power
                     if (i+1, amp_number) not in all_element:
                         all_element[(i+1, amp_number)] = value
                     else:
