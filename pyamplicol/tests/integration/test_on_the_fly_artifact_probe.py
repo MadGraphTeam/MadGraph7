@@ -368,6 +368,41 @@ def test_hidden_on_the_fly_probe_matches_every_physical_sm_n2_component(
     )
 
 
+def test_hidden_on_the_fly_probe_matches_every_physical_sm_n3_z_component(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_hidden_probe_matches_sm_process(
+        tmp_path,
+        monkeypatch,
+        "d d~ > t t~ z",
+        "otf_dd_tt_z",
+    )
+
+
+@pytest.mark.parametrize(
+    ("process", "process_id"),
+    (
+        ("g g > t t~", "otf_gg_tt"),
+        ("d d~ > e+ e- g", "otf_dd_epem_g"),
+        ("d d~ > u u~ g", "otf_dd_uu_g"),
+    ),
+    ids=("three-gluon-binding", "single-wick-line", "two-open-color-lines"),
+)
+def test_hidden_on_the_fly_probe_sm_low_multiplicity_discriminators(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    process: str,
+    process_id: str,
+) -> None:
+    _assert_hidden_probe_matches_sm_process(
+        tmp_path,
+        monkeypatch,
+        process,
+        process_id,
+    )
+
+
 def test_hidden_on_the_fly_probe_executes_genuine_scalar_artifact(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
