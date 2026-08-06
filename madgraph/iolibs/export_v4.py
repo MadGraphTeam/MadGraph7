@@ -227,6 +227,8 @@ class ProcessExporterFortran(VirtualExporter):
                         }
     grouped_mode = False
     jamp_optim = False
+    # how many times the JAMP optimisation called itself, for the record
+    myjamp_count = 0
     # write the JAMP definitions as one recipe per orbit of the permutations
     # leaving the color basis invariant, instead of one line per definition
     jamp_orbit = False
@@ -235,6 +237,9 @@ class ProcessExporterFortran(VirtualExporter):
     # as DATA. Both run the very same loop, and both start from the orbit
     # equivariant optimisation, so they only differ in the source they need.
     jamp_emit = 'tables'
+    # finish with the plain scan once the orbit rounds have nothing left to
+    # take as a whole (only used by the table emission, see below)
+    jamp_greedy_tail = True
     # Below this many definitions writing them out is both smaller and faster:
     # the lines still fit in the instruction cache, while the loop reading the
     # operands from a table pays for the two indirections whatever the size.
@@ -3161,6 +3166,18 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         self.jamp_orbits = {'tree': tree, 'nb_orbit': nb_orbit,
                             'levels': levels, 'actions': actions,
                             'symmetry': symmetry}
+
+        if self.jamp_emit == 'tables' and self.jamp_greedy_tail:
+            # The orbit rounds stop while the JAMP lines still hold a good many
+            # terms, since an orbit can only be taken as a whole. The plain
+            # scan has no such scruple and can still shorten those lines. Its
+            # sub-expressions are not orbits of anything, which rules them out
+            # of the recipes, but the table emission does not care: there a
+            # definition costs three numbers of DATA and one indirect add,
+            # against a term of a line and a direct add.
+            all_element, tail = self.optimise_jamp(all_element, added=added)
+            defs.extend(tail)
+
         return all_element, defs
 
     @staticmethod
@@ -3326,15 +3343,12 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
         if not defs:
             return None
-        levels = self.jamp_orbits.get('levels') if self.jamp_orbits else None
-        if not levels:
-            levels = [(1, len(defs))]
-
         by_index = dict((one[0], one) for one in defs)
+        levels = self.jamp_definition_levels(defs)
         order, bounds, nb_general = [], [], 0
-        for first, last in levels:
+        for level in levels:
             group = [[], [], []]
-            for index in range(first, last + 1):
+            for index in level:
                 ratio = complex(by_index[index][3])
                 group[0 if ratio == 1 else 1 if ratio == -1 else 2]\
                                                              .append(index)
@@ -3364,6 +3378,30 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                                   for old, new in renumber.items()),
                 'complex_factor': any(complex(new_defs[one - 1][3]).imag
                                       for one in general)}
+
+    @staticmethod
+    def jamp_definition_levels(defs):
+        """Group the definitions by how deep they sit in their own operands:
+        one which uses no other is at the first level, and any other one comes
+        after both of the ones it uses. Nothing inside a level uses anything
+        else of that level, so they can be reordered freely.
+
+        Read off the operands rather than off the rounds of the optimisation,
+        so that whatever the plain scan adds at the end lands where it belongs.
+        The operands of a definition always come before it, so one pass is
+        enough."""
+
+        depth = {}
+        levels = collections.defaultdict(list)
+        for index, left, right, _ratio, _count in defs:
+            here = 0
+            if left < 0:
+                here = max(here, depth[-left])
+            if right < 0:
+                here = max(here, depth[-right])
+            depth[index] = here + 1
+            levels[here + 1].append(index)
+        return [levels[key] for key in sorted(levels)]
 
     @staticmethod
     def jamp_number_data_lines(name, values, per_line):

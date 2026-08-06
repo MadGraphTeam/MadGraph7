@@ -10598,6 +10598,39 @@ class OptimiseJampTest(unittest.TestCase):
             for key, value in all_element.items():
                 self.assertAlmostEqual(rebuilt[key], value)
 
+    def test_optimise_jamp_greedy_tail(self):
+        """The plain scan run once the orbit rounds stall has to leave the
+        matrix standing for the same thing, and to leave the lines shorter than
+        the orbit rounds alone did."""
+
+        exporter = export_v4.ProcessExporterFortranSA()
+        for seed, nb_line, nb_col, density in [(1, 8, 12, 0.6),
+                                               (2, 12, 20, 0.5),
+                                               (3, 16, 24, 0.4)]:
+            all_element, symmetry = self.symmetric_matrix(seed, nb_line,
+                                                          nb_col, density)
+            exporter.jamp_greedy_tail = False
+            orbit_only, orbit_defs = exporter.optimise_jamp(
+                                dict(all_element), symmetry=symmetry)
+            exporter.jamp_greedy_tail = True
+            result, defs = exporter.optimise_jamp(dict(all_element),
+                                                  symmetry=symmetry)
+            rebuilt = self.rebuild(defs, result)
+            self.assertEqual(sorted(rebuilt), sorted(all_element))
+            for key, value in all_element.items():
+                self.assertAlmostEqual(rebuilt[key], value)
+            self.assertTrue(len(defs) >= len(orbit_defs))
+            self.assertTrue(len(result) <= len(orbit_only))
+
+    def test_jamp_definition_levels(self):
+        """A definition has to land after both of the ones it uses, and
+        nothing of a level may use anything else of that level."""
+
+        defs = [(1, 5, 7, 1., 0), (2, -1, 9, 1., 0), (3, 4, 6, 1., 0),
+                (4, -2, -3, 1., 0)]
+        levels = export_v4.ProcessExporterFortran.jamp_definition_levels(defs)
+        self.assertEqual(levels, [[1, 3], [2], [4]])
+
     def test_optimise_jamp_equivariant_is_orbit_closed(self):
         """The invariant the orbit version is there for: the image of every
         definition under every permutation of the symmetry is a definition
@@ -10610,8 +10643,12 @@ class OptimiseJampTest(unittest.TestCase):
                                                (3, 16, 24, 0.4)]:
             all_element, symmetry = self.symmetric_matrix(seed, nb_line,
                                                           nb_col, density)
+            # the plain scan run at the end is deliberately outside the orbit
+            # structure, so it is off while that structure is checked
+            exporter.jamp_greedy_tail = False
             result, defs = exporter.optimise_jamp(dict(all_element),
                                                   symmetry=symmetry)
+            exporter.jamp_greedy_tail = True
             known = set((left, right, ratio)
                         for _k, left, right, ratio, _nb in defs)
             self.assertTrue(known)
@@ -10636,8 +10673,11 @@ class OptimiseJampTest(unittest.TestCase):
                                                (3, 16, 24, 0.4)]:
             all_element, symmetry = self.symmetric_matrix(seed, nb_line,
                                                           nb_col, density)
+            # one recipe per orbit only describes what the orbit rounds found
+            exporter.jamp_greedy_tail = False
             _result, defs = exporter.optimise_jamp(dict(all_element),
                                                    symmetry=symmetry)
+            exporter.jamp_greedy_tail = True
             recipes = exporter.jamp_orbit_recipes(defs, nb_col)
             if recipes is None:
                 # a ratio which is not a plain sign, the definitions are then
