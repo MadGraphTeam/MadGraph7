@@ -2483,7 +2483,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
 
     def get_JAMP_lines_split_order(self, col_amps, split_order_amps, 
-          split_order_names=None, JAMP_format="JAMP(%s,{0})", AMP_format="AMP(%s)"):
+          split_order_names=None, JAMP_format="JAMP(%s,{0})", AMP_format="AMP(%s)",
+          orbit=False, proc_prefix=''):
         """Return the JAMP = sum(fermionfactor * AMP(i)) lines from col_amps 
         defined as a matrix element or directly as a color_amplitudes dictionary.
         The split_order_amps specifies the group of amplitudes sharing the same
@@ -2552,8 +2553,16 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                                    JAMP_format=JAMP_format.format(str(i+1)),
                                    JAMP_formatLC="LN"+JAMP_format.format(str(i+1)))[0])
             else:
+                # Only one set of definitions fits in the arrays the
+                # template declares, so the orbit version is only used when
+                # there is a single order to compute.
                 toadd, nb_tmp = self.get_JAMP_lines(col_amps_order,
-                                   JAMP_format=JAMP_format.format(str(i+1)))
+                                   JAMP_format=JAMP_format.format(str(i+1)),
+                                   orbit=orbit and len(split_order_amps) == 1,
+                                   proc_prefix=proc_prefix,
+                                   symmetry_source=col_amps if isinstance(
+                                       col_amps,
+                                       helas_objects.HelasMatrixElement) else None)
                 res_list.extend(toadd)
                 max_tmp = max(max_tmp, nb_tmp)         
 
@@ -2561,7 +2570,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
 
     def get_JAMP_lines(self, col_amps, JAMP_format="JAMP(%s)", AMP_format="AMP(%s)",
-                       split=-1, orbit=False, proc_prefix=''):
+                       split=-1, orbit=False, proc_prefix='',
+                       symmetry_source=None):
         """Return the JAMP = sum(fermionfactor * AMP(i)) lines from col_amps
         defined as a matrix element or directly as a color_amplitudes dictionary,
         Jamp_formatLC should be define to allow to add LeadingColor computation
@@ -2674,8 +2684,12 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         for key in all_element:
             all_element[key] = complex(all_element[key])
         self.jamp_orbits = None
-        symmetry = self.get_jamp_symmetry(col_amps, all_element) \
-                                    if orbit and self.jamp_orbit else None
+        # the color basis is read from the matrix element, which is not always
+        # what is passed here: the split order version hands over one list of
+        # color amplitudes per order and says where they came from
+        symmetry = self.get_jamp_symmetry(
+                        col_amps if symmetry_source is None else symmetry_source,
+                        all_element) if orbit and self.jamp_orbit else None
         new_mat, defs = self.optimise_jamp(all_element, symmetry=symmetry)
         if start_time:
             logger.info("Color-Flow passed to %s term in %ss. Introduce %i contraction", len(new_mat), int(time.time()-start_time), len(defs))
@@ -2702,13 +2716,14 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # symmetry allows it and there are enough definitions for the routine
         # rebuilding them to be worth its own code.
         recipes = None
-        if symmetry and len(defs) >= self.jamp_orbit_min_def:
+        if symmetry and len(defs) >= self.jamp_orbit_min_def \
+                    and self.jamp_tables_allowed():
+            nb_amp = (col_amps if symmetry_source is None
+                      else symmetry_source).get_number_of_amplitudes()
             if self.jamp_emit == 'tables':
-                recipes = self.jamp_orbit_tables(defs,
-                                        col_amps.get_number_of_amplitudes())
+                recipes = self.jamp_orbit_tables(defs, nb_amp)
             else:
-                recipes = self.jamp_orbit_recipes(defs,
-                                        col_amps.get_number_of_amplitudes())
+                recipes = self.jamp_orbit_recipes(defs, nb_amp)
         self.jamp_recipes = recipes
 
         if recipes:
@@ -3712,11 +3727,32 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         ]
         return add + body
 
-    def jamp_orbit_allowed(self, matrix_element):
-        """The orbit recipes need the routine which rebuilds the definitions
-        at run time, which only the plain standalone template carries."""
+    def jamp_tables_allowed(self):
+        """Whether the definitions may be read from a table rather than written
+        out. That needs the template to declare the arrays and to hold the
+        definitions at the end of AMP, which only the standalone one does.
 
-        if not self.jamp_orbit or type(self) is not ProcessExporterFortranSA:
+        Madevent cannot: with helicity recycling on, which is its default, the
+        matrix element is rewritten from a template of its own where AMP is
+        indexed by helicity as AMP(NCOMB,NGRAPHS) and only the JAMP lines are
+        carried over. The definitions are written out there, and only the
+        optimisation itself is shared."""
+
+        return not isinstance(self, ProcessExporterFortranME)
+
+    def jamp_orbit_allowed(self, matrix_element):
+        """Whether the orbit equivariant optimisation is used here."""
+
+        if not self.jamp_orbit:
+            return False
+
+        if isinstance(self, ProcessExporterFortranME):
+            return self.matrix_file in ('matrix_madevent_v4.inc',
+                                        'matrix_madevent_group_v4.inc')
+
+        # matchbox and the loop exporters derive from the standalone one but
+        # write their own templates
+        if type(self) is not ProcessExporterFortranSA:
             return False
         if self.matrix_template != 'matrix_standalone_v4.inc':
             return False
@@ -6743,6 +6779,7 @@ class ProcessExporterFortranME(ProcessExporterFortran):
     MadEvent format."""
 
     matrix_file = "matrix_madevent_v4.inc"
+    jamp_orbit = True
     done_warning_tchannel = False
     
     default_opt = {'clean': False, 'complex_mass':False,
@@ -7522,9 +7559,11 @@ class ProcessExporterFortranME(ProcessExporterFortran):
 
         # Extract JAMP lines
         # If no split_orders then artificiall add one entry called 'ALL_ORDERS'
+        self.jamp_recipes = None
         jamp_lines, nb_temp = self.get_JAMP_lines_split_order(\
                              matrix_element,amp_orders,split_order_names=
-                        split_orders if len(split_orders)>0 else ['ALL_ORDERS'])
+                        split_orders if len(split_orders)>0 else ['ALL_ORDERS'],
+                        orbit=self.jamp_orbit_allowed(matrix_element))
         replace_dict['jamp_lines'] = '\n'.join(jamp_lines)
         replace_dict['nb_temp_jamp'] = nb_temp
 
