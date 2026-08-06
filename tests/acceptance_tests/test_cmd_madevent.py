@@ -1297,13 +1297,25 @@ class TestMECmdShell(unittest.TestCase):
 
             self.do('generate_events -f')
 
-            val = self.cmd_line.results.current['cross'] + 1e-99
+            cross = self.cmd_line.results.current['cross']
             err = self.cmd_line.results.current['error']
-            results.append((val, err, afg, gsp))
 
-            if val == 0:
-                misc.sprint('Warning: cross-section is zero for '
-                             'apply_flavor_grouping=%s/group_subprocesses=%s' % (afg, gsp))
+            # A run that produced nothing leaves cross *and* error at 0 -- most
+            # often a ZeroResult swallowed by nice_error_handling, which only
+            # logs a warning (invisible at the CRITICAL level these tests run
+            # at). Catch it here: the precision check below divides by
+            # cross+1e-99, so 0/1e-99 = 0 < 0.05 sails through, and the zero
+            # would surface only in the pairwise comparison as a misleading
+            # "incompatible cross-sections ... (1e-99 +- 0)" rather than as the
+            # failed run it is. (The check this replaces tested val == 0 after
+            # the +1e-99, so it could never fire.)
+            self.assertTrue(cross,
+                'no cross-section produced for apply_flavor_grouping=%s/'
+                'group_subprocesses=%s: the run failed rather than disagreeing '
+                '(cross=%s, error=%s, run dir %s)' % (afg, gsp, cross, err, run_dir))
+
+            val = cross + 1e-99
+            results.append((val, err, afg, gsp))
 
             #check precision is reasonable for each individual run
             self.assertLess(err / val, 0.05,
@@ -1364,6 +1376,13 @@ class TestMECmdShell(unittest.TestCase):
                  'set group_subprocesses %s' % gsp,
                  'generate p p > l+ l-'],
                 pjoin(self.path, 'MG7_fg_%d' % i), datadir)
+            # Fail on a run that produced nothing rather than letting it reach
+            # the pairwise comparison: err/(cross+1e-99) is 0 < 0.05 when both
+            # are 0, so the precision check below cannot catch it.
+            self.assertTrue(cross,
+                'mg7 produced no cross-section for apply_flavor_grouping=%s/'
+                'group_subprocesses=%s: the run failed rather than disagreeing '
+                '(cross=%s, error=%s)' % (afg, gsp, cross, err))
             results.append((cross + 1e-99, err, afg, gsp))
             self.assertLess(err / (cross + 1e-99), 0.05,
                 'mg7 cross-section too imprecise (afg=%s, gsp=%s): %s +- %s'
@@ -1419,13 +1438,25 @@ class TestMECmdShell(unittest.TestCase):
 
             self.do('generate_events -f')
 
-            val = self.cmd_line.results.current['cross'] + 1e-99
+            cross = self.cmd_line.results.current['cross']
             err = self.cmd_line.results.current['error']
-            results.append((val, err, afg, gsp))
 
-            if val == 0:
-                misc.sprint('Warning: cross-section is zero for '
-                             'apply_flavor_grouping=%s/group_subprocesses=%s' % (afg, gsp))
+            # A run that produced nothing leaves cross *and* error at 0 -- most
+            # often a ZeroResult swallowed by nice_error_handling, which only
+            # logs a warning (invisible at the CRITICAL level these tests run
+            # at). Catch it here: the precision check below divides by
+            # cross+1e-99, so 0/1e-99 = 0 < 0.05 sails through, and the zero
+            # would surface only in the pairwise comparison as a misleading
+            # "incompatible cross-sections ... (1e-99 +- 0)" rather than as the
+            # failed run it is. (The check this replaces tested val == 0 after
+            # the +1e-99, so it could never fire.)
+            self.assertTrue(cross,
+                'no cross-section produced for apply_flavor_grouping=%s/'
+                'group_subprocesses=%s: the run failed rather than disagreeing '
+                '(cross=%s, error=%s, run dir %s)' % (afg, gsp, cross, err, run_dir))
+
+            val = cross + 1e-99
+            results.append((val, err, afg, gsp))
 
             #check precision is reasonable for each individual run
             self.assertLess(err / val, 0.05,
@@ -1514,13 +1545,20 @@ class TestMECmdShell(unittest.TestCase):
             self.do('generate_events -f')
 
             # Verify event generation succeeded
-            val = self.cmd_line.results.current['cross'] + 1e-99
+            cross = self.cmd_line.results.current['cross']
             err = self.cmd_line.results.current['error']
-            results.append((val, err, afg, gsp))
 
-            # Check that we got a valid cross-section
-            self.assertGreater(val, 0,
-                'cross-section is zero for q q~ > q q~ with MLM merging')
+            # Check that we got a valid cross-section. Test the raw cross, not
+            # cross+1e-99: a run that produced nothing leaves cross and error at
+            # 0 (typically a ZeroResult swallowed by nice_error_handling), and
+            # asserting on the padded value can never fail.
+            self.assertTrue(cross,
+                'no cross-section produced for q q~ > q q~ with MLM merging: '
+                'the run failed (cross=%s, error=%s, run dir %s)'
+                % (cross, err, run_dir))
+
+            val = cross + 1e-99
+            results.append((val, err, afg, gsp))
 
             # Check precision is reasonable
             self.assertLess(err / val, 0.10,
