@@ -83,8 +83,7 @@ class ProcessExporterMadMatrix(export_cpp.ProcessExporterMG7):
 
     from_template = {'.': relative_path_list(home_path, ['COPYRIGHT', 'COPYING', 'COPYING.LESSER']),
                      'src': relative_path_list(madmatrix_templates, [
-                         'mgOnGpuFptypes.h', 'mgOnGpuCxtypes.h', 'mgOnGpuVectors.h',
-                         'constexpr_math.h', 'read_slha.h', 'read_slha.cc'
+                         'read_slha.h', 'read_slha.cc'
                      ]),
                      # Backend-owned skeleton files live only under backend/<variant>/ now
                      # (see backend_variants below); only genuinely backend-agnostic files

@@ -1729,7 +1729,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     def generate_process_files(self):
         """Generate mgOnGpuConfig.h, CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
         ###misc.sprint('Entering OneProcessExporterMadMatrix.generate_process_files')
-        self.edit_mgonGPU()
         self.edit_colordata() # AV new file (NB this is Sigma-specific, should not be a symlink to Subprocesses)
         super().generate_process_files()
         # needs to be after get_matrix_element_calls to have nwf ready

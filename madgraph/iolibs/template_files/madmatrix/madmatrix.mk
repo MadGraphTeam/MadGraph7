@@ -383,7 +383,7 @@ export GPUSUFFIX
 # Export BACKEND (resolved from cppauto above if needed; used e.g. to name the common library)
 export BACKEND
 
-# Map BACKEND to its backend/<variant> source subdirectory 
+# Map BACKEND to its backend/<variant> source subdirectory
 ifneq ($(GPUCC),)
   override BACKENDDIR = gpu
 else ifeq ($(BACKEND),cppnone)
@@ -391,6 +391,7 @@ else ifeq ($(BACKEND),cppnone)
 else
   override BACKENDDIR = simd
 endif
+export BACKENDDIR
 
 #-------------------------------------------------------------------------------
 

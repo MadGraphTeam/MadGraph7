@@ -187,6 +187,8 @@ class TREX_OneProcessExporter(model_handling.OneProcessExporterMadMatrix):
     def generate_process_files(self):
         """Generate mgOnGpuConfig.h, CPPProcess.cc, CPPProcess.h, check_sa.cc, gXXX.cu links"""
         super().generate_process_files()
+        # for TREX for now no /backend
+        self.edit_mgonGPU()
         self.edit_rwgt_header()
         self.edit_rwgt_runner()
         
@@ -202,9 +204,13 @@ class TREX_ProcessExporter(output.ProcessExporterMadMatrix):
     r = PLUGINDIR + '/MadtRex/template_files/'
     m = PLUGINDIR + '/MadtRex/makefiles/'
     from_template = dict(output.ProcessExporterMadMatrix.from_template)
-    from_template['src'] = from_template['src'] + [t+'librex.so', t+'libtearex.so',
-                                                   t+'Rex.h', t+'teaRex.h',
-                                                    r+'rwgt_instance.h', r+'rwgt_instance.cc']
+    # for TREX for now no /backend
+    from_template['src'] = from_template['src'] + output.relative_path_list(
+        output.ProcessExporterMadMatrix.madmatrix_templates,
+        ['mgOnGpuFptypes.h', 'mgOnGpuCxtypes.h', 'mgOnGpuVectors.h', 'constexpr_math.h']
+    ) + [t+'librex.so', t+'libtearex.so',
+        t+'Rex.h', t+'teaRex.h',
+        r+'rwgt_instance.h', r+'rwgt_instance.cc']
     from_template['SubProcesses'] = from_template['SubProcesses'] + [m+'cudacpp_driver.mk',
                                                                      r+'rwgt_instance.h', t+'Rex.h', t+'teaRex.h']
 
