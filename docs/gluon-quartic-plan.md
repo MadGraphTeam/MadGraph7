@@ -658,6 +658,52 @@ everything found three consumers which read the diagram or amplitude
    more colour structures (`|M|^2` bit-identical, checked with
    `MatrixElementEvaluator`).
 
+### The scan for a fourth
+
+Looked for one, did not find one in the shipped tree, and the search bounds
+the remaining risk.
+
+**Every merged-JAMP consumer, against every writer.** `get_color_amplitudes`
+has four call sites: `export_cpp` (x2), `export_python` and `madmatrix` all
+pass `merge_quartic_amplitudes=False`; only `export_v4`'s three
+`get_JAMP_lines*` take the merged default, and every Fortran exporter pairs
+with `FortranUFOHelasCallWriter`, which emits the folds. The base
+`get_amplitude_merge_lines` returns `[]` and `FortranHelasCallWriter` does not
+override `get_matrix_element_calls`, so it is the one writer that silently
+drops them -- and it is selected exactly when `self._model_v4_path` is set,
+i.e. under `import model_v4`. No other combination in the tree reaches merged
+JAMPs without folds.
+
+The property which keeps `merge_quartic_amplitudes=False` safe is that
+`get_color_amplitudes` drops the current-sum folded amplitudes
+*unconditionally* and only the amplitude merges conditionally -- so a writer
+which emits the sums but not the folds still gets consistent JAMPs.
+
+**A mechanical audit of the generated code.** For each `AMP(n)` in a generated
+matrix element, whether it is written and whether it is read. Read-never-
+written is garbage; written-never-read is a contribution dropped on the floor,
+which is the legacy writer's signature. Run with the flag off as a control on
+every output -- standalone, matchbox, madevent grouped and not, a decay chain,
+helicity-recycled files, `u u~ > g g g`, `g g > t t~ g g`, `u u~ > u u~ g g`,
+four to six gluons -- and clean everywhere. The split order path is included:
+`ProcessExporterFortranSA` and `ProcessExporterFortranME` both always go
+through `get_JAMP_lines_split_order`, whose `amp_orders` lists folded
+amplitude numbers, but they never reach the code because the colour amplitudes
+no longer mention them.
+
+**The two places which weight or group results.** Subprocess grouping for
+`p p > j j` gives the same five directories and byte-identical `configs.inc`
+and `coloramps.inc`; only the `g g > g g` matrix element differs.
+`find_symmetry`, which feeds the multiplicative `symfact.dat`, keeps the same
+equivalence classes and multiplicities -- `[3, 3, 3, 6]` at five gluons and
+`[3, 6, 12, 12, 12, 12, 12, 12, 24]` at six, in both settings, with the same
+number of channels and the same total weight. Only the representative diagram
+indices renumber, which is the renumbering itself.
+
+So the residual risk of this class is two named things: `import model_v4`, and
+a third-party plugin supplying its own `helas_exporter` paired with
+`export_v4`'s merged JAMPs.
+
 The pattern is that the optimisation changes the *representation* -- diagram
 order, rooting, which amplitudes survive into the JAMPs -- and every consumer
 which reads representation rather than result has to be checked. Three turned
