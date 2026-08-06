@@ -77,6 +77,7 @@ WATCHDOG_BYTES = 30 * GIB
 WARMUPS = 2
 MINIMUM_SAMPLES = 5
 WORK_CENSUS_BASIS = "fully-resident-query-local-trace-v1"
+FAMILY_WORK_CENSUS_BASIS = "shared-query-family-union-v1"
 OPERATION_COUNT_FIELDS = (
     "source_operation_count",
     "contribution_operation_count",
@@ -179,6 +180,14 @@ def _parser() -> argparse.ArgumentParser:
         "--amplicol-result",
         type=Path,
         help="stored successful AmpliCol worker-result.json (optional sanity point)",
+    )
+    parser.add_argument(
+        "--compiled-artifact",
+        type=Path,
+        help=(
+            "optional existing compiled artifact for an authenticated, descriptive "
+            "whole-DAG current/interaction census"
+        ),
     )
     parser.add_argument("--target-runtime", type=_positive_float, default=1.0)
     parser.add_argument("--batch-size", type=_positive_int, default=128)
@@ -460,6 +469,7 @@ def _invoke(
     *,
     repetitions: int = 0,
     enable_color_projection: bool = True,
+    query_family: Sequence[Query] | None = None,
 ) -> dict[str, Any]:
     benchmark = repetitions > 0
     return probe(
@@ -478,6 +488,14 @@ def _invoke(
         benchmark_repetitions=repetitions,
         collect_current_diagnostics=False,
         enable_color_projection=enable_color_projection,
+        query_family=(
+            None
+            if query_family is None
+            else [
+                (member.flow_index, list(member.helicities))
+                for member in query_family
+            ]
+        ),
     )
 
 
@@ -555,6 +573,160 @@ def _work_census(report: Mapping[str, object]) -> dict[str, object]:
     if not 0 < prepared <= semantic <= total:
         raise GateError("hidden query prepared-executor counts are inconsistent")
     return {"work_census_basis": WORK_CENSUS_BASIS, **counts}
+
+
+def _family_probe_result(
+    report: Mapping[str, object],
+    queries: Sequence[Query],
+    point_count: int,
+    repetitions: int = 0,
+) -> dict[str, object]:
+    if not queries:
+        raise GateError("hidden family report has no requested queries")
+    benchmark = repetitions > 0
+    cycles = WARMUPS + repetitions if benchmark else 1
+    poison = (
+        "direct_plan_load_attempts",
+        "direct_plan_decode_attempts",
+        "direct_plan_materialization_attempts",
+        "established_builder_attempts",
+    )
+    if (
+        report.get("process_id") != PROCESS_ID
+        or report.get("point_count") != point_count
+        or report.get("work_census_basis") != FAMILY_WORK_CENSUS_BASIS
+        or report.get("trace_build_count") != len(queries)
+        or report.get("trace_cache_hit_count") != 0
+        or report.get("momentum_fill_count") != cycles
+        or report.get("currents") != []
+        or any(report.get(name) != 0 for name in poison)
+    ):
+        raise GateError("hidden family violated its build/cache/fill/poison contract")
+    family = report.get("query_family")
+    if not isinstance(family, Mapping):
+        raise GateError("hidden family report is absent")
+    raw_census = family.get("census")
+    if not isinstance(raw_census, Mapping):
+        raise GateError("hidden family census is absent")
+    census: dict[str, int] = {}
+    for name in FAMILY_CENSUS_COUNT_FIELDS:
+        value = raw_census.get(name)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise GateError(f"hidden family census has invalid {name}")
+        census[name] = value
+    if (
+        census["query_count"] != len(queries)
+        or census["source_frame_partition_count"] != 1
+        or census["union_amplitude_destination_count"] != len(queries)
+    ):
+        raise GateError("hidden family census has the wrong query/source shape")
+    for role in ("source", "contribution", "finalization", "closure"):
+        if (
+            family.get(f"execution_{role}_rows") != census[f"union_{role}_rows"]
+            or family.get(f"execution_{role}_calls")
+            != census[f"union_{role}_executor_call_groups"]
+        ):
+            raise GateError(f"hidden family execution disagrees for {role}")
+    union_total = sum(
+        census[f"union_{role}_rows"]
+        for role in ("source", "contribution", "finalization", "closure")
+    )
+    if (
+        report.get("source_operation_count") != census["union_source_rows"]
+        or report.get("contribution_operation_count")
+        != census["union_contribution_rows"]
+        or report.get("finalization_operation_count")
+        != census["union_finalization_rows"]
+        or report.get("closure_operation_count") != census["union_closure_rows"]
+        or report.get("total_kernel_application_count") != union_total
+        or family.get("execution_cache_hit") is not benchmark
+        or family.get("private_timing_excludes_source_crossing") is not True
+    ):
+        raise GateError("hidden family top-level execution census is inconsistent")
+    cold_prepare = family.get("cold_prepare_seconds")
+    if (
+        isinstance(cold_prepare, bool)
+        or not isinstance(cold_prepare, (int, float))
+        or not math.isfinite(float(cold_prepare))
+        or float(cold_prepare) < 0.0
+    ):
+        raise GateError("hidden family cold preparation timing is invalid")
+
+    raw_queries = family.get("queries")
+    if not isinstance(raw_queries, Sequence) or isinstance(raw_queries, (str, bytes)):
+        raise GateError("hidden family query outputs are absent")
+    if len(raw_queries) != len(queries):
+        raise GateError("hidden family returned the wrong query count")
+    rows: list[dict[str, object]] = []
+    for expected, raw in zip(queries, raw_queries, strict=True):
+        if not isinstance(raw, Mapping):
+            raise GateError("hidden family query output is not a mapping")
+        if (
+            raw.get("selected_public_flow_id") != expected.flow_index
+            or tuple(raw.get("public_helicities", ())) != expected.helicities
+            or not isinstance(raw.get("query_digest"), str)
+        ):
+            raise GateError("hidden family query identity/order changed")
+        raw_amplitudes = raw.get("raw_amplitudes")
+        normalized_values = raw.get("normalized_values")
+        if (
+            not isinstance(raw_amplitudes, Sequence)
+            or isinstance(raw_amplitudes, (str, bytes))
+            or not isinstance(normalized_values, Sequence)
+            or isinstance(normalized_values, (str, bytes))
+            or len(raw_amplitudes) != point_count
+            or len(normalized_values) != point_count
+        ):
+            raise GateError("hidden family query returned the wrong point axis")
+        parsed_raw = tuple(
+            complex(
+                _real(pair[0], "family raw real"),
+                _real(pair[1], "family raw imag"),
+            )
+            for pair in raw_amplitudes
+            if isinstance(pair, Sequence)
+            and not isinstance(pair, (str, bytes))
+            and len(pair) == 2
+        )
+        if len(parsed_raw) != point_count:
+            raise GateError("hidden family query has malformed raw amplitudes")
+        parsed_normalized = tuple(
+            _real(value, "family normalized value") for value in normalized_values
+        )
+        rows.append(
+            {
+                "query": expected.label,
+                "query_digest": raw["query_digest"],
+                "raw_amplitudes": parsed_raw,
+                "normalized_values": parsed_normalized,
+            }
+        )
+
+    elapsed = family.get("private_warmed_elapsed_seconds")
+    per_point = family.get("private_warmed_seconds_per_point")
+    if benchmark:
+        if not isinstance(elapsed, (int, float)) or not isinstance(
+            per_point, (int, float)
+        ):
+            raise GateError("hidden family benchmark omitted timings")
+        expected = float(elapsed) / (repetitions * point_count)
+        if (
+            not math.isfinite(float(elapsed))
+            or float(elapsed) < 0.0
+            or not math.isclose(float(per_point), expected, rel_tol=1.0e-15)
+        ):
+            raise GateError("hidden family benchmark timings are inconsistent")
+    elif elapsed is not None or per_point is not None:
+        raise GateError("untimed hidden family returned timings")
+    return {
+        "queries": rows,
+        "census": census,
+        "union_total_kernel_application_count": union_total,
+        "cold_prepare_seconds": float(cold_prepare),
+        "private_warmed_elapsed_seconds": elapsed,
+        "private_warmed_seconds_per_point": per_point,
+        "private_timing_excludes_source_crossing": True,
+    }
 
 
 def _axes(resolved: object) -> tuple[dict[str, int], dict[str, int]]:
@@ -800,6 +972,17 @@ def _query_family_census(
     }
 
 
+def _assert_executable_family_matches_structural_census(
+    executable: Mapping[str, object], structural: Mapping[str, object]
+) -> None:
+    for name in FAMILY_CENSUS_COUNT_FIELDS:
+        if executable.get(name) != structural.get(name):
+            raise GateError(
+                f"executable family census disagrees with the independent structural "
+                f"census for {name}"
+            )
+
+
 def _established_recurrence_schedule_census(artifact: Path) -> dict[str, object]:
     path = artifact / "processes" / PROCESS_ID / "execution.json"
     try:
@@ -854,6 +1037,62 @@ def _established_recurrence_schedule_census(artifact: Path) -> dict[str, object]
             + counts["finalization_count"]
             + counts["closure_term_count"]
         ),
+    }
+
+
+def _compiled_dag_census(artifact: Path | None) -> dict[str, object]:
+    if artifact is None:
+        return {
+            "available": False,
+            "reason": "no --compiled-artifact was supplied",
+            "comparison_kind": "descriptive-only",
+        }
+    authenticated = Runtime.load(artifact, process=PROCESS_ID)
+    if (
+        authenticated.execution_mode != "compiled"
+        or authenticated.physics.color_accuracy != "lc"
+    ):
+        raise GateError("compiled census artifact is not an LC compiled artifact")
+    path = artifact / "processes" / PROCESS_ID / "execution.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        summary = payload["dag_summary"]
+    except (
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        KeyError,
+        TypeError,
+    ) as error:
+        raise GateError("cannot read compiled DAG census") from error
+    if payload.get("kind") != "pyamplicol-runtime-execution":
+        raise GateError("compiled DAG census has the wrong execution kind")
+    fields = (
+        "source_count",
+        "current_count",
+        "interaction_count",
+        "interaction_evaluation_count",
+        "amplitude_root_count",
+    )
+    counts: dict[str, int] = {}
+    for name in fields:
+        value = summary.get(name)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise GateError(f"compiled DAG census has invalid {name}")
+        counts[name] = value
+    if counts["interaction_evaluation_count"] > counts["interaction_count"]:
+        raise GateError("compiled DAG evaluation count exceeds its interaction count")
+    return {
+        "available": True,
+        "artifact": str(artifact.resolve(strict=True)),
+        "artifact_id": authenticated.artifact_id,
+        "basis": "authenticated-compiled-whole-generic-dag-v1",
+        "comparison_kind": "descriptive-only",
+        "semantics": (
+            "whole-DAG static counts; they are not selector-workload counts and "
+            "are not asserted equal to recurrence or on-the-fly execution rows"
+        ),
+        **counts,
     }
 
 
@@ -929,6 +1168,169 @@ def _hidden_timing(
             "normalization/output/Python conversion",
         ),
         "acceptance_gate": False,
+    }
+
+
+def _hidden_family_timing(
+    probe: Callable[..., dict[str, Any]],
+    artifact: Path,
+    retained: RetainedInputs,
+    queries: Sequence[Query],
+    points: Points,
+    target: float,
+    enable_color_projection: bool = True,
+) -> tuple[dict[str, object], dict[str, object]]:
+    if not queries:
+        raise GateError("family workload has no physical queries")
+    invoke = partial(
+        _invoke,
+        probe,
+        artifact,
+        retained,
+        queries[0],
+        points,
+        enable_color_projection=enable_color_projection,
+        query_family=queries,
+    )
+    pilot = _family_probe_result(invoke(repetitions=1), queries, len(points), 1)
+    pilot_elapsed = pilot.get("private_warmed_elapsed_seconds")
+    if not isinstance(pilot_elapsed, (int, float)):
+        raise GateError("family pilot omitted its warmed elapsed time")
+    repetitions = _calibrate(float(pilot_elapsed), target)
+    measured = _family_probe_result(
+        invoke(repetitions=repetitions), queries, len(points), repetitions
+    )
+    if measured["census"] != pilot["census"]:
+        raise GateError("family union census changed between benchmark passes")
+    return measured, {
+        "query_count": len(queries),
+        "pilot_seconds": float(pilot_elapsed),
+        "warmups": WARMUPS,
+        "repetitions": repetitions,
+        "cold_prepare_seconds": measured["cold_prepare_seconds"],
+        "private_warmed_elapsed_seconds": measured[
+            "private_warmed_elapsed_seconds"
+        ],
+        "private_warmed_seconds_per_point": measured[
+            "private_warmed_seconds_per_point"
+        ],
+        "private_timing_excludes_source_crossing": True,
+        "work_census_basis": FAMILY_WORK_CENSUS_BASIS,
+        "work_census": measured["census"],
+        "total_kernel_application_count": measured[
+            "union_total_kernel_application_count"
+        ],
+        "timer_includes": (
+            "shared source fill",
+            "one grouped union execution",
+            "flat caller-output write",
+        ),
+        "timer_excludes": (
+            "artifact/pack load",
+            "query construction",
+            "family preparation",
+            "parameter/workspace setup",
+            "source-major crossing",
+            "normalization/Python conversion",
+        ),
+        "timing_status": "private-provisional",
+        "acceptance_gate": False,
+    }
+
+
+def _hidden_family_correctness(
+    probe: Callable[..., dict[str, Any]],
+    artifact: Path,
+    retained: RetainedInputs,
+    queries: Sequence[Query],
+    points: Points,
+    normalized_authority: Sequence[Sequence[object]],
+    query_local_reports: Sequence[Mapping[str, object]],
+    enable_color_projection: bool = True,
+) -> tuple[tuple[tuple[float, ...], ...], dict[str, object]]:
+    if (
+        not queries
+        or len(queries) != len(normalized_authority)
+        or len(queries) != len(query_local_reports)
+    ):
+        raise GateError("family correctness inputs have incompatible query axes")
+    report = _invoke(
+        probe,
+        artifact,
+        retained,
+        queries[0],
+        points,
+        enable_color_projection=enable_color_projection,
+        query_family=queries,
+    )
+    parsed = _family_probe_result(report, queries, len(points))
+    parsed_rows = parsed["queries"]
+    if not isinstance(parsed_rows, Sequence):
+        raise GateError("family correctness report lost its query rows")
+    normalized_checks: list[dict[str, object]] = []
+    raw_real_checks: list[dict[str, object]] = []
+    raw_imag_checks: list[dict[str, object]] = []
+    normalized_rows: list[tuple[float, ...]] = []
+    for query, row, authority, query_local in zip(
+        queries,
+        parsed_rows,
+        normalized_authority,
+        query_local_reports,
+        strict=True,
+    ):
+        if not isinstance(row, Mapping):
+            raise GateError("family correctness row is malformed")
+        normalized = row.get("normalized_values")
+        raw = row.get("raw_amplitudes")
+        local_raw = query_local.get("raw_amplitudes")
+        if (
+            not isinstance(normalized, Sequence)
+            or not isinstance(raw, Sequence)
+            or not isinstance(local_raw, Sequence)
+            or len(raw) != len(local_raw)
+        ):
+            raise GateError("family correctness row is incomplete")
+        normalized_tuple = tuple(_real(value, "family value") for value in normalized)
+        normalized_rows.append(normalized_tuple)
+        normalized_checks.append(
+            _series(normalized_tuple, authority, f"{query.label} family/public")
+        )
+        family_complex = tuple(complex(value) for value in raw)
+        local_complex = tuple(
+            complex(
+                _real(value[0], "local raw real"),
+                _real(value[1], "local raw imag"),
+            )
+            for value in local_raw
+            if isinstance(value, Sequence)
+            and not isinstance(value, (str, bytes))
+            and len(value) == 2
+        )
+        if len(local_complex) != len(family_complex):
+            raise GateError("query-local raw amplitude row is malformed")
+        raw_real_checks.append(
+            _series(
+                tuple(value.real for value in family_complex),
+                tuple(value.real for value in local_complex),
+                f"{query.label} family/query-local raw real",
+            )
+        )
+        raw_imag_checks.append(
+            _series(
+                tuple(value.imag for value in family_complex),
+                tuple(value.imag for value in local_complex),
+                f"{query.label} family/query-local raw imaginary",
+            )
+        )
+    return tuple(normalized_rows), {
+        "normalized_component_checks": _summaries(normalized_checks),
+        "raw_real_component_checks": _summaries(raw_real_checks),
+        "raw_imaginary_component_checks": _summaries(raw_imag_checks),
+        "work_census_basis": FAMILY_WORK_CENSUS_BASIS,
+        "work_census": parsed["census"],
+        "total_kernel_application_count": parsed[
+            "union_total_kernel_application_count"
+        ],
     }
 
 
@@ -1032,6 +1434,7 @@ def _run(
     output: Path,
     prepared_model: Path,
     amplicol: Path | None,
+    compiled_artifact: Path | None,
     target: float,
     batch: int,
     enable_color_projection: bool = True,
@@ -1114,6 +1517,29 @@ def _run(
     flow_resolved_sum = _sum(flow_reference, len(points))
     flow_public_sum = runtime.evaluate(points, helicities=(HELICITY_ID,))
 
+    selected_family_rows, selected_family_correctness = _hidden_family_correctness(
+        probe,
+        artifact,
+        retained,
+        selected_queries,
+        points,
+        selected_reference,
+        [cache[query][2] for query in selected_queries],
+        enable_color_projection,
+    )
+    flow_family_rows, flow_family_correctness = _hidden_family_correctness(
+        probe,
+        artifact,
+        retained,
+        flow_queries,
+        points,
+        flow_reference,
+        [cache[query][2] for query in flow_queries],
+        enable_color_projection,
+    )
+    selected_family_sum = _sum(selected_family_rows, len(points))
+    flow_family_sum = _sum(flow_family_rows, len(points))
+
     fixed_hidden = hidden(fixed_flow, fixed_helicity)
     fixed_public = tuple(complex(point[fixed_h][fixed_c]) for point in resolved.values)
     digest = point_digest((points[0],))
@@ -1145,19 +1571,51 @@ def _run(
         target,
         enable_color_projection,
     )
-    selected_hidden_timing["structural_family_census"] = _query_family_census(
+    selected_structural_census = _query_family_census(
         family_probe,
         retained,
         selected_queries,
         selected_hidden_timing,
         enable_color_projection,
     )
-    flow_hidden_timing["structural_family_census"] = _query_family_census(
+    selected_hidden_timing["structural_family_census"] = selected_structural_census
+    flow_structural_census = _query_family_census(
         family_probe,
         retained,
         flow_queries,
         flow_hidden_timing,
         enable_color_projection,
+    )
+    flow_hidden_timing["structural_family_census"] = flow_structural_census
+    _, selected_family_timing = _hidden_family_timing(
+        probe,
+        artifact,
+        retained,
+        selected_queries,
+        timing_points,
+        target,
+        enable_color_projection,
+    )
+    _, flow_family_timing = _hidden_family_timing(
+        probe,
+        artifact,
+        retained,
+        flow_queries,
+        timing_points,
+        target,
+        enable_color_projection,
+    )
+    selected_family_census = selected_family_timing["work_census"]
+    flow_family_census = flow_family_timing["work_census"]
+    if not isinstance(selected_family_census, Mapping) or not isinstance(
+        flow_family_census, Mapping
+    ):
+        raise GateError("executable family timings lost their work census")
+    _assert_executable_family_matches_structural_census(
+        selected_family_census, selected_structural_census
+    )
+    _assert_executable_family_matches_structural_census(
+        flow_family_census, flow_structural_census
     )
     selected_public_timing = _public_timing(
         BenchmarkRunner(_benchmark_config(target, batch, flows=(FLOW_ID,))).run(
@@ -1169,9 +1627,9 @@ def _run(
             _benchmark_config(target, batch, helicities=(HELICITY_ID,))
         ).run(runtime, points=timing_points)
     )
-    for hidden_timing, public_timing in (
-        (selected_hidden_timing, selected_public_timing),
-        (flow_hidden_timing, flow_public_timing),
+    for hidden_timing, family_timing, public_timing in (
+        (selected_hidden_timing, selected_family_timing, selected_public_timing),
+        (flow_hidden_timing, flow_family_timing, flow_public_timing),
     ):
         wall = float(public_timing["wall_seconds_per_point"])
         if not math.isfinite(wall) or wall <= 0.0:
@@ -1179,8 +1637,13 @@ def _run(
         hidden_timing["provisional_wall_ratio"] = (
             float(hidden_timing["additive_seconds_per_point"]) / wall
         )
+        family_timing["provisional_wall_ratio"] = (
+            float(family_timing["private_warmed_seconds_per_point"]) / wall
+        )
 
     cold = tuple(value[1] for value in cache.values())
+    recurrence_schedule = _established_recurrence_schedule_census(artifact)
+    compiled_census = _compiled_dag_census(compiled_artifact)
     return {
         "kind": "pyamplicol-on-the-fly-lc-gate",
         "status": "passed",
@@ -1204,9 +1667,8 @@ def _run(
         },
         "generation_seconds": generation_seconds,
         "runtime_load_seconds": load_seconds,
-        "established_recurrence_schedule": _established_recurrence_schedule_census(
-            artifact
-        ),
+        "established_recurrence_schedule": recurrence_schedule,
+        "compiled_whole_dag": compiled_census,
         "points": {"seeds": SEEDS, "seed_101_digest": digest, "dense": len(points)},
         "cold_query_outer_seconds": {
             "queries": len(cold),
@@ -1225,8 +1687,23 @@ def _run(
                 selected_public_sum,
                 "selected-flow resolved aggregate",
             ),
+            "family_correctness": selected_family_correctness,
+            "family_aggregate": _series(
+                selected_family_sum,
+                selected_public_sum,
+                "selected-flow family aggregate",
+            ),
             "hidden_warm": selected_hidden_timing,
+            "family_warm": selected_family_timing,
             "public_warm": selected_public_timing,
+            "descriptive_work_comparison": {
+                "on_the_fly_selector_workload": selected_family_census,
+                "public_recurrence_selector_workload": selected_public_timing[
+                    "recurrence_runtime_work"
+                ],
+                "persisted_recurrence_whole_plan": recurrence_schedule,
+                "compiled_whole_dag": compiled_census,
+            },
         },
         "all_flow_single_helicity": {
             "component_checks": _summaries(flow_checks),
@@ -1236,8 +1713,21 @@ def _run(
             "resolved_aggregate": _series(
                 flow_resolved_sum, flow_public_sum, "all-flow resolved aggregate"
             ),
+            "family_correctness": flow_family_correctness,
+            "family_aggregate": _series(
+                flow_family_sum, flow_public_sum, "all-flow family aggregate"
+            ),
             "hidden_warm": flow_hidden_timing,
+            "family_warm": flow_family_timing,
             "public_warm": flow_public_timing,
+            "descriptive_work_comparison": {
+                "on_the_fly_selector_workload": flow_family_census,
+                "public_recurrence_selector_workload": flow_public_timing[
+                    "recurrence_runtime_work"
+                ],
+                "persisted_recurrence_whole_plan": recurrence_schedule,
+                "compiled_whole_dag": compiled_census,
+            },
         },
         "amplicol_sanity": sanity,
         "performance_is_acceptance_gate": False,
@@ -1315,6 +1805,9 @@ def _worker_command(arguments: argparse.Namespace, output: Path) -> list[str]:
     if arguments.amplicol_result is not None:
         amplicol = Path(os.path.abspath(arguments.amplicol_result.expanduser()))
         command.extend(("--amplicol-result", str(amplicol)))
+    if arguments.compiled_artifact is not None:
+        compiled = Path(os.path.abspath(arguments.compiled_artifact.expanduser()))
+        command.extend(("--compiled-artifact", str(compiled)))
     if arguments.bypass_color_projection:
         command.append("--bypass-color-projection")
     return command
@@ -1327,6 +1820,7 @@ def _worker_main(arguments: argparse.Namespace) -> int:
             arguments.output,
             arguments.prepared_model,
             arguments.amplicol_result,
+            arguments.compiled_artifact,
             arguments.target_runtime,
             arguments.batch_size,
             not arguments.bypass_color_projection,

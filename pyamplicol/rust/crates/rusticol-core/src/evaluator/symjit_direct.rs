@@ -168,6 +168,12 @@ struct PlaneWorkspace {
 }
 
 impl PlaneWorkspace {
+    fn invalidate_row_tables(&mut self) {
+        self.row_groups.clear();
+        self.storage = None;
+        self.descriptor_bytes = 0;
+    }
+
     fn prepare(
         &mut self,
         point_stride: usize,
@@ -192,9 +198,7 @@ impl PlaneWorkspace {
         }
 
         // Drop every raw table before replacing its backing storage.
-        self.row_groups.clear();
-        self.storage = None;
-        self.descriptor_bytes = 0;
+        self.invalidate_row_tables();
         let mut scratch = Vec::new();
         scratch
             .try_reserve_exact(expected_scratch)
@@ -426,6 +430,20 @@ impl LoadedSymjitDirectExecutor {
                 unreachable!("source roles are rejected while loading a SymJIT plane executor")
             }
         }
+    }
+
+    /// Drop every cached table that borrows Direct-Arena row/storage pointers.
+    pub(crate) fn invalidate_row_tables(&self) -> RusticolResult<()> {
+        self.context
+            .workspace
+            .try_borrow_mut()
+            .map_err(|_| {
+                RusticolError::internal(
+                    "cannot invalidate recurrence SymJIT row tables during an active call",
+                )
+            })?
+            .invalidate_row_tables();
+        Ok(())
     }
 
     pub(crate) fn internal_traffic_bytes(&self) -> (u64, u64) {
@@ -808,8 +826,7 @@ impl SymjitDirectExecutorContext {
 
         let storage = DescriptorStorageIdentity::new(arena, momenta);
         if workspace.storage.is_some_and(|cached| cached != storage) {
-            workspace.row_groups.clear();
-            workspace.descriptor_bytes = 0;
+            workspace.invalidate_row_tables();
         }
         workspace.storage = Some(storage);
         let row_count = u32::try_from(rows.len())
@@ -2430,6 +2447,10 @@ pub(crate) mod tests {
                 "stable-row probe received an unknown executor key",
             ))
         }
+
+        fn invalidate_row_tables(&self) -> RusticolResult<()> {
+            Ok(())
+        }
     }
 
     #[test]
@@ -2483,6 +2504,11 @@ pub(crate) mod tests {
             );
         }
         assert_eq!(loaded.context.workspace.borrow().row_groups.len(), 2);
+        loaded.invalidate_row_tables().unwrap();
+        let workspace = loaded.context.workspace.borrow();
+        assert!(workspace.row_groups.is_empty());
+        assert!(workspace.storage.is_none());
+        assert_eq!(workspace.descriptor_bytes, 0);
     }
 
     #[test]

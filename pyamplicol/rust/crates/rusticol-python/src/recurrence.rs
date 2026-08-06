@@ -1131,7 +1131,8 @@ pub(crate) fn _on_the_fly_query_family_census_v1(
     benchmark_warmup_repetitions=0,
     benchmark_repetitions=0,
     collect_current_diagnostics=true,
-    enable_color_projection=true
+    enable_color_projection=true,
+    query_family=None
 ))]
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn _on_the_fly_artifact_probe_v1(
@@ -1153,6 +1154,7 @@ pub(crate) fn _on_the_fly_artifact_probe_v1(
     benchmark_repetitions: u32,
     collect_current_diagnostics: bool,
     enable_color_projection: bool,
+    query_family: Option<Vec<(u32, Vec<i32>)>>,
 ) -> PyResult<Py<PyAny>> {
     let input = parse_input(builder_input)?;
     let prepared_template = parse_prepared_template_input(prepared_template_input)?;
@@ -1202,6 +1204,7 @@ pub(crate) fn _on_the_fly_artifact_probe_v1(
                 benchmark_repetitions,
                 collect_current_diagnostics,
                 enable_color_projection,
+                query_family.as_deref(),
             )
         })
         .map_err(python_error)?;
@@ -1223,6 +1226,63 @@ fn on_the_fly_artifact_probe_mapping(
     result.set_item("raw_amplitudes", native.raw_amplitudes)?;
     result.set_item("normalized_values", native.normalized_values)?;
     result.set_item("normalization_factor", native.normalization_factor)?;
+    if let Some(family) = native.query_family {
+        let family_result = PyDict::new(py);
+        let queries = PyList::empty(py);
+        for query in family.queries {
+            let row = PyDict::new(py);
+            row.set_item("selected_public_flow_id", query.selected_public_flow_id)?;
+            row.set_item("public_helicities", query.public_helicities)?;
+            row.set_item("query_digest", query.query_digest)?;
+            row.set_item("raw_amplitudes", query.raw_amplitudes)?;
+            row.set_item("normalized_values", query.normalized_values)?;
+            queries.append(row)?;
+        }
+        family_result.set_item("queries", queries)?;
+        family_result.set_item(
+            "census",
+            on_the_fly_query_family_census_mapping(py, family.census)?,
+        )?;
+        family_result.set_item("execution_cache_hit", family.execution_cache_hit)?;
+        family_result.set_item("execution_source_calls", family.execution_source_calls)?;
+        family_result.set_item("execution_source_rows", family.execution_source_rows)?;
+        family_result.set_item(
+            "execution_contribution_calls",
+            family.execution_contribution_calls,
+        )?;
+        family_result.set_item(
+            "execution_contribution_rows",
+            family.execution_contribution_rows,
+        )?;
+        family_result.set_item(
+            "execution_finalization_calls",
+            family.execution_finalization_calls,
+        )?;
+        family_result.set_item(
+            "execution_finalization_rows",
+            family.execution_finalization_rows,
+        )?;
+        family_result.set_item("execution_closure_calls", family.execution_closure_calls)?;
+        family_result.set_item("execution_closure_rows", family.execution_closure_rows)?;
+        family_result.set_item("cold_prepare_seconds", family.cold_prepare_seconds)?;
+        family_result.set_item(
+            "benchmark_warmup_repetitions",
+            family.benchmark_warmup_repetitions,
+        )?;
+        family_result.set_item("benchmark_repetitions", family.benchmark_repetitions)?;
+        family_result.set_item(
+            "private_warmed_elapsed_seconds",
+            family.benchmark_elapsed_seconds,
+        )?;
+        family_result.set_item(
+            "private_warmed_seconds_per_point",
+            family.benchmark_seconds_per_point,
+        )?;
+        family_result.set_item("private_timing_excludes_source_crossing", true)?;
+        result.set_item("query_family", family_result)?;
+    } else {
+        result.set_item("query_family", py.None())?;
+    }
     result.set_item("projection_enabled", native.projection_enabled)?;
     result.set_item("projection_applied", native.projection_applied)?;
     for (prefix, counts) in [

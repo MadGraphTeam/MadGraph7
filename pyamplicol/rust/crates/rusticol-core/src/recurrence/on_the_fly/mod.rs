@@ -103,6 +103,10 @@ mod trace;
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 pub use family::{OnTheFlyQueryFamilyCensusV1, on_the_fly_query_family_census_v1};
+#[cfg(feature = "on-the-fly-test-support")]
+pub(crate) use family::{
+    OnTheFlyQueryFamilyExecutionReportV1, OnTheFlyQueryFamilyExecutorV1, QueryFamilyTraceInput,
+};
 pub(crate) use interpreter::{
     OnTheFlyPreparedExecutorResolver, OnTheFlyStructuralInterpreter, OnTheFlyWorkspaceV1,
     ResolvedOnTheFlyExecutor,
@@ -121,7 +125,7 @@ pub(crate) use source_seed::{
     OnTheFlySourceOrientationV1, OnTheFlySourceStateV1, OnTheFlySourceWavefunctionFamilyV1,
 };
 #[cfg(feature = "on-the-fly-test-support")]
-pub(crate) use test_support::build_on_the_fly_selected_trace_v1;
+pub(crate) use test_support::{OnTheFlySelectedTraceV1, build_on_the_fly_selected_trace_v1};
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 pub use test_support::{OnTheFlyTestSupportReportV1, on_the_fly_test_support_probe_v1};
 #[cfg(any(test, feature = "on-the-fly-test-support"))]

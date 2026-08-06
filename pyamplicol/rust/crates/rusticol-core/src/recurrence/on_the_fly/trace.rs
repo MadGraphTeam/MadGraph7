@@ -1250,6 +1250,96 @@ impl OnTheFlyStructuralTraceV1 {
         }
     }
 
+    pub(crate) fn test_add_query_family_contribution(
+        &mut self,
+        operation_id: u32,
+        evaluator_binding_id: u32,
+        exact_factor: ExactComplexRational,
+    ) {
+        let digest = |byte| SemanticDigest::new([byte; 32]).unwrap();
+        let existing = self.contribution_proof_rows[0].clone();
+        let executor = OnTheFlyExecutorKeyV1::new(
+            self.executor_keys().next().unwrap().direct_catalog_digest(),
+            DirectExecutorRole::Contribution,
+            OnTheFlyOperationKindV1::Transition,
+            operation_id,
+            digest(0x90_u8.wrapping_add(operation_id as u8)),
+            evaluator_binding_id,
+            digest(0xa0_u8.wrapping_add(evaluator_binding_id as u8)),
+        )
+        .unwrap();
+        let proof_key = ContributionKey::new(
+            operation_id,
+            existing.key.parent_value_class_ids().to_vec(),
+            existing.key.parent_state_template_ids().to_vec(),
+            existing.key.parent_momenta().to_vec(),
+            existing.key.result_state_template_id(),
+            existing.key.quantum_flow_witness_id(),
+            existing.key.color_witness_term_id(),
+            digest(0xb0_u8.wrapping_add(evaluator_binding_id as u8)),
+            existing.key.output_projection_id(),
+        )
+        .unwrap();
+        let mut factors = std::mem::take(&mut self.exact_factors).into_vec();
+        let exact_factor_id = factors.len() as u32;
+        factors.push(exact_factor);
+        self.exact_factors = factors.into_boxed_slice();
+        self.layout.exact_factor_count += 1;
+        let mut operations = std::mem::take(&mut self.operations).into_vec();
+        let insertion = operations
+            .iter()
+            .position(|operation| {
+                matches!(operation, OnTheFlyTraceOperationV1::Finalization { .. })
+            })
+            .unwrap();
+        operations.insert(
+            insertion,
+            OnTheFlyTraceOperationV1::Contribution {
+                key: executor,
+                row: DirectContributionRow {
+                    parent0_component_base: 0,
+                    parent1_component_base_or_sentinel: 1,
+                    parent0_momentum_form_id: 0,
+                    parent1_momentum_form_id_or_sentinel: 1,
+                    destination_component_base: 2,
+                    exact_factor_id,
+                    selector_domain_id: 0,
+                    flags: 0,
+                },
+            },
+        );
+        self.operations = operations.into_boxed_slice();
+        let mut proofs = std::mem::take(&mut self.contribution_proof_rows).into_vec();
+        proofs.push(OnTheFlyTraceContributionProofRowV1 {
+            result_current_id: 2,
+            parent_current_ids: [0, 1],
+            key: proof_key,
+            exact_factor,
+        });
+        self.contribution_proof_rows = proofs.into_boxed_slice();
+        self.proof.contribution_count += 1;
+        self.proof.constructed_contribution_count += 1;
+        let replacement = digest(0xc0_u8.wrapping_add(evaluator_binding_id as u8));
+        self.semantic_digest = replacement;
+        self.proof.semantic_digest = replacement;
+    }
+
+    pub(crate) fn test_set_last_contribution_selector_domain(&mut self, selector_domain_id: u32) {
+        let row = self
+            .operations
+            .iter_mut()
+            .rev()
+            .find_map(|operation| match operation {
+                OnTheFlyTraceOperationV1::Contribution { row, .. } => Some(row),
+                _ => None,
+            })
+            .expect("test trace has no contribution row");
+        row.selector_domain_id = selector_domain_id;
+        let replacement = SemanticDigest::new([0xd1; 32]).unwrap();
+        self.semantic_digest = replacement;
+        self.proof.semantic_digest = replacement;
+    }
+
     pub(crate) fn test_insert_identity_finalizer(&mut self, direct_catalog_digest: SemanticDigest) {
         let operation = OnTheFlyTraceOperationV1::Finalization {
             key: OnTheFlyExecutorKeyV1::identity_finalizer(direct_catalog_digest),

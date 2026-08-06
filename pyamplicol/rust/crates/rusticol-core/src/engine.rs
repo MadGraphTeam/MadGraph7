@@ -4060,6 +4060,39 @@ pub struct NativeOnTheFlyCurrentProbeV1 {
 #[cfg(feature = "on-the-fly-test-support")]
 #[derive(Clone, Debug)]
 #[doc(hidden)]
+pub struct NativeOnTheFlyFamilyQueryProbeV1 {
+    pub selected_public_flow_id: u32,
+    pub public_helicities: Vec<i32>,
+    pub query_digest: String,
+    pub raw_amplitudes: Vec<[f64; 2]>,
+    pub normalized_values: Vec<f64>,
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+#[derive(Clone, Debug)]
+#[doc(hidden)]
+pub struct NativeOnTheFlyFamilyProbeV1 {
+    pub queries: Vec<NativeOnTheFlyFamilyQueryProbeV1>,
+    pub census: crate::recurrence::OnTheFlyQueryFamilyCensusV1,
+    pub execution_cache_hit: bool,
+    pub execution_source_calls: u32,
+    pub execution_source_rows: u32,
+    pub execution_contribution_calls: u32,
+    pub execution_contribution_rows: u32,
+    pub execution_finalization_calls: u32,
+    pub execution_finalization_rows: u32,
+    pub execution_closure_calls: u32,
+    pub execution_closure_rows: u32,
+    pub cold_prepare_seconds: f64,
+    pub benchmark_warmup_repetitions: u32,
+    pub benchmark_repetitions: u32,
+    pub benchmark_elapsed_seconds: Option<f64>,
+    pub benchmark_seconds_per_point: Option<f64>,
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+#[derive(Clone, Debug)]
+#[doc(hidden)]
 pub struct NativeOnTheFlyArtifactProbeV1 {
     pub artifact_id: String,
     pub process_id: String,
@@ -4069,6 +4102,7 @@ pub struct NativeOnTheFlyArtifactProbeV1 {
     pub point_count: u32,
     pub raw_amplitudes: Vec<[f64; 2]>,
     pub normalized_values: Vec<f64>,
+    pub query_family: Option<NativeOnTheFlyFamilyProbeV1>,
     pub normalization_factor: f64,
     pub currents: Vec<NativeOnTheFlyCurrentProbeV1>,
     pub projection_enabled: bool,

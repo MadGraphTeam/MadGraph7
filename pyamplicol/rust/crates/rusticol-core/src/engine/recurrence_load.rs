@@ -15,8 +15,9 @@ use super::*;
 use crate::pacbin::{PacbinMemberKind, PacbinReader};
 #[cfg(feature = "on-the-fly-test-support")]
 use crate::recurrence::on_the_fly::{
-    ON_THE_FLY_WORK_CENSUS_BASIS_V1, OnTheFlyForbiddenWorkGuardV1, OnTheFlyStructuralInterpreter,
-    OnTheFlyWorkspaceV1, build_on_the_fly_selected_trace_v1,
+    ON_THE_FLY_WORK_CENSUS_BASIS_V1, OnTheFlyForbiddenWorkGuardV1, OnTheFlyQueryFamilyExecutorV1,
+    OnTheFlyStructuralInterpreter, OnTheFlyWorkspaceV1, QueryFamilyTraceInput,
+    build_on_the_fly_selected_trace_v1,
 };
 use crate::recurrence::on_the_fly::{
     OnTheFlyProcessSeedV1, OnTheFlySourceExecutionSpecV1, OnTheFlySourceOrientationV1,
@@ -31,6 +32,9 @@ use crate::recurrence::{
     decode_recurrence_direct_plan_v2, recurrence_color_contraction_digest,
     validate_recurrence_color_projection_certificate,
 };
+
+#[cfg(feature = "on-the-fly-test-support")]
+const ON_THE_FLY_FAMILY_WORK_CENSUS_BASIS_V1: &str = "shared-query-family-union-v1";
 
 pub(super) struct LoadedRecurrenceRuntime {
     pub(super) common: ExecutionRuntime,
@@ -1412,6 +1416,272 @@ fn validate_on_the_fly_probe_outputs(
 }
 
 #[cfg(feature = "on-the-fly-test-support")]
+fn validate_on_the_fly_family_execution(
+    census: crate::recurrence::OnTheFlyQueryFamilyCensusV1,
+    report: crate::recurrence::on_the_fly::OnTheFlyQueryFamilyExecutionReportV1,
+    require_cache_hit: bool,
+) -> RusticolResult<()> {
+    if report.cache_hit != require_cache_hit
+        || report.source_calls != census.union_source_executor_call_groups
+        || report.source_rows != census.union_source_rows
+        || report.contribution_calls != census.union_contribution_executor_call_groups
+        || report.contribution_rows != census.union_contribution_rows
+        || report.finalization_calls != census.union_finalization_executor_call_groups
+        || report.finalization_rows != census.union_finalization_rows
+        || report.closure_calls != census.union_closure_executor_call_groups
+        || report.closure_rows != census.union_closure_rows
+    {
+        return Err(RusticolError::integrity(
+            "on-the-fly family execution differs from its prepared census/cache state",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+#[allow(clippy::too_many_arguments)]
+fn execute_on_the_fly_query_family_v1(
+    artifact: &VerifiedArtifact,
+    manifest: &RecurrenceExecutionManifest,
+    authenticated: &AuthenticatedRecurrenceBuilderInput,
+    direct: &PreparedDirectExecutorCatalog,
+    selected_public_flow_id: u32,
+    public_helicities: &[i32],
+    query_family: &[(u32, Vec<i32>)],
+    point_major_external_momenta: &[f64],
+    point_count: u32,
+    parameter_overrides: &BTreeMap<String, [f64; 2]>,
+    benchmark: bool,
+    benchmark_warmup_repetitions: u32,
+    benchmark_repetitions: u32,
+    enable_color_projection: bool,
+) -> RusticolResult<NativeOnTheFlyArtifactProbeV1> {
+    if query_family.is_empty() {
+        return Err(RusticolError::invalid_argument(
+            "on-the-fly query family must not be empty",
+        ));
+    }
+    if query_family[0].0 != selected_public_flow_id
+        || query_family[0].1.as_slice() != public_helicities
+    {
+        return Err(RusticolError::invalid_argument(
+            "on-the-fly query family must begin with the required single selector",
+        ));
+    }
+    if benchmark && benchmark_warmup_repetitions < 2 {
+        return Err(RusticolError::invalid_argument(
+            "on-the-fly family benchmark requires at least two warmup repetitions",
+        ));
+    }
+
+    let mut selected = query_family
+        .iter()
+        .map(|(flow, helicities)| {
+            build_on_the_fly_selected_trace_v1(
+                authenticated,
+                direct.direct_template_catalog_digest(),
+                *flow,
+                helicities,
+                enable_color_projection,
+            )
+        })
+        .collect::<RusticolResult<Vec<_>>>()?;
+    let (pack_json, pack, payload_root) = load_prepared_pack(artifact, manifest)?;
+    let payloads = artifact.evaluator_payload_store(&payload_root)?;
+    let runtime_parameters = recurrence_runtime_parameters(&manifest.runtime_metadata);
+    let model_parameter_evaluator =
+        super::eager_load::load_prepared_model_parameter_evaluator_for_runtime(
+            &pack,
+            &runtime_parameters,
+            &payloads,
+        )?;
+    let pool = NativeRecurrencePreparedExecutorPool::load_from_store(
+        &pack_json,
+        &payloads,
+        &manifest.prepared_kernel_pack_digest,
+        &manifest.direct_template_catalog_digest,
+    )?;
+    let runtime_parameter_slots = runtime_parameter_slots(&runtime_parameters)?;
+    let source_domains = build_on_the_fly_source_domains(
+        &selected[0].seed,
+        authenticated.template(),
+        &manifest.runtime_metadata,
+        &runtime_parameter_slots,
+    )?;
+    let sources = pool.bind_source_domains(source_domains)?;
+    let resolver =
+        pool.bind_on_the_fly_family(authenticated.template(), direct, &mut selected, &sources)?;
+    let semantic_executor_binding_count = resolver.semantic_executor_binding_count()?;
+    let distinct_prepared_executor_count = resolver.distinct_prepared_executor_count()?;
+    let trace_inputs = selected
+        .iter()
+        .map(|selected| QueryFamilyTraceInput {
+            trace: &selected.trace,
+            projection: selected.projection,
+        })
+        .collect::<Vec<_>>();
+    let mut executor = OnTheFlyQueryFamilyExecutorV1::new(&resolver);
+    let prepare_started = Instant::now();
+    if executor.prepare(direct, &trace_inputs, point_count)? {
+        return Err(RusticolError::integrity(
+            "fresh on-the-fly family executor reported a cold cache hit",
+        ));
+    }
+    let cold_prepare_seconds = profile_duration_seconds(prepare_started.elapsed());
+    let census = executor
+        .prepared_census()
+        .ok_or_else(|| RusticolError::integrity("prepared on-the-fly family census is absent"))?;
+    let prepared_parameters = on_the_fly_prepared_parameters(
+        &manifest.runtime_metadata,
+        &runtime_parameters,
+        model_parameter_evaluator,
+        parameter_overrides,
+    )?
+    .into_iter()
+    .map(|value| (value[0], value[1]))
+    .collect::<Vec<_>>();
+    executor.set_parameters(&prepared_parameters)?;
+    let source_major = on_the_fly_source_major_momenta(
+        &selected[0].seed,
+        point_major_external_momenta,
+        point_count,
+        selected[0].trace.layout().lorentz_component_count(),
+    )?;
+    let output_len = query_family
+        .len()
+        .checked_mul(point_count as usize)
+        .ok_or_else(|| RusticolError::invalid_argument("on-the-fly family output exceeds usize"))?;
+    let mut outputs = vec![(0.0, 0.0); output_len];
+    let mut execution_count = 0_u32;
+    let mut last_report = None;
+    let benchmark_elapsed_seconds = if benchmark {
+        for warmup in 0..benchmark_warmup_repetitions {
+            let report = executor.execute_into(&source_major, point_count, &mut outputs)?;
+            validate_on_the_fly_family_execution(census, report, warmup != 0)?;
+            execution_count = execution_count.checked_add(1).ok_or_else(|| {
+                RusticolError::integrity("on-the-fly family execution count exceeds u32")
+            })?;
+            last_report = Some(report);
+            std::hint::black_box(&outputs);
+        }
+        let started = Instant::now();
+        for _ in 0..benchmark_repetitions {
+            let report = executor.execute_into(&source_major, point_count, &mut outputs)?;
+            validate_on_the_fly_family_execution(census, report, true)?;
+            execution_count = execution_count.checked_add(1).ok_or_else(|| {
+                RusticolError::integrity("on-the-fly family execution count exceeds u32")
+            })?;
+            last_report = Some(report);
+            std::hint::black_box(&outputs);
+        }
+        Some(profile_duration_seconds(started.elapsed()))
+    } else {
+        let report = executor.execute_into(&source_major, point_count, &mut outputs)?;
+        validate_on_the_fly_family_execution(census, report, false)?;
+        execution_count = 1;
+        last_report = Some(report);
+        None
+    };
+    let report = last_report.ok_or_else(|| {
+        RusticolError::integrity("on-the-fly family produced no execution report")
+    })?;
+    let normalization_factor = recurrence_normalization_values(&manifest.runtime_metadata)?.factor;
+    let mut query_reports = Vec::new();
+    for ((flow, helicities), (selected_query, amplitudes)) in query_family.iter().zip(
+        selected
+            .iter()
+            .zip(outputs.chunks_exact(point_count as usize)),
+    ) {
+        let raw_amplitudes = amplitudes
+            .iter()
+            .map(|&(real, imaginary)| [real, imaginary])
+            .collect::<Vec<_>>();
+        let normalized_values = raw_amplitudes
+            .iter()
+            .map(|[real, imaginary]| {
+                real.mul_add(*real, imaginary * imaginary) * normalization_factor
+            })
+            .collect::<Vec<_>>();
+        validate_on_the_fly_probe_outputs(&raw_amplitudes, &normalized_values)?;
+        query_reports.push(NativeOnTheFlyFamilyQueryProbeV1 {
+            selected_public_flow_id: *flow,
+            public_helicities: helicities.clone(),
+            query_digest: selected_query.query.semantic_digest().to_string(),
+            raw_amplitudes,
+            normalized_values,
+        });
+    }
+    let first = query_reports
+        .first()
+        .ok_or_else(|| RusticolError::integrity("on-the-fly family lost its first query output"))?;
+    let first_raw_amplitudes = first.raw_amplitudes.clone();
+    let first_normalized_values = first.normalized_values.clone();
+    let benchmark_seconds_per_point = benchmark_elapsed_seconds
+        .map(|elapsed| elapsed / (f64::from(benchmark_repetitions) * f64::from(point_count)));
+    let first_selected = &selected[0];
+    Ok(NativeOnTheFlyArtifactProbeV1 {
+        artifact_id: artifact.manifest().artifact_id.clone(),
+        process_id: manifest.key.clone(),
+        seed_digest: first_selected.seed.semantic_digest().to_string(),
+        query_digest: first_selected.query.semantic_digest().to_string(),
+        trace_digest: first_selected.trace.semantic_digest().to_string(),
+        point_count,
+        raw_amplitudes: first_raw_amplitudes,
+        normalized_values: first_normalized_values,
+        normalization_factor,
+        query_family: Some(NativeOnTheFlyFamilyProbeV1 {
+            queries: query_reports,
+            census,
+            execution_cache_hit: report.cache_hit,
+            execution_source_calls: report.source_calls,
+            execution_source_rows: report.source_rows,
+            execution_contribution_calls: report.contribution_calls,
+            execution_contribution_rows: report.contribution_rows,
+            execution_finalization_calls: report.finalization_calls,
+            execution_finalization_rows: report.finalization_rows,
+            execution_closure_calls: report.closure_calls,
+            execution_closure_rows: report.closure_rows,
+            cold_prepare_seconds,
+            benchmark_warmup_repetitions,
+            benchmark_repetitions,
+            benchmark_elapsed_seconds,
+            benchmark_seconds_per_point,
+        }),
+        currents: Vec::new(),
+        projection_enabled: first_selected.projection.enabled,
+        projection_applied: first_selected.projection.applied,
+        projection_counts: [
+            first_selected.projection.pre,
+            first_selected.projection.post,
+        ],
+        work_census_basis: ON_THE_FLY_FAMILY_WORK_CENSUS_BASIS_V1.to_owned(),
+        logical_current_count: census.union_unique_current_count,
+        resident_current_count: census.union_unique_current_count,
+        resident_current_component_count: census.union_unique_current_component_count,
+        source_operation_count: census.union_source_rows,
+        contribution_operation_count: census.union_contribution_rows,
+        finalization_operation_count: census.union_finalization_rows,
+        closure_operation_count: census.union_closure_rows,
+        total_kernel_application_count: census.union_kernel_application_count()?,
+        semantic_executor_binding_count,
+        distinct_prepared_executor_count,
+        trace_build_count: census.query_count,
+        // The prepared family cache is reported by `query_family`; this path
+        // performs no query-trace cache lookup after construction.
+        trace_cache_hit_count: 0,
+        momentum_fill_count: execution_count,
+        benchmark_warmup_repetitions,
+        benchmark_repetitions,
+        benchmark_elapsed_seconds,
+        benchmark_seconds_per_point,
+        direct_plan_load_attempts: 0,
+        direct_plan_decode_attempts: 0,
+        direct_plan_materialization_attempts: 0,
+        established_builder_attempts: 0,
+    })
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
 impl NativeRuntime {
     /// Execute one authenticated selector-local recurrence trace directly from
     /// a genuine artifact without loading or decoding its DirectPlan.
@@ -1433,6 +1703,7 @@ impl NativeRuntime {
         benchmark_repetitions: u32,
         collect_current_diagnostics: bool,
         enable_color_projection: bool,
+        query_family: Option<&[(u32, Vec<i32>)]>,
     ) -> RusticolResult<NativeOnTheFlyArtifactProbeV1> {
         if benchmark && benchmark_repetitions == 0 {
             return Err(RusticolError::invalid_argument(
@@ -1442,6 +1713,16 @@ impl NativeRuntime {
         if !benchmark && (benchmark_warmup_repetitions != 0 || benchmark_repetitions != 0) {
             return Err(RusticolError::invalid_argument(
                 "on-the-fly benchmark repetitions require benchmark=true",
+            ));
+        }
+        if query_family.is_some() && collect_current_diagnostics {
+            return Err(RusticolError::invalid_argument(
+                "on-the-fly family probing does not collect per-current diagnostics",
+            ));
+        }
+        if query_family.is_some() && tamper_executor_key {
+            return Err(RusticolError::invalid_argument(
+                "on-the-fly family probing does not support executor-key tampering",
             ));
         }
         let guard = OnTheFlyForbiddenWorkGuardV1::begin()?;
@@ -1497,6 +1778,25 @@ impl NativeRuntime {
                 return Err(RusticolError::integrity(
                     "retained on-the-fly canonical inputs do not belong to the selected artifact",
                 ));
+            }
+
+            if let Some(query_family) = query_family {
+                return execute_on_the_fly_query_family_v1(
+                    &artifact,
+                    &manifest,
+                    authenticated,
+                    direct,
+                    selected_public_flow_id,
+                    public_helicities,
+                    query_family,
+                    point_major_external_momenta,
+                    point_count,
+                    parameter_overrides,
+                    benchmark,
+                    benchmark_warmup_repetitions,
+                    benchmark_repetitions,
+                    enable_color_projection,
+                );
             }
 
             let mut trace_cache = OnTheFlyQueryTraceCacheV1::default();
@@ -1694,6 +1994,7 @@ impl NativeRuntime {
                 point_count,
                 raw_amplitudes,
                 normalized_values,
+                query_family: None,
                 normalization_factor,
                 currents,
                 projection_enabled: selected.projection.enabled,

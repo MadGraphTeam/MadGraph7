@@ -307,6 +307,99 @@ def test_query_family_census_matches_query_local_work_and_retains_destinations(
         gate._query_family_census(stale, retained, queries, hidden, True)
 
 
+def test_executable_family_report_has_exact_union_work_and_ordered_outputs() -> None:
+    queries = (
+        gate.Query("flow:0", 0, "h:0", (1, -1)),
+        gate.Query("flow:1", 1, "h:1", (-1, 1)),
+    )
+    census = {
+        "query_count": 2,
+        "source_frame_partition_count": 1,
+        "projection_applied_query_count": 2,
+        "projection_pre_current_count": 12,
+        "projection_pre_contribution_count": 10,
+        "projection_pre_closure_count": 2,
+        "projection_post_current_count": 10,
+        "projection_post_contribution_count": 8,
+        "projection_post_closure_count": 2,
+        "dynamic_current_occurrence_count": 10,
+        "dynamic_current_component_occurrence_count": 16,
+        "dynamic_source_rows": 4,
+        "dynamic_contribution_rows": 8,
+        "dynamic_finalization_rows": 3,
+        "dynamic_closure_rows": 2,
+        "dynamic_source_calls": 4,
+        "dynamic_contribution_calls": 8,
+        "dynamic_finalization_calls": 3,
+        "dynamic_closure_calls": 2,
+        "union_unique_current_count": 6,
+        "union_unique_current_component_count": 10,
+        "union_source_rows": 2,
+        "union_contribution_rows": 5,
+        "union_finalization_rows": 2,
+        "union_closure_rows": 2,
+        "union_amplitude_destination_count": 2,
+        "union_source_executor_call_groups": 1,
+        "union_contribution_executor_call_groups": 3,
+        "union_finalization_executor_call_groups": 1,
+        "union_closure_executor_call_groups": 1,
+    }
+    rows = [
+        {
+            "selected_public_flow_id": query.flow_index,
+            "public_helicities": list(query.helicities),
+            "query_digest": str(index) * 64,
+            "raw_amplitudes": [[1.0 + index, 2.0], [3.0, 4.0 + index]],
+            "normalized_values": [5.0 + index, 6.0 + index],
+        }
+        for index, query in enumerate(queries, start=1)
+    ]
+    report = {
+        "process_id": gate.PROCESS_ID,
+        "point_count": 2,
+        "work_census_basis": gate.FAMILY_WORK_CENSUS_BASIS,
+        "source_operation_count": 2,
+        "contribution_operation_count": 5,
+        "finalization_operation_count": 2,
+        "closure_operation_count": 2,
+        "total_kernel_application_count": 11,
+        "trace_build_count": 2,
+        "trace_cache_hit_count": 0,
+        "momentum_fill_count": gate.WARMUPS + 3,
+        "currents": [],
+        "direct_plan_load_attempts": 0,
+        "direct_plan_decode_attempts": 0,
+        "direct_plan_materialization_attempts": 0,
+        "established_builder_attempts": 0,
+        "query_family": {
+            "queries": rows,
+            "census": census,
+            "execution_cache_hit": True,
+            "execution_source_calls": 1,
+            "execution_source_rows": 2,
+            "execution_contribution_calls": 3,
+            "execution_contribution_rows": 5,
+            "execution_finalization_calls": 1,
+            "execution_finalization_rows": 2,
+            "execution_closure_calls": 1,
+            "execution_closure_rows": 2,
+            "cold_prepare_seconds": 0.01,
+            "private_warmed_elapsed_seconds": 0.12,
+            "private_warmed_seconds_per_point": 0.02,
+            "private_timing_excludes_source_crossing": True,
+        },
+    }
+    parsed = gate._family_probe_result(report, queries, 2, 3)
+    assert parsed["union_total_kernel_application_count"] == 11
+    assert parsed["census"] == census
+    gate._assert_executable_family_matches_structural_census(census, census)
+
+    broken = dict(report)
+    broken["total_kernel_application_count"] = 16
+    with pytest.raises(gate.GateError, match="top-level execution census"):
+        gate._family_probe_result(broken, queries, 2, 3)
+
+
 def test_established_recurrence_schedule_census_reads_generated_dag(
     tmp_path: Path,
 ) -> None:
@@ -354,6 +447,46 @@ def test_established_recurrence_schedule_census_reads_generated_dag(
     (process / "execution.json").write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(gate.GateError, match="summaries disagree"):
         gate._established_recurrence_schedule_census(tmp_path)
+
+
+def test_optional_compiled_census_is_authenticated_and_explicitly_static(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert gate._compiled_dag_census(None)["available"] is False
+    process = tmp_path / "processes" / gate.PROCESS_ID
+    process.mkdir(parents=True)
+    (process / "execution.json").write_text(
+        json.dumps(
+            {
+                "kind": "pyamplicol-runtime-execution",
+                "dag_summary": {
+                    "source_count": 12,
+                    "current_count": 34,
+                    "interaction_count": 56,
+                    "interaction_evaluation_count": 45,
+                    "amplitude_root_count": 7,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    loads: list[tuple[Path, str]] = []
+
+    def load(path: Path, *, process: str) -> SimpleNamespace:
+        loads.append((path, process))
+        return SimpleNamespace(
+            execution_mode="compiled",
+            physics=SimpleNamespace(color_accuracy="lc"),
+            artifact_id="a" * 64,
+        )
+
+    monkeypatch.setattr(gate.Runtime, "load", load)
+    result = gate._compiled_dag_census(tmp_path)
+    assert loads == [(tmp_path, gate.PROCESS_ID)]
+    assert result["basis"] == "authenticated-compiled-whole-generic-dag-v1"
+    assert result["comparison_kind"] == "descriptive-only"
+    assert result["current_count"] == 34
+    assert result["interaction_evaluation_count"] == 45
 
 
 def test_hidden_timing_serializes_one_query_census_and_workload_sum() -> None:
@@ -428,6 +561,8 @@ def test_cli_launches_one_worker_with_cross_platform_30_gib_guard(
             str(prepared_model),
             "--amplicol-result",
             "legacy.json",
+            "--compiled-artifact",
+            "compiled-artifact",
             "--target-runtime",
             "2",
             "--batch-size",
@@ -443,6 +578,9 @@ def test_cli_launches_one_worker_with_cross_platform_30_gib_guard(
     )
     assert command[command.index("--amplicol-result") + 1] == str(
         Path("legacy.json").resolve()
+    )
+    assert command[command.index("--compiled-artifact") + 1] == str(
+        Path("compiled-artifact").resolve()
     )
     assert arguments.bypass_color_projection is False
     assert "--bypass-color-projection" not in command

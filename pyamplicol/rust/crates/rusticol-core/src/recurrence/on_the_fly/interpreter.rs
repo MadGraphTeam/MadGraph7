@@ -13,6 +13,10 @@ pub(crate) struct ResolvedOnTheFlyExecutor {
 /// Semantic resolver implemented by the lane-owned prepared executor pool.
 pub(crate) trait OnTheFlyPreparedExecutorResolver {
     fn resolve(&self, key: OnTheFlyExecutorKeyV1) -> RusticolResult<ResolvedOnTheFlyExecutor>;
+
+    /// Invalidate any prepared-context caches that borrow row or arena pointers.
+    /// Native/Rust callbacks retain no such pointers and need no work here.
+    fn invalidate_row_tables(&self) -> RusticolResult<()>;
 }
 
 fn checked_scalar_len(planes: u32, stride: u32, label: &str) -> RusticolResult<usize> {
