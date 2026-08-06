@@ -230,7 +230,10 @@ class ProcessExporterFortran(VirtualExporter):
     # how many times the JAMP optimisation called itself, for the record
     myjamp_count = 0
     # sum |M|^2 over one color flow per reversal pair instead of over every one
-    jamp_fold = True
+    # Folding the color matrix onto one line per reversal pair only works
+    # where the template sums over NCOLORFOLD. get_color_data_lines is shared
+    # by every fortran exporter, so this stays off unless the template agrees.
+    jamp_fold = False
     # write the JAMP definitions as one recipe per orbit of the permutations
     # leaving the color basis invariant, instead of one line per definition
     jamp_orbit = False
@@ -4891,6 +4894,7 @@ class ProcessExporterFortranSA(ProcessExporterFortran):
     f2py_wrapper_all ="f2py_wrapper_all.inc"
     f2py_matrix_splitter = "f2py_splitter.py"
     jamp_optim = True
+    jamp_fold = True
     jamp_orbit = True
     default_vector_size = 0
     # When True, emit per-call IAND(WF_FLAVOR_MASK/AMP_FLAVOR_MASK,
