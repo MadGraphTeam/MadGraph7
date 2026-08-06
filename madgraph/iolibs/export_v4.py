@@ -230,6 +230,11 @@ class ProcessExporterFortran(VirtualExporter):
     # write the JAMP definitions as one recipe per orbit of the permutations
     # leaving the color basis invariant, instead of one line per definition
     jamp_orbit = False
+    # How the definitions reach memory: 'recipes' rebuilds them at the first
+    # call from one recipe per orbit, 'tables' writes the operand indices out
+    # as DATA. Both run the very same loop, and both start from the orbit
+    # equivariant optimisation, so they only differ in the source they need.
+    jamp_emit = 'tables'
     # Below this many definitions writing them out is both smaller and faster:
     # the lines still fit in the instruction cache, while the loop reading the
     # operands from a table pays for the two indirections whatever the size.
@@ -2690,7 +2695,11 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         # rebuilding them to be worth its own code.
         recipes = None
         if symmetry and len(defs) >= self.jamp_orbit_min_def:
-            recipes = self.jamp_orbit_recipes(defs,
+            if self.jamp_emit == 'tables':
+                recipes = self.jamp_orbit_tables(defs,
+                                        col_amps.get_number_of_amplitudes())
+            else:
+                recipes = self.jamp_orbit_recipes(defs,
                                         col_amps.get_number_of_amplitudes())
         self.jamp_recipes = recipes
 
@@ -2703,11 +2712,37 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             res_list.append("C     recipe with the amplitudes permuted, so")
             res_list.append("C     only their operands differ. INIT_JAMP works")
             res_list.append("C     those out once, from one recipe per orbit.")
-            res_list.append(" CALL %sINIT_JAMP()" % proc_prefix)
-            res_list.append(" DO ITMP = 1, NB_TMP_JAMP")
-            res_list.append("   AMP(NGRAPHS+ITMP) = AMP(TMP_JAMP_A(ITMP))"
-                            " + TMP_JAMP_F(ITMP)*AMP(TMP_JAMP_B(ITMP))")
-            res_list.append(" ENDDO")
+            if recipes.get('recipes'):
+                res_list.append(" CALL %sINIT_JAMP()" % proc_prefix)
+                res_list.append(" DO ITMP = 1, NB_TMP_JAMP")
+                res_list.append("   AMP(NGRAPHS+ITMP) = AMP(TMP_JAMP_A(ITMP))"
+                                " + TMP_JAMP_F(ITMP)*AMP(TMP_JAMP_B(ITMP))")
+                res_list.append(" ENDDO")
+            else:
+                res_list.append("C     the definitions of one level use none")
+                res_list.append("C     of each other, so they are sorted by")
+                res_list.append("C     the factor in front of the second")
+                res_list.append("C     operand and only the last group of")
+                res_list.append("C     each level has to multiply")
+                res_list.append(" DO ILEV = 1, NB_LEVEL")
+                res_list.append("   DO ITMP = TMP_JAMP_L(5*ILEV-4),"
+                                " TMP_JAMP_L(5*ILEV-3)")
+                res_list.append("     AMP(NGRAPHS+ITMP) = AMP(TMP_JAMP_A(ITMP))"
+                                " + AMP(TMP_JAMP_B(ITMP))")
+                res_list.append("   ENDDO")
+                res_list.append("   DO ITMP = TMP_JAMP_L(5*ILEV-3)+1,"
+                                " TMP_JAMP_L(5*ILEV-2)")
+                res_list.append("     AMP(NGRAPHS+ITMP) = AMP(TMP_JAMP_A(ITMP))"
+                                " - AMP(TMP_JAMP_B(ITMP))")
+                res_list.append("   ENDDO")
+                res_list.append("   DO ITMP = TMP_JAMP_L(5*ILEV-2)+1,"
+                                " TMP_JAMP_L(5*ILEV-1)")
+                res_list.append("     AMP(NGRAPHS+ITMP) = AMP(TMP_JAMP_A(ITMP))"
+                                " + TMP_JAMP_F(TMP_JAMP_L(5*ILEV)+ITMP"
+                                "-TMP_JAMP_L(5*ILEV-2))"
+                                "*AMP(TMP_JAMP_B(ITMP))")
+                res_list.append("   ENDDO")
+                res_list.append(" ENDDO")
         else:
             tmp_name = lambda k: "TMP_JAMP(%d)" % k
             for i, amp1, amp2, frac, nb in defs:
@@ -2733,7 +2768,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             if var > 0:
                 name = AMP_format % var
             else:
-                if recipes:
+                if recipes and recipes.get('factor_of'):
                     # the definitions were renumbered, and one of them can be
                     # the opposite of the one the optimisation had
                     where, scale = recipes['factor_of'][-var]
@@ -3049,6 +3084,9 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         defs = []
         # (orbit, parent definition, permutation) for every definition
         tree = []
+        # the definitions introduced together: none of them uses another, so
+        # they can be reordered freely
+        levels = []
         nb_orbit = 0
 
         while True:
@@ -3116,11 +3154,13 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             if added < first_of_level:
                 # nothing could be introduced as a whole orbit
                 break
+            levels.append((first_of_level, added))
             logger.log(5, "Define %d new shortcut reused %d times",
                        added - first_of_level + 1, max_count)
 
         self.jamp_orbits = {'tree': tree, 'nb_orbit': nb_orbit,
-                            'actions': actions, 'symmetry': symmetry}
+                            'levels': levels, 'actions': actions,
+                            'symmetry': symmetry}
         return all_element, defs
 
     @staticmethod
@@ -3272,6 +3312,127 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
             else:
                 return candidate
 
+    def jamp_orbit_tables(self, defs, nb_amp):
+        """Describe the definitions by the plain list of their operands, to be
+        written out as DATA. This is the same loop as the recipes drive, only
+        with the table read from the source instead of rebuilt, so no factor is
+        out of reach.
+
+        The definitions introduced together carry no dependency, so inside each
+        of those groups they are sorted by the factor in front of the second
+        operand: the ones adding it, then the ones subtracting it, then the
+        rest. The loop then runs over each group with the factor built in and
+        only the last one has to multiply."""
+
+        if not defs:
+            return None
+        levels = self.jamp_orbits.get('levels') if self.jamp_orbits else None
+        if not levels:
+            levels = [(1, len(defs))]
+
+        by_index = dict((one[0], one) for one in defs)
+        order, bounds, nb_general = [], [], 0
+        for first, last in levels:
+            group = [[], [], []]
+            for index in range(first, last + 1):
+                ratio = complex(by_index[index][3])
+                group[0 if ratio == 1 else 1 if ratio == -1 else 2]\
+                                                             .append(index)
+            start = len(order)
+            order += group[0] + group[1] + group[2]
+            # first, last of the adding group, last of the subtracting group,
+            # last of the rest, and where the factors of that rest start
+            bounds.append((start + 1, start + len(group[0]),
+                           start + len(group[0]) + len(group[1]), len(order),
+                           nb_general))
+            nb_general += len(group[2])
+        renumber = dict((old, new + 1) for new, old in enumerate(order))
+
+        new_defs = []
+        for old in order:
+            _k, left, right, ratio, count = by_index[old]
+            left = -renumber[-left] if left < 0 else left
+            right = -renumber[-right] if right < 0 else right
+            new_defs.append((renumber[old], left, right, ratio, count))
+
+        # only the definitions of the third group ever read the factor array
+        general = [one for level in bounds
+                   for one in range(level[2] + 1, level[3] + 1)]
+        return {'defs': new_defs, 'nb_amp': nb_amp, 'recipes': [],
+                'bounds': bounds, 'general': general,
+                'factor_of': dict((old, (new, 1))
+                                  for old, new in renumber.items()),
+                'complex_factor': any(complex(new_defs[one - 1][3]).imag
+                                      for one in general)}
+
+    @staticmethod
+    def jamp_number_data_lines(name, values, per_line):
+        """DATA statements filling one array with the given constants."""
+
+        lines = []
+        for start in range(0, len(values), per_line):
+            chunk = values[start:start + per_line]
+            lines.append("      DATA (%s(i),i=%d,%d) /%s/" %
+                         (name, start + 1, start + len(chunk),
+                          ','.join(chunk)))
+        return lines
+
+    def get_jamp_table_lines(self, recipes, proc_prefix):
+        """Declarations and DATA for the operand tables."""
+
+        nb_def = len(recipes['defs'])
+        nb_amp = recipes['nb_amp']
+
+        def where(column):
+            return column if column > 0 else nb_amp - column
+
+        left = [where(one[1]) for one in recipes['defs']]
+        right = [where(one[2]) for one in recipes['defs']]
+        general = recipes['general']
+        if recipes['complex_factor']:
+            factor = ['(%s,%s)' %
+                      (self.jamp_number(complex(recipes['defs'][one-1][3]).real),
+                       self.jamp_number(complex(recipes['defs'][one-1][3]).imag))
+                      for one in general]
+        else:
+            factor = [self.jamp_number(complex(recipes['defs'][one-1][3]).real)
+                      for one in general]
+
+        bounds = recipes['bounds']
+        lines = [
+            "      INTEGER ITMP, ILEV",
+            "C     I is the loop variable of the DATA statements below",
+            "      INTEGER I",
+            "      INTEGER NB_TMP_JAMP, NB_LEVEL, NB_GENERAL",
+            "      PARAMETER (NB_TMP_JAMP=%d)" % nb_def,
+            "      PARAMETER (NB_LEVEL=%d)" % len(bounds),
+            "      PARAMETER (NB_GENERAL=%d)" % max(1, len(general)),
+            "      INTEGER TMP_JAMP_A(NB_TMP_JAMP), TMP_JAMP_B(NB_TMP_JAMP)",
+            "      INTEGER TMP_JAMP_L(5*NB_LEVEL)",
+            "      %s TMP_JAMP_F(NB_GENERAL)" % self.jamp_factor_type(recipes),
+        ]
+        lines += self.get_int_data_lines("TMP_JAMP_A", left)
+        lines += self.get_int_data_lines("TMP_JAMP_B", right)
+        lines += self.get_int_data_lines("TMP_JAMP_L",
+                                         sum((list(b) for b in bounds), []))
+        assert len(bounds[0]) == 5
+        if general:
+            lines += self.jamp_number_data_lines("TMP_JAMP_F", factor,
+                                             32 if recipes['complex_factor']
+                                             else 64)
+        else:
+            lines.append("      DATA TMP_JAMP_F/%s/" %
+                         ("(0D0,0D0)" if recipes['complex_factor'] else "0D0"))
+        return lines
+
+    @staticmethod
+    def jamp_number(value):
+        """Shortest exact way of writing one of the factors."""
+
+        if value == int(value) and abs(value) < 1e15:
+            return "%dD0" % int(value)
+        return ("%.15e" % value).replace('e', 'd')
+
     @staticmethod
     def jamp_power_data(recipes):
         """DATA statement for the four powers of i, real when none of them is
@@ -3295,6 +3456,8 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
         if not recipes:
             return []
+        if not recipes.get('recipes'):
+            return self.get_jamp_table_lines(recipes, proc_prefix)
         return [
             "      INTEGER ITMP",
             "      INTEGER NB_TMP_JAMP",
@@ -3310,7 +3473,7 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         definition from one recipe per orbit, or nothing when the definitions
         are written out."""
 
-        if not recipes:
+        if not recipes or not recipes.get('recipes'):
             return []
         nb_def = len(recipes['defs'])
         nb_amp = recipes['nb_amp']
