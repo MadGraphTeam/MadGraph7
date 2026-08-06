@@ -273,6 +273,18 @@ reduce_sum_vector:
       desc:
   dims: 0
 
+batch_reduce_sum:
+  inputs:
+    - name: in1
+      type: [float]
+      desc:
+  outputs:
+    - name: out
+      type: [float, single]
+      desc:
+  differentiable: True
+  custom_op: True
+
 batch_reduce_mean:
   inputs:
     - name: in1
@@ -1667,6 +1679,41 @@ apply_subchannel_weights:
   outputs:
     - name: channel_weights_out
       type: [float, d]
+      desc:
+
+compress_channel_weights:
+  inputs:
+    - name: channel_index
+      type: [int]
+      desc:
+    - name: channel_weights
+      type: [float, n]
+      desc:
+    - name: keep_count
+      type: [size, k]
+      desc:
+  outputs:
+    - name: chan_weight_values
+      type: [float, k]
+      desc:
+    - name: chan_weight_indices
+      type: [int, k]
+      desc:
+
+restore_channel_weights:
+  inputs:
+    - name: chan_weight_values
+      type: [float, k]
+      desc:
+    - name: chan_weight_indices
+      type: [int, k]
+      desc:
+    - name: full_count
+      type: [size, n]
+      desc:
+  outputs:
+    - name: channel_weights
+      type: [float, n]
       desc:
 
 pt_eta_phi_x:

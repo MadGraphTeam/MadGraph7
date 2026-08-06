@@ -4,6 +4,27 @@
 
 using namespace madspace;
 
+GradientClipper::GradientClipper(double threshold) :
+    FunctionGenerator(
+        "Unweighter",
+        {{"gradients_in", batch_float}, {"threshold", single_float}},
+        {{"gradients_out", batch_float}, {"gradient_norm", single_float}}
+    ),
+    _threshold(threshold) {}
+
+NamedVector<Value> GradientClipper::build_function_impl(
+    FunctionBuilder& fb, const NamedVector<Value>& args
+) const {
+    Value grads_in = args.at(0);
+    Value grad_norm = fb.sqrt(fb.batch_reduce_sum(fb.square(grads_in)));
+    Value factor = fb.min(fb.div(_threshold, grad_norm), 1.0);
+    Value grads_out = fb.mul(grads_in, factor);
+    return {
+        {"gradients_out", grads_out},
+        {"gradient_norm", grad_norm},
+    };
+}
+
 AdamOptimizer::AdamOptimizer(
     const Function& function,
     ContextPtr context,
@@ -12,7 +33,8 @@ AdamOptimizer::AdamOptimizer(
     std::size_t step_count,
     double beta1,
     double beta2,
-    double eps
+    double eps,
+    double grad_clip_threshold
 ) :
     _context(context),
     _learning_rate(learning_rate),
@@ -22,6 +44,13 @@ AdamOptimizer::AdamOptimizer(
     _beta1(beta1),
     _beta2(beta2),
     _eps(eps),
+    _grad_clipper(
+        grad_clip_threshold > 0.
+            ? build_runtime(
+                  GradientClipper(grad_clip_threshold).function(), context, false
+              )
+            : nullptr
+    ),
     _one(1.0, context->device()) {
     DevicePtr device = context->device();
     for (auto& [name, value] : function.globals()) {
@@ -61,6 +90,11 @@ TensorVec AdamOptimizer::step(const TensorVec& inputs) {
     output_grads.at(0) = _one;
     auto [input_grads, global_grads] =
         _runtime->run_backward(output_grads, stored_locals, eval_grad, true);
+
+    if (_grad_clipper) {
+        global_grads = {_grad_clipper->run(global_grads).at(0)};
+    }
+
     device->adam_step(
         global_grads.at(0),
         _parameter,

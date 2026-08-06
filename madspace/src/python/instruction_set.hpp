@@ -36,6 +36,7 @@ void add_instructions(py::classh<FunctionBuilder>& fb) {
     fb.def("div", &FunctionBuilder::div, py::arg("in1"), py::arg("in2"));
     fb.def("reduce_sum", &FunctionBuilder::reduce_sum, py::arg("in1"));
     fb.def("reduce_sum_vector", &FunctionBuilder::reduce_sum_vector, py::arg("in1"));
+    fb.def("batch_reduce_sum", &FunctionBuilder::batch_reduce_sum, py::arg("in1"));
     fb.def("batch_reduce_mean", &FunctionBuilder::batch_reduce_mean, py::arg("in1"));
     fb.def("batch_reduce_mean_keepdim", &FunctionBuilder::batch_reduce_mean_keepdim, py::arg("in1"));
     fb.def("reduce_product", &FunctionBuilder::reduce_product, py::arg("in1"));
@@ -98,6 +99,8 @@ void add_instructions(py::classh<FunctionBuilder>& fb) {
     fb.def("sde2_channel_weights", &FunctionBuilder::sde2_channel_weights, py::arg("invariants"), py::arg("masses"), py::arg("widths"), py::arg("indices"));
     fb.def("subchannel_weights", &FunctionBuilder::subchannel_weights, py::arg("invariants"), py::arg("masses"), py::arg("widths"), py::arg("indices"), py::arg("on_shell"), py::arg("group_sizes"));
     fb.def("apply_subchannel_weights", &FunctionBuilder::apply_subchannel_weights, py::arg("channel_weights_in"), py::arg("subchannel_weights"), py::arg("channel_indices"), py::arg("subchannel_indices"));
+    fb.def("compress_channel_weights", &FunctionBuilder::compress_channel_weights, py::arg("channel_index"), py::arg("channel_weights"), py::arg("keep_count"));
+    fb.def("restore_channel_weights", &FunctionBuilder::restore_channel_weights, py::arg("chan_weight_values"), py::arg("chan_weight_indices"), py::arg("full_count"));
     fb.def("pt_eta_phi_x", &FunctionBuilder::pt_eta_phi_x, py::arg("p_ext"), py::arg("x1"), py::arg("x2"));
     fb.def("mirror_momenta", &FunctionBuilder::mirror_momenta, py::arg("p_ext"), py::arg("mirror"));
     fb.def("momenta_to_x1x2", &FunctionBuilder::momenta_to_x1x2, py::arg("p_ext"), py::arg("e_cm"));

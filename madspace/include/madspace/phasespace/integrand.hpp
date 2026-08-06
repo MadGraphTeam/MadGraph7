@@ -66,7 +66,8 @@ public:
         const std::vector<bool>& flavor_mirror = {},
         const std::vector<std::size_t>& flavor_diff_xs_indices = {},
         const std::vector<std::size_t>& flavor_subproc_indices = {},
-        const std::vector<std::size_t>& flavor_per_subproc_remap = {}
+        const std::vector<std::size_t>& flavor_per_subproc_remap = {},
+        std::size_t compressed_channel_weight_count = 50
     );
     std::size_t particle_count() const { return _mapping.particle_count(); }
     bool madnis_training() const { return _madnis_training; }
@@ -135,6 +136,7 @@ private:
     me_int_t _first_remapped_chan_count;
     std::vector<me_int_t> _second_chan_weight_remap;
     me_int_t _second_remapped_chan_count;
+    std::size_t _compressed_channel_weight_count;
     bool _madnis_training;
     bool _drop_cuts_and_rescale;
     bool _partial_weights;

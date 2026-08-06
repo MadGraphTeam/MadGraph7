@@ -1035,6 +1035,7 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::size_t,
                 double,
                 double,
+                double,
                 double>(),
             py::arg("function"),
             py::arg("context"),
@@ -1043,7 +1044,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("step_count") = 0,
             py::arg("beta1") = 0.9,
             py::arg("beta2") = 0.999,
-            py::arg("eps") = 1e-8
+            py::arg("eps") = 1e-8,
+            py::arg("grad_clip_threshold") = 0.0
     )
         .def(
             "step",
@@ -1240,7 +1242,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::vector<bool>&,
                 const std::vector<std::size_t>&,
                 const std::vector<std::size_t>&,
-                const std::vector<std::size_t>&>(),
+                const std::vector<std::size_t>&,
+                std::size_t>(),
             py::arg("mapping"),
             py::arg("diff_xs"),
             py::arg("adaptive_map") = std::monostate{},
@@ -1267,7 +1270,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("flavor_mirror") = std::vector<bool>{},
             py::arg("flavor_diff_xs_indices") = std::vector<std::size_t>{},
             py::arg("flavor_subproc_indices") = std::vector<std::size_t>{},
-            py::arg("flavor_per_subproc_remap") = std::vector<std::size_t>{}
+            py::arg("flavor_per_subproc_remap") = std::vector<std::size_t>{},
+            py::arg("compressed_channel_weight_count") = 50
         )
         .def("particle_count", &Integrand::particle_count)
         .def("madnis_training", &Integrand::madnis_training)
@@ -1300,10 +1304,12 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init<
                 const std::vector<std::shared_ptr<FunctionGenerator>>&,
                 const std::optional<ChannelWeightNetwork>&,
-                double>(),
+                double,
+                std::size_t>(),
             py::arg("functions"),
             py::arg("cwnet"),
-            py::arg("softclip_threshold") = 0.0
+            py::arg("softclip_threshold") = 0.0,
+            py::arg("compressed_channel_weight_count") = 50
         );
 
     add_enum<Verbosity>(
@@ -1318,7 +1324,6 @@ PYBIND11_MODULE(_madspace_py, m) {
 
     py::classh<MadnisTraining::Config>(m, "MadnisConfig")
         .def(py::init<>())
-        .def_readwrite("verbosity", &MadnisTraining::Config::verbosity)
         .def_readwrite("learning_rate", &MadnisTraining::Config::learning_rate)
         .def_readwrite("batches", &MadnisTraining::Config::batches)
         .def_readwrite("log_interval", &MadnisTraining::Config::log_interval)
@@ -1361,6 +1366,9 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def_readwrite("adam_beta1", &MadnisTraining::Config::adam_beta1)
         .def_readwrite("adam_beta2", &MadnisTraining::Config::adam_beta2)
         .def_readwrite("adam_eps", &MadnisTraining::Config::adam_eps)
+        .def_readwrite(
+            "grad_clip_threshold", &MadnisTraining::Config::grad_clip_threshold
+        )
         .def_readwrite("buffer_capacity", &MadnisTraining::Config::buffer_capacity)
         .def_readwrite(
             "minimum_buffer_size", &MadnisTraining::Config::minimum_buffer_size
@@ -1375,6 +1383,10 @@ PYBIND11_MODULE(_madspace_py, m) {
         )
         .def_readwrite(
             "softclip_threshold", &MadnisTraining::Config::softclip_threshold
+        )
+        .def_readwrite(
+            "compressed_channel_weight_count",
+            &MadnisTraining::Config::compressed_channel_weight_count
         );
 
     py::classh<MadnisTraining>(m, "MadnisTraining")
@@ -1395,19 +1407,37 @@ PYBIND11_MODULE(_madspace_py, m) {
         .def("active_channels", &MadnisTraining::active_channels)
         .def("active_channel_count", &MadnisTraining::active_channel_count);
 
+    py::classh<StatusFile>(m, "StatusFile")
+        .def(
+            py::init<const std::string&, double>(),
+            py::arg("file_name"),
+            py::arg("min_interval_sec") = 10.0
+        );
+
+    py::classh<MultiMadnisTraining::TrainingArgs>(m, "TrainingArgs")
+        .def(
+            py::init<
+                const MadnisTraining::Config&,
+                const std::vector<std::shared_ptr<Integrand>>&,
+                const std::optional<ChannelWeightNetwork>&>(),
+            py::arg("config"),
+            py::arg("integrands"),
+            py::arg("cwnet")
+        );
+
     py::classh<MultiMadnisTraining>(m, "MultiMadnisTraining")
         .def(
             py::init<
                 ContextPtr,
                 ContextPtr,
-                const MadnisTraining::Config&,
-                const nested_vector2<std::shared_ptr<Integrand>>&,
-                const std::vector<std::optional<ChannelWeightNetwork>>&>(),
+                const std::vector<MultiMadnisTraining::TrainingArgs>&,
+                Verbosity,
+                std::shared_ptr<StatusFile>>(),
             py::arg("generator_context"),
             py::arg("optimizer_context"),
-            py::arg("config"),
-            py::arg("integrands"),
-            py::arg("cwnets")
+            py::arg("training_args"),
+            py::arg("verbosity"),
+            py::arg("status_file") = std::shared_ptr<StatusFile>()
         )
         .def("train", &MultiMadnisTraining::train)
         .def("active_channels", &MultiMadnisTraining::active_channels);
@@ -1723,11 +1753,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::init<
                 const std::vector<ContextPtr>&,
                 const std::vector<std::shared_ptr<ChannelEventGenerator>>&,
-                const std::string&,
+                std::shared_ptr<StatusFile>,
                 const GeneratorConfig&>(),
             py::arg("contexts"),
             py::arg("channels"),
-            py::arg("status_file") = "",
+            py::arg("status_file") = std::shared_ptr<StatusFile>(),
             py::arg_v(
                 "config",
                 EventGenerator::default_config,
