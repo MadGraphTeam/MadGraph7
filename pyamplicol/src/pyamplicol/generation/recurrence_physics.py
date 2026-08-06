@@ -29,7 +29,7 @@ from ..color import (
     exact_color_contraction_factor,
 )
 from ..color.plan_types import _canonical_open_string_product_key
-from ..models.base import Model
+from ..models.base import Model, _runtime_particle_parameter_name
 from ..models.recurrence_template import RecurrenceTemplateCatalog
 from ..processes.ir import CanonicalProcessIR
 from .recurrence_columnar import (
@@ -868,21 +868,6 @@ def recurrence_exact_color_coefficients(
             )
         )
     return tuple(result)
-
-
-def _runtime_particle_parameter_name(
-    declared: str | None,
-    *,
-    particle_pdg: int,
-    kind: str,
-    available_names: set[str],
-) -> str | None:
-    """Resolve the model-owned name or its prepared-catalog fallback."""
-
-    if declared is not None:
-        return declared
-    fallback = f"particle.{particle_pdg}.{kind}"
-    return fallback if fallback in available_names else None
 
 
 def _retained_public_flows(

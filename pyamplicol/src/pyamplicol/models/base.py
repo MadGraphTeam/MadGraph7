@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
 from typing import Any, Literal, cast
@@ -40,6 +40,21 @@ class Particle:
     charge: float = 0.0
     weak_isospin: tuple[float, float] = (0.0, 0.0)
     weak_hypercharge: tuple[float, float] = (0.0, 0.0)
+
+
+def _runtime_particle_parameter_name(
+    declared: str | None,
+    *,
+    particle_pdg: int,
+    kind: str,
+    available_names: Collection[str],
+) -> str | None:
+    """Resolve a model-owned name or its prepared-catalog fallback."""
+
+    if declared is not None:
+        return declared
+    fallback = f"particle.{particle_pdg}.{kind}"
+    return fallback if fallback in available_names else None
 
 
 @dataclass(frozen=True)

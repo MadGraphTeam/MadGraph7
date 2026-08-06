@@ -1483,6 +1483,10 @@ struct PreparedTransition {
     output_factor_source: u8,
     result_flavour: PreparedFlavourFlow,
     quantum_semantic_digest: SemanticDigest,
+    #[cfg(feature = "on-the-fly-test-support")]
+    transition_semantic_digest: SemanticDigest,
+    #[cfg(feature = "on-the-fly-test-support")]
+    evaluator_binding_semantic_digest: SemanticDigest,
     contact_orbit: Option<PreparedContactOrbitTransition>,
     witnesses: Box<[PreparedTransitionWitness]>,
 }
@@ -1572,6 +1576,20 @@ impl PreparedTransition {
         let result_flavour = PreparedFlavourFlow::new(quantum, catalog)?;
         let quantum_semantic_digest =
             catalog.digest(quantum.semantic_digest_id, "quantum-flow semantic")?;
+        #[cfg(feature = "on-the-fly-test-support")]
+        let transition_semantic_digest =
+            catalog.digest(row.semantic_digest_id, "transition semantic")?;
+        #[cfg(feature = "on-the-fly-test-support")]
+        let evaluator_binding_semantic_digest = {
+            let binding = template
+                .evaluator_bindings
+                .get(row.evaluator_binding_id as usize)
+                .ok_or_else(|| invalid("transition evaluator binding is absent"))?;
+            if binding.id != row.evaluator_binding_id {
+                return Err(invalid("transition evaluator binding is not canonical"));
+            }
+            catalog.digest(binding.semantic_digest_id, "transition evaluator binding")?
+        };
         let witness_rows = catalog.witness_rows(row.color_contraction_template_id)?;
         let contact_orbit = prepare_contact_orbit_transition(
             template,
@@ -1613,6 +1631,10 @@ impl PreparedTransition {
             output_factor_source: row.output_factor_source,
             result_flavour,
             quantum_semantic_digest,
+            #[cfg(feature = "on-the-fly-test-support")]
+            transition_semantic_digest,
+            #[cfg(feature = "on-the-fly-test-support")]
+            evaluator_binding_semantic_digest,
             contact_orbit,
             witnesses,
         })
@@ -4508,31 +4530,43 @@ fn build_recurrence_program_impl(
         let mut lane_currents_by_size = vec![Vec::<u32>::new(); process_input.external_legs.len()];
         lane_currents_by_size[0] = source_bucket.clone();
         let lane_internal_start = currents.len();
-        let lane_stage_diagnostics = build_internal_currents(
-            catalog_digest,
-            process_input,
-            pairing_catalog,
-            template_input,
-            &prepared_transitions,
-            &transition_reflections,
-            &coupling_limits,
-            &propagators,
-            &color_targets,
-            &structural_demands,
-            &mut color_states,
-            &mut currents,
-            &mut lane_current_ids,
-            &mut lane_currents_by_size,
-            &mut current_support_keys,
-            &mut reflection_certificates,
-            &mut resident_contribution_count,
-            stage_index_offset,
-            stage_total,
-            phase_total,
-            &mut telemetry,
-            collect_telemetry,
-            progress,
-        )?;
+        let mut build_lane = || {
+            build_internal_currents(
+                catalog_digest,
+                process_input,
+                pairing_catalog,
+                template_input,
+                &prepared_transitions,
+                &transition_reflections,
+                &coupling_limits,
+                &propagators,
+                &color_targets,
+                &structural_demands,
+                &mut color_states,
+                &mut currents,
+                &mut lane_current_ids,
+                &mut lane_currents_by_size,
+                &mut current_support_keys,
+                &mut reflection_certificates,
+                &mut resident_contribution_count,
+                stage_index_offset,
+                stage_total,
+                phase_total,
+                &mut telemetry,
+                collect_telemetry,
+                progress,
+            )
+        };
+        #[cfg(feature = "on-the-fly-test-support")]
+        let lane_stage_diagnostics =
+            super::diagnostic::with_transition_diagnostic_materialized_sector(
+                (construction_sectors.len() == 1)
+                    .then(|| construction_sectors.first().copied())
+                    .flatten(),
+                build_lane,
+            )?;
+        #[cfg(not(feature = "on-the-fly-test-support"))]
+        let lane_stage_diagnostics = build_lane()?;
         if collect_telemetry {
             let color_target_telemetry = color_targets.telemetry()?;
             for (target, value, label) in [
@@ -6111,11 +6145,12 @@ fn add_transition_contributions(
         coupling_orders
     };
     let (evaluator_parent_ids, exchange_factor) = prepared.canonical_evaluator_parents(parent_ids);
+    let output_factor = prepared.output_factor()?;
     let base_factor = multiply_factors(&[
         prepared.transition_exact_factor,
         exchange_factor,
         prepared.contraction_exact_factor,
-        prepared.output_factor()?,
+        output_factor,
     ])?;
     let parent_reflections = [
         currents[parent_ids[0] as usize].reflection.clone(),
@@ -6199,6 +6234,8 @@ fn add_transition_contributions(
                 &parent_reflections,
                 local_reflection_proof,
             )?;
+            #[cfg(feature = "on-the-fly-test-support")]
+            let diagnostic_result_reflection = result_reflection.clone();
             let result_color_id = color_states.intern(result_color)?;
             if merged_support_source_slots.is_none() {
                 *merged_support_source_slots = Some(merged_disjoint_support(
@@ -6327,11 +6364,82 @@ fn add_transition_contributions(
                 }
             };
             aggregate_factor(pending_factor, factor)?;
+            #[cfg(feature = "on-the-fly-test-support")]
+            let aggregate_factor_after = *pending_factor;
             checked_diagnostic_add(
                 &mut diagnostics.contribution_attempt_count,
                 1,
                 "recurrence contribution-attempt count",
             )?;
+            #[cfg(feature = "on-the-fly-test-support")]
+            {
+                use super::diagnostic::{
+                    ConstructionTransitionDiagnosticRowV1, observe_transition_diagnostic,
+                };
+
+                let digest = |current_id: u32| -> RusticolResult<SemanticDigest> {
+                    let current = currents
+                        .get(current_id as usize)
+                        .ok_or_else(|| invalid("diagnostic current is absent"))?;
+                    let color = color_states
+                        .get(current.key.dynamic_lc_color_state_id())
+                        .ok_or_else(|| invalid("diagnostic current color is absent"))?;
+                    super::on_the_fly::hash_current_key(&current.key, color)
+                };
+                let result_color = color_states
+                    .get(currents[result_id as usize].key.dynamic_lc_color_state_id())
+                    .ok_or_else(|| invalid("diagnostic result color is absent"))?;
+                observe_transition_diagnostic(ConstructionTransitionDiagnosticRowV1 {
+                    materialized_sector_id: None,
+                    output_current_digest: digest(result_id)?,
+                    ordered_parent_digests: [
+                        digest(evaluator_parent_ids[0])?,
+                        digest(evaluator_parent_ids[1])?,
+                    ],
+                    transition_template_id: transition.id,
+                    transition_semantic_digest: prepared.transition_semantic_digest,
+                    evaluator_binding_semantic_digest: prepared.evaluator_binding_semantic_digest,
+                    result_state_template_id: transition.result_state_template_id,
+                    quantum_flow_witness_id: quantum.id,
+                    quantum_semantic_digest: prepared.quantum_semantic_digest,
+                    color_contraction_template_id: transition.color_contraction_template_id,
+                    color_witness_ordinal: witness_row.ordinal,
+                    color_witness_proof_digest: witness.proof_digest(),
+                    output_projection_id: transition.output_projection_string_id,
+                    transition_factor: prepared.transition_exact_factor,
+                    contraction_factor: prepared.contraction_exact_factor,
+                    output_factor,
+                    exchange_factor,
+                    witness_factor: witness.exact_factor(),
+                    reversal_mask,
+                    reversal_factor,
+                    candidate_factor: factor,
+                    aggregate_factor_after,
+                    parent_reflection_proof_digests: [
+                        parent_reflections[0]
+                            .proof()
+                            .map(CurrentReflectionProof::proof_digest),
+                        parent_reflections[1]
+                            .proof()
+                            .map(CurrentReflectionProof::proof_digest),
+                    ],
+                    parent_reflection_phases: [
+                        parent_reflections[0].phase(),
+                        parent_reflections[1].phase(),
+                    ],
+                    local_reflection_proof_digest: local_reflection_proof
+                        .map(|proof| proof.proof_digest),
+                    local_reflection_phase: local_reflection_proof
+                        .map(TransitionReflectionProof::phase),
+                    result_reflection_proof_digest: diagnostic_result_reflection
+                        .as_ref()
+                        .map(CurrentReflectionProof::proof_digest),
+                    result_reflection_phase: diagnostic_result_reflection
+                        .as_ref()
+                        .map(CurrentReflectionProof::phase),
+                    output_color_orientation: format!("{result_color:?}"),
+                });
+            }
         }
     }
     Ok(())
@@ -8372,6 +8480,111 @@ fn append_closure_proof_group(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg(feature = "on-the-fly-test-support")]
+fn observe_established_selected_transition_slice(
+    process_catalog: &ProcessCatalog<'_>,
+    pending: &[PendingCurrent],
+    pending_closures: &BTreeMap<PendingClosureKey, PendingClosureGroup>,
+    replay_targets: &[RecurrenceReplayTarget],
+    dynamic_color_states: &[DynamicLCColorState],
+) -> RusticolResult<()> {
+    let Some(selection) = super::diagnostic::transition_diagnostic_selection() else {
+        return Ok(());
+    };
+    let replay_target = replay_targets
+        .iter()
+        .find(|target| target.target_sector_id() == selection.public_flow_id)
+        .ok_or_else(|| {
+            invalid(format!(
+                "transition diagnostic public flow {} has no replay target",
+                selection.public_flow_id
+            ))
+        })?;
+    let source_states = super::diagnostic::representative_source_states_for_public_helicities(
+        replay_target.source_slot_permutation(),
+        &selection.public_helicities,
+        |representative_slot, public_helicity| {
+            let leg = process_catalog
+                .input
+                .external_legs
+                .get(representative_slot as usize)
+                .ok_or_else(|| {
+                    invalid("transition diagnostic representative source leg is absent")
+                })?;
+            let range = leg.source_state_range.as_usize_range(
+                process_catalog.input.source_states.len(),
+                "transition diagnostic representative source states",
+            )?;
+            let mut matches = process_catalog.input.source_states[range]
+                .iter()
+                .filter(|state| {
+                    state.source_slot == representative_slot
+                        && state.public_helicity == public_helicity
+                });
+            let state = matches.next().ok_or_else(|| {
+                invalid(format!(
+                    "transition diagnostic representative source slot {representative_slot} has no state for transported public helicity {public_helicity}"
+                ))
+            })?;
+            if matches.next().is_some() {
+                return Err(invalid(format!(
+                    "transition diagnostic representative source slot {representative_slot} has multiple states for transported public helicity {public_helicity}"
+                )));
+            }
+            Ok(state.state_index)
+        },
+    )?
+    .into_boxed_slice();
+    let materialized_sector_id = replay_target.materialized_sector_id();
+    let mut live = BTreeSet::new();
+    let mut queue = VecDeque::new();
+    for (key, _group) in pending_closures.iter().filter(|(key, group)| {
+        key.target_sector_id == materialized_sector_id
+            && key.complete_source_states == source_states
+            && !group.exact_factor.is_zero()
+    }) {
+        for parent in key.parent_current_ids.iter().copied() {
+            if live.insert(parent) {
+                queue.push_back(parent);
+            }
+        }
+    }
+    if live.is_empty() {
+        return Err(invalid(format!(
+            "transition diagnostic flow {} and source states {:?} have no established closure",
+            selection.public_flow_id, source_states
+        )));
+    }
+    while let Some(current_id) = queue.pop_front() {
+        let current = pending
+            .get(current_id as usize)
+            .ok_or_else(|| invalid("transition diagnostic current is absent"))?;
+        for (contribution, factor) in &current.contributions {
+            if factor.is_zero() {
+                continue;
+            }
+            for parent in contribution.parent_current_ids.iter().copied() {
+                if live.insert(parent) {
+                    queue.push_back(parent);
+                }
+            }
+        }
+    }
+    let digests = live
+        .into_iter()
+        .map(|current_id| {
+            let current = pending
+                .get(current_id as usize)
+                .ok_or_else(|| invalid("transition diagnostic live current is absent"))?;
+            let color = dynamic_color_states
+                .get(current.key.dynamic_lc_color_state_id().get() as usize)
+                .ok_or_else(|| invalid("transition diagnostic live color is absent"))?;
+            super::on_the_fly::hash_current_key(&current.key, color)
+        })
+        .collect::<RusticolResult<BTreeSet<_>>>()?;
+    super::diagnostic::observe_transition_live_current_digests(digests)
+}
+
 fn finish_program(
     strategy: RecurrenceStrategy,
     process_catalog: &ProcessCatalog<'_>,
@@ -8426,6 +8639,14 @@ fn finish_program(
             RecurrenceResolvedHelicity::new(id as u32, source_states.into(), public_helicities)
         })
         .collect::<RusticolResult<Vec<_>>>()?;
+    #[cfg(feature = "on-the-fly-test-support")]
+    observe_established_selected_transition_slice(
+        process_catalog,
+        &pending,
+        &pending_closures,
+        &replay_targets,
+        &dynamic_color_states,
+    )?;
     let mut live = BTreeSet::new();
     let mut queue = VecDeque::new();
     for (key, group) in &pending_closures {

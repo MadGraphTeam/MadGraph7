@@ -21,7 +21,12 @@ from collections.abc import Mapping, Sequence
 from types import SimpleNamespace
 from typing import Any
 
-from .base import Model, RecurrenceQuantumFlowContract, Vertex
+from .base import (
+    Model,
+    RecurrenceQuantumFlowContract,
+    Vertex,
+    _runtime_particle_parameter_name,
+)
 from .lc_color_port_wiring import compile_lc_color_port_wirings
 from .prepared_catalog import (
     PREPARED_HOMOGENEOUS_LINEAR_CURRENT_PROOF,
@@ -791,6 +796,12 @@ def _build_current_states(
                 f"recurrence-template-v1 cannot encode ghost current {state.identity!r}"
             )
         public_statistics = "fermion" if statistics == "fermion" else "boson"
+        mass_parameter = _runtime_particle_parameter_name(
+            mass_parameter,
+            particle_pdg=int(model.particle(state.particle_id).pdg),
+            kind="mass",
+            available_names=parameter_ids,
+        )
         mass_id = _parameter_reference(
             mass_parameter, parameter_ids, "current mass parameter"
         )
@@ -875,6 +886,12 @@ def _build_sources(
         ):
             continue
         source_ir = model._source_ir(prepared_state.particle_id)
+        mass_parameter = _runtime_particle_parameter_name(
+            source_ir.mass_parameter,
+            particle_pdg=int(model.particle(prepared_state.particle_id).pdg),
+            kind="mass",
+            available_names=parameter_ids,
+        )
         states = tuple(
             state
             for state in source_ir.states
@@ -909,7 +926,7 @@ def _build_sources(
                 (str(name), str(expression)) for name, expression in quantum_number_flow
             )
             mass_parameter_id = _parameter_reference(
-                source_ir.mass_parameter,
+                mass_parameter,
                 parameter_ids,
                 "source mass parameter",
             )

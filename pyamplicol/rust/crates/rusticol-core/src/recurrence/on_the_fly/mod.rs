@@ -141,12 +141,16 @@ pub(crate) use source_seed::{
 use sweep::*;
 pub(crate) use templates::PreparedOnTheFlyGrammarV1;
 use templates::*;
-#[cfg(feature = "on-the-fly-test-support")]
-pub(crate) use test_support::build_on_the_fly_selected_trace_v1;
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 pub use test_support::{OnTheFlyTestSupportReportV1, on_the_fly_test_support_probe_v1};
+#[cfg(feature = "on-the-fly-test-support")]
+pub(crate) use test_support::{
+    build_on_the_fly_selected_trace_against_seed_v1, build_on_the_fly_selected_trace_v1,
+};
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 pub(crate) use trace::ON_THE_FLY_WORK_CENSUS_BASIS_V1;
+#[cfg(feature = "on-the-fly-test-support")]
+pub(crate) use trace::hash_current_key;
 #[cfg(test)]
 pub(crate) use trace::scalar_adapter_test_trace;
 use trace::*;

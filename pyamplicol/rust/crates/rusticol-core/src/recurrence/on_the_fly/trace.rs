@@ -1368,7 +1368,7 @@ impl OnTheFlyStructuralTraceV1 {
     }
 }
 
-pub(super) fn hash_current_key(
+pub(crate) fn hash_current_key(
     key: &CurrentCoreKey,
     color: &DynamicLCColorState,
 ) -> RusticolResult<SemanticDigest> {

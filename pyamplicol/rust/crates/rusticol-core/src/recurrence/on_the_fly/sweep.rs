@@ -1043,17 +1043,75 @@ fn include_transition(
             parent_current_ids: evaluator_parent_ids,
             key: contribution_key,
         };
+        let output_factor = prepared.output_factor()?;
+        let witness_factor = prepared_witness.witness.exact_factor();
         let factor = multiply_factors(&[
             prepared.base_factor,
-            prepared.output_factor()?,
+            output_factor,
             exchange_factor,
-            prepared_witness.witness.exact_factor(),
+            witness_factor,
         ])?;
-        let aggregate = currents[result_id as usize]
-            .contributions
-            .entry(pending_key)
-            .or_insert(ExactComplexRational::ZERO);
-        aggregate_factor(aggregate, factor)?;
+        let aggregate_factor_after = {
+            let aggregate = currents[result_id as usize]
+                .contributions
+                .entry(pending_key)
+                .or_insert(ExactComplexRational::ZERO);
+            aggregate_factor(aggregate, factor)?;
+            *aggregate
+        };
+        #[cfg(feature = "on-the-fly-test-support")]
+        {
+            use crate::recurrence::diagnostic::{
+                ConstructionTransitionDiagnosticRowV1, observe_transition_diagnostic,
+            };
+
+            let digest = |current_id: u32| -> RusticolResult<SemanticDigest> {
+                let current = currents
+                    .get(current_id as usize)
+                    .ok_or_else(|| integrity("diagnostic current is absent"))?;
+                let color = colors
+                    .get(current.key.dynamic_lc_color_state_id())
+                    .ok_or_else(|| integrity("diagnostic current color is absent"))?;
+                super::trace::hash_current_key(&current.key, color)
+            };
+            let result_color = colors
+                .get(currents[result_id as usize].key.dynamic_lc_color_state_id())
+                .ok_or_else(|| integrity("diagnostic result color is absent"))?;
+            observe_transition_diagnostic(ConstructionTransitionDiagnosticRowV1 {
+                materialized_sector_id: None,
+                output_current_digest: digest(result_id)?,
+                ordered_parent_digests: [
+                    digest(evaluator_parent_ids[0])?,
+                    digest(evaluator_parent_ids[1])?,
+                ],
+                transition_template_id: prepared.row.id,
+                transition_semantic_digest: prepared.transition_semantic_digest,
+                evaluator_binding_semantic_digest: prepared.evaluator_binding_digest,
+                result_state_template_id: prepared.row.result_state_template_id,
+                quantum_flow_witness_id: prepared.quantum.id,
+                quantum_semantic_digest: prepared.quantum_semantic_digest,
+                color_contraction_template_id: prepared.row.color_contraction_template_id,
+                color_witness_ordinal: prepared_witness.row.ordinal,
+                color_witness_proof_digest: prepared_witness.witness.proof_digest(),
+                output_projection_id: prepared.row.output_projection_string_id,
+                transition_factor: prepared.transition_factor,
+                contraction_factor: prepared.contraction_factor,
+                output_factor,
+                exchange_factor,
+                witness_factor,
+                reversal_mask: 0,
+                reversal_factor: ExactComplexRational::ONE,
+                candidate_factor: factor,
+                aggregate_factor_after,
+                parent_reflection_proof_digests: [None, None],
+                parent_reflection_phases: [None, None],
+                local_reflection_proof_digest: None,
+                local_reflection_phase: None,
+                result_reflection_proof_digest: None,
+                result_reflection_phase: None,
+                output_color_orientation: format!("{result_color:?}"),
+            });
+        }
     }
     Ok(())
 }

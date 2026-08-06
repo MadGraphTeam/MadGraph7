@@ -30,11 +30,14 @@ use rusticol_core::recurrence::{
 };
 #[cfg(feature = "on-the-fly-test-support")]
 use rusticol_core::recurrence::{
-    OnTheFlyQueryFamilyCensusV1, OnTheFlyTestSupportReportV1, on_the_fly_query_family_census_v1,
+    ConstructionTransitionDiagnosticRowV1, ExactComplexRational, OnTheFlyQueryFamilyCensusV1,
+    OnTheFlyTestSupportReportV1, on_the_fly_query_family_census_v1,
     on_the_fly_test_support_probe_v1,
 };
 #[cfg(feature = "on-the-fly-test-support")]
-use rusticol_core::{NativeOnTheFlyArtifactProbeV1, NativeRuntime};
+use rusticol_core::{
+    NativeOnTheFlyArtifactProbeV1, NativeOnTheFlyExecutionDiagnosticV1, NativeRuntime,
+};
 use rusticol_core::{
     NativeRecurrenceExactExecutor, NativeRecurrenceExactFactor, NativeRecurrenceExactSections,
     RusticolError, RusticolResult,
@@ -1211,6 +1214,87 @@ pub(crate) fn _on_the_fly_artifact_probe_v1(
     on_the_fly_artifact_probe_mapping(py, native)
 }
 
+#[cfg(feature = "on-the-fly-test-support")]
+#[pyfunction(signature = (
+    on_the_fly_artifact_path,
+    on_the_fly_process_id,
+    recurrence_artifact_path,
+    recurrence_process_id,
+    builder_input,
+    prepared_template_input,
+    direct_template_catalog_json,
+    prepared_kernel_pack_digest,
+    selected_public_flow_id,
+    public_helicities,
+    point_major_external_momenta,
+    *,
+    parameter_overrides=None
+))]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn _on_the_fly_execution_diagnostic_v1(
+    py: Python<'_>,
+    on_the_fly_artifact_path: PathBuf,
+    on_the_fly_process_id: String,
+    recurrence_artifact_path: PathBuf,
+    recurrence_process_id: String,
+    builder_input: &Bound<'_, PyAny>,
+    prepared_template_input: &Bound<'_, PyAny>,
+    direct_template_catalog_json: &Bound<'_, PyBytes>,
+    prepared_kernel_pack_digest: String,
+    selected_public_flow_id: u32,
+    public_helicities: Vec<i32>,
+    point_major_external_momenta: Vec<f64>,
+    parameter_overrides: Option<BTreeMap<String, Vec<f64>>>,
+) -> PyResult<Py<PyAny>> {
+    let input = parse_input(builder_input)?;
+    let prepared_template = parse_prepared_template_input(prepared_template_input)?;
+    let direct_template_catalog_json = direct_template_catalog_json.as_bytes().to_vec();
+    validate_sha256_text(&prepared_kernel_pack_digest, "prepared kernel pack digest")?;
+    let parameter_overrides = parameter_overrides
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(name, value)| {
+            let value: [f64; 2] = value.try_into().map_err(|value: Vec<f64>| {
+                PyValueError::new_err(format!(
+                    "execution diagnostic parameter override {name:?} has {} components, expected 2",
+                    value.len()
+                ))
+            })?;
+            Ok((name, value))
+        })
+        .collect::<PyResult<BTreeMap<_, _>>>()?;
+    let native = py
+        .detach(move || {
+            let expected_pack_digest = semantic_digest_from_hex(
+                &prepared_kernel_pack_digest,
+                "prepared kernel pack digest",
+            )?;
+            let authenticated =
+                authenticate_builder_inputs(input, prepared_template, expected_pack_digest)?
+                    .authenticated;
+            let direct_catalog = parse_direct_template_catalog(
+                &direct_template_catalog_json,
+                expected_pack_digest,
+                authenticated.template().summary().catalog_digest,
+                authenticated.template().summary().compiled_model_digest,
+            )?;
+            NativeRuntime::on_the_fly_execution_diagnostic_v1(
+                on_the_fly_artifact_path,
+                &on_the_fly_process_id,
+                recurrence_artifact_path,
+                &recurrence_process_id,
+                &authenticated,
+                &direct_catalog.catalog,
+                selected_public_flow_id,
+                &public_helicities,
+                &point_major_external_momenta,
+                &parameter_overrides,
+            )
+        })
+        .map_err(python_error)?;
+    on_the_fly_execution_diagnostic_mapping(py, native)
+}
+
 fn build_on_the_fly_process_seeds_v1(
     ordered_source_projection_jsons: Vec<Vec<u8>>,
     recurrence_template_catalog_json: Vec<u8>,
@@ -1488,6 +1572,90 @@ fn on_the_fly_artifact_probe_mapping(
 }
 
 #[cfg(feature = "on-the-fly-test-support")]
+fn on_the_fly_execution_diagnostic_mapping(
+    py: Python<'_>,
+    native: NativeOnTheFlyExecutionDiagnosticV1,
+) -> PyResult<Py<PyAny>> {
+    let result = PyDict::new(py);
+    result.set_item("schema_version", 1)?;
+    result.set_item("on_the_fly_artifact_id", native.on_the_fly_artifact_id)?;
+    result.set_item("on_the_fly_process_id", native.on_the_fly_process_id)?;
+    result.set_item("recurrence_artifact_id", native.recurrence_artifact_id)?;
+    result.set_item("recurrence_process_id", native.recurrence_process_id)?;
+    result.set_item("seed_digest", native.seed_digest)?;
+    result.set_item("query_digest", native.query_digest)?;
+    result.set_item("trace_digest", native.trace_digest)?;
+    result.set_item(
+        "direct_plan_semantic_digest",
+        native.direct_plan_semantic_digest,
+    )?;
+    result.set_item(
+        "direct_runtime_layout_digest",
+        native.direct_runtime_layout_digest,
+    )?;
+    result.set_item("public_flow_id", native.public_flow_id)?;
+    result.set_item("representative_flow_id", native.representative_flow_id)?;
+    result.set_item("public_helicities", native.public_helicities)?;
+    result.set_item(
+        "public_direct_helicity_id",
+        native.public_direct_helicity_id,
+    )?;
+    result.set_item(
+        "representative_direct_helicity_id",
+        native.representative_direct_helicity_id,
+    )?;
+    result.set_item("replay_phase", native.replay_phase.to_vec())?;
+    result.set_item("replay_multiplicity", native.replay_multiplicity)?;
+    result.set_item("replay_scale", native.replay_scale.to_vec())?;
+    result.set_item(
+        "on_the_fly_public_amplitude",
+        native.on_the_fly_public_amplitude.to_vec(),
+    )?;
+    result.set_item(
+        "recurrence_representative_amplitude",
+        native.recurrence_representative_amplitude.to_vec(),
+    )?;
+    result.set_item(
+        "recurrence_public_amplitude",
+        native.recurrence_public_amplitude.to_vec(),
+    )?;
+    result.set_item(
+        "amplitude_absolute_delta",
+        native.amplitude_absolute_delta.to_vec(),
+    )?;
+    result.set_item("raw_bit_difference_count", native.raw_bit_difference_count)?;
+    result.set_item("compared_current_count", native.compared_current_count)?;
+    result.set_item(
+        "excluded_direct_current_count",
+        native.excluded_direct_current_count,
+    )?;
+
+    let first_raw_bit_difference = native.first_raw_bit_difference;
+    let components = PyList::empty(py);
+    for component in native.current_components {
+        let row = PyDict::new(py);
+        row.set_item("dependency_depth", component.dependency_depth)?;
+        row.set_item("semantic_digest", component.semantic_digest)?;
+        row.set_item("component", component.component)?;
+        row.set_item("on_the_fly", component.on_the_fly.to_vec())?;
+        row.set_item("recurrence", component.recurrence.to_vec())?;
+        row.set_item("on_the_fly_bits", component.on_the_fly_bits.to_vec())?;
+        row.set_item("recurrence_bits", component.recurrence_bits.to_vec())?;
+        row.set_item("absolute_delta", component.absolute_delta.to_vec())?;
+        components.append(row)?;
+    }
+    result.set_item("current_components", &components)?;
+    if let Some(index) = first_raw_bit_difference {
+        result.set_item("first_raw_bit_difference_index", index)?;
+        result.set_item("first_raw_bit_difference", components.get_item(index)?)?;
+    } else {
+        result.set_item("first_raw_bit_difference_index", py.None())?;
+        result.set_item("first_raw_bit_difference", py.None())?;
+    }
+    Ok(result.into_any().unbind())
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
 fn on_the_fly_query_family_census_mapping(
     py: Python<'_>,
     native: OnTheFlyQueryFamilyCensusV1,
@@ -1590,11 +1758,146 @@ fn on_the_fly_query_family_census_mapping(
 }
 
 #[cfg(feature = "on-the-fly-test-support")]
+fn on_the_fly_exact_factor_mapping(
+    py: Python<'_>,
+    factor: ExactComplexRational,
+) -> PyResult<Py<PyAny>> {
+    let result = PyDict::new(py);
+    for (name, value) in [("real", factor.real()), ("imag", factor.imag())] {
+        let part = PyDict::new(py);
+        part.set_item("numerator", value.numerator().to_string())?;
+        part.set_item("denominator", value.denominator().to_string())?;
+        result.set_item(name, part)?;
+    }
+    Ok(result.into_any().unbind())
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+fn on_the_fly_optional_exact_factor_mapping(
+    py: Python<'_>,
+    factor: Option<ExactComplexRational>,
+) -> PyResult<Py<PyAny>> {
+    match factor {
+        Some(factor) => on_the_fly_exact_factor_mapping(py, factor),
+        None => Ok(py.None()),
+    }
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+fn on_the_fly_transition_candidate_mapping(
+    py: Python<'_>,
+    row: ConstructionTransitionDiagnosticRowV1,
+) -> PyResult<Py<PyAny>> {
+    let result = PyDict::new(py);
+    result.set_item("materialized_sector_id", row.materialized_sector_id)?;
+    result.set_item(
+        "output_current_digest",
+        row.output_current_digest.to_string(),
+    )?;
+    result.set_item(
+        "ordered_parent_digests",
+        row.ordered_parent_digests
+            .into_iter()
+            .map(|digest| digest.to_string())
+            .collect::<Vec<_>>(),
+    )?;
+    result.set_item("transition_template_id", row.transition_template_id)?;
+    result.set_item(
+        "transition_semantic_digest",
+        row.transition_semantic_digest.to_string(),
+    )?;
+    result.set_item(
+        "evaluator_binding_semantic_digest",
+        row.evaluator_binding_semantic_digest.to_string(),
+    )?;
+    result.set_item("result_state_template_id", row.result_state_template_id)?;
+    result.set_item("quantum_flow_witness_id", row.quantum_flow_witness_id)?;
+    result.set_item(
+        "quantum_semantic_digest",
+        row.quantum_semantic_digest.to_string(),
+    )?;
+    result.set_item(
+        "color_contraction_template_id",
+        row.color_contraction_template_id,
+    )?;
+    result.set_item("color_witness_ordinal", row.color_witness_ordinal)?;
+    result.set_item(
+        "color_witness_proof_digest",
+        row.color_witness_proof_digest.to_string(),
+    )?;
+    result.set_item("output_projection_id", row.output_projection_id)?;
+    let factors = PyDict::new(py);
+    for (name, factor) in [
+        ("transition", row.transition_factor),
+        ("contraction", row.contraction_factor),
+        ("output", row.output_factor),
+        ("exchange", row.exchange_factor),
+        ("witness", row.witness_factor),
+        ("reversal", row.reversal_factor),
+        ("candidate_product", row.candidate_factor),
+        ("aggregate_after", row.aggregate_factor_after),
+    ] {
+        factors.set_item(name, on_the_fly_exact_factor_mapping(py, factor)?)?;
+    }
+    result.set_item("factor_components", factors)?;
+    result.set_item("reversal_mask", row.reversal_mask)?;
+    let reflections = PyDict::new(py);
+    reflections.set_item(
+        "parent_proof_digests",
+        row.parent_reflection_proof_digests
+            .into_iter()
+            .map(|digest| digest.map(|value| value.to_string()))
+            .collect::<Vec<_>>(),
+    )?;
+    let parent_phases = PyList::empty(py);
+    for phase in row.parent_reflection_phases {
+        parent_phases.append(on_the_fly_optional_exact_factor_mapping(py, phase)?)?;
+    }
+    reflections.set_item("parent_phases", parent_phases)?;
+    reflections.set_item(
+        "local_proof_digest",
+        row.local_reflection_proof_digest
+            .map(|digest| digest.to_string()),
+    )?;
+    reflections.set_item(
+        "local_phase",
+        on_the_fly_optional_exact_factor_mapping(py, row.local_reflection_phase)?,
+    )?;
+    reflections.set_item(
+        "result_proof_digest",
+        row.result_reflection_proof_digest
+            .map(|digest| digest.to_string()),
+    )?;
+    reflections.set_item(
+        "result_phase",
+        on_the_fly_optional_exact_factor_mapping(py, row.result_reflection_phase)?,
+    )?;
+    result.set_item("reflection", reflections)?;
+    result.set_item("output_color_orientation", row.output_color_orientation)?;
+    result.set_item("post_row_complex_value", py.None())?;
+    Ok(result.into_any().unbind())
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+fn on_the_fly_transition_candidates_mapping(
+    py: Python<'_>,
+    mut rows: Vec<ConstructionTransitionDiagnosticRowV1>,
+) -> PyResult<Py<PyList>> {
+    rows.sort_by_cached_key(|row| format!("{row:?}"));
+    let result = PyList::empty(py);
+    for row in rows {
+        result.append(on_the_fly_transition_candidate_mapping(py, row)?)?;
+    }
+    Ok(result.unbind())
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
 fn on_the_fly_test_support_mapping(
     py: Python<'_>,
     native: OnTheFlyTestSupportReportV1,
 ) -> PyResult<Py<PyAny>> {
     let result = PyDict::new(py);
+    let structural_parity = native.structural_parity();
     result.set_item("seed_digest", native.seed_digest.to_string())?;
     result.set_item("query_digest", native.query_digest.to_string())?;
     result.set_item("selector_digest", native.selector_digest.to_string())?;
@@ -1663,7 +1966,15 @@ fn on_the_fly_test_support_mapping(
         "workspace_capacity_independent",
         native.workspace_capacity_independent,
     )?;
-    result.set_item("structural_parity", native.structural_parity())?;
+    result.set_item("structural_parity", structural_parity)?;
+    result.set_item(
+        "compact_transition_candidates",
+        on_the_fly_transition_candidates_mapping(py, native.compact_transition_candidates)?,
+    )?;
+    result.set_item(
+        "established_transition_candidates",
+        on_the_fly_transition_candidates_mapping(py, native.established_transition_candidates)?,
+    )?;
     Ok(result.into_any().unbind())
 }
 

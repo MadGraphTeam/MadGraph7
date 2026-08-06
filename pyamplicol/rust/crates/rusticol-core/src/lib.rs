@@ -59,8 +59,9 @@ pub use engine::{
 };
 #[cfg(feature = "on-the-fly-test-support")]
 pub use engine::{
-    NativeOnTheFlyArtifactProbeV1, NativeOnTheFlyCurrentProbeV1, NativeOnTheFlyFamilyProbeV1,
-    NativeOnTheFlyFamilyQueryProbeV1,
+    NativeOnTheFlyArtifactProbeV1, NativeOnTheFlyCurrentProbeV1,
+    NativeOnTheFlyExecutionComponentV1, NativeOnTheFlyExecutionDiagnosticV1,
+    NativeOnTheFlyFamilyProbeV1, NativeOnTheFlyFamilyQueryProbeV1,
 };
 pub use error::{RusticolError, RusticolErrorKind, RusticolResult};
 pub use metadata::{

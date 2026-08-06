@@ -8,6 +8,8 @@ mod color;
 mod color_contraction;
 mod construct;
 mod contact_orbit_owner;
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+mod diagnostic;
 pub mod direct_backend;
 mod direct_codec;
 mod direct_lowering;
@@ -46,6 +48,9 @@ pub use color_contraction::{
 pub use construct::RecurrenceBuildProgress;
 #[doc(hidden)]
 pub use construct::RecurrenceGenerationTelemetry;
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+#[doc(hidden)]
+pub use diagnostic::ConstructionTransitionDiagnosticRowV1;
 pub use direct_codec::{decode_recurrence_direct_plan_v2, encode_recurrence_direct_plan_v2};
 #[cfg(test)]
 pub(crate) use direct_lowering::validated_template_fixture;

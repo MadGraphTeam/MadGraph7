@@ -11,6 +11,8 @@ use std::mem::size_of;
 use std::ops::Range;
 use std::time::{Duration, Instant};
 
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+use super::direct_backend::observe_direct_amplitudes_before_replay;
 use super::direct_backend::{
     DIRECT_STATUS_OK, DirectExecutionCounters, DirectExecutionRoleTimings, DirectExecutorCatalog,
     DirectFactorView, DirectMomentumView, DirectParameterView, DirectUnionSourceDispatchHandle,
@@ -1447,6 +1449,13 @@ impl DirectRecurrenceExecutionRuntime {
                     .elapsed();
             }
             result?;
+            #[cfg(any(test, feature = "on-the-fly-test-support"))]
+            observe_direct_amplitudes_before_replay(
+                &self.plan,
+                selector.map(DirectReplaySelectorPlan::representative_flow_id),
+                &workspace,
+                point_count,
+            )?;
         }
 
         if PROFILE {

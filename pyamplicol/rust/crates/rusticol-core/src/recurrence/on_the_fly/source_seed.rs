@@ -651,6 +651,11 @@ impl OnTheFlyProcessSeedV1 {
         self.semantic_digest
     }
 
+    #[cfg(feature = "on-the-fly-test-support")]
+    pub(crate) const fn process_digest(&self) -> SemanticDigest {
+        self.process_digest
+    }
+
     pub(crate) fn external_permutation(&self) -> &[u32] {
         &self.external_permutation
     }

@@ -203,6 +203,58 @@ def test_direct_closure_mirror_aliases_are_not_double_counted() -> None:
     assert set(aliases.values()) == {1}
 
 
+def test_builtin_massive_sources_and_currents_bind_fallback_mass_only() -> None:
+    model = BuiltinSMModel()
+    catalog = build_recurrence_template_catalog(
+        model,
+        build_prepared_kernel_catalog(model),
+        compiled_model_digest=_MODEL_DIGEST,
+        prepared_kernel_pack_digest=_PACK_DIGEST,
+    )
+
+    top_mass = next(
+        parameter
+        for parameter in catalog.parameters
+        if parameter.name == "particle.6.mass"
+    )
+    assert top_mass.prepared_parameter_id is not None
+    states_by_id = {state.template_id: state for state in catalog.current_states}
+
+    for particle_id in (6, -6):
+        currents = tuple(
+            state
+            for state in catalog.current_states
+            if state.particle_id == particle_id
+        )
+        sources = tuple(
+            source
+            for source in catalog.sources
+            if states_by_id[source.state_template_id].particle_id == particle_id
+        )
+        assert currents and sources
+        assert {state.mass_parameter_id for state in currents} == {top_mass.template_id}
+        assert {source.mass_parameter_id for source in sources} == {
+            top_mass.template_id
+        }
+        assert {state.width_parameter_id for state in currents} == {None}
+        assert {source.width_parameter_id for source in sources} == {None}
+
+    for particle_id in (1, -1, 21):
+        currents = tuple(
+            state
+            for state in catalog.current_states
+            if state.particle_id == particle_id
+        )
+        sources = tuple(
+            source
+            for source in catalog.sources
+            if states_by_id[source.state_template_id].particle_id == particle_id
+        )
+        assert currents and sources
+        assert {state.mass_parameter_id for state in currents} == {None}
+        assert {source.mass_parameter_id for source in sources} == {None}
+
+
 def test_verified_auxiliary_transition_mirrors_are_not_double_counted() -> None:
     model = BuiltinSMModel()
     catalog = build_recurrence_template_catalog(

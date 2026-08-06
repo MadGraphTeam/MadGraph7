@@ -2065,6 +2065,11 @@ fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
         recurrence::_on_the_fly_artifact_probe_v1,
         module
     )?)?;
+    #[cfg(all(feature = "numpy", feature = "on-the-fly-test-support"))]
+    module.add_function(wrap_pyfunction!(
+        recurrence::_on_the_fly_execution_diagnostic_v1,
+        module
+    )?)?;
     #[cfg(feature = "numpy")]
     module.add_function(wrap_pyfunction!(
         recurrence_template::_validate_recurrence_template_input_v1,

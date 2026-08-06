@@ -13,10 +13,12 @@ use super::*;
 use crate::recurrence::construct::TemplateCatalog;
 use crate::recurrence::process::{
     OwnedFermionPairingInput, OwnedRecurrenceProcessInput, ProcessLCSectorKind,
+    ProcessSourceStateRow,
 };
 use crate::recurrence::template::{CurrentOrientation, CurrentStateRow, ParticleStatistics};
 use crate::recurrence::{
-    AuthenticatedRecurrenceBuilderInput, RecurrenceProgram, RecurrenceStrategy,
+    AuthenticatedRecurrenceBuilderInput, ConstructionTransitionDiagnosticRowV1, RecurrenceProgram,
+    RecurrenceStrategy,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -46,6 +48,8 @@ pub struct OnTheFlyTestSupportReportV1 {
     pub pairing_fermion_parity: i32,
     pub established_pairing_fermion_parity: i32,
     pub workspace_capacity_independent: bool,
+    pub compact_transition_candidates: Vec<ConstructionTransitionDiagnosticRowV1>,
+    pub established_transition_candidates: Vec<ConstructionTransitionDiagnosticRowV1>,
 }
 
 impl OnTheFlyTestSupportReportV1 {
@@ -207,45 +211,28 @@ fn authenticated_source_orientation(
 
 fn authenticated_prepared_mass_slot(
     authenticated: &AuthenticatedRecurrenceBuilderInput,
+    catalog: &TemplateCatalog<'_>,
     source: SourceRow,
     current_state: CurrentStateRow,
 ) -> RusticolResult<Option<u32>> {
-    if source.mass_parameter_id != current_state.mass_parameter_id {
-        return Err(integrity(
-            "authenticated source and current state disagree on their mass parameter",
-        ));
-    }
-    if source.mass_parameter_id == MISSING_U32 {
-        return Ok(None);
-    }
-    let matches = authenticated
-        .process()
-        .input()
-        .parameter_projection
-        .iter()
-        .filter(|row| row.parameter_template_id == source.mass_parameter_id && row.component == 0)
-        .collect::<Vec<_>>();
-    let [projection] = matches.as_slice() else {
-        return Err(integrity(format!(
-            "authenticated source mass parameter has {} real prepared projections, expected one",
-            matches.len()
-        )));
-    };
-    let prepared = projection.prepared_parameter_id().ok_or_else(|| {
-        invalid("authenticated source mass parameter has no prepared execution slot")
-    })?;
-    let parameter = authenticated
-        .template()
-        .input()
-        .parameters
-        .get(source.mass_parameter_id as usize)
-        .ok_or_else(|| integrity("authenticated source mass parameter is absent"))?;
-    if parameter.id != source.mass_parameter_id || parameter.prepared_parameter_id != prepared {
-        return Err(integrity(
-            "authenticated source mass projection disagrees with the prepared catalog",
-        ));
-    }
-    Ok(Some(prepared))
+    super::source_builder::resolve_prepared_mass_slot(
+        source,
+        current_state,
+        authenticated.template().input(),
+        catalog,
+        authenticated
+            .process()
+            .input()
+            .parameter_projection
+            .iter()
+            .map(|row| {
+                (
+                    row.parameter_template_id,
+                    row.prepared_parameter_id(),
+                    row.component,
+                )
+            }),
+    )
 }
 
 fn pairing_endpoint_contracts(
@@ -393,7 +380,7 @@ fn authenticated_source_anchors(
                 seed.proof_digest(),
                 family,
                 authenticated_source_orientation(current_state)?,
-                authenticated_prepared_mass_slot(authenticated, source, current_state)?,
+                authenticated_prepared_mass_slot(authenticated, &catalog, source, current_state)?,
             )?);
         }
         anchors.push(OnTheFlySourceAnchorV1::new(
@@ -700,9 +687,30 @@ fn compact_source_domain(seed: &OnTheFlyProcessSeedV1) -> Vec<SourceDomainRow> {
     rows
 }
 
+fn established_source_state_for_template(
+    source_slot: u32,
+    states: &[ProcessSourceStateRow],
+    source_template_id: u32,
+) -> RusticolResult<ProcessSourceStateRow> {
+    let mut matches = states
+        .iter()
+        .copied()
+        .filter(|state| state.source_template_id == source_template_id);
+    let state = matches.next().ok_or_else(|| {
+        integrity(format!(
+            "established source slot {source_slot} template {source_template_id} is absent from its authenticated state domain"
+        ))
+    })?;
+    if matches.next().is_some() {
+        return Err(integrity(format!(
+            "established source slot {source_slot} template {source_template_id} is ambiguous in its authenticated state domain"
+        )));
+    }
+    Ok(state)
+}
+
 fn established_source_domain(
     authenticated: &AuthenticatedRecurrenceBuilderInput,
-    query: &DecodedLcQueryV1,
     program: &RecurrenceProgram,
 ) -> RusticolResult<Vec<SourceDomainRow>> {
     let input = authenticated.template().input();
@@ -731,35 +739,27 @@ fn established_source_domain(
             .current_states
             .get(key.current_state_template_id() as usize)
             .ok_or_else(|| integrity("established source current state is absent"))?;
-        let selected = query
-            .selected_sources
-            .iter()
-            .find(|selected| selected.source_slot == *source_slot)
-            .ok_or_else(|| integrity("established source is absent from the decoded query"))?;
-        let anchor = query
-            .selected_sources
-            .iter()
-            .find(|candidate| candidate.source_slot == selected.source_slot)
-            .ok_or_else(|| integrity("selected source anchor disappeared"))?;
-        let source_helicity = authenticated
-            .process()
-            .input()
+        let process = authenticated.process().input();
+        let source_state_range = process
             .external_legs
             .get(*source_slot as usize)
             .ok_or_else(|| integrity("established source leg is absent"))?
             .source_state_range
-            .as_usize_range(
-                authenticated.process().input().source_states.len(),
-                "established source states",
-            )?
-            .into_iter()
-            .map(|index| authenticated.process().input().source_states[index])
-            .find(|state| state.state_index == anchor.state_index)
-            .ok_or_else(|| integrity("selected source state is absent"))?;
-        if source_helicity.source_template_id != source_template_id {
-            return Err(integrity(
-                "selected source state and established source template disagree",
-            ));
+            .as_usize_range(process.source_states.len(), "established source states")?;
+        let source_helicity = established_source_state_for_template(
+            *source_slot,
+            &process.source_states[source_state_range],
+            source_template_id,
+        )?;
+        if source_helicity.current_state_template_id != key.current_state_template_id() {
+            return Err(integrity(format!(
+                "established source state and current template disagree: source slot {}, source state {}, source template {}, authenticated current template {}, established current template {}",
+                source_slot,
+                source_helicity.state_index,
+                source_template_id,
+                source_helicity.current_state_template_id,
+                key.current_state_template_id(),
+            )));
         }
         rows.push(SourceDomainRow {
             source_slot: *source_slot,
@@ -771,6 +771,7 @@ fn established_source_domain(
             chirality: current_state.chirality,
             prepared_mass_parameter_slot: authenticated_prepared_mass_slot(
                 authenticated,
+                &catalog,
                 source,
                 current_state,
             )?,
@@ -984,6 +985,107 @@ pub(crate) fn build_on_the_fly_selected_trace_v1(
     })
 }
 
+fn reconstruct_seed_in_projection_domain(
+    retained_seed: OnTheFlyProcessSeedV1,
+    artifact_seed: &OnTheFlyProcessSeedV1,
+) -> RusticolResult<OnTheFlyProcessSeedV1> {
+    let OnTheFlyProcessSeedV1 {
+        process_digest,
+        model_digest,
+        template_catalog_digest,
+        prepared_pack_digest,
+        direct_catalog_digest,
+        normalization_semantic_digest,
+        normalization_convention,
+        source_anchors,
+        external_permutation: _,
+        coupling_order_policy: _,
+        coupling_hierarchies: _,
+        coupling_limits: _,
+        pairing_classes,
+        semantic_digest: _,
+    } = retained_seed;
+    let reconstructed = OnTheFlyProcessSeedV1::new(
+        process_digest,
+        model_digest,
+        template_catalog_digest,
+        prepared_pack_digest,
+        direct_catalog_digest,
+        normalization_semantic_digest,
+        normalization_convention,
+        ExactComplexRational::ONE,
+        source_anchors.into_vec(),
+        artifact_seed.external_permutation().to_vec(),
+        artifact_seed.coupling_order_policy(),
+        artifact_seed.coupling_hierarchies().to_vec(),
+        artifact_seed.explicit_coupling_limits().to_vec(),
+        pairing_classes.into_vec(),
+    )?;
+    if reconstructed.semantic_digest() != artifact_seed.semantic_digest() {
+        return Err(integrity(
+            "retained diagnostic semantic constituents do not authenticate in the on-the-fly artifact seed projection domain",
+        ));
+    }
+    Ok(reconstructed)
+}
+
+/// Build one retained recurrence row against an already-authenticated compact
+/// artifact seed. The retained input supplies semantic constituents and the
+/// public selector oracle; projection policy remains owned by the artifact.
+pub(crate) fn build_on_the_fly_selected_trace_against_seed_v1(
+    authenticated: &AuthenticatedRecurrenceBuilderInput,
+    direct: &PreparedDirectExecutorCatalog,
+    artifact_seed: &OnTheFlyProcessSeedV1,
+    selected_public_flow_id: u32,
+    public_helicities: &[i32],
+    enable_projection: bool,
+) -> RusticolResult<OnTheFlySelectedTraceV1> {
+    let oracle = one_public_row_oracle(authenticated, selected_public_flow_id, public_helicities)?;
+    let retained_seed = compact_seed(
+        authenticated,
+        direct.direct_template_catalog_digest(),
+        oracle.external_permutation,
+    )?;
+    let _authenticated = reconstruct_seed_in_projection_domain(retained_seed, artifact_seed)?;
+    let query = DecodedLcQueryV1::new(
+        artifact_seed,
+        artifact_seed.external_permutation().to_vec(),
+        &oracle.public_helicities,
+        oracle.selector,
+    )?;
+    let selected = build_selected_lc_query_trace_for_probe_v1(
+        authenticated.template(),
+        direct,
+        artifact_seed,
+        query,
+        enable_projection,
+    )?;
+    Ok(OnTheFlySelectedTraceV1 {
+        seed: artifact_seed.clone(),
+        query: selected.query,
+        trace: selected.trace,
+        projection: selected.projection,
+    })
+}
+
+fn observed_transition_build<T>(
+    selection: Option<crate::recurrence::diagnostic::ConstructionDiagnosticSelectionV1>,
+    build: impl FnOnce() -> RusticolResult<T>,
+) -> RusticolResult<(
+    T,
+    Vec<ConstructionTransitionDiagnosticRowV1>,
+    Option<BTreeSet<SemanticDigest>>,
+)> {
+    crate::recurrence::diagnostic::begin_transition_diagnostic_observation(selection)?;
+    let built = build();
+    let observed = crate::recurrence::diagnostic::take_transition_diagnostic_observation();
+    match (built, observed) {
+        (Ok(value), Ok((rows, live))) => Ok((value, rows, live)),
+        (Err(error), _) => Err(error),
+        (Ok(_), Err(error)) => Err(error),
+    }
+}
+
 /// Build one compact selected query and compare it with the established
 /// materialized builder. This API exists only under `on-the-fly-test-support`.
 #[doc(hidden)]
@@ -993,6 +1095,32 @@ pub fn on_the_fly_test_support_probe_v1(
     selected_public_flow_id: u32,
     public_helicities: &[i32],
 ) -> RusticolResult<OnTheFlyTestSupportReportV1> {
+    let (compact_pre_projection, compact_transition_candidates, _) =
+        observed_transition_build(None, || {
+            build_on_the_fly_selected_trace_v1(
+                authenticated,
+                direct,
+                selected_public_flow_id,
+                public_helicities,
+                false,
+            )
+        })?;
+    let compact_live = compact_pre_projection
+        .trace
+        .current_semantic_digests
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let compact_transition_candidates = compact_transition_candidates
+        .into_iter()
+        .filter(|row| {
+            compact_live.contains(&row.output_current_digest)
+                && row
+                    .ordered_parent_digests
+                    .iter()
+                    .all(|digest| compact_live.contains(digest))
+        })
+        .collect::<Vec<_>>();
     let selected = build_on_the_fly_selected_trace_v1(
         authenticated,
         direct,
@@ -1007,7 +1135,40 @@ pub fn on_the_fly_test_support_probe_v1(
         projection: _,
     } = selected;
     crate::recurrence::construct::begin_established_pairing_owner_observation();
-    let established = authenticated.build()?;
+    let diagnostic_selection = crate::recurrence::diagnostic::ConstructionDiagnosticSelectionV1 {
+        public_flow_id: selected_public_flow_id,
+        public_helicities: public_helicities.to_vec(),
+    };
+    let (established, established_transition_candidates, established_live) =
+        observed_transition_build(Some(diagnostic_selection), || authenticated.build())?;
+    let established_live = established_live.ok_or_else(|| {
+        integrity("established transition diagnostic did not record its selected live slice")
+    })?;
+    let established_materialized_sector_id = established
+        .replay_targets()
+        .iter()
+        .find(|target| target.target_sector_id() == selected_public_flow_id)
+        .map(crate::recurrence::RecurrenceReplayTarget::materialized_sector_id)
+        .ok_or_else(|| {
+            integrity(format!(
+                "established transition diagnostic public flow {selected_public_flow_id} has no replay target"
+            ))
+        })?;
+    let established_transition_candidates =
+        crate::recurrence::diagnostic::retain_materialized_sector_rows(
+            established_transition_candidates,
+            established_materialized_sector_id,
+            |row| row.materialized_sector_id,
+        )
+        .into_iter()
+        .filter(|row| {
+            established_live.contains(&row.output_current_digest)
+                && row
+                    .ordered_parent_digests
+                    .iter()
+                    .all(|digest| established_live.contains(digest))
+        })
+        .collect::<Vec<_>>();
     let established_pairing_rule = established_pairing_rule_by_id(
         authenticated,
         crate::recurrence::construct::take_established_pairing_owner_observation()?,
@@ -1090,10 +1251,185 @@ pub fn on_the_fly_test_support_probe_v1(
         negative_contribution_factor_count,
         established_negative_contribution_factor_count,
         source_domain_equal: compact_source_domain(&seed)
-            == established_source_domain(authenticated, &query, &established)?,
+            == established_source_domain(authenticated, &established)?,
         pairing_oracle_equal,
         pairing_fermion_parity: trace.pairing_owner.fermion_parity,
         established_pairing_fermion_parity,
         workspace_capacity_independent,
+        compact_transition_candidates,
+        established_transition_candidates,
     })
+}
+
+#[cfg(test)]
+mod source_domain_tests {
+    use super::*;
+
+    fn digest(value: u8) -> SemanticDigest {
+        SemanticDigest::new([value; 32]).unwrap()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn rebuild_test_seed(
+        seed: OnTheFlyProcessSeedV1,
+        external_permutation: Vec<u32>,
+        coupling_order_policy: OnTheFlyCouplingOrderPolicyV1,
+        coupling_hierarchies: Vec<u32>,
+        coupling_limits: Vec<Option<u32>>,
+        normalization_semantic_digest: Option<SemanticDigest>,
+        source_semantic_digest: Option<SemanticDigest>,
+    ) -> OnTheFlyProcessSeedV1 {
+        let OnTheFlyProcessSeedV1 {
+            process_digest,
+            model_digest,
+            template_catalog_digest,
+            prepared_pack_digest,
+            direct_catalog_digest,
+            normalization_semantic_digest: original_normalization_semantic_digest,
+            normalization_convention,
+            source_anchors,
+            external_permutation: _,
+            coupling_order_policy: _,
+            coupling_hierarchies: _,
+            coupling_limits: _,
+            pairing_classes,
+            semantic_digest: _,
+        } = seed;
+        let mut source_anchors = source_anchors.into_vec();
+        if let Some(source_semantic_digest) = source_semantic_digest {
+            source_anchors[0].states[0].source_semantic_digest = source_semantic_digest;
+        }
+        OnTheFlyProcessSeedV1::new(
+            process_digest,
+            model_digest,
+            template_catalog_digest,
+            prepared_pack_digest,
+            direct_catalog_digest,
+            normalization_semantic_digest.unwrap_or(original_normalization_semantic_digest),
+            normalization_convention,
+            ExactComplexRational::ONE,
+            source_anchors,
+            external_permutation,
+            coupling_order_policy,
+            coupling_hierarchies,
+            coupling_limits,
+            pairing_classes.into_vec(),
+        )
+        .unwrap()
+    }
+
+    fn projection_domain_fixture(
+        normalization_semantic_digest: Option<SemanticDigest>,
+        source_semantic_digest: Option<SemanticDigest>,
+    ) -> (OnTheFlyProcessSeedV1, OnTheFlyProcessSeedV1) {
+        let base = scalar_adapter_test_seed(digest(1), digest(2), digest(3), digest(4)).unwrap();
+        let artifact_seed = rebuild_test_seed(
+            base.clone(),
+            vec![0, 1],
+            OnTheFlyCouplingOrderPolicyV1::Minimal,
+            vec![1, 2],
+            vec![None, None],
+            None,
+            None,
+        );
+        let retained_seed = rebuild_test_seed(
+            base,
+            vec![1, 0],
+            OnTheFlyCouplingOrderPolicyV1::Explicit,
+            vec![1, 1],
+            vec![Some(4), Some(0)],
+            normalization_semantic_digest,
+            source_semantic_digest,
+        );
+        (artifact_seed, retained_seed)
+    }
+
+    fn source_state(
+        state_index: u32,
+        public_helicity: i32,
+        current_state_template_id: u32,
+        source_template_id: u32,
+    ) -> ProcessSourceStateRow {
+        ProcessSourceStateRow {
+            source_slot: 0,
+            state_index,
+            public_helicity,
+            chirality: public_helicity,
+            spin_state: public_helicity,
+            current_state_template_id,
+            source_template_id,
+            momentum_sign: 1,
+            crossing_phase_factor_id: 0,
+        }
+    }
+
+    #[test]
+    fn established_source_domain_resolves_each_valid_state_by_its_own_template() {
+        let states = [source_state(0, -1, 16, 57), source_state(1, 1, 76, 23)];
+        let negative = established_source_state_for_template(0, &states, 57).unwrap();
+        let positive = established_source_state_for_template(0, &states, 23).unwrap();
+        assert_eq!(
+            (negative.state_index, negative.current_state_template_id),
+            (0, 16)
+        );
+        assert_eq!(
+            (positive.state_index, positive.current_state_template_id),
+            (1, 76)
+        );
+    }
+
+    #[test]
+    fn minimal_process_global_artifact_authenticates_explicit_flow_local_oracle_in_artifact_domain()
+    {
+        let (artifact_seed, retained_seed) = projection_domain_fixture(None, None);
+        assert_ne!(
+            retained_seed.semantic_digest(),
+            artifact_seed.semantic_digest()
+        );
+        let oracle = OnePublicRowOracle {
+            external_permutation: retained_seed.external_permutation().to_vec(),
+            public_helicities: vec![0, 0],
+            selector: OnTheFlyLcSelectorV1::Singlet,
+        };
+        assert!(
+            DecodedLcQueryV1::new(
+                &artifact_seed,
+                oracle.external_permutation.clone(),
+                &oracle.public_helicities,
+                oracle.selector.clone(),
+            )
+            .is_err()
+        );
+        let reconstructed =
+            reconstruct_seed_in_projection_domain(retained_seed, &artifact_seed).unwrap();
+        assert_eq!(
+            reconstructed.semantic_digest(),
+            artifact_seed.semantic_digest()
+        );
+        let query = DecodedLcQueryV1::new(
+            &artifact_seed,
+            artifact_seed.external_permutation().to_vec(),
+            &oracle.public_helicities,
+            oracle.selector,
+        )
+        .unwrap();
+        assert_eq!(query.process_seed_digest(), artifact_seed.semantic_digest());
+    }
+
+    #[test]
+    fn projection_domain_reconstruction_rejects_mutated_semantic_constituents() {
+        for (normalization_semantic_digest, source_semantic_digest) in
+            [(Some(digest(93)), None), (None, Some(digest(94)))]
+        {
+            let (artifact_seed, retained_seed) =
+                projection_domain_fixture(normalization_semantic_digest, source_semantic_digest);
+            let error =
+                reconstruct_seed_in_projection_domain(retained_seed, &artifact_seed).unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("semantic constituents do not authenticate")
+            );
+        }
+    }
 }

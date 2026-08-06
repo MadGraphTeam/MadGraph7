@@ -4167,6 +4167,52 @@ pub struct NativeOnTheFlyArtifactProbeV1 {
     pub established_builder_attempts: u32,
 }
 
+#[cfg(feature = "on-the-fly-test-support")]
+#[derive(Clone, Debug)]
+#[doc(hidden)]
+pub struct NativeOnTheFlyExecutionComponentV1 {
+    pub dependency_depth: u32,
+    pub semantic_digest: String,
+    pub component: u32,
+    pub on_the_fly: [f64; 2],
+    pub recurrence: [f64; 2],
+    pub on_the_fly_bits: [u64; 2],
+    pub recurrence_bits: [u64; 2],
+    pub absolute_delta: [f64; 2],
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+#[derive(Clone, Debug)]
+#[doc(hidden)]
+pub struct NativeOnTheFlyExecutionDiagnosticV1 {
+    pub on_the_fly_artifact_id: String,
+    pub on_the_fly_process_id: String,
+    pub recurrence_artifact_id: String,
+    pub recurrence_process_id: String,
+    pub seed_digest: String,
+    pub query_digest: String,
+    pub trace_digest: String,
+    pub direct_plan_semantic_digest: String,
+    pub direct_runtime_layout_digest: String,
+    pub public_flow_id: u32,
+    pub representative_flow_id: u32,
+    pub public_helicities: Vec<i32>,
+    pub public_direct_helicity_id: u32,
+    pub representative_direct_helicity_id: u32,
+    pub replay_phase: [f64; 2],
+    pub replay_multiplicity: u32,
+    pub replay_scale: [f64; 2],
+    pub on_the_fly_public_amplitude: [f64; 2],
+    pub recurrence_representative_amplitude: [f64; 2],
+    pub recurrence_public_amplitude: [f64; 2],
+    pub amplitude_absolute_delta: [f64; 2],
+    pub current_components: Vec<NativeOnTheFlyExecutionComponentV1>,
+    pub first_raw_bit_difference: Option<usize>,
+    pub raw_bit_difference_count: u32,
+    pub compared_current_count: u32,
+    pub excluded_direct_current_count: u32,
+}
+
 /// Python-independent schema-v3 process runtime.
 ///
 /// The input momentum layout is `[point][external particle][E, px, py, pz]`.

@@ -4,6 +4,7 @@ use crate::recurrence::direct_backend::{
     DIRECT_STATUS_OK, DirectArenaView, DirectContributionExecutor, DirectExecutionCounters,
     DirectExecutorCatalog, DirectExecutorHandle, DirectFactorView, DirectFinalizationExecutor,
     DirectMomentumView, DirectParameterView, DirectSourceExecutor,
+    begin_direct_current_observation, take_direct_current_observation,
 };
 use crate::recurrence::direct_plan::{
     DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION, DirectClosureRow, DirectContributionRow,
@@ -1092,6 +1093,44 @@ fn prepared_replay_selectors_cover_both_physical_flows_without_regeneration() {
     assert_eq!(activity.schedule_executions, 2);
     assert_eq!(activity.replay_schedule_executions, 2);
     assert_eq!(activity.replay_output_values_scaled, 4);
+}
+
+#[test]
+fn replay_observation_captures_representative_amplitude_before_single_public_scaling() {
+    let mut runtime = synthetic_runtime_with_lorentz(4);
+    let selector = runtime.prepare_replay_selector(1).unwrap();
+    begin_direct_current_observation(runtime.plan(), Some(selector.representative_flow_id()), 2)
+        .unwrap();
+
+    let output = runtime
+        .execute_replay_tile_from_external(&selector, 2, &external_two_point_momenta())
+        .unwrap();
+    let public = output
+        .destination_re(0)
+        .unwrap()
+        .iter()
+        .copied()
+        .zip(output.destination_im(0).unwrap().iter().copied())
+        .collect::<Vec<_>>();
+    let observation = take_direct_current_observation().unwrap();
+    let representative = &observation.amplitudes_before_replay[&0];
+
+    assert_eq!(representative, &[(-18.0, -6.0), (-27.0, -9.0)]);
+    let phase = selector.phase();
+    let multiplicity = f64::from(selector.multiplicity());
+    let expected_public = representative
+        .iter()
+        .map(|&(value_re, value_im)| {
+            let scale_re = phase.0 * multiplicity;
+            let scale_im = phase.1 * multiplicity;
+            (
+                value_re * scale_re - value_im * scale_im,
+                value_re * scale_im + value_im * scale_re,
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(public, expected_public);
+    assert_eq!(public, [(12.0, -36.0), (18.0, -54.0)]);
 }
 
 #[test]

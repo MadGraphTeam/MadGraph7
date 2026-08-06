@@ -126,6 +126,25 @@ struct OnTheFlyBuiltQueryFamilyV1 {
     momentum_forms: Box<[CanonicalMomentumLinearForm]>,
     exact_factors: Box<[ExactComplexRational]>,
     row_groups: Box<[OnTheFlyFamilyRowGroupV1]>,
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    observed_currents: Box<[OnTheFlyFamilyObservedCurrentDescriptorV1]>,
+}
+
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct OnTheFlyFamilyObservedCurrentDescriptorV1 {
+    semantic_digest: SemanticDigest,
+    stage: u32,
+    component_base: u32,
+    component_count: u32,
+}
+
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct OnTheFlyFamilyObservedCurrentV1 {
+    pub(crate) semantic_digest: SemanticDigest,
+    pub(crate) stage: u32,
+    pub(crate) values: Vec<(f64, f64)>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -451,6 +470,8 @@ fn build_query_family_from_traces(
     let mut union_ids = BTreeMap::<(SemanticDigest, CurrentCoreKey), u32>::new();
     let mut definitions =
         BTreeMap::<(SemanticDigest, CurrentCoreKey), FamilyCurrentDefinition>::new();
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    let mut observed_current_identities = BTreeMap::<u32, (SemanticDigest, u32, u32)>::new();
     let mut closure_definitions = Vec::<FamilyClosureIdentity>::new();
     let mut source_groups = BTreeSet::new();
     let mut contribution_groups = BTreeSet::new();
@@ -619,6 +640,31 @@ fn build_query_family_from_traces(
             let union_id = *union_ids.entry(family_key.clone()).or_insert(next);
             local_to_union.push(union_id);
             normalized_keys.push(family_key);
+        }
+        #[cfg(any(test, feature = "on-the-fly-test-support"))]
+        {
+            if trace.current_semantic_digests.len() != local_to_union.len() {
+                return Err(integrity(
+                    "query-local current semantic identities have an inconsistent length",
+                ));
+            }
+            for (local_id, union_id) in local_to_union.iter().copied().enumerate() {
+                let semantic_digest = trace.current_semantic_digests[local_id];
+                let stage = current_stage(&trace.current_keys[local_id])?;
+                let component_count = trace.current_component_ranges[local_id][1];
+                match observed_current_identities.entry(union_id) {
+                    std::collections::btree_map::Entry::Vacant(entry) => {
+                        entry.insert((semantic_digest, stage, component_count));
+                    }
+                    std::collections::btree_map::Entry::Occupied(entry)
+                        if *entry.get() == (semantic_digest, stage, component_count) => {}
+                    std::collections::btree_map::Entry::Occupied(_) => {
+                        return Err(integrity(
+                            "query-family union current has inconsistent observed identity",
+                        ));
+                    }
+                }
+            }
         }
 
         let mut local_definitions = trace
@@ -963,6 +1009,8 @@ fn build_query_family_from_traces(
         union_ids,
         definitions,
         closure_definitions,
+        #[cfg(any(test, feature = "on-the-fly-test-support"))]
+        observed_current_identities,
     )
 }
 
@@ -983,6 +1031,10 @@ fn materialize_query_family(
     union_ids: BTreeMap<(SemanticDigest, CurrentCoreKey), u32>,
     definitions: BTreeMap<(SemanticDigest, CurrentCoreKey), FamilyCurrentDefinition>,
     closure_definitions: Vec<FamilyClosureIdentity>,
+    #[cfg(any(test, feature = "on-the-fly-test-support"))] observed_current_identities: BTreeMap<
+        u32,
+        (SemanticDigest, u32, u32),
+    >,
 ) -> RusticolResult<OnTheFlyBuiltQueryFamilyV1> {
     type GroupKey = (SemanticDigest, u32);
     let mut records = std::iter::repeat_with(|| None)
@@ -1040,6 +1092,26 @@ fn materialize_query_family(
             "query-family materialized current shape differs from its census",
         ));
     }
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    let observed_currents = component_bases
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(current_id, component_base)| {
+            let current_id = checked_u32(current_id, "observed query-family current ID")?;
+            let (semantic_digest, stage, component_count) = observed_current_identities
+                .get(&current_id)
+                .copied()
+                .ok_or_else(|| integrity("query-family observed current identity is absent"))?;
+            Ok(OnTheFlyFamilyObservedCurrentDescriptorV1 {
+                semantic_digest,
+                stage,
+                component_base,
+                component_count,
+            })
+        })
+        .collect::<RusticolResult<Vec<_>>>()?
+        .into_boxed_slice();
 
     let mut momentum_ids = BTreeMap::new();
     let mut momentum_forms = Vec::new();
@@ -1320,6 +1392,8 @@ fn materialize_query_family(
         momentum_forms: momentum_forms.into_boxed_slice(),
         exact_factors: exact_factors.into_boxed_slice(),
         row_groups: row_groups.into_boxed_slice(),
+        #[cfg(any(test, feature = "on-the-fly-test-support"))]
+        observed_currents,
     })
 }
 
@@ -1863,6 +1937,56 @@ impl OnTheFlyFamilyWorkspaceV1 {
         Ok(())
     }
 
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    fn observed_currents(
+        &self,
+        descriptors: &[OnTheFlyFamilyObservedCurrentDescriptorV1],
+        point_index: u32,
+    ) -> RusticolResult<Vec<OnTheFlyFamilyObservedCurrentV1>> {
+        if point_index >= self.active_point_count {
+            return Err(invalid(
+                "query-family observed current point is outside the last successful execution",
+            ));
+        }
+        let stride = self.point_stride as usize;
+        let point_index = point_index as usize;
+        descriptors
+            .iter()
+            .map(|descriptor| {
+                let mut values = Vec::new();
+                values
+                    .try_reserve_exact(descriptor.component_count as usize)
+                    .map_err(|error| {
+                        invalid(format!(
+                            "query-family observed current allocation failed: {error}"
+                        ))
+                    })?;
+                for component in 0..descriptor.component_count as usize {
+                    let plane = descriptor.component_base as usize + component;
+                    let index = plane
+                        .checked_mul(stride)
+                        .and_then(|base| base.checked_add(point_index))
+                        .ok_or_else(|| {
+                            integrity("query-family observed current index exceeds usize")
+                        })?;
+                    values.push((
+                        *self.current_re.as_slice().get(index).ok_or_else(|| {
+                            integrity("query-family observed current real value is absent")
+                        })?,
+                        *self.current_im.as_slice().get(index).ok_or_else(|| {
+                            integrity("query-family observed current imaginary value is absent")
+                        })?,
+                    ));
+                }
+                Ok(OnTheFlyFamilyObservedCurrentV1 {
+                    semantic_digest: descriptor.semantic_digest,
+                    stage: descriptor.stage,
+                    values,
+                })
+            })
+            .collect()
+    }
+
     fn validate_output_shape(
         destination_count: u32,
         point_count: u32,
@@ -2358,6 +2482,21 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
             self.last_used = Some(index);
         }
         Ok(report)
+    }
+
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    pub(crate) fn observed_currents(
+        &self,
+        point_index: u32,
+    ) -> RusticolResult<Vec<OnTheFlyFamilyObservedCurrentV1>> {
+        let family = self
+            .pending
+            .as_ref()
+            .or_else(|| self.last_used.and_then(|index| self.families.get(index)))
+            .ok_or_else(|| invalid("query-family observation requires a prepared execution"))?;
+        family
+            .workspace
+            .observed_currents(&family.family.observed_currents, point_index)
     }
 }
 
@@ -3423,6 +3562,63 @@ mod tests {
             .unwrap();
         assert!(!report.cache_hit);
         assert_eq!(output, [(46.0, 0.0)]);
+    }
+
+    #[test]
+    fn observed_currents_never_fall_back_to_a_stale_successful_family() {
+        let catalog = direct_catalog();
+        let resolver = ProbeResolver::new(catalog.clone());
+        let (first, first_projection) =
+            OnTheFlyStructuralTraceV1::test_query_family_trace(0x81, factor(1));
+        let first_selected = [QueryFamilyTraceInput {
+            trace: &first,
+            projection: first_projection,
+        }];
+        let mut executor = OnTheFlyQueryFamilyExecutorV1::new(resolver);
+        let mut output = [(0.0, 0.0)];
+        executor.prepare(&catalog, &first_selected, 1).unwrap();
+        executor
+            .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
+            .unwrap();
+        assert!(!executor.observed_currents(0).unwrap().is_empty());
+
+        let (second, second_projection) =
+            OnTheFlyStructuralTraceV1::test_query_family_trace(0x82, factor(2));
+        let second_selected = [QueryFamilyTraceInput {
+            trace: &second,
+            projection: second_projection,
+        }];
+        executor.prepare(&catalog, &second_selected, 1).unwrap();
+        let prepared_error = executor.observed_currents(0).unwrap_err();
+        assert!(
+            prepared_error
+                .to_string()
+                .contains("outside the last successful execution")
+        );
+
+        executor
+            .resolver()
+            .state
+            .fail_role
+            .set(Some(DirectExecutorRole::Contribution));
+        executor
+            .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
+            .unwrap_err();
+        let failed_error = executor.observed_currents(0).unwrap_err();
+        assert!(
+            failed_error
+                .to_string()
+                .contains("outside the last successful execution")
+        );
+
+        executor.clear_families().unwrap();
+        assert!(
+            executor
+                .observed_currents(0)
+                .unwrap_err()
+                .to_string()
+                .contains("requires a prepared execution")
+        );
     }
 
     #[test]

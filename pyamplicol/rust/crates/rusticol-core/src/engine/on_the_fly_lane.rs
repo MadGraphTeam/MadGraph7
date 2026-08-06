@@ -22,11 +22,15 @@ use super::recurrence_lane::{
 use super::recurrence_load::on_the_fly_source_major_momenta_into;
 use super::*;
 use crate::direct_arena::DirectArenaTrafficCounters;
+#[cfg(feature = "on-the-fly-test-support")]
+use crate::recurrence::AuthenticatedRecurrenceBuilderInput;
 use crate::recurrence::PreparedDirectExecutorCatalog;
 use crate::recurrence::direct_backend::DirectExecutionCounters;
 use crate::recurrence::direct_runtime::DirectRuntimeActivityCounters;
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 use crate::recurrence::on_the_fly::OnTheFlyCouplingPolicyCensusV1;
+#[cfg(feature = "on-the-fly-test-support")]
+use crate::recurrence::on_the_fly::build_on_the_fly_selected_trace_against_seed_v1;
 use crate::recurrence::on_the_fly::{
     DecodedLcQueryV1, OnTheFlyProcessSeedV1, OnTheFlyQueryFamilyCensusV1,
     OnTheFlyQueryFamilyExecutionReportV1, OnTheFlyQueryFamilyExecutorV1,
@@ -37,6 +41,25 @@ use crate::recurrence::on_the_fly::{
 use crate::recurrence::template::ValidatedRecurrenceTemplateInput;
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
+
+#[cfg(feature = "on-the-fly-test-support")]
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct OnTheFlyExecutionDiagnosticCurrentV1 {
+    pub(super) semantic_digest: crate::recurrence::SemanticDigest,
+    pub(super) stage: u32,
+    pub(super) values: Vec<(f64, f64)>,
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct OnTheFlyExecutionDiagnosticSnapshotV1 {
+    pub(super) seed_digest: crate::recurrence::SemanticDigest,
+    pub(super) query_digest: crate::recurrence::SemanticDigest,
+    pub(super) trace_digest: crate::recurrence::SemanticDigest,
+    pub(super) raw_amplitude: (f64, f64),
+    pub(super) prepared_parameters: Vec<(f64, f64)>,
+    pub(super) currents: Vec<OnTheFlyExecutionDiagnosticCurrentV1>,
+}
 
 /// One public resolved-output destination represented by a selector-local
 /// trace.  The coefficient is the established helicity-orbit times LC color
@@ -286,6 +309,71 @@ impl OnTheFlyNativeRuntime {
 
     pub(super) const fn seed(&self) -> &OnTheFlyProcessSeedV1 {
         &self.seed
+    }
+
+    /// Execute one retained public query through the production batched
+    /// query-family path and expose point-zero current values for diagnostics.
+    /// This remains absent from release builds and does not alter row grouping.
+    #[cfg(feature = "on-the-fly-test-support")]
+    pub(super) fn execution_diagnostic_v1(
+        &mut self,
+        authenticated: &AuthenticatedRecurrenceBuilderInput,
+        selected_public_flow_id: u32,
+        public_helicities: &[i32],
+        point_major_momenta: &[f64],
+        runtime_parameters: &[f64],
+    ) -> RusticolResult<OnTheFlyExecutionDiagnosticSnapshotV1> {
+        let selected = build_on_the_fly_selected_trace_against_seed_v1(
+            authenticated,
+            &self.direct_catalog,
+            &self.seed,
+            selected_public_flow_id,
+            public_helicities,
+            true,
+        )?;
+        let request = OnTheFlyLcQueryRequestV1::new(
+            selected.query.clone(),
+            vec![OnTheFlyLcReductionTargetV1::new(0, 0, 1.0)?],
+        )?;
+        self.prepare_lc_queries(std::slice::from_ref(&request), 1)?;
+        let destination = self
+            .current_family()
+            .and_then(|family| family.amplitude_destinations.first())
+            .copied()
+            .flatten()
+            .ok_or_else(|| {
+                RusticolError::invalid_argument(
+                    "on-the-fly execution diagnostic selected a structural-zero query",
+                )
+            })?;
+        let _ = self.execute_amplitudes(point_major_momenta, 1, runtime_parameters)?;
+        let raw_amplitude = *self
+            .amplitude_scratch
+            .get(destination)
+            .ok_or_else(|| RusticolError::integrity("on-the-fly diagnostic amplitude is absent"))?;
+        let currents = self
+            .executor
+            .observed_currents(0)?
+            .into_iter()
+            .map(|current| OnTheFlyExecutionDiagnosticCurrentV1 {
+                semantic_digest: current.semantic_digest,
+                stage: current.stage,
+                values: current.values,
+            })
+            .collect();
+        let prepared_parameters = projected_prepared_parameter_values(
+            &self.parameter_defaults,
+            &self.parameter_projection,
+            runtime_parameters,
+        )?;
+        Ok(OnTheFlyExecutionDiagnosticSnapshotV1 {
+            seed_digest: selected.seed.semantic_digest(),
+            query_digest: selected.query.semantic_digest(),
+            trace_digest: selected.trace.semantic_digest(),
+            raw_amplitude,
+            prepared_parameters,
+            currents,
+        })
     }
 
     #[cfg(any(test, feature = "on-the-fly-test-support"))]

@@ -135,6 +135,10 @@ pub(super) struct PreparedTransition {
     canonical_input_order: [u32; 2],
     input_exchange_factor: Option<ExactComplexRational>,
     pub(super) base_factor: ExactComplexRational,
+    #[cfg(feature = "on-the-fly-test-support")]
+    pub(super) transition_factor: ExactComplexRational,
+    #[cfg(feature = "on-the-fly-test-support")]
+    pub(super) contraction_factor: ExactComplexRational,
     coupling_authenticated: bool,
     binding_coupling: ExactComplexRational,
     output_factor_source: u8,
@@ -244,6 +248,10 @@ impl PreparedTransition {
             canonical_input_order,
             input_exchange_factor,
             base_factor,
+            #[cfg(feature = "on-the-fly-test-support")]
+            transition_factor: transition_exact_factor,
+            #[cfg(feature = "on-the-fly-test-support")]
+            contraction_factor: contraction_exact_factor,
             coupling_authenticated: quantum_coupling == binding_coupling,
             binding_coupling,
             output_factor_source: row.output_factor_source,

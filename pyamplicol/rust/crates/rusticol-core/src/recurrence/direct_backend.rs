@@ -41,7 +41,7 @@ thread_local! {
 /// runtime.  This is deliberately absent from release builds and public ABIs.
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct DirectObservedCurrentValue {
+pub(crate) struct DirectObservedCurrentValue {
     pub descriptor: super::direct_plan::DirectCurrentDescriptor,
     /// Split-complex values in component-major, then point-major order.
     pub values: Vec<(f64, f64)>,
@@ -52,16 +52,19 @@ pub(super) struct DirectObservedCurrentValue {
 /// authenticated schedule and query which produced them.
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 #[derive(Clone, Debug, PartialEq)]
-pub(super) struct DirectCurrentObservation {
+pub(crate) struct DirectCurrentObservation {
     pub plan_semantic_digest: SemanticDigest,
     pub runtime_layout_digest: SemanticDigest,
     pub selected_sector_id: Option<u32>,
     pub point_count: u32,
     pub currents: BTreeMap<u32, DirectObservedCurrentValue>,
+    /// Representative amplitudes captured after closures and before replay
+    /// phase/multiplicity scaling, keyed by DirectPlan destination ID.
+    pub amplitudes_before_replay: BTreeMap<u32, Vec<(f64, f64)>>,
 }
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
-pub(super) fn begin_direct_current_observation(
+pub(crate) fn begin_direct_current_observation(
     plan: &DirectRecurrencePlan,
     selected_sector_id: Option<u32>,
     point_count: u32,
@@ -84,19 +87,69 @@ pub(super) fn begin_direct_current_observation(
             selected_sector_id,
             point_count,
             currents: BTreeMap::new(),
+            amplitudes_before_replay: BTreeMap::new(),
         });
         Ok(())
     })
 }
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
-pub(super) fn take_direct_current_observation() -> RusticolResult<DirectCurrentObservation> {
+pub(crate) fn take_direct_current_observation() -> RusticolResult<DirectCurrentObservation> {
     DIRECT_CURRENT_OBSERVATION.with(|slot| {
         slot.borrow_mut().take().ok_or_else(|| {
             RusticolError::invalid_argument(
                 "direct current observation is not active on this thread",
             )
         })
+    })
+}
+
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+pub(super) fn observe_direct_amplitudes_before_replay(
+    plan: &DirectRecurrencePlan,
+    selected_sector_id: Option<u32>,
+    workspace: &DirectWorkspace<'_>,
+    point_count: u32,
+) -> RusticolResult<()> {
+    let active = DIRECT_CURRENT_OBSERVATION.with(|slot| slot.borrow().is_some());
+    if !active {
+        return Ok(());
+    }
+    DIRECT_CURRENT_OBSERVATION.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        let observation = slot.as_mut().ok_or_else(|| {
+            RusticolError::integrity("direct current observation disappeared before amplitudes")
+        })?;
+        if observation.plan_semantic_digest != plan.semantic_digest()
+            || observation.runtime_layout_digest != plan.runtime_layout_digest()
+            || observation.selected_sector_id != selected_sector_id
+            || observation.point_count != point_count
+        {
+            return Err(RusticolError::integrity(
+                "direct amplitude observation does not match this plan execution",
+            ));
+        }
+        let stride = workspace.point_stride as usize;
+        let active_points = point_count as usize;
+        for destination in plan.amplitude_destinations().iter().filter(|destination| {
+            selected_sector_id.is_none_or(|sector| destination.target_sector_id == sector)
+        }) {
+            let start = destination.id as usize * stride;
+            let end = start.checked_add(active_points).ok_or_else(|| {
+                RusticolError::integrity("direct amplitude observation range overflows usize")
+            })?;
+            let real = workspace.amplitude_re.get(start..end).ok_or_else(|| {
+                RusticolError::integrity("direct amplitude observation real range is absent")
+            })?;
+            let imag = workspace.amplitude_im.get(start..end).ok_or_else(|| {
+                RusticolError::integrity("direct amplitude observation imaginary range is absent")
+            })?;
+            observation.amplitudes_before_replay.insert(
+                destination.id,
+                real.iter().copied().zip(imag.iter().copied()).collect(),
+            );
+        }
+        Ok(())
     })
 }
 
@@ -674,7 +727,7 @@ fn execute_direct_plan_impl<const PROFILE: bool>(
             })?;
             let started = PROFILE.then(Instant::now);
             execute_certified_reuse_rows(rows, workspace, point_count)?;
-            #[cfg(test)]
+            #[cfg(any(test, feature = "on-the-fly-test-support"))]
             observe_direct_current_rows(
                 plan,
                 descriptor,

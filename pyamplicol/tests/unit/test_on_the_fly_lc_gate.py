@@ -20,7 +20,7 @@ from tools.developer import on_the_fly_lc_gate as gate
 
 
 def _write_execution(root: Path, payload: object) -> None:
-    process = root / "processes" / "fixture_process"
+    process = root / "processes" / gate.PROCESS_ID
     process.mkdir(parents=True)
     (process / "execution.json").write_text(json.dumps(payload), encoding="utf-8")
 
@@ -279,12 +279,99 @@ def _runtime(
         execution_mode=mode,
         artifact_id=artifact_id,
         physics=SimpleNamespace(
-            process_id="fixture_process",
+            process_id=gate.PROCESS_ID,
             process=process,
             color_accuracy="lc",
+            external_particles=tuple(
+                SimpleNamespace(pdg_id=pdg) for pdg in gate.EXTERNAL_PDGS
+            ),
             color_flows=flows,
             helicities=helicities,
         ),
+    )
+
+
+def _fixed_authority_physics(
+    flow: SimpleNamespace,
+    helicity: SimpleNamespace,
+    *,
+    process: str = gate.PROCESS,
+    color_accuracy: str = "lc",
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        process_id=gate.PROCESS_ID,
+        process=process,
+        color_accuracy=color_accuracy,
+        external_particles=tuple(
+            SimpleNamespace(pdg_id=pdg) for pdg in gate.EXTERNAL_PDGS
+        ),
+        color_flows=(flow,),
+        helicities=(helicity,),
+    )
+
+
+def _fake_public_phase() -> gate.PublicGatePhase:
+    resolved = SimpleNamespace(
+        helicity_ids=(gate.HELICITY_ID,),
+        color_ids=(gate.FLOW_ID,),
+        values=(((1.0,),),),
+        total=lambda: (1.0,),
+    )
+    evaluation = gate.PublicEvaluation(total=(1.0,), resolved=resolved)
+    correctness = gate.DualAuthorityCorrectness(
+        recurrence_selected=evaluation,
+        recurrence_all_flow=evaluation,
+        compiled_selected=evaluation,
+        compiled_all_flow=evaluation,
+        on_the_fly_selected=evaluation,
+        on_the_fly_all_flow=evaluation,
+        public_correctness={"public": "green"},
+        clear_checks={"clear": "green"},
+    )
+    candidate = SimpleNamespace(
+        artifact_id="a" * 64,
+        execution_mode="on-the-fly",
+    )
+    recurrence_selected = SimpleNamespace(
+        artifact_id="b" * 64,
+        execution_mode="recurrence",
+    )
+    recurrence_all = SimpleNamespace(
+        artifact_id="c" * 64,
+        execution_mode="recurrence",
+    )
+    compiled_selected = SimpleNamespace(
+        artifact_id="d" * 64,
+        execution_mode="compiled",
+    )
+    compiled_all = SimpleNamespace(
+        artifact_id="e" * 64,
+        execution_mode="compiled",
+    )
+    timing = {"wall_seconds_per_point": 1.0}
+    return gate.PublicGatePhase(
+        runtime=candidate,
+        selected_recurrence_runtime=recurrence_selected,
+        all_flow_recurrence_runtime=recurrence_all,
+        compiled_selected_runtime=compiled_selected,
+        compiled_all_flow_runtime=compiled_all,
+        comparator_selectors=(),
+        points=((((1.0,),),),),
+        timing_points=((((1.0,),),),),
+        correctness=correctness,
+        artifact_contract={"artifact_id": "a" * 64},
+        load_seconds=0.01,
+        public_profiles={
+            "selected_flow_helicity_sum": {"status": "profiled"},
+            "all_flow_single_helicity": {"status": "profiled"},
+        },
+        timings={
+            lane: {
+                "selected_flow_helicity_sum": timing,
+                "all_flow_single_helicity": timing,
+            }
+            for lane in ("on_the_fly", "recurrence", "compiled")
+        },
     )
 
 
@@ -350,6 +437,401 @@ def test_resolved_authority_checks_each_component_not_only_the_total() -> None:
     )
     with pytest.raises(gate.GateError, match="disagrees"):
         gate._resolved_component_checks(candidate, reference, "canceling components")
+
+
+def test_dual_authority_correctness_uses_public_ids_and_clears_once_in_order() -> None:
+    events: list[str] = []
+    points = tuple((((float(index),),),) for index in range(len(gate.SEEDS)))
+
+    class Resolved:
+        def __init__(
+            self,
+            helicity_ids: tuple[str, ...],
+            color_ids: tuple[str, ...],
+            component_rows: tuple[tuple[float, ...], ...],
+        ) -> None:
+            self.helicity_ids = helicity_ids
+            self.color_ids = color_ids
+            self.values = tuple(
+                tuple(
+                    tuple(
+                        component_rows[helicity][color]
+                        for color in range(len(color_ids))
+                    )
+                    for helicity in range(len(helicity_ids))
+                )
+                for _point in points
+            )
+
+        def total(self) -> tuple[float, ...]:
+            return tuple(
+                sum(value for helicity in point for value in helicity)
+                for point in self.values
+            )
+
+    selected_recurrence = Resolved(
+        ("h:first", "h:second"), (gate.FLOW_ID,), ((1.0,), (2.0,))
+    )
+    selected_compiled = Resolved(
+        ("h:second", "h:first"), (gate.FLOW_ID,), ((2.0,), (1.0,))
+    )
+    all_flow_recurrence = Resolved(
+        (gate.HELICITY_ID,), ("flow:first", "flow:second"), ((4.0, 5.0),)
+    )
+    all_flow_compiled = Resolved(
+        (gate.HELICITY_ID,), ("flow:second", "flow:first"), ((5.0, 4.0),)
+    )
+
+    class Runtime:
+        def __init__(
+            self,
+            label: str,
+            selected: Resolved,
+            all_flow: Resolved,
+            *,
+            flow_ordinal: int,
+        ) -> None:
+            self.label = label
+            self.selected = selected
+            self.all_flow = all_flow
+            self.flow_ordinal = flow_ordinal
+
+        def _resolved(self, selectors: object) -> tuple[str, Resolved]:
+            if selectors == {"color_flows": (gate.FLOW_ID,)}:
+                return "selected", self.selected
+            if selectors == {"helicities": (gate.HELICITY_ID,)}:
+                return "all-flow", self.all_flow
+            raise AssertionError(
+                f"{self.label} received a native ordinal instead of a public ID: "
+                f"{selectors!r} (ordinal={self.flow_ordinal})"
+            )
+
+        def evaluate(self, _points: object, **selectors: object) -> tuple[float, ...]:
+            workload, resolved = self._resolved(selectors)
+            events.append(f"{self.label}:{workload}:total")
+            return resolved.total()
+
+        def evaluate_resolved(self, _points: object, **selectors: object) -> Resolved:
+            workload, resolved = self._resolved(selectors)
+            events.append(f"{self.label}:{workload}:resolved")
+            return resolved
+
+        def clear(self) -> None:
+            events.append(f"{self.label}:clear")
+
+    recurrence_selected_runtime = Runtime(
+        "recurrence-selected",
+        selected_recurrence,
+        all_flow_recurrence,
+        flow_ordinal=8,
+    )
+    recurrence_all_flow_runtime = Runtime(
+        "recurrence-all-flow",
+        selected_recurrence,
+        all_flow_recurrence,
+        flow_ordinal=8,
+    )
+    compiled_selected_runtime = Runtime(
+        "compiled-selected",
+        selected_compiled,
+        all_flow_compiled,
+        flow_ordinal=7,
+    )
+    compiled_all_flow_runtime = Runtime(
+        "compiled-all-flow",
+        selected_compiled,
+        all_flow_compiled,
+        flow_ordinal=7,
+    )
+    candidate_runtime = Runtime(
+        "on-the-fly",
+        selected_recurrence,
+        all_flow_recurrence,
+        flow_ordinal=99,
+    )
+
+    result = gate._dual_authority_correctness(
+        candidate_runtime,
+        recurrence_selected_runtime,
+        recurrence_all_flow_runtime,
+        compiled_selected_runtime,
+        compiled_all_flow_runtime,
+        points,
+    )
+
+    assert len(points) == 8
+    assert events == [
+        "recurrence-selected:selected:total",
+        "recurrence-selected:selected:resolved",
+        "recurrence-all-flow:all-flow:total",
+        "recurrence-all-flow:all-flow:resolved",
+        "compiled-selected:selected:total",
+        "compiled-selected:selected:resolved",
+        "compiled-all-flow:all-flow:total",
+        "compiled-all-flow:all-flow:resolved",
+        "on-the-fly:selected:total",
+        "on-the-fly:selected:resolved",
+        "on-the-fly:all-flow:total",
+        "on-the-fly:all-flow:resolved",
+        "on-the-fly:clear",
+        "on-the-fly:selected:total",
+        "on-the-fly:selected:resolved",
+        "on-the-fly:all-flow:total",
+        "on-the-fly:all-flow:resolved",
+    ]
+    assert (
+        result.public_correctness["selected_flow_helicity_sum"][
+            "recurrence_compiled_authority"
+        ]["resolved"]["checks"]
+        == 16
+    )
+    assert (
+        result.public_correctness["all_flow_single_helicity"][
+            "resolved_compiled_authority"
+        ]["checks"]
+        == 16
+    )
+    assert result.clear_checks["selected_resolved_compiled"]["checks"] == 16
+    assert events.count("on-the-fly:clear") == 1
+
+
+def test_public_gate_profiles_and_benchmarks_only_after_dual_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    flow = SimpleNamespace(id=gate.FLOW_ID, word=gate.FLOW_WORD, index=0)
+    helicity = SimpleNamespace(
+        id=gate.HELICITY_ID,
+        values=gate.HELICITY_VALUES,
+        structural_zero=False,
+    )
+    physics = _fixed_authority_physics(flow, helicity)
+    candidate = SimpleNamespace(execution_mode="on-the-fly", artifact_id="a" * 64)
+    authorities = {
+        tmp_path / "recurrence-selected": SimpleNamespace(
+            execution_mode="recurrence", artifact_id="b" * 64, physics=physics
+        ),
+        tmp_path / "recurrence-all": SimpleNamespace(
+            execution_mode="recurrence", artifact_id="c" * 64, physics=physics
+        ),
+        tmp_path / "compiled-selected": SimpleNamespace(
+            execution_mode="compiled", artifact_id="d" * 64, physics=physics
+        ),
+        tmp_path / "compiled-all": SimpleNamespace(
+            execution_mode="compiled", artifact_id="e" * 64, physics=physics
+        ),
+    }
+    artifact = tmp_path / "candidate"
+
+    def load(path: Path, **_kwargs: object) -> object:
+        return candidate if Path(path) == artifact else authorities[Path(path)]
+
+    def correctness(*_args: object) -> gate.DualAuthorityCorrectness:
+        events.append("correctness")
+        return _fake_public_phase().correctness
+
+    def profile(*_args: object, **_kwargs: object) -> dict[str, object]:
+        events.append("profile")
+        return {"status": "profiled"}
+
+    def benchmark(*_args: object, **_kwargs: object) -> dict[str, object]:
+        events.append("benchmark")
+        return {"wall_seconds_per_point": 1.0}
+
+    monkeypatch.setattr(gate.Runtime, "load", load)
+    monkeypatch.setattr(gate, "_on_the_fly_artifact_contract", lambda *_args: {})
+    monkeypatch.setattr(gate, "_points", lambda: ((((1.0,),),),))
+    monkeypatch.setattr(gate, "_dual_authority_correctness", correctness)
+    monkeypatch.setattr(gate, "_on_the_fly_public_profile", profile)
+    monkeypatch.setattr(gate, "_benchmark_runtime", benchmark)
+
+    result = gate._run_public_gate_phase(
+        artifact,
+        tmp_path / "recurrence-selected",
+        tmp_path / "recurrence-all",
+        tmp_path / "compiled-selected",
+        tmp_path / "compiled-all",
+        0.1,
+        1,
+    )
+
+    assert result.correctness.public_correctness == {"public": "green"}
+    assert events == ["correctness", "profile", "profile"] + ["benchmark"] * 6
+
+
+@pytest.mark.parametrize(
+    ("defect", "message"),
+    (
+        ("process", "wrong canonical process identity"),
+        ("color", "not an LC recurrence authority"),
+        ("pdgs", "wrong external PDG ordering"),
+    ),
+)
+def test_public_gate_rejects_wrong_comparator_physics_before_correctness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    defect: str,
+    message: str,
+) -> None:
+    flow = SimpleNamespace(id=gate.FLOW_ID, word=gate.FLOW_WORD, index=0)
+    helicity = SimpleNamespace(
+        id=gate.HELICITY_ID,
+        values=gate.HELICITY_VALUES,
+        structural_zero=False,
+    )
+    physics = _fixed_authority_physics(
+        flow,
+        helicity,
+        process="u u~ > t t~ g g" if defect == "process" else gate.PROCESS,
+        color_accuracy="full" if defect == "color" else "lc",
+    )
+    if defect == "pdgs":
+        physics.external_particles = tuple(
+            SimpleNamespace(pdg_id=pdg) for pdg in (2, -2, 6, -6, 21, 21)
+        )
+    candidate_path = tmp_path / "candidate"
+    authorities = {
+        tmp_path / "recurrence-selected": SimpleNamespace(
+            execution_mode="recurrence", physics=physics
+        ),
+        tmp_path / "recurrence-all": SimpleNamespace(
+            execution_mode="recurrence", physics=physics
+        ),
+        tmp_path / "compiled-selected": SimpleNamespace(
+            execution_mode="compiled", physics=physics
+        ),
+        tmp_path / "compiled-all": SimpleNamespace(
+            execution_mode="compiled", physics=physics
+        ),
+    }
+
+    def load(path: Path, **_kwargs: object) -> object:
+        if Path(path) == candidate_path:
+            return SimpleNamespace(execution_mode="on-the-fly")
+        return authorities[Path(path)]
+
+    monkeypatch.setattr(gate.Runtime, "load", load)
+    monkeypatch.setattr(gate, "_on_the_fly_artifact_contract", lambda *_args: {})
+    monkeypatch.setattr(
+        gate,
+        "_dual_authority_correctness",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("correctness ran with an invalid authority")
+        ),
+    )
+
+    with pytest.raises(gate.GateError, match=message):
+        gate._run_public_gate_phase(
+            candidate_path,
+            tmp_path / "recurrence-selected",
+            tmp_path / "recurrence-all",
+            tmp_path / "compiled-selected",
+            tmp_path / "compiled-all",
+            0.1,
+            1,
+        )
+
+
+def test_comparator_physics_accepts_mapping_external_particles() -> None:
+    flow = SimpleNamespace(id=gate.FLOW_ID, word=gate.FLOW_WORD, index=0)
+    helicity = SimpleNamespace(
+        id=gate.HELICITY_ID,
+        values=gate.HELICITY_VALUES,
+        structural_zero=False,
+    )
+    physics = _fixed_authority_physics(flow, helicity)
+    physics.external_particles = tuple({"pdg_id": pdg} for pdg in gate.EXTERNAL_PDGS)
+    runtime = SimpleNamespace(execution_mode="recurrence", physics=physics)
+
+    assert (
+        gate._validate_comparator_physics(runtime, "recurrence", "mapping") is physics
+    )
+
+
+@pytest.mark.parametrize(
+    "particle", ({"pdg_id": "1"}, {"pdg_id": True}, {"pdg": 1}, {})
+)
+def test_comparator_physics_rejects_malformed_mapping_pdg(
+    particle: dict[str, object],
+) -> None:
+    flow = SimpleNamespace(id=gate.FLOW_ID, word=gate.FLOW_WORD, index=0)
+    helicity = SimpleNamespace(
+        id=gate.HELICITY_ID,
+        values=gate.HELICITY_VALUES,
+        structural_zero=False,
+    )
+    physics = _fixed_authority_physics(flow, helicity)
+    physics.external_particles = (
+        particle,
+        *({"pdg_id": pdg} for pdg in gate.EXTERNAL_PDGS[1:]),
+    )
+    runtime = SimpleNamespace(execution_mode="recurrence", physics=physics)
+
+    with pytest.raises(
+        gate.GateError, match="external particle 0 has an invalid PDG ID"
+    ):
+        gate._validate_comparator_physics(runtime, "recurrence", "mapping")
+
+
+def test_public_correctness_only_report_skips_every_private_lane(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    forbidden = (
+        "_generate_candidate_with_prepared_model",
+        "_generate_probe_carrier",
+        "_probe",
+        "_family_probe",
+        "_hidden_timing",
+        "_hidden_family_timing",
+        "_hidden_family_correctness",
+        "_query_family_census",
+    )
+
+    def reject(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("provisional public-only mode entered a private lane")
+
+    for symbol in forbidden:
+        monkeypatch.setattr(gate, symbol, reject)
+    monkeypatch.setattr(
+        gate, "_run_public_gate_phase", lambda *_args: _fake_public_phase()
+    )
+    monkeypatch.setattr(gate, "point_digest", lambda *_args: "point-digest")
+
+    result = gate._run_public_correctness_only(
+        tmp_path,
+        None,
+        candidate,
+        tmp_path / "recurrence-selected",
+        tmp_path / "recurrence-all",
+        tmp_path / "compiled-selected",
+        tmp_path / "compiled-all",
+        0.1,
+        1,
+    )
+
+    assert result["status"] == "passed"
+    assert result["scope"] == "provisional-public-correctness-only"
+    assert result["provisional"] is True
+    assert result["public_only"] is True
+    assert result["full_gate_status"] == "not-run"
+    assert result["source_bound"] is False
+    assert result["source_binding"] == "not-asserted"
+    assert result["candidate_source"] == "reused-existing-artifact"
+    assert result["private_probe_carrier"]["status"] == "skipped"
+    assert result["private_census"]["status"] == "unavailable"
+    assert result["private_timing"]["status"] == "unavailable"
+    assert set(result["public_timings"]) == {
+        "selected_flow_helicity_sum",
+        "all_flow_single_helicity",
+    }
+    outer = gate._driver_report(result, {"passes": True})
+    assert outer["source_bound"] is False
+    assert outer["source_binding"] == "not-asserted"
+    assert outer["provisional"] is True
 
 
 def test_real_candidate_contract_and_profile_never_open_dense_physics(
@@ -1092,7 +1574,7 @@ def test_compiled_census_selects_one_exact_child_without_summing_alternatives(
     program["color_selector_executions"].append(
         {"materialized_sector_id": 8, "execution": alternative}
     )
-    execution_path = selected / "processes" / "fixture_process" / "execution.json"
+    execution_path = selected / "processes" / gate.PROCESS_ID / "execution.json"
     execution_path.write_text(json.dumps(selected_payload), encoding="utf-8")
     with pytest.raises(gate.GateError, match="absent or ambiguous"):
         gate._compiled_artifact_census(selected, workload="selected_flow_helicity_sum")
@@ -1241,7 +1723,143 @@ def test_cli_launches_one_worker_with_cross_platform_30_gib_guard(
     assert gate._physical_footprint_probe() is None
 
 
-def test_prepared_model_load_precedes_generation_and_is_forwarded(
+def test_public_correctness_only_cli_reuses_candidate_in_same_guarded_worker(
+    tmp_path: Path,
+) -> None:
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    arguments = gate._parser().parse_args(
+        [
+            "--output",
+            "out",
+            "--candidate-artifact",
+            str(candidate),
+            "--public-correctness-only",
+            "--recurrence-selected-artifact",
+            "recurrence-selected",
+            "--recurrence-all-flow-artifact",
+            "recurrence-all-flow",
+            "--compiled-selected-artifact",
+            "compiled-selected",
+            "--compiled-all-flow-artifact",
+            "compiled-all-flow",
+        ]
+    )
+
+    command = gate._worker_command(arguments, tmp_path / "guarded-output")
+    assert command.count("--worker") == 1
+    assert command.count("--public-correctness-only") == 1
+    assert command[command.index("--candidate-artifact") + 1] == str(
+        candidate.resolve()
+    )
+    assert "--prepared-model" not in command
+    assert gate.WATCHDOG_BYTES == 30 * gate.GIB
+
+    arguments.public_correctness_only = False
+    with pytest.raises(gate.GateError, match="full gate requires"):
+        gate._worker_command(arguments, tmp_path / "rejected")
+
+
+def test_default_worker_dispatches_full_lane(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "output"
+    output.mkdir()
+    prepared = tmp_path / "model.pyamplicol-model"
+    prepared.write_bytes(b"prepared")
+    arguments = gate._parser().parse_args(
+        [
+            "--worker",
+            "--output",
+            str(output),
+            "--prepared-model",
+            str(prepared),
+            "--recurrence-selected-artifact",
+            "recurrence-selected",
+            "--recurrence-all-flow-artifact",
+            "recurrence-all-flow",
+            "--compiled-selected-artifact",
+            "compiled-selected",
+            "--compiled-all-flow-artifact",
+            "compiled-all-flow",
+        ]
+    )
+    events: list[str] = []
+
+    def full(*_args: object, **_kwargs: object) -> dict[str, object]:
+        events.append("full-private-lane")
+        return {"kind": "pyamplicol-on-the-fly-lc-gate", "status": "passed"}
+
+    monkeypatch.setattr(gate, "_run", full)
+    monkeypatch.setattr(
+        gate,
+        "_run_public_correctness_only",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("default worker dispatched provisional lane")
+        ),
+    )
+
+    assert gate._worker_main(arguments) == 0
+    assert events == ["full-private-lane"]
+    assert json.loads((output / "worker.json").read_text())["status"] == "passed"
+
+
+def test_public_only_worker_mismatch_cannot_report_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "output"
+    output.mkdir()
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    arguments = gate._parser().parse_args(
+        [
+            "--worker",
+            "--output",
+            str(output),
+            "--candidate-artifact",
+            str(candidate),
+            "--public-correctness-only",
+            "--recurrence-selected-artifact",
+            "recurrence-selected",
+            "--recurrence-all-flow-artifact",
+            "recurrence-all-flow",
+            "--compiled-selected-artifact",
+            "compiled-selected",
+            "--compiled-all-flow-artifact",
+            "compiled-all-flow",
+        ]
+    )
+
+    monkeypatch.setattr(
+        gate,
+        "_run_public_gate_phase",
+        lambda *_args: (_ for _ in ()).throw(gate.GateError("public disagrees")),
+    )
+    monkeypatch.setattr(
+        gate,
+        "_on_the_fly_public_profile",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("profile ran after public mismatch")
+        ),
+    )
+    monkeypatch.setattr(
+        gate,
+        "_benchmark_runtime",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("benchmark ran after public mismatch")
+        ),
+    )
+
+    assert gate._worker_main(arguments) == 1
+    worker = json.loads((output / "worker.json").read_text())
+    assert worker["status"] == "failed"
+    assert worker["scope"] == "provisional-public-correctness-only"
+    assert "disagrees" in worker["error"]
+
+
+def test_prepared_model_load_precedes_candidate_generation_without_carrier(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1249,7 +1867,6 @@ def test_prepared_model_load_precedes_generation_and_is_forwarded(
     path.write_bytes(b"prepared")
     events: list[object] = []
     compiled = object()
-    retained = gate.RetainedInputs(object(), object(), b"{}", "a" * 64)
 
     class Source:
         def compile(self) -> object:
@@ -1272,28 +1889,27 @@ def test_prepared_model_load_precedes_generation_and_is_forwarded(
             "materialized_process_lane_count": 0,
         }
 
-    def generate_carrier(artifact: Path, model: object) -> gate.RetainedInputs:
-        events.append(("generate-carrier", artifact, model))
-        return retained
-
     monkeypatch.setattr(gate.ModelSource, "from_path", from_path)
     monkeypatch.setattr(gate, "_generate_on_the_fly", generate_candidate)
-    monkeypatch.setattr(gate, "_generate_probe_carrier", generate_carrier)
-
-    result = gate._generate_with_prepared_model(
-        tmp_path / "artifact", tmp_path / "carrier", path
+    monkeypatch.setattr(
+        gate,
+        "_generate_probe_carrier",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("candidate generation created a private carrier")
+        ),
     )
+
+    result = gate._generate_candidate_with_prepared_model(tmp_path / "artifact", path)
 
     assert events == [
         ("path", path.resolve()),
         "load",
         ("generate-candidate", tmp_path / "artifact", compiled),
-        ("generate-carrier", tmp_path / "carrier", compiled),
     ]
     assert result[0] == 2.5
     assert result[1]["on_the_fly_seed_batch_binding_call_count"] == 1
     assert result[1]["on_the_fly_seed_build_count"] == 1
-    assert result[2:4] == (retained, path.resolve())
+    assert result[2:4] == (compiled, path.resolve())
     assert result[4] >= 0.0
 
 
@@ -1400,7 +2016,7 @@ def test_candidate_generation_rejects_materialized_source_projection_field(
     assert native_binding_called is False
 
 
-def test_public_candidate_mismatch_fails_before_any_private_probe_can_pass(
+def test_public_candidate_mismatch_fails_before_any_timing_or_private_probe(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1417,7 +2033,7 @@ def test_public_candidate_mismatch_fails_before_any_private_probe_can_pass(
         index=0,
         structural_zero=False,
     )
-    physics = SimpleNamespace(color_flows=(flow,), helicities=(helicity,))
+    physics = _fixed_authority_physics(flow, helicity)
 
     class Resolved:
         helicity_ids = (gate.HELICITY_ID,)
@@ -1429,8 +2045,10 @@ def test_public_candidate_mismatch_fails_before_any_private_probe_can_pass(
             return (1.0,)
 
     class Authority:
-        execution_mode = "recurrence"
         artifact_id = "b" * 64
+
+        def __init__(self, execution_mode: str) -> None:
+            self.execution_mode = execution_mode
 
         @staticmethod
         def evaluate_resolved(*_args: object, **_kwargs: object) -> Resolved:
@@ -1458,12 +2076,13 @@ def test_public_candidate_mismatch_fails_before_any_private_probe_can_pass(
             return Resolved()
 
     candidate = Candidate()
-    authority = Authority()
-    authority.physics = physics
-    retained = gate.RetainedInputs(object(), object(), b"{}", "c" * 64)
+    recurrence_authority = Authority("recurrence")
+    recurrence_authority.physics = physics
+    compiled_authority = Authority("compiled")
+    compiled_authority.physics = physics
     monkeypatch.setattr(
         gate,
-        "_generate_with_prepared_model",
+        "_generate_candidate_with_prepared_model",
         lambda *_args: (
             0.1,
             {
@@ -1473,7 +2092,7 @@ def test_public_candidate_mismatch_fails_before_any_private_probe_can_pass(
                 "recurrence_lowering_call_count": 0,
                 "materialized_process_lane_count": 0,
             },
-            retained,
+            object(),
             tmp_path / "model.pyamplicol-model",
             0.01,
         ),
@@ -1486,17 +2105,28 @@ def test_public_candidate_mismatch_fails_before_any_private_probe_can_pass(
         if path == output / "artifact":
             return candidate
         if path in (selected, all_flow):
-            return authority
-        if path.name == "recurrence-artifact":
-            return authority
+            return recurrence_authority
+        if path in (compiled_selected, compiled_all):
+            return compiled_authority
         raise AssertionError(f"unexpected load before mismatch: {path}")
 
     monkeypatch.setattr(gate.Runtime, "load", load)
+
+    def forbidden_timing(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("timing ran before dual-authority correctness passed")
+
+    for symbol in (
+        "_on_the_fly_public_profile",
+        "_hidden_timing",
+        "_hidden_family_timing",
+        "_benchmark_runtime",
+    ):
+        monkeypatch.setattr(gate, symbol, forbidden_timing)
     monkeypatch.setattr(
         gate,
-        "_probe",
-        lambda: (_ for _ in ()).throw(
-            AssertionError("private probe ran before public authority check")
+        "_generate_probe_carrier",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("private carrier ran before public authority check")
         ),
     )
     with pytest.raises(gate.GateError, match="disagrees"):

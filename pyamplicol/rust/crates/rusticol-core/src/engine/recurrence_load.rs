@@ -14,6 +14,16 @@ use super::recurrence_manifest::*;
 use super::*;
 use crate::pacbin::{PacbinMemberKind, PacbinReader};
 #[cfg(feature = "on-the-fly-test-support")]
+use crate::recurrence::direct_backend::{
+    DirectCurrentObservation, begin_direct_current_observation, take_direct_current_observation,
+};
+#[cfg(feature = "on-the-fly-test-support")]
+use crate::recurrence::direct_runtime::{
+    DirectRecurrenceExecutionRuntime, DirectReplaySelectorPlan,
+};
+#[cfg(feature = "on-the-fly-test-support")]
+use crate::recurrence::on_the_fly::hash_current_key;
+#[cfg(feature = "on-the-fly-test-support")]
 use crate::recurrence::on_the_fly::{
     ON_THE_FLY_WORK_CENSUS_BASIS_V1, OnTheFlyForbiddenWorkGuardV1, OnTheFlyQueryFamilyExecutorV1,
     OnTheFlySelectedQueryTraceV1, OnTheFlyStructuralInterpreter, OnTheFlyWorkspaceV1,
@@ -2087,6 +2097,571 @@ impl NativeRuntime {
     }
 }
 
+#[cfg(feature = "on-the-fly-test-support")]
+fn direct_public_helicity_id(
+    plan: &DirectRecurrencePlan,
+    public_helicities: &[i32],
+) -> RusticolResult<u32> {
+    let mut matched = None;
+    for descriptor in plan.resolved_helicities() {
+        let start = usize::try_from(descriptor.public_helicity_start)
+            .map_err(|_| RusticolError::integrity("direct public-helicity start exceeds usize"))?;
+        let end = start
+            .checked_add(descriptor.public_helicity_count as usize)
+            .ok_or_else(|| RusticolError::integrity("direct public-helicity range overflows"))?;
+        if plan.public_helicities().get(start..end) == Some(public_helicities) {
+            if matched.replace(descriptor.id).is_some() {
+                return Err(RusticolError::integrity(
+                    "direct plan repeats the requested public helicity",
+                ));
+            }
+        }
+    }
+    matched.ok_or_else(|| {
+        RusticolError::invalid_argument(
+            "requested public helicities are absent from the recurrence comparator",
+        )
+    })
+}
+
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+fn invert_replay_helicity_map(
+    public_flow_id: u32,
+    helicity_map: &[u32],
+    public_direct_helicity_id: u32,
+) -> RusticolResult<u32> {
+    let matches = helicity_map
+        .iter()
+        .copied()
+        .enumerate()
+        .filter(|(_, mapped)| *mapped == public_direct_helicity_id)
+        .map(|(representative, _)| representative)
+        .collect::<Vec<_>>();
+    let [representative] = matches.as_slice() else {
+        return Err(RusticolError::integrity(format!(
+            "replay flow {} maps {} representative helicities to public helicity {}",
+            public_flow_id,
+            matches.len(),
+            public_direct_helicity_id,
+        )));
+    };
+    u32::try_from(*representative)
+        .map_err(|_| RusticolError::integrity("representative helicity ID exceeds u32"))
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+fn representative_direct_helicity_id(
+    selector: &DirectReplaySelectorPlan,
+    public_direct_helicity_id: u32,
+) -> RusticolResult<u32> {
+    invert_replay_helicity_map(
+        selector.public_flow_id(),
+        selector.helicity_map(),
+        public_direct_helicity_id,
+    )
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+fn direct_representative_source_states(
+    plan: &DirectRecurrencePlan,
+    representative_helicity_id: u32,
+) -> RusticolResult<BTreeMap<u32, u32>> {
+    let descriptor = plan
+        .resolved_helicities()
+        .get(representative_helicity_id as usize)
+        .filter(|descriptor| descriptor.id == representative_helicity_id)
+        .ok_or_else(|| RusticolError::integrity("representative helicity is absent"))?;
+    let start = usize::try_from(descriptor.source_state_start)
+        .map_err(|_| RusticolError::integrity("source-state start exceeds usize"))?;
+    let end = start
+        .checked_add(descriptor.source_state_count as usize)
+        .ok_or_else(|| RusticolError::integrity("source-state range overflows usize"))?;
+    plan.source_state_assignments()
+        .get(start..end)
+        .ok_or_else(|| RusticolError::integrity("source-state range is absent"))?
+        .iter()
+        .map(|assignment| Ok((assignment.source_slot, assignment.state_index)))
+        .collect()
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+fn current_belongs_to_representative_helicity(
+    current: &crate::recurrence::RecurrenceCurrent,
+    source_states: &BTreeMap<u32, u32>,
+) -> bool {
+    current
+        .key()
+        .helicity_identity()
+        .local_source_states()
+        .iter()
+        .all(|assignment| {
+            source_states.get(&assignment.source_slot()) == Some(&assignment.state_index())
+        })
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+fn diagnostic_complex_scale(value: (f64, f64), scale: (f64, f64)) -> (f64, f64) {
+    (
+        value.0 * scale.0 - value.1 * scale.1,
+        value.0 * scale.1 + value.1 * scale.0,
+    )
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+impl NativeRuntime {
+    /// Compare point zero from a genuine compact artifact with a separately
+    /// authenticated recurrence artifact. Neither artifact is treated as a
+    /// carrier for the other's execution payload.
+    #[doc(hidden)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn on_the_fly_execution_diagnostic_v1(
+        on_the_fly_artifact_path: impl AsRef<Path>,
+        on_the_fly_process_id: &str,
+        recurrence_artifact_path: impl AsRef<Path>,
+        recurrence_process_id: &str,
+        authenticated: &AuthenticatedRecurrenceBuilderInput,
+        retained_direct: &PreparedDirectExecutorCatalog,
+        selected_public_flow_id: u32,
+        public_helicities: &[i32],
+        point_major_external_momenta: &[f64],
+        parameter_overrides: &BTreeMap<String, [f64; 2]>,
+    ) -> RusticolResult<NativeOnTheFlyExecutionDiagnosticV1> {
+        let on_the_fly_artifact = VerifiedArtifact::open(on_the_fly_artifact_path)?;
+        let on_the_fly_selection =
+            on_the_fly_artifact.select_process(Some(on_the_fly_process_id))?;
+        if on_the_fly_selection.alias.is_some() || on_the_fly_selection.inferred_permutation {
+            return Err(RusticolError::invalid_argument(
+                "execution diagnostics require a representative on-the-fly process ID",
+            ));
+        }
+        let (loaded_on_the_fly, on_the_fly_evaluator_root) =
+            load_verified_evaluator(&on_the_fly_artifact, &on_the_fly_selection)?;
+        let on_the_fly_manifest = match loaded_on_the_fly {
+            LoadedExecutionManifest::OnTheFly(manifest) => manifest,
+            _ => {
+                return Err(RusticolError::compatibility(
+                    "execution diagnostic artifact A must be a genuine on-the-fly artifact",
+                ));
+            }
+        };
+        let loaded_on_the_fly = super::on_the_fly_load::load_on_the_fly_native_runtime(
+            &on_the_fly_artifact,
+            &on_the_fly_evaluator_root,
+            &on_the_fly_manifest,
+            &on_the_fly_selection,
+        )?;
+        let super::on_the_fly_load::LoadedOnTheFlyRuntime {
+            common: mut on_the_fly_common,
+            lane: mut on_the_fly_lane,
+            selectors: _,
+            metadata_selectors: _,
+            public_metadata: _,
+        } = loaded_on_the_fly;
+
+        let seed = on_the_fly_lane.seed();
+        let retained_summary = authenticated.template().summary();
+        if seed.process_digest() != authenticated.process().semantic_identity().process_digest()
+            || seed.model_digest() != retained_summary.compiled_model_digest
+            || seed.template_catalog_digest() != retained_summary.catalog_digest
+            || seed.prepared_pack_digest() != retained_summary.prepared_kernel_pack_digest
+            || seed.direct_catalog_digest() != retained_direct.direct_template_catalog_digest()
+        {
+            return Err(RusticolError::integrity(
+                "retained diagnostic inputs do not belong to on-the-fly artifact A",
+            ));
+        }
+        let on_the_fly_seed_model_digest = seed.model_digest();
+        let on_the_fly_seed_template_digest = seed.template_catalog_digest();
+        let on_the_fly_seed_pack_digest = seed.prepared_pack_digest();
+        let on_the_fly_seed_direct_digest = seed.direct_catalog_digest();
+
+        let overrides = parameter_overrides
+            .iter()
+            .map(|(name, value)| (name.clone(), (value[0], value[1])))
+            .collect::<BTreeMap<_, _>>();
+        on_the_fly_common.apply_model_parameter_overrides(&overrides)?;
+        let on_the_fly_snapshot = on_the_fly_lane.execution_diagnostic_v1(
+            authenticated,
+            selected_public_flow_id,
+            public_helicities,
+            point_major_external_momenta,
+            &on_the_fly_common.model_parameter_values_f64,
+        )?;
+
+        // The compact probe guard is deliberately not active here: artifact B
+        // is an independent recurrence comparator whose DirectPlan must load.
+        let recurrence_artifact = VerifiedArtifact::open(recurrence_artifact_path)?;
+        let recurrence_selection =
+            recurrence_artifact.select_process(Some(recurrence_process_id))?;
+        if recurrence_selection.alias.is_some() || recurrence_selection.inferred_permutation {
+            return Err(RusticolError::invalid_argument(
+                "execution diagnostics require a representative recurrence process ID",
+            ));
+        }
+        let (loaded_recurrence, recurrence_evaluator_root) =
+            load_verified_evaluator(&recurrence_artifact, &recurrence_selection)?;
+        let recurrence_manifest = match loaded_recurrence {
+            LoadedExecutionManifest::Recurrence(manifest) => manifest,
+            _ => {
+                return Err(RusticolError::compatibility(
+                    "execution diagnostic artifact B must be a recurrence artifact",
+                ));
+            }
+        };
+        if on_the_fly_selection.process.expression != recurrence_selection.process.expression
+            || on_the_fly_selection.process.external_pdgs
+                != recurrence_selection.process.external_pdgs
+            || on_the_fly_selection.process.color_accuracy
+                != recurrence_selection.process.color_accuracy
+            || recurrence_manifest.plan.builder_input_sha256
+                != authenticated
+                    .process()
+                    .semantic_identity()
+                    .input_digest()
+                    .to_string()
+            || recurrence_manifest.prepared_kernel_pack_digest
+                != on_the_fly_seed_pack_digest.to_string()
+            || recurrence_manifest.direct_template_catalog_digest
+                != on_the_fly_seed_direct_digest.to_string()
+        {
+            return Err(RusticolError::integrity(
+                "on-the-fly artifact A, recurrence artifact B, and retained inputs have different identities",
+            ));
+        }
+
+        let plan = load_plan(
+            &recurrence_artifact,
+            &recurrence_evaluator_root,
+            &recurrence_manifest,
+        )?;
+        let (recurrence_pack_bytes, recurrence_pack, recurrence_payload_root) =
+            load_prepared_pack(&recurrence_artifact, &recurrence_manifest)?;
+        let recurrence_direct_manifest = recurrence_pack.recurrence_direct_template_catalog(
+            &recurrence_manifest.prepared_kernel_pack_digest,
+            &recurrence_manifest.direct_template_catalog_digest,
+        )?;
+        if recurrence_direct_manifest.compiled_model_digest
+            != on_the_fly_seed_model_digest.to_string()
+            || recurrence_direct_manifest.recurrence_template_catalog_digest
+                != on_the_fly_seed_template_digest.to_string()
+        {
+            return Err(RusticolError::integrity(
+                "artifact A and comparator B use different model/template catalogs",
+            ));
+        }
+        let recurrence_payloads =
+            recurrence_artifact.evaluator_payload_store(&recurrence_payload_root)?;
+        let recurrence_runtime_parameters =
+            recurrence_runtime_parameters(&recurrence_manifest.runtime_metadata);
+        let recurrence_parameter_evaluator =
+            super::eager_load::load_prepared_model_parameter_evaluator_for_runtime(
+                &recurrence_pack,
+                &recurrence_runtime_parameters,
+                &recurrence_payloads,
+            )?;
+        let recurrence_prepared_parameters = on_the_fly_prepared_parameters(
+            &recurrence_manifest.runtime_metadata,
+            &recurrence_runtime_parameters,
+            recurrence_parameter_evaluator,
+            parameter_overrides,
+        )?;
+        if recurrence_prepared_parameters.len() != on_the_fly_snapshot.prepared_parameters.len()
+            || recurrence_prepared_parameters
+                .iter()
+                .zip(&on_the_fly_snapshot.prepared_parameters)
+                .any(|(recurrence, on_the_fly)| {
+                    recurrence[0].to_bits() != on_the_fly.0.to_bits()
+                        || recurrence[1].to_bits() != on_the_fly.1.to_bits()
+                })
+        {
+            return Err(RusticolError::integrity(
+                "artifacts A and B prepared different parameter vectors",
+            ));
+        }
+
+        let recurrence_runtime_slots = runtime_parameter_slots(&recurrence_runtime_parameters)?;
+        let source_domains = build_direct_source_domains(
+            &plan,
+            &recurrence_manifest.runtime_metadata,
+            &recurrence_runtime_slots,
+        )?;
+        let backend = NativeRecurrenceDirectExecutorBackend::load_from_verified_artifact(
+            &recurrence_pack_bytes,
+            &recurrence_artifact,
+            &recurrence_payload_root,
+            &plan,
+            &recurrence_manifest.prepared_kernel_pack_digest,
+            &recurrence_manifest.direct_template_catalog_digest,
+            source_domains,
+        )?;
+        let (executors, _backend_owners) = backend.into_parts();
+        let mut direct_runtime = DirectRecurrenceExecutionRuntime::new(plan.clone(), executors, 4)?;
+        let parameter_re = on_the_fly_snapshot
+            .prepared_parameters
+            .iter()
+            .map(|value| value.0)
+            .collect::<Vec<_>>();
+        let parameter_im = on_the_fly_snapshot
+            .prepared_parameters
+            .iter()
+            .map(|value| value.1)
+            .collect::<Vec<_>>();
+        direct_runtime.set_parameters(&parameter_re, &parameter_im)?;
+        let selector = direct_runtime.prepare_replay_selector(selected_public_flow_id)?;
+        let public_direct_helicity_id = direct_public_helicity_id(&plan, public_helicities)?;
+        let representative_direct_helicity_id =
+            representative_direct_helicity_id(&selector, public_direct_helicity_id)?;
+        let representative_source_states =
+            direct_representative_source_states(&plan, representative_direct_helicity_id)?;
+        let destination = plan
+            .amplitude_destinations()
+            .iter()
+            .filter(|destination| {
+                destination.target_sector_id == selector.representative_flow_id()
+                    && destination.target_helicity_id_or_sentinel
+                        == representative_direct_helicity_id
+            })
+            .copied()
+            .collect::<Vec<_>>();
+        let [destination] = destination.as_slice() else {
+            return Err(RusticolError::integrity(format!(
+                "selected recurrence lane has {} amplitude destinations, expected one",
+                destination.len(),
+            )));
+        };
+
+        begin_direct_current_observation(
+            direct_runtime.plan(),
+            Some(selector.representative_flow_id()),
+            1,
+        )?;
+        let execution = direct_runtime
+            .execute_replay_tile_from_external_unprofiled(
+                &selector,
+                1,
+                point_major_external_momenta,
+            )
+            .and_then(|output| {
+                Ok((
+                    *output
+                        .destination_re(destination.id)
+                        .and_then(|values| values.first())
+                        .ok_or_else(|| {
+                            RusticolError::integrity(
+                                "selected recurrence public amplitude real value is absent",
+                            )
+                        })?,
+                    *output
+                        .destination_im(destination.id)
+                        .and_then(|values| values.first())
+                        .ok_or_else(|| {
+                            RusticolError::integrity(
+                                "selected recurrence public amplitude imaginary value is absent",
+                            )
+                        })?,
+                ))
+            });
+        let observation = take_direct_current_observation();
+        let recurrence_public_amplitude = execution?;
+        let observation: DirectCurrentObservation = observation?;
+        let recurrence_representative_amplitude = observation
+            .amplitudes_before_replay
+            .get(&destination.id)
+            .and_then(|values| values.first())
+            .copied()
+            .ok_or_else(|| {
+                RusticolError::integrity(
+                    "selected recurrence representative amplitude was not observed",
+                )
+            })?;
+        let phase = selector.phase();
+        let scale = (
+            phase.0 * f64::from(selector.multiplicity()),
+            phase.1 * f64::from(selector.multiplicity()),
+        );
+        let expected_public = diagnostic_complex_scale(recurrence_representative_amplitude, scale);
+        if expected_public.0.to_bits() != recurrence_public_amplitude.0.to_bits()
+            || expected_public.1.to_bits() != recurrence_public_amplitude.1.to_bits()
+        {
+            return Err(RusticolError::integrity(
+                "recurrence replay scale was not applied exactly once",
+            ));
+        }
+
+        let established = authenticated.build()?;
+        if established.currents().len() != plan.currents().len() {
+            return Err(RusticolError::integrity(
+                "retained established current catalog differs from comparator B",
+            ));
+        }
+        let mut on_the_fly_currents = BTreeMap::new();
+        for current in &on_the_fly_snapshot.currents {
+            if on_the_fly_currents
+                .insert(current.semantic_digest, current)
+                .is_some()
+            {
+                return Err(RusticolError::integrity(
+                    "on-the-fly selected trace repeats a semantic current",
+                ));
+            }
+        }
+        let mut direct_currents = BTreeMap::new();
+        let mut excluded_direct_current_count = 0_u32;
+        for (semantic_current_id, observed) in &observation.currents {
+            let current = established
+                .currents()
+                .get(*semantic_current_id as usize)
+                .filter(|current| current.id() == *semantic_current_id)
+                .ok_or_else(|| {
+                    RusticolError::integrity(
+                        "observed Direct current is absent from retained construction",
+                    )
+                })?;
+            if !current_belongs_to_representative_helicity(current, &representative_source_states) {
+                excluded_direct_current_count = excluded_direct_current_count.saturating_add(1);
+                continue;
+            }
+            let color = established
+                .dynamic_color_states()
+                .get(current.key().dynamic_lc_color_state_id().get() as usize)
+                .ok_or_else(|| {
+                    RusticolError::integrity("observed Direct current color state is absent")
+                })?;
+            let digest = hash_current_key(current.key(), color)?;
+            if !on_the_fly_currents.contains_key(&digest) {
+                excluded_direct_current_count = excluded_direct_current_count.saturating_add(1);
+                continue;
+            }
+            if direct_currents.insert(digest, observed).is_some() {
+                return Err(RusticolError::integrity(
+                    "selected Direct live slice repeats a semantic current",
+                ));
+            }
+        }
+        if direct_currents.len() != on_the_fly_currents.len() {
+            return Err(RusticolError::integrity(format!(
+                "selected current bijection has {} on-the-fly and {} Direct currents",
+                on_the_fly_currents.len(),
+                direct_currents.len(),
+            )));
+        }
+
+        let mut ordered = on_the_fly_currents
+            .iter()
+            .map(|(digest, on_the_fly)| {
+                let direct = direct_currents.get(digest).copied().ok_or_else(|| {
+                    RusticolError::integrity(
+                        "selected Direct live slice omits an on-the-fly current",
+                    )
+                })?;
+                if on_the_fly.stage != u32::from(direct.descriptor.stage)
+                    || on_the_fly.values.len() != usize::from(direct.descriptor.component_count)
+                    || direct.values.len() != on_the_fly.values.len()
+                {
+                    return Err(RusticolError::integrity(
+                        "matched semantic current has a different depth or component layout",
+                    ));
+                }
+                Ok((on_the_fly.stage, *digest, *on_the_fly, direct))
+            })
+            .collect::<RusticolResult<Vec<_>>>()?;
+        ordered.sort_by_key(|(stage, digest, _, _)| (*stage, digest.to_string()));
+        let mut current_components = Vec::new();
+        for (stage, digest, on_the_fly, direct) in ordered {
+            for (component, (&on_the_fly_value, &recurrence_value)) in
+                on_the_fly.values.iter().zip(&direct.values).enumerate()
+            {
+                for value in [on_the_fly_value, recurrence_value] {
+                    if !value.0.is_finite() || !value.1.is_finite() {
+                        return Err(RusticolError::evaluation(
+                            "execution diagnostic observed a non-finite current value",
+                        ));
+                    }
+                }
+                current_components.push(NativeOnTheFlyExecutionComponentV1 {
+                    dependency_depth: stage,
+                    semantic_digest: digest.to_string(),
+                    component: u32::try_from(component).map_err(|_| {
+                        RusticolError::integrity("current component index exceeds u32")
+                    })?,
+                    on_the_fly: [on_the_fly_value.0, on_the_fly_value.1],
+                    recurrence: [recurrence_value.0, recurrence_value.1],
+                    on_the_fly_bits: [on_the_fly_value.0.to_bits(), on_the_fly_value.1.to_bits()],
+                    recurrence_bits: [recurrence_value.0.to_bits(), recurrence_value.1.to_bits()],
+                    absolute_delta: [
+                        (on_the_fly_value.0 - recurrence_value.0).abs(),
+                        (on_the_fly_value.1 - recurrence_value.1).abs(),
+                    ],
+                });
+            }
+        }
+        let first_raw_bit_difference = current_components
+            .iter()
+            .position(|component| component.on_the_fly_bits != component.recurrence_bits);
+        let raw_bit_difference_count = u32::try_from(
+            current_components
+                .iter()
+                .filter(|component| component.on_the_fly_bits != component.recurrence_bits)
+                .count(),
+        )
+        .map_err(|_| RusticolError::integrity("raw difference count exceeds u32"))?;
+        let on_the_fly_public_amplitude = on_the_fly_snapshot.raw_amplitude;
+        for value in [
+            on_the_fly_public_amplitude,
+            recurrence_representative_amplitude,
+            recurrence_public_amplitude,
+        ] {
+            if !value.0.is_finite() || !value.1.is_finite() {
+                return Err(RusticolError::evaluation(
+                    "execution diagnostic observed a non-finite amplitude",
+                ));
+            }
+        }
+
+        Ok(NativeOnTheFlyExecutionDiagnosticV1 {
+            on_the_fly_artifact_id: on_the_fly_artifact.manifest().artifact_id.clone(),
+            on_the_fly_process_id: on_the_fly_manifest.key.clone(),
+            recurrence_artifact_id: recurrence_artifact.manifest().artifact_id.clone(),
+            recurrence_process_id: recurrence_manifest.key.clone(),
+            seed_digest: on_the_fly_snapshot.seed_digest.to_string(),
+            query_digest: on_the_fly_snapshot.query_digest.to_string(),
+            trace_digest: on_the_fly_snapshot.trace_digest.to_string(),
+            direct_plan_semantic_digest: plan.semantic_digest().to_string(),
+            direct_runtime_layout_digest: plan.runtime_layout_digest().to_string(),
+            public_flow_id: selector.public_flow_id(),
+            representative_flow_id: selector.representative_flow_id(),
+            public_helicities: public_helicities.to_vec(),
+            public_direct_helicity_id,
+            representative_direct_helicity_id,
+            replay_phase: [phase.0, phase.1],
+            replay_multiplicity: selector.multiplicity(),
+            replay_scale: [scale.0, scale.1],
+            on_the_fly_public_amplitude: [
+                on_the_fly_public_amplitude.0,
+                on_the_fly_public_amplitude.1,
+            ],
+            recurrence_representative_amplitude: [
+                recurrence_representative_amplitude.0,
+                recurrence_representative_amplitude.1,
+            ],
+            recurrence_public_amplitude: [
+                recurrence_public_amplitude.0,
+                recurrence_public_amplitude.1,
+            ],
+            amplitude_absolute_delta: [
+                (on_the_fly_public_amplitude.0 - recurrence_public_amplitude.0).abs(),
+                (on_the_fly_public_amplitude.1 - recurrence_public_amplitude.1).abs(),
+            ],
+            current_components,
+            first_raw_bit_difference,
+            raw_bit_difference_count,
+            compared_current_count: u32::try_from(on_the_fly_currents.len())
+                .map_err(|_| RusticolError::integrity("compared current count exceeds u32"))?,
+            excluded_direct_current_count,
+        })
+    }
+}
+
 fn build_common_runtime(
     plan: &DirectRecurrencePlan,
     manifest: &RecurrenceExecutionManifest,
@@ -2820,11 +3395,18 @@ mod binding_decode_tests {
         RecurrenceParticleMass, RecurrenceParticleStatistics, RecurrenceRuntimeMetadata,
         RecurrenceSourceOrientation, RecurrenceSourceTemplate, RecurrenceWavefunctionFamily,
         RuntimeParameterSlots, SemanticDigest, build_on_the_fly_source_domains_from_specs,
-        read_u64_values,
+        invert_replay_helicity_map, read_u64_values,
     };
     #[cfg(feature = "on-the-fly-test-support")]
     use super::{OnTheFlyQueryTraceCacheV1, validate_on_the_fly_probe_outputs};
     use std::collections::BTreeMap;
+
+    #[test]
+    fn execution_diagnostic_inverts_nonidentity_replay_helicity_map() {
+        // The replay map is representative ID -> public ID. Public helicity
+        // zero is therefore represented by ID one, not by the same index.
+        assert_eq!(invert_replay_helicity_map(17, &[2, 0, 1], 0).unwrap(), 1);
+    }
 
     #[cfg(feature = "on-the-fly-test-support")]
     #[test]

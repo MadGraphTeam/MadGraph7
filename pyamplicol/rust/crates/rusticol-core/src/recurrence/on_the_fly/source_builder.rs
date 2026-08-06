@@ -22,8 +22,8 @@ use super::source_seed::{
 use super::{TemplateCatalog, integrity, invalid};
 use crate::recurrence::process::ProcessSourceStateRow;
 use crate::recurrence::template::{
-    CurrentOrientation, CurrentStateRow, MISSING_U32, ParticleStatistics, SourceRow,
-    ValidatedRecurrenceTemplateInput,
+    CurrentOrientation, CurrentStateRow, MISSING_U32, ParameterValueType, ParticleStatistics,
+    SourceRow, ValidatedRecurrenceTemplateInput,
 };
 use crate::recurrence::{
     DirectExecutorRole, ExactComplexRational, PreparedDirectExecutorCatalog, SemanticDigest,
@@ -305,14 +305,14 @@ fn build_on_the_fly_process_seed_from_catalog_v1(
     )?;
 
     let endpoint_contracts = pairing_endpoint_contracts(projection.fermion_pairing.as_ref())?;
-    let parameter_projection = parameter_projection(&projection.parameter_projection)?;
+    validate_parameter_projection(&projection.parameter_projection)?;
     let source_anchors = source_anchors(
         &projection.external_sources,
         templates,
         template_catalog,
         direct,
         &endpoint_contracts,
-        &parameter_projection,
+        &projection.parameter_projection,
     )?;
     let pairing_classes =
         pairing_classes(projection.fermion_pairing.as_ref(), &endpoint_contracts)?;
@@ -354,7 +354,7 @@ fn source_anchors(
     catalog: &TemplateCatalog<'_>,
     direct: &PreparedDirectExecutorCatalog,
     endpoint_contracts: &BTreeMap<u32, (OnTheFlyExternalColorRoleV1, SemanticDigest)>,
-    parameter_projection: &BTreeMap<u32, u32>,
+    parameter_projection: &[ParameterProjection],
 ) -> RusticolResult<Vec<OnTheFlySourceAnchorV1>> {
     let input = templates.input();
     let mut anchors = Vec::new();
@@ -418,7 +418,19 @@ fn source_anchors(
                 color_seed.proof_digest(),
                 family,
                 source_orientation(current_state)?,
-                prepared_mass_slot(source, current_state, input, parameter_projection)?,
+                resolve_prepared_mass_slot(
+                    source,
+                    current_state,
+                    input,
+                    catalog,
+                    parameter_projection.iter().map(|row| {
+                        (
+                            row.parameter_template_id,
+                            row.prepared_parameter_id,
+                            row.component,
+                        )
+                    }),
+                )?,
             )?);
         }
         anchors.push(OnTheFlySourceAnchorV1::new(
@@ -613,7 +625,7 @@ fn color_role(
     }
 }
 
-fn parameter_projection(rows: &[ParameterProjection]) -> RusticolResult<BTreeMap<u32, u32>> {
+fn validate_parameter_projection(rows: &[ParameterProjection]) -> RusticolResult<()> {
     let mut result = BTreeMap::new();
     for row in rows.iter().filter(|row| row.component == 0) {
         let Some(prepared) = row.prepared_parameter_id else {
@@ -625,37 +637,119 @@ fn parameter_projection(rows: &[ParameterProjection]) -> RusticolResult<BTreeMap
             ));
         }
     }
-    Ok(result)
+    Ok(())
 }
 
-fn prepared_mass_slot(
+/// Resolve the prepared real-parameter slot used by one authenticated source.
+///
+/// Explicit template IDs remain authoritative. Legacy catalogs in which both
+/// source rows omit that ID may recover it only from the exact canonical
+/// particle-mass parameter name authenticated by the current-state
+/// orientation. Keeping this resolver shared with the feature-only oracle
+/// prevents diagnostic reconstruction from silently using different mass
+/// semantics than the compact production seed.
+pub(super) fn resolve_prepared_mass_slot(
     source: SourceRow,
     current_state: CurrentStateRow,
     input: &crate::recurrence::template::OwnedRecurrenceTemplateInput,
-    projection: &BTreeMap<u32, u32>,
+    catalog: &TemplateCatalog<'_>,
+    projection: impl IntoIterator<Item = (u32, Option<u32>, u32)>,
 ) -> RusticolResult<Option<u32>> {
     if source.mass_parameter_id != current_state.mass_parameter_id {
         return Err(integrity(
             "source and current state disagree on their mass parameter",
         ));
     }
-    if source.mass_parameter_id == MISSING_U32 {
-        return Ok(None);
-    }
-    let prepared = projection
-        .get(&source.mass_parameter_id)
-        .copied()
-        .ok_or_else(|| invalid("source mass parameter has no prepared real projection"))?;
+
+    let parameter_id = if source.mass_parameter_id != MISSING_U32 {
+        source.mass_parameter_id
+    } else {
+        let canonical_particle = match CurrentOrientation::try_from(current_state.orientation)? {
+            CurrentOrientation::Particle => current_state.particle_id,
+            CurrentOrientation::Antiparticle => current_state.anti_particle_id,
+            CurrentOrientation::SelfConjugate => {
+                if current_state.particle_id != current_state.anti_particle_id {
+                    return Err(integrity(
+                        "self-conjugate source mass orientation has distinct particle labels",
+                    ));
+                }
+                current_state.particle_id
+            }
+        };
+        let expected_name = format!("particle.{canonical_particle}.mass");
+        let mut match_id = None;
+        for (index, parameter) in input.parameters.iter().enumerate() {
+            if usize::try_from(parameter.id).ok() != Some(index) {
+                return Err(integrity("mass parameter catalog is not canonical"));
+            }
+            if catalog.string(parameter.name_string_id, "mass parameter name")? != expected_name {
+                continue;
+            }
+            if match_id.replace(parameter.id).is_some() {
+                return Err(integrity(format!(
+                    "canonical source mass parameter {expected_name:?} is ambiguous"
+                )));
+            }
+        }
+        let Some(parameter_id) = match_id else {
+            return Ok(None);
+        };
+        parameter_id
+    };
+
     let parameter = input
         .parameters
-        .get(source.mass_parameter_id as usize)
+        .get(parameter_id as usize)
         .ok_or_else(|| integrity("source mass parameter is absent"))?;
-    if parameter.id != source.mass_parameter_id || parameter.prepared_parameter_id != prepared {
+    if parameter.id != parameter_id {
+        return Err(integrity("source mass parameter catalog is not canonical"));
+    }
+    if ParameterValueType::try_from(parameter.value_type)? != ParameterValueType::Real {
+        return Err(integrity("source mass parameter is not real"));
+    }
+    let catalog_prepared = parameter.prepared_parameter_id;
+    if catalog_prepared == MISSING_U32 {
+        return Err(invalid(
+            "source mass parameter has no prepared execution slot",
+        ));
+    }
+    let prepared_slot = usize::try_from(catalog_prepared)
+        .map_err(|_| integrity("source mass prepared slot exceeds usize"))?;
+    if prepared_slot >= input.parameters.len() {
+        return Err(integrity(
+            "source mass prepared slot is outside the dense parameter arena",
+        ));
+    }
+    if input
+        .parameters
+        .iter()
+        .filter(|candidate| candidate.prepared_parameter_id == catalog_prepared)
+        .count()
+        != 1
+    {
+        return Err(integrity(
+            "source mass prepared slot has conflicting catalog owners",
+        ));
+    }
+
+    let matches = projection
+        .into_iter()
+        .filter(|(projected_id, _, component)| *projected_id == parameter_id && *component == 0)
+        .collect::<Vec<_>>();
+    let [(_, projected_prepared, _)] = matches.as_slice() else {
+        return Err(integrity(format!(
+            "source mass parameter has {} component-0 projections, expected one",
+            matches.len()
+        )));
+    };
+    let projected_prepared = (*projected_prepared)
+        .ok_or_else(|| invalid("source mass parameter has no prepared real projection"))?;
+    if projected_prepared != catalog_prepared {
         return Err(integrity(
             "source mass projection disagrees with the prepared template catalog",
         ));
     }
-    Ok(Some(prepared))
+    Ok(Some(catalog_prepared))
 }
 
 fn coupling_policy(
@@ -855,7 +949,9 @@ mod tests {
         decode_on_the_fly_process_seed_v1, encode_on_the_fly_process_seed_v1,
     };
     use crate::recurrence::on_the_fly::{OnTheFlyForbiddenWorkGuardV1, scalar_adapter_test_seed};
-    use crate::recurrence::template::{CouplingOrderTermRow, IndexedRangeRow};
+    use crate::recurrence::template::{
+        CouplingOrderTermRow, IndexedRangeRow, ParameterKind, ParameterRow, ParameterValueType,
+    };
     use crate::recurrence::{
         CheckedTableRange, PreparedDirectExecutorBinding, validated_template_fixture,
     };
@@ -998,6 +1094,126 @@ mod tests {
         (projection, templates, direct)
     }
 
+    fn mass_bound_scalar_inputs() -> (
+        Value,
+        ValidatedRecurrenceTemplateInput,
+        PreparedDirectExecutorCatalog,
+    ) {
+        let (mut projection, templates, direct) = scalar_inputs();
+        let mut input = templates.into_input();
+        let source_evaluator = input.evaluator_bindings[0];
+        input.catalog_header[0].parameter_count = 1;
+        input.parameters.push(ParameterRow {
+            id: 0,
+            template_string_id: source_evaluator.resolver_key_string_id,
+            name_string_id: source_evaluator.resolver_key_string_id,
+            kind: ParameterKind::External as u8,
+            value_type: ParameterValueType::Real as u8,
+            mutable: 1,
+            default_factor_id: 0,
+            exact_expression_digest_id: MISSING_U32,
+            dependency_sequence_id: source_evaluator.input_state_sequence_id,
+            prepared_parameter_id: 0,
+            semantic_digest_id: source_evaluator.callable_signature_digest_id,
+        });
+        input.current_states[0].mass_parameter_id = 0;
+        input.sources[0].mass_parameter_id = 0;
+        projection["parameter_projection"] = json!([{
+            "parameter_template_id": 0,
+            "prepared_parameter_id": 0,
+            "component": 0
+        }]);
+        (projection, input.validate().unwrap(), direct)
+    }
+
+    fn replace_template_string(
+        input: &mut crate::recurrence::template::OwnedRecurrenceTemplateInput,
+        old: &str,
+        new: &str,
+    ) -> u32 {
+        let mut strings = input
+            .string_ranges
+            .iter()
+            .map(|range| {
+                let range = range
+                    .as_usize_range(input.string_bytes.len(), "test template string")
+                    .unwrap();
+                std::str::from_utf8(&input.string_bytes[range])
+                    .unwrap()
+                    .to_owned()
+            })
+            .collect::<Vec<_>>();
+        let id = strings.iter().position(|value| value == old).unwrap();
+        strings[id] = new.to_owned();
+        assert!(strings.windows(2).all(|pair| pair[0] < pair[1]));
+
+        input.string_ranges.clear();
+        input.string_bytes.clear();
+        for value in strings {
+            input.string_ranges.push(CheckedTableRange::new(
+                u64::try_from(input.string_bytes.len()).unwrap(),
+                u64::try_from(value.len()).unwrap(),
+            ));
+            input.string_bytes.extend_from_slice(value.as_bytes());
+        }
+        u32::try_from(id).unwrap()
+    }
+
+    fn legacy_null_mass_inputs(
+        particle_id: i32,
+        anti_particle_id: i32,
+        orientation: CurrentOrientation,
+    ) -> (
+        Value,
+        ValidatedRecurrenceTemplateInput,
+        PreparedDirectExecutorCatalog,
+    ) {
+        let (mut projection, templates, direct) = scalar_inputs();
+        let mut input = templates.into_input();
+        let source_evaluator = input.evaluator_bindings[0];
+        let mass_name_string_id =
+            replace_template_string(&mut input, "projection", "particle.6.mass");
+        input.catalog_header[0].parameter_count = 1;
+        input.parameters.push(ParameterRow {
+            id: 0,
+            template_string_id: source_evaluator.resolver_key_string_id,
+            name_string_id: mass_name_string_id,
+            kind: ParameterKind::External as u8,
+            value_type: ParameterValueType::Real as u8,
+            mutable: 1,
+            default_factor_id: 0,
+            exact_expression_digest_id: MISSING_U32,
+            dependency_sequence_id: source_evaluator.input_state_sequence_id,
+            prepared_parameter_id: 0,
+            semantic_digest_id: source_evaluator.callable_signature_digest_id,
+        });
+        input.current_states[0].particle_id = particle_id;
+        input.current_states[0].anti_particle_id = anti_particle_id;
+        input.current_states[0].orientation = orientation as u8;
+        input.flavour_flow_values[0] = particle_id;
+        assert_eq!(input.current_states[0].mass_parameter_id, MISSING_U32);
+        assert_eq!(input.sources[0].mass_parameter_id, MISSING_U32);
+        projection["parameter_projection"] = json!([{
+            "parameter_template_id": 0,
+            "prepared_parameter_id": 0,
+            "component": 0
+        }]);
+        (projection, input.validate().unwrap(), direct)
+    }
+
+    fn build_test_seed(
+        source: &Value,
+        templates: &ValidatedRecurrenceTemplateInput,
+        direct: &PreparedDirectExecutorCatalog,
+    ) -> RusticolResult<OnTheFlyProcessSeedV1> {
+        build_on_the_fly_process_seed_v1(
+            parse_on_the_fly_process_seed_projection_v1(&serde_json::to_vec(source).unwrap())?,
+            templates,
+            direct,
+            templates.summary().prepared_kernel_pack_digest,
+        )
+    }
+
     #[test]
     fn compact_projection_matches_the_established_seed_codec_exactly() {
         let (source, templates, direct) = scalar_inputs();
@@ -1094,6 +1310,138 @@ mod tests {
                 .unwrap_err()
                 .message()
                 .contains("process source chirality")
+        );
+    }
+
+    #[test]
+    fn compact_mass_binding_projects_one_prepared_slot_and_fails_closed() {
+        let (source, templates, direct) = mass_bound_scalar_inputs();
+        let build = |value: &Value| {
+            build_on_the_fly_process_seed_v1(
+                parse_on_the_fly_process_seed_projection_v1(&serde_json::to_vec(value).unwrap())?,
+                &templates,
+                &direct,
+                templates.summary().prepared_kernel_pack_digest,
+            )
+        };
+
+        let seed = build(&source).unwrap();
+        assert!(seed.source_anchors().iter().all(|anchor| {
+            anchor
+                .states()
+                .iter()
+                .all(|state| state.prepared_mass_parameter_slot == Some(0))
+        }));
+        let encoded = encode_on_the_fly_process_seed_v1(&seed).unwrap();
+        assert_eq!(decode_on_the_fly_process_seed_v1(&encoded).unwrap(), seed);
+
+        let mut missing = source.clone();
+        missing["parameter_projection"] = json!([]);
+        assert!(
+            build(&missing)
+                .unwrap_err()
+                .message()
+                .contains("component-0 projections")
+        );
+
+        let mut mismatched = source;
+        mismatched["parameter_projection"][0]["prepared_parameter_id"] = json!(2);
+        assert!(
+            build(&mismatched)
+                .unwrap_err()
+                .message()
+                .contains("mass projection disagrees with the prepared template catalog")
+        );
+    }
+
+    #[test]
+    fn legacy_null_mass_binding_uses_authenticated_orientation_without_abs_shortcuts() {
+        for (particle, anti_particle, orientation, expected) in [
+            (6, -6, CurrentOrientation::Particle, Some(0)),
+            (-6, 6, CurrentOrientation::Antiparticle, Some(0)),
+            (-6, 6, CurrentOrientation::Particle, None),
+            (1, -1, CurrentOrientation::Particle, None),
+            (21, 21, CurrentOrientation::SelfConjugate, None),
+        ] {
+            let (source, templates, direct) =
+                legacy_null_mass_inputs(particle, anti_particle, orientation);
+            let seed = build_test_seed(&source, &templates, &direct).unwrap();
+            assert!(seed.source_anchors().iter().all(|anchor| {
+                anchor
+                    .states()
+                    .iter()
+                    .all(|state| state.prepared_mass_parameter_slot == expected)
+            }));
+            let encoded = encode_on_the_fly_process_seed_v1(&seed).unwrap();
+            assert_eq!(decode_on_the_fly_process_seed_v1(&encoded).unwrap(), seed);
+        }
+    }
+
+    #[test]
+    fn legacy_null_mass_binding_fails_closed_on_ambiguity_type_and_orientation_conflicts() {
+        let (source, templates, direct) =
+            legacy_null_mass_inputs(6, -6, CurrentOrientation::Particle);
+
+        let mut ambiguous_input = templates.clone().into_input();
+        let second_evaluator = ambiguous_input.evaluator_bindings[1];
+        let mut second_parameter = ambiguous_input.parameters[0];
+        second_parameter.id = 1;
+        second_parameter.template_string_id = second_evaluator.resolver_key_string_id;
+        second_parameter.prepared_parameter_id = 1;
+        second_parameter.semantic_digest_id = second_evaluator.callable_signature_digest_id;
+        ambiguous_input.parameters.push(second_parameter);
+        ambiguous_input.catalog_header[0].parameter_count = 2;
+        let ambiguous_templates = ambiguous_input.validate().unwrap();
+        let error = build_test_seed(&source, &ambiguous_templates, &direct).unwrap_err();
+        assert!(
+            error
+                .message()
+                .contains("mass parameter \"particle.6.mass\" is ambiguous")
+        );
+
+        let mut complex_input = templates.clone().into_input();
+        complex_input.parameters[0].value_type = ParameterValueType::Complex as u8;
+        let complex_templates = complex_input.validate().unwrap();
+        assert!(
+            build_test_seed(&source, &complex_templates, &direct)
+                .unwrap_err()
+                .message()
+                .contains("mass parameter is not real")
+        );
+
+        let mut out_of_range_source = source.clone();
+        out_of_range_source["parameter_projection"][0]["prepared_parameter_id"] = json!(1);
+        let mut out_of_range_input = templates.clone().into_input();
+        out_of_range_input.parameters[0].prepared_parameter_id = 1;
+        let out_of_range_templates = out_of_range_input.validate().unwrap();
+        assert!(
+            build_test_seed(&out_of_range_source, &out_of_range_templates, &direct)
+                .unwrap_err()
+                .message()
+                .contains("outside the dense parameter arena")
+        );
+
+        let (self_conjugate_source, self_conjugate_templates, self_conjugate_direct) =
+            legacy_null_mass_inputs(21, 22, CurrentOrientation::SelfConjugate);
+        assert!(
+            build_test_seed(
+                &self_conjugate_source,
+                &self_conjugate_templates,
+                &self_conjugate_direct,
+            )
+            .unwrap_err()
+            .message()
+            .contains("self-conjugate source mass orientation")
+        );
+
+        let mut mismatched_input = templates.into_input();
+        mismatched_input.sources[0].mass_parameter_id = 0;
+        let mismatched_templates = mismatched_input.validate().unwrap();
+        assert!(
+            build_test_seed(&source, &mismatched_templates, &direct)
+                .unwrap_err()
+                .message()
+                .contains("source and current state disagree")
         );
     }
 
