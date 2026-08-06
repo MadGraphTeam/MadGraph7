@@ -29,7 +29,10 @@ use rusticol_core::recurrence::{
     write_recurrence_direct_plan_pacbin_with_projection_certificate,
 };
 #[cfg(feature = "on-the-fly-test-support")]
-use rusticol_core::recurrence::{OnTheFlyTestSupportReportV1, on_the_fly_test_support_probe_v1};
+use rusticol_core::recurrence::{
+    OnTheFlyQueryFamilyCensusV1, OnTheFlyTestSupportReportV1, on_the_fly_query_family_census_v1,
+    on_the_fly_test_support_probe_v1,
+};
 #[cfg(feature = "on-the-fly-test-support")]
 use rusticol_core::{NativeOnTheFlyArtifactProbeV1, NativeRuntime};
 use rusticol_core::{
@@ -1050,6 +1053,67 @@ pub(crate) fn _on_the_fly_test_support_probe_v1(
 
 #[cfg(feature = "on-the-fly-test-support")]
 #[pyfunction(signature = (
+    builder_input,
+    prepared_template_input,
+    direct_template_catalog_json,
+    prepared_kernel_pack_digest,
+    selected_public_flow_ids,
+    public_helicities,
+    *,
+    enable_color_projection=true
+))]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn _on_the_fly_query_family_census_v1(
+    py: Python<'_>,
+    builder_input: &Bound<'_, PyAny>,
+    prepared_template_input: &Bound<'_, PyAny>,
+    direct_template_catalog_json: &Bound<'_, PyBytes>,
+    prepared_kernel_pack_digest: String,
+    selected_public_flow_ids: Vec<u32>,
+    public_helicities: Vec<Vec<i32>>,
+    enable_color_projection: bool,
+) -> PyResult<Py<PyAny>> {
+    if selected_public_flow_ids.len() != public_helicities.len() {
+        return Err(PyValueError::new_err(
+            "on-the-fly query-family flow and helicity columns have different lengths",
+        ));
+    }
+    let input = parse_input(builder_input)?;
+    let prepared_template = parse_prepared_template_input(prepared_template_input)?;
+    let direct_template_catalog_json = direct_template_catalog_json.as_bytes().to_vec();
+    validate_sha256_text(&prepared_kernel_pack_digest, "prepared kernel pack digest")?;
+    let queries = selected_public_flow_ids
+        .into_iter()
+        .zip(public_helicities)
+        .collect::<Vec<_>>();
+    let native = py
+        .detach(move || {
+            let expected_pack_digest = semantic_digest_from_hex(
+                &prepared_kernel_pack_digest,
+                "prepared kernel pack digest",
+            )?;
+            let authenticated =
+                authenticate_builder_inputs(input, prepared_template, expected_pack_digest)?
+                    .authenticated;
+            let direct_catalog = parse_direct_template_catalog(
+                &direct_template_catalog_json,
+                expected_pack_digest,
+                authenticated.template().summary().catalog_digest,
+                authenticated.template().summary().compiled_model_digest,
+            )?;
+            on_the_fly_query_family_census_v1(
+                &authenticated,
+                direct_catalog.catalog_digest,
+                &queries,
+                enable_color_projection,
+            )
+        })
+        .map_err(python_error)?;
+    on_the_fly_query_family_census_mapping(py, native)
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+#[pyfunction(signature = (
     artifact_path,
     process_id,
     builder_input,
@@ -1242,6 +1306,108 @@ fn on_the_fly_artifact_probe_mapping(
         currents.append(row)?;
     }
     result.set_item("currents", currents)?;
+    Ok(result.into_any().unbind())
+}
+
+#[cfg(feature = "on-the-fly-test-support")]
+fn on_the_fly_query_family_census_mapping(
+    py: Python<'_>,
+    native: OnTheFlyQueryFamilyCensusV1,
+) -> PyResult<Py<PyAny>> {
+    let result = PyDict::new(py);
+    result.set_item("query_count", native.query_count)?;
+    result.set_item(
+        "source_frame_partition_count",
+        native.source_frame_partition_count,
+    )?;
+    result.set_item(
+        "projection_applied_query_count",
+        native.projection_applied_query_count,
+    )?;
+    result.set_item(
+        "projection_pre_current_count",
+        native.projection_pre_current_count,
+    )?;
+    result.set_item(
+        "projection_pre_contribution_count",
+        native.projection_pre_contribution_count,
+    )?;
+    result.set_item(
+        "projection_pre_closure_count",
+        native.projection_pre_closure_count,
+    )?;
+    result.set_item(
+        "projection_post_current_count",
+        native.projection_post_current_count,
+    )?;
+    result.set_item(
+        "projection_post_contribution_count",
+        native.projection_post_contribution_count,
+    )?;
+    result.set_item(
+        "projection_post_closure_count",
+        native.projection_post_closure_count,
+    )?;
+    result.set_item(
+        "dynamic_current_occurrence_count",
+        native.dynamic_current_occurrence_count,
+    )?;
+    result.set_item(
+        "dynamic_current_component_occurrence_count",
+        native.dynamic_current_component_occurrence_count,
+    )?;
+    result.set_item("dynamic_source_rows", native.dynamic_source_rows)?;
+    result.set_item(
+        "dynamic_contribution_rows",
+        native.dynamic_contribution_rows,
+    )?;
+    result.set_item(
+        "dynamic_finalization_rows",
+        native.dynamic_finalization_rows,
+    )?;
+    result.set_item("dynamic_closure_rows", native.dynamic_closure_rows)?;
+    result.set_item("dynamic_source_calls", native.dynamic_source_calls)?;
+    result.set_item(
+        "dynamic_contribution_calls",
+        native.dynamic_contribution_calls,
+    )?;
+    result.set_item(
+        "dynamic_finalization_calls",
+        native.dynamic_finalization_calls,
+    )?;
+    result.set_item("dynamic_closure_calls", native.dynamic_closure_calls)?;
+    result.set_item(
+        "union_unique_current_count",
+        native.union_unique_current_count,
+    )?;
+    result.set_item(
+        "union_unique_current_component_count",
+        native.union_unique_current_component_count,
+    )?;
+    result.set_item("union_source_rows", native.union_source_rows)?;
+    result.set_item("union_contribution_rows", native.union_contribution_rows)?;
+    result.set_item("union_finalization_rows", native.union_finalization_rows)?;
+    result.set_item("union_closure_rows", native.union_closure_rows)?;
+    result.set_item(
+        "union_amplitude_destination_count",
+        native.union_amplitude_destination_count,
+    )?;
+    result.set_item(
+        "union_source_executor_call_groups",
+        native.union_source_executor_call_groups,
+    )?;
+    result.set_item(
+        "union_contribution_executor_call_groups",
+        native.union_contribution_executor_call_groups,
+    )?;
+    result.set_item(
+        "union_finalization_executor_call_groups",
+        native.union_finalization_executor_call_groups,
+    )?;
+    result.set_item(
+        "union_closure_executor_call_groups",
+        native.union_closure_executor_call_groups,
+    )?;
     Ok(result.into_any().unbind())
 }
 

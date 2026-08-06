@@ -2030,6 +2030,11 @@ fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     #[cfg(all(feature = "numpy", feature = "on-the-fly-test-support"))]
     module.add_function(wrap_pyfunction!(
+        recurrence::_on_the_fly_query_family_census_v1,
+        module
+    )?)?;
+    #[cfg(all(feature = "numpy", feature = "on-the-fly-test-support"))]
+    module.add_function(wrap_pyfunction!(
         recurrence::_on_the_fly_artifact_probe_v1,
         module
     )?)?;

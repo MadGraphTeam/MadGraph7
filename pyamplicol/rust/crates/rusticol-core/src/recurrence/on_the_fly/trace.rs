@@ -163,6 +163,22 @@ pub(super) enum OnTheFlyTraceOperationV1 {
     },
 }
 
+/// Cold semantic contribution row retained only by the development feature.
+///
+/// Direct rows carry trace-local component bases and, after prepared binding,
+/// may use a physical parent permutation.  A query-family union instead needs
+/// the exact construction identity before those physical choices.  Keeping
+/// this row beside the trace lets the prototype remap parent current IDs
+/// without materializing an established recurrence program or DirectPlan.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+pub(super) struct OnTheFlyTraceContributionProofRowV1 {
+    pub(super) result_current_id: u32,
+    pub(super) parent_current_ids: [u32; 2],
+    pub(super) key: ContributionKey,
+    pub(super) exact_factor: ExactComplexRational,
+}
+
 impl OnTheFlyTraceOperationV1 {
     pub(super) const fn key(&self) -> OnTheFlyExecutorKeyV1 {
         match self {
@@ -290,6 +306,8 @@ pub(crate) struct OnTheFlyStructuralTraceV1 {
     pub(super) current_component_ranges: Box<[[u32; 2]]>,
     #[cfg(any(test, feature = "on-the-fly-test-support"))]
     pub(super) current_semantic_digests: Box<[SemanticDigest]>,
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    pub(super) contribution_proof_rows: Box<[OnTheFlyTraceContributionProofRowV1]>,
 }
 
 impl OnTheFlyStructuralTraceV1 {
@@ -810,6 +828,7 @@ pub(crate) fn scalar_adapter_test_trace(
         prepared_executor_rows_bound: false,
         current_component_ranges: vec![[0, 1], [1, 1]].into_boxed_slice(),
         current_semantic_digests: vec![test_digest; 2].into_boxed_slice(),
+        contribution_proof_rows: Box::new([]),
     })
 }
 
@@ -944,6 +963,7 @@ impl OnTheFlyStructuralTraceV1 {
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
             current_semantic_digests: vec![test_digest; 5].into_boxed_slice(),
+            contribution_proof_rows: Box::new([]),
         };
         (trace, source_key, contribution_key)
     }
@@ -956,6 +976,278 @@ impl OnTheFlyStructuralTraceV1 {
                 _ => None,
             })
             .collect()
+    }
+
+    pub(crate) fn test_query_family_trace(
+        query_digest_byte: u8,
+        contribution_factor: ExactComplexRational,
+    ) -> (Self, OnTheFlyProjectionProbeV1) {
+        let digest = |byte| SemanticDigest::new([byte; 32]).unwrap();
+        let direct_digest = digest(0x71);
+        let color_id = crate::recurrence::DynamicLCColorStateId::from_interner(0);
+        let momentum = |slots: &[u32]| {
+            CanonicalMomentumLinearForm::new(
+                slots
+                    .iter()
+                    .copied()
+                    .map(|source_slot| MomentumTerm {
+                        source_slot,
+                        coefficient: 1,
+                    })
+                    .collect(),
+            )
+            .unwrap()
+        };
+        let helicity = |slots: &[u32]| {
+            CurrentHelicityIdentity::topology_replay(
+                0,
+                slots
+                    .iter()
+                    .copied()
+                    .map(|source_slot| SourceStateAssignment::new(source_slot, 0))
+                    .collect(),
+            )
+            .unwrap()
+        };
+        let current_key = |node_kind, state, support: &[u32], source_binding| {
+            CurrentCoreKey::new(
+                digest(0x72),
+                node_kind,
+                state,
+                color_id,
+                support.to_vec(),
+                momentum(support),
+                helicity(support),
+                vec![state as i32],
+                0,
+                vec![0],
+                source_binding,
+                (node_kind == RecurrenceNodeKind::Current).then_some(0),
+            )
+            .unwrap()
+        };
+        let current_keys = vec![
+            current_key(
+                RecurrenceNodeKind::Source,
+                0,
+                &[0],
+                CurrentSourceBinding::FixedTemplate(0),
+            ),
+            current_key(
+                RecurrenceNodeKind::Source,
+                1,
+                &[1],
+                CurrentSourceBinding::FixedTemplate(1),
+            ),
+            current_key(
+                RecurrenceNodeKind::Current,
+                2,
+                &[0, 1],
+                CurrentSourceBinding::None,
+            ),
+        ];
+        let source_key = |id| {
+            OnTheFlyExecutorKeyV1::new(
+                direct_digest,
+                DirectExecutorRole::Source,
+                OnTheFlyOperationKindV1::Source,
+                id,
+                digest(0x73 + id as u8),
+                id,
+                digest(0x75 + id as u8),
+            )
+            .unwrap()
+        };
+        let contribution_executor = OnTheFlyExecutorKeyV1::new(
+            direct_digest,
+            DirectExecutorRole::Contribution,
+            OnTheFlyOperationKindV1::Transition,
+            2,
+            digest(0x77),
+            2,
+            digest(0x78),
+        )
+        .unwrap();
+        let finalization_executor = OnTheFlyExecutorKeyV1::new(
+            direct_digest,
+            DirectExecutorRole::Finalization,
+            OnTheFlyOperationKindV1::Propagator,
+            0,
+            digest(0x79),
+            3,
+            digest(0x7a),
+        )
+        .unwrap();
+        let closure_executor = OnTheFlyExecutorKeyV1::new(
+            direct_digest,
+            DirectExecutorRole::Closure,
+            OnTheFlyOperationKindV1::Closure,
+            0,
+            digest(0x7b),
+            4,
+            digest(0x7c),
+        )
+        .unwrap();
+        let contribution_key = ContributionKey::new(
+            2,
+            vec![0, 1],
+            vec![0, 1],
+            vec![momentum(&[0]), momentum(&[1])],
+            2,
+            0,
+            LCColorWitnessTermId::new(0, 0),
+            digest(0x7d),
+            0,
+        )
+        .unwrap();
+        let color = DynamicLCColorState::new(0, None, vec![]).unwrap();
+        let test_digest = digest(0x7e);
+        let current_semantic_digests = current_keys
+            .iter()
+            .map(|key| hash_current_key(key, &color).unwrap())
+            .collect::<Vec<_>>();
+        let trace = Self {
+            seed_digest: digest(0x70),
+            query_digest: digest(query_digest_byte),
+            current_keys: current_keys.into_boxed_slice(),
+            current_colors: vec![color; 3].into_boxed_slice(),
+            operations: vec![
+                OnTheFlyTraceOperationV1::Source {
+                    key: source_key(0),
+                    row: DirectSourceRow {
+                        source_slot: 0,
+                        destination_component_base: 0,
+                        momentum_form_id: 0,
+                        source_template_or_dispatch_domain: 0,
+                        spin_state_class: 0,
+                        exact_factor_id: 0,
+                        selector_domain_id: 0,
+                    },
+                },
+                OnTheFlyTraceOperationV1::Source {
+                    key: source_key(1),
+                    row: DirectSourceRow {
+                        source_slot: 1,
+                        destination_component_base: 1,
+                        momentum_form_id: 1,
+                        source_template_or_dispatch_domain: 1,
+                        spin_state_class: 0,
+                        exact_factor_id: 0,
+                        selector_domain_id: 0,
+                    },
+                },
+                OnTheFlyTraceOperationV1::Contribution {
+                    key: contribution_executor,
+                    row: DirectContributionRow {
+                        parent0_component_base: 0,
+                        parent1_component_base_or_sentinel: 1,
+                        parent0_momentum_form_id: 0,
+                        parent1_momentum_form_id_or_sentinel: 1,
+                        destination_component_base: 2,
+                        exact_factor_id: 1,
+                        selector_domain_id: 0,
+                        flags: DIRECT_CONTRIBUTION_FLAG_INITIALIZE_DESTINATION,
+                    },
+                },
+                OnTheFlyTraceOperationV1::Finalization {
+                    key: finalization_executor,
+                    row: DirectFinalizationRow {
+                        component_base: 2,
+                        component_count: 1,
+                        momentum_form_id: 2,
+                        exact_factor_id: 0,
+                        selector_domain_id: 0,
+                        flags: 0,
+                    },
+                },
+                OnTheFlyTraceOperationV1::Closure {
+                    key: closure_executor,
+                    row: DirectClosureRow {
+                        parent0_component_base: 0,
+                        parent1_component_base_or_sentinel: 2,
+                        parent0_momentum_form_id: 0,
+                        parent1_momentum_form_id_or_sentinel: 2,
+                        amplitude_destination_id: 0,
+                        exact_factor_id: 0,
+                        component_factor_start: 2,
+                        component_count: 1,
+                        selector_domain_id: 0,
+                        flags: 0,
+                    },
+                },
+            ]
+            .into_boxed_slice(),
+            momentum_forms: vec![momentum(&[0]), momentum(&[1]), momentum(&[0, 1])]
+                .into_boxed_slice(),
+            exact_factors: vec![
+                ExactComplexRational::ONE,
+                contribution_factor,
+                ExactComplexRational::ONE,
+            ]
+            .into_boxed_slice(),
+            pairing_owner: ResolvedPairingOwnerV1 {
+                endpoint_pairs: Vec::new(),
+                proof_digest: None,
+                source_slot_permutation: vec![0, 1],
+                source_lineage: vec![0, 1],
+                fermion_parity: 1,
+            },
+            layout: OnTheFlyWorkspaceLayoutV1 {
+                source_count: 2,
+                lorentz_component_count: 4,
+                parameter_count: 0,
+                current_component_count: 3,
+                amplitude_component_count: 1,
+                momentum_form_count: 3,
+                exact_factor_count: 3,
+            },
+            proof: OnTheFlyStructuralProofV1 {
+                current_count: 3,
+                contribution_count: 1,
+                closure_count: 1,
+                constructed_current_count: 3,
+                constructed_contribution_count: 1,
+                current_multiset_digest: test_digest,
+                contribution_multiset_digest: test_digest,
+                closure_multiset_digest: test_digest,
+                owner_digest: test_digest,
+                semantic_digest: test_digest,
+            },
+            semantic_digest: test_digest,
+            prepared_executor_rows_bound: true,
+            current_component_ranges: vec![[0, 1], [1, 1], [2, 1]].into_boxed_slice(),
+            current_semantic_digests: current_semantic_digests.into_boxed_slice(),
+            contribution_proof_rows: vec![OnTheFlyTraceContributionProofRowV1 {
+                result_current_id: 2,
+                parent_current_ids: [0, 1],
+                key: contribution_key,
+                exact_factor: contribution_factor,
+            }]
+            .into_boxed_slice(),
+        };
+        (
+            trace,
+            OnTheFlyProjectionProbeV1 {
+                enabled: true,
+                applied: false,
+                pre: [3, 1, 1],
+                post: [3, 1, 1],
+            },
+        )
+    }
+
+    pub(crate) fn test_remap_dynamic_color_id(&mut self, id: u32) {
+        let color_id = crate::recurrence::DynamicLCColorStateId::from_interner(id);
+        for ((key, color), digest) in self
+            .current_keys
+            .iter_mut()
+            .zip(self.current_colors.iter())
+            .zip(self.current_semantic_digests.iter_mut())
+        {
+            *key = crate::recurrence::construct::current_key_with_dynamic_color(key, color_id)
+                .unwrap();
+            *digest = hash_current_key(key, color).unwrap();
+        }
     }
 
     pub(crate) fn test_insert_identity_finalizer(&mut self, direct_catalog_digest: SemanticDigest) {
@@ -1400,6 +1692,8 @@ pub(super) fn lower_trace(
         .max()
         .unwrap_or(0);
     let mut contribution_proof_rows = Vec::new();
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    let mut family_contribution_rows = Vec::new();
     let current_digest_by_old = live
         .iter()
         .copied()
@@ -1472,6 +1766,26 @@ pub(super) fn lower_trace(
                     &pending.key,
                     *factor,
                 )?);
+                #[cfg(any(test, feature = "on-the-fly-test-support"))]
+                {
+                    let local_parent_ids = [old_to_new[&parent_ids[0]], old_to_new[&parent_ids[1]]];
+                    family_contribution_rows.push(OnTheFlyTraceContributionProofRowV1 {
+                        result_current_id: old_to_new[&old_id],
+                        parent_current_ids: local_parent_ids,
+                        key: ContributionKey::new(
+                            pending.key.transition_template_id(),
+                            local_parent_ids.to_vec(),
+                            pending.key.parent_state_template_ids().to_vec(),
+                            pending.key.parent_momenta().to_vec(),
+                            pending.key.result_state_template_id(),
+                            pending.key.quantum_flow_witness_id(),
+                            pending.key.color_witness_term_id(),
+                            pending.key.runtime_coupling_binding_digest(),
+                            pending.key.output_projection_id(),
+                        )?,
+                        exact_factor: *factor,
+                    });
+                }
             }
             if !initialized {
                 return Err(integrity(
@@ -1671,6 +1985,8 @@ pub(super) fn lower_trace(
         current_component_ranges,
         #[cfg(any(test, feature = "on-the-fly-test-support"))]
         current_semantic_digests,
+        #[cfg(any(test, feature = "on-the-fly-test-support"))]
+        contribution_proof_rows: family_contribution_rows.into_boxed_slice(),
     })
 }
 
@@ -1731,6 +2047,7 @@ mod tests {
             prepared_executor_rows_bound: false,
             current_component_ranges: Box::new([]),
             current_semantic_digests: Box::new([]),
+            contribution_proof_rows: Box::new([]),
         };
         let small = OnTheFlyWorkspaceV1::new(&trace, 1).unwrap();
         let large = OnTheFlyWorkspaceV1::new(&trace, 65).unwrap();

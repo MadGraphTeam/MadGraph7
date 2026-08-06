@@ -86,6 +86,8 @@ fn final_digest(hash: Sha256) -> RusticolResult<SemanticDigest> {
     SemanticDigest::new(hash.finalize().into())
 }
 
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+mod family;
 mod interpreter;
 #[cfg(feature = "on-the-fly-test-support")]
 mod probe_guard;
@@ -99,6 +101,8 @@ mod templates;
 mod test_support;
 mod trace;
 
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+pub use family::{OnTheFlyQueryFamilyCensusV1, on_the_fly_query_family_census_v1};
 pub(crate) use interpreter::{
     OnTheFlyPreparedExecutorResolver, OnTheFlyStructuralInterpreter, OnTheFlyWorkspaceV1,
     ResolvedOnTheFlyExecutor,

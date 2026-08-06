@@ -223,6 +223,139 @@ def test_workload_census_sums_operations_and_keeps_recurrence_calls_distinct() -
     assert gate._public_recurrence_work(SimpleNamespace(timing_breakdown=None)) is None
 
 
+def test_query_family_census_matches_query_local_work_and_retains_destinations(
+) -> None:
+    observed: dict[str, object] = {}
+
+    def probe(*args: object, **kwargs: object) -> dict[str, int]:
+        observed["args"] = args
+        observed["kwargs"] = kwargs
+        return {
+            "query_count": 2,
+            "source_frame_partition_count": 1,
+            "projection_applied_query_count": 2,
+            "projection_pre_current_count": 12,
+            "projection_pre_contribution_count": 10,
+            "projection_pre_closure_count": 2,
+            "projection_post_current_count": 10,
+            "projection_post_contribution_count": 8,
+            "projection_post_closure_count": 2,
+            "dynamic_current_occurrence_count": 10,
+            "dynamic_current_component_occurrence_count": 16,
+            "dynamic_source_rows": 4,
+            "dynamic_contribution_rows": 8,
+            "dynamic_finalization_rows": 3,
+            "dynamic_closure_rows": 2,
+            "dynamic_source_calls": 4,
+            "dynamic_contribution_calls": 8,
+            "dynamic_finalization_calls": 3,
+            "dynamic_closure_calls": 2,
+            "union_unique_current_count": 6,
+            "union_unique_current_component_count": 10,
+            "union_source_rows": 2,
+            "union_contribution_rows": 5,
+            "union_finalization_rows": 2,
+            "union_closure_rows": 2,
+            "union_amplitude_destination_count": 2,
+            "union_source_executor_call_groups": 2,
+            "union_contribution_executor_call_groups": 3,
+            "union_finalization_executor_call_groups": 1,
+            "union_closure_executor_call_groups": 1,
+        }
+
+    retained = gate.RetainedInputs("builder", "template", b"{}", "a" * 64)
+    queries = (
+        gate.Query("flow:0", 0, "h:0", (1, -1)),
+        gate.Query("flow:1", 1, "h:1", (-1, 1)),
+    )
+    hidden = {
+        "queries": [
+            {
+                "work_census": {
+                    "logical_current_count": 5,
+                    "resident_current_component_count": 8,
+                }
+            },
+            {
+                "work_census": {
+                    "logical_current_count": 5,
+                    "resident_current_component_count": 8,
+                }
+            },
+        ],
+        "workload_operation_census": {
+            "source_operation_count": 4,
+            "contribution_operation_count": 8,
+            "finalization_operation_count": 3,
+            "closure_operation_count": 2,
+        },
+    }
+    result = gate._query_family_census(probe, retained, queries, hidden, True)
+    assert result["basis"] == "exact-current-core-key-query-family-union-v1"
+    assert result["union_unique_current_count"] == 6
+    assert result["union_amplitude_destination_count"] == 2
+    assert observed["args"][4] == [0, 1]
+    assert observed["args"][5] == [[1, -1], [-1, 1]]
+    assert observed["kwargs"] == {"enable_color_projection": True}
+
+    def stale(*_args: object, **_kwargs: object) -> dict[str, int]:
+        value = probe(*_args, **_kwargs)
+        value["dynamic_contribution_rows"] = 7
+        return value
+
+    with pytest.raises(gate.GateError, match="independently timed"):
+        gate._query_family_census(stale, retained, queries, hidden, True)
+
+
+def test_established_recurrence_schedule_census_reads_generated_dag(
+    tmp_path: Path,
+) -> None:
+    process = tmp_path / "processes" / gate.PROCESS_ID
+    process.mkdir(parents=True)
+    payload = {
+        "recurrence_summary": {
+            "current_count": 7,
+            "contribution_count": 5,
+            "closure_term_count": 2,
+        },
+        "plan": {
+            "inspection_summary": {
+                "schedule": {
+                    "source_row_count": 2,
+                    "current_count": 7,
+                    "contribution_count": 5,
+                    "finalization_count": 3,
+                    "closure_term_count": 2,
+                    "amplitude_destination_count": 2,
+                },
+                "direct_arena": {"semantic_component_count": 11},
+            }
+        },
+    }
+    (process / "execution.json").write_text(json.dumps(payload), encoding="utf-8")
+    result = gate._established_recurrence_schedule_census(tmp_path)
+    assert result == {
+        "basis": "persisted-recurrence-direct-schedule-v2",
+        "semantics": (
+            "currents and interaction rows in the generated recurrence DAG; "
+            "runtime selector counters remain workload-specific"
+        ),
+        "source_row_count": 2,
+        "current_count": 7,
+        "contribution_count": 5,
+        "finalization_count": 3,
+        "closure_term_count": 2,
+        "amplitude_destination_count": 2,
+        "semantic_current_component_count": 11,
+        "total_kernel_application_count": 12,
+    }
+
+    payload["recurrence_summary"]["current_count"] = 8
+    (process / "execution.json").write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(gate.GateError, match="summaries disagree"):
+        gate._established_recurrence_schedule_census(tmp_path)
+
+
 def test_hidden_timing_serializes_one_query_census_and_workload_sum() -> None:
     def probe(*args: object, **kwargs: object) -> dict[str, object]:
         point_count = int(args[9])

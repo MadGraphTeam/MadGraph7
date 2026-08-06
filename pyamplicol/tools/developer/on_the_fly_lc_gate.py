@@ -92,6 +92,38 @@ WORK_CENSUS_COUNT_FIELDS = (
     "semantic_executor_binding_count",
     "distinct_prepared_executor_count",
 )
+FAMILY_CENSUS_COUNT_FIELDS = (
+    "query_count",
+    "source_frame_partition_count",
+    "projection_applied_query_count",
+    "projection_pre_current_count",
+    "projection_pre_contribution_count",
+    "projection_pre_closure_count",
+    "projection_post_current_count",
+    "projection_post_contribution_count",
+    "projection_post_closure_count",
+    "dynamic_current_occurrence_count",
+    "dynamic_current_component_occurrence_count",
+    "dynamic_source_rows",
+    "dynamic_contribution_rows",
+    "dynamic_finalization_rows",
+    "dynamic_closure_rows",
+    "dynamic_source_calls",
+    "dynamic_contribution_calls",
+    "dynamic_finalization_calls",
+    "dynamic_closure_calls",
+    "union_unique_current_count",
+    "union_unique_current_component_count",
+    "union_source_rows",
+    "union_contribution_rows",
+    "union_finalization_rows",
+    "union_closure_rows",
+    "union_amplitude_destination_count",
+    "union_source_executor_call_groups",
+    "union_contribution_executor_call_groups",
+    "union_finalization_executor_call_groups",
+    "union_closure_executor_call_groups",
+)
 Point = tuple[tuple[float, ...], ...]
 Points = tuple[Point, ...]
 
@@ -408,6 +440,17 @@ def _probe() -> Callable[..., dict[str, Any]]:
     return candidate
 
 
+def _family_probe() -> Callable[..., dict[str, Any]]:
+    candidate = getattr(
+        importlib.import_module("pyamplicol._rusticol"),
+        "_on_the_fly_query_family_census_v1",
+        None,
+    )
+    if not callable(candidate):
+        raise GateError("native extension lacks on-the-fly family-census support")
+    return candidate
+
+
 def _invoke(
     probe: Callable[..., dict[str, Any]],
     artifact: Path,
@@ -646,6 +689,174 @@ def _workload_operation_census(
     }
 
 
+def _query_family_census(
+    probe: Callable[..., dict[str, Any]],
+    retained: RetainedInputs,
+    queries: Sequence[Query],
+    hidden_timing: Mapping[str, object],
+    enable_color_projection: bool,
+) -> dict[str, object]:
+    if not queries:
+        raise GateError("query-family census needs at least one query")
+    raw = probe(
+        retained.builder,
+        retained.template,
+        retained.direct_json,
+        retained.pack_digest,
+        [query.flow_index for query in queries],
+        [list(query.helicities) for query in queries],
+        enable_color_projection=enable_color_projection,
+    )
+    if not isinstance(raw, Mapping):
+        raise GateError("native query-family census is not a mapping")
+    counts: dict[str, int] = {}
+    for name in FAMILY_CENSUS_COUNT_FIELDS:
+        value = raw.get(name)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise GateError(f"native query-family census has invalid {name}")
+        counts[name] = value
+    if counts["query_count"] != len(queries):
+        raise GateError("native query-family census has the wrong query count")
+    if not 0 < counts["source_frame_partition_count"] <= len(queries):
+        raise GateError(
+            "native query-family census has invalid source-frame partitions"
+        )
+
+    rows = hidden_timing.get("queries")
+    operation_census = hidden_timing.get("workload_operation_census")
+    if (
+        not isinstance(rows, Sequence)
+        or isinstance(rows, (str, bytes))
+        or not isinstance(operation_census, Mapping)
+    ):
+        raise GateError("timed workload has no query-local census")
+    current_occurrences = 0
+    component_occurrences = 0
+    for row in rows:
+        if not isinstance(row, Mapping) or not isinstance(
+            row.get("work_census"), Mapping
+        ):
+            raise GateError("timed workload query has no work census")
+        work = row["work_census"]
+        for name, target in (
+            ("logical_current_count", "current"),
+            ("resident_current_component_count", "component"),
+        ):
+            value = work.get(name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise GateError(f"timed workload has invalid {target} census")
+            if name == "logical_current_count":
+                current_occurrences += value
+            else:
+                component_occurrences += value
+    expected_rows = {
+        "dynamic_source_rows": "source_operation_count",
+        "dynamic_contribution_rows": "contribution_operation_count",
+        "dynamic_finalization_rows": "finalization_operation_count",
+        "dynamic_closure_rows": "closure_operation_count",
+    }
+    if (
+        counts["dynamic_current_occurrence_count"] != current_occurrences
+        or counts["dynamic_current_component_occurrence_count"]
+        != component_occurrences
+        or any(
+            counts[native] != operation_census.get(query_local)
+            for native, query_local in expected_rows.items()
+        )
+        or counts["projection_post_current_count"] != current_occurrences
+        or counts["projection_post_contribution_count"]
+        != counts["dynamic_contribution_rows"]
+        or counts["projection_post_closure_count"] != counts["dynamic_closure_rows"]
+    ):
+        raise GateError(
+            "native query-family census disagrees with independently timed query traces"
+        )
+    for role in ("source", "contribution", "finalization", "closure"):
+        if counts[f"dynamic_{role}_calls"] != counts[f"dynamic_{role}_rows"]:
+            raise GateError("query-local dynamic call census is inconsistent")
+        if counts[f"union_{role}_executor_call_groups"] > counts[
+            f"union_{role}_rows"
+        ]:
+            raise GateError("query-family executor groups outnumber union rows")
+    if (
+        counts["union_amplitude_destination_count"] != len(queries)
+        or counts["union_unique_current_count"] > current_occurrences
+        or counts["union_unique_current_component_count"] > component_occurrences
+        or any(
+            counts[f"union_{role}_rows"] > counts[f"dynamic_{role}_rows"]
+            for role in ("source", "contribution", "finalization", "closure")
+        )
+    ):
+        raise GateError("query-family union census does not bound query-local work")
+    return {
+        "basis": "exact-current-core-key-query-family-union-v1",
+        "semantics": (
+            "dynamic counts sum today's independently executed query-local traces; "
+            "union counts intern exact semantic currents/interactions within each "
+            "authenticated source-frame partition while retaining one amplitude "
+            "destination per requested query"
+        ),
+        **counts,
+    }
+
+
+def _established_recurrence_schedule_census(artifact: Path) -> dict[str, object]:
+    path = artifact / "processes" / PROCESS_ID / "execution.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        summary = payload["recurrence_summary"]
+        inspection = payload["plan"]["inspection_summary"]
+        schedule = inspection["schedule"]
+        arena = inspection["direct_arena"]
+    except (
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        KeyError,
+        TypeError,
+    ) as error:
+        raise GateError("cannot read established recurrence schedule census") from error
+    fields = (
+        "source_row_count",
+        "current_count",
+        "contribution_count",
+        "finalization_count",
+        "closure_term_count",
+        "amplitude_destination_count",
+    )
+    counts: dict[str, int] = {}
+    for name in fields:
+        value = schedule.get(name)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise GateError(f"established recurrence schedule has invalid {name}")
+        counts[name] = value
+    semantic_components = arena.get("semantic_component_count")
+    if (
+        isinstance(semantic_components, bool)
+        or not isinstance(semantic_components, int)
+        or semantic_components < counts["current_count"]
+        or summary.get("current_count") != counts["current_count"]
+        or summary.get("contribution_count") != counts["contribution_count"]
+        or summary.get("closure_term_count") != counts["closure_term_count"]
+    ):
+        raise GateError("established recurrence schedule summaries disagree")
+    return {
+        "basis": "persisted-recurrence-direct-schedule-v2",
+        "semantics": (
+            "currents and interaction rows in the generated recurrence DAG; "
+            "runtime selector counters remain workload-specific"
+        ),
+        **counts,
+        "semantic_current_component_count": semantic_components,
+        "total_kernel_application_count": (
+            counts["source_row_count"]
+            + counts["contribution_count"]
+            + counts["finalization_count"]
+            + counts["closure_term_count"]
+        ),
+    }
+
+
 def _hidden_timing(
     probe: Callable[..., dict[str, Any]],
     artifact: Path,
@@ -841,6 +1052,7 @@ def _run(
     fixed_h = helicity_axis[HELICITY_ID]
     fixed_c = color_axis[FLOW_ID]
     probe = _probe()
+    family_probe = _family_probe()
     cache: dict[Query, tuple[tuple[float, ...], float, dict[str, Any]]] = {}
 
     def hidden(flow: object, helicity: object) -> tuple[float, ...]:
@@ -933,6 +1145,20 @@ def _run(
         target,
         enable_color_projection,
     )
+    selected_hidden_timing["structural_family_census"] = _query_family_census(
+        family_probe,
+        retained,
+        selected_queries,
+        selected_hidden_timing,
+        enable_color_projection,
+    )
+    flow_hidden_timing["structural_family_census"] = _query_family_census(
+        family_probe,
+        retained,
+        flow_queries,
+        flow_hidden_timing,
+        enable_color_projection,
+    )
     selected_public_timing = _public_timing(
         BenchmarkRunner(_benchmark_config(target, batch, flows=(FLOW_ID,))).run(
             runtime, points=timing_points
@@ -978,6 +1204,9 @@ def _run(
         },
         "generation_seconds": generation_seconds,
         "runtime_load_seconds": load_seconds,
+        "established_recurrence_schedule": _established_recurrence_schedule_census(
+            artifact
+        ),
         "points": {"seeds": SEEDS, "seed_101_digest": digest, "dense": len(points)},
         "cold_query_outer_seconds": {
             "queries": len(cold),
