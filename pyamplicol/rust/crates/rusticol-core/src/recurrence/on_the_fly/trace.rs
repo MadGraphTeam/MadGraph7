@@ -1593,29 +1593,24 @@ fn operation_key(
 }
 
 fn source_executor_key(
-    templates: &ValidatedRecurrenceTemplateInput,
-    catalog: &TemplateCatalog<'_>,
+    grammar: &PreparedOnTheFlyGrammarV1,
     seed: &OnTheFlyProcessSeedV1,
     source_template_id: u32,
+    current_state_template_id: u32,
 ) -> RusticolResult<OnTheFlyExecutorKeyV1> {
-    let source = templates
-        .input()
+    let executor = grammar
         .sources
-        .get(source_template_id as usize)
-        .ok_or_else(|| integrity("source executor template is absent"))?;
-    let binding = templates
-        .input()
-        .evaluator_bindings
-        .get(source.evaluator_binding_id as usize)
-        .ok_or_else(|| integrity("source executor binding is absent"))?;
+        .get(&(source_template_id, current_state_template_id))
+        .ok_or_else(|| integrity("source executor contract is absent"))?
+        .executor;
     operation_key(
         seed,
         DirectExecutorRole::Source,
         OnTheFlyOperationKindV1::Source,
-        source.id,
-        catalog.digest(source.semantic_digest_id, "source semantic")?,
-        binding.id,
-        catalog.digest(binding.semantic_digest_id, "source evaluator semantic")?,
+        executor.operation_id,
+        executor.operation_semantic_digest,
+        executor.evaluator_binding_id,
+        executor.evaluator_binding_semantic_digest,
     )
 }
 
@@ -1635,29 +1630,22 @@ fn transition_executor_key(
 }
 
 fn propagator_executor_key(
-    templates: &ValidatedRecurrenceTemplateInput,
-    catalog: &TemplateCatalog<'_>,
+    grammar: &PreparedOnTheFlyGrammarV1,
     seed: &OnTheFlyProcessSeedV1,
     propagator_template_id: u32,
 ) -> RusticolResult<OnTheFlyExecutorKeyV1> {
-    let row = templates
-        .input()
-        .propagators
-        .get(propagator_template_id as usize)
-        .ok_or_else(|| integrity("propagator executor template is absent"))?;
-    let binding = templates
-        .input()
-        .evaluator_bindings
-        .get(row.evaluator_binding_id as usize)
-        .ok_or_else(|| integrity("propagator executor binding is absent"))?;
+    let executor = grammar
+        .propagator_executors
+        .get(&propagator_template_id)
+        .ok_or_else(|| integrity("propagator executor contract is absent"))?;
     operation_key(
         seed,
         DirectExecutorRole::Finalization,
         OnTheFlyOperationKindV1::Propagator,
-        row.id,
-        catalog.digest(row.semantic_digest_id, "propagator semantic")?,
-        binding.id,
-        catalog.digest(binding.semantic_digest_id, "propagator evaluator semantic")?,
+        executor.operation_id,
+        executor.operation_semantic_digest,
+        executor.evaluator_binding_id,
+        executor.evaluator_binding_semantic_digest,
     )
 }
 
@@ -1679,15 +1667,13 @@ fn closure_executor_key(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn lower_trace(
     templates: &ValidatedRecurrenceTemplateInput,
-    catalog: &TemplateCatalog<'_>,
+    grammar: &PreparedOnTheFlyGrammarV1,
     seed: &OnTheFlyProcessSeedV1,
     query: &DecodedLcQueryV1,
     colors: &DynamicLCColorStateInterner,
     currents: &[PendingCurrent],
     closures: &[PendingClosure],
     pairing_owner: ResolvedPairingOwnerV1,
-    transitions: &BTreeMap<(u32, u32), Vec<PreparedTransition>>,
-    prepared_closures: &BTreeMap<(u32, u32), Vec<PreparedClosure>>,
     live: &BTreeSet<u32>,
     constructed_contribution_count: usize,
 ) -> RusticolResult<OnTheFlyStructuralTraceV1> {
@@ -1753,7 +1739,12 @@ pub(super) fn lower_trace(
             _ => return Err(integrity("selected source has no fixed template binding")),
         };
         operations.push(OnTheFlyTraceOperationV1::Source {
-            key: source_executor_key(templates, catalog, seed, source_template_id)?,
+            key: source_executor_key(
+                grammar,
+                seed,
+                source_template_id,
+                current.key.current_state_template_id(),
+            )?,
             row: DirectSourceRow {
                 source_slot: current.key.support_source_slots()[0],
                 destination_component_base: component_bases[&old_id],
@@ -1812,7 +1803,8 @@ pub(super) fn lower_trace(
                         .all(|parent| live.contains(parent))
             }) {
                 let transition_id = pending.key.transition_template_id();
-                let prepared = transitions
+                let prepared = grammar
+                    .transitions
                     .values()
                     .flatten()
                     .find(|prepared| prepared.row.id == transition_id)
@@ -1879,7 +1871,7 @@ pub(super) fn lower_trace(
             if let Some(propagator_id) = current.key.propagator_template_id() {
                 let component_count = component_counts[&old_id];
                 operations.push(OnTheFlyTraceOperationV1::Finalization {
-                    key: propagator_executor_key(templates, catalog, seed, propagator_id)?,
+                    key: propagator_executor_key(grammar, seed, propagator_id)?,
                     row: DirectFinalizationRow {
                         component_base: component_bases[&old_id],
                         component_count,
@@ -1895,7 +1887,8 @@ pub(super) fn lower_trace(
 
     let mut closure_proof_rows = Vec::new();
     for closure in closures {
-        let prepared = prepared_closures
+        let prepared = grammar
+            .closures
             .values()
             .flatten()
             .find(|prepared| prepared.row.id == closure.key.closure_template_id)

@@ -182,12 +182,34 @@ def _parser() -> argparse.ArgumentParser:
         help="stored successful AmpliCol worker-result.json (optional sanity point)",
     )
     parser.add_argument(
-        "--compiled-artifact",
+        "--recurrence-selected-artifact",
+        required=True,
         type=Path,
         help=(
-            "optional existing compiled artifact for an authenticated, descriptive "
-            "whole-DAG current/interaction census"
+            "explicit LC topology-replay recurrence comparator for the "
+            "selected-flow/helicity-sum workload"
         ),
+    )
+    parser.add_argument(
+        "--recurrence-all-flow-artifact",
+        required=True,
+        type=Path,
+        help=(
+            "explicit LC all-flow-union recurrence comparator for the "
+            "all-flow/single-helicity workload"
+        ),
+    )
+    parser.add_argument(
+        "--compiled-selected-artifact",
+        required=True,
+        type=Path,
+        help="explicit LC compiled selected-flow/helicity-sum comparator",
+    )
+    parser.add_argument(
+        "--compiled-all-flow-artifact",
+        required=True,
+        type=Path,
+        help="explicit LC compiled all-flow/single-helicity comparator",
     )
     parser.add_argument("--target-runtime", type=_positive_float, default=1.0)
     parser.add_argument("--batch-size", type=_positive_int, default=128)
@@ -816,8 +838,18 @@ def _public_timing(result: object) -> dict[str, object]:
         "sample_count": result.sample_count,
         "repetitions_per_sample": result.repetitions_per_sample,
         "wall_seconds_per_point": result.wall_time_per_point,
+        "recurrence_core_seconds_per_point": result.evaluator_time_per_point,
         "evaluator_seconds_per_point": result.evaluator_time_per_point,
         "evaluator_total_seconds_per_point": result.evaluator_total_time_per_point,
+        "clock_attribution": {
+            "wall_seconds_per_point": "BenchmarkRunner outer wall clock",
+            "recurrence_core_seconds_per_point": (
+                "recurrence runtime core clock reported by the comparator"
+            ),
+            "relationship": (
+                "independent clocks; equality is neither assumed nor asserted"
+            ),
+        },
         "interrupted": result.interrupted,
         "effective_config": dataclasses.asdict(result.effective_config),
         "uncertainty": dataclasses.asdict(result.uncertainty),
@@ -983,116 +1015,400 @@ def _assert_executable_family_matches_structural_census(
             )
 
 
-def _established_recurrence_schedule_census(artifact: Path) -> dict[str, object]:
-    path = artifact / "processes" / PROCESS_ID / "execution.json"
+def _mapping(value: object, label: str) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise GateError(f"{label} is not a mapping")
+    return value
+
+
+def _items(value: object, label: str) -> tuple[object, ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise GateError(f"{label} is not a sequence")
+    return tuple(value)
+
+
+def _records(value: object, label: str) -> tuple[Mapping[str, object], ...]:
+    return tuple(
+        _mapping(item, f"{label}[{index}]")
+        for index, item in enumerate(_items(value, label))
+    )
+
+
+def _count(value: object, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise GateError(f"{label} is not a non-negative integer")
+    return value
+
+
+def _artifact_execution(
+    artifact: Path, execution_mode: str
+) -> tuple[object, Mapping[str, object], Path]:
+    try:
+        root = artifact.expanduser().resolve(strict=True)
+    except OSError as error:
+        raise GateError(f"comparator artifact does not exist: {artifact}") from error
+    if not root.is_dir():
+        raise GateError(f"comparator artifact is not a directory: {root}")
+    runtime = Runtime.load(root)
+    physics = runtime.physics
+    if runtime.execution_mode != execution_mode or physics.color_accuracy != "lc":
+        raise GateError(
+            f"comparator is not an LC {execution_mode} artifact: {root}"
+        )
+    process_id = physics.process_id
+    if not isinstance(process_id, str) or not process_id:
+        raise GateError("comparator runtime has no process identity")
+    path = root / "processes" / process_id / "execution.json"
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-        summary = payload["recurrence_summary"]
-        inspection = payload["plan"]["inspection_summary"]
-        schedule = inspection["schedule"]
-        arena = inspection["direct_arena"]
     except (
         OSError,
         UnicodeDecodeError,
         json.JSONDecodeError,
-        KeyError,
-        TypeError,
     ) as error:
-        raise GateError("cannot read established recurrence schedule census") from error
-    fields = (
-        "source_row_count",
-        "current_count",
-        "contribution_count",
-        "finalization_count",
-        "closure_term_count",
-        "amplitude_destination_count",
-    )
-    counts: dict[str, int] = {}
-    for name in fields:
-        value = schedule.get(name)
-        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-            raise GateError(f"established recurrence schedule has invalid {name}")
-        counts[name] = value
-    semantic_components = arena.get("semantic_component_count")
-    if (
-        isinstance(semantic_components, bool)
-        or not isinstance(semantic_components, int)
-        or semantic_components < counts["current_count"]
-        or summary.get("current_count") != counts["current_count"]
-        or summary.get("contribution_count") != counts["contribution_count"]
-        or summary.get("closure_term_count") != counts["closure_term_count"]
-    ):
-        raise GateError("established recurrence schedule summaries disagree")
-    return {
-        "basis": "persisted-recurrence-direct-schedule-v2",
-        "semantics": (
-            "currents and interaction rows in the generated recurrence DAG; "
-            "runtime selector counters remain workload-specific"
+        raise GateError(f"cannot read comparator execution record: {path}") from error
+    return runtime, _mapping(payload, "comparator execution record"), root
+
+
+def _recurrence_counts(
+    record: Mapping[str, object],
+    *,
+    components: object | None = None,
+    destinations: object | None = None,
+    certificate: bool = False,
+) -> dict[str, int]:
+    closure_key = "closure_count" if certificate else "closure_term_count"
+    result = {
+        "source_row_count": _count(
+            record.get("source_row_count"), "recurrence source-row count"
         ),
-        **counts,
-        "semantic_current_component_count": semantic_components,
-        "total_kernel_application_count": (
-            counts["source_row_count"]
-            + counts["contribution_count"]
-            + counts["finalization_count"]
-            + counts["closure_term_count"]
+        "current_count": _count(
+            record.get("current_count"), "recurrence current count"
+        ),
+        "semantic_current_component_count": _count(
+            (
+                record.get("semantic_component_count")
+                if components is None
+                else components
+            ),
+            "recurrence semantic-component count",
+        ),
+        "contribution_count": _count(
+            record.get("contribution_count"), "recurrence contribution count"
+        ),
+        "finalization_count": _count(
+            record.get("finalization_count"), "recurrence finalization count"
+        ),
+        "closure_count": _count(record.get(closure_key), "recurrence closure count"),
+        "amplitude_destination_count": _count(
+            (
+                record.get("amplitude_destination_count")
+                if destinations is None
+                else destinations
+            ),
+            "recurrence amplitude-destination count",
+        ),
+    }
+    if result["semantic_current_component_count"] < result["current_count"]:
+        raise GateError("recurrence has fewer components than currents")
+    result["kernel_row_count"] = sum(
+        result[name]
+        for name in (
+            "source_row_count",
+            "contribution_count",
+            "finalization_count",
+            "closure_count",
+        )
+    )
+    if certificate and result["kernel_row_count"] != _count(
+        record.get("row_count"), "recurrence certificate row count"
+    ):
+        raise GateError("recurrence certificate row count is inconsistent")
+    return result
+
+
+def _exact_public_index(records: object, selector_id: str, label: str) -> int:
+    matches = [
+        record for record in records if getattr(record, "id", None) == selector_id
+    ]
+    if len(matches) != 1:
+        raise GateError(f"{label} selector {selector_id!r} is absent or ambiguous")
+    index = getattr(matches[0], "index", None)
+    if isinstance(index, bool) or not isinstance(index, int) or index < 0:
+        raise GateError(f"{label} selector {selector_id!r} has an invalid public index")
+    return index
+
+
+def _recurrence_artifact_census(
+    artifact: Path, *, layout: str
+) -> dict[str, object]:
+    runtime, payload, root = _artifact_execution(artifact, "recurrence")
+    if payload.get("kind") != "pyamplicol-runtime-recurrence-execution":
+        raise GateError("recurrence comparator has the wrong execution kind")
+    summary = _mapping(payload.get("recurrence_summary"), "recurrence summary")
+    plan = _mapping(payload.get("plan"), "recurrence plan")
+    inspection = _mapping(plan.get("inspection_summary"), "recurrence inspection")
+    if inspection.get("lc_flow_layout") != layout:
+        raise GateError(f"recurrence comparator is not {layout!r}")
+    schedule = _mapping(inspection.get("schedule"), "recurrence schedule")
+    arena = _mapping(inspection.get("direct_arena"), "recurrence direct arena")
+    whole = _recurrence_counts(
+        schedule, components=arena.get("semantic_component_count")
+    )
+    if (
+        summary.get("current_count") != whole["current_count"]
+        or summary.get("contribution_count") != whole["contribution_count"]
+        or summary.get("closure_term_count") != whole["closure_count"]
+    ):
+        raise GateError("recurrence schedule summaries disagree")
+    certificate = _mapping(
+        inspection.get("selector_work_certificate"),
+        "recurrence selector-work certificate",
+    )
+    union = _recurrence_counts(
+        _mapping(certificate.get("persisted_union"), "recurrence persisted union"),
+        destinations=whole["amplitude_destination_count"],
+        certificate=True,
+    )
+    if union != whole:
+        raise GateError("recurrence whole schedule and persisted union disagree")
+
+    physics = runtime.physics
+    if layout == "topology-replay":
+        public_index = _exact_public_index(
+            physics.color_flows, FLOW_ID, "recurrence color-flow"
+        )
+        metadata = _mapping(payload.get("runtime_metadata"), "recurrence metadata")
+        public_flows = _records(
+            metadata.get("public_color_flows"), "recurrence public color flows"
+        )
+        bindings = [
+            record for record in public_flows if record.get("public_id") == FLOW_ID
+        ]
+        if len(bindings) != 1:
+            raise GateError("recurrence color-flow binding is absent or ambiguous")
+        target_sector = _count(
+            bindings[0].get("target_sector_id"), "recurrence target sector"
+        )
+        if target_sector != public_index:
+            raise GateError(
+                "recurrence public color-flow index and target sector differ"
+            )
+        representatives = _records(
+            certificate.get("representatives"), "recurrence representatives"
+        )
+        selected = [
+            record
+            for record in representatives
+            if record.get("representative_sector_id") == target_sector
+        ]
+        if len(selected) != 1:
+            raise GateError(
+                "recurrence selected-flow certificate is absent or ambiguous"
+            )
+        live = _recurrence_counts(selected[0], certificate=True)
+        selector = {
+            "kind": "exact_public_color_flow_index",
+            "id": FLOW_ID,
+            "public_index": public_index,
+            "representative_sector_id": target_sector,
+        }
+    else:
+        public_index = _exact_public_index(
+            physics.helicities, HELICITY_ID, "recurrence helicity"
+        )
+        representatives = _records(
+            certificate.get("representatives"), "recurrence representatives"
+        )
+        if representatives:
+            raise GateError("all-flow-union recurrence certificate has alternatives")
+        live = union
+        selector = {
+            "kind": "exact_public_helicity_index",
+            "id": HELICITY_ID,
+            "public_index": public_index,
+        }
+    return {
+        "artifact": str(root),
+        "artifact_id": runtime.artifact_id,
+        "layout": layout,
+        "basis": "authenticated-persisted-recurrence-selector-certificate-v1",
+        "selector": selector,
+        "whole": whole,
+        "selector_live": live,
+        "semantics": (
+            "whole is the persisted recurrence DirectPlan; selector_live is the "
+            "authenticated exact-selector certificate and is not inferred from "
+            "runtime timing counters"
         ),
     }
 
 
-def _compiled_dag_census(artifact: Path | None) -> dict[str, object]:
-    if artifact is None:
-        return {
-            "available": False,
-            "reason": "no --compiled-artifact was supplied",
-            "comparison_kind": "descriptive-only",
-        }
-    authenticated = Runtime.load(artifact, process=PROCESS_ID)
-    if (
-        authenticated.execution_mode != "compiled"
-        or authenticated.physics.color_accuracy != "lc"
-    ):
-        raise GateError("compiled census artifact is not an LC compiled artifact")
-    path = artifact / "processes" / PROCESS_ID / "execution.json"
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        summary = payload["dag_summary"]
-    except (
-        OSError,
-        UnicodeDecodeError,
-        json.JSONDecodeError,
-        KeyError,
-        TypeError,
-    ) as error:
-        raise GateError("cannot read compiled DAG census") from error
-    if payload.get("kind") != "pyamplicol-runtime-execution":
-        raise GateError("compiled DAG census has the wrong execution kind")
-    fields = (
-        "source_count",
-        "current_count",
-        "interaction_count",
-        "interaction_evaluation_count",
-        "amplitude_root_count",
-    )
-    counts: dict[str, int] = {}
-    for name in fields:
-        value = summary.get(name)
-        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-            raise GateError(f"compiled DAG census has invalid {name}")
-        counts[name] = value
-    if counts["interaction_evaluation_count"] > counts["interaction_count"]:
-        raise GateError("compiled DAG evaluation count exceeds its interaction count")
-    return {
-        "available": True,
-        "artifact": str(artifact.resolve(strict=True)),
-        "artifact_id": authenticated.artifact_id,
-        "basis": "authenticated-compiled-whole-generic-dag-v1",
-        "comparison_kind": "descriptive-only",
-        "semantics": (
-            "whole-DAG static counts; they are not selector-workload counts and "
-            "are not asserted equal to recurrence or on-the-fly execution rows"
+def _compiled_execution_counts(
+    execution: Mapping[str, object], label: str
+) -> dict[str, int]:
+    if execution.get("kind") != "pyamplicol-runtime-execution":
+        raise GateError(f"{label} has the wrong execution kind")
+    summary = _mapping(execution.get("dag_summary"), f"{label} DAG summary")
+    schema = _mapping(execution.get("runtime_schema"), f"{label} runtime schema")
+    storage = _mapping(schema.get("current_storage"), f"{label} current storage")
+    result = {
+        "source_count": _count(summary.get("source_count"), f"{label} source count"),
+        "current_count": _count(
+            summary.get("current_count"), f"{label} current count"
         ),
-        **counts,
+        "current_component_count": _count(
+            storage.get("component_count"), f"{label} component count"
+        ),
+        "interaction_attachment_count": _count(
+            summary.get("interaction_count"), f"{label} interaction count"
+        ),
+        "interaction_evaluation_count": _count(
+            summary.get("interaction_evaluation_count"),
+            f"{label} interaction-evaluation count",
+        ),
+        "amplitude_root_count": _count(
+            summary.get("amplitude_root_count"), f"{label} amplitude-root count"
+        ),
+    }
+    if result["current_component_count"] < result["current_count"]:
+        raise GateError(f"{label} has fewer components than currents")
+    if result["interaction_evaluation_count"] > result["interaction_attachment_count"]:
+        raise GateError(f"{label} evaluates more interactions than it attaches")
+    return result
+
+
+def _compiled_artifact_census(
+    artifact: Path, *, workload: str
+) -> dict[str, object]:
+    runtime, payload, root = _artifact_execution(artifact, "compiled")
+    primary = _compiled_execution_counts(payload, "compiled primary")
+    physics = runtime.physics
+    if workload == "selected_flow_helicity_sum":
+        public_index = _exact_public_index(
+            physics.color_flows, FLOW_ID, "compiled color-flow"
+        )
+        compiled = _mapping(payload.get("compiled"), "compiled metadata")
+        topology = _mapping(
+            compiled.get("lc_topology_replay"), "compiled topology replay"
+        )
+        matches = [
+            record
+            for record in _records(topology.get("groups"), "compiled topology groups")
+            if public_index in tuple(
+                _count(value, "compiled active sector")
+                for value in _items(record.get("active_sector_ids"), "active sectors")
+            )
+        ]
+        if len(matches) != 1:
+            raise GateError("compiled color-flow topology group is absent or ambiguous")
+        materialized_sector = _count(
+            matches[0].get("materialized_sector_id"),
+            "compiled materialized sector",
+        )
+        program_record = _mapping(
+            payload.get("helicity_sum_execution"), "compiled helicity-sum program"
+        )
+        reductions = _mapping(
+            program_record.get("physics_reduction"),
+            "compiled helicity-sum physics reduction",
+        )
+        reduction_groups = _records(
+            reductions.get("groups"), "compiled physics-reduction groups"
+        )
+        if not any(
+            FLOW_ID in tuple(record.get("physical_color_ids", ()))
+            for record in reduction_groups
+        ):
+            raise GateError(
+                "compiled helicity-sum program does not bind the exact flow"
+            )
+        children = _records(
+            program_record.get("color_selector_executions"),
+            "compiled color-selector executions",
+        )
+        selected = [
+            record
+            for record in children
+            if record.get("materialized_sector_id") == materialized_sector
+        ]
+        if len(selected) != 1:
+            raise GateError("compiled selected-flow child is absent or ambiguous")
+        leaf_record = _mapping(selected[0].get("execution"), "compiled selected leaf")
+        levels: dict[str, object] = {
+            "primary": primary,
+            "program": _compiled_execution_counts(
+                program_record, "compiled helicity-sum program"
+            ),
+            "executed_leaf": _compiled_execution_counts(
+                leaf_record, "compiled selected-flow leaf"
+            ),
+        }
+        selector = {
+            "kind": "exact_public_color_flow_index",
+            "id": FLOW_ID,
+            "public_index": public_index,
+            "materialized_sector_id": materialized_sector,
+        }
+    elif workload == "all_flow_single_helicity":
+        public_index = _exact_public_index(
+            physics.helicities, HELICITY_ID, "compiled helicity"
+        )
+        current = payload
+        depth = 0
+        while "helicity_selector_executions" in current:
+            children = _records(
+                current.get("helicity_selector_executions"),
+                "compiled helicity-selector executions",
+            )
+            matching = [
+                record
+                for record in children
+                if public_index in tuple(
+                    _count(value, "compiled selector-domain index")
+                    for value in _items(
+                        record.get("selector_domain_ids"),
+                        "compiled selector-domain indices",
+                    )
+                )
+            ]
+            if len(matching) != 1:
+                raise GateError(
+                    "compiled helicity-selector child is absent or ambiguous"
+                )
+            current = _mapping(
+                matching[0].get("execution"), "compiled helicity-selector child"
+            )
+            depth += 1
+        if depth == 0:
+            raise GateError("compiled all-flow artifact has no selector execution")
+        levels = {
+            "primary": primary,
+            "executed_leaf": _compiled_execution_counts(
+                current, "compiled all-flow executed leaf"
+            ),
+        }
+        selector = {
+            "kind": "exact_public_helicity_index",
+            "id": HELICITY_ID,
+            "public_index": public_index,
+            "selector_depth": depth,
+        }
+    else:
+        raise GateError(f"unknown compiled census workload: {workload}")
+    return {
+        "artifact": str(root),
+        "artifact_id": runtime.artifact_id,
+        "basis": "authenticated-exact-child-compiled-generic-dag-v1",
+        "workload": workload,
+        "selector": selector,
+        "levels": levels,
+        "semantics": (
+            "GenericDAG counts are reported independently for the outer primary, "
+            "an enclosing program where present, and the one exact executed leaf; "
+            "alternative compiled nodes are never summed, and these attachment/"
+            "evaluation counts are not asserted equal to recurrence or on-the-fly rows"
+        ),
     }
 
 
@@ -1214,6 +1530,14 @@ def _hidden_family_timing(
         "private_warmed_seconds_per_point": measured[
             "private_warmed_seconds_per_point"
         ],
+        "clock_attribution": {
+            "private_warmed_seconds_per_point": (
+                "on-the-fly private query-family execution clock"
+            ),
+            "relationship": (
+                "independent of recurrence core, recurrence wall, and AmpliCol wall"
+            ),
+        },
         "private_timing_excludes_source_crossing": True,
         "work_census_basis": FAMILY_WORK_CENSUS_BASIS,
         "work_census": measured["census"],
@@ -1369,6 +1693,11 @@ def _anchor(path: Path | None) -> dict[str, object]:
         "point_digest": common.get("point_digest"),
         "component": common.get("value"),
         "selected_flow_sum": payload.get("matrix_element"),
+        "wall_seconds_per_point": payload.get("wall_seconds_per_point"),
+        "clock_attribution": (
+            "stored original-AmpliCol worker wall clock; independent of pyAmpliCol "
+            "and on-the-fly clocks"
+        ),
         "selector_matches": selector_matches,
         "comparison_performed": False,
     }
@@ -1434,7 +1763,10 @@ def _run(
     output: Path,
     prepared_model: Path,
     amplicol: Path | None,
-    compiled_artifact: Path | None,
+    recurrence_selected_artifact: Path,
+    recurrence_all_flow_artifact: Path,
+    compiled_selected_artifact: Path,
+    compiled_all_flow_artifact: Path,
     target: float,
     batch: int,
     enable_color_projection: bool = True,
@@ -1617,15 +1949,29 @@ def _run(
     _assert_executable_family_matches_structural_census(
         flow_family_census, flow_structural_census
     )
+    recurrence_selected_census = _recurrence_artifact_census(
+        recurrence_selected_artifact, layout="topology-replay"
+    )
+    recurrence_all_flow_census = _recurrence_artifact_census(
+        recurrence_all_flow_artifact, layout="all-flow-union"
+    )
+    compiled_selected_census = _compiled_artifact_census(
+        compiled_selected_artifact, workload="selected_flow_helicity_sum"
+    )
+    compiled_all_flow_census = _compiled_artifact_census(
+        compiled_all_flow_artifact, workload="all_flow_single_helicity"
+    )
+    selected_recurrence_runtime = Runtime.load(recurrence_selected_artifact)
+    all_flow_recurrence_runtime = Runtime.load(recurrence_all_flow_artifact)
     selected_public_timing = _public_timing(
         BenchmarkRunner(_benchmark_config(target, batch, flows=(FLOW_ID,))).run(
-            runtime, points=timing_points
+            selected_recurrence_runtime, points=timing_points
         )
     )
     flow_public_timing = _public_timing(
         BenchmarkRunner(
             _benchmark_config(target, batch, helicities=(HELICITY_ID,))
-        ).run(runtime, points=timing_points)
+        ).run(all_flow_recurrence_runtime, points=timing_points)
     )
     for hidden_timing, family_timing, public_timing in (
         (selected_hidden_timing, selected_family_timing, selected_public_timing),
@@ -1642,8 +1988,6 @@ def _run(
         )
 
     cold = tuple(value[1] for value in cache.values())
-    recurrence_schedule = _established_recurrence_schedule_census(artifact)
-    compiled_census = _compiled_dag_census(compiled_artifact)
     return {
         "kind": "pyamplicol-on-the-fly-lc-gate",
         "status": "passed",
@@ -1651,6 +1995,11 @@ def _run(
         "process_id": PROCESS_ID,
         "artifact": str(artifact),
         "artifact_id": runtime.artifact_id,
+        "on_the_fly_topology_artifact": {
+            "artifact": str(artifact),
+            "artifact_id": runtime.artifact_id,
+            "role": "one topology source for both on-the-fly query families",
+        },
         "layout": "topology-replay",
         "color_projection": {
             "query": _query(fixed_flow, fixed_helicity).label,
@@ -1667,8 +2016,12 @@ def _run(
         },
         "generation_seconds": generation_seconds,
         "runtime_load_seconds": load_seconds,
-        "established_recurrence_schedule": recurrence_schedule,
-        "compiled_whole_dag": compiled_census,
+        "comparator_artifacts": {
+            "recurrence_selected_flow_helicity_sum": recurrence_selected_census,
+            "recurrence_all_flow_single_helicity": recurrence_all_flow_census,
+            "compiled_selected_flow_helicity_sum": compiled_selected_census,
+            "compiled_all_flow_single_helicity": compiled_all_flow_census,
+        },
         "points": {"seeds": SEEDS, "seed_101_digest": digest, "dense": len(points)},
         "cold_query_outer_seconds": {
             "queries": len(cold),
@@ -1701,8 +2054,8 @@ def _run(
                 "public_recurrence_selector_workload": selected_public_timing[
                     "recurrence_runtime_work"
                 ],
-                "persisted_recurrence_whole_plan": recurrence_schedule,
-                "compiled_whole_dag": compiled_census,
+                "recurrence_comparator": recurrence_selected_census,
+                "compiled_comparator": compiled_selected_census,
             },
         },
         "all_flow_single_helicity": {
@@ -1725,8 +2078,8 @@ def _run(
                 "public_recurrence_selector_workload": flow_public_timing[
                     "recurrence_runtime_work"
                 ],
-                "persisted_recurrence_whole_plan": recurrence_schedule,
-                "compiled_whole_dag": compiled_census,
+                "recurrence_comparator": recurrence_all_flow_census,
+                "compiled_comparator": compiled_all_flow_census,
             },
         },
         "amplicol_sanity": sanity,
@@ -1805,9 +2158,13 @@ def _worker_command(arguments: argparse.Namespace, output: Path) -> list[str]:
     if arguments.amplicol_result is not None:
         amplicol = Path(os.path.abspath(arguments.amplicol_result.expanduser()))
         command.extend(("--amplicol-result", str(amplicol)))
-    if arguments.compiled_artifact is not None:
-        compiled = Path(os.path.abspath(arguments.compiled_artifact.expanduser()))
-        command.extend(("--compiled-artifact", str(compiled)))
+    for option, value in (
+        ("--recurrence-selected-artifact", arguments.recurrence_selected_artifact),
+        ("--recurrence-all-flow-artifact", arguments.recurrence_all_flow_artifact),
+        ("--compiled-selected-artifact", arguments.compiled_selected_artifact),
+        ("--compiled-all-flow-artifact", arguments.compiled_all_flow_artifact),
+    ):
+        command.extend((option, os.path.abspath(value.expanduser())))
     if arguments.bypass_color_projection:
         command.append("--bypass-color-projection")
     return command
@@ -1820,7 +2177,10 @@ def _worker_main(arguments: argparse.Namespace) -> int:
             arguments.output,
             arguments.prepared_model,
             arguments.amplicol_result,
-            arguments.compiled_artifact,
+            arguments.recurrence_selected_artifact,
+            arguments.recurrence_all_flow_artifact,
+            arguments.compiled_selected_artifact,
+            arguments.compiled_all_flow_artifact,
             arguments.target_runtime,
             arguments.batch_size,
             not arguments.bypass_color_projection,

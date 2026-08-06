@@ -2070,6 +2070,11 @@ fn _rusticol(module: &Bound<'_, PyModule>) -> PyResult<()> {
         recurrence_template::_validate_recurrence_template_input_v1,
         module
     )?)?;
+    #[cfg(feature = "numpy")]
+    module.add_function(wrap_pyfunction!(
+        recurrence::_build_on_the_fly_process_seed_v1,
+        module
+    )?)?;
     Ok(())
 }
 

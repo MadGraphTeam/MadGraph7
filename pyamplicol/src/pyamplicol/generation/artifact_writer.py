@@ -50,6 +50,8 @@ from .._internal.versions import (
     EAGER_DIRECT_TABLE_DESCRIPTOR_ABI,
     EVALUATOR_RUNTIME_CAPABILITIES,
     NATIVE_COMPILED_DIRECT_APPLICATION_ABI,
+    ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+    ON_THE_FLY_RUNTIME_CAPABILITY,
     PROCESS_ARTIFACT_SCHEMA_VERSION,
     PYTHON_API_VERSION,
     RECURRENCE_BUILDER_INPUT_ABI,
@@ -152,6 +154,13 @@ _RECURRENCE_RUNTIME_CONTAINER_PATH = "recurrence-runtime.pacbin"
 _RECURRENCE_DIRECT_SCHEDULE_MEMBER_PATH = "schedule/recurrence-direct-schedule-v2.bin"
 _RECURRENCE_COLOR_CONTRACTION_PATH = "recurrence-color.bin"
 _RECURRENCE_SCHEDULE_SHARING_EXTENSION = "recurrence_schedule_sharing"
+ON_THE_FLY_RUNTIME_KIND = "pyamplicol-runtime-on-the-fly-execution"
+ON_THE_FLY_RUNTIME_CONTAINER_KIND = "pyamplicol-on-the-fly-runtime-container"
+ON_THE_FLY_RUNTIME_CONTAINER_SCHEMA_VERSION = 1
+ON_THE_FLY_RUNTIME_STORAGE_ABI = "pacbin-v1"
+ON_THE_FLY_PUBLIC_METADATA_KIND = "pyamplicol-on-the-fly-public-metadata"
+_ON_THE_FLY_RUNTIME_CONTAINER_PATH = "on-the-fly-runtime.pacbin"
+_ON_THE_FLY_PROCESS_SEED_MEMBER_PATH = "on-the-fly/process-seed-v1.bin"
 _SAFE_TOML_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
 _SUPPORTED_ARTIFACT_TARGETS = frozenset(
     {
@@ -271,8 +280,35 @@ class RecurrenceProcessArtifact:
     process_support_mask: int = 1
 
 
+@dataclass(frozen=True, slots=True)
+class OnTheFlyProcessArtifact:
+    """One source-only LC runtime seed plus compact public metadata."""
+
+    process_id: str
+    expression: str
+    color_accuracy: str
+    external_pdgs: tuple[int, ...]
+    aliases: tuple[Mapping[str, object], ...]
+    physics: Mapping[str, object]
+    runtime_path: Path
+    runtime_size_bytes: int
+    runtime_sha256: str
+    runtime_member_count: int
+    runtime_unpacked_size_bytes: int
+    runtime_index_sha256: str
+    referenced_kernel_ids: frozenset[int]
+    runtime_metadata: Mapping[str, object]
+    selector_policy: Mapping[str, object]
+    point_tile_size: int
+    validation_point: ValidationPointRecord
+    generation_filters: Mapping[str, object]
+
+
 ProcessArtifact = (
-    CompiledProcessArtifact | EagerPlanV3ProcessArtifact | RecurrenceProcessArtifact
+    CompiledProcessArtifact
+    | EagerPlanV3ProcessArtifact
+    | RecurrenceProcessArtifact
+    | OnTheFlyProcessArtifact
 )
 
 
@@ -691,6 +727,7 @@ def write_schema_v3_artifact(
             )
         retain_recurrence_templates = (
             RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY in required_runtime_capabilities
+            or ON_THE_FLY_RUNTIME_CAPABILITY in required_runtime_capabilities
         )
         eager_kernel_ids = _prepared_kernel_ids(
             output,
@@ -716,6 +753,8 @@ def write_schema_v3_artifact(
                 evaluator_payloads=evaluator_payloads,
                 require_eager_direct=(
                     EAGER_DIRECT_ARENA_RUNTIME_CAPABILITY
+                    in required_runtime_capabilities
+                    or ON_THE_FLY_RUNTIME_CAPABILITY
                     in required_runtime_capabilities
                 ),
                 retain_recurrence_templates=retain_recurrence_templates,
@@ -770,8 +809,15 @@ def write_schema_v3_artifact(
             staged_root = builder.root
             if staged_root is None:  # pragma: no cover - builder invariant
                 raise RuntimeError("artifact builder is not active")
+            on_the_fly_process_ids = frozenset(
+                process.process_id
+                for process in processes
+                if isinstance(process, OnTheFlyProcessArtifact)
+            )
             for process_record in process_records:
                 process_id = str(process_record["id"])
+                if process_id in on_the_fly_process_ids:
+                    continue
                 execution_path = f"processes/{process_id}/execution.json"
                 execution_file = builder.staged_path(execution_path)
                 execution_payload = json.loads(
@@ -1256,6 +1302,8 @@ def _eager_prepared_pack_identity(
                 EAGER_PLAN_V3_RUNTIME_CAPABILITY,
                 RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY,
                 RECURRENCE_COLOR_RUNTIME_CAPABILITY,
+                ON_THE_FLY_RUNTIME_CAPABILITY,
+                ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
             }.intersection(_required_runtime_capabilities(existing.runtime))
         )
         or any(record.path == _EAGER_KERNEL_PACK_PATH for record in existing.payloads)
@@ -1296,7 +1344,9 @@ def _eager_prepared_pack_identity(
 def _is_prepared_kernel_process(process: ProcessArtifact) -> bool:
     return isinstance(
         process,
-        EagerPlanV3ProcessArtifact | RecurrenceProcessArtifact,
+        EagerPlanV3ProcessArtifact
+        | RecurrenceProcessArtifact
+        | OnTheFlyProcessArtifact,
     )
 
 
@@ -1306,6 +1356,8 @@ def _prepared_referenced_kernel_ids(
     if isinstance(process, RecurrenceProcessArtifact):
         return process.referenced_kernel_ids
     if isinstance(process, EagerPlanV3ProcessArtifact):
+        return process.referenced_kernel_ids
+    if isinstance(process, OnTheFlyProcessArtifact):
         return process.referenced_kernel_ids
     raise TypeError("compiled process has no prepared-kernel references")
 
@@ -1350,7 +1402,12 @@ def _write_process_payloads(
     execution_path = f"{prefix}/execution.json"
     validation_path = f"{prefix}/validation-momenta.json"
     schema: Mapping[str, object]
-    if isinstance(process, EagerPlanV3ProcessArtifact | RecurrenceProcessArtifact):
+    if isinstance(
+        process,
+        EagerPlanV3ProcessArtifact
+        | RecurrenceProcessArtifact
+        | OnTheFlyProcessArtifact,
+    ):
         schema = {}
         physics = _mapping(process.physics)
     else:
@@ -1360,7 +1417,18 @@ def _write_process_payloads(
         raise ValueError(
             f"runtime physics process ID does not match {process.process_id!r}"
         )
-    if isinstance(process, EagerPlanV3ProcessArtifact | RecurrenceProcessArtifact) and (
+    if isinstance(process, OnTheFlyProcessArtifact):
+        if (
+            physics.get("schema_version") != 1
+            or physics.get("kind") != ON_THE_FLY_PUBLIC_METADATA_KIND
+            or physics.get("color_accuracy") != "lc"
+        ):
+            raise ValueError(
+                "on-the-fly generation returned incompatible compact public metadata"
+            )
+    elif isinstance(
+        process, EagerPlanV3ProcessArtifact | RecurrenceProcessArtifact
+    ) and (
         physics.get("schema_version") != RUNTIME_PHYSICS_SCHEMA_VERSION
         or physics.get("kind") != "pyamplicol-resolved-physics"
     ):
@@ -1433,6 +1501,21 @@ def _write_process_payloads(
                 binding=binding.to_mapping(),
                 color_contraction_record=color_contraction_record,
             ),
+            role="evaluator-manifest",
+            media_type="application/json",
+            process_id=process.process_id,
+        )
+    elif isinstance(process, OnTheFlyProcessArtifact):
+        runtime_path = f"{prefix}/{_ON_THE_FLY_RUNTIME_CONTAINER_PATH}"
+        runtime_record = evaluator_payloads.add_file(
+            runtime_path,
+            process.runtime_path,
+            process_id=process.process_id,
+        )
+        _validate_staged_on_the_fly_runtime(process, runtime_record)
+        execution_record = builder.add_bytes(
+            execution_path,
+            _on_the_fly_execution_summary(process),
             role="evaluator-manifest",
             media_type="application/json",
             process_id=process.process_id,
@@ -1531,6 +1614,93 @@ def _validate_staged_eager_runtime(
         raise ValueError(
             "Rust eager runtime payload changed after lowering and before publication"
         )
+
+
+def _validate_staged_on_the_fly_runtime(
+    process: OnTheFlyProcessArtifact,
+    record: PayloadRecord,
+) -> None:
+    payload_sha256 = _canonical_sha256(
+        process.runtime_sha256,
+        "on-the-fly runtime payload SHA-256",
+    )
+    if process.runtime_size_bytes <= 0:
+        raise ValueError("on-the-fly runtime payload must not be empty")
+    if (
+        record.size_bytes != process.runtime_size_bytes
+        or record.sha256 != payload_sha256
+    ):
+        raise ValueError(
+            "on-the-fly runtime payload changed before artifact publication"
+        )
+    with PacbinReader.open(process.runtime_path, verify_payloads=True) as reader:
+        index = reader.index
+        if (
+            len(index.members) != 1
+            or index.members[0].logical_path
+            != _ON_THE_FLY_PROCESS_SEED_MEMBER_PATH
+            or index.members[0].kind is not PacbinMemberKind.ON_THE_FLY_PROCESS_SEED
+        ):
+            raise ValueError(
+                "on-the-fly runtime must contain exactly one canonical process seed"
+            )
+        if (
+            len(index.members) != process.runtime_member_count
+            or sum(member.length for member in index.members)
+            != process.runtime_unpacked_size_bytes
+            or index.index_sha256 != process.runtime_index_sha256
+        ):
+            raise ValueError(
+                "on-the-fly runtime container metadata changed before publication"
+            )
+
+
+def _on_the_fly_execution_summary(process: OnTheFlyProcessArtifact) -> bytes:
+    capabilities = list(_on_the_fly_process_runtime_capabilities(process))
+    payload = {
+        "schema_version": PROCESS_ARTIFACT_SCHEMA_VERSION,
+        "kind": ON_THE_FLY_RUNTIME_KIND,
+        "required_runtime_capabilities": capabilities,
+        "process": process.expression,
+        "key": process.process_id,
+        "color_accuracy": process.color_accuracy,
+        "external_pdg_order": list(process.external_pdgs),
+        "kernel_pack": {
+            "manifest_path": _EAGER_KERNEL_PACK_PATH,
+            "payload_root": _EAGER_KERNEL_PAYLOAD_ROOT,
+        },
+        "runtime_options": {
+            "point_tile_size": _nonnegative_integer(
+                process.point_tile_size,
+                "on-the-fly point tile size",
+                minimum=1,
+            ),
+        },
+        "selector_policy": _deep_plain(process.selector_policy),
+        "runtime_metadata": _deep_plain(process.runtime_metadata),
+        "runtime_container": {
+            "kind": ON_THE_FLY_RUNTIME_CONTAINER_KIND,
+            "schema_version": ON_THE_FLY_RUNTIME_CONTAINER_SCHEMA_VERSION,
+            "storage_abi": ON_THE_FLY_RUNTIME_STORAGE_ABI,
+            "path": _ON_THE_FLY_RUNTIME_CONTAINER_PATH,
+            "seed_member_path": _ON_THE_FLY_PROCESS_SEED_MEMBER_PATH,
+        },
+    }
+    try:
+        return (
+            json.dumps(
+                payload,
+                ensure_ascii=True,
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            + "\n"
+        ).encode("ascii")
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"on-the-fly execution summary is not canonical JSON: {exc}"
+        ) from exc
 
 
 def _bounded_eager_execution_summary(
@@ -1796,6 +1966,8 @@ def _execution_manifest(
     process: ProcessArtifact,
     compiler_schema: Mapping[str, object],
 ) -> dict[str, object]:
+    if isinstance(process, OnTheFlyProcessArtifact):
+        raise TypeError("on-the-fly execution manifests use the compact seed writer")
     if isinstance(process, RecurrenceProcessArtifact):
         raise TypeError(
             "recurrence execution manifests require an interned root schedule "
@@ -3850,11 +4022,28 @@ def _compiled_execution_runtime_capabilities(
 def _process_runtime_capabilities(
     process: ProcessArtifact,
 ) -> tuple[str, ...]:
+    if isinstance(process, OnTheFlyProcessArtifact):
+        return _on_the_fly_process_runtime_capabilities(process)
     if isinstance(process, RecurrenceProcessArtifact):
         return _recurrence_process_runtime_capabilities(process)
     if isinstance(process, EagerPlanV3ProcessArtifact):
         return _EAGER_PLAN_V3_RUNTIME_CAPABILITIES
     return _compiled_process_runtime_capabilities(process)
+
+
+def _on_the_fly_process_runtime_capabilities(
+    process: OnTheFlyProcessArtifact,
+) -> tuple[str, ...]:
+    if process.color_accuracy != "lc":
+        raise ValueError("on-the-fly generation currently supports LC only")
+    return tuple(
+        sorted(
+            {
+                ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY,
+                ON_THE_FLY_RUNTIME_CAPABILITY,
+            }
+        )
+    )
 
 
 def _recurrence_process_runtime_capabilities(
@@ -4548,6 +4737,11 @@ __all__ = [
     "EAGER_RUNTIME_CONTAINER_SCHEMA_VERSION",
     "EAGER_RUNTIME_LAYOUT_ABI",
     "EAGER_RUNTIME_STORAGE_ABI",
+    "ON_THE_FLY_PUBLIC_METADATA_KIND",
+    "ON_THE_FLY_RUNTIME_CONTAINER_KIND",
+    "ON_THE_FLY_RUNTIME_CONTAINER_SCHEMA_VERSION",
+    "ON_THE_FLY_RUNTIME_KIND",
+    "ON_THE_FLY_RUNTIME_STORAGE_ABI",
     "RECURRENCE_COLOR_RUNTIME_CAPABILITY",
     "RECURRENCE_DIRECT_ARENA_RUNTIME_CAPABILITY",
     "RECURRENCE_DIRECT_BACKEND_ABI",
@@ -4563,6 +4757,7 @@ __all__ = [
     "CompiledExecutionArtifact",
     "CompiledProcessArtifact",
     "EagerPlanV3ProcessArtifact",
+    "OnTheFlyProcessArtifact",
     "ProcessArtifact",
     "RecurrenceProcessArtifact",
     "build_api_validation_points",

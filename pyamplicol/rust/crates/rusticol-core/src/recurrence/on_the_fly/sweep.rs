@@ -238,14 +238,14 @@ where
     }))
 }
 
-#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) struct PendingPairingLineage {
     pub(super) completed_pairs: Vec<[u32; 2]>,
     pub(super) unmatched_endpoint: Option<u32>,
 }
 
 impl PendingPairingLineage {
-    fn source(seed: &OnTheFlyProcessSeedV1, source_slot: u32) -> Self {
+    pub(super) fn source(seed: &OnTheFlyProcessSeedV1, source_slot: u32) -> Self {
         let unmatched_endpoint = seed.source_anchors[source_slot as usize]
             .color_role
             .is_pairing_endpoint()
@@ -431,7 +431,7 @@ fn combine_pairing_lineage(
     }))
 }
 
-fn combine_pairing_lineage_sets(
+pub(super) fn combine_pairing_lineage_sets(
     seed: &OnTheFlyProcessSeedV1,
     left: &[PendingPairingLineage],
     right: &[PendingPairingLineage],
@@ -473,7 +473,7 @@ pub(super) fn extend_pairing_lineages(
     Ok(())
 }
 
-fn complete_pairing_lineage(
+pub(super) fn complete_pairing_lineage(
     seed: &OnTheFlyProcessSeedV1,
     lineage: &PendingPairingLineage,
 ) -> RusticolResult<bool> {
@@ -691,7 +691,7 @@ fn unique_projected_pairing_owner(
     owner.ok_or_else(|| integrity("canonical projected closure has no Wick lineage"))
 }
 
-fn supports_are_disjoint(left: &[u32], right: &[u32]) -> bool {
+pub(super) fn supports_are_disjoint(left: &[u32], right: &[u32]) -> bool {
     let mut left_index = 0usize;
     let mut right_index = 0usize;
     while left_index < left.len() && right_index < right.len() {
@@ -704,7 +704,7 @@ fn supports_are_disjoint(left: &[u32], right: &[u32]) -> bool {
     true
 }
 
-fn merge_disjoint_support(left: &[u32], right: &[u32]) -> RusticolResult<Vec<u32>> {
+pub(super) fn merge_disjoint_support(left: &[u32], right: &[u32]) -> RusticolResult<Vec<u32>> {
     if !supports_are_disjoint(left, right) {
         return Err(invalid(
             "query-local parents have overlapping source support",
@@ -741,7 +741,7 @@ pub(super) fn validate_seed_against_templates<'a>(
         ));
     }
     let catalog = TemplateCatalog::new(templates.input())?;
-    if catalog.coupling_order_dimension() != seed.coupling_limits.len() {
+    if catalog.coupling_order_dimension() != seed.explicit_coupling_limits().len() {
         return Err(integrity(
             "compact coupling-limit dimension differs from the template catalog",
         ));
@@ -749,7 +749,7 @@ pub(super) fn validate_seed_against_templates<'a>(
     Ok(catalog)
 }
 
-fn validate_source_contract(
+pub(super) fn validate_source_contract(
     templates: &ValidatedRecurrenceTemplateInput,
     catalog: &TemplateCatalog<'_>,
     anchor: &OnTheFlySourceAnchorV1,
@@ -820,21 +820,30 @@ fn query_target_matches(mut closed: Vec<LCColorComponent>, query: &DecodedLcQuer
 }
 
 pub(super) fn insert_selected_sources(
-    templates: &ValidatedRecurrenceTemplateInput,
-    catalog: &TemplateCatalog<'_>,
+    grammar: &PreparedOnTheFlyGrammarV1,
     seed: &OnTheFlyProcessSeedV1,
+    coupling_limits: &[Option<u32>],
     query: &DecodedLcQueryV1,
     colors: &mut DynamicLCColorStateInterner,
     currents: &mut Vec<PendingCurrent>,
     current_ids: &mut BTreeMap<CurrentCoreKey, u32>,
 ) -> RusticolResult<()> {
-    let zero_orders = vec![0_u32; seed.coupling_limits.len()];
+    if coupling_limits.len() != seed.explicit_coupling_limits().len() {
+        return Err(integrity(
+            "resolved coupling-limit dimension differs from the compact seed",
+        ));
+    }
+    let zero_orders = vec![0_u32; coupling_limits.len()];
     for selected in query.selected_sources.iter().copied() {
-        let (anchor, state) = selected_source_state(seed, selected)?;
-        let (source, current_state) = validate_source_contract(templates, catalog, anchor, state)?;
-        let color = catalog
-            .source_seed(source)?
-            .instantiate(selected.source_slot, current_state.color_representation)?;
+        let (_, state) = selected_source_state(seed, selected)?;
+        let contract = grammar
+            .sources
+            .get(&(state.source_template_id, state.current_state_template_id))
+            .ok_or_else(|| integrity("selected source has no prepared source contract"))?;
+        let color = contract.color_seed.instantiate(
+            selected.source_slot,
+            contract.current_state.color_representation,
+        )?;
         let color_id = colors.intern(color)?;
         let key = CurrentCoreKey::new(
             seed.template_catalog_digest,
@@ -883,6 +892,7 @@ fn include_transition(
     concrete_parent_ids: [u32; 2],
     source_count: usize,
     seed: &OnTheFlyProcessSeedV1,
+    coupling_limits: &[Option<u32>],
     propagators: &BTreeMap<u32, Option<u32>>,
     colors: &mut DynamicLCColorStateInterner,
     currents: &mut Vec<PendingCurrent>,
@@ -907,7 +917,7 @@ fn include_transition(
         parents[0].coupling_orders(),
         parents[1].coupling_orders(),
         &prepared.local_orders,
-        &seed.coupling_limits,
+        coupling_limits,
     )?
     else {
         return Ok(());
@@ -1052,6 +1062,7 @@ pub(super) fn build_forward_currents(
     templates: &ValidatedRecurrenceTemplateInput,
     transitions: &BTreeMap<(u32, u32), Vec<PreparedTransition>>,
     seed: &OnTheFlyProcessSeedV1,
+    coupling_limits: &[Option<u32>],
     propagators: &BTreeMap<u32, Option<u32>>,
     colors: &mut DynamicLCColorStateInterner,
     currents: &mut Vec<PendingCurrent>,
@@ -1100,6 +1111,7 @@ pub(super) fn build_forward_currents(
                         parent_ids,
                         source_count,
                         seed,
+                        coupling_limits,
                         propagators,
                         colors,
                         currents,
@@ -1136,8 +1148,6 @@ fn closure_quantum_matches(
 }
 
 pub(super) fn build_selected_closures(
-    templates: &ValidatedRecurrenceTemplateInput,
-    catalog: &TemplateCatalog<'_>,
     closures: &BTreeMap<(u32, u32), Vec<PreparedClosure>>,
     seed: &OnTheFlyProcessSeedV1,
     query: &DecodedLcQueryV1,
@@ -1258,9 +1268,7 @@ pub(super) fn build_selected_closures(
                         exchange_factor,
                         witness.witness.exact_factor(),
                     ])?;
-                    let coefficients = templates
-                        .closure_component_coefficients(closure.row.id)?
-                        .into_boxed_slice();
+                    let coefficients = closure.component_coefficients.clone();
                     match retained.entry(key.clone()) {
                         std::collections::btree_map::Entry::Vacant(entry) => {
                             entry.insert(PendingClosure {
@@ -1289,17 +1297,14 @@ pub(super) fn build_selected_closures(
     }
     retained.retain(|_, closure| !closure.factor.is_zero());
     if retained.is_empty() {
-        // A missing query-local closure is a physical zero only after the
-        // prepared closure domain has been proved complete against its
-        // validated template input. Keep this proof off the ordinary nonzero
-        // hot path.
-        validate_prepared_closure_domain(templates, catalog, closures)?;
+        // The process-global immutable grammar proved this closure domain
+        // complete before it entered the runtime cache.
         return Ok(None);
     }
     Ok(Some(retained.into_values().collect()))
 }
 
-fn validate_prepared_closure_domain(
+pub(super) fn validate_prepared_closure_domain(
     templates: &ValidatedRecurrenceTemplateInput,
     catalog: &TemplateCatalog<'_>,
     closures: &BTreeMap<(u32, u32), Vec<PreparedClosure>>,
@@ -1609,6 +1614,8 @@ mod tests {
             ExactComplexRational::ONE,
             anchors,
             (0_u32..source_count).collect(),
+            OnTheFlyCouplingOrderPolicyV1::Explicit,
+            vec![1],
             vec![Some(0)],
             Vec::new(),
         )
@@ -1784,6 +1791,7 @@ mod tests {
             &templates,
             &transitions,
             &seed,
+            seed.explicit_coupling_limits(),
             &propagators,
             &mut colors,
             &mut currents,

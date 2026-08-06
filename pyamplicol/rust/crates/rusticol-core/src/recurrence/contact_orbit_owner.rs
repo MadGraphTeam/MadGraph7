@@ -115,6 +115,55 @@ pub(super) struct PreparedContactOrbitTransition {
     applications: Vec<ContactOrbitApplicationWitness>,
 }
 
+/// Minimal parent facts needed by the contact-orbit construction-domain
+/// predicate.  The process-global on-the-fly coupling sweep deliberately has
+/// no `CurrentCoreKey`; this keeps its admission decision identical to the
+/// query-local sweep without manufacturing a recurrence current.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct ContactOrbitParentTopologyDomain<'a> {
+    current_state_template_id: u32,
+    support_source_slots: &'a [u32],
+    is_source: bool,
+    is_current: bool,
+}
+
+impl<'a> ContactOrbitParentTopologyDomain<'a> {
+    pub(super) const fn source(
+        current_state_template_id: u32,
+        support_source_slots: &'a [u32],
+    ) -> Self {
+        Self {
+            current_state_template_id,
+            support_source_slots,
+            is_source: true,
+            is_current: false,
+        }
+    }
+
+    pub(super) const fn current(
+        current_state_template_id: u32,
+        support_source_slots: &'a [u32],
+    ) -> Self {
+        Self {
+            current_state_template_id,
+            support_source_slots,
+            is_source: false,
+            is_current: true,
+        }
+    }
+
+    fn from_current_key(current: &'a CurrentCoreKey) -> Self {
+        Self {
+            current_state_template_id: current.current_state_template_id(),
+            support_source_slots: current.support_source_slots(),
+            is_source: current.node_kind() == RecurrenceNodeKind::Source
+                && !matches!(current.source_binding(), &CurrentSourceBinding::None),
+            is_current: current.node_kind() == RecurrenceNodeKind::Current
+                && matches!(current.source_binding(), &CurrentSourceBinding::None),
+        }
+    }
+}
+
 fn try_copy_u32(values: &[u32], label: &str) -> RusticolResult<Vec<u32>> {
     let mut copied = Vec::new();
     copied
@@ -434,6 +483,22 @@ pub(super) fn prepare_contact_orbit_transition(
 }
 
 impl PreparedContactOrbitTransition {
+    /// Topology-only counterpart of [`Self::accepts_parent_domain`].  It is
+    /// used by the process-global on-the-fly coupling sweep, which retains no
+    /// recurrence-current payload beyond the exact admission facts below.
+    pub(super) fn accepts_parent_topology_domain(
+        &self,
+        parents: [ContactOrbitParentTopologyDomain<'_>; 2],
+    ) -> RusticolResult<bool> {
+        validate_step(&self.step)?;
+        Ok(contact_orbit_parent_topology_mapping(
+            &self.step,
+            parents,
+            self.input_state_template_ids,
+        )?
+        .is_some())
+    }
+
     /// Whether these concrete parents belong to the certified contact step's
     /// physical construction domain.
     ///
@@ -447,10 +512,8 @@ impl PreparedContactOrbitTransition {
         &self,
         parents: [&CurrentCoreKey; 2],
     ) -> RusticolResult<bool> {
-        validate_step(&self.step)?;
-        Ok(
-            contact_orbit_parent_mapping(&self.step, parents, self.input_state_template_ids)?
-                .is_some(),
+        self.accepts_parent_topology_domain(
+            parents.map(ContactOrbitParentTopologyDomain::from_current_key),
         )
     }
 
@@ -876,25 +939,18 @@ fn validate_support_union(
     Ok(())
 }
 
-fn parent_matches_contact_orbit_side(
-    parent: &CurrentCoreKey,
+fn topology_domain_matches_contact_orbit_side(
+    parent: ContactOrbitParentTopologyDomain<'_>,
     side: ContactOrbitParentSide,
 ) -> bool {
-    if parent.current_state_template_id() != side.expected_state_template_id
-        || parent.support_source_slots().len() != side.covered_legs.len()
+    if parent.current_state_template_id != side.expected_state_template_id
+        || parent.support_source_slots.len() != side.covered_legs.len()
     {
         return false;
     }
     match side.source_particle_leg {
-        -1 => {
-            parent.node_kind() == RecurrenceNodeKind::Current
-                && matches!(parent.source_binding(), &CurrentSourceBinding::None)
-        }
-        leg if leg >= 0 => {
-            parent.node_kind() == RecurrenceNodeKind::Source
-                && !matches!(parent.source_binding(), &CurrentSourceBinding::None)
-                && parent.support_source_slots().len() == 1
-        }
+        -1 => parent.is_current,
+        leg if leg >= 0 => parent.is_source && parent.support_source_slots.len() == 1,
         _ => false,
     }
 }
@@ -919,9 +975,9 @@ fn source_particle_actual_source_slot(
     }
 }
 
-fn contact_orbit_parent_mapping(
+fn contact_orbit_parent_topology_mapping(
     step: &ContactOrbitStepProof,
-    parents: [&CurrentCoreKey; 2],
+    parents: [ContactOrbitParentTopologyDomain<'_>; 2],
     input_state_template_ids: [u32; 2],
 ) -> RusticolResult<Option<([ContactOrbitParentSide; 2], [usize; 2])>> {
     let sides = [
@@ -946,10 +1002,10 @@ fn contact_orbit_parent_mapping(
             )?,
         },
     ];
-    let direct = parent_matches_contact_orbit_side(parents[0], sides[0])
-        && parent_matches_contact_orbit_side(parents[1], sides[1]);
-    let exchanged = parent_matches_contact_orbit_side(parents[1], sides[0])
-        && parent_matches_contact_orbit_side(parents[0], sides[1]);
+    let direct = topology_domain_matches_contact_orbit_side(parents[0], sides[0])
+        && topology_domain_matches_contact_orbit_side(parents[1], sides[1]);
+    let exchanged = topology_domain_matches_contact_orbit_side(parents[1], sides[0])
+        && topology_domain_matches_contact_orbit_side(parents[0], sides[1]);
     let parent_by_side = match (direct, exchanged) {
         (true, false) => [0_usize, 1_usize],
         (false, true) => [1_usize, 0_usize],
@@ -967,6 +1023,18 @@ fn contact_orbit_parent_mapping(
         (false, false) => return Ok(None),
     };
     Ok(Some((sides, parent_by_side)))
+}
+
+fn contact_orbit_parent_mapping(
+    step: &ContactOrbitStepProof,
+    parents: [&CurrentCoreKey; 2],
+    input_state_template_ids: [u32; 2],
+) -> RusticolResult<Option<([ContactOrbitParentSide; 2], [usize; 2])>> {
+    contact_orbit_parent_topology_mapping(
+        step,
+        parents.map(ContactOrbitParentTopologyDomain::from_current_key),
+        input_state_template_ids,
+    )
 }
 
 pub(super) fn contact_orbit_owner_candidate<'a>(
@@ -1836,6 +1904,17 @@ mod tests {
                 .accepts_parent_domain([&composite_scalar, &source_c])
                 .unwrap()
         );
+        for parents in [[&source_a, &source_b], [&composite_scalar, &source_c]] {
+            assert_eq!(
+                partial.accepts_parent_domain(parents).unwrap(),
+                partial
+                    .accepts_parent_topology_domain(
+                        parents.map(ContactOrbitParentTopologyDomain::from_current_key),
+                    )
+                    .unwrap(),
+                "query-local and process-global topology admission diverged"
+            );
+        }
 
         let final_transition = prepared_contact_orbit_transition_for_test(
             final_step(&[0, 1], &[2], 3, 37, [0, 0, 0, 0]),

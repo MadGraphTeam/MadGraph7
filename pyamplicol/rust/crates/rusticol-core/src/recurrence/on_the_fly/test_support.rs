@@ -536,6 +536,8 @@ fn compact_seed(
         normalization_factor,
         authenticated_source_anchors(authenticated)?,
         external_permutation,
+        OnTheFlyCouplingOrderPolicyV1::Explicit,
+        vec![1; coupling_limits.len()],
         coupling_limits,
         pairing_classes(authenticated, &contracts)?,
     )

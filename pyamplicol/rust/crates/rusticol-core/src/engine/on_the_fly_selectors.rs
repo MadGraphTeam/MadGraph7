@@ -1584,6 +1584,85 @@ mod tests {
     }
 
     #[test]
+    fn deferred_public_physics_materializes_once_and_applies_alias_permutation_once() {
+        use crate::{ArtifactProcess, ArtifactSelection, ExternalParticle, ParticleRole};
+
+        let representative = adapter(&[
+            (1, OnTheFlyExternalColorRoleV1::Fundamental, &[-1]),
+            (2, OnTheFlyExternalColorRoleV1::Antifundamental, &[1]),
+            (3, OnTheFlyExternalColorRoleV1::Adjoint, &[0]),
+            (4, OnTheFlyExternalColorRoleV1::Adjoint, &[2]),
+        ]);
+        let external_particles = [
+            ("a", 1, ParticleRole::Initial),
+            ("b", -1, ParticleRole::Initial),
+            ("c", 21, ParticleRole::Final),
+            ("d", 22, ParticleRole::Final),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, (particle, pdg, role))| ExternalParticle {
+            index,
+            label: index + 1,
+            particle: particle.to_string(),
+            pdg,
+            role,
+            momentum_slot: index,
+            momentum_components: ["E", "px", "py", "pz"].map(str::to_string),
+        })
+        .collect();
+        let metadata = super::super::on_the_fly_public_metadata::OnTheFlyPublicMetadataV1::for_test(
+            "a_b_to_c_d",
+            "a b > c d",
+            external_particles,
+        );
+        let selection = ArtifactSelection {
+            process: ArtifactProcess {
+                id: "a_b_to_c_d".to_string(),
+                expression: "a b > c d".to_string(),
+                color_accuracy: "lc".to_string(),
+                external_pdgs: vec![1, -1, 21, 22],
+                physics_path: "processes/a_b_to_c_d/physics.json".to_string(),
+                required_runtime_capabilities: Vec::new(),
+                aliases: Vec::new(),
+            },
+            requested_id: "a_b_to_d_c".to_string(),
+            alias: None,
+            public_expression: "a b > d c".to_string(),
+            external_pdgs: vec![1, -1, 22, 21],
+            external_permutation: vec![0, 1, 3, 2],
+            inferred_permutation: true,
+        };
+        let lazy = super::super::native_runtime::LazyProcessPhysicsV1::deferred_on_the_fly(
+            metadata,
+            representative,
+            selection,
+        );
+
+        let first = lazy.get().unwrap();
+        let second = lazy.get().unwrap();
+        assert!(std::ptr::eq(first, second));
+        assert_eq!(first.process_id, "a_b_to_d_c");
+        assert_eq!(first.process, "a b > d c");
+        assert_eq!(
+            first
+                .external_particles
+                .iter()
+                .map(|particle| particle.pdg)
+                .collect::<Vec<_>>(),
+            [1, -1, 22, 21]
+        );
+        assert_eq!(first.helicities.len(), 1);
+        assert_eq!(first.helicities[0].id, "h:-1,+1,+2,+0");
+        assert_eq!(first.helicities[0].values, [-1, 1, 2, 0]);
+        assert_eq!(first.color_components[0].id(), "flow:1,4,3,2");
+        let crate::ColorComponent::LcFlow(flow) = &first.color_components[0] else {
+            panic!("on-the-fly public color axis changed kind")
+        };
+        assert_eq!(flow.word, [1, 4, 3, 2]);
+    }
+
+    #[test]
     fn helicity_ids_validate_exact_seed_domains_and_canonical_signs() {
         let adapter = adapter(&[
             (1, OnTheFlyExternalColorRoleV1::Singlet, &[-1, 1]),

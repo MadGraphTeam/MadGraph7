@@ -4,9 +4,17 @@ use super::*;
 
 use std::sync::OnceLock;
 
-struct DeferredProcessPhysicsV1 {
-    artifact: VerifiedArtifact,
-    selection: crate::ArtifactSelection,
+enum DeferredProcessPhysicsV1 {
+    Dense {
+        artifact: VerifiedArtifact,
+        selection: crate::ArtifactSelection,
+    },
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    OnTheFly {
+        metadata: super::on_the_fly_public_metadata::OnTheFlyPublicMetadataV1,
+        selectors: super::on_the_fly_selectors::OnTheFlyCompactSelectorAdapterV1,
+        selection: crate::ArtifactSelection,
+    },
 }
 
 /// Dense public process metadata is deliberately not part of ordinary
@@ -39,28 +47,63 @@ impl LazyProcessPhysicsV1 {
     const fn deferred(artifact: VerifiedArtifact, selection: crate::ArtifactSelection) -> Self {
         Self {
             value: OnceLock::new(),
-            deferred: Some(DeferredProcessPhysicsV1 {
+            deferred: Some(DeferredProcessPhysicsV1::Dense {
                 artifact,
                 selection,
             }),
         }
     }
 
-    fn get(&self) -> RusticolResult<&ProcessPhysicsV1> {
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    pub(super) const fn deferred_on_the_fly(
+        metadata: super::on_the_fly_public_metadata::OnTheFlyPublicMetadataV1,
+        selectors: super::on_the_fly_selectors::OnTheFlyCompactSelectorAdapterV1,
+        selection: crate::ArtifactSelection,
+    ) -> Self {
+        Self {
+            value: OnceLock::new(),
+            deferred: Some(DeferredProcessPhysicsV1::OnTheFly {
+                metadata,
+                selectors,
+                selection,
+            }),
+        }
+    }
+
+    pub(super) fn get(&self) -> RusticolResult<&ProcessPhysicsV1> {
         let result = self.value.get_or_init(|| {
             let deferred = self.deferred.as_ref().ok_or_else(|| {
                 RusticolError::internal("process-physics cell has no value or deferred source")
             })?;
-            let selection = &deferred.selection;
-            let bytes = deferred
-                .artifact
-                .read_payload(&selection.process.physics_path)?;
-            let physics = ProcessPhysicsV1::from_json(&bytes, &selection.process.physics_path)?;
-            validate_representative_physics(&physics, selection)?;
-            if selection.alias.is_some() || selection.inferred_permutation {
-                apply_process_permutation_metadata(physics, selection)
-            } else {
-                Ok(physics)
+            match deferred {
+                DeferredProcessPhysicsV1::Dense {
+                    artifact,
+                    selection,
+                } => {
+                    let bytes = artifact.read_payload(&selection.process.physics_path)?;
+                    let physics =
+                        ProcessPhysicsV1::from_json(&bytes, &selection.process.physics_path)?;
+                    validate_representative_physics(&physics, selection)?;
+                    if selection.alias.is_some() || selection.inferred_permutation {
+                        apply_process_permutation_metadata(physics, selection)
+                    } else {
+                        Ok(physics)
+                    }
+                }
+                #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+                DeferredProcessPhysicsV1::OnTheFly {
+                    metadata,
+                    selectors,
+                    selection,
+                } => {
+                    let physics = metadata.synthesize(selectors)?;
+                    validate_representative_physics(&physics, selection)?;
+                    if selection.alias.is_some() || selection.inferred_permutation {
+                        apply_process_permutation_metadata(physics, selection)
+                    } else {
+                        Ok(physics)
+                    }
+                }
             }
         });
         result.as_ref().map_err(Clone::clone)
@@ -154,7 +197,6 @@ struct OnTheFlyPreparedSelectionV1 {
 pub(super) struct OnTheFlyExecutionRuntime {
     lane: super::on_the_fly_lane::OnTheFlyNativeRuntime,
     selectors: super::on_the_fly_selectors::OnTheFlyCompactSelectorAdapterV1,
-    introspection: super::on_the_fly_selectors::OnTheFlySelectorIntrospectionCacheV1,
     prepared_selection: Option<OnTheFlyPreparedSelectionV1>,
     point_major_scratch: Vec<f64>,
 }
@@ -168,7 +210,6 @@ impl OnTheFlyExecutionRuntime {
         Self {
             lane,
             selectors,
-            introspection: Default::default(),
             prepared_selection: None,
             point_major_scratch: Vec::new(),
         }
@@ -846,14 +887,14 @@ impl NativeRuntime {
                     .enumerate()
                     .all(|(index, public_index)| index == public_index);
             let loaded = super::on_the_fly_load::load_on_the_fly_native_runtime(
-                &artifact,
-                on_the_fly,
-                &selection.external_permutation,
+                &artifact, on_the_fly, &selection,
             )?;
             let super::on_the_fly_load::LoadedOnTheFlyRuntime {
                 mut common,
                 lane,
                 selectors,
+                metadata_selectors,
+                public_metadata,
             } = loaded;
             if public_remap {
                 common.set_external_pdg_order_recursive(&selection.external_pdgs);
@@ -888,7 +929,11 @@ impl NativeRuntime {
                 input_crossing_map,
                 permutation_alias_of: public_remap.then(|| representative_key.clone()),
                 final_state_permutation_alias_of: final_state_only.then_some(representative_key),
-                physics_v1: LazyProcessPhysicsV1::deferred(artifact.clone(), selection),
+                physics_v1: LazyProcessPhysicsV1::deferred_on_the_fly(
+                    public_metadata,
+                    metadata_selectors,
+                    selection,
+                ),
                 warnings_muted: false,
                 warned_kinds: BTreeSet::new(),
                 pending_warnings: Vec::new(),

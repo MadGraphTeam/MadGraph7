@@ -12,9 +12,9 @@ use std::io::{self, Write};
 use std::str;
 
 use super::source_seed::{
-    OnTheFlyExternalColorRoleV1, OnTheFlyPairingClassV1, OnTheFlyPairingEndpointV1,
-    OnTheFlyProcessSeedV1, OnTheFlySourceAnchorV1, OnTheFlySourceOrientationV1,
-    OnTheFlySourceStateV1, OnTheFlySourceWavefunctionFamilyV1,
+    OnTheFlyCouplingOrderPolicyV1, OnTheFlyExternalColorRoleV1, OnTheFlyPairingClassV1,
+    OnTheFlyPairingEndpointV1, OnTheFlyProcessSeedV1, OnTheFlySourceAnchorV1,
+    OnTheFlySourceOrientationV1, OnTheFlySourceStateV1, OnTheFlySourceWavefunctionFamilyV1,
 };
 use crate::recurrence::{ExactComplexRational, ExactRational, SemanticDigest};
 use crate::{RusticolError, RusticolResult};
@@ -364,12 +364,15 @@ fn encode_to_writer<W: Write>(seed: &OnTheFlyProcessSeedV1, destination: W) -> R
     for slot in &seed.external_permutation {
         writer.u32(*slot)?;
     }
-    writer.count(seed.coupling_limits.len(), "coupling limits")?;
-    for limit in &seed.coupling_limits {
-        writer
-            .u32(limit.ok_or_else(|| {
-                invalid("coupling limits are not explicit for every model order")
-            })?)?;
+    writer.u8(seed.coupling_order_policy as u8)?;
+    writer.count(seed.coupling_limits.len(), "coupling policy rows")?;
+    for (hierarchy, limit) in seed
+        .coupling_hierarchies
+        .iter()
+        .zip(seed.coupling_limits.iter())
+    {
+        writer.u32(*hierarchy)?;
+        writer.optional_u32(*limit)?;
     }
     writer.count(seed.pairing_classes.len(), "pairing classes")?;
     for pairing_class in &seed.pairing_classes {
@@ -454,6 +457,18 @@ fn read_source_orientation(reader: &mut Reader<'_>) -> RusticolResult<OnTheFlySo
         2 => Ok(OnTheFlySourceOrientationV1::SelfConjugate),
         value => Err(invalid(format!(
             "malformed source-orientation discriminant {value}"
+        ))),
+    }
+}
+
+fn read_coupling_order_policy(
+    reader: &mut Reader<'_>,
+) -> RusticolResult<OnTheFlyCouplingOrderPolicyV1> {
+    match reader.u8("coupling-order policy")? {
+        0 => Ok(OnTheFlyCouplingOrderPolicyV1::Minimal),
+        1 => Ok(OnTheFlyCouplingOrderPolicyV1::Explicit),
+        value => Err(invalid(format!(
+            "malformed coupling-order policy discriminant {value}"
         ))),
     }
 }
@@ -615,10 +630,13 @@ pub(crate) fn decode_on_the_fly_process_seed_v1(
         external_permutation.push(reader.u32("external gather-permutation slot")?);
     }
 
-    let coupling_limit_count = reader.count(4, "coupling limits")?;
-    let mut coupling_limits = reserved_vec(coupling_limit_count, "coupling limits")?;
-    for _ in 0..coupling_limit_count {
-        coupling_limits.push(Some(reader.u32("explicit coupling limit")?));
+    let coupling_order_policy = read_coupling_order_policy(&mut reader)?;
+    let coupling_row_count = reader.count(1, "coupling policy rows")?;
+    let mut coupling_hierarchies = reserved_vec(coupling_row_count, "coupling hierarchies")?;
+    let mut coupling_limits = reserved_vec(coupling_row_count, "coupling limits")?;
+    for _ in 0..coupling_row_count {
+        coupling_hierarchies.push(reader.u32("coupling hierarchy")?);
+        coupling_limits.push(reader.optional_u32("explicit coupling limit")?);
     }
 
     let pairing_class_count = reader.count(MINIMUM_PAIRING_CLASS_BYTES, "pairing classes")?;
@@ -660,6 +678,8 @@ pub(crate) fn decode_on_the_fly_process_seed_v1(
         ExactComplexRational::ONE,
         source_anchors,
         external_permutation,
+        coupling_order_policy,
+        coupling_hierarchies,
         coupling_limits,
         pairing_classes,
     )
@@ -730,6 +750,13 @@ mod tests {
     }
 
     fn ordinary_seed(reverse_inputs: bool) -> OnTheFlyProcessSeedV1 {
+        ordinary_seed_with_limits(reverse_inputs, vec![Some(0), Some(3)])
+    }
+
+    fn ordinary_seed_with_limits(
+        reverse_inputs: bool,
+        coupling_limits: Vec<Option<u32>>,
+    ) -> OnTheFlyProcessSeedV1 {
         let contracts = [digest(60), digest(61), digest(62), digest(63)];
         let roles = [
             OnTheFlyExternalColorRoleV1::Fundamental,
@@ -803,7 +830,9 @@ mod tests {
             ExactComplexRational::ONE,
             anchors,
             vec![2, 0, 3, 1],
-            vec![Some(0), Some(3)],
+            OnTheFlyCouplingOrderPolicyV1::Minimal,
+            vec![1, 2],
+            coupling_limits,
             pairing_classes,
         )
         .unwrap()
@@ -848,6 +877,16 @@ mod tests {
             decode_on_the_fly_process_seed_v1(&first).unwrap(),
             canonical
         );
+    }
+
+    #[test]
+    fn on_the_fly_seed_codec_round_trips_multiple_unbounded_orders() {
+        let seed = ordinary_seed_with_limits(false, vec![None, None]);
+        let bytes = encode_on_the_fly_process_seed_v1(&seed).unwrap();
+        let decoded = decode_on_the_fly_process_seed_v1(&bytes).unwrap();
+
+        assert_eq!(decoded.explicit_coupling_limits(), [None, None]);
+        assert_eq!(decoded, seed);
     }
 
     #[test]

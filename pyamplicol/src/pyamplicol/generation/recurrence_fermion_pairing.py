@@ -117,6 +117,33 @@ class FermionPairingCatalogV1:
 
 
 @dataclass(frozen=True, slots=True)
+class FermionPairingRootEndpointV1:
+    """One compact endpoint retained before any pairing is selected."""
+
+    source_slot: int
+    color_orientation: FermionColorOrientation
+    contract_digest: str
+
+
+@dataclass(frozen=True, slots=True)
+class FermionPairingRootClassV1:
+    """One model-proven pairing class without factorial rule expansion."""
+
+    species: str
+    proof_digest: str
+    fundamental_source_slots: tuple[int, ...]
+    antifundamental_source_slots: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class FermionPairingRootsV1:
+    """O(external-leg) roots from which one runtime pairing can be derived."""
+
+    endpoints: tuple[FermionPairingRootEndpointV1, ...]
+    classes: tuple[FermionPairingRootClassV1, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class _EndpointContract:
     source_slot: int
     public_label: int
@@ -135,6 +162,103 @@ class _LocalPairing:
     index: int
     antifundamental_slots: tuple[int, ...]
     parity: int
+
+
+def build_recurrence_fermion_pairing_roots_v1(
+    process: CanonicalProcessIR,
+    current_states: Sequence[CurrentStateTemplateV1],
+    *,
+    quantum_flows: Sequence[QuantumFlowTemplateV1] = (),
+) -> FermionPairingRootsV1:
+    """Derive compact model-compatible pairing roots without enumerating rules.
+
+    The ordinary recurrence builder expands permutations because it publishes a
+    complete process schedule.  The on-the-fly lane instead selects one pairing
+    at runtime, so retaining endpoints and compatibility classes is sufficient
+    and scales linearly with the external process.  No resource-policy ceiling
+    belongs at this semantic projection boundary.
+    """
+
+    if not isinstance(process, CanonicalProcessIR):
+        raise TypeError("fermion pairing roots require a CanonicalProcessIR")
+    states = tuple(current_states)
+    if any(not isinstance(state, CurrentStateTemplateV1) for state in states):
+        raise TypeError(
+            "fermion pairing root current states must be CurrentStateTemplateV1 rows"
+        )
+    flows = tuple(quantum_flows)
+    if any(not isinstance(flow, QuantumFlowTemplateV1) for flow in flows):
+        raise TypeError(
+            "fermion pairing root quantum flows must be QuantumFlowTemplateV1 rows"
+        )
+
+    contracts = tuple(
+        contract
+        for source_slot, leg in enumerate(process.legs)
+        if (contract := _derive_endpoint(source_slot, leg, states)) is not None
+    )
+    compatibility_ids = _fermion_compatibility_ids(states, flows)
+    grouped: dict[str, list[_EndpointContract]] = {}
+    for contract in contracts:
+        species = compatibility_ids.get(contract.species_id, contract.species_id)
+        grouped.setdefault(species, []).append(contract)
+
+    classes: list[FermionPairingRootClassV1] = []
+    for species, group in sorted(
+        grouped.items(),
+        key=lambda item: tuple(sorted(row.source_slot for row in item[1])),
+    ):
+        fundamental = tuple(
+            sorted(
+                row.source_slot
+                for row in group
+                if row.color_orientation == "fundamental"
+            )
+        )
+        antifundamental = tuple(
+            sorted(
+                row.source_slot
+                for row in group
+                if row.color_orientation == "antifundamental"
+            )
+        )
+        if not fundamental or len(fundamental) != len(antifundamental):
+            raise RecurrenceFermionPairingError(
+                "incompatible fermion species endpoints: species contract "
+                f"{species!r} has {len(fundamental)} fundamental and "
+                f"{len(antifundamental)} antifundamental endpoints"
+            )
+        proof_payload = {
+            "algorithm": PAIRING_PROOF_ALGORITHM,
+            "antifundamental_source_slots": antifundamental,
+            "fundamental_source_slots": fundamental,
+            "reference_pairings": tuple(
+                zip(fundamental, antifundamental, strict=True)
+            ),
+            "species_contract_digests": tuple(
+                sorted(row.contract_digest for row in group)
+            ),
+        }
+        classes.append(
+            FermionPairingRootClassV1(
+                species=species,
+                proof_digest=_digest(proof_payload),
+                fundamental_source_slots=fundamental,
+                antifundamental_source_slots=antifundamental,
+            )
+        )
+
+    return FermionPairingRootsV1(
+        endpoints=tuple(
+            FermionPairingRootEndpointV1(
+                source_slot=contract.source_slot,
+                color_orientation=contract.color_orientation,
+                contract_digest=contract.contract_digest,
+            )
+            for contract in sorted(contracts, key=lambda row: row.source_slot)
+        ),
+        classes=tuple(classes),
+    )
 
 
 def build_recurrence_fermion_pairing_catalog_v1(
@@ -667,7 +791,11 @@ __all__ = [
     "FermionPairingCatalogV1",
     "FermionPairingClassRowV1",
     "FermionPairingLimitsV1",
+    "FermionPairingRootClassV1",
+    "FermionPairingRootEndpointV1",
+    "FermionPairingRootsV1",
     "FermionPairingRuleRowV1",
     "RecurrenceFermionPairingError",
     "build_recurrence_fermion_pairing_catalog_v1",
+    "build_recurrence_fermion_pairing_roots_v1",
 ]

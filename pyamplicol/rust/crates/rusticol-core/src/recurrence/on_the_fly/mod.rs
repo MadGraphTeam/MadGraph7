@@ -27,13 +27,13 @@ use super::direct_plan::{
 };
 use super::process::ProcessSourceStateRow;
 use super::template::{
-    ClosureRow, EvaluatorContractKind, LCColorTransitionWitnessRow, QuantumFlowRow, SourceRow,
-    TransitionRow, ValidatedRecurrenceTemplateInput,
+    ClosureRow, CurrentStateRow, EvaluatorContractKind, LCColorTransitionWitnessRow,
+    QuantumFlowRow, SourceRow, TransitionRow, ValidatedRecurrenceTemplateInput,
 };
 use super::{
     CanonicalMomentumLinearForm, ContributionKey, CurrentCoreKey, CurrentHelicityIdentity,
     CurrentSourceBinding, DynamicLCColorState, DynamicLCColorStateInterner, ExactComplexRational,
-    LCColorComponent, LCColorComponentKind, LCColorWitnessTermId, MomentumTerm,
+    LCColorComponent, LCColorComponentKind, LCColorSourceSeed, LCColorWitnessTermId, MomentumTerm,
     PreparedDirectExecutorBinding, PreparedDirectExecutorCatalog, RecurrenceNodeKind,
     SemanticDigest, SourceStateAssignment,
 };
@@ -86,13 +86,15 @@ fn final_digest(hash: Sha256) -> RusticolResult<SemanticDigest> {
     SemanticDigest::new(hash.finalize().into())
 }
 
+mod coupling_policy;
 mod family;
 mod interpreter;
-#[cfg(feature = "on-the-fly-test-support")]
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
 mod probe_guard;
 mod projection;
 mod public_query;
 pub(crate) mod seed_codec;
+mod source_builder;
 mod source_seed;
 mod sweep;
 mod templates;
@@ -100,30 +102,44 @@ mod templates;
 mod test_support;
 mod trace;
 
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+pub(crate) use coupling_policy::OnTheFlyCouplingPolicyCensusV1;
+pub(crate) use coupling_policy::{
+    OnTheFlyResolvedCouplingPolicyV1, resolve_on_the_fly_coupling_policy_v1,
+};
 pub use family::OnTheFlyQueryFamilyCensusV1;
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
 pub use family::on_the_fly_query_family_census_v1;
 pub(crate) use family::{
-    OnTheFlyQueryFamilyExecutionReportV1, OnTheFlyQueryFamilyExecutorV1, QueryFamilyTraceInput,
+    OnTheFlyQueryFamilyExecutionReportV1, OnTheFlyQueryFamilyExecutorV1,
+    OnTheFlyQueryFamilyHandleV1, QueryFamilyTraceInput,
 };
 pub(crate) use interpreter::{
     OnTheFlyPreparedExecutorResolver, OnTheFlyStructuralInterpreter, OnTheFlyWorkspaceV1,
     ResolvedOnTheFlyExecutor,
 };
-#[cfg(feature = "on-the-fly-test-support")]
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
 pub(crate) use probe_guard::{
     OnTheFlyForbiddenWorkGuardV1, OnTheFlyForbiddenWorkV1, reject_forbidden_work_if_probed,
 };
+use projection::*;
 pub(crate) use public_query::OnTheFlyLcSelectorV1;
 pub(crate) use public_query::{DecodedLcQueryV1, OnTheFlySelectedSourceV1};
 pub(crate) use seed_codec::decode_on_the_fly_process_seed_v1;
+pub(crate) use source_builder::{
+    build_on_the_fly_process_seed_v1, parse_on_the_fly_process_seed_projection_v1,
+};
 #[cfg(test)]
 pub(crate) use source_seed::scalar_adapter_test_seed;
 pub(crate) use source_seed::{
-    OnTheFlyExternalColorRoleV1, OnTheFlyPairingClassV1, OnTheFlyPairingEndpointV1,
-    OnTheFlyProcessSeedV1, OnTheFlySourceAnchorV1, OnTheFlySourceExecutionSpecV1,
-    OnTheFlySourceOrientationV1, OnTheFlySourceStateV1, OnTheFlySourceWavefunctionFamilyV1,
+    OnTheFlyCouplingOrderPolicyV1, OnTheFlyExternalColorRoleV1, OnTheFlyPairingClassV1,
+    OnTheFlyPairingEndpointV1, OnTheFlyProcessSeedV1, OnTheFlySourceAnchorV1,
+    OnTheFlySourceExecutionSpecV1, OnTheFlySourceOrientationV1, OnTheFlySourceStateV1,
+    OnTheFlySourceWavefunctionFamilyV1,
 };
+use sweep::*;
+pub(crate) use templates::PreparedOnTheFlyGrammarV1;
+use templates::*;
 #[cfg(feature = "on-the-fly-test-support")]
 pub(crate) use test_support::build_on_the_fly_selected_trace_v1;
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
@@ -132,15 +148,10 @@ pub use test_support::{OnTheFlyTestSupportReportV1, on_the_fly_test_support_prob
 pub(crate) use trace::ON_THE_FLY_WORK_CENSUS_BASIS_V1;
 #[cfg(test)]
 pub(crate) use trace::scalar_adapter_test_trace;
+use trace::*;
 pub(crate) use trace::{
     OnTheFlyExecutorKeyV1, OnTheFlyStructuralTraceV1, authenticated_prepared_executor_binding,
 };
-
-use projection::*;
-use sweep::*;
-use templates::*;
-use trace::*;
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct OnTheFlyProjectionProbeV1 {
     pub(crate) enabled: bool,
@@ -169,9 +180,62 @@ pub(crate) fn build_selected_lc_query_trace_v1(
     templates: &ValidatedRecurrenceTemplateInput,
     direct: &PreparedDirectExecutorCatalog,
     seed: &OnTheFlyProcessSeedV1,
+    coupling_policy: &OnTheFlyResolvedCouplingPolicyV1,
     query: DecodedLcQueryV1,
 ) -> RusticolResult<OnTheFlySelectedQueryOutcomeV1> {
-    build_selected_lc_query_trace_impl(templates, direct, seed, query, true)
+    let catalog = validate_seed_against_templates(templates, seed)?;
+    let grammar = prepare_on_the_fly_grammar_v1(templates, &catalog, seed)?;
+    build_selected_lc_query_trace_impl(
+        templates,
+        direct,
+        seed,
+        coupling_policy,
+        &grammar,
+        query,
+        true,
+    )
+}
+
+/// Prepare the immutable process grammar and process-global coupling policy
+/// in one pass over the validated template catalog.  Runtime load deliberately
+/// does not call this; the first genuinely cold query family does.
+pub(crate) fn prepare_on_the_fly_process_v1(
+    templates: &ValidatedRecurrenceTemplateInput,
+    seed: &OnTheFlyProcessSeedV1,
+) -> RusticolResult<(PreparedOnTheFlyGrammarV1, OnTheFlyResolvedCouplingPolicyV1)> {
+    let catalog = validate_seed_against_templates(templates, seed)?;
+    let grammar = prepare_on_the_fly_grammar_v1(templates, &catalog, seed)?;
+    let policy = coupling_policy::resolve_on_the_fly_coupling_policy_from_grammar_v1(
+        templates, seed, &grammar,
+    )?;
+    Ok((grammar, policy))
+}
+
+/// Build one exact public query family while sharing all immutable grammar
+/// preparation.  The query-local sweep intentionally remains independent for
+/// each selector: only immutable model/process work is batched here.
+pub(crate) fn build_selected_lc_query_family_v1(
+    templates: &ValidatedRecurrenceTemplateInput,
+    direct: &PreparedDirectExecutorCatalog,
+    seed: &OnTheFlyProcessSeedV1,
+    coupling_policy: &OnTheFlyResolvedCouplingPolicyV1,
+    grammar: &PreparedOnTheFlyGrammarV1,
+    queries: impl IntoIterator<Item = DecodedLcQueryV1>,
+) -> RusticolResult<Vec<OnTheFlySelectedQueryOutcomeV1>> {
+    queries
+        .into_iter()
+        .map(|query| {
+            build_selected_lc_query_trace_impl(
+                templates,
+                direct,
+                seed,
+                coupling_policy,
+                grammar,
+                query,
+                true,
+            )
+        })
+        .collect()
 }
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
@@ -182,7 +246,16 @@ pub(crate) fn build_selected_lc_query_trace_for_probe_v1(
     query: DecodedLcQueryV1,
     enable_projection: bool,
 ) -> RusticolResult<OnTheFlySelectedQueryTraceV1> {
-    match build_selected_lc_query_trace_impl(templates, direct, seed, query, enable_projection)? {
+    let (grammar, coupling_policy) = prepare_on_the_fly_process_v1(templates, seed)?;
+    match build_selected_lc_query_trace_impl(
+        templates,
+        direct,
+        seed,
+        &coupling_policy,
+        &grammar,
+        query,
+        enable_projection,
+    )? {
         OnTheFlySelectedQueryOutcomeV1::Trace(selected) => Ok(selected),
         OnTheFlySelectedQueryOutcomeV1::StructuralZero { .. } => Err(evaluation(
             "selected probe query is an exact structural zero",
@@ -194,6 +267,8 @@ fn build_selected_lc_query_trace_impl(
     templates: &ValidatedRecurrenceTemplateInput,
     direct: &PreparedDirectExecutorCatalog,
     seed: &OnTheFlyProcessSeedV1,
+    coupling_policy: &OnTheFlyResolvedCouplingPolicyV1,
+    grammar: &PreparedOnTheFlyGrammarV1,
     query: DecodedLcQueryV1,
     enable_projection: bool,
 ) -> RusticolResult<OnTheFlySelectedQueryOutcomeV1> {
@@ -202,8 +277,22 @@ fn build_selected_lc_query_trace_impl(
             "compact query direct-template catalog differs from its prepared catalog",
         ));
     }
-    let Some((trace, projection)) =
-        build_selected_lc_trace_impl(templates, &seed, &query, enable_projection, true)?
+    if coupling_policy.seed_digest() != seed.semantic_digest()
+        || coupling_policy.effective_limits().len() != seed.explicit_coupling_limits().len()
+    {
+        return Err(integrity(
+            "resolved coupling policy belongs to a different compact seed",
+        ));
+    }
+    let Some((trace, projection)) = build_selected_lc_trace_impl(
+        templates,
+        seed,
+        grammar,
+        coupling_policy.effective_limits(),
+        &query,
+        enable_projection,
+        true,
+    )?
     else {
         return Ok(OnTheFlySelectedQueryOutcomeV1::StructuralZero { query });
     };
@@ -248,9 +337,18 @@ pub(crate) fn build_selected_lc_trace(
     seed: &OnTheFlyProcessSeedV1,
     query: &DecodedLcQueryV1,
 ) -> RusticolResult<OnTheFlyStructuralTraceV1> {
-    build_selected_lc_trace_impl(templates, seed, query, true, false)?
-        .map(|(trace, _)| trace)
-        .ok_or_else(|| evaluation("selected query is an exact structural zero"))
+    let (grammar, coupling_policy) = prepare_on_the_fly_process_v1(templates, seed)?;
+    build_selected_lc_trace_impl(
+        templates,
+        seed,
+        &grammar,
+        coupling_policy.effective_limits(),
+        query,
+        true,
+        false,
+    )?
+    .map(|(trace, _)| trace)
+    .ok_or_else(|| evaluation("selected query is an exact structural zero"))
 }
 
 #[cfg(any(test, feature = "on-the-fly-test-support"))]
@@ -260,9 +358,17 @@ pub(crate) fn build_selected_lc_trace_for_probe(
     query: &DecodedLcQueryV1,
     enable_projection: bool,
 ) -> RusticolResult<(OnTheFlyStructuralTraceV1, OnTheFlyProjectionProbeV1)> {
-    let (trace, probe) =
-        build_selected_lc_trace_impl(templates, seed, query, enable_projection, true)?
-            .ok_or_else(|| evaluation("selected probe query is an exact structural zero"))?;
+    let (grammar, coupling_policy) = prepare_on_the_fly_process_v1(templates, seed)?;
+    let (trace, probe) = build_selected_lc_trace_impl(
+        templates,
+        seed,
+        &grammar,
+        coupling_policy.effective_limits(),
+        query,
+        enable_projection,
+        true,
+    )?
+    .ok_or_else(|| evaluation("selected probe query is an exact structural zero"))?;
     Ok((
         trace,
         probe.ok_or_else(|| integrity("projection probe was not collected"))?,
@@ -272,6 +378,8 @@ pub(crate) fn build_selected_lc_trace_for_probe(
 fn build_selected_lc_trace_impl(
     templates: &ValidatedRecurrenceTemplateInput,
     seed: &OnTheFlyProcessSeedV1,
+    grammar: &PreparedOnTheFlyGrammarV1,
+    coupling_limits: &[Option<u32>],
     query: &DecodedLcQueryV1,
     enable_projection: bool,
     collect_projection_probe: bool,
@@ -281,17 +389,13 @@ fn build_selected_lc_trace_impl(
             "decoded query belongs to a different compact seed",
         ));
     }
-    let catalog = validate_seed_against_templates(templates, seed)?;
-    let transitions = prepared_transitions(templates, &catalog)?;
-    let closures = prepared_closures(templates, &catalog)?;
-    let propagators = propagator_by_state(templates)?;
     let mut colors = DynamicLCColorStateInterner::default();
     let mut currents = Vec::new();
     let mut current_ids = BTreeMap::new();
     insert_selected_sources(
-        templates,
-        &catalog,
+        grammar,
         seed,
+        coupling_limits,
         query,
         &mut colors,
         &mut currents,
@@ -299,9 +403,10 @@ fn build_selected_lc_trace_impl(
     )?;
     build_forward_currents(
         templates,
-        &transitions,
+        &grammar.transitions,
         seed,
-        &propagators,
+        coupling_limits,
+        &grammar.propagators,
         &mut colors,
         &mut currents,
         &mut current_ids,
@@ -314,9 +419,8 @@ fn build_selected_lc_trace_impl(
                 .checked_add(count)
                 .ok_or_else(|| invalid("constructed contribution count exceeds usize"))
         })?;
-    let Some(selected_closures) = build_selected_closures(
-        templates, &catalog, &closures, seed, query, &colors, &currents,
-    )?
+    let Some(selected_closures) =
+        build_selected_closures(&grammar.closures, seed, query, &colors, &currents)?
     else {
         return Ok(None);
     };
@@ -344,15 +448,13 @@ fn build_selected_lc_trace_impl(
     let pairing_owner = resolve_projected_pairing_owner(seed, &selected_closures)?;
     let trace = lower_trace(
         templates,
-        &catalog,
+        grammar,
         seed,
         query,
         &colors,
         &currents,
         &selected_closures,
         pairing_owner,
-        &transitions,
-        &closures,
         &live,
         constructed_contribution_count,
     )?;
@@ -389,13 +491,14 @@ mod structural_zero_tests {
             DecodedLcQueryV1::new(&seed, vec![0, 1], &[0, 0], OnTheFlyLcSelectorV1::Singlet)
                 .unwrap();
         let catalog = TemplateCatalog::new(templates.input()).unwrap();
+        let grammar = prepare_on_the_fly_grammar_v1(&templates, &catalog, &seed).unwrap();
         let mut colors = DynamicLCColorStateInterner::default();
         let mut currents = Vec::new();
         let mut current_ids = BTreeMap::new();
         insert_selected_sources(
-            &templates,
-            &catalog,
+            &grammar,
             &seed,
+            seed.explicit_coupling_limits(),
             &query,
             &mut colors,
             &mut currents,
@@ -404,33 +507,20 @@ mod structural_zero_tests {
         .unwrap();
 
         let absent = BTreeMap::new();
-        let error = build_selected_closures(
-            &templates, &catalog, &absent, &seed, &query, &colors, &currents,
-        )
-        .unwrap_err();
+        let error = validate_prepared_closure_domain(&templates, &catalog, &absent).unwrap_err();
         assert!(error.to_string().contains("prepared closure domain"));
 
         let mut inconsistent = prepared_closures(&templates, &catalog).unwrap();
         let rows = inconsistent.values_mut().next().unwrap();
         rows[0].input_states = [4, 9];
-        let error = build_selected_closures(
-            &templates,
-            &catalog,
-            &inconsistent,
-            &seed,
-            &query,
-            &colors,
-            &currents,
-        )
-        .unwrap_err();
+        let error =
+            validate_prepared_closure_domain(&templates, &catalog, &inconsistent).unwrap_err();
         assert!(error.to_string().contains("parent-state pair"));
 
         currents.clear();
         let complete = prepared_closures(&templates, &catalog).unwrap();
-        let error = build_selected_closures(
-            &templates, &catalog, &complete, &seed, &query, &colors, &currents,
-        )
-        .unwrap_err();
+        let error =
+            build_selected_closures(&complete, &seed, &query, &colors, &currents).unwrap_err();
         assert!(error.to_string().contains("closure anchor"));
     }
 }

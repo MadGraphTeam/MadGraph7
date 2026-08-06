@@ -3996,6 +3996,12 @@ fn on_the_fly_public_runtime_paths_reuse_one_family_without_dense_physics() {
         .evaluate_f64_with_selectors(&momenta, 2, None, None, Some(&[0, 0]), Some(&[0, 0]))
         .unwrap();
     assert_eq!(per_point, global);
+    let resolved = runtime
+        .evaluate_resolved_f64(&momenta, 2, Some(&helicity), Some(&color))
+        .unwrap();
+    assert_eq!(resolved.values, global);
+    assert_eq!(resolved.helicity_ids, helicity);
+    assert_eq!(resolved.color_ids, color);
     let profiled = runtime
         .evaluate_f64_profile_with_selectors(&momenta, 2, None, None, Some(&[0, 0]), Some(&[0, 0]))
         .unwrap();
@@ -4015,6 +4021,22 @@ fn on_the_fly_public_runtime_paths_reuse_one_family_without_dense_physics() {
             >= 0.0
     );
 
+    let NativeExecutionLane::OnTheFly(lane) = &runtime.execution_lane else {
+        panic!("test runtime changed execution lane");
+    };
+    assert_eq!(lane.retained_family_count(), 1);
+    assert!(runtime.physics_v1.get().is_err());
+
+    runtime.clear().unwrap();
+    let NativeExecutionLane::OnTheFly(lane) = &runtime.execution_lane else {
+        panic!("test runtime changed execution lane");
+    };
+    assert_eq!(lane.retained_family_count(), 0);
+    assert!(runtime.physics_v1.get().is_err());
+    let rebuilt = runtime
+        .evaluate_f64_with_selectors(&momenta, 2, None, None, None, None)
+        .unwrap();
+    assert_eq!(rebuilt, global);
     let NativeExecutionLane::OnTheFly(lane) = &runtime.execution_lane else {
         panic!("test runtime changed execution lane");
     };

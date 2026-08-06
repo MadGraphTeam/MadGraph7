@@ -227,6 +227,88 @@ fn require_exact_colored_coverage(
     Ok(())
 }
 
+/// Whether closed LC components form any physical selector admitted by this
+/// compact process seed.  This is deliberately selector-independent: the
+/// cold minimal-coupling sweep uses it to prove that a structural closure can
+/// feed at least one public query without constructing a public-flow table.
+pub(super) fn components_match_physical_lc_selector(
+    seed: &OnTheFlyProcessSeedV1,
+    components: &[LCColorComponent],
+) -> bool {
+    let expected = colored_source_slots(seed);
+    let mut observed = BTreeSet::new();
+    if components
+        .iter()
+        .flat_map(|component| component.source_slots().iter().copied())
+        .any(|slot| !observed.insert(slot))
+        || observed != expected
+    {
+        return false;
+    }
+
+    if expected.is_empty() {
+        return components.is_empty() && seed.pairing_classes.is_empty();
+    }
+    if seed.pairing_classes.is_empty() {
+        return components.len() == 1
+            && components[0].kind() == LCColorComponentKind::Trace
+            && components[0].source_slots().iter().all(|slot| {
+                seed.source_anchors[*slot as usize].color_role
+                    == OnTheFlyExternalColorRoleV1::Adjoint
+            });
+    }
+    !components.is_empty()
+        && components.iter().all(|component| {
+            let slots = component.source_slots();
+            component.kind() == LCColorComponentKind::OpenString
+                && slots.len() >= 2
+                && seed.source_anchors[slots[0] as usize].color_role
+                    == OnTheFlyExternalColorRoleV1::Fundamental
+                && seed.source_anchors[*slots.last().expect("nonempty") as usize].color_role
+                    == OnTheFlyExternalColorRoleV1::Antifundamental
+                && slots[1..slots.len() - 1].iter().all(|slot| {
+                    seed.source_anchors[*slot as usize].color_role
+                        == OnTheFlyExternalColorRoleV1::Adjoint
+                })
+        })
+}
+
+/// Recover the same private closure anchor that query decoding chooses for a
+/// valid physical selector.  `None` means the components are not a selector
+/// admitted by this process seed.
+pub(super) fn physical_lc_selector_closure_anchor(
+    seed: &OnTheFlyProcessSeedV1,
+    components: &[LCColorComponent],
+) -> Option<u32> {
+    if !components_match_physical_lc_selector(seed, components) {
+        return None;
+    }
+    if components.is_empty() {
+        return Some(
+            seed.source_anchors
+                .iter()
+                .find(|anchor| anchor.is_fermionic)
+                .unwrap_or(&seed.source_anchors[0])
+                .source_slot,
+        );
+    }
+    if seed.pairing_classes.is_empty() {
+        return components[0].source_slots().last().copied();
+    }
+
+    let minimum_colored_slot = colored_source_slots(seed).into_iter().next()?;
+    let mut blocks = components
+        .iter()
+        .map(LCColorComponent::source_slots)
+        .collect::<Vec<_>>();
+    blocks.sort_unstable_by(|left, right| left[0].cmp(&right[0]).then_with(|| left.cmp(right)));
+    let first = blocks
+        .iter()
+        .position(|block| block.contains(&minimum_colored_slot))?;
+    blocks.rotate_left(first);
+    blocks.last()?.last().copied()
+}
+
 fn decode_selector(
     seed: &OnTheFlyProcessSeedV1,
     inverse: &[u32],
@@ -265,6 +347,11 @@ fn decode_singlet(seed: &OnTheFlyProcessSeedV1) -> RusticolResult<DecodedSelecto
         .unwrap_or(&seed.source_anchors[0])
         .source_slot;
     let selector_digest = selector_digest(&[])?;
+    if !components_match_physical_lc_selector(seed, &[]) {
+        return Err(integrity(
+            "singlet selector failed its physical-shape proof",
+        ));
+    }
     Ok(DecodedSelector {
         target_components: Vec::new(),
         closure_anchor_slot,
@@ -292,6 +379,11 @@ fn decode_single_trace(
         ));
     }
     let component = LCColorComponent::new(LCColorComponentKind::Trace, word)?;
+    if !components_match_physical_lc_selector(seed, std::slice::from_ref(&component)) {
+        return Err(integrity(
+            "single-trace selector failed its physical-shape proof",
+        ));
+    }
     let closure_anchor_slot = *component
         .source_slots()
         .last()
@@ -361,6 +453,11 @@ fn decode_open_lines(
         .map(|block| LCColorComponent::new(LCColorComponentKind::OpenString, block))
         .collect::<RusticolResult<Vec<_>>>()?;
     components.sort_unstable();
+    if !components_match_physical_lc_selector(seed, &components) {
+        return Err(integrity(
+            "open-line selector failed its physical-shape proof",
+        ));
+    }
     let selector_digest = selector_digest(&components)?;
     Ok(DecodedSelector {
         target_components: components,
@@ -490,6 +587,8 @@ mod tests {
             ExactComplexRational::ONE,
             anchors,
             external_permutation,
+            OnTheFlyCouplingOrderPolicyV1::Explicit,
+            vec![1],
             vec![Some(2)],
             classes,
         )

@@ -83,6 +83,10 @@ pub const SYMBOLICA_SERIALIZATION_ABI: &str = "symbolica-bincode2-v1";
 #[doc(hidden)]
 pub mod __private {
     use crate::RusticolResult;
+    use crate::recurrence::template::{
+        OwnedRecurrenceTemplateInput, ValidatedRecurrenceTemplateInput,
+    };
+    use crate::recurrence::{PreparedDirectExecutorCatalog, SemanticDigest};
 
     /// Unstable cold-path bridge for the private PyO3 artifact generator.
     #[doc(hidden)]
@@ -100,6 +104,36 @@ pub mod __private {
             optimization_level,
             compress,
         )
+    }
+
+    /// Unstable cold-path bridge for constructing the compact private
+    /// on-the-fly process seed from source-only projection JSON.
+    #[doc(hidden)]
+    pub fn project_recurrence_template_catalog_json_v1(
+        value: &serde_json::Value,
+    ) -> RusticolResult<OwnedRecurrenceTemplateInput> {
+        crate::recurrence::template_json::project_recurrence_template_catalog_json_v1(value)
+    }
+
+    /// Unstable cold-path bridge for encoding one validated compact seed.
+    #[doc(hidden)]
+    pub fn build_on_the_fly_process_seed_bytes_v1(
+        source_projection_json: &[u8],
+        templates: &ValidatedRecurrenceTemplateInput,
+        direct_catalog: &PreparedDirectExecutorCatalog,
+        prepared_pack_digest: SemanticDigest,
+    ) -> RusticolResult<Vec<u8>> {
+        let projection =
+            crate::recurrence::on_the_fly::parse_on_the_fly_process_seed_projection_v1(
+                source_projection_json,
+            )?;
+        let seed = crate::recurrence::on_the_fly::build_on_the_fly_process_seed_v1(
+            projection,
+            templates,
+            direct_catalog,
+            prepared_pack_digest,
+        )?;
+        crate::recurrence::on_the_fly::seed_codec::encode_on_the_fly_process_seed_v1(&seed)
     }
 }
 pub const ARTIFACT_MANIFEST_FILE: &str = "artifact.json";

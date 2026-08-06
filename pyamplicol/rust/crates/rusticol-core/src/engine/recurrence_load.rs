@@ -1803,7 +1803,9 @@ impl NativeRuntime {
             }
             let manifest = match loaded {
                 LoadedExecutionManifest::Recurrence(manifest) => manifest,
-                LoadedExecutionManifest::Compiled(_) | LoadedExecutionManifest::EagerV3(_) => {
+                LoadedExecutionManifest::Compiled(_)
+                | LoadedExecutionManifest::EagerV3(_)
+                | LoadedExecutionManifest::OnTheFly(_) => {
                     return Err(RusticolError::compatibility(
                         "on-the-fly artifact probing requires a recurrence artifact",
                     ));

@@ -12,6 +12,53 @@ import pytest
 from tools.developer import on_the_fly_lc_gate as gate
 
 
+def _write_execution(root: Path, payload: object) -> None:
+    process = root / "processes" / "fixture_process"
+    process.mkdir(parents=True)
+    (process / "execution.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _compiled_record(
+    *,
+    sources: int,
+    currents: int,
+    components: int,
+    attachments: int,
+    evaluations: int,
+    roots: int,
+) -> dict[str, object]:
+    return {
+        "kind": "pyamplicol-runtime-execution",
+        "dag_summary": {
+            "source_count": sources,
+            "current_count": currents,
+            "interaction_count": attachments,
+            "interaction_evaluation_count": evaluations,
+            "amplitude_root_count": roots,
+        },
+        "runtime_schema": {"current_storage": {"component_count": components}},
+    }
+
+
+def _runtime(
+    mode: str,
+    *,
+    flows: tuple[SimpleNamespace, ...] = (),
+    helicities: tuple[SimpleNamespace, ...] = (),
+    artifact_id: str = "a" * 64,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        execution_mode=mode,
+        artifact_id=artifact_id,
+        physics=SimpleNamespace(
+            process_id="fixture_process",
+            color_accuracy="lc",
+            color_flows=flows,
+            helicities=helicities,
+        ),
+    )
+
+
 def test_one_topology_artifact_has_two_dense_production_authority_workloads() -> None:
     config = gate._config()
     assert config.color.accuracy == "lc"
@@ -172,7 +219,9 @@ def test_hidden_timing_contract_counts_lookup_fill_execute_and_no_poison() -> No
         gate._probe_values(inconsistent_work, 2)
 
 
-def test_workload_census_sums_operations_and_keeps_recurrence_calls_distinct() -> None:
+def test_workload_census_sums_operations_and_keeps_recurrence_calls_distinct(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     first = {
         "work_census_basis": gate.WORK_CENSUS_BASIS,
         "source_operation_count": 2,
@@ -221,6 +270,23 @@ def test_workload_census_sums_operations_and_keeps_recurrence_calls_distinct() -
     assert established["source_rows_per_runtime_call"] == 4.0
     assert "grouped prepared-backend invocations" in str(established["semantics"])
     assert gate._public_recurrence_work(SimpleNamespace(timing_breakdown=None)) is None
+
+    monkeypatch.setattr(gate.dataclasses, "asdict", lambda _value: {})
+    public = gate._public_timing(
+        SimpleNamespace(
+            sample_count=3,
+            repetitions_per_sample=4,
+            wall_time_per_point=2.0,
+            evaluator_time_per_point=1.5,
+            evaluator_total_time_per_point=1.75,
+            interrupted=False,
+            effective_config=SimpleNamespace(),
+            uncertainty=SimpleNamespace(),
+            timing_breakdown=SimpleNamespace(counters=counters),
+        )
+    )
+    assert public["recurrence_core_seconds_per_point"] == 1.5
+    assert "independent clocks" in public["clock_attribution"]["relationship"]
 
 
 def test_query_family_census_matches_query_local_work_and_retains_destinations(
@@ -400,93 +466,224 @@ def test_executable_family_report_has_exact_union_work_and_ordered_outputs() -> 
         gate._family_probe_result(broken, queries, 2, 3)
 
 
-def test_established_recurrence_schedule_census_reads_generated_dag(
-    tmp_path: Path,
-) -> None:
-    process = tmp_path / "processes" / gate.PROCESS_ID
-    process.mkdir(parents=True)
-    payload = {
-        "recurrence_summary": {
-            "current_count": 7,
-            "contribution_count": 5,
-            "closure_term_count": 2,
-        },
-        "plan": {
-            "inspection_summary": {
-                "schedule": {
-                    "source_row_count": 2,
-                    "current_count": 7,
-                    "contribution_count": 5,
-                    "finalization_count": 3,
-                    "closure_term_count": 2,
-                    "amplitude_destination_count": 2,
-                },
-                "direct_arena": {"semantic_component_count": 11},
-            }
-        },
-    }
-    (process / "execution.json").write_text(json.dumps(payload), encoding="utf-8")
-    result = gate._established_recurrence_schedule_census(tmp_path)
-    assert result == {
-        "basis": "persisted-recurrence-direct-schedule-v2",
-        "semantics": (
-            "currents and interaction rows in the generated recurrence DAG; "
-            "runtime selector counters remain workload-specific"
-        ),
-        "source_row_count": 2,
-        "current_count": 7,
-        "contribution_count": 5,
-        "finalization_count": 3,
-        "closure_term_count": 2,
-        "amplitude_destination_count": 2,
-        "semantic_current_component_count": 11,
-        "total_kernel_application_count": 12,
-    }
-
-    payload["recurrence_summary"]["current_count"] = 8
-    (process / "execution.json").write_text(json.dumps(payload), encoding="utf-8")
-    with pytest.raises(gate.GateError, match="summaries disagree"):
-        gate._established_recurrence_schedule_census(tmp_path)
-
-
-def test_optional_compiled_census_is_authenticated_and_explicitly_static(
+def test_separate_recurrence_artifacts_route_exact_selector_certificates(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert gate._compiled_dag_census(None)["available"] is False
-    process = tmp_path / "processes" / gate.PROCESS_ID
-    process.mkdir(parents=True)
-    (process / "execution.json").write_text(
-        json.dumps(
-            {
-                "kind": "pyamplicol-runtime-execution",
-                "dag_summary": {
-                    "source_count": 12,
-                    "current_count": 34,
-                    "interaction_count": 56,
-                    "interaction_evaluation_count": 45,
-                    "amplitude_root_count": 7,
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-    loads: list[tuple[Path, str]] = []
+    selected = tmp_path / "recurrence-selected"
+    all_flow = tmp_path / "recurrence-all-flow"
+    whole = {
+        "source_row_count": 2,
+        "current_count": 7,
+        "semantic_component_count": 11,
+        "contribution_count": 5,
+        "finalization_count": 3,
+        "closure_count": 2,
+        "row_count": 12,
+    }
 
-    def load(path: Path, *, process: str) -> SimpleNamespace:
-        loads.append((path, process))
-        return SimpleNamespace(
-            execution_mode="compiled",
-            physics=SimpleNamespace(color_accuracy="lc"),
-            artifact_id="a" * 64,
-        )
+    def recurrence(layout: str, representatives: list[object]) -> dict[str, object]:
+        return {
+            "kind": "pyamplicol-runtime-recurrence-execution",
+            "recurrence_summary": {
+                "current_count": 7,
+                "contribution_count": 5,
+                "closure_term_count": 2,
+            },
+            "runtime_metadata": {
+                "public_color_flows": [
+                    {"public_id": gate.FLOW_ID, "target_sector_id": 8}
+                ]
+            },
+            "plan": {
+                "inspection_summary": {
+                    "lc_flow_layout": layout,
+                    "schedule": {
+                        "source_row_count": 2,
+                        "current_count": 7,
+                        "contribution_count": 5,
+                        "finalization_count": 3,
+                        "closure_term_count": 2,
+                        "amplitude_destination_count": 1,
+                    },
+                    "direct_arena": {"semantic_component_count": 11},
+                    "selector_work_certificate": {
+                        "persisted_union": whole,
+                        "representatives": representatives,
+                    },
+                }
+            },
+        }
+
+    live = {
+        "representative_sector_id": 8,
+        "source_row_count": 1,
+        "current_count": 4,
+        "semantic_component_count": 6,
+        "contribution_count": 2,
+        "finalization_count": 1,
+        "closure_count": 1,
+        "amplitude_destination_count": 1,
+        "row_count": 5,
+    }
+    _write_execution(selected, recurrence("topology-replay", [live]))
+    _write_execution(all_flow, recurrence("all-flow-union", []))
+    flow = SimpleNamespace(id=gate.FLOW_ID, index=8)
+    helicity = SimpleNamespace(id=gate.HELICITY_ID, index=21)
+    runtimes = {
+        selected.resolve(): _runtime("recurrence", flows=(flow,)),
+        all_flow.resolve(): _runtime("recurrence", helicities=(helicity,)),
+    }
+    loads: list[Path] = []
+
+    def load(path: Path) -> SimpleNamespace:
+        loads.append(path)
+        return runtimes[path]
 
     monkeypatch.setattr(gate.Runtime, "load", load)
-    result = gate._compiled_dag_census(tmp_path)
-    assert loads == [(tmp_path, gate.PROCESS_ID)]
-    assert result["basis"] == "authenticated-compiled-whole-generic-dag-v1"
-    assert result["comparison_kind"] == "descriptive-only"
-    assert result["current_count"] == 34
-    assert result["interaction_evaluation_count"] == 45
+    selected_result = gate._recurrence_artifact_census(
+        selected, layout="topology-replay"
+    )
+    all_result = gate._recurrence_artifact_census(
+        all_flow, layout="all-flow-union"
+    )
+
+    assert loads == [selected.resolve(), all_flow.resolve()]
+    assert selected_result["selector_live"]["current_count"] == 4
+    assert selected_result["selector_live"]["kernel_row_count"] == 5
+    assert selected_result["whole"]["current_count"] == 7
+    assert all_result["whole"] == all_result["selector_live"]
+    assert all_result["selector"]["public_index"] == 21
+
+
+def test_compiled_census_selects_one_exact_child_without_summing_alternatives(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    selected = tmp_path / "compiled-selected"
+    all_flow = tmp_path / "compiled-all-flow"
+    primary = _compiled_record(
+        sources=8,
+        currents=69,
+        components=258,
+        attachments=124,
+        evaluations=112,
+        roots=12,
+    )
+    program = _compiled_record(
+        sources=12,
+        currents=256,
+        components=984,
+        attachments=700,
+        evaluations=650,
+        roots=192,
+    )
+    chosen_leaf = _compiled_record(
+        sources=12,
+        currents=78,
+        components=296,
+        attachments=150,
+        evaluations=150,
+        roots=32,
+    )
+    alternative = _compiled_record(
+        sources=99,
+        currents=999,
+        components=1999,
+        attachments=999,
+        evaluations=999,
+        roots=999,
+    )
+    program.update(
+        {
+            "physics_reduction": {
+                "groups": [{"physical_color_ids": [gate.FLOW_ID]}]
+            },
+            "color_selector_executions": [
+                {"materialized_sector_id": 8, "execution": chosen_leaf},
+                {"materialized_sector_id": 3, "execution": alternative},
+            ],
+        }
+    )
+    selected_payload = dict(primary)
+    selected_payload.update(
+        {
+            "compiled": {
+                "lc_topology_replay": {
+                    "groups": [
+                        {"active_sector_ids": [8, 11], "materialized_sector_id": 8},
+                        {"active_sector_ids": [3], "materialized_sector_id": 3},
+                    ]
+                }
+            },
+            "helicity_sum_execution": program,
+        }
+    )
+    _write_execution(selected, selected_payload)
+
+    all_primary = _compiled_record(
+        sources=8,
+        currents=115,
+        components=440,
+        attachments=233,
+        evaluations=189,
+        roots=24,
+    )
+    middle = dict(all_primary)
+    middle["helicity_selector_executions"] = [
+        {"selector_domain_ids": [21], "execution": dict(all_primary)},
+        {"selector_domain_ids": [5], "execution": alternative},
+    ]
+    all_payload = dict(all_primary)
+    all_payload["helicity_selector_executions"] = [
+        {"selector_domain_ids": [21, 22], "execution": middle},
+        {"selector_domain_ids": [4], "execution": alternative},
+    ]
+    _write_execution(all_flow, all_payload)
+
+    flow = SimpleNamespace(id=gate.FLOW_ID, index=8)
+    helicity = SimpleNamespace(id=gate.HELICITY_ID, index=21)
+    runtimes = {
+        selected.resolve(): _runtime("compiled", flows=(flow,)),
+        all_flow.resolve(): _runtime("compiled", helicities=(helicity,)),
+    }
+    loads: list[Path] = []
+
+    def load(path: Path) -> SimpleNamespace:
+        loads.append(path)
+        return runtimes[path]
+
+    monkeypatch.setattr(gate.Runtime, "load", load)
+    selected_result = gate._compiled_artifact_census(
+        selected, workload="selected_flow_helicity_sum"
+    )
+    all_result = gate._compiled_artifact_census(
+        all_flow, workload="all_flow_single_helicity"
+    )
+
+    assert loads == [selected.resolve(), all_flow.resolve()]
+    assert selected_result["levels"]["primary"]["current_count"] == 69
+    assert selected_result["levels"]["program"]["current_count"] == 256
+    assert selected_result["levels"]["executed_leaf"]["current_count"] == 78
+    assert selected_result["levels"]["executed_leaf"]["current_component_count"] == 296
+    assert all_result["levels"]["primary"]["current_count"] == 115
+    assert all_result["levels"]["executed_leaf"]["current_count"] == 115
+    assert all_result["selector"]["selector_depth"] == 2
+    assert "never summed" in selected_result["semantics"]
+    assert "999" not in json.dumps(selected_result)
+
+    program["color_selector_executions"].append(
+        {"materialized_sector_id": 8, "execution": alternative}
+    )
+    execution_path = selected / "processes" / "fixture_process" / "execution.json"
+    execution_path.write_text(json.dumps(selected_payload), encoding="utf-8")
+    with pytest.raises(gate.GateError, match="absent or ambiguous"):
+        gate._compiled_artifact_census(
+            selected, workload="selected_flow_helicity_sum"
+        )
+
+    with pytest.raises(gate.GateError, match="absent or ambiguous"):
+        gate._exact_public_index((), gate.FLOW_ID, "test")
+    with pytest.raises(gate.GateError, match="absent or ambiguous"):
+        gate._exact_public_index((flow, flow), gate.FLOW_ID, "test")
 
 
 def test_hidden_timing_serializes_one_query_census_and_workload_sum() -> None:
@@ -561,8 +758,14 @@ def test_cli_launches_one_worker_with_cross_platform_30_gib_guard(
             str(prepared_model),
             "--amplicol-result",
             "legacy.json",
-            "--compiled-artifact",
-            "compiled-artifact",
+            "--recurrence-selected-artifact",
+            "recurrence-selected",
+            "--recurrence-all-flow-artifact",
+            "recurrence-all-flow",
+            "--compiled-selected-artifact",
+            "compiled-selected",
+            "--compiled-all-flow-artifact",
+            "compiled-all-flow",
             "--target-runtime",
             "2",
             "--batch-size",
@@ -579,9 +782,13 @@ def test_cli_launches_one_worker_with_cross_platform_30_gib_guard(
     assert command[command.index("--amplicol-result") + 1] == str(
         Path("legacy.json").resolve()
     )
-    assert command[command.index("--compiled-artifact") + 1] == str(
-        Path("compiled-artifact").resolve()
-    )
+    for option, name in (
+        ("--recurrence-selected-artifact", "recurrence-selected"),
+        ("--recurrence-all-flow-artifact", "recurrence-all-flow"),
+        ("--compiled-selected-artifact", "compiled-selected"),
+        ("--compiled-all-flow-artifact", "compiled-all-flow"),
+    ):
+        assert command[command.index(option) + 1] == str(Path(name).resolve())
     assert arguments.bypass_color_projection is False
     assert "--bypass-color-projection" not in command
     bypass = arguments

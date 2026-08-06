@@ -1911,6 +1911,15 @@ struct QueryFamilyLookupKeyV1 {
     >,
 }
 
+/// Runtime-private stable address of one successfully warmed family.  The
+/// generation prevents a handle retained above this executor from aliasing a
+/// different family after `clear_families` resets the arena.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct OnTheFlyQueryFamilyHandleV1 {
+    generation: u64,
+    index: usize,
+}
+
 pub(crate) struct OnTheFlyQueryFamilyExecutorV1<R: OnTheFlyPreparedExecutorResolver> {
     // Field order is part of the ownership contract. Retained and pending rows
     // must disappear before the resolver drops the prepared contexts that
@@ -1922,6 +1931,7 @@ pub(crate) struct OnTheFlyQueryFamilyExecutorV1<R: OnTheFlyPreparedExecutorResol
     resolver: R,
     parameter_state: Vec<(f64, f64)>,
     parameter_version: u64,
+    family_generation: u64,
 }
 
 impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
@@ -1934,6 +1944,7 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
             resolver,
             parameter_state: Vec::new(),
             parameter_version: 0,
+            family_generation: 0,
         }
     }
 
@@ -1982,6 +1993,14 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
 
     pub(crate) const fn retained_family_count(&self) -> usize {
         self.families.len()
+    }
+
+    pub(crate) fn active_retained_handle(&self) -> Option<OnTheFlyQueryFamilyHandleV1> {
+        self.pending.is_none().then_some(())?;
+        Some(OnTheFlyQueryFamilyHandleV1 {
+            generation: self.family_generation,
+            index: self.last_used?,
+        })
     }
 
     fn cache_identity(
@@ -2110,7 +2129,86 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
         self.last_used = None;
         self.family_lookup.clear();
         self.families.clear();
+        self.family_generation = self
+            .family_generation
+            .checked_add(1)
+            .ok_or_else(|| invalid("query-family generation exceeds u64"))?;
         Ok(())
+    }
+
+    fn activate_retained_index(
+        &mut self,
+        index: usize,
+        logical_point_capacity: u32,
+    ) -> RusticolResult<bool> {
+        let replacement = self
+            .families
+            .get(index)
+            .ok_or_else(|| integrity("query-family handle index is absent"))?
+            .workspace
+            .logical_point_capacity
+            .lt(&logical_point_capacity)
+            .then(|| {
+                OnTheFlyFamilyWorkspaceV1::new(&self.families[index].family, logical_point_capacity)
+            })
+            .transpose()?;
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|pending| pending.descriptor_exposed)
+            || replacement.is_some() && self.families[index].descriptor_exposed
+            || self.last_used != Some(index)
+                && self.families.iter().any(|family| family.descriptor_exposed)
+        {
+            self.invalidate_exposed_row_tables()?;
+        }
+        self.pending = None;
+        self.last_used = Some(index);
+        if let Some(replacement) = replacement {
+            let family = self
+                .families
+                .get_mut(index)
+                .expect("validated query-family handle disappeared");
+            family.workspace = replacement;
+            family.applied_parameter_version = u64::MAX;
+        }
+        Ok(true)
+    }
+
+    pub(crate) fn activate_retained_family(
+        &mut self,
+        handle: OnTheFlyQueryFamilyHandleV1,
+        logical_point_capacity: u32,
+    ) -> RusticolResult<bool> {
+        if handle.generation != self.family_generation {
+            return Err(integrity("query-family handle belongs to a cleared arena"));
+        }
+        self.activate_retained_index(handle.index, logical_point_capacity)
+    }
+
+    pub(crate) fn resize_active_family(
+        &mut self,
+        logical_point_capacity: u32,
+    ) -> RusticolResult<bool> {
+        if let Some(pending) = self.pending.as_ref() {
+            if logical_point_capacity <= pending.workspace.logical_point_capacity {
+                return Ok(false);
+            }
+            let replacement =
+                OnTheFlyFamilyWorkspaceV1::new(&pending.family, logical_point_capacity)?;
+            self.invalidate_exposed_row_tables()?;
+            let pending = self
+                .pending
+                .as_mut()
+                .expect("query-family pending state disappeared");
+            pending.workspace = replacement;
+            pending.applied_parameter_version = u64::MAX;
+            return Ok(false);
+        }
+        let index = self
+            .last_used
+            .ok_or_else(|| invalid("query-family resize requires a cold prepare"))?;
+        self.activate_retained_index(index, logical_point_capacity)
     }
 
     /// Select no executable family without dropping successfully warmed
@@ -2149,39 +2247,7 @@ impl<R: OnTheFlyPreparedExecutorResolver> OnTheFlyQueryFamilyExecutorV1<R> {
                 })
             });
         if let Some(index) = retained {
-            let replacement = self
-                .families
-                .get(index)
-                .filter(|family| logical_point_capacity > family.workspace.logical_point_capacity)
-                .map(|family| {
-                    OnTheFlyFamilyWorkspaceV1::new(&family.family, logical_point_capacity)
-                })
-                .transpose()?;
-            if self
-                .pending
-                .as_ref()
-                .is_some_and(|pending| pending.descriptor_exposed)
-                || replacement.is_some()
-                    && self
-                        .families
-                        .get(index)
-                        .is_some_and(|family| family.descriptor_exposed)
-                || self.last_used != Some(index)
-                    && self.families.iter().any(|family| family.descriptor_exposed)
-            {
-                self.invalidate_exposed_row_tables()?;
-            }
-            self.pending = None;
-            self.last_used = Some(index);
-            let family = self
-                .families
-                .get_mut(index)
-                .expect("query-family lookup index is absent");
-            if let Some(replacement) = replacement {
-                family.workspace = replacement;
-                family.applied_parameter_version = u64::MAX;
-            }
-            return Ok(true);
+            return self.activate_retained_index(index, logical_point_capacity);
         }
 
         let identity = Self::cache_identity(direct_catalog, selected);
@@ -3382,20 +3448,24 @@ mod tests {
         executor
             .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
             .unwrap();
+        let first_output = output;
         let first_rows = executor.resolver().state.calls.borrow().clone();
+        let first_handle = executor.active_retained_handle().unwrap();
         executor.resolver().state.calls.borrow_mut().clear();
 
         assert!(!executor.prepare(&catalog, &second_selected, 1).unwrap());
         executor
             .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
             .unwrap();
+        assert_ne!(output, first_output);
         executor.resolver().state.calls.borrow_mut().clear();
 
-        assert!(executor.prepare(&catalog, &first_selected, 1).unwrap());
+        assert!(executor.activate_retained_family(first_handle, 1).unwrap());
         let report = executor
             .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
             .unwrap();
         assert!(report.cache_hit);
+        assert_eq!(output, first_output);
         assert_eq!(executor.retained_family_count(), 2);
         assert_eq!(*executor.resolver().state.calls.borrow(), first_rows);
         assert_eq!(executor.resolver().state.invalidations.get(), 2);
@@ -3418,11 +3488,19 @@ mod tests {
             .execute_into(&one_point_momenta(2.0, 3.0), 1, &mut output)
             .unwrap();
         assert_eq!(executor.retained_family_count(), 1);
+        let handle = executor.active_retained_handle().unwrap();
 
         executor.clear_families().unwrap();
         assert_eq!(executor.resolver().state.invalidations.get(), 1);
         assert_eq!(executor.retained_family_count(), 0);
         assert!(executor.prepared_census().is_none());
+        assert!(
+            executor
+                .activate_retained_family(handle, 1)
+                .unwrap_err()
+                .to_string()
+                .contains("cleared arena")
+        );
         assert!(!executor.prepare(&catalog, &selected, 1).unwrap());
     }
 

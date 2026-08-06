@@ -13,6 +13,7 @@ import json
 from collections.abc import Mapping, Sequence
 from itertools import product
 from types import SimpleNamespace
+from typing import Any
 
 from .._internal.versions import (
     RECURRENCE_BUILDER_INPUT_ABI,
@@ -34,7 +35,9 @@ from ..processes.ir import CanonicalProcessIR
 from .recurrence_columnar import (
     ExactComplexRationalV1,
     RecurrenceBuilderLogicalInputV1,
+    RecurrenceExternalLegV1,
     RecurrenceNormalizationV1,
+    RecurrenceParameterProjectionV1,
     RecurrencePublicLCFlowV1,
 )
 
@@ -377,6 +380,97 @@ def build_recurrence_runtime_metadata(
 ) -> dict[str, object]:
     """Return bounded source, parameter, and normalization runtime metadata."""
 
+    return _build_recurrence_runtime_metadata(
+        logical,
+        catalog,
+        model,
+        normalization,
+    )
+
+
+def build_on_the_fly_public_metadata(
+    process: CanonicalProcessIR,
+    catalog: RecurrenceTemplateCatalog,
+    *,
+    process_id: str,
+) -> dict[str, object]:
+    """Return compact O(externals + parameters) public display metadata."""
+
+    return {
+        "schema_version": 1,
+        "kind": "pyamplicol-on-the-fly-public-metadata",
+        "process_id": process_id,
+        "process": process.process,
+        "color_accuracy": process.color_accuracy,
+        "external_particles": [
+            {
+                "index": index,
+                "label": int(leg.label),
+                "particle": str(leg.particle),
+                "pdg": int(leg.pdg),
+                "role": "initial" if leg.is_initial else "final",
+                "momentum_slot": index,
+                "momentum_components": ["E", "px", "py", "pz"],
+            }
+            for index, leg in enumerate(process.legs)
+        ],
+        "model_parameters": _public_model_parameters(catalog),
+    }
+
+
+def build_on_the_fly_runtime_metadata(
+    external_legs: Sequence[RecurrenceExternalLegV1],
+    parameter_projection: Sequence[RecurrenceParameterProjectionV1],
+    catalog: RecurrenceTemplateCatalog,
+    model: Model,
+    normalization: Mapping[str, object],
+) -> dict[str, object]:
+    """Return only irreducible runtime support for the source-only LC lane."""
+
+    # The established recurrence implementation below already owns parameter
+    # defaults, source masses, external-slot order, and normalization.  Feed it
+    # only those shared structural rows and discard its recurrence-only source
+    # replicas instead of introducing a second metadata implementation.
+    support = _build_recurrence_runtime_metadata(
+        SimpleNamespace(
+            parameter_projection=tuple(parameter_projection),
+            external_legs=tuple(external_legs),
+            # This branch suppresses public flow projection; the on-the-fly
+            # selector adapter derives that axis lazily from the compact seed.
+            layout="contracted-color-union",
+        ),
+        catalog,
+        model,
+        normalization,
+        include_source_templates=False,
+    )
+    return {
+        name: support[name]
+        for name in (
+            "runtime_parameters",
+            "prepared_parameter_defaults",
+            "parameter_projection",
+            "external_legs",
+            "particle_masses",
+            "normalization",
+        )
+    }
+
+
+def _build_recurrence_runtime_metadata(
+    logical: Any,
+    catalog: RecurrenceTemplateCatalog,
+    model: Model,
+    normalization: Mapping[str, object],
+    *,
+    include_source_templates: bool = True,
+) -> dict[str, object]:
+    """Build shared prepared-runtime support and recurrence-only companions."""
+
+    parameter_projection = logical.parameter_projection
+    external_legs = logical.external_legs
+    layout = logical.layout
+
     values_by_name: dict[str, complex] = {}
     for provider_name in (
         "runtime_parameter_defaults",
@@ -408,7 +502,7 @@ def build_recurrence_runtime_metadata(
 
     runtime_parameters = []
     for projection in sorted(
-        logical.parameter_projection, key=lambda item: item.runtime_slot
+        parameter_projection, key=lambda item: item.runtime_slot
     ):
         parameter = catalog.parameters[projection.parameter_template_id]
         if parameter.name != projection.runtime_name:
@@ -451,7 +545,7 @@ def build_recurrence_runtime_metadata(
     referenced_source_ids = sorted(
         {
             state.source_template_id
-            for leg in logical.external_legs
+            for leg in external_legs
             for state in leg.source_states
         }
     )
@@ -473,42 +567,43 @@ def build_recurrence_runtime_metadata(
             kind="mass",
             available_names=parameter_names,
         )
-        width_parameter = _runtime_particle_parameter_name(
-            source_ir.width_parameter,
-            particle_pdg=int(particle.pdg),
-            kind="width",
-            available_names=parameter_names,
-        )
-        try:
-            crossing = _runtime_crossing(json.loads(source.crossing))
-        except json.JSONDecodeError as exc:  # pragma: no cover - catalog validated
-            raise ValueError(
-                f"recurrence source {source.template_id!r} has malformed crossing JSON"
-            ) from exc
-        source_ir_payload = source_ir.to_json_dict()
-        # Built-in models expose particle masses directly rather than through
-        # named SourceIR parameters.  Prepared kernels already use the generic
-        # ``particle.<pdg>.<kind>`` fallback; retain the same name here so
-        # source filling and runtime parameter updates share one contract.
-        source_ir_payload["mass_parameter"] = mass_parameter
-        source_ir_payload["width_parameter"] = width_parameter
-        if crossing != source_ir_payload["crossing"]:
-            raise ValueError(
-                f"recurrence source {source.template_id!r} crossing disagrees "
-                "with its typed SourceIR"
+        if include_source_templates:
+            width_parameter = _runtime_particle_parameter_name(
+                source_ir.width_parameter,
+                particle_pdg=int(particle.pdg),
+                kind="width",
+                available_names=parameter_names,
             )
-        source_templates.append(
-            {
-                "source_template_id": source_template_id,
-                "current_state_template_id": state_index_by_id[state.template_id],
-                "dimension": state.dimension,
-                "helicity": source.helicity,
-                "chirality": state.chirality,
-                "spin_state": source.spin_state,
-                "source_ir": source_ir_payload,
-                "crossing": crossing,
-            }
-        )
+            try:
+                crossing = _runtime_crossing(json.loads(source.crossing))
+            except json.JSONDecodeError as exc:  # pragma: no cover - validated
+                raise ValueError(
+                    f"recurrence source {source.template_id!r} has malformed "
+                    "crossing JSON"
+                ) from exc
+            source_ir_payload = source_ir.to_json_dict()
+            # Built-in models expose particle masses directly rather than
+            # through named SourceIR parameters. Prepared kernels use the
+            # generic particle fallback; retain the same name here.
+            source_ir_payload["mass_parameter"] = mass_parameter
+            source_ir_payload["width_parameter"] = width_parameter
+            if crossing != source_ir_payload["crossing"]:
+                raise ValueError(
+                    f"recurrence source {source.template_id!r} crossing disagrees "
+                    "with its typed SourceIR"
+                )
+            source_templates.append(
+                {
+                    "source_template_id": source_template_id,
+                    "current_state_template_id": state_index_by_id[state.template_id],
+                    "dimension": state.dimension,
+                    "helicity": source.helicity,
+                    "chirality": state.chirality,
+                    "spin_state": source.spin_state,
+                    "source_ir": source_ir_payload,
+                    "crossing": crossing,
+                }
+            )
         mass = float(model.mass(state.particle_id))
         if mass_parameter is not None:
             mass_value = values_by_name.get(mass_parameter)
@@ -536,7 +631,7 @@ def build_recurrence_runtime_metadata(
                 }
                 for target_sector_id, flow in enumerate(_retained_public_flows(logical))
             ]
-            if logical.layout != "contracted-color-union"
+            if layout != "contracted-color-union"
             else []
         ),
         "runtime_parameters": runtime_parameters,
@@ -551,7 +646,7 @@ def build_recurrence_runtime_metadata(
                 "prepared_parameter_id": row.prepared_parameter_id,
                 "component": row.component,
             }
-            for row in logical.parameter_projection
+            for row in parameter_projection
         ],
         "source_templates": source_templates,
         "external_legs": [
@@ -562,7 +657,7 @@ def build_recurrence_runtime_metadata(
                 "outgoing_pdg": leg.outgoing_pdg,
                 "is_initial": leg.is_initial,
             }
-            for leg in logical.external_legs
+            for leg in external_legs
         ],
         "particle_masses": [
             {"outgoing_pdg": pdg, "mass": mass}
@@ -902,6 +997,8 @@ def _helicity_id(values: Sequence[int]) -> str:
 
 
 __all__ = [
+    "build_on_the_fly_public_metadata",
+    "build_on_the_fly_runtime_metadata",
     "build_recurrence_color_contraction",
     "build_recurrence_normalization",
     "build_recurrence_physics",

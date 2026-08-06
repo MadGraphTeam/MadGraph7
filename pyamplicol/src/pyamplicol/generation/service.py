@@ -4,6 +4,7 @@ from __future__ import annotations
 import gc
 import hashlib
 import importlib
+import io
 import json
 import logging
 import math
@@ -92,6 +93,7 @@ from .artifact_writer import (
     CompiledHelicitySelectorExecutionArtifact,
     CompiledProcessArtifact,
     EagerPlanV3ProcessArtifact,
+    OnTheFlyProcessArtifact,
     RecurrenceProcessArtifact,
     _GenerationConfigProvenance,
     write_schema_v3_artifact,
@@ -123,6 +125,11 @@ from .eager_lowering import (
     PreparedCatalogEagerKernelResolver,
 )
 from .eager_tables import MISSING_U32
+from .evaluator_container import (
+    PacbinMemberKind,
+    PacbinMemberSource,
+    write_pacbin_atomic,
+)
 from .helicity_materialization import materialize_helicity_recurrence
 from .helicity_replay import (
     HELICITY_RECURRENCE_CONTRACT_VERSION,
@@ -132,6 +139,7 @@ from .numerical_current_warmup import (
     generic_dag_numerical_current_opt_out_report,
     run_generic_dag_numerical_current_warmup,
 )
+from .on_the_fly_seed import project_on_the_fly_process_seed_v1
 from .physics_metadata import build_resolved_physics_from_dag
 from .progress import GenerationPhaseReporter, PhaseHandle
 from .recurrence_color import (
@@ -160,6 +168,8 @@ from .recurrence_numerical_current_warmup import (
     validate_recurrence_numerical_evidence_fallback,
 )
 from .recurrence_physics import (
+    build_on_the_fly_public_metadata,
+    build_on_the_fly_runtime_metadata,
     build_recurrence_color_contraction,
     build_recurrence_normalization,
     build_recurrence_physics,
@@ -452,6 +462,17 @@ class _RustRecurrenceLoweringBinding(Protocol):
         relation_discovery_evidence_json: bytes | None,
         progress_callback: Callable[[Mapping[str, object]], None] | None,
     ) -> object: ...
+
+
+class _RustOnTheFlySeedBinding(Protocol):
+    def __call__(
+        self,
+        source_projection_json: bytes,
+        recurrence_template_catalog_json: bytes,
+        direct_template_catalog_json: bytes,
+        prepared_kernel_pack_digest: str,
+        /,
+    ) -> bytes: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -947,6 +968,45 @@ def _invoke_rust_eager_lowering_v1(
         unpacked_size_bytes=cast(int, result["unpacked_size_bytes"]),
         index_sha256=cast(str, result["index_sha256"]),
     )
+
+
+def _invoke_rust_on_the_fly_seed_builder_v1(
+    source_projection_json: bytes,
+    recurrence_template_catalog_json: bytes,
+    direct_template_catalog_json: bytes,
+    prepared_kernel_pack_digest: str,
+) -> bytes:
+    try:
+        module = importlib.import_module("pyamplicol._rusticol")
+        verify_native_module(module)
+    except (ImportError, OSError, RuntimeError) as exc:
+        raise GenerationError(
+            "on-the-fly generation requires the current native "
+            "_build_on_the_fly_process_seed_v1 binding"
+        ) from exc
+    candidate = getattr(module, "_build_on_the_fly_process_seed_v1", None)
+    if not callable(candidate):
+        raise GenerationError(
+            "pyamplicol._rusticol does not provide the private "
+            "_build_on_the_fly_process_seed_v1 binding"
+        )
+    binding = cast(_RustOnTheFlySeedBinding, candidate)
+    try:
+        payload = binding(
+            source_projection_json,
+            recurrence_template_catalog_json,
+            direct_template_catalog_json,
+            prepared_kernel_pack_digest,
+        )
+    except Exception as exc:
+        raise GenerationError(
+            f"on-the-fly process-seed construction failed: {exc}"
+        ) from exc
+    if not isinstance(payload, bytes) or not payload:
+        raise GenerationError(
+            "native on-the-fly process-seed builder returned an empty payload"
+        )
+    return payload
 
 
 def _invoke_rust_recurrence_lowering_v2(
@@ -1779,9 +1839,17 @@ class _GeneratedRecurrenceProcess:
 
 
 @dataclass(frozen=True, slots=True)
+class _GeneratedOnTheFlyProcess:
+    expanded: _ExpandedProcess
+    artifact: OnTheFlyProcessArtifact
+    validation_points: tuple[ValidationPointRecord, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class _RecurrenceModelInputs:
     bundle: PreparedModelBundle
     catalog: RecurrenceTemplateCatalog
+    template_catalog_json: bytes
     template_input: RecurrenceTemplateInputV1
     direct_template_catalog: RecurrenceDirectTemplateCatalogV1
     direct_template_catalog_json: bytes
@@ -2236,7 +2304,7 @@ class GenerationBackend:
         reporter.start_generation(
             total=(
                 5
-                if execution_mode == "recurrence"
+                if execution_mode in {"recurrence", "on-the-fly"}
                 else 7
                 if execution_mode == "eager"
                 else 8
@@ -2278,6 +2346,19 @@ class GenerationBackend:
                 license_state,
                 process_count=len(expanded),
             )
+
+            if self._on_the_fly_execution_enabled:
+                return self._generate_on_the_fly_processes(
+                    expanded,
+                    output=Path(output),
+                    write_mode=write_mode,
+                    requested_processes=processes,
+                    resolved_model=resolved_model,
+                    artifact_model=artifact_model,
+                    generation_model=generation_model,
+                    reporter=reporter,
+                    generation_started=generation_started,
+                )
 
             if self._recurrence_execution_enabled:
                 return self._generate_recurrence_processes(
@@ -2565,6 +2646,295 @@ class GenerationBackend:
             ),
             mode=write_mode,
             files=write_result.files,
+        )
+
+    def _generate_on_the_fly_processes(
+        self,
+        expanded: tuple[_ExpandedProcess, ...],
+        *,
+        output: Path,
+        write_mode: Literal["error", "append", "replace"],
+        requested_processes: ProcessSet,
+        resolved_model: _ResolvedModel,
+        artifact_model: _CompiledModelPayload,
+        generation_model: Model,
+        reporter: GenerationPhaseReporter,
+        generation_started: float,
+    ) -> GenerationResult:
+        """Build source-only LC seeds before any color plan or process DAG."""
+
+        inputs_started = time.perf_counter()
+        model_inputs = self._recurrence_model_inputs(resolved_model)
+        reporter.timings["on-the-fly-model-input-preparation"] = (
+            time.perf_counter() - inputs_started
+        )
+        with TemporaryDirectory(prefix="pyamplicol-on-the-fly-generation-") as root:
+            temporary_root = Path(root)
+            worker_count = self._process_worker_count(len(expanded))
+            executor = (
+                ThreadPoolExecutor(
+                    max_workers=worker_count,
+                    thread_name_prefix="pyamplicol-on-the-fly-generation",
+                )
+                if worker_count > 1
+                else None
+            )
+            try:
+                indexed = tuple(enumerate(expanded))
+                with reporter.phase(
+                    "on-the-fly-construction",
+                    "Constructing compact on-the-fly process seeds",
+                    total=len(indexed),
+                ) as phase:
+                    generated = _map_process_phase(
+                        indexed,
+                        lambda item: self._construct_on_the_fly_artifact(
+                            item[1],
+                            generation_model,
+                            model_inputs,
+                            temporary_root,
+                            index=item[0],
+                            phase=phase,
+                        ),
+                        executor=executor,
+                        max_in_flight=worker_count,
+                        phase_name="on-the-fly seed construction",
+                        item_name=lambda item: item[1].request.name,
+                    )
+            finally:
+                if executor is not None:
+                    executor.shutdown(wait=True, cancel_futures=True)
+
+            artifact_processes = tuple(item.artifact for item in generated)
+            with reporter.phase(
+                "artifact-writing",
+                "Writing schema-v3 artifact",
+                total=1,
+            ) as phase:
+
+                def artifact_progress(event: dict[str, object]) -> None:
+                    details = {
+                        str(key): value
+                        for key, value in event.items()
+                        if isinstance(value, (str, int, float, bool, type(None)))
+                    }
+                    phase.update(
+                        int(event.get("completed", phase.completed)),
+                        total=(
+                            None
+                            if event.get("total") is None
+                            else int(event["total"])
+                        ),
+                        message=str(event.get("step", "writing artifact")),
+                        details=details,
+                    )
+
+                write_result = write_schema_v3_artifact(
+                    output,
+                    mode=write_mode,
+                    source=resolved_model.source,
+                    compiled_model=artifact_model,
+                    configuration=self._configuration,
+                    processes=artifact_processes,
+                    timings=reporter.timings,
+                    api_bundle_hook=self._api_bundle_hook,
+                    progress_callback=(
+                        artifact_progress if phase.sink is not None else None
+                    ),
+                )
+                phase.update(
+                    phase.total or phase.completed,
+                    message=str(write_result.output),
+                    details={
+                        "step": "artifact ready",
+                        "file_count": len(write_result.files),
+                    },
+                )
+            validation_points_by_process = {
+                item.expanded.request.name: item.validation_points for item in generated
+            }
+            expected_process_ids = tuple(
+                process.process_id for process in artifact_processes
+            )
+            concrete_requests = tuple(item.expanded.request for item in generated)
+            del artifact_processes
+            del generated
+            gc.collect()
+
+        with reporter.phase(
+            "validation",
+            "Validating generated artifact",
+            total=1,
+        ) as phase:
+            validation = self._generation_config.validation
+            if validation.post_build_validation:
+                self._validate_generated_artifact(
+                    write_result.output,
+                    expected_process_ids,
+                    validation_points=validation_points_by_process,
+                    expected_api_bundle_path=write_result.api_bundle_path,
+                    progress=phase,
+                )
+                message = "compact schema, seed, selectors, and prepared model"
+            else:
+                message = "post-build validation disabled"
+            phase.update(1, message=message)
+
+        reporter.timings["total"] = time.perf_counter() - generation_started
+        reporter.finish_generation()
+        return GenerationResult(
+            output=write_result.output,
+            processes=ProcessSet(
+                requests=concrete_requests,
+                aliases=requested_processes.aliases,
+            ),
+            mode=write_mode,
+            files=write_result.files,
+        )
+
+    def _construct_on_the_fly_artifact(
+        self,
+        expanded: _ExpandedProcess,
+        model: Model,
+        model_inputs: _RecurrenceModelInputs,
+        temporary_root: Path,
+        *,
+        index: int,
+        phase: PhaseHandle,
+    ) -> _GeneratedOnTheFlyProcess:
+        process_id = expanded.request.name
+        run = self._run_config
+        if run is None:  # pragma: no cover - guarded by execution mode
+            raise GenerationError("on-the-fly generation requires RunConfig")
+        selection = self._process_selection
+        incompatible = []
+        if selection.max_color_sectors is not None:
+            incompatible.append("process.max_color_sectors")
+        if selection.selected_color_sector_ids is not None:
+            incompatible.append("process.selected_color_sector_ids")
+        if selection.selected_source_helicities is not None:
+            incompatible.append("process.selected_source_helicities")
+        if incompatible:
+            raise GenerationError(
+                "on-the-fly artifacts retain complete runtime selector coverage; "
+                "remove " + ", ".join(incompatible)
+            )
+        coupling_policy = str(run.process.coupling_order_policy)
+        explicit_limits = self._coupling_order_limits
+        projection = project_on_the_fly_process_seed_v1(
+            expanded.process_ir,
+            model_inputs.catalog,
+            model,
+            coupling_order_policy=cast(
+                Literal["minimal", "explicit"],
+                coupling_policy,
+            ),
+            coupling_order_limits=explicit_limits,
+        )
+        seed_payload = _invoke_rust_on_the_fly_seed_builder_v1(
+            projection.seed.to_json_bytes(),
+            model_inputs.template_catalog_json,
+            model_inputs.direct_template_catalog_json,
+            model_inputs.prepared_kernel_pack_digest,
+        )
+        runtime_path = (
+            temporary_root
+            / "on-the-fly-runtimes"
+            / process_id
+            / "on-the-fly-runtime.pacbin"
+        )
+        runtime_path.parent.mkdir(parents=True, exist_ok=True)
+        runtime_index = write_pacbin_atomic(
+            runtime_path,
+            (
+                PacbinMemberSource(
+                    "on-the-fly/process-seed-v1.bin",
+                    PacbinMemberKind.ON_THE_FLY_PROCESS_SEED,
+                    io.BytesIO(seed_payload),
+                ),
+            ),
+        )
+        runtime_metadata = build_on_the_fly_runtime_metadata(
+            projection.seed.external_sources,
+            projection.seed.parameter_projection,
+            model_inputs.catalog,
+            model,
+            projection.runtime_normalization,
+        )
+        public_metadata = build_on_the_fly_public_metadata(
+            expanded.process_ir,
+            model_inputs.catalog,
+            process_id=process_id,
+        )
+        validation = self._generation_config.validation
+        sample_count = (
+            validation.samples
+            if validation.enabled and validation.post_build_validation
+            else 1
+        )
+        points = tuple(
+            build_process_validation_point(
+                expanded.process_ir,
+                model,
+                process_id=process_id,
+                seed=validation.seed + index * sample_count + sample_index,
+            )
+            for sample_index in range(sample_count)
+        )
+        phase.advance(
+            message=process_id,
+            details={
+                "process": process_id,
+                "step": "compact on-the-fly seed ready",
+                "seed_size_bytes": len(seed_payload),
+            },
+        )
+        artifact = OnTheFlyProcessArtifact(
+            process_id=process_id,
+            expression=expanded.process_ir.process,
+            color_accuracy=str(expanded.process_ir.color_accuracy),
+            external_pdgs=tuple(int(leg.pdg) for leg in expanded.process_ir.legs),
+            aliases=expanded.aliases,
+            physics=public_metadata,
+            runtime_path=runtime_path,
+            runtime_size_bytes=runtime_index.file_size,
+            runtime_sha256=_file_sha256(runtime_path),
+            runtime_member_count=len(runtime_index.members),
+            runtime_unpacked_size_bytes=sum(
+                member.length for member in runtime_index.members
+            ),
+            runtime_index_sha256=runtime_index.index_sha256,
+            referenced_kernel_ids=frozenset(
+                kernel.kernel_id for kernel in model_inputs.bundle.kernel_pack.kernels
+            ),
+            runtime_metadata=runtime_metadata,
+            selector_policy={
+                "color_coverage": "complete",
+                "reference_color_word": (
+                    None
+                    if selection.reference_color_order is None
+                    else list(selection.reference_color_order)
+                ),
+                "trace_reflections_folded": bool(
+                    model.lc_trace_reflection_equivalence_is_proven(
+                        expanded.process_ir
+                    )
+                ),
+            },
+            point_tile_size=run.evaluator.recurrence.point_tile_size,
+            validation_point=points[0],
+            generation_filters={
+                "on_the_fly": {
+                    "coupling_order_policy": coupling_policy,
+                    "coupling_order_limits": dict(explicit_limits),
+                    "selector_coverage": "complete",
+                }
+            },
+        )
+        return _GeneratedOnTheFlyProcess(
+            expanded=expanded,
+            artifact=artifact,
+            validation_points=points,
         )
 
     def _generate_recurrence_processes(
@@ -3311,6 +3681,13 @@ class GenerationBackend:
         return _RecurrenceModelInputs(
             bundle=bundle,
             catalog=catalog,
+            template_catalog_json=json.dumps(
+                catalog.to_dict(),
+                allow_nan=False,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("ascii"),
             template_input=build_recurrence_template_input_v1(catalog),
             direct_template_catalog=direct_catalog,
             direct_template_catalog_json=json.dumps(
@@ -4945,11 +5322,39 @@ class GenerationBackend:
                 f"{prefix}/execution.json",
                 f"{prefix}/validation-momenta.json",
             }
+            if self._on_the_fly_execution_enabled:
+                required.add(f"{prefix}/on-the-fly-runtime.pacbin")
             if not required.issubset(by_path):
                 raise GenerationError(
                     f"artifact payload set is incomplete for {process_id!r}"
                 )
             runtime = Runtime.load(output, process=process_id)
+            if self._on_the_fly_execution_enabled:
+                if runtime.artifact_id != manifest.artifact_id:
+                    raise GenerationError(
+                        "Rusticol loaded the wrong artifact while validating "
+                        f"{process_id!r}"
+                    )
+                if runtime.execution_mode != "on-the-fly":
+                    raise GenerationError(
+                        f"Rusticol selected the wrong execution mode for {process_id!r}"
+                    )
+                if runtime.representative_process_key != process_id:
+                    raise GenerationError(
+                        f"Rusticol selected the wrong process for {process_id!r}"
+                    )
+                if progress is not None:
+                    progress.update(
+                        process_index,
+                        total=process_total,
+                        message=process_id,
+                        details={
+                            "process": process_id,
+                            "step": "compact runtime validated",
+                            "samples": 0,
+                        },
+                    )
+                continue
             if runtime.physics.process_id != process_id:
                 raise GenerationError(
                     f"Rusticol selected the wrong process for {process_id!r}"
@@ -5061,15 +5466,31 @@ class GenerationBackend:
         return run is not None and str(run.evaluator.execution_mode) == "recurrence"
 
     @property
+    def _on_the_fly_execution_enabled(self) -> bool:
+        run = self._run_config
+        return run is not None and str(run.evaluator.execution_mode) == "on-the-fly"
+
+    @property
     def _prepared_execution_enabled(self) -> bool:
-        return self._eager_execution_enabled or self._recurrence_execution_enabled
+        return (
+            self._eager_execution_enabled
+            or self._recurrence_execution_enabled
+            or self._on_the_fly_execution_enabled
+        )
 
     def _validate_recurrence_request(self) -> None:
         """Keep recurrence requests out of compiled/eager generation lanes."""
 
-        if not self._recurrence_execution_enabled:
-            return
-        if self._color_accuracy not in {"lc", "nlc", "full"}:
+        if self._on_the_fly_execution_enabled and self._color_accuracy != "lc":
+            raise GenerationError(
+                "on-the-fly execution currently supports LC only; "
+                f"got color.accuracy={self._color_accuracy!r}"
+            )
+        if self._recurrence_execution_enabled and self._color_accuracy not in {
+            "lc",
+            "nlc",
+            "full",
+        }:
             raise GenerationError(
                 "recurrence execution supports LC, NLC, and full color; "
                 f"got color.accuracy={self._color_accuracy!r}"
@@ -5331,7 +5752,8 @@ class GenerationBackend:
                 f"--backend {backend}"
             )
         pack = compiled.prepared_bundle.kernel_pack
-        if execution_mode == "recurrence" and pack.recurrence_template is None:
+        recurrence_family = execution_mode in {"recurrence", "on-the-fly"}
+        if recurrence_family and pack.recurrence_template is None:
             source = resolved.source.path or resolved.source.kind
             backend = str(run.evaluator.backend)
             raise GenerationError(
@@ -5340,7 +5762,7 @@ class GenerationBackend:
                 f"pyamplicol model compile {source} MODEL.pyamplicol-model "
                 f"--backend {backend}"
             )
-        if execution_mode == "recurrence":
+        if recurrence_family:
             direct_catalog = pack.recurrence_direct_template_catalog
             if direct_catalog is None:
                 source = resolved.source.path or resolved.source.kind

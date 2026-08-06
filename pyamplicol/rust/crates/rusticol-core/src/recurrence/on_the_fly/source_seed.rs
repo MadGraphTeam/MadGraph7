@@ -330,6 +330,14 @@ impl OnTheFlyPairingClassV1 {
 }
 
 /// Compact immutable process input for one on-the-fly lane.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub(crate) enum OnTheFlyCouplingOrderPolicyV1 {
+    Minimal = 0,
+    Explicit = 1,
+}
+
+/// Compact immutable process input for one on-the-fly lane.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct OnTheFlyProcessSeedV1 {
     pub(super) process_digest: SemanticDigest,
@@ -343,6 +351,11 @@ pub(crate) struct OnTheFlyProcessSeedV1 {
     /// Gather map: construction source slot i receives public external slot
     /// external_permutation[i].
     pub(super) external_permutation: Box<[u32]>,
+    pub(super) coupling_order_policy: OnTheFlyCouplingOrderPolicyV1,
+    pub(super) coupling_hierarchies: Box<[u32]>,
+    /// User-supplied maxima only. `None` means that this model order has no
+    /// explicit hard cap; it never means that the default minimal policy has
+    /// already been resolved.
     pub(super) coupling_limits: Box<[Option<u32>]>,
     pub(super) pairing_classes: Box<[OnTheFlyPairingClassV1]>,
     pub(super) semantic_digest: SemanticDigest,
@@ -361,6 +374,8 @@ impl OnTheFlyProcessSeedV1 {
         normalization_factor: ExactComplexRational,
         mut source_anchors: Vec<OnTheFlySourceAnchorV1>,
         external_permutation: Vec<u32>,
+        coupling_order_policy: OnTheFlyCouplingOrderPolicyV1,
+        coupling_hierarchies: Vec<u32>,
         coupling_limits: Vec<Option<u32>>,
         mut pairing_classes: Vec<OnTheFlyPairingClassV1>,
     ) -> RusticolResult<Self> {
@@ -384,9 +399,12 @@ impl OnTheFlyProcessSeedV1 {
                 "source anchors must form a dense domain with at least two slots",
             ));
         }
-        if coupling_limits.is_empty() || coupling_limits.iter().any(Option::is_none) {
+        if coupling_limits.is_empty()
+            || coupling_hierarchies.len() != coupling_limits.len()
+            || coupling_hierarchies.iter().any(|hierarchy| *hierarchy == 0)
+        {
             return Err(invalid(
-                "on-the-fly coupling limits must be explicit for every model order",
+                "on-the-fly coupling policy requires one positive hierarchy and optional hard cap per model order",
             ));
         }
         validate_permutation(
@@ -454,6 +472,8 @@ impl OnTheFlyProcessSeedV1 {
             normalization_convention,
             source_anchors: source_anchors.into_boxed_slice(),
             external_permutation: external_permutation.into_boxed_slice(),
+            coupling_order_policy,
+            coupling_hierarchies: coupling_hierarchies.into_boxed_slice(),
             coupling_limits: coupling_limits.into_boxed_slice(),
             pairing_classes: pairing_classes.into_boxed_slice(),
             semantic_digest: SemanticDigest::new([1; 32])?,
@@ -534,9 +554,25 @@ impl OnTheFlyProcessSeedV1 {
         for slot in &self.external_permutation {
             hash.update(slot.to_le_bytes());
         }
-        hash_len(&mut hash, self.coupling_limits.len(), "coupling limits")?;
-        for limit in &self.coupling_limits {
-            hash.update(limit.unwrap_or(MISSING_U32).to_le_bytes());
+        hash.update([self.coupling_order_policy as u8]);
+        hash_len(
+            &mut hash,
+            self.coupling_hierarchies.len(),
+            "coupling hierarchies",
+        )?;
+        for (hierarchy, limit) in self
+            .coupling_hierarchies
+            .iter()
+            .zip(self.coupling_limits.iter())
+        {
+            hash.update(hierarchy.to_le_bytes());
+            match limit {
+                None => hash.update([0]),
+                Some(limit) => {
+                    hash.update([1]);
+                    hash.update(limit.to_le_bytes());
+                }
+            }
         }
         hash_len(&mut hash, self.pairing_classes.len(), "pairing classes")?;
         for pairing_class in &self.pairing_classes {
@@ -559,6 +595,18 @@ impl OnTheFlyProcessSeedV1 {
 
     pub(crate) fn pairing_classes(&self) -> &[OnTheFlyPairingClassV1] {
         &self.pairing_classes
+    }
+
+    pub(crate) const fn coupling_order_policy(&self) -> OnTheFlyCouplingOrderPolicyV1 {
+        self.coupling_order_policy
+    }
+
+    pub(crate) fn coupling_hierarchies(&self) -> &[u32] {
+        &self.coupling_hierarchies
+    }
+
+    pub(crate) fn explicit_coupling_limits(&self) -> &[Option<u32>] {
+        &self.coupling_limits
     }
 
     pub(crate) const fn model_digest(&self) -> SemanticDigest {
@@ -651,6 +699,8 @@ pub(crate) fn scalar_adapter_test_seed(
         ExactComplexRational::ONE,
         anchors,
         vec![0, 1],
+        OnTheFlyCouplingOrderPolicyV1::Explicit,
+        vec![1],
         vec![Some(0)],
         Vec::new(),
     )
@@ -697,6 +747,8 @@ mod tests {
             normalization_convention,
             source_anchors,
             external_permutation,
+            coupling_order_policy,
+            coupling_hierarchies,
             coupling_limits: _,
             pairing_classes,
             semantic_digest: _,
@@ -712,6 +764,8 @@ mod tests {
             ExactComplexRational::ONE,
             source_anchors.into_vec(),
             external_permutation.into_vec(),
+            coupling_order_policy,
+            coupling_hierarchies.into_vec(),
             coupling_limits,
             pairing_classes.into_vec(),
         )
@@ -731,7 +785,7 @@ mod tests {
                 rebuild_with_coupling_limits(seed.clone(), limits)
                     .unwrap_err()
                     .to_string()
-                    .contains("coupling limits must be explicit for every model order")
+                    .contains("one positive hierarchy and optional hard cap")
             );
         }
         assert!(rebuild_with_coupling_limits(seed, vec![Some(0), Some(3)]).is_ok());

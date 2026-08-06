@@ -25,11 +25,14 @@ use crate::direct_arena::DirectArenaTrafficCounters;
 use crate::recurrence::PreparedDirectExecutorCatalog;
 use crate::recurrence::direct_backend::DirectExecutionCounters;
 use crate::recurrence::direct_runtime::DirectRuntimeActivityCounters;
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
+use crate::recurrence::on_the_fly::OnTheFlyCouplingPolicyCensusV1;
 use crate::recurrence::on_the_fly::{
     DecodedLcQueryV1, OnTheFlyProcessSeedV1, OnTheFlyQueryFamilyCensusV1,
     OnTheFlyQueryFamilyExecutionReportV1, OnTheFlyQueryFamilyExecutorV1,
-    OnTheFlySelectedQueryOutcomeV1, OnTheFlySelectedQueryTraceV1, QueryFamilyTraceInput,
-    build_selected_lc_query_trace_v1,
+    OnTheFlyQueryFamilyHandleV1, OnTheFlyResolvedCouplingPolicyV1, OnTheFlySelectedQueryOutcomeV1,
+    PreparedOnTheFlyGrammarV1, QueryFamilyTraceInput, build_selected_lc_query_family_v1,
+    prepare_on_the_fly_process_v1,
 };
 use crate::recurrence::template::ValidatedRecurrenceTemplateInput;
 use std::collections::BTreeMap;
@@ -123,10 +126,10 @@ impl OnTheFlyLcQueryRequestV1 {
 }
 
 struct PreparedOnTheFlyLcFamilyV1 {
-    lookup_key: OnTheFlyLcFamilyLookupKeyV1,
     requests: Box<[OnTheFlyLcQueryRequestV1]>,
-    traces: Box<[OnTheFlySelectedQueryTraceV1]>,
-    trace_request_indices: Box<[usize]>,
+    amplitude_destinations: Box<[Option<usize>]>,
+    executor_handle: Option<OnTheFlyQueryFamilyHandleV1>,
+    census: Option<OnTheFlyQueryFamilyCensusV1>,
     logical_point_capacity: u32,
 }
 
@@ -138,6 +141,24 @@ struct OnTheFlyLcFamilyLookupKeyV1 {
             Box<[(usize, usize, u64)]>,
         )],
     >,
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) struct OnTheFlyRetainedStateCensusV1 {
+    pub(super) family_count: usize,
+    pub(super) request_count: usize,
+    pub(super) amplitude_projection_count: usize,
+    pub(super) executor_handle_count: usize,
+    pub(super) query_local_trace_count: usize,
+    pub(super) embedded_lookup_key_count: usize,
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) struct OnTheFlyProcessPreparationCensusV1 {
+    pub(super) catalog_validation_count: u64,
+    pub(super) grammar_preparation_count: u64,
 }
 
 impl OnTheFlyLcFamilyLookupKeyV1 {
@@ -178,6 +199,12 @@ pub(super) struct OnTheFlyNativeRuntime {
     templates: ValidatedRecurrenceTemplateInput,
     direct_catalog: PreparedDirectExecutorCatalog,
     seed: OnTheFlyProcessSeedV1,
+    prepared_grammar: Option<PreparedOnTheFlyGrammarV1>,
+    coupling_policy: Option<OnTheFlyResolvedCouplingPolicyV1>,
+    coupling_policy_resolution: Option<Duration>,
+    process_preparation_count: u64,
+    #[cfg(test)]
+    process_preparation_census: OnTheFlyProcessPreparationCensusV1,
     parameter_defaults: Box<[crate::EagerComplex64]>,
     parameter_projection: Box<[PreparedParameterProjectionEntry]>,
     runtime_parameter_values: Box<[f64]>,
@@ -234,12 +261,17 @@ impl OnTheFlyNativeRuntime {
         )?;
         let mut executor = OnTheFlyQueryFamilyExecutorV1::new(resolver);
         executor.set_parameters(&prepared_parameters)?;
-
         Ok(Self {
             executor,
             templates,
             direct_catalog,
             seed,
+            prepared_grammar: None,
+            coupling_policy: None,
+            coupling_policy_resolution: None,
+            process_preparation_count: 0,
+            #[cfg(test)]
+            process_preparation_census: OnTheFlyProcessPreparationCensusV1::default(),
             parameter_defaults: parameter_defaults.into_boxed_slice(),
             parameter_projection: parameter_projection.into_boxed_slice(),
             runtime_parameter_values: runtime_parameter_values.to_vec().into_boxed_slice(),
@@ -254,6 +286,67 @@ impl OnTheFlyNativeRuntime {
 
     pub(super) const fn seed(&self) -> &OnTheFlyProcessSeedV1 {
         &self.seed
+    }
+
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    pub(super) fn coupling_policy_census(&self) -> Option<OnTheFlyCouplingPolicyCensusV1> {
+        self.coupling_policy.as_ref().map(|policy| policy.census())
+    }
+
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    pub(super) const fn coupling_policy_resolution(&self) -> Option<Duration> {
+        self.coupling_policy_resolution
+    }
+
+    #[cfg(test)]
+    pub(super) const fn process_preparation_count(&self) -> u64 {
+        self.process_preparation_count
+    }
+
+    #[cfg(test)]
+    pub(super) const fn process_preparation_census(&self) -> OnTheFlyProcessPreparationCensusV1 {
+        self.process_preparation_census
+    }
+
+    fn ensure_process_prepared(&mut self) -> RusticolResult<()> {
+        match (&self.prepared_grammar, &self.coupling_policy) {
+            (Some(_), Some(_)) => return Ok(()),
+            (None, None) => {}
+            _ => {
+                return Err(RusticolError::internal(
+                    "on-the-fly process preparation is only partially initialized",
+                ));
+            }
+        }
+        let started = Instant::now();
+        let (grammar, policy) = prepare_on_the_fly_process_v1(&self.templates, &self.seed)?;
+        #[cfg(test)]
+        {
+            self.process_preparation_census.catalog_validation_count = self
+                .process_preparation_census
+                .catalog_validation_count
+                .checked_add(1)
+                .ok_or_else(|| {
+                    RusticolError::internal("on-the-fly catalog-validation count exceeds u64")
+                })?;
+            self.process_preparation_census.grammar_preparation_count = self
+                .process_preparation_census
+                .grammar_preparation_count
+                .checked_add(1)
+                .ok_or_else(|| {
+                    RusticolError::internal("on-the-fly grammar-preparation count exceeds u64")
+                })?;
+        }
+        self.process_preparation_count =
+            self.process_preparation_count
+                .checked_add(1)
+                .ok_or_else(|| {
+                    RusticolError::internal("on-the-fly process preparation count exceeds u64")
+                })?;
+        self.prepared_grammar = Some(grammar);
+        self.coupling_policy = Some(policy);
+        self.coupling_policy_resolution = Some(started.elapsed());
+        Ok(())
     }
 
     /// Cold selector/trace construction. Repeating an identical public
@@ -314,20 +407,12 @@ impl OnTheFlyNativeRuntime {
                 .families
                 .get_mut(index)
                 .expect("on-the-fly family lookup index is absent");
-            let cache_hit = if family.traces.is_empty() {
+            let cache_hit = if let Some(handle) = family.executor_handle {
+                self.executor
+                    .activate_retained_family(handle, logical_point_capacity)?
+            } else {
                 self.executor.deactivate()?;
                 true
-            } else {
-                let inputs = family
-                    .traces
-                    .iter()
-                    .map(|selected| QueryFamilyTraceInput {
-                        trace: &selected.trace,
-                        projection: selected.projection,
-                    })
-                    .collect::<Vec<_>>();
-                self.executor
-                    .prepare(&self.direct_catalog, &inputs, logical_point_capacity)?
             };
             family.logical_point_capacity =
                 family.logical_point_capacity.max(logical_point_capacity);
@@ -345,17 +430,7 @@ impl OnTheFlyNativeRuntime {
                 .pending_family
                 .as_mut()
                 .expect("matching on-the-fly pending family disappeared");
-            let inputs = family
-                .traces
-                .iter()
-                .map(|selected| QueryFamilyTraceInput {
-                    trace: &selected.trace,
-                    projection: selected.projection,
-                })
-                .collect::<Vec<_>>();
-            let cache_hit =
-                self.executor
-                    .prepare(&self.direct_catalog, &inputs, logical_point_capacity)?;
+            let cache_hit = self.executor.resize_active_family(logical_point_capacity)?;
             if cache_hit {
                 return Err(RusticolError::integrity(
                     "pending on-the-fly family unexpectedly resolved as retained",
@@ -366,35 +441,41 @@ impl OnTheFlyNativeRuntime {
             return Ok(false);
         }
 
+        self.ensure_process_prepared()?;
+        let outcomes = build_selected_lc_query_family_v1(
+            &self.templates,
+            &self.direct_catalog,
+            &self.seed,
+            self.coupling_policy.as_ref().ok_or_else(|| {
+                RusticolError::internal("on-the-fly coupling policy disappeared after preparation")
+            })?,
+            self.prepared_grammar.as_ref().ok_or_else(|| {
+                RusticolError::internal("on-the-fly grammar disappeared after preparation")
+            })?,
+            requests.iter().map(|request| request.query.clone()),
+        )?;
+        if outcomes.len() != requests.len() {
+            return Err(RusticolError::integrity(
+                "on-the-fly batch trace builder changed the query count",
+            ));
+        }
         let mut traces = Vec::new();
-        let mut trace_request_indices = Vec::new();
+        let mut amplitude_destinations = vec![None; requests.len()];
         traces.try_reserve_exact(requests.len()).map_err(|error| {
             RusticolError::invalid_argument(format!(
                 "on-the-fly trace-family allocation failed: {error}"
             ))
         })?;
-        trace_request_indices
-            .try_reserve_exact(requests.len())
-            .map_err(|error| {
-                RusticolError::invalid_argument(format!(
-                    "on-the-fly trace-index allocation failed: {error}"
-                ))
-            })?;
-        for (request_index, request) in requests.iter().enumerate() {
-            match build_selected_lc_query_trace_v1(
-                &self.templates,
-                &self.direct_catalog,
-                &self.seed,
-                request.query.clone(),
-            )? {
+        for (request_index, (request, outcome)) in requests.iter().zip(outcomes).enumerate() {
+            match outcome {
                 OnTheFlySelectedQueryOutcomeV1::Trace(selected) => {
                     if selected.query != request.query {
                         return Err(RusticolError::integrity(
                             "on-the-fly trace query changed during construction",
                         ));
                     }
+                    amplitude_destinations[request_index] = Some(traces.len());
                     traces.push(selected);
-                    trace_request_indices.push(request_index);
                 }
                 OnTheFlySelectedQueryOutcomeV1::StructuralZero { query } => {
                     if query != request.query {
@@ -405,9 +486,9 @@ impl OnTheFlyNativeRuntime {
                 }
             }
         }
-        let cache_hit = if traces.is_empty() {
+        let (cache_hit, census) = if traces.is_empty() {
             self.executor.deactivate()?;
-            false
+            (false, None)
         } else {
             self.executor.resolver_mut().bind_on_the_fly_family(
                 &self.templates,
@@ -434,21 +515,29 @@ impl OnTheFlyNativeRuntime {
                     "on-the-fly family does not retain one destination per nonzero query",
                 ));
             }
-            cache_hit
+            (cache_hit, Some(census))
         };
         self.families.try_reserve(1).map_err(|error| {
             RusticolError::invalid_argument(format!(
                 "on-the-fly retained-family allocation failed: {error}"
             ))
         })?;
+        let executor_handle = cache_hit
+            .then(|| self.executor.active_retained_handle())
+            .flatten();
+        if cache_hit && executor_handle.is_none() {
+            return Err(RusticolError::integrity(
+                "on-the-fly cache hit has no retained executor handle",
+            ));
+        }
         let candidate = PreparedOnTheFlyLcFamilyV1 {
-            lookup_key: OnTheFlyLcFamilyLookupKeyV1::from_requests(requests),
             requests: requests.to_vec().into_boxed_slice(),
-            traces: traces.into_boxed_slice(),
-            trace_request_indices: trace_request_indices.into_boxed_slice(),
+            amplitude_destinations: amplitude_destinations.into_boxed_slice(),
+            executor_handle,
+            census,
             logical_point_capacity,
         };
-        if cache_hit || candidate.traces.is_empty() {
+        if cache_hit || traces.is_empty() {
             self.retain_family(candidate);
         } else {
             self.pending_family = Some(candidate);
@@ -473,17 +562,7 @@ impl OnTheFlyNativeRuntime {
             if logical_point_capacity <= family.logical_point_capacity {
                 return Ok(false);
             }
-            let inputs = family
-                .traces
-                .iter()
-                .map(|selected| QueryFamilyTraceInput {
-                    trace: &selected.trace,
-                    projection: selected.projection,
-                })
-                .collect::<Vec<_>>();
-            let cache_hit =
-                self.executor
-                    .prepare(&self.direct_catalog, &inputs, logical_point_capacity)?;
+            let cache_hit = self.executor.resize_active_family(logical_point_capacity)?;
             if cache_hit {
                 return Err(RusticolError::integrity(
                     "pending on-the-fly family unexpectedly resolved as retained",
@@ -505,32 +584,42 @@ impl OnTheFlyNativeRuntime {
         if logical_point_capacity <= family.logical_point_capacity {
             return Ok(true);
         }
-        let cache_hit = if family.traces.is_empty() {
+        let cache_hit = if let Some(handle) = family.executor_handle {
+            self.executor
+                .activate_retained_family(handle, logical_point_capacity)?
+        } else {
             self.executor.deactivate()?;
             true
-        } else {
-            let inputs = family
-                .traces
-                .iter()
-                .map(|selected| QueryFamilyTraceInput {
-                    trace: &selected.trace,
-                    projection: selected.projection,
-                })
-                .collect::<Vec<_>>();
-            self.executor
-                .prepare(&self.direct_catalog, &inputs, logical_point_capacity)?
         };
         family.logical_point_capacity = logical_point_capacity;
         Ok(cache_hit)
     }
 
     pub(super) fn prepared_census(&self) -> Option<OnTheFlyQueryFamilyCensusV1> {
-        self.executor.prepared_census()
+        self.current_family().and_then(|family| family.census)
     }
 
     #[cfg(test)]
     pub(super) fn retained_family_count(&self) -> usize {
         self.families.len() + usize::from(self.pending_family.is_some())
+    }
+
+    #[cfg(test)]
+    pub(super) fn retained_state_census(&self) -> OnTheFlyRetainedStateCensusV1 {
+        self.families.iter().chain(self.pending_family.iter()).fold(
+            OnTheFlyRetainedStateCensusV1::default(),
+            |mut census, family| {
+                census.family_count += 1;
+                census.request_count += family.requests.len();
+                census.amplitude_projection_count += family.amplitude_destinations.len();
+                census.executor_handle_count += usize::from(family.executor_handle.is_some());
+                // Query-local traces and an embedded copy of the lookup
+                // key are deliberately absent from the compact retained
+                // family type; these counters make that invariant visible
+                // to lifecycle tests without exposing the private fields.
+                census
+            },
+        )
     }
 
     pub(super) fn clear(&mut self) -> RusticolResult<()> {
@@ -539,6 +628,14 @@ impl OnTheFlyNativeRuntime {
         self.last_family = None;
         self.family_lookup.clear();
         self.families.clear();
+        self.prepared_grammar = None;
+        self.coupling_policy = None;
+        self.coupling_policy_resolution = None;
+        self.process_preparation_count = 0;
+        #[cfg(test)]
+        {
+            self.process_preparation_census = OnTheFlyProcessPreparationCensusV1::default();
+        }
         self.source_momenta_scratch = Vec::new();
         self.amplitude_scratch = Vec::new();
         Ok(())
@@ -550,15 +647,19 @@ impl OnTheFlyNativeRuntime {
             .or_else(|| self.last_family.and_then(|index| self.families.get(index)))
     }
 
-    fn promote_pending_family(&mut self) {
-        let Some(family) = self.pending_family.take() else {
-            return;
+    fn promote_pending_family(&mut self) -> RusticolResult<()> {
+        let Some(mut family) = self.pending_family.take() else {
+            return Ok(());
         };
+        family.executor_handle = Some(self.executor.active_retained_handle().ok_or_else(|| {
+            RusticolError::internal("successful on-the-fly family has no retained executor handle")
+        })?);
         self.retain_family(family);
+        Ok(())
     }
 
     fn retain_family(&mut self, family: PreparedOnTheFlyLcFamilyV1) {
-        let lookup_key = family.lookup_key.clone();
+        let lookup_key = OnTheFlyLcFamilyLookupKeyV1::from_requests(&family.requests);
         let index = self.families.len();
         self.families.push(family);
         self.family_lookup
@@ -596,8 +697,7 @@ impl OnTheFlyNativeRuntime {
         if point_count <= prepared.logical_point_capacity {
             return Ok(());
         }
-        let requests = prepared.requests.to_vec();
-        self.prepare_lc_queries(&requests, point_count)?;
+        self.reuse_current_lc_queries(point_count)?;
         Ok(())
     }
 
@@ -609,8 +709,10 @@ impl OnTheFlyNativeRuntime {
                     "on-the-fly evaluation requires prepared LC queries",
                 )
             })?
-            .traces
-            .len();
+            .amplitude_destinations
+            .iter()
+            .filter(|destination| destination.is_some())
+            .count();
         let required = query_count
             .checked_mul(point_count as usize)
             .ok_or_else(|| {
@@ -653,7 +755,7 @@ impl OnTheFlyNativeRuntime {
 
         if self
             .current_family()
-            .is_some_and(|family| family.traces.is_empty())
+            .is_some_and(|family| family.census.is_none())
         {
             return Ok((
                 OnTheFlyQueryFamilyExecutionReportV1 {
@@ -686,7 +788,7 @@ impl OnTheFlyNativeRuntime {
         let execution = execution_started.elapsed();
         // A cold family becomes reusable only after its first successful
         // prepared-kernel execution.
-        self.promote_pending_family();
+        self.promote_pending_family()?;
         Ok((report, parameter_setup, input_setup, execution))
     }
 
@@ -718,7 +820,7 @@ impl OnTheFlyNativeRuntime {
             .expect("successful on-the-fly execution lost its prepared family");
         reduce_total_into(
             &family.requests,
-            &family.trace_request_indices,
+            &family.amplitude_destinations,
             &self.amplitude_scratch,
             point_count as usize,
             normalization_factor,
@@ -790,7 +892,7 @@ impl OnTheFlyNativeRuntime {
             .expect("successful on-the-fly execution lost its prepared family");
         reduce_resolved_into(
             &family.requests,
-            &family.trace_request_indices,
+            &family.amplitude_destinations,
             &self.amplitude_scratch,
             point_count as usize,
             normalization_factor,
@@ -814,16 +916,21 @@ impl OnTheFlyNativeRuntime {
 
 fn reduce_total_into(
     requests: &[OnTheFlyLcQueryRequestV1],
-    trace_request_indices: &[usize],
+    amplitude_destinations: &[Option<usize>],
     amplitudes: &[(f64, f64)],
     point_count: usize,
     normalization_factor: f64,
     output: &mut [f64],
 ) -> RusticolResult<()> {
-    for (destination, &request_index) in trace_request_indices.iter().enumerate() {
-        let request = requests
-            .get(request_index)
-            .ok_or_else(|| RusticolError::integrity("on-the-fly trace request index is absent"))?;
+    if amplitude_destinations.len() != requests.len() {
+        return Err(RusticolError::integrity(
+            "on-the-fly amplitude projection has the wrong request count",
+        ));
+    }
+    for (request, destination) in requests.iter().zip(amplitude_destinations) {
+        let Some(destination) = *destination else {
+            continue;
+        };
         let base = destination.checked_mul(point_count).ok_or_else(|| {
             RusticolError::invalid_argument("on-the-fly amplitude destination offset exceeds usize")
         })?;
@@ -848,17 +955,22 @@ fn reduce_total_into(
 
 fn reduce_resolved_into(
     requests: &[OnTheFlyLcQueryRequestV1],
-    trace_request_indices: &[usize],
+    amplitude_destinations: &[Option<usize>],
     amplitudes: &[(f64, f64)],
     point_count: usize,
     normalization_factor: f64,
     layout: LcResolvedOutputLayout,
     output: &mut [f64],
 ) -> RusticolResult<()> {
-    for (destination, &request_index) in trace_request_indices.iter().enumerate() {
-        let request = requests
-            .get(request_index)
-            .ok_or_else(|| RusticolError::integrity("on-the-fly trace request index is absent"))?;
+    if amplitude_destinations.len() != requests.len() {
+        return Err(RusticolError::integrity(
+            "on-the-fly amplitude projection has the wrong request count",
+        ));
+    }
+    for (request, destination) in requests.iter().zip(amplitude_destinations) {
+        let Some(destination) = *destination else {
+            continue;
+        };
         let base = destination.checked_mul(point_count).ok_or_else(|| {
             RusticolError::invalid_argument("on-the-fly amplitude destination offset exceeds usize")
         })?;
@@ -944,9 +1056,15 @@ fn profile_from_report(
 
 #[cfg(test)]
 mod tests {
+    use super::super::recurrence_backend::on_the_fly_adapter_tests::{
+        direct_catalog, prepared_pool, source_domains,
+    };
     use super::*;
+    use crate::recurrence::CheckedTableRange;
     use crate::recurrence::SemanticDigest;
     use crate::recurrence::on_the_fly::{OnTheFlyLcSelectorV1, scalar_adapter_test_seed};
+    use crate::recurrence::template::{CouplingOrderTermRow, IndexedRangeRow};
+    use crate::recurrence::validated_template_fixture;
 
     fn digest(byte: u8) -> SemanticDigest {
         SemanticDigest::new([byte; 32]).unwrap()
@@ -955,6 +1073,58 @@ mod tests {
     fn scalar_query() -> DecodedLcQueryV1 {
         let seed = scalar_adapter_test_seed(digest(1), digest(2), digest(3), digest(4)).unwrap();
         DecodedLcQueryV1::new(&seed, vec![0, 1], &[0, 0], OnTheFlyLcSelectorV1::Singlet).unwrap()
+    }
+
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    fn scalar_lane() -> OnTheFlyNativeRuntime {
+        let mut template_input = validated_template_fixture().into_input();
+        template_input.coupling_order_ranges.push(IndexedRangeRow {
+            id: 1,
+            range: CheckedTableRange::new(0, 1),
+        });
+        template_input
+            .coupling_order_terms
+            .push(CouplingOrderTermRow {
+                set_id: 1,
+                name_string_id: 0,
+                power: 1,
+            });
+        let templates = template_input.validate().unwrap();
+        let summary = templates.summary();
+        let direct_digest = digest(40);
+        let direct = direct_catalog(direct_digest);
+        let seed = scalar_adapter_test_seed(
+            summary.compiled_model_digest,
+            summary.catalog_digest,
+            summary.prepared_kernel_pack_digest,
+            direct_digest,
+        )
+        .unwrap();
+        let pool = prepared_pool(&templates, direct_digest);
+        let sources = pool.bind_source_domains(source_domains()).unwrap();
+        let resolver = pool.into_on_the_fly_resolver(sources);
+        let defaults = vec![
+            crate::EagerComplex64::new(0.0, 0.0);
+            usize::try_from(summary.parameter_count).unwrap()
+        ];
+        OnTheFlyNativeRuntime::new(templates, direct, seed, resolver, defaults, Vec::new(), &[])
+            .unwrap()
+    }
+
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    fn scalar_request(lane: &OnTheFlyNativeRuntime, coefficient: f64) -> OnTheFlyLcQueryRequestV1 {
+        let query = DecodedLcQueryV1::new(
+            lane.seed(),
+            vec![0, 1],
+            &[0, 0],
+            OnTheFlyLcSelectorV1::Singlet,
+        )
+        .unwrap();
+        OnTheFlyLcQueryRequestV1::new(
+            query,
+            vec![OnTheFlyLcReductionTargetV1::new(0, 0, coefficient).unwrap()],
+        )
+        .unwrap()
     }
 
     #[test]
@@ -982,6 +1152,113 @@ mod tests {
     fn lc_query_rejects_zero_total_reduction_weight() {
         let zero = vec![OnTheFlyLcReductionTargetV1::new(0, 0, 0.0).unwrap()];
         assert!(OnTheFlyLcQueryRequestV1::new(scalar_query(), zero).is_err());
+    }
+
+    #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+    #[test]
+    fn process_preparation_is_lazy_shared_compact_and_clearable() {
+        let mut lane = scalar_lane();
+        assert_eq!(lane.process_preparation_count(), 0);
+        assert_eq!(
+            lane.process_preparation_census(),
+            OnTheFlyProcessPreparationCensusV1::default()
+        );
+        assert_eq!(lane.coupling_policy_census(), None);
+        assert_eq!(lane.coupling_policy_resolution(), None);
+        assert_eq!(lane.retained_family_count(), 0);
+
+        let first = scalar_request(&lane, 1.0);
+        assert!(
+            !lane
+                .prepare_lc_queries(std::slice::from_ref(&first), 1)
+                .unwrap()
+        );
+        assert_eq!(lane.process_preparation_count(), 1);
+        assert_eq!(
+            lane.process_preparation_census(),
+            OnTheFlyProcessPreparationCensusV1 {
+                catalog_validation_count: 1,
+                grammar_preparation_count: 1,
+            }
+        );
+        assert!(lane.coupling_policy_census().is_some());
+        assert!(lane.coupling_policy_resolution().is_some());
+        let mut first_value = [0.0];
+        lane.run_f64_into(&[0.0; 8], 1, &[], 1.0, &mut first_value)
+            .unwrap();
+        // This compact fixture is an authenticated structural-zero query.  It
+        // deliberately exercises the outer retained-family lifecycle without
+        // manufacturing an executor binding that the fixture's prepared pool
+        // does not own; nonzero A -> B -> A executor reuse is covered in the
+        // family executor tests below this public lane.
+        assert_eq!(first_value, [0.0]);
+
+        let second = scalar_request(&lane, 2.0);
+        lane.prepare_lc_queries(std::slice::from_ref(&second), 1)
+            .unwrap();
+        let mut second_value = [0.0];
+        lane.run_f64_into(&[0.0; 8], 1, &[], 1.0, &mut second_value)
+            .unwrap();
+        assert_eq!(second_value, [2.0 * first_value[0]]);
+
+        assert!(
+            lane.prepare_lc_queries(std::slice::from_ref(&first), 1)
+                .unwrap()
+        );
+        let mut repeated = [0.0];
+        lane.run_f64_into(&[0.0; 8], 1, &[], 1.0, &mut repeated)
+            .unwrap();
+        assert_eq!(repeated, first_value);
+
+        let batched = [first.clone(), second.clone()];
+        assert!(!lane.prepare_lc_queries(&batched, 1).unwrap());
+        let mut batched_value = [0.0];
+        lane.run_f64_into(&[0.0; 8], 1, &[], 1.0, &mut batched_value)
+            .unwrap();
+        assert_eq!(batched_value, [3.0 * first_value[0]]);
+        assert_eq!(lane.process_preparation_count(), 1);
+        assert_eq!(
+            lane.process_preparation_census(),
+            OnTheFlyProcessPreparationCensusV1 {
+                catalog_validation_count: 1,
+                grammar_preparation_count: 1,
+            }
+        );
+
+        let retained = lane.retained_state_census();
+        assert_eq!(retained.family_count, 3);
+        assert_eq!(retained.request_count, 4);
+        assert_eq!(retained.amplitude_projection_count, 4);
+        assert_eq!(retained.executor_handle_count, 0);
+        assert_eq!(retained.query_local_trace_count, 0);
+        assert_eq!(retained.embedded_lookup_key_count, 0);
+
+        lane.clear().unwrap();
+        assert_eq!(lane.process_preparation_count(), 0);
+        assert_eq!(
+            lane.process_preparation_census(),
+            OnTheFlyProcessPreparationCensusV1::default()
+        );
+        assert_eq!(lane.coupling_policy_census(), None);
+        assert_eq!(lane.coupling_policy_resolution(), None);
+        assert_eq!(
+            lane.retained_state_census(),
+            OnTheFlyRetainedStateCensusV1::default()
+        );
+
+        assert!(!lane.prepare_lc_queries(&[first], 1).unwrap());
+        assert_eq!(lane.process_preparation_count(), 1);
+        assert_eq!(
+            lane.process_preparation_census(),
+            OnTheFlyProcessPreparationCensusV1 {
+                catalog_validation_count: 1,
+                grammar_preparation_count: 1,
+            }
+        );
+        let mut rebuilt = [0.0];
+        lane.run_f64_into(&[0.0; 8], 1, &[], 1.0, &mut rebuilt)
+            .unwrap();
+        assert_eq!(rebuilt, first_value);
     }
 
     #[test]
@@ -1051,13 +1328,13 @@ mod tests {
         ];
         // Request zero is a structural zero and therefore has no amplitude
         // destination. Request one is the sole nonzero trace destination.
-        let trace_request_indices = [1];
+        let amplitude_destinations = [None, Some(0)];
         let amplitudes = [(3.0, 4.0)];
 
         let mut total = [0.0];
         reduce_total_into(
             &requests,
-            &trace_request_indices,
+            &amplitude_destinations,
             &amplitudes,
             1,
             1.0,
@@ -1070,7 +1347,7 @@ mod tests {
         let mut resolved = [0.0; 2];
         reduce_resolved_into(
             &requests,
-            &trace_request_indices,
+            &amplitude_destinations,
             &amplitudes,
             1,
             1.0,
@@ -1089,12 +1366,12 @@ mod tests {
         )
         .unwrap()];
         let mut total = [0.0];
-        reduce_total_into(&requests, &[], &[], 1, 1.0, &mut total).unwrap();
+        reduce_total_into(&requests, &[None], &[], 1, 1.0, &mut total).unwrap();
         assert_eq!(total, [0.0]);
 
         let layout = LcResolvedOutputLayout::new(1, 1, 1).unwrap();
         let mut resolved = [0.0];
-        reduce_resolved_into(&requests, &[], &[], 1, 1.0, layout, &mut resolved).unwrap();
+        reduce_resolved_into(&requests, &[None], &[], 1, 1.0, layout, &mut resolved).unwrap();
         assert_eq!(resolved, [0.0]);
     }
 }

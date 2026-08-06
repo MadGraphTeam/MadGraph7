@@ -2,6 +2,53 @@
 
 use super::*;
 
+/// Immutable grammar prepared once for one loaded on-the-fly runtime.
+/// Query families borrow these exact rows; they never rebuild transition,
+/// closure, or propagator indexes per selected query.
+#[derive(Debug)]
+pub(crate) struct PreparedOnTheFlyGrammarV1 {
+    pub(super) transitions: BTreeMap<(u32, u32), Vec<PreparedTransition>>,
+    pub(super) closures: BTreeMap<(u32, u32), Vec<PreparedClosure>>,
+    pub(super) propagators: BTreeMap<u32, Option<u32>>,
+    pub(super) sources: BTreeMap<(u32, u32), PreparedOnTheFlySourceContractV1>,
+    pub(super) propagator_executors: BTreeMap<u32, PreparedOnTheFlyExecutorContractV1>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct PreparedOnTheFlyExecutorContractV1 {
+    pub(super) operation_id: u32,
+    pub(super) operation_semantic_digest: SemanticDigest,
+    pub(super) evaluator_binding_id: u32,
+    pub(super) evaluator_binding_semantic_digest: SemanticDigest,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct PreparedOnTheFlySourceContractV1 {
+    pub(super) current_state: CurrentStateRow,
+    pub(super) color_seed: LCColorSourceSeed,
+    pub(super) executor: PreparedOnTheFlyExecutorContractV1,
+}
+
+pub(super) fn prepare_on_the_fly_grammar_v1(
+    templates: &ValidatedRecurrenceTemplateInput,
+    catalog: &TemplateCatalog<'_>,
+    seed: &OnTheFlyProcessSeedV1,
+) -> RusticolResult<PreparedOnTheFlyGrammarV1> {
+    let transitions = prepared_transitions(templates, catalog)?;
+    let closures = prepared_closures(templates, catalog)?;
+    // Structural-zero queries may trust this immutable domain only because it
+    // is proved complete once, before the grammar enters the runtime cache.
+    validate_prepared_closure_domain(templates, catalog, &closures)?;
+    let propagators = propagator_by_state(templates)?;
+    Ok(PreparedOnTheFlyGrammarV1 {
+        transitions,
+        closures,
+        sources: prepared_source_contracts(templates, catalog, seed)?,
+        propagator_executors: prepared_propagator_executors(templates, catalog, &propagators)?,
+        propagators,
+    })
+}
+
 #[derive(Clone, Debug)]
 pub(super) struct PreparedFlavourFlow {
     operation: PreparedFlavourFlowOperation,
@@ -47,8 +94,12 @@ impl PreparedFlavourFlow {
     }
 
     pub(super) fn apply(&self, parents: [&CurrentCoreKey; 2]) -> Vec<i32> {
-        let append = |parent: &CurrentCoreKey, result_particle| {
-            let mut result = parent.flavour_flow().to_vec();
+        self.apply_flows(parents[0].flavour_flow(), parents[1].flavour_flow())
+    }
+
+    pub(super) fn apply_flows(&self, left: &[i32], right: &[i32]) -> Vec<i32> {
+        let append = |parent: &[i32], result_particle| {
+            let mut result = parent.to_vec();
             if result.last().copied() != Some(result_particle) {
                 result.push(result_particle);
             }
@@ -56,11 +107,11 @@ impl PreparedFlavourFlow {
         };
         match self.operation {
             PreparedFlavourFlowOperation::Constant => self.static_result.to_vec(),
-            PreparedFlavourFlowOperation::AppendLeft => append(parents[0], self.result_particle),
-            PreparedFlavourFlowOperation::AppendRight => append(parents[1], self.result_particle),
+            PreparedFlavourFlowOperation::AppendLeft => append(left, self.result_particle),
+            PreparedFlavourFlowOperation::AppendRight => append(right, self.result_particle),
             PreparedFlavourFlowOperation::ConcatLeftRight => {
-                let mut result = parents[0].flavour_flow().to_vec();
-                result.extend_from_slice(parents[1].flavour_flow());
+                let mut result = left.to_vec();
+                result.extend_from_slice(right);
                 result.push(self.result_particle);
                 result
             }
@@ -282,6 +333,8 @@ impl PreparedClosureQuantum {
 pub(super) struct PreparedClosure {
     pub(super) row: ClosureRow,
     pub(super) input_states: [u32; 2],
+    pub(super) local_orders: Box<[u32]>,
+    pub(super) component_coefficients: Box<[ExactComplexRational]>,
     canonical_input_order: [u32; 2],
     input_exchange_factor: Option<ExactComplexRational>,
     pub(super) base_factor: ExactComplexRational,
@@ -302,6 +355,18 @@ impl PreparedClosure {
             .u32_sequence(row.input_state_sequence_id, "closure input states")?
             .try_into()
             .map_err(|_| invalid("on-the-fly closure must be binary"))?;
+        let local_orders = catalog
+            .coupling_orders(row.coupling_order_set_id)?
+            .into_boxed_slice();
+        let component_coefficients = catalog
+            .u32_sequence(
+                row.component_coefficient_sequence_id,
+                "closure component coefficients",
+            )?
+            .iter()
+            .map(|factor_id| catalog.factor(*factor_id, "closure component coefficient"))
+            .collect::<RusticolResult<Vec<_>>>()?
+            .into_boxed_slice();
         let canonical_input_order = match catalog.u32_sequence(
             row.canonical_input_order_sequence_id,
             "closure canonical input order",
@@ -393,6 +458,8 @@ impl PreparedClosure {
         Ok(Self {
             row,
             input_states,
+            local_orders,
+            component_coefficients,
             canonical_input_order,
             input_exchange_factor,
             base_factor,
@@ -437,6 +504,82 @@ impl PreparedClosure {
         }
         (ordered, factor)
     }
+}
+
+fn prepared_source_contracts(
+    templates: &ValidatedRecurrenceTemplateInput,
+    catalog: &TemplateCatalog<'_>,
+    seed: &OnTheFlyProcessSeedV1,
+) -> RusticolResult<BTreeMap<(u32, u32), PreparedOnTheFlySourceContractV1>> {
+    let mut result = BTreeMap::new();
+    for anchor in &seed.source_anchors {
+        for state in &anchor.states {
+            let (source, current_state) =
+                validate_source_contract(templates, catalog, anchor, state)?;
+            let binding = templates
+                .input()
+                .evaluator_bindings
+                .get(source.evaluator_binding_id as usize)
+                .ok_or_else(|| integrity("source evaluator binding is absent"))?;
+            let contract = PreparedOnTheFlySourceContractV1 {
+                current_state,
+                color_seed: catalog.source_seed(source)?,
+                executor: PreparedOnTheFlyExecutorContractV1 {
+                    operation_id: source.id,
+                    operation_semantic_digest: catalog
+                        .digest(source.semantic_digest_id, "source semantic")?,
+                    evaluator_binding_id: binding.id,
+                    evaluator_binding_semantic_digest: catalog
+                        .digest(binding.semantic_digest_id, "source evaluator semantic")?,
+                },
+            };
+            let key = (state.source_template_id, state.current_state_template_id);
+            if let Some(previous) = result.insert(key, contract)
+                && previous != contract
+            {
+                return Err(integrity(
+                    "equal compact source identities have different prepared contracts",
+                ));
+            }
+        }
+    }
+    Ok(result)
+}
+
+fn prepared_propagator_executors(
+    templates: &ValidatedRecurrenceTemplateInput,
+    catalog: &TemplateCatalog<'_>,
+    propagators: &BTreeMap<u32, Option<u32>>,
+) -> RusticolResult<BTreeMap<u32, PreparedOnTheFlyExecutorContractV1>> {
+    let mut result = BTreeMap::new();
+    for propagator_id in propagators.values().flatten().copied() {
+        let row = templates
+            .input()
+            .propagators
+            .get(propagator_id as usize)
+            .ok_or_else(|| integrity("propagator executor template is absent"))?;
+        let binding = templates
+            .input()
+            .evaluator_bindings
+            .get(row.evaluator_binding_id as usize)
+            .ok_or_else(|| integrity("propagator executor binding is absent"))?;
+        let contract = PreparedOnTheFlyExecutorContractV1 {
+            operation_id: row.id,
+            operation_semantic_digest: catalog
+                .digest(row.semantic_digest_id, "propagator semantic")?,
+            evaluator_binding_id: binding.id,
+            evaluator_binding_semantic_digest: catalog
+                .digest(binding.semantic_digest_id, "propagator evaluator semantic")?,
+        };
+        if let Some(previous) = result.insert(propagator_id, contract)
+            && previous != contract
+        {
+            return Err(integrity(
+                "equal propagator identities have different prepared contracts",
+            ));
+        }
+    }
+    Ok(result)
 }
 
 pub(super) fn canonical_state_pair(left: u32, right: u32) -> (u32, u32) {

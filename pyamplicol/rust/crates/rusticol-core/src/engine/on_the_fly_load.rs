@@ -12,6 +12,9 @@ use super::on_the_fly_lane::OnTheFlyNativeRuntime;
 use super::on_the_fly_manifest::{
     ON_THE_FLY_PROCESS_SEED_MEMBER, OnTheFlyColorCoverage, OnTheFlyExecutionManifest,
 };
+use super::on_the_fly_public_metadata::{
+    OnTheFlyPublicMetadataV1, parse_on_the_fly_public_metadata,
+};
 use super::on_the_fly_selectors::{
     OnTheFlyCompactSelectorAdapterV1, OnTheFlyLcColorCoverageV1, OnTheFlyLcSelectorPolicyV1,
 };
@@ -30,13 +33,16 @@ pub(super) struct LoadedOnTheFlyRuntime {
     pub(super) common: ExecutionRuntime,
     pub(super) lane: OnTheFlyNativeRuntime,
     pub(super) selectors: OnTheFlyCompactSelectorAdapterV1,
+    pub(super) metadata_selectors: OnTheFlyCompactSelectorAdapterV1,
+    pub(super) public_metadata: OnTheFlyPublicMetadataV1,
 }
 
 pub(super) fn load_on_the_fly_native_runtime(
     artifact: &VerifiedArtifact,
     manifest: &OnTheFlyExecutionManifest,
-    public_permutation: &[usize],
+    selection: &crate::ArtifactSelection,
 ) -> RusticolResult<LoadedOnTheFlyRuntime> {
+    let public_metadata = load_public_metadata(artifact, manifest, &selection.process)?;
     let seed = load_process_seed(artifact, manifest)?;
     let (pack_bytes, pack, payload_root) = load_prepared_pack(artifact, manifest)?;
     let raw_templates = pack.recurrence_template.as_ref().ok_or_else(|| {
@@ -81,8 +87,11 @@ pub(super) fn load_on_the_fly_native_runtime(
         )?;
     common.refresh_derived_model_parameters()?;
 
-    let selectors = OnTheFlyCompactSelectorAdapterV1::from_seed(&seed, selector_policy(manifest))?
-        .with_public_permutation(public_permutation)?;
+    let metadata_selectors =
+        OnTheFlyCompactSelectorAdapterV1::from_seed(&seed, selector_policy(manifest))?;
+    let selectors = metadata_selectors
+        .clone()
+        .with_public_permutation(&selection.external_permutation)?;
     let lane = OnTheFlyNativeRuntime::new(
         templates,
         direct_catalog,
@@ -96,7 +105,28 @@ pub(super) fn load_on_the_fly_native_runtime(
         common,
         lane,
         selectors,
+        metadata_selectors,
+        public_metadata,
     })
+}
+
+fn load_public_metadata(
+    artifact: &VerifiedArtifact,
+    manifest: &OnTheFlyExecutionManifest,
+    outer: &crate::ArtifactProcess,
+) -> RusticolResult<OnTheFlyPublicMetadataV1> {
+    let record = artifact.payload(&outer.physics_path)?;
+    if record.role != PayloadRole::RuntimePhysics
+        || record.media_type != "application/json"
+        || record.executable
+        || record.process_id.as_deref() != Some(manifest.key.as_str())
+    {
+        return Err(RusticolError::integrity(
+            "on-the-fly compact public metadata has the wrong authenticated payload role",
+        ));
+    }
+    let bytes = artifact.read_payload(&outer.physics_path)?;
+    parse_on_the_fly_public_metadata(&bytes, &outer.physics_path, outer, manifest)
 }
 
 fn selector_policy(manifest: &OnTheFlyExecutionManifest) -> OnTheFlyLcSelectorPolicyV1 {

@@ -309,6 +309,7 @@ def test_schema_v3_writer_has_no_legacy_eager_process_variant() -> None:
     } == {
         "CompiledProcessArtifact",
         "EagerPlanV3ProcessArtifact",
+        "OnTheFlyProcessArtifact",
         "RecurrenceProcessArtifact",
     }
 

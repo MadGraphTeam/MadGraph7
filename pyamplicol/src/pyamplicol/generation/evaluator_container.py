@@ -67,6 +67,7 @@ class PacbinMemberKind(IntEnum):
     EAGER_RUNTIME_TABLE = 5
     RECURRENCE_DIRECT_PLAN = 7
     RECURRENCE_COLOR_PROJECTION_CERTIFICATE = 8
+    ON_THE_FLY_PROCESS_SEED = 9
 
 
 @dataclass(frozen=True, slots=True)

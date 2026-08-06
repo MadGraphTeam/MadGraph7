@@ -4537,6 +4537,8 @@ mod on_the_fly_load;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 mod on_the_fly_manifest;
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+mod on_the_fly_public_metadata;
+#[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
 mod on_the_fly_selectors;
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]

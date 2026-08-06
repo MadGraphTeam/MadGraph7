@@ -1211,6 +1211,63 @@ pub(crate) fn _on_the_fly_artifact_probe_v1(
     on_the_fly_artifact_probe_mapping(py, native)
 }
 
+/// Private cold-path bridge used by the on-the-fly artifact writer.
+///
+/// The four byte/string inputs are the complete boundary: in particular this
+/// function accepts no recurrence builder input, physical color plan, DAG, or
+/// direct-plan payload.
+#[pyfunction]
+pub(crate) fn _build_on_the_fly_process_seed_v1(
+    py: Python<'_>,
+    source_projection_json: &Bound<'_, PyBytes>,
+    recurrence_template_catalog_json: &Bound<'_, PyBytes>,
+    direct_template_catalog_json: &Bound<'_, PyBytes>,
+    prepared_kernel_pack_digest: &str,
+) -> PyResult<Py<PyBytes>> {
+    let source_projection_json = source_projection_json.as_bytes().to_vec();
+    let recurrence_template_catalog_json = recurrence_template_catalog_json.as_bytes().to_vec();
+    let direct_template_catalog_json = direct_template_catalog_json.as_bytes().to_vec();
+    let prepared_kernel_pack_digest = prepared_kernel_pack_digest.to_owned();
+    let encoded = py
+        .detach(move || {
+            let expected_pack_digest = semantic_digest_from_hex(
+                &prepared_kernel_pack_digest,
+                "prepared kernel pack digest",
+            )?;
+            let template_value: JsonValue =
+                serde_json::from_slice(&recurrence_template_catalog_json).map_err(|error| {
+                    invalid(format!(
+                        "recurrence-template catalog is not valid JSON: {error}"
+                    ))
+                })?;
+            let templates =
+                rusticol_core::__private::project_recurrence_template_catalog_json_v1(
+                    &template_value,
+                )?
+                .validate()?;
+            let summary = templates.summary();
+            if summary.prepared_kernel_pack_digest != expected_pack_digest {
+                return Err(RusticolError::integrity(
+                    "recurrence-template catalog prepared-kernel pack differs from the requested pack",
+                ));
+            }
+            let direct = parse_direct_template_catalog(
+                &direct_template_catalog_json,
+                expected_pack_digest,
+                summary.catalog_digest,
+                summary.compiled_model_digest,
+            )?;
+            rusticol_core::__private::build_on_the_fly_process_seed_bytes_v1(
+                &source_projection_json,
+                &templates,
+                &direct.catalog,
+                expected_pack_digest,
+            )
+        })
+        .map_err(python_error)?;
+    Ok(PyBytes::new(py, &encoded).unbind())
+}
+
 #[cfg(feature = "on-the-fly-test-support")]
 fn on_the_fly_artifact_probe_mapping(
     py: Python<'_>,
