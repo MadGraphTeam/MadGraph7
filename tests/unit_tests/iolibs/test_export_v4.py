@@ -16,9 +16,11 @@
 """Unit test library for the export v4 format routines"""
 
 from __future__ import absolute_import
+import collections
 import copy
 import fractions
-import os 
+import os
+import random
 import sys
 root_path = os.path.split(os.path.dirname(os.path.realpath( __file__ )))[0]
 sys.path.append(os.path.join(root_path, os.path.pardir, os.path.pardir))
@@ -10360,3 +10362,153 @@ if __name__ == '__main__':
                        [me.get('diagrams')[323], me.get('diagrams')[954],
                         me.get('diagrams')[1123], me.get('diagrams')[1139]])
         
+
+
+class OptimiseJampTest(unittest.TestCase):
+    """Test the common sub-expression elimination applied to the JAMP
+    definitions."""
+
+    @staticmethod
+    def reference_optimise_jamp(all_element, nb_line=0, nb_col=0, added=0):
+        """Straightforward version of ProcessExporterFortran.optimise_jamp,
+        looking every column up in the matrix instead of indexing the non zero
+        entries. The splitting of wide matrices is left out, so keep the test
+        matrices below the 600 columns which trigger it."""
+
+        if not nb_line:
+            for i, j in all_element:
+                if i + 1 > nb_line:
+                    nb_line = i + 1
+                if j + 1 > nb_col:
+                    nb_col = j + 1
+            assert nb_col <= 600
+
+        max_count = 0
+        all_index = []
+        operation = collections.defaultdict(
+                                    lambda: collections.defaultdict(int))
+        for (i, j1), v1 in all_element.items():
+            ratios = [(j2, all_element.get((i, j2), 0) / v1)
+                      for j2 in range(j1 + 1, nb_col)
+                      if all_element.get((i, j2), 0)]
+            for j2, R in ratios:
+                operation[(j1, j2)][R] += 1
+                if operation[(j1, j2)][R] > max_count:
+                    max_count = operation[(j1, j2)][R]
+                    all_index = [(j1, j2, R)]
+                elif operation[(j1, j2)][R] == max_count:
+                    all_index.append((j1, j2, R))
+
+        if max_count <= 1:
+            return all_element, []
+
+        to_add = []
+        for j1, j2, R in all_index:
+            first = True
+            for i in range(nb_line):
+                v1 = all_element.get((i, j1), 0)
+                v2 = all_element.get((i, j2), 0)
+                if not v1 or not v2:
+                    continue
+                if v2 / v1 == R:
+                    if first:
+                        first = False
+                        added += 1
+                        to_add.append((added, j1, j2, R, max_count))
+                    all_element[(i, -added)] = v1
+                    del all_element[(i, j1)]
+                    del all_element[(i, j2)]
+
+        new_element, new_def = OptimiseJampTest.reference_optimise_jamp(
+                                    all_element, nb_line, nb_col, added)
+        for one_def in to_add:
+            new_def.insert(0, one_def)
+        return new_element, new_def
+
+    @staticmethod
+    def random_matrix(seed, nb_line, nb_col, density):
+        """Sparse matrix with repeating values, so that the optimisation has
+        something to find."""
+
+        # no zero value: the scan divides by the entry it starts from, so a
+        # stored zero in a line which has other entries makes it raise
+        values = [1, -1, 2, -2, 0.5, -0.5, 3, 1j, -1j]
+        rng = random.Random(seed)
+        all_element = {}
+        for i in range(nb_line):
+            for j in range(nb_col):
+                if rng.random() < density:
+                    all_element[(i, j)] = complex(rng.choice(values))
+        return all_element
+
+    def test_index_jamp_matrix(self):
+        """The indices must list the non zero entries in increasing order, and
+        leave out both the zero values and the columns beyond nb_col."""
+
+        all_element = {(0, 2): 1, (0, 0): 3, (0, 1): 0,
+                       (1, 0): 2, (1, 5): 7, (0, -1): 4}
+        lines, columns = export_v4.ProcessExporterFortran.index_jamp_matrix(
+                                                            all_element, 3)
+        self.assertEqual(dict(lines), {0: [-1, 0, 2], 1: [0]})
+        self.assertEqual(dict(columns), {-1: [0], 0: [0, 1], 2: [0]})
+
+    def test_common_jamp_lines(self):
+        """Lines where two columns are both filled, in increasing order."""
+
+        columns = {1: [0, 2, 3, 7], 2: [2, 3, 5], 3: [9]}
+        common = export_v4.ProcessExporterFortran.common_jamp_lines
+        self.assertEqual(common(columns, 10, 1, 2), [2, 3])
+        self.assertEqual(common(columns, 3, 1, 2), [2])
+        self.assertEqual(common(columns, 10, 1, 3), [])
+        self.assertEqual(common(columns, 10, 1, 4), [])
+
+    def test_optimise_jamp_matches_reference(self):
+        """The optimisation has to give exactly the same sub-expressions as
+        the straightforward scan, including the order they are defined in."""
+
+        exporter = export_v4.ProcessExporterFortranSA()
+        for seed, nb_line, nb_col, density in [(1, 8, 12, 0.5),
+                                               (2, 12, 25, 0.35),
+                                               (3, 20, 40, 0.25),
+                                               (4, 5, 5, 0.9),
+                                               (5, 30, 15, 0.6)]:
+            all_element = self.random_matrix(seed, nb_line, nb_col, density)
+            reference, reference_def = self.reference_optimise_jamp(
+                                                    dict(all_element))
+            exporter.myjamp_count = 0
+            result, result_def = exporter.optimise_jamp(dict(all_element))
+            self.assertEqual(result_def, reference_def)
+            self.assertEqual(result, reference)
+
+    def test_optimise_jamp_stored_zero(self):
+        """An entry which is present but zero must be ignored, like the scan
+        looking the columns up in the matrix does."""
+
+        # the zero has to be the last entry of its line: the scan divides by
+        # the entry it starts from, so a zero followed by a non zero raises
+        all_element = {}
+        for i in range(4):
+            all_element[(i, 0)] = complex(1)
+            all_element[(i, 1)] = complex(2)
+            all_element[(i, 2)] = complex(0)
+        reference, reference_def = self.reference_optimise_jamp(
+                                                    dict(all_element))
+        exporter = export_v4.ProcessExporterFortranSA()
+        exporter.myjamp_count = 0
+        result, result_def = exporter.optimise_jamp(dict(all_element))
+        self.assertEqual(result_def, reference_def)
+        self.assertEqual(result, reference)
+        # column 2 is never picked up as a sub-expression
+        self.assertTrue(result_def)
+        self.assertTrue(all(2 not in (j1, j2)
+                            for _, j1, j2, _, _ in result_def))
+
+    def test_optimise_jamp_no_saving(self):
+        """A matrix where no sub-expression is reused is returned as is."""
+
+        exporter = export_v4.ProcessExporterFortranSA()
+        exporter.myjamp_count = 0
+        all_element = {(0, 0): complex(1), (1, 1): complex(2)}
+        result, defs = exporter.optimise_jamp(dict(all_element))
+        self.assertEqual(defs, [])
+        self.assertEqual(result, all_element)

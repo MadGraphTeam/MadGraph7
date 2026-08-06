@@ -17,6 +17,7 @@ from madgraph.iolibs.helas_call_writers import HelasCallWriter
 from madgraph.core import base_objects
 """Methods and classes to export matrix elements to v4 format."""
 
+import bisect
 import copy
 import math, cmath
 from io import StringIO
@@ -2548,6 +2549,45 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
         return res_list, len(defs)
 
+    @staticmethod
+    def index_jamp_matrix(all_element, nb_col):
+        """Sorted lists of the positions of the non zero entries of the matrix,
+        by line and by column. An entry which is present but zero does not
+        count, and neither does a column outside the 0..nb_col range, so that
+        these indices list exactly the entries the plain scan would look at."""
+
+        lines = collections.defaultdict(list)
+        columns = collections.defaultdict(list)
+        for (i, j), value in all_element.items():
+            if value and j < nb_col:
+                lines[i].append(j)
+                columns[j].append(i)
+        for line in lines.values():
+            line.sort()
+        for column in columns.values():
+            column.sort()
+        return lines, columns
+
+    @staticmethod
+    def common_jamp_lines(columns, nb_line, j1, j2):
+        """Lines, in increasing order, where both columns j1 and j2 are non
+        zero. Both column lists are sorted, so this is a plain merge."""
+
+        left, right = columns.get(j1, []), columns.get(j2, [])
+        res = []
+        pos1 = pos2 = 0
+        while pos1 < len(left) and pos2 < len(right):
+            if left[pos1] == right[pos2]:
+                if left[pos1] < nb_line:
+                    res.append(left[pos1])
+                pos1 += 1
+                pos2 += 1
+            elif left[pos1] < right[pos2]:
+                pos1 += 1
+            else:
+                pos2 += 1
+        return res
+
     def optimise_jamp(self, all_element, nb_line=0, nb_col=0, added=0):
         """ optimise problem of type Y = A X
                 A is a matrix (all_element)
@@ -2597,18 +2637,32 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
                     newdef1 = newdef1 + new_def
                 return all_element, newdef1
 
+        # Index of the non zero entries, by line and by column. The matrix is
+        # very sparse (a color flow only gets a small share of the amplitudes)
+        # so walking the whole 0..nb_col range for every entry, as looking the
+        # columns up one by one in the matrix amounts to, spends nearly all of
+        # its time discovering zeros.
+        lines, columns = self.index_jamp_matrix(all_element, nb_col)
+
         max_count = 0
         all_index = []
-        operation = collections.defaultdict(lambda: collections.defaultdict(int))
+        # how many lines have the same ratio between two given columns, keyed
+        # by the two columns and the ratio at once rather than by nested
+        # dictionaries: this is the innermost loop of the whole optimisation
+        operation = collections.defaultdict(int)
         for (i,j1), v1 in all_element.items():
-            ratios = [(j2,all_element.get((i,j2), 0)/v1) for j2 in range(j1+1, nb_col) if all_element.get((i,j2), 0)]
-            for j2, R in ratios:                   
-                operation[(j1,j2)][R] +=1 
-                if operation[(j1,j2)][R] > max_count:
-                    max_count = operation[(j1,j2)][R]
-                    all_index = [(j1,j2, R)]
-                elif operation[(j1,j2)][R] == max_count:
-                    all_index.append((j1,j2, R))
+            line = lines.get(i)
+            if not line:
+                continue
+            for j2 in line[bisect.bisect_right(line, j1):]:
+                key = (j1, j2, all_element[(i,j2)]/v1)
+                operation[key] += 1
+                count = operation[key]
+                if count > max_count:
+                    max_count = count
+                    all_index = [key]
+                elif count == max_count:
+                    all_index.append(key)
 
         if max_count <= 1:
             return all_element, []
@@ -2617,20 +2671,23 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
         for index in all_index:
             j1,j2,R = index
             first = True
-            for i in range(nb_line):
+            # only the lines where both columns are filled can contribute; the
+            # substitutions done here can empty some of them, so the values
+            # still have to be read back from the matrix
+            for i in self.common_jamp_lines(columns, nb_line, j1, j2):
                 v1 = all_element.get((i,j1), 0)
                 v2 = all_element.get((i,j2), 0)
-                if not v1 or not v2: 
+                if not v1 or not v2:
                     continue
                 if v2/v1 == R:
                     if first:
                         first = False
                         added +=1
                         to_add.append((added,j1,j2,R, max_count))
-                        
+
                     all_element[(i,-added)] = v1
                     del all_element[(i,j1)] #= 0
-                    del all_element[(i,j2)] #= 0 
+                    del all_element[(i,j2)] #= 0
 
         logger.log(5,"Define %d new shortcut reused %d times", len(to_add), max_count)
         new_element, new_def =  self.optimise_jamp(all_element, nb_line=nb_line, nb_col=nb_col, added=added)
