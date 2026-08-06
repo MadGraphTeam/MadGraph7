@@ -498,6 +498,13 @@ impl Runtime {
             .map_err(python_error)
     }
 
+    #[cfg(feature = "on-the-fly-test-support")]
+    fn _on_the_fly_runtime_state_census_json(&self) -> PyResult<Option<String>> {
+        self.runtime
+            .on_the_fly_runtime_state_census_json()
+            .map_err(python_error)
+    }
+
     fn physics_json(&self) -> PyResult<String> {
         self.runtime.physics_json().map_err(python_error)
     }
@@ -2096,6 +2103,14 @@ mod tests {
         Helicity, LcColorFlow, Reduction, ReductionGroup as CoreReductionGroup, ReductionKind,
         SelectorCapabilities,
     };
+
+    #[cfg(feature = "on-the-fly-test-support")]
+    #[test]
+    fn feature_build_exposes_loaded_on_the_fly_state_census_binding() {
+        let binding: fn(&Runtime) -> PyResult<Option<String>> =
+            Runtime::_on_the_fly_runtime_state_census_json;
+        let _ = binding;
+    }
 
     #[test]
     fn raw_runtime_accepts_only_f64_precision() {

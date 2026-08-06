@@ -3888,6 +3888,12 @@ fn native_runtime_clear_is_a_noop_outside_the_on_the_fly_lane() {
     assert_eq!(runtime.artifact_id(), artifact_id);
     assert_eq!(runtime.runtime.model_parameter_values_f64, parameters);
     assert_eq!(runtime.metadata_json().unwrap(), metadata);
+    assert!(
+        runtime
+            .on_the_fly_runtime_state_census_json()
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
@@ -3997,10 +4003,39 @@ fn on_the_fly_public_paths_vectorize_and_reuse_all_seen_selections() {
             lane.semantic_executor_binding_count().unwrap(),
         )
     };
+    let census = |runtime: &NativeRuntime| -> Value {
+        serde_json::from_str(
+            runtime
+                .on_the_fly_runtime_state_census_json()
+                .unwrap()
+                .as_deref()
+                .expect("on-the-fly runtime census is absent"),
+        )
+        .unwrap()
+    };
+    let prepared_census = |runtime: &NativeRuntime| {
+        let NativeExecutionLane::OnTheFly(lane) = &runtime.execution_lane else {
+            panic!("test runtime changed execution lane");
+        };
+        lane.active_family_prepared_census()
+            .expect("active on-the-fly family has no prepared census")
+    };
 
     let mut runtime = scalar_on_the_fly_native_runtime();
     let point_count = 6;
     let momenta = vec![0.0; point_count * 2 * 4];
+    let cold_census = census(&runtime);
+    assert_eq!(
+        cold_census["kind"],
+        "rusticol-on-the-fly-runtime-state-census-v1"
+    );
+    assert_eq!(cold_census["process_id"], "s_to_s");
+    assert_eq!(cold_census["process_preparation_count"], 0);
+    assert_eq!(cold_census["retained_family_count"], 0);
+    assert_eq!(cold_census["pending_family_count"], 0);
+    assert_eq!(cold_census["retained_selection_count"], 0);
+    assert_eq!(cold_census["semantic_executor_binding_count"], 0);
+    assert!(cold_census["active_family_union_census"].is_null());
 
     // A: the complete compact selector domain. Only its first helicity is
     // executable; the other three are authenticated selector-local zeros.
@@ -4016,6 +4051,55 @@ fn on_the_fly_public_paths_vectorize_and_reuse_all_seen_selections() {
     let (family_count, selection_count, binding_count) = retained(&runtime);
     assert_eq!((family_count, selection_count), (1, 1));
     assert!(binding_count > 0);
+    let global_census = census(&runtime);
+    assert_eq!(global_census["process_preparation_count"], 1);
+    assert_eq!(global_census["retained_family_count"], 1);
+    assert_eq!(global_census["pending_family_count"], 0);
+    assert_eq!(global_census["retained_selection_count"], 1);
+    assert_eq!(global_census["retained_request_count"], 4);
+    assert_eq!(global_census["retained_amplitude_destination_count"], 1);
+    assert_eq!(
+        global_census["retained_request_count"].as_u64().unwrap()
+            - global_census["retained_amplitude_destination_count"]
+                .as_u64()
+                .unwrap(),
+        3
+    );
+    let active = &global_census["active_family_union_census"];
+    assert_eq!(active["basis"], "shared-query-family-union-v1");
+    assert_eq!(active["scope"], "active-family-union");
+    let prepared = prepared_census(&runtime);
+    macro_rules! assert_mapped {
+        ($($field:ident),+ $(,)?) => {
+            $(assert_eq!(
+                active[stringify!($field)].as_u64(),
+                Some(u64::from(prepared.$field)),
+                stringify!($field),
+            );)+
+        };
+    }
+    assert_mapped!(
+        query_count,
+        union_unique_current_count,
+        union_unique_current_component_count,
+        union_source_rows,
+        union_contribution_rows,
+        union_finalization_rows,
+        union_closure_rows,
+        union_amplitude_destination_count,
+        union_source_executor_call_groups,
+        union_contribution_executor_call_groups,
+        union_finalization_executor_call_groups,
+        union_closure_executor_call_groups,
+    );
+    assert!(prepared.union_unique_current_count <= prepared.union_unique_current_component_count);
+    for role in ["source", "contribution", "finalization", "closure"] {
+        let groups = active[format!("union_{role}_executor_call_groups")]
+            .as_u64()
+            .unwrap();
+        let rows = active[format!("union_{role}_rows")].as_u64().unwrap();
+        assert!(groups <= rows, "{role}");
+    }
 
     // B: one explicit nonzero selector. Switching A -> B -> A retains both
     // public axes/request mappings and both lower-lane families.
@@ -4041,6 +4125,15 @@ fn on_the_fly_public_paths_vectorize_and_reuse_all_seen_selections() {
     assert_eq!(global_again, global);
     assert_eq!(retained(&runtime).0, 2);
     assert_eq!(retained(&runtime).1, 2);
+    let revisited_census = census(&runtime);
+    assert_eq!(revisited_census["process_preparation_count"], 1);
+    assert_eq!(revisited_census["retained_family_count"], 2);
+    assert_eq!(revisited_census["pending_family_count"], 0);
+    assert_eq!(revisited_census["retained_selection_count"], 2);
+    assert_eq!(
+        revisited_census["active_family_union_census"],
+        global_census["active_family_union_census"]
+    );
 
     let resolved = runtime
         .evaluate_resolved_f64(&momenta, point_count, None, None)
@@ -4078,6 +4171,7 @@ fn on_the_fly_public_paths_vectorize_and_reuse_all_seen_selections() {
     assert_eq!(per_point, expected_partitioned);
     assert_eq!(retained(&runtime).0, 3);
     assert_eq!(retained(&runtime).1, 3);
+    let partitioned_census = census(&runtime);
 
     let per_point_again = runtime
         .evaluate_f64_with_selectors(
@@ -4092,6 +4186,7 @@ fn on_the_fly_public_paths_vectorize_and_reuse_all_seen_selections() {
     assert_eq!(per_point_again, expected_partitioned);
     assert_eq!(retained(&runtime).0, 3);
     assert_eq!(retained(&runtime).1, 3);
+    assert_eq!(census(&runtime), partitioned_census);
 
     let profiled = runtime
         .evaluate_f64_profile_with_selectors(
@@ -4131,11 +4226,17 @@ fn on_the_fly_public_paths_vectorize_and_reuse_all_seen_selections() {
     );
     assert_eq!(retained(&runtime).0, 3);
     assert_eq!(retained(&runtime).1, 3);
+    assert_eq!(census(&runtime), partitioned_census);
 
     assert!(runtime.physics_v1.get().is_err());
 
     runtime.clear().unwrap();
     assert_eq!(retained(&runtime), (0, 0, 0));
+    assert_eq!(census(&runtime), cold_census);
+    let NativeExecutionLane::OnTheFly(lane) = &runtime.execution_lane else {
+        panic!("test runtime changed execution lane");
+    };
+    assert_eq!(lane.point_major_scratch_state(), (0, 0));
     assert!(runtime.physics_v1.get().is_err());
     let rebuilt = runtime
         .evaluate_f64_with_selectors(&momenta, point_count, None, None, None, None)
@@ -4144,6 +4245,7 @@ fn on_the_fly_public_paths_vectorize_and_reuse_all_seen_selections() {
     let (family_count, selection_count, binding_count) = retained(&runtime);
     assert_eq!((family_count, selection_count), (1, 1));
     assert!(binding_count > 0);
+    assert_eq!(census(&runtime), global_census);
 }
 
 #[test]

@@ -206,6 +206,71 @@ impl OnTheFlyExecutionRuntime {
         self.lane.semantic_executor_binding_count()
     }
 
+    #[cfg(test)]
+    pub(super) fn active_family_prepared_census(
+        &self,
+    ) -> Option<crate::recurrence::on_the_fly::OnTheFlyQueryFamilyCensusV1> {
+        self.lane.prepared_census()
+    }
+
+    #[cfg(test)]
+    pub(super) fn point_major_scratch_state(&self) -> (usize, usize) {
+        (
+            self.point_major_scratch.len(),
+            self.point_major_scratch.capacity(),
+        )
+    }
+
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    fn state_census(&self, process_id: &str) -> RusticolResult<Value> {
+        let retained = self.lane.retained_state_census();
+        let active_family_union_census = self.lane.prepared_census().map(|census| {
+            serde_json::json!({
+                "basis": "shared-query-family-union-v1",
+                "scope": "active-family-union",
+                "query_count": census.query_count,
+                "union_unique_current_count": census.union_unique_current_count,
+                "union_unique_current_component_count": (
+                    census.union_unique_current_component_count
+                ),
+                "union_source_rows": census.union_source_rows,
+                "union_contribution_rows": census.union_contribution_rows,
+                "union_finalization_rows": census.union_finalization_rows,
+                "union_closure_rows": census.union_closure_rows,
+                "union_amplitude_destination_count": (
+                    census.union_amplitude_destination_count
+                ),
+                "union_source_executor_call_groups": (
+                    census.union_source_executor_call_groups
+                ),
+                "union_contribution_executor_call_groups": (
+                    census.union_contribution_executor_call_groups
+                ),
+                "union_finalization_executor_call_groups": (
+                    census.union_finalization_executor_call_groups
+                ),
+                "union_closure_executor_call_groups": (
+                    census.union_closure_executor_call_groups
+                ),
+            })
+        });
+        Ok(serde_json::json!({
+            "kind": "rusticol-on-the-fly-runtime-state-census-v1",
+            "process_id": process_id,
+            "process_preparation_count": self.lane.process_preparation_count(),
+            "retained_family_count": retained.family_count,
+            "pending_family_count": self.lane.pending_family_count(),
+            "retained_selection_count": self.prepared_selections.len(),
+            "retained_request_count": retained.request_count,
+            "retained_amplitude_destination_count": retained.amplitude_destination_count,
+            "retained_executor_handle_count": retained.executor_handle_count,
+            "retained_query_local_trace_count": retained.query_local_trace_count,
+            "retained_embedded_lookup_key_count": retained.embedded_lookup_key_count,
+            "semantic_executor_binding_count": self.lane.semantic_executor_binding_count()?,
+            "active_family_union_census": active_family_union_census,
+        }))
+    }
+
     fn fill_point_major(&mut self, batch: F64MomentumBatchView<'_>) -> RusticolResult<usize> {
         let required = batch
             .point_count()
@@ -1610,6 +1675,25 @@ impl NativeRuntime {
             .map_err(|error| {
                 RusticolError::serialization(format!(
                     "could not serialize on-the-fly selector ordinals: {error}"
+                ))
+            });
+        }
+        Ok(None)
+    }
+
+    /// Return feature-only structural state for the loaded production OTF lane.
+    ///
+    /// This observes the same retained selector/family caches used by public
+    /// evaluation. It does not construct selectors or open dense physics
+    /// metadata. Non-OTF lanes return `None`.
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    pub fn on_the_fly_runtime_state_census_json(&self) -> RusticolResult<Option<String>> {
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        if let NativeExecutionLane::OnTheFly(runtime) = &self.execution_lane {
+            let census = runtime.state_census(&self.process_key)?;
+            return serde_json::to_string(&census).map(Some).map_err(|error| {
+                RusticolError::serialization(format!(
+                    "could not serialize on-the-fly runtime state census: {error}"
                 ))
             });
         }

@@ -166,12 +166,12 @@ struct OnTheFlyLcFamilyLookupKeyV1 {
     >,
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "on-the-fly-test-support"))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct OnTheFlyRetainedStateCensusV1 {
     pub(super) family_count: usize,
     pub(super) request_count: usize,
-    pub(super) amplitude_projection_count: usize,
+    pub(super) amplitude_destination_count: usize,
     pub(super) executor_handle_count: usize,
     pub(super) query_local_trace_count: usize,
     pub(super) embedded_lookup_key_count: usize,
@@ -386,7 +386,7 @@ impl OnTheFlyNativeRuntime {
         self.coupling_policy_resolution
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     pub(super) const fn process_preparation_count(&self) -> u64 {
         self.process_preparation_count
     }
@@ -689,30 +689,36 @@ impl OnTheFlyNativeRuntime {
 
     #[cfg(test)]
     pub(super) fn retained_family_count(&self) -> usize {
-        self.families.len() + usize::from(self.pending_family.is_some())
+        self.families.len()
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
+    pub(super) fn pending_family_count(&self) -> usize {
+        usize::from(self.pending_family.is_some())
+    }
+
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     pub(super) fn semantic_executor_binding_count(&self) -> RusticolResult<u32> {
         self.executor.resolver().semantic_executor_binding_count()
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "on-the-fly-test-support"))]
     pub(super) fn retained_state_census(&self) -> OnTheFlyRetainedStateCensusV1 {
-        self.families.iter().chain(self.pending_family.iter()).fold(
-            OnTheFlyRetainedStateCensusV1::default(),
-            |mut census, family| {
-                census.family_count += 1;
-                census.request_count += family.requests.len();
-                census.amplitude_projection_count += family.amplitude_destinations.len();
-                census.executor_handle_count += usize::from(family.executor_handle.is_some());
-                // Query-local traces and an embedded copy of the lookup
-                // key are deliberately absent from the compact retained
-                // family type; these counters make that invariant visible
-                // to lifecycle tests without exposing the private fields.
-                census
-            },
-        )
+        let mut census = OnTheFlyRetainedStateCensusV1::default();
+        for family in &self.families {
+            census.family_count += 1;
+            census.request_count += family.requests.len();
+            census.executor_handle_count += usize::from(family.executor_handle.is_some());
+            for destination in &family.amplitude_destinations {
+                if destination.is_some() {
+                    census.amplitude_destination_count += 1;
+                }
+            }
+        }
+        // Query-local traces and embedded lookup keys are deliberately absent
+        // from the compact retained family type. Their zero counters keep that
+        // invariant observable without exposing private family fields.
+        census
     }
 
     pub(super) fn clear(&mut self) -> RusticolResult<()> {
@@ -1267,6 +1273,8 @@ mod tests {
                 .prepare_lc_queries(std::slice::from_ref(&first), 1)
                 .unwrap()
         );
+        assert_eq!(lane.retained_state_census().family_count, 1);
+        assert_eq!(lane.pending_family_count(), 0);
         assert_eq!(lane.process_preparation_count(), 1);
         assert_eq!(
             lane.process_preparation_census(),
@@ -1322,10 +1330,11 @@ mod tests {
         let retained = lane.retained_state_census();
         assert_eq!(retained.family_count, 3);
         assert_eq!(retained.request_count, 4);
-        assert_eq!(retained.amplitude_projection_count, 4);
+        assert_eq!(retained.amplitude_destination_count, 0);
         assert_eq!(retained.executor_handle_count, 0);
         assert_eq!(retained.query_local_trace_count, 0);
         assert_eq!(retained.embedded_lookup_key_count, 0);
+        assert_eq!(lane.pending_family_count(), 0);
 
         lane.clear().unwrap();
         assert_eq!(lane.process_preparation_count(), 0);
@@ -1339,6 +1348,11 @@ mod tests {
             lane.retained_state_census(),
             OnTheFlyRetainedStateCensusV1::default()
         );
+        assert_eq!(lane.pending_family_count(), 0);
+        assert!(lane.source_momenta_scratch.is_empty());
+        assert_eq!(lane.source_momenta_scratch.capacity(), 0);
+        assert!(lane.amplitude_scratch.is_empty());
+        assert_eq!(lane.amplitude_scratch.capacity(), 0);
 
         assert!(!lane.prepare_lc_queries(&[first], 1).unwrap());
         assert_eq!(lane.process_preparation_count(), 1);
