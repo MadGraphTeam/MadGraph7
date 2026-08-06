@@ -127,6 +127,10 @@ pub(crate) fn begin_transition_diagnostic_observation(
     })
 }
 
+pub(crate) fn transition_diagnostic_observation_active() -> bool {
+    TRANSITION_OBSERVER.with(|slot| slot.borrow().is_some())
+}
+
 pub(crate) fn observe_transition_diagnostic(mut row: ConstructionTransitionDiagnosticRowV1) {
     TRANSITION_OBSERVER.with(|slot| {
         if let Some(observer) = slot.borrow_mut().as_mut() {
@@ -283,6 +287,15 @@ mod tests {
         ];
         let selected = retain_materialized_sector_rows(rows, 8, |row| Some(row.1));
         assert_eq!(selected, [(shared_digest, 8, 0), (shared_digest, 8, 1)]);
+    }
+
+    #[test]
+    fn diagnostic_observer_active_query_tracks_scope() {
+        assert!(!transition_diagnostic_observation_active());
+        begin_transition_diagnostic_observation(None).unwrap();
+        assert!(transition_diagnostic_observation_active());
+        take_transition_diagnostic_observation().unwrap();
+        assert!(!transition_diagnostic_observation_active());
     }
 
     #[test]

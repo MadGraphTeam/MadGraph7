@@ -6372,7 +6372,10 @@ fn add_transition_contributions(
                 "recurrence contribution-attempt count",
             )?;
             #[cfg(feature = "on-the-fly-test-support")]
-            {
+            'transition_diagnostic: {
+                if !super::diagnostic::transition_diagnostic_observation_active() {
+                    break 'transition_diagnostic;
+                }
                 use super::diagnostic::{
                     ConstructionTransitionDiagnosticRowV1, observe_transition_diagnostic,
                 };

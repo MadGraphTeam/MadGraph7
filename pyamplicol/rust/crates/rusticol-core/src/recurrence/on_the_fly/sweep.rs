@@ -1060,7 +1060,10 @@ fn include_transition(
             *aggregate
         };
         #[cfg(feature = "on-the-fly-test-support")]
-        {
+        'transition_diagnostic: {
+            if !crate::recurrence::diagnostic::transition_diagnostic_observation_active() {
+                break 'transition_diagnostic;
+            }
             use crate::recurrence::diagnostic::{
                 ConstructionTransitionDiagnosticRowV1, observe_transition_diagnostic,
             };
