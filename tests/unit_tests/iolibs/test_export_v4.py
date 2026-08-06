@@ -3798,6 +3798,10 @@ CALL VVVXXX(W(2),W(3),W(5),GG,AMP(6))""")
         denom = 6
 
         i = 0
+        # the numbers above are the color matrix over every color flow; the
+        # folded form sums each reversal pair into one line and is checked
+        # against |M|^2 itself elsewhere
+        exporter.jamp_fold = False
         for data in exporter.get_color_data_lines(\
                          matrix_element):
 
