@@ -1728,31 +1728,27 @@ param_card.inc: ../Cards/param_card.dat\n\t../bin/madevent treatcards param\n'''
 
         lines = []
         real_iproc = -1
-        for iproc, proc in enumerate(matrix_element.get('processes')):
-            real_iproc += 1
+        # Both sources of flavor multiplicity (several processes mapped onto one
+        # matrix element, and merged legs within a process) are enumerated by
+        # HelasMatrixElement.get_flavor_pdg_combinations, shared with the mg7
+        # exporter so the two backends cannot drift apart.
+        processes = matrix_element.get('processes')
+        for iproc, (pdg_lists, has_merged_particles) in enumerate(
+                matrix_element.get_flavor_pdg_combinations(self.model)):
+            proc = processes[iproc]
             legs = proc.get_legs_with_decays()
-            ids = [l.get('id') for l in legs]
-            has_merged_particles = False
-            if self.model and 'merged_particles' in self.model:
-                has_merged_particles = any([abs(id) in self.model['merged_particles'] for id in ids])
+            real_iproc += 1
             if has_merged_particles:
-                allow_flavor = matrix_element.get_external_flavors_with_iden()
-                for flavor in sum(allow_flavor,[]):
-                    ids = [l.get('id') for l in legs]
-                    for i,id in enumerate(ids):
-                        if id in self.model['merged_particles']:
-                            ids[i] = flavor[i] #self.model['merged_particles'][id][flavor[i]-1]
-                        if -id in self.model['merged_particles']:
-                           ids[i] = -flavor[i] #self.model['merged_particles'][-id][flavor[i]-1] 
+                for ids in pdg_lists:
                     lines.append("DATA (IDUP(i,%d,%d),i=1,%d)/%s/" % \
                          (real_iproc + 1, numproc+1, nexternal,
-                          ",".join([str(id) for id in ids])))    
-                    real_iproc += 1                 
+                          ",".join([str(id) for id in ids])))
+                    real_iproc += 1
             else:
                 lines.append("DATA (IDUP(i,%d,%d),i=1,%d)/%s/" % \
                          (real_iproc + 1, numproc+1, nexternal,
-                          ",".join([str(l.get('id')) for l in legs])))
-            
+                          ",".join([str(id) for id in pdg_lists[0]])))
+
             if iproc == 0 and numproc == 0:
                 for i in [1, 2]:
                     lines.append("DATA (MOTHUP(%d,i),i=1,%2r)/%s/" % \
