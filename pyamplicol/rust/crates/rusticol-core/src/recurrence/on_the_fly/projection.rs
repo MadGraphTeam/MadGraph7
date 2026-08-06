@@ -218,6 +218,16 @@ pub(super) fn project_query_local_color_aliases(
         }
     }
     for row in contributions.values() {
+        let destination_members = projection_members
+            .get(row.identity.destination_projection_id as usize)
+            .ok_or_else(|| integrity("projected contribution destination class is absent"))?;
+        if row.destination_builder_ids.len() != destination_members.len()
+            || !destination_members
+                .iter()
+                .all(|builder_id| row.destination_builder_ids.contains(builder_id))
+        {
+            return Ok(None);
+        }
         if !parent_rectangle_is_complete(
             row.identity.parent_projection_ids,
             &row.builder_parent_tuples,
@@ -436,6 +446,47 @@ mod tests {
         }
     }
 
+    fn add_contribution(
+        pending: &mut [PendingCurrent],
+        destination: u32,
+        parents: [u32; 2],
+        witness_ordinal: u32,
+        factor: ExactComplexRational,
+    ) {
+        let destination_key = &pending[destination as usize].key;
+        let parent_keys = parents.map(|id| &pending[id as usize].key);
+        let key = ContributionKey::new(
+            11,
+            parents.to_vec(),
+            parent_keys
+                .iter()
+                .map(|key| key.current_state_template_id())
+                .collect(),
+            parent_keys
+                .iter()
+                .map(|key| key.momentum().clone())
+                .collect(),
+            destination_key.current_state_template_id(),
+            3,
+            LCColorWitnessTermId::new(5, witness_ordinal),
+            digest(7),
+            13,
+        )
+        .unwrap();
+        assert!(
+            pending[destination as usize]
+                .contributions
+                .insert(
+                    PendingContributionKey {
+                        parent_current_ids: parents,
+                        key,
+                    },
+                    factor,
+                )
+                .is_none()
+        );
+    }
+
     #[test]
     fn query_local_projection_requires_a_complete_parent_rectangle() {
         let pending = vec![current(1, 0, 0), current(2, 1, 1), current(2, 2, 1)];
@@ -454,6 +505,47 @@ mod tests {
         assert_eq!(projected.currents.len(), 2);
         assert_eq!(projected.closures.len(), 1);
         assert_eq!(projected.closures[0].key.parent_current_ids, [0, 1]);
+    }
+
+    #[test]
+    fn query_local_projection_requires_each_contribution_on_every_destination_alias() {
+        let mut pending = vec![current(1, 0, 0), current(2, 1, 1), current(2, 2, 1)];
+        add_contribution(&mut pending, 1, [0, 0], 0, ExactComplexRational::ONE);
+        add_contribution(
+            &mut pending,
+            2,
+            [0, 0],
+            1,
+            ExactComplexRational::ONE.checked_neg().unwrap(),
+        );
+        let live = BTreeSet::from([0, 1, 2]);
+
+        assert!(
+            project_query_local_color_aliases(&pending, &[], &live)
+                .unwrap()
+                .is_none(),
+            "reciprocal destination aliases with distinct exact fan-ins are not one equation",
+        );
+    }
+
+    #[test]
+    fn query_local_projection_retains_a_complete_destination_and_parent_domain() {
+        let mut pending = vec![
+            current(1, 0, 0),
+            current(2, 1, 1),
+            current(2, 2, 1),
+            current(3, 3, 2),
+            current(3, 4, 2),
+        ];
+        add_contribution(&mut pending, 3, [0, 1], 0, ExactComplexRational::ONE);
+        add_contribution(&mut pending, 4, [0, 2], 1, ExactComplexRational::ONE);
+        let live = BTreeSet::from([0, 1, 2, 3, 4]);
+
+        let projected = project_query_local_color_aliases(&pending, &[], &live)
+            .unwrap()
+            .expect("complete destination and parent domains project");
+        assert_eq!(projected.currents.len(), 3);
+        assert_eq!(projected.currents[2].contributions.len(), 1);
     }
 
     #[test]
