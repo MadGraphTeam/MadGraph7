@@ -26,6 +26,7 @@ from pyamplicol.config import (
     ProcessConfig,
     RunConfig,
 )
+from tools.developer import on_the_fly_lc_gate as lc_gate
 
 _MODEL = (
     Path(__file__).resolve().parents[2]
@@ -38,6 +39,7 @@ _MODEL = (
     / "scalars.json"
 )
 _HELICITIES = (0, 0, 0, 0)
+_SM_SEEDS = (101, 211)
 _S = 1_000_000.0
 _FINAL_ONE_ENERGY = (_S + 1.0 - 4.0) / 2_000.0
 _FINAL_TWO_ENERGY = (_S + 4.0 - 1.0) / 2_000.0
@@ -248,6 +250,122 @@ def _work_census(report: dict[str, Any]) -> tuple[object, ...]:
         <= report["total_kernel_application_count"]
     )
     return tuple(report[name] for name in _WORK_CENSUS_FIELDS)
+
+
+def _assert_hidden_probe_matches_sm_process(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    process: str,
+    process_id: str,
+) -> None:
+    monkeypatch.setattr(lc_gate, "PROCESS", process)
+    monkeypatch.setattr(lc_gate, "PROCESS_ID", process_id)
+    monkeypatch.setattr(lc_gate, "SEEDS", _SM_SEEDS)
+    config = lc_gate._config()
+    prepared = ModelSource.built_in_sm().compile(
+        cache_dir=tmp_path / "fresh-built-in-sm-cache",
+        use_cache=False,
+        prepared_output=(
+            tmp_path / f"fresh-{process_id}-built-in-sm-jit-o2.pyamplicol-model"
+        ),
+        evaluator=config.evaluator,
+    )
+    artifact = tmp_path / f"fresh-{process_id}-artifact"
+    _, retained = lc_gate._generate(artifact, prepared)
+    runtime = Runtime.load(artifact, process=process_id)
+    points = lc_gate._points()
+    resolved = runtime.evaluate_resolved(points)
+    helicity_axis, color_axis = lc_gate._axes(resolved)
+    flows = tuple(runtime.physics.color_flows)
+    helicities = tuple(
+        helicity
+        for helicity in runtime.physics.helicities
+        if not helicity.structural_zero
+    )
+    assert flows
+    assert helicities
+    probe = lc_gate._probe()
+    census: list[tuple[str, dict[str, object], bool]] = []
+    for flow in flows:
+        for helicity in helicities:
+            selector = f"{flow.id}|{helicity.id}"
+            expected = tuple(
+                point[helicity_axis[helicity.id]][color_axis[flow.id]]
+                for point in resolved.values
+            )
+            query = lc_gate._query(flow, helicity)
+            projected_report = lc_gate._invoke(
+                probe,
+                artifact,
+                retained,
+                query,
+                points,
+                enable_color_projection=True,
+            )
+            bypass_report = lc_gate._invoke(
+                probe,
+                artifact,
+                retained,
+                query,
+                points,
+                enable_color_projection=False,
+            )
+            projected = lc_gate._probe_values(projected_report, len(points))
+            bypass = lc_gate._probe_values(bypass_report, len(points))
+            try:
+                lc_gate._series(projected, expected, selector)
+            except lc_gate.GateError as error:
+                try:
+                    lc_gate._series(bypass, expected, f"{selector} bypass")
+                except lc_gate.GateError:
+                    localization = "pre-projection or shared execution"
+                else:
+                    localization = "late color projection"
+                pytest.fail(f"{error}; localized to {localization}")
+            try:
+                lc_gate._series(bypass, expected, f"{selector} bypass")
+            except lc_gate.GateError:
+                bypass_matches = False
+            else:
+                bypass_matches = True
+            census.append(
+                (
+                    selector,
+                    lc_gate._work_census(projected_report),
+                    bypass_matches,
+                )
+            )
+
+    print(
+        f"genuine on-the-fly {process} component census:",
+        f"flows={len(flows)} helicities={len(helicities)} "
+        f"components={len(census)} point-checks={len(census) * len(points)} ",
+        census,
+    )
+
+
+def test_hidden_on_the_fly_probe_matches_every_physical_sm_n3_component(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_hidden_probe_matches_sm_process(
+        tmp_path,
+        monkeypatch,
+        "d d~ > t t~ g",
+        "otf_dd_tt_g",
+    )
+
+
+def test_hidden_on_the_fly_probe_matches_every_physical_sm_n2_component(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_hidden_probe_matches_sm_process(
+        tmp_path,
+        monkeypatch,
+        "d d~ > t t~",
+        "otf_dd_tt",
+    )
 
 
 def test_hidden_on_the_fly_probe_executes_genuine_scalar_artifact(
